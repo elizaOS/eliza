@@ -144,6 +144,14 @@ reply/error/settled observers. Interrupted work never publishes or replays. A ne
 send waits for an earlier room abort; failed aborts discard that room and report
 failure before an explicit retry can create another. `reset` invalidates ownership
 and teardown callbacks. A stop receipt does not prove an external action was undone.
+`bind` lets a resident client adopt a conversation it already owns; it stops any
+in-flight turn first. `reset` and `bind` advance a generation, and `fence()` gives
+hosts the same staleness check. Each turn hands the transport a `clientMessageId`,
+an `AbortSignal` and `current()`. Declined sends are typed `ConversationTurnRefusal`s
+(`busy`, `stop-unconfirmed`, `invalid-identity`), and failures say whether the request
+was `dispatched`. The last stopped dispatched turn is kept in `stopped`, and
+`findStoppedUserTurn` finds its user row in a later conversation read. The leaf
+export `@elizaos/ui/api/conversation-turn-controller` loads it without the package root.
 
 Browser speech lifecycle APIs are available from the package root.
 `DeviceSpeechController` owns device

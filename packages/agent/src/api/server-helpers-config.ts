@@ -12,7 +12,10 @@ import {
   getDefaultStylePreset,
   getStylePresets,
 } from "@elizaos/host/protocol";
-import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
+import {
+  isSensitiveConfigKey,
+  redactSensitiveLeaf,
+} from "../config/sensitive-keys.ts";
 import {
   persistWalletPrivateKeys,
   restoreWalletPrivateKeysFromVault,
@@ -113,14 +116,6 @@ function ownArrayLength(value: unknown[]): number {
 function newFilterWalkContext(): FilterWalkContext {
   return { visits: 0, visiting: new WeakSet<object>() };
 }
-function redactLeaf(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-  if (typeof value === "string") return value.length > 0 ? "[REDACTED]" : "";
-  if (typeof value === "number" || typeof value === "boolean") {
-    return "[REDACTED]";
-  }
-  return "[REDACTED]";
-}
 function walkConfigSecretFilter(
   value: unknown,
   depth: number,
@@ -137,7 +132,7 @@ function walkConfigSecretFilter(
   if (!visitAlreadyReserved) reserveFilterVisits(ctx, 1);
   if (value === null || value === undefined) return value;
   if (typeof value !== "object") {
-    return redactAll ? redactLeaf(value) : value;
+    return redactAll ? redactSensitiveLeaf(value) : value;
   }
   enterFilterContainer(value, ctx);
   try {

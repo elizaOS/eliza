@@ -140,6 +140,20 @@ export async function serverInteract(
           data: result,
         };
       }
+      case "maps-coverage": {
+        // Read-only: what the provider reports it serves, so a view offers only those modes.
+        const result = await service.coverageResult(
+          provider,
+          providerGeneration,
+        );
+        return {
+          success: true,
+          text: result.coverage
+            ? "Maps coverage is reported."
+            : "Maps coverage is not reported.",
+          data: result,
+        };
+      }
       default:
         throw new MapsError(
           `Maps does not support capability "${capability}".`,

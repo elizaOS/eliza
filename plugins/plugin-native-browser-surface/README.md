@@ -115,6 +115,66 @@ rejection reason. Hosts supply the inferred protocol and own aliases, search
 providers, upgrades and error copy. Parsing performs no network request and is
 not an SSRF, reputation, browser ownership or navigation-authorization check.
 
+## Android browser tab host
+
+`BrowserTabHostPlugin` is the native tab model of a full mobile browser: child
+WebViews drawn above the Capacitor host and presented one at a time at the
+geometry the renderer sends with `present`. A product subclasses it, adds its
+Capacitor name and registers it:
+
+```java
+@CapacitorPlugin(name = "ProductBrowser")
+public class ProductBrowserPlugin extends BrowserTabHostPlugin {
+  @Override protected BrowserTabHostConfig tabHostConfig() {
+    return BrowserTabHostConfig.builder("product_browser_v1", "product_private_", "product-browser")
+        .names("Product Phone", "Product", "Product Browser")
+        .hostScheme("productphone")
+        .autofillExtras(new BrowserAutofillExtras(PasswordAutofillPolicy.FIELD_ORIGIN, PasswordFormPolicy.TOP_ORIGIN_EXTRA))
+        .allowLoopback(BuildConfig.DEVELOPMENT_ONLY_FLAG)
+        .build();
+  }
+  @Override protected BrowserBookmarkStore openBookmarkStore(Context context) { /* sealed store */ }
+  @Override protected BrowserSessionStore openSessionStore(Context context) { /* sealed store */ }
+}
+```
+
+Profile, preference and Keystore names are compatibility identifiers. A host that
+already shipped keeps the names its earlier builds wrote, so website sign-ins,
+bookmarks, saved tabs, history, site permissions and downloads stay readable;
+nothing is migrated when a name changes. `BrowserTabHostConfig` refuses Android's
+`Default` profile, a persistent profile under an ephemeral prefix, and any prefix
+that overlaps the isolated or keyed surface profiles above.
+
+- Normal tabs share one persistent profile (sign-ins survive close and restart)
+  and are the only tabs that accept third-party cookies. Private tabs get
+  ephemeral profiles that are purged once no tab, including their pop-up, uses
+  them, and again at the next start; a replaced host document gets a new private
+  namespace.
+- A tapped `target=_blank` link or `window.open` from the selected, committed tab
+  opens a tab in the opener's profile (`tabOpened`); untapped pop-ups are refused.
+  A pop-up may close itself.
+- `tel:`, `mailto:`, `intent:` and `market:` links are handed to Android once per
+  tap, never to the host's own schemes or package.
+- `clearBrowsingData` closes normal tabs and clears the persistent profile,
+  saved tabs, history, permissions and download history (bookmarks remain);
+  `clearSiteData` clears one site of the selected tab. The product confirms first.
+- `find`, `findNext` and `clearFind` search the selected tab; navigation, tab
+  changes and close clear the highlights (`findResult` with `cleared`).
+- `reviewReading` and `reviewQuestion` read the selected HTTPS page in its
+  isolated world (`BrowserReadingWorld`) and show the whole excerpt before the
+  person releases it (`BrowserReviewedReading`). A reading is bound to one speech
+  route, owner and session and consumed once through `consumeReading`; a product
+  overrides `cancelReadingSpeech` to stop its speech request.
+- Site permissions, HTTP sign-in, engine-attested login fields, downloads,
+  fullscreen video, sharing and another-browser handoff use the policies in this
+  package.
+
+Passkeys stay disabled; the host says so once per install. The renderer half is
+`./tab-host`: the `BrowserTabHostPlugin` bridge type and `BrowserTabSession`, a
+session model that accepts only this document's events in native order, moves a
+document revision on every load or address change, and binds page actions to a
+committed, settled document.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

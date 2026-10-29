@@ -1,11 +1,14 @@
 /** Validates browser responses from the authenticated Maps view broker. */
 
 import { fetchWithCsrf } from "@elizaos/ui";
+import { z } from "zod";
 import {
+  type MapsCoverage,
   type MapsPlacePageResult,
   type MapsPlaceResult,
   type MapsProviderDescription,
   type MapsRouteResult,
+  mapsCoverageSchema,
   mapsPlacePageResultSchema,
   mapsPlaceResultSchema,
   mapsRouteResultSchema,
@@ -41,7 +44,16 @@ export interface MapsViewTransport {
     provider: MapsProviderDescription,
     signal?: AbortSignal,
   ): Promise<MapsRouteResult>;
+  /** What the provider reports it serves; null when it publishes no coverage. */
+  coverage?(
+    provider: MapsProviderDescription,
+    signal?: AbortSignal,
+  ): Promise<MapsCoverage | null>;
 }
+
+const coverageResultSchema = z
+  .object({ coverage: mapsCoverageSchema.nullable() })
+  .passthrough();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -161,5 +173,14 @@ export const mapsViewTransport: MapsViewTransport = {
         signal,
       ),
     );
+  },
+  async coverage(provider, signal) {
+    return coverageResultSchema.parse(
+      await invoke(
+        "maps-coverage",
+        { provider: provider.id, providerGeneration: provider.generation },
+        signal,
+      ),
+    ).coverage;
   },
 };

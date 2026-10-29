@@ -1,11 +1,18 @@
 /** Owns normalized maps operations, provider selection, and saved-place access. */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
 import type { MapsProviderAdapter } from "./adapter.js";
 import { ElizaCloudMapsAdapter } from "./cloud-adapter.js";
 import { MapsError } from "./errors.js";
 import type { MapsDeviceNavigation } from "./navigation.js";
+import {
+  assertSavedPlacesNamespace,
+  type MapsSavedPlacesHost,
+  parseHostSavedPlaces,
+  reconcileSavedPlaces,
+  type SavedPlacesListing,
+} from "./saved-places-host.js";
 import { RuntimeSavedPlaceStore, type SavedPlaceStore } from "./store.js";
 import {
   type Coordinates,
@@ -157,6 +164,61 @@ export class MapsService extends Service {
   }
 
   private deviceNavigation: MapsDeviceNavigation | null = null;
+  private savedPlacesHost: MapsSavedPlacesHost | null = null;
+
+  /**
+   * The device host registers its own Maps list (for example a phone's
+   * installed-data namespace) so listings reconcile both; null removes it.
+   */
+  registerSavedPlacesHost(host: MapsSavedPlacesHost | null): void {
+    if (host) assertSavedPlacesNamespace(host.namespace);
+    this.savedPlacesHost = host;
+  }
+
+  /**
+   * The entity's saved places, reconciled with the registered host's list only
+   * when the caller passes `includeDevice` after an owner-access check. A host
+   * that fails or answers malformed data is reported as unavailable; the agent's
+   * own places are still listed and nothing is written to either store.
+   */
+  async listReconciledSavedPlaces(
+    ownerEntityId: string,
+    options: { includeDevice: boolean; signal?: AbortSignal },
+  ): Promise<SavedPlacesListing> {
+    const { includeDevice, signal } = options;
+    const agent = await this.listSavedPlaces(ownerEntityId);
+    // The device list belongs to the phone's owner; a caller that has not
+    // established owner access never reads it.
+    const host = includeDevice ? this.savedPlacesHost : null;
+    if (!host)
+      return { places: reconcileSavedPlaces(agent, []), device: "none" };
+    try {
+      const device = parseHostSavedPlaces(
+        await host.list(ownerEntityId, signal),
+      );
+      if (this.savedPlacesHost !== host) throw new Error("host changed");
+      return {
+        places: reconcileSavedPlaces(agent, device),
+        device: "listed",
+        namespace: host.namespace,
+      };
+    } catch (error) {
+      signal?.throwIfAborted();
+      logger.warn(
+        {
+          src: "plugin:maps",
+          namespace: host.namespace,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Device saved-places list could not be read",
+      );
+      return {
+        places: reconcileSavedPlaces(agent, []),
+        device: "unavailable",
+        namespace: host.namespace,
+      };
+    }
+  }
 
   /**
    * Registers the Eliza Cloud Maps adapter when the runtime has an Eliza Cloud
@@ -181,6 +243,7 @@ export class MapsService extends Service {
   }
 
   override async stop(): Promise<void> {
+    this.savedPlacesHost = null;
     this.providers.clear();
     this.defaultAdapterId = null;
     this.deviceNavigation = null;

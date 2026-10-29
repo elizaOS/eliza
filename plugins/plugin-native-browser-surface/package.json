@@ -43,6 +43,11 @@
       "eliza-source": "./src/page-source.ts",
       "types": "./dist/esm/page-source.d.ts",
       "import": "./dist/esm/page-source.js"
+    },
+    "./tab-host": {
+      "eliza-source": "./src/tab-host.ts",
+      "types": "./dist/esm/tab-host.d.ts",
+      "import": "./dist/esm/tab-host.js"
     }
   },
   "unpkg": "dist/plugin.js",

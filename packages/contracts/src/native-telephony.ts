@@ -86,6 +86,9 @@ export interface TelephonyStatus {
     phoneState: TelephonyPermissionState;
     sms: TelephonyPermissionState;
     sendSms: TelephonyPermissionState;
+    /** Present only when the host declares recent-call access (READ_CALL_LOG); absent means the
+     * install has no recent-calls read at all, which is different from access not granted. */
+    callLog?: TelephonyPermissionState;
   };
   /** `direct`: the host may send after its native review (SEND_SMS held, SIM readable). Otherwise only the SMS app handoff. */
   sendMode: "direct" | "handoff";
@@ -121,7 +124,35 @@ export interface TelephonyHandoffResult {
   handler: string | null;
   message: string;
 }
-export type TelephonyAccessKind = "contacts" | "phoneState" | "sms" | "sendSms";
+export type TelephonyAccessKind =
+  | "contacts"
+  | "phoneState"
+  | "sms"
+  | "sendSms"
+  | "callLog";
+export type TelephonyCallType =
+  | "incoming"
+  | "outgoing"
+  | "missed"
+  | "voicemail"
+  | "rejected"
+  | "blocked"
+  | "answered_externally"
+  | "unknown";
+/** One recent call from the host's bounded, foreground-only call-log read. */
+export interface TelephonyCallLogEntry {
+  id: string;
+  /** Digits with an optional leading +, or "" for a withheld or unknown caller. */
+  number: string;
+  cachedName: string | null;
+  /** Epoch milliseconds. */
+  date: number;
+  durationSeconds: number;
+  type: TelephonyCallType;
+  isNew: boolean;
+}
+/** The largest recent-calls page a host returns in one read. */
+export const TELEPHONY_CALL_LOG_MAX = 50;
 /** The native bridge surface of a host's `TelephonyPlugin` subclass. Results are untrusted until parsed. */
 export interface TelephonyNativePlugin {
   imageCapability(): Promise<unknown>;
@@ -129,6 +160,8 @@ export interface TelephonyNativePlugin {
   requestAccess(options: { access: TelephonyAccessKind }): Promise<unknown>;
   requestRole(options: { role: TelephonyRole }): Promise<unknown>;
   searchContacts(options: { query: string; limit: number }): Promise<unknown>;
+  /** Bounded recent calls, newest first. Only hosts that declare recent-call access implement it. */
+  listRecentCalls?(options: { limit: number }): Promise<unknown>;
   dial(options: { number: string }): Promise<unknown>;
   composeSms(options: { recipients: string[]; body: string }): Promise<unknown>;
   listThreads(options: {
@@ -303,6 +336,9 @@ export function parseTelephonyStatus(value: unknown): TelephonyStatus {
       phoneState,
       sms: permission(permissions.sms, "SMS permission"),
       sendSms,
+      ...(permissions.callLog === undefined
+        ? {}
+        : { callLog: permission(permissions.callLog, "call-log permission") }),
     },
     sendMode: data.sendMode,
     mmsSend,
@@ -334,6 +370,56 @@ export function parseContacts(
       phoneNumbers: strings(c.phoneNumbers, "contact numbers"),
       emailAddresses: strings(c.emailAddresses, "contact emails"),
       starred: bool(c.starred, "contact"),
+    };
+  });
+}
+
+const CALL_TYPES: readonly TelephonyCallType[] = [
+  "incoming",
+  "outgoing",
+  "missed",
+  "voicemail",
+  "rejected",
+  "blocked",
+  "answered_externally",
+  "unknown",
+];
+/** Parses a recent-calls page. A longer page than requested, a repeated ID or an unreadable row is refused. */
+export function parseCallLog(
+  value: unknown,
+  limit: number,
+): TelephonyCallLogEntry[] {
+  const data = object(value, "recent calls");
+  if (!Array.isArray(data.calls) || data.calls.length > limit)
+    throw invalid("recent calls");
+  const seen = new Set<string>();
+  let previous = Number.POSITIVE_INFINITY;
+  return data.calls.map((row) => {
+    const c = object(row, "recent call");
+    const id = text(c.id, "call id", 32);
+    if (!/^[0-9]+$/.test(id) || seen.has(id)) throw invalid("call id");
+    seen.add(id);
+    const number = text(c.number, "call number", 21);
+    if (number !== "" && !/^\+?[0-9]{2,20}$/.test(number))
+      throw invalid("call number");
+    if (
+      !Number.isSafeInteger(c.date) ||
+      (c.date as number) <= 0 ||
+      (c.date as number) > previous ||
+      !Number.isSafeInteger(c.durationSeconds) ||
+      (c.durationSeconds as number) < 0 ||
+      !CALL_TYPES.includes(c.type as TelephonyCallType)
+    )
+      throw invalid("recent call");
+    previous = c.date as number;
+    return {
+      id,
+      number,
+      cachedName: nullableText(c.cachedName, "call name"),
+      date: c.date as number,
+      durationSeconds: c.durationSeconds as number,
+      type: c.type as TelephonyCallType,
+      isNew: bool(c.isNew, "recent call"),
     };
   });
 }
@@ -880,6 +966,22 @@ export function createTelephonyClient(
         }),
         limit,
       );
+    },
+    /** Recent calls, newest first, read only while the host is unlocked and in front. An install
+     * without recent-call access rejects as unavailable; it never answers with an empty list. */
+    async recentCalls(limit = 25) {
+      const bridge = native();
+      if (
+        !Number.isSafeInteger(limit) ||
+        limit < 1 ||
+        limit > TELEPHONY_CALL_LOG_MAX
+      )
+        throw new RangeError("Recent-calls limit must be 1 to 50");
+      if (!bridge.listRecentCalls)
+        throw new TelephonyUnavailable(
+          "Recent calls are not available in this install.",
+        );
+      return parseCallLog(await bridge.listRecentCalls({ limit }), limit);
     },
     /** Opens the user's dialer with the number filled in. The person places the call there; the
      * system dialer also handles emergency numbers. */

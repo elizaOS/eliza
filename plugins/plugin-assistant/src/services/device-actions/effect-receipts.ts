@@ -12,6 +12,11 @@ import type { ApprovalEnqueueResult } from "../approval/types.ts";
 import { type DeviceOperation, validateDevicePayload } from "./contract.ts";
 import { namedTargetValidators } from "./foreground-review-contract.ts";
 import {
+  isPhoneDial,
+  phoneDialReceiptOutcome,
+  validatePhoneDialResult,
+} from "./phone-dial-contract.ts";
+import {
   isSmsSend,
   smsBindingText,
   validateSmsResult,
@@ -77,6 +82,38 @@ export function deviceActionEffectReceipts(
             committedAt: request.updatedAt.toISOString(),
           },
           // This receipt only proves submission. The typed result separately records modem/delivery evidence.
+        }),
+      ];
+    }
+    if (isPhoneDial(operation)) {
+      // Applied means only that the dial screen opened with the reviewed number.
+      // A stored result that names no opened dial screen never becomes an
+      // applied handoff receipt, whatever outcome the stored receipt carries.
+      if (
+        phoneDialReceiptOutcome(
+          validatePhoneDialResult(operation, provider.result),
+        ) !== "applied"
+      )
+        throw new Error("Dial receipt outcome conflicts with native evidence");
+      return [
+        normalizeEffectReceipt({
+          ...base,
+          receiptId: execution.attemptId,
+          operation: "device.phone.dial_handoff",
+          resource: {
+            kind: "device.phone.dial_handoff",
+            id: provider.operationId,
+          },
+          idempotency: {
+            key: execution.providerIdempotencyKey,
+            replayed: true,
+          },
+          outcome: "applied",
+          commit: {
+            kind: "provider_accepted",
+            id: provider.operationId,
+            committedAt: request.updatedAt.toISOString(),
+          },
         }),
       ];
     }
@@ -213,6 +250,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "calendar_update":
     case "calendar_delete":
     case "sms_send":
+    case "phone_dial":
     case "clock_handoff":
     case "clock_alarm":
     case "camera_capture_photo":

@@ -58,6 +58,12 @@
       "import": "./dist/workflow-scope.js",
       "default": "./dist/workflow-scope.js"
     },
+    "./deletion-window": {
+      "eliza-source": "./src/deletion-window.ts",
+      "types": "./dist/deletion-window.d.ts",
+      "import": "./dist/deletion-window.js",
+      "default": "./dist/deletion-window.js"
+    },
     "./notice-routes": {
       "eliza-source": "./src/notice-routes.ts",
       "types": "./dist/notice-routes.d.ts",
@@ -93,6 +99,12 @@
       "types": "./dist/sms-send.d.ts",
       "import": "./dist/sms-send.js",
       "default": "./dist/sms-send.js"
+    },
+    "./phone-dial": {
+      "eliza-source": "./src/phone-dial.ts",
+      "types": "./dist/phone-dial.d.ts",
+      "import": "./dist/phone-dial.js",
+      "default": "./dist/phone-dial.js"
     },
     "./mms-send": {
       "eliza-source": "./src/mms-send.ts",

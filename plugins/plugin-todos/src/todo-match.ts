@@ -66,6 +66,21 @@ function stem(token: string): string {
   } else if (singular.length > 4 && singular.endsWith("ed")) {
     reduced = singular.slice(0, -2);
   }
+  // Doubled-consonant collapse, narrowed per maintainer feedback on closed
+  // #38120: only after an "ed"/"ing" strip, only a doubled letter (never a
+  // digit), and only when the stripped form is longer than 3 letters (so
+  // "add"/"egg"/"odd" keep their token). Endings in l, s, z, f are kept, so
+  // "pass"/"passing", "call"/"calling", "buzz"/"buzzing" and
+  // "sniff"/"sniffing" still match. Unstripped words are untouched, so
+  // "Todd" never collapses to "Tod" and "1000" never collapses to "100".
+  const stripped = reduced !== singular;
+  if (
+    stripped &&
+    reduced.length > 3 &&
+    /([bcdghjkmnpqrtvwx])\1$/u.test(reduced)
+  ) {
+    reduced = reduced.slice(0, -1);
+  }
   // The consonant + "y" family spells the plural with "ie" and drops the "y"
   // before "ed"/"ing" ("party/parties", "copy/copies", "try/tried"), so the
   // forms above land on three different tokens ("party", "partie", "tri")

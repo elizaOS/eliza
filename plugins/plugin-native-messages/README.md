@@ -120,6 +120,18 @@ A host that can hold the SMS role declares thin subclasses of
   blocks or repeats the send. Delivery is not claimed for these rows: an
   immutable delivery callback carries no status report.
 
+Recent calls are optional. A host that declares the `callLog` permission alias
+(and `READ_CALL_LOG` in its own manifest; this library does not declare it)
+gets `listRecentCalls({limit})`: at most 50 newest rows, read only while the
+phone is unlocked and the host is in front, under the same cancel-and-fence
+rules as SMS reads. Numbers are reduced to the dial shape (`CallLogRows`);
+withheld or undialable entries become `""`, and voicemail transcriptions,
+accounts and locations are not read. `status().permissions.callLog` is present
+only for such hosts, and access is asked for only through
+`requestAccess({access: "callLog"})`. Without the alias the read answers
+unavailable, never an empty list. Dialing stays a handoff (`dial`): the
+person places the call on the dial screen.
+
 `MmsPdu` encodes M-Send.req, M-NotifyResp.ind and M-Acknowledge.ind. Outgoing
 user MMS (group messages and attachments) is not offered yet. Carrier MMSC
 behaviour, APN settings and real role grants need device qualification.

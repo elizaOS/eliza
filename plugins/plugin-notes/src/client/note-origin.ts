@@ -16,14 +16,28 @@ export interface NoteOrigin {
   /** Hash of the whole note record as reviewed when the link was made. */
   revision: string;
 }
+/**
+ * A link to a canonical note record (any kind, not only a recording). `revision` hashes the
+ * note's authored fields as reviewed when the link was made ({@link recordNoteRevision}).
+ */
+export interface RecordNoteOrigin {
+  version: 2;
+  noteId: string;
+  revision: string;
+}
+/** Either link: a recording in a voice note (version 1) or a canonical note record (version 2). */
+export type NoteLink = NoteOrigin | RecordNoteOrigin;
 export type NoteOriginKind = "event" | "reminder";
 export interface NoteOriginIndex {
   version: 1;
-  links: Record<string, NoteOrigin & { savedAt: number }>;
+  links: Record<string, NoteLink & { savedAt: number }>;
 }
 export type NoteOriginResolution =
   | { status: "missing" }
   | { status: "found"; origin: NoteOrigin; note: Record<string, unknown> };
+export type NoteLinkResolution =
+  | { status: "missing" }
+  | { status: "found"; origin: NoteLink; note: Record<string, unknown> };
 
 export const NOTE_ORIGIN_LIMIT = 200;
 const NOTE_ORIGIN_RECOVERY = "Note links need recovery.";
@@ -76,6 +90,68 @@ export function noteOriginOf(value: unknown): NoteOrigin | undefined {
     audioId: origin.audioId,
     revision: origin.revision,
   };
+}
+
+/** The exact fields of a canonical record link, or undefined. */
+export function recordNoteOriginOf(
+  value: unknown,
+): RecordNoteOrigin | undefined {
+  const origin = value as Partial<RecordNoteOrigin> | null | undefined;
+  if (
+    !origin ||
+    typeof origin !== "object" ||
+    origin.version !== 2 ||
+    !text(origin.noteId, 128) ||
+    typeof origin.revision !== "string" ||
+    !/^[a-f0-9]{64}$/.test(origin.revision)
+  ) {
+    return undefined;
+  }
+  return { version: 2, noteId: origin.noteId, revision: origin.revision };
+}
+
+/** The exact fields of either link kind, or undefined. */
+export function noteLinkOf(value: unknown): NoteLink | undefined {
+  return noteOriginOf(value) ?? recordNoteOriginOf(value);
+}
+
+/**
+ * SHA-256 (lowercase hex) of a canonical note's authored fields: id, title, body and format.
+ * Timestamps and colour are left out, so only an authored change reads as "edited since".
+ */
+export async function recordNoteRevision(note: {
+  id: string;
+  title?: unknown;
+  body?: unknown;
+  format?: unknown;
+}): Promise<string> {
+  const canonical = JSON.stringify([
+    note.id,
+    String(note.title ?? ""),
+    String(note.body ?? ""),
+    note.format ?? null,
+  ]);
+  const digest = await globalThis.crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(canonical),
+  );
+  return Array.from(new Uint8Array(digest), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
+}
+
+/** The link for a canonical note record as it is now. */
+export async function recordNoteOriginFor(note: {
+  id: string;
+  title?: unknown;
+  body?: unknown;
+  format?: unknown;
+}): Promise<RecordNoteOrigin | undefined> {
+  return recordNoteOriginOf({
+    version: 2,
+    noteId: note?.id,
+    revision: await recordNoteRevision(note),
+  });
 }
 
 /** The origin for a saved recording as reviewed now. `revision` hashes the whole note record. */
@@ -137,7 +213,7 @@ export function noteOriginIndex(value: unknown): NoteOriginIndex {
   if (entries.length > NOTE_ORIGIN_LIMIT) throw new Error(NOTE_ORIGIN_RECOVERY);
   const links: NoteOriginIndex["links"] = {};
   for (const [key, row] of entries) {
-    const origin = noteOriginOf(row);
+    const origin = noteLinkOf(row);
     if (
       !validLinkKey(key) ||
       !origin ||
@@ -163,7 +239,7 @@ export function addNoteOrigin(
   value: unknown,
   now: number,
 ): NoteOriginIndex {
-  const origin = noteOriginOf(value);
+  const origin = noteLinkOf(value);
   const key = noteOriginKey(kind, id);
   // The same key check the index reader applies, so one bad id never makes the
   // persisted index need recovery.
@@ -199,6 +275,39 @@ export function findNoteOrigin(
   id: string,
 ): NoteOrigin | undefined {
   return noteOriginOf(index.links[noteOriginKey(kind, id)]);
+}
+
+/** The stored link of either kind for a record. */
+export function findNoteLink(
+  index: NoteOriginIndex,
+  kind: NoteOriginKind,
+  id: string,
+): NoteLink | undefined {
+  return noteLinkOf(index.links[noteOriginKey(kind, id)]);
+}
+
+/**
+ * Resolves a link of either kind. A recording link resolves as {@link resolveNoteOrigin}; a
+ * record link needs exactly one note under the stored id. Compare `revision` with
+ * {@link recordNoteRevision} of the found note to say whether it was edited since.
+ */
+export function resolveNoteLink(
+  value: unknown,
+  notes: unknown,
+): NoteLinkResolution {
+  const record = recordNoteOriginOf(value);
+  if (!record) return resolveNoteOrigin(value, notes);
+  if (!Array.isArray(notes)) return { status: "missing" };
+  const matches = notes.filter(
+    (note: { id?: unknown } | null) => note && note.id === record.noteId,
+  );
+  return matches.length === 1
+    ? {
+        status: "found",
+        origin: record,
+        note: matches[0] as Record<string, unknown>,
+      }
+    : { status: "missing" };
 }
 
 /**

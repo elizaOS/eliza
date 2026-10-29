@@ -7,6 +7,10 @@ import type { PermissionId } from "@elizaos/core/protocol";
 import { isAndroidCloudBuild } from "../../platform/android-runtime";
 import { getFrontendPlatform } from "../../platform/platform-guards";
 import { shellLocalStorage } from "../../surface-realm-channel";
+import {
+  type WalkthroughMemoryStore,
+  walkthroughMemory,
+} from "./permission-walkthrough";
 /**
  * Permission-priming logic for the post-login onboarding modal.
  *
@@ -159,4 +163,34 @@ export function markPermissionsPrimed(): void {
     // Storage unavailable — the modal will show again next launch, which is a
     // benign degradation, not a failure worth surfacing.
   }
+}
+
+/** localStorage key for the walkthrough memory (which OS prompts were already shown, "Not now"). */
+export const PERMISSION_WALKTHROUGH_MEMORY_KEY = "eliza:permission-walkthrough";
+/** Window event that reopens the onboarding walkthrough (fired by `memory.reopen()`). */
+export const PERMISSION_WALKTHROUGH_REOPEN_EVENT =
+  "eliza:permission-walkthrough-reopen";
+
+/**
+ * The onboarding walkthrough's memory. A permission whose OS prompt was already shown is never
+ * prompted again by the walkthrough, including after a restart: its card routes to system settings.
+ */
+export function primingWalkthroughMemory(): WalkthroughMemoryStore {
+  return walkthroughMemory(
+    PERMISSION_WALKTHROUGH_MEMORY_KEY,
+    PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+    () => {
+      try {
+        const local = globalThis.localStorage;
+        if (!local) return null;
+        return {
+          getItem: (key: string) => local.getItem(key),
+          setItem: (key: string, value: string) =>
+            shellLocalStorage.setItem(key, value),
+        };
+      } catch {
+        return null;
+      }
+    },
+  );
 }

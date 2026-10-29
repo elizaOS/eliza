@@ -112,6 +112,14 @@ import { originalRequestsNotesDeletion } from "./notes-delete-intent.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { notesUpdateAfterReadPlan } from "./notes-update-continuation.ts";
 import {
+  CONTACT_LOOKUP_CAPABILITY,
+  isPhoneDial,
+  PHONE_DIAL_CAPABILITY,
+  phoneDialCapabilityAvailable,
+  phoneDialReceiptOutcome,
+  validatePhoneDialResult,
+} from "./phone-dial-contract.ts";
+import {
   assertDeviceReadCompletionCurrent,
   bindDeviceCompletion,
   captureDeviceReadReplyOrigin,
@@ -1735,6 +1743,8 @@ export class DeviceActionService {
           CLOCK_ALARMS_CAPABILITY,
           MAPS_CAPABILITY,
           SMS_SEND_CAPABILITY,
+          PHONE_DIAL_CAPABILITY,
+          CONTACT_LOOKUP_CAPABILITY,
         ],
       };
     });
@@ -1967,6 +1977,11 @@ export class DeviceActionService {
       !clockCapabilityAvailable(validated, c.capabilities)
     )
       throw new DeviceActionError("Clock capability unavailable");
+    if (
+      isPhoneDial(validated) &&
+      !phoneDialCapabilityAvailable(validated, c.capabilities)
+    )
+      throw new DeviceActionError("Dial capability unavailable");
     if (isMapsOperation(validated)) {
       if (!c.capabilities?.includes(MAPS_CAPABILITY))
         throw new DeviceActionError("Maps capability unavailable");
@@ -2006,6 +2021,7 @@ export class DeviceActionService {
       ![
         "camera_capture_photo",
         "sms_send",
+        "phone_dial",
         "clock_handoff",
         "clock_alarm",
         "create_note",
@@ -2634,6 +2650,11 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("SMS capability unavailable");
       if (
+        isPhoneDial(payload.operation) &&
+        !phoneDialCapabilityAvailable(payload.operation, c.capabilities)
+      )
+        throw new DeviceActionError("Dial capability unavailable");
+      if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
       )
@@ -2719,6 +2740,27 @@ export class DeviceActionService {
           throw new DeviceActionError(
             "Unconfirmed Camera capture cannot return a saved photo",
           );
+        }
+      } else if (isPhoneDial(payload.operation)) {
+        // A dial result names a handoff; no outcome may claim a placed call.
+        if (receipt.outcome !== "unknown" || value.result !== undefined) {
+          try {
+            const result = validatePhoneDialResult(
+              payload.operation,
+              value.result,
+            );
+            const outcome = phoneDialReceiptOutcome(result);
+            if (
+              receipt.outcome !== outcome &&
+              !(receipt.outcome === "not_applied" && outcome === "failed")
+            )
+              throw new DeviceActionError(
+                "Dial receipt outcome conflicts with native evidence",
+              );
+            receipt = { ...receipt, result };
+          } catch {
+            throw new DeviceActionError("Invalid dial receipt");
+          }
         }
       } else if (isClockOperation(payload.operation)) {
         try {
@@ -2891,6 +2933,11 @@ export class DeviceActionService {
       )
         throw new DeviceActionError("SMS capability unavailable");
       if (
+        isPhoneDial(payload.operation) &&
+        !phoneDialCapabilityAvailable(payload.operation, c.capabilities)
+      )
+        throw new DeviceActionError("Dial capability unavailable");
+      if (
         isCalendarOperation(payload.operation) &&
         !calendarCapabilityAvailable(payload.operation.type, c.capabilities)
       )
@@ -2972,6 +3019,27 @@ export class DeviceActionService {
           throw new DeviceActionError(
             "Unconfirmed Camera capture cannot return a saved photo",
           );
+        }
+      } else if (isPhoneDial(payload.operation)) {
+        // A dial result names a handoff; no outcome may claim a placed call.
+        if (receipt.outcome !== "unknown" || value.result !== undefined) {
+          try {
+            const result = validatePhoneDialResult(
+              payload.operation,
+              value.result,
+            );
+            const outcome = phoneDialReceiptOutcome(result);
+            if (
+              receipt.outcome !== outcome &&
+              !(receipt.outcome === "not_applied" && outcome === "failed")
+            )
+              throw new DeviceActionError(
+                "Dial receipt outcome conflicts with native evidence",
+              );
+            receipt = { ...receipt, result };
+          } catch {
+            throw new DeviceActionError("Invalid dial receipt");
+          }
         }
       } else if (isClockOperation(payload.operation)) {
         try {

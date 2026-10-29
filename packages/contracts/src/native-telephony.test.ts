@@ -5,6 +5,7 @@ import {
   createTelephonyClient,
   detectTelephonyProfile,
   normalizePhoneNumber,
+  parseCallLog,
   parseHandoff,
   parseMessages,
   parseSmsJournal,
@@ -746,5 +747,105 @@ test("journal history restores unknown operations without content or optimistic 
   assert.deepEqual(
     calls.map(([method]) => method),
     ["smsSendHistory"],
+  );
+});
+
+test("recent calls are bounded, newest first and only from hosts that declare the read", async () => {
+  const row = (
+    id: string,
+    date: number,
+    patch: Record<string, unknown> = {},
+  ) => ({
+    id,
+    number: "+15555550100",
+    cachedName: "Ada",
+    date,
+    durationSeconds: 42,
+    type: "outgoing",
+    isNew: false,
+    ...patch,
+  });
+  const { plugin, calls } = stub({
+    listRecentCalls: {
+      calls: [
+        row("9", 2000),
+        row("8", 1000, {
+          number: "",
+          cachedName: null,
+          type: "missed",
+          isNew: true,
+        }),
+      ],
+    },
+  });
+  const client = createTelephonyClient(plugin, true);
+  const recent = await client.recentCalls(2);
+  assert.deepEqual(calls[0], ["listRecentCalls", { limit: 2 }]);
+  assert.equal(recent.length, 2);
+  assert.equal(recent[1].number, "");
+  assert.equal(recent[1].type, "missed");
+  await assert.rejects(client.recentCalls(0), RangeError);
+  await assert.rejects(client.recentCalls(51), RangeError);
+  // Longer than asked, repeated, out of order, a placed-call claim or an MMI string is refused.
+  assert.throws(
+    () => parseCallLog({ calls: [row("1", 2), row("2", 1)] }, 1),
+    /recent calls/,
+  );
+  assert.throws(
+    () => parseCallLog({ calls: [row("1", 2), row("1", 1)] }, 5),
+    /call id/,
+  );
+  assert.throws(
+    () => parseCallLog({ calls: [row("1", 1), row("2", 2)] }, 5),
+    /recent call/,
+  );
+  assert.throws(
+    () => parseCallLog({ calls: [row("1", 1, { type: "connected" })] }, 5),
+    /recent call/,
+  );
+  assert.throws(
+    () => parseCallLog({ calls: [row("1", 1, { number: "*#06#" })] }, 5),
+    /call number/,
+  );
+  // A host without the read (no method) is unavailable, never an empty list.
+  const bare = {} as Parameters<typeof createTelephonyClient>[0];
+  await assert.rejects(
+    createTelephonyClient(bare, true).recentCalls(),
+    TelephonyUnavailable,
+  );
+  // Off the admitted profile nothing reaches native code.
+  await assert.rejects(
+    createTelephonyClient(plugin, false).recentCalls(),
+    TelephonyUnavailable,
+  );
+  assert.equal(calls.length, 1);
+});
+
+test("call-log access is reported only when the host declares it", () => {
+  assert.equal(parseTelephonyStatus(status()).permissions.callLog, undefined);
+  const declared = status({
+    permissions: {
+      contacts: "granted",
+      phoneState: "granted",
+      sms: "granted",
+      sendSms: "granted",
+      callLog: "prompt",
+    },
+  });
+  assert.equal(parseTelephonyStatus(declared).permissions.callLog, "prompt");
+  assert.throws(
+    () =>
+      parseTelephonyStatus(
+        status({
+          permissions: {
+            contacts: "granted",
+            phoneState: "granted",
+            sms: "granted",
+            sendSms: "granted",
+            callLog: "yes",
+          },
+        }),
+      ),
+    /call-log/,
   );
 });
