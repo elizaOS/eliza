@@ -356,3 +356,30 @@ The compatibility host keeps its storage slot and subclass name; records do not
 move or change shape. The later native profile overrides Cloud embeddings with
 the admitted local BGE route; this extraction preserves the existing generic
 provider behavior.
+
+### First-party connection transport and resident lifecycle
+
+`connection/` holds the pure policies a first-party renderer transport plugin
+shares across products. `OwnerRoutePolicy` interprets a product's declarative
+owner-route table (path prefixes, `{id}` segments, method and query-key sets);
+it refuses unsafe characters, malformed escapes, dot segments, repeated slashes,
+duplicate query keys and oversized paths before any route is consulted.
+`CloudConnectionPolicy` is the reviewed Eliza Cloud API route set with the
+product's deployment hosts injected: a flag-off build reaches only the
+production API origin, and opens only the production web/services hosts and the
+declared external providers. `ConnectionTransport` bounds URLs, JSON, bodies,
+header values and Retry-After; `DelegationCallback` admits a product's Cloud
+delegation return link; `SecureSlotPolicy` keeps native-owned slot namespaces
+out of renderer storage and limits compare-and-exchange to declared draft
+slots; `PendingRequests` is the cancel/browser-handoff state machine.
+
+`runtime/CredentialIntentFence` is last-intent-wins fencing over credential
+writes. `runtime/NativeProviderSlot` binds a direct provider key (test-mocks
+builds only) with compare-and-exchange readback, clears the slot with readback,
+and composes the launch environment in one order: provider admission (or an
+unbound launch), then the native runtime profile's embedding route, so a native
+profile bound to Eliza Cloud keeps on-device BGE embeddings.
+`runtime/ResidentAttachment` decides whether a surface may attach to the running
+resident, including the no-provider generation. Products supply hosts, slot
+namespaces, the plugin name and the packaged route table; `test:native-host`
+runs the host-JVM contracts in `test/connection`.
