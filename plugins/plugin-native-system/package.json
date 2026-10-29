@@ -18,6 +18,12 @@
       "types": "./dist/esm/client/launcher.d.ts",
       "import": "./dist/esm/client/launcher.js"
     },
+    "./shade": {
+      "eliza-source": "./src/client/shade.ts",
+      "types": "./dist/esm/client/shade.d.ts",
+      "import": "./dist/esm/client/shade.js",
+      "default": "./dist/esm/client/shade.js"
+    },
     "./sense": {
       "eliza-source": "./src/sense-bridge.ts",
       "types": "./dist/esm/sense-bridge.d.ts",

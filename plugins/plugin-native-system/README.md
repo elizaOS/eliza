@@ -214,6 +214,16 @@ role; overridable) that declares `EXPAND_STATUS_BAR`; outcomes are `opened` (acc
 visible), `standalone`, `permission-missing`, `unsupported` and `not-in-front`.
 The web fallback reports no facts, opens no page and answers `unsupported`.
 
+`@elizaos/capacitor-system/shade` (`src/client/shade.ts`) is the launcher's
+browser-safe shade policy: which surface answers (`shadeSurface`: Android, a
+development stand-in, or none), whether a finished pull on empty Home asks for
+the shade (`emptyHomeShadePull`; never from the status bar band, on editable or
+scrolled content, with the keyboard up or with anything over Home), the touch
+claim that lets a pull reach an overflowing Home (`installOverflowPull`), and the
+fallback a person reads when Android did not open it (`requestNotificationShade`,
+`shadeFallback`). Products pass their wording (`defaultShadeFallbackCopy(appName)`
+or their own) and the selector of their Home layer. `test/shade.test.mjs` covers it.
+
 `@elizaos/capacitor-system/settings` (`src/settings.ts`) is the shared, browser-safe
 presentation for those facts: `parseSystemFacts`, `systemSwitchRows` (row wording
 that says "Not reported by Android" instead of guessing), quick-setting tile state,
