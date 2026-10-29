@@ -1602,7 +1602,14 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
             m.agentId === params.entityId;
           if (!participantRoomIds.has(m.roomId) && !agentDocument) return false;
         }
-        if (params.agentId && m.agentId !== params.agentId) return false;
+        // plugin-sql always scopes this read with
+        // `agent_id = params.agentId ?? this.agentId`: an adapter is bound
+        // to one agent, so a read that names no agent is a read of that
+        // agent's memories, not of every agent sharing the file. Rows
+        // stored without an agentId belong to this database, as in the
+        // other tenant checks in this file.
+        if ((m.agentId ?? this.agentId) !== (params.agentId ?? this.agentId))
+          return false;
         if (authorEntityIds && !authorEntityIds.has(m.entityId as UUID))
           return false;
         if (params.roomId && m.roomId !== params.roomId) return false;
@@ -3625,6 +3632,16 @@ export abstract class SQLiteRecordAdapter extends DatabaseAdapter<IStorage> {
     const ids: UUID[] = [];
     for (const agent of agents) {
       const id = (agent.id ?? randomUUID()) as UUID;
+      // plugin-sql returns false for an existing agent id, so createAgents
+      // reports no id and never overwrites the stored row; a sparse re-create
+      // would drop the stored name and settings. upsertAgents merges.
+      if (await this.storage.get<Agent>(COLLECTIONS.AGENTS, id)) {
+        logger.warn(
+          { src: "plugin:sqlite", agentId: id },
+          "Attempted to create agent with duplicate ID",
+        );
+        continue;
+      }
       await this.storage.set(COLLECTIONS.AGENTS, id, { ...agent, id });
       ids.push(id);
     }

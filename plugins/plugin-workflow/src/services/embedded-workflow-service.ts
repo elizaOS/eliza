@@ -313,11 +313,23 @@ export class EmbeddedWorkflowService extends Service {
   static override readonly serviceType = EMBEDDED_WORKFLOW_SERVICE_TYPE;
   override capabilityDescription = 'Native Smithers workflow persistence and execution on elizaOS.';
 
-  private readonly workerReconciliations = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly workerReconciliations = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; dueAtMs: number }
+  >();
   private reconciliationStopped = false;
   private readonly resumeAdmissions = new Map<string, Promise<void>>();
   private scheduleWorkerReconciliation(execution: WorkflowExecution, delayMs = 1000): void {
-    if (this.reconciliationStopped || this.workerReconciliations.has(execution.id)) return;
+    if (this.reconciliationStopped) return;
+    // A run keeps one wake-up. A resumed run can wait for something that is
+    // due before the wake-up armed earlier (a Timer after a Signal that came
+    // before its timeout), so the earlier wake-up replaces the later one.
+    const dueAtMs = Date.now() + delayMs;
+    const pending = this.workerReconciliations.get(execution.id);
+    if (pending) {
+      if (pending.dueAtMs <= dueAtMs) return;
+      clearTimeout(pending.timer);
+    }
     const timer = setTimeout(() => {
       this.workerReconciliations.delete(execution.id);
       if (this.reconciliationStopped) return;
@@ -329,7 +341,7 @@ export class EmbeddedWorkflowService extends Service {
       });
     }, delayMs);
     timer.unref?.();
-    this.workerReconciliations.set(execution.id, timer);
+    this.workerReconciliations.set(execution.id, { timer, dueAtMs });
   }
 
   /**
@@ -374,7 +386,7 @@ export class EmbeddedWorkflowService extends Service {
 
   override async stop(): Promise<void> {
     this.reconciliationStopped = true;
-    for (const timer of this.workerReconciliations.values()) clearTimeout(timer);
+    for (const { timer } of this.workerReconciliations.values()) clearTimeout(timer);
     this.workerReconciliations.clear();
     for (const controller of this.controllers.values()) controller.abort();
     await Promise.allSettled(this.resumeAdmissions.values());
@@ -2404,8 +2416,8 @@ export class EmbeddedWorkflowService extends Service {
         if (unresolved.reconciliation?.state === 'worker-running') {
           this.scheduleWorkerReconciliation(unresolved);
         } else {
-          const pendingTimer = this.workerReconciliations.get(unresolved.id);
-          if (pendingTimer) clearTimeout(pendingTimer);
+          const pending = this.workerReconciliations.get(unresolved.id);
+          if (pending) clearTimeout(pending.timer);
           this.workerReconciliations.delete(unresolved.id);
         }
         return unresolved;

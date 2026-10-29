@@ -125,6 +125,31 @@ public final class StreamContract {
             try { session.client(); throw new AssertionError(); } catch (IllegalStateException expected) {}
         } finally { VoiceNative.afterTtsLoad = null; session.close(); }
     }
+    /** A bundle's second speech language loads into its own voice slot of the shared context. */
+    static void languageContract(File root, File model, File lexicon) throws Exception {
+        File spanish = File.createTempFile("delibes", ".gguf");
+        InferenceSession session = new InferenceSession(root, model, lexicon, null,
+                java.util.Collections.singletonMap("es", spanish));
+        try {
+            check(session.speechLanguages().equals(java.util.Arrays.asList("en", "es")));
+            check(session.synthesize("hola", 1, "es").samples.length > 0);
+            check("es".equals(VoiceNative.loadedVoice));
+            check(session.synthesize("hello", 1, "en").samples.length > 0);
+            try { session.synthesize("bonjour", 1, "fr"); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+            int[] seen = {0};
+            session.client().synthesizeStream("hola", 1, "es", (pcm, done) -> { seen[0]++; return true; });
+            check(seen[0] > 0);
+            session.trimMemory();
+            check(VoiceNative.loadedVoice == null);
+        } finally { session.close(); spanish.delete(); }
+        File other = File.createTempFile("delibes", ".gguf");
+        try (ParadeeVoice voice = ParadeeVoice.slot(other, null, null, "es")) {
+            check("es".equals(voice.language()) && "es".equals(voice.voiceId()) && voice.sampleRate() == 24000);
+            check(voice.synthesize("hola", 1).samples.length > 0);
+            try { voice.synthesizePhonemes("x", 1); throw new AssertionError(); } catch (IllegalStateException expected) {}
+        } finally { other.delete(); }
+        check(ParadeeVoice.infoField("{\"a\":\"x\",\"sample_rate\":24000}", "sample_rate").equals("24000"));
+    }
     static void check(boolean value) { if (!value) throw new AssertionError(); }
     static void await(CountDownLatch latch) { try { check(latch.await(5, TimeUnit.SECONDS)); } catch (InterruptedException error) { throw new AssertionError(error); } }
     static void join(Thread thread) throws Exception { thread.join(5000); check(!thread.isAlive()); }
@@ -220,6 +245,7 @@ public final class StreamContract {
         } finally { cancelledLoad.close(); }
         vadContract(root, model, lexicon);
         clientContract(root, model, lexicon);
+        languageContract(root, model, lexicon);
         model.delete(); lexicon.delete(); asrDir.delete(); root.delete();
         System.out.println("Paradee stream and shared inference lifecycle contracts passed");
     }

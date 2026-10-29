@@ -457,6 +457,33 @@ describe("evidence toolchain doctor", () => {
     assert.equal(cli.stdout, "");
   });
 
+  it("loads the documented node entry point with type stripping alone", () => {
+    // `package.json` scripts this command as
+    // `node packages/scripts/evidence-doctor.ts`, and the help text repeats
+    // that runner. This lane executes its files under Bun, so the
+    // `process.execPath` spawn above is Bun, not the documented runner. Plain
+    // `node` only strips types: one module in the imported graph that needs a
+    // real transform (a parameter property, an enum) kills the command before
+    // it prints anything. Spawn the documented runner so that stays covered.
+    const cli = spawnSync(
+      "node",
+      [
+        fileURLToPath(new URL("./evidence-doctor.ts", import.meta.url)),
+        "--help",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(
+      cli.status,
+      0,
+      `node entry point failed: ${cli.stderr || cli.stdout}`,
+    );
+    assert.match(
+      cli.stdout,
+      /^Usage: node packages\/scripts\/evidence-doctor\.ts/,
+    );
+  });
+
   it("rejects unsupported operating systems before probing", async () => {
     await assert.rejects(
       runProbes(

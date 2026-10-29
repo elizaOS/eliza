@@ -75,3 +75,53 @@ test("host notice routes, owner fence, approval coordination, journal recovery, 
     assert.match(output, /^\d+ assertions passed/, main);
   }
 });
+
+test("host plugin identifiers and bounded notice worker", (t) => {
+  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "notice-ids-"));
+  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
+  /** @param {string} name */
+  const bin = (name) =>
+    process.env.JAVA_HOME
+      ? path.join(process.env.JAVA_HOME, "bin", name)
+      : name;
+  execFileSync(
+    bin("javac"),
+    [
+      "-d",
+      classes,
+      path.join(sources, "NoticeIds.java"),
+      path.join(sources, "NoticeWorker.java"),
+      path.join(plugin, "test/native-host/NoticeIdsTest.java"),
+    ],
+    { timeout: 60000 },
+  );
+  const output = execFileSync(bin("java"), ["-cp", classes, "NoticeIdsTest"], {
+    timeout: 60000,
+    encoding: "utf8",
+  });
+  assert.match(output, /^\d+ assertions passed/);
+});
+
+test("every host plugin method that launches an activity or intent first requires the focused, unlocked host", () => {
+  const source = fs.readFileSync(
+    path.join(
+      plugin,
+      "android/src/capacitor/java/ai/eliza/plugins/notifications/NotificationsHostPlugin.java",
+    ),
+    "utf8",
+  );
+  const methods = source.split("@PluginMethod").slice(1);
+  const launch = /startActivity\(|contentIntent\.send\(/;
+  const launching = methods.filter((body) => launch.test(body));
+  // openChannelSettings, openNotificationAccess and open.
+  assert.equal(launching.length, 3);
+  for (const body of launching) {
+    const name = /void (\w+)\(/.exec(body)?.[1];
+    const head = body.slice(0, body.search(launch));
+    assert.match(
+      head,
+      /foreground\(\)/,
+      `${name} must call foreground() before launching`,
+    );
+  }
+});

@@ -54,6 +54,12 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
   let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
   try {
     await runtime.init();
+    // The character PUT refuses a save storage did not confirm, so the agent
+    // row must exist like it does after a full runtime start.
+    await runtime.ensureAgentExists({
+      ...runtime.character,
+      id: runtime.agentId,
+    } as never);
     server = await startApiServer({
       port: 0,
       runtime,
@@ -164,6 +170,13 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
           body: JSON.stringify({ name: "Guest", systemPrompt: "Guest set." }),
         },
       ],
+      ["/api/logs", {}],
+      ["/api/logs", { method: "DELETE" }],
+      [
+        "/api/logs/export",
+        { method: "POST", body: JSON.stringify({ format: "json" }) },
+      ],
+      ["/api/security/audit", {}],
     ];
     for (const [path, init] of guestRequests) {
       const response = await send("guest-session-id", path, init);

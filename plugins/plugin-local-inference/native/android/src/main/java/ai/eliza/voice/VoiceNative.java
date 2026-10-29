@@ -48,6 +48,23 @@ final class VoiceNative {
 
     static native float[] nativeParadeeSynthesizePhonemes(long ctx, byte[] utf8Phonemes, float speed);
 
+    // Paradee voice slots (ABI v20): several voices on one context, named by a voice id.
+    static native int nativeParadeeVoicesSupported();
+
+    static native int nativeParadeeLoadVoice(long ctx, String voiceId, String gguf, String lexiconOrNull,
+            String espeakDirOrNull, String modelVoiceOrNull);
+
+    static native int nativeParadeeUnloadVoice(long ctx, String voiceId);
+
+    static native String nativeParadeeVoiceInfo(long ctx, String voiceId);
+
+    static native String nativeParadeePhonemizeVoice(long ctx, String voiceId, byte[] utf8Text);
+
+    static native float[] nativeParadeeSynthesizeVoice(long ctx, String voiceId, byte[] utf8Text, float speed);
+
+    static native void nativeParadeeSynthesizeVoiceStream(long ctx, String voiceId, byte[] utf8Text, float speed,
+            Object sink);
+
     static native int nativeCancelTts(long ctx);
 
     static native int nativeAsrSupported();
