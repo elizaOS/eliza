@@ -247,7 +247,9 @@ export function installOverflowPull(
       : undefined;
     const scale = screen?.width ? screen.width / width : 1;
     const touch = event.touches[0];
-    if (screen && (touch.clientY - screen.top) / scale < STATUS_BAND) return;
+    // Without a screen selector the viewport is the canvas: Android's status
+    // band is still the top of it, never the launcher's to claim.
+    if ((touch.clientY - (screen?.top ?? 0)) / scale < STATUS_BAND) return;
     if (!emptyHomeStart(readPullStart(target, selectors))) return;
     start = { x: touch.clientX, y: touch.clientY, scale };
   };

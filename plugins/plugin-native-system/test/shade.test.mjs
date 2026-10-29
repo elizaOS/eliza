@@ -266,6 +266,14 @@ test("installOverflowPull claims a downward drag at the top of an overflowing Ho
       "nothing is claimed while Home is covered",
     );
     eligible = true;
+    listeners.get("touchstart")(touch(tile, 100, 10).event);
+    const band = touch(tile, 100, 60);
+    listeners.get("touchmove")(band.event);
+    assert.equal(
+      band.prevented(),
+      false,
+      "a drag starting in Android's status band is left to the system",
+    );
     layer.scrollHeight = 100;
     listeners.get("touchstart")(touch(tile, 100, 300).event);
     const fits = touch(tile, 100, 340);
