@@ -2,6 +2,8 @@ package ai.eliza.plugins.browsersurface;
 
 
 import android.graphics.Bitmap;
+import android.os.Build;
+import androidx.annotation.RequiresApi;
 import android.net.Uri;
 import android.net.http.SslError;
 import android.view.View;
@@ -47,7 +49,10 @@ import java.util.*;
  * <p>A product subclasses this with its Capacitor name and supplies its installed identity
  * ({@link BrowserTabHostConfig}) and stores. Profile, preference and Keystore names are
  * compatibility identifiers: keep the names earlier builds wrote so their data stays readable.
+ *
+ * <p>Requires Android 10, like the shared download list it saves through.
  */
+@RequiresApi(Build.VERSION_CODES.Q)
 public abstract class BrowserTabHostPlugin extends Plugin {
  /** The host's installed identity. Called once, when the plugin loads. */
  protected abstract BrowserTabHostConfig tabHostConfig();
