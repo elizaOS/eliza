@@ -16,21 +16,39 @@ public final class VoiceAssets {
         public final File lexicon;
         /** Directory that contains {@code espeak-ng-data}, or null. */
         public final File espeakDir;
+        /** More speech languages: language code to its GGUF (for example "es"). Never null. */
+        public final java.util.Map<String, File> voices;
 
         Bundle(File root, File model, File lexicon, File espeakDir) {
+            this(root, model, lexicon, espeakDir, java.util.Collections.emptyMap());
+        }
+
+        Bundle(File root, File model, File lexicon, File espeakDir, java.util.Map<String, File> voices) {
             this.root = root;
             this.model = model;
             this.lexicon = lexicon;
             this.espeakDir = espeakDir;
+            this.voices = voices;
         }
 
         /** One lifecycle owner for all modalities in this bundle. */
         public InferenceSession openInference() throws IOException {
-            return new InferenceSession(root, model, lexicon, espeakDir);
+            return new InferenceSession(root, model, lexicon, espeakDir, voices);
         }
 
         public ParadeeVoice openVoice() throws IOException {
             return new ParadeeVoice(model, lexicon, espeakDir);
+        }
+
+        /**
+         * The voice for {@code language}: the bundle's English voice for "en", or the
+         * bundled voice for another language in its own context and slot.
+         */
+        public ParadeeVoice openVoice(String language) throws IOException {
+            if ("en".equals(language)) return openVoice();
+            File other = voices.get(language);
+            if (other == null) throw new IOException("No " + language + " voice in this bundle");
+            return ParadeeVoice.slot(other, null, espeakDir, language);
         }
 
         public NativeAsr openAsr() throws IOException {
@@ -58,7 +76,7 @@ public final class VoiceAssets {
 
     public static synchronized Bundle install(Context context) throws IOException {
         VoiceBundleAssets.Installation installed = VoiceBundleAssets.install(context);
-        return new Bundle(installed.root, installed.model, installed.lexicon, installed.espeakDir);
+        return new Bundle(installed.root, installed.model, installed.lexicon, installed.espeakDir, installed.voices);
     }
 
     static String sha256(File file) throws IOException {

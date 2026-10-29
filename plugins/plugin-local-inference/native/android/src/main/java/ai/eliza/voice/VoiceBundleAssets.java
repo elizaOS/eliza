@@ -21,14 +21,21 @@ import org.json.JSONObject;
  * Copies the APK's pinned voice bundle to app storage and checks every file
  * against the SHA-256 in the bundle manifest. The bundle uses the
  * libelizainference layout: {@code tts/paradee/} holds the Paradee GGUF, the
- * misaki lexicon and the optional eSpeak NG English data; {@code asr/} holds the
+ * misaki lexicon and the optional eSpeak NG data; {@code asr/} holds the
  * Phonon-2 GGUF when the bundle carries one. The host chooses a private directory
  * beneath filesDir; no renderer path or URL is accepted. Run it on a worker thread.
  * This installer never loads a native library or opens a model context.
+ *
+ * <p>Manifest {@code eliza-paradee-voice-v2} adds {@code voices}: more speech
+ * languages, each a Paradee-family GGUF in the bundle (for example
+ * {@code "es": "tts/paradee/delibes-8m-eses.gguf"}, Castilian Spanish, which uses
+ * the bundle's eSpeak NG data and no lexicon). {@code eliza-paradee-voice-v1}
+ * bundles still install and have no extra voices.
  */
 public final class VoiceBundleAssets {
     public static final String ASSET_ROOT = "paradee-voice/v1";
     private static final String FORMAT = "eliza-paradee-voice-v1";
+    private static final String FORMAT_V2 = "eliza-paradee-voice-v2";
     public static final String DIRECTORY_METADATA = "ai.eliza.voice.BUNDLE_DIRECTORY";
 
     /** Installed file locations. */
@@ -39,12 +46,19 @@ public final class VoiceBundleAssets {
         public final File lexicon;
         /** Directory that contains {@code espeak-ng-data}, or null. */
         public final File espeakDir;
+        /** More speech languages (v2 manifests): language code to its GGUF. Never null. */
+        public final java.util.Map<String, File> voices;
 
         Installation(File root, File model, File lexicon, File espeakDir) {
+            this(root, model, lexicon, espeakDir, java.util.Collections.emptyMap());
+        }
+
+        Installation(File root, File model, File lexicon, File espeakDir, java.util.Map<String, File> voices) {
             this.root = root;
             this.model = model;
             this.lexicon = lexicon;
             this.espeakDir = espeakDir;
+            this.voices = java.util.Collections.unmodifiableMap(new java.util.TreeMap<>(voices));
         }
 
     }
@@ -82,7 +96,8 @@ public final class VoiceBundleAssets {
         JSONObject manifest;
         try {
             manifest = new JSONObject(new String(manifestBytes, StandardCharsets.UTF_8));
-            if (!FORMAT.equals(manifest.getString("format"))) throw new IOException("Unsupported voice bundle");
+            String format = manifest.getString("format");
+            if (!FORMAT.equals(format) && !FORMAT_V2.equals(format)) throw new IOException("Unsupported voice bundle");
         } catch (org.json.JSONException error) {
             throw new IOException("Invalid voice bundle manifest", error);
         }
@@ -105,11 +120,21 @@ public final class VoiceBundleAssets {
                 out.write(manifestBytes);
             }
             String espeak = manifest.optString("espeakDir", "");
+            java.util.Map<String, File> voices = new java.util.TreeMap<>();
+            JSONObject extra = FORMAT_V2.equals(manifest.getString("format")) ? manifest.optJSONObject("voices") : null;
+            if (extra != null) {
+                for (java.util.Iterator<String> it = extra.keys(); it.hasNext(); ) {
+                    String language = it.next();
+                    if (!language.matches("[a-z]{2,3}")) throw new IOException("Invalid voice bundle language");
+                    voices.put(language, resolve(root, extra.getString(language)));
+                }
+            }
             return new Installation(
                     root,
                     resolve(root, manifest.getString("model")),
                     resolve(root, manifest.getString("lexicon")),
-                    espeak.isEmpty() ? null : resolve(root, espeak));
+                    espeak.isEmpty() ? null : resolve(root, espeak),
+                    voices);
         } catch (org.json.JSONException error) {
             throw new IOException("Invalid voice bundle manifest", error);
         }
