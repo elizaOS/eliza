@@ -28,8 +28,8 @@
 
 #include "eliza-inference-ffi.h"
 
-#if ELIZA_INFERENCE_ABI_VERSION < 19
-#error "elizavoice-jni needs eliza-inference-ffi.h ABI 19 or newer (Paradee streaming)"
+#if ELIZA_INFERENCE_ABI_VERSION < 20
+#error "elizavoice-jni needs eliza-inference-ffi.h ABI 20 or newer (Paradee voice slots)"
 #endif
 
 #ifndef ELIZA_VOICE_JNI_CLASS
@@ -1853,6 +1853,137 @@ void nativeParadeeSynthesizeStream(JNIEnv * env, jclass, jlong ctxHandle,
     if (rc != ELIZA_OK) throw_voice(env, "paradee stream", rc, error);
 }
 
+// ── Paradee voice slots (ABI v20) ─────────────────────────────────────────
+//
+// Several Paradee-family voices on one context, each named by a voice id
+// (for example "es" for Delibes-8M-esES next to the English voice). The G2P
+// follows the GGUF: misaki needs the lexicon, espeak-es needs the eSpeak NG
+// data with es_dict. Null lexicon / eSpeak / model-voice strings are passed as
+// NULL.
+
+static const char* null_if_empty(const std::string& value) {
+    return value.empty() ? nullptr : value.c_str();
+}
+
+jint nativeParadeeVoicesSupported(JNIEnv*, jclass) {
+    return static_cast<jint>(eliza_inference_paradee_voices_supported());
+}
+
+jint nativeParadeeLoadVoice(JNIEnv* env, jclass, jlong ctxHandle, jstring jVoiceId, jstring jGguf,
+                            jstring jLexicon, jstring jEspeakDir, jstring jModelVoice) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_load_voice");
+    if (!ctx) return ELIZA_ERR_INVALID_ARG;
+    const std::string voice_id = from_jstring(env, jVoiceId);
+    const std::string gguf = from_jstring(env, jGguf);
+    const std::string lexicon = from_jstring(env, jLexicon);
+    const std::string espeak = from_jstring(env, jEspeakDir);
+    const std::string model_voice = from_jstring(env, jModelVoice);
+    if (voice_id.empty() || gguf.empty()) {
+        throw_voice(env, "paradee_load_voice: voice id and model path", ELIZA_ERR_INVALID_ARG, nullptr);
+        return ELIZA_ERR_INVALID_ARG;
+    }
+    char* err = nullptr;
+    const int rc = eliza_inference_paradee_load_voice(ctx, voice_id.c_str(), gguf.c_str(), null_if_empty(lexicon),
+                                                      null_if_empty(espeak), null_if_empty(model_voice), &err);
+    if (rc != ELIZA_OK) {
+        throw_voice(env, "paradee_load_voice", rc, err);
+        return rc;
+    }
+    return ELIZA_OK;
+}
+
+jint nativeParadeeUnloadVoice(JNIEnv* env, jclass, jlong ctxHandle, jstring jVoiceId) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_unload_voice");
+    if (!ctx) return ELIZA_ERR_INVALID_ARG;
+    const std::string voice_id = from_jstring(env, jVoiceId);
+    char* err = nullptr;
+    const int rc = eliza_inference_paradee_unload_voice(ctx, voice_id.c_str(), &err);
+    if (rc != ELIZA_OK) throw_voice(env, "paradee_unload_voice", rc, err);
+    return rc;
+}
+
+// The slot's model as JSON (voice_id, family, language, phoneme_format,
+// voice, voices, sample_rate, g2p_kind, validated_max_ids, validated_speed).
+jstring nativeParadeeVoiceInfo(JNIEnv* env, jclass, jlong ctxHandle, jstring jVoiceId) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_voice_info");
+    if (!ctx) return nullptr;
+    const std::string voice_id = from_jstring(env, jVoiceId);
+    char* json = nullptr;
+    char* err = nullptr;
+    const int rc = eliza_inference_paradee_voice_info(ctx, voice_id.c_str(), &json, &err);
+    if (rc < 0) {
+        if (json) eliza_inference_free_string(json);
+        throw_voice(env, "paradee_voice_info", rc, err);
+        return nullptr;
+    }
+    jstring out = utf8_to_jstring(env, json ? json : "", json ? static_cast<size_t>(rc) : 0);
+    if (json) eliza_inference_free_string(json);
+    return out;
+}
+
+jstring nativeParadeePhonemizeVoice(JNIEnv* env, jclass, jlong ctxHandle, jstring jVoiceId, jbyteArray jText) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_phonemize_voice");
+    std::string text;
+    if (!ctx || !read_utf8(env, jText, "paradee_phonemize_voice", text)) return nullptr;
+    const std::string voice_id = from_jstring(env, jVoiceId);
+    char* phonemes = nullptr;
+    char* err = nullptr;
+    const int rc = eliza_inference_paradee_phonemize_voice(ctx, voice_id.c_str(), text.data(), text.size(),
+                                                           &phonemes, &err);
+    if (rc < 0) {
+        if (phonemes) eliza_inference_free_string(phonemes);
+        throw_voice(env, "paradee_phonemize_voice", rc, err);
+        return nullptr;
+    }
+    jstring out = utf8_to_jstring(env, phonemes ? phonemes : "", phonemes ? static_cast<size_t>(rc) : 0);
+    if (phonemes) eliza_inference_free_string(phonemes);
+    return out;
+}
+
+jfloatArray nativeParadeeSynthesizeVoice(JNIEnv* env, jclass, jlong ctxHandle, jstring jVoiceId,
+                                         jbyteArray jText, jfloat speed) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_synthesize_voice");
+    std::string text;
+    if (!ctx || !read_utf8(env, jText, "paradee_synthesize_voice", text)) return nullptr;
+    const std::string voice_id = from_jstring(env, jVoiceId);
+    float* pcm = nullptr;
+    size_t samples = 0;
+    char* err = nullptr;
+    const int rc = eliza_inference_paradee_synthesize_voice_alloc(
+        ctx, voice_id.c_str(), text.data(), text.size(), speed, &pcm, &samples, &err);
+    if (rc != ELIZA_OK) {
+        eliza_inference_free_pcm(pcm);
+        throw_voice(env, "paradee_synthesize_voice", rc, err);
+        return nullptr;
+    }
+    LOGI("paradee_synthesize_voice: %zu text bytes -> %zu samples", text.size(), samples);
+    return take_pcm(env, "paradee_synthesize_voice: no audio", pcm, samples);
+}
+
+void nativeParadeeSynthesizeVoiceStream(JNIEnv * env, jclass, jlong ctxHandle, jstring jVoiceId,
+        jbyteArray text, jfloat speed, jobject sink) {
+    auto * ctx = voice_context(env, ctxHandle, "paradee voice stream");
+    if (!ctx) return;
+    if (!sink) {
+        throw_voice(env, "paradee voice stream: missing sink", ELIZA_ERR_INVALID_ARG, nullptr);
+        return;
+    }
+    std::string utf8;
+    if (!read_utf8(env, text, "paradee voice stream", utf8)) return;
+    const std::string voice_id = from_jstring(env, jVoiceId);
+    jclass type = env->GetObjectClass(sink);
+    if (!type) return;
+    jmethodID method = env->GetMethodID(type, "onChunk", "([FZ)Z");
+    env->DeleteLocalRef(type);
+    if (!method || env->ExceptionCheck()) return;
+    ParadeeStreamSink target{env, sink, method};
+    char * error = nullptr;
+    const int rc = eliza_inference_paradee_synthesize_voice_stream(
+        ctx, voice_id.c_str(), utf8.data(), utf8.size(), speed, paradee_stream_chunk, &target, &error);
+    if (env->ExceptionCheck()) { eliza_inference_free_string(error); return; }
+    if (rc != ELIZA_OK) throw_voice(env, "paradee voice stream", rc, error);
+}
+
 // Stop the TTS forward pass running on another thread. The running call
 // throws CancellationException. Cancelling nothing is not an error.
 jint nativeCancelTts(JNIEnv* env, jclass, jlong ctxHandle) {
@@ -2146,6 +2277,14 @@ const JNINativeMethod kVoiceMethods[] = {
     ELIZA_NATIVE(nativeParadeeStreamSupported, "()I"),
     ELIZA_NATIVE(nativeParadeeSynthesizeStream, "(J[BFLjava/lang/Object;)V"),
     ELIZA_NATIVE(nativeParadeeSynthesizePhonemes, "(J[BF)[F"),
+    ELIZA_NATIVE(nativeParadeeVoicesSupported, "()I"),
+    ELIZA_NATIVE(nativeParadeeLoadVoice,
+                 "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I"),
+    ELIZA_NATIVE(nativeParadeeUnloadVoice, "(JLjava/lang/String;)I"),
+    ELIZA_NATIVE(nativeParadeeVoiceInfo, "(JLjava/lang/String;)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeParadeePhonemizeVoice, "(JLjava/lang/String;[B)Ljava/lang/String;"),
+    ELIZA_NATIVE(nativeParadeeSynthesizeVoice, "(JLjava/lang/String;[BF)[F"),
+    ELIZA_NATIVE(nativeParadeeSynthesizeVoiceStream, "(JLjava/lang/String;[BFLjava/lang/Object;)V"),
     ELIZA_NATIVE(nativeCancelTts, "(J)I"),
     ELIZA_NATIVE(nativeAsrSupported, "()I"),
     ELIZA_NATIVE(nativeAsrTranscribe, "(J[FI)Ljava/lang/String;"),

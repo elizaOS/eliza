@@ -79,6 +79,10 @@ public final class NotificationMirrorPolicyTest {
     check(NotificationMirrorPolicy.bounded(null, 5).isEmpty());
     check(NotificationMirrorPolicy.bounded("abcdefgh", 5).equals("abcde"));
     check(NotificationMirrorPolicy.bounded("abc", 5).equals("abc"));
+    // A surrogate pair straddling the bound is dropped whole, never split.
+    check(NotificationMirrorPolicy.bounded("abcd\uD83D\uDE00", 5).equals("abcd"));
+    check(NotificationMirrorPolicy.bounded("abcd\uD83D\uDE00", 6).equals("abcd\uD83D\uDE00"));
+    check(NotificationMirrorPolicy.bounded("abc", 0).isEmpty());
     check(NotificationMirrorPolicy.INITIAL_POLICY.contains("\"enabled\":false") && NotificationMirrorPolicy.INITIAL_POLICY.contains("\"history\":false"));
     System.out.println(checks + " assertions passed");
   }

@@ -70,7 +70,7 @@ function nccAtOffset(
     farEnergy += b * b;
   }
   const denom = Math.sqrt(nearEnergy * farEnergy);
-  return { corr: denom > 0 ? dot / denom : 0, overlap };
+  return { corr: denom > 0 ? Math.abs(dot / denom) : 0, overlap };
 }
 
 /**
