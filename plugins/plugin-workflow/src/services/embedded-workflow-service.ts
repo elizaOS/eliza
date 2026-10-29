@@ -2674,7 +2674,11 @@ export class EmbeddedWorkflowService extends Service {
           prompt: receipt.summary,
         },
       ];
-      await tx.update(embeddedExecutions).set({ execution }).where(where);
+      // receipt.summary is workflow text; snapshot it like saveExecution does.
+      await tx
+        .update(embeddedExecutions)
+        .set({ execution: cloneJson(execution) })
+        .where(where);
     });
     await this.resumeExecution(await this.getExecution(runId));
     return this.approvalReceipts(runId);

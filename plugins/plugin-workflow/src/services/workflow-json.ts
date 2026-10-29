@@ -14,6 +14,7 @@ export const MAX_WORKFLOW_JSON_NODES = 10_000;
 export const MAX_WORKFLOW_JSON_BYTES = 2_000_000;
 export const WORKFLOW_JSON_UNBOUNDED = 'WORKFLOW_JSON_UNBOUNDED';
 const OMIT = Symbol('workflow-json-omit');
+const NUL = String.fromCharCode(0);
 
 function failUnbounded(message: string): never {
   throw new WorkflowApiError(message, 400, { code: WORKFLOW_JSON_UNBOUNDED });
@@ -114,8 +115,11 @@ function cloneJsonValue(
     return value;
   }
   if (typeof value === 'string') {
-    chargeJsonString(context, value);
-    return value;
+    // PostgreSQL jsonb cannot store U+0000 (22P05), and run text can carry one,
+    // for example a model reply. Drop it, as plugin-sql's log writes do.
+    const text = value.includes(NUL) ? value.replaceAll(NUL, '') : value;
+    chargeJsonString(context, text);
+    return text;
   }
   if (typeof value === 'boolean') {
     chargeBytes(context, value ? 4 : 5);
