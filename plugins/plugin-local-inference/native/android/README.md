@@ -107,9 +107,21 @@ transport is for downstream consumers without that server.
   and rules, with eSpeak NG only for words outside the lexicon.
 - **Spanish speech:** Delibes-8M-esES (Castilian Spanish, teacher voice
   `em_alex`, 24 kHz) at `tts/paradee/delibes-8m-eses.gguf`, converted from its
-  fp32 ONNX graphs. Its G2P is eSpeak NG `es` (misaki `EspeakG2P`), so it needs
-  `es_dict` and `lang/roa/es` in the bundle's eSpeak NG data. It loads into its
-  own libelizainference voice slot (ABI 20) of the same context:
+  fp32 ONNX graphs. It ships by owner decision (Grace `docs/decisions.md`,
+  owner decision 2026-10-28). The release itself says human approval is
+  `PENDING` and commercial distribution is `BLOCKED`, and its NOTICE says voice
+  consent and provenance for `em_alex` are not established; `inputs.json`
+  records that decision next to the pin as `spanish.release_override`, and
+  `packages/scripts/verify-voice-product-release.ts` fails a bundled voice
+  with a `PENDING` or `BLOCKED` status that no such override names. To turn
+  the voice off, set `spanish.enabled` to false in `inputs.json`, the one
+  switch: the build then neither converts nor bundles the GGUF or its notices,
+  the manifest has no `voices`, `speechLanguages()` is `["en"]`, Gradle refuses
+  a bundle that still carries it, and the release gate refuses a catalog that
+  lists it. Its G2P is eSpeak NG `es` (misaki `EspeakG2P`), so it needs
+  `es_dict` and `lang/roa/es` in the bundle's eSpeak NG data (the fork pins
+  them, so they ship either way; the English G2P never reads them). It loads
+  into its own libelizainference voice slot (ABI 20) of the same context:
   `InferenceSession.synthesize(text, speed, "es")`,
   `InferenceSession.speechLanguages()`, `VoiceAssets.Bundle.openVoice("es")` or
   `ParadeeVoice.slot(...)`. Speed is clamped to the release's validated
@@ -181,6 +193,8 @@ in `tools/paradee/pins.json`, `tools/misaki-g2p/pins.json`,
 Paradee, the misaki lexicon, Phonon-2, Silero VAD, and their attribution.
 `--python` needs torch plus the conversion dependencies installed above.
 `--model-cache` is searched first; every cached file is checked against its pin.
+With `spanish.enabled` (the default) it also converts and bundles the Spanish
+voice, which needs the `onnx` package; `--models-only` (desktop) never does.
 
 ```sh
 ANDROID_HOME=~/Library/Android/sdk node packages/app/scripts/paradee-voice/build-native.ts \
@@ -209,7 +223,7 @@ The Java and C++ sources here are MIT. Paradee-8M v1.2 weights
 (lapislabsai/Delibes-8M-esES; its LICENSE, NOTICE.md, the Kokoro and Paradee
 licenses and the Tatoeba credit ship under `notices/delibes/`; the release
 itself says human approval is pending and commercial distribution is blocked,
-which is for the owner to clear) and the misaki lexicon data
+and it ships on the recorded owner decision above) and the misaki lexicon data
 (hexgrad/misaki) are Apache-2.0. Phonon-2 weights (FermionResearch/Phonon-2,
 derived from NVIDIA parakeet-tdt-0.6b-v3) are CC-BY-4.0: show the attribution
 and ship Fermion's NOTICE (also embedded in the GGUF as `parakeet.notice`). The

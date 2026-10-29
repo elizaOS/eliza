@@ -26,11 +26,12 @@ import org.json.JSONObject;
  * beneath filesDir; no renderer path or URL is accepted. Run it on a worker thread.
  * This installer never loads a native library or opens a model context.
  *
- * <p>Manifest {@code eliza-paradee-voice-v2} adds {@code voices}: more speech
+ * <p>Manifest {@code eliza-paradee-voice-v2} may add {@code voices}: more speech
  * languages, each a Paradee-family GGUF in the bundle (for example
  * {@code "es": "tts/paradee/delibes-8m-eses.gguf"}, Castilian Spanish, which uses
- * the bundle's eSpeak NG data and no lexicon). {@code eliza-paradee-voice-v1}
- * bundles still install and have no extra voices.
+ * the bundle's eSpeak NG data and no lexicon). A v2 manifest without
+ * {@code voices} (a build with inputs.json {@code spanish.enabled} false) and an
+ * {@code eliza-paradee-voice-v1} manifest install with no extra voices.
  */
 public final class VoiceBundleAssets {
     public static final String ASSET_ROOT = "paradee-voice/v1";

@@ -16,6 +16,8 @@
     "license": "Apache-2.0"
   },
   "spanish": {
+    "enabled": true,
+    "enabled_note": "The one switch for the Castilian Spanish voice, on by owner decision. false leaves it out entirely: build-native.ts neither converts nor bundles the GGUF, the manifest has no voices.es, consumer.gradle requires it absent and verify-voice-product-release.ts requires the catalog not to list it.",
     "family": "delibes",
     "language": "es",
     "path": "tts/paradee/delibes-8m-eses.gguf",
@@ -30,7 +32,12 @@
       "third_party/paradee/LICENSE",
       "third_party/TATOEBA.md"
     ],
-    "release_status": "The release says human_approval PENDING and commercial_distribution BLOCKED (provenance.json, release-manifest.json); its NOTICE.md says voice consent and provenance for em_alex are not independently established."
+    "release_status": "The release says human_approval PENDING and commercial_distribution BLOCKED (provenance.json, release-manifest.json); its NOTICE.md says voice consent and provenance for em_alex are not independently established.",
+    "release_override": {
+      "model": "Delibes-8M-esES",
+      "decision": "Grace docs/decisions.md, owner decision 2026-10-28",
+      "overrides": ["human_approval PENDING", "commercial_distribution BLOCKED"]
+    }
   },
   "espeak": {
     "version": "1.52.0",

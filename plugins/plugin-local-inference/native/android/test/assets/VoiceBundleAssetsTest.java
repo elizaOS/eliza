@@ -64,6 +64,10 @@ public final class VoiceBundleAssetsTest {
         VoiceBundleAssets.install(context);
         check(Files.readString(eliza.model.toPath()).equals("new model bytes"), "new manifest installs new bytes");
         check(VoiceBundleAssets.install(context).voices.isEmpty(), "a v1 bundle has no extra voices");
+        // v2 without the opt-in voices (the default build): English only.
+        JSONObject english = manifest(assets, "v2 english bytes").put("format", "eliza-paradee-voice-v2");
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), english.toString());
+        check(VoiceBundleAssets.install(context).voices.isEmpty(), "a v2 bundle without voices has no extra voices");
         // v2: a second speech language in the same bundle.
         JSONObject v2 = manifest(assets, "v2 model bytes");
         Path spanish = assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("tts/paradee/es.gguf");

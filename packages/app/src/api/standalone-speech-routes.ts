@@ -190,7 +190,8 @@ export async function handleStandaloneSpeechRoute(
               ready: service.initialized,
               busy: host.ttsActive,
               provider,
-              model: "paradee-8m-v1.1",
+              // inputs.json paradee.version; PARADEE_MODEL_FILES names its GGUF.
+              model: "paradee-8m-v1.2",
               voice: "af_heart",
               sampleRate: 24000,
               format: "pcm16-wav",

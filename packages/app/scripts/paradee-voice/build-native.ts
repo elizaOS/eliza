@@ -15,7 +15,7 @@
  * in tools/paradee/pins.json, tools/paradee/convert_paradee_onnx_to_gguf.py
  * reads the fp32 ONNX graphs of lapislabsai/Delibes-8M-esES (Castilian
  * Spanish, pins.json "delibes"), and tools/misaki-g2p/convert_misaki_lexicon.py
- * reads the misaki dictionaries in tools/misaki-g2p/pins.json. Both outputs
+ * reads the misaki dictionaries in tools/misaki-g2p/pins.json. The outputs
  * are byte-reproducible and must match paradee-voice/inputs.json, which must
  * match the fork pins.
  *
@@ -28,11 +28,11 @@
  *
  * --models-only builds just the pinned model files into <bundle dir> (no NDK,
  * no native library, no eSpeak NG data): asr/phonon-2-fv5.gguf,
- * tts/paradee/paradee-8m-v1_2.gguf, tts/paradee/delibes-8m-eses.gguf,
- * tts/paradee/misaki-en-us.lex,
+ * tts/paradee/paradee-8m-v1_2.gguf, tts/paradee/misaki-en-us.lex,
  * vad/silero-vad-v5.gguf and the Phonon-2 notices. Desktop hosts and the voice
  * CI matrix stage the product voice stack this way. Files already in place
- * and matching their pins are kept.
+ * and matching their pins are kept. Desktop speaks English only, so this mode
+ * never builds the Spanish voice.
  *
  * --workspace holds downloads and build trees. --out defaults to
  * plugins/plugin-local-inference/native/android/native. --model-cache is
@@ -41,8 +41,17 @@
  * the converters need torch, numpy, gguf-py, zstandard, librosa and, for the
  * Delibes ONNX graphs, the onnx package).
  *
- * The manifest is eliza-paradee-voice-v2: the v1 keys plus `voices`, the other
- * speech languages ({"es": "tts/paradee/delibes-8m-eses.gguf"}).
+ * The Castilian Spanish voice (Delibes-8M-esES, inputs.json `spanish`) ships
+ * by owner decision (Grace docs/decisions.md, 2026-10-28), which overrides the
+ * release's own human_approval PENDING and commercial_distribution BLOCKED
+ * (inputs.json `spanish.release_override`). inputs.json `spanish.enabled` is
+ * the one switch: false leaves the voice out entirely (no conversion, no GGUF
+ * or notices in the bundle, no `voices` in the manifest).
+ *
+ * The manifest is eliza-paradee-voice-v2: the v1 keys plus, when the Spanish
+ * voice is enabled, `voices`, the other speech languages
+ * ({"es": "tts/paradee/delibes-8m-eses.gguf"}). Without it the bundle speaks
+ * English only.
  */
 
 import { execFileSync } from "node:child_process";
@@ -118,6 +127,11 @@ function parseArgs(argv) {
   return args;
 }
 
+/** inputs.json `spanish.enabled`, the one switch for the Spanish voice. */
+export function spanishEnabled(pins = inputs) {
+  return pins.spanish?.enabled === true;
+}
+
 function run(command, args, options = {}) {
   log(`$ ${command} ${args.join(" ")}`);
   execFileSync(command, args, { stdio: "inherit", ...options });
@@ -167,8 +181,11 @@ async function download(url, pin, target) {
   renameSync(`${target}.partial`, target);
 }
 
-/** inputs.json must name the same artifacts the fork pins. */
-export function forkPins() {
+/**
+ * inputs.json must name the same artifacts the fork pins. The Spanish GGUF pin
+ * is checked only when the Spanish voice is enabled.
+ */
+export function forkPins(withSpanish = false) {
   // inputs.json `paradee.version` picks that version's section of the fork's
   // pins (for example "v1.1"); without it the top-level v1.0 pins apply.
   const allParadee = JSON.parse(
@@ -202,7 +219,9 @@ export function forkPins() {
   const spanish = allParadee[inputs.spanish.family]?.gguf?.f32;
   const checks = [
     ["paradee GGUF", inputs.paradee, gguf?.sha256, gguf?.size],
-    ["Spanish GGUF", inputs.spanish, spanish?.sha256, spanish?.size],
+    ...(withSpanish
+      ? [["Spanish GGUF", inputs.spanish, spanish?.sha256, spanish?.size]]
+      : []),
     ["Phonon-2 GGUF", inputs.asr, parakeet.gguf?.sha256, parakeet.gguf?.size],
     ["Silero VAD", inputs.vad, vad.sha256, vad.bytes],
     [
@@ -263,38 +282,16 @@ async function convertTo(pin, target, convert) {
   renameSync(partial, target);
 }
 
-export async function buildModels(args, pins, bundle) {
-  // Paradee GGUF from the pinned PyTorch weights, config and tokenizer.
-  const gguf = path.join(bundle, inputs.paradee.path);
-  if (!(await fromCache(inputs.paradee, gguf, args.modelCache))) {
-    const hfDir = path.join(args.workspace, "paradee-hf");
-    const { repo, revision } = pins.paradee.model;
-    for (const [file, pin] of Object.entries(pins.paradee.files)) {
-      if (file.startsWith("samples/")) continue;
-      await download(
-        `https://huggingface.co/${repo}/resolve/${revision}/${file}`,
-        { bytes: pin.size, sha256: pin.sha256 },
-        path.join(hfDir, file),
-      );
-    }
-    await convertTo(inputs.paradee, gguf, (output) =>
-      run(args.python, [
-        path.join(forkSrc, "tools/paradee/convert_paradee_pt_to_gguf.py"),
-        "--model-dir",
-        hfDir,
-        "--output",
-        output,
-        ...(inputs.paradee.version
-          ? ["--version", inputs.paradee.version]
-          : []),
-        "--outtype",
-        "f32",
-        "--check-output",
-      ]),
+/**
+ * The Castilian Spanish voice: Delibes-8M-esES GGUF from the pinned fp32 ONNX
+ * graphs, and the release's licence and notices.
+ */
+async function buildSpanish(args, pins, bundle) {
+  const override = inputs.spanish.release_override;
+  if (override)
+    log(
+      `bundling ${override.model} over ${override.overrides.join(", ")} (${override.decision})`,
     );
-  }
-
-  // Spanish (Delibes-8M-esES) GGUF from the pinned fp32 ONNX graphs.
   const spanish = path.join(bundle, inputs.spanish.path);
   if (!(await fromCache(inputs.spanish, spanish, args.modelCache))) {
     const hfDir = path.join(args.workspace, "delibes-hf");
@@ -330,6 +327,40 @@ export async function buildModels(args, pins, bundle) {
       path.join(bundle, "notices", "delibes", name),
     );
   }
+}
+
+export async function buildModels(args, pins, bundle, withSpanish = false) {
+  // Paradee GGUF from the pinned PyTorch weights, config and tokenizer.
+  const gguf = path.join(bundle, inputs.paradee.path);
+  if (!(await fromCache(inputs.paradee, gguf, args.modelCache))) {
+    const hfDir = path.join(args.workspace, "paradee-hf");
+    const { repo, revision } = pins.paradee.model;
+    for (const [file, pin] of Object.entries(pins.paradee.files)) {
+      if (file.startsWith("samples/")) continue;
+      await download(
+        `https://huggingface.co/${repo}/resolve/${revision}/${file}`,
+        { bytes: pin.size, sha256: pin.sha256 },
+        path.join(hfDir, file),
+      );
+    }
+    await convertTo(inputs.paradee, gguf, (output) =>
+      run(args.python, [
+        path.join(forkSrc, "tools/paradee/convert_paradee_pt_to_gguf.py"),
+        "--model-dir",
+        hfDir,
+        "--output",
+        output,
+        ...(inputs.paradee.version
+          ? ["--version", inputs.paradee.version]
+          : []),
+        "--outtype",
+        "f32",
+        "--check-output",
+      ]),
+    );
+  }
+
+  if (withSpanish) await buildSpanish(args, pins, bundle);
 
   // misaki lexicon from the pinned misaki dictionaries.
   const lexicon = path.join(bundle, inputs.lexicon.path);
@@ -434,7 +465,8 @@ async function main() {
   if (!existsSync(path.join(sdk, "ndk", NDK_VERSION)))
     fail(`NDK ${NDK_VERSION} not installed under ${path.join(sdk, "ndk")}`);
   mkdirSync(args.workspace, { recursive: true });
-  const pins = forkPins();
+  const withSpanish = spanishEnabled();
+  const pins = forkPins(withSpanish);
   const sourceCommit = execFileSync(
     "git",
     ["-C", repoRoot, "rev-parse", "HEAD"],
@@ -451,7 +483,7 @@ async function main() {
 
   const espeakDir = path.join(args.workspace, "espeak-ng");
   buildInference(args, espeakDir);
-  await buildModels(args, pins, bundle);
+  await buildModels(args, pins, bundle, withSpanish);
 
   const paradeeDir = path.dirname(path.join(bundle, inputs.paradee.path));
   copyTree(
@@ -486,7 +518,10 @@ async function main() {
     model: inputs.paradee.path,
     lexicon: inputs.lexicon.path,
     espeakDir: path.relative(bundle, paradeeDir),
-    voices: { [inputs.spanish.language]: inputs.spanish.path },
+    // inputs.json spanish.enabled; without it the bundle speaks English only.
+    ...(withSpanish
+      ? { voices: { [inputs.spanish.language]: inputs.spanish.path } }
+      : {}),
     files,
   };
   writeFileSync(
@@ -505,7 +540,7 @@ async function main() {
   }
   writeFileSync(
     path.join(args.out, "build-record.json"),
-    `${JSON.stringify({ sourceCommit, nativeCommit, inputs, abis: args.abis, files: record }, null, 2)}\n`,
+    `${JSON.stringify({ sourceCommit, nativeCommit, inputs, spanish: withSpanish, abis: args.abis, files: record }, null, 2)}\n`,
   );
   log(`wrote ${record.length} files under ${args.out}`);
 }
