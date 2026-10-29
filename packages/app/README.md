@@ -25,37 +25,37 @@ sets its own marks explicitly.
 
 ## Eliza alarms
 
-`/clock` lists this owner's alarms from native Android storage. It provides local
-creation, editing, enable/disable and deletion after a native review gesture.
-The view also prepares chat requests for the agent. Server reminders and FCM
+Android's Clock app owns alarms. This host advertises only the shared handoff
+capabilities, `clock.handoff.v1` and `clock.handoff.v2` (`SlotClockPlugin.CLOCK_PROFILE`
+is `ClockProfile.HANDOFF_ONLY`). Agent `clock_handoff` proposals open Clock with a
+reviewed request; a launched Activity is never reported as a changed alarm. `/clock`
+shows no Eliza alarm store and has no create or edit form. Server reminders and FCM
 notifications remain separate. Timers and stopwatch are outside this surface.
 
-Android hosts advertise `clock.alarms.v1`. The existing assistant device-action
-service accepts exact `clock_alarm` proposals for set, update, enable, delete,
-dismiss, snooze and show. Agent reads use the complete authenticated current
-alarm snapshot; proposals bind its native store revision. Native consent checks
-the current profile, owner, exact operation, execution claim and revision before
-any effect. The durable journal retains the actual native result. An unknown
-result never permits automatic replay. Older clients retain the legacy
-`clock.handoff.v1/v2` protocol; this Android host does not dispatch those requests.
+Alarms saved by earlier builds under `clock.alarms.v1` follow
+`ClockProfile.SavedAlarms.HAND_OFF_TO_CLOCK` (`ElizaAlarmMigration`). On boot or
+app replacement, `ElizaBootReceiver` writes a one-time journal marker
+(`ElizaAlarmHandoff`, stored with the alarms) and re-arms every alarm still waiting
+to move. `/clock` shows how many saved alarms still ring from Eliza; **Move to Clock**
+opens a native review of one alarm. The owner can continue to Clock (the shared
+`ClockHandoff` set intent with its time, label and repeat days), remove it from
+Eliza, or leave it for later. Opening Clock is not a receipt: the alarm keeps
+ringing from Eliza until the owner confirms it is saved in Clock. A cancelled,
+failed or declined handoff keeps the alarm, so nothing is lost on upgrade, reboot
+or a cancelled handoff. Confirmation and removal delete the definition, its
+occurrences and its journal entry in one commit, then cancel its platform alarms.
+Only counts cross the bridge; alarm content stays in the native dialogs.
 
-`ElizaAlarms` persists definitions and occurrence tokens in device-protected
-storage and schedules exact `AlarmManager.setAlarmClock` events. The system
-receiver restores confirmed schedules after boot, app replacement, clock/timezone
-changes or restored exact-alarm access. Weekly schedules follow the phone's local
-wall clock and preserve selected Calendar days (Sunday=1 through Saturday=7).
-Ringing uses a native foreground service and lock-screen controls with scoped Stop
-and Snooze. Delivery requires no WebView, model, Mac connection or network request.
-Overlapping occurrences remain queued; stale controls cannot affect a successor.
-The app preserves the user's alarm volume and DND settings.
-
-Exact-alarm access and notification access are required to schedule a new wake-up
-alarm. Full-screen access controls the lock-screen presentation; an alarm
-notification remains available when Android does not allow a full-screen intent.
-The Clock view reads these permissions and opens the platform's permission UI.
-After initial authenticated enrollment, cached native ownership permits local
-Clock reads and controls offline. A known rejected session retires that cache;
-existing scheduled alarms remain intact. Credentials never cross the bridge.
+`ElizaAlarms` persists the saved definitions and occurrence tokens in
+device-protected storage and schedules exact `AlarmManager.setAlarmClock` events.
+The system receiver restores confirmed schedules after boot, app replacement,
+clock/timezone changes or restored exact-alarm access. Weekly schedules follow the
+phone's local wall clock (Sunday=1 through Saturday=7). Ringing uses a native
+foreground service and lock-screen controls with scoped Stop and Snooze. Delivery
+requires no WebView, model, Mac connection or network request. Overlapping
+occurrences remain queued; stale controls cannot affect a successor. The app
+preserves the user's alarm volume and DND settings. Credentials never cross the
+bridge.
 
 Bound chat requests retain their established device executor and selected context;
 Clock enrollment does not replace existing binding headers or caller credentials.

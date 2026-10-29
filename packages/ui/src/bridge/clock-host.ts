@@ -34,6 +34,36 @@ export interface ClockAlarmStatus {
   alarmSoundMuted: boolean;
   defaultToneAvailable: boolean;
 }
+/** Counts of alarms a host saved before it became handoff-only; never their content. */
+export interface ClockSavedAlarms {
+  /** Saved alarms that still ring from the host and have not been opened in Clock. */
+  pending: number;
+  /** Opened in Clock but not yet confirmed as saved there; they still ring from the host. */
+  awaitingConfirmation: number;
+  moved: number;
+  removed: number;
+}
+export const CLOCK_SAVED_ALARM_OUTCOMES = [
+  "opened",
+  "unavailable",
+  "denied",
+  "failed",
+  "unknown",
+  "saved",
+  "kept",
+  "removed",
+  "cancelled",
+  "none",
+  "busy",
+] as const;
+export type ClockSavedAlarmOutcome =
+  (typeof CLOCK_SAVED_ALARM_OUTCOMES)[number];
+/** One native owner review of a saved alarm. "opened" is not a receipt. */
+export interface ClockSavedAlarmReview {
+  outcome: ClockSavedAlarmOutcome;
+  message: string;
+  savedAlarms: ClockSavedAlarms;
+}
 export interface ClockProposal {
   id: string;
   digest: string;
@@ -51,6 +81,10 @@ export interface ClockHost {
   requestAlarmPermission?(
     permission: "exact" | "notifications" | "fullScreen",
   ): Promise<void>;
+  /** A handoff-only host's alarms saved under its former owned-alarm profile. */
+  savedAlarms?(): Promise<ClockSavedAlarms>;
+  /** Opens the native review of the next saved alarm: move to Clock, confirm, or remove. */
+  reviewSavedAlarm?(): Promise<ClockSavedAlarmReview>;
   status(): Promise<ClockStatus>;
   proposals(): Promise<{ scope: string; proposals: ClockProposal[] }>;
   review(
