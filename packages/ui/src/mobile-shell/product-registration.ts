@@ -48,7 +48,19 @@ export interface MobileProductTheme extends ThemeDefinition {
    * properties; they are not a second palette.
    */
   aliases?: Readonly<Record<string, MobileShellThemeToken>>;
+  /**
+   * Fixed product colours no theme token names (a call screen that is always
+   * dark, camera controls over a viewfinder, illustration art), each under
+   * its own product property so stylesheets hold no colour literals. A value
+   * is one colour for both appearances, or one per appearance.
+   */
+  palette?: Readonly<Record<string, MobileShellPaletteColor>>;
 }
+
+/** One palette colour: the same in both appearances, or one per appearance. */
+export type MobileShellPaletteColor =
+  | string
+  | Readonly<Record<MobileShellAppearance, string>>;
 
 export interface MobileProductIdentity {
   /** Display name; equals the product's app config name. */
@@ -156,6 +168,16 @@ function isToken(value: unknown): value is MobileShellThemeToken {
   );
 }
 
+/** A custom property a product may define: not canonical, shell or font. */
+function productProperty(name: string): boolean {
+  const reserved =
+    Object.values(THEME_CSS_VAR_MAP).includes(name) ||
+    name.startsWith("--mobile-shell-") ||
+    name.startsWith("--font-") ||
+    ["--txt", "--primary", "--primary-foreground", "--mono"].includes(name);
+  return CSS_PROPERTY.test(name) && !reserved;
+}
+
 /** Every problem with a registration; empty when it can be used. */
 export function validateMobileProductRegistration(value: unknown): string[] {
   const issues: string[] = [];
@@ -200,17 +222,32 @@ export function validateMobileProductRegistration(value: unknown): string[] {
       if (!record(theme.aliases)) issue("theme.aliases", "must be an object");
       else
         for (const [name, token] of Object.entries(theme.aliases)) {
-          const reserved =
-            Object.values(THEME_CSS_VAR_MAP).includes(name) ||
-            name.startsWith("--mobile-shell-") ||
-            name.startsWith("--font-") ||
-            ["--txt", "--primary", "--primary-foreground", "--mono"].includes(
-              name,
-            );
-          if (!CSS_PROPERTY.test(name) || reserved)
+          if (!productProperty(name))
             issue(`theme.aliases.${name}`, "must be a product property name");
           if (!isToken(token))
             issue(`theme.aliases.${name}`, "must name a theme token");
+        }
+    }
+    if (theme.palette !== undefined) {
+      if (!record(theme.palette)) issue("theme.palette", "must be an object");
+      else
+        for (const [name, color] of Object.entries(theme.palette)) {
+          if (!productProperty(name))
+            issue(`theme.palette.${name}`, "must be a product property name");
+          else if (record(theme.aliases) && Object.hasOwn(theme.aliases, name))
+            issue(`theme.palette.${name}`, "is also an alias");
+          if (
+            !text(color) &&
+            !(
+              record(color) &&
+              Object.keys(color).length === APPEARANCES.length &&
+              APPEARANCES.every((appearance) => text(color[appearance]))
+            )
+          )
+            issue(
+              `theme.palette.${name}`,
+              "must be a colour or one colour per appearance",
+            );
         }
     }
   }
@@ -379,7 +416,8 @@ export function resolveMobileShellAppearance(
 
 /**
  * CSS custom properties of one appearance: the canonical theme properties,
- * the shell chrome and Home background, and the product's declared aliases.
+ * the shell chrome and Home background, the product's declared aliases and
+ * its palette.
  */
 export function mobileShellThemeVariables(
   registration: MobileProductRegistration,
@@ -405,6 +443,8 @@ export function mobileShellThemeVariables(
             : colors[token as keyof ThemeColorSet];
     if (value) variables[name] = value;
   }
+  for (const [name, color] of Object.entries(theme.palette ?? {}))
+    variables[name] = typeof color === "string" ? color : color[appearance];
   return variables;
 }
 

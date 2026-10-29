@@ -18,6 +18,12 @@ export interface MobileViewProps {
   viewId: MobileShellViewId;
   /** Leaves the view the way Back does. */
   onClose: () => void;
+  /**
+   * False while the host keeps the view mounted behind Home or another view;
+   * such a view keeps its state, takes no focus and is hidden from assistive
+   * technology. Absent means active.
+   */
+  active?: boolean;
 }
 
 export type MobileViewLoader = () => Promise<{

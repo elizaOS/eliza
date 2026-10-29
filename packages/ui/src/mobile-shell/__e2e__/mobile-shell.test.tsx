@@ -22,9 +22,9 @@ import {
   defineMobileProductRegistration,
   MOBILE_SHELL_HOME,
   MOBILE_SHELL_VIEW_IDS,
-  type MobileProductRegistration,
   MobileAllAppsDrawer,
   MobileHomeScreen,
+  type MobileProductRegistration,
   MobileViewHost,
   migrateLauncherViewIds,
   mobileShellThemeVariables,
@@ -32,6 +32,7 @@ import {
   mobileShellViewPaths,
   navigateMobileShell,
   resolveMobileShellAppearance,
+  resolveMobileShellSwipe,
   validateMobileProductRegistration,
 } from "../index";
 
@@ -191,6 +192,152 @@ describe("product registration", () => {
   });
 });
 
+async function waitForNotice(container: HTMLElement): Promise<HTMLElement> {
+  for (let i = 0; i < 50; i++) {
+    const notice = container.querySelector<HTMLElement>(
+      "[data-mobile-shell-view-error]",
+    );
+    if (notice) return notice;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("No failure notice");
+}
+
+describe("product palette", () => {
+  it("emits fixed colours under product properties, per appearance where given", () => {
+    const registration = product();
+    (registration.theme as { palette?: unknown }).palette = {
+      "--call-bg": "#000000",
+      "--on-media": { light: "#ffffff", dark: "#eeeeee" },
+    };
+    expect(validateMobileProductRegistration(registration)).toEqual([]);
+    expect(mobileShellThemeVariables(registration, "light")).toMatchObject({
+      "--call-bg": "#000000",
+      "--on-media": "#ffffff",
+      "--s2": "#f3f3f3",
+    });
+    expect(mobileShellThemeVariables(registration, "dark")["--on-media"]).toBe(
+      "#eeeeee",
+    );
+    const element = document.createElement("div");
+    const remove = applyMobileShellTheme(element, registration, "dark");
+    expect(element.style.getPropertyValue("--call-bg")).toBe("#000000");
+    remove();
+    expect(element.style.getPropertyValue("--call-bg")).toBe("");
+  });
+
+  it("refuses canonical names, alias clashes and incomplete appearances", () => {
+    const registration = product();
+    (registration.theme as { palette?: unknown }).palette = {
+      "--bg": "#000",
+      "--s2": "#111",
+      "--mobile-shell-x": "#222",
+      "--half": { light: "#333" },
+      "--empty": "",
+      "--extra": { light: "#1", dark: "#2", dim: "#3" },
+    };
+    expect(validateMobileProductRegistration(registration)).toEqual(
+      expect.arrayContaining([
+        "theme.palette.--bg: must be a product property name",
+        "theme.palette.--s2: is also an alias",
+        "theme.palette.--mobile-shell-x: must be a product property name",
+        "theme.palette.--half: must be a colour or one colour per appearance",
+        "theme.palette.--empty: must be a colour or one colour per appearance",
+        "theme.palette.--extra: must be a colour or one colour per appearance",
+      ]),
+    );
+  });
+});
+
+describe("gesture zones", () => {
+  const home = {
+    screen: "home",
+    shade: false,
+    view: null,
+    chat: "input",
+    launcher: true,
+  };
+  const at = (x: number, y: number, onShadeControl = false) => ({
+    x,
+    y,
+    onShadeControl,
+  });
+
+  it("ignores short swipes and unlocks the lock screen upward only", () => {
+    expect(resolveMobileShellSwipe(home, at(200, 400), 20, -40)).toBeNull();
+    const lock = { ...home, screen: "lock" };
+    expect(resolveMobileShellSwipe(lock, at(200, 600), 0, -120)).toBe("unlock");
+    expect(resolveMobileShellSwipe(lock, at(200, 300), 0, 120)).toBeNull();
+    expect(
+      resolveMobileShellSwipe(
+        { ...home, screen: "off" },
+        at(200, 300),
+        0,
+        -120,
+      ),
+    ).toBeNull();
+  });
+
+  it("closes a stand-in shade upward and answers edge Back over it", () => {
+    const shade = { ...home, shade: true };
+    expect(resolveMobileShellSwipe(shade, at(200, 400), 0, -100)).toBe(
+      "close-shade",
+    );
+    expect(resolveMobileShellSwipe(shade, at(10, 400), 100, 0)).toBe("back");
+    expect(resolveMobileShellSwipe(shade, at(200, 400), 100, 0)).toBeNull();
+  });
+
+  it("opens the system shade from the launcher control or the product's pull", () => {
+    expect(resolveMobileShellSwipe(home, at(200, 120, true), 0, 80)).toBe(
+      "open-system-shade",
+    );
+    const standalone = { ...home, launcher: false };
+    expect(
+      resolveMobileShellSwipe(standalone, at(200, 120, true), 0, 80),
+    ).toBeNull();
+    const asked: number[][] = [];
+    const pullOpensShade = (dx: number, dy: number, threshold: number) => {
+      asked.push([dx, dy, threshold]);
+      return dy > 100;
+    };
+    expect(
+      resolveMobileShellSwipe(home, at(200, 300), 0, 120, { pullOpensShade }),
+    ).toBe("open-system-shade");
+    expect(
+      resolveMobileShellSwipe(home, at(200, 300), 0, 80, { pullOpensShade }),
+    ).toBeNull();
+    expect(asked).toEqual([
+      [0, 120, 46],
+      [0, 80, 46],
+    ]);
+  });
+
+  it("goes HOME from the bottom bar, moves the assistant and answers edge Back", () => {
+    const view = { ...home, view: "notes" };
+    expect(resolveMobileShellSwipe(view, at(200, 890), 0, -80)).toBe("home");
+    expect(
+      resolveMobileShellSwipe(
+        { ...view, launcher: false },
+        at(200, 890),
+        0,
+        -80,
+      ),
+    ).toBeNull();
+    expect(resolveMobileShellSwipe(home, at(200, 500), 0, -80)).toBe(
+      "raise-assistant",
+    );
+    expect(resolveMobileShellSwipe(view, at(200, 500), 0, -80)).toBeNull();
+    expect(
+      resolveMobileShellSwipe({ ...view, chat: "sheet" }, at(200, 500), 0, 80),
+    ).toBe("lower-assistant");
+    expect(resolveMobileShellSwipe(view, at(400, 500), -80, 10)).toBe("back");
+    expect(resolveMobileShellSwipe(view, at(200, 500), -80, 10)).toBeNull();
+    expect(
+      resolveMobileShellSwipe(view, at(500, 500), -80, 0, { canvasWidth: 520 }),
+    ).toBe("back");
+  });
+});
+
 describe("view registry", () => {
   it("resolves host keys, older ids and served ids to one canonical view", () => {
     const registry = registryFor();
@@ -326,7 +473,11 @@ describe("navigation", () => {
     state = go(state, { type: "back" });
     expect(state).toMatchObject({ view: "browser", assistant: "input" });
     state = go(state, { type: "back" });
-    expect(state).toMatchObject({ view: "notes", stack: [], assistant: "pill" });
+    expect(state).toMatchObject({
+      view: "notes",
+      stack: [],
+      assistant: "pill",
+    });
     // An explicit detent opens a view over its rest; rest returns to it.
     state = go(state, {
       type: "open",
@@ -734,6 +885,90 @@ describe("Home, All apps and view host", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("keeps an inactive view mounted and draws failures in the host's chrome", async () => {
+    let fail = false;
+    const seen: unknown[] = [];
+    const loader = vi.fn(async () => {
+      if (fail) throw new Error("chunk");
+      return {
+        default: ({ active }: { active?: boolean }) => {
+          seen.push(active);
+          return <p>Notes {active === false ? "behind" : "in front"}</p>;
+        },
+      };
+    });
+    const registry = createMobileViewRegistry(product(), {
+      views: [{ id: "notes", loader }],
+    });
+    const view = render(
+      <MobileViewHost registry={registry} view="notes" onClose={() => {}} />,
+    );
+    expect((await screen.findByText(/Notes/)).textContent).toBe(
+      "Notes in front",
+    );
+    view.rerender(
+      <MobileViewHost
+        registry={registry}
+        view="notes"
+        active={false}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Notes/).textContent).toBe("Notes behind");
+    expect(loader).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    fail = true;
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const failed = vi.fn(async () => {
+      throw new Error("chunk");
+    });
+    const failing = createMobileViewRegistry(product(), {
+      views: [{ id: "calendar", loader: failed }],
+    });
+    const plain = render(
+      <MobileViewHost
+        registry={failing}
+        view="calendar"
+        active={false}
+        onClose={() => {}}
+      />,
+    );
+    const notice = await waitForNotice(plain.container);
+    expect(notice.hidden).toBe(true);
+    expect(notice.hasAttribute("inert")).toBe(true);
+    cleanup();
+
+    const onClose = vi.fn();
+    render(
+      <MobileViewHost
+        registry={failing}
+        view="calendar"
+        onClose={onClose}
+        renderError={({ label, retry, close, active }) => (
+          <section aria-label={`${label} failed`} data-active={active}>
+            <button type="button" onClick={close}>
+              Back
+            </button>
+            <button type="button" onClick={retry}>
+              Retry {label}
+            </button>
+          </section>
+        )}
+      />,
+    );
+    const chrome = await screen.findByRole("region", {
+      name: "Calendar failed",
+    });
+    expect(chrome.dataset.active).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Retry Calendar" }));
+    await screen.findByRole("region", { name: "Calendar failed" });
+    expect(failed).toHaveBeenCalledTimes(2);
+    quiet.mockRestore();
+  });
+
   it("counts retries per view, so retrying one view never reloads another", async () => {
     let failNotes = true;
     const notes = vi.fn(async () => {
@@ -807,6 +1042,7 @@ describe("entries", () => {
   const core = [
     "config/theme.ts",
     "mobile-shell/core.ts",
+    "mobile-shell/gestures.ts",
     "mobile-shell/navigation.ts",
     "mobile-shell/product-registration.ts",
     "mobile-shell/view-id-migration.ts",
