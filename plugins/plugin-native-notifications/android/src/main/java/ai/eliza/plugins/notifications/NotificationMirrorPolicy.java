@@ -79,6 +79,11 @@ public final class NotificationMirrorPolicy {
   }
   public static String bounded(CharSequence value, int max) {
     String text = value == null ? "" : value.toString();
-    return text.length() > max ? text.substring(0, max) : text;
+    if (text.length() <= max)
+      return text;
+    if (max < 1)
+      return "";
+    // Do not split a surrogate pair at the bound.
+    return text.substring(0, Character.isHighSurrogate(text.charAt(max - 1)) ? max - 1 : max);
   }
 }

@@ -59,11 +59,15 @@ describe("PdfService real unpdf boundary", () => {
 			stream: "BT /F1 12 Tf 72 720 Td (prepare the report) Tj ET",
 			expected: "prepare the report",
 		},
-	])("preserves $name in attachment text", async ({ stream, expected }) => {
-		const service = new PdfService({} as IAgentRuntime);
+	])("preserves $name in every text extraction path", async ({ stream, expected }) => {
+		const service = new PdfService({
+			useModel: async () => ({ description: "Page transcribed." }),
+		} as unknown as IAgentRuntime);
 		const bytes = buildPdf("", "<< >>", stream);
 		const original = Buffer.from(bytes);
 		expect(await service.convertPdfToText(bytes)).toBe(expected);
+		expect((await service.getDocumentInfo(bytes)).text).toBe(expected);
+		expect((await service.extractCompleteDocument(bytes)).pages[0]?.nativeText).toBe(expected);
 		expect(bytes.equals(original)).toBe(true);
 	});
 

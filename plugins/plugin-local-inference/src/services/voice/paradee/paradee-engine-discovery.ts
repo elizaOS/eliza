@@ -12,7 +12,7 @@
  *   1. `ELIZA_PARADEE_MODEL_DIR` (absolute),
  *   2. `<bundleRoot>/tts/paradee/` of the active Eliza-1 bundle,
  *   3. `<stateDir>/local-inference/models/paradee/`.
- * A directory qualifies when it holds `paradee-8m-v1_1.gguf` and
+ * A directory qualifies when it holds `paradee-8m-v1_2.gguf` and
  * `misaki-en-us.lex` at their pinned sizes.
  *
  * Library: `resolveFusedLibraryPath` (ELIZA_INFERENCE_LIBRARY, bundle `lib/`,
@@ -30,11 +30,11 @@ import { resolveFusedLibraryPath } from "../../desktop-fused-ffi-backend-runtime
 
 /** Pinned Paradee files; must match `PARADEE_ASSETS` in `host-tts-worker.ts`. */
 export const PARADEE_MODEL_FILES = [
-	{ path: "paradee-8m-v1_1.gguf", bytes: 31_275_232 },
+	{ path: "paradee-8m-v1_2.gguf", bytes: 31_276_064 },
 	{ path: "misaki-en-us.lex", bytes: 12_947_790 },
 ] as const;
 
-/** Paradee-8M v1.1 output sample rate. */
+/** Paradee-8M v1.2 output sample rate. */
 export const PARADEE_SAMPLE_RATE = 24_000;
 
 /** Voice id the scheduler preset carries; Paradee ships one voice. */

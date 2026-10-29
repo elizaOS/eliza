@@ -27,7 +27,7 @@ public class BionicSpeechInstrumentedTest {
     /** misaki spelling of TEXT; exercises the phonemes path without G2P. */
     private static final String PHONEMES = "həlˈO wˈɜɹld.";
     // Pinned by paradee-voice/inputs.json (= fork tools/paradee and tools/misaki-g2p pins.json).
-    private static final String MODEL_HASH = "f205ab055f0120d571aa6fda2deadde1e6fbc88e8d8bd56a592917fd0e50892e";
+    private static final String MODEL_HASH = "a43118932f7ec01bb3e9f1b92a56b24dd2622011c8fd5c77dca1e353b56e6df6";
     private static final String LEXICON_HASH = "fbf09090cff0a41f3f579bf03ab9fc42710b04d7284767b10467a5f182c23925";
 
     @Test public void packagedParadeeProducesDiagnosticPcmAndRecoversThroughFramedHost() throws Exception {
