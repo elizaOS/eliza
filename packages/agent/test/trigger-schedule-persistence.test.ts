@@ -454,6 +454,76 @@ it("updates a trigger by the triggerId create returned and refuses fields it can
   }
 });
 
+it("edits a paused trigger through the action and keeps it paused", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Remind me every morning to stretch." },
+  } as Memory;
+  const run = (parameters: JsonObject) =>
+    triggerAction.handler(fixture.runtime, message, undefined, { parameters });
+  const created = await run({
+    action: "create",
+    displayName: "Stretch",
+    instructions: "Remind the user to stretch.",
+    cronExpression: "0 9 * * *",
+  });
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId, triggerId } = created.data as {
+    taskId: UUID;
+    triggerId: UUID;
+  };
+  try {
+    const paused = await run({
+      action: "toggle",
+      taskId: triggerId,
+      enabled: false,
+    });
+    expect(paused, paused?.text).toMatchObject({ success: true });
+
+    // Like the PUT route's "Renamed while paused": the edit is saved and the
+    // trigger stays paused on the disabled interval.
+    const edited = await run({
+      action: "update",
+      taskId: triggerId,
+      displayName: "Stretch and breathe",
+      cronExpression: "0 17 * * *",
+    });
+    expect(edited, edited?.text).toMatchObject({ success: true });
+    expect(edited?.text).toContain("(paused)");
+    const saved = await fixture.runtime.getTask(taskId);
+    expect(saved && readTriggerConfig(saved)).toMatchObject({
+      displayName: "Stretch and breathe",
+      cronExpression: "0 17 * * *",
+      enabled: false,
+    });
+    expect(
+      (saved?.metadata as { updateInterval?: number } | undefined)
+        ?.updateInterval,
+    ).toBe(DISABLED_TRIGGER_INTERVAL_MS);
+
+    // Resuming schedules the edited time.
+    const resumed = await run({
+      action: "toggle",
+      taskId: triggerId,
+      enabled: true,
+    });
+    expect(resumed, resumed?.text).toMatchObject({ success: true });
+    const live = await fixture.runtime.getTask(taskId);
+    expect(live && readTriggerConfig(live)).toMatchObject({
+      cronExpression: "0 17 * * *",
+      enabled: true,
+    });
+    expect(
+      (live?.metadata as { updateInterval?: number } | undefined)
+        ?.updateInterval,
+    ).not.toBe(DISABLED_TRIGGER_INTERVAL_MS);
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+
 it("reads a once time with no offset in the user's zone on create and update", async () => {
   // Asia/Kolkata is UTC+05:30 all year, so the expected instant does not
   // depend on the zone of the host that runs this test.
