@@ -100,13 +100,18 @@ public final class MailBackgroundDelivery {
   * saving anything. Re-selecting the same owner, credential and grant keeps the durable cursor.
   */
  public JSONObject configure(long attempt,String credentialId,String grant,String userId,String organizationId)throws Exception{
-  JSONObject binding;synchronized(host.lock()){binding=admission(credentialId,grant,userId,organizationId);}
-  MailHistoryReconciliation.Guard guard=()->{if(attempts.get()!=attempt)throw new SecurityException("Mail selection superseded");synchronized(host.lock()){admitted(binding);}};
-  verify(binding,guard);
-  synchronized(host.lock()){
-   guard.check();JSONObject previous=saved();
-   if(previous!=null){JSONObject before=previous.getJSONObject("binding");boolean same=true;for(String field:SAME_SELECTION)same&=before.optString(field).equals(binding.getString(field));if(same){admittedAttempt=attempt;scheduler.schedule(before.getString("generation"));return engine(before).status();}}
-   poster.cancelAll();scheduler.cancel();host.writeState(MailHistoryReconciliation.initial(binding).toString());admittedAttempt=attempt;scheduler.schedule(binding.getString("generation"));return engine(binding).status();
+  try{
+   JSONObject binding;synchronized(host.lock()){binding=admission(credentialId,grant,userId,organizationId);}
+   MailHistoryReconciliation.Guard guard=()->{if(attempts.get()!=attempt)throw new SecurityException("Mail selection superseded");synchronized(host.lock()){admitted(binding);}};
+   verify(binding,guard);
+   synchronized(host.lock()){
+    guard.check();JSONObject previous=saved();
+    if(previous!=null){JSONObject before=previous.getJSONObject("binding");boolean same=true;for(String field:SAME_SELECTION)same&=before.optString(field).equals(binding.getString(field));if(same){admittedAttempt=attempt;scheduler.schedule(before.getString("generation"));return engine(before).status();}}
+    poster.cancelAll();scheduler.cancel();host.writeState(MailHistoryReconciliation.initial(binding).toString());admittedAttempt=attempt;scheduler.schedule(binding.getString("generation"));return engine(binding).status();
+   }
+  }catch(Exception failure){
+   // A failed selection keeps the saved one checking under its own fences; a newer attempt owns admission.
+   synchronized(host.lock()){if(attempts.get()==attempt)admittedAttempt=attempt;}throw failure;
   }
  }
  /** Retires the selection (all of it, or only when it is for this grant), its schedule and its notices. */
@@ -115,7 +120,7 @@ public final class MailBackgroundDelivery {
  public void resume(){try{synchronized(host.lock()){if(admittedAttempt!=attempts.get())return;JSONObject s=saved();if(s==null)return;JSONObject binding=s.getJSONObject("binding");current(binding);scheduler.schedule(binding.getString("generation"));}}catch(Exception stale){try{withdraw(null);}catch(Exception ignored){/* Existing callback guards still fail closed. */}}}
  public JSONObject status()throws Exception{synchronized(host.lock()){JSONObject s=saved();if(s==null)return new JSONObject().put("status","disabled");return engine(s.getJSONObject("binding")).status().put("notificationsAllowed",poster.allowed());}}
  private static final class HttpFailure extends IOException {final int status;HttpFailure(int status){super("Mail service unavailable");this.status=status;}}
- private JSONObject get(JSONObject binding,String path,MailHistoryReconciliation.Guard guard)throws Exception{
+ private String get(JSONObject binding,String path,MailHistoryReconciliation.Guard guard)throws Exception{
   // Constructed paths only, with a fixed service authority. No remote-agent host or redirect.
   if(!(path.equals(USER_ROUTE)||path.equals(ACCOUNTS_ROUTE)||path.startsWith(HISTORY_ROUTE)))throw new SecurityException("Mail route denied");
   guard.check();String raw;synchronized(host.lock()){raw=credential(binding.getString("credentialId"));}JSONObject credential=new JSONObject(raw);if(credential.has("expiresAt")&&credential.getDouble("expiresAt")<=System.currentTimeMillis())throw new SecurityException("Cloud key expired");
@@ -125,15 +130,15 @@ public final class MailBackgroundDelivery {
    guard.check();int status=connection.getResponseCode();if(status<200||status>=300)throw new HttpFailure(status);
    ByteArrayOutputStream bytes=new ByteArrayOutputStream();
    try(InputStream in=connection.getInputStream()){byte[] buffer=new byte[8192];for(int n;(n=in.read(buffer))!=-1;){guard.check();if(bytes.size()+n>1100000)throw new IOException("Mail response exceeds bound");bytes.write(buffer,0,n);}}
-   guard.check();return new JSONObject(bytes.toString(StandardCharsets.UTF_8.name()));
+   guard.check();return bytes.toString(StandardCharsets.UTF_8.name());
   }finally{connection.disconnect();}
  }
  private void verify(JSONObject binding,MailHistoryReconciliation.Guard guard)throws Exception{
-  JSONObject me=get(binding,USER_ROUTE,guard);if(!me.getBoolean("success"))throw new SecurityException("Cloud identity unavailable");
+  JSONObject me=new JSONObject(get(binding,USER_ROUTE,guard));if(!me.getBoolean("success"))throw new SecurityException("Cloud identity unavailable");
   JSONObject user=host.verifiedIdentity(me.getJSONObject("data"));
   if(!binding.getString("userId").equals(user.optString("userId",null))||!binding.getString("organizationId").equals(user.optString("organizationId",null)))throw new SecurityException("Cloud owner changed");
-  JSONObject response=get(binding,ACCOUNTS_ROUTE,guard);if(!response.getBoolean("success"))throw new SecurityException("Google account unavailable");
-  JSONArray accounts=response.getJSONArray("data");if(accounts.length()>128)throw new IOException("Too many Google accounts");boolean found=false;
+  // The accounts route answers with a bare array, not a success/data wrapper.
+  JSONArray accounts=new JSONArray(get(binding,ACCOUNTS_ROUTE,guard));if(accounts.length()>128)throw new IOException("Too many Google accounts");boolean found=false;
   for(int i=0;i<accounts.length();i++){JSONObject account=accounts.getJSONObject(i);if(!binding.getString("grantId").equals(account.optString("connectionId"))||!account.optBoolean("connected"))continue;JSONArray caps=account.getJSONArray("grantedCapabilities");for(int j=0;j<caps.length();j++)if(config.readCapability.equals(caps.getString(j)))found=true;}
   guard.check();if(!found)throw new SecurityException("Mail grant unavailable");
  }
@@ -152,7 +157,7 @@ public final class MailBackgroundDelivery {
     String start=MailHistoryReconciliation.optional(query,"startHistoryId"),token=MailHistoryReconciliation.optional(query,"pageToken");
     String path=HISTORY_ROUTE+URLEncoder.encode(binding.getString("grantId"),"UTF-8")+"&maxResults=50";
     if(start!=null)path+="&startHistoryId="+MailHistoryReconciliation.revision(start);if(token!=null)path+="&pageToken="+URLEncoder.encode(token,"UTF-8");
-    JSONObject page=get(binding,path,guard);
+    JSONObject page=new JSONObject(get(binding,path,guard));
     // Recheck the remote grant before a page can cause a durable notice; local epoch fences every write.
     verify(binding,guard);synchronized(host.lock()){guard.check();engine(binding).accept(page,System.currentTimeMillis());}
     publishNotices(binding,guard);

@@ -26,19 +26,19 @@ public class MailBackgroundDeliveryTest {
  static final class Scheduler implements MailBackgroundDelivery.Scheduler {int schedules,cancels;String generation;public void schedule(String g){schedules++;generation=g;}public void cancel(){cancels++;generation=null;}}
  static final class Poster implements MailBackgroundDelivery.Notices {int posts;Set<String> active=new HashSet<>();public boolean allowed(){return true;}public boolean active(String k){return active.contains(k);}public void post(String k){posts++;active.add(k);}public void cancel(String k){active.remove(k);}public void cancelAll(){active.clear();}}
  static final class Transport implements MailBackgroundDelivery.Connections {
-  final Host host;List<String> paths=new ArrayList<>();int historyStatus=200;boolean staleDuringHistory,wrongOwner,noGrant;Runnable onUser;Queue<JSONObject> pages=new ArrayDeque<>();
+  final Host host;List<String> paths=new ArrayList<>();int historyStatus=200;boolean staleDuringHistory,wrongOwner,noGrant,accountsDown;Runnable onUser;Queue<JSONObject> pages=new ArrayDeque<>();
   Transport(Host host){this.host=host;}
   public HttpURLConnection open(URL url){
    check(url.getHost().equals("cloud.example"),"fixed authority");paths.add(url.getFile());
    return new HttpURLConnection(url){
     public void connect(){}public void disconnect(){}public boolean usingProxy(){return false;}
-    public int getResponseCode(){check("GET".equals(getRequestMethod()),"GET only");check(!getInstanceFollowRedirects(),"redirect disabled");check("Bearer secret".equals(getRequestProperty("Authorization")),"existing credential only");return url.getPath().endsWith("history")?historyStatus:200;}
+    public int getResponseCode(){check("GET".equals(getRequestMethod()),"GET only");check(!getInstanceFollowRedirects(),"redirect disabled");check("Bearer secret".equals(getRequestProperty("Authorization")),"existing credential only");return url.getPath().endsWith("history")?historyStatus:url.getPath().endsWith("accounts")&&accountsDown?503:200;}
     public InputStream getInputStream()throws IOException{
      try{
-      JSONObject value;
+      Object value;
       if(url.getPath().endsWith("history")){if(staleDuringHistory)host.credential=credential("replaced");value=pages.remove();}
       else if(url.getPath().endsWith("user")){if(onUser!=null)onUser.run();value=new JSONObject().put("success",true).put("data",new JSONObject().put("id",wrongOwner?"33333333-3333-4333-8333-333333333333":USER).put("organization_id",ORG));}
-      else value=new JSONObject().put("success",true).put("data",new JSONArray().put(new JSONObject().put("connectionId","grant").put("connected",true).put("grantedCapabilities",new JSONArray().put(noGrant?"google.calendar.read":"google.gmail.triage"))));
+      else value=new JSONArray().put(new JSONObject().put("connectionId","grant").put("connected",true).put("grantedCapabilities",new JSONArray().put(noGrant?"google.calendar.read":"google.gmail.triage")));
       return new ByteArrayInputStream(value.toString().getBytes(StandardCharsets.UTF_8));
      }catch(Exception e){throw new IOException(e);}
     }
@@ -82,6 +82,8 @@ public class MailBackgroundDeliveryTest {
   Case reset=new Case();reset.host.reset=true;refuses(reset::configure,"pending reset admitted");check(reset.host.state==null,"reset blocks configuration");
   Case superseded=new Case();long first=superseded.delivery.begin();superseded.delivery.begin();refuses(()->superseded.delivery.configure(first,"credential","grant",USER,ORG),"superseded selection admitted");check(superseded.host.state==null,"superseded selection saves nothing");
   Case changed=new Case();String old=changed.configure();changed.host.credential=credential("rotated");refuses(()->changed.delivery.sync(old,()->{}),"rotated credential admitted");changed.delivery.resume();check(changed.host.state==null,"resume retires a selection whose credential changed");
+  Case failed=new Case();String kept=failed.configure();failed.transport.accountsDown=true;try{failed.delivery.configure(failed.delivery.begin(),"credential","grant",USER,ORG);throw new AssertionError("failed selection admitted");}catch(IOException expected){assertions++;}
+  failed.transport.accountsDown=false;failed.transport.pages.add(MailHistoryReconciliationTest.baseline("100"));check(failed.delivery.sync(kept,()->{}),"failed reselection keeps the saved selection checking");
   Case other2=new Case();other2.configure();other2.delivery.withdraw("another-grant");check(other2.host.state!=null,"withdraw for another grant keeps the selection");
   System.out.println(assertions+" assertions passed");
  }
