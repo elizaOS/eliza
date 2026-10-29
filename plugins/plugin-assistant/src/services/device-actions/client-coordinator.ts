@@ -21,6 +21,10 @@
  * journal store, executors and recovery readers, and a small profile with the
  * owner-facing product name, record copy and view admission policy.
  */
+import {
+  authoredBrowserDestination,
+  browserDestinationMatches,
+} from "@elizaos/contracts/browser-request-grounding";
 import { createDeviceActionExecution } from "@elizaos/contracts/device-action-execution";
 import {
   isNativeNotesQuery,
@@ -932,7 +936,24 @@ export function publishCommittedDeviceChanges(
 
 // ── Coordinator ─────────────────────────────────────────────────────────────
 
+export interface CurrentDeviceActionRequest {
+  readonly messageId: string;
+  readonly text: string;
+  readonly current: () => void;
+}
+
+/** Remove renderer-only day observations from durable native records. */
+export function deviceJournalContext<C extends DeviceContextEnvelope>(
+  context: C,
+): Omit<C, "calendarDay"> {
+  const { calendarDay: _day, ...record } = context as C & {
+    calendarDay?: unknown;
+  };
+  return record;
+}
+
 export interface PendingReviewItem {
+  proposalId?: string;
   /** Reviewable from the current screen; null when only a notice can be shown. */
   proposal: DeviceActionProposalCard | null;
   /** Why a pending proposal cannot be reviewed here, for example "Open the selected note". */
@@ -992,7 +1013,12 @@ export class DeviceActionCoordinator<
   readonly scope: string;
   private proposals = new Map<
     string,
-    { proposal: DeviceProposal; context: C; workflowReview?: R }
+    {
+      proposal: DeviceProposal;
+      context: C;
+      workflowReview?: R;
+      requestKey?: string;
+    }
   >();
   private readReplies = new Map<
     string,
@@ -1005,11 +1031,73 @@ export class DeviceActionCoordinator<
   >();
   private busy = false;
   private readonly ports: DeviceActionCoordinatorPorts<C, R>;
-  constructor(ports: DeviceActionCoordinatorPorts<C, R>) {
+  private browserAttempts = new Map<string, CurrentDeviceActionRequest>();
+  private browserPolicy = new Map<string, { key: string; allowed: boolean }>();
+  constructor(
+    ports: DeviceActionCoordinatorPorts<C, R>,
+    private readonly options: { currentRequestBrowserPolicy?: boolean } = {},
+  ) {
     this.ports = ports;
     this.session = ports.session;
     this.credential = ports.credential;
     this.scope = ports.scope;
+  }
+  private requestKey(messageId: string): string {
+    return JSON.stringify([
+      this.scope,
+      this.session.ownerId,
+      this.session.agentId,
+      this.session.sessionId,
+      this.session.origin,
+      this.credential.installationId,
+      this.credential.enrollmentId,
+      messageId,
+    ]);
+  }
+  private browserAllowed(
+    proposal: DeviceProposal,
+    proof?: CurrentDeviceActionRequest,
+  ): boolean {
+    if (
+      !this.options.currentRequestBrowserPolicy ||
+      proposal.operation.type !== "browser_navigate"
+    )
+      return true;
+    if (!proof || proof.messageId !== proposal.requestMessageId) return false;
+    try {
+      proof.current();
+    } catch {
+      return false;
+    }
+    const key = JSON.stringify([
+      this.requestKey(proof.messageId),
+      proposal.digest,
+      proposal.operation,
+      proof.text,
+    ]);
+    const cached = this.browserPolicy.get(proposal.id);
+    if (cached?.key === key) return cached.allowed;
+    const allowed = browserDestinationMatches(
+      proposal.operation,
+      authoredBrowserDestination(proof.text),
+    );
+    this.browserPolicy.set(proposal.id, { key, allowed });
+    return allowed;
+  }
+  private consumeBrowserRequest(proof: CurrentDeviceActionRequest): boolean {
+    for (const [key, previous] of this.browserAttempts) {
+      try {
+        previous.current();
+      } catch {
+        this.browserAttempts.delete(key);
+      }
+    }
+    const key = this.requestKey(proof.messageId);
+    if (this.browserAttempts.has(key) || this.browserAttempts.size >= 128)
+      return false;
+    proof.current();
+    this.browserAttempts.set(key, proof);
+    return true;
   }
   get supportsCalendarAgenda(): boolean {
     return this.capability(CALENDAR_AGENDA_CAPABILITY);
@@ -1336,10 +1424,17 @@ export class DeviceActionCoordinator<
   private async review(
     context: C,
     signal: AbortSignal,
+    proof?: CurrentDeviceActionRequest,
   ): Promise<{ items: PendingReviewItem[]; failures: Error[] }> {
+    const browserRequestKey = proof
+      ? this.requestKey(proof.messageId)
+      : undefined;
     const { valid, invalid } = await this.listing(signal);
     signal.throwIfAborted();
     this.proposals.clear();
+    const pendingIds = new Set(valid.map((proposal) => proposal.id));
+    for (const id of this.browserPolicy.keys())
+      if (!pendingIds.has(id)) this.browserPolicy.delete(id);
     const items: PendingReviewItem[] = [];
     for (const proposal of valid) {
       if (
@@ -1348,6 +1443,20 @@ export class DeviceActionCoordinator<
         proposal.expiresAt <= Date.now()
       )
         continue;
+      if (
+        !this.browserAllowed(proposal, proof) ||
+        (this.options.currentRequestBrowserPolicy &&
+          proposal.operation.type === "browser_navigate" &&
+          browserRequestKey !== this.requestKey(proof?.messageId ?? ""))
+      ) {
+        items.push({
+          proposalId: proposal.id,
+          proposal: null,
+          notice:
+            "Browser action blocked: a matching current user request is required.",
+        });
+        continue;
+      }
       const card = this.card(proposal, context),
         notice =
           (isNativeNotesQuery(proposal.operation) && !context.sensitive) ||
@@ -1356,19 +1465,24 @@ export class DeviceActionCoordinator<
             ? undefined
             : this.notice(proposal.operation, context);
       if (notice) {
-        items.push({ proposal: null, notice: `${card.title}: ${notice}` });
+        items.push({
+          proposalId: proposal.id,
+          proposal: null,
+          notice: `${card.title}: ${notice}`,
+        });
         continue;
       }
       this.proposals.set(proposal.id, {
         proposal,
         context: structuredClone(context),
+        requestKey: browserRequestKey,
       });
       if (proposal.readReplyOrigin && !this.readReplies.has(proposal.id))
         this.readReplies.set(proposal.id, {
           digest: proposal.digest,
           origin: proposal.readReplyOrigin,
         });
-      items.push({ proposal: card });
+      items.push({ proposalId: proposal.id, proposal: card });
     }
     const failures = invalid
       .filter((item) => item.pending)
@@ -1384,8 +1498,9 @@ export class DeviceActionCoordinator<
   async pendingReview(
     context: C,
     signal: AbortSignal,
+    proof?: CurrentDeviceActionRequest,
   ): Promise<PendingReviewItem[]> {
-    return (await this.review(context, signal)).items;
+    return (await this.review(context, signal, proof)).items;
   }
   /** Reviewable proposals only. An invalid proposal fails the call only when nothing else is reviewable. */
   async pending(
@@ -1409,6 +1524,7 @@ export class DeviceActionCoordinator<
     signal: AbortSignal,
     allowed: () => Promise<boolean>,
     operationType?: ReviewableDeviceOperation["type"],
+    proof?: CurrentDeviceActionRequest,
   ): Promise<DeviceOperationReceipt[]> {
     const directTypes: readonly ReviewableDeviceOperation["type"][] = [
       "create_note",
@@ -1430,8 +1546,30 @@ export class DeviceActionCoordinator<
         continue;
       // A navigation-only card is not an executable read/write, even in direct-request mode.
       if (this.card(entry.proposal, context).reviewDestination) continue;
+      const browser =
+        this.options.currentRequestBrowserPolicy &&
+        entry.proposal.operation.type === "browser_navigate";
+      const requestKey = this.requestKey(messageId);
+      if (
+        browser &&
+        (!proof ||
+          entry.requestKey !== requestKey ||
+          proof.messageId !== messageId ||
+          !this.browserAllowed(entry.proposal, proof))
+      )
+        continue;
       if (!(await allowed())) break;
       signal.throwIfAborted();
+      if (browser) {
+        if (
+          this.proposals.get(proposalId) !== entry ||
+          requestKey !== this.requestKey(messageId) ||
+          !this.browserAllowed(entry.proposal, proof) ||
+          !proof ||
+          !this.consumeBrowserRequest(proof)
+        )
+          continue;
+      }
       const result = await this.approve(proposalId, context, signal);
       results.push(result);
       if (result.status !== "succeeded" || signal.aborted) break;
@@ -1739,7 +1877,7 @@ export class DeviceActionCoordinator<
         record: {
           digest: p.digest,
           operation: p.operation,
-          context,
+          context: deviceJournalContext(context),
           expiresAt: p.expiresAt,
           installationId: this.credential.installationId,
           enrollmentId: this.credential.enrollmentId,
