@@ -1583,6 +1583,7 @@
         "@elizaos/core": "workspace:*",
       },
       "devDependencies": {
+        "@elizaos/cloud-sdk": "workspace:*",
         "@types/node": "^25.0.3",
         "@typescript/native": "npm:typescript@^7.0.2",
         "typescript": "^6.0.3",

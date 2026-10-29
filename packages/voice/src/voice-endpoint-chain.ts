@@ -8,7 +8,9 @@
  *     could not score (unavailable or failed). It sends the transcript text only (never audio),
  *     has its own timeout, and an unavailable Clef (HTTP 503, disabled, provider error, timeout,
  *     refused request) is never a yes. The stage exists only when the host enables it explicitly
- *     AND supplies a Cloud client; either alone leaves it out.
+ *     AND supplies a Cloud client; either alone leaves it out. An optional per-turn `gate` (offline,
+ *     signed out, no plan; see `createCloudClefEndpointStage` in `@elizaos/voice/cloud-clef`)
+ *     answers `clef-disabled` or `clef-unavailable` without sending anything.
  *  3. The long silence gap: owned by {@link VoiceAssistantSession}. When no stage decides, the
  *     chain answers `unavailable` and the gap submits the turn.
  *
@@ -44,6 +46,8 @@ export const CLEF_ENDPOINT_UNAVAILABLE_REASONS: readonly ClefEndpointUnavailable
   ];
 /** Clef's own transcript limit (`CLEF_DECISION_LIMITS.transcript`); longer text is never sent. */
 export const CLEF_TURN_MAX_CHARS = 2_000;
+/** Clef's recent-turn limit (`CLEF_DECISION_LIMITS.recentTurns`); only the newest are sent. */
+export const CLEF_RECENT_TURNS_MAX = 6;
 /** Default Clef stage budget. It must fit inside the session's endpoint deadline. */
 export const CLEF_ENDPOINT_TIMEOUT_MS = 300;
 /** A Clef turn is complete at this probability or above (`CLEF_TURN_COMPLETE_THRESHOLD`). */
@@ -69,8 +73,17 @@ export interface ClefEndpointStage {
   /** The Cloud client. Without one the stage is left out. */
   client: ClefTurnClient | null | undefined;
   timeoutMs?: number;
-  /** Recent turns for context, oldest first (at most 6 are sent). Text only. */
+  /**
+   * Recent turns for context, oldest first. At most {@link CLEF_RECENT_TURNS_MAX} are sent, and
+   * each is reduced to `{ speaker, text }`: any other field a host attaches is dropped.
+   */
   recentTurns?(): ClefTurnRequest["recentTurns"];
+  /**
+   * Asked on every turn before anything is sent. A reason means this turn does not use Clef (the
+   * chain answers `unavailable` with that reason on the `clef` path, so the long gap submits); null
+   * lets the request go. A throwing gate counts as `clef-unavailable`.
+   */
+  gate?(): ClefEndpointUnavailableReason | null;
 }
 export interface EndpointChainOptions {
   local?: EndpointPort | null;
@@ -188,6 +201,22 @@ export function createEndpointChain(
     signal: AbortSignal,
   ): Promise<ChainedEndpointResult> => {
     const stage = clefStage as ClefEndpointStage & { client: ClefTurnClient };
+    if (typeof stage.gate === "function") {
+      let blocked: ClefEndpointUnavailableReason | null;
+      try {
+        const value = stage.gate();
+        blocked =
+          value == null
+            ? null
+            : CLEF_ENDPOINT_UNAVAILABLE_REASONS.includes(value)
+              ? value
+              : "clef-unavailable";
+      } catch {
+        blocked = "clef-unavailable";
+      }
+      if (blocked)
+        return { decision: "unavailable", reason: blocked, path: "clef" };
+    }
     const transcript = text.replace(/\s+/g, " ").trim();
     if (!transcript)
       return { decision: "unavailable", reason: "clef-error", path: "clef" };
@@ -204,7 +233,9 @@ export function createEndpointChain(
             turn.text.trim().length > 0 &&
             turn.text.length <= CLEF_TURN_MAX_CHARS,
         )
-        .slice(-6);
+        .slice(-CLEF_RECENT_TURNS_MAX)
+        // Only the speaker and the text leave the device; never any other field a host attached.
+        .map((turn) => ({ speaker: turn.speaker, text: turn.text }));
     } catch {
       recentTurns = undefined;
     }
