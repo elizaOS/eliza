@@ -158,6 +158,10 @@ const record = (value: unknown): value is Record<string, unknown> =>
 const text = (value: unknown): value is string =>
   typeof value === "string" && value.trim() === value && value.length > 0;
 
+/** One colour value: text that cannot end its declaration or open a block. */
+const colour = (value: unknown): value is string =>
+  text(value) && !/[;{}<>\\]|\/\*/.test(value);
+
 function isToken(value: unknown): value is MobileShellThemeToken {
   return (
     typeof value === "string" &&
@@ -237,11 +241,11 @@ export function validateMobileProductRegistration(value: unknown): string[] {
           else if (record(theme.aliases) && Object.hasOwn(theme.aliases, name))
             issue(`theme.palette.${name}`, "is also an alias");
           if (
-            !text(color) &&
+            !colour(color) &&
             !(
               record(color) &&
               Object.keys(color).length === APPEARANCES.length &&
-              APPEARANCES.every((appearance) => text(color[appearance]))
+              APPEARANCES.every((appearance) => colour(color[appearance]))
             )
           )
             issue(

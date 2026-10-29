@@ -235,6 +235,7 @@ describe("product palette", () => {
       "--half": { light: "#333" },
       "--empty": "",
       "--extra": { light: "#1", dark: "#2", dim: "#3" },
+      "--escape": "#000; background: url(x)",
     };
     expect(validateMobileProductRegistration(registration)).toEqual(
       expect.arrayContaining([
@@ -244,6 +245,7 @@ describe("product palette", () => {
         "theme.palette.--half: must be a colour or one colour per appearance",
         "theme.palette.--empty: must be a colour or one colour per appearance",
         "theme.palette.--extra: must be a colour or one colour per appearance",
+        "theme.palette.--escape: must be a colour or one colour per appearance",
       ]),
     );
   });
