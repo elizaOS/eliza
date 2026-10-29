@@ -456,7 +456,8 @@ const updateRoute: Route = {
  * same audio-derived JSON budget as the cloud STT route (25 MiB of audio,
  * base64-inflated) so the host gate matches the audio the route accepts.
  */
-const TRANSCRIPT_CREATE_MAX_BODY_BYTES = Math.ceil((25 * 1024 * 1024) / 3) * 4 + 1024;
+const TRANSCRIPT_CREATE_MAX_BODY_BYTES =
+	Math.ceil((25 * 1024 * 1024) / 3) * 4 + 1024;
 const createRoute: Route = {
 	type: "POST",
 	path: "/api/transcripts",
