@@ -2352,6 +2352,9 @@
     "plugins/plugin-native-browser-surface": {
       "name": "@elizaos/capacitor-browser-surface",
       "version": "2.0.12-beta.0",
+      "dependencies": {
+        "@elizaos/contracts": "workspace:*",
+      },
       "devDependencies": {
         "@capacitor/core": "^8.3.1",
         "@rollup/plugin-node-resolve": "^16.0.0",
