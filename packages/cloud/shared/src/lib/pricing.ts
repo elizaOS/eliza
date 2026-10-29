@@ -14,7 +14,6 @@ import type { PricingBillingSource } from "./services/ai-pricing-definitions";
 
 // Re-export constants from pricing-constants (safe for client components)
 export {
-  ANTHROPIC_WEB_SEARCH_BASE_COST_PER_REQUEST,
   API_KEY_PREFIX_LENGTH,
   IMAGE_GENERATION_COST,
   MONTHLY_CREDIT_CAP,

@@ -3,7 +3,6 @@
  * `/v1/chat/completions` and Anthropic-compatible `/v1/messages` routes.
  */
 
-import { anthropicWebSearchRequestsFromUsage } from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
 import type { AIUsage } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import type { StepResult, ToolSet } from "ai";
 
@@ -39,9 +38,8 @@ export function modelNotAvailableMessage(model: string): string {
 }
 
 /**
- * Sum the provider-reported usage of every finished step, including the
- * provider-run web searches that only the raw usage reports. Returns null when
- * no step reported any usage, so callers can distinguish "no report" from zero.
+ * Sum the provider-reported usage of every finished step. Returns null when no
+ * step reported any usage, so callers can distinguish "no report" from zero.
  */
 export function summarizeFinishedStepUsage(
   steps: readonly FinishedStepUsageSource[],
@@ -52,7 +50,6 @@ export function summarizeFinishedStepUsage(
   let totalTokens = 0;
   let cacheReadInputTokens = 0;
   let cacheWriteInputTokens = 0;
-  let webSearchRequests = 0;
 
   for (const step of steps) {
     const usage = step.usage;
@@ -67,10 +64,8 @@ export function summarizeFinishedStepUsage(
       ) ?? 0;
     const stepCacheWriteTokens =
       firstNumber(usage.inputTokenDetails?.cacheWriteTokens) ?? 0;
-    const stepWebSearchRequests = anthropicWebSearchRequestsFromUsage(usage);
 
     if (
-      stepWebSearchRequests > 0 ||
       stepInputTokens > 0 ||
       stepOutputTokens > 0 ||
       stepTotalTokens > 0 ||
@@ -85,7 +80,6 @@ export function summarizeFinishedStepUsage(
     totalTokens += stepTotalTokens;
     cacheReadInputTokens += stepCacheReadTokens;
     cacheWriteInputTokens += stepCacheWriteTokens;
-    webSearchRequests += stepWebSearchRequests;
   }
 
   if (!sawUsage) return null;
@@ -96,6 +90,5 @@ export function summarizeFinishedStepUsage(
     totalTokens,
     cacheReadInputTokens,
     cacheWriteInputTokens,
-    ...(webSearchRequests > 0 ? { webSearchRequests } : {}),
   };
 }

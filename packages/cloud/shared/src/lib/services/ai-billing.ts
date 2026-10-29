@@ -68,8 +68,6 @@ export interface AIUsage {
   cacheWriteInputTokens?: number;
   /** Provider-native usage (AI SDK `usage.raw`), e.g. Anthropic `server_tool_use`. */
   raw?: unknown;
-  /** Provider-run web searches counted by the caller (e.g. over finished steps or stream parts). */
-  webSearchRequests?: number;
 }
 
 export interface BillingContext {

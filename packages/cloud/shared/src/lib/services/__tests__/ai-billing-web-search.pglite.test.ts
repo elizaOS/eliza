@@ -109,26 +109,17 @@ describe("billUsage with Anthropic server-side web searches", () => {
     expect(held.reconciled[0]).toBeGreaterThan(tokenOnlyCost() + searchCost - 1e-6);
   });
 
-  test("a count aggregated from provider-reported finished steps is billed the same way", async () => {
-    const billing = await billUsage(context, { ...tokens, webSearchRequests: 3 });
-    expect(billing.webSearchRequests).toBe(3);
-    expect(billing.totalCost).toBeCloseTo(tokenOnlyCost() + 3 * SEARCH_USD * markup, 6);
+  test("does not add an Anthropic fee to another provider", async () => {
+    const held = reservation();
+    const billing = await billUsage(
+      { ...context, model: "openai/gpt-4o", provider: "openai" },
+      { ...tokens, raw: { server_tool_use: { web_search_requests: 3 } } },
+      held.handle,
+    );
+    expect(billing.webSearchRequests).toBeUndefined();
+    expect(billing.totalCost).toBeCloseTo(tokenOnlyCost(), 6);
+    expect(held.reconciled).toEqual([billing.totalCost]);
   });
-
-  test.each([{ raw: { server_tool_use: { web_search_requests: 3 } } }, { webSearchRequests: 3 }])(
-    "does not add an Anthropic fee to another provider: %j",
-    async (searchUsage) => {
-      const held = reservation();
-      const billing = await billUsage(
-        { ...context, model: "openai/gpt-4o", provider: "openai" },
-        { ...tokens, ...searchUsage },
-        held.handle,
-      );
-      expect(billing.webSearchRequests).toBeUndefined();
-      expect(billing.totalCost).toBeCloseTo(tokenOnlyCost(), 6);
-      expect(held.reconciled).toEqual([billing.totalCost]);
-    },
-  );
 
   test("uses the model provider when the context does not specify one", async () => {
     const billing = await billUsage(

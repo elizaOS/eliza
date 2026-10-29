@@ -55,8 +55,8 @@ import {
 } from "@elizaos/cloud-shared/lib/providers/anthropic-thinking";
 import {
   ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
-  anthropicWebSearchFeeInputTokens,
   buildProviderNativeWebSearchTools,
+  calculateAnthropicWebSearchMaxCost,
   isAnthropicWebSearchEnabled,
 } from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
 import {
@@ -1951,35 +1951,16 @@ export async function handleChatCompletionsPOST(
       useAppCredits && appId && monetizedApp,
     );
     try {
-      // Provider-run web searches are billed per use on top of tokens, so the
-      // token estimate alone under-sizes the hold. Add the input-token
-      // equivalent of the worst case (maxUses searches) so settlement can
-      // collect the full fee; the exact fee is charged from the reported count.
-      const reservationInputTokens = async (): Promise<number> => {
-        if (!webSearchActive) return estimatedInputTokens;
-        const { inputCost } = await calculateCost(
-          normalizedModel,
-          provider,
-          estimatedInputTokens,
-          0,
-          billingSource,
-          options.executionCtx
-            ? { cacheOnly: true, executionCtx: options.executionCtx }
-            : undefined,
-        );
-        return (
-          estimatedInputTokens +
-          anthropicWebSearchFeeInputTokens(
-            request.webSearchMaxUses,
-            inputCost / estimatedInputTokens,
-          )
-        );
-      };
+      // Provider-run web searches are billed per use on top of tokens. Hold the
+      // worst case (maxUses searches); settlement charges the reported count.
+      const webSearchHoldCost = webSearchActive
+        ? calculateAnthropicWebSearchMaxCost(request.webSearchMaxUses)
+        : 0;
       if (options.appFundingActor) {
         const { totalCost } = await calculateCost(
           normalizedModel,
           provider,
-          await reservationInputTokens(),
+          estimatedInputTokens,
           estimatedOutputTokens,
           billingSource,
         );
@@ -1997,7 +1978,7 @@ export async function handleChatCompletionsPOST(
             billingSource,
             estimatedOutputTokens,
           }),
-          estimatedCostUsd: totalCost,
+          estimatedCostUsd: totalCost + webSearchHoldCost,
           revalidateDeveloperCredential: async () => {
             if (!apiKey)
               throw new Error("App infrastructure credential is unavailable");
@@ -2031,16 +2012,17 @@ export async function handleChatCompletionsPOST(
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {
         assertInferenceAppAffiliateSupported(appId, affiliateCode);
-        const { totalCost } = await calculateCost(
+        const { totalCost: tokenCost } = await calculateCost(
           normalizedModel,
           provider,
-          await reservationInputTokens(),
+          estimatedInputTokens,
           estimatedOutputTokens,
           billingSource,
           options.executionCtx
             ? { cacheOnly: true, executionCtx: options.executionCtx }
             : undefined,
         );
+        const totalCost = tokenCost + webSearchHoldCost;
         const metadata = {
           model,
           provider,
@@ -2089,6 +2071,27 @@ export async function handleChatCompletionsPOST(
             settleReservation?.(totalCost) ?? Promise.resolve(null);
         }
       } else {
+        // Organization admission prices a token-metered hold only from token
+        // counts (flatCost would drop the token buffer and change the admission
+        // path). Add the input tokens whose price covers the search hold.
+        let admissionInputTokens = estimatedInputTokens;
+        if (webSearchHoldCost > 0) {
+          const { inputCost } = await calculateCost(
+            normalizedModel,
+            provider,
+            estimatedInputTokens,
+            0,
+            billingSource,
+            options.executionCtx
+              ? { cacheOnly: true, executionCtx: options.executionCtx }
+              : undefined,
+          );
+          if (inputCost > 0) {
+            admissionInputTokens += Math.ceil(
+              (webSearchHoldCost * estimatedInputTokens) / inputCost,
+            );
+          }
+        }
         const admission = await admitOrganizationInference({
           context: {
             organizationId: user.organization_id,
@@ -2100,7 +2103,7 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             requestId,
           },
-          estimatedInputTokens: await reservationInputTokens(),
+          estimatedInputTokens: admissionInputTokens,
           estimatedOutputTokens,
           maximumInputTokens,
           maximumOutputTokens,
@@ -2657,7 +2660,6 @@ async function settleStreamingAbortReservation(params: {
         totalTokens,
         cacheReadInputTokens: finishedStepUsage?.cacheReadInputTokens,
         cacheWriteInputTokens: finishedStepUsage?.cacheWriteInputTokens,
-        webSearchRequests: finishedStepUsage?.webSearchRequests,
       },
       params.billingReservation,
     );
