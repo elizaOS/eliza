@@ -275,24 +275,20 @@ export function convertJsonSchemaToActionParams(
 
   for (const [name, prop] of Object.entries(properties)) {
     const types = propertyRuntimeTypes(prop);
-    // A union of several runtime types must stay pure: core rejects `default`,
-    // `enum` and `enumValues` beside an untyped `anyOf`, so the action would
-    // never register. Their values remain in the description.
-    const union = types.length > 1;
     params.push({
       name,
       description: buildDescription(name, prop),
       required: required.has(name),
-      schema: {
-        ...(union ? { anyOf: types.map((type) => ({ type })) } : { type: types[0] }),
-        ...(union
-          ? {}
-          : {
+      // Core rejects constraints beside an untyped `anyOf`; the description keeps them.
+      schema:
+        types.length === 1
+          ? {
+              type: types[0],
               default: prop.default,
               enum: prop.enum?.map((value) => String(value)),
               enumValues: prop.enum?.map((value) => String(value)),
-            }),
-      },
+            }
+          : { anyOf: types.map((type) => ({ type })) },
     });
   }
 
