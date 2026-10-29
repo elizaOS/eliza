@@ -9,6 +9,7 @@ import {
 import {
   articleMatchesNewsTopic,
   newsArticleEvidenceConflict,
+  newsRequestNamesNoTopic,
   ownArticleTitle,
   publisherArticlePublication,
   recentNewsArticlePublication,
@@ -60,7 +61,10 @@ export type SharedTypedRead =
 function typedPartRead(part: SharedPublicSearchPart, turnStartedAtMs: number): SharedTypedRead {
   const publicQuery = part.requirement.query;
   if (part.requirement.domain === "news")
-    return part.compound && part.requirement.publicationScope
+    return part.compound &&
+      part.requirement.publicationScope &&
+      (publicQuery !== "latest public news" ||
+        newsRequestNamesNoTopic(typedTemperatureEvidenceMessage(part.message)))
       ? { kind: "news", query: publicQuery }
       : { kind: "none" };
   if (!isTypedCurrentTemperaturePart(part)) return { kind: "none" };

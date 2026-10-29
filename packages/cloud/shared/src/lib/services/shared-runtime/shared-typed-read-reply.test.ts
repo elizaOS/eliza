@@ -633,6 +633,40 @@ describe("default-off owner-scoped typed public reads", () => {
         expect(planned?.remainingReadActionNames).toEqual(["WEB_SEARCH"]);
       }
     });
+
+    test("a news part whose topic the query lost gets no reader", () => {
+      // The topic-less query cannot check the topic, so any dated article would pass.
+      for (const news of [
+        "one top sports headline from today?",
+        "the top tech news today?",
+        "one top business news headline from today?",
+      ]) {
+        const turn = createSharedTypedReadTurn({
+          ...turnInput,
+          message: `what's the weather in Tokyo right now, and ${news}`,
+        });
+        expect(turn?.scope.parts[1]?.requirement.query).toBe("latest public news");
+        expect(turn?.reads.map((read) => read.kind)).toEqual(["world-weather", "none"]);
+        expect(turn?.authorizePublicSearch("latest public news")).toBeUndefined();
+        const planned = turn?.resolveTypedReadReply({
+          trajectory: emptyTrajectory,
+          nowMs: now,
+          admittedToolNames: ["WEB_SEARCH", "WEB_FETCH"],
+        });
+        const newsPart = planned?.policy.requirements[1];
+        expect(newsPart?.admittedFactIds).toEqual([]);
+        expect(newsPart?.unverifiedText).toBe(
+          "I couldn't verify a headline for the requested date.",
+        );
+        expect(planned?.remainingReadActionNames).toEqual(["WEB_FETCH"]);
+      }
+      // A topic that survives into the query keeps its reader and its topic check.
+      const kept = createSharedTypedReadTurn({
+        ...turnInput,
+        message: "what's the weather in Tokyo right now, and the latest tech news today?",
+      });
+      expect(kept?.reads[1]).toEqual({ kind: "news", query: "latest public tech news" });
+    });
   });
 
   test("typed origin dispatch cannot append private bytes or use unrelated public URLs", () => {

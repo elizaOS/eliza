@@ -81,6 +81,17 @@ export function ownArticleTitle(value: unknown, url: string): string | undefined
   return matches === 1 ? expected : undefined;
 }
 
+/**
+ * A topic-less news query checks no topic, so it may answer only a request that
+ * names none ("one top news headline from today"). "One top sports headline"
+ * also resolves to the topic-less query; its lost topic must not admit any article.
+ */
+export function newsRequestNamesNoTopic(message: string): boolean {
+  return /^(?:(?:what['’]?s|what\s+(?:is|are)|give\s+me|show\s+me|tell\s+me)\s+)?(?:(?:one|a|an|the|today['’]?s|top|latest|current|breaking)\s+)*(?:news\s+)?(?:news|headlines?)(?:\s+(?:(?:from|for)\s+)?today)?[\s.!?]*$/iu.test(
+    message.trim(),
+  );
+}
+
 /** Topic matching uses only the selected article body, excluding related-story navigation. */
 export function articleMatchesNewsTopic(
   own: { title: string; excerpts: string[] },
