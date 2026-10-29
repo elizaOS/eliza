@@ -333,6 +333,37 @@ export function wrapSingleTurnVisibleCallback(
           return [];
         }
       }
+      // Secret-swap egress, attachment form: the text redaction above never
+      // sees attachment.text, and voice paths ship the spoken sentence there
+      // under an empty top-level text. Apply the same policy to attachment
+      // text so a restored value cannot leak through the voice surface.
+      const secretSession = getTrajectoryContext()?.secretSwapSession;
+      if (
+        secretSession &&
+        Array.isArray(response.attachments) &&
+        response.attachments.length > 0
+      ) {
+        let changed = false;
+        const redactedAttachments = response.attachments.map((attachment) => {
+          if (
+            typeof attachment?.text !== "string" ||
+            attachment.text.length === 0
+          ) {
+            return attachment;
+          }
+          const redacted = secretSession.redactRestoredSecretValues(
+            attachment.text,
+          );
+          if (redacted !== attachment.text) {
+            changed = true;
+            return { ...attachment, text: redacted };
+          }
+          return attachment;
+        });
+        if (changed) {
+          response = { ...response, attachments: redactedAttachments };
+        }
+      }
     }
     response = await enforceEffectGroundedVisibleContent(
       fullRuntime,
