@@ -217,19 +217,24 @@ export class WorkflowIntentStore {
  * synchronous, so each edit is atomic within one window.
  */
 export function storageWorkflowIntentBackend(
-  storage: Pick<Storage, "getItem" | "setItem" | "removeItem" | "key"> & {
-    readonly length: number;
-  },
+  storage: Pick<Storage, "getItem" | "setItem" | "removeItem">,
   ownerPrefix: string,
+  /** Every stored key; defaults to `Storage.length`/`Storage.key`. */
+  keys: () => string[] = () => {
+    const all: string[] = [];
+    const indexed = storage as Partial<Pick<Storage, "key" | "length">>;
+    for (let index = 0; index < (indexed.length ?? 0); index++) {
+      const key = indexed.key?.(index);
+      if (typeof key === "string") all.push(key);
+    }
+    return all;
+  },
 ): WorkflowIntentBackend {
   const snapshot = (): WorkflowIntentArchive => {
     const entries: Record<string, string> = {};
-    const keys: string[] = [];
-    for (let index = 0; index < storage.length; index++) {
-      const key = storage.key(index);
-      if (key?.startsWith(ownerPrefix)) keys.push(key);
-    }
-    for (const key of keys.sort()) {
+    for (const key of keys()
+      .filter((key) => key.startsWith(ownerPrefix))
+      .sort()) {
       const raw = storage.getItem(key);
       if (raw !== null) entries[key] = raw;
     }
