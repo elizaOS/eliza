@@ -26,13 +26,4 @@ public final class NoticeIds {
  /** Forgets every key not in current. */
  public void retain(Collection<String> current){ids.keySet().retainAll(current);}
  public void clear(){ids.clear();}
- /** A renderer-visible value bounded to limit UTF-16 units; null is the empty string. */
- public static String bounded(CharSequence text,int limit){
-  String value=text==null?"":text.toString();
-  if(value.length()<=limit)return value;
-  if(limit<1)return "";
-  // Do not split a surrogate pair at the bound.
-  int end=Character.isHighSurrogate(value.charAt(limit-1))?limit-1:limit;
-  return value.substring(0,end);
- }
 }

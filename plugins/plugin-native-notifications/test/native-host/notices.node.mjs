@@ -76,7 +76,7 @@ test("host notice routes, owner fence, approval coordination, journal recovery, 
   }
 });
 
-test("host plugin identifiers, bounds and bounded notice worker", (t) => {
+test("host plugin identifiers and bounded notice worker", (t) => {
   const classes = fs.mkdtempSync(path.join(os.tmpdir(), "notice-ids-"));
   t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
   /** @param {string} name */

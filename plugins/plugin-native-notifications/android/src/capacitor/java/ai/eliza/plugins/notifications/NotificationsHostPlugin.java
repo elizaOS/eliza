@@ -50,8 +50,6 @@ import org.json.JSONObject;
 public abstract class NotificationsHostPlugin extends Plugin {
  /** Renderer event: a workflow notice tap was captured or settled; read {@code pendingWorkflowTap}. */
  public static final String PENDING_WORKFLOW_TAP_EVENT="pendingWorkflowTap";
- /** Bound on rows returned by {@code list} and items accepted by {@code clear}. */
- public static final int MAX_ROWS=100;
  /** One worker per process: notice storage writes keep one order across plugin instances. */
  private static final NoticeWorker NOTICE_IO=new NoticeWorker();
 
@@ -166,8 +164,8 @@ public abstract class NotificationsHostPlugin extends Plugin {
    if(!expected.equals(n.getChannelId())||n.visibility==Notification.VISIBILITY_SECRET)return;
    String identity=ids.id(identity(row));
    pending.put("notice",new JSONObject().put("id",identity).put("revision",identity).put("source","own").put("appLabel",appLabel())
-    .put("title",NoticeIds.bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),200))
-    .put("text",NoticeIds.bounded(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,n.extras.getCharSequence(Notification.EXTRA_TEXT)),2000)));
+    .put("title",NotificationMirrorPolicy.bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),NotificationMirrorPolicy.TITLE_LIMIT))
+    .put("text",NotificationMirrorPolicy.bounded(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,n.extras.getCharSequence(Notification.EXTRA_TEXT)),NotificationMirrorPolicy.TEXT_LIMIT)));
    return;
   }
  }
@@ -198,7 +196,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
   out.put("interruption",interruption(manager.getCurrentInterruptionFilter()));
   for(NotificationChannel channel:manager.getNotificationChannels()){
    String key=channel.getId();current.add(key);JSObject row=new JSObject();
-   row.put("id",channels.id(key));row.put("name",NoticeIds.bounded(channel.getName(),120));row.put("importance",channel.getImportance());row.put("blocked",channel.getImportance()==NotificationManager.IMPORTANCE_NONE);
+   row.put("id",channels.id(key));row.put("name",NotificationMirrorPolicy.bounded(channel.getName(),NotificationMirrorPolicy.LABEL_LIMIT));row.put("importance",channel.getImportance());row.put("blocked",channel.getImportance()==NotificationManager.IMPORTANCE_NONE);
    NotificationChannelGroup group=channel.getGroup()==null?null:manager.getNotificationChannelGroup(channel.getGroup());row.put("groupBlocked",group!=null&&group.isBlocked());values.put(row);
   }
   channels.retain(current);out.put("channels",values);out.put("scope",scope());call.resolve(out);
@@ -231,21 +229,21 @@ public abstract class NotificationsHostPlugin extends Plugin {
  @PluginMethod public void notificationHistory(PluginCall call){try{foreground();JSObject out=new JSObject();out.put("items",new JSArray(requireMirror().history(getContext()).toString()));call.resolve(out);}catch(Exception failure){call.reject("Local notification history is unavailable");}}
  @PluginMethod public void clearNotificationHistory(PluginCall call){try{foreground();requireMirror().clearHistoryBoundary(getContext());call.resolve();}catch(Exception failure){call.reject("Local notification history could not be cleared");}}
 
- /** Own rows (newest first) then allowed cross-app rows, at most {@link #MAX_ROWS}. */
+ /** Own rows (newest first), then allowed cross-app rows. Every row is returned. */
  @PluginMethod public void list(PluginCall call){try{
   JSArray items=new JSArray();Set<String> current=new HashSet<>();boolean locked=locked();String label=appLabel();
   StatusBarNotification[] rows=manager().getActiveNotifications();Arrays.sort(rows,Comparator.comparingLong(StatusBarNotification::getPostTime).reversed());
   for(StatusBarNotification row:rows){
-   current.add(identity(row));if(items.length()>=MAX_ROWS)continue;Notification n=row.getNotification();JSObject item=new JSObject();
+   current.add(identity(row));Notification n=row.getNotification();JSObject item=new JSObject();
    boolean hidden=locked||n.visibility==Notification.VISIBILITY_SECRET;String id=ids.id(identity(row));
    item.put("id",id);item.put("revision",id);item.put("source","own");item.put("kind",noticeKind(n.getChannelId()));item.put("appLabel",label);
-   item.put("title",hidden?label+" notification":NoticeIds.bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),200));
-   item.put("text",hidden?(locked?"Unlock to view":"Content hidden"):NoticeIds.bounded(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,n.extras.getCharSequence(Notification.EXTRA_TEXT)),2000));
+   item.put("title",hidden?label+" notification":NotificationMirrorPolicy.bounded(n.extras.getCharSequence(Notification.EXTRA_TITLE),NotificationMirrorPolicy.TITLE_LIMIT));
+   item.put("text",hidden?(locked?"Unlock to view":"Content hidden"):NotificationMirrorPolicy.bounded(n.extras.getCharSequence(Notification.EXTRA_BIG_TEXT,n.extras.getCharSequence(Notification.EXTRA_TEXT)),NotificationMirrorPolicy.TEXT_LIMIT));
    item.put("at",row.getPostTime());item.put("clearable",row.isClearable());item.put("canOpen",!hidden&&n.contentIntent!=null);items.put(item);
   }
   ids.retain(current);
   NotificationMirror mirror=mirror();
-  if(mirror!=null){JSONArray external=mirror.list(getContext());for(int i=0;i<external.length()&&items.length()<MAX_ROWS;i++)items.put(external.get(i));}
+  if(mirror!=null){JSONArray external=mirror.list(getContext());for(int i=0;i<external.length();i++)items.put(external.get(i));}
   JSObject result=new JSObject();result.put("items",items);result.put("scope",scope());call.resolve(result);
  }catch(Exception error){call.reject("Notifications could not be read");}}
  @PluginMethod public void open(PluginCall call){try{
@@ -266,7 +264,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
   manager().cancel(row.getTag(),row.getId());call.resolve();
  }catch(Exception error){call.reject("Notification could not be dismissed");}}
  @PluginMethod public void clear(PluginCall call){try{
-  foreground();JSONArray items=call.getArray("items");if(items==null||items.length()>MAX_ROWS)throw new IllegalArgumentException();
+  foreground();JSONArray items=call.getArray("items");if(items==null)throw new IllegalArgumentException();
   JSArray outcomes=new JSArray();
   for(int i=0;i<items.length();i++){
    JSONObject item=items.getJSONObject(i);JSObject outcome=new JSObject();outcome.put("id",item.getString("id"));

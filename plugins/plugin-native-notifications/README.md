@@ -81,7 +81,7 @@ still-posted own notice on its expected channel, never from a secret one. Row id
 opaque (`NoticeIds`) and are forgotten on pause, when the mirror is also redacted.
 
 `test/native-host/android-compile.node.mjs` compiles it against the SDK platform and a minimal
-Capacitor surface; `NoticeIdsTest` covers identifiers, bounds and the worker on the JVM. Neither
+Capacitor surface; `NoticeIdsTest` covers identifiers and the worker on the JVM. Neither
 is device evidence.
 
 ## Host notification receipts

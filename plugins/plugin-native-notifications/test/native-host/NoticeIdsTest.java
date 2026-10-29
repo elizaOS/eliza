@@ -7,7 +7,7 @@ import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
-/** JVM checks of the host plugin's opaque identifiers, bounds and bounded notice worker. No Android framework. */
+/** JVM checks of the host plugin's opaque identifiers and bounded notice worker. No Android framework. */
 public final class NoticeIdsTest {
  private static int checks;
  private static void check(boolean value){checks++;if(!value)throw new AssertionError("Check "+checks);}
@@ -27,14 +27,6 @@ public final class NoticeIdsTest {
   // Pause invalidates every identifier the renderer holds.
   ids.clear();check(ids.key(other)==null);check(!ids.names(other,"key-b\n2"));
 
-  check(NoticeIds.bounded(null,5).isEmpty());
-  check(NoticeIds.bounded("abc",5).equals("abc"));
-  check(NoticeIds.bounded("abcdef",5).equals("abcde"));
-  // A surrogate pair straddling the bound is dropped whole, never split.
-  String emoji="abcd😀";
-  check(NoticeIds.bounded(emoji,5).equals("abcd"));
-  check(NoticeIds.bounded(emoji,6).equals(emoji));
-  check(NoticeIds.bounded("abc",0).isEmpty());check(NoticeIds.bounded("",0).isEmpty());
 
   try{new NoticeWorker(0,"x");check(false);}catch(IllegalArgumentException expected){check(true);}
   try{new NoticeWorker(1," ");check(false);}catch(IllegalArgumentException expected){check(true);}
