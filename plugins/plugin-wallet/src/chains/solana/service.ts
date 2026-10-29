@@ -2628,10 +2628,10 @@ export class SolanaService extends Service {
 
         await this.connection.confirmTransaction(txid, "finalized");
 
-        const txDetails = await this.connection.getTransaction(txid, {
-          commitment: "confirmed",
-          maxSupportedTransactionVersion: 0,
-        });
+        // Raw getTransaction with bound 1. Connection.getTransaction on
+        // @solana/web3.js 1.98.4 still rejects v1 client-side even when the
+        // maxSupportedTransactionVersion param is 1 (same class as #38116).
+        const txDetails = await this.fetchSwapEnrichmentTransaction(txid);
 
         let outAmount = initialQuote.outAmount;
 
@@ -2701,6 +2701,78 @@ export class SolanaService extends Service {
     }
 
     return swapResponses;
+  }
+
+  /**
+   * Fetches a confirmed Solana swap transaction for out-amount / fee
+   * enrichment without going through Connection.getTransaction. Posts
+   * getTransaction with maxSupportedTransactionVersion: 1 so versioned
+   * (v0/v1) swaps are readable, and reads only fee + token-balance meta.
+   * Leaves @solana/web3.js pinned at 1.98.4 (no codecs major bump). Same
+   * pattern as the cloud deposit verifier in #38116.
+   */
+  private async fetchSwapEnrichmentTransaction(txid: string): Promise<{
+    meta: {
+      err: unknown;
+      fee?: number | null;
+      preTokenBalances?: Array<{
+        mint: string;
+        owner?: string;
+        uiTokenAmount: { amount: string; decimals?: number };
+      }> | null;
+      postTokenBalances?: Array<{
+        mint: string;
+        owner?: string;
+        uiTokenAmount: { amount: string; decimals?: number };
+      }> | null;
+    } | null;
+  } | null> {
+    const response = await fetch(this.connection.rpcEndpoint, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getTransaction",
+        params: [
+          txid,
+          {
+            encoding: "jsonParsed",
+            commitment: "confirmed",
+            // Accept legacy, v0, and v1. Bound 0 rejects v1 with RPC -32015.
+            maxSupportedTransactionVersion: 1,
+          },
+        ],
+      }),
+    });
+    if (!response.ok) {
+      throw new Error(`Solana RPC HTTP ${response.status}`);
+    }
+    const payload = (await response.json()) as {
+      error?: { code?: number; message?: string };
+      result?: {
+        meta: {
+          err: unknown;
+          fee?: number | null;
+          preTokenBalances?: Array<{
+            mint: string;
+            owner?: string;
+            uiTokenAmount: { amount: string; decimals?: number };
+          }> | null;
+          postTokenBalances?: Array<{
+            mint: string;
+            owner?: string;
+            uiTokenAmount: { amount: string; decimals?: number };
+          }> | null;
+        } | null;
+      } | null;
+    };
+    if (payload.error) {
+      throw new Error(
+        payload.error.message ?? `Solana RPC error ${payload.error.code ?? "unknown"}`
+      );
+    }
+    return payload.result ?? null;
   }
 
   static async start(runtime: IAgentRuntime): Promise<Service> {
