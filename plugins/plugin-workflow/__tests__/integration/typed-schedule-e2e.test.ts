@@ -281,8 +281,9 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
       await expect(embedded!.startWorkflow(id, { mode: 'trigger', triggerData })).rejects.toThrow();
 
     // A reviewed local time that a spring-forward transition skipped (02:30 on
-    // 2026-03-08 in America/New_York) never fires; the next occurrence records it
-    // once as missed, with the skipped local time, and runs nothing for it.
+    // 2026-03-08 in America/New_York) is fired by the durable scheduler one gap
+    // later (03:30 EDT); admission records it once as missed, with the skipped
+    // local time, and runs nothing for it.
     const dstTrigger = {
       kind: 'time',
       localTime: '02:30',
@@ -302,19 +303,10 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
         expectedVersionId: dstSaved.versionId,
       })
     ).body.versionId;
-    // Armed before the transition.
-    await (runtime.db as any)
-      .update(schema.embeddedWorkflows)
-      .set({ updatedAt: '2026-03-01T00:00:00.000Z' })
-      .where((await import('drizzle-orm')).eq(schema.embeddedWorkflows.id, dstSaved.workflowId));
-    const afterGap = Date.parse('2026-03-09T06:30:00Z');
+    const shifted = Date.parse('2026-03-08T07:30:00Z');
     const dstRun = await embedded!.startWorkflow(dstSaved.workflowId, {
       mode: 'trigger',
-      triggerData: { scheduledAtMs: afterGap, workflowVersionId: dstVersion },
-    });
-    expect(dstRun.output).toMatchObject({
-      status: 'missed',
-      scheduledAt: '2026-03-09T06:30:00.000Z',
+      triggerData: { scheduledAtMs: shifted, workflowVersionId: dstVersion },
     });
     const dstRecords = async () =>
       (
@@ -327,8 +319,7 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
             ).eq(schema.embeddedExecutions.workflowId, dstSaved.workflowId)
           )
       ).map((row: any) => row.execution);
-    const skippedRun = (await dstRecords()).find((e: any) => e.id !== dstRun.id);
-    expect(skippedRun).toMatchObject({
+    expect(dstRun).toMatchObject({
       status: 'finished',
       finished: true,
       workflowVersionId: dstVersion,
@@ -342,19 +333,23 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
           scheduledAt: '2026-03-08T07:30:00.000Z',
           trigger: dstTrigger,
           status: 'missed',
+          skippedLocalTime: '2026-03-08T02:30',
         },
       },
     });
-    // Re-delivering either occurrence records nothing more.
+    // Re-delivering the occurrence records nothing more; the next day's 02:30
+    // existed and is recorded on its own (late here, so missed without a skipped time).
     await embedded!.startWorkflow(dstSaved.workflowId, {
       mode: 'trigger',
-      triggerData: { scheduledAtMs: afterGap, workflowVersionId: dstVersion },
+      triggerData: { scheduledAtMs: shifted, workflowVersionId: dstVersion },
     });
-    await embedded!.startWorkflow(dstSaved.workflowId, {
+    const nextDay = await embedded!.startWorkflow(dstSaved.workflowId, {
       mode: 'trigger',
-      triggerData: { scheduledAtMs: afterGap + 86_400_000, workflowVersionId: dstVersion },
+      triggerData: { scheduledAtMs: Date.parse('2026-03-09T06:30:00Z'), workflowVersionId: dstVersion },
     });
-    expect(await dstRecords()).toHaveLength(3);
+    expect(nextDay.output).toMatchObject({ status: 'missed', scheduledAt: '2026-03-09T06:30:00.000Z' });
+    expect((nextDay.output as any).skippedLocalTime).toBeUndefined();
+    expect(await dstRecords()).toHaveLength(2);
     await call(`/workflows/${dstSaved.workflowId}/deactivate`, { expectedVersionId: dstVersion });
 
     // An occurrence never stacks behind a run that is still active.
