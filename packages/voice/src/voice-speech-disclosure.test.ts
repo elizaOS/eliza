@@ -54,9 +54,10 @@ describe("speech disclosure table", () => {
     expect(rows.find((row) => row.route === "local-stt")?.text).toBe(
       "Your voice is transcribed on this phone. Audio is not sent.",
     );
-    expect(
-      speechDisclosures({ serviceName: "bad\nname", deviceNoun: "" })[1]?.text,
-    ).toContain("sent to Eliza Cloud");
+    expect(() => speechDisclosures({ serviceName: "bad\nname" })).toThrow(
+      TypeError,
+    );
+    expect(() => speechDisclosures({ deviceNoun: " " })).toThrow(TypeError);
     expect(Object.isFrozen(SPEECH_DISCLOSURES)).toBe(true);
     expect(Object.isFrozen(SPEECH_DISCLOSURES[1])).toBe(true);
     expect(Object.isFrozen(SPEECH_DISCLOSURES[1]?.sends)).toBe(true);

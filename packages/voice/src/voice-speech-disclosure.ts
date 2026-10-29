@@ -72,12 +72,16 @@ const ALL_KINDS: readonly SpeechDataKind[] = [
 const without = (sends: readonly SpeechDataKind[]) =>
   Object.freeze(ALL_KINDS.filter((kind) => !sends.includes(kind)));
 
+/** A product name for the copy. A name that is not one line of text throws: the copy must never name another service. */
 function oneLine(value: string | undefined, fallback: string): string {
-  if (typeof value !== "string") return fallback;
+  if (value === undefined) return fallback;
+  const text = typeof value === "string" ? value.trim() : "";
   // biome-ignore lint/suspicious/noControlCharactersInRegex: copy must not carry control characters.
-  if (/[\x00-\x1f\x7f]/.test(value)) return fallback;
-  const text = value.trim();
-  return text && text.length <= 60 ? text : fallback;
+  if (!text || /[\x00-\x1f\x7f]/.test(text))
+    throw new TypeError(
+      `Speech disclosure name must be one line of text: ${JSON.stringify(value)}`,
+    );
+  return text;
 }
 
 /** The disclosure table with the given names. Rows are frozen and in a fixed order. */
