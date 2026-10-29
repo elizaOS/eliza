@@ -38,7 +38,7 @@ test("a dial operation is exact and closed", () => {
     { type: "phone_dial", target: { kind: "number", number: "5", extra: 1 } },
     { type: "phone_dial", target: { kind: "contact", query: "" } },
     { type: "phone_dial", target: { kind: "contact", query: " Ada" } },
-    { type: "phone_dial", target: { kind: "contact", query: "A‮da" } },
+    { type: "phone_dial", target: { kind: "contact", query: "A\u202eda" } },
     { type: "phone_dial", target: { kind: "contact", query: "x".repeat(129) } },
     { type: "phone_dial", target: { kind: "voicemail" } },
     {
