@@ -1065,11 +1065,7 @@ export class DeviceActionCoordinator<
     )
       return true;
     if (!proof || proof.messageId !== proposal.requestMessageId) return false;
-    try {
-      proof.current();
-    } catch {
-      return false;
-    }
+    proof.current();
     const key = JSON.stringify([
       this.requestKey(proof.messageId),
       proposal.digest,
@@ -1558,6 +1554,12 @@ export class DeviceActionCoordinator<
         this.options.currentRequestBrowserPolicy &&
         entry.proposal.operation.type === "browser_navigate";
       const requestKey = this.requestKey(messageId);
+      if (
+        browser &&
+        proof?.messageId === messageId &&
+        entry.requestKey === requestKey
+      )
+        signal.throwIfAborted();
       if (
         browser &&
         (!proof ||
