@@ -227,6 +227,8 @@ export async function handleGuildCreate(
 		service.runtime.reportError("discord:emit-event", emitError, {
 			accountId: service.accountId ?? "default",
 			events: DiscordEventTypes.WORLD_JOINED,
+			guildId: fullGuild.id,
+			guildName: fullGuild.name,
 		});
 	}
 
@@ -236,6 +238,8 @@ export async function handleGuildCreate(
 		service.runtime.reportError("discord:emit-event", emitError, {
 			accountId: service.accountId ?? "default",
 			events: EventType.WORLD_JOINED,
+			guildId: fullGuild.id,
+			guildName: fullGuild.name,
 		});
 	}
 }

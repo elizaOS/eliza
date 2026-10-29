@@ -71,13 +71,21 @@ describe("Discord guild join listener failures", () => {
 			1,
 			"discord:emit-event",
 			expect.any(Error),
-			expect.objectContaining({ accountId: "default" }),
+			expect.objectContaining({
+				accountId: "default",
+				guildId: "g1",
+				guildName: "Guild",
+			}),
 		);
 		expect(runtime.reportError).toHaveBeenNthCalledWith(
 			2,
 			"discord:emit-event",
 			expect.any(Error),
-			expect.objectContaining({ accountId: "default" }),
+			expect.objectContaining({
+				accountId: "default",
+				guildId: "g1",
+				guildName: "Guild",
+			}),
 		);
 	});
 });
