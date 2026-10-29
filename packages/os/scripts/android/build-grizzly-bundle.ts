@@ -296,7 +296,7 @@ export function assertApkProvenanceEntries(entries) {
   );
   if (missing.length > 0) {
     fail(
-      `privileged APK must contain each provenance entry exactly once: ${missing.join(", ")}`,
+      `launcher APK must contain each provenance entry exactly once: ${missing.join(", ")}`,
     );
   }
   return [...REQUIRED_APK_PROVENANCE];
@@ -577,7 +577,7 @@ function verifyApkProvenance(apk, apkEntries, elizaCommit, scratchDir) {
     readApkProvenance(apk, entry),
   );
   if (runtime.parsed?.schema !== "eliza.android_agent_runtime_provenance.v1") {
-    fail("privileged APK runtime provenance has an unsupported schema");
+    fail("launcher APK runtime provenance has an unsupported schema");
   }
   if (
     build.parsed?.schema !== "eliza.aosp_build_provenance.v1" ||
@@ -588,7 +588,7 @@ function verifyApkProvenance(apk, apkEntries, elizaCommit, scratchDir) {
     !identicalSnapshot(build.parsed.runtime_provenance, runtime.parsed)
   ) {
     fail(
-      "privileged APK build provenance does not bind the Eliza commit, package, and embedded runtime provenance",
+      "launcher APK build provenance does not bind the Eliza commit, package, and embedded runtime provenance",
     );
   }
   if (
@@ -596,7 +596,7 @@ function verifyApkProvenance(apk, apkEntries, elizaCommit, scratchDir) {
     runtime.parsed.files.length === 0 ||
     runtime.parsed.files.length > 10_000
   ) {
-    fail("privileged APK runtime provenance must contain a bounded file set");
+    fail("launcher APK runtime provenance must contain a bounded file set");
   }
   const seen = new Set();
   for (const [index, file] of runtime.parsed.files.entries()) {
@@ -612,7 +612,7 @@ function verifyApkProvenance(apk, apkEntries, elizaCommit, scratchDir) {
       seen.has(file.path) ||
       apkEntries.filter((entry) => entry === file.path).length !== 1
     ) {
-      fail("privileged APK runtime provenance contains an invalid file entry");
+      fail("launcher APK runtime provenance contains an invalid file entry");
     }
     seen.add(file.path);
     const extracted = path.join(scratchDir, `.apk-provenance-entry-${index}`);
@@ -623,7 +623,7 @@ function verifyApkProvenance(apk, apkEntries, elizaCommit, scratchDir) {
         evidence.sha256 !== file.sha256
       ) {
         fail(
-          `privileged APK runtime file does not match provenance: ${file.path}`,
+          `launcher APK runtime file does not match provenance: ${file.path}`,
         );
       }
     } finally {
@@ -639,7 +639,7 @@ function verifyApkProvenance(apk, apkEntries, elizaCommit, scratchDir) {
   );
   if (unboundAgentAssets.length > 0) {
     fail(
-      `privileged APK contains agent assets outside runtime provenance: ${unboundAgentAssets.join(", ")}`,
+      `launcher APK contains agent assets outside runtime provenance: ${unboundAgentAssets.join(", ")}`,
     );
   }
   return [runtime, build].map(({ entry, parsed, sha256 }) => ({
@@ -653,6 +653,57 @@ function certificateSha256(pemPath) {
   return new X509Certificate(readStableFile(pemPath)).fingerprint256
     .replaceAll(":", "")
     .toLowerCase();
+}
+
+/** Product-relative install path of the nonprivileged Eliza launcher. */
+export const LAUNCHER_INSTALL_PATH = "product/app/Eliza/Eliza.apk";
+
+/** The hash and signer pinned when vendor/eliza/launcher was staged. */
+export function readLauncherPin(aospRoot) {
+  const file = path.join(aospRoot, "vendor/eliza/launcher/launcher.json");
+  let pin: {
+    packageName?: string;
+    apkSha256?: string;
+    certificateSha256?: string;
+    partition?: string;
+  };
+  try {
+    pin = JSON.parse(readStableFile(file).toString("utf8"));
+  } catch {
+    fail("vendor/eliza/launcher/launcher.json is missing or unreadable");
+  }
+  if (
+    pin?.packageName !== "ai.elizaos.app" ||
+    !/^[a-f0-9]{64}$/.test(pin?.apkSha256 ?? "") ||
+    !/^[a-f0-9]{64}$/.test(pin?.certificateSha256 ?? "") ||
+    (pin.partition ?? "product") !== "product"
+  ) {
+    fail(
+      "staged launcher pin is not a product-partition ai.elizaos.app launcher",
+    );
+  }
+  return pin;
+}
+
+/**
+ * The built launcher keeps its pinned bytes and signer. The AOSP platform
+ * certificate would make it a platform app again, so it is refused.
+ */
+export function assertLauncherSigner({
+  certificateSha256: actual,
+  apkSha256,
+  pin,
+  platformCertificateSha256,
+}) {
+  if (actual === platformCertificateSha256) {
+    fail("launcher APK must not be signed by the AOSP platform certificate");
+  }
+  if (actual !== pin.certificateSha256) {
+    fail("launcher APK signer differs from the staged launcher pin");
+  }
+  if (apkSha256 !== pin.apkSha256) {
+    fail("launcher APK bytes differ from the staged launcher pin");
+  }
 }
 
 export function apkSignerSha256(receipt) {
@@ -1819,13 +1870,12 @@ export function main(argv = process.argv.slice(2)) {
       lock,
     });
 
-    const apk = path.join(productOut, "system/priv-app/Eliza/Eliza.apk");
+    // The nonprivileged-launcher profile: a presigned product app whose bytes
+    // and signer were pinned when vendor/eliza/launcher was staged.
+    const apk = path.join(productOut, LAUNCHER_INSTALL_PATH);
     const stagedApk = path.join(evidenceDir, "Eliza.apk");
-    const apkBefore = copyVerifiedFile(
-      apk,
-      stagedApk,
-      "platform privileged Eliza APK",
-    );
+    const apkBefore = copyVerifiedFile(apk, stagedApk, "Eliza launcher APK");
+    const launcherPin = readLauncherPin(args.aospRoot);
     const avbtool = path.join(hostBin, "avbtool");
     const apksigner = path.join(hostBin, "apksigner");
     const aapt2 = path.join(hostBin, "aapt2");
@@ -1855,7 +1905,7 @@ export function main(argv = process.argv.slice(2)) {
       capture: true,
     });
     if (!/^package: name='ai\.elizaos\.app'(?:\s|$)/m.test(apkBadgingReceipt)) {
-      fail("privileged APK package name is not ai.elizaos.app");
+      fail("launcher APK package name is not ai.elizaos.app");
     }
     const platformCertificate = path.join(
       args.aospRoot,
@@ -1864,18 +1914,18 @@ export function main(argv = process.argv.slice(2)) {
     const expectedPlatformCertificateSha256 =
       certificateSha256(platformCertificate);
     const apkCertificateSha256 = apkSignerSha256(apkSignatureReceipt);
-    if (apkCertificateSha256 !== expectedPlatformCertificateSha256) {
-      fail(
-        "privileged APK is not signed by the checked-out AOSP platform certificate",
-      );
-    }
+    assertLauncherSigner({
+      certificateSha256: apkCertificateSha256,
+      apkSha256: apkBefore.sha256,
+      pin: launcherPin,
+      platformCertificateSha256: expectedPlatformCertificateSha256,
+    });
     const apkAfter = {
-      sizeBytes: assertRegularFile(stagedApk, "staged privileged Eliza APK")
-        .size,
+      sizeBytes: assertRegularFile(stagedApk, "staged Eliza launcher APK").size,
       sha256: sha256File(stagedApk),
     };
     if (!identicalSnapshot(apkBefore, apkAfter)) {
-      fail("privileged APK changed while provenance was being verified");
+      fail("launcher APK changed while provenance was being verified");
     }
 
     const androidInfo = readStableFile(
@@ -2029,8 +2079,9 @@ export function main(argv = process.argv.slice(2)) {
         generatedVendorSha256: before.generatedVendorSha256,
         elizaVendorSha256: before.elizaVendorSha256,
       },
-      privilegedApk: {
-        path: "system/priv-app/Eliza/Eliza.apk",
+      launcherApk: {
+        path: LAUNCHER_INSTALL_PATH,
+        privileged: false,
         retainedPath: "host-validation/Eliza.apk",
         ...apkAfter,
         packageName: "ai.elizaos.app",
@@ -2100,11 +2151,11 @@ export function main(argv = process.argv.slice(2)) {
     }
     if (
       !identicalSnapshot(apkBefore, {
-        sizeBytes: assertRegularFile(apk, "platform privileged Eliza APK").size,
+        sizeBytes: assertRegularFile(apk, "Eliza launcher APK").size,
         sha256: sha256File(apk),
       })
     ) {
-      fail("privileged APK changed while the bundle was being produced");
+      fail("launcher APK changed while the bundle was being produced");
     }
     assertPrivateBundleTree(staging);
     if (fs.existsSync(args.outputDir)) {

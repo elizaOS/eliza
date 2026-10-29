@@ -14,7 +14,7 @@ import test from "node:test";
 test("staged ELF checks reject inspection failures and malformed load alignment", (t) => {
   const root = mkdtempSync(join(tmpdir(), "aosp-elf-alignment-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const library = join(root, "product/system/priv-app/Eliza/lib/libfixture.so");
+  const library = join(root, "product/product/app/Eliza/lib/libfixture.so");
   mkdirSync(dirname(library), { recursive: true });
   writeFileSync(library, "fixture");
   const readelf = join(
@@ -39,6 +39,10 @@ test("staged ELF checks reject inspection failures and malformed load alignment"
       { encoding: "utf8", timeout: 5000 },
     );
   assert.notEqual(run().status, 0, "missing readelf must fail");
+  const privileged = join(root, "product/system/priv-app/Eliza");
+  mkdirSync(privileged, { recursive: true });
+  assert.match(run().stderr, /must not be staged as a priv-app/);
+  rmSync(privileged, { recursive: true });
   for (const [output, status, expected] of [
     ["LOAD 0x0 0x0 0x0 0x100 0x100 R E 0x4000", 0, 0],
     ["LOAD 0x0 0x0 0x0 0x100 0x100 R E 0x1000", 0, 1],

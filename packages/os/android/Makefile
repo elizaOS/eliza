@@ -110,10 +110,10 @@ provision-e1:
 	node "$(DISTRO)/provision-cuttlefish-e1.ts" --lock "$(HERE)cuttlefish-e1.lock.json" --aosp-root "$(AOSP_ROOT)"
 
 build: check-arch native-inference
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" $(if $(filter riscv64,$(ARCH)),,ELIZA_BUN_RISCV64_OPTIONAL=1) node "$(DISTRO)/build-aosp.ts" --brand-config "$(BRAND_CONFIG)" --aosp-root "$(AOSP_ROOT)" --rebuild-privileged-apk --launch --boot-validate $(ARGS)
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" $(if $(filter riscv64,$(ARCH)),,ELIZA_BUN_RISCV64_OPTIONAL=1) node "$(DISTRO)/build-aosp.ts" --brand-config "$(BRAND_CONFIG)" --aosp-root "$(AOSP_ROOT)" --rebuild-launcher-apk --launch --boot-validate $(ARGS)
 
 build-e1: check-arch native-inference provision-e1
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-riscv64-e1.json" --aosp-root "$(AOSP_ROOT)" --rebuild-privileged-apk --launch --boot-validate $(ARGS)
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-riscv64-e1.json" --aosp-root "$(AOSP_ROOT)" --rebuild-launcher-apk --launch --boot-validate $(ARGS)
 
 native-inference: check-arch
 	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/aosp/compile-libllama.ts --assets-dir "$(ANDROID_AGENT_ASSETS)" $(foreach target,$(INFERENCE_TARGETS),--target $(target))
@@ -124,14 +124,14 @@ native-inference-grizzly:
 	cd "$(ELIZAOS_ELIZA_ROOT)" && node packages/app/scripts/stage-elizavoice-lib.ts --abi arm64-v8a --variant cpu
 
 build-grizzly: prepare-grizzly native-inference-grizzly bootanimation
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-grizzly.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-privileged-apk $(ARGS)
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-grizzly.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-launcher-apk $(ARGS)
 
 ifneq ($(filter bundle-grizzly,$(MAKECMDGOALS)),)
 prepare-grizzly native-inference-grizzly splash: | preflight-grizzly
 endif
 
 bundle-grizzly: preflight-grizzly prepare-grizzly native-inference-grizzly bootanimation
-	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-grizzly.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-privileged-apk --skip-build $(ARGS)
+	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" ELIZA_BUN_RISCV64_OPTIONAL=1 node "$(DISTRO)/build-aosp.ts" --brand-config "$(DISTRO)/brand.eliza-grizzly.json" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --rebuild-launcher-apk --skip-build $(ARGS)
 	ELIZAOS_ELIZA_ROOT="$(ELIZAOS_ELIZA_ROOT)" node "$(REPO_ROOT)/scripts/android/build-grizzly-bundle.ts" --aosp-root "$(AOSP_GRIZZLY_ROOT)" --output-dir "$(BUNDLE_DIR)" --jobs $(or $(JOBS),$(shell getconf _NPROCESSORS_ONLN 2>/dev/null || echo 1))
 
 evidence-grizzly:

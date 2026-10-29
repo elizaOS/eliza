@@ -5,12 +5,15 @@
  * Brand-aware. Reads brand config (package name, app name, classPrefix,
  * envPrefix, productName) and runs a series of adb checks:
  *   - Boot properties (ro.<envPrefix>.product, <envPrefix>.boot_phase, …)
- *   - Package install path (/system/priv-app/<AppName>/)
- *   - HOME / DIALER / SMS / ASSISTANT role holders == brand package
- *   - Replacement intent resolutions for stripped stock apps
- *   - Forbidden stock packages absent
- *   - Granted permissions and appops
+ *   - Nonprivileged launcher install path (/product/app/<AppName>/ or, on a
+ *     system-only GSI, /system/app/<AppName>/), SYSTEM and not PRIVILEGED
+ *   - HOME and ASSISTANT role holders == brand package; HOME resolves to it
+ *   - A stock system HOME remains installed as the recovery path
+ *   - The reviewed first-boot grants are granted; no privileged permission is
  *   - Logcat scrubbed for brand-introduced FATAL / SecurityException / avc denied
+ *
+ * Dialer and SMS are not preassigned by the nonprivileged-launcher profile, so
+ * their holders are recorded but not required.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -19,49 +22,19 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.ts";
+import { imageProduct, loadImagesPolicy } from "./image-launcher.ts";
 
-const REQUIRED_ROLES = [
-  "android.app.role.HOME",
-  "android.app.role.DIALER",
-  "android.app.role.SMS",
-  "android.app.role.ASSISTANT",
-];
+const REQUIRED_ROLES = ["android.app.role.HOME", "android.app.role.ASSISTANT"];
+/** Recorded only: the image leaves these with the stock apps. */
+const RECORDED_ROLES = ["android.app.role.DIALER", "android.app.role.SMS"];
 
-const REQUIRED_GRANTED_PERMISSIONS = [
-  "android.permission.READ_CONTACTS",
-  "android.permission.WRITE_CONTACTS",
-  "android.permission.CALL_PHONE",
-  "android.permission.READ_PHONE_STATE",
-  "android.permission.ANSWER_PHONE_CALLS",
-  "android.permission.READ_CALL_LOG",
-  "android.permission.WRITE_CALL_LOG",
-  "android.permission.READ_SMS",
-  "android.permission.SEND_SMS",
-  "android.permission.RECEIVE_SMS",
-  "android.permission.RECEIVE_MMS",
-  "android.permission.RECEIVE_WAP_PUSH",
-  "android.permission.POST_NOTIFICATIONS",
-];
-
-const FORBIDDEN_STOCK_PACKAGES = [
-  "com.android.browser",
-  "com.android.calendar",
-  "com.android.camera2",
-  "com.android.contacts",
-  "com.android.deskclock",
-  "com.android.dialer",
-  "com.android.email",
-  "com.android.gallery3d",
-  "com.android.launcher3",
-  "com.android.managedprovisioning",
-  "com.android.messaging",
-  "com.android.music",
-  "com.android.provision",
-  "com.google.android.apps.messaging",
-  "com.google.android.apps.nexuslauncher",
-  "com.google.android.dialer",
-  "com.google.android.setupwizard",
-  "org.lineageos.trebuchet",
+/** Declared by the APK, never granted to a nonprivileged launcher image. */
+export const UNGRANTED_PRIVILEGED_PERMISSIONS = [
+  "android.permission.MANAGE_APP_OPS_MODES",
+  "android.permission.INJECT_EVENTS",
+  "android.permission.READ_FRAME_BUFFER",
+  "android.permission.REAL_GET_TASKS",
+  "android.permission.MANAGE_VIRTUAL_MACHINE",
 ];
 
 function escapeRegExp(value) {
@@ -368,7 +341,7 @@ export function assertAndroidSetupState(settings) {
   for (const name of ["device_provisioned", "user_setup_complete"]) {
     if (settings[name] !== "1") {
       throw new Error(
-        `${name} must be 1 when the stock provisioning apps are removed; found ${settings[name] || "<empty>"}`,
+        `${name} must be 1 when the setup wizard is disabled; found ${settings[name] || "<empty>"}`,
       );
     }
   }
@@ -390,14 +363,28 @@ function validateAndroidSetupState(adb, serial) {
   });
 }
 
+/** The exact nonprivileged install path from the reviewed image policy. */
+export function assertLauncherPackagePath(pmPath, installPath) {
+  const paths = pmPath
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.startsWith("package:"))
+    .map((line) => line.slice("package:".length));
+  if (paths.length !== 1 || paths[0] !== installPath) {
+    throw new Error(
+      `Launcher must be installed only at ${installPath}; found ${paths.join(", ") || "<none>"}`,
+    );
+  }
+  if (/\/priv-app\//.test(paths[0]))
+    throw new Error("Launcher must not be a priv-app");
+  return paths[0];
+}
+
 function validatePackagePath(adb, serial, brand) {
-  const pmPath = shell(adb, serial, `pm path ${brand.packageName}`);
-  assertIncludes(
-    pmPath,
-    `/system/priv-app/${brand.appName}/`,
-    `${brand.appName} package path`,
+  return assertLauncherPackagePath(
+    shell(adb, serial, `pm path ${brand.packageName}`),
+    imageProduct(loadImagesPolicy(), brand).installPath,
   );
-  return pmPath;
 }
 
 function validateHomeResolution(adb, serial, brand) {
@@ -411,129 +398,92 @@ function validateHomeResolution(adb, serial, brand) {
 }
 
 /**
- * For every system intent whose default app we stripped from
- * PRODUCT_PACKAGES, prove a brand activity is the resolver. Without
- * these assertions a stripped phone could pass HOME/Dialer/SMS role
- * validation while silently failing to open URLs / set alarms / take
- * photos — exactly the regression class this list catches.
+ * Stock apps stay installed under the nonprivileged-launcher profile. At least
+ * one system HOME activity from another package must remain as the recovery
+ * path when the launcher is disabled or replaced.
  */
-const REPLACEMENT_INTENT_RESOLUTIONS = [
-  {
-    label: "VIEW http",
-    args: '-a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d "http://example.com"',
-  },
-  {
-    label: "VIEW https",
-    args: '-a android.intent.action.VIEW -c android.intent.category.BROWSABLE -d "https://example.com"',
-  },
-  {
-    label: "STILL_IMAGE_CAMERA",
-    args: "-a android.media.action.STILL_IMAGE_CAMERA",
-  },
-  {
-    label: "IMAGE_CAPTURE",
-    args: "-a android.media.action.IMAGE_CAPTURE",
-  },
-  {
-    label: "SET_ALARM",
-    args: "-a android.intent.action.SET_ALARM",
-  },
-  {
-    label: "SHOW_ALARMS",
-    args: "-a android.intent.action.SHOW_ALARMS",
-  },
-  {
-    label: "APP_CONTACTS launcher",
-    args: "-a android.intent.action.MAIN -c android.intent.category.APP_CONTACTS",
-  },
-  {
-    label: "APP_CALENDAR launcher",
-    args: "-a android.intent.action.MAIN -c android.intent.category.APP_CALENDAR",
-  },
-];
+export function assertRecoveryHome(queryOutput, packageName) {
+  const others = queryOutput
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => /^[A-Za-z][\w.]*\/[.A-Za-z][\w.$]*$/.test(line))
+    .map((line) => line.split("/")[0])
+    .filter((owner) => owner !== packageName);
+  if (!others.length)
+    throw new Error("No recovery HOME activity remains besides the launcher");
+  return [...new Set(others)];
+}
 
-function validateReplacementIntents(adb, serial, brand) {
-  const resolutions = {};
-  for (const { label, args } of REPLACEMENT_INTENT_RESOLUTIONS) {
-    const resolved = shell(
+function validateRecoveryHome(adb, serial, brand) {
+  return assertRecoveryHome(
+    shell(
       adb,
       serial,
-      `cmd package resolve-activity --brief ${args}`,
-    );
-    if (!resolved.includes(brand.packageName)) {
-      throw new Error(
-        `Intent "${label}" did not resolve to ${brand.packageName}; got:\n${resolved}`,
-      );
-    }
-    resolutions[label] = resolved;
+      "cmd package query-activities --brief --components -a android.intent.action.MAIN -c android.intent.category.HOME",
+    ),
+    brand.packageName,
+  );
+}
+
+export function assertRoleHolders(holders, packageName) {
+  for (const role of REQUIRED_ROLES) {
+    const owners = String(holders[role] ?? "")
+      .split(/[\s;,]+/)
+      .filter(Boolean);
+    if (!owners.includes(packageName))
+      throw new Error(`${role} holder list does not include ${packageName}`);
   }
-  return resolutions;
+  return holders;
 }
 
 function validateRoles(adb, serial, brand) {
   const roles = {};
-  for (const role of REQUIRED_ROLES) {
-    const holders = shell(adb, serial, `cmd role get-role-holders ${role}`);
-    assertIncludes(holders, brand.packageName, `${role} holder list`);
-    roles[role] = holders;
+  for (const role of [...REQUIRED_ROLES, ...RECORDED_ROLES]) {
+    roles[role] = shell(adb, serial, `cmd role get-role-holders ${role}`);
   }
-  return roles;
+  return assertRoleHolders(roles, brand.packageName);
 }
 
-function validatePackageFlagsAndPermissions(adb, serial, brand) {
-  const dump = shell(adb, serial, `dumpsys package ${brand.packageName}`);
+/**
+ * SYSTEM but not PRIVILEGED, the reviewed first-boot grants granted, and no
+ * privileged permission granted.
+ */
+export function assertNonprivilegedPackageDump(
+  dump,
+  brand,
+  defaultPermissions,
+) {
   assertMatches(
     dump,
     /pkgFlags=\[[^\]]*\bSYSTEM\b/i,
     `${brand.appName} package flags`,
   );
-  assertMatches(
-    dump,
-    /privateFlags=\[[^\]]*\bPRIVILEGED\b/i,
-    `${brand.appName} private flags`,
-  );
-  for (const permission of REQUIRED_GRANTED_PERMISSIONS) {
+  if (/privateFlags=\[[^\]]*\bPRIVILEGED\b/i.test(dump))
+    throw new Error(`${brand.appName} must not be a privileged app`);
+  for (const permission of defaultPermissions) {
     assertMatches(
       dump,
       new RegExp(`${escapeRegExp(permission)}[^\\n]*granted=true`, "i"),
       `${permission} grant`,
     );
   }
+  for (const permission of UNGRANTED_PRIVILEGED_PERMISSIONS) {
+    if (
+      new RegExp(`${escapeRegExp(permission)}[^\\n]*granted=true`, "i").test(
+        dump,
+      )
+    )
+      throw new Error(`${permission} must not be granted to the launcher`);
+  }
   return dump;
 }
 
-function validateAppOps(adb, serial, brand) {
-  const usageStats = shell(
-    adb,
-    serial,
-    `cmd appops get ${brand.packageName} GET_USAGE_STATS`,
+function validatePackageFlagsAndPermissions(adb, serial, brand) {
+  return assertNonprivilegedPackageDump(
+    shell(adb, serial, `dumpsys package ${brand.packageName}`),
+    brand,
+    loadImagesPolicy().defaultPermissions,
   );
-  assertMatches(usageStats, /\ballow\b/i, "GET_USAGE_STATS appop");
-  return { GET_USAGE_STATS: usageStats };
-}
-
-function validateForbiddenPackages(adb, serial) {
-  // pm list packages prints one `package:<name>` per line. Use a Set of
-  // exact lines instead of substring matching: without this, looking for
-  // `com.android.contacts` matches the unrelated `com.android.contactspicker`
-  // (the system contact-picker UI), and `com.android.music` matches
-  // `com.android.musicfx` (the equalizer service).
-  const installed = new Set(
-    shell(adb, serial, "pm list packages")
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.startsWith("package:"))
-      .map((line) => line.slice("package:".length)),
-  );
-  const installedForbidden = FORBIDDEN_STOCK_PACKAGES.filter((pkg) =>
-    installed.has(pkg),
-  );
-  if (installedForbidden.length > 0) {
-    throw new Error(
-      `Forbidden stock packages are installed: ${installedForbidden.join(", ")}`,
-    );
-  }
-  return installedForbidden;
 }
 
 function validateLogcat(adb, serial, brand) {
@@ -569,10 +519,8 @@ export async function validateBootedDevice(options, brand) {
     setupState: validateAndroidSetupState(adb, serial),
     packagePath: validatePackagePath(adb, serial, brand),
     homeResolution: validateHomeResolution(adb, serial, brand),
-    replacementIntents: validateReplacementIntents(adb, serial, brand),
+    recoveryHome: validateRecoveryHome(adb, serial, brand),
     roles: validateRoles(adb, serial, brand),
-    appOps: validateAppOps(adb, serial, brand),
-    forbiddenPackages: validateForbiddenPackages(adb, serial),
     logcat: options.skipLogcat ? "skipped" : validateLogcat(adb, serial, brand),
     ...(options.expectedAbi
       ? { abi: validateExpectedAbi(adb, serial, options.expectedAbi) }

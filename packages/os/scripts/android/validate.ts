@@ -7,6 +7,11 @@
  * Class names like `<Brand>DialActivity` are derived from
  * `brand.classPrefix`; env vars like `<BRAND>_PIXEL_CODENAME` from
  * `brand.envPrefix`.
+ *
+ * The product layer follows the nonprivileged-launcher profile: the launcher is
+ * staged from the signed APK into `<vendorDir>/launcher` by image-launcher.ts,
+ * and nothing in the vendor tree may make it privileged, platform-signed,
+ * a dialer/SMS default, or remove a stock package.
  */
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -15,12 +20,18 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.ts";
+import {
+  LAUNCHER_DIRECTORY,
+  loadImagesPolicy,
+  verifyStagedLauncher,
+} from "./image-launcher.ts";
 import { lintInitRc } from "./lint-init-rc.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 
-const defaultGrantPermissions = [
+/** Telephony and contacts surfaces the APK keeps for user-chosen roles. */
+const telephonyPermissions = [
   "android.permission.READ_CONTACTS",
   "android.permission.WRITE_CONTACTS",
   "android.permission.CALL_PHONE",
@@ -33,21 +44,24 @@ const defaultGrantPermissions = [
   "android.permission.RECEIVE_SMS",
   "android.permission.RECEIVE_MMS",
   "android.permission.RECEIVE_WAP_PUSH",
-  "android.permission.POST_NOTIFICATIONS",
 ];
 
-const requiredApkPermissions = [
-  ...defaultGrantPermissions,
-  "android.permission.MANAGE_OWN_CALLS",
-  "android.permission.RECEIVE_BOOT_COMPLETED",
-  "android.permission.PACKAGE_USAGE_STATS",
-  "android.permission.SYSTEM_ALERT_WINDOW",
-  "android.permission.MANAGE_APP_OPS_MODES",
-];
+function requiredApkPermissions() {
+  return [
+    ...telephonyPermissions,
+    "android.permission.MANAGE_OWN_CALLS",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    ...loadImagesPolicy().defaultPermissions,
+  ];
+}
 
-const privilegedPermissions = [
-  "android.permission.PACKAGE_USAGE_STATS",
-  "android.permission.MANAGE_APP_OPS_MODES",
+/** Framework role defaults that only the staged provisioning overlay may set. */
+const provisionedRoleResources = [
+  "config_defaultHome",
+  "config_defaultDialer",
+  "config_defaultSms",
+  "config_defaultAssistant",
+  "config_defaultAutofillService",
 ];
 
 export function parseSubArgs(argv, brand) {
@@ -83,12 +97,8 @@ export function parseSubArgs(argv, brand) {
       throw new Error(`Unknown argument: ${arg}`);
     }
   }
-  args.apk ??= path.join(
-    args.vendorDir,
-    "apps",
-    brand.appName,
-    `${brand.appName}.apk`,
-  );
+  // The staged, signed launcher bytes, not the unsigned build output.
+  args.apk ??= path.join(args.vendorDir, LAUNCHER_DIRECTORY, "Launcher.apk");
   return args;
 }
 
@@ -113,7 +123,8 @@ function collectBlueprintModuleNames(root) {
     for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
       const entryPath = path.join(directory, entry.name);
       if (entry.isDirectory()) {
-        visit(entryPath);
+        // The staged launcher is generated and checked by verifyStagedLauncher.
+        if (entryPath !== path.join(root, LAUNCHER_DIRECTORY)) visit(entryPath);
       } else if (entry.isFile() && entry.name === "Android.bp") {
         const source = fs.readFileSync(entryPath, "utf8");
         for (const match of source.matchAll(/\bname\s*:\s*"([^"]+)"/g)) {
@@ -174,18 +185,6 @@ function assertCountAtLeast(content, needle, expectedCount, label) {
       `${label} needs at least ${expectedCount} occurrence(s) of ${needle}; found ${count}`,
     );
   }
-}
-
-function xmlStringValue(xml, name, label) {
-  const match = xml.match(
-    new RegExp(
-      `<string\\b(?=[^>]*\\bname="${escapeRegExp(name)}")[^>]*>([^<]*)<\\/string>`,
-    ),
-  );
-  if (!match) {
-    fail(`${label} is missing string resource ${name}`);
-  }
-  return match[1].trim();
 }
 
 function xmlElementBlockByName(xml, tagName, name, label) {
@@ -320,18 +319,36 @@ export function validateProductLayer(vendorDir, brand) {
 
   const common = read(path.join(vendorDir, brand.commonMakefile));
   assertIncludes(common, "PRODUCT_PACKAGES +=", brand.commonMakefile);
-  assertIncludes(common, brand.appName, brand.commonMakefile);
   assertLocallyOwnedProductModulesResolve(common, vendorDir, brand);
+  // The launcher module, its grants and provisioning come only from the
+  // staged launcher product, which the common layer must require.
   assertIncludes(
     common,
-    `default-permissions-${brand.packageName}.xml`,
+    `vendor/${brand.brand}/${LAUNCHER_DIRECTORY}/product.mk`,
     brand.commonMakefile,
   );
-  assertIncludes(
+  assertMatches(
     common,
-    `privapp-permissions-${brand.packageName}.xml`,
+    new RegExp(
+      `^\\$\\(call inherit-product, (?:vendor/${escapeRegExp(brand.brand)}/${LAUNCHER_DIRECTORY}/product\\.mk|\\$\\(${escapeRegExp(brand.envPrefix)}_LAUNCHER_PRODUCT\\))\\)$`,
+      "m",
+    ),
     brand.commonMakefile,
+    "inherit-product of the staged launcher product",
   );
+  for (const [pattern, what] of [
+    [/privapp-permissions/, "a privapp allowlist"],
+    [/priv-app\//, "a priv-app path"],
+    [/SEPOLICY_DIRS/, "app SELinux policy"],
+    [
+      new RegExp(`^\\s+${escapeRegExp(brand.appName)}(?:\\s+\\\\)?$`, "m"),
+      "the launcher module outside the staged launcher",
+    ],
+  ] as const) {
+    if (pattern.test(stripMakeComments(common)))
+      fail(`${brand.commonMakefile} must not add ${what}`);
+  }
+  assertNonprivilegedVendorTree(vendorDir, brand);
   // PRODUCT_PACKAGE_OVERLAYS root must mirror the AOSP source tree from
   // there: e.g. <root>/frameworks/base/core/res/res/values/config.xml
   // overlays the framework-res package's config_default* strings. The
@@ -393,12 +410,6 @@ export function validateProductLayer(vendorDir, brand) {
     brand.initRcName,
     `${brand.commonMakefile} PRODUCT_COPY_FILES`,
   );
-  assertIncludes(common, "BOARD_VENDOR_SEPOLICY_DIRS", brand.commonMakefile);
-  assertIncludes(
-    common,
-    `vendor/${brand.brand}/sepolicy`,
-    brand.commonMakefile,
-  );
   if (common.includes("PermissionController")) {
     fail(
       `${brand.commonMakefile} still references a PermissionController overlay; role defaults live in framework-res strings.`,
@@ -419,14 +430,10 @@ export function validateProductLayer(vendorDir, brand) {
     `${brand.lunchTarget} lunch choice`,
   );
 
-  // Init script + sepolicy files required by the product overlay.
+  // Init script required by the product overlay.
   assertFile(
     path.join(vendorDir, "init", brand.initRcName),
     `vendor/${brand.brand} init script`,
-  );
-  assertFile(
-    path.join(vendorDir, "sepolicy", "file_contexts"),
-    `vendor/${brand.brand} sepolicy file_contexts`,
   );
 
   // Lint the init script syntactically — typos here only show up at
@@ -441,29 +448,15 @@ export function validateProductLayer(vendorDir, brand) {
     );
   }
 
-  const androidBp = read(
-    path.join(vendorDir, "apps", brand.appName, "Android.bp"),
+  const initRc = stripMakeComments(
+    read(path.join(vendorDir, "init", brand.initRcName)),
   );
-  for (const marker of [
-    "android_app_import",
-    `name: "${brand.appName}"`,
-    `apk: "${brand.appName}.apk"`,
-    "privileged: true",
-    'certificate: "platform"',
-    '"Launcher3"',
-    '"Launcher3QuickStep"',
-    '"Dialer"',
-    // Both "messaging" (lowercase, the actual Soong module name from
-    // packages/apps/Messaging/Android.bp) and "Messaging" (compatibility
-    // / lineage variants) — the lowercase one is the load-bearing
-    // entry; the capital is kept for non-AOSP forks that diverge.
-    '"messaging"',
-    '"Messaging"',
-    '"Contacts"',
-    '"Trebuchet"',
-  ]) {
-    assertIncludes(androidBp, marker, `${brand.appName} Android.bp`);
-  }
+  // Init grants nothing to the nonprivileged launcher (no appops or runtime
+  // permission changes behind the reviewed default-permissions file).
+  if (/\b(appops|pm\s+grant|cmd\s+role)\b/.test(initRc))
+    fail(
+      `${brand.initRcName} must not grant the launcher appops, permissions or roles`,
+    );
 
   const frameworkConfig = read(
     path.join(
@@ -478,46 +471,23 @@ export function validateProductLayer(vendorDir, brand) {
       "config.xml",
     ),
   );
-  for (const resourceName of [
-    "config_defaultDialer",
-    "config_defaultSms",
-    "config_defaultAssistant",
-    "config_defaultBrowser",
-  ]) {
-    const value = xmlStringValue(
-      frameworkConfig,
-      resourceName,
-      "framework-res overlay",
-    );
-    if (value !== brand.packageName) {
+  for (const resourceName of provisionedRoleResources) {
+    if (frameworkConfig.includes(`name="${resourceName}"`))
       fail(
-        `framework-res overlay ${resourceName} must be ${brand.packageName}; found ${value || "<empty>"}`,
+        `framework-res overlay must not set ${resourceName}; HOME, assistant and Autofill come from the staged launcher, and dialer and SMS are not preassigned`,
       );
-    }
   }
-
-  const telecomConfig = read(
-    path.join(
-      vendorDir,
-      "overlays/packages/services/Telecomm/res/values/config.xml",
-    ),
-  );
-  for (const [resourceName, suffix] of [
-    ["incall_default_class", "InCallService"],
-    ["dialer_default_class", "DialActivity"],
-  ]) {
-    const expected = `${brand.packageName}.${brand.classPrefix}${suffix}`;
-    const value = xmlStringValue(
-      telecomConfig,
-      resourceName,
-      "Telecom overlay",
+  if (
+    fs.existsSync(
+      path.join(
+        vendorDir,
+        "overlays/packages/services/Telecomm/res/values/config.xml",
+      ),
+    )
+  )
+    fail(
+      "Telecom overlay must not exist: the image does not preassign a dialer, so its classes would misname the stock default",
     );
-    if (value !== expected) {
-      fail(
-        `Telecom overlay ${resourceName} must be ${expected}; found ${value || "<empty>"}`,
-      );
-    }
-  }
 
   const obsoleteRoleFiles = findFiles(vendorDir, (file) =>
     file.endsWith(".xml"),
@@ -531,112 +501,74 @@ export function validateProductLayer(vendorDir, brand) {
   console.log("[distro-android:validate] Product layer checks passed.");
 }
 
-export function validateDefaultPermissions(vendorDir, brand) {
-  const defaultPermissions = read(
-    path.join(
-      vendorDir,
-      "permissions",
-      `default-permissions-${brand.packageName}.xml`,
-    ),
-  );
-  assertIncludes(
-    defaultPermissions,
-    `<exception package="${brand.packageName}">`,
-    "default permissions",
-  );
-  for (const permission of defaultGrantPermissions) {
-    assertIncludes(
-      defaultPermissions,
-      `name="${permission}"`,
-      "default permissions",
-    );
-  }
-
-  const privPermissions = read(
-    path.join(
-      vendorDir,
-      "permissions",
-      `privapp-permissions-${brand.packageName}.xml`,
-    ),
-  );
-  assertIncludes(
-    privPermissions,
-    `<privapp-permissions package="${brand.packageName}"`,
-    "privapp permissions",
-  );
-  for (const permission of privilegedPermissions) {
-    assertIncludes(
-      privPermissions,
-      `name="${permission}"`,
-      "privapp permissions",
-    );
-  }
-
-  // The product makefile lists these XMLs by module name in PRODUCT_PACKAGES.
-  // Soong needs prebuilt_etc{} declarations or `m` exits with "module not defined".
-  const permissionsBp = read(path.join(vendorDir, "permissions", "Android.bp"));
-  for (const moduleName of [
-    `default-permissions-${brand.packageName}.xml`,
-    `privapp-permissions-${brand.packageName}.xml`,
-  ]) {
-    assertIncludes(
-      permissionsBp,
-      `name: "${moduleName}"`,
-      "permissions/Android.bp",
-    );
-  }
-  assertIncludes(
-    permissionsBp,
-    'sub_dir: "default-permissions"',
-    "permissions/Android.bp",
-  );
-  assertIncludes(
-    permissionsBp,
-    'sub_dir: "permissions"',
-    "permissions/Android.bp",
-  );
-
-  console.log("[distro-android:validate] Permission XML checks passed.");
+function stripMakeComments(text) {
+  return text.replace(/^\s*#.*$/gm, "");
 }
 
 /**
- * Vendor sepolicy files exist on the AOSP build path
- * (`BOARD_VENDOR_SEPOLICY_DIRS += vendor/<brand>/sepolicy`). For the
- * local-agent-on-Android landing we currently rely on the on-device
- * agent running in the priv_app domain (assigned to the privileged
- * APK by AOSP's seapp_contexts). A custom `<brand>_agent` domain was
- * attempted but tripped AOSP's neverallow envelope (priv_app cannot
- * transition to arbitrary domains, app domains cannot have
- * file_contexts targeting /data/data paths, etc.) — landing it
- * requires deeper sepolicy work than the spike scope. The validator
- * pins the file existence so the build doesn't break, but keeps the
- * assertions narrow until the custom domain is reintroduced.
- *
- * See vendor/<brand>/sepolicy/README.md for the design.
+ * No hand-written module, permission file or overlay in the vendor tree may
+ * reintroduce the privileged profile: priv-app placement, the platform
+ * certificate, Soong overrides of stock apps, or a privapp allowlist.
+ */
+export function assertNonprivilegedVendorTree(vendorDir, brand) {
+  const staged = path.join(vendorDir, LAUNCHER_DIRECTORY);
+  const files = findFiles(
+    vendorDir,
+    (file) => !file.startsWith(`${staged}${path.sep}`),
+  );
+  for (const file of files) {
+    const name = path.basename(file);
+    if (/^privapp-permissions.*\.xml$/.test(name))
+      fail(`Privapp allowlist is not allowed for the launcher: ${file}`);
+    if (/^default-permissions-.*\.xml$/.test(name))
+      fail(`Default grants come only from the staged launcher: ${file}`);
+    if (name !== "Android.bp" && name !== "Android.mk") continue;
+    const source = read(file).replace(/^\s*\/\/.*$/gm, "");
+    if (
+      /\bprivileged\s*:\s*true\b/.test(source) ||
+      /\bcertificate\s*:\s*"platform"/.test(source) ||
+      /\boverrides\s*:/.test(source) ||
+      /LOCAL_PRIVILEGED_MODULE\s*:?=\s*true/.test(source) ||
+      /LOCAL_CERTIFICATE\s*:?=\s*platform/.test(source) ||
+      new RegExp(`\\bname\\s*:\\s*"${escapeRegExp(brand.appName)}"`).test(
+        source,
+      )
+    )
+      fail(
+        `${file} must not define the launcher, a privileged or platform-signed app, or overrides of stock packages`,
+      );
+  }
+}
+
+/**
+ * The launcher runs in untrusted_app, which AOSP's W^X neverallow forbids from
+ * executing app data. The former platform_app rules do not apply to it and
+ * must not return under another domain.
  */
 export function validateSepolicy(vendorDir, brand) {
-  // file_contexts must exist for `BOARD_VENDOR_SEPOLICY_DIRS` to point
-  // at a non-empty directory; AOSP's sepolicy build chokes if the
-  // listed dir has no policy files at all. An empty file is fine.
-  const fileContextsPath = path.join(vendorDir, "sepolicy", "file_contexts");
-  assertFile(fileContextsPath, `vendor/${brand.brand} sepolicy/file_contexts`);
-
-  // The agent runs as platform_app and must be able to execve the
-  // bundled bun runtime out of /data/data/<pkg>/files/agent/. AOSP's
-  // stock platform_app.te has no such allow rule (only priv_app does),
-  // so we add it here.
-  const teFile = `${brand.brand}_agent.te`;
-  const tePath = path.join(vendorDir, "sepolicy", teFile);
-  assertFile(tePath, `vendor/${brand.brand} sepolicy/${teFile}`);
-  const te = read(tePath);
-  assertMatches(
-    te,
-    /allow\s+platform_app\s+app_data_file\s*:\s*file\b[^;]*\bexecute_no_trans\b[^;]*;/,
-    teFile,
-    "allow platform_app app_data_file:file { execute execute_no_trans } (on-device agent exec)",
+  const policies = findFiles(path.join(vendorDir, "sepolicy"), (file) =>
+    file.endsWith(".te"),
   );
-
+  for (const file of policies) {
+    const policy = read(file).replace(/^\s*#.*$/gm, "");
+    if (/\bapp_data_file\s*:\s*file\b[^;]*\bexecute(_no_trans)?\b/.test(policy))
+      fail(
+        `${file} allows executing app data; the ${brand.appName} agent executes its admitted native runtime instead`,
+      );
+  }
   console.log("[distro-android:validate] Sepolicy checks passed.");
+}
+
+/** The staged launcher in the vendor tree, bound to this brand's product. */
+export function validateStagedLauncher(vendorDir, brand) {
+  const evidence = verifyStagedLauncher(
+    path.join(vendorDir, LAUNCHER_DIRECTORY),
+    brand,
+  );
+  console.log(
+    `[distro-android:validate] Staged launcher checks passed (${evidence.installPath}, resident runtime ${evidence.residentAgentIncluded ? "included" : "not included"}).`,
+  );
+  return evidence;
 }
 
 function manifestElementBlocks(manifest, elementName) {
@@ -925,7 +857,7 @@ export function validateApk(apkPath, brand) {
     `application-label:'${brand.appName}'`,
     "APK badging",
   );
-  for (const permission of requiredApkPermissions) {
+  for (const permission of requiredApkPermissions()) {
     assertIncludes(
       badging,
       `uses-permission: name='${permission}'`,
@@ -979,44 +911,6 @@ export function validateAospRoot(aospRoot) {
       "roles.xml",
     ),
   );
-  const dialerRole = xmlElementBlockByName(
-    rolesXml,
-    "role",
-    "android.app.role.DIALER",
-    "AOSP roles.xml",
-  );
-  assertIncludes(
-    dialerRole,
-    'defaultHolders="config_defaultDialer"',
-    "AOSP DIALER role",
-  );
-  assertIncludes(dialerRole, "android.intent.action.DIAL", "AOSP DIALER role");
-  assertIncludes(
-    dialerRole,
-    "android.telecom.InCallService",
-    "AOSP DIALER role",
-  );
-
-  const smsRole = xmlElementBlockByName(
-    rolesXml,
-    "role",
-    "android.app.role.SMS",
-    "AOSP roles.xml",
-  );
-  assertIncludes(
-    smsRole,
-    'defaultHolders="config_defaultSms"',
-    "AOSP SMS role",
-  );
-  for (const marker of [
-    "android.provider.Telephony.SMS_DELIVER",
-    "android.provider.Telephony.WAP_PUSH_DELIVER",
-    "android.intent.action.RESPOND_VIA_MESSAGE",
-    "android.intent.action.SENDTO",
-  ]) {
-    assertIncludes(smsRole, marker, "AOSP SMS role");
-  }
-
   const assistantRole = xmlElementBlockByName(
     rolesXml,
     "role",
@@ -1039,7 +933,7 @@ export function validateAospRoot(aospRoot) {
   assertIncludes(homeRole, "android.intent.category.HOME", "AOSP HOME role");
   if (homeRole.includes("defaultHolders=")) {
     fail(
-      "AOSP HOME role unexpectedly has a defaultHolders config; revisit brand home defaulting.",
+      "AOSP HOME role unexpectedly has a defaultHolders config; the launcher's default HOME is a preferred activity.",
     );
   }
 
@@ -1055,10 +949,10 @@ export function validateAospRoot(aospRoot) {
       "config.xml",
     ),
   );
+  // The staged provisioning overlay sets these two; dialer and SMS stay stock.
   for (const resourceName of [
     "config_defaultAssistant",
-    "config_defaultDialer",
-    "config_defaultSms",
+    "config_defaultAutofillService",
   ]) {
     assertIncludes(
       frameworkConfig,
@@ -1077,8 +971,8 @@ export function main(argv = process.argv.slice(2)) {
   const args = parseSubArgs(remaining, brand);
   validateXmlFiles(args.vendorDir, brand);
   validateProductLayer(args.vendorDir, brand);
-  validateDefaultPermissions(args.vendorDir, brand);
   validateSepolicy(args.vendorDir, brand);
+  validateStagedLauncher(args.vendorDir, brand);
   validateApk(args.apk, brand);
   if (args.aospRoot) {
     validateAospRoot(args.aospRoot);

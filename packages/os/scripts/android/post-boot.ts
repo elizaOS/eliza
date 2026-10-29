@@ -68,10 +68,12 @@ export function verifyPostBoot(
     shell(["getconf", "PAGESIZE"]).trim() === String(release.target.pageSize),
     "wrong kernel page size",
   );
-  const apk = "/system/priv-app/Eliza/Eliza.apk";
+  // Hardware release images stage the nonprivileged launcher in the product
+  // partition (android/products/eliza-images.json); a priv-app is refused.
+  const apk = "/product/app/Eliza/Eliza.apk";
   requireThat(
     shell(["pm", "path", "ai.elizaos.app"]).trim() === `package:${apk}`,
-    "wrong privileged app path",
+    "wrong nonprivileged launcher path",
   );
   requireThat(
     shell(["sha256sum", apk]).trim().split(/\s+/)[0] ===
@@ -118,7 +120,7 @@ export function verifyPostBoot(
       "exact-slot",
       "selinux",
       "page-size",
-      "privileged-apk-digest",
+      "launcher-apk-digest",
       "home",
       "assistant",
       "agent-health",

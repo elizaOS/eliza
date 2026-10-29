@@ -351,7 +351,11 @@ export function checkElfAlignment(aospRoot, stagedProductDir) {
     fs.existsSync(candidate),
   );
   const targets = [];
-  const elizaApp = path.join(stagedProductDir, "system", "priv-app", "Eliza");
+  // The nonprivileged launcher installs in the product partition; a priv-app
+  // copy would mean the image still carries the privileged profile.
+  if (fs.existsSync(path.join(stagedProductDir, "system", "priv-app", "Eliza")))
+    fail("Eliza must not be staged as a priv-app");
+  const elizaApp = path.join(stagedProductDir, "product", "app", "Eliza");
   const stack = [elizaApp];
   while (stack.length > 0) {
     const current = stack.pop();

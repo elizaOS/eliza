@@ -13,7 +13,9 @@ import {
   normalizeGeneratedBuildIdGuard,
   withLockedVendorReference,
 } from "../android/prepare-grizzly.ts";
+import { stageImageLauncher } from "../android/image-launcher.ts";
 import { syncToAosp } from "../android/sync-to-aosp.ts";
+import { fakeTools } from "./image-launcher-fixture.ts";
 
 function temporaryTree(t) {
   const parent = testOutputPath("pixel-firmware-preparation");
@@ -196,6 +198,15 @@ test("Pixel sync admits matching ARM64 app bytes and rejects x86 pins before rep
     path.join(sourceVendor, "apps/Eliza/Eliza.apk"),
     "Eliza fixture",
   );
+  const launcherTools = fakeTools(path.join(root, "tools"));
+  stageImageLauncher({
+    brand,
+    apk: launcherTools.apk,
+    development: true,
+    output: path.join(sourceVendor, "launcher"),
+    aapt: launcherTools.aapt,
+    apksigner: launcherTools.apksigner,
+  });
   fs.mkdirSync(path.join(sourceVendor, "manifests"));
   const pins = JSON.parse(
     fs.readFileSync(
