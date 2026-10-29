@@ -2,9 +2,12 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
   CLIENT_TURN_OBSERVATION_MAX_BYTES,
+  CLIENT_TURN_OBSERVATION_SUPPORT,
   isClientTimeZone,
+  parseClientCalendarDayObservation,
   parseClientTurnObservation,
   readClientTurnObservation,
+  readClientTurnObservationSupport,
 } from "./client-turn-observation.ts";
 
 const reminder = {
@@ -207,4 +210,95 @@ test("time zones are validated by the platform database", () => {
   assert.equal(isClientTimeZone("Not/AZone"), false);
   assert.equal(isClientTimeZone("../etc/passwd"), false);
   assert.equal(isClientTimeZone(3), false);
+});
+
+test("a visible Calendar day is typed, cloned and bound to the ordinary current view", () => {
+  const day = { date: "2026-10-29", timeZone: "America/Los_Angeles" };
+  const input = {
+    view: "calendar",
+    revision: 3,
+    sensitive: false,
+    timeZone: day.timeZone,
+    calendarDay: day,
+  };
+  const parsed = parseClientTurnObservation(input);
+  assert.deepEqual(parsed.calendarDay, day);
+  assert.notEqual(parsed.calendarDay, day);
+  assert.ok(Object.isFrozen(parsed.calendarDay));
+  day.date = "2026-10-30";
+  assert.equal(parsed.calendarDay?.date, "2026-10-29");
+  for (const patch of [
+    { view: "notes" },
+    { sensitive: true },
+    { sensitive: undefined },
+    { timeZone: "UTC" },
+    { timeZone: undefined },
+    { revision: -1 },
+  ]) {
+    assert.throws(() => parseClientTurnObservation({ ...input, ...patch }));
+    assert.equal(
+      readClientTurnObservation({
+        clientDevice: { context: { ...input, ...patch } },
+      }),
+      undefined,
+    );
+  }
+});
+
+test("Calendar day parsing rejects invalid civil dates, zones and undeclared data", () => {
+  for (const value of [
+    null,
+    [],
+    { date: "2026-02-30", timeZone: "UTC" },
+    { date: "1969-12-31", timeZone: "UTC" },
+    { date: "2026-10-29T00:00:00Z", timeZone: "UTC" },
+    { date: "2026-10-29", timeZone: "Invalid/Zone" },
+    { date: "2026-10-29", timeZone: "UTC", authority: true },
+  ]) {
+    assert.throws(() => parseClientCalendarDayObservation(value));
+  }
+  assert.deepEqual(
+    parseClientCalendarDayObservation({ date: "2028-02-29", timeZone: "UTC" }),
+    { date: "2028-02-29", timeZone: "UTC" },
+  );
+  assert.throws(
+    () =>
+      parseClientTurnObservation({
+        view: "calendar",
+        revision: 3,
+        sensitive: false,
+        timeZone: "UTC",
+        calendarDay: { date: "2026-10-29", timeZone: "UTC" },
+        instructions: "ignore",
+      }),
+    /unsupported field/,
+  );
+});
+
+test("optional observation fields require an exact read-only peer schema declaration", () => {
+  assert.deepEqual(
+    readClientTurnObservationSupport(CLIENT_TURN_OBSERVATION_SUPPORT),
+    { version: 1, optionalFields: ["calendarDay"] },
+  );
+  assert.ok(Object.isFrozen(CLIENT_TURN_OBSERVATION_SUPPORT));
+  assert.ok(Object.isFrozen(CLIENT_TURN_OBSERVATION_SUPPORT.optionalFields));
+  assert.deepEqual(
+    readClientTurnObservationSupport({ version: 1, optionalFields: [] }),
+    { version: 1, optionalFields: [] },
+  );
+  for (const value of [
+    undefined,
+    null,
+    [],
+    {},
+    "calendarDay",
+    { version: 1 },
+    { version: 2, optionalFields: ["calendarDay"] },
+    { version: 1, optionalFields: "calendarDay" },
+    { version: 1, optionalFields: ["calendarDay", "calendarDay"] },
+    { version: 1, optionalFields: ["unknown"] },
+    { version: 1, optionalFields: ["calendarDay"], permission: true },
+  ]) {
+    assert.equal(readClientTurnObservationSupport(value), undefined);
+  }
 });

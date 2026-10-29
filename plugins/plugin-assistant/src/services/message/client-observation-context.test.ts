@@ -261,3 +261,36 @@ describe("current-turn client observation", () => {
     expect(projectClientObservation(noDevice).content).toBe(noDevice);
   });
 });
+
+test("a declared Calendar day projects once without changing authored text or stored metadata", () => {
+  const context = {
+    view: "calendar",
+    revision: 3,
+    sensitive: false,
+    timeZone: "America/Los_Angeles",
+    calendarDay: { date: "2026-10-29", timeZone: "America/Los_Angeles" },
+  };
+  const content = residentTurn({
+    uiTimeZone: context.timeZone,
+    uiView: "calendar",
+    clientDevice: { context },
+  });
+  content.text = "Move my 3pm to 4";
+  const original = structuredClone(content),
+    projected = projectClientObservation(content);
+  expect(projected.observation).toEqual(context);
+  expect(projected.content.text).toBe(content.text);
+  expect(projected.content.metadata).not.toHaveProperty("clientDevice");
+  expect(projected.segment?.match(/calendarDay/g)).toHaveLength(1);
+  expect(projected.segment).toContain(CLIENT_OBSERVATION_SCOPE);
+  expect(content).toEqual(original);
+  const invalid = residentTurn({
+    clientDevice: {
+      context: {
+        ...context,
+        calendarDay: { ...context.calendarDay, date: "2026-02-30" },
+      },
+    },
+  });
+  expect(projectClientObservation(invalid)).toEqual({ content: invalid });
+});
