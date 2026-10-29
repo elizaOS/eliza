@@ -511,12 +511,10 @@ export async function parseWorkflowPhoneReview(
     fail();
   const spec = workflowObject(p.spec);
   if (workflowBytes(spec) > WORKFLOW_READ_RESULT_MAX_BYTES) fail();
-  let canonical: PhoneWorkflowSpec;
-  try {
-    canonical = (options.normalizePhoneSpec ?? validatePhoneWorkflowSpec)(spec);
-  } catch {
-    return fail();
-  }
+  // A spec the shared validator refuses keeps its owner-presentable reason.
+  const canonical = (options.normalizePhoneSpec ?? validatePhoneWorkflowSpec)(
+    spec,
+  );
   if (!canonical.device) fail();
   const specDigest = digest(p.specDigest);
   if ((await workflowSha(spec)) !== specDigest) fail();
