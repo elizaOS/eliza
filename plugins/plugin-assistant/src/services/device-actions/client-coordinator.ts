@@ -415,10 +415,10 @@ const OPENABLE_VIEWS = new Set([
   "settings",
   "workflows",
 ]);
-function object(value: unknown): Record<string, any> {
+function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object" || Array.isArray(value))
     throw new Error("Invalid device action response");
-  return value as Record<string, any>;
+  return value as Record<string, unknown>;
 }
 function text(value: unknown, max = 128): string {
   if (
@@ -1069,7 +1069,11 @@ export class DeviceActionCoordinator<
   }
   private parse(value: unknown): DeviceProposal {
     const p = object(value),
-      payload = object(p.payload);
+      payload = object(p.payload),
+      execution =
+        p.execution && typeof p.execution === "object"
+          ? (p.execution as Record<string, unknown>)
+          : {};
     if (
       p.subjectUserId !== this.session.ownerId ||
       p.requestedBy !== this.session.agentId ||
@@ -1167,7 +1171,7 @@ export class DeviceActionCoordinator<
       throw Error("Unexpected original Notes reply");
     return {
       ...(agendaSource ? { calendarAgendaSource: agendaSource } : {}),
-      providerReceipt: p.execution?.providerReceipt,
+      providerReceipt: execution.providerReceipt,
       ...(payload.requestMessageId === undefined
         ? {}
         : { requestMessageId: id(payload.requestMessageId) }),
@@ -1177,12 +1181,10 @@ export class DeviceActionCoordinator<
       expiresAt,
       operation: op,
       ...(workflow ? { workflow } : {}),
-      ...(p.execution?.providerIdempotencyKey
-        ? { providerIdempotencyKey: id(p.execution.providerIdempotencyKey) }
+      ...(execution.providerIdempotencyKey
+        ? { providerIdempotencyKey: id(execution.providerIdempotencyKey) }
         : {}),
-      ...(p.execution?.attemptId
-        ? { attemptId: id(p.execution.attemptId) }
-        : {}),
+      ...(execution.attemptId ? { attemptId: id(execution.attemptId) } : {}),
       ...(readReplyOrigin ? { readReplyOrigin } : {}),
     };
   }

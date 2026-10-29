@@ -70,7 +70,7 @@ function fixtureServer(operation: Record<string, unknown>) {
   const server = {
     state: "pending",
     attemptId: undefined as string | undefined,
-    receipts: [] as Array<Record<string, any>>,
+    receipts: [] as Array<Record<string, unknown>>,
     claims: 0,
     receiptOutage: false,
   };
@@ -101,7 +101,7 @@ function fixtureServer(operation: Record<string, unknown>) {
   const request = async (path: string, body: unknown, s: AbortSignal) => {
     s.throwIfAborted();
     if (body === undefined) return { proposals: [proposal()] };
-    const data = body as Record<string, any>;
+    const data = body as Record<string, unknown>;
     expect(data.digest).toBe(digest);
     if (path.endsWith("/decision"))
       server.state = data.decision === "approve" ? "approved" : "rejected";
