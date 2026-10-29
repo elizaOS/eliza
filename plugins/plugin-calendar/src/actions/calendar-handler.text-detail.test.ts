@@ -4,18 +4,236 @@
  * title, and Intl month/weekday names resolve. Pure helpers, no runtime.
  */
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
-import { describe, expect, it } from "vitest";
+import { InferenceTurnTimer, runWithInferenceTiming } from "@elizaos/core";
+import { describe, expect, it, vi } from "vitest";
 import {
   dedupeCalendarQueries,
+  isRedundantObservedClockQuery,
   normalizeCalendarDetails,
+  observedCalendarDayWindow,
   parseExplicitLocalDate,
   textFieldAddsDetail,
   verifyAppliedCalendarMutation,
 } from "./calendar-handler";
+import { timeCalendarUpdate } from "./update-timing.js";
 
 // Thursday 2026-10-15 12:00 in Seoul; "Friday" is tomorrow.
 const NOW = new Date("2026-10-15T03:00:00.000Z");
 const ZONE = "Asia/Seoul";
+
+describe("current Calendar day observation", () => {
+  const original = {
+    text: "Move my 3pm to 4",
+    observedAt: new Date("2026-10-28T12:00:00Z"),
+  };
+  const context = {
+    view: "calendar",
+    revision: 3,
+    sensitive: false,
+    timeZone: "UTC",
+    calendarDay: { date: "2026-10-29", timeZone: "UTC" },
+  };
+  it("recognizes only a redundant original source clock, without interpreting the destination", () => {
+    const window = observedCalendarDayWindow(context, original, "UTC");
+    const base = {
+      original: original.text,
+      queries: ["3pm"],
+      window,
+      detailsDate: "2026-10-29",
+      explicitTarget: false,
+    };
+    expect(isRedundantObservedClockQuery(base)).toBe(true);
+    for (const patch of [
+      { queries: ["Dentist"] },
+      { queries: ["3pm", "Dentist"] },
+      { queries: ["3pm Dentist"] },
+      { original: "Move my '3pm' to 4" },
+      { original: 'Move my "3pm" to 4' },
+      { original: "Move my 3pm to 4 if I am free" },
+      { original: "Move my 3pm to 4 and invite Sam" },
+      { original: "Move my 3pm tomorrow to 4" },
+      { original: "Move my 3pm to 4 tomorrow" },
+      { original: "Move my 3pm to 4 in Tokyo" },
+      { original: "Move my 3pm to 4 and rename it" },
+      { detailsDate: "2026-10-30" },
+      { window: undefined },
+      { explicitTarget: true },
+    ])
+      expect(isRedundantObservedClockQuery({ ...base, ...patch })).toBe(false);
+    expect(
+      isRedundantObservedClockQuery({
+        ...base,
+        original: "Please move my 3pm to 4pm.",
+      }),
+    ).toBe(true);
+    expect(() =>
+      observedCalendarDayWindow({ ...context, revision: -1 }, original, "UTC"),
+    ).toThrow();
+  });
+  it("uses the selected day in the actual read-window resolver instead of planner today", () => {
+    const window = observedCalendarDayWindow(context, original, "UTC");
+    const resolved = resolveCalendarReadWindow(
+      original.text,
+      { date: "2026-10-28" },
+      false,
+      { subaction: "feed", queries: [] },
+      "UTC",
+      original,
+      window,
+    );
+    expect(resolved.request).toMatchObject({
+      timeMin: "2026-10-29T00:00:00.000Z",
+      timeMax: "2026-10-30T00:00:00.000Z",
+    });
+  });
+  it.each(["tomorrow", "2026-10-30"])(
+    "preserves the original explicit date %s",
+    (text) => {
+      const request = { ...original, text: `Show my events ${text}` };
+      const window = observedCalendarDayWindow(context, request, "UTC");
+      expect(window).toBeUndefined();
+      const resolved = resolveCalendarReadWindow(
+        request.text,
+        undefined,
+        false,
+        { subaction: "feed", queries: [] },
+        "UTC",
+        request,
+        window,
+      );
+      expect(resolved.request.timeMin).toBe(
+        text === "tomorrow"
+          ? "2026-10-29T00:00:00.000Z"
+          : "2026-10-30T00:00:00.000Z",
+      );
+    },
+  );
+  it.each([
+    ["Show my schedule this week", "2026-10-26", "2026-11-02"],
+    ["Show my schedule next week", "2026-11-02", "2026-11-09"],
+    ["Show my schedule this month", "2026-10-01", "2026-11-01"],
+    ["Show my schedule next month", "2026-11-01", "2026-12-01"],
+    ["Show my schedule over the next seven days", "2026-10-28", "2026-11-04"],
+    [
+      "Show my schedule from October 28 to November 2",
+      "2026-10-28",
+      "2026-11-03",
+    ],
+  ])(
+    "does not replace the ordinary requested range: %s",
+    (text, start, end) => {
+      const request = { ...original, text };
+      const window = observedCalendarDayWindow(context, request, "UTC");
+      const resolved = resolveCalendarReadWindow(
+        text,
+        { timeMin: `${start}T00:00:00.000Z`, timeMax: `${end}T00:00:00.000Z` },
+        false,
+        { subaction: "feed", queries: [] },
+        "UTC",
+        request,
+        window,
+      );
+      expect(resolved.request.timeMin).toBe(`${start}T00:00:00.000Z`);
+      expect(resolved.request.timeMax).toBe(`${end}T00:00:00.000Z`);
+    },
+  );
+  it.each([
+    "Move my 3pm next week to 4",
+    "Move my 3pm this month to 4",
+    "Move my 3pm on October 30 to 4",
+    "Move my meeting to 4",
+  ])(
+    "keeps a qualified or non-clock target on ordinary resolution: %s",
+    (text) => {
+      expect(
+        observedCalendarDayWindow(context, { ...original, text }, "UTC"),
+      ).toBeUndefined();
+    },
+  );
+  it("uses only a whole dateless selected-event time request in the native continuation", () => {
+    const message = (text: string) =>
+      ({
+        createdAt: original.observedAt.getTime(),
+        content: { text, metadata: { clientDevice: { context } } },
+      }) as Memory;
+    expect(
+      wholeSelectedCalendarTimeRequest(message("Move my event to 4pm"), "UTC"),
+    ).toBe(true);
+    expect(
+      wholeSelectedCalendarTimeRequest(
+        message("Move my event next week to 4pm"),
+        "UTC",
+      ),
+    ).toBe(false);
+    expect(
+      wholeSelectedCalendarTimeRequest(
+        message("Move my event to 4pm next month"),
+        "UTC",
+      ),
+    ).toBe(false);
+    expect(
+      wholeSelectedCalendarTimeRequest(
+        message("Move my event to 4pm tomorrow"),
+        "UTC",
+      ),
+    ).toBe(true);
+  });
+  it.each([
+    ["2026-03-08", 23],
+    ["2026-11-01", 25],
+  ])("derives one complete DST civil day %s", (date, hours) => {
+    const timeZone = "America/Los_Angeles";
+    const window = observedCalendarDayWindow(
+      { ...context, timeZone, calendarDay: { date, timeZone } },
+      original,
+      timeZone,
+    );
+    if (!window) throw Error("Selected civil day was not resolved");
+    expect((Date.parse(window.end) - Date.parse(window.start)) / 3600000).toBe(
+      hours,
+    );
+    expect(calendarDayWindow(window, { date, timeZone })).toEqual(window);
+    expect(() =>
+      calendarDayWindow(
+        {
+          ...window,
+          end: new Date(Date.parse(window.start) + 86400000).toISOString(),
+        },
+        { date, timeZone },
+      ),
+    ).toThrow();
+  });
+  it.each([
+    { ...context, view: "home" },
+    { ...context, sensitive: true },
+    { ...context, sensitive: undefined },
+    { ...context, revision: -1 },
+    { ...context, calendarDay: { date: "2026-02-30", timeZone: "UTC" } },
+    {
+      ...context,
+      calendarDay: { date: "2026-10-29", timeZone: "Invalid/Zone" },
+    },
+    {
+      ...context,
+      calendarDay: { date: "2026-10-29", timeZone: "America/Los_Angeles" },
+    },
+    {
+      ...context,
+      calendarDay: { date: "2026-10-29", timeZone: "UTC", owner: "other" },
+    },
+  ])("rejects invalid or retired day context %j", (value) => {
+    expect(() => observedCalendarDayWindow(value, original, "UTC")).toThrow();
+  });
+  it("keeps clients without a day compatible and rejects another resolver timezone", () => {
+    expect(
+      calendarDayFromContext({ view: "home", revision: 1 }),
+    ).toBeUndefined();
+    expect(observedCalendarDayWindow({}, original, "UTC")).toBeUndefined();
+    expect(() =>
+      observedCalendarDayWindow(context, original, "America/Los_Angeles"),
+    ).toThrow();
+  });
+});
 
 function seoulEvent(title: string, location: string): LifeOpsCalendarEvent {
   return {
@@ -300,3 +518,108 @@ describe("parseExplicitLocalDate Intl names", () => {
     }
   });
 });
+
+// Uses the canonical ALS turn timer; private payload/error identity must never
+// become diagnostic metadata or be retried by a timing boundary.
+it("keeps Calendar update timing bounded, optional and transparent to cancellation", async () => {
+  const secret = "PRIVATE_CALENDAR_payload_account_title_url";
+  const value = Object.freeze({ secret });
+  const untimed = vi.fn(async () => value);
+  expect(await timeCalendarUpdate("source-read", untimed)).toBe(value);
+  expect(untimed).toHaveBeenCalledTimes(1);
+  const timer = new InferenceTurnTimer({
+    turnId: "timing-fixture",
+    label: "calendar-update",
+    t0EpochMs: 1000,
+  });
+  const abort = new DOMException(secret, "AbortError");
+  const cancelled = vi.fn(async () => {
+    throw abort;
+  });
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(1000);
+  try {
+    const result = await runWithInferenceTiming(timer, () =>
+      timeCalendarUpdate("persist", async () => {
+        vi.setSystemTime(1025);
+        return value;
+      }),
+    );
+    expect(result).toBe(value);
+    await expect(
+      runWithInferenceTiming(timer, () =>
+        timeCalendarUpdate("availability", cancelled),
+      ),
+    ).rejects.toBe(abort);
+    expect(cancelled).toHaveBeenCalledTimes(1);
+    const summary = timer.close();
+    expect(summary.spans).toEqual([
+      {
+        name: "actions:calendar:update:persist",
+        startMs: 0,
+        endMs: 25,
+        durationMs: 25,
+        meta: { returned: true },
+      },
+      {
+        name: "actions:calendar:update:availability",
+        startMs: 25,
+        endMs: 25,
+        durationMs: 0,
+        meta: { returned: false },
+      },
+    ]);
+    expect(summary.totalMs).toBe(25);
+    expect(JSON.stringify(summary.spans)).not.toContain(secret);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it.each([
+  { date: "2026-03-08", hours: 23 },
+  { date: "2026-11-01", hours: 25 },
+])(
+  "bounds a selected civil day across DST without granting a write: $date",
+  ({ date, hours }) => {
+    const timeZone = "America/Los_Angeles",
+      context = {
+        view: "calendar",
+        revision: 3,
+        sensitive: false,
+        timeZone,
+        calendarDay: { date, timeZone },
+      };
+    const original = {
+      text: "Move my 3pm to 4",
+      observedAt: new Date("2026-10-28T12:00:00Z"),
+    };
+    const window = observedCalendarDayWindow(context, original, timeZone);
+    if (!window) throw Error("Missing selected day window");
+    expect((Date.parse(window.end) - Date.parse(window.start)) / 3600000).toBe(
+      hours,
+    );
+    expect(() =>
+      observedCalendarDayWindow(
+        { ...context, sensitive: true },
+        original,
+        timeZone,
+      ),
+    ).toThrow();
+    expect(() =>
+      observedCalendarDayWindow(
+        { ...context, calendarDay: { date: "2026-02-30", timeZone } },
+        original,
+        timeZone,
+      ),
+    ).toThrow();
+    expect(() => observedCalendarDayWindow(context, original, "UTC")).toThrow();
+    expect(
+      observedCalendarDayWindow(
+        context,
+        { ...original, text: "Move my 3pm tomorrow to 4" },
+        timeZone,
+      ),
+    ).toBeUndefined();
+  },
+);

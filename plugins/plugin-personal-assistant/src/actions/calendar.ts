@@ -813,8 +813,10 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["title", "intent", "details"],
   },
   update_event: {
-    description: "Update event.",
-    descriptionCompressed: "update calendar event",
+    description:
+      "Update from the original intent. Known names/IDs identify an event; a clock-only source on a verified selected Calendar day needs no title/ID through umbrella CALENDAR. Fresh target and availability checks decide writes; missing or ambiguous matches require clarification. Only a mutation receipt completes the edit.",
+    descriptionCompressed:
+      "edit from original intent; verified-day clock-only -> umbrella CALENDAR; ambiguous -> clarify; fresh checks + mutation receipt",
     required: [],
     optional: ["title", "query", "intent", "details"],
   },
@@ -1292,9 +1294,10 @@ export const calendarAction: Action & {
     "Live calendar: event CRUD, availability, meeting prefs. Subactions: " +
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
+    "For a clock-only move on a verified selected Calendar day, call CALENDAR action=update_event with the original intent; no preliminary lookup or invented title/ID. " +
     "Use PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response.",
   descriptionCompressed:
-    "calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose",
+    "calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose; verified-day clock move: CALENDAR action=update_event + original intent",
   // "general" included so messageHandler can route direct owner calendar
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
@@ -1412,8 +1415,7 @@ export const calendarAction: Action & {
     {
       name: "action",
       description:
-        "Calendar op. feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, check_availability, propose_times, update_preferences. " +
-        "update_event and delete_event need a target in the same call: top-level query (the event in its own words) or details.eventId/details.oldTitle; without one the call fails with CALENDAR_TARGET_UNRESOLVED. create_event needs details.start.",
+        "Calendar operation. update_event accepts a known query/details.oldTitle/eventId or, through umbrella CALENDAR, the original intent for a unique source clock on a verified selected day. Omit unknown identifiers. delete_event needs a named target or known eventId; create_event needs details.start.",
       required: false,
       schema: {
         type: "string" as const,
@@ -1423,20 +1425,18 @@ export const calendarAction: Action & {
     {
       name: "intent",
       description:
-        'Natural-language request. Examples: "calendar today", "flights this week", "create meeting tomorrow 3pm".',
+        "Original user request; preserve source time/date and requested destination. For a verified-day clock-only move use CALENDAR action=update_event, intent='Move my 3pm to 4'; leave unknown title/query/eventId absent.",
+      descriptionCompressed:
+        "original request; verified-day clock-only -> CALENDAR action=update_event + intent; omit unknown IDs",
       required: false,
       schema: { type: "string" as const },
     },
     {
       name: "title",
       description:
-        "Event title for create_event, the NEW name when update_event renames an event, or the existing target title for delete_event when query and details.eventId are absent. " +
-        "For update_event identify the existing event with `query` (its own words, e.g. 'piano lesson'), `details.oldTitle`, or `details.eventId` from a search_events/feed result; title never selects an update target. TOP-LEVEL flat. " +
-        "NEVER inside `details`. " +
-        "Example: `{ action: 'create_event', title: 'Dentist', details: { start: '...', end: '...' } }`. " +
-        "Move example: `{ action: 'update_event', query: 'piano lesson', details: { start: '...', end: '...' } }`.",
+        "TOP-LEVEL title, never details.title: create_event uses the new title; update_event uses the NEW name only, never selects its target; delete_event may use the existing title when query/eventId are absent. For an update use a known query/oldTitle/eventId, or umbrella CALENDAR with original intent for a clock-only target on a verified selected day. Omit unknown names and IDs.",
       descriptionCompressed:
-        "title TOP-LEVEL; NOT details. create_event: title; update_event: NEW name only, target = query/oldTitle/eventId; delete_event: target title when query/eventId absent",
+        "title TOP-LEVEL, not details; create: new title; update: NEW name only, not target; delete: existing target title if query/ID absent",
       required: false,
       // Live 2026-09-05 23:32: the promoted CALENDAR_DELETE_EVENT child rejected
       // a top-level title ("Unexpected argument 'title'") that the parent
@@ -1447,8 +1447,9 @@ export const calendarAction: Action & {
     {
       name: "query",
       description:
-        "Event-content search phrase for search_events/trip_window: flight, dentist, Denver. Dates and agenda/schedule words are not content filters; for a full day agenda use feed and omit query/queries. " +
-        "update_event/delete_event: the TARGET event in its own words (e.g. 'piano lesson') whenever details.eventId is not known. An update may also identify its target with details.oldTitle; a delete may use the existing title when query and eventId are absent.",
+        "Event-content filter for search_events/trip_window; dates and clock-only references are not invented title filters. For an agenda use feed without query. Updates use a known current title/oldTitle or observed eventId; a clock-only target on a verified selected day uses umbrella CALENDAR with original intent and no query. delete_event needs a named target or known eventId; a supplied existing title is supported.",
+      descriptionCompressed:
+        "content filter; known name for update/delete; verified-day clock-only -> umbrella CALENDAR + original intent, omit query",
       required: false,
       subactions: [
         "feed",
@@ -1855,7 +1856,9 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
     update_event: {
       parameters: calendarMutationTargetParameters,
       description:
-        "Apply a specified edit to an existing event. For a morning/afternoon window without an accepted clock time, use CALENDAR_PROPOSE_TIMES first to read current openings; this write tool is for the accepted time or another specified field change. Supply targetKind and target in this call, including follow-ups accepting a suggested time. No separate search is needed when the event is uniquely identified by query. Time changes check the proposed slot for conflicts before writing, excluding the event itself; conflicts or unknown availability pause the move. Use this tool directly for an authorized move conditional on the slot being free. title/details.newTitle are replacement names, not the target.",
+        "Edit an event identified by targetKind+target, retaining source date constraints. A clock-only reference on a verified selected Calendar day uses umbrella CALENDAR action=update_event with original intent and no invented target; discover CALENDAR first if it is not loaded. Vague morning/afternoon timing needs CALENDAR_PROPOSE_TIMES and an accepted time. Fresh target/version/availability checks may block writes; ambiguous targets need clarification. Only a mutation receipt completes the edit. title/details.newTitle never select the target.",
+      descriptionCompressed:
+        "named/ID edit: targetKind+target; verified-day clock-only -> CALENDAR action=update_event + original intent (discover if absent); ambiguous -> clarify; mutation receipt",
     },
     delete_event: {
       parameters: calendarMutationTargetParameters,

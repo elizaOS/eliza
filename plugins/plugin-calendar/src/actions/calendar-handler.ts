@@ -1,4 +1,9 @@
-import type { CalendarFields } from "@elizaos/plugin-assistant/device-calendar-contract";
+import { parseClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
+import {
+  type CalendarFields,
+  type CalendarWindow,
+  calendarWindow,
+} from "@elizaos/plugin-assistant/device-calendar-contract";
 import {
   normalizeCalendarDateTimeInTimeZone,
   resolveCalendarEventRange,
@@ -17,6 +22,7 @@ import {
   calendarCreateUserSources,
   validateCalendarCreateAuthority,
 } from "./create-event-authority.js";
+import { timeCalendarUpdate } from "./update-timing.js";
 
 export type {
   StatedClockTime,
@@ -3001,6 +3007,142 @@ function parseCalendarReadDate(
     );
   }
   return parsed;
+}
+
+/** A selected day bounds a dateless read; it never supplies event/write authority. */
+export function observedCalendarDayWindow(
+  context: unknown,
+  original: { text: string; observedAt: Date },
+  timeZone: string,
+): CalendarWindow | undefined {
+  if (
+    !context ||
+    typeof context !== "object" ||
+    !Object.hasOwn(context, "calendarDay") ||
+    Reflect.get(context, "calendarDay") === undefined
+  )
+    return;
+  let observation: ReturnType<typeof parseClientTurnObservation>;
+  try {
+    observation = parseClientTurnObservation(context);
+  } catch {
+    throw new CalendarServiceError(
+      400,
+      "The current Calendar day observation is invalid.",
+      "CALENDAR_READ_DATE_INVALID",
+    );
+  }
+  const observed = observation.calendarDay;
+  if (!observed) return;
+  if (observed.timeZone !== timeZone)
+    throw new CalendarServiceError(
+      400,
+      "The current Calendar timezone changed.",
+      "CALENDAR_READ_DATE_CONFLICT",
+    );
+  // Owner dates retain normal request-clock semantics, not the visible day.
+  if (
+    distinctStatedLocalDates(original.text, timeZone, original.observedAt)
+      .length
+  )
+    return;
+  // Only a whole dateless source-clock target borrows the visible day. General
+  // agenda/range reads and qualified targets keep normal Calendar planning.
+  const source = resolveTargetScopedText("update", original.text);
+  if (
+    !MUTATION_LEAD_PATTERN.test(original.text) ||
+    source === original.text ||
+    !new RegExp(`^(?:${STATED_CLOCK_MENTION_SOURCE})$`, "iu").test(
+      source.replace(MUTATION_LEAD_PATTERN, "").trim(),
+    )
+  )
+    return;
+  const [year, month, day] = observed.date.split("-").map(Number);
+  const endDay = addDaysToLocalDate({ year, month, day }, 1);
+  const midnight = (date: LocalDateOnly) =>
+    buildUtcDateFromLocalParts(
+      timeZone,
+      { ...date, hour: 0, minute: 0, second: 0 },
+      "reject",
+    ).toISOString();
+  return calendarWindow({
+    start: midnight({ year, month, day }),
+    end: midnight(endDay),
+    timeZone,
+  });
+}
+
+/** A redundant time-only query is a source selector, never a destination author.
+ * Only a complete original clock-move request qualifies; names, explicit selectors,
+ * compound clauses and conflicting source dates retain ordinary lookup/extraction.
+ */
+const WHOLE_CLOCK_MOVE_QUERY = new RegExp(
+  `^(?:please\\s+)?(?:(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?(?:move|reschedule)\\s+(?:(?:my|the|this|that|our)\\s+)?(?<source>(?:${STATED_CLOCK_MENTION_SOURCE}))\\s+to\\s+(?:(?:${STATED_CLOCK_MENTION_SOURCE})|(?:[1-9]|1[0-2])(?::[0-5]\\d)?)\\s*[.!?]?$`,
+  "iu",
+);
+export function isRedundantObservedClockQuery(args: {
+  original: string;
+  queries: readonly string[];
+  window: CalendarWindow | undefined;
+  detailsDate?: string;
+  explicitTarget: boolean;
+}): boolean {
+  if (!args.window || args.explicitTarget || args.queries.length !== 1)
+    return false;
+  const scoped = resolveTargetScopedText("update", args.original);
+  const stated = parseStatedClockTimes(scoped);
+  if (
+    scoped === args.original ||
+    stated.kind !== "one" ||
+    stated.end ||
+    impliedMutationTargetHint(args.original)
+  )
+    return false;
+  const source = WHOLE_CLOCK_MOVE_QUERY.exec(args.original.trim())?.groups
+    ?.source;
+  if (!source || normalizeText(args.queries[0]) !== normalizeText(source))
+    return false;
+  if (args.detailsDate) {
+    const parts = getZonedDateParts(
+      new Date(args.window.start),
+      args.window.timeZone,
+    );
+    const day = `${String(parts.year).padStart(4, "0")}-${String(parts.month).padStart(2, "0")}-${String(parts.day).padStart(2, "0")}`;
+    if (args.detailsDate !== day) return false;
+  }
+  return true;
+}
+
+/** Source-clock deictics can identify a unique event only inside the observed day. */
+export function observedCalendarClockTargets(
+  events: LifeOpsCalendarEvent[],
+  request: string,
+  window: CalendarWindow,
+): LifeOpsCalendarEvent[] | undefined {
+  const clock = parseStatedClockTimes(
+    resolveTargetScopedText("update", request),
+  );
+  if (clock.kind !== "one" || clock.end) return;
+  return events.filter((event) => {
+    if (
+      event.isAllDay ||
+      Date.parse(event.startAt) < Date.parse(window.start) ||
+      Date.parse(event.startAt) >= Date.parse(window.end)
+    )
+      return false;
+    const local = getZonedDateParts(new Date(event.startAt), window.timeZone);
+    return (
+      local.hour === clock.start.hour && local.minute === clock.start.minute
+    );
+  });
+}
+
+function messageCalendarContext(message: Memory): unknown {
+  const metadata = message.content.metadata as
+    | Record<string, unknown>
+    | undefined;
+  const device = metadata?.clientDevice as { context?: unknown } | undefined;
+  return device?.context ?? {};
 }
 
 function resolveCalendarReadWindow(
@@ -6099,15 +6241,41 @@ export function createCalendarActionRunner(
         }
 
         if (subaction === "update_event") {
+          const observedWindow = observedCalendarDayWindow(
+            messageCalendarContext(message),
+            {
+              text: messageText(message),
+              observedAt: new Date(calendarMessageObservedAt(message)),
+            },
+            planningTimeZone,
+          );
           const explicitEventId = detailString(details, "eventId");
           let resolvedEventId = explicitEventId;
           let resolvedCalendarId = calendarIdDetail(details);
           let targetEvent: LifeOpsCalendarEvent | null = null;
           if (!resolvedEventId) {
-            const titleHint =
-              searchQueries[0] ??
-              impliedMutationTargetHint(messageText(message));
-            if (!titleHint) {
+            const titleHint = isRedundantObservedClockQuery({
+              original: extractUserText(unwrapUserMessageText(message)),
+              queries: searchQueries,
+              window: observedWindow,
+              detailsDate: detailString(details, "date"),
+              explicitTarget:
+                suppliedParams.target !== undefined ||
+                suppliedParams.targetKind !== undefined ||
+                detailString(details, "oldTitle") !== undefined,
+            })
+              ? undefined
+              : (searchQueries[0] ??
+                impliedMutationTargetHint(messageText(message)));
+            const sourceClock = parseStatedClockTimes(
+              resolveTargetScopedText("update", messageText(message)),
+            );
+            // Planner names must still satisfy the original source clock.
+            const clockTarget =
+              !!observedWindow &&
+              sourceClock.kind === "one" &&
+              !sourceClock.end;
+            if (!titleHint && !clockTarget) {
               return respond({
                 success: false,
                 text: await renderReply(
@@ -6136,9 +6304,15 @@ export function createCalendarActionRunner(
               typeof suppliedParams.target === "string"
                 ? suppliedParams.target
                 : undefined;
-            const feedRequest =
-              !explicitSourceQuery &&
-              plannerWindowUsable(details, llmPlan, planningTimeZone)
+            const feedRequest = observedWindow
+              ? {
+                  calendarId: calendarIdDetail(details),
+                  timeZone: planningTimeZone,
+                  timeMin: observedWindow.start,
+                  timeMax: observedWindow.end,
+                }
+              : !explicitSourceQuery &&
+                  plannerWindowUsable(details, llmPlan, planningTimeZone)
                 ? resolveCalendarWindow(
                     intent,
                     details,
@@ -6152,19 +6326,28 @@ export function createCalendarActionRunner(
                     ...buildWideLookupRange(planningTimeZone),
                   };
             const feed = requireCompleteFreshCalendarFeed(
-              await service.getCalendarFeed(INTERNAL_URL, {
-                includeHiddenCalendars: true,
-                mode: connectorModeDetail(details),
-                side: connectorSideDetail(details),
-                grantId: connectorGrantIdDetail(details),
-                forceSync: true,
-                ...feedRequest,
-              }),
+              await timeCalendarUpdate("source-read", () =>
+                service.getCalendarFeed(INTERNAL_URL, {
+                  includeHiddenCalendars: true,
+                  mode: connectorModeDetail(details),
+                  side: connectorSideDetail(details),
+                  grantId: connectorGrantIdDetail(details),
+                  forceSync: true,
+                  ...feedRequest,
+                }),
+              ),
               "update",
             );
             const candidates = resolveCalendarMutationCandidates({
               action: "update",
-              events: feed.events,
+              events:
+                clockTarget && observedWindow
+                  ? (observedCalendarClockTargets(
+                      feed.events,
+                      messageText(message),
+                      observedWindow,
+                    ) ?? [])
+                  : feed.events,
               titleHint,
               // A promoted target is source-scoped. Follow-up prose can contain
               // only the destination, so it must not become a source-day filter.
@@ -6192,18 +6375,18 @@ export function createCalendarActionRunner(
             if (candidates.length === 0) {
               const fallback = buildCalendarEventNotFoundFallback(
                 "update",
-                titleHint,
+                titleHint ?? "the requested time on the selected day",
               );
               return respond({
                 success: false,
                 data: { requiresInput: true, missing: ["event target"] },
                 text: await renderReply("update_event_not_found", fallback, {
-                  titleHint: userReferenceLogView(titleHint),
+                  titleHint: userReferenceLogView(titleHint ?? ""),
                 }),
                 effectReceipt: calendarRequestNoopReceipt({
                   message,
                   operation: "calendar.event.update",
-                  discriminator: userReferenceLogView(titleHint),
+                  discriminator: userReferenceLogView(titleHint ?? ""),
                   reason:
                     "No matching event was found, so no update approval was created.",
                 }),
@@ -6224,14 +6407,14 @@ export function createCalendarActionRunner(
                   fallback,
                   {
                     candidateCount: candidates.length,
-                    titleHint: userReferenceLogView(titleHint),
+                    titleHint: userReferenceLogView(titleHint ?? ""),
                     candidates,
                   },
                 ),
                 effectReceipt: calendarRequestNoopReceipt({
                   message,
                   operation: "calendar.event.update",
-                  discriminator: userReferenceLogView(titleHint),
+                  discriminator: userReferenceLogView(titleHint ?? ""),
                   reason:
                     "Multiple events matched the request, so no update approval was created.",
                 }),
@@ -6244,12 +6427,12 @@ export function createCalendarActionRunner(
                 text: await renderReply(
                   "update_event_not_found",
                   "i couldn't find a unique event to update.",
-                  { titleHint: userReferenceLogView(titleHint) },
+                  { titleHint: userReferenceLogView(titleHint ?? "") },
                 ),
                 effectReceipt: calendarRequestNoopReceipt({
                   message,
                   operation: "calendar.event.update",
-                  discriminator: userReferenceLogView(titleHint),
+                  discriminator: userReferenceLogView(titleHint ?? ""),
                   reason:
                     "A unique target could not be resolved, so no update approval was created.",
                 }),
@@ -6277,28 +6460,31 @@ export function createCalendarActionRunner(
             });
           }
           if (!targetEvent) {
-            targetEvent = await service.getConditionalCalendarMutationTarget(
-              INTERNAL_URL,
-              {
+            const eventId = resolvedEventId;
+            targetEvent = await timeCalendarUpdate("source-read", () =>
+              service.getConditionalCalendarMutationTarget(INTERNAL_URL, {
                 mode: connectorModeDetail(details),
                 side: connectorSideDetail(details),
                 grantId: connectorGrantIdDetail(details),
                 calendarId: resolvedCalendarId,
-                eventId: resolvedEventId,
-              },
+                eventId,
+              }),
             );
             resolvedCalendarId = targetEvent.calendarId;
           }
           requireNativeCalendarSource(targetEvent.grantId ?? undefined);
+          const observedTarget = targetEvent;
           const extractedForUpdate = targetEvent
-            ? await inferUpdateEventDetails(
-                runtime,
-                message,
-                state,
-                intent,
-                targetEvent,
-                targetEvent.timezone ?? planningTimeZone,
-                hostDeps,
+            ? await timeCalendarUpdate("extract", () =>
+                inferUpdateEventDetails(
+                  runtime,
+                  message,
+                  state,
+                  intent,
+                  observedTarget,
+                  observedTarget.timezone ?? planningTimeZone,
+                  hostDeps,
+                ),
               )
             : ({} as Record<string, unknown>);
           if (extractedForUpdate.requiresInput === true) {
@@ -6509,17 +6695,19 @@ export function createCalendarActionRunner(
                 "An exact start and end are required to check the proposed move.",
               );
             }
-            const availability = await evaluateCalendarWriteAvailability({
-              runtime,
-              ...scopedAvailabilitySource(
-                targetEvent.grantId,
-                targetEvent.calendarId,
-              ),
-              startAt: proposedStart,
-              endAt: proposedEnd,
-              timeZone: zone,
-              excludeEventId: targetEvent.id,
-            });
+            const availability = await timeCalendarUpdate("availability", () =>
+              evaluateCalendarWriteAvailability({
+                runtime,
+                ...scopedAvailabilitySource(
+                  observedTarget.grantId,
+                  observedTarget.calendarId,
+                ),
+                startAt: proposedStart,
+                endAt: proposedEnd,
+                timeZone: zone,
+                excludeEventId: observedTarget.id,
+              }),
+            );
             if (!availability.definitive || availability.conflicts.length > 0) {
               return respond({
                 success: false,
@@ -6559,13 +6747,12 @@ export function createCalendarActionRunner(
               operation: "update",
               payload: updateRequest,
             });
-            const updatedEvent = await service.updateCalendarEvent(
-              INTERNAL_URL,
-              {
+            const updatedEvent = await timeCalendarUpdate("persist", () =>
+              service.updateCalendarEvent(INTERNAL_URL, {
                 ...updateRequest,
                 expectedProviderVersion,
                 idempotencyKey,
-              },
+              }),
             );
             const verifiedReply = verifyAppliedCalendarMutation({
               operation: "update",
