@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 /**
  * Drives the registered CALENDAR action through the canonical executor over
  * real PGlite calendar, task, and approval stores. Only the remote ICS and
@@ -17,6 +18,7 @@ import {
   type AgentRuntime,
   ChannelType,
   type Content,
+  conversationClientUserMemoryId,
   executePlannedToolCall,
   type Memory,
   ModelType,
@@ -41,6 +43,15 @@ import {
   it,
   vi,
 } from "vitest";
+import { PgApprovalQueue } from "../../plugin-assistant/src/services/approval/store.ts";
+import { CALENDAR_AGENDA_CAPABILITY } from "../../plugin-assistant/src/services/device-actions/calendar-contract.ts";
+import {
+  currentAppRecordSource,
+  DeviceActionService,
+  setDeviceReadReplyContext,
+  setDeviceReadReplyConversation,
+  withDeviceActionTurn,
+} from "../../plugin-assistant/src/services/device-actions/service.ts";
 import { projectClientObservation } from "../../plugin-assistant/src/services/message/client-observation-context.ts";
 import {
   calendarAction,
@@ -1195,6 +1206,235 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           (event) => event.title === "Create extraction timing check",
         ),
       ).toEqual([]);
+    },
+  );
+
+  it.each([
+    "runtime",
+    "runtime-none",
+    "native",
+    "legacy",
+    "private",
+    "invalid-native",
+    "stale",
+    "missing-agenda",
+    "invalid-agenda",
+  ] as const)(
+    "keeps the actual enrolled Calendar feed source boundary (%s)",
+    async (mode) => {
+      const owner = randomUUID() as UUID,
+        roomId = randomUUID() as UUID,
+        worldId = randomUUID() as UUID;
+      await runtime.createEntity({
+        id: owner,
+        names: ["Agenda boundary owner"],
+        metadata: {},
+      });
+      await runtime.createWorld({
+        id: worldId,
+        name: "Agenda boundary world",
+        agentId: runtime.agentId,
+        metadata: {
+          ownership: { ownerId: owner },
+          roles: { [owner]: "OWNER" },
+        },
+      });
+      await runtime.createRoom({
+        id: roomId,
+        worldId,
+        name: "Agenda boundary room",
+        source: "client_chat",
+        type: ChannelType.DM,
+      });
+      const credential = {
+        subjectUserId: `agenda-subject-${owner}`,
+        installationId: randomUUID(),
+        deviceKey: "c".repeat(64),
+        capabilities: [CALENDAR_AGENDA_CAPABILITY],
+      };
+      const device = new DeviceActionService(runtime);
+      await device.register(credential, "Synthetic agenda device");
+      const nativeSource = {
+        sourceId: "native-calendar",
+        sourceRevision: "a".repeat(64),
+      };
+      const context = {
+        view: "calendar",
+        revision: 1,
+        sensitive: mode === "private",
+        timeZone: "America/Los_Angeles",
+        ...(mode === "runtime-none"
+          ? {}
+          : {
+              selectedObject:
+                mode === "legacy"
+                  ? {
+                      kind: "legacy-app-calendar-source",
+                      id: "legacy-app-calendar",
+                      accountId: "device-local-legacy",
+                      revision: "b".repeat(64),
+                    }
+                  : mode === "runtime"
+                    ? {
+                        kind: "canonical-calendar-source",
+                        id: ELIZA_CALENDAR_ID,
+                        accountId: ELIZA_CALENDAR_GRANT_ID,
+                        revision: "1",
+                        sourceRevision: "a".repeat(64),
+                      }
+                    : {
+                        kind: "calendar-source",
+                        id: nativeSource.sourceId,
+                        revision:
+                          mode === "invalid-native"
+                            ? "bad-revision"
+                            : nativeSource.sourceRevision,
+                      },
+            }),
+      };
+      // The bridge capability/source remains present even for runtime and legacy
+      // selections. Neither is authority to substitute the native record store.
+      const backend = vi.spyOn(calendar, "getCalendarFeed");
+      const proposal = vi.spyOn(
+        DeviceActionService.prototype,
+        "proposeWithOutcome",
+      );
+      const enqueue = vi.spyOn(
+        PgApprovalQueue.prototype,
+        "enqueueTransactional",
+      );
+      const delivered: Content[] = [];
+      let current = true;
+      const result = await withDeviceActionTurn(
+        runtime,
+        credential,
+        async () => {
+          const nonce = randomUUID(),
+            scope = JSON.stringify([runtime.agentId, roomId, owner]);
+          const actor: Memory = {
+            id: conversationClientUserMemoryId(scope, nonce),
+            agentId: runtime.agentId,
+            entityId: owner,
+            roomId,
+            createdAt: Date.now(),
+            content: {
+              text: "Show my calendar for October 29, 2026.",
+              source: "client_chat",
+              role: "user",
+              channelType: "DM",
+              chatIdempotency: {
+                version: 1,
+                scope,
+                clientMessageId: nonce,
+                fingerprint: "d".repeat(64),
+              },
+              metadata: {
+                agentActionMode: "direct-request-v1",
+                uiTimeZone: "America/Los_Angeles",
+                clientDevice: {
+                  context,
+                  ...(mode === "missing-agenda"
+                    ? {}
+                    : {
+                        calendarAgendaSource:
+                          mode === "invalid-agenda"
+                            ? { ...nativeSource, sourceRevision: "invalid" }
+                            : nativeSource,
+                      }),
+                },
+              },
+            },
+          };
+          await runtime.createMemory(actor, "messages");
+          setDeviceReadReplyConversation(runtime, randomUUID(), roomId);
+          setDeviceReadReplyContext(runtime, actor, {
+            id: actor.id!,
+            events: [],
+          });
+          if (mode === "stale") current = false;
+          expect(currentAppRecordSource(runtime, "calendar", actor)).toBe(
+            mode.startsWith("runtime")
+              ? "runtime"
+              : ["native", "missing-agenda", "invalid-agenda"].includes(mode)
+                ? "device"
+                : "unavailable",
+          );
+          return executePlannedToolCall(
+            runtime,
+            {
+              message: actor,
+              userRoles: ["OWNER"],
+              activeContexts: ["calendar"],
+              replyOwner: "planner",
+              callback: async (content) => {
+                delivered.push(content);
+                return [];
+              },
+            },
+            {
+              name: "CALENDAR_FEED",
+              params: {
+                details: { date: "2026-10-29", endDate: "2026-10-29" },
+              },
+            },
+            {
+              actions: promoteSubactionsToActions(
+                calendarAction,
+                calendarActionPromotionOptions,
+              ).filter((action) => action.name === "CALENDAR_FEED"),
+            },
+          );
+        },
+        {
+          isCurrent: () => current,
+          requestCaller: {
+            subjectUserId: credential.subjectUserId,
+            entityId: owner,
+            role: "OWNER",
+          },
+        },
+      );
+      expect(delivered).toEqual([]);
+      if (mode.startsWith("runtime")) {
+        expect(result.success, JSON.stringify(result)).toBe(true);
+        expect(backend).toHaveBeenCalledTimes(1);
+        expect(proposal).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
+      } else if (mode === "native") {
+        expect(result.success, JSON.stringify(result)).toBe(true);
+        expect(result.data).toMatchObject({
+          proposalId: expect.any(String),
+          localCalendarRead: false,
+          executed: false,
+        });
+        expect(backend).not.toHaveBeenCalled();
+        expect(proposal).toHaveBeenCalledTimes(1);
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        expect(result.effectReceipts?.[0]?.outcome).toBe("preview");
+        expect(
+          result.effectReceipts?.some(
+            (receipt) => receipt.outcome === "applied",
+          ),
+        ).not.toBe(true);
+      } else {
+        expect(result.success, JSON.stringify(result)).toBe(false);
+        expect(result.data, JSON.stringify(result)).toMatchObject({
+          code:
+            mode === "missing-agenda" || mode === "invalid-agenda"
+              ? "CALENDAR_AGENDA_SOURCE_UNAVAILABLE"
+              : "CALENDAR_AGENDA_UNAVAILABLE",
+          retryable: false,
+          localCalendarRead: false,
+        });
+        expect(backend).not.toHaveBeenCalled();
+        expect(proposal).not.toHaveBeenCalled();
+        expect(enqueue).not.toHaveBeenCalled();
+        expect(
+          result.effectReceipts?.some(
+            (receipt) => receipt.outcome === "applied",
+          ),
+        ).not.toBe(true);
+      }
     },
   );
 

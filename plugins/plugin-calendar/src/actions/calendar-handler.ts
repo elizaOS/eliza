@@ -5779,7 +5779,7 @@ export function createCalendarActionRunner(
             "Local Calendar is unavailable",
             "CALENDAR_NATIVE_RESOURCE_REQUIRED",
           );
-        return hostDeps.requestLocalAgenda({
+        const localAgenda = await hostDeps.requestLocalAgenda({
           runtime,
           message,
           window: {
@@ -5789,6 +5789,9 @@ export function createCalendarActionRunner(
             maximumEvents: 200,
           },
         });
+        // Only a host-verified runtime source declines this native port. Unknown,
+        // private, stale or legacy contexts return a refusal instead of falling through.
+        if (localAgenda) return localAgenda;
       }
       const service = resolveCalendarService(runtime);
       try {
