@@ -28,7 +28,11 @@ function getRepoLocalWorkspaceRoot(
   }
 
   const relativeRoots: Record<string, string[]> = {
-    "@elizaos/agent": ["packages/agent", "eliza/agent", "../eliza/agent"],
+    "@elizaos/agent": [
+      "packages/agent",
+      "eliza/packages/agent",
+      "../eliza/packages/agent",
+    ],
     "@elizaos/app": [
       "packages/app",
       "eliza/packages/app",

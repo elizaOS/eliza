@@ -3,7 +3,7 @@
  * Protocol uses fd 3; diagnostics never reach callers.
  *
  * Environment: ELIZA_INFERENCE_LIBRARY + ELIZA_INFERENCE_LIBRARY_SHA256, and an
- * absolute ELIZA_PARADEE_MODEL_DIR holding the pinned `paradee-8m-v1_1.gguf`
+ * absolute ELIZA_PARADEE_MODEL_DIR holding the pinned `paradee-8m-v1_2.gguf`
  * and `misaki-en-us.lex`. Text is phonemized by the native misaki G2P; no
  * ONNX, no host phonemizer, no download and no cloud fallback. When the
  * directory also holds the pinned eSpeak NG 1.52.0 English data in
@@ -31,15 +31,15 @@ import {
 import { loadElizaInferenceFfi } from "./services/voice/ffi-bindings";
 
 /**
- * Paradee-8M v1.1 GGUF converted from sahilmahendrakar/Paradee-8M-v1.1 and the
+ * Paradee-8M v1.2 GGUF converted from sahilmahendrakar/Paradee-8M-v1.2 and the
  * misaki en-US lexicon, as recorded by `tools/paradee/pins.json` and
  * `tools/misaki-g2p/pins.json` in the pinned llama.cpp fork.
  */
 export const PARADEE_ASSETS: readonly PinnedSpeechAsset[] = [
 	{
-		path: "paradee-8m-v1_1.gguf",
-		sha256: "f205ab055f0120d571aa6fda2deadde1e6fbc88e8d8bd56a592917fd0e50892e",
-		bytes: 31_275_232,
+		path: "paradee-8m-v1_2.gguf",
+		sha256: "a43118932f7ec01bb3e9f1b92a56b24dd2622011c8fd5c77dca1e353b56e6df6",
+		bytes: 31_276_064,
 	},
 	{
 		path: "misaki-en-us.lex",
@@ -48,7 +48,7 @@ export const PARADEE_ASSETS: readonly PinnedSpeechAsset[] = [
 	},
 ];
 /**
- * eSpeak NG 1.52.0 English data (`tools/misaki-g2p/pins.json` `espeak_ng.data`),
+ * eSpeak NG 1.52.0 English and Spanish data (`tools/misaki-g2p/pins.json` `espeak_ng.data`),
  * compiled from the pinned source archive. The paradee-voice build and a
  * Homebrew espeak-ng 1.52.0 build produce the same bytes.
  */
@@ -88,7 +88,22 @@ export const ESPEAK_DATA_ASSETS: readonly PinnedSpeechAsset[] = [
 		sha256: "41534c2a22df5dd4f1052ff9e1a33a3ea7bff5a26b5c02bdad5ba8ddb7524704",
 		bytes: 257,
 	},
+	// Spanish (Spain) data for the Delibes-8M-esES voice; misaki never reads it.
+	{
+		path: "espeak-ng-data/es_dict",
+		sha256: "e7c6347e407d5c14f283eeada18b86c6d560b03b62f53659473109bbff096757",
+		bytes: 49_285,
+	},
+	{
+		path: "espeak-ng-data/lang/roa/es",
+		sha256: "966aa015ea5646d79f0ca4807cf5da7339aabd3782b55cfa5eb0d8c3fc8fc588",
+		bytes: 63,
+	},
 ];
+const SPANISH_ESPEAK_DATA: ReadonlySet<string> = new Set([
+	"espeak-ng-data/es_dict",
+	"espeak-ng-data/lang/roa/es",
+]);
 const SAMPLE_RATE = 24000;
 const MAX_SECONDS = 60;
 
@@ -138,7 +153,17 @@ const espeakDataDir = existsSync(join(root, "espeak-ng-data")) ? root : null;
 
 if (isMainThread) {
 	verifyPinnedAssets(root, PARADEE_ASSETS);
-	if (espeakDataDir) verifyPinnedAssets(root, ESPEAK_DATA_ASSETS);
+	// The Spanish files are optional here (this worker speaks English); when
+	// present they must match their pins too.
+	if (espeakDataDir)
+		verifyPinnedAssets(
+			root,
+			ESPEAK_DATA_ASSETS.filter(
+				(asset) =>
+					!SPANISH_ESPEAK_DATA.has(asset.path) ||
+					existsSync(join(root, asset.path)),
+			),
+		);
 	const ffi = loadElizaInferenceFfi(library);
 	try {
 		if (Number(ffi.libraryAbiVersion) < 17 || !ffi.paradeeSupported?.())

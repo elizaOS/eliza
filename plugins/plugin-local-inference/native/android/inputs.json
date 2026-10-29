@@ -1,11 +1,12 @@
 {
   "paradee": {
-    "version": "1.1",
-    "path": "tts/paradee/paradee-8m-v1_1.gguf",
-    "source": "llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --version 1.1 --outtype f32 from the sahilmahendrakar/Paradee-8M-v1.1 files pinned in tools/paradee/pins.json",
-    "bytes": 31275232,
-    "sha256": "f205ab055f0120d571aa6fda2deadde1e6fbc88e8d8bd56a592917fd0e50892e",
-    "license": "Apache-2.0"
+    "version": "1.2",
+    "path": "tts/paradee/paradee-8m-v1_2.gguf",
+    "source": "llama.cpp tools/paradee/convert_paradee_pt_to_gguf.py --version 1.2 --outtype f32 from the sahilmahendrakar/Paradee-8M-v1.2 files pinned in tools/paradee/pins.json",
+    "bytes": 31276064,
+    "sha256": "a43118932f7ec01bb3e9f1b92a56b24dd2622011c8fd5c77dca1e353b56e6df6",
+    "license": "Apache-2.0",
+    "voice": "af_heart"
   },
   "lexicon": {
     "path": "tts/paradee/misaki-en-us.lex",
@@ -13,6 +14,30 @@
     "bytes": 12947790,
     "sha256": "fbf09090cff0a41f3f579bf03ab9fc42710b04d7284767b10467a5f182c23925",
     "license": "Apache-2.0"
+  },
+  "spanish": {
+    "enabled": true,
+    "enabled_note": "The one switch for the Castilian Spanish voice, on by owner decision. false leaves it out entirely: build-native.ts neither converts nor bundles the GGUF, the manifest has no voices.es, consumer.gradle requires it absent and verify-voice-product-release.ts requires the catalog not to list it.",
+    "family": "delibes",
+    "language": "es",
+    "path": "tts/paradee/delibes-8m-eses.gguf",
+    "source": "llama.cpp tools/paradee/convert_paradee_onnx_to_gguf.py --family delibes from the lapislabsai/Delibes-8M-esES fp32 ONNX graphs pinned in tools/paradee/pins.json (\"delibes\")",
+    "bytes": 31275328,
+    "sha256": "a2f5acff3ac8218c7973c0a76a449365faace53ee6af4cf0f3bdc1f61868f0da",
+    "license": "Apache-2.0",
+    "notices": [
+      "LICENSE",
+      "NOTICE.md",
+      "third_party/kokoro/LICENSE",
+      "third_party/paradee/LICENSE",
+      "third_party/TATOEBA.md"
+    ],
+    "release_status": "The release says human_approval PENDING and commercial_distribution BLOCKED (provenance.json, release-manifest.json); its NOTICE.md says voice consent and provenance for em_alex are not independently established.",
+    "release_override": {
+      "model": "Delibes-8M-esES",
+      "decision": "Grace docs/decisions.md, owner decision 2026-10-28",
+      "overrides": ["human_approval PENDING", "commercial_distribution BLOCKED"]
+    }
   },
   "espeak": {
     "version": "1.52.0",
@@ -27,7 +52,9 @@
       "intonations",
       "en_dict",
       "lang/gmw/en",
-      "lang/gmw/en-US"
+      "lang/gmw/en-US",
+      "es_dict",
+      "lang/roa/es"
     ]
   },
   "asr": {
