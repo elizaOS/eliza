@@ -8,6 +8,13 @@
  * artifact's downloadUrl, and never applies, stages or schedules an update. Applying a
  * release stays an operator step (aosp-ota-update.mjs, install-release.ts).
  *
+ * State "available" means only that the channel's verified release is a different build of
+ * the booted product with the same build type and signing tags. The signed contract carries
+ * no build date or AVB rollback index, so the client does not order releases: a consumer
+ * that offers "available" to a user must first run the operator update checks
+ * (aosp-ota-update.mjs `check`), which refuse older dates, security patches and rollback
+ * indexes, before presenting it as an update.
+ *
  * The client is off unless a product turns it on: `enabled` defaults to
  * UPDATE_CHANNEL_CLIENT_ENABLED (false), and a disabled client fetches nothing.
  */
