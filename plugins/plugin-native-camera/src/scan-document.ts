@@ -451,9 +451,18 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
         const draft = await store.read();
         if (closed) return undefined;
         if (!draft) return "none" as const;
+        // A draft is admitted like the pages it replaces, before the person is asked to give
+        // up the open ones: every page on its own, at most 20 pages and 64 MB together.
+        for (const image of draft.pages) admitScanImage(image);
+        if (draft.pages.length > SCAN_LIMITS.pages)
+          throw new ScanDocumentError("A document holds up to 20 pages.");
+        if (
+          draft.pages.reduce((sum, image) => sum + image.size, 0) >
+          SCAN_LIMITS.documentBytes
+        )
+          throw new ScanDocumentError("Choose pages up to 64 MB total.");
         if (pages.length && !(await confirm())) return "kept" as const;
         if (closed) return undefined;
-        for (const image of draft.pages) admitScanImage(image);
         pages = draft.pages.map((image, i) => ({
           id: nextId++,
           image,

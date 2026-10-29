@@ -267,6 +267,48 @@ describe("drafts", () => {
     expect(other.snapshot().controls.deleteDraft).toBe(false);
   });
 
+  it("refuses a draft over the document limits before asking to replace the open pages", async () => {
+    const tooMany: ScanDraftPort<Image, string> = {
+      save: vi.fn(async () => ({ revision: "r" })),
+      read: vi.fn(async () => ({
+        revision: "r1",
+        pages: Array.from({ length: SCAN_LIMITS.pages + 1 }, (_, i) =>
+          image(`p${i}`),
+        ),
+      })),
+      remove: vi.fn(async () => {}),
+    };
+    const confirm = vi.fn(() => true);
+    const doc = createScanDocument<Image, string>({
+      first: image("open"),
+      drafts: tooMany,
+    });
+    await expect(doc.loadDraft(confirm)).rejects.toBeInstanceOf(
+      ScanDocumentError,
+    );
+    const tooLarge: ScanDraftPort<Image, string> = {
+      ...tooMany,
+      read: vi.fn(async () => ({
+        revision: "r2",
+        pages: Array.from({ length: 5 }, (_, i) => image(`p${i}`, 15 * MB)),
+      })),
+    };
+    const other = createScanDocument<Image, string>({
+      first: image("open"),
+      drafts: tooLarge,
+    });
+    await expect(other.loadDraft(confirm)).rejects.toBeInstanceOf(
+      ScanDocumentError,
+    );
+    expect(confirm).not.toHaveBeenCalled();
+    expect(names(doc)).toEqual(["open"]);
+    expect(names(other)).toEqual(["open"]);
+    expect(doc.snapshot()).toMatchObject({
+      busy: false,
+      draftRevision: undefined,
+    });
+  });
+
   it("offers no draft actions without a store", async () => {
     const doc = createScanDocument<Image>({ first: image("a") });
     expect(doc.snapshot().controls).toMatchObject({
