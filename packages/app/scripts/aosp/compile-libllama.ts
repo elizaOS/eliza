@@ -57,11 +57,10 @@ const RECURSIVE_CLEANUP_SCRIPT = path.join(
   "rm-path-recursive.ts",
 );
 
-// elizaOS/llama.cpp @ 33c888a7b. Composes TBQ (apothic) +
+// elizaOS/llama.cpp @ LLAMA_CPP_COMMIT (below). Composes TBQ (apothic) +
 // QJL (W1-A) + Q4_POLAR (W1-B) + Metal sources (W1-D) + MTP spec-decode
 // (W2) + W3-B fused CPU kernels + W4-B CUDA QJL/Polar/TBQ3_TCQ kernels onto
-// upstream b9213. See docs/porting/unified-fork-strategy.md for the full
-// migration story.
+// upstream llama.cpp.
 //
 // The fork ships in-tree as the git submodule at
 // plugins/plugin-local-inference/native/llama.cpp (next to the MTP build at
@@ -69,7 +68,7 @@ const RECURSIVE_CLEANUP_SCRIPT = path.join(
 // land on identical kernels). When that
 // submodule is initialized this path defaults to it (no clone needed); pass
 // `--src-dir` to point at another checkout, or `--cache-dir` to force a
-// standalone clone of `${LLAMA_CPP_REMOTE}` at `${LLAMA_CPP_TAG}`.
+// standalone fetch of `${LLAMA_CPP_REMOTE}` at `${LLAMA_CPP_COMMIT}`.
 //
 // Pre-2026-05-09 the AOSP path consumed apothic/llama.cpp-1bit-turboquant
 // directly and applied vendored QJL + PolarQuant patch series via
@@ -77,15 +76,19 @@ const RECURSIVE_CLEANUP_SCRIPT = path.join(
 // flow is now replaced by a single canonical fork — the patches are
 // baked in. apply-patches.ts is kept around for one release as a
 // rollback path; see scripts/aosp/llama-cpp-patches/README.md.
-export const LLAMA_CPP_TAG = "v1.2.0-eliza";
-// Must track the `plugins/plugin-local-inference/native/llama.cpp` submodule
-// gitlink on develop. The old pin `33c888a7be` predated the Mali flash-attn
-// subgroup-race fix (the `VK_VENDOR_ID_ARM` `disable_subgroups` branch), so the
-// fused Vulkan lib built from it SIGABRTed mid-decode on Mali GPUs (#9508). This
-// commit is a forward descendant that bakes the mitigation in; the
-// `verify-fused-symbols` gate enforces the marker is present post-build.
-export const LLAMA_CPP_COMMIT = "32a7911dced6230ce544c43a6399f5bd721cab90";
+// Must equal the `plugins/plugin-local-inference/native/llama.cpp` submodule
+// gitlink on develop, so the standalone-fetch path builds the same source as
+// the submodule path. The commit must include the Mali flash-attn
+// subgroup-race fix (the `VK_VENDOR_ID_ARM` `disable_subgroups` branch, #9508);
+// the `verify-fused-symbols` gate enforces the marker is present post-build.
+export const LLAMA_CPP_COMMIT = "0d9fd4b9db239bbf851068f98c99f4263f8c05c5";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
+export const DEFAULT_LLAMA_CPP_CACHE_DIR = path.join(
+  os.homedir(),
+  ".cache",
+  "eliza-android-agent",
+  `llama-cpp-${LLAMA_CPP_COMMIT.slice(0, 12)}`,
+);
 export const AARCH64_MUSL_ZIG_MIN_VERSION = "0.13.0";
 export const AARCH64_MUSL_ZIG_MAX_VERSION_EXCLUSIVE = "0.14.0";
 // Floor for the RVV-on riscv64 build. Zig 0.13's bundled LLVM rejects the
@@ -440,12 +443,7 @@ export function resolveDefaultAndroidAssetsDir({ root = repoRoot } = {}) {
 export function parseArgs(argv) {
   const args = {
     androidAssetsDir: resolveDefaultAndroidAssetsDir(),
-    cacheDir: path.join(
-      os.homedir(),
-      ".cache",
-      "eliza-android-agent",
-      `llama-cpp-${LLAMA_CPP_TAG}`,
-    ),
+    cacheDir: DEFAULT_LLAMA_CPP_CACHE_DIR,
     abis: ABI_TARGETS.map((t) => t.androidAbi),
     // Optional explicit --target=android-<arch>-<backend>[-fused] triples
     // (see parseAndroidTarget). When present, this list takes precedence
@@ -550,7 +548,7 @@ export function parseArgs(argv) {
           "                    in-repo submodule / a fresh clone. The directory's HEAD\n" +
           "                    is used as-is; Vulkan requires the parent native gitlink for source admission.\n" +
           `  Default source:   the git submodule plugins/plugin-local-inference/native/llama.cpp\n` +
-          `                    (elizaOS/llama.cpp @ ${LLAMA_CPP_TAG}) when initialized;\n` +
+          `                    (elizaOS/llama.cpp @ ${LLAMA_CPP_COMMIT.slice(0, 12)}) when initialized;\n` +
           `                    otherwise a standalone clone under --cache-dir.\n` +
           "  --cache-dir <PATH>  Force the standalone-clone path even when the submodule\n" +
           "                    is present.",
@@ -709,10 +707,9 @@ function run(command, args, { cwd, env = process.env } = {}) {
 }
 
 /**
- * Clone (or reuse) llama.cpp at the pinned tag/commit. Uses a sentinel file
+ * Fetch (or reuse) llama.cpp at the pinned commit. Uses a sentinel file
  * to skip the network when the cache already holds the exact commit. The
- * working tree is detached at LLAMA_CPP_COMMIT — we never let a moving tag
- * slip the source out from under a build.
+ * working tree is detached at LLAMA_CPP_COMMIT.
  *
  * Also runs `patchLlamaCppSourceForMusl()` on every checkout so the patch
  * survives cache reuse (the source-patch sentinel sits next to the
@@ -740,36 +737,19 @@ export function ensureLlamaCppCheckout({
   }
   if (!fs.existsSync(path.join(cacheDir, ".git"))) {
     log(
-      `[compile-libllama] Cloning llama.cpp ${LLAMA_CPP_TAG} into ${cacheDir}`,
+      `[compile-libllama] Fetching llama.cpp ${LLAMA_CPP_COMMIT} into ${cacheDir}`,
     );
     removeDirectoryRecursive(cacheDir);
     fs.mkdirSync(cacheDir, { recursive: true });
-    spawn(
-      "git",
-      [
-        "clone",
-        "--depth",
-        "1",
-        "--branch",
-        LLAMA_CPP_TAG,
-        LLAMA_CPP_REMOTE,
-        cacheDir,
-      ],
-      {},
-    );
-  } else {
-    log(`[compile-libllama] Refreshing llama.cpp checkout in ${cacheDir}`);
-    spawn("git", ["fetch", "--depth", "1", "origin", `tag`, LLAMA_CPP_TAG], {
+    spawn("git", ["init", "--quiet", cacheDir], {});
+    spawn("git", ["remote", "add", "origin", LLAMA_CPP_REMOTE], {
       cwd: cacheDir,
     });
+  } else {
+    log(`[compile-libllama] Refreshing llama.cpp checkout in ${cacheDir}`);
   }
-  // The pinned commit is authoritative and may NOT be the tag tip — the moving
-  // LLAMA_CPP_TAG and LLAMA_CPP_COMMIT can diverge (e.g. the commit lives on a
-  // feature branch while the tag was re-pointed at a release). A
-  // `--branch <tag>` shallow clone only carries the tag's commit, so a bare
-  // `git checkout <commit>` then fails with "unable to read tree". Fetch the
-  // exact pinned commit by sha first (GitHub serves any ref-reachable sha) so
-  // the working tree always lands on LLAMA_CPP_COMMIT, never the tag.
+  // Fetch the exact pinned commit by sha (GitHub serves any ref-reachable
+  // sha), so no fork tag is needed and the tree always lands on the pin.
   spawn("git", ["fetch", "--depth", "1", "origin", LLAMA_CPP_COMMIT], {
     cwd: cacheDir,
   });
@@ -2203,7 +2183,7 @@ export async function main(argv = process.argv.slice(2)) {
     } else {
       console.log(
         `[compile-libllama] Using --src-dir ${srcDir} (HEAD: ${headRef}); ` +
-          `pinned tag ${LLAMA_CPP_TAG} ignored.`,
+          `pinned commit ${LLAMA_CPP_COMMIT.slice(0, 12)} ignored.`,
       );
       assertSwaSpecDecodeFallback({ srcDir });
       srcDescription = `external src-dir ${srcDir}`;
@@ -2214,7 +2194,7 @@ export async function main(argv = process.argv.slice(2)) {
       log: console.log,
       spawn: run,
     });
-    srcDescription = `llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
+    srcDescription = `llama.cpp ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
   }
 
   for (const abi of args.abis) {
@@ -2310,14 +2290,14 @@ export async function mainTargets(args) {
     // In a dry run with no --src-dir and no submodule, just describe the
     // intended cache path; we never clone in dry-run.
     srcDir = args.cacheDir;
-    srcDescription = `cache ${args.cacheDir} (would clone ${LLAMA_CPP_TAG})`;
+    srcDescription = `cache ${args.cacheDir} (would fetch ${LLAMA_CPP_COMMIT.slice(0, 12)})`;
   } else {
     srcDir = ensureLlamaCppCheckout({
       cacheDir: args.cacheDir,
       log: console.log,
       spawn: run,
     });
-    srcDescription = `llama.cpp ${LLAMA_CPP_TAG} / ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
+    srcDescription = `llama.cpp ${LLAMA_CPP_COMMIT.slice(0, 12)}`;
   }
 
   if (

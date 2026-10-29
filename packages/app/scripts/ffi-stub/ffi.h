@@ -1,5 +1,5 @@
 /*
- * libelizainference FFI ABI v19.
+ * libelizainference FFI ABI v20.
  *
  * (Banner tracks ELIZA_INFERENCE_ABI_VERSION below; the per-version history is
  * at the end of this header preamble, newest first.)
@@ -134,6 +134,26 @@ extern "C" {
  * load and refuses to bind if they disagree.
  *
  * Changelog:
+ *   v20: Paradee voice slots: several Paradee-family voices on one ctx.
+ *         - `eliza_inference_paradee_voices_supported/load_voice/
+ *           unload_voice/voice_info/phonemize_voice/synthesize_voice_alloc/
+ *           synthesize_voice_stream`. A slot is named by a caller-chosen
+ *           voice id and holds one GGUF, the row of its voice table
+ *           (Paradee-8M v1.2 has four voices) and the G2P its phoneme format
+ *           needs: the misaki English lexicon ("misaki"; voices with accent
+ *           en-gb are refused: there is no British lexicon) or the
+ *           eSpeak-only EspeakG2P ("espeak-es", Delibes-8M-esES, Castilian
+ *           Spanish; needs eSpeak NG data with es_dict).
+ *         - Every Paradee synthesis (v17 calls included) chunks to the
+ *           model's validated input length (paradee.input.validated_max_ids:
+ *           360 ids for Delibes, else 512) and clamps speed to its validated
+ *           range (paradee.validated_speed: [0.85, 1.15] for Delibes, else
+ *           [0.25, 4]); Paradee GGUFs declare neither, so their v17
+ *           behaviour is unchanged.
+ *         - The v17 calls use slot "" (`paradee_load` loads it). One mutex
+ *           guards every slot; `cancel_tts` cancels whichever synthesis is
+ *           running; `mmap_evict("tts")` frees every slot and the next use
+ *           reloads it. All additions are new symbols.
  *   v19: bounded Paradee model-chunk PCM delivery and cancellation.
  *   v18: text-model context capacity resolved before stream admission.
  *         - `eliza_inference_llm_context_capacity(ctx, requested_context,
@@ -297,9 +317,9 @@ extern "C" {
  *   v7: real Silero VAD (same symbol surface as v6).
  *   v6: fused wake-word, speaker, diarizer.
  */
-#define ELIZA_INFERENCE_ABI_VERSION 19
+#define ELIZA_INFERENCE_ABI_VERSION 20
 
-/* Returns a static, NUL-terminated string of the form "19" matching
+/* Returns a static, NUL-terminated string of the form "20" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
  * pointer is owned by the library — do NOT free. */
 const char * eliza_inference_abi_version(void);
@@ -332,6 +352,7 @@ const char * eliza_inference_abi_version(void);
  *   Kokoro G2P kind         eliza_inference_kokoro_g2p_kind(ctx)     v14
  *   Paradee TTS + misaki    eliza_inference_paradee_supported        v17
  *   misaki fallback kind    eliza_inference_paradee_g2p_kind(ctx)    v17
+ *   Paradee voice slots     eliza_inference_paradee_voices_supported v20
  *   Silero VAD              eliza_inference_vad_supported            v3/v7
  *   wake word               eliza_inference_wakeword_supported       v5
  *   speaker embedding       eliza_inference_speaker_supported        v6
@@ -705,6 +726,86 @@ int eliza_inference_paradee_synthesize_phonemes_alloc(
     float speed,
     float ** out_pcm,
     size_t * out_samples,
+    char ** out_error);
+
+/* ---- Paradee voice slots (ABI v20) -------------------------------- *
+ *
+ * Several Paradee-family voices on one ctx, each in a slot named by a
+ * non-empty, caller-chosen `voice_id` (for example "en" and "es"). The v17
+ * calls above use slot "". Same build flag, lock, cancellation, eviction and
+ * PCM ownership as the v17 calls. */
+
+/* 1 when this build has the slot calls (ELIZA_ENABLE_PARADEE); 0 otherwise. */
+int eliza_inference_paradee_voices_supported(void);
+
+/* Load `gguf_path` into slot `voice_id`. `model_voice` picks a row of the
+ * GGUF's voice table by name (NULL or "" = the GGUF's default, af_heart for
+ * Paradee, em_alex for Delibes). The G2P follows the GGUF's
+ * paradee.phoneme_format:
+ *   "misaki"     `lexicon_path` (misaki-en-us.lex) is required; a voice
+ *                whose accent is en-gb is refused (no British lexicon);
+ *                `espeak_data_dir` (may be NULL) enables the OOV fallback.
+ *   "espeak-es"  `espeak_data_dir` is required (eSpeak NG data with es_dict
+ *                and lang/roa/es); `lexicon_path` is ignored and may be NULL.
+ * A repeat call with the same arguments is a no-op; on failure the slot's
+ * previous voice, if any, stays loaded. */
+int eliza_inference_paradee_load_voice(
+    EliInferenceContext * ctx,
+    const char * voice_id,
+    const char * gguf_path,
+    const char * lexicon_path,
+    const char * espeak_data_dir,
+    const char * model_voice,
+    char ** out_error);
+
+/* Free slot `voice_id` and forget its paths (ELIZA_OK when it did not exist). */
+int eliza_inference_paradee_unload_voice(
+    EliInferenceContext * ctx,
+    const char * voice_id,
+    char ** out_error);
+
+/* The slot's model as a JSON object (free with `eliza_inference_free_string`;
+ * the return value is its byte length): voice_id, family ("paradee",
+ * "delibes"), language ("en", "es"), phoneme_format, voice (the selected
+ * row's name), voices [{name, accent}], sample_rate, g2p_kind
+ * (ELIZA_PARADEE_G2P_*), validated_max_ids and validated_speed [lo, hi].
+ * `voice_id` "" describes the v17 slot. */
+int eliza_inference_paradee_voice_info(
+    EliInferenceContext * ctx,
+    const char * voice_id,
+    char ** out_json,
+    char ** out_error);
+
+/* `paradee_phonemize`, `paradee_synthesize_alloc` and
+ * `paradee_synthesize_stream` on slot `voice_id`. Synthesis chunks the
+ * phonemes to the model's validated input length and clamps `speed` to its
+ * validated range (see the v20 changelog). */
+int eliza_inference_paradee_phonemize_voice(
+    EliInferenceContext * ctx,
+    const char * voice_id,
+    const char * text,
+    size_t text_len,
+    char ** out_utf8,
+    char ** out_error);
+
+int eliza_inference_paradee_synthesize_voice_alloc(
+    EliInferenceContext * ctx,
+    const char * voice_id,
+    const char * text,
+    size_t text_len,
+    float speed,
+    float ** out_pcm,
+    size_t * out_samples,
+    char ** out_error);
+
+int eliza_inference_paradee_synthesize_voice_stream(
+    EliInferenceContext * ctx,
+    const char * voice_id,
+    const char * text,
+    size_t text_len,
+    float speed,
+    eliza_tts_chunk_cb on_chunk,
+    void * user_data,
     char ** out_error);
 
 /* ---- OmniVoice reference encode (ABI v4) -------------------------- *

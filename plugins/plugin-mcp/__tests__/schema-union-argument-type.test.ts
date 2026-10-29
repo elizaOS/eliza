@@ -1,3 +1,4 @@
+import { actionToJsonSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   convertJsonSchemaToActionParams,
@@ -26,5 +27,23 @@ describe("anyOf tool argument types", () => {
     expect(validateParamsAgainstSchema({ city: 3 }, schema)).toEqual([
       "Parameter 'city' expected string, got number",
     ]);
+  });
+
+  // FastMCP emits `default` and `enum` beside the union for `Optional[...] = None`.
+  // Core rejects those siblings on an untyped union, so the tool never registers.
+  it("builds a core tool schema for a union argument that carries a default", () => {
+    const params = convertJsonSchemaToActionParams({
+      properties: {
+        limit: {
+          anyOf: [{ type: "string" }, { type: "integer" }],
+          default: null,
+          enum: ["all", 3],
+          title: "Limit",
+        },
+      },
+    });
+    expect(() =>
+      actionToJsonSchema({ name: "MCP_TEST", description: "test", parameters: params } as never)
+    ).not.toThrow();
   });
 });

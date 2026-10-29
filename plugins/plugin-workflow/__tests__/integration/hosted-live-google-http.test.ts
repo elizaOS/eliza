@@ -279,9 +279,11 @@ test('selected Google reads run through real HTTP after scheduler restart; revok
     return { status: response.status, body: (await response.json()) as any };
   };
   try {
+    // 02:30 does not exist on the spring-forward day; core runs it one gap later (03:30 EDT)
+    // instead of skipping that day (trigger-scheduling cronMatches, #37576).
     expect(
       computeNextCronRunAtMs('30 2 * * *', Date.parse('2027-03-14T06:59:00Z'), 'America/New_York')
-    ).toBe(Date.parse('2027-03-15T06:30:00Z'));
+    ).toBe(Date.parse('2027-03-14T07:30:00Z'));
     expect(
       computeNextCronRunAtMs('30 1 * * *', Date.parse('2027-11-07T04:59:00Z'), 'America/New_York')
     ).toBe(Date.parse('2027-11-07T05:30:00Z'));

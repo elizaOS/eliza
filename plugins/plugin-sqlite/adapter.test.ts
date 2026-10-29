@@ -120,6 +120,52 @@ describe("durable SQLite agent adapter", () => {
     ]);
   });
 
+  it("keeps another agent's memories out of getMemories when no agent is named", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const otherAgentId = id();
+    const own = { ...memory("own message"), embedding: undefined };
+    await adapter.createMemories([{ memory: own, tableName: "messages" }]);
+    const storage = await adapter.getConnection();
+    const foreignId = id();
+    await storage.set("memories", foreignId, {
+      id: foreignId,
+      agentId: otherAgentId,
+      entityId,
+      roomId,
+      tableName: "messages",
+      content: { text: "foreign message" },
+      createdAt: Date.now(),
+    });
+    const legacyId = id();
+    await storage.set("memories", legacyId, {
+      id: legacyId,
+      entityId,
+      roomId,
+      tableName: "messages",
+      content: { text: "legacy message" },
+      createdAt: Date.now(),
+    });
+
+    // plugin-sql scopes getMemories with `agent_id = agentId ?? this.agentId`,
+    // so an unnamed read is this agent's read, not every agent's.
+    const unnamed = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+    });
+    expect(unnamed.map((row) => row.id).sort()).toEqual(
+      [own.id, legacyId].sort(),
+    );
+    const explicit = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      agentId,
+    });
+    expect(explicit.map((row) => row.id).sort()).toEqual(
+      [own.id, legacyId].sort(),
+    );
+  });
+
   it("keeps quoted phrases, negation and OR in message search, like plugin-sql", async () => {
     const adapter = await open();
     const adjacent = "the exact phrase alpha beta lives here";
@@ -1557,6 +1603,50 @@ describe("durable SQLite agent adapter", () => {
     ).toBeNull();
   });
 
+  it("lists appended connector audit events with the plugin-sql filters", async () => {
+    const adapter = await open();
+    const account = await adapter.upsertConnectorAccount({
+      provider: "google",
+      accountKey: "audit-account",
+      agentId,
+    });
+    await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "credential.set",
+      outcome: "success",
+      metadata: { client_secret: "shh", note: "rotated" },
+    });
+    await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "credential.set",
+      outcome: "failure",
+      metadata: { reason: "rejected" },
+    });
+    await adapter.appendConnectorAccountAuditEvent({
+      accountId: account.id,
+      action: "account.connected",
+      metadata: {},
+    });
+    const all = await adapter.listConnectorAccountAuditEvents({
+      provider: "google",
+    });
+    expect(all).toHaveLength(3);
+    expect(
+      await adapter.listConnectorAccountAuditEvents({
+        provider: "google",
+        outcome: "failure",
+      }),
+    ).toHaveLength(1);
+    expect(
+      await adapter.listConnectorAccountAuditEvents({
+        provider: "google",
+        action: "account.connected",
+      }),
+    ).toHaveLength(1);
+    const redacted = all.find((entry) => "client_secret" in entry.metadata);
+    expect(redacted?.metadata.client_secret).toBe("[REDACTED]");
+  });
+
   it("persists OAuth invalidation and refuses expired or wrong-provider state", async () => {
     const adapter = await open();
     await adapter.createOAuthFlowState({
@@ -1922,6 +2012,24 @@ it("reports an existing entity id as created without overwriting another agent's
     agentId,
     names: ["Fresh"],
   });
+});
+
+it("reports no id for a duplicate agent create and keeps the stored row", async () => {
+  const adapter = await open();
+  expect(
+    await adapter.createAgents([
+      { id: agentId, name: "Original", settings: { keep: "yes" } },
+    ]),
+  ).toEqual([agentId]);
+
+  // plugin-sql returns false for a duplicate agent id, so createAgents
+  // reports no id for it and the stored row is not overwritten.
+  expect(
+    await adapter.createAgents([{ id: agentId, name: "Rewritten" }]),
+  ).toEqual([]);
+  const stored = (await adapter.getAgentsByIds([agentId]))[0];
+  expect(stored?.name).toBe("Original");
+  expect(stored?.settings).toEqual({ keep: "yes" });
 });
 
 it("keeps an existing memory when a create reuses its id, like plugin-sql", async () => {

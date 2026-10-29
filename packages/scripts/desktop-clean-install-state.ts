@@ -15,6 +15,7 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 const HOME = os.homedir();
 
@@ -245,5 +246,5 @@ function main() {
 
 const invokedDirectly =
   process.argv[1] &&
-  path.resolve(process.argv[1]) === new URL(import.meta.url).pathname;
+  path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (invokedDirectly) main();
