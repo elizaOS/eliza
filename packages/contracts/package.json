@@ -135,6 +135,12 @@
       "types": "./dist/browser-request-grounding.d.ts",
       "import": "./dist/browser-request-grounding.js",
       "default": "./dist/browser-request-grounding.js"
+    },
+    "./stated-clock-time": {
+      "eliza-source": "./src/stated-clock-time.ts",
+      "types": "./dist/stated-clock-time.d.ts",
+      "import": "./dist/stated-clock-time.js",
+      "default": "./dist/stated-clock-time.js"
     }
   },
   "scripts": {

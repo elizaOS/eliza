@@ -12,7 +12,15 @@
  * time the provider did not observe is ungrounded, and the provider's own
  * rendering is the complete answer.
  */
-import type { StateData } from "@elizaos/core";
+
+import { isValidTimeZone } from "@elizaos/contracts";
+import { parseStatedClockTimes } from "@elizaos/contracts/stated-clock-time";
+import {
+  type ActionResult,
+  activeCommittedEffectReceipts,
+  isObjectRecord,
+  type StateData,
+} from "@elizaos/core";
 
 const TIME_QUESTION_PATTERN =
   /^(?:what(?:['’]s|s| is)?\s+(?:the\s+)?(?:(?:current|local|today['’]s)\s+)?(?:time|day|date)(?:\s+is it)?|what day of the week is it)(?:\s+(?:right now|today|for me|please))*[?.!]*$/i;
@@ -50,6 +58,110 @@ const WEEKDAY_PATTERN =
   /\b(Sunday|Monday|Tuesday|Wednesday|Thursday|Friday|Saturday)\b/gi;
 
 const CLOCK_TOLERANCE_MINUTES = 10;
+
+/** A single current applied Calendar mutation owns an event-local clock range.
+ * Single clocks, explicit zones and ambiguous/multi-event prose stay with ordinary review. This guard
+ * never selects an event, changes it, or derives a time from the user's prose.
+ */
+export function calendarMutationTimeIsUngrounded(args: {
+  reply: string;
+  actionResults: readonly ActionResult[];
+  agentId?: string;
+}): boolean {
+  if (!args.agentId) return false;
+  const stated = parseStatedClockTimes(args.reply);
+  if (stated.kind !== "one" || !stated.end) return false;
+  // Explicit alternate zones are semantic claims, not event-local clocks.
+  // Leave them to normal review rather than reinterpret them in the event zone.
+  if (
+    args.reply.split(/[\s,;()]+/).some((token) => {
+      const zone = token.replace(/[.!?"'“”‘’]+$/g, "");
+      return (
+        zone !== "AM" &&
+        zone !== "PM" &&
+        (/^(?:UTC|GMT)[+-]/i.test(zone) || isValidTimeZone(zone))
+      );
+    })
+  )
+    return false;
+  let active: ReturnType<typeof activeCommittedEffectReceipts>;
+  try {
+    active = activeCommittedEffectReceipts(
+      args.actionResults.flatMap((result) => result.effectReceipts ?? []),
+    );
+  } catch {
+    return false;
+  }
+  const events = args.actionResults.flatMap((result) => {
+    const event = result.data?.event;
+    if (
+      result.success !== true ||
+      !isObjectRecord(event) ||
+      typeof event.id !== "string" ||
+      event.agentId !== args.agentId ||
+      event.isAllDay !== false ||
+      typeof event.startAt !== "string" ||
+      typeof event.endAt !== "string" ||
+      typeof event.timezone !== "string" ||
+      (typeof event.title === "string" &&
+        parseStatedClockTimes(event.title).kind !== "none") ||
+      !isObjectRecord(event.metadata)
+    )
+      return [];
+    const version =
+      typeof event.metadata.etag === "string"
+        ? event.metadata.etag
+        : event.updatedAt;
+    if (
+      typeof version !== "string" ||
+      !active.some(
+        (receipt) =>
+          (receipt.operation === "calendar.event.create" ||
+            receipt.operation === "calendar.event.update") &&
+          receipt.resource.kind === "calendar.event" &&
+          receipt.resource.id === event.id &&
+          receipt.resource.version === version &&
+          result.effectReceipts?.some(
+            (own) => own.receiptId === receipt.receiptId,
+          ),
+      )
+    )
+      return [];
+    const start = new Date(event.startAt),
+      end = new Date(event.endAt);
+    if (
+      !Number.isFinite(start.getTime()) ||
+      !Number.isFinite(end.getTime()) ||
+      end.getTime() <= start.getTime()
+    )
+      return [];
+    try {
+      const format = new Intl.DateTimeFormat("en-US", {
+        timeZone: event.timezone,
+        hourCycle: "h23",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const minuteOfDay = (date: Date) => {
+        const parts = format.formatToParts(date);
+        return (
+          Number(parts.find((part) => part.type === "hour")?.value) * 60 +
+          Number(parts.find((part) => part.type === "minute")?.value)
+        );
+      };
+      return [{ start: minuteOfDay(start), end: minuteOfDay(end) }];
+    } catch {
+      return [];
+    }
+  });
+  const event = events.at(0);
+  if (events.length !== 1 || !event) return false;
+  const start = stated.start.hour * 60 + stated.start.minute;
+  return (
+    start !== event.start ||
+    stated.end.hour * 60 + stated.end.minute !== event.end
+  );
+}
 
 export interface ObservedCurrentTime {
   humanReadable: string;
