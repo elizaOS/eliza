@@ -959,7 +959,10 @@ type ReferredCheckout = Purchase & { appOwner: string; creator: string };
  * $4 (app owner) + $1 (creator) revenue splits. `withSplits` books them, as
  * handleCheckoutSessionCompleted does after the credit grant.
  */
-async function referredCheckout(withSplits = true): Promise<ReferredCheckout> {
+async function referredCheckout(
+  withSplits = true,
+  referredLater = false,
+): Promise<ReferredCheckout> {
   const buyer = await purchase({ credits: "500", cents: 1000, balance: "500" });
   const appOwner = randomUUID();
   const creator = randomUUID();
@@ -978,9 +981,16 @@ async function referredCheckout(withSplits = true): Promise<ReferredCheckout> {
     [code, creator, `code-${code}`],
   );
   await pg().query(
-    `INSERT INTO referral_signups(referral_code_id,referrer_user_id,referred_user_id,app_owner_id,creator_id)
-     VALUES ($1,$2,$3,$4,$2)`,
-    [code, creator, order.rows[0]?.initiated_by_user_id, appOwner],
+    `INSERT INTO referral_signups(referral_code_id,referrer_user_id,referred_user_id,app_owner_id,creator_id,created_at)
+     VALUES ($1,$2,$3,$4,$2,$5)`,
+    [
+      code,
+      creator,
+      order.rows[0]?.initiated_by_user_id,
+      appOwner,
+      // The buyer was referred before the purchase, or after it.
+      new Date(Date.now() + (referredLater ? 3_600_000 : -3_600_000)),
+    ],
   );
   const referred = { ...buyer, appOwner, creator };
   if (withSplits) await bookRevenueSplits(referred);
@@ -1067,5 +1077,15 @@ test("a refund waits for revenue splits that are owed but not booked yet", async
   ).toBe("ack");
   expect(await earnedLedger(buyer.appOwner)).toBe(0);
   expect(await earnedLedger(buyer.creator)).toBe(0);
+  expect(await balance(buyer.org)).toBe(0);
+});
+
+test("a referral applied after the purchase does not hold the refund", async () => {
+  const buyer = await referredCheckout(false, true);
+  expect(
+    await processStripeEvent(
+      refundEvent(`ch_${randomUUID()}`, 1000, buyer.paymentIntentId),
+    ),
+  ).toBe("ack");
   expect(await balance(buyer.org)).toBe(0);
 });

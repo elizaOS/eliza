@@ -68,6 +68,7 @@
     "./db/repositories/personal-shared-group-consent": "./src/db/repositories/personal-shared-group-consent.ts",
     "./db/repositories/personal-shared-group-participants": "./src/db/repositories/personal-shared-group-participants.ts",
     "./db/repositories/personal-shared-groups": "./src/db/repositories/personal-shared-groups.ts",
+    "./db/repositories/referrals": "./src/db/repositories/referrals.ts",
     "./db/repositories/remote-command-envelopes": "./src/db/repositories/remote-command-envelopes.ts",
     "./db/repositories/remote-hosts": "./src/db/repositories/remote-hosts.ts",
     "./db/repositories/remote-sessions": "./src/db/repositories/remote-sessions.ts",
