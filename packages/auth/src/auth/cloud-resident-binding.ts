@@ -230,50 +230,50 @@ export function recentResidentPlanAdmission<E extends string>(
  * At most one rebind of the running resident runs; one more is queued behind it and further
  * requests coalesce. A host whose admission controller is short-lived (one per account read) keeps
  * one of these for the life of the resident so the rule survives across admissions.
+ *
+ * Every caller learns the outcome of the run that serves it: a request that runs now gets that
+ * run's promise; a request that coalesces into the queued run gets the queued run's promise, which
+ * resolves or rejects with that run's own result. Nothing is swallowed.
  */
 export class ResidentRebindQueue {
   private running: Promise<void> | null = null;
-  private queued: {
+  private next: {
     rebind: () => Promise<void>;
     blocked: () => boolean;
+    promise: Promise<void>;
+    resolve: () => void;
+    reject: (error: unknown) => void;
   } | null = null;
   private wanted = false;
 
   /**
    * Runs `rebind` now, or queues it behind the running one. `blocked` lets the host defer the run
-   * (another operation is in progress); call `resume` once that ends. A queued request runs with
-   * its own `rebind` and `blocked` once the running one settles. The returned promise settles with
-   * the run this call started, or the running one it queued behind; it rejects when that run does.
+   * (another operation is in progress); call `resume` once that ends. The queued run uses the
+   * latest coalesced caller's `rebind` and `blocked`. The returned promise settles with the run
+   * that serves this call; a deferred request settles once the host resumes it.
    */
   request(
     rebind: () => Promise<void>,
     blocked: () => boolean = () => false,
   ): Promise<void> {
-    if (this.running || blocked()) {
-      this.wanted = true;
-      this.queued = { rebind, blocked };
-      return this.running ?? Promise.resolve();
+    if (!this.running && !blocked()) return this.runNow(rebind);
+    if (!this.next) {
+      let resolve: () => void = () => {};
+      let reject: (error: unknown) => void = () => {};
+      const promise = new Promise<void>((done, fail) => {
+        resolve = done;
+        reject = fail;
+      });
+      this.next = { rebind, blocked, promise, resolve, reject };
     }
-    this.wanted = false;
-    this.queued = null;
-    const run = (async () => {
-      try {
-        await rebind();
-      } finally {
-        this.running = null;
-      }
-    })();
-    this.running = run;
-    return run.finally(() => {
-      const next = this.queued ?? { rebind, blocked };
-      if (this.wanted && !this.running && !next.blocked())
-        void this.request(next.rebind, next.blocked).catch(() => {});
-    });
+    this.next.rebind = rebind;
+    this.next.blocked = blocked;
+    return this.next.promise;
   }
 
   /** Whether a rebind is waiting for the current work to end. */
   get pending(): boolean {
-    return this.wanted;
+    return this.wanted || this.next !== null;
   }
 
   /** Whether a rebind is running now. */
@@ -286,13 +286,51 @@ export class ResidentRebindQueue {
     this.wanted = true;
   }
 
-  /** Runs a wanted rebind when nothing is running and nothing blocks it. */
+  /**
+   * Runs a wanted or queued rebind with the host's `rebind` when nothing is running and nothing
+   * blocks it. Callers that coalesced into the queued run receive this run's outcome.
+   */
   resume(
     rebind: () => Promise<void>,
     blocked: () => boolean = () => false,
   ): Promise<void> | undefined {
-    if (!this.wanted || this.running || blocked()) return undefined;
-    return this.request(rebind, blocked);
+    if (!this.pending || this.running || blocked()) return undefined;
+    return this.runNow(rebind);
+  }
+
+  /** Starts `rebind` now; a queued request it supersedes settles with this run. */
+  private runNow(rebind: () => Promise<void>): Promise<void> {
+    const waiting = this.next;
+    this.next = null;
+    const run = this.start(rebind);
+    if (waiting) run.then(waiting.resolve, waiting.reject);
+    return run;
+  }
+
+  private start(rebind: () => Promise<void>): Promise<void> {
+    this.wanted = false;
+    const run = (async () => {
+      try {
+        await rebind();
+      } finally {
+        this.running = null;
+      }
+    })();
+    this.running = run;
+    const drain = () => this.drain();
+    run.then(drain, drain);
+    return run;
+  }
+
+  /**
+   * Starts the queued run once the running one settles, unless the host is still busy. A
+   * flag-only `queue()` has no caller to report to, so it waits for the host's `resume`.
+   */
+  private drain(): void {
+    const waiting = this.next;
+    if (this.running || !waiting || waiting.blocked()) return;
+    this.next = null;
+    this.start(waiting.rebind).then(waiting.resolve, waiting.reject);
   }
 }
 
@@ -488,6 +526,9 @@ export class CloudResidentBindingController<
         return { binding: "cloud" };
       } catch (error) {
         if (this.ports.isFatalBindError?.(error)) throw error;
+        // A cancelled apply leaves the provider as it is: whatever cancelled it (a newer admission,
+        // a sign-out or a reset) owns the binding next and applies or clears it. Clearing here
+        // could remove the newer operation's binding. Cloud still refuses a revoked key at use.
         signal.throwIfAborted();
         try {
           await this.ports.clearProvider(signal, "bind-failed");

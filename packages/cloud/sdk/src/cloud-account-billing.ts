@@ -358,7 +358,8 @@ export class CloudAccountBillingClient {
         await (this.ports.delay ?? wait)(1000, signal);
       }
     }
-    await this.assertSame(credential, signal);
+    // A grant is reported only to the exact account that asked for it (credential and user).
+    await this.assertSame(credential, signal, true);
     return redeemResultFromResponse(data);
   }
 

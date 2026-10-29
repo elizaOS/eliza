@@ -311,85 +311,72 @@ describe("resident Cloud binding coordination", () => {
   it("runs at most one rebind and queues one more behind it", async () => {
     const { controller } = harness();
     let release: () => void = () => {};
-    let runs = 0;
-    const rebind = () => {
-      runs++;
+    const runs: string[] = [];
+    const rebind = (name: string) => () => {
+      runs.push(name);
       return new Promise<void>((resolve) => {
         release = resolve;
       });
     };
-    const first = controller.requestRebind(rebind);
-    void controller.requestRebind(rebind);
-    void controller.requestRebind(rebind);
-    expect(runs).toBe(1);
+    const first = controller.requestRebind(rebind("first"));
+    const second = controller.requestRebind(rebind("second"));
+    const third = controller.requestRebind(rebind("latest"));
+    // Coalesced callers share the queued run, which uses the latest caller's closures.
+    expect(second).toBe(third);
+    expect(runs).toEqual(["first"]);
     expect(controller.rebindPending).toBe(true);
     release();
     await first;
-    await Promise.resolve();
-    expect(runs).toBe(2);
-    release();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(runs).toBe(2);
+    expect(runs).toEqual(["first", "latest"]);
+    let settled = false;
+    void third.then(() => {
+      settled = true;
+    });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    release();
+    await third;
     expect(controller.rebindPending).toBe(false);
   });
 
-  it("defers a rebind while the host is busy and resumes it once", async () => {
+  it("defers a rebind while the host is busy and settles it when the host resumes", async () => {
     const { controller } = harness();
     let busy = true;
     let runs = 0;
     const rebind = async () => {
       runs++;
     };
-    await controller.requestRebind(rebind, () => busy);
+    const deferred = controller.requestRebind(rebind, () => busy);
     expect(runs).toBe(0);
     expect(controller.resumeQueued(rebind, () => busy)).toBeUndefined();
     busy = false;
     await controller.resumeQueued(rebind, () => busy);
+    await deferred;
     expect(runs).toBe(1);
     expect(controller.resumeQueued(rebind)).toBeUndefined();
   });
 
-  it("runs a queued request with its own predicate once the running rebind settles", async () => {
+  it("reports a queued rebind's failure to the callers it serves, never as success", async () => {
     const queue = new ResidentRebindQueue();
     let release: () => void = () => {};
-    const runs: string[] = [];
-    let replying = true;
     const first = queue.request(
-      () => {
-        runs.push("first");
-        return new Promise<void>((resolve) => {
+      () =>
+        new Promise<void>((resolve) => {
           release = resolve;
-        });
-      },
-      () => false,
+        }),
     );
-    expect(queue.active).toBe(true);
-    // Queued behind the running rebind with a predicate that ignores the reply in flight.
-    void queue.request(async () => {
-      runs.push("interrupting");
+    const queued = queue.request(async () => {
+      throw new Error("bind stop unconfirmed");
     });
-    expect(queue.pending).toBe(true);
     release();
     await first;
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(runs).toEqual(["first", "interrupting"]);
+    await expect(queued).rejects.toThrow("bind stop unconfirmed");
+    expect(queue.active).toBe(false);
     expect(queue.pending).toBe(false);
-    // A deferred request waits for the host to resume it.
-    await queue.request(
-      async () => {
-        runs.push("deferred");
-      },
-      () => replying,
-    );
-    expect(runs).toHaveLength(2);
-    replying = false;
-    await queue.resume(async () => {
-      runs.push("deferred");
-    });
-    expect(runs).toEqual(["first", "interrupting", "deferred"]);
   });
 
-  it("reports a failed rebind to its caller and still runs the one queued behind it", async () => {
+  it("reports a failed rebind to its own caller and still runs the one queued behind it", async () => {
     const queue = new ResidentRebindQueue();
     let fail: (error: Error) => void = () => {};
     let runs = 0;
@@ -399,16 +386,41 @@ describe("resident Cloud binding coordination", () => {
           fail = reject;
         }),
     );
-    queue.queue();
-    void queue.request(async () => {
+    const queued = queue.request(async () => {
       runs++;
     });
     fail(new Error("start failed"));
     await expect(failing).rejects.toThrow("start failed");
-    await new Promise((resolve) => setTimeout(resolve, 0));
+    await queued;
     expect(runs).toBe(1);
-    expect(queue.active).toBe(false);
     expect(queue.resume(async () => {})).toBeUndefined();
+  });
+
+  it("keeps a flag-only request for the host's resume, with a request interrupting the busy predicate", async () => {
+    const queue = new ResidentRebindQueue();
+    const runs: string[] = [];
+    let replying = true;
+    queue.queue();
+    expect(queue.pending).toBe(true);
+    // An interrupting request runs now despite the reply in flight, and serves the flag.
+    await queue.request(async () => {
+      runs.push("interrupting");
+    });
+    expect(queue.pending).toBe(false);
+    queue.queue();
+    expect(
+      queue.resume(
+        async () => {
+          runs.push("resumed");
+        },
+        () => replying,
+      ),
+    ).toBeUndefined();
+    replying = false;
+    await queue.resume(async () => {
+      runs.push("resumed");
+    });
+    expect(runs).toEqual(["interrupting", "resumed"]);
   });
 
   it("allows one sign-in at a time and cancels it without touching the stored sign-in", async () => {

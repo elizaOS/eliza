@@ -380,6 +380,22 @@ describe("redemption", () => {
     expect(await code(swapped.client.redeem(CODE, ATTEMPT_ID, signal()))).toBe(
       "account-changed",
     );
+    // The same generation re-signed for another user does not receive the grant either.
+    const rebound = harness(() => {
+      rebound.state.credential = {
+        credentialId: "cred-a",
+        token: "secret-a",
+        userId: "user-b",
+      };
+      return {
+        status: 200,
+        data: { success: true, replayed: false, grant: {} },
+      };
+    });
+    expect(await code(rebound.client.redeem(CODE, ATTEMPT_ID, signal()))).toBe(
+      "account-changed",
+    );
+    expect(rebound.calls).toHaveLength(1);
   });
 });
 
