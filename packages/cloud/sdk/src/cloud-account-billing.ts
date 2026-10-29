@@ -12,8 +12,8 @@
  * failure.
  *
  * Ports keep it host-neutral: the host owns HTTP, timeouts and secure storage. Only this package's
- * pure subscription-entitlement helpers are used, so a product can project these two files from
- * the pinned source.
+ * pure subscription-entitlement helpers and the snapshot types are used, so a product can project
+ * these files from the pinned source (no parameter properties, so type stripping loads them).
  */
 import type {
   AccountBalanceSnapshot,
@@ -64,14 +64,23 @@ export type CloudBillingErrorCode =
 
 /** A refused or unusable billing read. HTTP refusals keep the status, body and Retry-After. */
 export class CloudBillingError extends Error {
+  readonly code: CloudBillingErrorCode;
+  readonly status?: number;
+  readonly data?: unknown;
+  readonly retryAfter?: string;
+  // Explicit fields (no parameter properties) so type-stripping consumers can load this file.
   constructor(
-    readonly code: CloudBillingErrorCode,
-    readonly status?: number,
-    readonly data?: unknown,
-    readonly retryAfter?: string,
+    code: CloudBillingErrorCode,
+    status?: number,
+    data?: unknown,
+    retryAfter?: string,
   ) {
     super(`Cloud billing ${code}${status ? ` (${status})` : ""}`);
     this.name = "CloudBillingError";
+    this.code = code;
+    this.status = status;
+    this.data = data;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -152,7 +161,10 @@ function wait(ms: number, signal: AbortSignal): Promise<void> {
 }
 
 export class CloudAccountBillingClient {
-  constructor(private readonly ports: CloudAccountBillingPorts) {}
+  private readonly ports: CloudAccountBillingPorts;
+  constructor(ports: CloudAccountBillingPorts) {
+    this.ports = ports;
+  }
 
   private now(): number {
     return this.ports.now?.() ?? Date.now();

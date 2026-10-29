@@ -21,7 +21,7 @@
  * Ports supply the credential store, provider bind/clear, identity, entitlement and the plan
  * admission record. Nothing here renders, names a product, or reads a credential's secret: the
  * controller sees only credential ids. Dependency-free on purpose so products can project this
- * single file from the pinned source.
+ * single file from the pinned source; it avoids parameter properties so type stripping loads it.
  */
 
 /** A verified Cloud billing mode within this window keeps its binding while Cloud is unreachable. */
@@ -146,13 +146,15 @@ export interface CloudResidentBindingPorts<
 }
 
 export class CloudResidentBindingError extends Error {
-  constructor(readonly code: "account-changed" | "login-active") {
+  readonly code: "account-changed" | "login-active";
+  constructor(code: "account-changed" | "login-active") {
     super(
       code === "account-changed"
         ? "Cloud account changed. Sign in again."
         : "Another Cloud sign-in is in progress.",
     );
     this.name = "CloudResidentBindingError";
+    this.code = code;
   }
 }
 
@@ -232,10 +234,13 @@ export class CloudResidentBindingController<
   private rebindQueued = false;
   private signIn: AbortController | null = null;
 
-  constructor(
-    readonly environment: E,
-    private readonly ports: CloudResidentBindingPorts<V, E>,
-  ) {}
+  readonly environment: E;
+  private readonly ports: CloudResidentBindingPorts<V, E>;
+  // Explicit fields (no parameter properties) so type-stripping consumers can load this file.
+  constructor(environment: E, ports: CloudResidentBindingPorts<V, E>) {
+    this.environment = environment;
+    this.ports = ports;
+  }
 
   private now(): number {
     return this.ports.now?.() ?? Date.now();
