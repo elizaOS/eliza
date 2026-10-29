@@ -600,3 +600,29 @@ test("WorkflowClient.phoneReview reads the run's review route and binds it to th
     ),
   );
 });
+
+test("local day bounds terminate and are exact over every day of a year in offset and DST zones", () => {
+  // Zones with half-hour, 45-minute, negative, DST and midnight-transition offsets.
+  const zones = [
+    "UTC",
+    "America/New_York",
+    "America/Santiago",
+    "America/St_Johns",
+    "Asia/Kathmandu",
+    "Australia/Lord_Howe",
+    "Pacific/Chatham",
+    "Pacific/Kiritimati",
+  ];
+  for (const zone of zones)
+    for (let i = 0; i < 366; i++) {
+      const day = new Date(Date.UTC(2026, 0, 1) + i * 86_400_000)
+        .toISOString()
+        .slice(0, 10);
+      const { start, end } = phoneWorkflowLocalDayBounds(day, zone);
+      assert.equal(start % 1000, 0);
+      assert.equal(phoneWorkflowLocalDay(start, zone), day);
+      assert.notEqual(phoneWorkflowLocalDay(start - 1000, zone), day);
+      assert.notEqual(phoneWorkflowLocalDay(end, zone), day);
+      assert.equal(phoneWorkflowLocalDay(end - 1000, zone), day);
+    }
+});

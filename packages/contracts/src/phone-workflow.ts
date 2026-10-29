@@ -573,8 +573,10 @@ function localDayStart(day: string, timeZone: string): number {
   // Every real offset lies within ±18 hours, so the boundary is inside this interval.
   let low = wall - 20 * 3_600_000,
     high = wall + 20 * 3_600_000;
+  // `low` and `high` stay whole seconds apart; the step is at least one second,
+  // so every iteration narrows the interval and the loop always ends.
   while (high - low > 1000) {
-    const mid = low + Math.floor((high - low) / 2000) * 1000;
+    const mid = low + Math.max(1000, Math.floor((high - low) / 2000) * 1000);
     if (phoneWorkflowLocalDay(mid, timeZone) < day) low = mid;
     else high = mid;
   }
