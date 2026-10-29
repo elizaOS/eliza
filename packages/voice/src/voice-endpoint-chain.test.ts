@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CLEF_ENDPOINT_UNAVAILABLE_REASONS,
   CLEF_TURN_MAX_CHARS,
   type ClefTurnClient,
   type ClefTurnRequest,
@@ -299,6 +300,11 @@ describe("readClefTurn", () => {
 
 describe("timing endpoint path", () => {
   it("keeps the chain path and Clef reasons, and refuses unknown paths", () => {
+    // The timing allowlist lists the chain's Clef reasons itself; it must stay the same set.
+    for (const reason of CLEF_ENDPOINT_UNAVAILABLE_REASONS)
+      expect(
+        voiceTimingEndpoint({ by: "gap", semantic: "unavailable", reason }),
+      ).toEqual({ by: "gap", semantic: "unavailable", reason });
     expect(
       voiceTimingEndpoint({
         by: "semantic",

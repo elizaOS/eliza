@@ -31,10 +31,9 @@
  *
  * Timing is diagnostic: storage failures and sink failures never affect a voice turn.
  */
-import {
-  CLEF_ENDPOINT_UNAVAILABLE_REASONS,
-  type ClefEndpointUnavailableReason,
-  type EndpointPath,
+import type {
+  ClefEndpointUnavailableReason,
+  EndpointPath,
 } from "./voice-endpoint-chain.js";
 import type {
   EndOfTurnUnavailableReason,
@@ -152,7 +151,15 @@ const endpointReasons: readonly string[] = [
   "too-long",
   "invalid-response",
   "unknown",
-  ...CLEF_ENDPOINT_UNAVAILABLE_REASONS,
+  // The chain's Clef reasons (CLEF_ENDPOINT_UNAVAILABLE_REASONS). Listed here rather than imported
+  // so hosts that run this file with type stripping need no value import of the chain.
+  ...([
+    "clef-disabled",
+    "clef-unavailable",
+    "clef-timeout",
+    "clef-error",
+    "clef-too-long",
+  ] satisfies readonly ClefEndpointUnavailableReason[]),
 ];
 const endpointPaths: readonly string[] = ["local", "clef"];
 const heardOutcomes: readonly string[] = [
