@@ -54,6 +54,9 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
   let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
   try {
     await runtime.init();
+    // init() only opens the database; the character PUT persists to the agent
+    // row and refuses a write storage did not confirm.
+    await runtime.createAgent({ ...runtime.character, id: runtime.agentId });
     server = await startApiServer({
       port: 0,
       runtime,
