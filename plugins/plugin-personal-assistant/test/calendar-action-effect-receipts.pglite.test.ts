@@ -20,6 +20,7 @@ import {
   type Content,
   conversationClientUserMemoryId,
   executePlannedToolCall,
+  isObjectRecord,
   type Memory,
   ModelType,
   promoteSubactionsToActions,
@@ -2130,5 +2131,131 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       idempotency: { replayed: true },
       resource: { id: persisted.id },
     });
+  });
+});
+
+it("grounds the observed relative-create reply against the real CalendarService event and receipt", async () => {
+  const original = "Create an event to meet with Shaw in 20 mins for 1hr";
+  const actor = message(randomUUID(), original);
+  actor.createdAt = Date.parse("2026-10-29T23:32:29.000Z");
+  const startAt = "2026-10-29T23:52:29.000Z",
+    endAt = "2026-10-30T00:52:29.000Z";
+  const evidence = [{ sourceId: `current:${actor.id}`, quote: original }];
+  const model = runtime.useModel.bind(runtime);
+  vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
+    if (
+      type === ModelType.TEXT_LARGE &&
+      String(params?.prompt).includes("Extract calendar event creation fields")
+    )
+      return JSON.stringify({
+        requiresInput: false,
+        clarification: null,
+        guestIntent: { state: "none", evidence, guests: [] },
+        noteIntent: { state: "none", evidence, sourceNote: null },
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+        title: "Meet with Shaw",
+        description: null,
+        location: null,
+        startAt,
+        endAt,
+        timeZone: "America/Los_Angeles",
+        recurrence: null,
+        travelOriginAddress: null,
+        durationMinutes: 60,
+        isShortPreparation: false,
+      });
+    return model(type, params);
+  }) as typeof runtime.useModel);
+  const { result } = await invoke(
+    actor,
+    {
+      action: "create_event",
+      details: {
+        grantId: ELIZA_CALENDAR_GRANT_ID,
+        calendarId: ELIZA_CALENDAR_ID,
+      },
+    },
+    false,
+    calendarAction.name,
+    "planner",
+  );
+  expect(result.success).toBe(true);
+  const event = result.data?.event;
+  if (!isObjectRecord(event) || !isObjectRecord(event.metadata))
+    throw Error("Created event shape missing");
+  expect(event).toMatchObject({
+    agentId: runtime.agentId,
+    startAt,
+    endAt,
+    timezone: "America/Los_Angeles",
+  });
+  const receipt = result.effectReceipts?.find(
+    (entry) => entry.operation === "calendar.event.create",
+  );
+  expect(receipt?.outcome).toBe("applied");
+  expect(receipt?.resource.id).toBe(event?.id);
+  expect(receipt?.resource.version).toBe(event?.metadata?.etag);
+  const { evaluatePlannedReplyEgress, resolvePlannedReplyEgress } =
+    await import(
+      "../../plugin-assistant/src/services/message/egress-policy.ts"
+    );
+  const wrong = "Created your meeting with Shaw for tonight, 5:52–6:52 PM.",
+    correct = "Created your meeting with Shaw for today, 4:52–5:52 PM.";
+  expect(
+    evaluatePlannedReplyEgress({
+      reply: wrong,
+      request: original,
+      currentScope: actor,
+      actionResults: [result],
+      actions: runtime.actions,
+    }),
+  ).toEqual({ verdict: "reject", kind: "calendar_time" });
+  let calls = 0;
+  vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
+    if (type !== ModelType.TEXT_SMALL)
+      throw Error("No additional action/model execution expected");
+    calls++;
+    return String(params.prompt).startsWith("Review recovered reply grounding.")
+      ? JSON.stringify({
+          grounded: true,
+          claims: [
+            {
+              quote: correct,
+              actor: "assistant",
+              change: true,
+              supported: true,
+              evidence: receipt?.receiptId,
+            },
+          ],
+        })
+      : JSON.stringify({
+          response: correct,
+          effectReceiptIds: [receipt?.receiptId],
+        });
+  }) as typeof runtime.useModel);
+  const before = structuredClone(result);
+  const output = await resolvePlannedReplyEgress({
+    runtime,
+    message: actor,
+    reply: wrong,
+    actionResults: [result],
+  });
+  expect(output.text).toBe(correct);
+  expect(calls).toBe(2);
+  expect(result).toEqual(before);
+  const feed = await calendar.getCalendarFeed(
+    new URL("http://internal.local"),
+    {
+      grantId: ELIZA_CALENDAR_GRANT_ID,
+      calendarId: ELIZA_CALENDAR_ID,
+      timeMin: "2026-10-29T23:00:00.000Z",
+      timeMax: "2026-10-30T02:00:00.000Z",
+    },
+  );
+  expect(feed.events.filter((entry) => entry.id === event?.id)).toHaveLength(1);
+  expect(feed.events.find((entry) => entry.id === event?.id)).toMatchObject({
+    startAt,
+    endAt,
   });
 });
