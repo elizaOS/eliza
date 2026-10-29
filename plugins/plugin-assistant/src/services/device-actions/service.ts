@@ -17,7 +17,13 @@ import {
   validateNativeNotesQuery,
   validateNativeNotesReadReply,
 } from "@elizaos/contracts/native-notes-query";
-import type { ContextObject, IAgentRuntime, Memory, UUID } from "@elizaos/core";
+import type {
+  ActionResult,
+  ContextObject,
+  IAgentRuntime,
+  Memory,
+  UUID,
+} from "@elizaos/core";
 import {
   conversationClientUserMemoryId,
   extractUserText,
@@ -93,6 +99,7 @@ import {
   validateDeviceOperation,
   validateDevicePayload,
 } from "./contract.ts";
+import { deviceActionEffectReceipts } from "./effect-receipts.ts";
 import {
   FOREGROUND_REVIEW_TYPES,
   foregroundReviewOperationAvailable,
@@ -3237,15 +3244,30 @@ export async function requestLocalCalendarAgenda(
       | "message_mismatch"
       | "turn_expired"
       | "capability_missing"
-      | "request_origin_unavailable",
+      | "request_origin_unavailable"
+      | "record_source_unavailable"
+      | "source_unavailable",
   ) => ({
     success: false,
-    text: "This request could not verify current requesting-device Calendar agenda access. Its local Calendar was not read.",
+    transcriptVisibility: "internal" as const,
     data: {
-      code: "CALENDAR_AGENDA_UNAVAILABLE",
+      code:
+        reason === "source_unavailable"
+          ? "CALENDAR_AGENDA_SOURCE_UNAVAILABLE"
+          : "CALENDAR_AGENDA_UNAVAILABLE",
+      error:
+        reason === "source_unavailable"
+          ? "CALENDAR_AGENDA_SOURCE_UNAVAILABLE"
+          : "CALENDAR_AGENDA_UNAVAILABLE",
       reason,
       localCalendarRead: false,
       retryable: false,
+      replyContext: {
+        domain: "calendar",
+        scenario: "request_source_unavailable",
+        facts:
+          "The current Calendar source is unavailable or requires review. No Calendar records were read. Review the selected source before retrying; do not substitute another record store.",
+      },
     },
     turnComplete: false,
     modelReplyRequired: true,
@@ -3256,6 +3278,15 @@ export async function requestLocalCalendarAgenda(
   if (active.replyContext?.message !== args.message)
     return unavailable("message_mismatch");
   if (!active.isCurrent()) return unavailable("turn_expired");
+  const recordSource = currentAppRecordSource(
+    args.runtime,
+    "calendar",
+    args.message,
+  );
+  // A native capability/source snapshot never takes ownership of runtime records.
+  if (recordSource === "runtime") return;
+  if (recordSource !== "device")
+    return unavailable("record_source_unavailable");
   if (!active.credential.capabilities?.includes(CALENDAR_AGENDA_CAPABILITY))
     return unavailable("capability_missing");
   // Authenticated subjects and mapped conversation entity UUIDs are different
@@ -3269,18 +3300,14 @@ export async function requestLocalCalendarAgenda(
     context = requireTurnObservation(metadata);
   if (context.sensitive === true)
     throw new DeviceActionError("Calendar context is private");
-  if (!device.calendarAgendaSource)
-    return {
-      success: false,
-      text: "The requesting device Calendar source is unavailable. Its local agenda was not read; do not substitute another calendar.",
-      data: {
-        code: "CALENDAR_AGENDA_SOURCE_UNAVAILABLE",
-        localCalendarRead: false,
-      },
-      turnComplete: false,
-      modelReplyRequired: true,
-    };
-  const observed = calendarSource(device.calendarAgendaSource);
+  if (!device.calendarAgendaSource) return unavailable("source_unavailable");
+  let observed: CalendarSource;
+  try {
+    observed = calendarSource(device.calendarAgendaSource);
+  } catch {
+    // This pure validator cannot turn a malformed snapshot into source authority.
+    return unavailable("source_unavailable");
+  }
   const operation = validateWorkflowReadOperation({
     type: "read_calendar_range",
     calendarIds: [observed.sourceId],
@@ -3322,8 +3349,15 @@ export async function requestLocalCalendarAgenda(
   origin.assertCurrent();
   return {
     success: true,
-    text: "The exact local Calendar range read is pending on the requesting device. No event data has been read or shared yet; await its approved receipt.",
+    transcriptVisibility: "internal" as const,
+    effectReceipts: deviceActionEffectReceipts(outcome),
     data: {
+      replyContext: {
+        domain: "calendar",
+        scenario: "device_agenda_request",
+        facts:
+          "The exact Calendar range request is recorded on the requesting device. This response contains no event data. Its recorded state and normal device review/completion determine the outcome; do not infer a current agenda or repeat an uncertain dispatch.",
+      },
       proposalId: outcome.request.id,
       state: outcome.request.state,
       executed: false,
@@ -3773,6 +3807,7 @@ export async function requestLocalCalendarAvailability(args: {
     },
     { token: CALENDAR_AVAILABILITY_HOST, request },
   );
+  if (!result) return;
   return {
     ...result,
     text: result.success
