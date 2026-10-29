@@ -87,6 +87,25 @@ test("the proxied repo is the curated eliza-1 org", () => {
   expect(ELIZA_1_HF_REPO.startsWith(ALLOWED_REPO_PREFIX)).toBe(true);
 });
 
+test("a path that resolves outside the catalog is refused before upstream I/O", async () => {
+  const fetched: string[] = [];
+  globalThis.fetch = (async (input: Parameters<typeof fetch>[0]) => {
+    fetched.push(input instanceof URL ? input.href : String(input));
+    return new Response("x", { status: 200 });
+  }) as typeof fetch;
+  // The router decodes `%2F`; `..` then resolves inside `new URL`, so the
+  // request would leave for `other-org/gated` while the raw param still
+  // starts with the allowed prefix.
+  const response = await app.request(
+    `/api/v1/hf-proxy/${ALLOWED_REPO_PREFIX}x/resolve/..%2F..%2F..%2Fother-org/gated/resolve/main/f.gguf`,
+    {},
+    env,
+  );
+  expect(response.status).toBe(403);
+  expect(fetched).toEqual([]);
+  expect(await chargedBytes()).toBe(0);
+});
+
 test("a complete download is charged its full size", async () => {
   stubUpstream();
   const response = await download();

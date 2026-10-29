@@ -142,6 +142,13 @@ export class AccountHandoffDataDisposition {
         previous.grantId,
         "owner",
       );
+      // The inbox cache holds its own copy of every imported Gmail message.
+      // Removing the imported mail must remove those copies too, or the inbox
+      // keeps showing the account that the handoff just removed.
+      await this.repository.deleteCachedInboxMessagesForGmailAccount(
+        this.runtime.agentId,
+        previous.grantId,
+      );
     }
     await assertPaused();
     return this.store.advance({

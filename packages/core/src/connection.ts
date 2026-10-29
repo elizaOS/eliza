@@ -438,6 +438,9 @@ export async function ensureConnections(
 	// A connection that omits the room's channel, name, or type keeps what the
 	// room already records, such as the platform conversation id a connector
 	// stored through ensureRoomExists; replies to the room are addressed by it.
+	// The server binding is the same: a caller that resolves the room through
+	// `worldId` omits `serverId`/`messageServerId`, and the write replaces the
+	// whole row, so an omitted binding must fall back to the stored one.
 	const storedRooms =
 		roomMap.size > 0
 			? ((await adapter.getRoomsByIds([...roomMap.keys()] as UUID[])) ?? [])
@@ -452,6 +455,8 @@ export async function ensureConnections(
 			// A connection that omits `type` keeps the stored room's type;
 			// the DM default applies only when no type is recorded at all.
 			type: roomExplicitTypes.get(r.id) ?? stored?.type ?? r.type,
+			serverId: r.serverId ?? stored?.serverId,
+			messageServerId: r.messageServerId ?? stored?.messageServerId,
 			agentId,
 		};
 	});

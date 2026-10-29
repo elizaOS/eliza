@@ -1,6 +1,9 @@
 /** Handles character associations for an authenticated cloud application. */
 
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { isAppKeyOutOfScope } from "@elizaos/cloud-shared/lib/auth/app-key-scope";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
@@ -124,8 +127,7 @@ async function __hono_GET(
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error ? error.message : "Failed to get characters",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -246,10 +248,7 @@ async function __hono_PUT(
     return Response.json(
       {
         success: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update characters",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

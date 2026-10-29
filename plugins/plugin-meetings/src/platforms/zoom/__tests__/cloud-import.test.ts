@@ -140,6 +140,81 @@ describe("Zoom cloud import", () => {
     expect(JSON.stringify(result)).not.toContain(TOKEN);
   });
 
+  it("reads the transcript once when Zoom also lists closed captions", async () => {
+    const transcript =
+      "WEBVTT\n\n1\n00:00:01.000 --> 00:00:03.000\nAlice: Ship the release Friday.\n\n2\n00:00:04.000 --> 00:00:06.000\nBob: Agreed.\n";
+    // Captions that differ slightly, and captions identical to the transcript.
+    for (const captions of [
+      transcript.replace("Agreed.", "Agreed"),
+      transcript,
+    ]) {
+      const fetchImpl = async (input: RequestInfo | URL): Promise<Response> => {
+        const url = String(input);
+        if (url.includes("/participants")) {
+          return json({
+            participants: [
+              { id: "p1", name: "Alice" },
+              { id: "p2", name: "Bob" },
+            ],
+            next_page_token: "",
+          });
+        }
+        if (url.endsWith("/past_meetings/m1")) {
+          return json({ id: 1, uuid: "m1", topic: "Weekly" });
+        }
+        if (url.endsWith("/meetings/m1/recordings")) {
+          return json({
+            uuid: "m1",
+            recording_files: [
+              {
+                id: "t",
+                file_type: "TRANSCRIPT",
+                file_extension: "VTT",
+                recording_type: "audio_transcript",
+                download_url: "https://zoom.us/download/t",
+              },
+              {
+                id: "cc",
+                file_type: "CC",
+                file_extension: "VTT",
+                recording_type: "closed_caption",
+                download_url: "https://zoom.us/download/cc",
+              },
+            ],
+          });
+        }
+        if (url.endsWith("/download/t") || url.endsWith("/download/cc")) {
+          return new Response(url.endsWith("/t") ? transcript : captions, {
+            headers: { "content-type": "text/vtt" },
+          });
+        }
+        return new Response("not found", { status: 404 });
+      };
+
+      const result = await importZoomCloudMeeting({
+        meetingId: "m1",
+        accessToken: TOKEN,
+        fetchImpl,
+        retainRecordings: false,
+      });
+
+      expect(validateMeetingArtifact(result.artifact)).toEqual({
+        valid: true,
+        errors: [],
+      });
+      expect(result.artifact.transcriptSpans.map((span) => span.text)).toEqual([
+        "Ship the release Friday.",
+        "Agreed.",
+      ]);
+      // Every span names the audio-transcript stream it was read from.
+      expect(
+        new Set(
+          result.artifact.transcriptSpans.map((span) => span.sourceStreamId),
+        ),
+      ).toEqual(new Set(["zoom-stream:t"]));
+    }
+  });
+
   it("maps provider authorization failures without persisting media", async () => {
     const fetchImpl = async (): Promise<Response> =>
       new Response('{"message":"Invalid access token"}', {

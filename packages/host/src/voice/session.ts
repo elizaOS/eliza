@@ -970,6 +970,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         }
         this.meteringAdmitted = true;
         this.turnSttMs += Math.round(VOICE_PROVIDER_ADMISSION_MINUTES * 60_000);
+        // The admission charge already pays for the first metering window.
+        // Credit the audio it covers, exactly as the pre-admission constructor
+        // path does, so the same seconds are not billed a second time.
+        this.unmeteredUplinkBytes -= Math.round(
+          VOICE_PROVIDER_ADMISSION_MINUTES * 60 * PCM16_BYTES_PER_SECOND,
+        );
         // Release the buffered frames now that we are admitted.
         const buffered = this.preAdmissionFrames.splice(0);
         for (const frame of buffered) if (!this.forwardSttFrame(frame)) break;

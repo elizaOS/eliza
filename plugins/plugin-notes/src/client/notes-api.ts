@@ -1,5 +1,5 @@
 /** One browser-safe Notes codec and per-session transport; no global UI client or server imports. */
-import type { ElizaClient } from "@elizaos/ui";
+import type { ElizaClientFetch } from "@elizaos/ui/api/transport";
 import { NOTES_CAPABILITIES } from "../capabilities.js";
 import { parseNoteFormat } from "../note-format.js";
 import { NOTE_ID_REGEXP } from "../note-id.js";
@@ -188,7 +188,7 @@ function parseBrokerResult(
   };
 }
 
-export function createNotesClient(api: Pick<ElizaClient, "fetch">) {
+export function createNotesClient(api: ElizaClientFetch) {
   return {
     async readState(signal?: AbortSignal): Promise<NotesSnapshot> {
       signal?.throwIfAborted();
@@ -228,3 +228,6 @@ export function createNotesClient(api: Pick<ElizaClient, "fetch">) {
     },
   };
 }
+
+/** Canonical transport port; clients retain their host-owned authorization. */
+export type NotesClient = ReturnType<typeof createNotesClient>;

@@ -30,6 +30,8 @@ const HEALTH_CONNECTOR_SYNC_TIMEOUT_MS = 60_000;
 // Strava filters activities by UTC timestamps, but callers select owner-local
 // calendar days. Cover every UTC offset and the API's exclusive time bounds.
 const STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS = 14 * 60 * 60 + 1;
+// Strava returns at most 200 rows per activity page and accepts no larger value.
+const STRAVA_ACTIVITIES_PAGE_SIZE = 200;
 
 export class HealthConnectorApiError extends Error {
   constructor(
@@ -55,6 +57,11 @@ interface SyncArgs {
   grantId: string;
   startDate: string;
   endDate: string;
+  /**
+   * The owner's IANA zone. Providers that return only UTC instants (Oura
+   * heart rate) need it to place a sample on the owner's day.
+   */
+  timeZone?: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -309,22 +316,57 @@ function compactSamples(
   );
 }
 
+/**
+ * Read every page of the activity list. Strava returns at most `per_page` rows
+ * per request, so a full page means the window holds more rows. Reading page one
+ * only would store a partial window and still report a successful sync.
+ * The deadline mirrors `fetchOuraCollection`.
+ */
+async function fetchStravaActivities(args: {
+  token: StoredHealthConnectorToken;
+  after: number;
+  before: number;
+  deadlineAt: number;
+}): Promise<Record<string, unknown>[]> {
+  const items: Record<string, unknown>[] = [];
+  for (let page = 1; ; page += 1) {
+    if (Date.now() >= args.deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        args.token.provider,
+        "Strava pagination exceeded the sync deadline",
+      );
+    }
+    const json = await fetchHealthValue({
+      token: args.token,
+      path: "/athlete/activities",
+      query: {
+        after: args.after,
+        before: args.before,
+        page,
+        per_page: STRAVA_ACTIVITIES_PAGE_SIZE,
+      },
+    });
+    const batch = asRecordArray(json);
+    items.push(...batch);
+    if (batch.length < STRAVA_ACTIVITIES_PAGE_SIZE) {
+      return items;
+    }
+  }
+}
+
 async function syncStrava(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
+  const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
   const after =
     Math.floor(Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000) -
     STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
   const before =
     Math.floor(Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000) +
     STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS;
-  const [athlete, activitiesJson] = await Promise.all([
+  const [athlete, activities] = await Promise.all([
     fetchHealthJson({ token: args.token, path: "/athlete" }),
-    fetchHealthValue({
-      token: args.token,
-      path: "/athlete/activities",
-      query: { after, before, per_page: 200 },
-    }),
+    fetchStravaActivities({ token: args.token, after, before, deadlineAt }),
   ]);
-  const activities = asRecordArray(activitiesJson);
   const workouts: LifeOpsHealthWorkout[] = [];
   const samples: LifeOpsHealthMetricSample[] = [];
   for (const activity of activities) {
@@ -802,8 +844,17 @@ async function fetchOuraCollection(args: {
 
 async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
-  const startDatetime = `${args.startDate}T00:00:00Z`;
-  const endDatetime = `${args.endDate}T23:59:59Z`;
+  // Heart-rate timestamps are UTC instants. Read the widest span any zone's
+  // local days can cover, then keep the samples on the owner's local days.
+  const heartRateTimeZone = validTimeZone(args.timeZone ?? null);
+  const startDatetime = new Date(
+    Date.parse(`${args.startDate}T00:00:00.000Z`) -
+      STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS * 1_000,
+  ).toISOString();
+  const endDatetime = new Date(
+    Date.parse(`${args.endDate}T23:59:59.999Z`) +
+      STRAVA_LOCAL_DATE_QUERY_PADDING_SECONDS * 1_000,
+  ).toISOString();
   const [
     personal,
     dailyActivity,
@@ -1006,6 +1057,17 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
   for (const entry of heartRate) {
     const timestamp = normalizeIso(getText(entry, "timestamp"));
     const id = getText(entry, "id") ?? getText(entry, "timestamp") ?? "heart";
+    const localDate =
+      timestamp && heartRateTimeZone
+        ? getLocalDateKey(
+            getZonedDateParts(new Date(timestamp), heartRateTimeZone),
+          )
+        : timestamp
+          ? localDateFromIso(timestamp)
+          : null;
+    if (!localDate || localDate < args.startDate || localDate > args.endDate) {
+      continue;
+    }
     samples.push(
       ...compactSamples([
         sample({
@@ -1015,6 +1077,7 @@ async function syncOura(args: SyncArgs): Promise<HealthConnectorSyncPayload> {
           value: getNumber(entry, "bpm"),
           unit: "bpm",
           startAt: timestamp,
+          localDate,
           sourceExternalId: `${id}:heart_rate`,
           metadata: { source: getText(entry, "source") },
         }),
@@ -1076,38 +1139,112 @@ async function withingsPost(
   return fetchHealthJson({ token, path, method: "POST", form });
 }
 
+// Withings lists answer `more` with the next `offset`; a list that holds more
+// rows than one page sets `more` and reading page one only would store a
+// partial window and still report a successful sync.
+function withingsHasMore(body: Record<string, unknown>): boolean {
+  const more = body.more;
+  return more === true || more === 1 || more === "1";
+}
+
+/**
+ * Read every page of a Withings list. `more` marks a further page and the
+ * response `offset` is the cursor. The returned `body` is the first page, which
+ * carries the page-level metadata such as the getmeas timezone.
+ */
+async function fetchWithingsPages(args: {
+  token: StoredHealthConnectorToken;
+  path: string;
+  formValues: Record<string, string | number | null | undefined>;
+  listKey: string;
+  deadlineAt: number;
+}): Promise<{
+  items: Record<string, unknown>[];
+  body: Record<string, unknown>;
+}> {
+  const items: Record<string, unknown>[] = [];
+  const seenOffsets = new Set<number>();
+  let body: Record<string, unknown> = {};
+  let offset: number | null = null;
+  for (;;) {
+    if (Date.now() >= args.deadlineAt) {
+      throw new HealthConnectorApiError(
+        504,
+        args.token.provider,
+        "Withings pagination exceeded the sync deadline",
+      );
+    }
+    const json = await withingsPost(args.token, args.path, {
+      ...args.formValues,
+      offset,
+    });
+    const pageBody = getRecord(json, "body") ?? {};
+    if (offset === null) body = pageBody;
+    items.push(...getArray(pageBody, args.listKey));
+    if (!withingsHasMore(pageBody)) return { items, body };
+    const nextOffset = getNumber(pageBody, "offset");
+    if (nextOffset === null || seenOffsets.has(nextOffset)) {
+      throw new HealthConnectorApiError(
+        502,
+        args.token.provider,
+        "Withings pagination did not advance",
+      );
+    }
+    seenOffsets.add(nextOffset);
+    offset = nextOffset;
+  }
+}
+
 async function syncWithings(
   args: SyncArgs,
 ): Promise<HealthConnectorSyncPayload> {
+  const deadlineAt = Date.now() + HEALTH_CONNECTOR_SYNC_TIMEOUT_MS;
   const startUnix = Math.floor(
     Date.parse(`${args.startDate}T00:00:00.000Z`) / 1_000,
   );
   const endUnix = Math.floor(
     Date.parse(`${args.endDate}T23:59:59.999Z`) / 1_000,
   );
-  const [activityJson, sleepJson, measuresJson] = await Promise.all([
-    withingsPost(args.token, "/v2/measure", {
-      action: "getactivity",
-      startdateymd: ymdCompact(args.startDate),
-      enddateymd: ymdCompact(args.endDate),
+  const [activity, sleep, measures] = await Promise.all([
+    fetchWithingsPages({
+      token: args.token,
+      path: "/v2/measure",
+      formValues: {
+        action: "getactivity",
+        startdateymd: ymdCompact(args.startDate),
+        enddateymd: ymdCompact(args.endDate),
+      },
+      listKey: "activities",
+      deadlineAt,
     }),
-    withingsPost(args.token, "/v2/sleep", {
-      action: "getsummary",
-      startdateymd: ymdCompact(args.startDate),
-      enddateymd: ymdCompact(args.endDate),
+    fetchWithingsPages({
+      token: args.token,
+      path: "/v2/sleep",
+      formValues: {
+        action: "getsummary",
+        startdateymd: ymdCompact(args.startDate),
+        enddateymd: ymdCompact(args.endDate),
+      },
+      listKey: "series",
+      deadlineAt,
     }),
-    withingsPost(args.token, "/measure", {
-      action: "getmeas",
-      startdate: startUnix,
-      enddate: endUnix,
-      meastype: "1,9,10,11,54,71",
+    fetchWithingsPages({
+      token: args.token,
+      path: "/measure",
+      formValues: {
+        action: "getmeas",
+        startdate: startUnix,
+        enddate: endUnix,
+        meastype: "1,9,10,11,54,71",
+      },
+      listKey: "measuregrps",
+      deadlineAt,
     }),
   ]);
   const samples: LifeOpsHealthMetricSample[] = [];
   const workouts: LifeOpsHealthWorkout[] = [];
   const sleepEpisodes: LifeOpsHealthSleepEpisode[] = [];
-  const activityBody = getRecord(activityJson, "body") ?? {};
-  for (const entry of getArray(activityBody, "activities")) {
+  for (const entry of activity.items) {
     const date = getText(entry, "date");
     // getactivity `active` is a duration in seconds (Withings OpenAPI:
     // "Sum of intense and moderate activity durations (in seconds)").
@@ -1174,8 +1311,7 @@ async function syncWithings(
       ]),
     );
   }
-  const sleepBody = getRecord(sleepJson, "body") ?? {};
-  for (const entry of getArray(sleepBody, "series")) {
+  for (const entry of sleep.items) {
     const startAt = isoFromUnixSeconds(getNumber(entry, "startdate"));
     const endAt = isoFromUnixSeconds(getNumber(entry, "enddate"));
     if (!startAt || !endAt) {
@@ -1241,12 +1377,12 @@ async function syncWithings(
       }),
     );
   }
-  const measuresBody = getRecord(measuresJson, "body") ?? {};
+  const measuresBody = measures.body;
   // getmeas dates are epoch seconds; the body's timezone is the user's zone.
   // Daily summaries group by localDate, so a 07:00 weigh-in in Tokyo belongs
   // to that Tokyo day, not to the previous UTC day.
   const measuresTimeZone = validTimeZone(getText(measuresBody, "timezone"));
-  for (const group of getArray(measuresBody, "measuregrps")) {
+  for (const group of measures.items) {
     const measuredAt = isoFromUnixSeconds(getNumber(group, "date"));
     const measuredLocalDate =
       measuresTimeZone && measuredAt

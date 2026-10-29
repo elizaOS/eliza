@@ -5,34 +5,55 @@
  * or LLM-authored form cannot stack-overflow the agent.
  */
 
+import type { JsonValue } from "@elizaos/core";
 import { assertFormControlGraph } from "./form-control-graph";
 import type { FormControl, FormSession } from "./types";
+import { formatValue } from "./validation";
 
 export type TemplateValues = Record<string, string>;
 
 const TEMPLATE_PATTERN = /\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g;
 
-export function buildTemplateValues(session: FormSession): TemplateValues {
+/**
+ * Build `{{placeholder}}` values for a session.
+ *
+ * Resolved labels, descriptions, ask prompts and examples go into the model
+ * context and into replies, so a sensitive control's value is masked here with
+ * the same mask a filled field shows. Otherwise `{{pin}}` in an ask prompt
+ * would echo the secret the display path deliberately hides.
+ */
+export function buildTemplateValues(
+  session: FormSession,
+  controls: readonly FormControl[],
+): TemplateValues {
   const values: TemplateValues = {};
-
-  const context = session.context;
-  if (context && typeof context === "object" && !Array.isArray(context)) {
-    for (const [key, value] of Object.entries(context)) {
-      if (typeof value === "string") {
-        values[key] = value;
-      } else if (typeof value === "number" || typeof value === "boolean") {
-        values[key] = String(value);
-      }
+  const sensitiveControls = new Map(
+    controls
+      .filter((control) => control.sensitive)
+      .map((control) => [control.key, control]),
+  );
+  const record = (key: string, value: unknown): void => {
+    const sensitiveControl = sensitiveControls.get(key);
+    if (sensitiveControl) {
+      values[key] = formatValue(value as JsonValue, sensitiveControl);
+      return;
     }
-  }
-
-  for (const [key, state] of Object.entries(session.fields)) {
-    const value = state.value;
     if (typeof value === "string") {
       values[key] = value;
     } else if (typeof value === "number" || typeof value === "boolean") {
       values[key] = String(value);
     }
+  };
+
+  const context = session.context;
+  if (context && typeof context === "object" && !Array.isArray(context)) {
+    for (const [key, value] of Object.entries(context)) {
+      record(key, value);
+    }
+  }
+
+  for (const [key, state] of Object.entries(session.fields)) {
+    record(key, state.value);
   }
 
   return values;

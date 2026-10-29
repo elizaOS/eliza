@@ -386,6 +386,9 @@ async function fetchAlchemyChainBalances(
         r.status === "fulfilled",
     )
     .map((r) => r.value);
+  // A token whose metadata could not be read has an unknown balance; the chain
+  // reports it instead of listing the inventory as complete without it.
+  const unreadTokens = nonZero.length - tokens.length;
 
   // Fetch DEX prices for all tokens + native token.
   const allAddresses = tokens.map((t) => t.contractAddress);
@@ -414,7 +417,10 @@ async function fetchAlchemyChainBalances(
     nativeSymbol: chain.nativeSymbol,
     nativeValueUsd,
     tokens,
-    error: null,
+    error:
+      unreadTokens > 0
+        ? `Token metadata unavailable for ${unreadTokens} of ${nonZero.length} tokens`
+        : null,
   };
 }
 

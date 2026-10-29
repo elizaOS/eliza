@@ -56,6 +56,19 @@ describe("AgentWeb fallback", () => {
     },
   );
 
+  it("rejects chat when no HTTP API can be reached instead of inventing a reply", async () => {
+    setWindow({
+      location: { protocol: "file:", origin: "file://" } as Location,
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(new AgentWeb().chat({ text: "hello" })).rejects.toThrow(
+      "Agent.chat requires a reachable Agent API endpoint",
+    );
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     "",
     "api/status",

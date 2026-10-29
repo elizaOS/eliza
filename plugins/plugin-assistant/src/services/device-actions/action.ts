@@ -616,14 +616,6 @@ export const proposeDeviceAction: Action = {
               subscriptionId: { type: "integer" },
             },
           },
-          {
-            type: "object",
-            additionalProperties: false,
-            required: ["type"],
-            properties: {
-              type: { type: "string", enum: ["camera_capture_photo"] },
-            },
-          },
           ...clockSchemas,
           ...clockAlarmSchemas,
           {

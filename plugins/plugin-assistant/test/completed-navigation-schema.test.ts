@@ -118,8 +118,8 @@ it("offers camera capture only when the device negotiated it", () => {
       deviceActionForCapabilities(proposeDeviceAction, [
         "camera.capture-photo.v1",
       ]),
-    ),
-  ).toContain("camera_capture_photo");
+    ).filter((type: string) => type === "camera_capture_photo"),
+  ).toHaveLength(1);
   expect(
     validateDevicePayload({
       action: "device_action",

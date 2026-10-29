@@ -11,6 +11,7 @@ import {
   type Content,
   createUniqueUuid,
   ElizaError,
+  type EventPayload,
   EventType,
   type HandlerCallback,
   type IAgentRuntime,
@@ -18,6 +19,7 @@ import {
   type Memory,
   type MessagePayload,
   ModelType,
+  parseBooleanValue,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
@@ -241,8 +243,10 @@ export class TwitterInteractionClient {
         const { profile } = session;
         // Check for mentions first (replies enabled by default)
         const repliesEnabled =
-          (getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
-            process.env.TWITTER_ENABLE_REPLIES) !== "false";
+          parseBooleanValue(
+            getSetting(this.runtime, "TWITTER_ENABLE_REPLIES") ??
+              process.env.TWITTER_ENABLE_REPLIES,
+          ) ?? true;
         if (repliesEnabled) {
           await this.handleMentions(session);
         }
@@ -824,12 +828,17 @@ ${tweet.text}`;
       });
     }
     // Check AUTO_RESPOND settings
+    // Boolean settings, on by default: "false", "0", "no" and "off" turn them off.
     const autoRespondMentions =
-      (getSetting(this.runtime, "TWITTER_AUTO_RESPOND_MENTIONS") ??
-        process.env.TWITTER_AUTO_RESPOND_MENTIONS) !== "false";
+      parseBooleanValue(
+        getSetting(this.runtime, "TWITTER_AUTO_RESPOND_MENTIONS") ??
+          process.env.TWITTER_AUTO_RESPOND_MENTIONS,
+      ) ?? true;
     const autoRespondReplies =
-      (getSetting(this.runtime, "TWITTER_AUTO_RESPOND_REPLIES") ??
-        process.env.TWITTER_AUTO_RESPOND_REPLIES) !== "false";
+      parseBooleanValue(
+        getSetting(this.runtime, "TWITTER_AUTO_RESPOND_REPLIES") ??
+          process.env.TWITTER_AUTO_RESPOND_REPLIES,
+      ) ?? true;
     // Filter based on AUTO_RESPOND settings
     if (!autoRespondMentions || !autoRespondReplies) {
       const inReplyToIds = Array.from(
@@ -1029,16 +1038,10 @@ ${tweet.text}`;
             await this.runtime.getMemoryById(threadMemoryId);
           if (previousThreadMemory) {
             // This is a reply to an existing thread
-            this.runtime.emitEvent(
-              TwitterEventTypes.THREAD_UPDATED,
-              threadPayload,
-            );
+            this.emitObserved(TwitterEventTypes.THREAD_UPDATED, threadPayload);
           } else if ((tweet.thread[0]?.id ?? tweet.id) === tweet.id) {
             // This is the start of a new thread
-            this.runtime.emitEvent(
-              TwitterEventTypes.THREAD_CREATED,
-              threadPayload,
-            );
+            this.emitObserved(TwitterEventTypes.THREAD_CREATED, threadPayload);
           }
         }
         this.assertCurrentSession(session);
@@ -1052,6 +1055,21 @@ ${tweet.text}`;
         this.client.recordLatestCheckedTweetId(profileId, BigInt(tweet.id));
       }
     }
+  }
+  /**
+   * Emits an interaction event and reports a failing listener instead of
+   * letting the rejection escape. The interaction memory is already persisted,
+   * so the run must continue and the failure must reach the diagnostics.
+   */
+  private emitObserved(eventName: string, payload: EventPayload): void {
+    void Promise.resolve(this.runtime.emitEvent(eventName, payload)).catch(
+      (error) => {
+        this.runtime.reportError("TwitterInteractionClient.emitEvent", error, {
+          accountId: this.client.accountId,
+          eventName,
+        });
+      },
+    );
   }
   /**
    * Handles Twitter interactions such as likes, retweets, and quotes.
@@ -1114,7 +1132,7 @@ ${tweet.text}`;
             },
             source: "twitter",
           };
-          this.runtime.emitEvent(TwitterEventTypes.LIKE_RECEIVED, payload);
+          this.emitObserved(TwitterEventTypes.LIKE_RECEIVED, payload);
           break;
         }
         case "retweet": {
@@ -1129,7 +1147,7 @@ ${tweet.text}`;
             },
             source: "twitter",
           };
-          this.runtime.emitEvent(TwitterEventTypes.RETWEET_RECEIVED, payload);
+          this.emitObserved(TwitterEventTypes.RETWEET_RECEIVED, payload);
           break;
         }
         case "quote": {
@@ -1150,12 +1168,12 @@ ${tweet.text}`;
             },
             source: "twitter",
           };
-          this.runtime.emitEvent(TwitterEventTypes.QUOTE_RECEIVED, payload);
+          this.emitObserved(TwitterEventTypes.QUOTE_RECEIVED, payload);
           break;
         }
       }
       // Also emit generic REACTION_RECEIVED event
-      this.runtime.emitEvent(EventType.REACTION_RECEIVED, {
+      this.emitObserved(EventType.REACTION_RECEIVED, {
         runtime: this.runtime,
         entityId: createUniqueUuid(this.runtime, interaction.userId),
         roomId: createUniqueUuid(
@@ -1260,10 +1278,10 @@ ${tweet.text}`;
     let deliveryError: unknown = null;
     let egressAttempted = false;
     // Create a callback for handling the response
-    const callback: HandlerCallback = async (
-      response: Content,
-      tweetId?: string,
-    ) => {
+    // The callback's second argument is the producing action's name (core
+    // HandlerCallback), not a tweet id: a mention reply always targets the
+    // mention itself.
+    const callback: HandlerCallback = async (response: Content) => {
       if (!response.text) {
         logger.warn("No text content in response, skipping tweet reply");
         return [];
@@ -1275,7 +1293,7 @@ ${tweet.text}`;
         return [];
       }
       egressAttempted = true;
-      const tweetToReplyTo = tweetId || tweet.id;
+      const tweetToReplyTo = tweet.id;
       if (this.isDryRun) {
         logger.info(
           `[DRY RUN] Would have replied to ${tweet.username} with: ${response.text}`,

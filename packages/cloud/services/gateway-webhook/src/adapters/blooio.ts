@@ -595,9 +595,12 @@ export const blooioAdapter: PlatformAdapter = {
     }
 
     const text = event.text ?? "";
-    if (!text && !event.attachments?.length) return null;
-
+    // Guard on the filtered media list, not the raw attachments: an
+    // attachment outside the media allowlist never reaches the turn, so
+    // a text-less message with only disallowed attachments must be
+    // dropped here instead of running an empty turn (mirrors Twilio).
     const mediaUrls = extractMediaUrls(event.attachments);
+    if (!text && mediaUrls.length === 0) return null;
 
     return {
       platform: "blooio",

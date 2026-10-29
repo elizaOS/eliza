@@ -2344,6 +2344,12 @@ export async function readChatRequestPayload(
     !Array.isArray(body.metadata)
       ? body.metadata
       : undefined;
+  // Runtime-internal keys: a client could skip the inbound hardening hook, or
+  // pair a forged isAutonomous with the autonomy source to unlock private actions.
+  if (rawMetadata) {
+    delete rawMetadata.isAutonomous;
+    delete rawMetadata.skipIncomingMessageHooks;
+  }
   const metadata = enrichChatUiViewMetadata(
     rawMetadata,
     helpers.runtime

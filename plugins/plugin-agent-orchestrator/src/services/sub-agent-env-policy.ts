@@ -63,6 +63,14 @@ const DENY_ENV_PATTERNS = [
   // bootstrap may inject it; host or caller forwarding would defeat the claim
   // boundary and could make a cold child accept session metadata.
   /^ELIZA_ACP_WARM_CLAIM_TOKEN$/i,
+  // Host API token — authenticates every /api/* route, including all
+  // owner-gated ones. A coding sub-agent never calls the host API
+  // (approved credentials go through the credential bridge), so
+  // forwarding it would hand a model-directed child process an
+  // owner-equivalent credential with zero legitimate use — the same
+  // class as TERMINAL_RUN_TOKEN above. Also listed as blocked in
+  // packages/agent/src/config/blocked-env-keys.ts.
+  /^ELIZA_API_TOKEN$/i,
   // Repo-scoped GitHub host credentials must not be injected into sub-agents,
   // including through customCredentials. Registry push uses the dedicated
   // GHCR_* or ELIZA_APP_IMAGE_REGISTRY_* names instead.

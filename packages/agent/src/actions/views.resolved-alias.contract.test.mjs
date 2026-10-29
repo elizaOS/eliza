@@ -96,7 +96,7 @@ async function execute(
   const code = stripTypeScriptTypes(
     readFileSync(new URL("./views.ts", import.meta.url), "utf8")
       .replace(/^import[\s\S]*?;\n/gm, "")
-      .replace("export const viewsAction", "const viewsAction"),
+      .replace(/^export /gm, ""),
     { mode: "transform" },
   );
   const ports = {

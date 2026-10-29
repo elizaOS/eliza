@@ -13,9 +13,7 @@ import {
 function fixture({ prepared = true, owner = true, badBinding = false } = {}) {
   const source = readFileSync(new URL("./views.ts", import.meta.url), "utf8");
   const code = stripTypeScriptTypes(
-    source
-      .replace(/^import[\s\S]*?;\n/gm, "")
-      .replace("export const viewsAction", "const viewsAction"),
+    source.replace(/^import[\s\S]*?;\n/gm, "").replace(/^export /gm, ""),
     { mode: "transform" },
   );
   const id = "11111111-1111-4111-8111-111111111111";

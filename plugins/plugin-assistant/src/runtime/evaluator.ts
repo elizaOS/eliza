@@ -21,8 +21,10 @@ import {
  */
 
 import {
+  CALENDAR_NEW_SLOT_DURATION_MINUTES,
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
+  type CalendarReadFailureCode,
 } from "@elizaos/contracts";
 import type {
   ContextEvent,
@@ -378,6 +380,8 @@ function finalizeEvaluatorOutput(
   trajectory: PlannerTrajectory,
   redactDiagnosticText: ToolDiagnosticTextRedactor,
 ): EvaluatorOutput {
+  // The model cannot author runtime-owned failure diagnostics.
+  const { replyFailure: _untrustedReplyFailure, ...modelOutput } = parsed;
   let output = sanitizeOutputMessage(
     repairFinishWithUnservedDeclaredIntents(
       repairFinishWithProgressPromise(
@@ -385,7 +389,7 @@ function finalizeEvaluatorOutput(
           repairMissingEvaluatorMessage(
             repairMissingEvaluatorSuccess(
               rejectEvaluatorInvocationMessage(
-                recoverEvaluatorTextOutput(parsed, raw, trajectory),
+                recoverEvaluatorTextOutput(modelOutput, raw, trajectory),
               ),
               trajectory,
             ),
@@ -403,6 +407,19 @@ function finalizeEvaluatorOutput(
   const calendarCoverage = calendarReadCoverage(output, context, trajectory);
   if (!calendarCoverage.verified) {
     const scoped = calendarCoverageSourceFacts(output, context, trajectory);
+    const messageToUser = redactDiagnosticText(
+      [
+        ...scoped.facts,
+        "I couldn't confirm that Calendar request.",
+        ...(scoped.calendarScopeReported
+          ? [
+              "Those Calendar results cover only the connected sources and dates checked.",
+            ]
+          : []),
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
     output = {
       ...output,
       success: false,
@@ -412,19 +429,13 @@ function finalizeEvaluatorOutput(
           ? { ...entry, status: "blocked" as const }
           : entry,
       ),
-      messageToUser: redactDiagnosticText(
-        [
-          ...scoped.facts,
-          "I couldn't confirm that Calendar request.",
-          ...(scoped.calendarScopeReported
-            ? [
-                "Those Calendar results cover only the connected sources and dates checked.",
-              ]
-            : []),
-        ]
-          .filter(Boolean)
-          .join(" "),
-      ),
+      replyFailure: {
+        kind: "reply_generation_error",
+        transient: false,
+        code: calendarCoverage.failureCode ?? "CALENDAR_READ_EVIDENCE_REJECTED",
+        message: messageToUser,
+      },
+      messageToUser,
     };
   }
   const canonicalCalendarReply = verifiedSingleCalendarReadReply(
@@ -2467,11 +2478,163 @@ function calendarMutationTargetReadEvidence(
   return [...ids];
 }
 
+/** The scheduling producer proves preview/read windows independently of agenda reads. */
+function calendarSchedulingOutcomeCovered(
+  operation: "propose_times" | "check_availability",
+  step: PlannerTrajectory["steps"][number],
+  reject: (code: CalendarReadFailureCode) => false,
+): boolean {
+  const result = step.result;
+  if (!result || !isObjectRecord(result.data))
+    return reject("CALENDAR_READ_RESULT_INVALID");
+  const data = result.data;
+  const proposal = operation === "propose_times";
+  const snapshot = data.calendarSnapshot;
+  if (!isObjectRecord(snapshot) || !isObjectRecord(snapshot.resource))
+    return reject("CALENDAR_READ_SNAPSHOT_INVALID");
+  const resource = snapshot.resource;
+  if (
+    resource.kind !== "calendar.feed" ||
+    typeof resource.id !== "string" ||
+    !resource.id ||
+    typeof resource.version !== "string" ||
+    !resource.version ||
+    typeof snapshot.observedAt !== "string" ||
+    !Number.isFinite(Date.parse(snapshot.observedAt))
+  )
+    return reject("CALENDAR_READ_SNAPSHOT_INVALID");
+  if (
+    !result.effectReceipts?.some(
+      (receipt) =>
+        receipt.operation ===
+          (proposal
+            ? "calendar.propose_times.preview"
+            : "calendar.check_availability.read") &&
+        receipt.outcome === (proposal ? "preview" : "noop") &&
+        receipt.idempotency.replayed === false &&
+        receipt.resource.kind === resource.kind &&
+        receipt.resource.id === resource.id &&
+        receipt.resource.version === resource.version &&
+        receipt.observedAt === snapshot.observedAt,
+    )
+  )
+    return reject("CALENDAR_READ_RECEIPT_MISMATCH");
+  const start =
+    typeof data.windowStart === "string" ? Date.parse(data.windowStart) : NaN;
+  const end =
+    typeof data.windowEnd === "string" ? Date.parse(data.windowEnd) : NaN;
+  if (
+    !Number.isFinite(start) ||
+    !Number.isFinite(end) ||
+    end <= start ||
+    typeof data.timeZone !== "string" ||
+    !data.timeZone
+  )
+    return reject("CALENDAR_READ_INTERVAL_INVALID");
+  if (!proposal)
+    return (
+      (typeof data.isFree === "boolean" &&
+        Array.isArray(data.conflicts) &&
+        data.isFree === (data.conflicts.length === 0)) ||
+      reject("CALENDAR_READ_AVAILABILITY_INVALID")
+    );
+  const duration = data.durationMinutes;
+  if (
+    typeof duration !== "number" ||
+    !Number.isFinite(duration) ||
+    duration < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
+    !Array.isArray(data.slots)
+  )
+    return reject("CALENDAR_READ_DURATION_INVALID");
+  const params = step.toolCall?.params;
+  const durationInput = isObjectRecord(params?.duration)
+    ? params.duration
+    : undefined;
+  const suppliedDuration = durationInput?.minutes ?? params?.durationMinutes;
+  if (
+    suppliedDuration !== undefined &&
+    (typeof suppliedDuration !== "number" ||
+      !Number.isFinite(suppliedDuration) ||
+      suppliedDuration < CALENDAR_NEW_SLOT_DURATION_MINUTES.min ||
+      suppliedDuration > CALENDAR_NEW_SLOT_DURATION_MINUTES.max ||
+      duration !== Math.floor(suppliedDuration))
+  )
+    return reject("CALENDAR_READ_DURATION_INVALID");
+  const inherited =
+    suppliedDuration === undefined &&
+    typeof durationInput?.existingEventQuery === "string" &&
+    durationInput.existingEventQuery.trim().length > 0;
+  if (duration > CALENDAR_NEW_SLOT_DURATION_MINUTES.max && !inherited)
+    return reject("CALENDAR_READ_DURATION_INVALID");
+  if (inherited) {
+    // The canonical handler resolves this existing event from its target feed.
+    // Preserve its exact duration, not the limits for a newly requested length.
+    const event = data.existingEvent,
+      target = data.targetSnapshot;
+    if (
+      !isObjectRecord(event) ||
+      !isObjectRecord(target) ||
+      !isObjectRecord(target.resource) ||
+      target.resource.kind !== "calendar.feed" ||
+      typeof target.resource.id !== "string" ||
+      !target.resource.id ||
+      typeof target.resource.version !== "string" ||
+      !target.resource.version ||
+      typeof target.observedAt !== "string" ||
+      !Number.isFinite(Date.parse(target.observedAt)) ||
+      typeof event.id !== "string" ||
+      !event.id ||
+      typeof event.updatedAt !== "string" ||
+      !event.updatedAt ||
+      typeof event.startAt !== "string" ||
+      typeof event.endAt !== "string" ||
+      !Number.isFinite(Date.parse(event.startAt)) ||
+      !Number.isFinite(Date.parse(event.endAt)) ||
+      (Date.parse(event.endAt) - Date.parse(event.startAt)) / 60_000 !==
+        duration ||
+      !Array.isArray(target.artifacts) ||
+      !target.artifacts.some(
+        (artifact) =>
+          isObjectRecord(artifact) &&
+          artifact.kind === "calendar.event" &&
+          artifact.id === event.id &&
+          artifact.version === event.updatedAt,
+      )
+    )
+      return reject("CALENDAR_READ_TARGET_SNAPSHOT_INVALID");
+  }
+  // The canonical producer may truthfully find no options. A successful
+  // preview otherwise contains concrete slots, not unbounded free windows.
+  return data.slots.every((slot) => {
+    if (
+      !isObjectRecord(slot) ||
+      slot.durationMinutes !== duration ||
+      slot.timeZone !== data.timeZone
+    )
+      return reject("CALENDAR_READ_SLOT_INVALID");
+    const from =
+      typeof slot.startAt === "string" ? Date.parse(slot.startAt) : NaN;
+    const to = typeof slot.endAt === "string" ? Date.parse(slot.endAt) : NaN;
+    return (
+      (Number.isFinite(from) &&
+        Number.isFinite(to) &&
+        from >= start &&
+        to <= end &&
+        to - from === Math.round(duration * 60_000)) ||
+      reject("CALENDAR_READ_SLOT_INVALID")
+    );
+  });
+}
+
 export function calendarReadCoverage(
   output: EvaluatorOutput,
   context: ContextObject,
   trajectory: PlannerTrajectory,
-): { verified: boolean; unverifiedIntentIds: string[] } {
+): {
+  verified: boolean;
+  unverifiedIntentIds: string[];
+  failureCode?: CalendarReadFailureCode;
+} {
   if (output.decision !== "FINISH" || !output.success)
     return { verified: true, unverifiedIntentIds: [] };
   const original = trajectory.modelBaseContext ?? context;
@@ -2482,12 +2645,21 @@ export function calendarReadCoverage(
   )
     return { verified: true, unverifiedIntentIds: [] };
   if (!Array.isArray(bindings))
-    return { verified: false, unverifiedIntentIds: [] };
+    return {
+      verified: false,
+      unverifiedIntentIds: [],
+      failureCode: "CALENDAR_READ_BINDINGS_INVALID",
+    };
+  let failureCode: CalendarReadFailureCode | undefined;
+  const reject = (code: CalendarReadFailureCode) => {
+    failureCode ??= code;
+    return false;
+  };
   const evidence = new Map(
     evaluatorEvidenceSteps(trajectory).map(({ id, step }) => [id, step]),
   );
   const verdicts = bindings.map((raw) => {
-    if (!isObjectRecord(raw)) return false;
+    if (!isObjectRecord(raw)) return reject("CALENDAR_READ_BINDING_INVALID");
     const binding = raw as CalendarReadBinding;
     if (
       typeof binding.sourceMessageId !== "string" ||
@@ -2504,17 +2676,17 @@ export function calendarReadCoverage(
         (intent) => intent.id === binding.intentId,
       )
     )
-      return false;
+      return reject("CALENDAR_READ_BINDING_IDENTITY_INVALID");
     const covered = output.outcomeCoverage?.filter(
       (entry) => entry.intentId === binding.intentId,
     );
-    if (covered?.length !== 1) return false;
+    if (covered?.length !== 1) return reject("CALENDAR_READ_COVERAGE_MISSING");
     const coverage = covered[0];
     if (
       coverage?.status !== "completed" ||
       coverage.evidenceStepIds.length === 0
     )
-      return false;
+      return reject("CALENDAR_READ_COVERAGE_INCOMPLETE");
     if (binding.execution === "conditional") {
       // The existing semantic condition verdict remains authoritative; this
       // binding selects an operation, never makes its prerequisite true.
@@ -2525,22 +2697,26 @@ export function calendarReadCoverage(
         );
       });
     }
-    if (binding.execution !== "required") return false;
+    if (binding.execution !== "required")
+      return reject("CALENDAR_READ_EXECUTION_INVALID");
     const readEvidenceIds = calendarMutationTargetReadEvidence(
       binding,
       coverage.evidenceStepIds,
       trajectory,
       evidence,
     );
-    return readEvidenceIds.some((id) => {
+    let evidenceFailure: CalendarReadFailureCode | undefined;
+    const rejectEvidence = (code: CalendarReadFailureCode): false => {
+      evidenceFailure ??= code;
+      return false;
+    };
+    const readVerified = readEvidenceIds.some((id) => {
       const step = evidence.get(id);
       if (!step?.toolCall || step.terminalOnly || step.result?.success !== true)
-        return false;
+        return rejectEvidence("CALENDAR_READ_RESULT_UNSUCCESSFUL");
       const data = step.result.data;
-      if (!isObjectRecord(data)) return false;
-      const reply = data.replyContext;
-      if (!isObjectRecord(reply)) return false;
-      if (reply.domain !== "calendar") return false;
+      if (!isObjectRecord(data))
+        return rejectEvidence("CALENDAR_READ_RESULT_INVALID");
       const expected = CALENDAR_READ_ACTIONS[binding.operation];
       if (
         !expected ||
@@ -2551,7 +2727,18 @@ export function calendarReadCoverage(
               step.toolCall.params?.subaction) === binding.operation
           ))
       )
-        return false;
+        return rejectEvidence("CALENDAR_READ_OPERATION_MISMATCH");
+      if (
+        binding.operation === "propose_times" ||
+        binding.operation === "check_availability"
+      )
+        return calendarSchedulingOutcomeCovered(
+          binding.operation,
+          step,
+          rejectEvidence,
+        );
+      const reply = data.replyContext;
+      if (!isObjectRecord(reply) || reply.domain !== "calendar") return false;
       if (binding.operation === "feed") {
         const scope = reply.context;
         return (
@@ -2632,8 +2819,15 @@ export function calendarReadCoverage(
         end > asOf
       );
     });
+    return (
+      readVerified ||
+      reject(evidenceFailure ?? "CALENDAR_READ_EVIDENCE_MISSING")
+    );
   });
   return {
+    ...(verdicts.every(Boolean)
+      ? {}
+      : { failureCode: failureCode ?? "CALENDAR_READ_EVIDENCE_REJECTED" }),
     verified: verdicts.every(Boolean),
     unverifiedIntentIds: bindings.flatMap((binding, index) =>
       !verdicts[index] &&

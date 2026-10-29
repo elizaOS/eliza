@@ -801,7 +801,10 @@ export class AgentSandboxesRepository {
       .limit(1);
     return r;
   }
-  /** List active (non-terminal) sandboxes on a specific docker node. */
+  /**
+   * List active (non-terminal) sandboxes on a specific docker node, and stopped
+   * ones that retained their runtime in place: they resume on the same ports.
+   */
   async listByNodeId(nodeId: string): Promise<AgentSandbox[]> {
     await ensureAgentSandboxSchema();
     const terminalStatuses: AgentSandboxStatus[] = ["stopped", "error"];
@@ -811,7 +814,10 @@ export class AgentSandboxesRepository {
       .where(
         and(
           eq(agentSandboxes.node_id, nodeId),
-          notInArray(agentSandboxes.status, terminalStatuses),
+          or(
+            notInArray(agentSandboxes.status, terminalStatuses),
+            isNotNull(agentSandboxes.retained_runtime),
+          ),
         ),
       );
   }
@@ -906,7 +912,11 @@ export class AgentSandboxesRepository {
    * failed instead of being silently revived.
    *
    * Scoped to `dedicated-always` because `dedicated-lazy`/`shared` are NOT meant
-   * to hold an always-on container. Deleted rows are excluded.
+   * to hold an always-on container. Deleted rows are excluded. Rows with an
+   * active provisioning-status owner job are excluded too: that job is already
+   * driving the row back, so re-probing it would race the job, and the row
+   * would hold a batch slot while it stays `disconnected` for the whole
+   * provisioning window.
    */
   async listRecoverable(limit = 100): Promise<
     Array<{
@@ -945,6 +955,7 @@ export class AgentSandboxesRepository {
           )`,
           eq(agentSandboxes.execution_tier, "dedicated-always"),
           sql`${agentSandboxes.deleted_at} IS NULL`,
+          hasNoProvisioningStatusOwnerJob(),
         ),
       )
       .limit(limit);

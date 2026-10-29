@@ -39,6 +39,9 @@ repositories {
 dependencies {
     implementation project(':capacitor-android')
 
+    // JVM test of the shared call screen's keypad tone ownership.
+    testImplementation "junit:junit:$junitVersion"
+
     // Instrumented test deps (issue #9967 — on-device dialer status read).
     androidTestImplementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
     androidTestImplementation "androidx.test:rules:1.5.0"

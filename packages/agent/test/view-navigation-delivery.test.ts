@@ -58,7 +58,11 @@ import { calendarReadBindingEvaluator } from "../../../plugins/plugin-calendar/s
 import { notesPlugin } from "../../../plugins/plugin-notes/src/plugin.ts";
 import { briefAction } from "../../../plugins/plugin-personal-assistant/src/actions/brief.ts";
 import { createTrackedWorkRecapDirectRoutingRule } from "../../../plugins/plugin-personal-assistant/src/lifeops/briefing/direct-routing.ts";
-import { viewsAction } from "../src/actions/views.ts";
+import {
+  createViewsAction,
+  type ViewNavigationDelivery,
+  viewsAction,
+} from "../src/actions/views.ts";
 import { summarizeRuntimeActionResults } from "../src/api/chat-routes.ts";
 import { enrichChatUiViewMetadata } from "../src/api/chat-view-metadata.ts";
 import { registerInProcessApi } from "../src/api/in-process-api.ts";
@@ -266,6 +270,85 @@ async function show(runtime: IAgentRuntime, view: string, input = message) {
   });
 }
 describe("host view navigation", () => {
+  it("uses an injected preparation-only host with the same registry and exact receipt checks", async () => {
+    const host = await fixture();
+    const prepared: ViewNavigationDelivery[] = [];
+    const action = createViewsAction(async (input) => {
+      prepared.push(input);
+      return {
+        status: 200,
+        body: {
+          ok: true,
+          status: "prepared",
+          viewId: input.view.id,
+          completedActionHandoffId: input.handoffId,
+          navigationBinding: {
+            requestId: input.handoffId,
+            clientId: input.clientId,
+            viewId: input.view.id,
+            viewType: "gui",
+            installationId: input.view.installationId,
+          },
+        },
+      };
+    });
+    const source = {
+      ...message,
+      content: {
+        ...message.content,
+        metadata: {
+          viewClientId: "55555555-5555-4555-8555-555555555555",
+          viewDelivery: "completed-action",
+        },
+      },
+    };
+    const result = await action.handler?.(host.runtime, source, undefined, {
+      parameters: { action: "show", view: "Notes" },
+    });
+    expect(result?.success).toBe(true);
+    expect(result?.values).toMatchObject({
+      viewId: "notes",
+      navigationPrepared: true,
+      completedActionDelivered: false,
+    });
+    expect(prepared).toHaveLength(1);
+    expect(prepared[0].view).toBe(getView(host.runtime, "notes"));
+    expect(prepared[0].isAuthorized()).toBe(true);
+    expect(host.requests()).toBe(0);
+    expect(host.frames).toEqual([]);
+    const invalid = createViewsAction(async (input) => ({
+      status: 200,
+      body: {
+        ok: true,
+        status: "prepared",
+        viewId: input.view.id,
+        completedActionHandoffId: input.handoffId,
+        navigationBinding: {
+          ...(result?.values?.navigationBinding as Record<string, unknown>),
+          clientId: "foreign",
+        },
+      },
+    }));
+    expect(
+      (
+        await invalid.handler?.(host.runtime, source, undefined, {
+          parameters: { action: "show", view: "notes" },
+        })
+      )?.success,
+    ).toBe(false);
+    await action.handler?.(
+      host.runtime,
+      { ...source, content: { text: "Open Notes" } },
+      undefined,
+      {
+        parameters: { action: "show", view: "notes" },
+      },
+    );
+    await action.handler?.(host.runtime, source, undefined, {
+      parameters: { action: "show", view: "missing" },
+    });
+    expect(prepared).toHaveLength(1);
+  });
   it("keeps evaluator target-selection instructions within the registered navigation contract", async () => {
     expect(
       viewsAction.parameters?.find((parameter) => parameter.name === "action")

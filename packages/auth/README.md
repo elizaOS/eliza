@@ -5,19 +5,19 @@ credential storage. Keep credentials in the trusted host; never log them.
 
 ## Entry points
 
-| Import | Owner |
-| --- | --- |
-| `@elizaos/auth` | Browser-safe login client, types, chain metadata and signature verification |
-| `@elizaos/auth/auth` | Account storage, provider login and serialized credential refresh |
-| `@elizaos/auth/accounts` | Node-only linked-account selection, usage accounting and credential bridges |
-| `@elizaos/auth/providers` | Provider credential verification and usage adapters |
-| `@elizaos/auth/vault` | Encrypted credential vault |
-| `@elizaos/auth/kms` | Key management adapters |
-| `@elizaos/auth/server` | Identity router without process startup |
-| `@elizaos/auth/start` | Hosted Bun service with PostgreSQL |
-| `@elizaos/auth/embedded` | Embedded Bun service with persistent PGlite |
-| `@elizaos/auth/native-host` | Trusted Node enrollment flow |
-| `@elizaos/auth/testing` | Vault fixtures for tests only |
+| Import                      | Owner                                                                       |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `@elizaos/auth`             | Browser-safe login client, types, chain metadata and signature verification |
+| `@elizaos/auth/auth`        | Account storage, provider login and serialized credential refresh           |
+| `@elizaos/auth/accounts`    | Node-only linked-account selection, usage accounting and credential bridges |
+| `@elizaos/auth/providers`   | Provider credential verification and usage adapters                         |
+| `@elizaos/auth/vault`       | Encrypted credential vault                                                  |
+| `@elizaos/auth/kms`         | Key management adapters                                                     |
+| `@elizaos/auth/server`      | Identity router without process startup                                     |
+| `@elizaos/auth/start`       | Hosted Bun service with PostgreSQL                                          |
+| `@elizaos/auth/embedded`    | Embedded Bun service with persistent PGlite                                 |
+| `@elizaos/auth/native-host` | Trusted Node enrollment flow                                                |
+| `@elizaos/auth/testing`     | Vault fixtures for tests only                                               |
 
 Use these barrels in repository consumers. Explicit old account/vault paths and
 `/credentials` remain compatibility aliases; new implementation files are private.
@@ -173,6 +173,28 @@ format. A renderer field, personal agent ID, decoded JWT subject or credential
 fingerprint is not a verified Cloud owner. The optional native
 `VerifiedAccountCredentialStore` provides encrypted whole-record compare-and-exchange;
 hosts still need to wire it to their private process protocol and lifecycle.
+
+## Native Android sign-in
+
+`android/` is a Gradle library (`ai.eliza.auth.cloud`) for apps that sign in on
+their own native screens: email and SMS codes, the Android Google account picker,
+MFA, the mobile App Auth connect/token/ack tail, acknowledgement resume, best-effort
+replaced-key revocation and per-method readiness. A host subclasses
+`CloudSignInPlugin`, declares its Capacitor name and returns a `CloudSignInConfig`
+(App Auth client id, device and product names, Steward app client for native Google,
+admitted deployments and its installed storage names) plus its protected
+`CloudCredentialSlots`. Admit staging only in development builds. Codes, PKCE
+verifiers and Steward sessions stay native; results carry no secret. Run
+`bun run --cwd packages/auth test:native-android` (needs a JDK); it checks the
+policy and the exact plugin methods on a plain JVM, not on a device.
+
+The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
+(`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a
+`NativeCloudSignInPort`, strict parsers for every answer (`nativeSignInAuthenticated`,
+`nativeSignInCodeStarted`, `nativeSignInVerified`, `nativeSignInGoogleOutcome`,
+`nativeSignInReadiness`), the failure codes the plugin rejects with and owner-facing copy
+that takes the app's and the deployment's names. An answer with an extra key, another
+deployment or a malformed time is refused as `unavailable`.
 
 ## Optional Blooio phone-code delivery
 

@@ -108,6 +108,8 @@ export interface EvaluatorEffects {
 }
 
 export type EvaluatorOutput = EvaluationResult & {
+	/** Runtime-owned reply validation failure; never parsed from model output. */
+	replyFailure?: ActionReplyFailure;
 	/** Canonical typed-read receipts; never populated from model fields. */
 	typedReadRejected?: true;
 	typedReadSnapshot?: string;

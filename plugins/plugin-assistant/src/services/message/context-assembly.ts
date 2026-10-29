@@ -35,6 +35,11 @@ import {
   collectV5PlannerCandidateActions,
   type V5PlannerActionSurface,
 } from "./action-surface.js";
+import {
+  CLIENT_OBSERVATION_SEGMENT_ID,
+  CLIENT_OBSERVATION_SEGMENT_LABEL,
+  projectClientObservation,
+} from "./client-observation-context.ts";
 import { createContextCatalogReadEvent } from "./context-catalog.ts";
 import {
   appendPriorDialogueEvents,
@@ -542,6 +547,11 @@ export async function createV5MessageContextObject(args: {
     };
   }
 
+  // A typed client observation is shown once, in its own current-turn segment;
+  // the authored text keeps its dialogue form. Stored metadata stays exact.
+  const clientObservation = projectClientObservation(currentContent);
+  currentContent = clientObservation.content;
+
   events.push({
     id: String(args.message.id ?? "current-message"),
     type: "message",
@@ -559,6 +569,19 @@ export async function createV5MessageContextObject(args: {
       },
     },
   });
+  if (clientObservation.segment) {
+    events.push({
+      id: CLIENT_OBSERVATION_SEGMENT_ID,
+      type: "segment",
+      source: "message-service",
+      segment: {
+        id: CLIENT_OBSERVATION_SEGMENT_ID,
+        label: CLIENT_OBSERVATION_SEGMENT_LABEL,
+        content: clientObservation.segment,
+        stable: false,
+      },
+    });
+  }
 
   if (args.includeTools && args.selectedContexts?.length) {
     const actions =
