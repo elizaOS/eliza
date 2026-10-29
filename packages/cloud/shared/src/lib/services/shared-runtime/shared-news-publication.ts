@@ -82,9 +82,11 @@ export function ownArticleTitle(value: unknown, url: string): string | undefined
 }
 
 /**
- * A topic-less news query checks no topic, so it may answer only a request that
- * names none ("one top news headline from today"). "One top sports headline"
- * also resolves to the topic-less query; its lost topic must not admit any article.
+ * An allowlist of topic-less news wording ("one top news headline from today",
+ * "the top headline today", "today's news headlines"). It reads the user's own
+ * clause, not the extracted query: the extractor can lose or change a topic
+ * ("the latest sports headline about the Lakers"), and any clause that names a
+ * topic must fail closed.
  */
 export function newsRequestNamesNoTopic(message: string): boolean {
   return /^(?:(?:what['’]?s|what\s+(?:is|are)|give\s+me|show\s+me|tell\s+me)\s+)?(?:(?:one|a|an|the|today['’]?s|top|latest|current|breaking)\s+)*(?:news\s+)?(?:news|headlines?)(?:\s+(?:(?:from|for)\s+)?today)?[\s.!?]*$/iu.test(

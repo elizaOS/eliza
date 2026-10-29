@@ -61,10 +61,11 @@ export type SharedTypedRead =
 function typedPartRead(part: SharedPublicSearchPart, turnStartedAtMs: number): SharedTypedRead {
   const publicQuery = part.requirement.query;
   if (part.requirement.domain === "news")
+    // Fail closed: the topic check cannot prove an article is about a named topic,
+    // so only the user's own topic-less news clause gets a reader.
     return part.compound &&
       part.requirement.publicationScope &&
-      (publicQuery !== "latest public news" ||
-        newsRequestNamesNoTopic(typedTemperatureEvidenceMessage(part.message)))
+      newsRequestNamesNoTopic(typedTemperatureEvidenceMessage(part.message))
       ? { kind: "news", query: publicQuery }
       : { kind: "none" };
   if (!isTypedCurrentTemperaturePart(part)) return { kind: "none" };
