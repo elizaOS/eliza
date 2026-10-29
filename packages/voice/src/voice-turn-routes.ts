@@ -8,7 +8,9 @@
  *    silence gap. Only the resident on the device serves it (local modes only).
  *  - `POST /api/conversations/:id/messages/:messageId/heard` keeps only the part of an assistant
  *    reply the user heard before interrupting playback. The text must be a prefix of the stored
- *    reply or of its spoken form; anything else is 409. Repeats are idempotent.
+ *    reply or of its spoken form; anything else is 409. A reply interrupted before any of it was
+ *    played is reported as `{ nothingHeard: true }`, which the agent stores as an empty,
+ *    interruption-marked reply. Repeats are idempotent.
  *
  * Both go through the host's owner-bound resident request port. Neither ever carries audio. The
  * transcript goes only to the on-device agent; diagnostics keep enums and numbers only, never
@@ -103,8 +105,10 @@ export const heardPath = (conversationId: string, messageId: string) =>
 /**
  * - `recorded` / `unchanged`: the agent keeps the heard prefix (unchanged: it already did).
  * - `not-needed`: the reply was fully heard (or not interrupted); nothing is sent.
- * - `nothing-heard`: interrupted before any sentence finished. The route needs a non-empty
- *   prefix, so the agent keeps its full reply; the conversation view is still marked.
+ * - `nothing-heard`: playback failed (`playbackFailed`) before any sentence finished; nothing is
+ *   sent and the stored reply is kept. A reply the user interrupted before any sentence finished
+ *   is sent as `{ nothingHeard: true }` and ends `recorded` or `unchanged` like any other
+ *   (`rejected` from an agent that predates the explicit report).
  * - `conflict` (409): the played text is not a prefix the agent recognises; the view stays trimmed.
  * - `not-found` (404) / `unavailable` (503 or transport failure): retried once, then dropped.
  * - `rejected` (400 and other 4xx), `stale` (binding changed), `invalid` (not an assistant reply
@@ -127,6 +131,12 @@ export interface HeardReport {
   heard: string;
   unheard: string;
   interrupted: boolean;
+  /**
+   * Playback failed rather than the user interrupting it (AssistantHeard.playbackFailed). The
+   * heard prefix is still recorded, but a failure before any sentence finished is `nothing-heard`
+   * and sends nothing: a speech failure never empties the stored reply.
+   */
+  playbackFailed?: boolean;
 }
 export interface HeardReporterPorts {
   /** The owner-bound resident request port, or null when the resident session is gone. */
@@ -172,7 +182,7 @@ export function createHeardReporter(ports: HeardReporterPorts) {
   };
   const attempt = async (
     input: HeardReport,
-    heardText: string,
+    body: { heardText: string } | { nothingHeard: true },
     attempts: number,
   ): Promise<HeardOutcome> => {
     if (!ports.current(input.conversationId))
@@ -182,7 +192,7 @@ export function createHeardReporter(ports: HeardReporterPorts) {
     try {
       const value = (await request(
         heardPath(input.conversationId, input.replyId),
-        { heardText },
+        body,
         AbortSignal.timeout(10_000),
       )) as { ok?: unknown; messageId?: unknown; changed?: unknown } | null;
       if (value?.ok !== true || value.messageId !== input.replyId)
@@ -212,7 +222,7 @@ export function createHeardReporter(ports: HeardReporterPorts) {
       await new Promise<void>((resolve) => {
         setTimer(resolve, retryDelayMs);
       });
-      return attempt(input, heardText, attempts + 1);
+      return attempt(input, body, attempts + 1);
     }
   };
   return {
@@ -223,7 +233,6 @@ export function createHeardReporter(ports: HeardReporterPorts) {
         const heardText = String(input.heard || "")
           .replace(/\s+/g, " ")
           .trim();
-        if (!heardText) return Promise.resolve(finish("nothing-heard", 0));
         if (
           typeof input.conversationId !== "string" ||
           !input.conversationId.trim() ||
@@ -235,10 +244,17 @@ export function createHeardReporter(ports: HeardReporterPorts) {
         const key = `${input.conversationId}\n${input.replyId}`;
         // One report per reply: a reply is interrupted once.
         if (settled.has(key)) return Promise.resolve(finish("unchanged", 0));
+        // Playback failed before any sentence finished: the user did not interrupt the reply, so
+        // keep it as stored.
+        if (!heardText && input.playbackFailed === true)
+          return Promise.resolve(finish("nothing-heard", 0));
         settled.add(key);
-        return attempt(input, heardText, 1).catch(() =>
-          finish("unavailable", 1),
-        );
+        // Interrupted before any sentence finished: say so explicitly, so the agent does not keep
+        // a reply the user never heard.
+        const body = heardText
+          ? { heardText }
+          : { nothingHeard: true as const };
+        return attempt(input, body, 1).catch(() => finish("unavailable", 1));
       } catch {
         return Promise.resolve(finish("invalid", 0));
       }

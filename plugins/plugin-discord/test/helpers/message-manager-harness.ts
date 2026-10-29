@@ -65,6 +65,13 @@ export function makeMessageManagerHarness({
 			memories.set(id, { ...memory, id });
 			return id;
 		}),
+		// Durable turn transitions update the row the claim inserted.
+		updateMemory: vi.fn(async (patch: Partial<Memory> & { id: UUID }) => {
+			const row = memories.get(patch.id);
+			if (!row) return false;
+			memories.set(patch.id, { ...row, ...patch });
+			return true;
+		}),
 		getMemories: vi.fn(async () => []),
 		messageService: {
 			handleMessage: async (

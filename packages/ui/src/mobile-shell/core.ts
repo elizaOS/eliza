@@ -4,8 +4,26 @@
  * reducer (views, Back, the drawer and the assistant detent), the gesture
  * zones and the one launcher favorites migration. Runtime and background code (agent
  * navigation, voice, capture) import this entry so they never load Home,
- * All apps or a domain view.
+ * All apps or a domain view. The feature manifest and the Eliza reference
+ * registration are here too, so a branded build's parity gate needs no React.
  */
+export {
+  ELIZA_MOBILE_PRODUCT,
+  MOBILE_SHELL_LAUNCHER_CAPABILITIES,
+} from "./eliza-product";
+export {
+  compareMobileFeatureManifests,
+  MOBILE_FEATURE_MANIFEST_SCHEMA,
+  MOBILE_FEATURE_MANIFEST_SCHEMA_VERSION,
+  type MobileFeatureBranding,
+  type MobileFeatureDifference,
+  type MobileFeatureFunctional,
+  type MobileFeatureKind,
+  type MobileFeatureManifest,
+  type MobileFeatureView,
+  mobileFeatureDifferenceKey,
+  mobileFeatureManifest,
+} from "./feature-manifest";
 export {
   MOBILE_SHELL_CANVAS_WIDTH,
   MOBILE_SHELL_EDGE,
@@ -35,6 +53,7 @@ export {
   MOBILE_PRODUCT_SCHEMA_VERSION,
   MOBILE_SHELL_REQUIRED_COLORS,
   type MobileProductBackgrounds,
+  type MobileProductFeatures,
   type MobileProductIcons,
   type MobileProductIdentity,
   type MobileProductRegistration,
