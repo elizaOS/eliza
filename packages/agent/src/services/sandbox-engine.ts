@@ -92,8 +92,14 @@ function listContainersFromBinary(binary: string, prefix: string): string[] {
       .split("\n")
       .map((s) => s.trim())
       .filter(Boolean);
-  } catch {
-    return [];
+  } catch (cause) {
+    // A failed listing is not an empty listing: the orphan reaper must not read
+    // an unreachable engine as "no sandbox containers exist".
+    throw new ElizaError(`Cannot list containers via ${binary}`, {
+      code: "SANDBOX_LIST_CONTAINERS_FAILED",
+      cause,
+      context: { binary, prefix },
+    });
   }
 }
 
