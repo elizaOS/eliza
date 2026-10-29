@@ -73,7 +73,7 @@ export async function noteScheduleDraft(
     status: "ready",
     draft: {
       kind,
-      title: String(note.title ?? "").slice(0, 200),
+      title: String(note.title ?? ""),
       notes,
       origin,
     },
