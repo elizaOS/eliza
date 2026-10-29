@@ -41,9 +41,9 @@ describe("powered-on scheduled occurrences", () => {
 	it("tolerates thirty minutes of lateness before an occurrence can be missed", () => {
 		expect(SCHEDULED_OCCURRENCE_WINDOW_MS).toBe(30 * 60_000);
 		// Ten minutes late right after boot (a Doze-delayed startup) still runs.
-		expect(isMissedScheduledOccurrence(now - 10 * 60_000, now, now - 1_000)).toBe(
-			false,
-		);
+		expect(
+			isMissedScheduledOccurrence(now - 10 * 60_000, now, now - 1_000),
+		).toBe(false);
 	});
 
 	it("derives the agent start from process uptime", () => {

@@ -65,8 +65,9 @@ describe("workflow selected-reminders read", () => {
     expect(() => validateDevicePayload(payload)).toThrow(
       /Workflow read binding required/,
     );
-    expect(validateDevicePayload({ ...payload, workflow: binding }).workflow)
-      .toEqual(binding);
+    expect(
+      validateDevicePayload({ ...payload, workflow: binding }).workflow,
+    ).toEqual(binding);
   });
 
   it("validates rows against the owner-day window and their revisions", () => {
@@ -80,7 +81,10 @@ describe("workflow selected-reminders read", () => {
       "2026-10-08T20:00:00.000Z",
     );
     expect(
-      validateWorkflowReadResult(op, { kind: "reminders", reminders: [open, done] }),
+      validateWorkflowReadResult(op, {
+        kind: "reminders",
+        reminders: [open, done],
+      }),
     ).toEqual({ kind: "reminders", reminders: [open, done] });
     const refused = (reminders: unknown[]) =>
       expect(() =>

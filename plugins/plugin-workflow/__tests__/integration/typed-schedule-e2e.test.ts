@@ -345,9 +345,15 @@ test('typed local-time schedules: reviewed arming, exact occurrences, missed, ov
     });
     const nextDay = await embedded!.startWorkflow(dstSaved.workflowId, {
       mode: 'trigger',
-      triggerData: { scheduledAtMs: Date.parse('2026-03-09T06:30:00Z'), workflowVersionId: dstVersion },
+      triggerData: {
+        scheduledAtMs: Date.parse('2026-03-09T06:30:00Z'),
+        workflowVersionId: dstVersion,
+      },
     });
-    expect(nextDay.output).toMatchObject({ status: 'missed', scheduledAt: '2026-03-09T06:30:00.000Z' });
+    expect(nextDay.output).toMatchObject({
+      status: 'missed',
+      scheduledAt: '2026-03-09T06:30:00.000Z',
+    });
     expect((nextDay.output as any).skippedLocalTime).toBeUndefined();
     expect(await dstRecords()).toHaveLength(2);
     await call(`/workflows/${dstSaved.workflowId}/deactivate`, { expectedVersionId: dstVersion });

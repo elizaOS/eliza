@@ -241,7 +241,8 @@ function localWall(ms: number, timeZone: string): string {
     wallFormats.set(timeZone, format);
   }
   const parts: Record<string, string> = {};
-  for (const part of format.formatToParts(ms)) if (part.type !== 'literal') parts[part.type] = part.value;
+  for (const part of format.formatToParts(ms))
+    if (part.type !== 'literal') parts[part.type] = part.value;
   return `${parts.year}-${parts.month}-${parts.day}T${parts.hour === '24' ? '00' : parts.hour}:${parts.minute}`;
 }
 export function phoneSpecDigest(spec: PhoneWorkflowSpec) {

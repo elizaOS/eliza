@@ -168,9 +168,9 @@ test('a reviewed local time skipped by a spring-forward transition is recorded a
   // The next day's 02:30 exists and runs.
   const nextDay = Date.parse('2026-03-09T06:30:00Z');
   expect(computeNextCronRunAtMs('30 2 * * *', shifted, daily.timeZone)).toBe(nextDay);
-  expect(typedScheduleAdmission(daily, nextDay, nextDay + 5_000, computeNextCronRunAtMs).status).toBe(
-    'ready'
-  );
+  expect(
+    typedScheduleAdmission(daily, nextDay, nextDay + 5_000, computeNextCronRunAtMs).status
+  ).toBe('ready');
   // The fall-back (repeated hour) date runs its first 01:30 once; a time outside the
   // transition hour and a zone without DST are never skipped.
   const repeated = { ...daily, localTime: '01:30' };
