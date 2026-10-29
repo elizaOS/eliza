@@ -996,24 +996,17 @@ async function fetchSolanaPaymentTransaction(
   }
   const payload = (await response.json()) as {
     error?: { code?: number; message?: string };
-    result?: {
-      slot?: number;
-      meta?: {
-        err: unknown;
-        preTokenBalances?: SolanaTokenBalance[] | null;
-        postTokenBalances?: SolanaTokenBalance[] | null;
-      } | null;
-    } | null;
+    result?: SolanaPaymentTx | null;
   };
   if (payload.error) {
     throw new Error(payload.error.message ?? `Solana RPC error ${payload.error.code ?? "unknown"}`);
   }
   const result = payload.result;
   if (!result) return null;
-  return {
-    slot: typeof result.slot === "number" ? result.slot : 0,
-    meta: result.meta ?? null,
-  };
+  if (typeof result.slot !== "number") {
+    throw new Error("Solana RPC returned transaction without slot");
+  }
+  return result;
 }
 
 async function verifySolanaTokenPayment(params: {
