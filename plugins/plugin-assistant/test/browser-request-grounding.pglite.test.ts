@@ -177,7 +177,7 @@ async function fixture() {
       { isCurrent: () => current },
     );
   }
-  return { pg, runtime, notify, enqueue, decide, run };
+  return { pg, runtime, service, credential, notify, enqueue, decide, run };
 }
 
 it.each([false, true])(
@@ -347,6 +347,28 @@ it("replays the same operation key without a second durable proposal", async () 
         .rows,
     ).toEqual([{ count: 1 }]);
     expect(f.decide).not.toHaveBeenCalled();
+  } finally {
+    await f.pg.close();
+  }
+});
+
+it("refuses an unbound service caller without creating a review", async () => {
+  const f = await fixture();
+  try {
+    await expect(
+      f.service.proposeWithOutcome(
+        f.credential,
+        { type: "browser_navigate", url: "https://example.com/" },
+        "unbound-browser",
+        "Planner-provided justification is not authority",
+      ),
+    ).rejects.toMatchObject({ code: "DEVICE_BROWSER_NOT_REQUESTED" });
+    expect(f.enqueue).not.toHaveBeenCalled();
+    expect(f.decide).not.toHaveBeenCalled();
+    expect(
+      (await f.pg.query("SELECT count(*)::int AS count FROM approval_requests"))
+        .rows,
+    ).toEqual([{ count: 0 }]);
   } finally {
     await f.pg.close();
   }
