@@ -1408,7 +1408,7 @@ function sendSmokeViewAsset(req, res, url, view, subResource) {
         componentExport: view.componentExport,
         provenance: provenance.mode,
         expectedBundlePath: `plugins/${view._smokePluginDirName}/dist/views/bundle.js`,
-        hint: "Build the plugin view bundle (bun run build-views) before running the audit; audit mode refuses to fabricate a placeholder.",
+        hint: "Build the plugin view bundle (bun run build:views) before running the audit; audit mode refuses to fabricate a placeholder.",
       });
       return;
     }
