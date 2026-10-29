@@ -219,6 +219,12 @@ function isNativeKeyringModule(value: unknown): value is NativeKeyringModule {
   return "AsyncEntry" in value && typeof value.AsyncEntry === "function";
 }
 
+/** True only for "there is no runtime directory", which is a supported layout. */
+function isAbsentRuntimeDirectoryError(error: unknown): boolean {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  return code === "ENOENT" || code === "ENOTDIR";
+}
+
 export function resolveBundledKeyringPath(options: {
   arch: string;
   entrypoint: string | undefined;
@@ -237,9 +243,18 @@ export function resolveBundledKeyringPath(options: {
       .sort();
     if (matches.length !== 1) return null;
     return path.join(runtimeDir, matches[0]);
-  } catch {
+  } catch (error: unknown) {
     // error-policy:J3 the packaged runtime directory may not exist.
-    return null;
+    if (isAbsentRuntimeDirectoryError(error)) return null;
+    // The binding may be present but unreadable (packaged with restrictive
+    // permissions, broken mount). Returning null here is reported downstream as
+    // "binding was not found", which sends packagers after a missing file.
+    // Surface the errno only: filesystem messages embed absolute paths.
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    throw new Error(
+      `Bundled native Keychain binding directory could not be read${code ? ` (${code})` : ""}.`,
+      { cause: error },
+    );
   }
 }
 
