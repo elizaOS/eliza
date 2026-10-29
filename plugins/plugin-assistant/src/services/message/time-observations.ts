@@ -149,13 +149,30 @@ export function calendarMutationTimeIsUngrounded(args: {
           Number(parts.find((part) => part.type === "minute")?.value)
         );
       };
-      return [{ start: minuteOfDay(start), end: minuteOfDay(end) }];
+      return [
+        {
+          key: JSON.stringify([
+            event.id,
+            version,
+            event.startAt,
+            event.endAt,
+            event.timezone,
+          ]),
+          start: minuteOfDay(start),
+          end: minuteOfDay(end),
+        },
+      ];
     } catch {
       return [];
     }
   });
-  const event = events.at(0);
-  if (events.length !== 1 || !event) return false;
+  // Recovery may carry the same complete result in both captured and current
+  // evidence. Only identical ID/version/timing copies are one observation.
+  const unique = [
+    ...new Map(events.map((event) => [event.key, event])).values(),
+  ];
+  const event = unique.at(0);
+  if (unique.length !== 1 || !event) return false;
   const start = stated.start.hour * 60 + stated.start.minute;
   return (
     start !== event.start ||
