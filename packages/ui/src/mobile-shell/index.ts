@@ -15,7 +15,11 @@ export {
   type MobileHomeTile,
   type MobileShellPartProps,
 } from "./MobileHomeScreen";
-export { type MobileViewError, MobileViewHost } from "./MobileViewHost";
+export {
+  type MobileViewError,
+  type MobileViewFailure,
+  MobileViewHost,
+} from "./MobileViewHost";
 export {
   createMobileShellLauncher,
   type MobileHomeEntry,

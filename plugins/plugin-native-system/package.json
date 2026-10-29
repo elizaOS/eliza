@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/capacitor-system",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Android system-role status bridge for ElizaOS.",
   "main": "./dist/plugin.cjs.js",
   "module": "./dist/esm/index.js",
@@ -18,6 +18,12 @@
       "types": "./dist/esm/client/launcher.d.ts",
       "import": "./dist/esm/client/launcher.js"
     },
+    "./shade": {
+      "eliza-source": "./src/client/shade.ts",
+      "types": "./dist/esm/client/shade.d.ts",
+      "import": "./dist/esm/client/shade.js",
+      "default": "./dist/esm/client/shade.js"
+    },
     "./sense": {
       "eliza-source": "./src/sense-bridge.ts",
       "types": "./dist/esm/sense-bridge.d.ts",
@@ -29,6 +35,12 @@
       "types": "./dist/esm/reset.d.ts",
       "import": "./dist/esm/reset.js",
       "default": "./dist/esm/reset.js"
+    },
+    "./crash-log": {
+      "eliza-source": "./src/crash-log.ts",
+      "types": "./dist/esm/crash-log.d.ts",
+      "import": "./dist/esm/crash-log.js",
+      "default": "./dist/esm/crash-log.js"
     },
     "./settings": {
       "eliza-source": "./src/settings.ts",

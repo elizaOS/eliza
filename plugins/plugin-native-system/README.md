@@ -77,8 +77,19 @@ also declare an `ACTION_DIAL` query with the `tel` scheme. Default handoffs use
 an explicit eligible activity or a chooser of eligible activities. The host,
 disabled apps and unexported activities cannot be destinations. Web fallback
 reports no handlers and rejects launch requests. Hosts retain user-intent policy.
+Refusals carry a stable `code` (`not-installed`, `disabled`, `no-launcher`,
+`profile-locked`, `profile-unavailable`); `failed` means Android refused the read or
+the start itself. A package-only launch is refused with the same codes.
+
+`getBuildInfo`, `getLaunchInfo` and `getLocaleInfo` are reads only. By default a
+build that declares a HOME activity is the launcher, the assist entry is
+`ACTION_ASSIST`, and the locale and 24-hour setting are Android's. Hosts override
+the protected hooks (`isLauncherBuild`, `buildVersion`, `isAssistantLaunch`,
+`localeTag`, `is24HourClock`) for their own build flags or assist marker extra.
 
 `@elizaos/capacitor-system/launcher` exposes the browser-safe installed-app controller,
+`createSystemLauncherBridge(System)` (the one bridge from `ElizaSystem` to the
+controller, delegating each call by name),
 identity/search helpers, favorites persistence and package/resume observation. Hosts
 inject their native bridge and rerender on the change callback. Use `localFavorites`
 with the existing host storage key and default-policy marker when migrating a
@@ -214,6 +225,16 @@ role; overridable) that declares `EXPAND_STATUS_BAR`; outcomes are `opened` (acc
 visible), `standalone`, `permission-missing`, `unsupported` and `not-in-front`.
 The web fallback reports no facts, opens no page and answers `unsupported`.
 
+`@elizaos/capacitor-system/shade` (`src/client/shade.ts`) is the launcher's
+browser-safe shade policy: which surface answers (`shadeSurface`: Android, a
+development stand-in, or none), whether a finished pull on empty Home asks for
+the shade (`emptyHomeShadePull`; never from the status bar band, on editable or
+scrolled content, with the keyboard up or with anything over Home), the touch
+claim that lets a pull reach an overflowing Home (`installOverflowPull`), and the
+fallback a person reads when Android did not open it (`requestNotificationShade`,
+`shadeFallback`). Products pass their wording (`defaultShadeFallbackCopy(appName)`
+or their own) and the selector of their Home layer. `test/shade.test.mjs` covers it.
+
 `@elizaos/capacitor-system/settings` (`src/settings.ts`) is the shared, browser-safe
 presentation for those facts: `parseSystemFacts`, `systemSwitchRows` (row wording
 that says "Not reported by Android" instead of guessing), quick-setting tile state,
@@ -256,7 +277,11 @@ A host builds one `DataReset` with its installed identities and shares it:
   storage) and the recovery activity. Keep both stable across releases.
 - `beforeDispatch(...)` optionally adds bounded, best-effort work that runs only
   while a confirmed reset is pending, such as revoking this device's remote
-  sign-in. It never blocks or cancels the local reset beyond its budget.
+  sign-in. It never blocks or cancels the local reset beyond its budget. Eliza
+  Cloud hosts pass `CloudKeyRevocation.resetStep(() -> registration,
+  Store::readSlot)::run` from `@elizaos/auth` (Android `ai.eliza.auth.cloud`):
+  it revokes each registered environment's saved key on an interrupted daemon
+  worker, capped at 8 seconds.
 - The same-signer image listener (`SenseListenerClient.resetForData()`) must
   acknowledge first. An installed listener that does not durably acknowledge
   consent revocation keeps the marker and all app data; an absent listener is
@@ -299,3 +324,47 @@ app in front. `test/reset.test.mjs` covers authorization, bounded admission,
 background starts, interrupted dispatch and single dispatch against host-JVM
 stand-ins. Real self-clear, the listener's provider IPC and the recovery task
 returning instead of HOME require installed and device qualification.
+
+## Problem log
+
+`crash.CrashLog` is a privacy-bounded local problem log for Settings
+diagnostics. It records failure classes only: an uncaught exception's class and
+root-cause class, Android's recorded problem exit reasons (Android 11+, read once
+each; ordinary user, update and clean exits are skipped) and renderer failure
+kinds. It never stores messages, stack traces, exit descriptions, trace files,
+URLs or user content. The log is one `AtomicFile` at
+`no_backup/crash-log/v1.json`, bounded to 50 entries, 30 days and 256 KiB; a
+damaged file starts again. `export(context)` re-applies the field allowlist for
+a support bundle.
+
+A host calls `CrashLog.install(this)` in its main process's `Application`, and
+exposes `read`, `recordRenderer` and `clear` through its bridge, calling
+`collectExitReasons` before a read. The Eliza app's `ElizaAgentService` records
+its exit-reason read here too. `src/crash-log.ts`
+(`@elizaos/capacitor-system/crash-log`) re-sanitizes whatever the bridge or
+browser storage returns (`sanitizeCrashEntries`), names renderer errors
+(`errorClassOf`), describes entries and builds the redacted export.
+`test/crash-log.test.mjs` covers both on a host JVM and Node; a real crash and
+Android's exit history need an instrumented run.
+
+## Clock handoff
+
+`clock.ClockHandoff` builds the standard Android Clock intents (`set`, `show`,
+`dismiss`, `snooze`) for a reviewed request and starts the resolved external
+handler as an explicit component. The host itself never receives its own
+handoff. Dismiss and snooze carry no target, and `EXTRA_SKIP_UI` is always
+false. A launched Activity is not a receipt: the strongest result is `opened`,
+which only means Clock received the request. `launch(...)` adds a host form's
+checks: reviewed, host in front, phone unlocked, and an unchanged time zone for
+a set.
+
+`clock.ClockDays` admits repeat days (`java.util.Calendar` values, Sunday = 1).
+`strict` takes a host form's unique ascending list. `agent` takes an agent
+operation's days in any order, sorts and de-duplicates them, and reads an empty
+list as a one-time alarm. `explicit` keeps a reviewed request's order.
+`clock.ClockProfile` names what a host advertises: `HANDOFF_ONLY`
+(`clock.handoff.v1,clock.handoff.v2`, Android Clock owns alarms) or
+`OWNED_ALARMS` (`clock.alarms.v1`, the Eliza app's `ElizaAlarms`). A host that
+leaves `OWNED_ALARMS` must also choose a `SavedAlarms` path for alarms it
+already saved. `test/clock.test.mjs` runs on a host JVM; real Clock apps need
+an instrumented run.

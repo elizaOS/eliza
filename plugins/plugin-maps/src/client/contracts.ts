@@ -53,6 +53,8 @@ export type ProviderCapabilities = Readonly<{
   traffic: "none" | "approximated" | "live";
   transit: "none" | "approximated" | "scheduled";
   offline: Readonly<{ map: boolean; search: boolean; routing: boolean }>;
+  /** The provider can answer one route request with ordered alternatives. */
+  alternatives?: boolean;
 }>;
 export const unavailableCapabilities: ProviderCapabilities = Object.freeze({
   map: false,
@@ -117,6 +119,17 @@ export interface MapsProvider {
     mode: TravelMode,
     signal: AbortSignal,
   ): Promise<Route>;
+  /**
+   * One request for the recommended route and the provider's alternatives, in
+   * the provider's order (recommended first). Offered only with
+   * `capabilities.alternatives`.
+   */
+  routes?(
+    from: Coordinate,
+    to: Coordinate,
+    mode: TravelMode,
+    signal: AbortSignal,
+  ): Promise<readonly Route[]>;
 }
 export type ResultState<T> = Readonly<{
   phase: "idle" | "loading" | "ready" | "empty" | "error";

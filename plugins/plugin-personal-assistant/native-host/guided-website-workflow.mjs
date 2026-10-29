@@ -117,6 +117,29 @@ function controlKind(element) {
   return "button";
 }
 
+/** A page's address without its fragment. */
+const pageAddress = (url) => {
+  try {
+    const address = new URL(url);
+    address.hash = "";
+    return address.href;
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Whether the person's press on a pointed control sends a form: a submit
+ * button of a form, or a field of a form (Enter sends it). A link, a choice
+ * or any other button sends no form of hers.
+ */
+function stepSubmits(element) {
+  const kind = controlKind(element);
+  if (kind === "button") return element.submits === true;
+  if (kind === "field") return element.form != null;
+  return false;
+}
+
 /**
  * Every control of one complete observation, with a stable ref for each. A
  * ref is made from the facts that locate the control (role, name, label,
@@ -385,7 +408,15 @@ function validManualActivity(activity) {
         (event.credential === undefined || event.credential === true),
     ) &&
     typeof activity.overflow === "boolean" &&
-    typeof activity.captureGap === "boolean"
+    typeof activity.captureGap === "boolean" &&
+    // The event ID of each submit with no record, when the browser names it.
+    (activity.captureGapEvents === undefined ||
+      (Array.isArray(activity.captureGapEvents) &&
+        activity.captureGapEvents.length <= 256 &&
+        activity.captureGapEvents.every(
+          (id) => typeof id === "string" && /^[a-f0-9-]{36}$/.test(id),
+        ) &&
+        (activity.captureGapEvents.length === 0 || activity.captureGap)))
   );
 }
 
@@ -437,6 +468,41 @@ export class GuidedWebsiteWorkflow {
     this.lastStep = null;
     this.offer = null;
     this.grant = null;
+    // The submit step the person was last pointed at, until the next
+    // refresh reads it, and the gaps (epoch, document, event) her own pointed
+    // submits explained.
+    this.pointed = null;
+    this.explained = new Set();
+  }
+  /**
+   * The capture gaps on this page that no step of hers explains: one entry
+   * per submit with no record. A browser that does not name the submits
+   * reports one gap for the document, which is never explained.
+   */
+  openGaps(snapshot, task) {
+    const activity = snapshot.manualActivity;
+    if (activity?.captureGap !== true) return [];
+    if (
+      typeof snapshot.documentId !== "string" ||
+      !Array.isArray(activity.captureGapEvents) ||
+      activity.captureGapEvents.length === 0
+    )
+      return [null];
+    return activity.captureGapEvents.filter(
+      (id) =>
+        !this.explained.has(
+          JSON.stringify([task.epoch, snapshot.documentId, id]),
+        ),
+    );
+  }
+  /** Records a step whose press sends a form she fills herself. */
+  pointFor(snapshot, task) {
+    this.pointed = {
+      epoch: task.epoch,
+      documentId: snapshot.documentId,
+      address: pageAddress(snapshot.url),
+      gap: this.openGaps(snapshot, task).length > 0,
+    };
   }
   /**
    * The one fill target the person agreed to, for the host's browser policy
@@ -642,6 +708,10 @@ export class GuidedWebsiteWorkflow {
     }
   }
   async refreshObserved({ restoreGuidance = false } = {}) {
+    // The pointed step explains at most the next page read after it; a
+    // refresh that shows a submit step again points anew.
+    const pointed = this.pointed;
+    this.pointed = null;
     const gate = await this.taskGate();
     if (gate.result) return gate.result;
     const { task } = gate;
@@ -658,10 +728,34 @@ export class GuidedWebsiteWorkflow {
     // restarted may have changed something. She checks it first.
     const activity = await this.manualActivity(read.snapshot);
     const origin = new URL(read.snapshot.url).origin;
+    const address = pageAddress(read.snapshot.url);
+    let gaps = activity ? this.openGaps(read.snapshot, task) : [];
+    // One gap with no event is her own pointed submit when that submit
+    // moved this same document to another address (a page that changes its
+    // address without loading a new one) and the record was lost. The step
+    // must be from this epoch and shown on this document with no gap open,
+    // so it never explains a gap that was there before it, a gap of another
+    // document, or a second failed submit.
+    if (
+      gaps.length === 1 &&
+      gaps[0] !== null &&
+      pointed?.epoch === task.epoch &&
+      pointed.gap === false &&
+      typeof pointed.documentId === "string" &&
+      pointed.documentId === read.snapshot.documentId &&
+      pointed.address !== null &&
+      address !== null &&
+      pointed.address !== address
+    ) {
+      this.explained.add(
+        JSON.stringify([task.epoch, read.snapshot.documentId, gaps[0]]),
+      );
+      gaps = [];
+    }
     if (
       activity &&
       (activity.overflow ||
-        activity.captureGap ||
+        gaps.length > 0 ||
         activity.events.some(
           (event) =>
             event.credential !== true &&
@@ -669,7 +763,22 @@ export class GuidedWebsiteWorkflow {
             event.epoch < task.epoch,
         ))
     ) {
-      const key = `manual-activity:${digest(activity)}`;
+      // An answer about a gap covers those failed submits only: this epoch
+      // and document, and the event ID of each. A new failed submit, or the
+      // same address loaded again, asks again; a new address in the same
+      // document with the same gaps does not.
+      const key = `manual-activity:${digest({
+        events: activity.events,
+        overflow: activity.overflow,
+        captureGap:
+          gaps.length > 0
+            ? {
+                epoch: task.epoch,
+                documentId: read.snapshot.documentId ?? null,
+                events: gaps,
+              }
+            : false,
+      })}`;
       if (!this.acknowledged.has(key)) {
         await this.clearGuidance();
         return {
@@ -699,6 +808,8 @@ export class GuidedWebsiteWorkflow {
       )
     ) {
       this.offer = null;
+      // Her sign-in or code step ends with her own submit.
+      if (stepSubmits(secret.element)) this.pointFor(read.snapshot, task);
       const step = {
         kind: PROTECTED_KIND[secret.category] ?? "human-review",
         category: secret.category,
@@ -836,6 +947,7 @@ export class GuidedWebsiteWorkflow {
           step: plan.step,
           message: plan.message,
         };
+    if (!offer && stepSubmits(control.element)) this.pointFor(snapshot, task);
     if (offer)
       this.offer = {
         key: decision.offerKey,

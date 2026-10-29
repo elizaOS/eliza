@@ -92,6 +92,8 @@ export interface EndpointResult {
   decision: EndpointDecision;
   reason?: string;
   latencyMs?: number;
+  /** The end-of-turn stage that answered (`createEndpointChain`): the local scorer or Clef. */
+  path?: "local" | "clef";
 }
 /** What the semantic endpoint said for the utterance that was submitted. */
 export type EndpointOutcome =
@@ -109,6 +111,8 @@ export interface EndpointRecord {
   reason?: string;
   /** Scorer latency reported by the agent, or the client round trip when it gave none. */
   latencyMs?: number;
+  /** The end-of-turn stage whose answer this records, when the port named one. */
+  path?: "local" | "clef";
 }
 export interface AssistantHeard {
   turnId: string;
@@ -118,6 +122,11 @@ export interface AssistantHeard {
   /** Everything not played to the end, including the sentence that was interrupted. */
   unheard: string;
   interrupted: boolean;
+  /**
+   * Playback of the reply failed (for example the speech service refused it); the user did not
+   * interrupt it. A reporter must not empty the stored reply for a failure.
+   */
+  playbackFailed?: boolean;
 }
 export interface AssistantCapture {
   /** Finalize: segments closed by this call still deliver their final before it resolves. */
@@ -800,16 +809,31 @@ export class VoiceAssistantSession {
                     ? Math.round(result.latencyMs as number)
                     : Math.max(0, Math.round(this.clock.now() - askedAt));
                 const latencyMs = Math.min(reported, 3_600_000);
+                const path =
+                  result.path === "local" || result.path === "clef"
+                    ? { path: result.path }
+                    : {};
                 if (result.decision === "finished")
-                  return { finished: true, semantic: "complete", latencyMs };
+                  return {
+                    finished: true,
+                    semantic: "complete",
+                    latencyMs,
+                    ...path,
+                  };
                 if (result.decision === "continue")
-                  return { finished: false, semantic: "incomplete", latencyMs };
+                  return {
+                    finished: false,
+                    semantic: "incomplete",
+                    latencyMs,
+                    ...path,
+                  };
                 return {
                   finished: false,
                   semantic: "unavailable",
                   ...(typeof result.reason === "string"
                     ? { reason: result.reason }
                     : {}),
+                  ...path,
                 };
               },
               (): Settled => ({ finished: false, semantic: "error" }),
@@ -1022,7 +1046,7 @@ export class VoiceAssistantSession {
     } catch (error) {
       if (!this.owned(session, turn, response)) return; // Interrupted or stopped: already accounted.
       if ((error as { name?: unknown })?.name === "AbortError") return;
-      if (response.replyId) this.reportInterrupted(response);
+      if (response.replyId) this.reportInterrupted(response, true);
       this.response = undefined;
       await this.fail(session, error);
     }
@@ -1056,7 +1080,7 @@ export class VoiceAssistantSession {
     this.ports.onTurn?.("interrupted", response.turnId);
   }
 
-  private reportInterrupted(response: Response) {
+  private reportInterrupted(response: Response, playbackFailed = false) {
     if (!response.replyId) return;
     const heard = response.sentences.slice(0, response.played).join(" ");
     const unheard = response.sentences.slice(response.played).join(" ");
@@ -1066,6 +1090,7 @@ export class VoiceAssistantSession {
       heard,
       unheard,
       interrupted: true,
+      ...(playbackFailed ? { playbackFailed: true } : {}),
     });
   }
 

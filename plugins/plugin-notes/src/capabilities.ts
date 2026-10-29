@@ -117,6 +117,12 @@ export const NOTES_CAPABILITIES: ViewCapability[] = [
           "Optional lossless rich note format: kind text/list/voice/link and JSON data. Supply only exact authored fields; never invent media or attachment data.",
       },
       color: COLOR_PARAM,
+      forceNew: {
+        type: "boolean",
+        required: false,
+        description:
+          "When true, always create a new note id even if another note already has the same text and color. The Notes editor sets this for new drafts. Agent creates omit it so identical creates stay one logical note.",
+      },
     },
   },
   {

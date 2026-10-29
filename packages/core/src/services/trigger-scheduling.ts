@@ -495,8 +495,12 @@ export function resolveTriggerTiming(
  */
 export const MISSED_SCHEDULED_OCCURRENCES_SETTING =
 	"ELIZA_MISSED_SCHEDULED_OCCURRENCES";
-/** Lateness tolerated before an occurrence can be missed (resident digests use the same window). */
-export const SCHEDULED_OCCURRENCE_WINDOW_MS = 120_000;
+/**
+ * Lateness tolerated before an occurrence can be missed: thirty minutes, the
+ * same window as phone typed schedules and resident digests
+ * (`PHONE_SCHEDULE_ADMISSION_WINDOW_MS` in @elizaos/contracts).
+ */
+export const SCHEDULED_OCCURRENCE_WINDOW_MS = 30 * 60_000;
 export const MISSED_SCHEDULED_OCCURRENCE_TEXT =
 	"The scheduled time passed while the agent was not running. This occurrence did not run, and no backlog is executed.";
 

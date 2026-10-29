@@ -48,7 +48,19 @@ export interface MobileProductTheme extends ThemeDefinition {
    * properties; they are not a second palette.
    */
   aliases?: Readonly<Record<string, MobileShellThemeToken>>;
+  /**
+   * Fixed product colours no theme token names (a call screen that is always
+   * dark, camera controls over a viewfinder, illustration art), each under
+   * its own product property so stylesheets hold no colour literals. A value
+   * is one colour for both appearances, or one per appearance.
+   */
+  palette?: Readonly<Record<string, MobileShellPaletteColor>>;
 }
+
+/** One palette colour: the same in both appearances, or one per appearance. */
+export type MobileShellPaletteColor =
+  | string
+  | Readonly<Record<MobileShellAppearance, string>>;
 
 export interface MobileProductIdentity {
   /** Display name; equals the product's app config name. */
@@ -102,6 +114,18 @@ export interface MobileProductStorage {
   retained: Readonly<Record<string, string>>;
 }
 
+/**
+ * What the product offers beyond its views, for the feature manifest. Both
+ * brands of one shared application declare the same features; a difference
+ * is a parity gap, never branding.
+ */
+export interface MobileProductFeatures {
+  /** Device and shell capabilities, e.g. `launcher.installed-apps`, `notes.local-record.v1`. */
+  capabilities?: readonly string[];
+  /** Canonical agent and device action names, e.g. `create_note`. */
+  actions?: readonly string[];
+}
+
 export interface MobileProductRegistration {
   schema: typeof MOBILE_PRODUCT_SCHEMA;
   schemaVersion: typeof MOBILE_PRODUCT_SCHEMA_VERSION;
@@ -113,6 +137,7 @@ export interface MobileProductRegistration {
   backgrounds?: MobileProductBackgrounds;
   views: MobileProductViews;
   storage: MobileProductStorage;
+  features?: MobileProductFeatures;
 }
 
 /** Tokens every shell surface reads, required in both appearances. */
@@ -140,11 +165,16 @@ const APP_ID = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
 const CSS_PROPERTY = /^--[a-z][a-z0-9-]*$/;
 const BUILTIN_PREFIX = /^[a-z][a-z0-9-]*:$/;
 const POLICY = /^[a-z][a-z0-9-]*$/;
+const FEATURE = /^[A-Za-z][A-Za-z0-9_]*(?:[.:-][A-Za-z0-9_]+)*$/;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
 const text = (value: unknown): value is string =>
   typeof value === "string" && value.trim() === value && value.length > 0;
+
+/** One colour value: text that cannot end its declaration or open a block. */
+const colour = (value: unknown): value is string =>
+  text(value) && !/[;{}<>\\]|\/\*/.test(value);
 
 function isToken(value: unknown): value is MobileShellThemeToken {
   return (
@@ -154,6 +184,16 @@ function isToken(value: unknown): value is MobileShellThemeToken {
       value === "fontBody" ||
       value === "fontDisplay")
   );
+}
+
+/** A custom property a product may define: not canonical, shell or font. */
+function productProperty(name: string): boolean {
+  const reserved =
+    Object.values(THEME_CSS_VAR_MAP).includes(name) ||
+    name.startsWith("--mobile-shell-") ||
+    name.startsWith("--font-") ||
+    ["--txt", "--primary", "--primary-foreground", "--mono"].includes(name);
+  return CSS_PROPERTY.test(name) && !reserved;
 }
 
 /** Every problem with a registration; empty when it can be used. */
@@ -200,17 +240,32 @@ export function validateMobileProductRegistration(value: unknown): string[] {
       if (!record(theme.aliases)) issue("theme.aliases", "must be an object");
       else
         for (const [name, token] of Object.entries(theme.aliases)) {
-          const reserved =
-            Object.values(THEME_CSS_VAR_MAP).includes(name) ||
-            name.startsWith("--mobile-shell-") ||
-            name.startsWith("--font-") ||
-            ["--txt", "--primary", "--primary-foreground", "--mono"].includes(
-              name,
-            );
-          if (!CSS_PROPERTY.test(name) || reserved)
+          if (!productProperty(name))
             issue(`theme.aliases.${name}`, "must be a product property name");
           if (!isToken(token))
             issue(`theme.aliases.${name}`, "must name a theme token");
+        }
+    }
+    if (theme.palette !== undefined) {
+      if (!record(theme.palette)) issue("theme.palette", "must be an object");
+      else
+        for (const [name, color] of Object.entries(theme.palette)) {
+          if (!productProperty(name))
+            issue(`theme.palette.${name}`, "must be a product property name");
+          else if (record(theme.aliases) && Object.hasOwn(theme.aliases, name))
+            issue(`theme.palette.${name}`, "is also an alias");
+          if (
+            !colour(color) &&
+            !(
+              record(color) &&
+              Object.keys(color).length === APPEARANCES.length &&
+              APPEARANCES.every((appearance) => colour(color[appearance]))
+            )
+          )
+            issue(
+              `theme.palette.${name}`,
+              "must be a colour or one colour per appearance",
+            );
         }
     }
   }
@@ -340,6 +395,28 @@ export function validateMobileProductRegistration(value: unknown): string[] {
       seen.add(key);
     }
   }
+
+  if (value.features !== undefined) {
+    const features = value.features;
+    if (!record(features)) issue("features", "must be an object");
+    else
+      for (const kind of ["capabilities", "actions"] as const) {
+        const names = features[kind];
+        if (names === undefined) continue;
+        if (!Array.isArray(names)) {
+          issue(`features.${kind}`, "must be a list of names");
+          continue;
+        }
+        const seen = new Set<unknown>();
+        for (const name of names) {
+          if (typeof name !== "string" || !FEATURE.test(name))
+            issue(`features.${kind}`, `${String(name)} is not a feature name`);
+          else if (seen.has(name))
+            issue(`features.${kind}`, `${name} is listed twice`);
+          seen.add(name);
+        }
+      }
+  }
   return issues;
 }
 
@@ -379,7 +456,8 @@ export function resolveMobileShellAppearance(
 
 /**
  * CSS custom properties of one appearance: the canonical theme properties,
- * the shell chrome and Home background, and the product's declared aliases.
+ * the shell chrome and Home background, the product's declared aliases and
+ * its palette.
  */
 export function mobileShellThemeVariables(
   registration: MobileProductRegistration,
@@ -405,6 +483,8 @@ export function mobileShellThemeVariables(
             : colors[token as keyof ThemeColorSet];
     if (value) variables[name] = value;
   }
+  for (const [name, color] of Object.entries(theme.palette ?? {}))
+    variables[name] = typeof color === "string" ? color : color[appearance];
   return variables;
 }
 

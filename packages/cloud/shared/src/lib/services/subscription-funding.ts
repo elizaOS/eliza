@@ -11,6 +11,7 @@ import { dbWrite, writeTransaction } from "../../db/helpers";
 import { readPostLockDatabaseNow } from "../../db/repositories/primary-database-clock";
 import {
   type AllowanceFundingAuthority,
+  managedComputeAllowanceDeadline,
   subscriptionAllowanceRepository,
 } from "../../db/repositories/subscription-allowance";
 import { readEligibleSubscriptionAllowance } from "../../db/repositories/subscription-allowance-eligibility";
@@ -59,8 +60,11 @@ export type ReserveSubscriptionFundingInput = ReserveSubscriptionFundingBaseInpu
         /**
          * Declares that the reservation funds usage accruing uniformly from
          * this instant until `expiresAt`. Allowance then funds at most the
-         * share of that window before its period ends; purchased credits fund
-         * the remainder instead of clipping the caller's window to the period.
+         * share of that window before the allowance expiry boundary; purchased
+         * credits fund the remainder instead of clipping the caller's window
+         * to the period. For managed agent compute on a paid period whose
+         * renewal is pending, the boundary is its expiry plus the payment
+         * grace (see managedComputeAllowanceDeadline).
          */
         timeMeteredFrom?: Date;
       }
@@ -199,6 +203,16 @@ async function requestDigest(parts: readonly string[]): Promise<string> {
   return Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+/** Digest a reservation stores for its immutable request; it binds the economic operation. */
+function reserveRequestDigest(
+  organizationId: string,
+  logicalOperationId: string,
+  operation: SubscriptionFundingOperation,
+  requestedAmount: string,
+): Promise<string> {
+  return requestDigest(["reserve", organizationId, logicalOperationId, operation, requestedAmount]);
+}
+
 function validateOperationId(value: string): void {
   if (!SUBSCRIPTION_FUNDING_LOGICAL_OPERATION_KEY_PATTERN.test(value)) {
     fundingError(
@@ -233,9 +247,10 @@ async function lockOrganization(tx: DbTransaction, organizationId: string): Prom
 async function readOverageCapacity(
   tx: DbTransaction,
   organizationId: string,
-  fundingClass: "allowance_eligible" | "cash_only",
+  operation: SubscriptionFundingOperation,
   now: Date,
 ): Promise<bigint> {
+  const fundingClass = SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[operation];
   const [org] = await tx
     .select({ credit_balance: organizations.credit_balance })
     .from(organizations)
@@ -252,7 +267,9 @@ async function readOverageCapacity(
     .toFixed(6);
   const period =
     fundingClass === "allowance_eligible"
-      ? await readEligibleSubscriptionAllowance(tx, organizationId, now, true)
+      ? await readEligibleSubscriptionAllowance(tx, organizationId, now, true, undefined, {
+          managedComputePaymentGrace: operation === "managed_agent_compute",
+        })
       : undefined;
   return (
     moneyToMicros(credit, "creditBalance") +
@@ -275,8 +292,11 @@ function exactCreditWriterAmount(amount: CanonicalMoney, field: string): number 
 
 /**
  * Caps a time-metered window's allowance share to the part of the window that
- * falls inside the allowance period, rounding down so allowance never funds
- * usage after its period ends.
+ * falls before the allowance spending deadline, rounding down so allowance
+ * never funds usage past that boundary. The deadline is the period expiry, or
+ * its expiry plus the payment grace while a paid renewal is pending. The cap
+ * binds for a window that crosses the end of a promo-grant bucket, of a
+ * subscription set to cancel, or of the payment grace.
  */
 export function timeMeteredAllowanceCap(params: {
   requestedAmount: CanonicalMoney;
@@ -408,13 +428,12 @@ export class SubscriptionFundingService {
   ): Promise<TransactionalFundingReservationResult> {
     validateOperationId(input.logicalOperationId);
     const requestedAmount = canonicalMoney(input.amount, "amount", false);
-    const digest = await requestDigest([
-      "reserve",
+    const digest = await reserveRequestDigest(
       input.organizationId,
       input.logicalOperationId,
       input.operation,
       requestedAmount,
-    ]);
+    );
     let purchasedDebit = false;
     // Cash-only reservations never enter the allowance repository, so this is their sole organization lock.
     await lockOrganization(tx, input.organizationId);
@@ -465,9 +484,17 @@ export class SubscriptionFundingService {
       }
       return { reservation: existing, replayed: true, purchasedCreditDebited: false };
     }
+    const managedComputePaymentGrace = input.operation === "managed_agent_compute";
     let period: Awaited<ReturnType<typeof readEligibleSubscriptionAllowance>> | undefined;
     if (fundingClass === "allowance_eligible") {
-      period = await readEligibleSubscriptionAllowance(tx, input.organizationId, now, true);
+      period = await readEligibleSubscriptionAllowance(
+        tx,
+        input.organizationId,
+        now,
+        true,
+        undefined,
+        { managedComputePaymentGrace },
+      );
     }
     const expiresAt = reservationExpiry(input, now);
     let availableAllowance = period
@@ -478,7 +505,9 @@ export class SubscriptionFundingService {
         requestedAmount,
         windowStart: input.timeMeteredFrom,
         windowEnd: expiresAt,
-        allowanceExpiresAt: period.expires_at,
+        allowanceExpiresAt: managedComputePaymentGrace
+          ? await managedComputeAllowanceDeadline(tx, period, now)
+          : period.expires_at,
       });
       if (moneyToMicros(cap, "allowanceCap") < moneyToMicros(availableAllowance, "available")) {
         availableAllowance = cap;
@@ -602,7 +631,19 @@ export class SubscriptionFundingService {
     const reservation =
       authority?.reservation ??
       (await findReservation(tx, input.organizationId, input.logicalOperationId));
-    if (reservation.funding_class !== SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation]) {
+    // Managed agent compute spends through the payment grace, so that claim
+    // must match the operation the stored reservation digest binds.
+    if (
+      reservation.funding_class !== SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation] ||
+      (input.operation === "managed_agent_compute" &&
+        reservation.request_digest !==
+          (await reserveRequestDigest(
+            input.organizationId,
+            input.logicalOperationId,
+            input.operation,
+            reservation.requested_amount,
+          )))
+    ) {
       fundingError(
         SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
         "Settlement operation does not match its reservation policy",
@@ -637,7 +678,7 @@ export class SubscriptionFundingService {
     // A terminal reservation is a replay or a conflict; it never funds again.
     const capacity =
       excess > 0n && locked.reservation.status === "reserved"
-        ? await readOverageCapacity(tx, input.organizationId, reservation.funding_class, now)
+        ? await readOverageCapacity(tx, input.organizationId, input.operation, now)
         : 0n;
     const overageFunded = excess < capacity ? excess : capacity;
     const collected = reservedCollected + overageFunded;
@@ -810,7 +851,19 @@ export class SubscriptionFundingService {
     await lockOrganization(tx, input.organizationId);
     const now = await readPostLockDatabaseNow(tx);
     const reservation = await findReservation(tx, input.organizationId, input.logicalOperationId);
-    if (reservation.funding_class !== SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation]) {
+    // Managed agent compute spends through the payment grace, so that claim
+    // must match the operation the stored reservation digest binds.
+    if (
+      reservation.funding_class !== SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation] ||
+      (input.operation === "managed_agent_compute" &&
+        reservation.request_digest !==
+          (await reserveRequestDigest(
+            input.organizationId,
+            input.logicalOperationId,
+            input.operation,
+            reservation.requested_amount,
+          )))
+    ) {
       fundingError(
         SUBSCRIPTION_FUNDING_REPLAY_CONFLICT,
         "Cancellation operation does not match its reservation policy",

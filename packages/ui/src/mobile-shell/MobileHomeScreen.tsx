@@ -15,6 +15,11 @@ export interface MobileHomeTile {
   /** Single-color glyph drawn with the label color. */
   glyphUrl?: string;
   badge?: boolean;
+  /**
+   * Host icon id written as `data-mobile-shell-tile-icon`, so audits can
+   * count which glyph a tile draws. It never changes the accessible name.
+   */
+  iconId?: string;
   onOpen: () => void;
 }
 
@@ -32,6 +37,8 @@ export interface MobileHomeScreenProps extends MobileShellPartProps {
   /** Opens All apps; omit when the platform has no app inventory. */
   onOpenAllApps?: () => void;
   allAppsGlyphUrl?: string;
+  /** Host icon id of the All apps tile (`data-mobile-shell-tile-icon`). */
+  allAppsIconId?: string;
   /** Covered by another layer: out of focus order and the accessibility tree. */
   covered?: boolean;
   layoutProps?: MobileShellPartProps;
@@ -75,6 +82,7 @@ function Tile({
   image,
   glyphUrl,
   badge,
+  iconId,
   onClick,
   dialog,
 }: Omit<MobileHomeTile, "key" | "onOpen"> & {
@@ -87,6 +95,7 @@ function Tile({
       data-mobile-shell-tile=""
       aria-label={ariaLabel ?? label}
       aria-haspopup={dialog ? "dialog" : undefined}
+      data-mobile-shell-tile-icon={iconId || undefined}
       onClick={onClick}
     >
       <span data-mobile-shell-tile-face="">
@@ -108,6 +117,7 @@ export function MobileHomeScreen({
   cards,
   onOpenAllApps,
   allAppsGlyphUrl,
+  allAppsIconId,
   covered,
   layoutProps,
   cardsProps,
@@ -141,6 +151,7 @@ export function MobileHomeScreen({
             <Tile
               label="All apps"
               glyphUrl={allAppsGlyphUrl}
+              iconId={allAppsIconId}
               onClick={onOpenAllApps}
               dialog
             />

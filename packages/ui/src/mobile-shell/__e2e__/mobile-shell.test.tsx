@@ -17,21 +17,27 @@ import { ELIZA_DEFAULT_THEME } from "../../config/theme";
 import { BUILTIN_ROUTE_DESCRIPTORS } from "../../navigation/builtin-route-descriptors";
 import {
   applyMobileShellTheme,
+  compareMobileFeatureManifests,
   createMobileShellLauncher,
   createMobileViewRegistry,
   defineMobileProductRegistration,
+  ELIZA_MOBILE_PRODUCT,
   MOBILE_SHELL_HOME,
+  MOBILE_SHELL_LAUNCHER_CAPABILITIES,
   MOBILE_SHELL_VIEW_IDS,
-  type MobileProductRegistration,
   MobileAllAppsDrawer,
   MobileHomeScreen,
+  type MobileProductRegistration,
   MobileViewHost,
   migrateLauncherViewIds,
+  mobileFeatureDifferenceKey,
+  mobileFeatureManifest,
   mobileShellThemeVariables,
   mobileShellViewPath,
   mobileShellViewPaths,
   navigateMobileShell,
   resolveMobileShellAppearance,
+  resolveMobileShellSwipe,
   validateMobileProductRegistration,
 } from "../index";
 
@@ -191,6 +197,154 @@ describe("product registration", () => {
   });
 });
 
+async function waitForNotice(container: HTMLElement): Promise<HTMLElement> {
+  for (let i = 0; i < 50; i++) {
+    const notice = container.querySelector<HTMLElement>(
+      "[data-mobile-shell-view-error]",
+    );
+    if (notice) return notice;
+    await new Promise((resolve) => setTimeout(resolve, 10));
+  }
+  throw new Error("No failure notice");
+}
+
+describe("product palette", () => {
+  it("emits fixed colours under product properties, per appearance where given", () => {
+    const registration = product();
+    (registration.theme as { palette?: unknown }).palette = {
+      "--call-bg": "#000000",
+      "--on-media": { light: "#ffffff", dark: "#eeeeee" },
+    };
+    expect(validateMobileProductRegistration(registration)).toEqual([]);
+    expect(mobileShellThemeVariables(registration, "light")).toMatchObject({
+      "--call-bg": "#000000",
+      "--on-media": "#ffffff",
+      "--s2": "#f3f3f3",
+    });
+    expect(mobileShellThemeVariables(registration, "dark")["--on-media"]).toBe(
+      "#eeeeee",
+    );
+    const element = document.createElement("div");
+    const remove = applyMobileShellTheme(element, registration, "dark");
+    expect(element.style.getPropertyValue("--call-bg")).toBe("#000000");
+    remove();
+    expect(element.style.getPropertyValue("--call-bg")).toBe("");
+  });
+
+  it("refuses canonical names, alias clashes and incomplete appearances", () => {
+    const registration = product();
+    (registration.theme as { palette?: unknown }).palette = {
+      "--bg": "#000",
+      "--s2": "#111",
+      "--mobile-shell-x": "#222",
+      "--half": { light: "#333" },
+      "--empty": "",
+      "--extra": { light: "#1", dark: "#2", dim: "#3" },
+      "--escape": "#000; background: url(x)",
+    };
+    expect(validateMobileProductRegistration(registration)).toEqual(
+      expect.arrayContaining([
+        "theme.palette.--bg: must be a product property name",
+        "theme.palette.--s2: is also an alias",
+        "theme.palette.--mobile-shell-x: must be a product property name",
+        "theme.palette.--half: must be a colour or one colour per appearance",
+        "theme.palette.--empty: must be a colour or one colour per appearance",
+        "theme.palette.--extra: must be a colour or one colour per appearance",
+        "theme.palette.--escape: must be a colour or one colour per appearance",
+      ]),
+    );
+  });
+});
+
+describe("gesture zones", () => {
+  const home = {
+    screen: "home",
+    shade: false,
+    view: null,
+    chat: "input",
+    launcher: true,
+  };
+  const at = (x: number, y: number, onShadeControl = false) => ({
+    x,
+    y,
+    onShadeControl,
+  });
+
+  it("ignores short swipes and unlocks the lock screen upward only", () => {
+    expect(resolveMobileShellSwipe(home, at(200, 400), 20, -40)).toBeNull();
+    const lock = { ...home, screen: "lock" };
+    expect(resolveMobileShellSwipe(lock, at(200, 600), 0, -120)).toBe("unlock");
+    expect(resolveMobileShellSwipe(lock, at(200, 300), 0, 120)).toBeNull();
+    expect(
+      resolveMobileShellSwipe(
+        { ...home, screen: "off" },
+        at(200, 300),
+        0,
+        -120,
+      ),
+    ).toBeNull();
+  });
+
+  it("closes a stand-in shade upward and answers edge Back over it", () => {
+    const shade = { ...home, shade: true };
+    expect(resolveMobileShellSwipe(shade, at(200, 400), 0, -100)).toBe(
+      "close-shade",
+    );
+    expect(resolveMobileShellSwipe(shade, at(10, 400), 100, 0)).toBe("back");
+    expect(resolveMobileShellSwipe(shade, at(200, 400), 100, 0)).toBeNull();
+  });
+
+  it("opens the system shade from the launcher control or the product's pull", () => {
+    expect(resolveMobileShellSwipe(home, at(200, 120, true), 0, 80)).toBe(
+      "open-system-shade",
+    );
+    const standalone = { ...home, launcher: false };
+    expect(
+      resolveMobileShellSwipe(standalone, at(200, 120, true), 0, 80),
+    ).toBeNull();
+    const asked: number[][] = [];
+    const pullOpensShade = (dx: number, dy: number, threshold: number) => {
+      asked.push([dx, dy, threshold]);
+      return dy > 100;
+    };
+    expect(
+      resolveMobileShellSwipe(home, at(200, 300), 0, 120, { pullOpensShade }),
+    ).toBe("open-system-shade");
+    expect(
+      resolveMobileShellSwipe(home, at(200, 300), 0, 80, { pullOpensShade }),
+    ).toBeNull();
+    expect(asked).toEqual([
+      [0, 120, 46],
+      [0, 80, 46],
+    ]);
+  });
+
+  it("goes HOME from the bottom bar, moves the assistant and answers edge Back", () => {
+    const view = { ...home, view: "notes" };
+    expect(resolveMobileShellSwipe(view, at(200, 890), 0, -80)).toBe("home");
+    expect(
+      resolveMobileShellSwipe(
+        { ...view, launcher: false },
+        at(200, 890),
+        0,
+        -80,
+      ),
+    ).toBeNull();
+    expect(resolveMobileShellSwipe(home, at(200, 500), 0, -80)).toBe(
+      "raise-assistant",
+    );
+    expect(resolveMobileShellSwipe(view, at(200, 500), 0, -80)).toBeNull();
+    expect(
+      resolveMobileShellSwipe({ ...view, chat: "sheet" }, at(200, 500), 0, 80),
+    ).toBe("lower-assistant");
+    expect(resolveMobileShellSwipe(view, at(400, 500), -80, 10)).toBe("back");
+    expect(resolveMobileShellSwipe(view, at(200, 500), -80, 10)).toBeNull();
+    expect(
+      resolveMobileShellSwipe(view, at(500, 500), -80, 0, { canvasWidth: 520 }),
+    ).toBe("back");
+  });
+});
+
 describe("view registry", () => {
   it("resolves host keys, older ids and served ids to one canonical view", () => {
     const registry = registryFor();
@@ -326,7 +480,11 @@ describe("navigation", () => {
     state = go(state, { type: "back" });
     expect(state).toMatchObject({ view: "browser", assistant: "input" });
     state = go(state, { type: "back" });
-    expect(state).toMatchObject({ view: "notes", stack: [], assistant: "pill" });
+    expect(state).toMatchObject({
+      view: "notes",
+      stack: [],
+      assistant: "pill",
+    });
     // An explicit detent opens a view over its rest; rest returns to it.
     state = go(state, {
       type: "open",
@@ -623,6 +781,7 @@ describe("Home, All apps and view host", () => {
         key: "notes",
         label: "Notes",
         glyphUrl: "/icons/sticky-note.svg",
+        iconId: "sticky-note",
         onOpen: () => opened.push("notes"),
       },
       {
@@ -640,6 +799,7 @@ describe("Home, All apps and view host", () => {
         header={<p>Notice</p>}
         cards={<button type="button">Next event</button>}
         onOpenAllApps={allApps}
+        allAppsIconId="layout-grid"
         data-host-layer="home"
         gridProps={{ "data-host-apps": "" }}
       />,
@@ -657,6 +817,20 @@ describe("Home, All apps and view host", () => {
     expect(allApps).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Next event" })).toBeTruthy();
     expect(home.querySelector("[data-mobile-shell-tile-badge]")).toBeTruthy();
+    const notes = screen.getByRole("button", { name: "Notes" });
+    expect(notes.getAttribute("data-mobile-shell-tile-icon")).toBe(
+      "sticky-note",
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "All apps" })
+        .getAttribute("data-mobile-shell-tile-icon"),
+    ).toBe("layout-grid");
+    expect(
+      screen
+        .getByRole("button", { name: "Clock" })
+        .hasAttribute("data-mobile-shell-tile-icon"),
+    ).toBe(false);
     rerender(<MobileHomeScreen tiles={tiles} covered />);
     expect(home.hasAttribute("inert")).toBe(true);
     expect(screen.queryByRole("region", { name: "Home" })).toBeNull();
@@ -734,6 +908,90 @@ describe("Home, All apps and view host", () => {
     expect(container.innerHTML).toBe("");
   });
 
+  it("keeps an inactive view mounted and draws failures in the host's chrome", async () => {
+    let fail = false;
+    const seen: unknown[] = [];
+    const loader = vi.fn(async () => {
+      if (fail) throw new Error("chunk");
+      return {
+        default: ({ active }: { active?: boolean }) => {
+          seen.push(active);
+          return <p>Notes {active === false ? "behind" : "in front"}</p>;
+        },
+      };
+    });
+    const registry = createMobileViewRegistry(product(), {
+      views: [{ id: "notes", loader }],
+    });
+    const view = render(
+      <MobileViewHost registry={registry} view="notes" onClose={() => {}} />,
+    );
+    expect((await screen.findByText(/Notes/)).textContent).toBe(
+      "Notes in front",
+    );
+    view.rerender(
+      <MobileViewHost
+        registry={registry}
+        view="notes"
+        active={false}
+        onClose={() => {}}
+      />,
+    );
+    expect(screen.getByText(/Notes/).textContent).toBe("Notes behind");
+    expect(loader).toHaveBeenCalledTimes(1);
+    cleanup();
+
+    fail = true;
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const failed = vi.fn(async () => {
+      throw new Error("chunk");
+    });
+    const failing = createMobileViewRegistry(product(), {
+      views: [{ id: "calendar", loader: failed }],
+    });
+    const plain = render(
+      <MobileViewHost
+        registry={failing}
+        view="calendar"
+        active={false}
+        onClose={() => {}}
+      />,
+    );
+    const notice = await waitForNotice(plain.container);
+    expect(notice.hidden).toBe(true);
+    expect(notice.hasAttribute("inert")).toBe(true);
+    cleanup();
+
+    const onClose = vi.fn();
+    render(
+      <MobileViewHost
+        registry={failing}
+        view="calendar"
+        onClose={onClose}
+        renderError={({ label, retry, close, active }) => (
+          <section aria-label={`${label} failed`} data-active={active}>
+            <button type="button" onClick={close}>
+              Back
+            </button>
+            <button type="button" onClick={retry}>
+              Retry {label}
+            </button>
+          </section>
+        )}
+      />,
+    );
+    const chrome = await screen.findByRole("region", {
+      name: "Calendar failed",
+    });
+    expect(chrome.dataset.active).toBe("true");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole("button", { name: "Retry Calendar" }));
+    await screen.findByRole("region", { name: "Calendar failed" });
+    expect(failed).toHaveBeenCalledTimes(2);
+    quiet.mockRestore();
+  });
+
   it("counts retries per view, so retrying one view never reloads another", async () => {
     let failNotes = true;
     const notes = vi.fn(async () => {
@@ -764,6 +1022,131 @@ describe("Home, All apps and view host", () => {
     expect(screen.getByText("Calendar view")).toBeTruthy();
     expect(calendar).toHaveBeenCalledTimes(1);
     quiet.mockRestore();
+  });
+});
+
+describe("feature manifest", () => {
+  it("emits identity and theme as branding and the rest as sorted functional features", () => {
+    const manifest = mobileFeatureManifest(
+      defineMobileProductRegistration({
+        ...product(),
+        features: {
+          capabilities: ["notes.local-record.v1", "launcher.installed-apps"],
+          actions: ["create_note"],
+        },
+      }),
+    );
+    expect(manifest.schema).toBe("elizaos.mobile-feature-manifest");
+    expect(manifest.branding).toMatchObject({
+      appName: "Example Phone",
+      appId: "com.example.phone",
+      themeId: "example",
+      order: ["notes", "calendar", "automations", "settings"],
+      labels: { automations: "Workflows" },
+      storage: { launcherFavorites: "example.launcher.favorites.v1" },
+    });
+    expect(manifest.functional).toEqual({
+      views: [
+        { id: "automations", serves: [] },
+        { id: "calendar", serves: ["reminders"] },
+        { id: "notes", serves: [] },
+        { id: "settings", serves: [] },
+      ],
+      capabilities: ["launcher.installed-apps", "notes.local-record.v1"],
+      actions: ["create_note"],
+    });
+    expect(JSON.stringify(mobileFeatureManifest(product()))).toBe(
+      JSON.stringify(mobileFeatureManifest(product())),
+    );
+  });
+
+  it("two brands that differ only by identity and theme are functionally equal", () => {
+    const rebranded: MobileProductRegistration = {
+      ...product(),
+      identity: {
+        appName: "Other Phone",
+        appId: "org.other.phone",
+        characterName: "Oz",
+      },
+      theme: { ...product().theme, id: "other", name: "Other" },
+      views: {
+        ...product().views,
+        order: ["settings", "automations", "calendar", "notes"],
+        labels: { ...product().views.labels, automations: "Automations" },
+      },
+      storage: {
+        ...product().storage,
+        launcherFavorites: "other.launcher.favorites.v1",
+        launcherBuiltinPrefix: "other:",
+      },
+    };
+    expect(
+      compareMobileFeatureManifests(
+        mobileFeatureManifest(product()),
+        mobileFeatureManifest(rebranded),
+      ),
+    ).toEqual([]);
+  });
+
+  it("names every functional difference on the side that has it", () => {
+    const a = mobileFeatureManifest({
+      ...product(),
+      features: { capabilities: ["clock.handoff.v1"], actions: ["open_view"] },
+    });
+    const b = mobileFeatureManifest({
+      ...product(),
+      views: {
+        ...product().views,
+        order: ["notes", "calendar", "maps"],
+        labels: { ...product().views.labels, maps: "Maps" },
+        rendererKeys: {},
+        serves: {},
+      },
+      features: { actions: ["open_view", "create_note"] },
+    });
+    expect(compareMobileFeatureManifests(a, b).map(mobileFeatureDifferenceKey))
+      .toEqual([
+        "view:automations:only-a",
+        "view:maps:only-b",
+        "view:settings:only-a",
+        "serves:calendar:reminders:only-a",
+        "capability:clock.handoff.v1:only-a",
+        "action:create_note:only-b",
+      ]);
+  });
+
+  it("refuses malformed or repeated feature names", () => {
+    expect(
+      validateMobileProductRegistration({
+        ...product(),
+        features: { capabilities: ["ok.v1", "ok.v1", "bad name"], actions: 3 },
+      }),
+    ).toEqual([
+      "features.capabilities: ok.v1 is listed twice",
+      "features.capabilities: bad name is not a feature name",
+      "features.actions: must be a list of names",
+    ]);
+  });
+
+  it("Eliza's reference record keeps its installed launcher names and provides the shell launcher", () => {
+    expect(validateMobileProductRegistration(ELIZA_MOBILE_PRODUCT)).toEqual(
+      [],
+    );
+    expect(ELIZA_MOBILE_PRODUCT.storage).toMatchObject({
+      launcherFavorites: "eliza.launcher.favorites.v1",
+      launcherBuiltinPrefix: "eliza:",
+      launcherDefaultPolicy: "eliza-apps",
+    });
+    const manifest = mobileFeatureManifest(ELIZA_MOBILE_PRODUCT);
+    expect(manifest.functional.capabilities).toEqual(
+      [...MOBILE_SHELL_LAUNCHER_CAPABILITIES].sort(),
+    );
+    const registry = createMobileViewRegistry(ELIZA_MOBILE_PRODUCT);
+    expect(registry.find("wallet")?.id).toBe("inventory");
+    expect(registry.target("reminders")).toMatchObject({
+      kind: "view",
+      view: { id: "calendar" },
+    });
   });
 });
 
@@ -807,6 +1190,9 @@ describe("entries", () => {
   const core = [
     "config/theme.ts",
     "mobile-shell/core.ts",
+    "mobile-shell/eliza-product.ts",
+    "mobile-shell/feature-manifest.ts",
+    "mobile-shell/gestures.ts",
     "mobile-shell/navigation.ts",
     "mobile-shell/product-registration.ts",
     "mobile-shell/view-id-migration.ts",

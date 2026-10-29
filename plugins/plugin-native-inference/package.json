@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-native-inference",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Native inference for AOSP and Capacitor, mobile host bridges, and Android ML Kit OCR.",
   "type": "module",
   "main": "./dist/index.js",

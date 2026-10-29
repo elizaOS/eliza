@@ -137,14 +137,16 @@ function noteContentKey(note: StickyNote): string {
   );
 }
 
+/** Show one note per content key: the copy edited last, so a note the owner
+ * just edited to match another note stays visible in its editor. */
 function distinctNotes(notes: readonly StickyNote[]): StickyNote[] {
-  const seen = new Set<string>();
-  return notes.filter((note) => {
+  const shown = new Map<string, StickyNote>();
+  for (const note of notes) {
     const key = noteContentKey(note);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
+    const current = shown.get(key);
+    if (!current || note.updatedAt > current.updatedAt) shown.set(key, note);
+  }
+  return notes.filter((note) => shown.get(noteContentKey(note)) === note);
 }
 
 function resolveNoteIndex(
@@ -391,11 +393,16 @@ export class NotesService extends Service {
         createdAt: now,
         updatedAt: now,
       });
-      const existing = input.format
-        ? undefined
-        : draft.notes.find(
-            (note) => !note.format && noteContentKey(note) === requestedKey,
-          );
+      // Agent creates without forceNew still treat identical content as one
+      // logical note (replay). The Notes editor sets forceNew on each new
+      // draft so the first keystroke that matches another note does not bind
+      // that draft to the other note's id.
+      const existing =
+        input.forceNew || input.format
+          ? undefined
+          : draft.notes.find(
+              (note) => !note.format && noteContentKey(note) === requestedKey,
+            );
       if (existing) return { note: existing, replayed: true };
       if (draft.notes.some((note) => note.id === id)) {
         throw new ElizaError(`Notes generated duplicate note id "${id}".`, {
@@ -449,27 +456,17 @@ export class NotesService extends Service {
       !patch.textEdit || patch.textEdit.action === "append",
     );
     const updatedAt = this.now().toISOString();
-    let consolidatedIds: string[] = [];
+    // An edit by id changes only that note. The editor saves on each keystroke,
+    // so the text passes through other notes' content on the way; matching
+    // content is not the same note here. Lookup updates consolidate copies.
+    const consolidatedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
       assertEditRevision(draft.revision, revision);
       const index = draft.notes.findIndex((note) => note.id === id);
       const existing = draft.notes[index];
       if (index < 0 || !existing) throw notFound(id);
       const updated = applyNotePatch(existing, patch, updatedAt);
-      const oldKey = noteContentKey(existing);
-      const updatedKey = noteContentKey(updated);
-      consolidatedIds = draft.notes
-        .filter(
-          (note, candidateIndex) =>
-            candidateIndex !== index &&
-            (noteContentKey(note) === oldKey ||
-              noteContentKey(note) === updatedKey),
-        )
-        .map((note) => note.id);
-      draft.notes = draft.notes.flatMap((note, candidateIndex) => {
-        if (candidateIndex === index) return [updated];
-        return consolidatedIds.includes(note.id) ? [] : [note];
-      });
+      draft.notes[index] = updated;
       return updated;
     });
     await this.emitStateUpdated(transaction.snapshot, "note:updated");

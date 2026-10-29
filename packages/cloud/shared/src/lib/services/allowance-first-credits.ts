@@ -231,7 +231,9 @@ export async function reserveSubscriptionFundedCredits(params: {
     if (error instanceof ElizaError && error.code === SUBSCRIPTION_FUNDING_INSUFFICIENT) {
       // error-policy:J2 keep the credit lane's typed shortfall contract; the
       // available figure covers both purchased credit and spendable allowance.
-      const account = await readAgentFundingAccount(params.organizationId);
+      const account = await readAgentFundingAccount(params.organizationId, {
+        managedComputePaymentGrace: params.operation === "managed_agent_compute",
+      });
       const available = account
         ? new Decimal(account.credit_balance).plus(account.eligible_subscription_allowance)
         : new Decimal(0);

@@ -2483,6 +2483,44 @@ describe("Stage 1 response format", () => {
   });
 
   it.each([
+    "Adding it now.",
+    "Scheduling that now.",
+    "Booking it now.",
+    "Moving it to four now.",
+  ])(
+    "streams pending work as progress without storing it as the final reply: %s",
+    async (replyText) => {
+      const runtime = makeRuntime([
+        stage1Response({
+          contexts: ["general"],
+          replyText,
+          extra: { requiresTool: true, replyEffectStatus: "pending" },
+        }),
+        JSON.stringify({
+          thought: "No action was taken.",
+          toolCalls: [],
+          messageToUser: "No event was changed.",
+        }),
+      ]);
+      const onPlanningAcknowledgment = vi.fn();
+      const result = await runV5MessageRuntimeStage1({
+        runtime,
+        message: makeMessage(),
+        state: makeState(),
+        responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+        onPlanningAcknowledgment,
+      });
+      expect(onPlanningAcknowledgment).toHaveBeenCalledExactlyOnceWith(
+        replyText,
+      );
+      expect(runtime.useModel).toHaveBeenCalledTimes(2);
+      expect(result.kind).toBe("planned_reply");
+      if (result.kind === "planned_reply")
+        expect(result.result.responseContent?.text).not.toContain(replyText);
+    },
+  );
+
+  it.each([
     'Done. The note now says "Bring the green notebook."',
     "Checking.\u0000",
   ])(

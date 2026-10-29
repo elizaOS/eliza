@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/ui",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Shared UI primitives, composites, and layout utilities for elizaOS apps.",
   "type": "module",
   "license": "MIT",
@@ -218,6 +218,12 @@
       "types": "./dist/api/transport.d.ts",
       "import": "./dist/api/transport.js",
       "default": "./dist/api/transport.js"
+    },
+    "./api/conversation-turn-controller": {
+      "eliza-source": "./src/api/conversation-turn-controller.ts",
+      "types": "./dist/api/conversation-turn-controller.d.ts",
+      "import": "./dist/api/conversation-turn-controller.js",
+      "default": "./dist/api/conversation-turn-controller.js"
     },
     "./installed-apps-launcher": {
       "eliza-source": "./src/components/pages/InstalledAppsLauncher.tsx",

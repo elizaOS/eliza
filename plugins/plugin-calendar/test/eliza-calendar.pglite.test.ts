@@ -713,6 +713,125 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     expect(feed.events).toEqual([]);
   });
 
+  it.each([
+    { text: "Make another one for breakfast at 11am.", title: "Breakfast" },
+    {
+      text: 'Make another one titled "11am Stories" at 11am.',
+      title: "11am Stories",
+    },
+  ])(
+    "creates a separate follow-up on the user-stated day with literal title authority: $title",
+    async ({ text, title }) => {
+      const id = "00000000-0000-0000-0000-000000000941";
+      const previous = "Create dinner tomorrow at 5pm.";
+      const extract = vi.fn(async ({ actionType, prompt }) => {
+        if (actionType !== "lifeops.calendar.extract_create_event") return null;
+        expect(prompt).toContain(
+          "keeps the day the user stated for the event just discussed",
+        );
+        expect(prompt).toContain("unless the user quoted an exact title");
+        expect(prompt).toContain(
+          "Never borrow timing from unrelated earlier events or assistant suggestions the user did not accept",
+        );
+        expect(prompt).toContain(previous);
+        expect(prompt).toContain(text);
+        return {
+          rawResponse: "{}",
+          parsed: {
+            ...createEvidence(id, text),
+            requiresInput: false,
+            title,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            startAt: "2026-10-30T11:00:00",
+            durationMinutes: 60,
+            timeZone: "UTC",
+          },
+        };
+      });
+      const action = createCalendarActionRunner({
+        runTextModel: vi.fn(async () => null),
+        runJsonModel: extract,
+        recentConversationTexts: vi.fn(async () => []),
+      });
+      const current = {
+        id,
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse("2026-10-29T10:00:00Z"),
+        content: { text },
+      } as Memory;
+      const state = {
+        values: {
+          selectedActionConversation: `2026-10-29T09:59:00Z Owner: ${previous}`,
+        },
+        data: {},
+        text: "",
+      } as State;
+      const context = {
+        id: "create-follow-up",
+        metadata: { messageId: current.id, roomId: current.roomId },
+        events: [
+          {
+            id: "history:create-request",
+            type: "segment",
+            source: "prior-dialogue",
+            createdAt: Date.parse("2026-10-29T09:59:00Z"),
+            segment: {
+              id: "history:create-request",
+              label: "prior_message:user",
+              content: `Owner: ${previous}`,
+              metadata: {
+                roomId: current.roomId,
+                entityId: current.entityId,
+                speakerName: "Owner",
+              },
+            },
+          },
+        ],
+      } as ContextObject;
+      bindTaskExtractionContext(state, current, context, context);
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(current.createdAt));
+      try {
+        const result = await action.handler(runtime, current, state, {
+          parameters: {
+            subaction: "create_event",
+            title: "Planner title at 9am",
+            details: {
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              timeZone: "UTC",
+              start: "2026-10-31T09:00:00",
+              durationMinutes: 30,
+            },
+          },
+        });
+        expect(result?.success, JSON.stringify(result)).toBe(true);
+        expect(extract).toHaveBeenCalledTimes(1);
+        const feed = await service.getCalendarFeed(INTERNAL_URL, {
+          timeMin: "2026-10-29T00:00:00Z",
+          timeMax: "2026-11-01T00:00:00Z",
+          timeZone: "UTC",
+        });
+        expect(feed.events).toHaveLength(1);
+        expect(feed.events[0]).toMatchObject({
+          title,
+          startAt: "2026-10-30T11:00:00.000Z",
+          endAt: "2026-10-30T12:00:00.000Z",
+          metadata: { version: 1 },
+        });
+        expect(result?.effectReceipts?.[0]).toMatchObject({
+          operation: "calendar.event.create",
+          outcome: "applied",
+          commit: { kind: "durable", id: feed.events[0].id },
+        });
+      } finally {
+        vi.useRealTimers();
+      }
+    },
+  );
+
   it("preserves a guest from selected user history after a time-only follow-up", async () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),

@@ -263,7 +263,7 @@ export function parseCreateNoteInput(value: unknown): CreateNoteInput {
   const record = requireRecord(value, "note");
   assertOnlyKeys(
     record,
-    ["content", "title", "body", "color", "format"],
+    ["content", "title", "body", "color", "format", "forceNew"],
     "note",
   );
   const format = hasOwn(record, "format")
@@ -281,12 +281,17 @@ export function parseCreateNoteInput(value: unknown): CreateNoteInput {
           : "",
       };
   if (!hasOwn(record, "content") && parts.body) parts.body = `\n${parts.body}`;
+  const forceNew = hasOwn(record, "forceNew") ? record.forceNew : undefined;
+  if (forceNew !== undefined && forceNew !== true && forceNew !== false) {
+    throw validationError("forceNew must be a boolean.", "forceNew");
+  }
   return {
     ...parts,
     ...(format ? { format } : {}),
     color: hasOwn(record, "color")
       ? parseStickyColor(record.color, "note.color")
       : "yellow",
+    ...(forceNew === true ? { forceNew: true } : {}),
   };
 }
 

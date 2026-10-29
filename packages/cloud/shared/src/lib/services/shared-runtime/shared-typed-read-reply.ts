@@ -9,6 +9,7 @@ import {
 import {
   articleMatchesNewsTopic,
   newsArticleEvidenceConflict,
+  newsRequestNamesNoTopic,
   ownArticleTitle,
   publisherArticlePublication,
   recentNewsArticlePublication,
@@ -22,7 +23,7 @@ import {
 import { normalizedRealtimeQuery } from "./shared-realtime-grounding";
 import {
   inspectCurrentWttrOriginTemperature,
-  isSimpleCurrentTemperatureRequest,
+  isTypedCurrentTemperaturePart,
   readSharedLatestWeatherReport,
   resolveTypedNwsReadScope,
   resolveTypedPublicReadParts,
@@ -38,10 +39,57 @@ import {
   resolveWorldWeatherScope,
   WORLD_WEATHER_TIME,
   weatherLocationWithoutTemperatureUnit,
+  worldWeatherSourceUrl,
 } from "./shared-world-weather";
 
 type Resolver = NonNullable<MessageProcessingOptions["resolveTypedReadReply"]>;
 type Binding = NonNullable<ReturnType<Resolver>>;
+
+/** The one actual reader of a typed part; "none" keeps only its fixed uncertainty sentence. */
+export type SharedTypedRead =
+  | { kind: "us-weather" | "news"; query: string }
+  | { kind: "world-weather"; url: string }
+  | { kind: "none" };
+
+/**
+ * A single-part turn keeps its existing US observation reader only. A part of a
+ * compound turn may also use the MET origin (a non-US catalog place) or a public
+ * search plus article read (dated news). A unique public US catalog entry
+ * establishes availability, never the user's intended location; bare-city
+ * answers remain qualified.
+ */
+function typedPartRead(part: SharedPublicSearchPart, turnStartedAtMs: number): SharedTypedRead {
+  const publicQuery = part.requirement.query;
+  if (part.requirement.domain === "news")
+    // Fail closed: the topic check cannot prove an article is about a named topic,
+    // so only the user's own topic-less news clause gets a reader.
+    return part.compound &&
+      part.requirement.publicationScope &&
+      newsRequestNamesNoTopic(typedTemperatureEvidenceMessage(part.message))
+      ? { kind: "news", query: publicQuery }
+      : { kind: "none" };
+  if (!isTypedCurrentTemperaturePart(part)) return { kind: "none" };
+  const world = part.compound
+    ? resolveWorldWeatherScope(typedTemperatureEvidenceMessage(part.message), turnStartedAtMs)
+    : undefined;
+  if (world?.kind === "current" && world.place.countryCode !== "US")
+    return { kind: "world-weather", url: worldWeatherSourceUrl(world) };
+  if (!publicQuery.startsWith("current public weather in ")) return { kind: "none" };
+  const location = weatherLocationWithoutTemperatureUnit(
+    publicQuery.slice("current public weather in ".length),
+  ).trim();
+  if (!parseExplicitUsWeatherQuery(`current public weather in ${location}`)) {
+    const [city, ...qualifiers] = location.split(",").map((piece) => piece.trim());
+    if (
+      qualifiers.length > 1 ||
+      (qualifiers.length === 1 &&
+        !/^(?:US|USA|United States(?: of America)?)$/iu.test(qualifiers[0])) ||
+      resolveWorldWeatherPlace(`${city}, United States`)?.countryCode !== "US"
+    )
+      return { kind: "none" };
+  }
+  return { kind: "us-weather", query: publicQuery };
+}
 
 function ownArticle(value: string): { url: string; title: string; excerpts: string[] } | undefined {
   try {
@@ -66,6 +114,8 @@ function ownArticle(value: string): { url: string; title: string; excerpts: stri
 export function createSharedTypedReadReplyResolver(input: {
   ownerScope: string;
   parts: readonly SharedPublicSearchPart[];
+  /** The turn's reader for each part; a part with no reader gets only its uncertainty sentence. */
+  reads?: readonly SharedTypedRead[];
   includeSources: boolean;
   turnId: string;
   turnStartedAtMs: number;
@@ -73,18 +123,22 @@ export function createSharedTypedReadReplyResolver(input: {
   onNewsReadStatus?: (verified: boolean) => void;
   fallbackAvailable?: () => boolean;
 }): Resolver | undefined {
+  const readable = (part: SharedPublicSearchPart, index: number) =>
+    input.reads?.[index]?.kind !== "none" &&
+    (part.requirement.domain === "weather"
+      ? isTypedCurrentTemperaturePart(part)
+      : part.requirement.publicationScope !== undefined);
   if (
     !input.ownerScope ||
     !input.turnId ||
     !Number.isSafeInteger(input.turnStartedAtMs) ||
-    input.parts.length !== 1 ||
-    input.parts.some(
-      (part) =>
-        !["weather", "news"].includes(part.requirement.domain) ||
-        (part.requirement.domain === "weather" &&
-          !isSimpleCurrentTemperatureRequest(part.message)) ||
-        (part.requirement.domain === "news" && part.requirement.publicationScope === undefined),
-    )
+    // One read per domain: the evidence port binds one news and one weather target.
+    !input.parts.length ||
+    new Set(input.parts.map((part) => part.requirement.domain)).size !== input.parts.length ||
+    input.parts.some((part) => !["weather", "news"].includes(part.requirement.domain)) ||
+    // A single part must be readable. In a compound turn each unreadable part
+    // keeps its own uncertainty sentence while the readable parts proceed.
+    (input.parts.length === 1 ? !readable(input.parts[0], 0) : !input.parts.some(readable))
   )
     return undefined;
   const originScope: SharedPublicReadScope | undefined =
@@ -105,17 +159,22 @@ export function createSharedTypedReadReplyResolver(input: {
     for (const [index, part] of input.parts.entries()) {
       const requirement = part.requirement;
       const id = typedReadRequirementId(part, index);
+      const read = readable(part, index);
+      const partSteps = read ? steps : [];
       const admittedFactIds: string[] = [];
       const qualifiedFactIds: string[] = [];
       let freshnessMs = CURRENT_WEATHER_LIMITS.observationAgeMs;
-      const simpleTemperature =
-        requirement.domain === "weather" && isSimpleCurrentTemperatureRequest(part.message);
+      const simpleTemperature = isTypedCurrentTemperaturePart(part);
       const world = simpleTemperature
         ? resolveWorldWeatherScope(
             typedTemperatureEvidenceMessage(part.message),
             input.turnStartedAtMs ?? nowMs,
           )
         : undefined;
+      // A non-US place has no NWS producer; its only reader is the exact MET origin fetch.
+      const partRead = input.reads?.[index];
+      const worldFetchUrl = partRead?.kind === "world-weather" ? partRead.url : undefined;
+      let settledWorldFetch = false;
       const searchUrls = new Set<string>();
       const articleReads = new Map<
         string,
@@ -131,7 +190,7 @@ export function createSharedTypedReadReplyResolver(input: {
         (normalizedRealtimeQuery(query) === normalizedRealtimeQuery(requirement.query) ||
           resolveTypedNwsReadScope(part, query) !== undefined ||
           (requirement.domain === "news" && sharedNewsSearchMatchesRequest(query, requirement)));
-      for (const step of steps) {
+      for (const step of partSteps) {
         const call = step.toolCall,
           result = step.result;
         if (!call || !result || !call.id) continue;
@@ -164,6 +223,8 @@ export function createSharedTypedReadReplyResolver(input: {
           searchUrls.has(call.params.url)
         )
           settledFetchUrls.add(call.params.url);
+        if (call.name === "WEB_FETCH" && worldFetchUrl && call.params?.url === worldFetchUrl)
+          settledWorldFetch = true;
         if (!result.success) continue;
         const factId = JSON.stringify([input.ownerScope, id, step.iteration, call.id]);
         if (call.name === "WEB_SEARCH" && eligibleSearch(call.params?.query)) {
@@ -354,10 +415,7 @@ export function createSharedTypedReadReplyResolver(input: {
             conflictedUrls.add(source.url);
           prior.push({ article, at: result.data.retrieved_at });
           articleReads.set(source.url, prior);
-          if (
-            conflictedUrls.has(source.url) ||
-            !articleMatchesNewsTopic(article, requirement.query)
-          )
+          if (conflictedUrls.has(source.url) || !articleMatchesNewsTopic(article, scope.query))
             continue;
           const publication = publisherArticlePublication(
             article,
@@ -465,19 +523,23 @@ export function createSharedTypedReadReplyResolver(input: {
               unverifiedText: "I couldn't verify a headline for the requested date.",
             },
       );
-      if (!admittedFactIds.length) {
+      if (read && !admittedFactIds.length) {
         for (const call of trajectory.plannedQueue) {
           if (
             call.id &&
             ((call.name === "WEB_SEARCH" && eligibleSearch(call.params?.query)) ||
               (call.name === "WEB_FETCH" &&
                 typeof call.params?.url === "string" &&
-                searchUrls.has(call.params.url)))
+                (searchUrls.has(call.params.url) || call.params.url === worldFetchUrl)))
           )
             pending.add(call.id);
         }
-        const next =
-          requirement.domain === "news" && [...searchUrls].some((url) => !settledFetchUrls.has(url))
+        const next = worldFetchUrl
+          ? settledWorldFetch
+            ? undefined
+            : "WEB_FETCH"
+          : requirement.domain === "news" &&
+              [...searchUrls].some((url) => !settledFetchUrls.has(url))
             ? "WEB_FETCH"
             : !settledSearch ||
                 (simpleTemperature && searchUrls.size > 0 && !settledNws) ||
@@ -531,26 +593,9 @@ export function createSharedTypedReadTurn(input: {
     return undefined;
   const turnStartedAtMs = input.turnStartedAtMs ?? Date.now();
   const parts = resolveTypedPublicReadParts(input.message, input.history, turnStartedAtMs);
-  if (!parts || parts.length !== 1 || parts[0].requirement.domain !== "weather") return undefined;
-  // This host currently registers only the US observation producer. Keep
-  // future news/world-origin validators dormant until their actual readers
-  // are wired. A unique public US catalog entry establishes availability,
-  // never the user's intended location; bare-city answers remain qualified.
-  const publicQuery = parts[0].requirement.query;
-  const location = weatherLocationWithoutTemperatureUnit(
-    publicQuery.slice("current public weather in ".length),
-  ).trim();
-  if (!publicQuery.startsWith("current public weather in ")) return undefined;
-  if (!parseExplicitUsWeatherQuery(`current public weather in ${location}`)) {
-    const [city, ...qualifiers] = location.split(",").map((piece) => piece.trim());
-    if (
-      qualifiers.length > 1 ||
-      (qualifiers.length === 1 &&
-        !/^(?:US|USA|United States(?: of America)?)$/iu.test(qualifiers[0])) ||
-      resolveWorldWeatherPlace(`${city}, United States`)?.countryCode !== "US"
-    )
-      return undefined;
-  }
+  if (!parts) return undefined;
+  const reads = parts.map((part) => typedPartRead(part, turnStartedAtMs));
+  if (parts.length === 1 && reads[0].kind !== "us-weather") return undefined;
   const scope: SharedPublicReadScope = {
     ownerScope: JSON.stringify([input.agentKey, input.roomKey, input.userEntityId]),
     turnId: input.turnId,
@@ -559,15 +604,17 @@ export function createSharedTypedReadTurn(input: {
   };
   const resolveTypedReadReply = createSharedTypedReadReplyResolver({
     ...scope,
+    reads,
     includeSources: sharedReplyWantsSourceLinks(input.message),
   });
   if (!resolveTypedReadReply) return undefined;
   return {
     scope,
     requirementIds: parts.map(typedReadRequirementId),
-    authorizedPublicQueries: Object.freeze(parts.map((part) => part.requirement.query)),
     authorizePublicSearch(query: string) {
-      for (const part of parts) {
+      for (const [index, part] of parts.entries()) {
+        // Only a part whose reader is a public search may authorize one.
+        if (reads[index].kind !== "us-weather" && reads[index].kind !== "news") continue;
         const nws = resolveTypedNwsReadScope(part, query);
         if (nws)
           return {
@@ -586,6 +633,7 @@ export function createSharedTypedReadTurn(input: {
       }
       return undefined;
     },
+    reads: Object.freeze(reads),
     resolveTypedReadReply,
   };
 }

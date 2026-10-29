@@ -510,3 +510,91 @@ test("incomplete snapshot replies carry a stable reason beside the kind", async 
   assert.equal(f.replies[0].error.kind, "POLICY_BLOCKED");
   assert.equal("reason" in f.replies[0].error, false);
 });
+
+test("a submit whose reply was lost is a capture gap only when the journal lacks it", async () => {
+  const f = fixture();
+  f.api.runtime = { id: "extension" };
+  f.api.tabs = {
+    get: async () => ({ url: `${binding.origin}/form`, status: "complete" }),
+  };
+  f.api.webNavigation = {
+    getAllFrames: async () => [{ frameId: 0, documentId: "doc" }],
+  };
+  let unconfirmed = [];
+  let refused = [];
+  f.api.scripting = {
+    executeScript: async ({ func }) => [
+      {
+        frameId: 0,
+        documentId: "doc",
+        result:
+          func.name === "installManualActivity"
+            ? {
+                installed: true,
+                captureGap: refused.length > 0,
+                refused,
+                unconfirmed,
+              }
+            : { complete: true, elements: [], blockers: [] },
+      },
+    ],
+  };
+  const handler = createCommandHandler(f.api);
+  await handler(
+    { type: "task-bind", id: "bind", binding },
+    f.sender,
+    () => true,
+  );
+  const recorded = "11111111-1111-4111-8111-111111111111";
+  await handler.recordManualActivity(
+    {
+      type: "task-manual-activity",
+      kind: "form-submit",
+      eventId: recorded,
+      bindingRevision: binding.bindingRevision,
+    },
+    {
+      id: "extension",
+      tab: { id: 1 },
+      frameId: 0,
+      documentId: "doc",
+      url: `${binding.origin}/form`,
+    },
+  );
+  const gap = async (id, ids, refusedIds = []) => {
+    unconfirmed = ids;
+    refused = refusedIds;
+    await handler(
+      {
+        type: "command",
+        id,
+        command: {
+          subaction: "snapshot",
+          id: "1",
+          taskContext: context(binding),
+        },
+      },
+      f.sender,
+      () => true,
+    );
+    const { captureGap, captureGapEvents } =
+      f.replies.at(-1).result.frames[0].manualActivity;
+    return { captureGap, captureGapEvents };
+  };
+  const lost = "22222222-2222-4222-8222-222222222222";
+  const denied = "33333333-3333-4333-8333-333333333333";
+  assert.deepEqual(await gap("recorded", [recorded]), {
+    captureGap: false,
+    captureGapEvents: [],
+  });
+  assert.deepEqual(await gap("lost", [recorded, lost]), {
+    captureGap: true,
+    captureGapEvents: [lost],
+  });
+  // Each refused submit is named too, so a second failure in the same
+  // document is a new gap; malformed IDs are dropped.
+  assert.deepEqual(await gap("refused", [lost], [denied, "x"]), {
+    captureGap: true,
+    captureGapEvents: [denied, lost],
+  });
+});

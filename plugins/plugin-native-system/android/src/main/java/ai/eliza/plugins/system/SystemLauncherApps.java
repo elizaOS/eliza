@@ -44,6 +44,8 @@ public final class SystemLauncherApps {
     public static final String NO_LAUNCHER = "no-launcher";
     public static final String PROFILE_LOCKED = "profile-locked";
     public static final String PROFILE_UNAVAILABLE = "profile-unavailable";
+    /** Android refused the read or the start itself; distinct from every refusal above. */
+    public static final String FAILED = "failed";
     /** The stand-in LauncherApps lists for an app with no launcher activity. It opens Android's
      * app details, not the app, so it is never an entry. */
     static final String APP_DETAILS_ACTIVITY = "android.app.AppDetailsActivity";
@@ -237,8 +239,15 @@ public final class SystemLauncherApps {
         return null;
     }
 
+    /** True when a request names {@code key} as anything but text. Read as absent, a numeric
+     * profile would open the personal copy of a work app and a non-text activity the package's
+     * default screen, instead of the entry asked for. Absent and JSON null are not malformed. */
+    public static boolean malformedText(org.json.JSONObject request, String key) {
+        return request != null && request.has(key) && !request.isNull(key) && !(request.opt(key) instanceof String);
+    }
+
     /** Why the current user cannot open this package's launcher activity now. */
-    static Refusal explain(PackageManager packages, String packageName) {
+    public static Refusal explain(PackageManager packages, String packageName) {
         ApplicationInfo application;
         try {
             application = packages.getApplicationInfo(packageName, 0);

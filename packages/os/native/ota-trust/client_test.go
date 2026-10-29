@@ -347,8 +347,10 @@ func TestRootReplayAtNextVersionRejected(t *testing.T) {
 	}
 }
 
-// Generates only public metadata and target bytes for the Android test APK.
-// Ephemeral signing keys remain in memory and are never exported.
+// Generates only public metadata and target bytes for the Android test APK,
+// bound to the compiled host policy (hostVectorData), so a host build exports
+// fixtures its own native library admits. Ephemeral signing keys remain in
+// memory and are never exported.
 func TestExportAndroidFixture(t *testing.T) {
 	dir := os.Getenv("OTA_TRUST_TEST_ASSETS")
 	if dir == "" {
@@ -393,11 +395,7 @@ func TestExportAndroidFixture(t *testing.T) {
 	if e = os.WriteFile(filepath.Join(dir, "runtime-fixture.json"), runtimeMetadata, 0600); e != nil {
 		t.Fatal(e)
 	}
-	vectors, err := os.ReadFile("testdata/admission.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(dir, "admission.json"), vectors, 0600); err != nil {
+	if err = os.WriteFile(filepath.Join(dir, "admission.json"), hostVectorData(t), 0600); err != nil {
 		t.Fatal(err)
 	}
 }

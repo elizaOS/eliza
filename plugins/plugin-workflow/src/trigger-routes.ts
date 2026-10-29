@@ -703,7 +703,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
           ? body.eventFilter
           : undefined
         : current.eventFilter,
-      maxRuns: typeof body.maxRuns === 'number' ? body.maxRuns : current.maxRuns,
+      // null removes the limit; an absent field keeps it.
+      maxRuns:
+        body.maxRuns === null
+          ? undefined
+          : typeof body.maxRuns === 'number'
+            ? body.maxRuns
+            : current.maxRuns,
       kind: nextKind,
       workflowId: nextWorkflowId,
       workflowName: nextWorkflowName,
@@ -744,6 +750,16 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       const limit = getTriggerLimit(runtime);
       if (activeCount >= limit) {
         error(res, `Active trigger limit reached (${limit})`, 429);
+        return true;
+      }
+    }
+    // A trigger switched to prompt delivers to the owner conversation, as a
+    // prompt trigger created over POST does, not to the workflow trigger's room.
+    let promptRoomId: UUID | undefined;
+    if (nextKind === 'prompt' && current.kind !== 'prompt') {
+      promptRoomId = await ctx.resolvePromptDeliveryRoom(runtime);
+      if (!(await runtime.getRoom(promptRoomId))?.source?.trim()) {
+        error(res, 'Prompt automation delivery conversation is unavailable', 503);
         return true;
       }
     }
@@ -793,6 +809,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     await runtime.updateTask(task.id, {
       description: nextTrigger.displayName,
       metadata: nextMeta as Task['metadata'],
+      ...(promptRoomId ? { roomId: promptRoomId } : {}),
     });
     const refreshed = await runtime.getTask(task.id);
     if (!refreshed) {

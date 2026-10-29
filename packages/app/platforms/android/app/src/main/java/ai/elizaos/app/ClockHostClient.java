@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
+import ai.eliza.plugins.system.clock.ClockProfile;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -19,8 +20,8 @@ import org.json.JSONTokener;
 /** Authenticated native HTTP only. Invoke on the bounded plugin worker, never under a journal/store lock. */
 final class ClockHostClient {
     interface Cookies { String get(String url); }
-    static final String CAPABILITIES = "clock.handoff.v1,clock.handoff.v2";
-    static final String OWNED_CAPABILITIES = "clock.alarms.v1";
+    static final String CAPABILITIES = ClockProfile.HANDOFF_ONLY.capabilities;
+    static final String OWNED_CAPABILITIES = ClockProfile.OWNED_ALARMS.capabilities;
     interface AlarmMetadata {
         JSONObject context(ClockHostClient client) throws Exception;
         default void rejected(ClockHostClient client) throws Exception { }
@@ -124,14 +125,16 @@ final class ClockHostClient {
         return ClockHostPolicy.hash(profileId + "\n" + base + "\n" + device.getInstallationId() + "\n"
                 + ClockHostPolicy.hash((bearer == null ? "" : bearer) + "\n" + cookie));
     }
-    String capabilities() { return alarmMetadata == null ? CAPABILITIES : OWNED_CAPABILITIES; }
+    /** The shared Clock profile: the alarm store's metadata port selects owned alarms. */
+    ClockProfile profile() { return alarmMetadata == null ? ClockProfile.HANDOFF_ONLY : ClockProfile.OWNED_ALARMS; }
+    String capabilities() { return profile().capabilities; }
     List<Proposal> proposals(JSONObject context) throws Exception {
         JSONArray rows = request("GET", "/api/client-devices/proposals", null, null).json().getJSONArray("proposals");
         List<Proposal> result = new ArrayList<>();
         for (int i = 0; i < rows.length(); i++) {
             JSONObject row = rows.getJSONObject(i);
             JSONObject operation = row.getJSONObject("payload").getJSONObject("operation");
-            if ((alarmMetadata == null ? "clock_handoff" : "clock_alarm").equals(operation.opt("type"))) result.add(new Proposal(row, context));
+            if (profile().operationType.equals(operation.opt("type"))) result.add(new Proposal(row, context));
         }
         return result;
     }

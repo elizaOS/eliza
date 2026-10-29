@@ -6,6 +6,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
+  type WorkflowOccurrenceNotRun,
+  workflowOccurrenceNotRun,
+} from '@elizaos/contracts/workflow-client';
+import {
   agentProcessStartedAtMs,
   computeNextCronRunAtMs,
   type IAgentRuntime,
@@ -90,7 +94,6 @@ import {
   phoneDraftDefinition,
   phoneSpecDigest,
   phoneTriggerSchedule,
-  skippedTypedOccurrences,
   storedPhoneTimeTrigger,
   TYPED_SCHEDULE_INPUT,
   type TypedScheduleAdmission,
@@ -157,6 +160,31 @@ export function isMissedOccurrenceExecution(
     typeof execution.missedOccurrenceAt === 'string' &&
     Number.isFinite(Date.parse(execution.missedOccurrenceAt))
   );
+}
+
+/**
+ * The settlement of a scheduled occurrence that this service recorded without
+ * running anything (`missed` or `overlap`), or undefined for an execution that
+ * ran. Same rule as the client run list (`@elizaos/contracts/workflow-client`,
+ * UI `workflowRunNotRun`): a typed or hosted admission records itself in the
+ * run input, and a generic schedule's missed occurrence carries the
+ * engine-written `missedOccurrenceAt`. Output shape alone never counts.
+ */
+export function notRunOccurrence(
+  execution: Pick<
+    WorkflowExecution,
+    'status' | 'finished' | 'input' | 'output' | 'missedOccurrenceAt'
+  >
+): WorkflowOccurrenceNotRun | undefined {
+  if (!execution.finished || execution.status !== 'finished') return undefined;
+  const settled = workflowOccurrenceNotRun(execution.output);
+  if (!settled) return undefined;
+  const admitted = [execution.input?.[TYPED_SCHEDULE_INPUT], execution.input?.hostedDigest].some(
+    (value) => !!value && typeof value === 'object' && !Array.isArray(value)
+  );
+  return admitted || (settled.status === 'missed' && isMissedOccurrenceExecution(execution))
+    ? settled
+    : undefined;
 }
 
 /**
@@ -313,11 +341,23 @@ export class EmbeddedWorkflowService extends Service {
   static override readonly serviceType = EMBEDDED_WORKFLOW_SERVICE_TYPE;
   override capabilityDescription = 'Native Smithers workflow persistence and execution on elizaOS.';
 
-  private readonly workerReconciliations = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly workerReconciliations = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; dueAtMs: number }
+  >();
   private reconciliationStopped = false;
   private readonly resumeAdmissions = new Map<string, Promise<void>>();
   private scheduleWorkerReconciliation(execution: WorkflowExecution, delayMs = 1000): void {
-    if (this.reconciliationStopped || this.workerReconciliations.has(execution.id)) return;
+    if (this.reconciliationStopped) return;
+    // A run keeps one wake-up. A resumed run can wait for something that is
+    // due before the wake-up armed earlier (a Timer after a Signal that came
+    // before its timeout), so the earlier wake-up replaces the later one.
+    const dueAtMs = Date.now() + delayMs;
+    const pending = this.workerReconciliations.get(execution.id);
+    if (pending) {
+      if (pending.dueAtMs <= dueAtMs) return;
+      clearTimeout(pending.timer);
+    }
     const timer = setTimeout(() => {
       this.workerReconciliations.delete(execution.id);
       if (this.reconciliationStopped) return;
@@ -329,7 +369,7 @@ export class EmbeddedWorkflowService extends Service {
       });
     }, delayMs);
     timer.unref?.();
-    this.workerReconciliations.set(execution.id, timer);
+    this.workerReconciliations.set(execution.id, { timer, dueAtMs });
   }
 
   /**
@@ -374,7 +414,7 @@ export class EmbeddedWorkflowService extends Service {
 
   override async stop(): Promise<void> {
     this.reconciliationStopped = true;
-    for (const timer of this.workerReconciliations.values()) clearTimeout(timer);
+    for (const { timer } of this.workerReconciliations.values()) clearTimeout(timer);
     this.workerReconciliations.clear();
     for (const controller of this.controllers.values()) controller.abort();
     await Promise.allSettled(this.resumeAdmissions.values());
@@ -1982,63 +2022,6 @@ export class EmbeddedWorkflowService extends Service {
           Date.now(),
           computeNextCronRunAtMs
         );
-        // The cron scheduler never fires for a reviewed local time that a spring-forward
-        // transition skipped; record each such occurrence since this version was armed
-        // as missed, once, so run history shows it did not run.
-        for (const skipped of skippedTypedOccurrences(
-          typedTrigger,
-          Date.parse(typed.scheduledAt),
-          Date.parse(workflow.updatedAt)
-        )) {
-          const idempotencyKey = `typed-time:${workflow.id}:${workflow.versionId}:skipped:${skipped.skippedLocalTime}`;
-          const [recorded] = await tx
-            .select({ id: embeddedExecutions.id })
-            .from(embeddedExecutions)
-            .where(
-              and(
-                eq(embeddedExecutions.agentId, this.tenantId),
-                eq(embeddedExecutions.workflowId, id),
-                eq(embeddedExecutions.idempotencyKey, idempotencyKey)
-              )
-            )
-            .limit(1);
-          if (recorded) continue;
-          const at = nowIso(),
-            { skippedLocalTime, ...admission } = skipped;
-          const execution: WorkflowExecution = {
-            id: randomUUID(),
-            workflowId: id,
-            workflowVersionId: workflow.versionId,
-            workflowName: workflow.name,
-            mode: options.mode ?? 'trigger',
-            status: 'finished',
-            finished: true,
-            startedAt: at,
-            stoppedAt: at,
-            output: {
-              status: 'missed',
-              scheduledAt: skipped.scheduledAt,
-              text: skipped.text,
-              skippedLocalTime,
-            },
-            input: cloneJson({ [TYPED_SCHEDULE_INPUT]: admission }),
-            events: [],
-            approvals: [],
-            idempotencyKey,
-          };
-          await tx.insert(embeddedExecutions).values({
-            agentId: this.tenantId,
-            id: execution.id,
-            workflowId: id,
-            status: execution.status,
-            mode: execution.mode,
-            finished: true,
-            stoppedAt: at,
-            startedAt: at,
-            execution,
-            idempotencyKey,
-          });
-        }
         // One run at a time: an occurrence never stacks behind a run still waiting
         // for phone approvals or reconciliation; it is recorded and not run.
         const [active] = await tx
@@ -2085,7 +2068,12 @@ export class EmbeddedWorkflowService extends Service {
           ? hosted
           : undefined
         : typed && typed.status !== 'ready'
-          ? { status: typed.status, scheduledAt: typed.scheduledAt, text: typed.text }
+          ? {
+              status: typed.status,
+              scheduledAt: typed.scheduledAt,
+              text: typed.text,
+              ...(typed.skippedLocalTime ? { skippedLocalTime: typed.skippedLocalTime } : {}),
+            }
           : missed;
       const pending: WorkflowExecution = {
         id: randomUUID(),
@@ -2404,8 +2392,8 @@ export class EmbeddedWorkflowService extends Service {
         if (unresolved.reconciliation?.state === 'worker-running') {
           this.scheduleWorkerReconciliation(unresolved);
         } else {
-          const pendingTimer = this.workerReconciliations.get(unresolved.id);
-          if (pendingTimer) clearTimeout(pendingTimer);
+          const pending = this.workerReconciliations.get(unresolved.id);
+          if (pending) clearTimeout(pending.timer);
           this.workerReconciliations.delete(unresolved.id);
         }
         return unresolved;

@@ -80,6 +80,36 @@ only identity and bridge wiring:
   outcomes, network/thermal state and the build/engine/model identity. Hosts name
   the export document and their build with `VoiceLatencyProbe.configureHost`.
 
+- `LocalVoiceRecording` is one foreground private recording draft (bounded mono 16 kHz AAC in
+  the app cache under a host-named prefix; limit, size and microphone-error stops are events) and
+  `RecordingPcm` decodes such a draft to bounded PCM16 WAV for recognition.
+- `SpeechRequestGate` admits one bridge request at a time, reports a busy speaker, and keeps
+  admission closed during a cancellation drain until the host's worker barrier completes.
+
+### Product speech bridge
+
+`speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java` is the abstract
+Capacitor bridge over this pipeline. A host enables it with `elizaSpeechBridgeCapacitor=true`
+and registers its own subclass with `@CapacitorPlugin(name=..., permissions=@Permission(alias="microphone",
+strings=RECORD_AUDIO))`; the subclass passes its recording and prepared-clip cache prefixes
+(installed-data identity) to the constructor. The bridge provides recording
+start/stop/cancel/metrics, `transcribeLocalRecording`, `synthesizeLocal`, `play`/`stopPlayback`,
+`cancel`, live capture status and start/stop with `liveCaptureFrames`, `liveCaptureEnded` and
+`liveCaptureTranscript` events, `localSpeechStatus`/`releaseLocalSpeech`, `nativeVoiceTiming`,
+`markVoiceTurn` and `clearNativeVoiceTiming`. Ports a product overrides:
+
+- `residentRoute(ownerId)` / `residentTransport()`: the owner-bound transport that carries VAD
+  segments to the resident agent of the owner who started a capture (`nativeAsr`). The default
+  routes nothing natively.
+- `recording()`: the finished draft, for the product's own storage.
+- `launch(call, request)`: how a permission prompt reaches the activity (a call that arrives
+  after the activity is gone is rejected, never thrown on the bridge thread).
+
+Product-only methods (for example credential-bound network speech) use the protected
+`submit`, `publishPreparedAudio`, `synthesizeReviewed` and `cancelSpeech`, so they share one
+admission, cancellation drain and playback with the on-device methods. The renderer side is
+`@elizaos/voice/native-live` (packages/voice).
+
 `node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
 runs the host-JVM contracts and compiles the library against Android 36. They are
 not AudioTrack, AudioRecord, model, device-audio or latency evidence.

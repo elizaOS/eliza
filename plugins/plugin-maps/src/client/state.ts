@@ -37,6 +37,11 @@ export type MapsState = Readonly<{
   position: ResultState<Position | null>;
   mode: TravelMode;
   route: ResultState<Route | null>;
+  /**
+   * The provider's routes for the current request in its order (recommended
+   * first) when it offered a choice; empty otherwise. `route` is the chosen one.
+   */
+  routeOptions: readonly Route[];
   saved: ResultState<readonly SavedPlace[]>;
 }>;
 /** State only; no simulated map and no silent provider discovery/fallback. */
@@ -67,6 +72,7 @@ export class MapsController {
       position: idle(null),
       mode: "drive",
       route: idle(null),
+      routeOptions: [],
       saved: idle([]),
     };
     this.reloadSaved();
@@ -85,6 +91,7 @@ export class MapsController {
       selection: copy(this.state.selection),
       originSearch: copy(this.state.originSearch),
       route: copy(this.state.route),
+      routeOptions: structuredClone(this.state.routeOptions),
       position: copy(this.state.position),
       saved: copy(this.state.saved),
     };
@@ -125,7 +132,7 @@ export class MapsController {
   private invalidateRoute() {
     this.routeRequest?.abort();
     this.routeRequest = undefined;
-    this.update({ route: idle(null) });
+    this.update({ route: idle(null), routeOptions: [] });
   }
   private admitted() {
     return configuredProvider(this.config, this.provider);
@@ -369,77 +376,33 @@ export class MapsController {
           "unsupported",
           "This provider does not support that route mode.",
         );
-      const result = await provider.route(
-        origin,
-        selection.value.coordinate,
-        mode,
-        request.signal,
-      );
+      const destination = selection.value.coordinate;
+      const offered =
+        this.capabilities().alternatives === true && provider.routes
+          ? await provider.routes(origin, destination, mode, request.signal)
+          : [await provider.route(origin, destination, mode, request.signal)];
       if (
         request.signal.aborted ||
         !this.active ||
         this.routeRequest !== request
       )
         return;
-      const from = coordinate(result.from),
-        to = coordinate(result.to);
-      if (
-        result.providerId !== provider.providerId ||
-        result.mode !== mode ||
-        !boundedText(result.id, 512) ||
-        !boundedText(result.attribution, 2000) ||
-        from.latitude !== origin.latitude ||
-        from.longitude !== origin.longitude ||
-        to.latitude !== selection.value.coordinate.latitude ||
-        to.longitude !== selection.value.coordinate.longitude ||
-        !Array.isArray(result.geometry) ||
-        result.geometry.length < 2 ||
-        result.geometry.length > 20000 ||
-        !Array.isArray(result.steps) ||
-        result.steps.length > 2000 ||
-        !Number.isFinite(result.distanceMeters) ||
-        result.distanceMeters < 0 ||
-        !Number.isFinite(result.durationSeconds) ||
-        result.durationSeconds < 0 ||
-        !Number.isFinite(result.fetchedAt) ||
-        result.fetchedAt <= 0 ||
-        result.fetchedAt > Date.now() + 60000 ||
-        result.traffic !== this.capabilities().traffic
-      )
+      if (!Array.isArray(offered) || offered.length < 1 || offered.length > 3)
         throw new MapsFailure(
           "invalid-response",
           "The provider route is invalid.",
         );
-      const steps = result.steps.map((step) => {
-        if (
-          !boundedText(step.instruction, 2000) ||
-          !Number.isFinite(step.distanceMeters) ||
-          step.distanceMeters < 0 ||
-          (step.maneuver !== undefined && !isManeuver(step.maneuver))
-        )
-          throw new MapsFailure(
-            "invalid-response",
-            "A route instruction is invalid.",
-          );
-        return {
-          instruction: step.instruction,
-          coordinate: coordinate(step.coordinate),
-          distanceMeters: step.distanceMeters,
-          ...(step.maneuver ? { maneuver: step.maneuver } : {}),
-        };
-      });
+      const routes = offered.map((result) =>
+        this.validRoute(result, provider.providerId, origin, destination, mode),
+      );
+      if (new Set(routes.map((route) => route.id)).size !== routes.length)
+        throw new MapsFailure(
+          "invalid-response",
+          "The provider returned duplicate routes.",
+        );
       this.update({
-        route: {
-          phase: "ready",
-          value: {
-            ...result,
-            from,
-            to,
-            steps,
-            geometry: result.geometry.map(coordinate),
-          },
-          error: null,
-        },
+        route: { phase: "ready", value: routes[0] ?? null, error: null },
+        routeOptions: routes.length > 1 ? routes : [],
       });
     } catch (error) {
       if (!request.signal.aborted && this.active)
@@ -447,6 +410,76 @@ export class MapsController {
           route: { phase: "error", value: null, error: failure(error) },
         });
     }
+  }
+  /** Choose one of the offered routes. Nothing is requested again. */
+  chooseRoute(id: string): boolean {
+    const chosen = this.state.routeOptions.find((route) => route.id === id);
+    if (!chosen || this.state.route.phase !== "ready") return false;
+    this.update({ route: { phase: "ready", value: chosen, error: null } });
+    return true;
+  }
+  /** A provider route bound to this request's provider, endpoints and mode, or a typed refusal. */
+  private validRoute(
+    result: Route,
+    providerId: string,
+    origin: Coordinate,
+    destination: Coordinate,
+    mode: TravelMode,
+  ): Route {
+    const from = coordinate(result?.from),
+      to = coordinate(result?.to);
+    if (
+      result.providerId !== providerId ||
+      result.mode !== mode ||
+      !boundedText(result.id, 512) ||
+      !boundedText(result.attribution, 2000) ||
+      from.latitude !== origin.latitude ||
+      from.longitude !== origin.longitude ||
+      to.latitude !== destination.latitude ||
+      to.longitude !== destination.longitude ||
+      !Array.isArray(result.geometry) ||
+      result.geometry.length < 2 ||
+      result.geometry.length > 20000 ||
+      !Array.isArray(result.steps) ||
+      result.steps.length > 2000 ||
+      !Number.isFinite(result.distanceMeters) ||
+      result.distanceMeters < 0 ||
+      !Number.isFinite(result.durationSeconds) ||
+      result.durationSeconds < 0 ||
+      !Number.isFinite(result.fetchedAt) ||
+      result.fetchedAt <= 0 ||
+      result.fetchedAt > Date.now() + 60000 ||
+      result.traffic !== this.capabilities().traffic
+    )
+      throw new MapsFailure(
+        "invalid-response",
+        "The provider route is invalid.",
+      );
+    const steps = result.steps.map((step) => {
+      if (
+        !boundedText(step.instruction, 2000) ||
+        !Number.isFinite(step.distanceMeters) ||
+        step.distanceMeters < 0 ||
+        (step.maneuver !== undefined && !isManeuver(step.maneuver))
+      )
+        throw new MapsFailure(
+          "invalid-response",
+          "A route instruction is invalid.",
+        );
+      return {
+        instruction: step.instruction,
+        coordinate: coordinate(step.coordinate),
+        distanceMeters: step.distanceMeters,
+        ...(step.maneuver ? { maneuver: step.maneuver } : {}),
+      };
+    });
+    return {
+      ...result,
+      from,
+      to,
+      steps,
+      geometry: result.geometry.map(coordinate),
+    };
   }
   reloadSaved() {
     try {

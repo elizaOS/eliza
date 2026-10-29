@@ -318,7 +318,10 @@ export function buildCreateRequest(
 export function buildUpdateRequest(
   form: TriggerFormState,
 ): UpdateTriggerRequest {
-  return { ...buildCreateRequest(form) };
+  const request = buildCreateRequest(form);
+  // A cleared "Stop after" removes the limit. JSON drops an undefined field,
+  // which the server reads as "keep the current limit", so send null.
+  return { ...request, maxRuns: request.maxRuns ?? null };
 }
 /**
  * The zone a cron schedule runs in: the zone stored on the trigger, or the

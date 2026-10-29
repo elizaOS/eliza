@@ -14,6 +14,7 @@ import {
 import { WorkflowApiError } from '../types/index';
 import { compilePhoneWorkflowV1 } from './phone-workflow-compiler-v1';
 import { compilePhoneWorkflowV2 } from './phone-workflow-compiler-v2';
+import { compilePhoneWorkflowV3 } from './phone-workflow-compiler-v3';
 
 export type {
   PhoneCalendarRange,
@@ -24,9 +25,9 @@ export type {
   PhoneWorkflowTrigger,
 };
 export { PHONE_SCHEDULE_ADMISSION_WINDOW_MS };
-/** Revision 4 offers the reviewed local-time trigger beside manual runs. */
-export const PHONE_CATALOG_REVISION = 'phone-workflow-catalog-4';
-export const PHONE_COMPILER_REVISION = 'phone-workflow-compiler-3';
+/** Revision 5 offers the selected-reminders read (workflow device protocol 3). */
+export const PHONE_CATALOG_REVISION = 'phone-workflow-catalog-5';
+export const PHONE_COMPILER_REVISION = 'phone-workflow-compiler-4';
 export const PHONE_SPEC_KEY = 'elizaPhoneWorkflowSpec';
 export const PHONE_COMPILER_KEY = 'elizaPhoneCompilerRevision';
 /** Execution input key holding a scheduled occurrence's admission record. */
@@ -65,6 +66,13 @@ export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable = 
             label: 'Selected Notes',
             available: deviceAvailable,
             reason: deviceAvailable ? undefined : 'Workflow-bound native read bridge required',
+          },
+          {
+            id: 'selected_reminders',
+            label: "Today's reminders (open and completed today)",
+            available: deviceAvailable,
+            requiredDeviceProtocol: 3,
+            reason: deviceAvailable ? undefined : 'Workflow-bound reminder read bridge required',
           },
           {
             id: 'calendar_range',
@@ -167,6 +175,11 @@ export interface TypedScheduleAdmission {
   trigger: PhoneTimeTrigger;
   status: 'ready' | 'missed' | 'overlap';
   text: string;
+  /**
+   * Set on a missed occurrence whose reviewed local wall time did not exist that
+   * day (spring-forward), as `YYYY-MM-DDTHH:MM`.
+   */
+  skippedLocalTime?: string;
 }
 /**
  * Admits one scheduled occurrence of a typed workflow. The occurrence must be an
@@ -188,6 +201,21 @@ export function typedScheduleAdmission(
   )
     throw new WorkflowApiError('Scheduled occurrence does not match its reviewed local time', 409);
   const base = { scheduledAt: new Date(scheduledAt).toISOString(), trigger };
+  // The durable scheduler runs a cron time that a spring-forward transition skips
+  // one gap later (02:30 -> 03:30 EDT). A reviewed phone schedule names a local
+  // time, and the owner was told a skipped time does not run
+  // (`phoneTriggerClockChangeNote`): that occurrence is recorded once as missed
+  // with the skipped local time, at the instant the scheduler fired it.
+  const wall = localWall(scheduledAt, trigger.timeZone);
+  if (wall.slice(11) !== trigger.localTime) {
+    const skippedLocalTime = `${wall.slice(0, 10)}T${trigger.localTime}`;
+    return {
+      ...base,
+      status: 'missed',
+      skippedLocalTime,
+      text: `${trigger.localTime} did not occur on ${wall.slice(0, 10)} in ${trigger.timeZone} because the clocks moved forward. This occurrence did not run and will not run later.`,
+    };
+  }
   if (now - scheduledAt > PHONE_SCHEDULE_ADMISSION_WINDOW_MS)
     return {
       ...base,
@@ -196,77 +224,26 @@ export function typedScheduleAdmission(
     };
   return { ...base, status: 'ready', text: '' };
 }
-export interface SkippedTypedOccurrence extends TypedScheduleAdmission {
-  status: 'missed';
-  /** The reviewed local wall time that did not exist that day, as `YYYY-MM-DDTHH:MM`. */
-  skippedLocalTime: string;
-}
-function zonedWall(ms: number, formatter: Intl.DateTimeFormat) {
-  const parts: Record<string, number> = {};
-  for (const part of formatter.formatToParts(ms))
-    if (part.type !== 'literal') parts[part.type] = Number(part.value);
-  return {
-    wallMs: Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour % 24, parts.minute),
-    date: Date.UTC(parts.year, parts.month - 1, parts.day),
-  };
-}
-const pad = (value: number) => String(value).padStart(2, '0');
-/**
- * Reviewed occurrences that never existed because the local clock jumped past
- * them (a spring-forward daylight-saving transition), between the last occurrence
- * that did exist before `scheduledAt` and `scheduledAt` itself. The cron
- * scheduler matches local wall times, so it never fires for such a day; the
- * occurrence is recorded as missed at the instant it would have had on the
- * pre-transition offset (02:30 EST for a skipped 02:30 in America/New_York),
- * with the skipped local time. Occurrences at or before `armedSinceMs` (when the
- * reviewed version was turned on) are not recorded.
- */
-export function skippedTypedOccurrences(
-  trigger: PhoneTimeTrigger,
-  scheduledAt: number,
-  armedSinceMs: number
-): SkippedTypedOccurrence[] {
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: trigger.timeZone,
-    hourCycle: 'h23',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: 'numeric',
-  });
-  const [hour, minute] = trigger.localTime.split(':').map(Number);
-  const offsetAt = (ms: number) => {
-    const floored = Math.floor(ms / 60000) * 60000;
-    return zonedWall(floored, formatter).wallMs - floored;
-  };
-  const today = zonedWall(scheduledAt, formatter).date;
-  const skipped: SkippedTypedOccurrence[] = [];
-  // Every day set holds at least one weekday, so the previous existing occurrence is
-  // at most a week back.
-  for (let back = 1; back <= 7; back++) {
-    const date = today - back * 86_400_000;
-    if (!trigger.days.includes(new Date(date).getUTCDay())) continue;
-    const wallMs = date + (hour * 60 + minute) * 60000;
-    const before = wallMs - offsetAt(date - 43_200_000);
-    const after = wallMs - offsetAt(before);
-    if (
-      zonedWall(before, formatter).wallMs === wallMs ||
-      zonedWall(after, formatter).wallMs === wallMs
-    )
-      break;
-    if (before <= armedSinceMs) break;
-    const day = new Date(date);
-    const local = `${day.getUTCFullYear()}-${pad(day.getUTCMonth() + 1)}-${pad(day.getUTCDate())}T${trigger.localTime}`;
-    skipped.push({
-      scheduledAt: new Date(before).toISOString(),
-      trigger,
-      status: 'missed',
-      skippedLocalTime: local,
-      text: `${trigger.localTime} did not occur on ${local.slice(0, 10)} in ${trigger.timeZone} because the clocks moved forward. This occurrence did not run and will not run later.`,
+const wallFormats = new Map<string, Intl.DateTimeFormat>();
+/** Local wall minute of an instant in a zone, `YYYY-MM-DDTHH:MM`. */
+function localWall(ms: number, timeZone: string): string {
+  let format = wallFormats.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hourCycle: 'h23',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
     });
+    wallFormats.set(timeZone, format);
   }
-  return skipped.reverse();
+  const parts: Record<string, string> = {};
+  for (const part of format.formatToParts(ms))
+    if (part.type !== 'literal') parts[part.type] = part.value;
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour === '24' ? '00' : parts.hour}:${parts.minute}`;
 }
 export function phoneSpecDigest(spec: PhoneWorkflowSpec) {
   return createHash('sha256').update(JSON.stringify(spec)).digest('hex');
@@ -285,6 +262,7 @@ export default smithers(()=><Workflow name="typed-phone-workflow"><Task id="type
  let value='';
  if(step.operation==='supplied_text')value=step.text;
  else if(step.operation==='selected_notes'||step.operation==='calendar_range'){const operation=step.operation==='selected_notes'?{type:'read_selected_notes',notes:step.notes}:{type:'read_calendar_range',...step.range};const receipt=await globalThis.__elizaSmithers.device({stepId:step.id,operation});value=JSON.stringify(receipt.result);}
+ else if(step.operation==='selected_reminders'){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:step.scope.timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(Date.now()).map(part=>[part.type,part.value]));const operation={type:'read_selected_reminders',window:step.scope.window,day:parts.year+'-'+parts.month+'-'+parts.day,timeZone:step.scope.timeZone,maximumItems:step.scope.maximumItems};const receipt=await globalThis.__elizaSmithers.device({stepId:step.id,operation});value=JSON.stringify(receipt.result);}
 
  else{const prior=values.get(step.source);if(typeof prior!=='string')throw Error('Typed step input missing');
  if(step.operation==='contains'){allowed=step.caseSensitive?prior.includes(step.text):prior.toLocaleLowerCase('en-US').includes(step.text.toLocaleLowerCase('en-US'));value=prior;}
@@ -307,6 +285,7 @@ export function verifyPhoneWorkflowSource(
   const versions = [
     ['phone-workflow-compiler-1', compilePhoneWorkflowV1],
     ['phone-workflow-compiler-2', compilePhoneWorkflowV2],
+    ['phone-workflow-compiler-3', compilePhoneWorkflowV3],
     [PHONE_COMPILER_REVISION, compilePhoneWorkflow],
   ] as const;
   return versions.some(

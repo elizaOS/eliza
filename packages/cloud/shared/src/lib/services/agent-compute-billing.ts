@@ -100,6 +100,8 @@ export async function settleFundedAgentBillingInTransaction(
     tx,
     input.organizationId,
     await readPostLockDatabaseNow(tx),
+    undefined,
+    { managedComputePaymentGrace: true },
   );
   const fundingAvailable =
     newBalance +

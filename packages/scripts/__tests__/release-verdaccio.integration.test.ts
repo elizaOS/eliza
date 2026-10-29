@@ -97,7 +97,7 @@ function makeRepo(base: string) {
   writeJson(path.join(repoRoot, "packages/a/package.json"), {
     name: "@eliza-release-integration/a",
     ...common,
-    dependencies: { "@eliza-release-integration/b": "1.0.0" },
+    dependencies: { "@eliza-release-integration/b": "workspace:*" },
   });
   writeJson(path.join(repoRoot, "packages/b/package.json"), {
     name: "@eliza-release-integration/b",
