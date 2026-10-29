@@ -127,15 +127,12 @@ export function emptyHomeShadePull(
   if (context.chat === "sheet" || context.chat === "full") return false;
   if (!(dy > threshold) || !(dy > Math.abs(dx) * 1.5)) return false;
   if (!(startY >= STATUS_BAND)) return false;
-  if (
-    !start ||
-    !start.home ||
-    start.editable ||
-    start.keyboard ||
-    start.scrolled
-  )
-    return false;
-  return true;
+  return emptyHomeStart(start);
+}
+
+/** The pull started on Home itself: not editable, no keyboard, not scrolled content. */
+function emptyHomeStart(start: PullStart | null | undefined): boolean {
+  return !!start?.home && !start.editable && !start.keyboard && !start.scrolled;
 }
 
 /** Whether a pull may start now; the same rule as `emptyHomeShadePull` before the drag is known. */
@@ -251,15 +248,7 @@ export function installOverflowPull(
     const scale = screen?.width ? screen.width / width : 1;
     const touch = event.touches[0];
     if (screen && (touch.clientY - screen.top) / scale < STATUS_BAND) return;
-    const begin = readPullStart(target, selectors);
-    if (
-      !begin ||
-      !begin.home ||
-      begin.editable ||
-      begin.keyboard ||
-      begin.scrolled
-    )
-      return;
+    if (!emptyHomeStart(readPullStart(target, selectors))) return;
     start = { x: touch.clientX, y: touch.clientY, scale };
   };
   const touchmove = (event: TouchEvent) => {
