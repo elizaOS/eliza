@@ -7082,6 +7082,9 @@ function resolveRejectedCallsSupersededBy(
       correlationContentTerms(completedText).flatMap(inflectionTermKeys),
     ),
   };
+  // One completed call proves at most one rejected call through coverage:
+  // a single merged note must not discharge two separate refused notes.
+  let coverageSpent = false;
   for (const [key, rejected] of unresolvedByOperation) {
     if (!isRetryablePreExecutionRejection(rejected.result)) continue;
     const failedCall = rejectedRetryCall(rejected);
@@ -7139,6 +7142,7 @@ function resolveRejectedCallsSupersededBy(
             }))
         : [];
     });
+    let covered = false;
     if (
       targets.some((target) => {
         let current: unknown = call.params;
@@ -7159,9 +7163,11 @@ function resolveRejectedCallsSupersededBy(
         // Coverage only applies when the completed call dropped this target
         // field. A present but different value is a different target.
         if (
+          !coverageSpent &&
           !isSuppliedParameterValue(current) &&
           parameterValueCoveredBy(target.value, completedHaystack)
         ) {
+          covered = true;
           return false;
         }
         return true;
@@ -7178,8 +7184,10 @@ function resolveRejectedCallsSupersededBy(
         rejected.result,
         call,
       )
-    )
+    ) {
       unresolvedByOperation.delete(key);
+      coverageSpent ||= covered;
+    }
   }
 }
 

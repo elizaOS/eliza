@@ -2803,6 +2803,131 @@ describe("canonical nonretryable receipt repair", () => {
       expect(attempts).toBe(2);
       expect(result.finalMessage).toBe(saved);
     });
+    it.each([
+      {
+        label: "one merged success",
+        retries: ["first\nsecond"],
+        clearsBoth: false,
+      },
+      {
+        label: "two successes",
+        retries: ["first", "second"],
+        clearsBoth: true,
+      },
+    ])(
+      "one covering success clears at most one NOTES_CREATE refusal: $label",
+      async ({ retries, clearsBoth }) => {
+        const bodies = {
+          first: "Buy oat milk and call the dentist",
+          second: "Water the plants and pay rent",
+        };
+        const args = [
+          { body: bodies.first },
+          { body: bodies.second },
+          ...retries.map((retry) => ({
+            content: retry
+              .split("\n")
+              .map((name) => bodies[name as keyof typeof bodies])
+              .join("\n"),
+          })),
+        ];
+        const saved = "Saved both notes.";
+        const created = retries.map((_, index) => ({
+          ...receipt,
+          receiptId: `created-note-${index + 1}`,
+          operation: "notes.create",
+          resource: { kind: "note", id: `note-${index + 1}`, version: "1" },
+        }));
+        let plans = 0,
+          attempts = 0;
+        const result = await runPlannerLoop({
+          context: {
+            id: "notes-two-refusals-coverage",
+            events: [
+              {
+                id: "stage1-declared-intents",
+                type: "instruction",
+                content: "- Save note one\n- Save note two",
+              },
+            ],
+          },
+          codingMode: false,
+          runtime: {
+            useModel: async () => {
+              const index = plans++;
+              return index < args.length
+                ? {
+                    text: "",
+                    toolCalls: [
+                      {
+                        id: `note-${index + 1}`,
+                        name: "NOTES_CREATE",
+                        arguments: {
+                          ...args[index],
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                    ],
+                  }
+                : {
+                    text: "",
+                    toolCalls: [
+                      {
+                        id: "note-reply",
+                        name: "REPLY",
+                        arguments: { text: saved, eliza_turn_scope: "final" },
+                      },
+                    ],
+                  };
+            },
+          },
+          executeToolCall: async () =>
+            ++attempts <= 2
+              ? {
+                  ...refused,
+                  data: {
+                    ...refused.data,
+                    actionName: "NOTES_CREATE",
+                    parameterErrors: ["content is required"],
+                    invalidParameterNames: ["content"],
+                  },
+                }
+              : {
+                  success: true,
+                  turnComplete: false,
+                  modelReplyRequired: true,
+                  transcriptVisibility: "internal",
+                  effectReceipts: [created[attempts - 3]],
+                },
+          evaluate: async () =>
+            attempts < args.length
+              ? {
+                  decision: "CONTINUE",
+                  success: true,
+                  thought: "Fixture has another note to save.",
+                }
+              : {
+                  decision: "FINISH",
+                  success: true,
+                  thought: "Fixture committed notes.",
+                  messageToUser: saved,
+                  replyEffectStatus: "applied",
+                  effectReceiptIds: created.map((item) => item.receiptId),
+                  requestFullyCovered: true,
+                  outcomeCoverage: [1, 2].map((intent) => ({
+                    intentId: `intent:${intent}`,
+                    status: "completed",
+                    evidenceStepIds: retries.map(
+                      (_, index) => `step:${index + 3}`,
+                    ),
+                  })),
+                },
+        });
+        expect(attempts).toBe(args.length);
+        if (clearsBoth) expect(result.finalMessage).toBe(saved);
+        else expect(result.finalMessage).not.toBe(saved);
+      },
+    );
     it("does not clear a create refusal for a different subaction of the same umbrella", async () => {
       let plans = 0,
         attempts = 0;
