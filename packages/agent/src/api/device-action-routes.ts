@@ -107,6 +107,10 @@ export function deviceRequestCredential(
     "clock.handoff.v2",
     "clock.alarms.v1",
     "sms.send.v1",
+    // Reviewed dial handoff and on-device contact lookup (@elizaos/contracts/phone-dial);
+    // phones advertise them only with the native telephony profile.
+    "phone.dial.v1",
+    "contacts.lookup.v1",
   ]);
   if (
     capabilities.length > allowedCapabilities.size ||

@@ -37,12 +37,14 @@ import org.json.JSONObject;
  * subclasses this under its own Capacitor plugin name (annotation on the subclass only, so plugin
  * discovery never lists this abstract base), registers the subclass only when its
  * {@link SmsTelephonyConfiguration#admission} holds, and declares the permission aliases
- * {@code contacts}, {@code phoneState}, {@code sms} and {@code sendSms}. Every method checks the
+ * {@code contacts}, {@code phoneState}, {@code sms} and {@code sendSms}; a host that also declares
+ * {@code callLog} (READ_CALL_LOG) offers the bounded recent-calls read. Every method checks the
  * admission again, so a standalone APK, a sideloaded launcher or saved renderer state can never reach
  * a provider, a SIM or the radio.
  *
  * Reads: Telecom/SMS roles and default handlers, active subscriptions (phone-state access) and SMS/MMS
- * threads and messages through the Telephony providers (SMS access), in bounded pages, cancelled on
+ * threads and messages through the Telephony providers (SMS access), recent calls (call-log access, only
+ * for hosts that declare it, at most {@link CallLogRows#MAX_CALLS} newest rows), in bounded pages, cancelled on
  * background, lock, screen-off and permission change, and fenced again before publication.
  *
  * Effects: dialing is always a handoff to the user's dialer, which also owns emergency numbers. A text
@@ -63,6 +65,9 @@ public abstract class TelephonyPlugin extends Plugin {
  public static final String CLOSED = "Android could not show this request; the app may have closed. Reopen it and try again.";
  public static final String UNAVAILABLE = "Phone, Contacts and Messages are available only on the phone's system image.";
  private static final String[] ALIASES = { "contacts", "phoneState", "sms", "sendSms" };
+ /** Optional alias: only a host that declares it (and READ_CALL_LOG in its manifest) offers recent calls. */
+ private static final String CALL_LOG = "callLog";
+ private boolean callLogDeclared;
 
  /** The host's migration-sensitive identity and capability profile. Called once from {@link #load()}. */
  protected abstract SmsTelephonyConfiguration configuration();
@@ -91,6 +96,7 @@ public abstract class TelephonyPlugin extends Plugin {
   java.util.Set<String> declared = new java.util.HashSet<>();
   if (annotation != null) for (Permission permission : annotation.permissions()) declared.add(permission.alias());
   for (String alias : ALIASES) if (!declared.contains(alias)) throw new IllegalStateException("Telephony host plugin must declare permission alias " + alias);
+  callLogDeclared = declared.contains(CALL_LOG);
   config = configuration();
   androidx.core.content.ContextCompat.registerReceiver(getContext(), screenOff, new android.content.IntentFilter(Intent.ACTION_SCREEN_OFF), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED);
   if (admitted()) {
@@ -180,6 +186,7 @@ public abstract class TelephonyPlugin extends Plugin {
   permissions.put("phoneState", phoneState.toString());
   permissions.put("sms", sms.toString());
   permissions.put("sendSms", sendSms.toString());
+  if (callLogDeclared) permissions.put(CALL_LOG, getPermissionState(CALL_LOG).toString());
   value.put("permissions", permissions);
   // Direct sends need SEND_SMS (granted, or held through the SMS role) and phone-state access to
   // confirm the reviewed SIM is active. Otherwise the SMS app handoff is the only path.
@@ -230,7 +237,7 @@ public abstract class TelephonyPlugin extends Plugin {
  @PluginMethod public void requestAccess(PluginCall call) {
   if (refused(call)) return;
   String access = call.getString("access", "");
-  if (!java.util.Arrays.asList(ALIASES).contains(access)) { call.reject("Choose contacts, phone-state, SMS or send access", "invalid"); return; }
+  if (!java.util.Arrays.asList(ALIASES).contains(access) && !(callLogDeclared && CALL_LOG.equals(access))) { call.reject("Choose contacts, phone-state, SMS or send access", "invalid"); return; }
   if (getPermissionState(access) == PermissionState.GRANTED) { call.resolve(statusObject()); return; }
   launch(call, () -> requestPermissionForAlias(access, call, "accessResult"));
  }
@@ -303,6 +310,53 @@ public abstract class TelephonyPlugin extends Plugin {
   } catch (RuntimeException failure) {
    call.resolve(handoff("failed", target, null, "The app could not be opened. Nothing was sent or dialed."));
   }
+ }
+
+ /**
+  * The newest recent calls, at most {@link CallLogRows#MAX_CALLS}, read only while unlocked and in front,
+  * cancelled on background, lock, screen-off and permission change and fenced again before publication.
+  * Numbers are reduced to the dial shape (withheld or undialable entries become ""); voicemail
+  * transcriptions, accounts and locations are not read. A host that does not declare call-log access
+  * has no recent-calls read: it answers unavailable, never an empty list.
+  */
+ @PluginMethod public void listRecentCalls(PluginCall call) {
+  if (refused(call)) return;
+  if (!callLogDeclared) { call.reject("Recent calls are not available in this install.", "unavailable"); return; }
+  final int limit = CallLogRows.limit(call.getInt("limit", 25));
+  if (limit < 0) { call.reject("Recent-calls limit must be 1 to 50", "invalid"); return; }
+  fencedRead(call, CALL_LOG, "Recent calls", cancel -> {
+   Uri uri = android.provider.CallLog.Calls.CONTENT_URI.buildUpon()
+     .appendQueryParameter(android.provider.CallLog.Calls.LIMIT_PARAM_KEY, String.valueOf(limit)).build();
+   String[] projection = {
+    android.provider.CallLog.Calls._ID, android.provider.CallLog.Calls.NUMBER, android.provider.CallLog.Calls.CACHED_NAME,
+    android.provider.CallLog.Calls.DATE, android.provider.CallLog.Calls.DURATION, android.provider.CallLog.Calls.TYPE,
+    android.provider.CallLog.Calls.NEW };
+   JSArray rows = new JSArray();
+   try (android.database.Cursor cursor = getContext().getContentResolver().query(uri, projection, null, null,
+     android.provider.CallLog.Calls.DATE + " DESC, " + android.provider.CallLog.Calls._ID + " DESC", cancel)) {
+    if (cursor == null) throw new IllegalStateException("Call log unavailable");
+    long previous = Long.MAX_VALUE; java.util.Set<String> seen = new java.util.HashSet<>();
+    while (rows.length() < limit && cursor.moveToNext()) {
+     cancel.throwIfCanceled();
+     String id = cursor.getString(0); long date = cursor.getLong(3);
+     // A row the shared parser would refuse (bad ID, repeated, out of order) is skipped, never repaired.
+     if (!CallLogRows.publishable(id, date, previous) || !seen.add(id)) continue;
+     previous = date;
+     JSObject row = new JSObject();
+     row.put("id", id);
+     row.put("number", CallLogRows.number(cursor.getString(1)));
+     String name = cursor.isNull(2) ? null : cursor.getString(2);
+     row.put("cachedName", name == null || name.trim().isEmpty() ? JSONObject.NULL : clip(name.trim()));
+     row.put("date", date);
+     row.put("durationSeconds", CallLogRows.duration(cursor.getLong(4)));
+     row.put("type", CallLogRows.type(cursor.getInt(5)));
+     row.put("isNew", !cursor.isNull(6) && cursor.getInt(6) != 0);
+     rows.put(row);
+    }
+   }
+   JSObject value = new JSObject(); value.put("calls", rows);
+   return value;
+  });
  }
 
  /** Opens the user's dialer with this number. The call is placed, or not, there; emergency numbers stay with the system. */

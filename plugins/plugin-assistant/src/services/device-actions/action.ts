@@ -64,6 +64,11 @@ import {
   requestOriginalNativeCalendarAvailability,
 } from "./service.ts";
 import {
+  isPhoneDial,
+  phoneDialResultText,
+  validatePhoneDialResult,
+} from "./phone-dial-contract.ts";
+import {
   isSmsSend,
   smsBindingText,
   validateSmsResult,
@@ -579,6 +584,7 @@ export const proposeDeviceAction: Action = {
     "camera_capture_photo takes one still image with the current camera and saves it in Photos. Requires camera.capture-photo.v1 and the visible Camera view. It sends no pixels to the model. A saved-photo receipt proves the capture; never repeat an uncertain capture automatically. " +
     "Device Notes/Calendar proposals require the current turn to select native device record/source authority. Ordinary app Notes/Calendar requests, including creation from Home, use their canonical service operations when runtime record authority is selected; a phone capability or missing discovered child does not redirect the record store. " +
     "Reviewed SIM SMS requires sms.send.v1, exact canonical recipients, body and the active subscriptionId shown by the phone. Never invent a SIM ID or substitute an external compose intent. The owner reviews the exact content on the unlocked phone. submitted proves submission only; sent proves all sent callbacks; delivered requires all matching delivery reports. Unknown or partial failure must never be automatically retried. " +
+    "A reviewed dial uses phone_dial with target {kind: number, number: digits with optional leading +} (requires phone.dial.v1) or {kind: contact, query: the contact name} (also requires contacts.lookup.v1; the phone looks the contact up locally and the owner picks the number, which is never returned). After the owner's approval the phone opens its dial screen with the number; the owner places the call there. handed-off proves only that the dial screen opened, never a placed, connected or completed call. Never retry automatically. " +
     "Native Notes discovery from Home uses notes_query with query {kind: title, text: requested title} or {kind: latest, by: created|updated}, only with notes.query.v1. Candidates remain on the phone; the owner confirms exactly one note to share. Unknown chronology or ties require local owner choice; a returned owner-choice-uncertain basis does not prove latest. Never substitute backend Notes. " +
     "For a one-shot relative reminder use reminder_create_after with fields title, body and schedule {after: elapsed duration with units such as 2m, alertMinutes: 0 for one alert or null for no alert}. The server resolves exact instants from the authenticated turn start; do not calculate epoch timestamps. Requires reminders.create.v1. Use returned reminderTiming dueAtDisplay and alertAtDisplay verbatim when available; they already use the phone timezone. Otherwise keep the returned UTC instants explicit, without inventing a local timezone. Create reviewed no-alert, lead or recurring reminders only with reminder_create and reminders.create.v1. The legacy create_reminder supports only title and dueAt and always requests an alert; never discard requested timing. reminder_create.fields requires title, body and schedule; schedule requires at, dueAt, alertMinutes (null means no alert), recurrence (null or exact repeat). at=dueAt-(alertMinutes??0)*60000; recurrence leadMinutes matches. No-alert creates pending, not delivered. Propose an approved selected Maps snapshot, note, reminder, view change, or HTTPS browser navigation on the phone enrolled for this authenticated turn. Notes read-selected/update/delete requires notes.local-record.v1 and exact selected sourceId/sourceRevision/noteId/revision. Existing create_note creates a text note. Selected reminder read/update/complete/snooze/cancel requires reminders.local-record.v1 and exact sourceId/sourceRevision/reminderId/occurrenceId/revision. Preserve target.timingVersion=2 when supplied by the phone. TimingVersion 2 targets and schedules with dueAt plus alertMinutes require reminders.local-record.v2. Supply both timing fields together; alertMinutes null means no notification, at equals dueAt, and any recurrence leadMinutes is zero. Numeric alerts require at=dueAt-alertMinutes*60000 and matching recurrence leadMinutes. No-alert tasks cannot be snoozed; only an explicitly reviewed schedule edit enables an alert. Cancel stops all future repeats; snooze is ten minutes. For creation from Home use calendar_create_local and calendar.create.v1; the host derives original readable event details through Calendar and code converts the timezone; the phone resolves its default On this phone calendar and requires native confirmation. For next-event discovery use calendar_read_next with no guessed timestamps and calendar.next-read.v1; the native clock fixes a window from now through the next 30 owner-local days; the foreground native review discovers readable Calendar sources and shares only the approved next event, or an explicit no-events-in-window result. Never infer a source from arbitrary UI selection; no background access is granted. Calendar create/read-selected/update/delete additionally requires calendar.local-event.v1 and the exact current native source/target revisions; never invent IDs or revisions. Maps read-selected requires maps.selected-read.v1 and exact current clientDevice.context kind/id/revision; never infer coordinates from the opaque identifier. The phone owner must explicitly review and approve." +
     " " +
@@ -614,6 +620,24 @@ export const proposeDeviceAction: Action = {
               recipients: { type: "array", items: { type: "string" } },
               body: { type: "string" },
               subscriptionId: { type: "integer" },
+            },
+          },
+          {
+            type: "object",
+            additionalProperties: false,
+            required: ["type", "target"],
+            properties: {
+              type: { type: "string", enum: ["phone_dial"] },
+              target: {
+                type: "object",
+                additionalProperties: false,
+                required: ["kind"],
+                properties: {
+                  kind: { type: "string", enum: ["number", "contact"] },
+                  number: { type: "string" },
+                  query: { type: "string" },
+                },
+              },
             },
           },
           ...clockSchemas,
@@ -945,6 +969,27 @@ export const proposeDeviceAction: Action = {
     }
     if (
       request.state === "done" &&
+      isPhoneDial(payload.operation) &&
+      receipt?.outcome === "applied" &&
+      receipt.result !== undefined
+    ) {
+      const result = validatePhoneDialResult(payload.operation, receipt.result);
+      return {
+        success: true,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        effectReceipts: deviceActionEffectReceipts(outcome),
+        text: `Retrieved the historical dial receipt without dialing again. ${phoneDialResultText(result)}`,
+        data: {
+          proposalId: request.id,
+          state: request.state,
+          executed: false,
+          result,
+        },
+      };
+    }
+    if (
+      request.state === "done" &&
       isSmsSend(payload.operation) &&
       receipt?.outcome === "applied" &&
       typeof receipt.operationId === "string"
@@ -1190,6 +1235,7 @@ export function deviceActionForCapabilities(
             (capabilities === undefined
               ? type !== "camera_capture_photo" &&
                 type !== "sms_send" &&
+                type !== "phone_dial" &&
                 type !== "clock_alarm" &&
                 type !== "notes_query" &&
                 !isForegroundReviewType(type)

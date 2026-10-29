@@ -1054,6 +1054,112 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       }
     }
     {
+      // Reviewed dial handoff: capability-gated, exact operation, and a typed
+      // result that never claims a placed call. The receipt is synthetic.
+      const service = new DeviceActionService(runtimeState.runtime);
+      const dialCaps = "phone.dial.v1";
+      const c = { ...credentials, capabilities: [dialCaps] };
+      const dialRequest = (path: string, body?: unknown) =>
+        request(path, body, "a", deviceKey, dialCaps);
+      const operation = {
+        type: "phone_dial",
+        target: { kind: "number", number: "+15555550123" },
+      };
+      const byContact = {
+        type: "phone_dial",
+        target: { kind: "contact", query: "Ada" },
+      };
+      await expect(
+        service.propose(credentials, operation, "dial-no-cap", "fixture"),
+      ).rejects.toThrow();
+      // A contact target also needs the on-device lookup capability.
+      await expect(
+        service.propose(c, byContact, "dial-contact-no-lookup", "fixture"),
+      ).rejects.toThrow();
+      for (const bad of [
+        { ...operation, target: { kind: "number", number: "*#06#" } },
+        { ...operation, target: { kind: "contact", query: "" } },
+        { ...operation, place: true },
+      ])
+        await expect(
+          service.propose(c, bad, "dial-invalid", "fixture"),
+        ).rejects.toThrow();
+      const proposal = await service.propose(
+        c,
+        operation,
+        "dial-ok",
+        "fixture",
+      );
+      const item = (await dialRequest("/proposals")).body.proposals.find(
+        (p: any) => p.id === proposal.id,
+      );
+      expect(
+        (
+          await dialRequest(`/proposals/${item.id}/decision`, {
+            digest: item.digest,
+            decision: "approve",
+          })
+        ).status,
+      ).toBe(200);
+      const claim = await dialRequest(`/proposals/${item.id}/claim`, {
+        digest: item.digest,
+      });
+      expect(claim.status).toBe(200);
+      const post = (receipt: unknown) =>
+        dialRequest(`/proposals/${item.id}/receipt`, {
+          digest: item.digest,
+          attemptId: claim.body.proposal.execution.attemptId,
+          receipt,
+        });
+      const result = {
+        kind: "phone-dial",
+        status: "handed-off",
+        handler: "com.android.dialer",
+        contact: false,
+      };
+      for (const changed of [
+        { ...result, status: "placed" },
+        { ...result, contact: true },
+        { ...result, durationSeconds: 1 },
+      ])
+        expect(
+          (
+            await post({
+              outcome: "applied",
+              operationId: item.id,
+              result: changed,
+            })
+          ).status,
+        ).toBe(409);
+      expect(
+        (
+          await post({
+            outcome: "failed",
+            operationId: item.id,
+            result,
+          })
+        ).status,
+      ).toBe(409);
+      const recorded = await post({
+        outcome: "applied",
+        operationId: item.id,
+        result,
+      });
+      expect(recorded.status).toBe(200);
+      expect(recorded.body.proposal.state).toBe("done");
+      const replayed = await service.proposeWithOutcome(
+        c,
+        operation,
+        "dial-ok",
+        "fixture",
+      );
+      const receipts = activeCommittedEffectReceipts(
+        deviceActionEffectReceipts(replayed),
+      );
+      expect(receipts).toHaveLength(1);
+      expect(receipts[0].operation).toBe("device.phone.dial_handoff");
+    }
+    {
       // Real authenticated HTTP, durable SQL claims and immutable typed SMS receipts.
       // The transport receipt is synthetic; no SIM operation or delivery is asserted.
       const service = new DeviceActionService(runtimeState.runtime);
@@ -1277,6 +1383,8 @@ test("device approval REST lifecycle survives restart and never duplicates claim
           "clock.handoff.v2",
           "clock.alarms.v1",
           "sms.send.v1",
+          "phone.dial.v1",
+          "contacts.lookup.v1",
           "notes.search.v1",
           "calendar.availability-read.v1",
           "device.named-target.v1",

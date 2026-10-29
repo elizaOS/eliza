@@ -44,6 +44,11 @@ import {
   validateReminderCreate,
 } from "./reminder-create-contract.ts";
 import {
+  PHONE_DIAL_CAPABILITY,
+  type PhoneDialOperation,
+  validatePhoneDial,
+} from "./phone-dial-contract.ts";
+import {
   SMS_SEND_CAPABILITY,
   type SmsSendOperation,
   validateSmsSend,
@@ -84,6 +89,7 @@ export const DEVICE_VIEWS = [
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
+  | PhoneDialOperation
   | ReminderCreateOperation
   | ClockOperation
   | MapsOperation
@@ -108,6 +114,9 @@ export function deviceOperationSupportedByCapabilities(
     return capabilities?.includes(CAMERA_CAPTURE_CAPABILITY) === true;
   if (type === "sms_send")
     return capabilities?.includes(SMS_SEND_CAPABILITY) === true;
+  // A contact target also needs contacts.lookup.v1 (phoneDialCapabilityAvailable).
+  if (type === "phone_dial")
+    return capabilities?.includes(PHONE_DIAL_CAPABILITY) === true;
   if (type === "calendar_create_local")
     return capabilities?.includes(CALENDAR_CREATE_CAPABILITY) === true;
   if (type === "calendar_read_next")
@@ -265,6 +274,14 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
         return validateSmsSend(p);
       } catch {
         throw new DeviceActionError("Invalid reviewed SMS operation");
+      }
+    case "phone_dial":
+      try {
+        return validatePhoneDial(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid dial operation. Use target {kind: number, number: digits with optional leading +} or {kind: contact, query: the contact name}.",
+        );
       }
     case "post_notification":
       exactKeys(p, ["type", "title", "body"]);

@@ -76,6 +76,12 @@
       "import": "./dist/sms-send.js",
       "default": "./dist/sms-send.js"
     },
+    "./phone-dial": {
+      "eliza-source": "./src/phone-dial.ts",
+      "types": "./dist/phone-dial.d.ts",
+      "import": "./dist/phone-dial.js",
+      "default": "./dist/phone-dial.js"
+    },
     "./mms-send": {
       "eliza-source": "./src/mms-send.ts",
       "types": "./dist/mms-send.d.ts",
