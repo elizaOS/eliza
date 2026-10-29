@@ -528,8 +528,8 @@ describe("opt-in current browser request policy", () => {
       type: "browser_navigate",
       url: "https://example.com/path?q=1#x",
     });
-    let messageId = "message",
-      proposalId = "proposal",
+    let messageId: string | undefined = "message";
+    let proposalId = "proposal",
       proposalDigest = digest;
     const request = async (path: string, body: unknown, s: AbortSignal) => {
       const response = await fixture.request(path, body, s);
@@ -570,25 +570,18 @@ describe("opt-in current browser request policy", () => {
       actions,
       entries,
       effects: () => effects,
-      bind(message: string, id = "proposal", nextDigest = digest) {
+      bind(message: string | undefined, id = "proposal", nextDigest = digest) {
         messageId = message;
         proposalId = id;
         proposalDigest = nextDigest;
       },
     };
   }
-  it("blocks missing, ungrounded and stale authority locally with validated provenance", async () => {
+  it("blocks mismatched destinations for the same current request with validated provenance", async () => {
     const f = browserFixture();
     for (const current of [
-      undefined,
       proof("read my calendar"),
       proof("open example.com"),
-      {
-        ...proof(),
-        current() {
-          throw Error("retired");
-        },
-      },
     ]) {
       expect(
         await f.actions.pendingReview(context, signal(), current),
@@ -604,6 +597,96 @@ describe("opt-in current browser request policy", () => {
     expect(f.server.claims).toBe(0);
     expect(f.effects()).toBe(0);
   });
+  it("keeps missing-proof, unbound and old browser proposals manual-only", async () => {
+    for (const kind of ["missing-proof", "unbound", "old"] as const) {
+      const f = browserFixture();
+      if (kind === "unbound") f.bind(undefined);
+      if (kind === "old") f.bind("old-message");
+      const current = kind === "missing-proof" ? undefined : proof();
+      expect(
+        await f.actions.pendingReview(context, signal(), current),
+      ).toMatchObject([
+        { proposalId: "proposal", proposal: { id: "proposal" } },
+      ]);
+      expect(
+        await f.actions.performRequested(
+          "message",
+          context,
+          signal(),
+          async () => true,
+          undefined,
+          current,
+        ),
+      ).toEqual([]);
+      expect(f.effects()).toBe(0);
+      expect(f.server.state).toBe("pending");
+      expect(
+        await f.actions.approve("proposal", context, signal()),
+      ).toMatchObject({ status: "succeeded" });
+      expect(f.effects()).toBe(1);
+    }
+  });
+  it("throws for a stale supplied proof before listing", async () => {
+    const fixture = fixtureServer(note);
+    const { journal } = memoryJournal();
+    let requests = 0;
+    const actions = coordinator(
+      async (...args) => {
+        requests++;
+        return fixture.request(...args);
+      },
+      journal,
+      async () => ({ status: "succeeded", summary: "Saved" }),
+      true,
+    );
+    await expect(
+      actions.pendingReview(context, signal(), {
+        ...proof(),
+        current() {
+          throw Error("retired");
+        },
+      }),
+    ).rejects.toThrow("retired");
+    expect(requests).toBe(0);
+  });
+  for (const invalidation of ["request", "session"] as const) {
+    it(`throws when ${invalidation} changes during listing`, async () => {
+      const fixture = fixtureServer(note);
+      const { journal } = memoryJournal();
+      let active = true;
+      const previous = session.sessionId;
+      const current = {
+        ...proof(),
+        current() {
+          if (!active) throw Error("retired");
+        },
+      };
+      const actions = coordinator(
+        async (...args) => {
+          const response = await fixture.request(...args);
+          if (invalidation === "request") active = false;
+          else session.sessionId = "rebound-during-list";
+          return response;
+        },
+        journal,
+        async () => ({ status: "succeeded", summary: "Saved" }),
+        true,
+      );
+      try {
+        await expect(
+          actions.pendingReview(context, signal(), current),
+        ).rejects.toThrow(
+          invalidation === "request"
+            ? "retired"
+            : "current device action request changed",
+        );
+      } finally {
+        session.sessionId = previous;
+      }
+      expect(fixture.server.claims).toBe(0);
+      expect(fixture.server.state).toBe("pending");
+    });
+  }
   it("does not attach unvalidated IDs to malformed sibling notices", async () => {
     const fixture = fixtureServer(note);
     const { journal } = memoryJournal();
