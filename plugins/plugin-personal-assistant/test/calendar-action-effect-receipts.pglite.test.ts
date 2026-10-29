@@ -1149,6 +1149,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     "ordinary",
     "spring-DST",
     "fall-DST",
+    "fall-fold-ambiguous",
     "duplicate",
     "sensitive",
     "invalid-revision",
@@ -1160,12 +1161,13 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
   ])(
     "serializes and admits the selected-day clock request through the registered store (%s)",
     async (mode) => {
-      const original = "Move my 3pm to 4",
+      const original = mode === "fall-fold-ambiguous" ? "Move my 1:30am to 4" : "Move my 3pm to 4",
         zone = "America/Los_Angeles";
       const index = [
         "ordinary",
         "spring-DST",
         "fall-DST",
+    "fall-fold-ambiguous",
         "duplicate",
         "sensitive",
         "invalid-revision",
@@ -1180,10 +1182,10 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       const date =
         mode === "spring-DST"
           ? "2026-03-08"
-          : mode === "fall-DST"
+          : mode === "fall-DST" || mode === "fall-fold-ambiguous"
             ? "2026-11-01"
             : "2026-10-29";
-      const start =
+      const start = mode === "fall-fold-ambiguous" ? "2026-11-01T08:30:00Z" :
         mode === "spring-DST"
           ? "2026-03-08T22:00:00Z"
           : mode === "fall-DST"
@@ -1219,13 +1221,13 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         );
         const target = created.event;
         if (!target) throw Error("Missing Calendar fixture");
-        if (mode === "duplicate" || mode === "wrong-planner-name")
+        if (mode === "duplicate" || mode === "wrong-planner-name" || mode === "fall-fold-ambiguous")
           await calendar.createCalendarEventMutation(
             new URL("http://internal.local/api/calendar"),
             {
               title: "Other source clock",
-              startAt: "2026-10-29T22:00:00Z",
-              endAt: "2026-10-29T22:30:00Z",
+              startAt: mode === "fall-fold-ambiguous" ? "2026-11-01T09:30:00Z" : "2026-10-29T22:00:00Z",
+              endAt: mode === "fall-fold-ambiguous" ? "2026-11-01T10:00:00Z" : "2026-10-29T22:30:00Z",
               timeZone: zone,
               grantId: ELIZA_CALENDAR_GRANT_ID,
               calendarId: ELIZA_CALENDAR_ID,
@@ -1375,7 +1377,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
               start: "2026-10-29T19:00:00",
               end: "2026-10-29T19:30:00",
               date,
-              query: mode === "wrong-planner-name" ? target.title : "3pm",
+              query: mode === "wrong-planner-name" ? target.title : mode === "fall-fold-ambiguous" ? "1:30am" : "3pm",
               durationMinutes: 99,
             },
           }),

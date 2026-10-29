@@ -3018,8 +3018,7 @@ export function observedCalendarDayWindow(
   if (
     !context ||
     typeof context !== "object" ||
-    !Object.hasOwn(context, "calendarDay") ||
-    Reflect.get(context, "calendarDay") === undefined
+    !Object.hasOwn(context, "calendarDay")
   )
     return;
   let observation: ReturnType<typeof parseClientTurnObservation>;
