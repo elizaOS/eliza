@@ -35,6 +35,7 @@ import {
   SUBSCRIPTION_FUNDING_LOGICAL_OPERATION_KEY_PATTERN,
   type SubscriptionFundingOperation,
 } from "./subscription-funding-policy";
+import { withSubscriptionPaymentGrace } from "./subscription-payment-grace";
 
 export const SUBSCRIPTION_FUNDING_INVALID_AMOUNT = "SUBSCRIPTION_FUNDING_INVALID_AMOUNT";
 export const SUBSCRIPTION_FUNDING_INSUFFICIENT = "SUBSCRIPTION_FUNDING_INSUFFICIENT";
@@ -59,8 +60,9 @@ export type ReserveSubscriptionFundingInput = ReserveSubscriptionFundingBaseInpu
         /**
          * Declares that the reservation funds usage accruing uniformly from
          * this instant until `expiresAt`. Allowance then funds at most the
-         * share of that window before its period ends; purchased credits fund
-         * the remainder instead of clipping the caller's window to the period.
+         * share of that window before its period end plus the shared payment
+         * grace; purchased credits fund the remainder instead of clipping the
+         * caller's window to the period.
          */
         timeMeteredFrom?: Date;
       }
@@ -275,8 +277,8 @@ function exactCreditWriterAmount(amount: CanonicalMoney, field: string): number 
 
 /**
  * Caps a time-metered window's allowance share to the part of the window that
- * falls inside the allowance period, rounding down so allowance never funds
- * usage after its period ends.
+ * falls inside the passed allowance expiry, rounding down so allowance never
+ * funds usage past that boundary. Callers pass period end plus payment grace.
  */
 export function timeMeteredAllowanceCap(params: {
   requestedAmount: CanonicalMoney;
@@ -478,7 +480,10 @@ export class SubscriptionFundingService {
         requestedAmount,
         windowStart: input.timeMeteredFrom,
         windowEnd: expiresAt,
-        allowanceExpiresAt: period.expires_at,
+        // Same payment grace the org quota and account snapshot already apply
+        // at period end, so a short funding window that straddles renewal can
+        // still fund fully from allowance instead of stopping early.
+        allowanceExpiresAt: withSubscriptionPaymentGrace(period.expires_at),
       });
       if (moneyToMicros(cap, "allowanceCap") < moneyToMicros(availableAllowance, "available")) {
         availableAllowance = cap;

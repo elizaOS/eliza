@@ -3,7 +3,8 @@
  * PGlite: caller deadlines persist apart from period expiry, stranded holds are
  * released to their exact sources, ended and terminal periods are retired, a
  * resubscription can be granted over a canceled bucket, windows that straddle a
- * period end fund the remainder from credits, and ex-subscribers stay on cash.
+ * period end fund fully from allowance under payment grace, and ex-subscribers
+ * stay on cash.
  * Policy caches are exercised on the explicit in-memory test cache backend.
  */
 
@@ -311,13 +312,13 @@ describe("subscription allowance lifecycle", () => {
     ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_REPLAY_CONFLICT });
   }, 60_000);
 
-  test("a time-metered window straddling the period end funds the remainder from credits", async () => {
+  test("a time-metered window straddling the period end funds fully from allowance under payment grace", async () => {
     const now = await databaseNow();
     const { org } = await seedSubscriber({
       periodStart: new Date(now.getTime() - 24 * HOUR),
       periodEnd: new Date(now.getTime() + HOUR / 2),
       allowance: "25.000000",
-      credits: "5.000000",
+      credits: "0.000000",
     });
     const reserved = await helpers.writeTransaction((tx) =>
       funding.subscriptionFundingService.reserveInTransaction(tx, {
@@ -330,14 +331,19 @@ describe("subscription allowance lifecycle", () => {
         timeMeteredFrom: now,
       }),
     );
-    // Only a quarter of the two-hour window lies inside the allowance period.
+    // Payment grace covers the full two-hour window past period end, so
+    // allowance funds the whole request at zero purchased credits.
     expect(reserved.reservation.expires_at.getTime()).toBe(now.getTime() + 2 * HOUR);
     const state = await readState(org);
     expect(state.allocations).toEqual([
-      expect.objectContaining({ source: "allowance", reserved_amount: "0.500000" }),
-      expect.objectContaining({ source: "purchased_credit", reserved_amount: "1.500000" }),
+      expect.objectContaining({ source: "allowance", reserved_amount: "2.000000" }),
     ]);
-    expect(state.balance).toBe("3.500000");
+    expect(state.balance).toBe("0.000000");
+    expect(state.periods[0]).toMatchObject({
+      available_amount: "23.000000",
+      reserved_amount: "2.000000",
+    });
+    // Pure cap math is unchanged: callers pass the grace-extended expiry.
     expect(
       funding.timeMeteredAllowanceCap({
         requestedAmount: "1.000000" as never,
