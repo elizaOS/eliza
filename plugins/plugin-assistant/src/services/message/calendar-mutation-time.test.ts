@@ -258,12 +258,23 @@ function fixture(rewrite = correct) {
     receipt,
     message,
     calls: () => calls,
-    recover: (reply: string) =>
+    recover: (reply: string, copies = 1) =>
       resolvePlannedReplyEgress({
         runtime,
         message,
         reply,
         actionResults: [result],
+        ...(copies > 1
+          ? {
+              recovery: {
+                context: request,
+                actionResults: [structuredClone(result)],
+                pendingToolCalls: [],
+                evaluatorOutputs: [],
+                ownerExclusiveDisclosureUsed: false,
+              },
+            }
+          : {}),
       }),
   };
 }
@@ -292,11 +303,36 @@ it("wrong confirmed time uses existing recovery, keeps the successful receipt, a
 it("a recovery that repeats the wrong clock cannot ship", async () => {
   const f = fixture(wrong);
   const before = structuredClone(f.result);
-  await expect(f.recover(wrong)).rejects.toMatchObject({
+  await expect(f.recover(wrong, 2)).rejects.toMatchObject({
     code: "REPLY_GROUNDING_FAILED",
   });
   expect(f.result).toEqual(before);
   expect(f.result.success).toBe(true);
+});
+
+it("identical captured/current event copies cannot bypass the range guard", async () => {
+  const f = fixture();
+  expect(
+    calendarMutationTimeIsUngrounded({
+      reply: wrong,
+      actionResults: [f.result, structuredClone(f.result)],
+      agentId: f.runtime.agentId,
+    }),
+  ).toBe(true);
+  expect((await f.recover(wrong, 2)).text).toBe(correct);
+  expect(f.calls()).toBe(2);
+  const other = evidence(
+    f.runtime.agentId,
+    "2026-10-30T02:00:00.000Z",
+    "2026-10-30T03:00:00.000Z",
+  ).result;
+  expect(
+    calendarMutationTimeIsUngrounded({
+      reply: wrong,
+      actionResults: [f.result, other],
+      agentId: f.runtime.agentId,
+    }),
+  ).toBe(false);
 });
 
 it("keeps the current-time observation guard independent of Calendar event times", () => {
