@@ -202,7 +202,7 @@ public abstract class NotificationsHostPlugin extends Plugin {
   channels.retain(current);out.put("channels",values);out.put("scope",scope());call.resolve(out);
  }catch(RuntimeException error){call.reject("Notification delivery settings could not be read");}}
  @PluginMethod public void openChannelSettings(PluginCall call){try{
-  String key=channels.key(call.getString("id"));
+  foreground();String key=channels.key(call.getString("id"));
   if(key==null||manager().getNotificationChannel(key)==null){call.reject("This notification channel is no longer available");return;}
   getActivity().startActivity(new Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getContext().getPackageName()).putExtra(Settings.EXTRA_CHANNEL_ID,key));
   JSObject out=new JSObject();out.put("status","opened");call.resolve(out);

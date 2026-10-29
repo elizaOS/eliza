@@ -101,3 +101,27 @@ test("host plugin identifiers and bounded notice worker", (t) => {
   });
   assert.match(output, /^\d+ assertions passed/);
 });
+
+test("every host plugin method that launches an activity or intent first requires the focused, unlocked host", () => {
+  const source = fs.readFileSync(
+    path.join(
+      plugin,
+      "android/src/capacitor/java/ai/eliza/plugins/notifications/NotificationsHostPlugin.java",
+    ),
+    "utf8",
+  );
+  const methods = source.split("@PluginMethod").slice(1);
+  const launch = /startActivity\(|contentIntent\.send\(/;
+  const launching = methods.filter((body) => launch.test(body));
+  // openChannelSettings, openNotificationAccess and open.
+  assert.equal(launching.length, 3);
+  for (const body of launching) {
+    const name = /void (\w+)\(/.exec(body)?.[1];
+    const head = body.slice(0, body.search(launch));
+    assert.match(
+      head,
+      /foreground\(\)/,
+      `${name} must call foreground() before launching`,
+    );
+  }
+});
