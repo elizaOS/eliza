@@ -112,6 +112,10 @@ function buildIntegrationEnv({ context, baseUrl, databaseUrl }) {
       process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
     CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
     INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
+    // The suite mints eliza-app sessions in process; the Worker must verify them
+    // with the same key.
+    ELIZA_APP_JWT_SECRET:
+      process.env.ELIZA_APP_JWT_SECRET || "test-eliza-app-jwt-secret",
     // Wallet-signature authentication uses an atomic consume-once nonce. The
     // isolated local Worker lane uses the repository's explicit test backend.
     MOCK_REDIS: process.env.MOCK_REDIS || "1",

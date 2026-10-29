@@ -73,6 +73,10 @@ const e2eEnv = {
     process.env.PAYOUT_STATUS_SKIP_LIVE_BALANCE || "1",
   CRON_SECRET: process.env.CRON_SECRET || "test-cron-secret",
   INTERNAL_SECRET: process.env.INTERNAL_SECRET || "test-internal-secret",
+  // The suite mints eliza-app sessions in process; the Worker must verify them
+  // with the same key.
+  ELIZA_APP_JWT_SECRET:
+    process.env.ELIZA_APP_JWT_SECRET || "test-eliza-app-jwt-secret",
   // Force the in-memory KMS adapter for e2e. wrangler.toml's [vars] block
   // hard-codes NODE_ENV=production which would otherwise win over the
   // workflow-level NODE_ENV=test and cause routes that touch encrypted
