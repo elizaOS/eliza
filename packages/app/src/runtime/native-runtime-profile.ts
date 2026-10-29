@@ -20,6 +20,8 @@
  * on: an occurrence that passed while the agent was not running is recorded
  * once as missed, never replayed (the shared policy in `@elizaos/core`).
  */
+
+import type { AgentHostBridge } from "@elizaos/agent/runtime/host-bridge";
 import type { ServiceRouteConfig } from "@elizaos/contracts";
 import { MISSED_SCHEDULED_OCCURRENCES_SETTING } from "@elizaos/core";
 import { buildElizaCloudServiceRoute } from "@elizaos/host/protocol";
@@ -134,19 +136,54 @@ export function nativeRuntimeRoutingPreferences(
   };
 }
 
-/** Product input from the host's admitted resources: its Cloud deployment only. */
+/** Product input from the host's admitted resources, independent of sign-in. */
 export interface NativeCloudRuntimeDeclaration {
   readonly apiBaseUrl: string;
+  readonly productCharacter?: AgentHostBridge["productCharacter"];
 }
 
 export function parseNativeCloudRuntimeDeclaration(
   value: unknown,
 ): NativeCloudRuntimeDeclaration {
-  if (!value || typeof value !== "object" || Array.isArray(value))
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !("apiBaseUrl" in value)
+  )
     throw new Error("Native Cloud runtime declaration is invalid");
-  const { apiBaseUrl, ...rest } = value as Record<string, unknown>;
-  if (Object.keys(rest).length > 0 || typeof apiBaseUrl !== "string")
+  const { apiBaseUrl } = value;
+  if (
+    Object.keys(value).some(
+      (key) => key !== "apiBaseUrl" && key !== "productCharacter",
+    ) ||
+    typeof apiBaseUrl !== "string"
+  )
     throw new Error("Native Cloud runtime declaration is invalid");
+  let productCharacter: AgentHostBridge["productCharacter"];
+  if ("productCharacter" in value && value.productCharacter !== undefined) {
+    const character = value.productCharacter;
+    if (
+      !character ||
+      typeof character !== "object" ||
+      Array.isArray(character) ||
+      !("name" in character) ||
+      typeof character.name !== "string" ||
+      !character.name.trim() ||
+      Object.keys(character).some((key) => key !== "name" && key !== "bio")
+    )
+      throw new Error("Native Cloud runtime declaration is invalid");
+    const bio = "bio" in character ? character.bio : undefined;
+    if (
+      bio !== undefined &&
+      (!Array.isArray(bio) || !bio.every((line) => typeof line === "string"))
+    )
+      throw new Error("Native Cloud runtime declaration is invalid");
+    productCharacter = Object.freeze({
+      name: character.name.trim(),
+      ...(bio !== undefined ? { bio: Object.freeze([...bio]) } : {}),
+    });
+  }
   let url: URL;
   try {
     url = new URL(apiBaseUrl);
@@ -164,7 +201,10 @@ export function parseNativeCloudRuntimeDeclaration(
     url.href !== `${url.origin}/api/v1`
   )
     throw new Error("Native Cloud runtime declaration is invalid");
-  return Object.freeze({ apiBaseUrl: url.href });
+  return Object.freeze({
+    apiBaseUrl: url.href,
+    ...(productCharacter ? { productCharacter } : {}),
+  });
 }
 
 type ElizaConfigLike = {

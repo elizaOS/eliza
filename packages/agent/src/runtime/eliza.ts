@@ -229,6 +229,7 @@ import {
   STATIC_ELIZA_PLUGIN_LOADERS,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
+import { prepareProductCharacterConfig } from "./prepare-product-character-config.ts";
 import {
   type AgentProcessLifecycle,
   createAgentProcessLifecycle,
@@ -4407,6 +4408,16 @@ export async function startEliza(
       "./canonical-file-boot.ts"
     );
     applyCanonicalFileBootToConfig(config);
+    const productCharacter = getAgentHostBridge().productCharacter;
+    // Explicit/provisioned characters retain their existing precedence. Product
+    // branding applies only to the normally selected canonical local identity.
+    if (
+      productCharacter &&
+      !sandboxRouteAgentId &&
+      !process.env.ELIZA_AGENT_CHARACTER_JSON?.trim() &&
+      !process.env.ELIZA_CHARACTER_PATH?.trim()
+    )
+      config = prepareProductCharacterConfig(config, productCharacter);
   }
   const character = restoredGeneration
     ? restoredGeneration.character()
