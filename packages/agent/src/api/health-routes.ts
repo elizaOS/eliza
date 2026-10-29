@@ -16,6 +16,7 @@
  * by `/api/status`, `/api/health`, and the WS `status` broadcast.
  */
 import type http from "node:http";
+import { CLIENT_TURN_OBSERVATION_SUPPORT } from "@elizaos/contracts/client-turn-observation";
 import {
   type AgentRuntime,
   getSwarmCoordinatorService,
@@ -778,6 +779,8 @@ export async function handleHealthRoutes(
       hasApiKey: hasCloudApiKey,
     };
     const payload = {
+      // Schema support only; action admission and permissions are unchanged.
+      clientTurnObservationSupport: CLIENT_TURN_OBSERVATION_SUPPORT,
       state: state.agentState,
       agentName: state.agentName,
       model,

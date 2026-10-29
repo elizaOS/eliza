@@ -2,7 +2,7 @@
  * Typed current-turn client observation, carried once per message as
  * `content.metadata.clientDevice.context`.
  *
- * A renderer reports which screen is visible and which record, if any, is
+ * A renderer reports which screen and optional Calendar day are visible and which record, if any, is
  * selected, using opaque identifiers only. The observation is untrusted data
  * for the message it accompanies: it carries no record contents, it is not an
  * instruction, and it grants no device access. Device-action admission,
@@ -32,6 +32,23 @@ export interface ClientSelectedObject {
   readonly timingVersion?: 2;
 }
 
+/** The visible civil day is a lookup bound, never record or write authority. */
+export interface ClientCalendarDayObservation {
+  readonly date: string;
+  readonly timeZone: string;
+}
+
+/** Data-format support, never a device or Calendar permission. */
+export interface ClientTurnObservationSupport {
+  readonly version: 1;
+  readonly optionalFields: readonly "calendarDay"[];
+}
+export const CLIENT_TURN_OBSERVATION_SUPPORT: ClientTurnObservationSupport =
+  Object.freeze({
+    version: 1,
+    optionalFields: Object.freeze(["calendarDay"] as const),
+  });
+
 export interface ClientTurnObservation {
   /** Visible view identifier reported by the renderer. */
   readonly view: string;
@@ -42,6 +59,7 @@ export interface ClientTurnObservation {
   /** IANA time zone of the device clock. */
   readonly timeZone?: string;
   readonly selectedObject?: ClientSelectedObject;
+  readonly calendarDay?: ClientCalendarDayObservation;
 }
 
 const NAME = /^[a-z][a-z0-9-]{0,63}$/;
@@ -58,7 +76,10 @@ const OBSERVATION_KEYS = new Set([
   "sensitive",
   "timeZone",
   "selectedObject",
+  "calendarDay",
 ]);
+const CALENDAR_DAY_KEYS = new Set(["date", "timeZone"]);
+const SUPPORT_KEYS = new Set(["version", "optionalFields"]);
 const SELECTION_KEYS = new Set([
   "kind",
   "id",
@@ -118,6 +139,51 @@ export function isClientTimeZone(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+/** Missing or malformed peer declarations keep optional fields disabled. */
+export function readClientTurnObservationSupport(
+  value: unknown,
+): ClientTurnObservationSupport | undefined {
+  try {
+    const input = plainRecord(value, "Client observation support");
+    onlyKeys(input, SUPPORT_KEYS, "Client observation support");
+    if (
+      input.version !== 1 ||
+      !Array.isArray(input.optionalFields) ||
+      input.optionalFields.length > 1 ||
+      !input.optionalFields.every((field) => field === "calendarDay")
+    )
+      return;
+    return input.optionalFields.length
+      ? CLIENT_TURN_OBSERVATION_SUPPORT
+      : Object.freeze({ version: 1, optionalFields: Object.freeze([]) });
+  } catch {
+    return;
+  }
+}
+
+/** Browser-safe validation shared by the renderer and current-turn reader. */
+export function parseClientCalendarDayObservation(
+  value: unknown,
+): ClientCalendarDayObservation {
+  const input = plainRecord(value, "Calendar day");
+  onlyKeys(input, CALENDAR_DAY_KEYS, "Calendar day");
+  const date = matching(input.date, /^\d{4}-\d{2}-\d{2}$/, "Calendar day date");
+  const [year, month, day] = date.split("-").map(Number);
+  const civil = new Date(Date.UTC(year, month - 1, day));
+  if (
+    year < 1970 ||
+    civil.getUTCFullYear() !== year ||
+    civil.getUTCMonth() !== month - 1 ||
+    civil.getUTCDate() !== day
+  )
+    throw new ClientTurnObservationError(
+      "Calendar day must be a real civil date",
+    );
+  if (!isClientTimeZone(input.timeZone))
+    throw new ClientTurnObservationError("Calendar day time zone is invalid");
+  return Object.freeze({ date, timeZone: input.timeZone });
 }
 
 function selectedObject(value: unknown): ClientSelectedObject {
@@ -198,6 +264,19 @@ export function parseClientTurnObservation(
     input.selectedObject === undefined
       ? undefined
       : selectedObject(input.selectedObject);
+  const calendarDay =
+    input.calendarDay === undefined
+      ? undefined
+      : parseClientCalendarDayObservation(input.calendarDay);
+  if (
+    calendarDay &&
+    (view !== "calendar" ||
+      input.sensitive !== false ||
+      input.timeZone !== calendarDay.timeZone)
+  )
+    throw new ClientTurnObservationError(
+      "Calendar day requires the current non-sensitive Calendar and matching time zone",
+    );
   const observation: ClientTurnObservation = Object.freeze({
     view,
     revision: input.revision,
@@ -206,6 +285,7 @@ export function parseClientTurnObservation(
       ? {}
       : { timeZone: input.timeZone as string }),
     ...(selection ? { selectedObject: selection } : {}),
+    ...(calendarDay ? { calendarDay } : {}),
   });
   if (
     new TextEncoder().encode(JSON.stringify(observation)).byteLength >
