@@ -777,8 +777,8 @@ describe("opt-in current browser request policy", () => {
       },
     };
     await f.actions.pendingReview(context, signal(), current);
-    expect(
-      await f.actions.performRequested(
+    await expect(
+      f.actions.performRequested(
         "message",
         context,
         signal(),
@@ -789,9 +789,45 @@ describe("opt-in current browser request policy", () => {
         undefined,
         current,
       ),
-    ).toEqual([]);
+    ).rejects.toThrow("retired");
     expect(f.server.state).toBe("pending");
     expect(f.effects()).toBe(0);
+  });
+  it("throws for already aborted or retired matching automatic requests", async () => {
+    const f = browserFixture();
+    let active = true;
+    const current = {
+      ...proof(),
+      current() {
+        if (!active) throw Error("retired matching request");
+      },
+    };
+    await f.actions.pendingReview(context, signal(), current);
+    const aborted = new AbortController();
+    aborted.abort();
+    await expect(
+      f.actions.performRequested(
+        "message",
+        context,
+        aborted.signal,
+        async () => true,
+        undefined,
+        current,
+      ),
+    ).rejects.toMatchObject({ name: "AbortError" });
+    active = false;
+    await expect(
+      f.actions.performRequested(
+        "message",
+        context,
+        signal(),
+        async () => true,
+        undefined,
+        current,
+      ),
+    ).rejects.toThrow("retired matching request");
+    expect(f.effects()).toBe(0);
+    expect(f.server.state).toBe("pending");
   });
   it("preserves the legacy five-argument automatic browser caller", async () => {
     const f = browserFixture(false);
