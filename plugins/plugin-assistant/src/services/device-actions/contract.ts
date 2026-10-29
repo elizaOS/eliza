@@ -36,6 +36,11 @@ import {
   validateNotesOperation,
 } from "./notes-contract.ts";
 import {
+  PHONE_DIAL_CAPABILITY,
+  type PhoneDialOperation,
+  validatePhoneDial,
+} from "./phone-dial-contract.ts";
+import {
   type ReminderOperation,
   validateReminderOperation,
 } from "./reminder-contract.ts";
@@ -43,11 +48,6 @@ import {
   type ReminderCreateOperation,
   validateReminderCreate,
 } from "./reminder-create-contract.ts";
-import {
-  PHONE_DIAL_CAPABILITY,
-  type PhoneDialOperation,
-  validatePhoneDial,
-} from "./phone-dial-contract.ts";
 import {
   SMS_SEND_CAPABILITY,
   type SmsSendOperation,

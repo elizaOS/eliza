@@ -67,6 +67,7 @@ function exact(value: Record<string, unknown>, keys: string[], what: string) {
 }
 // C0/C1 controls, bidi overrides and lone surrogates never reach a review or a provider query.
 const UNSAFE_TEXT =
+  // biome-ignore lint/suspicious/noControlCharactersInRegex: the pattern exists to reject control characters.
   /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]|[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u;
 
 /** The contact search text a lookup may use: trimmed, 1..128 characters, no controls. */

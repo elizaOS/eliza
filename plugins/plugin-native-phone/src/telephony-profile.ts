@@ -87,8 +87,9 @@ export async function loadProfileRecents(
     status = await client.requestAccess("callLog");
   if (status.permissions.callLog !== "granted")
     return { access: "needed", voiceCapable };
+  // An out-of-range limit is refused by recentCalls, never clamped.
   const calls = await client.recentCalls(
-    Math.min(TELEPHONY_CALL_LOG_MAX, Math.max(1, options.limit ?? 50)),
+    options.limit ?? TELEPHONY_CALL_LOG_MAX,
   );
   return { access: "granted", voiceCapable, calls: calls.map(profileEntry) };
 }

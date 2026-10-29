@@ -44,6 +44,11 @@ import { isMapsOperation, validateMapsResult } from "./maps-contract.ts";
 import { isNotesOperation, validateNotesResult } from "./notes-contract.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import {
+  isPhoneDial,
+  phoneDialResultText,
+  validatePhoneDialResult,
+} from "./phone-dial-contract.ts";
+import {
   isReminderOperation,
   validateReminderResult,
 } from "./reminder-contract.ts";
@@ -63,11 +68,6 @@ import {
   requestLocalNotesUpdate,
   requestOriginalNativeCalendarAvailability,
 } from "./service.ts";
-import {
-  isPhoneDial,
-  phoneDialResultText,
-  validatePhoneDialResult,
-} from "./phone-dial-contract.ts";
 import {
   isSmsSend,
   smsBindingText,

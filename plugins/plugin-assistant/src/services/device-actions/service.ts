@@ -110,6 +110,14 @@ import { originalRequestsNotesDeletion } from "./notes-delete-intent.ts";
 import { validateNotesQueryResult } from "./notes-query-result.ts";
 import { notesUpdateAfterReadPlan } from "./notes-update-continuation.ts";
 import {
+  CONTACT_LOOKUP_CAPABILITY,
+  isPhoneDial,
+  PHONE_DIAL_CAPABILITY,
+  phoneDialCapabilityAvailable,
+  phoneDialReceiptOutcome,
+  validatePhoneDialResult,
+} from "./phone-dial-contract.ts";
+import {
   assertDeviceReadCompletionCurrent,
   bindDeviceCompletion,
   captureDeviceReadReplyOrigin,
@@ -141,14 +149,6 @@ import {
   REMINDER_CREATE_CAPABILITY,
   validateReminderCreateResult,
 } from "./reminder-create-contract.ts";
-import {
-  CONTACT_LOOKUP_CAPABILITY,
-  isPhoneDial,
-  PHONE_DIAL_CAPABILITY,
-  phoneDialCapabilityAvailable,
-  phoneDialReceiptOutcome,
-  validatePhoneDialResult,
-} from "./phone-dial-contract.ts";
 import {
   isSmsSend,
   SMS_SEND_CAPABILITY,
