@@ -102,7 +102,10 @@ public class ElizaAgentService extends Service {
     private static final String AGENT_STAGING_DIR_NAME = "agent.staging";
     private static final String AGENT_TRASH_DIR_NAME = "agent.trash";
     private static final String AGENT_STAMP_NAME = ".apk-stamp";
-    private static final String AGENT_STATE_DIR_NAME = ".eliza";
+    /** ELIZA_STATE_DIR under getFilesDir(); {@link ElizaDataResetStores} lists it. */
+    static final String AGENT_STATE_DIR_NAME = ".eliza";
+    /** Workflow resident state under the agent state dir (see WorkflowSurvivorInventory). */
+    static final String WORKFLOW_STATE_DIR_NAME = "smthrs";
     private static final String AGENT_BUNDLE_NAME = "agent-bundle.js";
     private static final String AGENT_LAUNCH_SCRIPT = "launch.sh";
     private static final String AGENT_LAUNCH_CHILD_SCRIPT = "launch-child.sh";
@@ -3411,7 +3414,7 @@ public class ElizaAgentService extends Service {
                     // A detached launch shell may fork after an earlier inventory saw no resident.
                     // Only authenticated workflow siblings may remain when ownership is released.
                     WorkflowSurvivorInventory.requireClassified(
-                        getFilesDir(), new File(agentStateDir(), "smthrs"), bun.getCanonicalFile(), loader.getCanonicalFile(), deadline, observation);
+                        getFilesDir(), new File(agentStateDir(), WORKFLOW_STATE_DIR_NAME), bun.getCanonicalFile(), loader.getCanonicalFile(), deadline, observation);
                     break;
                 } catch (IOException unsettled) {
                     if (android.os.SystemClock.elapsedRealtime() >= deadline) throw unsettled;

@@ -23,6 +23,8 @@ final class NativeNotificationInbox {
     interface Projector { boolean post(JSONObject notification) throws Exception; }
     interface DirectorySync { void sync(Path directory) throws IOException; }
     interface AuthorityCheck { void current() throws Exception; }
+    /** Installed no-backup directory name; {@link ElizaDataResetStores} lists it. */
+    static final String DIRECTORY_NAME = "native-notification-inbox";
     private static final int MAX_SEEN = 10000, MAX_BUFFERED = 128, MAX_BYTES = 4 * 1024 * 1024;
     private static final ConcurrentHashMap<Path, Object> LOCKS = new ConcurrentHashMap<>();
     private final Path directory, file, lock;
@@ -42,7 +44,7 @@ final class NativeNotificationInbox {
         if (!root.toAbsolutePath().normalize().equals(nativeRoot)) throw new IOException("Native inbox root must not be a symlink");
         this.authority = java.util.Objects.requireNonNull(authority);
         this.owner = ownerFingerprint; this.projector = java.util.Objects.requireNonNull(projector); this.sync = java.util.Objects.requireNonNull(sync);
-        directory = nativeRoot.resolve("native-notification-inbox");
+        directory = nativeRoot.resolve(DIRECTORY_NAME);
         if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) { Files.createDirectory(directory); sync.sync(nativeRoot); }
         if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) || !directory.equals(directory.toRealPath())) throw new IOException("Invalid native inbox directory");
         file = directory.resolve(owner + ".json"); lock = directory.resolve(owner + ".lock");

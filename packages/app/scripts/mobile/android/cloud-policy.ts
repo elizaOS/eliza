@@ -157,6 +157,10 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   // cloud thin client or its manifest allowlist.
   "BrowserNativeMessagingService",
   "PasswordsActivity",
+  // Reset app data hosts the shared coordinator from @elizaos/capacitor-system
+  // (stripped below) and admits pending resets from ElizaApplication (also
+  // stripped); the thin Cloud client relies on Android's own Clear storage.
+  "ElizaDataResetRecoveryActivity",
   ...ANDROID_LP3_COLOR_POLICY_COMPONENTS,
 ];
 
@@ -264,6 +268,9 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaVoiceInputMethodService.java",
   "ElizaBootReceiver.java",
   "ElizaApplication.java",
+  "ElizaDataResetPlugin.java",
+  "ElizaDataResetRecoveryActivity.java",
+  "ElizaDataResetStores.java",
   "ElizaWorkScheduler.java",
   "ElizaNotificationListenerService.java",
   "ElizaVoiceCaptureService.java",
@@ -298,6 +305,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "BionicDecodeLoopTest.java",
   "DeviceRamTierPolicyTest.java",
   "ElizaAgentAutostartPolicyTest.java",
+  "ElizaDataResetStoresTest.java",
   "ElizaAgentEventSubscriptionTest.java",
   "ElizaAgentWatchdogPolicyInstrumentedTest.java",
   "ElizaAssetExtractionPolicyTest.java",
