@@ -111,7 +111,9 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   }
  }
  private final android.os.Handler navigationHandler = new android.os.Handler(android.os.Looper.getMainLooper());
- private static boolean cleanedProfiles;
+ /** Hosts (by private prefix) whose leftover ephemeral profiles this process already purged. One
+  * flag per identity, so a second host subclass in the same process still purges its own. */
+ private static final Set<String> cleanedProfiles=Collections.synchronizedSet(new HashSet<>());
  private final Map<String,String> retiredProfiles=new LinkedHashMap<>();
  private android.content.SharedPreferences profileRetirement;
  private ActivityResultLauncher<Intent> filePicker;
@@ -166,8 +168,7 @@ public abstract class BrowserTabHostPlugin extends Plugin {
   getBridge().getWebView().setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS);
   AutofillManager autofill=getActivity().getSystemService(AutofillManager.class);
   if(autofill!=null)autofill.registerCallback(autofillCallback);
-  if (cleanedProfiles || !WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE)) return;
-  cleanedProfiles=true;
+  if (!WebViewFeature.isFeatureSupported(WebViewFeature.MULTI_PROFILE) || !cleanedProfiles.add(config().privatePrefix)) return;
   // Chromium keeps loaded profile instances until process exit. Delete retired
   // shells before this process loads any child profile; one failure must not
   // prevent cleanup of other independently retired profiles.
