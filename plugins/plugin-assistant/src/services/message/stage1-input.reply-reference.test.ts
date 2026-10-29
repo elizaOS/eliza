@@ -8,7 +8,10 @@ import {
   currentMessageContentForContext,
   replyReferenceEventForContext,
 } from "./dialogue-context";
-import { renderMessageHandlerModelInput } from "./stage1-input";
+import {
+  renderMessageHandlerInstructions,
+  renderMessageHandlerModelInput,
+} from "./stage1-input";
 
 const runtime = {
   agentId: "agent",
@@ -90,4 +93,20 @@ describe("Stage 1 reply reference", () => {
     expect(current).toBeGreaterThan(reference);
     expect(wire.slice(reference, current)).not.toContain("# ");
   });
+});
+
+it("keeps closing replies specific to DMs and preserves group routing and explicit disengagement", () => {
+  const dm = renderMessageHandlerInstructions(runtime, [], {
+    directMessage: true,
+  });
+  const group = renderMessageHandlerInstructions(runtime, [], {
+    directMessage: false,
+  });
+  expect(dm).toContain("still gets RESPOND with a short, warm reply");
+  expect(dm).toContain("no follow-up question or offer of more help");
+  expect(dm).toContain("Stop only on explicit disengagement");
+  expect(dm).not.toContain("Ignore side chatter");
+  expect(group).toContain("Follow the room's engagement policy");
+  expect(group).toContain("Ignore side chatter and unaddressed bot exchanges");
+  expect(group).not.toContain("a one-on-one chat never goes silent");
 });
