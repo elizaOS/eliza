@@ -527,19 +527,12 @@ open class SystemPlugin : Plugin() {
     /** True when the host is the launcher distribution. Default: it declares a HOME activity. */
     protected open fun isLauncherBuild(): Boolean {
         val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(context.packageName)
-        return try {
-            context.packageManager.queryIntentActivities(home, 0).isNotEmpty()
-        } catch (error: RuntimeException) {
-            false
-        }
+        return context.packageManager.queryIntentActivities(home, 0).isNotEmpty()
     }
 
-    /** The host's version name; empty when Android does not report one. */
-    protected open fun buildVersion(): String = try {
+    /** The host's version name; empty when the package declares none. */
+    protected open fun buildVersion(): String =
         context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
-    } catch (error: Exception) {
-        ""
-    }
 
     /** True only for the assistant entry. Hosts that forward ACTION_ASSIST through their own
      * Activity add their marker extra by overriding this. */
@@ -555,8 +548,14 @@ open class SystemPlugin : Plugin() {
     @PluginMethod
     fun getBuildInfo(call: PluginCall) {
         val result = JSObject()
-        result.put("launcher", isLauncherBuild())
-        result.put("version", buildVersion())
+        try {
+            result.put("launcher", isLauncherBuild())
+            result.put("version", buildVersion())
+        } catch (error: Exception) {
+            // Reported, never read as "not the launcher" or an empty version.
+            call.reject("Build info could not be read", error)
+            return
+        }
         call.resolve(result)
     }
 

@@ -66,21 +66,17 @@ export function webLocaleInfo(
   format: () => Intl.ResolvedDateTimeFormatOptions = () =>
     new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions(),
 ): SystemLocaleInfo {
-  try {
-    const options = format();
-    const cycle = options.hourCycle;
-    return {
-      locale: options.locale || "en-US",
-      hour24:
-        cycle === "h23" || cycle === "h24"
-          ? true
-          : cycle === "h11" || cycle === "h12"
-            ? false
-            : options.hour12 === false,
-    };
-  } catch {
-    return { locale: "en-US", hour24: false };
-  }
+  const options = format();
+  const cycle = options.hourCycle;
+  return {
+    locale: options.locale,
+    hour24:
+      cycle === "h23" || cycle === "h24"
+        ? true
+        : cycle === "h11" || cycle === "h12"
+          ? false
+          : options.hour12 === false,
+  };
 }
 
 export class SystemWeb extends WebPlugin implements SystemPlugin {

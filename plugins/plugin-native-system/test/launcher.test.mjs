@@ -1373,10 +1373,4 @@ test("the web plugin reports host reads without inventing native facts", async (
     webLocaleInfo(() => ({ locale: "fr-FR", hour12: false })),
     { locale: "fr-FR", hour24: true },
   );
-  assert.deepEqual(
-    webLocaleInfo(() => {
-      throw new Error("no Intl");
-    }),
-    { locale: "en-US", hour24: false },
-  );
 });
