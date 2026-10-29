@@ -23,7 +23,10 @@ import {
 
 import { toWorkbenchTask } from '@elizaos/host/protocol';
 import { getRouteOwnerEntityId } from '../routes/_helpers';
-import { EMBEDDED_WORKFLOW_SERVICE_TYPE } from '../services/embedded-workflow-service';
+import {
+  EMBEDDED_WORKFLOW_SERVICE_TYPE,
+  notRunOccurrence,
+} from '../services/embedded-workflow-service';
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/workflow-service';
 import { workflowRuntimeStatus } from '../services/workflow-status';
 import type {
@@ -457,7 +460,13 @@ function normalizeLastExecution(raw: WorkflowExecution): AutomationLastExecution
     'waiting-quota': 'waiting',
     paused: 'waiting',
   };
-  const status = STATUS_MAP[rawStatus] ?? 'unknown';
+  // A scheduled occurrence settled without running is a finished record, not a successful run.
+  const notRun = notRunOccurrence(raw)?.status;
+  const status = notRun
+    ? notRun === 'missed'
+      ? 'missed'
+      : 'skipped'
+    : (STATUS_MAP[rawStatus] ?? 'unknown');
   const startedAt = typeof raw.startedAt === 'string' ? raw.startedAt : null;
   if (!startedAt) return null;
   const stoppedAt = typeof raw.stoppedAt === 'string' ? raw.stoppedAt : null;

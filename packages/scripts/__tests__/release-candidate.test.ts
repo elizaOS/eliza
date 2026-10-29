@@ -61,7 +61,7 @@ function makeFixture() {
   writeJson(path.join(repoRoot, "packages/a/package.json"), {
     name: "@release-fixture/a",
     ...common,
-    dependencies: { "@release-fixture/b": "1.2.3" },
+    dependencies: { "@release-fixture/b": "workspace:*" },
   });
   writeJson(path.join(repoRoot, "packages/b/package.json"), {
     name: "@release-fixture/b",
@@ -134,6 +134,21 @@ describe("immutable release candidate", () => {
       );
       expect([...bytes.subarray(0, 2)]).toEqual([0x1f, 0x8b]);
     }
+    const packedA = first.plan.packages.find(
+      ({ name }) => name === "@release-fixture/a",
+    );
+    const packedManifest = JSON.parse(
+      execFileSync(
+        "tar",
+        [
+          "-xzOf",
+          path.join(fixture.base, "candidate-one", packedA.tarball.path),
+          "package/package.json",
+        ],
+        { encoding: "utf8" },
+      ),
+    );
+    expect(packedManifest.dependencies["@release-fixture/b"]).toBe("1.2.3");
     expect(
       fs.readFileSync(path.join(fixture.repoRoot, "build-count"), "utf8"),
     ).toBe("1");

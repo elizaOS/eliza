@@ -77,7 +77,7 @@ function profileEntry(row: TelephonyCallLogEntry): CallLogEntry {
  */
 export async function loadProfileRecents(
   client: TelephonyClient,
-  options: { limit?: number; request?: boolean } = {},
+  options: { limit?: number; number?: string; request?: boolean } = {},
 ): Promise<ProfileRecents> {
   let status = await client.status();
   const voiceCapable = status.voiceCapable;
@@ -90,6 +90,7 @@ export async function loadProfileRecents(
   // An out-of-range limit is refused by recentCalls, never clamped.
   const calls = await client.recentCalls(
     options.limit ?? TELEPHONY_CALL_LOG_MAX,
+    options.number,
   );
   return { access: "granted", voiceCapable, calls: calls.map(profileEntry) };
 }

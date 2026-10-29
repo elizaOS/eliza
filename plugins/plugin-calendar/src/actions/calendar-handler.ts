@@ -3970,6 +3970,7 @@ async function inferCreateEventDetails(
     "Use the full recent conversation below, not just the latest message.",
     "Treat the latest user request as authoritative, but recover missing event subject, date, or location from earlier turns when needed.",
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
+    'A follow-up that asks for another event ("make another one", "also add", "one more") and states only a clock time keeps the day the user stated for the event just discussed; that day is user-stated timing, not borrowed timing.',
     "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
     ...(nativeConstraints
       ? [
@@ -3983,6 +3984,7 @@ async function inferCreateEventDetails(
     "Resolve relative scheduling from the referenced event’s authoritative interval: immediately after uses its end, before uses its start. Use the supplied Calendar bounds rather than a typical duration or planner hint. If the reference or required bound is missing or ambiguous, ask for clarification.",
     "Preserve names and places in their original language or script when useful.",
     "Return all schema fields as one JSON object, without prose. Use null for unknown or unstated values; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
+    'The title names the event itself: leave out the date, time and duration the user gave for it ("dinner at 5pm" is titled "dinner"), unless the user quoted an exact title.',
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",

@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/voice",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Portable voice turn analysis, acoustic processing and speech metrics.",
   "type": "module",
   "license": "MIT",

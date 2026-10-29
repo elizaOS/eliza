@@ -6,6 +6,10 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import {
+  type WorkflowOccurrenceNotRun,
+  workflowOccurrenceNotRun,
+} from '@elizaos/contracts/workflow-client';
+import {
   agentProcessStartedAtMs,
   computeNextCronRunAtMs,
   type IAgentRuntime,
@@ -156,6 +160,31 @@ export function isMissedOccurrenceExecution(
     typeof execution.missedOccurrenceAt === 'string' &&
     Number.isFinite(Date.parse(execution.missedOccurrenceAt))
   );
+}
+
+/**
+ * The settlement of a scheduled occurrence that this service recorded without
+ * running anything (`missed` or `overlap`), or undefined for an execution that
+ * ran. Same rule as the client run list (`@elizaos/contracts/workflow-client`,
+ * UI `workflowRunNotRun`): a typed or hosted admission records itself in the
+ * run input, and a generic schedule's missed occurrence carries the
+ * engine-written `missedOccurrenceAt`. Output shape alone never counts.
+ */
+export function notRunOccurrence(
+  execution: Pick<
+    WorkflowExecution,
+    'status' | 'finished' | 'input' | 'output' | 'missedOccurrenceAt'
+  >
+): WorkflowOccurrenceNotRun | undefined {
+  if (!execution.finished || execution.status !== 'finished') return undefined;
+  const settled = workflowOccurrenceNotRun(execution.output);
+  if (!settled) return undefined;
+  const admitted = [execution.input?.[TYPED_SCHEDULE_INPUT], execution.input?.hostedDigest].some(
+    (value) => !!value && typeof value === 'object' && !Array.isArray(value)
+  );
+  return admitted || (settled.status === 'missed' && isMissedOccurrenceExecution(execution))
+    ? settled
+    : undefined;
 }
 
 /**

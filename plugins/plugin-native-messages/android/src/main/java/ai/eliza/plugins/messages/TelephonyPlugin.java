@@ -313,7 +313,8 @@ public abstract class TelephonyPlugin extends Plugin {
  }
 
  /**
-  * The newest recent calls, at most {@link CallLogRows#MAX_CALLS}, read only while unlocked and in front,
+  * The newest recent calls, at most {@link CallLogRows#MAX_CALLS}, of one dial-shape {@code number} when set,
+  * read only while unlocked and in front,
   * cancelled on background, lock, screen-off and permission change and fenced again before publication.
   * Numbers are reduced to the dial shape (withheld or undialable entries become ""); voicemail
   * transcriptions, accounts and locations are not read. A host that does not declare call-log access
@@ -324,15 +325,22 @@ public abstract class TelephonyPlugin extends Plugin {
   if (!callLogDeclared) { call.reject("Recent calls are not available in this install.", "unavailable"); return; }
   final int limit = CallLogRows.limit(call.getInt("limit", 25));
   if (limit < 0) { call.reject("Recent-calls limit must be 1 to 50", "invalid"); return; }
+  final String number = call.getString("number");
+  if (number != null && !CallLogRows.number(number).equals(number)) { call.reject("Not a dialable phone number", "invalid"); return; }
   fencedRead(call, CALL_LOG, "Recent calls", cancel -> {
-   Uri uri = android.provider.CallLog.Calls.CONTENT_URI.buildUpon()
-     .appendQueryParameter(android.provider.CallLog.Calls.LIMIT_PARAM_KEY, String.valueOf(limit)).build();
+   // The query keeps only rows that can hold the number with any separators; the loop keeps exact
+   // dial-shape matches. The provider row limit applies only when every row is published.
+   Uri uri = number != null ? android.provider.CallLog.Calls.CONTENT_URI
+     : android.provider.CallLog.Calls.CONTENT_URI.buildUpon()
+       .appendQueryParameter(android.provider.CallLog.Calls.LIMIT_PARAM_KEY, String.valueOf(limit)).build();
+   String selection = number == null ? null : android.provider.CallLog.Calls.NUMBER + " LIKE ?";
+   String[] selectionArgs = number == null ? null : new String[] { "%" + String.join("%", number.split("")) + "%" };
    String[] projection = {
     android.provider.CallLog.Calls._ID, android.provider.CallLog.Calls.NUMBER, android.provider.CallLog.Calls.CACHED_NAME,
     android.provider.CallLog.Calls.DATE, android.provider.CallLog.Calls.DURATION, android.provider.CallLog.Calls.TYPE,
     android.provider.CallLog.Calls.NEW };
    JSArray rows = new JSArray();
-   try (android.database.Cursor cursor = getContext().getContentResolver().query(uri, projection, null, null,
+   try (android.database.Cursor cursor = getContext().getContentResolver().query(uri, projection, selection, selectionArgs,
      android.provider.CallLog.Calls.DATE + " DESC, " + android.provider.CallLog.Calls._ID + " DESC", cancel)) {
     if (cursor == null) throw new IllegalStateException("Call log unavailable");
     long previous = Long.MAX_VALUE; java.util.Set<String> seen = new java.util.HashSet<>();
@@ -342,9 +350,11 @@ public abstract class TelephonyPlugin extends Plugin {
      // A row the shared parser would refuse (bad ID, repeated, out of order) fails the whole read; it is never skipped or repaired.
      if (!CallLogRows.publishable(id, date, previous) || !seen.add(id)) throw new IllegalStateException("Unreadable call-log row");
      previous = date;
+     String rowNumber = CallLogRows.number(cursor.getString(1));
+     if (number != null && !number.equals(rowNumber)) continue;
      JSObject row = new JSObject();
      row.put("id", id);
-     row.put("number", CallLogRows.number(cursor.getString(1)));
+     row.put("number", rowNumber);
      String name = cursor.isNull(2) ? null : cursor.getString(2);
      row.put("cachedName", name == null || name.trim().isEmpty() ? JSONObject.NULL : clip(name.trim()));
      row.put("date", date);

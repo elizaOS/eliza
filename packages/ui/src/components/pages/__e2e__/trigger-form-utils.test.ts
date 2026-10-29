@@ -69,6 +69,19 @@ describe("Automations trigger form", () => {
     });
   });
 
+  it("sends a cleared Stop after as null so the edit removes the limit", () => {
+    const limited = formFromTrigger({ ...storedPrompt, maxRuns: 3 });
+    expect(buildUpdateRequest(limited).maxRuns).toBe(3);
+    // The request goes out as JSON, which drops an undefined field.
+    const sent = JSON.parse(
+      JSON.stringify(buildUpdateRequest({ ...limited, maxRuns: "" })),
+    );
+    expect(sent).toHaveProperty("maxRuns", null);
+    expect(buildCreateRequest({ ...textCron, maxRuns: "" }).maxRuns).toBe(
+      undefined,
+    );
+  });
+
   it("sends the browser zone when the edited cron trigger has no stored zone", () => {
     expect(buildUpdateRequest(formFromTrigger(storedPrompt)).timezone).toBe(
       browserZone,

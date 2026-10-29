@@ -255,7 +255,9 @@ export function isSharedPublicSearchSafe(message: string): boolean {
 function publicSubjectWords(value: string | undefined): string | undefined {
   const words =
     value
-      ?.trim()
+      // "right now" is one time phrase; dropping only "now" leaks "right" into the subject.
+      ?.replace(/\bright\s+now\b/giu, " ")
+      .trim()
       .split(/\s+/u)
       .filter(
         (word) => !/^(?:now|today|tonight|currently|current|latest|please|public)$/iu.test(word),

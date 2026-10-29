@@ -221,7 +221,16 @@ export interface AutomationRoomBinding {
 }
 
 export interface AutomationLastExecution {
-  status: 'success' | 'error' | 'cancelled' | 'running' | 'waiting' | 'unknown';
+  /** `missed` and `skipped` are scheduled occurrences recorded without running (missed, overlap). */
+  status:
+    | 'success'
+    | 'error'
+    | 'cancelled'
+    | 'running'
+    | 'waiting'
+    | 'missed'
+    | 'skipped'
+    | 'unknown';
   startedAt: string;
   stoppedAt?: string | null;
   errorMessage?: string;

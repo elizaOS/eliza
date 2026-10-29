@@ -1975,6 +1975,18 @@ describe("locale clause scoping through the real consumer paths", () => {
 });
 describe("replyClaimsInProgressWork", () => {
   it.each([
+    "Adding it now.",
+    "Scheduling that now.",
+    "Setting up your event now.",
+    "Booking it now.",
+    "Drafting your email now.",
+    "Sending it now.",
+    "Moving it to four now.",
+    "Rescheduling that now.",
+    "Cancelling it now.",
+    "Looking for it now.",
+    "I'll create that event.",
+    "I'll save that note.",
     "On it.",
     "on it!",
     "Checking your list now.",
@@ -1998,6 +2010,12 @@ describe("replyClaimsInProgressWork", () => {
     // Substantive replies that merely contain a forward-looking clause.
     "I'll be honest — the plan has a hole in it.",
     "I'll check tomorrow, but today you have three events: standup, lunch, and the demo.",
+    // Completed effects remain distinct from a pure progress label.
+    "Added it.",
+    "Scheduled that for tomorrow.",
+    "Sent your email.",
+    "On it. I created the event.",
+    "Adding it now. Your event is saved.",
     // Real answers and confirmations.
     "You have 3 todos: rent, demo prep, and groceries.",
     "On it. Send me the two numbers whenever you're ready.",
