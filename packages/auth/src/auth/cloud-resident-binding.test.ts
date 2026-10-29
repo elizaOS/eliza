@@ -8,8 +8,8 @@ import {
   type ResidentIdentity,
   type ResidentPlanAdmissionRecord,
   type ResidentPlanCheck,
-  recentResidentPlanAdmission,
   ResidentRebindQueue,
+  recentResidentPlanAdmission,
 } from "./cloud-resident-binding.ts";
 
 const NOW = 1_800_000_000_000;

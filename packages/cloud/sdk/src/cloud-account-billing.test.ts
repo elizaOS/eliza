@@ -306,7 +306,9 @@ describe("redemption", () => {
       method: "POST",
       body: { code: "ABCDEFGHJKMNPQRS", idempotencyKey: ATTEMPT_ID },
     });
-    expect(await code(ok.client.redeem("nope", ATTEMPT_ID, signal()))).toBe("invalid");
+    expect(await code(ok.client.redeem("nope", ATTEMPT_ID, signal()))).toBe(
+      "invalid",
+    );
     expect(await code(ok.client.redeem(CODE, "short", signal()))).toBe(
       "TypeError: Invalid idempotency key",
     );
@@ -322,7 +324,9 @@ describe("redemption", () => {
         data: { success: true, replayed: true, grant: {} },
       };
     });
-    expect((await lost.client.redeem(CODE, ATTEMPT_ID, signal())).replayed).toBe(true);
+    expect(
+      (await lost.client.redeem(CODE, ATTEMPT_ID, signal())).replayed,
+    ).toBe(true);
     expect(
       lost.calls.map(
         (call) => (call.body as { idempotencyKey: string }).idempotencyKey,
@@ -358,9 +362,9 @@ describe("redemption", () => {
       [401, "http"],
     ] as const) {
       const refused = harness(() => ({ status, data: {}, retryAfter: "60" }));
-      expect(await code(refused.client.redeem(CODE, ATTEMPT_ID, signal()))).toBe(
-        expected,
-      );
+      expect(
+        await code(refused.client.redeem(CODE, ATTEMPT_ID, signal())),
+      ).toBe(expected);
       expect(refused.calls).toHaveLength(1);
     }
   });
