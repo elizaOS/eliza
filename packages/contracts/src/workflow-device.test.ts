@@ -515,6 +515,28 @@ test("a step request must match the reviewed run, version, digest, device and sc
     ),
     true,
   );
+  // A host normalizer that mispairs kind and operation does not widen the step.
+  const mispaired = {
+    ...review,
+    spec: {
+      ...review.spec,
+      steps: review.spec.steps.map((step) =>
+        step.id === "notify" ? { ...step, kind: "Write" } : step,
+      ),
+    },
+  } as WorkflowPhoneReview;
+  assert.equal(
+    await rejects(() =>
+      assertWorkflowOperation(
+        mispaired,
+        notify,
+        device,
+        { type: "post_notification", title: "Today", body: "2 reminders" },
+        now,
+      ),
+    ),
+    true,
+  );
 });
 
 test("approval notice identity is the shared opaque route identity", async () => {

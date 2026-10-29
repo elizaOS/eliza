@@ -561,11 +561,14 @@ export function assertWorkflowOperation(
     fail();
     return;
   }
+  // The kind is checked beside the operation: a host normalizer
+  // (`WorkflowPhoneReviewOptions.normalizePhoneSpec`) is not trusted to pair them.
   const same = (a: unknown, b: unknown) =>
     JSON.stringify(a) === JSON.stringify(b);
   switch (operation.type) {
     case "read_selected_notes":
       if (
+        step.kind !== "Read" ||
         step.operation !== "selected_notes" ||
         !same(
           parseWorkflowRead({ type: operation.type, notes: step.notes }),
@@ -576,6 +579,7 @@ export function assertWorkflowOperation(
       return;
     case "read_calendar_range":
       if (
+        step.kind !== "Read" ||
         step.operation !== "calendar_range" ||
         !same(
           parseWorkflowRead({ type: operation.type, ...step.range }),
@@ -585,7 +589,7 @@ export function assertWorkflowOperation(
         fail();
       return;
     case "read_selected_reminders": {
-      if (step.operation !== "selected_reminders") {
+      if (step.kind !== "Read" || step.operation !== "selected_reminders") {
         fail();
         return;
       }
@@ -606,6 +610,7 @@ export function assertWorkflowOperation(
     }
     case "create_note":
       if (
+        step.kind !== "Write" ||
         step.operation !== "save_note" ||
         step.title !== operation.title ||
         typeof operation.body !== "string"
@@ -614,6 +619,7 @@ export function assertWorkflowOperation(
       return;
     case "post_notification":
       if (
+        step.kind !== "Notify" ||
         step.operation !== "app_notification" ||
         step.title !== operation.title ||
         typeof operation.body !== "string" ||
@@ -628,6 +634,7 @@ export function assertWorkflowOperation(
       return;
     case "speak_text":
       if (
+        step.kind !== "Speak" ||
         step.operation !== "read_aloud" ||
         typeof operation.text !== "string" ||
         !operation.text.trim() ||

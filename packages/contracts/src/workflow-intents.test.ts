@@ -55,8 +55,8 @@ class MemoryStorage {
 
 test("keys carry the installed prefix and the captured owner", () => {
   assert.equal(
-    workflowIntentKey(owner, "wf-1:run", "alpha.workflow.pending.v1:"),
-    'alpha.workflow.pending.v1:["https://agent.example","owner-1","agent-1","wf-1:run"]',
+    workflowIntentKey(owner, "wf-1:run", "host.workflow.pending.v1:"),
+    'host.workflow.pending.v1:["https://agent.example","owner-1","agent-1","wf-1:run"]',
   );
   assert.ok(
     workflowIntentKey(owner, "x").startsWith(workflowIntentOwnerPrefix(owner)),
@@ -71,7 +71,7 @@ test("an intent is admitted once, locks its key and is cleared only at its revis
   let changes = 0;
   const backend = memoryBackend();
   const store = new WorkflowIntentStore(owner, {
-    keyPrefix: "alpha.workflow.pending.v1:",
+    keyPrefix: "host.workflow.pending.v1:",
     backend,
     onChange: () => changes++,
   });
@@ -131,7 +131,7 @@ test("pending lifecycle changes are listed by workflow", async () => {
 
 test("the storage backend keeps one installed slot per key and ignores other owners", async () => {
   const storage = new MemoryStorage();
-  const prefix = "alpha.workflow.pending.v1:";
+  const prefix = "host.workflow.pending.v1:";
   storage.setItem(workflowIntentKey(other, "x", prefix), "other");
   storage.setItem("unrelated", "1");
   const store = new WorkflowIntentStore(owner, {
