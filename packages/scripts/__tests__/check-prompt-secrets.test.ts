@@ -77,6 +77,24 @@ describe("prompt secret scanner", () => {
     }
   });
 
+  it("flags OpenRouter keys with a hyphenated first segment", () => {
+    // The legacy rule stops at the hyphen in `sk-or-v1-`, so these were ignored.
+    const tail = "a".repeat(48);
+    const result = scanContent(
+      "prompts/example.ts",
+      [
+        `const router = 'sk-or-v1-${tail}';`,
+        `const routerLegacy = 'sk-or-${tail}';`,
+      ].join("\n"),
+    );
+
+    assert.deepStrictEqual(result.warnings, []);
+    assert.strictEqual(result.errors.length, 2);
+    for (const error of result.errors) {
+      assert.match(error, /OpenRouter key/);
+    }
+  });
+
   it("does not flag unrelated hyphenated sk- words or truncated keys", () => {
     const result = scanContent(
       "prompts/notes.ts",
