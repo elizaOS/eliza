@@ -523,7 +523,7 @@ describe("opt-in current browser request policy", () => {
     text,
     current() {},
   });
-  function browserFixture(policy = true) {
+  function browserFixture(policy = true, reserveGate?: () => Promise<void>) {
     const fixture = fixtureServer({
       type: "browser_navigate",
       url: "https://example.com/path?q=1#x",
@@ -550,6 +550,11 @@ describe("opt-in current browser request policy", () => {
       return response;
     };
     const { journal, entries } = memoryJournal();
+    const reserve = journal.reserve.bind(journal);
+    journal.reserve = async (input) => {
+      if (reserveGate) await reserveGate();
+      return reserve(input);
+    };
     let effects = 0;
     const actions = coordinator(
       request,
@@ -839,6 +844,106 @@ describe("opt-in current browser request policy", () => {
       ),
     ).rejects.toThrow();
     expect(f.effects()).toBe(0);
+  });
+  for (const invalidation of ["request", "session"] as const) {
+    it(`refuses dispatch when ${invalidation} changes while journal reservation awaits`, async () => {
+      let entered!: () => void;
+      let release!: () => void;
+      const reserved = new Promise<void>((resolve) => {
+        entered = resolve;
+      });
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const f = browserFixture(true, async () => {
+        entered();
+        await gate;
+      });
+      let active = true;
+      const current = {
+        ...proof(),
+        current() {
+          if (!active) throw Error("retired request");
+        },
+      };
+      await f.actions.pendingReview(context, signal(), current);
+      const attempt = f.actions.performRequested(
+        "message",
+        context,
+        signal(),
+        async () => true,
+        undefined,
+        current,
+      );
+      await reserved;
+      const previous = session.sessionId;
+      try {
+        if (invalidation === "request") active = false;
+        else session.sessionId = "replacement-session";
+        release();
+        expect(await attempt).toMatchObject([
+          { proposalId: "proposal", status: "unknown" },
+        ]);
+        expect(f.effects()).toBe(0);
+        expect(f.server.claims).toBe(0);
+        expect(f.server.state).toBe("pending");
+        expect(f.entries.get("proposal")?.phase).toBe("reserved");
+      } finally {
+        session.sessionId = previous;
+      }
+    });
+  }
+  it("retains a completed effect but skips stale foreground presentation after receipt upload", async () => {
+    const fixture = fixtureServer({
+      type: "browser_navigate",
+      url: "https://example.com/path?q=1#x",
+    });
+    const { journal } = memoryJournal();
+    let active = true,
+      presented = 0,
+      effects = 0;
+    const current = {
+      ...proof(),
+      current() {
+        if (!active) throw Error("retired request");
+      },
+    };
+    const actions = coordinator(
+      async (path, body, s) => {
+        if (path.endsWith("/receipt")) active = false;
+        const response = await fixture.request(path, body, s);
+        if ("proposals" in response)
+          for (const item of response.proposals)
+            Object.assign(item.payload, { requestMessageId: "message" });
+        return response;
+      },
+      journal,
+      async () => {
+        effects++;
+        return {
+          status: "succeeded",
+          summary: "Opened",
+          presentBrowser() {
+            presented++;
+          },
+        };
+      },
+      true,
+    );
+    await actions.pendingReview(context, signal(), current);
+    expect(
+      await actions.performRequested(
+        "message",
+        context,
+        signal(),
+        async () => true,
+        undefined,
+        current,
+      ),
+    ).toMatchObject([{ status: "succeeded" }]);
+    expect(effects).toBe(1);
+    expect(presented).toBe(0);
+    expect(fixture.server.state).toBe("done");
   });
   it("strips only calendarDay from the durable context and retains full live context", async () => {
     const f = fixtureServer(note);
