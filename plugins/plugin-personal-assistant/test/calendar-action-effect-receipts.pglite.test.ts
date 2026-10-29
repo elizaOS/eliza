@@ -5,11 +5,11 @@
  * from the same persisted snapshot or row the action consumed.
  */
 
-import {
-  type LifeOpsConnectorGrant,
-  PostConversationMessageRequestSchema,
-} from "@elizaos/contracts";
+import { IncomingMessage, ServerResponse } from "node:http";
+import { Socket } from "node:net";
+import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
 import { parseClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
+import { readChatRequestPayload } from "../../../packages/agent/src/api/chat-routes.ts";
 import { ElizaClient } from "../../../packages/ui/src/api/client-base.ts";
 import "../../../packages/ui/src/api/client-chat.ts";
 import {
@@ -171,7 +171,9 @@ async function invoke(
     expect(result.verifiedUserFacing).toBe(true);
   } else {
     expect(delivered).toEqual([]);
-    expect(result.transcriptVisibility).toBe("internal");
+    expect(result.transcriptVisibility, JSON.stringify(result)).toBe(
+      "internal",
+    );
     expect(result.userFacingText).toBeUndefined();
     expect(result.verifiedUserFacing).toBeUndefined();
   }
@@ -890,7 +892,9 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         operation: "calendar.propose_times.preview",
       });
       if (replyOwner === "planner") {
-        expect(result.transcriptVisibility).toBe("internal");
+        expect(result.transcriptVisibility, JSON.stringify(result)).toBe(
+          "internal",
+        );
         expect(result.data?.replyGrounding).toEqual(expect.any(String));
       }
       const after = await calendar.getCalendarFeed(
@@ -1161,13 +1165,16 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
   ])(
     "serializes and admits the selected-day clock request through the registered store (%s)",
     async (mode) => {
-      const original = mode === "fall-fold-ambiguous" ? "Move my 1:30am to 4" : "Move my 3pm to 4",
+      const original =
+          mode === "fall-fold-ambiguous"
+            ? "Move my 1:30am to 4"
+            : "Move my 3pm to 4",
         zone = "America/Los_Angeles";
       const index = [
         "ordinary",
         "spring-DST",
         "fall-DST",
-    "fall-fold-ambiguous",
+        "fall-fold-ambiguous",
         "duplicate",
         "sensitive",
         "invalid-revision",
@@ -1185,14 +1192,16 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           : mode === "fall-DST" || mode === "fall-fold-ambiguous"
             ? "2026-11-01"
             : "2026-10-29";
-      const start = mode === "fall-fold-ambiguous" ? "2026-11-01T08:30:00Z" :
-        mode === "spring-DST"
-          ? "2026-03-08T22:00:00Z"
-          : mode === "fall-DST"
-            ? "2026-11-01T23:00:00Z"
-            : mode === "wrong-planner-name"
-              ? "2026-10-29T21:00:00Z"
-              : "2026-10-29T22:00:00Z";
+      const start =
+        mode === "fall-fold-ambiguous"
+          ? "2026-11-01T08:30:00Z"
+          : mode === "spring-DST"
+            ? "2026-03-08T22:00:00Z"
+            : mode === "fall-DST"
+              ? "2026-11-01T23:00:00Z"
+              : mode === "wrong-planner-name"
+                ? "2026-10-29T21:00:00Z"
+                : "2026-10-29T22:00:00Z";
       const moved =
         mode === "spring-DST"
           ? "2026-03-08T23:00:00.000Z"
@@ -1206,6 +1215,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         { timezone: zone },
         { source: "profile_save", recordedAt: "2026-10-28T12:00:00.000Z" },
       );
+      const ownedEventIds: string[] = [];
       try {
         const created = await calendar.createCalendarEventMutation(
           new URL("http://internal.local/api/calendar"),
@@ -1221,19 +1231,33 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         );
         const target = created.event;
         if (!target) throw Error("Missing Calendar fixture");
-        if (mode === "duplicate" || mode === "wrong-planner-name" || mode === "fall-fold-ambiguous")
-          await calendar.createCalendarEventMutation(
+        ownedEventIds.push(target.id);
+        if (
+          mode === "duplicate" ||
+          mode === "wrong-planner-name" ||
+          mode === "fall-fold-ambiguous"
+        ) {
+          const other = await calendar.createCalendarEventMutation(
             new URL("http://internal.local/api/calendar"),
             {
               title: "Other source clock",
-              startAt: mode === "fall-fold-ambiguous" ? "2026-11-01T09:30:00Z" : "2026-10-29T22:00:00Z",
-              endAt: mode === "fall-fold-ambiguous" ? "2026-11-01T10:00:00Z" : "2026-10-29T22:30:00Z",
+              startAt:
+                mode === "fall-fold-ambiguous"
+                  ? "2026-11-01T09:30:00Z"
+                  : "2026-10-29T22:00:00Z",
+              endAt:
+                mode === "fall-fold-ambiguous"
+                  ? "2026-11-01T10:00:00Z"
+                  : "2026-10-29T22:30:00Z",
               timeZone: zone,
               grantId: ELIZA_CALENDAR_GRANT_ID,
               calendarId: ELIZA_CALENDAR_ID,
               idempotencyKey: `clock-query-other-${mode}`,
             },
           );
+          if (!other.event) throw Error("Missing second Calendar fixture");
+          ownedEventIds.push(other.event.id);
+        }
         const writes = vi.spyOn(calendar, "updateCalendarEvent");
         const version = target.metadata.etag;
         if (typeof version !== "string") throw Error("Missing fixture version");
@@ -1331,11 +1355,21 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           undefined,
           { clientDevice: { context }, userTextFormat: "plain-v1" },
         );
-        const wire = PostConversationMessageRequestSchema.parse(captured);
-        expect(wire.text).toBe(original);
+        const req = new IncomingMessage(new Socket());
+        const res = new ServerResponse(req);
+        const wire = await readChatRequestPayload(req, res, {
+          runtime,
+          readJsonBody: async <T extends object>() =>
+            structuredClone(captured) as T,
+          error: (_res, message) => {
+            throw new Error(message);
+          },
+        });
+        if (!wire) throw new Error("Canonical chat request was not admitted");
+        expect(wire.prompt).toBe(original);
         actor.content = {
           ...actor.content,
-          text: wire.text,
+          text: wire.prompt,
           metadata: wire.metadata,
         };
         const malformed = [
@@ -1377,7 +1411,12 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
               start: "2026-10-29T19:00:00",
               end: "2026-10-29T19:30:00",
               date,
-              query: mode === "wrong-planner-name" ? target.title : mode === "fall-fold-ambiguous" ? "1:30am" : "3pm",
+              query:
+                mode === "wrong-planner-name"
+                  ? target.title
+                  : mode === "fall-fold-ambiguous"
+                    ? "1:30am"
+                    : "3pm",
               durationMinutes: 99,
             },
           }),
@@ -1430,6 +1469,28 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
             : target.description,
         );
       } finally {
+        // Each mode owns exactly these synthetic records. Negative cases leave
+        // their event unchanged; retain no same-clock records to pollute the next case.
+        for (const eventId of ownedEventIds) {
+          const current = await calendar.getConditionalCalendarMutationTarget(
+            new URL("http://internal.local/api/calendar"),
+            {
+              eventId,
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+            },
+          );
+          await calendar.deleteCalendarEvent(
+            new URL("http://internal.local/api/calendar"),
+            {
+              eventId: current.externalId,
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              expectedProviderVersion: String(current.metadata.etag),
+              idempotencyKey: `clock-fixture-cleanup-${mode}-${eventId}`,
+            },
+          );
+        }
         await resolveOwnerFactStore(runtime).clear();
       }
     },

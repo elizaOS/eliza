@@ -79,6 +79,7 @@ import type {
 import {
   describeUserReference,
   ElizaError,
+  extractUserText,
   normalizeEffectReceipt,
   resolveOptimizedPromptForRuntime,
   unwrapUserMessageText,
