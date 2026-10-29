@@ -1431,8 +1431,14 @@ export class DeviceActionCoordinator<
     const browserRequestKey = proof
       ? this.requestKey(proof.messageId)
       : undefined;
+    if (this.options.currentRequestBrowserPolicy) proof?.current();
     const { valid, invalid } = await this.listing(signal);
     signal.throwIfAborted();
+    if (this.options.currentRequestBrowserPolicy && proof) {
+      proof.current();
+      if (browserRequestKey !== this.requestKey(proof.messageId))
+        throw Error("The current device action request changed");
+    }
     this.proposals.clear();
     const pendingIds = new Set(valid.map((proposal) => proposal.id));
     for (const id of this.browserPolicy.keys())
@@ -1446,10 +1452,10 @@ export class DeviceActionCoordinator<
       )
         continue;
       if (
-        !this.browserAllowed(proposal, proof) ||
-        (this.options.currentRequestBrowserPolicy &&
-          proposal.operation.type === "browser_navigate" &&
-          browserRequestKey !== this.requestKey(proof?.messageId ?? ""))
+        this.options.currentRequestBrowserPolicy &&
+        proof &&
+        proposal.requestMessageId === proof.messageId &&
+        !this.browserAllowed(proposal, proof)
       ) {
         items.push({
           proposalId: proposal.id,
