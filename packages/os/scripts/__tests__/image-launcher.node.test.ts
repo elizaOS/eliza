@@ -387,3 +387,47 @@ test("the staged product makefile refuses a product it was not staged for", (t) 
   assert.notEqual(refused.status, 0);
   assert.match(refused.stderr, /was staged for eliza_cf_arm64_phone/);
 });
+
+test("the Cuttlefish image instrumentation asserts the nonprivileged contract", () => {
+  const repo = fileURLToPath(new URL("../../../../", import.meta.url));
+  const java = fs.readFileSync(
+    path.join(
+      repo,
+      "packages/app/platforms/android/app/src/androidTest/java/ai/elizaos/app/ElizaOsInstrumentedTest.java",
+    ),
+    "utf8",
+  );
+  const declared =
+    /DEFAULT_GRANTED_PERMISSIONS = new TreeSet<>\(Arrays\.asList\(([^)]*)\)\)/.exec(
+      java,
+    );
+  assert.ok(declared, "DEFAULT_GRANTED_PERMISSIONS is declared");
+  assert.deepEqual(
+    [...declared[1].matchAll(/"([^"]+)"/g)].map((match) => match[1]).sort(),
+    [...loadImagesPolicy().defaultPermissions].sort(),
+  );
+  const installs = new Set(
+    Object.values(loadImagesPolicy().products).map(
+      (product) => `"/${product.partition}/app/Eliza/"`,
+    ),
+  );
+  for (const install of installs) assert.ok(java.includes(install), install);
+  assert.doesNotMatch(
+    java,
+    /priv-app\/Eliza|ROLE_DIALER|ROLE_SMS|NameNotFoundException\.class/,
+  );
+  assert.match(java, /privateFlags=.*PRIVILEGED/);
+
+  const workflow = fs.readFileSync(
+    path.join(repo, ".github/workflows/elizaos-cuttlefish.yml"),
+    "utf8",
+  );
+  assert.doesNotMatch(workflow, /privileged\.txt/);
+  const step = workflow.slice(
+    workflow.indexOf("- name: Exercise image-contract instrumentation"),
+    workflow.indexOf("- name: Verify assistant role"),
+  );
+  assert.match(step, /-e class ai\.elizaos\.app\.ElizaOsInstrumentedTest,/);
+  assert.match(step, /INSTRUMENTATION_STATUS_CODE: -3/);
+  assert.ok(step.indexOf("adb root") < step.indexOf("am instrument"));
+});

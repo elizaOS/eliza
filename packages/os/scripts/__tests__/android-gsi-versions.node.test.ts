@@ -150,3 +150,89 @@ test("the generic MediaTek GSI target stays blocked", () => {
   assert.equal(target?.labExperimentsEligible, false);
   assert.ok(target?.blockedReasons.length >= 3);
 });
+
+/**
+ * Evaluate eliza_common.mk and the AOSP GSI allowlist entry the build relies
+ * on (gsi_release.mk adds system/product/%), then return the allowlist and
+ * every PRODUCT_COPY_FILES destination. Make evaluation only; `m` remains the
+ * acceptance check for a GSI.
+ */
+function gsiArtifacts(gsi: boolean) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-gsi-paths-"));
+  try {
+    fs.mkdirSync(path.join(root, "vendor/eliza/launcher"), { recursive: true });
+    fs.writeFileSync(
+      path.join(root, "vendor/eliza/launcher/product.mk"),
+      "# fixture\n",
+    );
+    const printer = path.join(root, "print.mk");
+    fs.writeFileSync(
+      printer,
+      `${gsi ? "PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += system/product/%\n" : ""}print:\n\t@echo '$(PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST)|$(foreach f,$(PRODUCT_COPY_FILES),$(word 2,$(subst :, ,$(f))))'\n`,
+    );
+    const result = spawnSync(
+      "make",
+      [
+        "-s",
+        "-f",
+        path.join(vendorDir, "eliza_common.mk"),
+        "-f",
+        printer,
+        "PLATFORM_SDK_VERSION=37",
+        `ELIZA_GSI=${gsi ? "true" : ""}`,
+        `TARGET_COPY_OUT_PRODUCT=${gsi ? "system/product" : "product"}`,
+        "print",
+      ],
+      { encoding: "utf8", cwd: root },
+    );
+    assert.ifError(result.error);
+    assert.equal(result.status, 0, result.stderr);
+    const [allowed = "", copies = ""] = result.stdout.trim().split("|");
+    return {
+      allowed: allowed.split(/\s+/).filter(Boolean),
+      copies: copies.split(/\s+/).filter(Boolean),
+    };
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+}
+
+const matchesPattern = (pattern: string, file: string) => {
+  const [prefix, suffix = ""] = pattern.split("%");
+  return pattern.includes("%")
+    ? file.startsWith(prefix) &&
+        file.endsWith(suffix) &&
+        file.length >= prefix.length + suffix.length
+    : file === pattern;
+};
+
+test("GSI artifact path requirements cover the system launcher and product files", () => {
+  const gsi = gsiArtifacts(true);
+  for (const entry of [
+    "system/app/Eliza/%",
+    "system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
+  ])
+    assert.ok(gsi.allowed.includes(entry), entry);
+  // The staged launcher's provisioning, capability and Clock files use
+  // TARGET_COPY_OUT_PRODUCT too, so they share these destinations' prefix.
+  assert.ok(gsi.copies.length > 0);
+  for (const destination of [
+    ...gsi.copies,
+    "system/product/etc/preferred-apps/launcher-home.xml",
+    "system/product/etc/permissions/ai.elizaos.app.aosp_image.xml",
+    "system/app/Eliza/Eliza.apk",
+    "system/etc/default-permissions/default-permissions-ai.elizaos.app.xml",
+  ])
+    assert.ok(
+      gsi.allowed.some((pattern) => matchesPattern(pattern, destination)),
+      `${destination} is outside the GSI artifact path allowlist`,
+    );
+  // Device products install the launcher in product/, outside the system
+  // requirement, and never allow a system-partition launcher.
+  const device = gsiArtifacts(false);
+  assert.equal(
+    device.allowed.some((pattern) => pattern.startsWith("system/")),
+    false,
+  );
+  assert.ok(device.copies.every((file) => file.startsWith("product/")));
+});

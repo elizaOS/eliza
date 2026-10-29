@@ -392,31 +392,45 @@ jobs:
             --config playwright.android.config.ts \
             test/android/voice-selftest.android.spec.ts
 
-      - name: Exercise Android instrumentation on Cuttlefish
+      # The image installs Eliza under the nonprivileged-launcher profile, so
+      # this runs only the image contract (ElizaOsInstrumentedTest) and the
+      # manifest surfaces; fixture-gated classes skip by design and run in
+      # their own lanes. The image APK carries the disposable per-run signer
+      # while the test APK is debug-signed: AMS admits that mismatch only for
+      # root on a debuggable build, so instrument from root adbd on the bound
+      # disposable userdebug guest.
+      - name: Exercise image-contract instrumentation on Cuttlefish
         if: success() && inputs.launch == true
         working-directory: packages/app/platforms/android
         shell: bash
         run: |
           set -euo pipefail
+          report="$CVD_REPORT_DIR/instrumentation/image-contract.txt"
           mkdir -p "$CVD_REPORT_DIR/instrumentation"
+          device="$(adb shell getprop ro.product.device | tr -d '\r')"
+          case "$device" in vsoc_x86_64|vsoc_x86_64_only) ;; *) echo "::error::Expected a disposable Cuttlefish guest"; exit 1 ;; esac
+          test "$(adb shell getprop ro.build.type | tr -d '\r')" = userdebug
           ./gradlew :app:assembleDebugAndroidTest --stacktrace
           test_apk=$(find app/build/outputs/apk/androidTest/debug -type f -name '*androidTest*.apk' -print -quit)
           test -n "$test_apk"
           adb install -r -t "$test_apk"
+          adb root
+          adb wait-for-device
+          test "$(adb shell id -u | tr -d '\r')" = 0
           set +e
           adb shell am instrument -w -r \
+            -e class ai.elizaos.app.ElizaOsInstrumentedTest,ai.elizaos.app.ElizaAssistantSurfaceInstrumentedTest \
             ai.elizaos.app.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee "$CVD_REPORT_DIR/instrumentation/privileged.txt"
+            | tee "$report"
           instrument_status=${PIPESTATUS[0]}
           set -e
           test "$instrument_status" -eq 0
-          grep -Eq '^OK \([1-9][0-9]* tests?\)$' \
-            "$CVD_REPORT_DIR/instrumentation/privileged.txt"
-          if grep -q 'INSTRUMENTATION_STATUS_CODE: -3' \
-            "$CVD_REPORT_DIR/instrumentation/privileged.txt"; then
-            echo "::error::Privileged instrumentation contained an assumption-skip"
+          grep -Eq '^OK \([1-9][0-9]* tests?\)$' "$report"
+          if grep -q 'INSTRUMENTATION_STATUS_CODE: -3' "$report"; then
+            echo "::error::Image-contract instrumentation contained an assumption-skip"
             exit 1
           fi
+          grep -q 'class=ai.elizaos.app.ElizaOsInstrumentedTest' "$report"
 
       - name: Verify assistant role, IME, and assist-key routing
         if: success() && inputs.launch == true

@@ -45,14 +45,19 @@ $(call inherit-product, $(ELIZA_LAUNCHER_PRODUCT))
 PRODUCT_PACKAGE_OVERLAYS += \
     vendor/eliza/overlays
 
-# GSI products stage the launcher in the system partition (eliza-images.json).
+# Artifact path requirements constrain only root/ and system/ (generic_system.mk),
+# relative to PRODUCT_OUT. GSI products stage the launcher APK and its grants
+# in the system partition (eliza-images.json), so those two paths are allowed
+# for a GSI only. Everything else this layer installs goes to
+# $(TARGET_COPY_OUT_PRODUCT): product/ on a device build (outside the
+# requirement) and system/product/ on a GSI, which gsi_release.mk already
+# allows as system/product/%.
+ifeq ($(ELIZA_GSI),true)
 PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     system/app/Eliza/% \
-    system/etc/default-permissions/default-permissions-ai.elizaos.app.xml \
-    product/app/Eliza/% \
-    product/etc/default-permissions/default-permissions-ai.elizaos.app.xml \
-    product/etc/preferred-apps/launcher-home.xml \
-    product/etc/permissions/ai.elizaos.app.aosp_image.xml \
+    system/etc/default-permissions/default-permissions-ai.elizaos.app.xml
+endif
+PRODUCT_ARTIFACT_PATH_REQUIREMENT_ALLOWED_LIST += \
     product/app/ElizaChromiumBrowser/% \
     product/app/ElizaBitwarden/% \
     product/etc/eliza/browser-apps.json \
