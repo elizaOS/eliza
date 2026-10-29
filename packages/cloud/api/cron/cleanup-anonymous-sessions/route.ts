@@ -92,10 +92,33 @@ app.get("/", async (c) => {
         ),
       );
 
-    let deletedInactiveUsers = 0;
+    // One user can own several sessions (one per device or token). The
+    // join returns one row per session, so a single zero-message row must
+    // not delete a user who sent messages in another session. Prune a user
+    // only when it has at least one session and every session shows zero
+    // messages. A user with no session row is still spared, as before.
+    const inactiveByUser = new Map<
+      string,
+      { hasSession: boolean; allZero: boolean }
+    >();
     for (const record of inactiveUsersWithSessions) {
-      if (record.messageCount === 0) {
-        await dbWrite.delete(users).where(eq(users.id, record.userId));
+      const entry = inactiveByUser.get(record.userId) ?? {
+        hasSession: false,
+        allZero: true,
+      };
+      if (record.messageCount !== null) {
+        entry.hasSession = true;
+        if (record.messageCount !== 0) {
+          entry.allZero = false;
+        }
+      }
+      inactiveByUser.set(record.userId, entry);
+    }
+
+    let deletedInactiveUsers = 0;
+    for (const [userId, entry] of inactiveByUser) {
+      if (entry.hasSession && entry.allZero) {
+        await dbWrite.delete(users).where(eq(users.id, userId));
         deletedInactiveUsers++;
       }
     }

@@ -16,6 +16,7 @@ const FUTURE = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
 
 const INACTIVE_NO_MESSAGES = "00000000-0000-4000-8000-00000000000a";
 const ACTIVE_WITH_MESSAGES = "00000000-0000-4000-8000-00000000000b";
+const MULTI_SESSION_MIXED = "00000000-0000-4000-8000-00000000000f";
 const EXPIRED_ONE = "00000000-0000-4000-8000-00000000000c";
 const EXPIRED_TWO = "00000000-0000-4000-8000-00000000000e";
 const REGULAR_USER = "00000000-0000-4000-8000-00000000000d";
@@ -104,6 +105,17 @@ beforeAll(async () => {
     "INSERT INTO anonymous_sessions(session_token, user_id, message_count, expires_at) VALUES ('token-b', $1, 5, $2)",
     [ACTIVE_WITH_MESSAGES, FUTURE],
   );
+  // Anonymous, old, with two sessions: one empty, one with messages.
+  // The user sent messages, so it must be kept.
+  await seedUser(MULTI_SESSION_MIXED, true, null);
+  await pg().query(
+    "INSERT INTO anonymous_sessions(session_token, user_id, message_count, expires_at) VALUES ('token-m1', $1, 0, $2)",
+    [MULTI_SESSION_MIXED, FUTURE],
+  );
+  await pg().query(
+    "INSERT INTO anonymous_sessions(session_token, user_id, message_count, expires_at) VALUES ('token-m2', $1, 5, $2)",
+    [MULTI_SESSION_MIXED, FUTURE],
+  );
   // Two users whose anonymous identity expired: both are deleted with their conversations.
   await seedUser(EXPIRED_ONE, true, PAST);
   await seedUser(EXPIRED_TWO, true, PAST);
@@ -144,5 +156,6 @@ test("cleanup prunes inactive anonymous users and reports the removed rows", asy
   expect(remaining.rows.map((row) => row.id)).toEqual([
     ACTIVE_WITH_MESSAGES,
     REGULAR_USER,
+    MULTI_SESSION_MIXED,
   ]);
 });
