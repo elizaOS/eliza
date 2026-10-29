@@ -5,6 +5,7 @@ import {
   calendarWindow,
 } from "@elizaos/plugin-assistant/device-calendar-contract";
 import {
+  DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES,
   normalizeCalendarDateTimeInTimeZone,
   resolveCalendarEventRange,
 } from "../internal/calendar-normalize.js";
@@ -3854,16 +3855,23 @@ export function buildCreateEventRequest(
   );
   const fallbackDuration = args.fallbackRequest?.durationMinutes;
 
-  const durationMinutes = resolveCreateEventDurationMinutes({
-    explicitDuration: explicitDuration,
-    extractedDuration,
-    isShortPreparation: normalizeIsShortPreparationFlag(
-      args.extractedDetails.isShortPreparation,
-    ),
-    hasExplicitEndAt: Boolean(rawEndAt),
-    hasExplicitWindowPreset: Boolean(resolvedWindowPreset),
-    hasExplicitStartAt: Boolean(resolvedStartAt),
-  });
+  // A source-bound invalid duration is not an omission. Keep it for the
+  // canonical event-range validator rather than silently selecting a default.
+  const durationMinutes =
+    args.requireExtractedTiming &&
+    extractedDuration !== undefined &&
+    extractedDuration <= 0
+      ? extractedDuration
+      : resolveCreateEventDurationMinutes({
+          explicitDuration: explicitDuration,
+          extractedDuration,
+          isShortPreparation: normalizeIsShortPreparationFlag(
+            args.extractedDetails.isShortPreparation,
+          ),
+          hasExplicitEndAt: Boolean(rawEndAt),
+          hasExplicitWindowPreset: Boolean(resolvedWindowPreset),
+          hasExplicitStartAt: Boolean(resolvedStartAt),
+        });
   const resolvedDurationMinutes =
     explicitDuration !== undefined || extractedDuration !== undefined
       ? durationMinutes
@@ -4114,6 +4122,7 @@ async function inferCreateEventDetails(
     "If the current request is a follow-up, recover the event subject from recent conversation and apply new timing or location constraints from the current request.",
     'A follow-up that asks for another event ("make another one", "also add", "one more") and states only a clock time keeps the day the user stated for the event just discussed; that day is user-stated timing, not borrowed timing.',
     "Set requiresInput:true and ask for the missing detail in clarification when the user has not supplied or accepted an exact time and has not explicitly asked you to choose one. Morning, afternoon, and evening alone require a clock-time question. Set requiresInput:false only when the creation request is sufficiently specified.",
+    `When the date and exact start are known, an omitted end and duration alone do not require clarification: leave endAt and durationMinutes null so the canonical timed-event default of ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES} minutes applies. Do not invent an end or duration or describe that default as user-supplied. Preserve an explicit valid end/duration; invalid, contradictory or ambiguous explicit values still require correction, never replacement by the default.`,
     ...(nativeConstraints
       ? [
           "The destination is selected and confirmed separately on the native phone. Leave grantId and calendarId null; no managed account, provider or managed Notes source catalog is available to this capability. A requested managed source note requires clarification, not a draft that drops its source reference.",

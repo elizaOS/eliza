@@ -110,6 +110,7 @@ export {
   useCalendarWeek,
 } from "./hooks/useCalendarWeek.js";
 export {
+  DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES,
   normalizeCalendarAttendees,
   normalizeCalendarDateOnly,
   normalizeCalendarTimeZone,

@@ -268,6 +268,17 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       true,
     );
     expect(state.text).toContain(calendarAction.name);
+    expect(state.text).toMatch(/(?:default.{0,40}60|60.{0,40}default)/i);
+    const createChild = promoteSubactionsToActions(
+      calendarAction,
+      calendarActionPromotionOptions,
+    ).find((action) => action.name === "CALENDAR_CREATE_EVENT");
+    expect(createChild?.description).toMatch(/60-minute timed default/);
+    const childDetails = createChild?.parameters?.find(
+      (parameter) => parameter.name === "details",
+    );
+    expect(childDetails?.required).toBe(false);
+    expect(childDetails?.descriptionCompressed).toMatch(/domain default 60m/);
   });
 
   it("returns a settled observation for planner-owned availability reads", async () => {
@@ -1184,6 +1195,147 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           (event) => event.title === "Create extraction timing check",
         ),
       ).toEqual([]);
+    },
+  );
+
+  it.each([
+    "default",
+    "end",
+    "duration",
+    "missing-clock",
+    "invalid-duration",
+    "negative-duration",
+  ] as const)(
+    "uses domain timing policy without invented extraction fields (%s)",
+    async (mode) => {
+      const index = [
+        "default",
+        "end",
+        "duration",
+        "missing-clock",
+        "invalid-duration",
+        "negative-duration",
+      ].indexOf(mode);
+      const date = `2030-05-${String(10 + index).padStart(2, "0")}`;
+      const title = `Canonical timing policy ${mode}`;
+      const original = `Create ${title} on ${date} ${mode === "missing-clock" ? "in the morning" : "at 5pm UTC"}${mode === "end" ? " until 5:45pm" : mode === "duration" ? " for 30 minutes" : mode === "invalid-duration" ? " for 0 minutes" : mode === "negative-duration" ? " for -5 minutes" : ""}.`;
+      const actor = message(
+        `00000000-0000-0000-0000-${String(998100 + index).padStart(12, "0")}`,
+        original,
+      );
+      const evidence = [{ sourceId: `current:${actor.id}`, quote: original }];
+      const model = runtime.useModel.bind(runtime);
+      let extractionCalls = 0;
+      let extractedTiming:
+        | { endAt: string | null; durationMinutes: number | null }
+        | undefined;
+      vi.spyOn(runtime, "useModel").mockImplementation((async (
+        type,
+        params,
+      ) => {
+        if (
+          type === ModelType.TEXT_LARGE &&
+          String(params?.prompt).includes(
+            "Extract calendar event creation fields",
+          )
+        ) {
+          extractionCalls++;
+          extractedTiming = {
+            endAt: mode === "end" ? `${date}T17:45:00Z` : null,
+            durationMinutes:
+              mode === "duration"
+                ? 30
+                : mode === "invalid-duration"
+                  ? 0
+                  : mode === "negative-duration"
+                    ? -5
+                    : null,
+          };
+          return JSON.stringify({
+            requiresInput: mode === "missing-clock",
+            clarification: mode === "missing-clock" ? "What exact time?" : null,
+            guestIntent: { state: "none", evidence, guests: [] },
+            noteIntent: { state: "none", evidence, sourceNote: null },
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            title,
+            description: null,
+            location: null,
+            startAt: mode === "missing-clock" ? null : `${date}T17:00:00Z`,
+            ...extractedTiming,
+            timeZone: "UTC",
+            recurrence: null,
+            travelOriginAddress: null,
+            isShortPreparation: false,
+          });
+        }
+        return model(type, params);
+      }) as typeof runtime.useModel);
+      const create = calendar.createCalendarEventMutation.bind(calendar);
+      const requests: Array<
+        Parameters<typeof calendar.createCalendarEventMutation>[1]
+      > = [];
+      vi.spyOn(calendar, "createCalendarEventMutation").mockImplementation(
+        async (url, request) => {
+          requests.push(structuredClone(request));
+          return create(url, request);
+        },
+      );
+      const { result } = await invoke(
+        actor,
+        {
+          title,
+          details: {
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            timeZone: "UTC",
+          },
+        },
+        false,
+        "CALENDAR_CREATE_EVENT",
+        "planner",
+      );
+      expect(extractionCalls).toBe(1);
+      const read = await calendar.getCalendarFeed(
+        new URL("http://internal.local"),
+        {
+          grantId: ELIZA_CALENDAR_GRANT_ID,
+          calendarId: ELIZA_CALENDAR_ID,
+          timeMin: `${date}T00:00:00Z`,
+          timeMax: `${date}T23:59:59Z`,
+        },
+      );
+      const events = read.events.filter((event) => event.title === title);
+      if (
+        mode === "missing-clock" ||
+        mode === "invalid-duration" ||
+        mode === "negative-duration"
+      ) {
+        expect(result.success, JSON.stringify(result)).toBe(false);
+        expect(events).toEqual([]);
+        expect(requests).toEqual([]);
+      } else {
+        expect(result.success, JSON.stringify(result)).toBe(true);
+        expect(result.effectReceipts?.[0]?.outcome).toBe("applied");
+        expect(events).toHaveLength(1);
+        expect(new Date(events[0].startAt).toISOString()).toBe(
+          `${date}T17:00:00.000Z`,
+        );
+        expect(new Date(events[0].endAt).toISOString()).toBe(
+          `${date}T${mode === "default" ? "18:00" : mode === "end" ? "17:45" : "17:30"}:00.000Z`,
+        );
+        expect(requests).toHaveLength(1);
+        if (mode === "default") {
+          expect(extractedTiming).toEqual({
+            endAt: null,
+            durationMinutes: null,
+          });
+          // The domain resolves its existing default before the mutation boundary.
+          expect(new Date(requests[0].endAt!).toISOString()).toBe(
+            `${date}T18:00:00.000Z`,
+          );
+        }
+      }
     },
   );
 
