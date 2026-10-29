@@ -34,8 +34,8 @@ import org.json.JSONObject;
 public final class SlotClockPlugin extends Plugin {
     /**
      * The Clock profile this app advertises. Eliza keeps its own alarm store (ElizaAlarms,
-     * clock.alarms.v1); the shared handoff-only policy (Android Clock owns alarms) is a recorded
-     * product decision (eliza-research/alphaphone#681 item 5). Switching to HANDOFF_ONLY also needs
+     * clock.alarms.v1); moving it to the shared handoff-only policy (Android Clock owns alarms) is a
+     * pending product decision. Switching to HANDOFF_ONLY also needs
      * the saved-alarm path chosen ({@link ClockProfile.SavedAlarms}); until then saved alarms keep
      * ringing as before.
      */

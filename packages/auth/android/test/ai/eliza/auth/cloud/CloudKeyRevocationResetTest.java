@@ -6,7 +6,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * The bounded reset revocation step on a plain JVM: synthetic slots and a synthetic transport. No
- * network, Android or real credential. Moved here from Alpha's ResetCloudRevocation fixture.
+ * network, Android or real credential.
  */
 public final class CloudKeyRevocationResetTest {
  private static int checks;

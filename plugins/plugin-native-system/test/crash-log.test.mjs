@@ -180,4 +180,18 @@ test("renderer contract re-applies the allowlist to native and stored entries", 
     entries: [{ at: now - 1, source: "exit", reason: "crash" }],
     exitHistory: true,
   });
+  // A failing bridge is "unavailable", never an empty log that reads as "no problems".
+  await assert.rejects(
+    readNativeCrashLog(
+      {
+        crashLog: async () => {
+          throw new Error("bridge unavailable");
+        },
+        recordRendererFailure: async () => {},
+        clearCrashLog: async () => {},
+      },
+      now,
+    ),
+    /bridge unavailable/,
+  );
 });

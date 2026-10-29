@@ -140,7 +140,10 @@ export function sanitizeCrashEntries(
   return out.sort((a, b) => a.at - b.at).slice(-CRASH_LOG_MAX_ENTRIES);
 }
 
-/** Reads the native log through a host port; a missing or failing port reads as empty. */
+/**
+ * Reads the native log through a host port. A host without a port reads as empty; a failing port
+ * rejects, so the caller can show the log as unavailable instead of as "no problems recorded".
+ */
 export async function readNativeCrashLog(
   port: CrashLogPort | null | undefined,
   now = Date.now(),

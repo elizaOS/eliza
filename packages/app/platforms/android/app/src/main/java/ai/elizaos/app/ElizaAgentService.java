@@ -4118,8 +4118,8 @@ public class ElizaAgentService extends Service {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return;
         }
-        // The user-visible problem log (Settings > Diagnostics) keeps only the failure class of
-        // each problem exit; the developer diagnostics below keep their fuller record.
+        // The shared privacy-bounded problem log (plugin-native-system crash.CrashLog) keeps only
+        // the failure class of each problem exit; the developer diagnostics below keep their fuller record.
         try {
             ai.eliza.plugins.system.crash.CrashLog.collectExitReasons(this);
         } catch (Exception unavailable) {
