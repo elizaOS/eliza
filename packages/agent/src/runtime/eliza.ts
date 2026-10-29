@@ -4416,9 +4416,14 @@ export async function startEliza(
   let scopeName = character.name;
   if (restoredGeneration && productCharacter?.name === character.name) {
     const configured = buildCharacterFromConfig(config);
+    const expectedProduct = buildProductCharacterFromConfig(
+      config,
+      productCharacter,
+    );
     if (
       !configured.name ||
-      (configured.id ?? stringToUuid(configured.name)) !== character.id
+      (configured.id ?? stringToUuid(configured.name)) !== character.id ||
+      expectedProduct.name !== character.name
     )
       throw new ElizaError(
         "Restored product profile scope is not established by its canonical config",

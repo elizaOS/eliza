@@ -316,7 +316,6 @@ async function applyReloadedConfig(params: {
     const product = getAgentHostBridge().productCharacter;
     const rebuilt =
       product &&
-      runtime.character.name === product.name &&
       !process.env.SANDBOX_ROUTE_AGENT_ID?.trim() &&
       !process.env.ELIZA_AGENT_CHARACTER_JSON?.trim() &&
       !process.env.ELIZA_CHARACTER_PATH?.trim()

@@ -170,28 +170,30 @@ test.each(["service", "route"])(
       "Alpha",
     );
     // A normal config reload must not copy the product label into canonical storage.
-    await handleConfigRoutes({
-      req,
-      res,
-      method: "POST",
-      pathname: "/api/config/reload",
-      url: new URL("http://localhost/api/config/reload"),
-      config: state.config,
-      runtime,
-      json: () => {},
-      error: (_res: unknown, message: string) => {
-        throw Error(message);
-      },
-      isBlockedEnvKey: () => false,
-      readJsonBody: async () => null,
-      redactConfigSecrets: (value) => value,
-      isBlockedObjectKey: () => false,
-      stripRedactedPlaceholderValuesDeep: () => {},
-      patchTouchesProviderSelection: () => false,
-      CONFIG_WRITE_ALLOWED_TOP_KEYS: new Set(),
-      resolveMcpServersRejection: async () => null,
-      resolveMcpTerminalAuthorizationRejection: () => null,
-    });
+    const reload = () =>
+      handleConfigRoutes({
+        req,
+        res,
+        method: "POST",
+        pathname: "/api/config/reload",
+        url: new URL("http://localhost/api/config/reload"),
+        config: state.config,
+        runtime,
+        json: () => {},
+        error: (_res: unknown, message: string) => {
+          throw Error(message);
+        },
+        isBlockedEnvKey: () => false,
+        readJsonBody: async () => null,
+        redactConfigSecrets: (value) => value,
+        isBlockedObjectKey: () => false,
+        stripRedactedPlaceholderValuesDeep: () => {},
+        patchTouchesProviderSelection: () => false,
+        CONFIG_WRITE_ALLOWED_TOP_KEYS: new Set(),
+        resolveMcpServersRejection: async () => null,
+        resolveMcpTerminalAuthorizationRejection: () => null,
+      });
+    await reload();
     expect(runtime.character.name).toBe("Alpha");
     expect(loadElizaConfig().agents?.list?.[0]?.name).toBe(originalName);
     // Even explicitly submitting the existing product label is a real name edit.
@@ -228,6 +230,14 @@ test.each(["service", "route"])(
     expect(buildProductCharacterFromConfig(loadElizaConfig(), brand).name).toBe(
       "Beta",
     );
+    // Resetting a custom name to the canonical default has the same reload and boot result.
+    saveElizaConfig(config);
+    await reload();
+    expect(runtime.character.name).toBe("Alpha");
+    expect(buildProductCharacterFromConfig(loadElizaConfig(), brand).name).toBe(
+      "Alpha",
+    );
+    await edit({ name: "Beta" });
     await runtime.registerService(ElizaCharacterPersistenceService);
     await runtime.getServiceLoadPromise(
       ElizaCharacterPersistenceService.serviceType,
