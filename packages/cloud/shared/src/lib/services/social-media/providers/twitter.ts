@@ -201,6 +201,16 @@ async function waitForProcessing(
       },
     );
 
+    if (!response.ok) {
+      const errorBody = (await response.json().catch(() => null)) as {
+        errors?: Array<{ message?: string }>;
+      } | null;
+      const detail = errorBody?.errors?.[0]?.message;
+      throw new Error(
+        `Media processing status check failed (${response.status})${detail ? `: ${detail}` : ""}`,
+      );
+    }
+
     const data = (await response.json()) as {
       processing_info?: {
         state: string;
