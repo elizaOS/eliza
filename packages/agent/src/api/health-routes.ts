@@ -28,6 +28,7 @@ import type { ElizaConfig } from "@elizaos/host/protocol";
 import { hasTextGenerationHandler } from "@elizaos/plugin-assistant";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { createDevCloudConfigAuthorityView } from "../config/dev-cloud-env-authority.ts";
+import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
@@ -110,6 +111,17 @@ interface RuntimeDebugSerializeOptions {
   maxObjectEntries: number;
   maxStringLength: number;
 }
+
+/** Match walkConfigSecretFilter leaf policy for runtime debug dumps. */
+function redactRuntimeDebugLeaf(value: unknown): unknown {
+  if (value === null || value === undefined) return value;
+  if (typeof value === "string") return value.length > 0 ? "[REDACTED]" : "";
+  if (typeof value === "number" || typeof value === "boolean") {
+    return "[REDACTED]";
+  }
+  return "[REDACTED]";
+}
+
 /**
  * /api/runtime serializes the entire runtime object graph (six deep reflective
  * walks). RuntimeView re-requests on depth/cap changes and may revalidate
@@ -226,9 +238,17 @@ export function serializeForRuntimeDebug(
   options: RuntimeDebugSerializeOptions,
 ): unknown {
   const seen = new WeakMap<object, string>();
-  const visit = (current: unknown, path: string, depth: number): unknown => {
+  const visit = (
+    current: unknown,
+    path: string,
+    depth: number,
+    redactAll = false,
+  ): unknown => {
     if (current === null) return null;
     const kind = typeof current;
+    if (redactAll && kind !== "object") {
+      return redactRuntimeDebugLeaf(current);
+    }
     if (kind === "string") {
       if ((current as string).length <= options.maxStringLength) return current;
       const wellFormedString = toWellFormedUnicode(current as string);
@@ -266,6 +286,16 @@ export function serializeForRuntimeDebug(
       };
     }
     const obj = current as object;
+    if (
+      redactAll &&
+      (obj instanceof Date ||
+        obj instanceof RegExp ||
+        Buffer.isBuffer(obj) ||
+        ArrayBuffer.isView(obj) ||
+        obj instanceof ArrayBuffer)
+    ) {
+      return "[REDACTED]";
+    }
     if (obj instanceof Date) {
       return { __type: "date", value: obj.toISOString() };
     }
@@ -297,7 +327,7 @@ export function serializeForRuntimeDebug(
         }
       }
       if (err.cause !== undefined) {
-        out.cause = visit(err.cause, `${path}.cause`, depth + 1);
+        out.cause = visit(err.cause, `${path}.cause`, depth + 1, redactAll);
       }
       return out;
     }
@@ -346,7 +376,7 @@ export function serializeForRuntimeDebug(
       const limit = Math.min(arr.length, options.maxArrayLength);
       const items = new Array<unknown>(limit);
       for (let i = 0; i < limit; i++) {
-        items[i] = visit(arr[i], `${path}[${i}]`, depth + 1);
+        items[i] = visit(arr[i], `${path}[${i}]`, depth + 1, redactAll);
       }
       const out: Record<string, unknown> = {
         __type: "array",
@@ -364,9 +394,16 @@ export function serializeForRuntimeDebug(
       let i = 0;
       for (const [entryKey, entryValue] of obj.entries()) {
         if (i >= options.maxObjectEntries) break;
+        const keyIsSensitive =
+          typeof entryKey === "string" && isSensitiveConfigKey(entryKey);
         entries.push({
-          key: visit(entryKey, `${path}.<key:${i}>`, depth + 1),
-          value: visit(entryValue, `${path}.<value:${i}>`, depth + 1),
+          key: visit(entryKey, `${path}.<key:${i}>`, depth + 1, false),
+          value: visit(
+            entryValue,
+            `${path}.<value:${i}>`,
+            depth + 1,
+            redactAll || keyIsSensitive,
+          ),
         });
         i += 1;
       }
@@ -385,7 +422,7 @@ export function serializeForRuntimeDebug(
       let i = 0;
       for (const entry of obj.values()) {
         if (i >= options.maxArrayLength) break;
-        values.push(visit(entry, `${path}.<set:${i}>`, depth + 1));
+        values.push(visit(entry, `${path}.<set:${i}>`, depth + 1, redactAll));
         i += 1;
       }
       const out: Record<string, unknown> = {
@@ -420,10 +457,15 @@ export function serializeForRuntimeDebug(
       const descriptor = Object.getOwnPropertyDescriptor(obj, propertyKey);
       if (!descriptor) continue;
       if ("value" in descriptor) {
+        const childRedactAll =
+          redactAll ||
+          (typeof propertyKey === "string" &&
+            isSensitiveConfigKey(propertyKey));
         properties[keyLabel] = visit(
           descriptor.value,
           `${path}.${keyLabel}`,
           depth + 1,
+          childRedactAll,
         );
       } else {
         properties[keyLabel] = {
