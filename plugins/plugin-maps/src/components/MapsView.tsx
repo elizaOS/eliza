@@ -38,13 +38,13 @@ import {
   useRef,
   useState,
 } from "react";
-import { offeredTravelModes } from "../coverage.js";
 import type { PlaceRef, RoutePlan, TravelMode } from "../types.js";
 import {
   type MapsProviderDescription,
   type MapsViewTransport,
   mapsViewTransport,
 } from "./maps-view-data.js";
+import { planCoveredRoutes } from "./plan-covered-routes.js";
 
 const MAP_GRID_LINES = ["a", "b", "c", "d", "e", "f", "g"] as const;
 const LOADING_ROWS = ["a", "b", "c", "d", "e"] as const;
@@ -925,24 +925,15 @@ export function MapsView({
     try {
       // Plan only the modes a reported coverage lists, so no request is spent
       // on a mode it omits; an unreported coverage narrows nothing.
-      const coverage = transport.coverage
-        ? await transport
-            .coverage(provider, controller.signal)
-            .catch(() => null)
-        : null;
-      if (controller.signal.aborted) return;
-      const modes: readonly TravelMode[] = offeredTravelModes(coverage);
-      const outcomes = await Promise.allSettled(
-        modes.map((mode) =>
-          transport.planRoute(
-            origin,
-            selected,
-            mode,
-            provider,
-            controller.signal,
-          ),
-        ),
+      const plan = await planCoveredRoutes(
+        transport,
+        origin,
+        selected,
+        provider,
+        controller.signal,
       );
+      if (!plan) return;
+      const { outcomes } = plan;
       if (
         controller.signal.aborted ||
         routeRequest.current !== controller ||

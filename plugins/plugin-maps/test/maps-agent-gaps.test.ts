@@ -18,6 +18,7 @@ import { mapsAction } from "../src/action.js";
 import type { MapsProviderAdapter } from "../src/adapter.js";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { offeredTravelModes } from "../src/coverage.js";
+import { planCoveredRoutes } from "../src/components/plan-covered-routes.js";
 import { MapsError } from "../src/errors.js";
 import { serverInteract } from "../src/interact.js";
 import {
@@ -27,7 +28,14 @@ import {
 } from "../src/saved-places-host.js";
 import { MapsService } from "../src/service.js";
 import type { SavedPlaceStore } from "../src/store.js";
-import type { MapsCoverage, PlaceRef, SavedPlace } from "../src/types.js";
+import type {
+  MapsCoverage,
+  MapsProviderDescription,
+  MapsRouteResult,
+  PlaceRef,
+  SavedPlace,
+  TravelMode,
+} from "../src/types.js";
 
 const OWNER = "00000000-0000-4000-8000-000000000002";
 const PORT: PlaceRef = {
@@ -368,5 +376,77 @@ describe("saved places reconciled with the phone's list", () => {
     expect(await run(service, { action: "saved" })).toMatchObject({
       data: { device: "none" },
     });
+  });
+});
+
+describe("the Maps view plans only the modes a provider serves", () => {
+  const provider = {
+    id: "stub",
+    generation: 1,
+  } as unknown as MapsProviderDescription;
+  function transport(coverage?: () => Promise<MapsCoverage | null>) {
+    const asked: TravelMode[] = [];
+    return {
+      asked,
+      port: {
+        planRoute: async (
+          _o: PlaceRef,
+          _d: PlaceRef,
+          mode: TravelMode,
+        ): Promise<MapsRouteResult> => {
+          asked.push(mode);
+          return { route: { routeId: mode } } as unknown as MapsRouteResult;
+        },
+        ...(coverage ? { coverage } : {}),
+      },
+    };
+  }
+
+  it("requests only reported modes, never transit where coverage omits it", async () => {
+    const { asked, port } = transport(
+      async () => ({ travelModes: ["walk", "drive"] }) as MapsCoverage,
+    );
+    const plan = await planCoveredRoutes(
+      port,
+      PORT,
+      CASINO,
+      provider,
+      new AbortController().signal,
+    );
+    expect(plan?.modes).toEqual(["drive", "walk"]);
+    expect(asked.sort()).toEqual(["drive", "walk"]);
+  });
+
+  it("narrows nothing when coverage is unreported, unreadable or absent", async () => {
+    for (const coverage of [
+      async () => null,
+      async () => {
+        throw new Error("offline");
+      },
+      undefined,
+    ]) {
+      const { asked, port } = transport(coverage);
+      const plan = await planCoveredRoutes(
+        port,
+        PORT,
+        CASINO,
+        provider,
+        new AbortController().signal,
+      );
+      expect(plan?.modes).toEqual(["drive", "walk", "bicycle", "transit"]);
+      expect(asked).toHaveLength(4);
+    }
+  });
+
+  it("sends no route request once the comparison is cancelled", async () => {
+    const controller = new AbortController();
+    const { asked, port } = transport(async () => {
+      controller.abort();
+      return { travelModes: ["drive"] } as MapsCoverage;
+    });
+    expect(
+      await planCoveredRoutes(port, PORT, CASINO, provider, controller.signal),
+    ).toBeNull();
+    expect(asked).toEqual([]);
   });
 });
