@@ -18,8 +18,10 @@
  *             --ota OTA.zip --journal FILE [--execute --confirm-update]
  *   status    --serial S --journal FILE
  *   fallback  --serial S --journal FILE [--execute --confirm-fallback]
- *   stock-archive --channel C --source-lock LOCK --archive FACTORY.zip
+ *   stock-archive --channel C --source-lock LOCK --archive FACTORY.zip [--known-good DIR]
  *   verify-stock  --serial S --source-lock LOCK
+ *   retain-known-good --channel C --record RECORD --signed-target-files ZIP
+ *             --signed-image IMAGE.zip --archive-dir NEW_DIR
  *
  * The compatibility records come from aosp-release-record.mjs. A device running a
  * build no record describes is refused. Results are observations for the release
@@ -32,7 +34,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { RECORD_KIND } from "./aosp-release-record.mjs";
 import { syncDirectory, withDeviceInstallLock } from "./install-lock.ts";
-import { HEX64 } from "./pixel10a-release.mjs";
+import { HEX64, placeholderFields } from "./pixel10a-release.mjs";
 import { hashFile } from "./release-contract.ts";
 
 export const JOURNAL_KIND = "aosp-ota-update-journal";
@@ -965,7 +967,13 @@ export function fallbackToOriginalSlot({
  * the operator runs it with physical confirmation on the device. It is never
  * executed by this tool.
  */
-export function stockRecoveryPlan({ channel, sourceLock, archive, entries }) {
+export function stockRecoveryPlan({
+  channel,
+  sourceLock,
+  archive,
+  entries,
+  knownGood = null,
+}) {
   const problems = [];
   const stock = channel?.recovery?.stockFactoryImage;
   if (
@@ -1043,6 +1051,258 @@ export function stockRecoveryPlan({ channel, sourceLock, archive, entries }) {
       "This restores Google's stock image; it is not a signed update or rollback of the product.",
     ],
     problems,
+    // A retained known-good release is offered first when one verifies: it keeps the
+    // product image and user data. Its problems never block the stock plan.
+    knownGood: knownGood
+      ? knownGoodRecoveryPlan({ channel, directory: knownGood })
+      : null,
+    executed: false,
+  };
+}
+
+export const KNOWN_GOOD_KIND = "aosp-known-good-retention";
+const KNOWN_GOOD_FILE = "known-good.json";
+
+/**
+ * Problems that keep a signed release from being retained as the channel's known-good
+ * recovery image: the record must pass `releaseRecordProblems` (no recorded problems,
+ * the channel's OTA certificate and AVB key, rollback indexes), carry no placeholder, be
+ * release-keys signed (never test-keys or dev-keys), and the supplied target-files and
+ * fastboot image must be the exact bytes the record describes (target-files SHA-256 and
+ * size; the image's vbmeta.img is the record's vbmeta digest).
+ */
+export function knownGoodProblems({
+  record,
+  channel,
+  signedTargetFiles,
+  signedImage,
+  imageEntries,
+  readImageEntry,
+}) {
+  const problems = releaseRecordProblems(record, channel, "known-good");
+  for (const field of placeholderFields(record ?? {}))
+    problems.push(`known-good record ${field} is unset or a placeholder`);
+  const fingerprint = record?.build?.fingerprint ?? "";
+  if (fingerprint && !fingerprint.endsWith(":user/release-keys"))
+    problems.push(
+      `known-good build ${fingerprint} is not a release-keys user build`,
+    );
+  if (!HEX64.test(record?.certificates?.platform ?? ""))
+    problems.push("known-good record has no platform certificate digest");
+  const recorded = record?.artifacts?.signedTargetFiles;
+  if (signedTargetFiles) {
+    if (path.basename(signedTargetFiles.file) !== recorded?.file)
+      problems.push(`the target-files is not named ${recorded?.file}`);
+    if (signedTargetFiles.sha256 !== recorded?.sha256)
+      problems.push(
+        "the target-files SHA-256 is not the record's signed target-files",
+      );
+    if (
+      recorded?.sizeBytes !== undefined &&
+      signedTargetFiles.sizeBytes !== recorded.sizeBytes
+    )
+      problems.push("the target-files size is not the record's");
+  } else problems.push("the signed target-files is required");
+  const vbmeta = record?.verifiedBoot?.images?.vbmeta;
+  if (!HEX64.test(vbmeta ?? ""))
+    problems.push("known-good record has no vbmeta image digest");
+  if (!signedImage) problems.push("the signed fastboot image is required");
+  else if (!(imageEntries ?? []).includes("vbmeta.img"))
+    problems.push("the signed image has no vbmeta.img");
+  else if (sha256(readImageEntry("vbmeta.img")) !== vbmeta)
+    problems.push(
+      "the signed image's vbmeta.img is not the record's signed vbmeta",
+    );
+  return problems;
+}
+
+function retainFile(source, directory) {
+  const target = path.join(directory, path.basename(source));
+  if (fs.existsSync(target))
+    throw new Error(`${target} already exists; retain into a new directory`);
+  fs.copyFileSync(source, target, fs.constants.COPYFILE_EXCL);
+  fs.chmodSync(target, 0o444);
+  return target;
+}
+
+/**
+ * Archive and hash-record a signed release as the channel's known-good recovery image.
+ * Inputs are verified first (knownGoodProblems); with any problem nothing is written.
+ * The archive directory must not exist: every retention is a new, immutable directory
+ * holding the record, target-files, image and a `known-good.json` naming their hashes,
+ * which `knownGoodRecoveryPlan` (and `stock-archive --known-good`) re-verify. This
+ * never flashes a device.
+ */
+export function retainKnownGood({
+  channel,
+  recordFile,
+  signedTargetFiles,
+  signedImage,
+  archiveDir,
+  imageEntries = archiveEntries(signedImage),
+  readImageEntry = (name) => archiveEntry(signedImage, name),
+  createdAt = new Date().toISOString(),
+}) {
+  const recordBytes = fs.readFileSync(recordFile);
+  const record = JSON.parse(recordBytes);
+  const targetFiles = {
+    file: path.basename(signedTargetFiles),
+    ...hashFile(signedTargetFiles),
+  };
+  const image = { file: path.basename(signedImage), ...hashFile(signedImage) };
+  const problems = knownGoodProblems({
+    record,
+    channel,
+    signedTargetFiles: targetFiles,
+    signedImage: image,
+    imageEntries,
+    readImageEntry,
+  });
+  if (
+    new Set([path.basename(recordFile), targetFiles.file, image.file]).size !==
+      3 ||
+    [targetFiles.file, image.file].includes(KNOWN_GOOD_FILE)
+  )
+    problems.push("the record, target-files and image need distinct names");
+  if (problems.length) return { retained: false, problems, executed: false };
+  if (fs.existsSync(archiveDir))
+    return {
+      retained: false,
+      problems: [`${archiveDir} already exists; retain into a new directory`],
+      executed: false,
+    };
+  fs.mkdirSync(path.dirname(path.resolve(archiveDir)), { recursive: true });
+  const temporary = fs.mkdtempSync(
+    path.join(path.dirname(path.resolve(archiveDir)), ".known-good-"),
+  );
+  try {
+    for (const source of [recordFile, signedTargetFiles, signedImage])
+      retainFile(source, temporary);
+    const copied = (file) => hashFile(path.join(temporary, file));
+    const manifest = {
+      schema: 1,
+      kind: KNOWN_GOOD_KIND,
+      product: record.product,
+      device: record.device,
+      channel: record.channel,
+      fingerprint: record.build.fingerprint,
+      securityPatch: record.build.securityPatch,
+      rollbackIndexes: record.verifiedBoot.rollbackIndexes,
+      createdAt,
+      record: {
+        file: path.basename(recordFile),
+        ...copied(path.basename(recordFile)),
+      },
+      signedTargetFiles: {
+        file: targetFiles.file,
+        ...copied(targetFiles.file),
+      },
+      signedImage: {
+        file: image.file,
+        ...copied(image.file),
+        vbmetaSha256: record.verifiedBoot.images.vbmeta,
+      },
+      imageBooted: false,
+      recoveryDrilled: false,
+    };
+    if (
+      manifest.record.sha256 !== sha256(recordBytes) ||
+      manifest.signedTargetFiles.sha256 !== targetFiles.sha256 ||
+      manifest.signedImage.sha256 !== image.sha256
+    )
+      throw new Error("a retained file changed while it was copied");
+    fs.writeFileSync(
+      path.join(temporary, KNOWN_GOOD_FILE),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      { flag: "wx", mode: 0o444 },
+    );
+    fs.renameSync(temporary, archiveDir);
+    return {
+      retained: true,
+      archiveDir,
+      manifest,
+      problems: [],
+      executed: false,
+    };
+  } finally {
+    fs.rmSync(temporary, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Re-verify a retained known-good directory and return the operator's fastboot plan
+ * that reflashes it. The device keeps the product's AVB key, so this needs no unlock
+ * and keeps user data; the bootloader refuses it when the device's stored rollback
+ * index is above the retained image's. It is never executed by this tool.
+ */
+export function knownGoodRecoveryPlan({ channel, directory }) {
+  const problems = [];
+  let manifest = null;
+  try {
+    manifest = JSON.parse(
+      fs.readFileSync(path.join(directory, KNOWN_GOOD_FILE), "utf8"),
+    );
+  } catch {
+    return {
+      steps: [],
+      problems: [`${directory} has no readable ${KNOWN_GOOD_FILE}`],
+      executed: false,
+    };
+  }
+  if (manifest.schema !== 1 || manifest.kind !== KNOWN_GOOD_KIND)
+    problems.push(`${KNOWN_GOOD_FILE} is not a ${KNOWN_GOOD_KIND} record`);
+  if (
+    manifest.product !== channel?.product ||
+    manifest.device !== channel?.device ||
+    manifest.channel !== channel?.channel
+  )
+    problems.push("the retained release is not this channel's");
+  const safe = (name) =>
+    typeof name === "string" && name && path.basename(name) === name;
+  for (const key of ["record", "signedTargetFiles", "signedImage"]) {
+    const entry = manifest[key];
+    if (!safe(entry?.file)) {
+      problems.push(`${key} is not a file in the retained directory`);
+      continue;
+    }
+    try {
+      const actual = hashFile(path.join(directory, entry.file));
+      if (
+        actual.sha256 !== entry.sha256 ||
+        actual.sizeBytes !== entry.sizeBytes
+      )
+        problems.push(`the retained ${key} changed since it was retained`);
+    } catch {
+      problems.push(`the retained ${key} is missing`);
+    }
+  }
+  if (!problems.length) {
+    const record = JSON.parse(
+      fs.readFileSync(path.join(directory, manifest.record.file), "utf8"),
+    );
+    for (const problem of releaseRecordProblems(record, channel, "known-good"))
+      problems.push(problem);
+    if (record.build?.fingerprint !== manifest.fingerprint)
+      problems.push("the retained record is not the retained build");
+  }
+  const serial = "SERIAL";
+  return {
+    fingerprint: manifest.fingerprint ?? null,
+    rollbackIndexes: manifest.rollbackIndexes ?? null,
+    image: manifest.signedImage?.file ?? null,
+    steps: problems.length
+      ? []
+      : [
+          ["adb", "-s", serial, "reboot", "bootloader"],
+          ["fastboot", "-s", serial, "update", manifest.signedImage.file],
+        ],
+    notes: [
+      "Run the steps from the retained directory; the image is re-hashed before every plan.",
+      "The device must still trust the product's AVB key; a stock-recovered device needs the product's key re-enrolled first.",
+      "The bootloader refuses an image whose rollback index is below the device's stored index; recovery to an older known-good build is then not possible and stock recovery applies.",
+      "This reflashes a retained signed release. It is not a signed update, and no drill is recorded by this tool.",
+    ],
+    problems,
     executed: false,
   };
 }
@@ -1085,6 +1345,14 @@ export function verifyStockRecovery({
   };
 }
 
+function archiveEntry(archive, name) {
+  const out = spawnSync("unzip", ["-p", archive, name], {
+    maxBuffer: 256 << 20,
+  });
+  if (out.status !== 0) throw new Error(`${name} could not be read`);
+  return out.stdout;
+}
+
 function archiveEntries(archive) {
   const out = spawnSync("unzip", ["-Z1", archive], {
     encoding: "utf8",
@@ -1109,6 +1377,11 @@ export function parseArgs(argv) {
     "--archive": "archive",
     "--adb": "adb",
     "--fastboot": "fastboot",
+    "--record": "record",
+    "--signed-target-files": "signedTargetFiles",
+    "--signed-image": "signedImage",
+    "--archive-dir": "archiveDir",
+    "--known-good": "knownGood",
   };
   const flags = {
     "--execute": "execute",
@@ -1136,10 +1409,17 @@ export function parseArgs(argv) {
     fallback: ["serial", "journal"],
     "stock-archive": ["channel", "sourceLock", "archive"],
     "verify-stock": ["serial", "sourceLock"],
+    "retain-known-good": [
+      "channel",
+      "record",
+      "signedTargetFiles",
+      "signedImage",
+      "archiveDir",
+    ],
   }[command];
   if (!required)
     throw new Error(
-      "Use check | apply | status | fallback | stock-archive | verify-stock (see the header of aosp-ota-update.mjs)",
+      "Use check | apply | status | fallback | stock-archive | verify-stock | retain-known-good (see the header of aosp-ota-update.mjs)",
     );
   for (const name of required)
     if (!options[name])
@@ -1152,6 +1432,8 @@ export function parseArgs(argv) {
     throw new Error("--confirm-fallback belongs to fallback --execute");
   if (options.execute && !["apply", "fallback"].includes(command))
     throw new Error(`${command} is read-only`);
+  if (options.knownGood && command !== "stock-archive")
+    throw new Error("--known-good belongs to stock-archive");
   return options;
 }
 
@@ -1162,7 +1444,7 @@ export function main(argv = process.argv.slice(2), defaults = {}) {
   if (
     defaults.channel &&
     !argv.includes("--channel") &&
-    ["check", "apply", "stock-archive"].includes(command)
+    ["check", "apply", "stock-archive", "retain-known-good"].includes(command)
   )
     withDefaults.push("--channel", defaults.channel);
   if (
@@ -1220,6 +1502,16 @@ export function main(argv = process.argv.slice(2), defaults = {}) {
         sourceLock: readJson(options.sourceLock),
         archive: options.archive,
         entries: archiveEntries(options.archive),
+        knownGood: options.knownGood ?? null,
+      });
+      break;
+    case "retain-known-good":
+      result = retainKnownGood({
+        channel,
+        recordFile: options.record,
+        signedTargetFiles: options.signedTargetFiles,
+        signedImage: options.signedImage,
+        archiveDir: options.archiveDir,
       });
       break;
     case "verify-stock":
