@@ -12,6 +12,8 @@
  * before sending; this contract only fixes the shared shape and bounds.
  */
 
+import { normalizeRemoteAgentPairingInstanceId } from "./contracts/remote-agent-pairing.ts";
+
 /** Upper bound for the serialized observation, in UTF-8 bytes. */
 export const CLIENT_TURN_OBSERVATION_MAX_BYTES = 2048;
 
@@ -161,6 +163,20 @@ export function readClientTurnObservationSupport(
   } catch {
     return;
   }
+}
+
+/** Match a current authenticated handshake's known API process, never infer one. */
+export function readClientTurnObservationPeerSupport(
+  status: unknown,
+  expectedServerInstanceId: unknown,
+): ClientTurnObservationSupport | undefined {
+  const expected = normalizeRemoteAgentPairingInstanceId(expectedServerInstanceId);
+  if (!expected) return;
+  try {
+    const input = plainRecord(status, "Peer status");
+    if (normalizeRemoteAgentPairingInstanceId(input.serverInstanceId) !== expected) return;
+    return readClientTurnObservationSupport(input.clientTurnObservationSupport);
+  } catch { return; }
 }
 
 /** Browser-safe validation shared by the renderer and current-turn reader. */

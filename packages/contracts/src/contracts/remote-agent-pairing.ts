@@ -42,6 +42,14 @@ export interface RemoteAgentPairingPayload {
 const PAIRING_CODE_PATTERN = /^[A-HJ-NP-Z2-9]{4}(?:-[A-HJ-NP-Z2-9]{4}){1,2}$/;
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+/** The existing API-process instance datatype, not a token or permission. */
+export function normalizeRemoteAgentPairingInstanceId(
+  value: unknown,
+): string | null {
+  return typeof value === "string" && UUID_PATTERN.test(value)
+    ? value.toLowerCase()
+    : null;
+}
 const MAX_URI_LENGTH = 2_048;
 
 /** Returns the canonical HTTPS origin, or null for anything that is not one. */
