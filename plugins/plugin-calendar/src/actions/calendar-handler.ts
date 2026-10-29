@@ -3984,6 +3984,7 @@ async function inferCreateEventDetails(
     "Resolve relative scheduling from the referenced event’s authoritative interval: immediately after uses its end, before uses its start. Use the supplied Calendar bounds rather than a typical duration or planner hint. If the reference or required bound is missing or ambiguous, ask for clarification.",
     "Preserve names and places in their original language or script when useful.",
     "Return all schema fields as one JSON object, without prose. Use null for unknown or unstated values; do not invent values to fill them. Preserve literal user-provided titles, descriptions, and locations.",
+    "The title names the event itself: leave out the date, time and duration the user gave for it (\"dinner at 5pm\" is titled \"dinner\"), unless the user quoted an exact title.",
     "If a start time or window is implied but duration is not explicit, infer a reasonable positive duration.",
     "For short prep or reminder blocks, use at least 15 minutes instead of 0.",
     "Set isShortPreparation=true when the event is a brief prep/reminder/leave-for/get-ready block (any language) where 15 minutes is the right default.",
