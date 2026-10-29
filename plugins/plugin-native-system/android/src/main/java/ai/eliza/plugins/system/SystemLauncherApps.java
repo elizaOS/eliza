@@ -239,6 +239,13 @@ public final class SystemLauncherApps {
         return null;
     }
 
+    /** True when a request names {@code key} as anything but text. Read as absent, a numeric
+     * profile would open the personal copy of a work app and a non-text activity the package's
+     * default screen, instead of the entry asked for. Absent and JSON null are not malformed. */
+    public static boolean malformedText(org.json.JSONObject request, String key) {
+        return request != null && request.has(key) && !request.isNull(key) && !(request.opt(key) instanceof String);
+    }
+
     /** Why the current user cannot open this package's launcher activity now. */
     public static Refusal explain(PackageManager packages, String packageName) {
         ApplicationInfo application;

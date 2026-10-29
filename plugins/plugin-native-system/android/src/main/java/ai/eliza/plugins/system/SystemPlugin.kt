@@ -412,6 +412,12 @@ open class SystemPlugin : Plugin() {
      * now; a stale entry is refused with a stable code instead of opening something else. */
     @PluginMethod
     fun launchApp(call: PluginCall) {
+        if (SystemLauncherApps.malformedText(call.data, "activityName") ||
+            SystemLauncherApps.malformedText(call.data, "user")
+        ) {
+            call.reject("Choose an installed app")
+            return
+        }
         val activityName = call.getString("activityName")
         if (activityName == null) {
             if (call.getString("user") != null) {
