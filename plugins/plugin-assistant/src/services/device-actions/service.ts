@@ -20,11 +20,13 @@ import {
 import type { ContextObject, IAgentRuntime, Memory, UUID } from "@elizaos/core";
 import {
   conversationClientUserMemoryId,
+  extractUserText,
   getStreamingContext,
   getTurnActionConstraint,
   readDurableConversationChatMarker,
   registerDirectActionRoutingRule,
   stableStringify,
+  unwrapUserMessageText,
   withActionGatePolicy,
 } from "@elizaos/core";
 import { originalAvailabilityWindow } from "../../../../plugin-calendar/src/internal/original-availability.ts";
@@ -42,6 +44,11 @@ import type {
   ApprovalEnqueueResult,
   ApprovalRequest,
 } from "../approval/types.ts";
+import {
+  authoredBrowserDestination,
+  browserDestinationMatches,
+  DeviceBrowserNotRequestedError,
+} from "./browser-request-grounding.ts";
 import type { CalendarFields } from "./calendar-contract.ts";
 import {
   CALENDAR_AGENDA_CAPABILITY,
@@ -708,7 +715,10 @@ export function setDeviceReadReplyContext(
 async function freshRequestedMessageId(
   runtime: IAgentRuntime,
   credential: DeviceCredential,
-): Promise<{ messageId: string; assertCurrent(): void } | undefined> {
+  browserRequest = false,
+): Promise<
+  { messageId: string; requestText: string; assertCurrent(): void } | undefined
+> {
   const current = getDeviceActionTurn();
   const original = current?.replyContext?.message;
   const metadata = original?.content.metadata;
@@ -727,11 +737,12 @@ async function freshRequestedMessageId(
     typeof original.createdAt !== "number" ||
     !Number.isFinite(original.createdAt) ||
     original.createdAt < current.startedAt ||
-    !metadata ||
-    typeof metadata !== "object" ||
-    Array.isArray(metadata) ||
-    !("agentActionMode" in metadata) ||
-    metadata.agentActionMode !== "direct-request-v1"
+    (!browserRequest &&
+      (!metadata ||
+        typeof metadata !== "object" ||
+        Array.isArray(metadata) ||
+        !("agentActionMode" in metadata) ||
+        metadata.agentActionMode !== "direct-request-v1"))
   )
     return;
   const marker = readDurableConversationChatMarker(
@@ -801,7 +812,13 @@ async function freshRequestedMessageId(
     getStreamingContext()?.abortSignal?.aborted
   )
     return;
-  return { messageId: originalId, assertCurrent };
+  return {
+    messageId: originalId,
+    requestText: browserRequest
+      ? extractUserText(unwrapUserMessageText(stored))
+      : "",
+    assertCurrent,
+  };
 }
 
 export async function currentRequestedActionOrigin(
@@ -813,7 +830,11 @@ export async function currentRequestedActionOrigin(
   const origin = await freshRequestedMessageId(runtime, current.credential);
   if (!origin || origin.messageId !== message.id) return undefined;
   origin.assertCurrent();
-  return Object.freeze({ ...origin, startedAt: current.startedAt });
+  return Object.freeze({
+    messageId: origin.messageId,
+    assertCurrent: origin.assertCurrent,
+    startedAt: current.startedAt,
+  });
 }
 
 export async function withDeviceActionTurn<T>(
@@ -2050,8 +2071,22 @@ export class DeviceActionService {
       ].includes(validated.type)
     )
       throw new DeviceActionError("Workflow read requires bound dispatcher");
-    const requestOrigin = await freshRequestedMessageId(this.runtime, c);
+    const browserRequest = validated.type === "browser_navigate";
+    const requestOrigin = await freshRequestedMessageId(
+      this.runtime,
+      c,
+      browserRequest,
+    );
     requestOrigin?.assertCurrent();
+    if (
+      browserRequest &&
+      (!requestOrigin ||
+        !browserDestinationMatches(
+          validated,
+          authoredBrowserDestination(requestOrigin.requestText),
+        ))
+    )
+      throw new DeviceBrowserNotRequestedError();
     const originMessageId = requestOrigin?.messageId;
     if (
       agenda &&
