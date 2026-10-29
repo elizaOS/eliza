@@ -60,6 +60,7 @@ import { NotesController } from "../client/notes-controller.js";
 import { NotesEditor } from "../client/notes-editor.js";
 import { interact as interactWithService } from "../interact.js";
 import { NotesService } from "../service.js";
+import type { StickyNote } from "../types.js";
 import { NotesView } from "./NotesView.js";
 import { NotesWorkspace, type NotesWorkspaceHandle } from "./NotesWorkspace.js";
 
@@ -465,7 +466,9 @@ describe("Notes capability-to-UI journey", () => {
       { content: "Venue plan\nBook the venue" },
       activeService(),
     );
-    const draftEvent = vi.fn(async () => {});
+    const draftEvent = vi.fn(
+      async (_note: StickyNote, _signal: AbortSignal) => {},
+    );
     const draftReminder = vi.fn(async () => {
       throw new Error("Calendar unavailable");
     });
