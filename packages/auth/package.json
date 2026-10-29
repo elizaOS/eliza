@@ -82,6 +82,12 @@
       "import": "./dist/auth/anthropic.js",
       "default": "./dist/auth/anthropic.js"
     },
+    "./auth/cloud-resident-binding": {
+      "eliza-source": "./src/auth/cloud-resident-binding.ts",
+      "types": "./dist/auth/cloud-resident-binding.d.ts",
+      "import": "./dist/auth/cloud-resident-binding.js",
+      "default": "./dist/auth/cloud-resident-binding.js"
+    },
     "./auth/codex-device": {
       "eliza-source": "./src/auth/codex-device.ts",
       "types": "./dist/auth/codex-device.d.ts",

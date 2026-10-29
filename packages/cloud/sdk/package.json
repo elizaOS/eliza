@@ -176,6 +176,12 @@
       "import": "./dist/native-speech-stream.js",
       "default": "./dist/native-speech-stream.js"
     },
+    "./cloud-account-billing": {
+      "eliza-source": "./src/cloud-account-billing.ts",
+      "types": "./dist/cloud-account-billing.d.ts",
+      "import": "./dist/cloud-account-billing.js",
+      "default": "./dist/cloud-account-billing.js"
+    },
     "./clef-decisions": {
       "eliza-source": "./src/clef-decisions.ts",
       "types": "./dist/clef-decisions.d.ts",
