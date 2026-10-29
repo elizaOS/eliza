@@ -801,10 +801,7 @@ export async function handleAgentRoutes(
           reason: "user_message",
           taskRoomId: followUpRoomId,
         });
-        const delivery = await ctx.acpService.sendToSession(
-          sessionId,
-          wrapped,
-        );
+        const delivery = await ctx.acpService.sendToSession(sessionId, wrapped);
         const undelivered = undeliveredReason(delivery);
         if (undelivered) {
           sendError(res, `Agent send did not complete: ${undelivered}`, 409);
