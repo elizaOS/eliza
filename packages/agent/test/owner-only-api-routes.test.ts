@@ -164,6 +164,42 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
           body: JSON.stringify({ name: "Guest", systemPrompt: "Guest set." }),
         },
       ],
+      // Browser workspace: a guest must not open tabs, navigate, eval,
+      // or read the owner's live tab list / snapshots.
+      ["/api/browser-workspace", {}],
+      ["/api/browser-workspace/tabs", {}],
+      [
+        "/api/browser-workspace/tabs",
+        {
+          method: "POST",
+          body: JSON.stringify({ url: "https://example.invalid/" }),
+        },
+      ],
+      [
+        "/api/browser-workspace/command",
+        {
+          method: "POST",
+          body: JSON.stringify({ subaction: "snapshot" }),
+        },
+      ],
+      [
+        "/api/browser-workspace/tabs/guest-tab/navigate",
+        {
+          method: "POST",
+          body: JSON.stringify({ url: "https://example.invalid/" }),
+        },
+      ],
+      [
+        "/api/browser-workspace/tabs/guest-tab/eval",
+        {
+          method: "POST",
+          body: JSON.stringify({ script: "1+1" }),
+        },
+      ],
+      [
+        "/api/browser-workspace/tabs/guest-tab",
+        { method: "DELETE" },
+      ],
     ];
     for (const [path, init] of guestRequests) {
       const response = await send("guest-session-id", path, init);

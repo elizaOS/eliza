@@ -1135,6 +1135,12 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     // for writes, but the experience GETs were left open — the same
     // stored-content class as the owner-gated memory reads.
     under("/api/character/experiences") ||
+    // The owner's live browser workspace: open tabs, URLs, page
+    // snapshots, navigate/eval/command. Plugin routes and the builtin
+    // fallback both serve these paths after the shared session gate,
+    // so a paired USER guest can drive the owner's browser unless the
+    // whole prefix is owner-only (same class as /api/discord GETs).
+    under("/api/browser-workspace") ||
     (write &&
       [
         "import",
