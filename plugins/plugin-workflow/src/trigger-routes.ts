@@ -747,6 +747,16 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
         return true;
       }
     }
+    // A trigger switched to prompt delivers to the owner conversation, as a
+    // prompt trigger created over POST does, not to the workflow trigger's room.
+    let promptRoomId: UUID | undefined;
+    if (nextKind === 'prompt' && current.kind !== 'prompt') {
+      promptRoomId = await ctx.resolvePromptDeliveryRoom(runtime);
+      if (!(await runtime.getRoom(promptRoomId))?.source?.trim()) {
+        error(res, 'Prompt automation delivery conversation is unavailable', 503);
+        return true;
+      }
+    }
     const existingMeta = (task.metadata ?? {}) as TriggerTaskMetadata;
     const existingRuns = readTriggerRuns(task);
     let nextMeta: TriggerTaskMetadata;
@@ -793,6 +803,7 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
     await runtime.updateTask(task.id, {
       description: nextTrigger.displayName,
       metadata: nextMeta as Task['metadata'],
+      ...(promptRoomId ? { roomId: promptRoomId } : {}),
     });
     const refreshed = await runtime.getTask(task.id);
     if (!refreshed) {
