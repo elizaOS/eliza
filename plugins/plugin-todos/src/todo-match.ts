@@ -61,24 +61,20 @@ function stem(token: string): string {
   // one row and a create added a silent duplicate instead of asking.
   const singular = singularize(token);
   let reduced = singular;
-  let stripped = false;
   if (singular.length > 5 && singular.endsWith("ing")) {
     reduced = singular.slice(0, -3);
-    stripped = true;
   } else if (singular.length > 4 && singular.endsWith("ed")) {
     reduced = singular.slice(0, -2);
-    stripped = true;
   }
   // A short verb doubles its final consonant before "ed"/"ing"
   // ("stop/stopped", "run/running"), so stripping the suffix alone leaves
   // "stopp"/"runn" and the family never collapses to the base form.
-  // Drop one of the doubled consonant, but only for a stripped form
-  // longer than 3 letters, so a base form that already ends doubled
-  // ("add", "egg", "odd") keeps its token; "l"/"s"/"z"/"f" doubles are
-  // also kept, so "pass", "call", "buzz", and "sniff" families are
-  // unchanged by this step.
+  // Drop one of the doubled consonant for every form longer than 3 letters,
+  // stripped or not, so a base form that already ends doubled ("putt",
+  // "purr") lands on the same token as "putting"/"purred". Three-letter
+  // forms ("add", "egg", "odd") and "l"/"s"/"z"/"f" doubles ("pass",
+  // "call", "buzz", "sniff") keep their token.
   if (
-    stripped &&
     reduced.length > 3 &&
     /([^aeiou])\1$/u.test(reduced) &&
     !/[lszf]$/u.test(reduced)
