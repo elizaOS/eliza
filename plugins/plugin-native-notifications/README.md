@@ -59,6 +59,31 @@ The test grants and revokes access for its own listener, posts synthetic notific
 and dismisses one exact row. Uninstall all four APKs afterward. This does not
 certify physical-device behavior or a product's foreground policy.
 
+## Capacitor host plugin
+
+`NotificationsHostPlugin` (in `android/src/capacitor`, compiled only when the host Gradle build
+has a `:capacitor-android` project) is the whole renderer bridge for a phone host's notifications.
+A host subclasses it with its own `@CapacitorPlugin(name=...)`, as with `DataResetPlugin`, and
+supplies installed identities only: `appLabel()`, `scope()`, `noticeStorage()` (durable slots that
+commit before returning), `deliveryConfig()`, `routesConfig()`, `posterConfig()`, optionally its
+`mirror()` for cross-app access and `noticeKind(channel)` for its own channels. Hosts may return a
+subclass from `routes()` with the same configuration.
+
+It provides `status`, `openChannelSettings`, `list`, `open`, `dismiss`, `clear`, the cross-app
+`crossAppStatus`, `notificationApps`, `setNotificationPolicy`, `resumeCrossApp`,
+`openNotificationAccess`, `notificationHistory` and `clearNotificationHistory`, workflow taps
+(`pendingWorkflowTap`, `consumeWorkflowTap`, event `pendingWorkflowTap`) and workflow notices
+(`postWorkflow`, `workflowReceipt`, `workflowPresentationCapabilities`). Durable notice work runs
+on one bounded `NoticeWorker` behind `ForegroundNoticeGate`; every other owner action requires the
+focused, unlocked activity. `postWorkflow` resolves the ledger status and never reports `posted`
+for a notice that was only recorded. A tap's question excerpt comes only from the exact,
+still-posted own notice on its expected channel, never from a secret one. Row identifiers are
+opaque (`NoticeIds`) and are forgotten on pause, when the mirror is also redacted.
+
+`test/native-host/android-compile.node.mjs` compiles it against the SDK platform and a minimal
+Capacitor surface; `NoticeIdsTest` covers identifiers, bounds and the worker on the JVM. Neither
+is device evidence.
+
 ## Host notification receipts
 
 `NoticeDelivery` is a native-only ledger for the host's own notifications. It does

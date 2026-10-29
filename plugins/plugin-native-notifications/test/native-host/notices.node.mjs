@@ -75,3 +75,29 @@ test("host notice routes, owner fence, approval coordination, journal recovery, 
     assert.match(output, /^\d+ assertions passed/, main);
   }
 });
+
+test("host plugin identifiers, bounds and bounded notice worker", (t) => {
+  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "notice-ids-"));
+  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
+  /** @param {string} name */
+  const bin = (name) =>
+    process.env.JAVA_HOME
+      ? path.join(process.env.JAVA_HOME, "bin", name)
+      : name;
+  execFileSync(
+    bin("javac"),
+    [
+      "-d",
+      classes,
+      path.join(sources, "NoticeIds.java"),
+      path.join(sources, "NoticeWorker.java"),
+      path.join(plugin, "test/native-host/NoticeIdsTest.java"),
+    ],
+    { timeout: 60000 },
+  );
+  const output = execFileSync(bin("java"), ["-cp", classes, "NoticeIdsTest"], {
+    timeout: 60000,
+    encoding: "utf8",
+  });
+  assert.match(output, /^\d+ assertions passed/);
+});
