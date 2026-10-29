@@ -17,6 +17,7 @@ import {
   phoneWorkflowLocalDay,
   phoneWorkflowLocalDayBounds,
   SELECTED_REMINDERS_WINDOW,
+  zoneOffsetMinutes,
   validatePhoneSelectedRemindersScope,
   validatePhoneWorkflowSpec,
 } from "./phone-workflow.ts";
@@ -181,7 +182,8 @@ export async function workflowSha(value: unknown): Promise<string> {
 /**
  * A calendar range that ends no later than the same local wall time `days` days
  * after it starts, measured in the reviewed zone so DST days are neither cut
- * short nor stretched.
+ * short nor stretched. Same rule as plugin-calendar's `calendarRangeFitsLocalDays`,
+ * which the agent applies: both compare local wall-clock times, not elapsed time.
  */
 export function workflowCalendarRangeFitsLocalDays(
   start: string,
@@ -189,6 +191,7 @@ export function workflowCalendarRangeFitsLocalDays(
   timeZone: string,
   days = 7,
 ): boolean {
+  if (!Number.isInteger(days) || days < 1 || days > 7) return false;
   const first = Date.parse(start),
     last = Date.parse(end);
   if (
@@ -199,16 +202,9 @@ export function workflowCalendarRangeFitsLocalDays(
     !isPhoneWorkflowTimeZone(timeZone)
   )
     return false;
-  const startDay = phoneWorkflowLocalDay(first, timeZone);
-  const limitDay = new Date(
-    Date.parse(`${startDay}T00:00:00Z`) + days * 86_400_000,
-  )
-    .toISOString()
-    .slice(0, 10);
-  const { start: limitStart } = phoneWorkflowLocalDayBounds(limitDay, timeZone);
-  const { start: dayStart } = phoneWorkflowLocalDayBounds(startDay, timeZone);
-  // Same local time-of-day offset into the limit day, resolved in the reviewed zone.
-  return last <= limitStart + (first - dayStart);
+  // Local wall-clock instants, as if the zone's clock were UTC.
+  const wall = (ms: number) => ms + zoneOffsetMinutes(ms, timeZone) * 60_000;
+  return wall(last) <= wall(first) + days * 86_400_000;
 }
 
 export function parseWorkflowBinding(value: unknown): WorkflowDeviceBinding {

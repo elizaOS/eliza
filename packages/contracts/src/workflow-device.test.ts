@@ -375,6 +375,25 @@ test("notes and calendar reads keep their exact selected scopes", async () => {
     ),
     false,
   );
+  // A range starting after the spring change, on a 23-hour day, may still end
+  // at the same local wall time seven days later (as the agent's
+  // plugin-calendar rule allows): 03:00 PDT on 8 and 15 March.
+  assert.equal(
+    workflowCalendarRangeFitsLocalDays(
+      "2026-03-08T10:00:00.000Z",
+      "2026-03-15T10:00:00.000Z",
+      "America/Los_Angeles",
+    ),
+    true,
+  );
+  assert.equal(
+    workflowCalendarRangeFitsLocalDays(
+      "2026-03-08T10:00:00.000Z",
+      "2026-03-15T10:00:00.001Z",
+      "America/Los_Angeles",
+    ),
+    false,
+  );
 });
 
 async function reviewFixture() {
