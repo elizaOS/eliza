@@ -5,10 +5,17 @@
  * from the same persisted snapshot or row the action consumed.
  */
 
-import type { LifeOpsConnectorGrant } from "@elizaos/contracts";
+import {
+  type LifeOpsConnectorGrant,
+  PostConversationMessageRequestSchema,
+} from "@elizaos/contracts";
+import { parseClientTurnObservation } from "@elizaos/contracts/client-turn-observation";
+import { ElizaClient } from "../../../packages/ui/src/api/client-base.ts";
+import "../../../packages/ui/src/api/client-chat.ts";
 import {
   type ActionResult,
   type AgentRuntime,
+  ChannelType,
   type Content,
   executePlannedToolCall,
   type Memory,
@@ -34,6 +41,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { projectClientObservation } from "../../plugin-assistant/src/services/message/client-observation-context.ts";
 import {
   calendarAction,
   calendarActionPromotionOptions,
@@ -1134,6 +1142,294 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           (event) => event.title === "Create extraction timing check",
         ),
       ).toEqual([]);
+    },
+  );
+
+  it.each([
+    "ordinary",
+    "spring-DST",
+    "fall-DST",
+    "duplicate",
+    "sensitive",
+    "invalid-revision",
+    "invalid-date",
+    "zone-mismatch",
+    "missing-day",
+    "wrong-planner-name",
+    "stale-version",
+  ])(
+    "serializes and admits the selected-day clock request through the registered store (%s)",
+    async (mode) => {
+      const original = "Move my 3pm to 4",
+        zone = "America/Los_Angeles";
+      const index = [
+        "ordinary",
+        "spring-DST",
+        "fall-DST",
+        "duplicate",
+        "sensitive",
+        "invalid-revision",
+        "invalid-date",
+        "zone-mismatch",
+        "missing-day",
+        "wrong-planner-name",
+        "stale-version",
+      ].indexOf(mode);
+      const uuid = (offset: number) =>
+        `00000000-0000-0000-0000-${String(995000 + index * 10 + offset).padStart(12, "0")}`;
+      const date =
+        mode === "spring-DST"
+          ? "2026-03-08"
+          : mode === "fall-DST"
+            ? "2026-11-01"
+            : "2026-10-29";
+      const start =
+        mode === "spring-DST"
+          ? "2026-03-08T22:00:00Z"
+          : mode === "fall-DST"
+            ? "2026-11-01T23:00:00Z"
+            : mode === "wrong-planner-name"
+              ? "2026-10-29T21:00:00Z"
+              : "2026-10-29T22:00:00Z";
+      const moved =
+        mode === "spring-DST"
+          ? "2026-03-08T23:00:00.000Z"
+          : mode === "fall-DST"
+            ? "2026-11-02T00:00:00.000Z"
+            : "2026-10-29T23:00:00.000Z";
+      const expectApplied = ["ordinary", "spring-DST", "fall-DST"].includes(
+        mode,
+      );
+      await resolveOwnerFactStore(runtime).update(
+        { timezone: zone },
+        { source: "profile_save", recordedAt: "2026-10-28T12:00:00.000Z" },
+      );
+      try {
+        const created = await calendar.createCalendarEventMutation(
+          new URL("http://internal.local/api/calendar"),
+          {
+            title: "Clock query registered fixture",
+            startAt: start,
+            endAt: new Date(Date.parse(start) + 1800000).toISOString(),
+            timeZone: zone,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+            idempotencyKey: `clock-query-registered-${mode}`,
+          },
+        );
+        const target = created.event;
+        if (!target) throw Error("Missing Calendar fixture");
+        if (mode === "duplicate" || mode === "wrong-planner-name")
+          await calendar.createCalendarEventMutation(
+            new URL("http://internal.local/api/calendar"),
+            {
+              title: "Other source clock",
+              startAt: "2026-10-29T22:00:00Z",
+              endAt: "2026-10-29T22:30:00Z",
+              timeZone: zone,
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              idempotencyKey: `clock-query-other-${mode}`,
+            },
+          );
+        const writes = vi.spyOn(calendar, "updateCalendarEvent");
+        const version = target.metadata.etag;
+        if (typeof version !== "string") throw Error("Missing fixture version");
+        const useModel = runtime.useModel.bind(runtime);
+        let extractionCalls = 0;
+        vi.spyOn(runtime, "useModel").mockImplementation((async (
+          type,
+          params,
+        ) => {
+          if (
+            type === ModelType.TEXT_LARGE &&
+            String(params?.prompt).includes(
+              "Extract calendar event update fields",
+            )
+          ) {
+            extractionCalls++;
+            if (mode === "stale-version")
+              await calendar.updateCalendarEvent(
+                new URL("http://internal.local/api/calendar"),
+                {
+                  eventId: target.externalId,
+                  grantId: ELIZA_CALENDAR_GRANT_ID,
+                  calendarId: ELIZA_CALENDAR_ID,
+                  description: "Concurrent owner change",
+                  expectedProviderVersion: version,
+                  idempotencyKey: "clock-concurrent-owner-change",
+                },
+              );
+            return {
+              text: JSON.stringify({
+                requiresInput: false,
+                title: null,
+                description: null,
+                location: null,
+                clearFields: [],
+                startAt: `${date}T16:00:00`,
+                endAt: null,
+                timeZone: zone,
+                recurrence: null,
+                recurrenceScope: null,
+                clarification: null,
+              }),
+              toolCalls: [],
+              finishReason: "stop",
+            };
+          }
+          return useModel(type, params);
+        }) as typeof runtime.useModel);
+        const actor = message(uuid(1), original);
+        const worldId = uuid(3) as UUID;
+        actor.roomId = uuid(2) as UUID;
+        await runtime.createWorld({
+          id: worldId,
+          name: "Clock query test",
+          agentId: runtime.agentId,
+          serverId: "clock-query-test",
+        });
+        await runtime.createRoom({
+          id: actor.roomId,
+          agentId: runtime.agentId,
+          worldId,
+          source: "client_chat",
+          type: ChannelType.DM,
+        });
+        actor.createdAt = Date.parse("2026-10-28T12:00:00Z");
+        const context = {
+          view: "calendar",
+          revision: mode === "invalid-revision" ? -1 : 3,
+          sensitive: mode === "sensitive",
+          timeZone: zone,
+          ...(mode === "missing-day"
+            ? {}
+            : {
+                calendarDay: {
+                  date: mode === "invalid-date" ? "2026-02-30" : date,
+                  timeZone: mode === "zone-mismatch" ? "UTC" : zone,
+                },
+              }),
+        };
+        let captured: unknown;
+        const client = new ElizaClient("https://calendar-fixture.invalid");
+        client.setRequestTransport({
+          async request(_url, init) {
+            captured = JSON.parse(String(init.body));
+            return new Response(
+              JSON.stringify({ text: "Serialized", agentName: "fixture" }),
+              { status: 200, headers: { "Content-Type": "application/json" } },
+            );
+          },
+        });
+        await client.sendConversationMessage(
+          actor.roomId,
+          original,
+          "DM",
+          undefined,
+          { clientDevice: { context }, userTextFormat: "plain-v1" },
+        );
+        const wire = PostConversationMessageRequestSchema.parse(captured);
+        expect(wire.text).toBe(original);
+        actor.content = {
+          ...actor.content,
+          text: wire.text,
+          metadata: wire.metadata,
+        };
+        const malformed = [
+          "sensitive",
+          "invalid-revision",
+          "invalid-date",
+          "zone-mismatch",
+        ].includes(mode);
+        const device = wire.metadata?.clientDevice;
+        if (
+          !device ||
+          typeof device !== "object" ||
+          Array.isArray(device) ||
+          !Object.hasOwn(device, "context")
+        )
+          throw Error("Serialized current context missing");
+        const serializedContext = Reflect.get(device, "context");
+        const read = () => parseClientTurnObservation(serializedContext);
+        if (malformed) {
+          expect(read).toThrow();
+          expect(
+            projectClientObservation(actor.content).observation,
+          ).toBeUndefined();
+        } else {
+          expect(read().calendarDay).toEqual(
+            mode === "missing-day" ? undefined : context.calendarDay,
+          );
+          expect(projectClientObservation(actor.content).observation).toEqual(
+            read(),
+          );
+        }
+        // The five detail keys match the failed live parent call; planner timing
+        // and duration deliberately contradict the original-request extraction.
+        const serialized = JSON.parse(
+          JSON.stringify({
+            action: "update_event",
+            intent: original,
+            details: {
+              start: "2026-10-29T19:00:00",
+              end: "2026-10-29T19:30:00",
+              date,
+              query: mode === "wrong-planner-name" ? target.title : "3pm",
+              durationMinutes: 99,
+            },
+          }),
+        );
+        const { result } = await invoke(
+          actor,
+          serialized,
+          false,
+          calendarAction.name,
+          "planner",
+        );
+        expect(result.success, JSON.stringify(result)).toBe(expectApplied);
+        expect(extractionCalls).toBe(
+          expectApplied || mode === "stale-version" ? 1 : 0,
+        );
+        if (expectApplied)
+          expect(result.effectReceipts?.[0]?.outcome).toBe("applied");
+        else
+          expect(
+            result.effectReceipts?.some(
+              (receipt) => receipt.outcome === "applied",
+            ),
+          ).not.toBe(true);
+        expect(writes).toHaveBeenCalledTimes(
+          mode === "stale-version" ? 2 : expectApplied ? 1 : 0,
+        );
+        const updated = await calendar.getConditionalCalendarMutationTarget(
+          new URL("http://internal.local/api/calendar"),
+          {
+            eventId: target.id,
+            grantId: ELIZA_CALENDAR_GRANT_ID,
+            calendarId: ELIZA_CALENDAR_ID,
+          },
+        );
+        expect(updated).toMatchObject({
+          id: target.id,
+          title: target.title,
+          startAt: expectApplied ? moved : new Date(start).toISOString(),
+          endAt: expectApplied
+            ? new Date(Date.parse(moved) + 1800000).toISOString()
+            : new Date(Date.parse(start) + 1800000).toISOString(),
+          metadata: {
+            version: expectApplied || mode === "stale-version" ? 2 : 1,
+          },
+        });
+        expect(updated.location).toBe(target.location);
+        expect(updated.description).toBe(
+          mode === "stale-version"
+            ? "Concurrent owner change"
+            : target.description,
+        );
+      } finally {
+        await resolveOwnerFactStore(runtime).clear();
+      }
     },
   );
 
