@@ -68,6 +68,32 @@ export {
   webSocketAgentEvents,
 } from "./live-voice-session.js";
 export type {
+  NativeCaptureOpenOptions,
+  NativeListenerHandle,
+  NativeLiveCapturePort,
+  NativeLiveVoice,
+  NativeLiveVoiceOptions,
+  NativeResidentBinding,
+  NativeResidentCaptureInput,
+  NativeVoiceTimingPort,
+} from "./native-live-voice.js";
+export {
+  createNativeLiveVoice,
+  NATIVE_FINISHED_TURNS,
+  NATIVE_PENDING_FINALS,
+  nativeVoiceStageSink,
+  openNativeResidentCapture,
+  openNativeSegmentCapture,
+  readNativeVoiceTiming,
+  residentLiveTransport,
+} from "./native-live-voice.js";
+export type {
+  NativeSpeechRequestBinding,
+  NativeSpeechRequestRunner,
+  NativeSpeechRequestWork,
+} from "./native-speech-request.js";
+export { createNativeSpeechRequests } from "./native-speech-request.js";
+export type {
   NlmsEchoCancellerOptions,
   ResidualSuppressionOptions,
 } from "./nlms-echo-canceller.js";

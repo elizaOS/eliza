@@ -34,6 +34,18 @@
       "import": "./dist/live-voice-session.js",
       "default": "./dist/live-voice-session.js"
     },
+    "./native-live": {
+      "eliza-source": "./src/native-live-voice.ts",
+      "types": "./dist/native-live-voice.d.ts",
+      "import": "./dist/native-live-voice.js",
+      "default": "./dist/native-live-voice.js"
+    },
+    "./native-speech": {
+      "eliza-source": "./src/native-speech-request.ts",
+      "types": "./dist/native-speech-request.d.ts",
+      "import": "./dist/native-speech-request.js",
+      "default": "./dist/native-speech-request.js"
+    },
     "./turn-routes": {
       "eliza-source": "./src/voice-turn-routes.ts",
       "types": "./dist/voice-turn-routes.d.ts",

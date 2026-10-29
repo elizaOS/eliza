@@ -45,6 +45,23 @@ port (full duplex only when the device's echo canceller is active), and `createL
 into Transcribe, a recorder-shaped driver whose Stop finalizes exactly the audio up to the tap and
 whose text only becomes an editable draft (never sent).
 
+`@elizaos/voice/native-live` is the renderer side of a native speech bridge
+(plugin-local-inference's `LocalSpeechBridgePlugin` or a product subclass), with no Capacitor
+import: the host passes the bridge as a `NativeLiveCapturePort` and the current resident agent
+as a `NativeResidentBinding` (`sessionId`, `ownerId`, owner-authenticated `request`, optional
+event `subscribe`). `createNativeLiveVoice` gives `ready` (bridge VAD capture plus the agent's
+streaming loader), `open` (a `LiveCaptureOpener`), `assistantListener` and `dictation`. When the
+bridge routes segments to the owner's agent itself (`nativeTransport`), no PCM crosses the
+bridge: events are admitted only for the current capture id while the owner and session hold
+(a change ends the capture as lost), each final is delivered once in VAD order, an ASR failure
+yields a null segment, and partials are display-only for the open turn. Otherwise frames cross
+the bridge and post through `residentLiveTransport`, which refuses once the session changed.
+`nativeVoiceStageSink` and `readNativeVoiceTiming` connect `turn-timing` to the bridge's native
+latency collector. `@elizaos/voice/native-speech` (`createNativeSpeechRequests`) runs one bridge
+request bound to the host's selection: a binding change or abort cancels the bridge request and
+the result is never returned. Vitest covers both against a fake bridge (not microphone,
+recognition or latency evidence).
+
 `@elizaos/voice/turn-routes` holds the clients for the resident's end-of-turn route
 (`residentEndpoint`, the controller's `endpoint` port: unavailable, malformed or over-long input is
 never complete) and the heard route (`createHeardReporter`: after a barge-in only the played

@@ -123,6 +123,12 @@ test(
       { json: true },
     ),
 );
+test("speech request gate admits one request, drains cancellation and refuses after destroy", () =>
+  run(
+    ["SpeechRequestGate"],
+    "SpeechRequestGateTest",
+    /^PASS speech request gate/,
+  ));
 test("latency trials link one turn from last user audio to audible playback", () =>
   run(
     ["LiveVadGate", "VoiceLatencyTrials"],
@@ -286,4 +292,91 @@ test("live capture uses the shared session's VAD and never a platform recognizer
     speech,
     /inference\.(?:cancel|trimMemory|synthesize|transcribe|prepareSpeech|speechSampleRate)\(/,
   );
+});
+
+test("the product-subclassable speech bridge compiles with the library against Android 36", () => {
+  const sdk = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  assert.ok(fs.existsSync(sdk), "Android 36 platform required");
+  const bridge = path.resolve(
+    here,
+    "../../../../plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice",
+  );
+  // Compile-only Capacitor signatures (speech-pipeline/capacitor-api); no Capacitor code runs.
+  const capacitor = path.join(fixtures, "capacitor-api");
+  const javaFiles = (directory) =>
+    fs
+      .readdirSync(directory, { recursive: true })
+      .filter((name) => name.endsWith(".java"))
+      .map((name) => path.join(directory, name));
+  const temp = fs.mkdtempSync(path.join(os.tmpdir(), "speech-bridge-"));
+  try {
+    execFileSync(
+      java("javac"),
+      [
+        "--release",
+        "21",
+        "-cp",
+        sdk,
+        "-d",
+        temp,
+        ...javaFiles(voice),
+        ...javaFiles(bridge),
+        ...javaFiles(capacitor),
+      ],
+      { stdio: "pipe", timeout: 120000 },
+    );
+  } finally {
+    fs.rmSync(temp, { recursive: true, force: true });
+  }
+  const strip = (file) =>
+    fs.readFileSync(file, "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  const source = strip(path.join(bridge, "LocalSpeechBridgePlugin.java"));
+  // Abstract and unannotated: each product registers its own @CapacitorPlugin subclass.
+  assert.match(
+    source,
+    /public abstract class LocalSpeechBridgePlugin extends Plugin/,
+  );
+  assert.doesNotMatch(source, /@CapacitorPlugin/);
+  for (const method of [
+    "startRecording",
+    "stopRecording",
+    "cancelRecording",
+    "getRecordingMetrics",
+    "transcribeLocalRecording",
+    "synthesizeLocal",
+    "play",
+    "stopPlayback",
+    "cancel",
+    "liveCaptureStatus",
+    "startLiveCapture",
+    "stopLiveCapture",
+    "localSpeechStatus",
+    "releaseLocalSpeech",
+    "nativeVoiceTiming",
+    "markVoiceTurn",
+    "clearNativeVoiceTiming",
+  ])
+    assert.match(
+      source,
+      new RegExp(`@PluginMethod public void ${method}\\(PluginCall call\\)`),
+      method,
+    );
+  // Owner-bound resident transport is a product port; without it nothing is routed natively.
+  assert.match(
+    source,
+    /protected LiveCaptureController\.Route residentRoute\(String ownerId\)\{return null;\}/,
+  );
+  assert.match(
+    source,
+    /LiveCaptureController\.Route route=Boolean\.TRUE\.equals\(call\.getBoolean\("nativeAsr",false\)\)\?residentRoute\(owner\):null;/,
+  );
+  // Recognition reads only the selected private draft; no URL, path or provider reaches it.
+  assert.match(
+    source,
+    /File file=capture\.selected\(required\(call\.getString\("recordingId"\),256\)\);/,
+  );
+  assert.doesNotMatch(source, /openConnection|new URL\(/);
 });

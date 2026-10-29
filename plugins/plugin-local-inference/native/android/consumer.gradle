@@ -114,3 +114,11 @@ if (capacitorEnabled && !assetsOnly) {
     android.sourceSets.main.java.srcDir new File(paradeeSource, 'capacitor/src/main/java')
     dependencies { compileOnly project(':capacitor-android') }
 }
+
+// Optional product-subclassable speech bridge (LocalSpeechBridgePlugin). A host that subclasses it
+// sets elizaSpeechBridgeCapacitor=true and registers its own @CapacitorPlugin subclass.
+def speechBridgeEnabled = project.hasProperty('elizaSpeechBridgeCapacitor') && project.elizaSpeechBridgeCapacitor.toString() == 'true'
+if (speechBridgeEnabled && !assetsOnly) {
+    android.sourceSets.main.java.srcDir new File(paradeeSource, 'speech-bridge/src/main/java')
+    if (!capacitorEnabled) dependencies { compileOnly project(':capacitor-android') }
+}
