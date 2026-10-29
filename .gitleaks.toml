@@ -128,6 +128,21 @@ regexes = [
   '''capacity-proposal-key-1''',
 ]
 
+# The Cloud account billing reader test pins a literal redemption idempotency
+# key so replay assertions are readable; the fixed fixture name crosses the
+# generic-api-key entropy threshold. Scope the exact literal to the one test
+# file so every other token in it stays scanned.
+[[allowlists]]
+description = "Cloud account billing test fixture idempotency key (synthetic literal)"
+condition = "AND"
+paths = [
+  '''^packages/cloud/sdk/src/cloud-account-billing\.test\.ts$''',
+]
+regexTarget = "secret"
+regexes = [
+  '''^redeem-0001-synthetic$''',
+]
+
 # This deterministic runtime redaction test supplies an invented credential to
 # prove configured secrets are removed from output. Match only that literal in
 # that test; other credentials in the same file must still fail the scan.
