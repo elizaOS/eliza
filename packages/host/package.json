@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/host",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Shared application host configuration and explicit HTTP plugin lifecycle.",
   "type": "module",
   "license": "MIT",
