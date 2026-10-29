@@ -81,7 +81,7 @@ export type ConversationTurnTransport<Input, Reply> = {
   ) => Promise<Reply>;
   stop: (conversation: ConversationRoom) => Promise<unknown>;
   ownershipLost: (error: unknown) => boolean;
-  /** Override for deterministic tests; defaults to `crypto.randomUUID()`. */
+  /** Override for deterministic tests; defaults to a random v4 UUID. */
   clientMessageId?: () => string;
 };
 /** A dispatched turn the owner stopped, retained for later reply matching. */
@@ -109,6 +109,19 @@ function validRoom(room: ConversationRoom | null | undefined): boolean {
     typeof room.roomId === "string" &&
     !!room.roomId.trim()
   );
+}
+/**
+ * `crypto.randomUUID` exists only in secure contexts; a LAN-served app over
+ * plain HTTP still has `getRandomValues`, so the turn id never depends on it.
+ */
+function randomTurnId(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function")
+    return globalThis.crypto.randomUUID();
+  const bytes = globalThis.crypto.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, (value) => value.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10).join("")}`;
 }
 function freeze(room: ConversationRoom): ConversationRoom {
   // Copy server identity so a transport cannot mutate an active abort target.
@@ -201,9 +214,7 @@ export class ConversationTurnController<Input, Reply> {
       room: null,
       dispatched: false,
       generation: this.generationValue,
-      clientMessageId: (
-        this.transport.clientMessageId ?? (() => crypto.randomUUID())
-      )(),
+      clientMessageId: (this.transport.clientMessageId ?? randomTurnId)(),
       input,
       sentAt: Date.now(),
       abort: new AbortController(),

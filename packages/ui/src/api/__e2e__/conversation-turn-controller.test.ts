@@ -97,6 +97,43 @@ describe("ConversationTurnController", () => {
     expect(h.events).toEqual(["reply:hi", "settled"]);
   });
 
+  it("mints a v4 clientMessageId without randomUUID (plain-HTTP origin)", async () => {
+    const original = globalThis.crypto.randomUUID;
+    Object.defineProperty(globalThis.crypto, "randomUUID", {
+      value: undefined,
+      configurable: true,
+    });
+    try {
+      let seen = "";
+      const controller = new ConversationTurnController<string, string>({
+        create: async () => ({ id: "c", roomId: "r" }),
+        send: async (_room, _input, turn) => {
+          seen = turn.clientMessageId;
+          return "ok";
+        },
+        stop: async () => undefined,
+        ownershipLost: () => false,
+      });
+      expect(
+        await controller.send("hello", {
+          reply: () => {},
+          error: (error) => {
+            throw error;
+          },
+          settled: () => {},
+        }),
+      ).toBe(true);
+      expect(seen).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+      );
+    } finally {
+      Object.defineProperty(globalThis.crypto, "randomUUID", {
+        value: original,
+        configurable: true,
+      });
+    }
+  });
+
   it("refuses a concurrent send with a typed busy refusal", async () => {
     const h = harness();
     void h.controller.send("first", h.observer);
