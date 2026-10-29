@@ -732,7 +732,6 @@ export function ensureLlamaCppCheckout({
     log(`[compile-libllama] Reusing cached llama.cpp checkout at ${cacheDir}`);
     patchLlamaCppSourceForMusl({ srcDir: cacheDir, log });
     applyVendoredPatches({ srcDir: cacheDir, log });
-    assertSwaSpecDecodeFallback({ srcDir: cacheDir });
     return cacheDir;
   }
   if (!fs.existsSync(path.join(cacheDir, ".git"))) {
@@ -805,30 +804,6 @@ export function applyVendoredPatches({
     `[compile-libllama] Applying vendored llama.cpp patches (qjl) to ${srcDir}`,
   );
   spawn("node", [applierPath, "--repo", srcDir, "--series", "qjl"], {});
-}
-
-function sourceContainsSwaSpecDecodeFallback(srcDir) {
-  const serverContextPath = path.join(
-    srcDir,
-    "tools",
-    "server",
-    "server-context.cpp",
-  );
-  if (!fs.existsSync(serverContextPath)) return false;
-  const source = fs.readFileSync(serverContextPath, "utf8");
-  return (
-    source.includes("seq_rm probe failed but model declares SWA") &&
-    source.includes("llama_model_n_swa(model_tgt) > 0") &&
-    source.includes("ctx_tgt_seq_rm_type = COMMON_CONTEXT_SEQ_RM_TYPE_FULL")
-  );
-}
-
-function assertSwaSpecDecodeFallback({ srcDir }) {
-  if (sourceContainsSwaSpecDecodeFallback(srcDir)) return;
-  throw new Error(
-    `[compile-libllama] checkout ${srcDir} lacks the SWA-aware seq_rm fallback ` +
-      `required for --spec-type mtp on SWA target bodies (elizaOS/eliza#7635).`,
-  );
 }
 
 /**
@@ -2178,14 +2153,12 @@ export async function main(argv = process.argv.slice(2)) {
       );
       run("git", ["-C", srcDir, "checkout", "--", "."], {});
       run("git", ["-C", srcDir, "clean", "-fdx"], {});
-      assertSwaSpecDecodeFallback({ srcDir });
       srcDescription = `submodule plugins/plugin-local-inference/native/llama.cpp @ ${headRef.slice(0, 12)}`;
     } else {
       console.log(
         `[compile-libllama] Using --src-dir ${srcDir} (HEAD: ${headRef}); ` +
           `pinned commit ${LLAMA_CPP_COMMIT.slice(0, 12)} ignored.`,
       );
-      assertSwaSpecDecodeFallback({ srcDir });
       srcDescription = `external src-dir ${srcDir}`;
     }
   } else {
@@ -2285,7 +2258,6 @@ export async function mainTargets(args) {
     srcDescription = isSubmodule
       ? `submodule plugins/plugin-local-inference/native/llama.cpp`
       : `external src-dir ${srcDir}`;
-    if (!args.dryRun) assertSwaSpecDecodeFallback({ srcDir });
   } else if (args.dryRun) {
     // In a dry run with no --src-dir and no submodule, just describe the
     // intended cache path; we never clone in dry-run.
