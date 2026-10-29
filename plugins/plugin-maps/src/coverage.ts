@@ -17,6 +17,26 @@ const MODE_NAME: Record<TravelMode, string> = {
   transit: "transit",
 };
 
+/** Canonical display order of travel modes. */
+const MODE_ORDER: readonly TravelMode[] = [
+  "drive",
+  "walk",
+  "bicycle",
+  "transit",
+];
+
+/**
+ * Travel modes to offer for a provider. A reported coverage is authoritative;
+ * without one, the road modes are offered and transit is never advertised,
+ * because no provider serves it unless it says so.
+ */
+export function offeredTravelModes(
+  coverage: Pick<MapsCoverage, "travelModes"> | null | undefined,
+): TravelMode[] {
+  if (!coverage) return MODE_ORDER.filter((mode) => mode !== "transit");
+  return MODE_ORDER.filter((mode) => coverage.travelModes.includes(mode));
+}
+
 function list(items: readonly string[], conjunction: "and" | "or"): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} ${conjunction} ${items.at(-1)}`;

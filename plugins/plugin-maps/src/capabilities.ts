@@ -81,10 +81,20 @@ export const MAPS_VIEW_CAPABILITIES: ViewCapability[] = [
       },
       travelMode: {
         type: "string",
-        description: "Requested travel mode.",
+        description:
+          "Requested travel mode. Transit only where maps-coverage lists it.",
         required: true,
         enum: ["drive", "walk", "bicycle", "transit"],
       },
+      provider: PROVIDER_PARAM,
+      providerGeneration: PROVIDER_GENERATION_PARAM,
+    },
+  },
+  {
+    id: "maps-coverage",
+    description:
+      "Read what a maps provider reports it serves: regions, travel modes and location recipients. Read-only.",
+    params: {
       provider: PROVIDER_PARAM,
       providerGeneration: PROVIDER_GENERATION_PARAM,
     },

@@ -38,6 +38,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { offeredTravelModes } from "../coverage.js";
 import type { PlaceRef, RoutePlan, TravelMode } from "../types.js";
 import {
   type MapsProviderDescription,
@@ -45,12 +46,6 @@ import {
   mapsViewTransport,
 } from "./maps-view-data.js";
 
-const TRAVEL_MODES: readonly TravelMode[] = [
-  "drive",
-  "walk",
-  "bicycle",
-  "transit",
-];
 const MAP_GRID_LINES = ["a", "b", "c", "d", "e", "f", "g"] as const;
 const LOADING_ROWS = ["a", "b", "c", "d", "e"] as const;
 
@@ -928,8 +923,17 @@ export function MapsView({
     setRouteError(null);
     setRoutes([]);
     try {
+      // Plan only the modes the provider serves: transit is offered only where
+      // its coverage lists it, so no request is spent on a refused mode.
+      const coverage = transport.coverage
+        ? await transport
+            .coverage(provider, controller.signal)
+            .catch(() => null)
+        : null;
+      if (controller.signal.aborted) return;
+      const modes: readonly TravelMode[] = offeredTravelModes(coverage);
       const outcomes = await Promise.allSettled(
-        TRAVEL_MODES.map((mode) =>
+        modes.map((mode) =>
           transport.planRoute(
             origin,
             selected,

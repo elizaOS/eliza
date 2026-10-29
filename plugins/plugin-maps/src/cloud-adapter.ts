@@ -182,6 +182,7 @@ const CODE_BY_CLOUD_CODE: Record<string, MapsErrorCode> = {
   maps_admission_unknown: "MAPS_ADMISSION_UNKNOWN",
   maps_request_already_admitted: "MAPS_REQUEST_ALREADY_ADMITTED",
   maps_request_identity_conflict: "MAPS_REQUEST_ALREADY_ADMITTED",
+  maps_request_cancelled: "MAPS_REQUEST_CANCELLED",
   allowance_exhausted: "MAPS_BUDGET_EXHAUSTED",
   subscription_required: "MAPS_NOT_ENTITLED",
   rate_limited: "MAPS_RATE_LIMITED",
@@ -201,6 +202,8 @@ const MESSAGE_BY_CODE: Partial<Record<MapsErrorCode, string>> = {
     "Maps admission could not be confirmed. Do not replay this request.",
   MAPS_REQUEST_ALREADY_ADMITTED:
     "This Maps request was already admitted. It will not be dispatched again.",
+  MAPS_REQUEST_CANCELLED:
+    "The Maps request was cancelled before Eliza Cloud admitted it. Nothing was sent to the maps provider.",
   MAPS_BUDGET_EXHAUSTED:
     "The separate Maps request allowance is exhausted until its reset.",
   MAPS_NOT_ENTITLED: "Maps needs an active Eliza subscription.",

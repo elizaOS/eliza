@@ -22,7 +22,7 @@ import {
   routeCard,
   toCardPlace,
 } from "./card.js";
-import { describeMapsCoverage } from "./coverage.js";
+import { describeMapsCoverage, offeredTravelModes } from "./coverage.js";
 import { MapsError } from "./errors.js";
 import type { MapsDeviceNavigationStatus } from "./navigation.js";
 import { getMapsService, type MapsService } from "./service.js";
@@ -31,6 +31,7 @@ import {
   type PlaceRef,
   placeRefSchema,
   type RoutePlan,
+  type TravelMode,
   travelModeSchema,
 } from "./types.js";
 
@@ -42,6 +43,7 @@ const MAPS_SUBACTIONS = [
   "share",
   "navigate",
   "coverage",
+  "saved",
 ] as const;
 type MapsSubaction = (typeof MAPS_SUBACTIONS)[number];
 const MAPS_SAVE_VIRTUAL_EXECUTION = Symbol(
@@ -216,18 +218,57 @@ function shareConfirmation(message: Memory, place: PlaceRef): ActionResult {
   };
 }
 
-const TRAVEL_MODE_FIELD = {
-  name: "travelMode",
-  type: "select",
-  label: "Travel mode",
-  required: false,
-  options: [
-    { value: "drive", label: "Drive" },
-    { value: "walk", label: "Walk" },
-    { value: "bicycle", label: "Bicycle" },
-    { value: "transit", label: "Transit" },
-  ],
-} as const satisfies FormInteraction["fields"][number];
+const TRAVEL_MODE_LABEL: Record<TravelMode, string> = {
+  drive: "Drive",
+  walk: "Walk",
+  bicycle: "Bicycle",
+  transit: "Transit",
+};
+
+/** The travel-mode choice offers only modes the provider serves; transit only where reported. */
+function travelModeField(
+  modes: readonly TravelMode[],
+): FormInteraction["fields"][number] {
+  return {
+    name: "travelMode",
+    type: "select",
+    label: "Travel mode",
+    required: false,
+    options: modes.map((value) => ({
+      value,
+      label: TRAVEL_MODE_LABEL[value],
+    })),
+  };
+}
+
+/** Modes the provider reports; an unreadable or unreported coverage offers road modes only. */
+async function servedTravelModes(
+  service: MapsService,
+  provider?: string,
+): Promise<TravelMode[]> {
+  try {
+    return offeredTravelModes(
+      (await service.coverageResult(provider)).coverage,
+    );
+  } catch (error) {
+    if (error instanceof MapsError) return offeredTravelModes(null);
+    throw error;
+  }
+}
+
+/** Refuses transit before dispatch unless the provider reports serving it. */
+async function assertTransitServed(
+  service: MapsService,
+  travelMode: TravelMode,
+  provider?: string,
+): Promise<void> {
+  if (travelMode !== "transit") return;
+  if ((await servedTravelModes(service, provider)).includes("transit")) return;
+  throw new MapsError("This Maps provider does not serve transit routes.", {
+    code: "MAPS_UNSUPPORTED_REGION",
+    context: { travelMode },
+  });
+}
 
 function directPlace(params: Params, prefix = ""): PlaceRef | null {
   const field = (name: string) =>
@@ -293,6 +334,9 @@ function actionError(error: MapsError): ActionResult {
     error.code === "MAPS_PROVIDER_FAILURE" ||
     error.code === "MAPS_PROVIDER_TIMEOUT" ||
     error.code === "MAPS_PROVIDER_NETWORK";
+  // A request cancelled before admission is a settled outcome, not a failure to
+  // retry: nothing reached the provider and the planner must not replay it.
+  const cancelled = error.code === "MAPS_REQUEST_CANCELLED";
   return {
     success: false,
     text: error.message,
@@ -300,6 +344,7 @@ function actionError(error: MapsError): ActionResult {
     data: {
       actionName: "MAPS",
       error: error.code,
+      ...(cancelled ? { reason: "cancelled", cancelled: true } : {}),
       retryable,
       ...(retryAfterMs !== undefined
         ? { retry: { retryable: true, retryAfterMs } }
@@ -621,7 +666,11 @@ async function execute(
               required: true,
             });
           }
-          unresolvedFields.push(TRAVEL_MODE_FIELD);
+          unresolvedFields.push(
+            travelModeField(
+              await servedTravelModes(service, text(params.provider)),
+            ),
+          );
           return result(
             action,
             missingInput(
@@ -646,6 +695,11 @@ async function execute(
             "Travel mode must be drive, walk, bicycle, or transit.",
           ),
         };
+        await assertTransitServed(
+          service,
+          routeRequest.travelMode,
+          text(params.provider),
+        );
         const { routes, provider: routeProvider } = flag(params.alternatives)
           ? await service.planRouteAlternativesResult(
               routeRequest,
@@ -834,6 +888,38 @@ async function execute(
           callback,
         );
       }
+      case "saved": {
+        // Read-only: the owner's saved places, reconciled with the phone's own
+        // Maps list when the device host registered one. Nothing is written.
+        const listing = await service.listReconciledSavedPlaces(
+          message.entityId,
+        );
+        const names = listing.places.map((row) => row.label);
+        const deviceNote =
+          listing.device === "unavailable"
+            ? " Places saved only on the phone could not be read right now."
+            : "";
+        const prose = names.length
+          ? `Saved places: ${names.join(", ")}.${deviceNote}`
+          : `You have no saved places.${deviceNote}`;
+        return result(
+          action,
+          {
+            success: true,
+            text: prose,
+            userFacingText: prose,
+            verifiedUserFacing: true,
+            data: {
+              actionName: "MAPS",
+              action,
+              places: listing.places,
+              device: listing.device,
+              ...(listing.namespace ? { namespace: listing.namespace } : {}),
+            },
+          },
+          callback,
+        );
+      }
       case "coverage": {
         // Read-only: what the provider reports it serves. Nothing is inferred
         // for a provider that publishes no coverage.
@@ -943,12 +1029,12 @@ export const mapsAction: Action = {
     "NAVIGATION",
   ],
   description:
-    "Look up places, plan routes, save places, create shareable geo links, hand a destination to navigation, or report which regions and travel modes Maps covers. Use the specific promoted MAPS_* action when the requested operation is known. Saving a place runs only through MAPS_SAVE.",
+    "Look up places, plan routes, save places, list saved places, create shareable geo links, hand a destination to navigation, or report which regions and travel modes Maps covers. Use the specific promoted MAPS_* action when the requested operation is known. Saving a place runs only through MAPS_SAVE.",
   descriptionCompressed:
     "Place search, routes, saved places, sharing, navigation, and coverage.",
   contexts: ["location", "travel", "productivity"],
   routingHint:
-    "Use MAPS_PLACE for place/address lookup, MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SHARE for a geo share link, MAPS_NAVIGATE for a navigation handoff, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
+    "Use MAPS_PLACE for place/address lookup, MAPS_SELECT to show a place on the phone map, MAPS_ROUTE for directions, MAPS_SAVE to persist a place, MAPS_SAVED to list saved places (including those saved on the phone), MAPS_SHARE for a geo share link, MAPS_NAVIGATE for a navigation handoff, and MAPS_COVERAGE for the regions, travel modes and location recipients of the connected provider. Use MAPS_NAVIGATION_START, MAPS_NAVIGATION_REROUTE and MAPS_NAVIGATION_STOP for in-app phone navigation.",
   // Direct umbrella execution is read-only. The promoted MAPS_SAVE virtual
   // owns the write and receipt contract in plugin.ts.
   tags: ["domain:maps"],
@@ -956,7 +1042,7 @@ export const mapsAction: Action = {
     {
       name: "action",
       description:
-        "Maps operation: place | select | route | share | navigate | coverage. MAPS rejects save; call MAPS_SAVE to save a place.",
+        "Maps operation: place | select | route | share | navigate | coverage | saved. MAPS rejects save; call MAPS_SAVE to save a place.",
       required: false,
       schema: { type: "string", enum: [...MAPS_SUBACTIONS] },
     },
@@ -1094,7 +1180,8 @@ export const mapsAction: Action = {
     },
     {
       name: "travelMode",
-      description: "drive | walk | bicycle | transit.",
+      description:
+        "drive | walk | bicycle | transit. Transit only where MAPS coverage lists it.",
       required: false,
       schema: { type: "string", enum: ["drive", "walk", "bicycle", "transit"] },
       subactions: ["route"],
@@ -1230,7 +1317,7 @@ async function executeNavigation(
               label: "Destination place ID",
               required: true,
             },
-            TRAVEL_MODE_FIELD,
+            travelModeField(await servedTravelModes(service)),
           ],
           "Where should navigation go?",
         ),

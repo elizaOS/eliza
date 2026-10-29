@@ -13,6 +13,23 @@ export type SavedPlace = Readonly<{
   providerPlaceId?: string;
   savedAt: number;
 }>;
+/** One device row as the agent's saved-places host port receives it (`MapsHostSavedPlace`). */
+export type HostSavedPlace = Readonly<{
+  id: string;
+  label: string;
+  coordinates: Coordinate;
+  provider?: string;
+  providerPlaceId?: string;
+  savedAt: number;
+}>;
+/** The device list offered to `MapsService.registerSavedPlacesHost`. */
+export type SavedPlacesHostPort = Readonly<{
+  namespace: string;
+  list(
+    ownerEntityId: string,
+    signal?: AbortSignal,
+  ): Promise<readonly HostSavedPlace[]>;
+}>;
 const LIMIT = 200;
 /** Deliberately saves only labels/coordinates/identity, not cached provider details or location history. */
 export class SavedPlaces {
@@ -20,6 +37,37 @@ export class SavedPlaces {
     private readonly key: string,
     private readonly storage?: Pick<Storage, "getItem" | "setItem">,
   ) {}
+  /** Installed-data namespace this list is stored under. */
+  get namespace(): string {
+    return this.key;
+  }
+  /**
+   * This device list as a read-only reconciliation port for the agent. It
+   * reads the current rows on each call and never writes; an unreadable list
+   * rejects instead of answering empty.
+   */
+  host(): SavedPlacesHostPort {
+    return Object.freeze({
+      namespace: this.key,
+      list: async (_owner: string, signal?: AbortSignal) => {
+        signal?.throwIfAborted();
+        return this.read().map((item) =>
+          Object.freeze({
+            id: item.id,
+            label: item.label,
+            coordinates: { ...item.coordinate },
+            savedAt: item.savedAt,
+            ...(item.providerId
+              ? {
+                  provider: item.providerId,
+                  providerPlaceId: item.providerPlaceId,
+                }
+              : {}),
+          }),
+        );
+      },
+    });
+  }
   private target() {
     return this.storage ?? localStorage;
   }
