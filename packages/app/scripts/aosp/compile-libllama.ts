@@ -81,7 +81,7 @@ const RECURSIVE_CLEANUP_SCRIPT = path.join(
 // the submodule path. The commit must include the Mali flash-attn
 // subgroup-race fix (the `VK_VENDOR_ID_ARM` `disable_subgroups` branch, #9508);
 // the `verify-fused-symbols` gate enforces the marker is present post-build.
-export const LLAMA_CPP_COMMIT = "0d9fd4b9db239bbf851068f98c99f4263f8c05c5";
+export const LLAMA_CPP_COMMIT = "d09e410b9e820bdf106216b8ad0996c869176894";
 export const LLAMA_CPP_REMOTE = "https://github.com/elizaOS/llama.cpp.git";
 export const DEFAULT_LLAMA_CPP_CACHE_DIR = path.join(
   os.homedir(),
