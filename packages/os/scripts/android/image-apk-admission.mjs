@@ -84,10 +84,14 @@ export function admitImageApk({
   if (!testMocksDir) throw new Error("admitImageApk requires testMocksDir");
   const mocks = path.resolve(testMocksDir);
   const real = fs.realpathSync(apk);
+  // Named as the operator wrote it: relative to the working directory when inside it.
+  const relativeMocks = path.relative(process.cwd(), mocks);
+  const shown =
+    relativeMocks && inside(process.cwd(), mocks) ? relativeMocks : mocks;
   for (const candidate of [path.resolve(apk), real])
     if (inside(mocks, candidate))
       throw new Error(
-        `Refusing ${apk}: ${path.basename(mocks)}/ builds are never staged into an image.`,
+        `Refusing ${apk}: ${shown}/ builds are never staged into an image.`,
       );
   let flags;
   try {
