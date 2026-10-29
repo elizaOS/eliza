@@ -135,13 +135,14 @@ export const COMPONENTS: readonly Component[] = [
     ],
     // The pins.json section of the release inputs.json names (v1.2).
     forkPins: (fork) => {
-      const version = readJson<Record<string, Pin & { version?: string }>>(
-        INPUTS_PATH,
-      ).paradee?.version;
+      const version =
+        readJson<Record<string, Pin & { version?: string }>>(INPUTS_PATH)
+          .paradee?.version;
       return version
-        ? (forkJson<Record<string, ForkPins>>(fork, "tools/paradee/pins.json")?.[
-            `v${version}`
-          ] ?? null)
+        ? (forkJson<Record<string, ForkPins>>(
+            fork,
+            "tools/paradee/pins.json",
+          )?.[`v${version}`] ?? null)
         : null;
     },
   },

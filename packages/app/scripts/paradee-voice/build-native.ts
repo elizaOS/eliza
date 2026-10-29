@@ -459,7 +459,8 @@ async function main() {
     path.join(paradeeDir, "espeak-ng-data"),
   );
   const missingEspeak = inputs.espeak.data.filter(
-    (relative) => !existsSync(path.join(paradeeDir, "espeak-ng-data", relative)),
+    (relative) =>
+      !existsSync(path.join(paradeeDir, "espeak-ng-data", relative)),
   );
   if (missingEspeak.length)
     fail(`eSpeak NG data missing from the bundle: ${missingEspeak.join(", ")}`);
