@@ -17,6 +17,11 @@ import {
   openMobilePermissionSettings,
 } from "../../platform/mobile-permissions-client";
 import { createClientPermissionsRegistry } from "../composites/chat/permission-card.helpers";
+import {
+  type WalkthroughMemoryStore,
+  walkthroughAttemptKey,
+  walkthroughRequestRoute,
+} from "./permission-walkthrough";
 /**
  * Sequencing controller for the onboarding permission-priming modal.
  *
@@ -45,6 +50,11 @@ export interface PrimingItem {
   requestError: boolean;
   /** The authoritative post-Settings status refresh failed. */
   recheckError: boolean;
+  /**
+   * This walkthrough already showed the OS prompt (in this run or before a restart) and access
+   * is still missing, so the card routes to system settings instead of prompting again.
+   */
+  promptShown?: boolean;
   /**
    * True once the user is done with this card — granted, or explicitly skipped.
    * A denied item is NOT resolved: it stays active so the recovery affordance
@@ -101,9 +111,18 @@ async function openSettingsFor(id: PermissionId): Promise<void> {
   }
   await client.openPermissionSettings(id);
 }
+export interface PermissionPrimingOptions {
+  /**
+   * Walkthrough memory: records each OS prompt this walkthrough fires so it is never fired again
+   * (a later tap opens system settings), and records "Skip for now". Omitted, every tap may prompt.
+   */
+  memory?: WalkthroughMemoryStore;
+}
 export function usePermissionPriming(
   ids: readonly PermissionId[],
+  options: PermissionPrimingOptions = {},
 ): PermissionPrimingController {
+  const { memory } = options;
   const registry = React.useMemo(selectRegistry, []);
   const idsKey = ids.join(",");
   const [items, setItems] = React.useState<PrimingItem[]>([]);
@@ -139,15 +158,20 @@ export function usePermissionPriming(
       setItems(
         checked
           .filter((entry) => !isSatisfied(entry.status))
-          .map((entry) => ({
-            id: entry.id,
-            status: entry.status,
-            canRequest: entry.canRequest,
-            requesting: false,
-            requestError: false,
-            recheckError: false,
-            resolved: false,
-          })),
+          .map((entry) => {
+            const promptShown =
+              walkthroughRequestRoute(memory, entry.id) === "settings";
+            return {
+              id: entry.id,
+              status: entry.status,
+              canRequest: entry.canRequest && !promptShown,
+              promptShown,
+              requesting: false,
+              requestError: false,
+              recheckError: false,
+              resolved: false,
+            };
+          }),
       );
       setReady(true);
     })();
@@ -155,7 +179,7 @@ export function usePermissionPriming(
       cancelled = true;
     };
     // idsKey captures the id list identity; registry is stable (useMemo []).
-  }, [idsKey, registry]);
+  }, [idsKey, registry, memory]);
   const patch = React.useCallback(
     (id: PermissionId, next: Partial<PrimingItem>) => {
       setItems((current) =>
@@ -167,6 +191,11 @@ export function usePermissionPriming(
   const request = React.useCallback(
     async (id: PermissionId) => {
       if (requestingRef.current.has(id)) return;
+      if (walkthroughRequestRoute(memory, id) === "settings") {
+        // The prompt was already shown: never fire it twice. The card offers settings instead.
+        patch(id, { canRequest: false, promptShown: true });
+        return;
+      }
       requestingRef.current.add(id);
       patch(id, {
         requesting: true,
@@ -178,9 +207,13 @@ export function usePermissionPriming(
           reason: PRIMING_REASON,
           feature: PRIMING_FEATURE,
         });
+        // The OS answered, so its prompt was shown: record it so this walkthrough never fires it
+        // again, here or after a restart. A failed request (below) records nothing and may retry.
+        memory?.write({ attempted: { [walkthroughAttemptKey(id)]: true } });
         patch(id, {
           status: state.status,
-          canRequest: state.canRequest,
+          canRequest: state.canRequest && !memory,
+          promptShown: !!memory && state.status !== "granted",
           requesting: false,
           requestError: false,
           recheckError: false,
@@ -201,7 +234,7 @@ export function usePermissionPriming(
         requestingRef.current.delete(id);
       }
     },
-    [patch, registry],
+    [patch, registry, memory],
   );
   const skip = React.useCallback(
     (id: PermissionId) => {
@@ -237,8 +270,9 @@ export function usePermissionPriming(
     [patch, registry],
   );
   const skipAll = React.useCallback(() => {
+    memory?.write({ dismissed: true });
     setItems((current) => current.map((item) => ({ ...item, resolved: true })));
-  }, []);
+  }, [memory]);
   const activeIndex = items.findIndex((item) => !item.resolved);
   const active = activeIndex === -1 ? null : items[activeIndex];
   const done = ready && active === null;

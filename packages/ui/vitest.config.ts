@@ -287,6 +287,7 @@ export default defineConfig({
       "src/voice/voice-capture-factory.test.ts",
       "src/utils/value-formatting.test.ts",
       "src/components/permissions/permission-walkthrough.test.ts",
+      "src/components/permissions/use-permission-priming.test.tsx",
     ],
     exclude: ["dist/**", "**/node_modules/**"],
     testTimeout: 900_000,

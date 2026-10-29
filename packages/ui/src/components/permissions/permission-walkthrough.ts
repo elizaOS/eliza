@@ -348,3 +348,29 @@ export function showWalkthroughCompletion(input: {
 }): boolean {
   return input.accountCreated === true && !input.resumed;
 }
+
+/**
+ * The memory key for a permission id: lower-case letters only, so ids such as
+ * "speech-recognition" fit {@link WalkthroughMemory.attempted} ("speechrecognition").
+ */
+export function walkthroughAttemptKey(id: string): string {
+  const key = id
+    .toLowerCase()
+    .replace(/[^a-z]/g, "")
+    .slice(0, 32);
+  if (!key) throw Error("Permission id has no letters");
+  return key;
+}
+
+/**
+ * Where an explicit tap on `id` goes: the OS prompt, or system settings because that prompt was
+ * already shown (in this run or before a restart). Without memory every tap may prompt.
+ */
+export function walkthroughRequestRoute(
+  memory: WalkthroughMemoryStore | undefined,
+  id: string,
+): "request" | "settings" {
+  return memory?.read().attempted[walkthroughAttemptKey(id)] === true
+    ? "settings"
+    : "request";
+}

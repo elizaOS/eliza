@@ -185,7 +185,8 @@ describe("memory and reopen", () => {
       dismissed: false,
       attempted: { camera: true },
     });
-    if (globalThis.addEventListener) expect(seen).toHaveBeenCalledTimes(1);
+    if (typeof globalThis.addEventListener === "function")
+      expect(seen).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -266,5 +267,30 @@ describe("completion popup", () => {
     expect(
       showWalkthroughCompletion({ accountCreated: true, resumed: true }),
     ).toBe(false);
+  });
+});
+
+describe("attempt keys and request routing", () => {
+  it("maps permission ids to letter-only memory keys", async () => {
+    const { walkthroughAttemptKey } = await import("./permission-walkthrough");
+    expect(walkthroughAttemptKey("speech-recognition")).toBe(
+      "speechrecognition",
+    );
+    expect(walkthroughAttemptKey("microphone")).toBe("microphone");
+    expect(() => walkthroughAttemptKey("--")).toThrow();
+  });
+
+  it("routes a step whose prompt was shown to settings, across a new memory instance", async () => {
+    const { walkthroughRequestRoute } = await import(
+      "./permission-walkthrough"
+    );
+    const store = mapStore();
+    const memory = walkthroughMemory("k", "reopen", () => store);
+    expect(walkthroughRequestRoute(memory, "location")).toBe("request");
+    expect(walkthroughRequestRoute(undefined, "location")).toBe("request");
+    memory.write({ attempted: { location: true } });
+    const restarted = walkthroughMemory("k", "reopen", () => store);
+    expect(walkthroughRequestRoute(restarted, "location")).toBe("settings");
+    expect(walkthroughRequestRoute(restarted, "camera")).toBe("request");
   });
 });

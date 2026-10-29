@@ -308,6 +308,12 @@ export {
 } from "./components/pages/WalletSectionNav.js";
 export { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay.js";
 export { PermissionRecoveryCallout } from "./components/permissions/PermissionRecoveryCallout.js";
+export {
+  PERMISSION_WALKTHROUGH_MEMORY_KEY,
+  PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+  primingWalkthroughMemory,
+} from "./components/permissions/permission-priming.js";
+export * from "./components/permissions/permission-walkthrough.js";
 export { ShellModalityProvider } from "./components/ShellModalityProvider.js";
 export { ShellRoleProvider } from "./components/ShellRoleProvider.js";
 export {
