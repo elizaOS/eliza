@@ -190,7 +190,10 @@ export async function handleInteractionCreate(
 				commands: service.slashCommands,
 			};
 			try {
-				await service.runtime.emitEvent(DiscordEventTypes.SLASH_COMMAND, slashPayload);
+				await service.runtime.emitEvent(
+					DiscordEventTypes.SLASH_COMMAND,
+					slashPayload,
+				);
 			} catch (emitError) {
 				service.runtime.reportError("discord:emit-event", emitError, {
 					accountId,
@@ -232,7 +235,10 @@ export async function handleInteractionCreate(
 			commands: service.slashCommands,
 		};
 		try {
-			await service.runtime.emitEvent(DiscordEventTypes.MODAL_SUBMIT, modalPayload);
+			await service.runtime.emitEvent(
+				DiscordEventTypes.MODAL_SUBMIT,
+				modalPayload,
+			);
 		} catch (emitError) {
 			service.runtime.reportError("discord:emit-event", emitError, {
 				accountId,

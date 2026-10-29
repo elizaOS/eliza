@@ -1,9 +1,6 @@
 import { ChannelType } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
-import {
-	handleInteractionCreate,
-	onReady,
-} from "../discord-interactions";
+import { handleInteractionCreate, onReady } from "../discord-interactions";
 
 function makeService() {
 	const runtime = {
@@ -132,9 +129,12 @@ describe("Discord interaction listener failures", () => {
 		const { runtime, service } = makeService();
 		runtime.emitEvent.mockRejectedValue(new Error("listener boom"));
 
-		await onReady(service as never, {
-			user: { id: "999", username: "bot" },
-		} as never);
+		await onReady(
+			service as never,
+			{
+				user: { id: "999", username: "bot" },
+			} as never,
+		);
 		await new Promise((resolve) => setTimeout(resolve, 1500));
 
 		expect(runtime.reportError).toHaveBeenCalledTimes(2);
