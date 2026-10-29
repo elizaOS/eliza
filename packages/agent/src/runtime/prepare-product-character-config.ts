@@ -18,8 +18,15 @@ export function prepareProductCharacterConfig(
   const primary = config.agents?.list?.[0];
   const list = config.agents?.list ?? [];
   const configuredName = primary?.name?.trim();
-  const ui = config.ui as { assistant?: { name?: string } } | undefined;
-  const uiName = ui?.assistant?.name?.trim();
+  const ui = config.ui;
+  const assistant = ui?.assistant;
+  const uiName =
+    assistant &&
+    typeof assistant === "object" &&
+    "name" in assistant &&
+    typeof assistant.name === "string"
+      ? assistant.name.trim()
+      : undefined;
   const explicitIdentity = primary?.identityName;
   if (
     resolveSandboxRouteAgentId() ||
