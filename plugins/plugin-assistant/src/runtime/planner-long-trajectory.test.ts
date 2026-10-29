@@ -3033,9 +3033,13 @@ describe("canonical nonretryable receipt repair", () => {
   });
 
   describe("Core-emitted rejected nested container targets", () => {
-    it.each([false, true])(
-      "preserves nested title identity while repairing only invalid sourceNote (different=%s)",
-      async (different) => {
+    it.each([
+      [false, false],
+      [true, false],
+      [true, true],
+    ])(
+      "preserves nested title identity while repairing only invalid sourceNote (different=%s, oldTitleElsewhere=%s)",
+      async (different, oldTitleElsewhere) => {
         const handler = vi.fn(async () => ({ success: true }));
         const action = {
           name: "CALENDAR_CREATE_EVENT",
@@ -3152,6 +3156,9 @@ describe("canonical nonretryable receipt repair", () => {
                                 action: "create_event",
                                 details: {
                                   title: different ? "Title B" : "Title A",
+                                  ...(oldTitleElsewhere
+                                    ? { description: "Copied from Title A" }
+                                    : {}),
                                 },
                               }),
                           eliza_turn_scope: "final",

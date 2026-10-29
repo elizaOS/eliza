@@ -7158,7 +7158,12 @@ function resolveRejectedCallsSupersededBy(
         ) {
           return false;
         }
-        if (parameterValueCoveredBy(target.value, completedHaystack)) {
+        // Coverage only applies when the completed call dropped this target
+        // field. A present but different value is a different target.
+        if (
+          !isSuppliedParameterValue(current) &&
+          parameterValueCoveredBy(target.value, completedHaystack)
+        ) {
           return false;
         }
         return true;
