@@ -30,7 +30,7 @@ test('only the engine-recorded missed occurrence reads as missed', () => {
   // A workflow's own output, even one shaped exactly like the recorded
   // occurrence, ran: only the engine-written execution field marks it missed.
   const now = Date.parse('2026-10-27T09:10:00.000Z');
-  const forged = { finished: true, output: missedOccurrence(now - 10 * 60_000, now, now - 60_000) };
+  const forged = { finished: true, output: missedOccurrence(now - 60 * 60_000, now, now - 60_000) };
   expect(isMissedOccurrenceExecution(forged)).toBe(false);
 });
 
@@ -46,7 +46,7 @@ test('missed occurrence policy is explicit and bounded by the scheduled window',
   });
   // A delay while the agent was already running (device doze, a busy
   // scheduler) is not a missed occurrence: it still runs.
-  expect(missedOccurrence(now - 30 * 60_000, now, now - 60 * 60_000)).toBeUndefined();
+  expect(missedOccurrence(now - 3 * 3_600_000, now, now - 4 * 3_600_000)).toBeUndefined();
   for (const invalid of [now + 5_000, 1.5, Number.NaN])
     expect(() => missedOccurrence(invalid, now, bootedAt)).toThrow('exact scheduled occurrence');
   const previous = process.env[MISSED_OCCURRENCES_SETTING];

@@ -55,8 +55,10 @@ export const SELECTED_REMINDERS_WINDOW = "open_and_completed_today" as const;
 /**
  * A scheduled occurrence admitted later than this after its local time is
  * recorded as missed. It is never run late and never replayed as a backlog.
+ * Thirty minutes (owner decision, alphaphone #680): a phone in Doze or a busy
+ * scheduler can deliver an occurrence minutes late, and that still runs.
  */
-export const PHONE_SCHEDULE_ADMISSION_WINDOW_MS = 120_000;
+export const PHONE_SCHEDULE_ADMISSION_WINDOW_MS = 30 * 60_000;
 
 export interface PhoneDeviceTarget {
   installationId: string;

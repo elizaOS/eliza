@@ -38,11 +38,19 @@ describe("powered-on scheduled occurrences", () => {
 		);
 	});
 
+	it("tolerates thirty minutes of lateness before an occurrence can be missed", () => {
+		expect(SCHEDULED_OCCURRENCE_WINDOW_MS).toBe(30 * 60_000);
+		// Ten minutes late right after boot (a Doze-delayed startup) still runs.
+		expect(isMissedScheduledOccurrence(now - 10 * 60_000, now, now - 1_000)).toBe(
+			false,
+		);
+	});
+
 	it("derives the agent start from process uptime", () => {
 		vi.spyOn(process, "uptime").mockReturnValue(90.5);
 		expect(agentProcessStartedAtMs(now)).toBe(now - 90_500);
-		expect(isMissedScheduledOccurrence(now - 3 * 60_000, now)).toBe(true);
-		expect(isMissedScheduledOccurrence(now - 60_000, now)).toBe(false);
+		expect(isMissedScheduledOccurrence(now - 31 * 60_000, now)).toBe(true);
+		expect(isMissedScheduledOccurrence(now - 29 * 60_000, now)).toBe(false);
 		expect(MISSED_SCHEDULED_OCCURRENCES_SETTING).toBe(
 			"ELIZA_MISSED_SCHEDULED_OCCURRENCES",
 		);
