@@ -60,9 +60,10 @@ export type ReserveSubscriptionFundingInput = ReserveSubscriptionFundingBaseInpu
         /**
          * Declares that the reservation funds usage accruing uniformly from
          * this instant until `expiresAt`. Allowance then funds at most the
-         * share of that window before its period end plus the shared payment
-         * grace; purchased credits fund the remainder instead of clipping the
-         * caller's window to the period.
+         * share of that window before the allowance expiry boundary; purchased
+         * credits fund the remainder instead of clipping the caller's window
+         * to the period. For an active paid invoice bucket the boundary is
+         * period end plus payment grace (see timeMeteredAllowanceExpiry).
          */
         timeMeteredFrom?: Date;
       }
@@ -278,7 +279,13 @@ function exactCreditWriterAmount(amount: CanonicalMoney, field: string): number 
 /**
  * Caps a time-metered window's allowance share to the part of the window that
  * falls inside the passed allowance expiry, rounding down so allowance never
- * funds usage past that boundary. Callers pass period end plus payment grace.
+ * funds usage past that boundary. Callers choose the expiry via
+ * timeMeteredAllowanceExpiry.
+ *
+ * The only production timeMeteredFrom caller uses a 2-hour window. Against the
+ * 3-day payment grace that window always fits, so the cap does not reduce the
+ * standard 2-hour request. It remains as a defensive bound for longer windows
+ * and for buckets that do not receive grace (promo-grant and non-paid).
  */
 export function timeMeteredAllowanceCap(params: {
   requestedAmount: CanonicalMoney;
@@ -294,6 +301,23 @@ export function timeMeteredAllowanceCap(params: {
   );
   if (end <= start || coveredEnd <= start) return microsToMoney(0n);
   return microsToMoney((requested * (coveredEnd - start)) / (end - start));
+}
+
+/**
+ * Allowance expiry used by the time-metered cap. Mirrors
+ * organization-quota-policy.ts: payment grace applies only to an active paid
+ * projection. Eligibility already requires the paid revision status to be
+ * active before a paid_invoice period is spendable, so grant_source
+ * "paid_invoice" is the paid-path gate here. Promo-grant, pilot, and trial
+ * buckets keep the stored expires_at and do not get the extra window.
+ */
+export function timeMeteredAllowanceExpiry(period: {
+  grant_source: string;
+  expires_at: Date;
+}): Date {
+  return period.grant_source === "paid_invoice"
+    ? withSubscriptionPaymentGrace(period.expires_at)
+    : period.expires_at;
 }
 
 function reservationExpiry(input: ReserveSubscriptionFundingInput, now: Date): Date {
@@ -480,10 +504,8 @@ export class SubscriptionFundingService {
         requestedAmount,
         windowStart: input.timeMeteredFrom,
         windowEnd: expiresAt,
-        // Same payment grace the org quota and account snapshot already apply
-        // at period end, so a short funding window that straddles renewal can
-        // still fund fully from allowance instead of stopping early.
-        allowanceExpiresAt: withSubscriptionPaymentGrace(period.expires_at),
+        // Active paid only, same gate as organization-quota-policy.ts.
+        allowanceExpiresAt: timeMeteredAllowanceExpiry(period),
       });
       if (moneyToMicros(cap, "allowanceCap") < moneyToMicros(availableAllowance, "available")) {
         availableAllowance = cap;
