@@ -141,8 +141,12 @@ function ensureWin32DllSearchDir(dir: string): void {
  *     surface, so libraries reporting v17 remain compatible.
  * v19: additive Paradee chunk streaming. This voice binding retains its
  *     existing allocation interface, which is unchanged from v18.
+ * v20: additive Paradee voice slots (`eliza_inference_paradee_load_voice`
+ *     and friends: several Paradee-family voices on one context, such as
+ *     English Paradee-8M v1.2 and Castilian Spanish Delibes-8M-esES). Every
+ *     symbol this binding uses is unchanged, so v19 libraries stay compatible.
  */
-export const ELIZA_INFERENCE_ABI_VERSION = 19 as const;
+export const ELIZA_INFERENCE_ABI_VERSION = 20 as const;
 
 /** One transcribed word with playback-synced timing (ms from utterance start). */
 export interface AsrWordTiming {
@@ -2289,6 +2293,7 @@ function bindWithBunFfi(dylibPath: string): ElizaInferenceFfi {
 	// tokenizer), accepted only when those are absent too.
 	const abiOk =
 		(reported === String(ELIZA_INFERENCE_ABI_VERSION) && v17SymbolsAvailable) ||
+		(reported === "19" && v17SymbolsAvailable) ||
 		(reported === "18" && v17SymbolsAvailable) ||
 		(reported === "17" && v17SymbolsAvailable) ||
 		(reported === "16" && !v17SymbolsAvailable) ||
