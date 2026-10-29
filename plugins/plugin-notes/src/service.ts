@@ -393,11 +393,16 @@ export class NotesService extends Service {
         createdAt: now,
         updatedAt: now,
       });
-      const existing = input.format
-        ? undefined
-        : draft.notes.find(
-            (note) => !note.format && noteContentKey(note) === requestedKey,
-          );
+      // Agent creates without forceNew still treat identical content as one
+      // logical note (replay). The Notes editor sets forceNew on each new
+      // draft so the first keystroke that matches another note does not bind
+      // that draft to the other note's id.
+      const existing =
+        input.forceNew || input.format
+          ? undefined
+          : draft.notes.find(
+              (note) => !note.format && noteContentKey(note) === requestedKey,
+            );
       if (existing) return { note: existing, replayed: true };
       if (draft.notes.some((note) => note.id === id)) {
         throw new ElizaError(`Notes generated duplicate note id "${id}".`, {

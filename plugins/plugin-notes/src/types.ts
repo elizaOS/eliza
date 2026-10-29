@@ -79,6 +79,9 @@ export interface CreateNoteInput {
   title: string;
   body: string;
   color: StickyColor;
+  /** Owner-UI drafts set this so a new note keeps its own id when its first
+   * saved text matches another note. Agent creates omit it and still replay. */
+  forceNew?: boolean;
 }
 
 /** Append carries only the exact suffix; old content stays inside the transaction. */
