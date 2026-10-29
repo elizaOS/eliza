@@ -220,10 +220,7 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
       0,
     );
 
-  if (options.first) {
-    admitScanImage(options.first);
-    pages.push({ id: nextId++, image: options.first });
-  }
+  if (options.first) admitScanImage(options.first);
 
   const autosave = () => {
     if (!options.autosave || !drafts || closed || exported || !pages.length)
@@ -249,6 +246,13 @@ export function createScanDocument<Image extends ScanImage, Layer = unknown>(
       }
     });
   };
+
+  // The opening page is autosaved like any later one: a native host may be ended while its
+  // picker or camera is open for the next page, and an unsaved capture has no other copy.
+  if (options.first) {
+    pages.push({ id: nextId++, image: options.first });
+    autosave();
+  }
 
   const settled = async () => {
     try {

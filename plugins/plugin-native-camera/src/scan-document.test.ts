@@ -224,6 +224,28 @@ describe("drafts", () => {
     expect(doc.snapshot().draftRevision).toBeUndefined();
   });
 
+  it("autosaves the opening page before any change", async () => {
+    const drafts = memoryDrafts();
+    const doc = createScanDocument<Image, string>({
+      first: image("a"),
+      drafts: drafts.port,
+      autosave: true,
+    });
+    await doc.settled();
+    expect(drafts.port.save).toHaveBeenCalledOnce();
+    expect(drafts.stored?.pages.map((page) => page.name)).toEqual(["a"]);
+    expect(doc.snapshot()).toMatchObject({
+      autoSaved: true,
+      draftRevision: "r1",
+    });
+    const manual = memoryDrafts();
+    await createScanDocument<Image, string>({
+      first: image("a"),
+      drafts: manual.port,
+    }).settled();
+    expect(manual.port.save).not.toHaveBeenCalled();
+  });
+
   it("never replaces a newer draft silently and reports the failure", async () => {
     const drafts = memoryDrafts();
     drafts.stored = { revision: "other", pages: [image("x")] };
