@@ -161,6 +161,16 @@ export function scanContent(filePath, content) {
       severity: "error",
     },
     {
+      // OpenRouter keys carry a hyphenated first segment (`sk-or-v1-`),
+      // which the legacy class above cannot cross: it stops at the hyphen,
+      // so those keys were never flagged. Match the shape explicitly
+      // rather than widening the class, which would also swallow prose
+      // like `sk-learn-...`.
+      name: "OpenRouter key",
+      re: /\bsk-or-(?:v1-)?[A-Za-z0-9_-]{20,}\b/,
+      severity: "error",
+    },
+    {
       name: "Anthropic-style key",
       re: /\bsk-ant-[A-Za-z0-9\-_]{20,}\b/,
       severity: "error",
