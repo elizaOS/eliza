@@ -55,6 +55,7 @@ import {
   calendarReadParameters,
   createCalendarActionRunner,
   createCalendarMutationApprovalGateway,
+  DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES,
   registerCalendarActionHostAdapter,
 } from "@elizaos/plugin-calendar";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
@@ -807,8 +808,8 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
     optional: ["intent", "query", "queries", "details"],
   },
   create_event: {
-    description: "Create event.",
-    descriptionCompressed: "create calendar event",
+    description: `Create an event from the original request. A known day and exact start may omit end/duration; the domain uses its ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}-minute timed default. Do not ask only for duration or invent an end. Missing exact time/source or invalid explicit timing still requires clarification.`,
+    descriptionCompressed: `create event; known date/start, omitted end/duration -> domain default ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}m; never invent timing`,
     required: [],
     optional: ["title", "intent", "details"],
   },
@@ -1295,9 +1296,9 @@ export const calendarAction: Action & {
     "feed, next_event, search_events, create_event, update_event, delete_event, trip_window, bulk_reschedule, " +
     "check_availability, propose_times, update_preferences. " +
     "For a clock-only move on a verified selected Calendar day, call CALENDAR action=update_event with the original intent; no preliminary lookup or invented title/ID. " +
+    `For creation with a known day and exact start, omit unstated end/duration and let the domain use its ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}-minute timed default; do not ask only for duration. ` +
     "Use PERSONAL_ASSISTANT action=scheduling for multi-turn proposal/response.",
-  descriptionCompressed:
-    "calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose; verified-day clock move: CALENDAR action=update_event + original intent",
+  descriptionCompressed: `calendar feed|next|search|create|update|delete|trip_window|reschedule|availability|propose; create exact date/start, omit unstated end/duration -> domain default ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}m; verified-day clock move: CALENDAR action=update_event + original intent`,
   // "general" included so messageHandler can route direct owner calendar
   // most user-facing event/scheduling requests to "general" rather than
   // "calendar", so retrieval would otherwise filter CALENDAR out before
@@ -1829,15 +1830,12 @@ export const calendarActionPromotionOptions: PromoteSubactionsOptions = {
           ? {
               ...parameter,
               schema: CALENDAR_CREATE_DETAILS_PARAMETER_SCHEMA,
-              description:
-                "New event fields. Use start/end as local wall-clock ISO timestamps with the IANA timeZone, or durationMinutes for its length. Supply only requested details; title is top-level. No existing-event lookup or rename fields belong here.",
-              descriptionCompressed:
-                "New event fields; start/end local ISO with IANA timeZone, or durationMinutes. Only requested details; title top-level.",
+              description: `New event fields. Use the requested start as local wall-clock ISO with IANA timeZone. End/duration may be omitted when unstated: the domain supplies its ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}-minute timed default. Preserve an explicit valid end/duration; never invent one. Title is top-level. No existing-event lookup or rename fields belong here.`,
+              descriptionCompressed: `New event fields; requested local start + IANA zone; omit unstated end/duration (domain default ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}m); preserve explicit timing; title top-level.`,
             }
           : parameter,
       ),
-      description:
-        "Create an authorized event at the requested or accepted time. This action validates scheduling details and checks fresh availability before writing; a conflict or incomplete coverage prevents creation and returns the reason and checked alternatives when available. Use it directly for 'book this if I am free'; a separate availability call is unnecessary. Missing timing needs clarification. Do not book a suggested alternative until the user accepts it or explicitly delegates choosing a time.",
+      description: `Create an authorized event at the requested or accepted time. A known day and exact start need no duration question: omit unstated end/duration and the domain uses its ${DEFAULT_TIMED_CALENDAR_EVENT_DURATION_MINUTES}-minute timed default. Preserve explicit valid bounds; do not invent them or replace invalid/ambiguous values. This action checks source authority and fresh availability before writing; a conflict or incomplete coverage blocks creation. Use it directly for 'book this if I am free'; no preliminary availability call is needed. A missing exact time/source still needs clarification. Do not book a suggested alternative without acceptance or explicit delegation.`,
     },
     check_availability: {
       parameters: calendarAction.parameters
