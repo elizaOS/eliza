@@ -453,6 +453,7 @@ export class CharacterFileManager extends Service {
           character: currentCharacter as Record<string, unknown>,
           previousCharacter: this.runtime.character as Record<string, unknown>,
           previousName,
+          nameWasExplicitlyEdited: Boolean(modification.name),
           source: "agent",
         });
         if (!persistenceResult.success) {
@@ -607,6 +608,7 @@ export class CharacterFileManager extends Service {
               ? this.runtime.character.name
               : undefined,
           source: "restore",
+          nameWasExplicitlyEdited: true,
         });
         if (!persistenceResult.success) {
           if (persistenceResult.persistence?.config === "committed") {

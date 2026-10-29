@@ -1,6 +1,7 @@
 /** Real admitted-module loading and downward host injection; no live profile or provider. */
 import { createHash } from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
@@ -20,7 +21,7 @@ afterEach(() => {
 function fixture(
   character: unknown = { name: "Alpha", bio: ["Product assistant."] },
 ) {
-  const root = fs.mkdtempSync(path.join(process.env.TMPDIR!, "product-host-"));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "product-host-"));
   roots.push(root);
   const entry = path.join(root, "host.mjs");
   const body = `export const nativeCloudRuntime = ${JSON.stringify({ apiBaseUrl: "https://cloud.example.com/api/v1", productCharacter: character })};`;
@@ -133,16 +134,15 @@ test("normal Cloud and native entry chains install product before runtime startu
     "utf8",
   );
   expect(agent).toContain(
-    "config = prepareProductCharacterConfig(config, productCharacter)",
+    "buildProductCharacterFromConfig(config, productCharacter)",
   );
   expect(agent.indexOf("applyCanonicalFileBootToConfig(config);")).toBeLessThan(
-    agent.indexOf(
-      "config = prepareProductCharacterConfig(config, productCharacter)",
-    ),
+    agent.indexOf("buildProductCharacterFromConfig(config, productCharacter)"),
   );
   expect(
-    agent.indexOf(
-      "config = prepareProductCharacterConfig(config, productCharacter)",
-    ),
-  ).toBeLessThan(agent.indexOf("const character = restoredGeneration"));
+    agent.indexOf("buildProductCharacterFromConfig(config, productCharacter)"),
+  ).toBeGreaterThan(agent.indexOf("let character = restoredGeneration"));
+  expect(agent.indexOf("const agentId = scopeName?")).toBeLessThan(
+    agent.indexOf("buildProductCharacterFromConfig(config, productCharacter)"),
+  );
 });
