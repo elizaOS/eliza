@@ -1495,7 +1495,7 @@ describe("compute billing recovery", () => {
     expect(rows.rows).toHaveLength(1);
   });
 
-  test.each(["api delete", "app teardown"] as const)(
+  test.each(["api delete", "api stop", "app teardown"] as const)(
     "%s charges the compute run since the last daily bill",
     async (path) => {
       const { org, user } = await seed("10.000000");
@@ -1519,6 +1519,8 @@ describe("compute billing recovery", () => {
 
       if (path === "api delete") {
         await getHetznerContainersClient().deleteContainer(containerId, org.id);
+      } else if (path === "api stop") {
+        await getHetznerContainersClient().stopContainer(containerId, org.id);
       } else {
         await containersRepository.markStoppedForBilling(containerId, org.id);
       }
@@ -1580,6 +1582,62 @@ describe("compute billing recovery", () => {
       .where(eq(organizations.id, org.id));
     expect(afterDelete[0]?.credit_balance).toBe(afterTeardown[0]?.credit_balance);
     expect(await debits()).toBe(teardownDebits);
+  });
+
+  test("a user stop settles once; a later delete charges nothing for the stopped time", async () => {
+    const { org, user } = await seed("10.000000");
+    const containerId = crypto.randomUUID();
+    const periodStart = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    await dbWrite.execute(sql`INSERT INTO containers
+      (id, name, project_name, organization_id, user_id, status, billing_status,
+       last_billed_at, next_billing_at, lifecycle_revision, created_at, updated_at)
+      VALUES (${containerId}, 'stop-fixture', 'stop-fixture', ${org.id}, ${user.id}, 'running', 'active',
+        ${periodStart}, ${new Date(periodStart.getTime() + 24 * 60 * 60 * 1000)}, 1, ${periodStart}, ${periodStart})`);
+    await dbWrite.insert(computeBillingRateSegments).values({
+      organization_id: org.id,
+      workload_kind: "container",
+      workload_id: containerId,
+      lifecycle_revision: 1,
+      billing_state: "running",
+      rate_per_hour: "0.027917",
+      effective_at: periodStart,
+    });
+    const balance = async () =>
+      Number(
+        (
+          await dbWrite
+            .select({ credit_balance: organizations.credit_balance })
+            .from(organizations)
+            .where(eq(organizations.id, org.id))
+        )[0]?.credit_balance,
+      );
+
+    // Production records a not_billable segment when the status leaves
+    // running; install that trigger from the migration for this test.
+    const segmentTrigger = deletionBillingMigration.match(
+      /CREATE OR REPLACE FUNCTION append_container_compute_billing_rate_segment\(\)[\s\S]*?LANGUAGE plpgsql;[\s\S]*?EXECUTE FUNCTION append_container_compute_billing_rate_segment\(\);/,
+    );
+    if (!segmentTrigger) throw new Error("Container rate segment trigger DDL unavailable");
+    await getPgliteClientForTests().exec(segmentTrigger[0]);
+    try {
+      await getHetznerContainersClient().stopContainer(containerId, org.id);
+      const afterStop = await balance();
+
+      // The owner deletes the stopped container two hours later.
+      setSystemTime(new Date(Date.now() + 2 * 60 * 60 * 1000));
+      try {
+        await getHetznerContainersClient().deleteContainer(containerId, org.id);
+      } finally {
+        setSystemTime();
+      }
+
+      expect(10 - afterStop).toBeGreaterThan(0.083);
+      expect(await balance()).toBe(afterStop);
+    } finally {
+      await getPgliteClientForTests().exec(
+        "DROP TRIGGER IF EXISTS container_compute_billing_rate_segment_append ON containers;",
+      );
+    }
   });
 
   test("recovery discovery excludes live jobs and includes failed or unbound intents", async () => {

@@ -30,6 +30,7 @@ import {
   type MentionContext,
   type MessagePayload,
   ModelType,
+  parseFenceSpans,
   type ResolvedAttachmentBytes,
   type ResolveOutboundAttachmentOptions,
   resolveAttachmentBytes,
@@ -167,13 +168,19 @@ async function resolveTelegramFileBytes(
 const MAX_MESSAGE_LENGTH = 4096; // Telegram's max message length
 const CODE_FENCE = "```";
 
-/** The opener (```lang) of a code block left open at the end of `text`. */
+/** The opener (```lang) of a backtick code block left open at the end of `text`. */
 function openCodeFence(text: string): string | null {
-  const fences = text.split(CODE_FENCE).length - 1;
-  if (fences % 2 === 0) return null;
-  const start = text.lastIndexOf(CODE_FENCE);
-  const lang = /^[^\s`]*/.exec(text.slice(start + CODE_FENCE.length))?.[0];
-  return `${CODE_FENCE}${lang ?? ""}`;
+  // Core's CommonMark fence parser: a "```js" line inside an open block is
+  // content, not a closer. Counting every ``` occurrence miscounted it, so a
+  // chunk cut after it lost its reopened opener. The added newline makes an
+  // unclosed span end past `text`, while a closer on the last line ends at it.
+  // Only backtick openers are returned: the Telegram converter only closes ```.
+  const last = parseFenceSpans(`${text}\n`).at(-1);
+  if (!last || last.end <= text.length || !last.marker.startsWith("`")) {
+    return null;
+  }
+  const info = last.openLine.slice(last.indent.length + last.marker.length);
+  return `${CODE_FENCE}${/^[^\s`]*/.exec(info)?.[0] ?? ""}`;
 }
 const MAX_MEDIA_CAPTION_LENGTH = 1024;
 const INTERACTION_ONLY_FALLBACK_TEXT = "Choose an option:";

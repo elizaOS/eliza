@@ -24,6 +24,14 @@ export interface WadisClientLike {
   lpush(key: string, ...values: string[]): Promise<number>;
   rpop(key: string): Promise<string | null>;
   llen(key: string): Promise<number>;
+  lmove(
+    source: string,
+    destination: string,
+    from: "LEFT" | "RIGHT",
+    to: "LEFT" | "RIGHT",
+  ): Promise<string | null>;
+  lrem(key: string, count: number, value: string): Promise<number>;
+  lrange(key: string, start: number, stop: number): Promise<string[]>;
 }
 
 export class WadisRedisAdapter implements CacheRedisClient {
@@ -91,5 +99,17 @@ export class WadisRedisAdapter implements CacheRedisClient {
 
   llen(key: string): Promise<number> {
     return this.client.llen(key);
+  }
+
+  rpoplpush(source: string, destination: string): Promise<string | null> {
+    return this.client.lmove(source, destination, "RIGHT", "LEFT");
+  }
+
+  lrem(key: string, count: number, value: string): Promise<number> {
+    return this.client.lrem(key, count, value);
+  }
+
+  lrange(key: string, start: number, stop: number): Promise<string[]> {
+    return this.client.lrange(key, start, stop);
   }
 }

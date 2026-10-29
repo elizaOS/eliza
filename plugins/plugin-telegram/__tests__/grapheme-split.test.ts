@@ -87,4 +87,42 @@ describe("MessageManager.splitMessage code block across chunks", () => {
     expect(second).toContain("# step 11 **important**");
     expect(second.endsWith("```\nAfter the code, see the docs\\.")).toBe(true);
   });
+
+  it("reopens the block when the cut falls after a fence line inside it", () => {
+    // A ```js line inside an open ```md block is content, not a closer
+    // (CommonMark, as in discord's chunker). Counting every ``` occurrence
+    // miscounted it as a closer, so the next chunk lost its reopened opener:
+    // the rest of the block was sent as prose and the true closer opened a
+    // new block over the prose after it.
+    const rows = Array.from({ length: 12 }, (_, i) => `row ${i} of code`).join(
+      "\n",
+    );
+    const tail = `\n\`\`\`md\n${rows}\n\`\`\`js\n`;
+    const padLen = LIMIT - 6 - tail.length;
+    const text = `${"p".repeat(padLen)}${tail}still code\n\`\`\`\nAfter the block.`;
+    const parts = splitMessage(text);
+
+    expect(parts).toHaveLength(2);
+    expect(parts[1].startsWith("```md\n")).toBe(true);
+    expect(`${parts[0]}${parts[1].slice("```md".length)}`).toBe(text);
+    const second = convertMarkdownToTelegram(parts[1]);
+    expect(second).toContain("```md\nstill code\n```");
+    expect(second.endsWith("```\nAfter the block\\.")).toBe(true);
+  });
+
+  it("does not treat a backtick info line as a fence", () => {
+    // A line like ```a`b``` is inline code, not a fence: a backtick fence's
+    // info string may not contain a backtick.
+    const rows = Array.from({ length: 12 }, (_, i) => `row ${i} of code`).join(
+      "\n",
+    );
+    const tail = `\n\`\`\`md\n${rows}\n\`\`\`a\`b\`\`\`\n`;
+    const padLen = LIMIT - 6 - tail.length;
+    const text = `${"p".repeat(padLen)}${tail}still code\n\`\`\`\nAfter the block.`;
+    const parts = splitMessage(text);
+
+    expect(parts).toHaveLength(2);
+    expect(parts[1].startsWith("```md\n")).toBe(true);
+    expect(`${parts[0]}${parts[1].slice("```md".length)}`).toBe(text);
+  });
 });

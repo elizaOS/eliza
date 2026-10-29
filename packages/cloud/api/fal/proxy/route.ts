@@ -19,6 +19,7 @@ import {
 import { getSupportedVideoModelDefinition } from "@elizaos/cloud-shared/lib/services/ai-pricing-definitions";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { isKnownUnacceptedProviderStatus } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import {
@@ -348,7 +349,11 @@ const handle: Handler<AppEnv> = async (c) => {
       const response = await invokeFalProxy(c);
 
       if (admission && pricedMutation) {
-        if (!response.ok) {
+        // A clear rejection (validation, auth, rate limit) means fal did not
+        // accept the job, so the reservation is released, as chat routes do.
+        const rejected =
+          !response.ok && isKnownUnacceptedProviderStatus(response.status);
+        if (!response.ok && !rejected) {
           logger.error(
             "[fal proxy] Provider returned an ambiguous post-dispatch failure",
             {
@@ -362,8 +367,10 @@ const handle: Handler<AppEnv> = async (c) => {
           c,
           response.ok
             ? admission.settle(pricedMutation.cost.totalCost)
-            : admission.settleUnknown(),
-          response.ok ? "settle" : "settle_unknown",
+            : rejected
+              ? admission.settle(0)
+              : admission.settleUnknown(),
+          response.ok ? "settle" : rejected ? "release" : "settle_unknown",
           settlementContext,
         );
       }

@@ -352,6 +352,11 @@ export interface ChatDbMessage {
 /** Error code thrown when a row's attachment metadata cannot be read. */
 export const IMESSAGE_ATTACHMENT_READ_FAILED = "IMESSAGE_ATTACHMENT_READ_FAILED";
 export const IMESSAGE_CHATDB_TIP_READ_FAILED = "IMESSAGE_CHATDB_TIP_READ_FAILED";
+/**
+ * Error code thrown when a message or chat read fails. A failed read is not an
+ * empty mailbox: the caller must see the failure, not a fabricated empty page.
+ */
+export const IMESSAGE_CHATDB_READ_FAILED = "IMESSAGE_CHATDB_READ_FAILED";
 
 export interface ChatDbFetchOptions {
   /**
@@ -411,6 +416,9 @@ export interface ChatDbReader {
    * Return the newest messages in chronological order, optionally scoped
    * to a single chat identifier. Unlike `fetchNewMessages`, this is for
    * ad-hoc inspection and UI reads rather than cursor-based polling.
+   * Returns an empty array only when the reader has been closed. Throws an
+   * `ElizaError` with code {@link IMESSAGE_CHATDB_READ_FAILED} when the query
+   * fails, so a locked database is not reported as an empty mailbox.
    */
   listMessages(options?: { chatId?: string; limit?: number }): ChatDbMessage[];
   /**
@@ -956,10 +964,11 @@ export async function openChatDb(
           ? (recentMessagesByChatStmt.all(chatId, limit) as RawMessageRow[])
           : (recentMessagesStmt.all(limit) as RawMessageRow[]);
       } catch (error) {
-        logger.error(
-          `[imessage] chat.db listMessages query failed: ${error instanceof Error ? error.message : String(error)}`
-        );
-        return [];
+        throw new ElizaError("iMessage chat.db messages could not be read", {
+          code: IMESSAGE_CHATDB_READ_FAILED,
+          cause: error,
+          severity: "ephemeral",
+        });
       }
 
       // Queries run DESC for efficiency on "latest N" reads. Reverse
@@ -990,10 +999,11 @@ export async function openChatDb(
           lastReadMessageTimestamp: appleDateToJsMs(row.last_read_apple_date ?? 0),
         }));
       } catch (error) {
-        logger.error(
-          `[imessage] chat.db listChats query failed: ${error instanceof Error ? error.message : String(error)}`
-        );
-        return [];
+        throw new ElizaError("iMessage chat.db chats could not be read", {
+          code: IMESSAGE_CHATDB_READ_FAILED,
+          cause: error,
+          severity: "ephemeral",
+        });
       }
     },
     close(): void {

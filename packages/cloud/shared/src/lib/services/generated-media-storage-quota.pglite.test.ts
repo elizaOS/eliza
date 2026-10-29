@@ -6,6 +6,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { APICallError } from "ai";
 import { sql } from "drizzle-orm";
 import { installOrganizationPolicyTestSchema } from "../../db/repositories/organization-policy-test-fixture";
 
@@ -289,5 +290,86 @@ describe("generated media and the storage quota (#20956)", () => {
       }),
     ).toBe(true);
     expect(await bytesUsed()).toBe(0n);
+  });
+
+  describe("provider failure settlement", () => {
+    function rejectingRun(failOnCall: number, statusCode: number, numImages: number) {
+      const settled: string[] = [];
+      let calls = 0;
+      let sequence = 0;
+      const execute = createExecutor({
+        getProvider: () => ({
+          billingSource: "fal",
+          generate: async () => {
+            calls += 1;
+            if (calls === failOnCall) {
+              throw new APICallError({
+                message: `fal image generation failed: ${statusCode}`,
+                url: "https://fal.example/image",
+                requestBodyValues: {},
+                statusCode,
+              });
+            }
+            return {
+              dataUrl: "data:image/png;base64,AA==",
+              bytes: new Uint8Array(IMAGE_BYTES),
+              mimeType: "image/png",
+              text: "",
+            };
+          },
+        }),
+        calculateCost: async () =>
+          ({ totalCost: 0.05 }) as Awaited<
+            ReturnType<import("./image-generation").ImageGenerationDependencies["calculateCost"]>
+          >,
+        assertSafe: async () => undefined,
+        putObject: putPublicObject,
+        storageQuota: quota,
+        createGeneration: async () => ({ id: `generation-${++sequence}` }),
+        deleteGeneration: async () => undefined,
+        billFlat: async () => undefined,
+        randomUuid: () => `uuid-${++sequence}`,
+        now: () => new Date(),
+      });
+      const outcome = execute({
+        input: { prompt: "a lighthouse", model: defaultModel, numImages },
+        actor: { organizationId: ORG, userId: "user", apiKeyId: null },
+        identity: { requestId: `request-${Date.now()}`, source: "http" },
+        bindings,
+        providerKeys: { FAL_KEY: "fal", ATLASCLOUD_API_KEY: "atlas" },
+        admit: async () => ({
+          kind: "organization" as const,
+          admission: {
+            settle: async (cost: number) => {
+              settled.push(`settle:${cost}`);
+              return null;
+            },
+            settleUnknown: async () => {
+              settled.push("unknown");
+              return null;
+            },
+          },
+        }),
+      });
+      return { outcome, settled };
+    }
+
+    test("a provider 4xx refusal before any image releases the reservation", async () => {
+      const { outcome, settled } = rejectingRun(1, 422, 1);
+      await expect(outcome).rejects.toBeDefined();
+      expect(settled).toEqual(["settle:0"]);
+    });
+
+    test("a provider 5xx failure stays conservative", async () => {
+      const { outcome, settled } = rejectingRun(1, 503, 1);
+      await expect(outcome).rejects.toBeDefined();
+      expect(settled).toEqual(["unknown"]);
+    });
+
+    test("a refusal after an earlier image was produced stays conservative", async () => {
+      const { outcome, settled } = rejectingRun(2, 422, 2);
+      await expect(outcome).rejects.toBeDefined();
+      expect(settled).toEqual(["unknown"]);
+    });
   });
 });

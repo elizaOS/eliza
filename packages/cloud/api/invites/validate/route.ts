@@ -3,6 +3,7 @@
  * Public endpoint — validates an invitation token and returns details.
  */
 
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   RateLimitPresets,
   rateLimit,
@@ -49,10 +50,7 @@ app.get("/", async (c) => {
       {
         success: false,
         valid: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to validate invitation",
+        error: safeUnknownErrorMessage(error),
       },
       500,
     );

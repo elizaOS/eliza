@@ -79,6 +79,8 @@ function stubGoogleCalendarCreate(): void {
 }
 
 function installTravelAndCalendarFetchStub(options?: {
+  /** Fail the order read that follows the payment. */
+  failOrderReadAfterPayment?: boolean;
   /** Price of the offer when it is read again after the first quote. */
   offerPriceAfterQuote?: string;
 }) {
@@ -277,6 +279,15 @@ function installTravelAndCalendarFetchStub(options?: {
 
         if (url.includes("/air/orders/ord_test_123")) {
           orderReadCount += 1;
+          if (options?.failOrderReadAfterPayment && orderReadCount > 1) {
+            return {
+              ok: false,
+              status: 503,
+              statusText: "Service Unavailable",
+              json: async () => ({ errors: [{ message: "upstream timeout" }] }),
+              text: async () => "upstream timeout",
+            } as Response;
+          }
           return {
             ok: true,
             status: 200,
@@ -710,5 +721,64 @@ describe("BOOK_TRAVEL approval execution", () => {
     const calledUrls = fetchMock.mock.calls.map(([input]) => String(input));
     expect(calledUrls.some((url) => url.endsWith("/air/orders"))).toBe(false);
     expect(calledUrls.some((url) => url.endsWith("/air/payments"))).toBe(false);
+  });
+
+  it("keeps the order and payment receipt when a hold step fails after payment", async () => {
+    stubGoogleCalendarCreate();
+    installTravelAndCalendarFetchStub({ failOrderReadAfterPayment: true });
+    const queue = createApprovalQueue(runtime, { agentId: runtime.agentId });
+
+    const queued = await runBookTravelHandler(
+      runtime,
+      ownerMessage("Book the London flight once I approve it."),
+      {} as never,
+      {
+        parameters: {
+          origin: "JFK",
+          destination: "LHR",
+          departureDate: "2026-06-15",
+          passengers: [
+            { givenName: "Tony", familyName: "Stark", bornOn: "1980-07-24" },
+          ],
+        },
+      } as never,
+      undefined,
+    );
+    expect(queued?.success).toBe(true);
+    const [pendingRequest] = await queue.list({
+      subjectUserId: String(runtime.agentId),
+      state: "pending",
+      action: "book_travel",
+      limit: 10,
+    });
+    if (!pendingRequest) throw new Error("Expected a pending travel approval");
+
+    const restoreModel = installApprovalResolutionModelStub(
+      pendingRequest.id,
+      "approve the London flight",
+    );
+    try {
+      await approveRequestAction.handler?.(
+        runtime,
+        ownerMessage("yes, approve that booking"),
+        {} as never,
+        {
+          parameters: { subaction: "approve", requestId: pendingRequest.id },
+        } as never,
+        undefined,
+      );
+    } finally {
+      restoreModel();
+    }
+
+    const latest = await queue.byId(
+      pendingRequest.id,
+      pendingRequest.subjectUserId,
+    );
+    expect(latest?.execution?.providerReceipt).toMatchObject({
+      provider: "duffel",
+      orderId: "ord_test_123",
+      paymentId: "pay_test_123",
+    });
   });
 });

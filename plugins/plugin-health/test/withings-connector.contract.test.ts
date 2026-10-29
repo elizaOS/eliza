@@ -268,4 +268,120 @@ describe("Withings connector — recorded real API contract", () => {
     expect(weight?.startAt).toBe("2026-10-14T22:30:00.000Z");
     expect(weight?.localDate).toBe("2026-10-15");
   });
+
+  it("reads every page of the activity, sleep, and measure lists", async () => {
+    // Withings answers `more` with the next `offset` when a list holds more
+    // rows than one page. Reading page one only stores a partial window and
+    // still reports a successful sync.
+    const pageOneActivity = recorded.activity as {
+      body: { activities: Array<Record<string, unknown>> };
+    };
+    const pageOneSleep = recorded.sleep as {
+      body: { series: Array<Record<string, unknown>> };
+    };
+    const pageOneMeasures = recorded.measures as {
+      body: {
+        updatetime: number;
+        timezone: string;
+        measuregrps: Array<Record<string, unknown>>;
+      };
+    };
+    const pageTwoActivity = {
+      date: "2026-05-02",
+      timezone: "Europe/London",
+      steps: 4321,
+    };
+    const pageTwoSleep = {
+      id: 920211002,
+      timezone: "Europe/London",
+      startdate: 1777679280,
+      enddate: 1777708440,
+      date: "2026-05-02",
+      data: { total_sleep_time: 25200 },
+    };
+    const pageTwoMeasure = {
+      grpid: 770110202,
+      date: 1777700000,
+      measures: [{ value: 61300, type: 1, unit: -3 }],
+    };
+    const requested: Record<string, Array<string | null>> = {
+      "/v2/measure": [],
+      "/v2/sleep": [],
+      "/measure": [],
+    };
+    vi.stubGlobal(
+      "fetch",
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const url = new URL(String(input));
+        const form = new URLSearchParams(String(init?.body ?? ""));
+        const offset = form.get("offset");
+        requested[url.pathname]?.push(offset);
+        const secondPage = offset !== null;
+        if (url.pathname === "/v2/measure") {
+          return jsonResponse({
+            status: 0,
+            body: {
+              activities: [
+                secondPage
+                  ? pageTwoActivity
+                  : pageOneActivity.body.activities[0],
+              ],
+              more: secondPage ? 0 : 1,
+              offset: secondPage ? 0 : 1,
+            },
+          });
+        }
+        if (url.pathname === "/v2/sleep") {
+          return jsonResponse({
+            status: 0,
+            body: {
+              series: secondPage ? [pageTwoSleep] : pageOneSleep.body.series,
+              more: secondPage ? 0 : 1,
+              offset: secondPage ? 0 : 1,
+            },
+          });
+        }
+        if (url.pathname === "/measure") {
+          return jsonResponse({
+            status: 0,
+            body: {
+              updatetime: pageOneMeasures.body.updatetime,
+              timezone: pageOneMeasures.body.timezone,
+              measuregrps: secondPage
+                ? [pageTwoMeasure]
+                : pageOneMeasures.body.measuregrps,
+              more: secondPage ? 0 : 1,
+              offset: secondPage ? 0 : 7,
+            },
+          });
+        }
+        throw new Error(`unexpected Withings fetch: ${url}`);
+      },
+    );
+
+    const payload = await syncHealthConnectorData({
+      token,
+      grantId: "grant-withings",
+      startDate: "2026-05-01",
+      endDate: "2026-05-02",
+    });
+
+    expect(requested["/v2/measure"]).toEqual([null, "1"]);
+    expect(requested["/v2/sleep"]).toEqual([null, "1"]);
+    expect(requested["/measure"]).toEqual([null, "7"]);
+    expect(
+      payload.samples.find(
+        (s) => s.sourceExternalId === "2026-05-02:withings:steps",
+      )?.value,
+    ).toBe(4321);
+    expect(payload.sleepEpisodes.map((ep) => ep.sourceExternalId)).toEqual([
+      "920211001",
+      "920211002",
+    ]);
+    const secondPageWeight = payload.samples.find(
+      (s) => s.sourceExternalId === "770110202:withings:weight_kg",
+    );
+    // 61300 * 10^-3 kg, from the second getmeas page.
+    expect(secondPageWeight?.value).toBeCloseTo(61.3, 5);
+  });
 });

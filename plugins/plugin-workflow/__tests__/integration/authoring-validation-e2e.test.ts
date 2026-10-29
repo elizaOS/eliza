@@ -173,6 +173,29 @@ test('HTTP draft generation validates, repairs once, and never persists or sched
       }
       expect(scheduleWrites).toBe(0);
     }
+    // A provider can add narration after the draft, and the narration can hold
+    // a brace of its own. The draft is the answer, not the text between the
+    // first and the last brace in the reply.
+    let narratedCalls = 0;
+    runtime.useModel = async () => {
+      narratedCalls++;
+      return `${JSON.stringify({
+        name: 'narrated',
+        description: 'Synthetic',
+        language: 'tsx',
+        source: valid,
+        inputSchema: {},
+        steps: [],
+        widgets: [],
+        schedule: { cron: '* * * * *', timezone: 'UTC', enabled: true },
+      })}
+The final } closes the draft.`;
+    };
+    const narrated = await call('/workflows/generate', {
+      prompt: 'Create a synthetic reviewed arithmetic workflow',
+    });
+    expect(narrated.status).toBe(200);
+    expect(narratedCalls).toBe(1);
     const oldPath = process.env.PATH;
     let unavailableCalls = 0;
     runtime.useModel = async () => {

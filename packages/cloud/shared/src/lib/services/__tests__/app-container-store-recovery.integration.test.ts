@@ -94,7 +94,8 @@ beforeAll(async () => {
       status text NOT NULL,
       replacement_cleanup_node_id text,
       replacement_cleanup_allocation_counted boolean,
-      deletion_allocation_counted boolean
+      deletion_allocation_counted boolean,
+      retained_runtime jsonb
     );
     INSERT INTO docker_nodes (node_id, allocated_count, capacity, enabled)
     VALUES ('node-1', 0, 2, true), ('node-full', 1, 1, true);
