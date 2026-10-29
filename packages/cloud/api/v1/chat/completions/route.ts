@@ -56,6 +56,7 @@ import {
 import {
   ANTHROPIC_WEB_SEARCH_INPUT_TOKEN_BUFFER,
   buildProviderNativeWebSearchTools,
+  calculateAnthropicWebSearchMaxCost,
   isAnthropicWebSearchEnabled,
 } from "@elizaos/cloud-shared/lib/providers/anthropic-web-search";
 import {
@@ -1950,6 +1951,11 @@ export async function handleChatCompletionsPOST(
       useAppCredits && appId && monetizedApp,
     );
     try {
+      // Provider-run web searches are billed per use on top of tokens. Hold the
+      // worst case (maxUses searches); settlement charges the reported count.
+      const webSearchHoldCost = webSearchActive
+        ? calculateAnthropicWebSearchMaxCost(request.webSearchMaxUses)
+        : 0;
       if (options.appFundingActor) {
         const { totalCost } = await calculateCost(
           normalizedModel,
@@ -1972,7 +1978,7 @@ export async function handleChatCompletionsPOST(
             billingSource,
             estimatedOutputTokens,
           }),
-          estimatedCostUsd: totalCost,
+          estimatedCostUsd: totalCost + webSearchHoldCost,
           revalidateDeveloperCredential: async () => {
             if (!apiKey)
               throw new Error("App infrastructure credential is unavailable");
@@ -2006,7 +2012,7 @@ export async function handleChatCompletionsPOST(
         settleUnknown = async () => null;
       } else if (useAppCredits && appId && monetizedApp) {
         assertInferenceAppAffiliateSupported(appId, affiliateCode);
-        const { totalCost } = await calculateCost(
+        const { totalCost: tokenCost } = await calculateCost(
           normalizedModel,
           provider,
           estimatedInputTokens,
@@ -2016,6 +2022,7 @@ export async function handleChatCompletionsPOST(
             ? { cacheOnly: true, executionCtx: options.executionCtx }
             : undefined,
         );
+        const totalCost = tokenCost + webSearchHoldCost;
         const metadata = {
           model,
           provider,
@@ -2064,6 +2071,27 @@ export async function handleChatCompletionsPOST(
             settleReservation?.(totalCost) ?? Promise.resolve(null);
         }
       } else {
+        // Organization admission prices a token-metered hold only from token
+        // counts (flatCost would drop the token buffer and change the admission
+        // path). Add the input tokens whose price covers the search hold.
+        let admissionInputTokens = estimatedInputTokens;
+        if (webSearchHoldCost > 0) {
+          const { inputCost } = await calculateCost(
+            normalizedModel,
+            provider,
+            estimatedInputTokens,
+            0,
+            billingSource,
+            options.executionCtx
+              ? { cacheOnly: true, executionCtx: options.executionCtx }
+              : undefined,
+          );
+          if (inputCost > 0) {
+            admissionInputTokens += Math.ceil(
+              (webSearchHoldCost * estimatedInputTokens) / inputCost,
+            );
+          }
+        }
         const admission = await admitOrganizationInference({
           context: {
             organizationId: user.organization_id,
@@ -2075,7 +2103,7 @@ export async function handleChatCompletionsPOST(
             affiliateCode,
             requestId,
           },
-          estimatedInputTokens,
+          estimatedInputTokens: admissionInputTokens,
           estimatedOutputTokens,
           maximumInputTokens,
           maximumOutputTokens,
@@ -2583,6 +2611,7 @@ async function settleStreamingAbortReservation(params: {
   billingSource: PricingBillingSource;
   estimatedInputTokens: number;
   deliveredText: string;
+  webSearchEnabled?: boolean;
   steps: readonly StepResult<ToolSet>[];
   settleReservation: (
     actualCost: number,
@@ -2590,6 +2619,12 @@ async function settleStreamingAbortReservation(params: {
   settleUnknown: () => Promise<CreditReconciliationResult | null>;
   billingReservation?: CreditReservation;
 }): Promise<CreditReconciliationResult | null> {
+  // Tool-call frames prove only an attempt, not a billed search: Anthropic
+  // does not bill failed searches. An aborted request can also omit usage for
+  // the current step. Keep the admitted unknown-outcome settlement instead of
+  // treating observed calls or usage from earlier steps as the final charge.
+  if (params.webSearchEnabled) return await params.settleUnknown();
+
   const finishedStepUsage = summarizeFinishedStepUsage(params.steps);
   const deliveredOutputTokens = estimateTokens(params.deliveredText);
   const inputTokens = Math.max(
@@ -3334,6 +3369,7 @@ async function handleStreamingRequest(
           billingSource,
           estimatedInputTokens,
           deliveredText,
+          webSearchEnabled: Object.keys(webSearchOptions).length > 0,
           steps,
           settleReservation,
           settleUnknown,

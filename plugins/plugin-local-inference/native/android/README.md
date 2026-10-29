@@ -80,6 +80,36 @@ only identity and bridge wiring:
   outcomes, network/thermal state and the build/engine/model identity. Hosts name
   the export document and their build with `VoiceLatencyProbe.configureHost`.
 
+- `LocalVoiceRecording` is one foreground private recording draft (bounded mono 16 kHz AAC in
+  the app cache under a host-named prefix; limit, size and microphone-error stops are events) and
+  `RecordingPcm` decodes such a draft to bounded PCM16 WAV for recognition.
+- `SpeechRequestGate` admits one bridge request at a time, reports a busy speaker, and keeps
+  admission closed during a cancellation drain until the host's worker barrier completes.
+
+### Product speech bridge
+
+`speech-bridge/src/main/java/ai/eliza/voice/LocalSpeechBridgePlugin.java` is the abstract
+Capacitor bridge over this pipeline. A host enables it with `elizaSpeechBridgeCapacitor=true`
+and registers its own subclass with `@CapacitorPlugin(name=..., permissions=@Permission(alias="microphone",
+strings=RECORD_AUDIO))`; the subclass passes its recording and prepared-clip cache prefixes
+(installed-data identity) to the constructor. The bridge provides recording
+start/stop/cancel/metrics, `transcribeLocalRecording`, `synthesizeLocal`, `play`/`stopPlayback`,
+`cancel`, live capture status and start/stop with `liveCaptureFrames`, `liveCaptureEnded` and
+`liveCaptureTranscript` events, `localSpeechStatus`/`releaseLocalSpeech`, `nativeVoiceTiming`,
+`markVoiceTurn` and `clearNativeVoiceTiming`. Ports a product overrides:
+
+- `residentRoute(ownerId)` / `residentTransport()`: the owner-bound transport that carries VAD
+  segments to the resident agent of the owner who started a capture (`nativeAsr`). The default
+  routes nothing natively.
+- `recording()`: the finished draft, for the product's own storage.
+- `launch(call, request)`: how a permission prompt reaches the activity (a call that arrives
+  after the activity is gone is rejected, never thrown on the bridge thread).
+
+Product-only methods (for example credential-bound network speech) use the protected
+`submit`, `publishPreparedAudio`, `synthesizeReviewed` and `cancelSpeech`, so they share one
+admission, cancellation drain and playback with the on-device methods. The renderer side is
+`@elizaos/voice/native-live` (packages/voice).
+
 `node --test packages/app/scripts/paradee-voice/speech-pipeline-contract.test.mjs`
 runs the host-JVM contracts and compiles the library against Android 36. They are
 not AudioTrack, AudioRecord, model, device-audio or latency evidence.
@@ -101,9 +131,32 @@ The Eliza app uses its existing `ElizaBionicInferenceServer` shared context.
 Hosts using that server should route speech through it. The optional Capacitor
 transport is for downstream consumers without that server.
 
-- **Speech:** Paradee-8M v1.1 (one voice, `af_heart`, 24 kHz). Native misaki
-  G2P makes the phonemes: the misaki lexicon and rules, with eSpeak NG only
-  for words outside the lexicon.
+- **Speech:** Paradee-8M v1.2 (`af_heart`, 24 kHz; the GGUF has four voices,
+  and libelizainference refuses the two British ones, which need a British
+  misaki lexicon). Native misaki G2P makes the phonemes: the misaki lexicon
+  and rules, with eSpeak NG only for words outside the lexicon.
+- **Spanish speech:** Delibes-8M-esES (Castilian Spanish, teacher voice
+  `em_alex`, 24 kHz) at `tts/paradee/delibes-8m-eses.gguf`, converted from its
+  fp32 ONNX graphs. It ships by owner decision (Grace `docs/decisions.md`,
+  owner decision 2026-10-28). The release itself says human approval is
+  `PENDING` and commercial distribution is `BLOCKED`, and its NOTICE says voice
+  consent and provenance for `em_alex` are not established; `inputs.json`
+  records that decision next to the pin as `spanish.release_override`, and
+  `packages/scripts/verify-voice-product-release.ts` fails a bundled voice
+  with a `PENDING` or `BLOCKED` status that no such override names. To turn
+  the voice off, set `spanish.enabled` to false in `inputs.json`, the one
+  switch: the build then neither converts nor bundles the GGUF or its notices,
+  the manifest has no `voices`, `speechLanguages()` is `["en"]`, Gradle refuses
+  a bundle that still carries it, and the release gate refuses a catalog that
+  lists it. Its G2P is eSpeak NG `es` (misaki `EspeakG2P`), so it needs
+  `es_dict` and `lang/roa/es` in the bundle's eSpeak NG data (the fork pins
+  them, so they ship either way; the English G2P never reads them). It loads
+  into its own libelizainference voice slot (ABI 20) of the same context:
+  `InferenceSession.synthesize(text, speed, "es")`,
+  `InferenceSession.speechLanguages()`, `VoiceAssets.Bundle.openVoice("es")` or
+  `ParadeeVoice.slot(...)`. Speed is clamped to the release's validated
+  0.85–1.15 and text is chunked to 360 ids. The bundle manifest
+  (`eliza-paradee-voice-v2`) lists it under `voices`.
 - **Transcription:** the ASR head of `libelizainference` with Phonon-2
   (Parakeet-TDT 0.6B, five-value weights) at `<bundle>/asr/phonon-2-fv5.gguf`:
   batch (16 kHz mono in) and streaming (any rate). Phonon-2 is the only ASR
@@ -170,6 +223,8 @@ in `tools/paradee/pins.json`, `tools/misaki-g2p/pins.json`,
 Paradee, the misaki lexicon, Phonon-2, Silero VAD, and their attribution.
 `--python` needs torch plus the conversion dependencies installed above.
 `--model-cache` is searched first; every cached file is checked against its pin.
+With `spanish.enabled` (the default) it also converts and bundles the Spanish
+voice, which needs the `onnx` package; `--models-only` (desktop) never does.
 
 ```sh
 ANDROID_HOME=~/Library/Android/sdk node packages/app/scripts/paradee-voice/build-native.ts \
@@ -193,8 +248,12 @@ A host made by `scripts/mobile/android/consumer-host.mjs` sets this in its profi
 
 ## Licenses
 
-The Java and C++ sources here are MIT. Paradee-8M v1.1 weights
-(sahilmahendrakar/Paradee-8M-v1.1) and the misaki lexicon data
+The Java and C++ sources here are MIT. Paradee-8M v1.2 weights
+(sahilmahendrakar/Paradee-8M-v1.2) and Delibes-8M-esES weights
+(lapislabsai/Delibes-8M-esES; its LICENSE, NOTICE.md, the Kokoro and Paradee
+licenses and the Tatoeba credit ship under `notices/delibes/`; the release
+itself says human approval is pending and commercial distribution is blocked,
+and it ships on the recorded owner decision above) and the misaki lexicon data
 (hexgrad/misaki) are Apache-2.0. Phonon-2 weights (FermionResearch/Phonon-2,
 derived from NVIDIA parakeet-tdt-0.6b-v3) are CC-BY-4.0: show the attribution
 and ship Fermion's NOTICE (also embedded in the GGUF as `parakeet.notice`). The

@@ -63,8 +63,29 @@ public final class VoiceBundleAssetsTest {
         manifest(assets, "new model bytes");
         VoiceBundleAssets.install(context);
         check(Files.readString(eliza.model.toPath()).equals("new model bytes"), "new manifest installs new bytes");
+        check(VoiceBundleAssets.install(context).voices.isEmpty(), "a v1 bundle has no extra voices");
+        // v2 without the opt-in voices (the default build): English only.
+        JSONObject english = manifest(assets, "v2 english bytes").put("format", "eliza-paradee-voice-v2");
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), english.toString());
+        check(VoiceBundleAssets.install(context).voices.isEmpty(), "a v2 bundle without voices has no extra voices");
+        // v2: a second speech language in the same bundle.
+        JSONObject v2 = manifest(assets, "v2 model bytes");
+        Path spanish = assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("tts/paradee/es.gguf");
+        Files.writeString(spanish, "spanish bytes", StandardCharsets.UTF_8);
+        v2.getJSONArray("files").put(new JSONObject().put("path", "tts/paradee/es.gguf").put("bytes", Files.size(spanish))
+            .put("sha256", VoiceBundleAssets.sha256(spanish.toFile())));
+        v2.put("format", "eliza-paradee-voice-v2").put("voices", new JSONObject().put("es", "tts/paradee/es.gguf"));
+        Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), v2.toString());
+        VoiceBundleAssets.Installation two = VoiceBundleAssets.install(context);
+        check(two.voices.keySet().equals(java.util.Collections.singleton("es")), "v2 voices");
+        check(Files.readString(two.voices.get("es").toPath()).equals("spanish bytes"), "installed Spanish model");
+        for (Object[] bad : new Object[][]{{"es", "../outside.gguf"}, {"ES!", "tts/paradee/es.gguf"}}) {
+            v2.put("voices", new JSONObject().put((String) bad[0], bad[1]));
+            Files.writeString(assets.resolve(VoiceBundleAssets.ASSET_ROOT).resolve("manifest.json"), v2.toString());
+            rejected(context);
+        }
         try { Class.forName("ai.eliza.voice.VoiceNative"); throw new AssertionError("installer required a JNI owner"); }
         catch (ClassNotFoundException expected) {}
-        System.out.println("PASS shared voice asset installation, storage identity, repair and failed-copy preservation without JNI");
+        System.out.println("PASS shared voice asset installation, storage identity, repair, failed-copy preservation and v2 voices without JNI");
     }
 }

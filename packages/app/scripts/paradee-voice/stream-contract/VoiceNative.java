@@ -4,7 +4,7 @@ final class VoiceNative {
     static volatile int calls, destroyed, created, textClosed;
     static volatile long ttsContext, asrContext;
     static Runnable afterTtsLoad;
-    static String nativeVoiceAbiVersion() { return "19"; }
+    static String nativeVoiceAbiVersion() { return "20"; }
     static int nativeParadeeSupported() { return 1; }
     static int nativeParadeeStreamSupported() { return 1; }
     static long nativeContextCreate(String directory) { return ++created; }
@@ -25,6 +25,21 @@ final class VoiceNative {
     static String nativeParadeePhonemize(long context, byte[] text) { return "test"; }
     static float[] nativeParadeeSynthesize(long context, byte[] text, float speed) { return synthesized.clone(); }
     static float[] nativeParadeeSynthesizePhonemes(long context, byte[] text, float speed) { return new float[]{1}; }
+    static int nativeParadeeVoicesSupported() { return 1; }
+    static volatile String loadedVoice;
+    static int nativeParadeeLoadVoice(long context, String voiceId, String model, String lexicon, String espeak, String modelVoice) {
+        loadedVoice = voiceId;
+        return 0;
+    }
+    static int nativeParadeeUnloadVoice(long context, String voiceId) { loadedVoice = null; return 0; }
+    static String nativeParadeeVoiceInfo(long context, String voiceId) {
+        return "{\"voice_id\":\"" + voiceId + "\",\"family\":\"delibes\",\"language\":\"es\",\"sample_rate\":24000,\"g2p_kind\":2}";
+    }
+    static String nativeParadeePhonemizeVoice(long context, String voiceId, byte[] text) { return "test"; }
+    static float[] nativeParadeeSynthesizeVoice(long context, String voiceId, byte[] text, float speed) { return synthesized.clone(); }
+    static void nativeParadeeSynthesizeVoiceStream(long context, String voiceId, byte[] text, float speed, Object sink) {
+        nativeParadeeSynthesizeStream(context, text, speed, sink);
+    }
     static volatile int ttsCancels, asrCancels;
     static int nativeCancelTts(long context) { ttsCancels++; return 0; }
     static int nativeMmapEvict(long context, String region) { return 0; }
