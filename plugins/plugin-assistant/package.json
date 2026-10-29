@@ -88,6 +88,12 @@
       "types": "./dist/device-foreground-review.d.ts",
       "import": "./dist/device-foreground-review.js",
       "default": "./dist/device-foreground-review.js"
+    },
+    "./device-action-coordinator": {
+      "eliza-source": "./src/services/device-actions/client-coordinator.ts",
+      "types": "./dist/device-action-coordinator.d.ts",
+      "import": "./dist/device-action-coordinator.js",
+      "default": "./dist/device-action-coordinator.js"
     }
   },
   "files": [
