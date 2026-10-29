@@ -14,11 +14,12 @@ vi.mock("@elizaos/core", async (importOriginal) => ({
   hasOwnerAccess: async (_runtime: unknown, message: { entityId?: string }) =>
     message?.entityId === OWNER,
 }));
+
 import { mapsAction } from "../src/action.js";
 import type { MapsProviderAdapter } from "../src/adapter.js";
 import { SavedPlaces } from "../src/client/saved-places.ts";
-import { offeredTravelModes } from "../src/coverage.js";
 import { planCoveredRoutes } from "../src/components/plan-covered-routes.js";
+import { offeredTravelModes } from "../src/coverage.js";
 import { MapsError } from "../src/errors.js";
 import { serverInteract } from "../src/interact.js";
 import {

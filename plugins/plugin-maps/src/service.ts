@@ -1,7 +1,7 @@
 /** Owns normalized maps operations, provider selection, and saved-place access. */
 
 import type { IAgentRuntime } from "@elizaos/core";
-import { Service } from "@elizaos/core";
+import { logger, Service } from "@elizaos/core";
 import type { MapsProviderAdapter } from "./adapter.js";
 import { ElizaCloudMapsAdapter } from "./cloud-adapter.js";
 import { MapsError } from "./errors.js";
@@ -202,8 +202,16 @@ export class MapsService extends Service {
         device: "listed",
         namespace: host.namespace,
       };
-    } catch {
+    } catch (error) {
       signal?.throwIfAborted();
+      logger.warn(
+        {
+          src: "plugin:maps",
+          namespace: host.namespace,
+          error: error instanceof Error ? error.message : String(error),
+        },
+        "Device saved-places list could not be read",
+      );
       return {
         places: reconcileSavedPlaces(agent, []),
         device: "unavailable",
