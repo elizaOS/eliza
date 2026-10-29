@@ -20,7 +20,8 @@
  *
  * Optional sections, numbers and enums only: `live` (streaming ASR mode, partial count and
  * speech-end to final), `endpoint` (whether the semantic end-of-turn scorer or the long silence
- * gap submitted the turn, the scorer's outcome and unavailable reason) and `heard` (the heard-route
+ * gap submitted the turn, the scorer's outcome and unavailable reason, and which end-of-turn chain
+ * stage answered: `local` or `clef`) and `heard` (the heard-route
  * outcome after an interruption).
  *
  * Conversation-entry transcript-ready, send and first-token marks are also reported to a native
@@ -30,6 +31,10 @@
  *
  * Timing is diagnostic: storage failures and sink failures never affect a voice turn.
  */
+import type {
+  ClefEndpointUnavailableReason,
+  EndpointPath,
+} from "./voice-endpoint-chain.js";
 import type {
   EndOfTurnUnavailableReason,
   HeardOutcome,
@@ -62,8 +67,10 @@ export type VoiceTimingSemantic =
 export interface VoiceTimingEndpoint {
   by: "semantic" | "gap";
   semantic: VoiceTimingSemantic;
-  reason?: EndOfTurnUnavailableReason;
+  reason?: EndOfTurnUnavailableReason | ClefEndpointUnavailableReason;
   latencyMs?: number;
+  /** The end-of-turn chain stage that answered: the local scorer or Clef. */
+  path?: EndpointPath;
 }
 export interface VoiceTimingRecord {
   version: 1;
@@ -144,7 +151,17 @@ const endpointReasons: readonly string[] = [
   "too-long",
   "invalid-response",
   "unknown",
+  // The chain's Clef reasons (CLEF_ENDPOINT_UNAVAILABLE_REASONS). Listed here rather than imported
+  // so hosts that run this file with type stripping need no value import of the chain.
+  ...([
+    "clef-disabled",
+    "clef-unavailable",
+    "clef-timeout",
+    "clef-error",
+    "clef-too-long",
+  ] satisfies readonly ClefEndpointUnavailableReason[]),
 ];
+const endpointPaths: readonly string[] = ["local", "clef"];
 const heardOutcomes: readonly string[] = [
   "recorded",
   "unchanged",
@@ -210,7 +227,11 @@ export function voiceTimingEndpoint(
   };
   if (value.reason !== undefined) {
     if (!endpointReasons.includes(value.reason as string)) return undefined;
-    out.reason = value.reason as EndOfTurnUnavailableReason;
+    out.reason = value.reason as VoiceTimingEndpoint["reason"];
+  }
+  if (value.path !== undefined) {
+    if (!endpointPaths.includes(value.path as string)) return undefined;
+    out.path = value.path as EndpointPath;
   }
   if (value.latencyMs !== undefined) {
     if (!isOffset(value.latencyMs)) return undefined;

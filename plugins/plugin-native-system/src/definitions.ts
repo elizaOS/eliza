@@ -127,7 +127,9 @@ export type LauncherRefusalCode =
   | "disabled"
   | "no-launcher"
   | "profile-locked"
-  | "profile-unavailable";
+  | "profile-unavailable"
+  /** Android refused the read or the start itself (removed mid-launch, no Activity, security). */
+  | "failed";
 
 /** The list may have changed; re-read it. `packageName` is absent for a profile or batch change. */
 export interface LauncherAppsChange {
@@ -153,6 +155,26 @@ export interface DefaultAppStatus {
   packageName?: string;
   label?: string;
   icon?: string;
+}
+
+/**
+ * How the host was built. `launcher` is true for a build that declares a HOME
+ * activity (the launcher distribution); hosts may override the native hook.
+ */
+export interface SystemBuildInfo {
+  launcher: boolean;
+  version: string;
+}
+
+/** How the current Activity was opened. `assistant` is true only for the assist entry. */
+export interface SystemLaunchInfo {
+  assistant: boolean;
+}
+
+/** Device locale (BCP 47) and Android's 24-hour clock setting. */
+export interface SystemLocaleInfo {
+  locale: string;
+  hour24: boolean;
 }
 
 /**
@@ -256,4 +278,10 @@ export interface SystemPlugin {
     page: SystemSettingsPage;
   }): Promise<SystemSettingsPageResult>;
   openNotificationShade(): Promise<{ status: NotificationShadeOutcome }>;
+  /** Build facts of the host (launcher distribution and version). Reads only. */
+  getBuildInfo(): Promise<SystemBuildInfo>;
+  /** Whether this Activity was opened from the assistant entry (ACTION_ASSIST). Reads only. */
+  getLaunchInfo(): Promise<SystemLaunchInfo>;
+  /** Device locale and 24-hour clock preference. Reads only. */
+  getLocaleInfo(): Promise<SystemLocaleInfo>;
 }

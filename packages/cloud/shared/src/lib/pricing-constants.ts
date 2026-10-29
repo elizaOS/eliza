@@ -69,3 +69,10 @@ export const STT_COST_PER_MINUTE =
   Math.round(BASE_STT_COST_PER_MINUTE * PLATFORM_MARKUP_MULTIPLIER * 10000) / 10000; // ~$0.0044 per minute with markup
 export const TTS_MINIMUM_COST = 0.001; // Minimum charge for any TTS request
 export const STT_MINIMUM_COST = 0.001; // Minimum charge for any STT request
+
+/**
+ * Anthropic bills each server-side web search on top of tokens ($10 per 1,000
+ * searches, list price). Base provider price per search, before the platform
+ * markup; the count comes from the provider's raw usage, not the token fields.
+ */
+export const ANTHROPIC_WEB_SEARCH_BASE_COST_PER_REQUEST = 0.01;

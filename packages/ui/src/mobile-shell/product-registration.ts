@@ -102,6 +102,18 @@ export interface MobileProductStorage {
   retained: Readonly<Record<string, string>>;
 }
 
+/**
+ * What the product offers beyond its views, for the feature manifest. Both
+ * brands of one shared application declare the same features; a difference
+ * is a parity gap, never branding.
+ */
+export interface MobileProductFeatures {
+  /** Device and shell capabilities, e.g. `launcher.installed-apps`, `notes.local-record.v1`. */
+  capabilities?: readonly string[];
+  /** Canonical agent and device action names, e.g. `create_note`. */
+  actions?: readonly string[];
+}
+
 export interface MobileProductRegistration {
   schema: typeof MOBILE_PRODUCT_SCHEMA;
   schemaVersion: typeof MOBILE_PRODUCT_SCHEMA_VERSION;
@@ -113,6 +125,7 @@ export interface MobileProductRegistration {
   backgrounds?: MobileProductBackgrounds;
   views: MobileProductViews;
   storage: MobileProductStorage;
+  features?: MobileProductFeatures;
 }
 
 /** Tokens every shell surface reads, required in both appearances. */
@@ -140,6 +153,7 @@ const APP_ID = /^[A-Za-z][A-Za-z0-9_]*(?:\.[A-Za-z][A-Za-z0-9_]*)+$/;
 const CSS_PROPERTY = /^--[a-z][a-z0-9-]*$/;
 const BUILTIN_PREFIX = /^[a-z][a-z0-9-]*:$/;
 const POLICY = /^[a-z][a-z0-9-]*$/;
+const FEATURE = /^[A-Za-z][A-Za-z0-9_]*(?:[.:-][A-Za-z0-9_]+)*$/;
 
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === "object" && !Array.isArray(value);
@@ -339,6 +353,28 @@ export function validateMobileProductRegistration(value: unknown): string[] {
       if (seen.has(key)) issue("storage", `${String(key)} is named twice`);
       seen.add(key);
     }
+  }
+
+  if (value.features !== undefined) {
+    const features = value.features;
+    if (!record(features)) issue("features", "must be an object");
+    else
+      for (const kind of ["capabilities", "actions"] as const) {
+        const names = features[kind];
+        if (names === undefined) continue;
+        if (!Array.isArray(names)) {
+          issue(`features.${kind}`, "must be a list of names");
+          continue;
+        }
+        const seen = new Set<unknown>();
+        for (const name of names) {
+          if (typeof name !== "string" || !FEATURE.test(name))
+            issue(`features.${kind}`, `${String(name)} is not a feature name`);
+          else if (seen.has(name))
+            issue(`features.${kind}`, `${name} is listed twice`);
+          seen.add(name);
+        }
+      }
   }
   return issues;
 }
