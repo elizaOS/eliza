@@ -100,7 +100,10 @@ export function MailFolderPicker({
     node.style.top = `${Math.max(16, Math.min(rect.bottom + 8, window.innerHeight - box.height - 16))}px`;
     const edge = focusEdge.current;
     focusEdge.current = null;
-    if (edge) items().at(edge === "last" ? -1 : 0)?.focus();
+    if (edge)
+      items()
+        .at(edge === "last" ? -1 : 0)
+        ?.focus();
   }, [open]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: listeners exist only while the menu is open.
   useLayoutEffect(() => {
@@ -189,7 +192,10 @@ export function MailFolderPicker({
           if (event.key === "ArrowDown" || event.key === "ArrowUp") {
             event.preventDefault();
             focusEdge.current = event.key === "ArrowUp" ? "last" : "first";
-            if (open) items().at(event.key === "ArrowUp" ? -1 : 0)?.focus();
+            if (open)
+              items()
+                .at(event.key === "ArrowUp" ? -1 : 0)
+                ?.focus();
             else setOpen(true);
           }
         }}

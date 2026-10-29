@@ -63,7 +63,9 @@ export function describeEmailTarget(
       target.kind === "draft" && target.elsewhere
         ? `This is not a reply to the message on screen. ${effect}`
         : effect,
-    confirmLabel: target.append ? "Add below existing text" : "Insert into draft",
+    confirmLabel: target.append
+      ? "Add below existing text"
+      : "Insert into draft",
     blocked: false,
   };
 }

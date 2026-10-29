@@ -22,5 +22,5 @@ export * from "./read-ahead.ts";
 export * from "./read-state.ts";
 export * from "./retained-draft.ts";
 export * from "./review-controller.ts";
-export * from "./use-in-email.ts";
 export type * from "./types.ts";
+export * from "./use-in-email.ts";

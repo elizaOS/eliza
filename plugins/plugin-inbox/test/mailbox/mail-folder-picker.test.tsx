@@ -7,8 +7,9 @@ import {
   MailFolderPicker,
 } from "../../src/components/mailbox/MailFolderPicker.tsx";
 
-(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
-  true;
+(
+  globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 describe("MailFolderPicker (fallback without the Popover API)", () => {
   let host: HTMLDivElement;
@@ -96,8 +97,7 @@ describe("MailFolderPicker (fallback without the Popover API)", () => {
     );
     const menu = document.getElementById("mail-folders")!;
     // jsdom has no layout: report the open menu as rendered.
-    menu.getClientRects = () =>
-      [{}] as unknown as DOMRectList;
+    menu.getClientRects = () => [{}] as unknown as DOMRectList;
     let dismissed = false;
     act(() => {
       dismissed = dismissMailFolderMenu();

@@ -23,8 +23,7 @@ describe("Use in email review", () => {
   it("names the literal address before the sender's own display name", () => {
     expect(describeEmailTarget(reply)).toEqual({
       account: "From owner@example.invalid",
-      destination:
-        "New reply to sender@example.invalid (Sender) · Re: Plan",
+      destination: "New reply to sender@example.invalid (Sender) · Re: Plan",
       effect: "A local draft opens with this text for you to edit.",
       confirmLabel: "Insert into draft",
       blocked: false,
