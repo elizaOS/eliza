@@ -108,7 +108,15 @@ export async function runOsascript(
  * Read TCC.db for a specific service+client. Returns:
  *   - "granted"  if auth_value=2
  *   - "denied"   if auth_value=0
- *   - null       on error or row missing (caller should treat as not-determined)
+ *   - null       when TCC has no answer for us: the per-user database or the
+ *                row is absent, or macOS withholds the file because this
+ *                process has no Full Disk Access (caller should treat as
+ *                not-determined)
+ *
+ * A read that fails for any other reason (locked or corrupt database, missing
+ * `sqlite3` binary) throws `TCC_QUERY_FAILED`: mapping it to null would tell
+ * every prober "the user was never asked", which is a different — and
+ * actionable-looking — state than "the probe could not read TCC".
  *
  * Note: macOS 11+ moves some entries to the system TCC.db
  * (`/Library/Application Support/com.apple.TCC/TCC.db`) which requires Full
@@ -119,13 +127,13 @@ export async function queryTccStatus(
   bundleIdentifier: string,
 ): Promise<"granted" | "denied" | null> {
   if (!IS_DARWIN) return null;
-  try {
-    const tccDb = path.join(
-      os.homedir(),
-      "Library/Application Support/com.apple.TCC/TCC.db",
-    );
-    if (!existsSync(tccDb)) return null;
+  const tccDb = path.join(
+    os.homedir(),
+    "Library/Application Support/com.apple.TCC/TCC.db",
+  );
+  if (!existsSync(tccDb)) return null;
 
+  try {
     const { stdout, stderr } = await execFileAsync(
       "sqlite3",
       [
@@ -141,9 +149,45 @@ export async function queryTccStatus(
     if (value === "2") return "granted";
     if (value === "0") return "denied";
     return null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (isTccAccessRefusal(error)) return null;
+    throw tccQueryFailure(tccDb, service, error);
   }
+}
+
+/**
+ * "TCC will not hand this database to us" — the answer is genuinely unknown,
+ * so callers tolerate it. Anything else means the probe itself is broken.
+ */
+function isTccAccessRefusal(error: unknown): boolean {
+  const err = error as NodeJS.ErrnoException & { stderr?: unknown };
+  if (err?.code === "EACCES" || err?.code === "EPERM") return true;
+  const stderr = typeof err?.stderr === "string" ? err.stderr : "";
+  return (
+    stderr.includes("authorization denied") ||
+    stderr.includes("unable to open database file")
+  );
+}
+
+/** Wrap an unreadable TCC.db so probers cannot report it as "never asked". */
+function tccQueryFailure(
+  dbPath: string,
+  service: string,
+  error: unknown,
+): ElizaError {
+  const err = error as NodeJS.ErrnoException & { stderr?: unknown };
+  const stderr = typeof err?.stderr === "string" ? err.stderr.trim() : "";
+  return new ElizaError("Failed to read the macOS TCC database", {
+    code: "TCC_QUERY_FAILED",
+    cause: error,
+    severity: "ephemeral",
+    context: {
+      service,
+      db: dbPath,
+      errno: err?.code ?? null,
+      detail: stderr || (error instanceof Error ? error.message : String(error)),
+    },
+  });
 }
 
 function sqliteStringLiteral(value: string): string {
@@ -159,26 +203,34 @@ function sqliteStringLiteral(value: string): string {
  * id (`client`) and target bundle id (`indirect_object_identifier`). This
  * check is read-only and must be used instead of probing with osascript in
  * `check()` paths.
+ *
+ * `null` means TCC has no answer (no per-user database, no row, or macOS
+ * withholding the file because this process lacks Full Disk Access); probers
+ * map it to `not-determined`. A read that fails for any other reason (locked
+ * or corrupt database, missing `sqlite3` binary) throws `TCC_QUERY_FAILED` for
+ * the same reason as `queryTccStatus`: reporting a broken probe as "the user
+ * was never asked" invents an actionable-looking state.
  */
 export async function queryAppleEventsTccStatus(
   targetBundleIdentifier: string,
   bundleIdentifier = resolveBundleId(),
 ): Promise<"granted" | "denied" | null> {
   if (!IS_DARWIN) return null;
-  try {
-    const tccDb = path.join(
-      os.homedir(),
-      "Library/Application Support/com.apple.TCC/TCC.db",
-    );
-    if (!existsSync(tccDb)) return null;
+  const tccDb = path.join(
+    os.homedir(),
+    "Library/Application Support/com.apple.TCC/TCC.db",
+  );
+  if (!existsSync(tccDb)) return null;
 
+  const service = "kTCCServiceAppleEvents";
+  try {
     const { stdout, stderr } = await execFileAsync(
       "sqlite3",
       [
         tccDb,
         [
           "SELECT auth_value FROM access",
-          "WHERE service='kTCCServiceAppleEvents'",
+          `WHERE service='${service}'`,
           `AND client=${sqliteStringLiteral(bundleIdentifier)}`,
           `AND indirect_object_identifier=${sqliteStringLiteral(targetBundleIdentifier)}`,
           "ORDER BY last_modified DESC LIMIT 1",
@@ -193,8 +245,9 @@ export async function queryAppleEventsTccStatus(
     if (value === "2") return "granted";
     if (value === "0") return "denied";
     return null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (isTccAccessRefusal(error)) return null;
+    throw tccQueryFailure(tccDb, service, error);
   }
 }
 
