@@ -71,6 +71,22 @@ describe("BrowserTabSession", () => {
     expect(tabs.info("t1")?.savedUrl).toBe("https://example.test/a");
   });
 
+  it("refuses a sequence that is not a whole number, keeping native order", async () => {
+    const tabs = await session();
+    const first = committed();
+    expect(tabs.applyState(first)?.committedPage).toBe(true);
+    for (const bad of [Number.NaN, Number.POSITIVE_INFINITY, 1e300, 2.5])
+      expect(tabs.applyState({ ...committed(), sequence: bad })).toBe(
+        undefined,
+      );
+    expect(tabs.applyState({ ...first, url: "https://late.test/" })).toBe(
+      undefined,
+    );
+    expect(
+      tabs.applyState(committed({ url: "https://example.test/b" })),
+    ).toBeDefined();
+  });
+
   it("moves the document revision on a new address or a new load", async () => {
     const tabs = await session();
     tabs.applyState(committed());

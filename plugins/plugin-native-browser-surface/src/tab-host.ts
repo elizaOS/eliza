@@ -366,7 +366,7 @@ export class BrowserTabSession {
     if (!this.owns(event) || !this.created.has(event.id)) return undefined;
     const previous = this.tabs.get(event.id);
     if (
-      typeof event.sequence !== "number" ||
+      !Number.isSafeInteger(event.sequence) ||
       event.sequence <= (previous?.sequence ?? 0)
     )
       return undefined;
