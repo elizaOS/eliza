@@ -65,17 +65,23 @@ const profile: DeviceActionClientProfile = {
   foregroundHidden: () => false,
 };
 
-/** In-memory canonical queue: decision → claim → receipt, one attempt per proposal. */
-function fixtureServer(operation: Record<string, unknown>) {
+/**
+ * In-memory canonical queue: decision → claim → receipt → owner reconciliation,
+ * one attempt per proposal. Like the agent service, a receipt is accepted only
+ * while the attempt is executing; a replay to a durable outcome must be
+ * identical, and any other state refuses it.
+ */
+function fixtureServer(operation: Record<string, unknown>, id = "proposal") {
   const server = {
     state: "pending",
     attemptId: undefined as string | undefined,
     receipts: [] as Array<Record<string, unknown>>,
+    providerReceipt: undefined as unknown,
     claims: 0,
     receiptOutage: false,
   };
   const proposal = () => ({
-    id: "proposal",
+    id,
     digest,
     state: server.state,
     subjectUserId: "owner",
@@ -92,9 +98,9 @@ function fixtureServer(operation: Record<string, unknown>) {
     execution: server.attemptId
       ? {
           attemptId: server.attemptId,
-          ...(server.receipts.length
-            ? { providerReceipt: server.receipts.at(-1)?.receipt }
-            : {}),
+          ...(server.providerReceipt === undefined
+            ? {}
+            : { providerReceipt: server.providerReceipt }),
         }
       : null,
   });
@@ -113,10 +119,35 @@ function fixtureServer(operation: Record<string, unknown>) {
     }
     if (path.endsWith("/receipt")) {
       if (server.receiptOutage) throw Error("Synthetic outage");
-      expect(data.attemptId).toBe("attempt");
+      if (data.attemptId !== server.attemptId)
+        throw Error("Execution attempt mismatch");
+      if (
+        server.state === "done" ||
+        server.state === "reconciliation_required"
+      ) {
+        if (
+          JSON.stringify(server.providerReceipt) !==
+          JSON.stringify(data.receipt)
+        )
+          throw Error("Receipt conflicts with durable outcome");
+        return { proposal: proposal(), digest };
+      }
+      if (server.state !== "executing")
+        throw Error(`Invalid transition ${server.state} -> receipt`);
+      const receipt = data.receipt as { outcome: string };
       server.receipts.push(data);
+      server.providerReceipt = data.receipt;
       server.state =
-        data.receipt.outcome === "applied" ? "done" : "reconciliation_required";
+        receipt.outcome === "applied" ? "done" : "reconciliation_required";
+    }
+    if (path.endsWith("/reconciliation")) {
+      if (data.attemptId !== server.attemptId)
+        throw Error("Execution attempt mismatch");
+      if (server.state !== "reconciliation_required")
+        throw Error(`Invalid transition ${server.state} -> reconciliation`);
+      const resolution = data.resolution as { outcome: string };
+      server.providerReceipt = resolution;
+      server.state = resolution.outcome === "applied" ? "done" : "retryable";
     }
     return { proposal: proposal(), digest };
   };
@@ -278,6 +309,79 @@ describe("DeviceActionCoordinator", () => {
     );
     const history = await restarted.conversationReceipts(new Set(), signal());
     expect(history).toEqual([]);
+  });
+
+  it("keeps the owner's reconciled outcome instead of replaying a stale receipt", async () => {
+    for (const outcome of ["applied", "not_applied"] as const) {
+      const { server, request } = fixtureServer(note);
+      const { entries, journal } = memoryJournal();
+      let effects = 0;
+      const actions = coordinator(request, journal, async () => {
+        effects++;
+        throw Error("Native bridge lost the reply");
+      });
+      await actions.pending(notesContext, signal());
+      expect(
+        (await actions.approve("proposal", notesContext, signal())).status,
+      ).toBe("unknown");
+      expect(server.state).toBe("reconciliation_required");
+      // An identical replay while the server awaits review is accepted.
+      await actions.syncReceipts(signal());
+      await actions.reconcile("proposal", outcome, signal());
+      expect(server.state).toBe(outcome === "applied" ? "done" : "retryable");
+      const receipts = server.receipts.length;
+      await actions.syncReceipts(signal());
+      await actions.syncReceipts(signal());
+      expect(server.receipts).toHaveLength(receipts);
+      expect(server.state).toBe(outcome === "applied" ? "done" : "retryable");
+      expect(entries.get("proposal")).toMatchObject({ status: "unknown" });
+      expect(effects).toBe(1);
+    }
+  });
+
+  it("uploads later receipts when an earlier upload is refused", async () => {
+    const first = fixtureServer(note, "first");
+    const second = fixtureServer(note, "second");
+    const route = (path: string) =>
+      path.includes("/second/") ? second : first;
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      if (body !== undefined) return route(path).request(path, body, s);
+      const [a, b] = await Promise.all([
+        first.request(path, body, s),
+        second.request(path, body, s),
+      ]);
+      return {
+        proposals: [
+          ...(a as { proposals: unknown[] }).proposals,
+          ...(b as { proposals: unknown[] }).proposals,
+        ],
+      };
+    };
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = coordinator(request, journal, async () => {
+      effects++;
+      return { status: "succeeded", summary: "Saved" };
+    });
+    await actions.pending(notesContext, signal());
+    first.server.receiptOutage = true;
+    second.server.receiptOutage = true;
+    await actions.approve("first", notesContext, signal());
+    await actions.approve("second", notesContext, signal());
+    expect([first.server.state, second.server.state]).toEqual([
+      "executing",
+      "executing",
+    ]);
+    // The first upload is still refused; the second must not wait behind it.
+    second.server.receiptOutage = false;
+    await expect(actions.syncReceipts(signal())).rejects.toThrow(
+      /Synthetic outage/,
+    );
+    expect(second.server.state).toBe("done");
+    first.server.receiptOutage = false;
+    await actions.syncReceipts(signal());
+    expect(first.server.state).toBe("done");
+    expect(effects).toBe(2);
   });
 
   it("binds approval to the exact screen it was reviewed on", async () => {

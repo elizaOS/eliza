@@ -27,7 +27,11 @@ export type ConversationStopResult =
 export type ConversationTurnRefusalCode =
   /** Another turn is in flight on this controller. */
   | "busy"
-  /** The previous explicit stop was not confirmed; the binding was cleared. */
+  /**
+   * The previous explicit stop was not confirmed. The stopped room's binding
+   * was cleared; a conversation bound after that stop is kept, and only this
+   * first send is refused.
+   */
   | "stop-unconfirmed"
   /** The transport returned an unusable conversation identity. */
   | "invalid-identity";

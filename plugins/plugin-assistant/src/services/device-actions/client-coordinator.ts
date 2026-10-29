@@ -1712,10 +1712,12 @@ export class DeviceActionCoordinator<
       assertClockHandoffTimeZone(reviewed.proposal.operation, context.timeZone);
     if (isNativeNotesQuery(reviewed.proposal.operation))
       assertNotesQueryContext(context);
+    const p = reviewed.proposal,
+      // Minted before `busy` is taken: a context without randomUUID refuses
+      // this approval instead of leaving the coordinator busy for good.
+      operationId = isSmsSend(p.operation) ? p.id : crypto.randomUUID();
     this.busy = true;
     this.proposals.delete(proposalId);
-    const p = reviewed.proposal,
-      operationId = isSmsSend(p.operation) ? p.id : crypto.randomUUID();
     let execution: ReturnType<typeof createDeviceActionExecution> | undefined;
     try {
       execution = createDeviceActionExecution(
@@ -2258,79 +2260,102 @@ export class DeviceActionCoordinator<
     next = await this.recoverNotification(p, next, signal);
     return this.recoverReminder(p, next, signal);
   }
-  /** Uploads exact journaled receipts. Never re-executes; unknown stays unknown. */
+  /**
+   * Uploads exact journaled receipts. Never re-executes; unknown stays unknown.
+   *
+   * A receipt is posted only while the server still awaits this attempt's
+   * outcome (`executing`, or `reconciliation_required` for the same attempt).
+   * A proposal the owner already reconciled (`done`/`retryable`) keeps its
+   * server outcome; replaying the stale local receipt would only be refused.
+   * Each entry is uploaded on its own, so one refused upload never holds back
+   * the receipts journaled after it; the first failure is reported at the end.
+   */
   async syncReceipts(
     signal: AbortSignal,
     workflow?: { runId: string; versionId: string; specDigest: string },
   ): Promise<void> {
     const proposals = await this.list(signal),
       local = await this.journal.list({ scope: this.scope });
+    const failures: unknown[] = [];
     const otherWorkflow = (p: DeviceProposal) =>
       !!p.workflow &&
       (!workflow ||
         p.workflow.runId !== workflow.runId ||
         p.workflow.versionId !== workflow.versionId ||
         p.workflow.specDigest !== workflow.specDigest);
-    for (let entry of local.entries) {
+    for (const journaled of local.entries) {
       signal.throwIfAborted();
-      const p = proposals.find((item) => item.id === entry.proposalId);
-      if (p) {
-        if (otherWorkflow(p)) continue;
-        entry = await this.recoverEntry(p, entry, signal);
+      try {
+        await this.syncReceipt(journaled, proposals, otherWorkflow, signal);
+      } catch (error) {
+        // error-policy:J1 Cancellation stops the sweep; other refusals are reported after it.
+        if (signal.aborted) throw error;
+        failures.push(error);
       }
-      if (
-        p &&
-        isSmsSend(p.operation) &&
-        entry.status === "unknown" &&
-        ["done", "retryable"].includes(p.state)
-      )
-        continue;
-      if (
-        !p ||
-        entry.phase !== "terminal" ||
-        !entry.attemptId ||
-        entry.record.digest !== p.digest ||
-        !entry.status
-      )
-        continue;
-      if (otherWorkflow(p)) continue;
-      const saved = await this.savedResults(p, entry);
-      if (
-        p.state === "reconciliation_required" &&
-        entry.status === "succeeded" &&
-        (((isReminderOperation(p.operation) || isReminderCreate(p.operation)) &&
-          saved.reminderResult) ||
-          p.operation.type === "post_notification")
-      ) {
-        await this.mutation(
-          p,
-          "reconciliation",
-          {
-            attemptId: entry.attemptId,
-            resolution: {
-              confirmed: true,
-              outcome: "applied",
-              operationId: entry.operationId,
-              ...(saved.reminderResult ? { result: saved.reminderResult } : {}),
-            },
-          },
-          signal,
-        );
-      } else
-        await this.mutation(
-          p,
-          "receipt",
-          {
-            attemptId: entry.attemptId,
-            receipt: {
-              outcome: receiptOutcome(entry.status),
-              operationId: entry.operationId,
-              ...receiptResult(saved),
-            },
-          },
-          signal,
-        );
     }
+    if (failures.length) throw failures[0];
+  }
+  private async syncReceipt(
+    journaled: DeviceJournalEntry,
+    proposals: readonly DeviceProposal[],
+    otherWorkflow: (p: DeviceProposal) => boolean,
+    signal: AbortSignal,
+  ): Promise<void> {
+    let entry = journaled;
+    const p = proposals.find((item) => item.id === entry.proposalId);
+    if (!p || otherWorkflow(p)) return;
+    entry = await this.recoverEntry(p, entry, signal);
+    if (
+      entry.phase !== "terminal" ||
+      !entry.attemptId ||
+      entry.record.digest !== p.digest ||
+      !entry.status
+    )
+      return;
+    // Only an attempt the server still awaits takes a receipt. After owner
+    // reconciliation (`done`/`retryable`) or a newer attempt, the server's
+    // outcome stands and the local entry is history.
+    if (
+      p.attemptId !== entry.attemptId ||
+      (p.state !== "executing" && p.state !== "reconciliation_required")
+    )
+      return;
+    const saved = await this.savedResults(p, entry);
+    if (
+      p.state === "reconciliation_required" &&
+      entry.status === "succeeded" &&
+      (((isReminderOperation(p.operation) || isReminderCreate(p.operation)) &&
+        saved.reminderResult) ||
+        p.operation.type === "post_notification")
+    ) {
+      await this.mutation(
+        p,
+        "reconciliation",
+        {
+          attemptId: entry.attemptId,
+          resolution: {
+            confirmed: true,
+            outcome: "applied",
+            operationId: entry.operationId,
+            ...(saved.reminderResult ? { result: saved.reminderResult } : {}),
+          },
+        },
+        signal,
+      );
+    } else
+      await this.mutation(
+        p,
+        "receipt",
+        {
+          attemptId: entry.attemptId,
+          receipt: {
+            outcome: receiptOutcome(entry.status),
+            operationId: entry.operationId,
+            ...receiptResult(saved),
+          },
+        },
+        signal,
+      );
   }
   private async savedResults(p: DeviceProposal, entry: DeviceJournalEntry) {
     return {
