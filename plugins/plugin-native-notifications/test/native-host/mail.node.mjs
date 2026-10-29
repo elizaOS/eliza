@@ -56,10 +56,14 @@ test("mail history reconciliation and background delivery fences", {
     { timeout: 60000 },
   );
   const run = (/** @type {string} */ main) =>
-    execFileSync(bin("java"), ["-cp", [classes, jar].join(path.delimiter), main], {
-      timeout: 60000,
-      encoding: "utf8",
-    });
+    execFileSync(
+      bin("java"),
+      ["-cp", [classes, jar].join(path.delimiter), main],
+      {
+        timeout: 60000,
+        encoding: "utf8",
+      },
+    );
   assert.match(run("MailHistoryReconciliationTest"), /^PASS mail durable/);
   assert.match(run("MailBackgroundDeliveryTest"), /^\d+ assertions passed/);
 });
