@@ -33,7 +33,7 @@ describe("verify-voice-product-release", () => {
     const result = validateProductVoiceRelease({ fork: noFork });
     assert.deepEqual(result.errors, []);
     assert.deepEqual(result.rows.map(({ row }) => row.id).sort(), [
-      "paradee-8m-v1.1",
+      "paradee-8m-v1.2",
       "phonon-2-fv5",
     ]);
   });
@@ -56,14 +56,14 @@ describe("verify-voice-product-release", () => {
 
   it("rejects a source file without a size pin", () => {
     const versions = catalog();
-    delete rowOf(versions, "paradee-8m-v1.1").source.files[1].bytes;
+    delete rowOf(versions, "paradee-8m-v1.2").source.files[1].bytes;
     const { errors } = validateProductVoiceRelease({ versions, fork: noFork });
     assert.ok(errors.some((error) => error.includes("positive size pin")));
   });
 
   it("rejects a GGUF hash that drifts from inputs.json", () => {
     const versions = catalog();
-    rowOf(versions, "paradee-8m-v1.1").sha256 = "0".repeat(64);
+    rowOf(versions, "paradee-8m-v1.2").sha256 = "0".repeat(64);
     const { errors } = validateProductVoiceRelease({ versions, fork: noFork });
     assert.ok(errors.some((error) => error.includes("inputs.json")));
   });

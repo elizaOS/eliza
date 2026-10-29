@@ -177,11 +177,19 @@ const anthropicResponseSchema = z.object({
 });
 
 export class AnthropicBackend implements VisionBackendClient {
+  readonly model: string;
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+
   constructor(
-    readonly model: string,
-    private readonly apiKey: string,
-    private readonly baseUrl: string = ANTHROPIC_BASE_URL,
-  ) {}
+    model: string,
+    apiKey: string,
+    baseUrl: string = ANTHROPIC_BASE_URL,
+  ) {
+    this.model = model;
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+  }
 
   buildRequest(
     image: PreparedImage,
@@ -262,11 +270,15 @@ const openAiResponseSchema = z.object({
 });
 
 export class OpenAiCompatibleBackend implements VisionBackendClient {
-  constructor(
-    readonly model: string,
-    private readonly apiKey: string,
-    private readonly baseUrl: string,
-  ) {}
+  readonly model: string;
+  private readonly apiKey: string;
+  private readonly baseUrl: string;
+
+  constructor(model: string, apiKey: string, baseUrl: string) {
+    this.model = model;
+    this.apiKey = apiKey;
+    this.baseUrl = baseUrl;
+  }
 
   buildRequest(
     image: PreparedImage,
