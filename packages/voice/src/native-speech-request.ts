@@ -2,9 +2,10 @@
  * One owned request to a native speech bridge (recognition, synthesis, status) bound to the
  * selection it was made for. The host names that binding: `check` throws (an AbortError) once it
  * no longer holds (owner, agent session, connection mode, a hidden app), and `watch` reports
- * changes that may break it. When the binding breaks, the caller's signal aborts, or the request
- * finishes against a changed binding, the bridge's `cancel(requestId)` runs, the owned signal
- * aborts and the result is never returned. No DOM, storage or platform imports.
+ * changes that may break it. When the binding breaks or the caller's signal aborts while the
+ * request runs, the bridge's `cancel(requestId)` runs and the owned signal aborts; a request that
+ * finishes against a changed binding or an aborted signal throws instead of returning its result.
+ * No DOM, storage or platform imports.
  */
 export interface NativeSpeechRequestBinding {
   /** Throws when the binding the request was made for changed. */

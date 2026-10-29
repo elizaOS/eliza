@@ -109,6 +109,8 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   */
  protected LocalSpeechBridgePlugin(String recordingPrefix,String playbackPrefix){
   if(playbackPrefix==null||!playbackPrefix.matches("[a-z][a-z0-9-]{2,63}"))throw new IllegalArgumentException("Invalid playback prefix");
+  // Checked here, not at load(): LocalVoiceRecording deletes stale drafts by this prefix.
+  if(recordingPrefix==null||!recordingPrefix.matches("[a-z][a-z0-9-]{2,63}")||recordingPrefix.equals(playbackPrefix))throw new IllegalArgumentException("Invalid recording prefix");
   this.recordingPrefix=recordingPrefix;this.playbackPrefix=playbackPrefix;
  }
 
