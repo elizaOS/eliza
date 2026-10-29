@@ -112,3 +112,45 @@ expiry. Grant the host `POST_NOTIFICATIONS` in its disposable test user and run
 that class with `-e disposableMirrorFixture 1`. It uses synthetic data and removes
 its channels, notifications and preference file. Reopening a ledger in this test
 is not process-death or product integration acceptance.
+
+## Background new-mail notices
+
+`MailBackgroundDelivery` runs a host's periodic new-mail check against the Eliza Cloud
+owner Gmail history route (`/api/v1/eliza/google/gmail/history`) with the host's
+existing encrypted Cloud key. `MailHistoryReconciliation` is its durable engine and
+`MailNoticePoster` its content-free Android poster. The renderer half is
+`createMailBackground` in `@elizaos/plugin-inbox/mailbox`.
+
+The host supplies:
+
+- `MailBackgroundDelivery.Host`: one process lock shared with its credential writers,
+  read/write/remove of the encrypted state slot, the raw Cloud credential, its pending
+  data-reset flag and Cloud identity verification. The state slot name is
+  migration-sensitive: keep the name installed devices already use.
+- `MailBackgroundDelivery.Scheduler`: constrained ordinary background work (WorkManager
+  periodic plus one catch-up job, network required). The job calls `sync(generation, stopped)`
+  and retries when it returns false; a `SecurityException` means the job is stale.
+- `MailNoticePoster.Config`: channel, tap action, open/Ask route prefixes, tag prefix,
+  icon, redacted text and the host activity. These names are migration-sensitive.
+- Its own bridge (Capacitor or otherwise) under its installed plugin name. The bridge
+  calls `configure` only from a foreground selection, `capture` for launch intents that
+  `MailNoticePoster.tap` recognises, and `pending`/`consume`/`releaseQuestion` behind a
+  foreground fence such as `ForegroundNoticeGate`; it calls `resume` on resume and
+  `withdraw(null)` whenever the Cloud credential is replaced or removed.
+
+Admission is bound to the signed-in Cloud credential and the owner the foreground UI
+names, not to the agent's inference provider. The check only reads Cloud Gmail routes
+with the Cloud key; native verifies that owner and the `google.gmail.triage` grant with
+Cloud before saving a selection and before every history page, and pins the exact
+credential bytes locally. An earlier host design required the Cloud inference provider
+only to borrow that provider's owner snapshot; the Cloud credential and the verified
+owner are sufficient, so a phone whose agent infers through another provider can enable
+background checks too.
+
+Semantics: continuations keep the original decimal history ID and only a final page
+advances it; a baseline or expired history starts future observation quietly and reports
+incomplete catch-up; only hydrated INBOX+UNREAD arrivals (not Sent, Spam or Trash) notify;
+dispatch is reserved before posting and an uncertain post is never replayed; at most 1,000
+unresolved notice identities are kept and overflow refuses the page instead of truncating
+it. Notices name no sender, subject or body; a tap carries only a ledger key and opens no
+message. `node --test test/native-host/mail.node.mjs` runs the JVM checks.

@@ -24,7 +24,7 @@
     "notifications"
   ],
   "scripts": {
-    "test": "node --test test/native-host/policy.node.mjs test/native-host/notices.node.mjs test/native-host/android-compile.node.mjs",
+    "test": "node --test test/native-host/policy.node.mjs test/native-host/notices.node.mjs test/native-host/mail.node.mjs test/native-host/android-compile.node.mjs",
     "lint:check": "bunx @biomejs/biome check .",
     "typecheck": "tsc --noEmit -p tsconfig.json && node --test test/native-host/android-compile.node.mjs",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
