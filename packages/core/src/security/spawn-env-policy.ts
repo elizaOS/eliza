@@ -103,6 +103,8 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	// GIT_ASKPASS executes an arbitrary external program for credential prompts;
 	// GIT_CONFIG_COUNT + indexed GIT_CONFIG_KEY_n / GIT_CONFIG_VALUE_n inject
 	// command-bearing git configuration (e.g. core.sshCommand, core.editor);
+	// GIT_CONFIG_PARAMETERS is how git passes -c options to child processes,
+	// so one value injects the same command-bearing settings in bulk;
 	// GIT_CONFIG_GLOBAL / GIT_CONFIG_SYSTEM point git at an attacker-written
 	// config file, which carries the same command-bearing settings in bulk and
 	// needs no indexed pairs.
@@ -118,6 +120,7 @@ export const BLOCKED_SPAWN_ENV_KEYS: ReadonlySet<string> = new Set([
 	"GIT_SSH",
 	"GIT_ASKPASS",
 	"GIT_CONFIG_COUNT",
+	"GIT_CONFIG_PARAMETERS",
 	"GIT_CONFIG_GLOBAL",
 	"GIT_CONFIG_SYSTEM",
 	"GIT_EDITOR",

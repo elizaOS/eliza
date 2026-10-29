@@ -7,12 +7,14 @@
  */
 
 import { dockerNodesRepository } from "@elizaos/cloud-shared/db/repositories/docker-nodes";
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { validateServiceKey } from "@elizaos/cloud-shared/lib/auth/service-key";
 import { authenticateWaifuBridge } from "@elizaos/cloud-shared/lib/auth/waifu-bridge";
 import {
   applyCorsHeaders,
   handleCorsOptions,
 } from "@elizaos/cloud-shared/lib/services/proxy/cors";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
   AppContext,
   AppEnv,
@@ -81,12 +83,14 @@ app.get("/", async (c) => {
       CORS_METHODS,
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    logger.error("[Compat] Failed to fetch availability", {
+      error: err instanceof Error ? err.message : String(err),
+    });
     return applyCorsHeaders(
       new Response(
         JSON.stringify({
           success: false,
-          error: `Failed to fetch availability: ${message}`,
+          error: safeUnknownErrorMessage(err),
         }),
         { status: 500, headers: { "Content-Type": "application/json" } },
       ),

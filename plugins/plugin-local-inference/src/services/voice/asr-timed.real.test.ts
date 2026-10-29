@@ -19,16 +19,15 @@
  * Runs via `bun test` (the post-merge lane runner — bun:ffi + `globalThis.Bun`);
  * `*.real.test.ts` is excluded from the default `vitest.config.ts` lane.
  *
- * Reproduce locally once Gemma ASR artifacts are staged:
- *   B=~/.eliza/local-inference/models/eliza-1-gemma-asr.bundle
- *   mkdir -p "$B/asr"
- *   # Place the built or downloaded Gemma ASR runtime artifacts under "$B/asr".
+ * Reproduce locally with the pinned Phonon-2 GGUF (built from
+ * FermionResearch/Phonon-2 at its pinned revision; see `--help` for Python deps):
+ *   # from the repository root
+ *   B="$PWD/.cache/phonon-2/bundle"
+ *   bun packages/app/scripts/voice/build-phonon2-gguf.ts --out "$B"
  *   ELIZA_ASR_BUNDLE="$B" ELIZA_INFERENCE_LIBRARY=<built libelizainference.so> \
- *     bun test src/services/voice/asr-timed.real.test.ts
+ *     bun test plugins/plugin-local-inference/src/services/voice/asr-timed.real.test.ts
  * The fused `eliza_pick_asr_files` resolves an ASR-only bundle from
  * `<bundle>/asr/`; no text/TTS model or manifest is needed for the ASR region.
- * Observed: transcript "If you go into different cultures, they have different
- * concepts of creation." — 12 words, monotonic + non-overlapping, ~2.3s CPU.
  */
 
 import { existsSync, readFileSync } from "node:fs";

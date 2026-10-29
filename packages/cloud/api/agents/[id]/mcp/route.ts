@@ -10,7 +10,10 @@
  * surcharge nor accrues earnings. Returns plain JSON, not SSE.
  */
 
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
   CORS_ALLOW_HEADERS,
   CORS_ALLOW_METHODS,
@@ -39,6 +42,7 @@ import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/cre
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
@@ -559,6 +563,9 @@ export async function handleToolCall(
     }
 
     let providerDispatchStarted = false;
+    // The provider error of a failed stream; the thrown error is a generic
+    // "No output generated" that does not carry the provider status.
+    let streamError: unknown;
     try {
       await admission.markProviderDispatched?.();
       providerDispatchStarted = true;
@@ -569,6 +576,9 @@ export async function handleToolCall(
       });
       const result = await streamText({
         model: getLanguageModel(model),
+        onError: ({ error }) => {
+          streamError = error;
+        },
         messages,
         ...mergeAnthropicCotProviderOptions(
           model,
@@ -648,9 +658,12 @@ export async function handleToolCall(
       // error-policy:J1 the JSON-RPC boundary conservatively settles dispatches
       // with unknown usage, while failures before provider dispatch are safe to
       // refund in full.
-      const terminal = providerDispatchStarted
-        ? admission.settleUnknown()
-        : admission.settle(0);
+      // A clear provider rejection means no inference was accepted.
+      const terminal =
+        providerDispatchStarted &&
+        !isKnownUnacceptedProviderError(streamError ?? error)
+          ? admission.settleUnknown()
+          : admission.settle(0);
       if (authUser.executionCtx) authUser.executionCtx.waitUntil(terminal);
       else await terminal;
       if (error instanceof InsufficientCreditsError) {
@@ -682,7 +695,7 @@ export async function handleToolCall(
         jsonrpc: "2.0",
         error: {
           code: -32000,
-          message: error instanceof Error ? error.message : "Internal error",
+          message: safeUnknownErrorMessage(error),
         },
         id: rpcId,
       });

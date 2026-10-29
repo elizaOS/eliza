@@ -190,7 +190,14 @@ export function getBrowserWorkspaceElementSearchTexts(
   const labelText =
     element.id && element.ownerDocument
       ? Array.from(
-          element.ownerDocument.querySelectorAll(`label[for="${element.id}"]`),
+          element.ownerDocument.querySelectorAll(
+            // The id is page-controlled. An unquoted interpolation of an id
+            // that contains a quote (legal HTML, e.g. `phone"work`) makes the
+            // selector invalid, and querySelectorAll then throws SyntaxError,
+            // aborting the whole role/label search. Quote it with the same
+            // helper this file uses for its other attribute selectors.
+            `label[for=${buildBrowserWorkspaceCssStringLiteral(element.id)}]`,
+          ),
         )
           .map((label) => label.textContent)
           .join(" ")

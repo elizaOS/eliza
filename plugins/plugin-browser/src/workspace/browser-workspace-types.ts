@@ -37,6 +37,7 @@ export type BrowserWorkspaceSubaction =
   | "check"
   | "clipboard"
   | "click"
+  | "follow"
   | "fill"
   | "find"
   | "focus"

@@ -355,7 +355,7 @@ describe("planner tool discovery", () => {
       }),
     ]);
     const catalog = await call([], "describe");
-    expect(JSON.stringify(catalog)).not.toContain('"parameters"');
+    expect(catalog?.data?.catalog).toEqual(description?.data?.catalog);
     const denied = await call(["RECORD_READ", "REVOKED"], "describe");
     expect(denied?.success).toBe(false);
     expect(denied?.data?.catalog).toBeUndefined();
@@ -467,7 +467,7 @@ describe("planner tool discovery", () => {
     },
   );
 
-  it("indexes every admitted name while retrieving complete descriptions on demand", async () => {
+  it("returns the complete freshly admitted catalog without enabling tools", async () => {
     const original = "  Full original Ω description\n".repeat(50);
     const actions: Action[] = [
       {
@@ -501,13 +501,15 @@ describe("planner tool discovery", () => {
         catalog: [
           {
             name: "CUSTOM",
-            routingHint: "Read custom records",
+            description: original,
             children: ["CUSTOM_READ"],
           },
         ],
       },
     });
-    expect(JSON.stringify(index)).not.toContain(original);
+    expect(JSON.stringify(index)).toContain(
+      JSON.stringify(original).slice(1, -1),
+    );
     expect(JSON.stringify(index)).not.toContain("REVOKED");
     expect(await call(discovery, { names: [], mode: "describe" })).toEqual(
       await call(legacy, { names: [], mode: "describe" }),
@@ -1281,6 +1283,7 @@ describe("planner tool discovery", () => {
           {
             name: "NOTES_READ",
             description: childDetail,
+            parameters: expect.any(Object),
           },
         ],
       }),

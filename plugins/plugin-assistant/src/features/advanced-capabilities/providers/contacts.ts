@@ -14,7 +14,9 @@ export const advancedContactsProvider: Provider = {
   contextGate: { anyOf: ["contacts", "memory"] },
   cacheStable: false,
   cacheScope: "turn",
-  roleGate: { minRole: "USER" },
+  // The whole contact book: the same ADMIN floor as the `contacts` context
+  // and the CONTACT action, so a USER in a shared room cannot read it.
+  roleGate: { minRole: "ADMIN" },
   get: async (
     runtime: IAgentRuntime,
     _message: Memory,

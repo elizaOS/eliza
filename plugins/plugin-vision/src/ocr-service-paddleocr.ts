@@ -23,7 +23,8 @@
  * Opt-in: this provider is only selected when `ELIZA_VISION_OCR_BACKEND` is
  * `paddleocr`, so it never displaces a verified default provider. When PaddleOCR
  * (or python3) is absent it reports unavailable and `describe()` returns empty
- * blocks; it never throws, so the boot chain falls through cleanly.
+ * blocks; a wrapper that cannot run, or whose output cannot be parsed, throws
+ * so a failed run is never reported as an empty screen.
  *
  * NOTE (#9581): the JSON parser below is unit-tested without the engine (CI
  * needs no PaddleOCR install). End-to-end behaviour was verified against a real
@@ -36,7 +37,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import {
   computeSemanticPosition,
   type OcrWithCoordsBlock,
@@ -142,10 +143,23 @@ export function parsePaddleOcrJson(raw: string): PaddleOcrDetection[] {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
-  } catch {
-    return [];
+  } catch (err) {
+    // Malformed wrapper output is a failed run, not an empty screen: callers
+    // must report it instead of telling the agent nothing was on screen.
+    throw new ElizaError("PaddleOCR returned unreadable JSON", {
+      code: "VISION_OCR_UNREADABLE_OUTPUT",
+      severity: "ephemeral",
+      cause: err,
+      context: { preview: raw.slice(0, 200) },
+    });
   }
-  if (!Array.isArray(parsed)) return [];
+  if (!Array.isArray(parsed)) {
+    throw new ElizaError("PaddleOCR returned a non-array payload", {
+      code: "VISION_OCR_UNREADABLE_OUTPUT",
+      severity: "ephemeral",
+      context: { payloadType: typeof parsed },
+    });
+  }
   const dets: PaddleOcrDetection[] = [];
   for (const entry of parsed) {
     if (!entry || typeof entry !== "object") continue;

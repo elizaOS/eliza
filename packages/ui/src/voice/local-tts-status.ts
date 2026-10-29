@@ -1,8 +1,8 @@
 /**
- * Client probe for on-device Kokoro TTS readiness.
+ * Client probe for on-device Paradee TTS readiness.
  *
  * The TTS default-resolver ({@link resolveDefaultTtsProvider}) prefers the
- * on-device `local-inference` Kokoro voice, but only when the runtime has a
+ * on-device `local-inference` Paradee voice, but only when the runtime has a
  * TEXT_TO_SPEECH handler actually staged. This hits
  * `GET /api/tts/local-inference/status` (`{ ready, provider }`) — the mirror of
  * the ASR status probe — so a box with no local voice degrades to Eliza Cloud /

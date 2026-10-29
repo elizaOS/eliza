@@ -22,6 +22,7 @@ import {
   ContentType,
   containsExternalEnvelopeMaterial,
   getEffectDeliveryBinding,
+  getTrajectoryContext,
   guardOutboundEnvelopeAttachments,
   guardOutboundEnvelopeText,
   isObjectRecord as isRecord,
@@ -290,6 +291,23 @@ export function wrapSingleTurnVisibleCallback(
         rawUnsanitizedText = response.text.trim() ? response.text : undefined;
         response = { ...response, text: guarded };
       }
+      // Secret-swap egress: tool-call sends arrive here with real values
+      // already restored at the execution boundary, so placeholder-based
+      // redaction cannot see them. Redact known credential values from
+      // visible text; backend tool calls are unaffected.
+      const secretSession = getTrajectoryContext()?.secretSwapSession;
+      if (
+        secretSession &&
+        typeof response.text === "string" &&
+        response.text.length > 0
+      ) {
+        const redacted = secretSession.redactRestoredSecretValues(
+          response.text,
+        );
+        if (redacted !== response.text) {
+          response = { ...response, text: redacted };
+        }
+      }
     }
     // Attachments are a delivery surface the text guard never sees: both
     // voice paths ship the spoken sentence as attachment.text under an empty
@@ -467,7 +485,10 @@ type ActionCallbackRenderInput = {
   /** Complete structured evidence; render once instead of quoting serialized JSON. */
   jsonPayload?: JsonValue;
   /** Runtime validation outcome, not a model-authored or payload instruction. */
-  groundingFailure?: PlannedReplyClaimKind | "missing_reply";
+  groundingFailure?:
+    | PlannedReplyClaimKind
+    | "missing_reply"
+    | "unsupported_claim";
   /** Only reply recovery with retained originals may opt into this read. */
   allowFullContextRequest?: boolean;
 };
@@ -576,7 +597,7 @@ export async function renderActionCallbackInCharacter(
     })}`,
     ...(args.groundingFailure
       ? [
-          `Final validation requirement: the prior draft failed ${args.groundingFailure}. Correct that failure; repeating its wording will be rejected again. Use the supplied context for conversational facts and the results for tool outcomes. An unstarted edit can be declined prospectively; do not say you cancelled a note, event, or edit without the matching cancellation receipt. For an unstarted request, omit bare completion openers such as "Cancelled." even when the user requested that wording; state only that you will not perform the work.`,
+          `Final validation requirement: the prior draft failed ${args.groundingFailure}. Correct that failure; repeating its wording will be rejected again. Use the supplied context for conversational facts and the results for tool outcomes. An unstarted edit can be declined prospectively; do not say you cancelled a note, event, or edit without the matching cancellation receipt. For an unstarted request, omit bare completion openers such as "Cancelled." even when the user requested that wording; state only that you will not perform the work.${args.groundingFailure === "unsupported_claim" ? " Rewrite payload recoveredDraft: remove each payload unsupportedClaims entry, or restate it as unverified or as the named party's own report; keep the rest of recoveredDraft's content and voice; do not add new claims." : ""}`,
         ]
       : []),
   ].join("\n");

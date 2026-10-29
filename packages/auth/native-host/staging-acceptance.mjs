@@ -66,6 +66,30 @@ async function main() {
     providerSignInVerified: false,
     physicalDeviceVerified: false,
   };
+  const requireSessionResponse = (condition, response) => {
+    if (condition) return;
+    // Only fixed public refusal codes may enter the uploaded receipt. In a
+    // successful mint response, `code` is bearer material, not a diagnostic.
+    const refusalCodes = new Set([
+      "not_found",
+      "forbidden_origin",
+      "server_secret_missing",
+      "api_key_required",
+      "missing_challenge",
+      "subject_not_eligible",
+      "exchange_unavailable",
+      "invalid_api_key",
+      "invalid_code",
+      "missing_code",
+    ]);
+    receipt.failedResponse = {
+      status: response.status,
+      code: refusalCodes.has(response.value.code)
+        ? response.value.code
+        : "unrecognized_response",
+    };
+    requireValue(false);
+  };
   const request = async (path, body, token, method) => {
     const response = await fetch(api + path, {
       method: method ?? (body === undefined ? "GET" : "POST"),
@@ -139,33 +163,40 @@ async function main() {
         typeof sourceAccount.value.id === "string" &&
         typeof sourceAccount.value.organization?.id === "string",
     );
-    step = "session-pkce";
+    step = "session-pkce-mint";
     const sessionVerifier = sessionOpaque();
     const mint = await request(
       "/api/auth/staging-session-exchange/mint",
       { codeChallenge: sessionChallenge(sessionVerifier) },
       key,
     );
-    requireValue(
+    requireSessionResponse(
       mint.status === 200 &&
         mint.value.ok === true &&
         typeof mint.value.code === "string",
+      mint,
     );
+    step = "session-pkce-exchange";
     const session = await request(
       "/api/auth/staging-session-exchange/exchange",
       { code: mint.value.code, codeVerifier: sessionVerifier },
     );
-    requireValue(
+    requireSessionResponse(
       session.status === 200 &&
         session.value.ok === true &&
         typeof session.value.token === "string",
+      session,
     );
+    step = "session-pkce-replay";
     const replay = await request(
       "/api/auth/staging-session-exchange/exchange",
       { code: mint.value.code, codeVerifier: sessionVerifier },
     );
     // The first exchange burned the code, so a replay is an unknown code.
-    requireValue(replay.status === 401 && replay.value.code === "invalid_code");
+    requireSessionResponse(
+      replay.status === 401 && replay.value.code === "invalid_code",
+      replay,
+    );
     checks.singleUseSessionPkce = true;
     step = "native-grant";
     const state = opaque();

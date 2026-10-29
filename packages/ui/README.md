@@ -3,15 +3,72 @@
 Shared React UI library for elizaOS apps: primitives, composites, layouts, the typed HTTP/WS API client, agent-surface view
 instrumentation, GenUI, voice, and host capability interfaces.
 
+`@elizaos/ui/view-primitives` provides the shared page frame, button, compact
+skeleton, agent-element hook and API error predicate for embedded domain views.
+It does not import the application, account or provider client barrels.
+
 Public JavaScript APIs use the package root; UI internals import owner files directly.
 Batch voice hosts use `@elizaos/ui/voice/batch-conversation` to load the coordinator
 without the React UI root. This public entry owns no credentials, media or provider
 lifecycle. Hosts must await its stop promise before reporting media retirement;
 an idle state alone does not confirm cleanup. Run `bun run --cwd packages/ui test:batch-voice-package` for
 packed external types, runtime and browser-bundle verification.
+Hosts that render their own UI can also load these leaf modules without the React
+UI root: `@elizaos/ui/text-control-editing` and `@elizaos/ui/voice/` followed by
+`draft-transcript-guard`, `microphone-capture`, `pcm-wave`,
+`progressive-speech-playback`, `recorded-transcription-controller` or
+`segmented-speech-playback`. The same packed-consumer test covers these entries.
+
+`@elizaos/ui/voice/voice-session-client` exposes the realtime PCM client with a
+required host-owned fetch transport. It does not load dashboard credentials or
+connection settings. The app's existing internal entry retains its default
+dashboard transport. The packed-consumer check verifies the public client's
+mint, first-frame handshake, interruption and cleanup with injected transports.
+`@elizaos/ui/installed-apps-launcher` renders the shared installed-app list,
+search, favorites and default-phone shortcut. Pass the controller from
+`@elizaos/capacitor-system/launcher`, current query and host callbacks. The host
+provides its product name, builtin key prefix, icons and CSS theme tokens; the
+component does not choose a native adapter or storage namespace. AOSP
+`LauncherSurface` uses the same component for registered views and Android apps.
+
+`@elizaos/ui/mobile-shell` is the resident shell of a branded mobile product:
+Home with host notices, a card row and the app grid, All apps over the
+installed-app launcher, lazy domain views and one navigation reducer for the
+open view, Back stack, drawer and the assistant's pill, composer, sheet or full
+detent. A product supplies only a versioned registration (schema
+`elizaos.mobile-product`): identity, a `ThemeDefinition` with shell chrome and
+declared stylesheet aliases, icons, Home backgrounds, view order and labels,
+older view ids and the installed storage names it keeps reading. Validate it
+with `defineMobileProductRegistration`. Views use canonical ids (the ids of
+the agent's `VIEWS` action); a product's older ids resolve through the
+registry, and the launcher join migrates them once in the installed favorites
+before its first read. `@elizaos/ui/mobile-shell/core` is the same model
+without React components for runtime code such as agent navigation. Neither
+entry loads the package root.
+
+`@elizaos/ui/api/transport` exposes the browser-safe request helpers and
+`SseEventFramer`. It preserves event lines across fragmented network reads;
+hosts retain UTF-8 decoding policy, limits, cancellation, validation and receipts.
+The Eliza chat client uses it without a pending-event rescan on each chunk.
+It also declares `ElizaClientFetch`, the JSON request surface `ElizaClient`
+implements, so plugin clients can accept a session-bound fetch without importing
+the client class.
+
 The app owns renderer composition and native transport selection. Consumers render
 domain DTOs imported from `@elizaos/contracts`; business logic belongs to domain services. Use `bun run --cwd packages/ui storybook` for
 component development. Changes reaching the app require its visual audit.
+
+Pass the host's `branding` to `CloudRouterShell` as well as its app provider.
+Public sign-in uses `appName`, optional `cloudName` (defaults to the app name
+followed by Cloud), and optional `logoUrl` (omitted logos show the app name).
+Account deletion uses the same app and Cloud names and the optional host-owned
+`supportEmail`. Set it in the app branding; shared defaults provide no mailbox.
+When absent, the page explains that support contact details are unavailable.
+These presentation values do not change authentication tenants or API endpoints.
+Public Terms and Privacy read `/api/public/service` from that deployment. Configure
+`CLOUD_PUBLIC_SERVICE_JSON` before deploying these pages; missing or invalid metadata
+shows an unavailable state with Retry, never another provider's legal policy.
+Document titles, revisions and paragraphs render as plain text.
 
 ## Development
 
@@ -77,6 +134,8 @@ until the host explicitly retries refresh; late status replies cannot restart po
 string, checking the selected currency exponent. `isIsoCalendarDate` and
 `isOrderedIsoDateRange` reject normalized invalid dates and reversed inclusive
 ranges. These browser-safe helpers leave locale, labels and domain policy to hosts.
+They live in import-free `utils/value-formatting.mjs` (export
+`@elizaos/ui/value-formatting.mjs`), so hosts that stage only `.mjs` files can load them.
 
 `ConversationTurnController` owns explicit single-flight creation/send, cached room
 identity, interruption and stale-reply fencing without importing the shell. Hosts

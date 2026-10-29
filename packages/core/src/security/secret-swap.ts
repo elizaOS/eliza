@@ -302,15 +302,57 @@ function valuePattern(value: string): string {
 		: `(?<!\\S)${escaped}(?!\\S)`;
 }
 
+/** Only string values are secret-bearing in a complete JSON document. */
+function replaceJsonStringValues(
+	text: string,
+	replace: (value: string) => string,
+): string | null {
+	const trimmed = text.trimStart();
+	if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) return null;
+	try {
+		JSON.parse(text);
+	} catch {
+		// Unrecognized/malformed data retains the ordinary redaction path.
+		return null;
+	}
+	return text.replace(/"(?:\\[\s\S]|[^"\\])*"/g, (token, offset: number) => {
+		// Object keys are protocol structure, not credential values.
+		let next = offset + token.length;
+		while (next < text.length && /\s/.test(text[next])) next++;
+		if (text[next] === ":") return token;
+		const value = JSON.parse(token) as string;
+		const replaced = replace(value);
+		return replaced === value ? token : JSON.stringify(replaced);
+	});
+}
+
 function replaceValue(text: string, entry: SecretSwapEntry): string {
 	const pattern = new RegExp(
 		`(${PLACEHOLDER_PATTERN.source})|(?:${valuePattern(entry.value)})`,
 		"gu",
 	);
-	return text.replace(
-		pattern,
-		(_match, existingPlaceholder) => existingPlaceholder ?? entry.placeholder,
-	);
+	const replace = (value: string) =>
+		value.replace(
+			pattern,
+			(_match, existingPlaceholder) => existingPlaceholder ?? entry.placeholder,
+		);
+	const json = replaceJsonStringValues(text, replace);
+	if (json !== null) return json;
+	// Evaluators also accept fenced JSON. Protect its structure while still
+	// redacting surrounding prose; malformed fences keep ordinary redaction.
+	const fence = /^```(?:json)?[ \t]*\r?\n([\s\S]*?)^```[ \t]*$/gm;
+	let cursor = 0;
+	const parts: string[] = [];
+	for (const match of text.matchAll(fence)) {
+		const body = match[1];
+		const replaced = replaceJsonStringValues(body, replace);
+		if (replaced === null) continue;
+		const bodyStart = match.index + match[0].indexOf("\n") + 1;
+		parts.push(replace(text.slice(cursor, bodyStart)), replaced);
+		cursor = bodyStart + body.length;
+	}
+	parts.push(replace(text.slice(cursor)));
+	return parts.join("");
 }
 
 function containsValue(text: string, value: string): boolean {
@@ -641,6 +683,22 @@ export class SecretSwapSession {
 				? entry.value
 				: "[redacted credential]";
 		});
+	}
+
+	/**
+	 * Apply the user-reply policy to text whose values were already restored
+	 * (tool-call sends: the execution boundary restores handler args). Known
+	 * values go back to placeholders, then {@link restoreUserReplyText} decides
+	 * what stays readable, so both reply paths share one policy.
+	 */
+	redactRestoredSecretValues(text: string): string {
+		let result = text;
+		for (const entry of this.entries.sort(
+			(a, b) => b.value.length - a.value.length,
+		)) {
+			result = replaceValue(result, entry);
+		}
+		return this.restoreUserReplyText(result);
 	}
 
 	restoreText(

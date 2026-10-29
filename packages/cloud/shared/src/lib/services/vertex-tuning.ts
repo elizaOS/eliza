@@ -277,27 +277,6 @@ export async function createTuningJob(config: VertexTuningConfig): Promise<Creat
   };
 }
 
-export async function listTuningJobs(
-  projectId: string,
-  region = "us-central1",
-  accessToken?: string,
-): Promise<TuningJob[]> {
-  const token = await getAccessToken(accessToken);
-  const response = await vertexTuningFetch(
-    `https://${region}-aiplatform.googleapis.com/v1/projects/${projectId}/locations/${region}/tuningJobs`,
-    {
-      headers: { authorization: `Bearer ${token}` },
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(`Failed to list tuning jobs: ${response.status} ${await response.text()}`);
-  }
-
-  const data = (await response.json()) as { tuningJobs?: TuningJob[] };
-  return data.tuningJobs ?? [];
-}
-
 export async function getTuningJobStatus(
   jobName: string,
   accessToken?: string,

@@ -3,7 +3,6 @@ import {
   ContentType,
   type IAgentRuntime,
   MESSAGE_SOURCE_SUB_AGENT,
-  type Media,
   type Memory,
   ModelType,
   type Provider,
@@ -12,10 +11,6 @@ import {
 } from "@elizaos/core";
 import { listConversationAttachments } from "../../working-memory/attachmentContext.ts";
 
-const ATTACHMENT_REFERENCE_RE =
-  /\b(?:attachments?|files?|documents?|pdfs?|images?|photos?|pictures?|screenshots?|videos?|audio|recordings?|links?|urls?)\b|https?:\/\/\S+/iu;
-const ATTACHMENT_INSPECTION_RE =
-  /\b(?:what|see|view|look(?:ing)?(?:\s+at)?|read|open|inspect|analy[sz]e|describe|summari[sz]e|transcribe|ocr|shown?|showing|contains?|content|find|found|anything|result|results|thoughts?|think|opinion|take)\b/iu;
 /**
  * Render an attachment URL for the prompt without dumping raw bytes into
  * context. Inline `data:` URLs (e.g. a TTS audio clip stored as
@@ -32,43 +27,9 @@ function formatAttachmentUrlForPrompt(url: string | undefined): string {
   }
   return toWellFormedUnicode(url);
 }
-function contentString(message: Memory, key: string): string {
-  const value = (message.content as Record<string, unknown> | undefined)?.[key];
-  return typeof value === "string" ? value : "";
-}
-function messageTextForAttachmentRelevance(message: Memory): string {
-  return [
-    contentString(message, "currentMessageText"),
-    typeof message.content.text === "string" ? message.content.text : "",
-    contentString(message, "replyToMessageText"),
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-/**
- * The half of the render gate decidable from the current message alone —
- * before any conversation-history fetch. When this is false the provider
- * skips `listConversationAttachments` entirely (the room-history scan plus
- * access-context resolution), which on a text-only turn was the single
- * largest composeState provider wall.
- */
-function couldRenderAttachmentPromptText(message: Memory): boolean {
-  if ((message.content.attachments ?? []).length > 0) return true;
-  if (message.content.source === MESSAGE_SOURCE_SUB_AGENT) return false;
-  const text = messageTextForAttachmentRelevance(message);
-  return (
-    ATTACHMENT_REFERENCE_RE.test(text) && ATTACHMENT_INSPECTION_RE.test(text)
-  );
-}
-function shouldRenderAttachmentPromptText(
-  message: Memory,
-  allAttachments: readonly Media[],
-): boolean {
-  return allAttachments.length > 0 && couldRenderAttachmentPromptText(message);
-}
 export const attachmentsProvider: Provider = {
   name: "ATTACHMENTS",
-  description: "Media attachments in the current message",
+  description: "Media attachments in the current conversation",
   dynamic: true,
   contexts: ["media", "messaging"],
   contextGate: { anyOf: ["media", "messaging"] },
@@ -79,9 +40,17 @@ export const attachmentsProvider: Provider = {
     runtime: IAgentRuntime,
     message: Memory,
   ): Promise<ProviderResult> => {
-    // When the message-side half of the render gate already fails, no
-    // history result could make the provider relevant. Skip the room scan.
-    if (!couldRenderAttachmentPromptText(message)) {
+    // Renders the room's complete attachment set, the same completeness
+    // contract as RECENT_MESSAGES. ATTACHMENTS is a core response-state
+    // provider, so it runs on every planner turn regardless of context; the
+    // contextGate only places it in the Stage-1 catalog. The one skip is
+    // structural: a sub-agent result turn that carries no attachments is the
+    // orchestrator relaying a task outcome, not a request about the room's
+    // media, so it renders nothing.
+    if (
+      message.content.source === MESSAGE_SOURCE_SUB_AGENT &&
+      (message.content.attachments ?? []).length === 0
+    ) {
       return {
         values: { attachments: "" },
         data: {
@@ -95,15 +64,9 @@ export const attachmentsProvider: Provider = {
     const allAttachments = await listConversationAttachments(runtime, message);
     const visibleAttachments = allAttachments;
     const omittedCount = 0;
-    const shouldRenderText = shouldRenderAttachmentPromptText(
-      message,
-      allAttachments,
-    );
-    // Format attachments for display
-    const formattedAttachments = shouldRenderText
-      ? visibleAttachments
-          .map(
-            (attachment) => `ID: ${attachment.id}
+    const formattedAttachments = visibleAttachments
+      .map(
+        (attachment) => `ID: ${attachment.id}
     Name: ${attachment.title}
     URL: ${formatAttachmentUrlForPrompt(attachment.url)}
     Type: ${attachment.source}
@@ -124,9 +87,8 @@ export const attachmentsProvider: Provider = {
         : "none"
     }
     `,
-          )
-          .join("\n")
-      : "";
+      )
+      .join("\n");
     // Create formatted text with header
     const text =
       formattedAttachments && formattedAttachments.length > 0

@@ -6,12 +6,14 @@
  * eliza-app session token.
  */
 
+import { safeUnknownErrorMessage } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { elizaAppSessionService } from "@elizaos/cloud-shared/lib/services/eliza-app";
 import {
   OAuthError,
   oauthService,
 } from "@elizaos/cloud-shared/lib/services/oauth";
 import { getProvider } from "@elizaos/cloud-shared/lib/services/oauth/provider-registry";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -83,10 +85,10 @@ app.post("/", async (c) => {
         error.httpStatus as 400,
       );
     }
+    logger.error("[Eliza App] Failed to initiate OAuth:", error);
     return c.json(
       {
-        error:
-          error instanceof Error ? error.message : "Failed to initiate OAuth",
+        error: safeUnknownErrorMessage(error),
         code: "INITIATE_FAILED",
       },
       500,

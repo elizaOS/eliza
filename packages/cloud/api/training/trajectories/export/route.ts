@@ -3,12 +3,16 @@
  * Query and JSON-body limits are validated before the export service can read rows.
  */
 
-import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import {
   llmTrajectoryService,
   type TrajectoryExportOptions,
 } from "@elizaos/cloud-shared/lib/services/llm-trajectory";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 
@@ -110,12 +114,10 @@ async function __hono_GET(request: Request) {
       return Response.json(error.toJSON(), { status: error.status });
     }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
+    logger.error("[Training] Failed to export trajectories:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to export trajectories",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -148,12 +150,10 @@ async function __hono_POST(request: Request) {
       return Response.json(error.toJSON(), { status: error.status });
     }
     // error-policy:J1 route boundary translates failures into structured HTTP errors.
+    logger.error("[Training] Failed to export trajectories:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to export trajectories",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

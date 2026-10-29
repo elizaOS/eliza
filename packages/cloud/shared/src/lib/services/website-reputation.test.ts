@@ -354,6 +354,42 @@ test("Phishing.Database falls back to the GitHub repository at its latest commit
   expect(manifest?.lists[0].publishedAt).toBe("2026-10-02T15:30:28.000Z");
 });
 
+test("downloads use a redirect mode the Workers runtime accepts and never follow a redirect", async () => {
+  // workerd throws on `redirect: "error"`, which failed every list in staging.
+  const movedFeed: WebsiteThreatFeed = {
+    ...hageziFeed,
+    id: "hagezi-fake",
+    url: "https://lists.test/fake-onlydomains.txt",
+  };
+  const served = servedLists({
+    [movedFeed.url]: { body: "", status: 302, headers: { location: "https://elsewhere.test/" } },
+  });
+  const modes: Array<RequestRedirect | undefined> = [];
+  const workerdFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    modes.push(init?.redirect);
+    if (init?.redirect === "error") {
+      throw new TypeError('Invalid redirect value, must be one of "follow" or "manual"');
+    }
+    return fetchFrom(served)(input, init);
+  }) as unknown as typeof fetch;
+  const store = memoryBucket();
+  const summary = await refreshWebsiteReputationIndex({
+    bucket: store.bucket,
+    now: () => NOW,
+    feeds: [hageziFeed, phishingFeed, movedFeed],
+    fetchImpl: workerdFetch,
+  });
+  expect(modes.length).toBeGreaterThan(0);
+  expect(modes.every((mode) => mode === "manual")).toBe(true);
+  expect(summary.lists.map((list) => list.state)).toEqual([
+    "refreshed",
+    "refreshed",
+    "unavailable",
+  ]);
+  expect(summary.lists[2].error).toContain("302");
+  expect(await readWebsiteReputationManifest(store.bucket)).not.toBeNull();
+});
+
 test("a shard rewritten by a newer build is not served under the old manifest", async () => {
   const store = memoryBucket();
   const options = { bucket: store.bucket, now: () => NOW, feeds: [phishingFeed, hageziFeed] };

@@ -61,6 +61,7 @@ import {
   toneForLastStatus,
   validateForm,
 } from "./trigger-form-utils";
+import { triggerRunMissed } from "./workflow-run-occurrence";
 
 // ── Long-running host banner ──────────────────────────────────────
 //
@@ -1058,35 +1059,51 @@ function TriggersLayout() {
                   </div>
                 ) : (
                   <div className="space-y-2">
-                    {selectedRuns.map((run) => (
-                      <div key={run.triggerRunId} className="py-1">
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-txt">
-                            <StatusDot tone={toneForLastStatus(run.status)} />
-                            {localizedExecutionStatus(run.status, t)}
-                          </span>
-                          <span className="font-mono text-xs-tight text-muted">
-                            {formatDateTime(run.startedAt, {
-                              locale: uiLanguage,
-                            })}
-                          </span>
+                    {selectedRuns.map((run) => {
+                      const missed = triggerRunMissed(run, (at) =>
+                        formatDateTime(at, { locale: uiLanguage }),
+                      );
+                      return (
+                        <div
+                          key={run.triggerRunId}
+                          className="py-1"
+                          data-run-occurrence={missed ? "missed" : undefined}
+                        >
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <span className="inline-flex items-center gap-1.5 text-xs font-medium text-txt">
+                              <StatusDot tone={toneForLastStatus(run.status)} />
+                              {missed
+                                ? missed.label
+                                : localizedExecutionStatus(run.status, t)}
+                            </span>
+                            <span className="font-mono text-xs-tight text-muted">
+                              {formatDateTime(run.startedAt, {
+                                locale: uiLanguage,
+                              })}
+                            </span>
+                          </div>
+                          <div className="text-xs-tight text-muted/80">
+                            {formatDurationMs(run.latencyMs, { t })} &middot;{" "}
+                            <span className="font-mono text-muted/60">
+                              {run.source}
+                            </span>
+                          </div>
+                          {missed ? (
+                            <div className="mt-1 text-xs-tight text-muted">
+                              {missed.notice}
+                            </div>
+                          ) : null}
+                          {run.error ? (
+                            <Alert
+                              variant="inlineDangerCompact"
+                              className="mt-2 whitespace-pre-wrap"
+                            >
+                              {run.error}
+                            </Alert>
+                          ) : null}
                         </div>
-                        <div className="text-xs-tight text-muted/80">
-                          {formatDurationMs(run.latencyMs, { t })} &middot;{" "}
-                          <span className="font-mono text-muted/60">
-                            {run.source}
-                          </span>
-                        </div>
-                        {run.error ? (
-                          <Alert
-                            variant="inlineDangerCompact"
-                            className="mt-2 whitespace-pre-wrap"
-                          >
-                            {run.error}
-                          </Alert>
-                        ) : null}
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </PagePanel>

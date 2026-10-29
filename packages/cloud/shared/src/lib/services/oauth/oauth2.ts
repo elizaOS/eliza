@@ -27,6 +27,7 @@ import { cache } from "../../cache/client";
 import { getCloudAwareEnv } from "../../runtime/cloud-bindings";
 import { logger } from "../../utils/logger";
 import { secretsService } from "../secrets/index";
+import { Errors } from "./errors";
 import type { OAuthProviderConfig, UserInfoMapping } from "./provider-registry";
 import {
   getCallbackUrl,
@@ -41,6 +42,14 @@ import { normalizeOAuthConnectionRole } from "./types";
 const STATE_TTL_SECONDS = 600; // 10 minutes
 export const OAUTH2_REQUEST_TIMEOUT_MS = 15_000;
 type PlatformCredentialSourceContext = (typeof platformCredentials.$inferSelect)["source_context"];
+
+function isInvalidGrant(errorText: string): boolean {
+  try {
+    return (JSON.parse(errorText) as { error?: unknown }).error === "invalid_grant";
+  } catch {
+    return new URLSearchParams(errorText).get("error") === "invalid_grant";
+  }
+}
 
 function fetchOAuth2(input: string | URL, init?: RequestInit): Promise<Response> {
   return fetch(input, {
@@ -1223,6 +1232,11 @@ export async function refreshOAuth2Token(
       status: response.status,
       error: errorText.substring(0, 500),
     });
+    // invalid_grant (RFC 6749 5.2): the refresh token was revoked or expired.
+    // Retrying cannot help; the user must reconnect.
+    if ((response.status === 400 || response.status === 401) && isInvalidGrant(errorText)) {
+      throw Errors.connectionExpired(provider.id);
+    }
     throw new Error(`Token refresh failed: ${response.status}`);
   }
 

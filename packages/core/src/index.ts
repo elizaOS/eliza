@@ -7,6 +7,7 @@ export {
 	bindTaskExtractionContext,
 	readTaskExtractionContext,
 	readTaskExtractionRequestIntents,
+	readTaskExtractionUserSources,
 } from "./actions/task-extraction-context";
 export {
 	actionToTool,
@@ -205,6 +206,8 @@ export {
 	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
 	collectCompletionContextSources,
 	completionContextSources,
+	HISTORICAL_EFFECT_TERMINALS,
+	type HistoricalEffectTerminal,
 	parseCompletionContextSelection,
 	referencePlannerQueryTokens,
 	selectCompletionContext,
@@ -220,6 +223,7 @@ export {
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
+export { createPreparedModelRequestGuard } from "./runtime/prepared-model-request";
 export {
 	projectDeferredProviders,
 	providerReviewSources,
@@ -247,7 +251,10 @@ export {
 	SchemaValidationFailedError,
 } from "./runtime/validated-model-call";
 export { flattenRuntimeSettings } from "./runtime-settings.ts";
-export { mnemonicValid } from "./security/bip39-wordlist.js";
+export {
+	findAllMnemonicPhrases,
+	mnemonicValid,
+} from "./security/bip39-wordlist.js";
 export * from "./security/confidential-inference.js";
 export {
 	type GuardedStreamOutput,

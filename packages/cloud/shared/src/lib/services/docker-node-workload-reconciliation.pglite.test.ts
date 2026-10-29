@@ -61,7 +61,8 @@ beforeAll(async () => {
       status text NOT NULL,
       deletion_allocation_counted boolean,
       replacement_cleanup_node_id text,
-      replacement_cleanup_allocation_counted boolean
+      replacement_cleanup_allocation_counted boolean,
+      retained_runtime jsonb
     );
     CREATE TABLE agent_sandbox_replacement_attempts (
       id uuid PRIMARY KEY,
@@ -241,5 +242,19 @@ describe("exact-restore Docker capacity recount", () => {
         );
       `);
     }
+  });
+});
+
+describe("retained runtime capacity", () => {
+  test("a runtime stopped in place keeps its node slot until it is retired", async () => {
+    await client.exec(`
+      INSERT INTO agent_sandboxes (id, node_id, status, retained_runtime)
+      VALUES
+        ('50000000-0000-4000-8000-000000000001', '${NODE_ID}', 'stopped',
+          '{"containerName":"agent-retained"}'),
+        ('50000000-0000-4000-8000-000000000002', '${NODE_ID}', 'stopped', NULL);
+    `);
+
+    expect(await countAllocatedWorkloadsOnNodeWithDatabase(database, NODE_ID)).toBe(1);
   });
 });

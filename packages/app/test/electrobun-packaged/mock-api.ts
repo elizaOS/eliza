@@ -1540,21 +1540,6 @@ export async function startMockApiServer(
       return;
     }
 
-    if (method === "GET" && pathname === "/api/registry/status") {
-      json(res, 200, {
-        registered: false,
-        tokenId: 0,
-        agentName,
-        agentEndpoint: "",
-        capabilitiesHash: "",
-        isActive: false,
-        tokenURI: "",
-        walletAddress: "0x1234567890abcdef1234567890abcdef12345678",
-        totalAgents: 0,
-        configured: true,
-      });
-      return;
-    }
     if (method === "GET" && pathname === "/api/drop/status") {
       json(res, 200, {
         dropEnabled: false,

@@ -192,3 +192,35 @@ sent callbacks. `delivered` requires all matching delivery reports. The shared
 effect receipt proves submission only. Unknown and partial failures require
 reconciliation; they do not permit automatic retry. This contract does not
 implement MMS, native transport, SIM qualification or device delivery evidence.
+
+## Requested Camera capture
+
+The `camera.capture-photo.v1` device capability adds `camera_capture_photo`.
+The renderer uses the existing Camera adapter to save one still image in Photos.
+It returns a bound receipt with the media ID and image dimensions; it does not
+send image bytes or a local file path to the agent. Browser media IDs remain
+strings and can contain 25 decimal digits.
+
+A request from Home uses the existing verified view handoff before capture.
+The current user message, device, foreground view and action preference must
+still match. A prior or uncertain request is not replayed. Camera permissions
+remain controlled by the device. Clients without this capability do not receive
+the operation in their tool schema.
+
+## Current-request Gmail policy
+
+A device that negotiates `gmail.request-policy.v1` may send the top-level
+`requestedActionPolicy: "initial-gmail-send-v1"` command with a new conversation
+request, or `"review-gmail-send-v1"` to require confirmation even for a known
+recipient. The authenticated request scope binds this choice to the canonical
+user message and conversation. Message metadata and model parameters cannot
+make this grant. Background, cancelled, revoked, copied, or older requests do
+not qualify.
+
+The generic policy selects a preference, not authority to send. Both modes
+currently retain exact later-turn send confirmation. A model-produced allow,
+message metadata, or a foreground request alone cannot bypass it. Cancellation,
+revocation, exact draft digest checks, and one-use approval remain enforced.
+Automatic text-only requested sends remain unimplemented until a host can bind
+a trusted user effect origin to the original request and exact message payload.
+This does not change Google scopes or permit replay of an uncertain send.

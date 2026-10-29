@@ -75,12 +75,43 @@ export function createdAtValue(migration: AppliedMigration): number | null {
   return Number.isFinite(value) ? value : null;
 }
 
+export type MigrationLedgerFailure =
+  | "too_many_rows"
+  | "duplicate_journal_time"
+  | "missing_checkpoint"
+  | "invalid_ledger_time"
+  | "duplicate_ledger_time"
+  | "unmatched_ledger_time"
+  | "hash_mismatch"
+  | "out_of_order"
+  | "historical_after_checkpoint"
+  | "missing_journal_index"
+  | "missing_required_entry";
+
+/** Structured classification; callers must not expose the private diagnostic message. */
+export class MigrationLedgerValidationError extends Error {
+  readonly reason: MigrationLedgerFailure;
+  readonly canonicalTag: string | null;
+
+  constructor(
+    reason: MigrationLedgerFailure,
+    message: string,
+    canonicalTag: string | null = null,
+  ) {
+    super(message);
+    this.name = "MigrationLedgerValidationError";
+    this.reason = reason;
+    this.canonicalTag = canonicalTag;
+  }
+}
+
 export function validateAppliedMigrationLedger(
   applied: AppliedMigration[],
   migrations: Migration[],
 ): ValidatedMigrationLedger {
   if (applied.length > migrations.length) {
-    throw new Error(
+    throw new MigrationLedgerValidationError(
+      "too_many_rows",
       `Migration ledger contains ${applied.length} rows but this checkout defines only ${migrations.length}`,
     );
   }
@@ -92,7 +123,8 @@ export function validateAppliedMigrationLedger(
   for (const [journalIndex, migration] of migrations.entries()) {
     const createdAt = migration.entry.when;
     if (migrationByCreatedAt.has(createdAt)) {
-      throw new Error(
+      throw new MigrationLedgerValidationError(
+        "duplicate_journal_time",
         `Migration journal contains duplicate created_at=${createdAt}`,
       );
     }
@@ -103,7 +135,8 @@ export function validateAppliedMigrationLedger(
     (migration) => migration.entry.tag === HASH_IDENTITY_ENFORCEMENT_TAG,
   );
   if (hashIdentityEnforcementIndex === -1) {
-    throw new Error(
+    throw new MigrationLedgerValidationError(
+      "missing_checkpoint",
       `Migration journal is missing hash enforcement checkpoint ${HASH_IDENTITY_ENFORCEMENT_TAG}`,
     );
   }
@@ -116,19 +149,22 @@ export function validateAppliedMigrationLedger(
   for (const row of applied) {
     const createdAt = createdAtValue(row);
     if (createdAt === null) {
-      throw new Error(
+      throw new MigrationLedgerValidationError(
+        "invalid_ledger_time",
         `Migration ledger row id=${row.id} has an invalid created_at value`,
       );
     }
     if (seenCreatedAt.has(createdAt)) {
-      throw new Error(
+      throw new MigrationLedgerValidationError(
+        "duplicate_ledger_time",
         `Migration ledger contains duplicate created_at=${createdAt}`,
       );
     }
     seenCreatedAt.add(createdAt);
     const matched = migrationByCreatedAt.get(createdAt);
     if (!matched) {
-      throw new Error(
+      throw new MigrationLedgerValidationError(
+        "unmatched_ledger_time",
         `Migration ledger row id=${row.id} has no matching journal entry for created_at=${createdAt}`,
       );
     }
@@ -136,21 +172,27 @@ export function validateAppliedMigrationLedger(
       matched.journalIndex >= hashIdentityEnforcementIndex &&
       row.hash !== matched.migration.hash
     ) {
-      throw new Error(
+      throw new MigrationLedgerValidationError(
+        "hash_mismatch",
         `Migration ledger hash mismatch for ${matched.migration.entry.tag}: expected ${matched.migration.hash}, found ${row.hash}`,
+        matched.migration.entry.tag,
       );
     }
     if (matched.journalIndex >= hashIdentityEnforcementIndex) {
       if (matched.journalIndex <= lastEnforcedJournalIndex) {
-        throw new Error(
+        throw new MigrationLedgerValidationError(
+          "out_of_order",
           `Migration ledger is out of immutable journal order at row id=${row.id}: ${matched.migration.entry.tag} follows journal index ${lastEnforcedJournalIndex}`,
+          matched.migration.entry.tag,
         );
       }
       hashEnforcementStarted = true;
       lastEnforcedJournalIndex = matched.journalIndex;
     } else if (hashEnforcementStarted) {
-      throw new Error(
+      throw new MigrationLedgerValidationError(
+        "historical_after_checkpoint",
         `Historical migration ${matched.migration.entry.tag} appears after hash enforcement checkpoint ${HASH_IDENTITY_ENFORCEMENT_TAG}`,
+        matched.migration.entry.tag,
       );
     }
     appliedJournalIndexes.add(matched.journalIndex);
@@ -167,11 +209,16 @@ export function validateAppliedMigrationLedger(
   ) {
     const migration = migrations[journalIndex];
     if (!migration) {
-      throw new Error(`Migration journal is missing index ${journalIndex}`);
+      throw new MigrationLedgerValidationError(
+        "missing_journal_index",
+        `Migration journal is missing index ${journalIndex}`,
+      );
     }
     if (!appliedJournalIndexes.has(journalIndex)) {
-      throw new Error(
+      throw new MigrationLedgerValidationError(
+        "missing_required_entry",
         `Migration ledger is missing required journal entry ${migration.entry.tag}`,
+        migration.entry.tag,
       );
     }
   }

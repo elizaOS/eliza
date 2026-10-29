@@ -175,7 +175,7 @@ async function verifyBlooioSignature(
   secret: string,
 ): Promise<boolean> {
   const signatureHeader = request.headers.get("x-blooio-signature") ?? "";
-  const parts = signatureHeader.split(",");
+  const parts = signatureHeader.split(",").map((part) => part.trim());
   const timestampPart = parts.find((p) => p.startsWith("t="));
   const signaturePart = parts.find((p) => p.startsWith("v1="));
   if (!timestampPart || !signaturePart) return false;
