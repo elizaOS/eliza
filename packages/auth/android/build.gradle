@@ -4,7 +4,8 @@ apply plugin: 'com.android.library'
 android {
  namespace 'ai.eliza.auth.cloud'
  compileSdk project.hasProperty('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 36
- defaultConfig { minSdk 29; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36 }
+ // minSdk 26 matches the lowest host (Eliza's app); main-thread executors come from ContextCompat.
+ defaultConfig { minSdk 26; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36 }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
 }
 repositories { google(); mavenCentral() }

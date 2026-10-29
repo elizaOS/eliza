@@ -24,18 +24,22 @@ import {
 } from "@elizaos/plugin-elizacloud/steward-session-client";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ANDROID_CLOUD_AUTH_RESULT_EVENT,
-  ANDROID_CLOUD_AUTH_STARTED_EVENT,
-  type AndroidCloudAuthResult,
-  beginAndroidCloudSignIn,
-  cancelAndroidCloudSignIn,
   clearAndroidCloudAccountSwitchPending,
   isAndroidCloudAccountSwitchPending,
   markAndroidCloudAccountSwitchPending,
-  navigateAndroidCloudSignInInApp,
+  retireAndroidCloudHostedSignIn,
   signOutAndroidCloud,
-  takeLatestAndroidCloudCompletion,
 } from "../android-cloud/android-cloud-auth";
+import {
+  activateAndroidNativeCloudSession,
+  androidNativeCloudApiBase,
+  androidNativeCloudEnvironment,
+  androidNativeCloudLoginErrorMessage,
+  androidNativeCloudSignInMessage,
+  clearAndroidNativeCloudCredentialState,
+  listenForAndroidNativeCloudSignInCompleted,
+  requestAndroidNativeCloudSignIn,
+} from "../android-cloud/native-cloud-sign-in";
 import { supportsFullAppShellRoutes } from "../api/app-shell-capabilities";
 import { client } from "../api/client";
 import {
@@ -58,10 +62,7 @@ import { getBootConfig, setBootConfig } from "../config/boot-config-store";
 import { dispatchElizaCloudStatusUpdated } from "../events";
 import { isElizaCloudRuntimeLocked } from "../first-run/mobile-runtime-mode";
 import { logger } from "../logger.ts";
-import {
-  isAndroidCloudBuild,
-  isAndroidLauncherBuild,
-} from "../platform/android-runtime";
+import { isAndroidCloudBuild } from "../platform/android-runtime";
 import {
   hasIosNativeCloudCredential,
   IosCloudAuthError,
@@ -80,7 +81,6 @@ import {
 import { isSafeNavigationUrl } from "../utils/navigation-url";
 import {
   closeExternalBrowser,
-  listenForExternalBrowserFinished,
   navigatePreOpenedWindow,
   openExternalUrl,
 } from "../utils/openExternalUrl";
@@ -119,8 +119,6 @@ const ELIZA_CLOUD_LOGIN_POLL_INTERVAL_MS = 1000;
 const ELIZA_CLOUD_LOGIN_RETURN_POLL_TIMEOUT_MS = 60000;
 const ELIZA_CLOUD_LOGIN_TIMEOUT_MS = 300000;
 const ELIZA_CLOUD_LOGIN_MAX_CONSECUTIVE_ERRORS = 3;
-const ANDROID_CLOUD_AUTH_TIMEOUT_MS = 5 * 60000;
-const ANDROID_CLOUD_BROWSER_FINISH_GRACE_MS = 1500;
 const DEFAULT_DIRECT_CLOUD_BASE_URL = "https://eliza.app";
 const CLOUD_SESSION_VERIFICATION_TRANSIENT_MESSAGE =
   "Eliza Cloud is temporarily unavailable. Retry in a moment.";
@@ -843,20 +841,48 @@ export function useCloudState({
         }
       }
     };
-    const onResult = (event: Event) => {
-      const result = (event as CustomEvent<AndroidCloudAuthResult>).detail;
-      if (result?.ok) void reconcile(result.apiBase);
-    };
-    window.addEventListener(ANDROID_CLOUD_AUTH_RESULT_EVENT, onResult);
-    const completion = takeLatestAndroidCloudCompletion();
-    if (completion) {
-      void reconcile(completion.apiBase);
-    } else if (readStoredStewardToken()?.trim()) {
+    // A retired hosted sign-in's verifier is dead weight; the saved session
+    // itself is untouched and keeps working.
+    void retireAndroidCloudHostedSignIn();
+    // A native Google sign-in that completed after the app restarted (no
+    // waiting call) is announced once by the native host.
+    const environment = androidNativeCloudEnvironment(
+      getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
+    );
+    let removeCompletedListener: () => void = () => {};
+    void listenForAndroidNativeCloudSignInCompleted(environment, () => {
+      void activateAndroidNativeCloudSession()
+        .then(() => reconcile(androidNativeCloudApiBase(environment)))
+        .catch((err: unknown) => {
+          // error-policy:J4 the announced sign-in left no readable key; the
+          // explicit sign-in surface stays available.
+          logger.warn(
+            { err },
+            "[useCloudState] Android native Cloud sign-in activation failed",
+          );
+          if (!cancelled) {
+            setElizaCloudLoginError(androidNativeCloudSignInMessage(err));
+          }
+        });
+    })
+      .then((remove) => {
+        if (cancelled) remove();
+        else removeCompletedListener = remove;
+      })
+      .catch((err: unknown) => {
+        // error-policy:J4 without the native listener, sign-in still works
+        // through the explicit path.
+        logger.warn(
+          { err },
+          "[useCloudState] Android native Cloud sign-in listener unavailable",
+        );
+      });
+    if (readStoredStewardToken()?.trim()) {
       void reconcile();
     }
     return () => {
       cancelled = true;
-      window.removeEventListener(ANDROID_CLOUD_AUTH_RESULT_EVENT, onResult);
+      removeCompletedListener();
     };
   }, [reconcileAndroidCloudSession]);
   const handleCloudLogin = useCallback(
@@ -939,114 +965,28 @@ export function useCloudState({
         resolveLoginCompletion();
       };
       elizaCloudLoginCompletionRef.current = loginCompletion;
-      // The Play build uses the same canonical first-run chat and full app as
-      // every other platform. Only its hosted PKCE handoff is Android-specific:
-      // the verifier stays in Keystore, the hosted Eliza Cloud page owns the
-      // provider chooser, and the deep-link callback publishes the result back
-      // into this already-mounted state machine.
+      // The Play and launcher builds sign in natively: an email code, an SMS
+      // code or Android's Google account picker through the shared
+      // CloudSignInPlugin host (ElizaCloudSignIn). The native host keeps every
+      // secret and stores the minted key in the protected session slot; this
+      // state machine only waits for the owner, activates that session and
+      // verifies it. No hosted page or browser is involved.
       if (isAndroidCloudBuild() && Capacitor.isNativePlatform()) {
-        const cloudApiBase =
-          getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
+        const environment = androidNativeCloudEnvironment(
+          getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
+        );
         let androidLoginError: unknown = null;
-        let removeResultListener = () => {};
-        let removeBrowserFinishedListener = async () => {};
-        let browserFinishTimer: number | null = null;
-        let authTimeoutTimer: number | null = null;
-        let callbackIsRetrying = false;
-        let callbackStarted = false;
-        let attemptId: string | null = null;
-        let removeCallbackStartedListener = () => {};
         try {
-          let resolveAuthResult: (result: AndroidCloudAuthResult) => void =
-            () => {};
-          const authResult = new Promise<AndroidCloudAuthResult>((resolve) => {
-            resolveAuthResult = resolve;
-            const onResult = (event: Event) => {
-              const result = (event as CustomEvent<AndroidCloudAuthResult>)
-                .detail;
-              if (!result || result.attemptId !== attemptId) return;
-              if (result.retryable) {
-                callbackIsRetrying = true;
-                setElizaCloudLoginError(
-                  result.error ??
-                    "Eliza Cloud sign-in was interrupted and is retrying.",
-                );
-                return;
-              }
-              resolve(result);
-            };
-            window.addEventListener(ANDROID_CLOUD_AUTH_RESULT_EVENT, onResult);
-            removeResultListener = () =>
-              window.removeEventListener(
-                ANDROID_CLOUD_AUTH_RESULT_EVENT,
-                onResult,
-              );
-          });
-          const attempt = await beginAndroidCloudSignIn(cloudApiBase, {
-            switchAccount: isAndroidCloudAccountSwitchPending(),
-          });
-          attemptId = attempt.state;
-          if (isAndroidLauncherBuild()) {
-            if (!navigateAndroidCloudSignInInApp(attempt.browserUrl)) {
-              await cancelAndroidCloudSignIn(attempt.state);
-              throw new Error("Eliza Cloud returned an invalid sign-in URL.");
-            }
-            // Navigation replaces this renderer. Native code restores the
-            // bundled shell before replaying the protected callback.
-            return loginCompletion;
+          closePrePoppedWindow();
+          // After an explicit sign-out (account switch), Google offers the
+          // account picker again instead of the last account.
+          if (isAndroidCloudAccountSwitchPending()) {
+            await clearAndroidNativeCloudCredentialState();
           }
-          const onCallbackStarted = (event: Event) => {
-            const startedAttemptId = (
-              event as CustomEvent<{
-                attemptId?: string;
-              }>
-            ).detail?.attemptId;
-            if (startedAttemptId === attemptId) callbackStarted = true;
-          };
-          window.addEventListener(
-            ANDROID_CLOUD_AUTH_STARTED_EVENT,
-            onCallbackStarted,
-          );
-          removeCallbackStartedListener = () =>
-            window.removeEventListener(
-              ANDROID_CLOUD_AUTH_STARTED_EVENT,
-              onCallbackStarted,
-            );
-          removeBrowserFinishedListener =
-            await listenForExternalBrowserFinished(() => {
-              if (browserFinishTimer !== null) return;
-              browserFinishTimer = window.setTimeout(() => {
-                browserFinishTimer = null;
-                if (callbackStarted || callbackIsRetrying || !attemptId) return;
-                resolveAuthResult({
-                  attemptId,
-                  error: "Eliza Cloud sign-in was cancelled.",
-                  ok: false,
-                });
-              }, ANDROID_CLOUD_BROWSER_FINISH_GRACE_MS);
-            });
-          authTimeoutTimer = window.setTimeout(() => {
-            if (!attemptId) return;
-            resolveAuthResult({
-              attemptId,
-              error: "Eliza Cloud sign-in timed out. Please try again.",
-              ok: false,
-            });
-          }, ANDROID_CLOUD_AUTH_TIMEOUT_MS);
-          const opened = await openExternalUrl(attempt.browserUrl);
-          if (!opened) {
-            await cancelAndroidCloudSignIn(attempt.state);
-            throw new Error("Couldn't open Eliza Cloud sign-in.");
-          }
-          const result = await authResult;
-          if (!result.ok) {
-            await cancelAndroidCloudSignIn(attempt.state);
-            throw new Error(
-              result.error ?? "Eliza Cloud sign-in could not be completed.",
-            );
-          }
+          await requestAndroidNativeCloudSignIn(environment);
+          await activateAndroidNativeCloudSession();
           const connected = await reconcileAndroidCloudSession(
-            result.apiBase ?? cloudApiBase,
+            androidNativeCloudApiBase(environment),
           );
           if (!connected) {
             throw new Error(
@@ -1066,19 +1006,8 @@ export function useCloudState({
           }
         } catch (error) {
           androidLoginError = error;
-          setElizaCloudLoginError(
-            error instanceof Error ? error.message : "Eliza Cloud login failed",
-          );
+          setElizaCloudLoginError(androidNativeCloudLoginErrorMessage(error));
         } finally {
-          if (browserFinishTimer !== null) {
-            window.clearTimeout(browserFinishTimer);
-          }
-          if (authTimeoutTimer !== null) window.clearTimeout(authTimeoutTimer);
-          removeResultListener();
-          removeCallbackStartedListener();
-          void removeBrowserFinishedListener();
-          void closeExternalBrowser();
-          closePrePoppedWindow();
           elizaCloudLoginBusyRef.current = false;
           setElizaCloudLoginBusy(false);
           completeLogin();
@@ -1086,7 +1015,7 @@ export function useCloudState({
         // First-run and native recovery explicitly require a renderer-held
         // credential before they can continue. Preserve the rejected promise
         // at that boundary so their existing in-chat/recovery error surfaces
-        // replace the waiting state instead of treating a failed handoff as a
+        // replace the waiting state instead of treating a failed sign-in as a
         // completed login with no token.
         if (androidLoginError && options.requireClientAuth) {
           throw androidLoginError;
@@ -2065,6 +1994,8 @@ export function useCloudState({
           getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL;
         await signOutAndroidCloud(cloudApiBase);
         markAndroidCloudAccountSwitchPending();
+        // The next Google sign-in offers the account picker again.
+        await clearAndroidNativeCloudCredentialState();
       } else if (isIosNativeCloudSession()) {
         await signOutIosCloud(
           getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,

@@ -34,6 +34,7 @@ import {
   type ActionNotice,
   type ActiveViewLayout,
   AgentAuthGateSurface,
+  AndroidNativeCloudSignInHost,
   APPS_ENABLED,
   AppBackground,
   type AppShellMode,
@@ -3414,15 +3415,21 @@ function AppContent() {
             }}
           />
         ) : (
-          <StartupShell
-            view={{
-              kind: "loading",
-              phase: "initializing-agent",
-              status: "Opening secure sign in…",
-            }}
-            onRetry={() => {
-              void startCloudAuthFirstScreen();
-            }}
+          // The native sign-in screens (email code, SMS code, Google account
+          // picker) own the surface while a sign-in is requested.
+          <AndroidNativeCloudSignInHost
+            fallback={
+              <StartupShell
+                view={{
+                  kind: "loading",
+                  phase: "initializing-agent",
+                  status: "Opening secure sign in…",
+                }}
+                onRetry={() => {
+                  void startCloudAuthFirstScreen();
+                }}
+              />
+            }
           />
         )}
         <BugReportModal />
@@ -3842,6 +3849,9 @@ function AppContent() {
             </div>
           </div>
         ) : null}
+        {/* Android Cloud builds sign in natively; a sign-in started from
+          Settings or chat shows these screens over the shell. */}
+        {androidCloudAuthAutoStart ? <AndroidNativeCloudSignInHost /> : null}
       </ShellControllerProvider>
     </BugReportProvider>
   );

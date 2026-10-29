@@ -1,98 +1,44 @@
 /**
- * Native Android handoff for the canonical Eliza Cloud sign-in flow.
+ * Android Cloud session helpers around the native sign-in.
  *
- * Cloud mode owns the first-run viewport until authentication completes. This
- * module contributes the PKCE protocol and Keystore-backed pending-login state
- * needed to use hosted authentication and safely resume through the custom
- * Android deep link. Play builds use a Custom Tab; pinned launcher builds
- * navigate the same first-party flow inside their own WebView task.
+ * Sign-in itself is native (`./native-cloud-sign-in`: an email code, an SMS
+ * code or Android's Google account picker through `ElizaCloudSignInPlugin`).
+ * The hosted Custom Tab / in-app WebView PKCE handoff and its
+ * `elizaos://auth/callback` completion are retired. What stays here: the
+ * explicit account-switch marker, sign-out (revoking the exact mobile key
+ * before removing it) and the one-time cleanup of a retired hosted sign-in's
+ * pending verifier.
  */
 
 import { registerPlugin } from "@capacitor/core";
+import { logger } from "../logger.ts";
 import { shellLocalStorage } from "../surface-realm-channel";
-import { isSafeNavigationUrl } from "../utils/navigation-url";
 import {
-  AndroidCloudAuthError,
+  ANDROID_CLOUD_PENDING_LOGIN_KEY,
   AndroidCloudClient,
-  type AndroidCloudLoginAttempt,
-  type AndroidCloudLoginCompletion,
-  type AndroidCloudLoginOptions,
-  type AndroidCloudPendingLoginStore,
-  parseAndroidCloudCallbackAttemptId,
 } from "./android-cloud-client";
 
-export const ANDROID_CLOUD_AUTH_RESULT_EVENT =
-  "eliza:android-cloud-auth-result" as const;
-export const ANDROID_CLOUD_AUTH_STARTED_EVENT =
-  "eliza:android-cloud-auth-started" as const;
-const ANDROID_CLOUD_LOGIN_HOSTS = new Set([
-  "cloud.eliza.app",
-  "cloud-staging.eliza.app",
-]);
 const ANDROID_CLOUD_ACCOUNT_SWITCH_KEY =
   "eliza:android-cloud:account-switch-pending:v1";
 
-export interface AndroidCloudAuthResult {
-  apiBase?: string;
-  attemptId: string;
-  ok: boolean;
-  error?: string;
-  retryable?: boolean;
-}
-
 interface SecureCredentialsPlugin {
-  get(options: { slot: "pending_login" }): Promise<{ value: string | null }>;
-  set(options: { slot: "pending_login"; value: string }): Promise<void>;
   remove(options: { slot: "pending_login" }): Promise<void>;
 }
 
-const SecureCredentials = registerPlugin<SecureCredentialsPlugin>(
-  "ElizaSecureCredentials",
-);
-
-const pendingLoginStore: AndroidCloudPendingLoginStore = {
-  async read() {
-    return (await SecureCredentials.get({ slot: "pending_login" })).value;
-  },
-  async write(value) {
-    await SecureCredentials.set({ slot: "pending_login", value });
-  },
-  async clear() {
-    await SecureCredentials.remove({ slot: "pending_login" });
-  },
-};
+// Held in an object: a Capacitor plugin proxy is thenable.
+let secureCredentials: { plugin: SecureCredentialsPlugin } | null = null;
+function retiredPendingLoginStore(): SecureCredentialsPlugin {
+  secureCredentials ??= {
+    plugin: registerPlugin<SecureCredentialsPlugin>("ElizaSecureCredentials"),
+  };
+  return secureCredentials.plugin;
+}
 
 function client(cloudApiBase?: string): AndroidCloudClient {
   return new AndroidCloudClient({
     cloudApiBase:
       cloudApiBase ?? import.meta.env.VITE_ELIZA_CLOUD_BASE ?? undefined,
-    pendingLoginStore,
   });
-}
-
-const completionByAttempt = new Map<
-  string,
-  Promise<AndroidCloudLoginCompletion>
->();
-const completedAttempts = new Map<string, AndroidCloudLoginCompletion>();
-let latestCompletion: AndroidCloudLoginCompletion | null = null;
-
-function rememberCompletion(completion: AndroidCloudLoginCompletion): void {
-  completedAttempts.set(completion.state, completion);
-  latestCompletion = completion;
-  while (completedAttempts.size > 8) {
-    const oldest = completedAttempts.keys().next().value;
-    if (typeof oldest !== "string") break;
-    completedAttempts.delete(oldest);
-  }
-}
-
-function publishResult(result: AndroidCloudAuthResult): void {
-  window.dispatchEvent(
-    new CustomEvent<AndroidCloudAuthResult>(ANDROID_CLOUD_AUTH_RESULT_EVENT, {
-      detail: result,
-    }),
-  );
 }
 
 /** Persists explicit account-switch intent across renderer and app recreation. */
@@ -113,14 +59,6 @@ export function clearAndroidCloudAccountSwitchPending(): void {
   shellLocalStorage.removeItem(ANDROID_CLOUD_ACCOUNT_SWITCH_KEY);
 }
 
-/** Creates the hosted login URL while keeping the verifier in Android Keystore. */
-export async function beginAndroidCloudSignIn(
-  cloudApiBase?: string,
-  options: AndroidCloudLoginOptions = {},
-): Promise<AndroidCloudLoginAttempt> {
-  return client(cloudApiBase).beginLogin(options);
-}
-
 /** Revokes the exact mobile credential before removing its local copy. */
 export async function signOutAndroidCloud(
   cloudApiBase?: string,
@@ -128,97 +66,27 @@ export async function signOutAndroidCloud(
   await client(cloudApiBase).signOut();
 }
 
-/** Navigate the launcher WebView only to the canonical hosted login origins. */
-export function navigateAndroidCloudSignInInApp(
-  url: string,
-  navigate: (safeUrl: string) => void = (safeUrl) =>
-    window.location.assign(safeUrl),
-): boolean {
-  if (!isSafeNavigationUrl(url)) return false;
-  const parsed = new URL(url);
-  if (
-    parsed.protocol !== "https:" ||
-    !ANDROID_CLOUD_LOGIN_HOSTS.has(parsed.hostname.toLowerCase())
-  ) {
-    return false;
-  }
-  navigate(parsed.toString());
-  return true;
-}
-
 /**
- * Exchanges one OS-delivered callback and announces the result to the mounted
- * canonical shell. A handled failure is still terminal for this callback, so
- * the native replay buffer can acknowledge it instead of looping forever.
+ * Discards the PKCE verifier a retired hosted sign-in may have left (in the
+ * Play build's Keystore slot and the renderer's legacy key). Nothing else is
+ * touched: a saved Cloud session stays where it is and keeps working.
+ * Idempotent; a store that is unavailable is left for the next start.
  */
-export async function completeAndroidCloudSignIn(
-  callbackUrl: string,
-): Promise<AndroidCloudLoginCompletion> {
-  const attemptId = parseAndroidCloudCallbackAttemptId(callbackUrl);
-  if (attemptId) {
-    window.dispatchEvent(
-      new CustomEvent(ANDROID_CLOUD_AUTH_STARTED_EVENT, {
-        detail: { attemptId },
-      }),
+export async function retireAndroidCloudHostedSignIn(): Promise<void> {
+  try {
+    shellLocalStorage.removeItem(ANDROID_CLOUD_PENDING_LOGIN_KEY);
+  } catch (error) {
+    // error-policy:J4 a stale non-secret key is retried on the next start.
+    logger.warn({ error }, "[android-cloud] legacy pending-login key retained");
+  }
+  try {
+    await retiredPendingLoginStore().remove({ slot: "pending_login" });
+  } catch (error) {
+    // error-policy:J4 builds without the Play Keystore slot have nothing to
+    // remove; an unavailable store retries on the next start.
+    logger.debug(
+      { error },
+      "[android-cloud] retired pending-login slot not cleared",
     );
   }
-  if (attemptId) {
-    const completed = completedAttempts.get(attemptId);
-    if (completed) return completed;
-    const active = completionByAttempt.get(attemptId);
-    if (active) return active;
-  }
-
-  const completion = (async () => {
-    try {
-      const result = await client().completeLogin(callbackUrl);
-      rememberCompletion(result);
-      window.dispatchEvent(new CustomEvent("steward-token-sync"));
-      publishResult({
-        apiBase: result.apiBase,
-        attemptId: result.state,
-        ok: true,
-      });
-      return result;
-    } catch (error) {
-      const resultAttemptId =
-        error instanceof AndroidCloudAuthError ? error.attemptId : attemptId;
-      if (error instanceof AndroidCloudAuthError && resultAttemptId) {
-        publishResult({
-          attemptId: resultAttemptId,
-          error: error.message,
-          ok: false,
-          retryable: error.disposition === "retry",
-        });
-      }
-      throw error;
-    }
-  })();
-  if (attemptId) completionByAttempt.set(attemptId, completion);
-  try {
-    return await completion;
-  } finally {
-    if (attemptId && completionByAttempt.get(attemptId) === completion) {
-      completionByAttempt.delete(attemptId);
-    }
-  }
-}
-
-/** Clears an abandoned verifier when the hosted browser cannot be opened. */
-export async function cancelAndroidCloudSignIn(
-  attemptId: string,
-): Promise<boolean> {
-  return client().cancelLogin(attemptId);
-}
-
-/** Returns a cold callback completion that arrived before React subscribed. */
-export function takeLatestAndroidCloudCompletion(): AndroidCloudLoginCompletion | null {
-  const completion = latestCompletion;
-  latestCompletion = null;
-  return completion;
-}
-
-/** Distinguishes a fully activated stored session from an exchange still replaying. */
-export async function hasPendingAndroidCloudSignIn(): Promise<boolean> {
-  return Boolean((await pendingLoginStore.read())?.trim());
 }

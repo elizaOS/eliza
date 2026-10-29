@@ -184,9 +184,13 @@ replaced-key revocation and per-method readiness. A host subclasses
 (App Auth client id, device and product names, Steward app client for native Google,
 admitted deployments and its installed storage names) plus its protected
 `CloudCredentialSlots`. Admit staging only in development builds. Codes, PKCE
-verifiers and Steward sessions stay native; results carry no secret. Run
+verifiers and Steward sessions stay native; results carry no secret. The library's
+minimum SDK is 26. Eliza's Android app hosts it as `ElizaCloudSignInPlugin`
+(`packages/app/platforms/android`, Gradle module `:eliza-auth-cloud`), storing the
+minted key in the secure store's `session.steward_token` that its renderer reads. Run
 `bun run --cwd packages/auth test:native-android` (needs a JDK); it checks the
-policy and the exact plugin methods on a plain JVM, not on a device.
+policy, the exact plugin methods and Eliza's host registration and storage on a
+plain JVM, not on a device.
 
 The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
 (`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a

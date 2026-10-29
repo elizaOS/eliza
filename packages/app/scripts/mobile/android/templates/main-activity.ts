@@ -10,7 +10,6 @@ export function cloudSafeMainActivityJava(
 ) {
   const launcherImports = launcherKiosk
     ? `import android.app.admin.DevicePolicyManager;
-import android.net.Uri;
 import android.util.Log;
 import android.view.KeyEvent;
 
@@ -29,7 +28,7 @@ import androidx.activity.OnBackPressedCallback;
         // are added on every start in registration order and the last one
         // wins, so this one, registered after super.onCreate, runs instead of
         // the Capacitor App plugin's. That plugin would minimize the launcher
-        // task or walk WebView history back through Cloud/OAuth pages. Give
+        // task or walk WebView history back. Give
         // the page only its back intent, so an open sheet closes, and
         // otherwise stay on the launcher root.
         getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
@@ -56,33 +55,12 @@ import androidx.activity.OnBackPressedCallback;
         }
     }
 
-    private boolean isCloudAuthCallback(Intent intent) {
-        Uri data = intent == null ? null : intent.getData();
-        return data != null
-            && "elizaos".equalsIgnoreCase(data.getScheme())
-            && "auth".equalsIgnoreCase(data.getHost())
-            && "/callback".equals(data.getPath());
-    }
-
-    private void restoreBundledRendererAfterAuthCallback(Intent intent) {
-        if (!isCloudAuthCallback(intent)
-                || rendererGone
-                || getBridge() == null
-                || getBridge().getWebView() == null) {
-            return;
-        }
-        WebView webView = getBridge().getWebView();
-        String localUrl = getBridge().getLocalUrl();
-        webView.post(() -> webView.loadUrl(localUrl));
-    }
-
     @Override
     public void onResume() {
         super.onResume();
         keepScreenAwake();
-        // Only a managed-device owner may contain the launcher task. Android's
-        // unmanaged screen-pinning mode blocks the secure browser that Google
-        // OAuth requires, preventing the callback from ever reaching the app.
+        // Only a managed-device owner may contain the launcher task; Android's
+        // unmanaged screen-pinning mode stays off.
         enterManagedLockTaskIfPermitted();
     }
 
@@ -181,6 +159,8 @@ ${launcherConstants}
         DeepLinkBufferPlugin.captureIntent(this, getIntent());
         registerPlugin(DeepLinkBufferPlugin.class);
         registerPlugin(ElizaSecureCredentialsPlugin.class);
+        // Native Eliza Cloud sign-in (email code, SMS code, native Google).
+        registerPlugin(ElizaCloudSignInPlugin.class);
         registerPlugin(ElizaPlayExportPlugin.class);
         registerPlugin(ElizaPlayVoicePlugin.class);
         registerPlugin(ElizaPlaySettingsPlugin.class);
@@ -231,7 +211,6 @@ ${navigationBarPolicy}
     protected void onNewIntent(Intent intent) {
         DeepLinkBufferPlugin.captureIntent(this, intent);
         super.onNewIntent(intent);
-${launcherKiosk ? "        restoreBundledRendererAfterAuthCallback(intent);" : ""}
     }
 ${launcherMethods}
 ${resumeHandler}

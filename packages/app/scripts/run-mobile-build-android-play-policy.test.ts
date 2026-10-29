@@ -12,7 +12,8 @@ import {
   ANDROID_CLOUD_STRIPPED_PERMISSIONS,
   ANDROID_CLOUD_STRIPPED_RESOURCE_FILES,
   ANDROID_CLOUD_STRIPPED_RESOURCE_VALUES,
-  ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS,
+  ANDROID_NATIVE_SIGN_IN_COMPONENTS,
+  ANDROID_NATIVE_SIGN_IN_METADATA_NAMES,
   ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS,
   ANDROID_PLAY_ALLOWED_COMPONENTS,
   ANDROID_PLAY_ALLOWED_NATIVE_LIBRARIES,
@@ -210,9 +211,8 @@ describe("Android Play manifest policy", () => {
     ).toContain("@capacitor/push-notifications");
   });
 
-  it("allows only canonical hosted-auth navigation in launcher config", () => {
+  it("packages no WebView navigation allowance: Cloud sign-in is native", () => {
     expect(resolveAndroidCloudCapacitorConfigPolicy({})).toEqual({
-      allowInAppAuthNavigation: false,
       launcherKiosk: false,
       webViewDebugging: false,
     });
@@ -222,38 +222,85 @@ describe("Android Play manifest policy", () => {
         ELIZA_WEBVIEW_DEBUG: "1",
       }),
     ).toEqual({
-      allowInAppAuthNavigation: true,
       launcherKiosk: true,
       webViewDebugging: true,
     });
     const launcher = sanitizeAndroidCloudCapacitorConfig(
-      { plugins: {}, android: {} },
-      { allowInAppAuthNavigation: true, launcherKiosk: true },
+      {
+        plugins: {},
+        android: {},
+        server: { allowNavigation: ["cloud.eliza.app"] },
+      },
+      { launcherKiosk: true },
     );
     const play = sanitizeAndroidCloudCapacitorConfig({
       plugins: {},
       android: {},
     });
 
-    expect(launcher.server.allowNavigation).toEqual([
-      ...ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS,
-    ]);
-    expect(play.server.allowNavigation).toBeUndefined();
+    expect(launcher.server).toEqual({ androidScheme: "https" });
+    expect(play.server).toEqual({ androidScheme: "https" });
   });
 
-  it("keeps the unused native Google identity stack out of Android source", () => {
+  it("takes native Google only from the shared Cloud sign-in library", () => {
     const androidSourceDir = new URL(
       "../platforms/android/app/src/main/java/ai/elizaos/app/",
       import.meta.url,
     );
+    const settings = fs.readFileSync(
+      new URL("../platforms/android/settings.gradle", import.meta.url),
+      "utf8",
+    );
+    const library = fs.readFileSync(
+      new URL("../../auth/android/build.gradle", import.meta.url),
+      "utf8",
+    );
 
+    // The app declares the library, never the identity stack itself.
     expect(APP_BUILD_GRADLE).not.toMatch(/androidx\.credentials|googleid/);
-    expect(
-      fs.readFileSync(new URL("MainActivity.java", androidSourceDir), "utf8"),
-    ).not.toContain("GoogleIdentityPlugin");
+    expect(APP_BUILD_GRADLE).toContain(
+      "implementation project(':eliza-auth-cloud')",
+    );
+    expect(settings).toContain("include ':eliza-auth-cloud'");
+    expect(settings).toContain(
+      "project(':eliza-auth-cloud').projectDir = new File(settingsDir, '../../../auth/android')",
+    );
+    expect(library).toContain("androidx.credentials:credentials:");
+    // The library must not raise the app's minimum SDK.
+    const appMinSdk = Number(
+      /minSdkVersion\s*=\s*(\d+)/.exec(VARIABLES_GRADLE)?.[1],
+    );
+    const libraryMinSdk = Number(/minSdk (\d+)/.exec(library)?.[1]);
+    expect(libraryMinSdk).toBeLessThanOrEqual(appMinSdk);
+
+    const mainActivity = fs.readFileSync(
+      new URL("MainActivity.java", androidSourceDir),
+      "utf8",
+    );
+    expect(mainActivity).toContain(
+      "registerPlugin(ElizaCloudSignInPlugin.class);",
+    );
+    expect(mainActivity).not.toContain("GoogleIdentityPlugin");
     expect(
       fs.existsSync(new URL("GoogleIdentityPlugin.java", androidSourceDir)),
     ).toBe(false);
+  });
+
+  it("admits exactly the manifest entries the native sign-in libraries declare", () => {
+    const policy = createAndroidPlayManifestPolicy();
+    const firebaseIndependent = createAndroidPlayManifestPolicy({
+      firebaseIndependent: true,
+    });
+    for (const allowed of [policy, firebaseIndependent]) {
+      for (const component of ANDROID_NATIVE_SIGN_IN_COMPONENTS)
+        expect(allowed.components).toContain(component);
+      for (const metadata of ANDROID_NATIVE_SIGN_IN_METADATA_NAMES)
+        expect(allowed.metadataNames).toContain(metadata);
+    }
+    // No new permission, intent action or query arrives with sign-in.
+    expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
+      "com.google.android.gms.auth.api.signin.permission.REVOCATION_NOTIFICATION",
+    );
   });
 
   it("stamps only generated Cloud projects for direct Gradle and IDE use", () => {
@@ -382,11 +429,20 @@ describe("Android Play manifest policy", () => {
     expect(ANDROID_PLAY_ALLOWED_PERMISSIONS).not.toContain(
       "android.permission.USE_FINGERPRINT",
     );
-    expect(ANDROID_PLAY_ALLOWED_COMPONENTS).not.toEqual(
-      expect.arrayContaining([
-        expect.stringContaining("androidx.credentials"),
-        expect.stringContaining("com.google.android.gms"),
-      ]),
+    // Credential Manager and Google Identity components arrive only with the
+    // shared native Cloud sign-in library, and only the ones it declares.
+    expect(
+      ANDROID_PLAY_ALLOWED_COMPONENTS.filter(
+        (component) =>
+          component.includes("androidx.credentials") ||
+          component.includes("com.google.android.gms.auth"),
+      ),
+    ).toEqual(
+      ANDROID_NATIVE_SIGN_IN_COMPONENTS.filter(
+        (component) =>
+          component.includes("androidx.credentials") ||
+          component.includes("com.google.android.gms.auth"),
+      ),
     );
     expect(ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES).toEqual([
       "agent",
