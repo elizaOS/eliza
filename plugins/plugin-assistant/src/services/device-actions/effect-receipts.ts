@@ -11,7 +11,11 @@ import {
 import type { ApprovalEnqueueResult } from "../approval/types.ts";
 import { type DeviceOperation, validateDevicePayload } from "./contract.ts";
 import { namedTargetValidators } from "./foreground-review-contract.ts";
-import { isPhoneDial, validatePhoneDialResult } from "./phone-dial-contract.ts";
+import {
+  isPhoneDial,
+  phoneDialReceiptOutcome,
+  validatePhoneDialResult,
+} from "./phone-dial-contract.ts";
 import {
   isSmsSend,
   smsBindingText,
@@ -83,7 +87,14 @@ export function deviceActionEffectReceipts(
     }
     if (isPhoneDial(operation)) {
       // Applied means only that the dial screen opened with the reviewed number.
-      validatePhoneDialResult(operation, provider.result);
+      // A stored result that names no opened dial screen never becomes an
+      // applied handoff receipt, whatever outcome the stored receipt carries.
+      if (
+        phoneDialReceiptOutcome(
+          validatePhoneDialResult(operation, provider.result),
+        ) !== "applied"
+      )
+        throw new Error("Dial receipt outcome conflicts with native evidence");
       return [
         normalizeEffectReceipt({
           ...base,

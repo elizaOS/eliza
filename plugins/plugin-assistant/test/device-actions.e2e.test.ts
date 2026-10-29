@@ -1158,6 +1158,24 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       );
       expect(receipts).toHaveLength(1);
       expect(receipts[0].operation).toBe("device.phone.dial_handoff");
+      // A stored dial result naming no opened dial screen is never replayed
+      // as an applied handoff, even under an applied provider outcome.
+      const stored = replayed.request.execution!;
+      expect(() =>
+        deviceActionEffectReceipts({
+          ...replayed,
+          request: {
+            ...replayed.request,
+            execution: {
+              ...stored,
+              providerReceipt: {
+                ...stored.providerReceipt!,
+                result: { ...result, status: "cancelled", handler: null },
+              },
+            },
+          },
+        }),
+      ).toThrow();
     }
     {
       // Real authenticated HTTP, durable SQL claims and immutable typed SMS receipts.
