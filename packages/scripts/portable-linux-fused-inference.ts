@@ -40,7 +40,7 @@ export const PORTABLE_LINUX_FUSED_BUILD = Object.freeze({
   architecture: "amd64",
   backend: "vulkan",
   builderVersion: 1,
-  forkCommit: "d09e410b9e820bdf106216b8ad0996c869176894",
+  forkCommit: "6973dc6c705f63b9fbc018787799d43cb75ff786",
   forkUrl: "https://github.com/elizaOS/llama.cpp.git",
   maxGlibc: "2.38",
   minimumOutputFreeBytes: 256 * MIB,
