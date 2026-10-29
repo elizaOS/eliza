@@ -25,12 +25,20 @@ import java.util.List;
  * context and lock under the same owner: microphone capture keeps running while
  * a synthesis stream holds the speech lock (full duplex), and output
  * cancellation never fences input.
+ *
+ * <p>Speech output speaks English by default. A bundle with more speech
+ * languages ({@link VoiceBundleAssets.Installation#voices}, for example
+ * Castilian Spanish) loads each one on first use into its own voice slot of the
+ * same context; the language overloads of {@link #synthesize} and
+ * {@link #synthesizeStream} pick it, and {@link #speechLanguages} lists them.
  */
 public final class InferenceSession implements AutoCloseable {
     private final File bundleDir;
     private final File voiceModel;
     private final File lexicon;
     private final File espeakDir;
+    private final java.util.Map<String, File> otherVoices;
+    private final java.util.Map<String, ParadeeVoice> loadedOther = new java.util.concurrent.ConcurrentHashMap<>();
     private final AtomicLong generation = new AtomicLong();
     private volatile ParadeeVoice voice;
     private volatile NativeAsr asr;
@@ -46,19 +54,42 @@ public final class InferenceSession implements AutoCloseable {
     private final Object clientsLock = new Object();
     private int holders; // Guarded by clientsLock: clients holding the models since their last release.
 
+    /** The default bundle layout: English Paradee-8M v1.2 and, when present, Spanish Delibes-8M-esES. */
+    public static final String DEFAULT_MODEL = "tts/paradee/paradee-8m-v1_2.gguf";
+    public static final String DEFAULT_SPANISH_MODEL = "tts/paradee/delibes-8m-eses.gguf";
+
     public InferenceSession(File bundleDir) throws IOException {
-        this(bundleDir, new File(bundleDir, "tts/paradee/paradee-8m-v1_1.gguf"),
+        this(bundleDir, new File(bundleDir, DEFAULT_MODEL),
                 new File(bundleDir, "tts/paradee/misaki-en-us.lex"),
                 new File(bundleDir, "tts/paradee/espeak-ng-data").isDirectory()
-                        ? new File(bundleDir, "tts/paradee") : null);
+                        ? new File(bundleDir, "tts/paradee") : null,
+                new File(bundleDir, DEFAULT_SPANISH_MODEL).isFile()
+                        && new File(bundleDir, "tts/paradee/espeak-ng-data/es_dict").isFile()
+                        ? java.util.Collections.singletonMap("es", new File(bundleDir, DEFAULT_SPANISH_MODEL))
+                        : java.util.Collections.emptyMap());
     }
 
     InferenceSession(File bundleDir, File voiceModel, File lexicon, File espeakDir) throws IOException {
+        this(bundleDir, voiceModel, lexicon, espeakDir, java.util.Collections.emptyMap());
+    }
+
+    InferenceSession(File bundleDir, File voiceModel, File lexicon, File espeakDir,
+            java.util.Map<String, File> otherVoices) throws IOException {
         this.bundleDir = bundleDir.getCanonicalFile();
         if (!this.bundleDir.isDirectory()) throw new IOException("Missing inference bundle");
         this.voiceModel = voiceModel;
         this.lexicon = lexicon;
         this.espeakDir = espeakDir;
+        this.otherVoices = new java.util.TreeMap<>(otherVoices);
+        this.otherVoices.remove("en");
+    }
+
+    /** The languages speech output can speak: "en" first, then the bundle's other voices. */
+    public java.util.List<String> speechLanguages() {
+        java.util.List<String> out = new ArrayList<>();
+        out.add("en");
+        out.addAll(otherVoices.keySet());
+        return out;
     }
 
     /**
@@ -125,6 +156,21 @@ public final class InferenceSession implements AutoCloseable {
         if (voice == null) voice = new ParadeeVoice(voiceModel, lexicon, espeakDir, ctx);
         checkGeneration(admitted);
         return voice;
+    }
+
+    /** The voice for `language` (null or "en": the English voice); loads it into its slot on first use. */
+    private ParadeeVoice voice(Admission admitted, String language) throws IOException {
+        if (language == null || "en".equals(language)) return voice(admitted);
+        File model = otherVoices.get(language);
+        if (model == null) throw new IllegalArgumentException("No " + language + " speech voice in this bundle");
+        long ctx = acquire(admitted);
+        ParadeeVoice other = loadedOther.get(language);
+        if (other == null) {
+            other = new ParadeeVoice(model, null, espeakDir, language, ctx);
+            loadedOther.put(language, other);
+        }
+        checkGeneration(admitted);
+        return other;
     }
 
     private NativeAsr asr(Admission admitted) throws IOException {
@@ -274,14 +320,19 @@ public final class InferenceSession implements AutoCloseable {
     }
 
     public ParadeeVoice.Audio synthesize(String text, float speed) throws IOException {
-        return synthesize(new Admission(null), text, speed);
+        return synthesize(new Admission(null), text, speed, null);
     }
 
-    private ParadeeVoice.Audio synthesize(Admission admitted, String text, float speed) throws IOException {
+    /** Speaks `text` in `language` (one of {@link #speechLanguages}). */
+    public ParadeeVoice.Audio synthesize(String text, float speed, String language) throws IOException {
+        return synthesize(new Admission(null), text, speed, language);
+    }
+
+    private ParadeeVoice.Audio synthesize(Admission admitted, String text, float speed, String language) throws IOException {
         synchronized (this) {
             begin(admitted);
             try {
-                ParadeeVoice.Audio result = voice(admitted).synthesize(text, speed);
+                ParadeeVoice.Audio result = voice(admitted, language).synthesize(text, speed);
                 checkGeneration(admitted);
                 return result;
             } finally {
@@ -291,14 +342,20 @@ public final class InferenceSession implements AutoCloseable {
     }
 
     public void synthesizeStream(String text, float speed, ParadeeVoice.PcmSink sink) throws IOException {
-        synthesizeStream(new Admission(null), text, speed, sink);
+        synthesizeStream(new Admission(null), text, speed, null, sink);
     }
 
-    private void synthesizeStream(Admission admitted, String text, float speed, ParadeeVoice.PcmSink sink) throws IOException {
+    /** Streams `text` spoken in `language` (one of {@link #speechLanguages}). */
+    public void synthesizeStream(String text, float speed, String language, ParadeeVoice.PcmSink sink) throws IOException {
+        synthesizeStream(new Admission(null), text, speed, language, sink);
+    }
+
+    private void synthesizeStream(Admission admitted, String text, float speed, String language,
+            ParadeeVoice.PcmSink sink) throws IOException {
         synchronized (this) {
             begin(admitted);
             try {
-                ParadeeVoice backend = voice(admitted);
+                ParadeeVoice backend = voice(admitted, language);
                 streamingThread = Thread.currentThread();
                 try {
                     backend.synthesizeStream(text, speed, sink);
@@ -430,6 +487,7 @@ public final class InferenceSession implements AutoCloseable {
         ParadeeVoice currentVoice = voice;
         NativeAsr currentAsr = asr;
         if (currentVoice != null) currentVoice.cancel();
+        for (ParadeeVoice other : loadedOther.values()) other.cancel();
         if (currentAsr != null) currentAsr.cancel();
     }
 
@@ -452,6 +510,8 @@ public final class InferenceSession implements AutoCloseable {
     private void freeModels() {
         for (TextStream stream : new ArrayList<>(textStreams)) stream.close();
         if (voice != null) { voice.close(); voice = null; }
+        for (ParadeeVoice other : loadedOther.values()) other.close();
+        loadedOther.clear();
         if (asr != null) { asr.close(); asr = null; }
         if (context != 0L) {
             VoiceNative.nativeContextDestroy(context);
@@ -486,12 +546,23 @@ public final class InferenceSession implements AutoCloseable {
         public int speechSampleRate() throws IOException { return InferenceSession.this.speechSampleRate(new Admission(this)); }
 
         public ParadeeVoice.Audio synthesize(String text, float speed) throws IOException {
-            return InferenceSession.this.synthesize(new Admission(this), text, speed);
+            return InferenceSession.this.synthesize(new Admission(this), text, speed, null);
+        }
+
+        public ParadeeVoice.Audio synthesize(String text, float speed, String language) throws IOException {
+            return InferenceSession.this.synthesize(new Admission(this), text, speed, language);
         }
 
         public void synthesizeStream(String text, float speed, ParadeeVoice.PcmSink sink) throws IOException {
-            InferenceSession.this.synthesizeStream(new Admission(this), text, speed, sink);
+            InferenceSession.this.synthesizeStream(new Admission(this), text, speed, null, sink);
         }
+
+        public void synthesizeStream(String text, float speed, String language, ParadeeVoice.PcmSink sink)
+                throws IOException {
+            InferenceSession.this.synthesizeStream(new Admission(this), text, speed, language, sink);
+        }
+
+        public java.util.List<String> speechLanguages() { return InferenceSession.this.speechLanguages(); }
 
         public String transcribe(float[] pcm16kMono) throws IOException {
             return InferenceSession.this.transcribe(new Admission(this), pcm16kMono);
@@ -517,6 +588,7 @@ public final class InferenceSession implements AutoCloseable {
                 ParadeeVoice currentVoice = voice;
                 NativeAsr currentAsr = asr;
                 if (currentVoice != null) currentVoice.cancel();
+                for (ParadeeVoice other : loadedOther.values()) other.cancel();
                 if (currentAsr != null) currentAsr.cancel();
             }
         }
