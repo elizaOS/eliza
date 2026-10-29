@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { PHONE_SCHEDULE_ADMISSION_WINDOW_MS } from '@elizaos/contracts/phone-workflow';
+import { SCHEDULED_OCCURRENCE_WINDOW_MS } from '@elizaos/core';
 import {
   DIGEST_MISSED_TEXT,
   DIGEST_RUN_WINDOW_MS,
@@ -53,15 +55,18 @@ function result(overrides: Partial<DigestResult> & { status: string; at?: number
 
 describe('occurrence policy shared by admission and clients', () => {
   test('one run window decides missed occurrences', () => {
-    expect(DIGEST_RUN_WINDOW_MS).toBe(120000);
-    expect(digestOccurrenceMissed(T0, T0 + 120000)).toBe(false);
-    expect(digestOccurrenceMissed(T0, T0 + 120001)).toBe(true);
+    expect(DIGEST_RUN_WINDOW_MS).toBe(30 * 60_000);
+    expect(DIGEST_RUN_WINDOW_MS).toBe(PHONE_SCHEDULE_ADMISSION_WINDOW_MS);
+    expect(DIGEST_RUN_WINDOW_MS).toBe(SCHEDULED_OCCURRENCE_WINDOW_MS);
+    expect(digestOccurrenceMissed(T0, T0 + 10 * 60_000)).toBe(false);
+    expect(digestOccurrenceMissed(T0, T0 + 30 * 60_000)).toBe(false);
+    expect(digestOccurrenceMissed(T0, T0 + 30 * 60_000 + 1)).toBe(true);
     // The agent's admission uses this same policy (no copied window or texts).
     const admission = readFileSync(join(pluginRoot, 'src/services/hosted-digest.ts'), 'utf8');
     expect(admission).toContain("from './hosted-digest-policy'");
     expect(admission).toContain('digestOccurrenceMissed(scheduledAt, now)');
     expect(admission).not.toMatch(
-      /120000|scheduled time was missed|Source expired\. This schedule/
+      /120000|1800000|30 \* 60_000|scheduled time was missed|Source expired\. This schedule/
     );
     expect(digestSourceState({ revoked: true, expiresAt: iso(T0 + 1) }, T0)).toBe('revoked');
     expect(digestSourceState({ revoked: false, expiresAt: iso(T0) }, T0)).toBe('expired');
