@@ -21,6 +21,8 @@
  * treating each other's in-flight messages as abandoned; a drain that
  * outlives its lease can see one message handled twice, which the handler
  * must tolerate (the Stripe consumer re-checks every downstream write).
+ * The processing list and the lease need atomic list moves and SET NX, so a
+ * backend without them (Cloudflare KV) keeps the plain pop-then-settle drain.
  *
  * Backed by the same shared `cache` client, so it follows the same
  * adapter selection (Upstash REST in cloud, native Redis or embedded
@@ -140,10 +142,17 @@ async function acquireLease(queueKey: string, token: string, leaseMs: number): P
   }
 }
 
+// A failed release must not replace the drain result; the lease expires on its own.
 async function releaseLease(queueKey: string, token: string): Promise<void> {
   const key = leaseKey(queueKey);
-  if ((await cache.get<string>(key)) === token) {
-    await cache.del(key);
+  try {
+    if ((await cache.get<string>(key)) === token) {
+      await cache.del(key);
+    }
+  } catch (error) {
+    logger.warn(`[Queue] Could not release the drain lease of ${queueKey}; it expires on its own`, {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 }
 
@@ -175,21 +184,28 @@ export async function drain<T>(
     skipped: false,
   };
 
+  const run: DrainRun<T> = {
+    max,
+    budgetMs,
+    maxAttempts,
+    retryBaseDelayMs,
+    retryMaxDelayMs,
+    start,
+    durable: cache.supportsAtomicOperations(),
+    onDeadLetter: options.onDeadLetter,
+  };
+  if (!run.durable) {
+    await drainClaimed(queueKey, handler, stats, run);
+    return stats;
+  }
+
   const leaseToken = randomUUID();
   if (!(await acquireLease(queueKey, leaseToken, leaseMs))) {
     logger.info(`[Queue] Drain of ${queueKey} skipped; another drain holds the lease`);
     return { ...stats, skipped: true };
   }
   try {
-    await drainClaimed(queueKey, handler, stats, {
-      max,
-      budgetMs,
-      maxAttempts,
-      retryBaseDelayMs,
-      retryMaxDelayMs,
-      start,
-      onDeadLetter: options.onDeadLetter,
-    });
+    await drainClaimed(queueKey, handler, stats, run);
   } finally {
     await releaseLease(queueKey, leaseToken);
   }
@@ -203,6 +219,8 @@ interface DrainRun<T> {
   retryBaseDelayMs: number;
   retryMaxDelayMs: number;
   start: number;
+  /** Claim onto the processing list and settle after the write-back; false on non-atomic backends. */
+  durable: boolean;
   onDeadLetter: DrainOptions<T>["onDeadLetter"];
 }
 
@@ -212,7 +230,12 @@ async function drainClaimed<T>(
   stats: DrainStats,
   run: DrainRun<T>,
 ): Promise<void> {
-  const { max, budgetMs, maxAttempts, retryBaseDelayMs, retryMaxDelayMs, start } = run;
+  const { max, budgetMs, maxAttempts, retryBaseDelayMs, retryMaxDelayMs, start, durable } = run;
+  const claim = () =>
+    durable ? cache.moveQueueTail(queueKey, processingKey(queueKey)) : cache.popQueueTail(queueKey);
+  const settle = async (raw: string) => {
+    if (durable) await settleRequired(queueKey, raw);
+  };
   // Serialized envelopes this drain pushed back; popping one means the queue wrapped.
   const requeued = new Set<string>();
   const deadLetter = async (envelope: Envelope<T>) => {
@@ -264,7 +287,7 @@ async function drainClaimed<T>(
 
   // Messages an earlier drain claimed but never settled: it died mid-handler or
   // lost Redis before the write-back. Each one counts as a failed attempt.
-  const abandoned = await cache.listQueue(processingKey(queueKey));
+  const abandoned = durable ? await cache.listQueue(processingKey(queueKey)) : [];
   for (const raw of abandoned ?? []) {
     const envelope = parse(raw);
     if (envelope) {
@@ -283,23 +306,23 @@ async function drainClaimed<T>(
       break;
     }
 
-    const raw = await cache.moveQueueTail(queueKey, processingKey(queueKey));
+    const raw = await claim();
     if (raw === null) break;
     if (requeued.has(raw)) {
       await pushRawRequired(queueKey, raw);
-      await settleRequired(queueKey, raw);
+      await settle(raw);
       break;
     }
 
     const envelope = parse(raw);
     if (!envelope) {
-      await settleRequired(queueKey, raw);
+      await settle(raw);
       continue;
     }
 
     if (typeof envelope.notBefore === "number" && envelope.notBefore > Date.now()) {
       await pushRawRequired(queueKey, raw);
-      await settleRequired(queueKey, raw);
+      await settle(raw);
       requeued.add(raw);
       stats.deferred++;
       continue;
@@ -334,7 +357,7 @@ async function drainClaimed<T>(
         await retryOrDeadLetter(envelope);
         break;
     }
-    await settleRequired(queueKey, raw);
+    await settle(raw);
   }
 }
 
