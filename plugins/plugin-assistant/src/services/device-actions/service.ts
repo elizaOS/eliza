@@ -3236,7 +3236,7 @@ export async function requestLocalCalendarAgenda(
     token: typeof CALENDAR_AVAILABILITY_HOST;
     request: ReviewedAvailabilityRequest;
   },
-) {
+): Promise<ActionResult | undefined> {
   const unavailable = (
     reason:
       | "turn_unavailable"
