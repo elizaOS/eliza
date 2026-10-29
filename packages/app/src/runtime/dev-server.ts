@@ -72,6 +72,7 @@ import {
   logRoutineDevMemoryHeartbeat,
 } from "./dev-memory-heartbeat.js";
 import { warnStalePluginDists } from "./dev-plugin-dist-staleness.js";
+import { installProductCharacterHost } from "./install-product-character-host.js";
 import { startNativeManagedGoogleHostForBoot } from "./native-managed-google-host.js";
 import { resolveRuntimeBootstrapFailure } from "./runtime-bootstrap-policy.js";
 import {
@@ -643,6 +644,7 @@ async function main() {
     );
   }
   syncResolvedApiPort(process.env, actualPort);
+  await installProductCharacterHost();
   nativeManagedGoogleHost = await startNativeManagedGoogleHostForBoot(
     process.env,
     (message) => logger.warn(message),
