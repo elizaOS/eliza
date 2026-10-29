@@ -7060,6 +7060,28 @@ function resolveRejectedCallsSupersededBy(
     result.effectReceipts?.some((receipt) => receipt.outcome === "failed")
   )
     return;
+  const completedTargets = Object.entries(call.params ?? {}).flatMap(
+    ([name, value]) =>
+      TARGET_PARAMETER_KEY_PATTERN.test(name)
+        ? [value]
+        : isObjectRecord(value)
+          ? Object.entries(value)
+              .filter(([field]) => TARGET_PARAMETER_KEY_PATTERN.test(field))
+              .map(([, value]) => value)
+          : [],
+  );
+  // Related retries often restate the same payload under another target
+  // field (body → content with added context). Exact equality alone would
+  // leave a typed NOTES_CREATE refusal unresolved after that success, and
+  // failure authority would replace the verified finish reply. Only target
+  // field values count: an old title quoted in a description is not that title.
+  const completedText = correlationLeafStrings(completedTargets).join(" ");
+  const completedHaystack = {
+    text: normalizeCorrelationText(completedText),
+    terms: new Set(
+      correlationContentTerms(completedText).flatMap(inflectionTermKeys),
+    ),
+  };
   for (const [key, rejected] of unresolvedByOperation) {
     if (!isRetryablePreExecutionRejection(rejected.result)) continue;
     const failedCall = rejectedRetryCall(rejected);
@@ -7117,30 +7139,6 @@ function resolveRejectedCallsSupersededBy(
             }))
         : [];
     });
-    const completedTargets = Object.entries(call.params ?? {}).flatMap(
-      ([name, value]) =>
-        TARGET_PARAMETER_KEY_PATTERN.test(name)
-          ? [value]
-          : isObjectRecord(value)
-            ? Object.entries(value)
-                .filter(([field]) => TARGET_PARAMETER_KEY_PATTERN.test(field))
-                .map(([, value]) => value)
-            : [],
-    );
-    // Related retries often restate the same payload under another target
-    // field (body → content with added context). Exact equality alone would
-    // leave a typed NOTES_CREATE refusal unresolved after that success, and
-    // failure authority would replace the verified finish reply. Coverage
-    // matches the malformed-call path that already works for umbrella NOTES.
-    const completedLeaves = correlationLeafStrings(call.params ?? {});
-    const completedHaystack = {
-      text: normalizeCorrelationText(completedLeaves.join(" ")),
-      terms: new Set(
-        correlationContentTerms(completedLeaves.join(" ")).flatMap(
-          inflectionTermKeys,
-        ),
-      ),
-    };
     if (
       targets.some((target) => {
         let current: unknown = call.params;

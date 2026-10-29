@@ -2713,6 +2713,96 @@ describe("canonical nonretryable receipt repair", () => {
         expect(plans).toBe(2);
       },
     );
+    it("clears a NOTES_CREATE body refusal after a retry restates it under content", async () => {
+      const body = "Buy oat milk and call the dentist";
+      const saved = "Saved your note.";
+      const created = {
+        ...receipt,
+        receiptId: "created-note",
+        operation: "notes.create",
+        resource: { kind: "note", id: "note-1", version: "1" },
+      };
+      let plans = 0,
+        attempts = 0;
+      const result = await runPlannerLoop({
+        context: {
+          id: "notes-body-content-retry",
+          events: [
+            {
+              id: "stage1-declared-intents",
+              type: "instruction",
+              content: "- Save a note",
+            },
+          ],
+        },
+        codingMode: false,
+        runtime: {
+          useModel: async () =>
+            ++plans <= 2
+              ? {
+                  text: "",
+                  toolCalls: [
+                    {
+                      id: `note-${plans}`,
+                      name: "NOTES_CREATE",
+                      arguments: {
+                        ...(plans === 1
+                          ? { body }
+                          : { content: `Conversation context QA\n${body}` }),
+                        eliza_turn_scope: "final",
+                      },
+                    },
+                  ],
+                }
+              : {
+                  text: "",
+                  toolCalls: [
+                    {
+                      id: "note-reply",
+                      name: "REPLY",
+                      arguments: { text: saved, eliza_turn_scope: "final" },
+                    },
+                  ],
+                },
+        },
+        executeToolCall: async () =>
+          ++attempts === 1
+            ? {
+                ...refused,
+                data: {
+                  ...refused.data,
+                  actionName: "NOTES_CREATE",
+                  parameterErrors: ["content is required"],
+                  invalidParameterNames: ["content"],
+                },
+              }
+            : {
+                success: true,
+                turnComplete: false,
+                modelReplyRequired: true,
+                transcriptVisibility: "internal",
+                effectReceipts: [created],
+              },
+        evaluate: async () => ({
+          decision: "FINISH",
+          success: true,
+          thought: "Fixture committed note.",
+          messageToUser: saved,
+          replyEffectStatus: "applied",
+          effectReceiptIds: [created.receiptId],
+          requestFullyCovered: true,
+          outcomeCoverage: [
+            {
+              intentId: "intent:1",
+              status: "completed",
+              evidenceStepIds: ["step:2"],
+            },
+          ],
+        }),
+      });
+      expect(attempts).toBe(2);
+      expect(result.finalMessage).toBe(saved);
+    });
     it("does not clear a create refusal for a different subaction of the same umbrella", async () => {
       let plans = 0,
         attempts = 0;
@@ -3034,12 +3124,14 @@ describe("canonical nonretryable receipt repair", () => {
 
   describe("Core-emitted rejected nested container targets", () => {
     it.each([
-      [false, false],
-      [true, false],
-      [true, true],
-    ])(
-      "preserves nested title identity while repairing only invalid sourceNote (different=%s, oldTitleElsewhere=%s)",
-      async (different, oldTitleElsewhere) => {
+      ["Title A", false],
+      ["Title B", false],
+      ["Title B", true],
+      [undefined, true],
+    ] as const)(
+      "preserves nested title identity while repairing only invalid sourceNote (retryTitle=%s, oldTitleElsewhere=%s)",
+      async (retryTitle, oldTitleElsewhere) => {
+        const different = retryTitle !== "Title A";
         const handler = vi.fn(async () => ({ success: true }));
         const action = {
           name: "CALENDAR_CREATE_EVENT",
@@ -3124,7 +3216,7 @@ describe("canonical nonretryable receipt repair", () => {
           operation: "calendar.event.create",
           resource: {
             kind: "calendar.event",
-            id: different ? "event-B" : "event-A",
+            id: retryTitle === "Title B" ? "event-B" : "event-A",
             version: "1",
           },
         };
@@ -3155,7 +3247,7 @@ describe("canonical nonretryable receipt repair", () => {
                             : {
                                 action: "create_event",
                                 details: {
-                                  title: different ? "Title B" : "Title A",
+                                  ...(retryTitle ? { title: retryTitle } : {}),
                                   ...(oldTitleElsewhere
                                     ? { description: "Copied from Title A" }
                                     : {}),
