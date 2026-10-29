@@ -1,5 +1,5 @@
 /**
- * Release gate for the product voice stack: Phonon-2 ASR and Paradee-8M v1.1
+ * Release gate for the product voice stack: Phonon-2 ASR and Paradee-8M v1.2
  * TTS on libelizainference (the elizaOS llama.cpp fork). There is no other
  * product ASR or TTS model.
  *
@@ -8,13 +8,21 @@
  *   - pin the converted GGUF by sha256 and byte size, equal to
  *     `plugins/plugin-local-inference/native/android/inputs.json`;
  *   - name the Hugging Face source repository inputs.json pins
- *     (FermionResearch/Phonon-2, sahilmahendrakar/Paradee-8M-v1.1) at an
+ *     (FermionResearch/Phonon-2, sahilmahendrakar/Paradee-8M-v1.2) at an
  *     immutable 40-character revision;
  *   - pin every source file by sha256 and byte size, including the model
  *     weights the converter reads;
  *   - agree with the fork's `tools/parakeet/pins.json` and
  *     `tools/paradee/pins.json` when the llama.cpp submodule is checked out
  *     (`--require-fork-pins` makes a missing checkout an error).
+ *
+ * It also holds back unreleased voices. An inputs.json pin with an `enabled`
+ * field (the Castilian Spanish voice) is bundled only when it is true; when it
+ * is false the catalog must not list it. A bundled pin whose release status,
+ * in inputs.json or in its fork pins section when the submodule is checked
+ * out, says PENDING or BLOCKED fails unless the pin carries a recorded owner
+ * override (`release_override`: the model it names, the decision reference,
+ * and every held status it overrides, for example "human_approval PENDING").
  *
  * Unless `--offline` is passed it then resolves every source file on Hugging
  * Face at the pinned revision without downloading weights: the resolver must
@@ -81,10 +89,27 @@ interface Pin {
   sha256: string;
   source: string;
   version?: string;
+  /** Present on an opt-in voice; it is bundled only when true. */
+  enabled?: boolean;
+  /** The release's own approval and distribution status, as recorded. */
+  release_status?: string;
+  /** The fork tools/paradee/pins.json section of a Paradee-family voice. */
+  family?: string;
+  /** A recorded owner decision to ship despite held release statuses. */
+  release_override?: ReleaseOverride;
+}
+
+interface ReleaseOverride {
+  /** The release it covers, named in the pin's `source`. */
+  model: string;
+  /** Where the owner decision is recorded. */
+  decision: string;
+  /** The held statuses it overrides, for example "human_approval PENDING". */
+  overrides: string[];
 }
 
 interface ForkPins {
-  model: { repo: string; revision: string };
+  model: { repo: string; revision: string; release_status?: string };
   files: Record<string, { size: number; sha256: string }>;
   /** Phonon-2 pins the GGUF here; Paradee under `gguf.f32`. */
   gguf?: {
@@ -124,7 +149,7 @@ export const COMPONENTS: readonly Component[] = [
     forkPins: (fork) => forkJson<ForkPins>(fork, "tools/parakeet/pins.json"),
   },
   {
-    name: "Paradee-8M v1.1 TTS",
+    name: "Paradee-8M TTS",
     role: "tts",
     input: "paradee",
     requiredSources: [
@@ -133,12 +158,32 @@ export const COMPONENTS: readonly Component[] = [
       "config.json",
       "tokenizer.json",
     ],
-    forkPins: (fork) =>
-      forkJson<Record<string, ForkPins>>(fork, "tools/paradee/pins.json")?.[
-        "v1.1"
-      ] ?? null,
+    // The pins.json section of the release inputs.json names (v1.2).
+    forkPins: (fork) => {
+      const version =
+        readJson<Record<string, Pin & { version?: string }>>(INPUTS_PATH)
+          .paradee?.version;
+      return version
+        ? (forkJson<Record<string, ForkPins>>(
+            fork,
+            "tools/paradee/pins.json",
+          )?.[`v${version}`] ?? null)
+        : null;
+    },
   },
 ];
+
+/** A release status that holds a voice back from the product. */
+const RELEASE_HOLD = /\b(?:PENDING|BLOCKED)\b/;
+
+/** The held statuses a release status names ("human_approval PENDING"). */
+export function heldStatuses(status: string | undefined): string[] {
+  if (!status || !RELEASE_HOLD.test(status)) return [];
+  const named = [
+    ...status.matchAll(/([A-Za-z][A-Za-z0-9_]*)\s+(PENDING|BLOCKED)\b/g),
+  ].map((match) => `${match[1]} ${match[2]}`);
+  return named.length > 0 ? [...new Set(named)] : [status];
+}
 
 /** Newest `mobile-voice` catalog entry (the file lists it first). */
 export function latestMobileVoice(
@@ -197,6 +242,8 @@ export function validateProductVoiceRelease({
       errors.push(`${label} lists retired voice model ${file.id}.`);
     }
   }
+
+  errors.push(...releaseHolds(label, release.files, inputs, fork));
 
   for (const component of COMPONENTS) {
     const matching = release.files.filter(
@@ -280,6 +327,11 @@ export function validateProductVoiceRelease({
       continue;
     }
     forkPinsChecked = true;
+    if (RELEASE_HOLD.test(forkPins.model.release_status ?? "")) {
+      errors.push(
+        `${component.name}: the fork pins say the release is held (${forkPins.model.release_status}).`,
+      );
+    }
     if (
       forkPins.model.repo !== source.repo ||
       forkPins.model.revision !== source.revision
@@ -308,6 +360,71 @@ export function validateProductVoiceRelease({
     }
   }
   return { version: release.version, rows, errors, forkPinsChecked };
+}
+
+/**
+ * A disabled voice stays out of the catalog, and nothing bundled may carry a
+ * PENDING or BLOCKED release status without a recorded owner override.
+ */
+function releaseHolds(
+  label: string,
+  files: readonly CatalogFile[],
+  inputs: Record<string, Pin>,
+  fork: string,
+): string[] {
+  const errors: string[] = [];
+  for (const [key, pin] of Object.entries(inputs)) {
+    if (typeof pin?.path !== "string") continue;
+    const bundled = !("enabled" in pin) || pin.enabled === true;
+    if (!bundled) {
+      for (const file of files) {
+        if (file.path === pin.path) {
+          errors.push(
+            `${label} lists ${file.id} (${pin.path}), the inputs.json ${key} voice, which is disabled (enabled is not true).`,
+          );
+        }
+      }
+      continue;
+    }
+    const forkStatus = pin.family
+      ? forkJson<Record<string, ForkPins>>(fork, "tools/paradee/pins.json")?.[
+          pin.family
+        ]?.model?.release_status
+      : undefined;
+    const held = [
+      ...heldStatuses(pin.release_status).map((status) => ({
+        status,
+        where: "its release status",
+      })),
+      ...heldStatuses(forkStatus).map((status) => ({
+        status,
+        where: "the fork pins",
+      })),
+    ];
+    if (held.length === 0) continue;
+    const override = pin.release_override;
+    const overrideError = !override
+      ? "no release_override records an owner decision"
+      : typeof override.model !== "string" ||
+          !override.model ||
+          !pin.source.includes(override.model)
+        ? `release_override names ${JSON.stringify(override?.model)}, not the release in its source`
+        : typeof override.decision !== "string" || !override.decision.trim()
+          ? "release_override has no decision reference"
+          : null;
+    for (const { status, where } of held) {
+      if (overrideError) {
+        errors.push(
+          `inputs.json ${key} (${pin.path}) is bundled, but held by ${where} (${status}), and ${overrideError}.`,
+        );
+      } else if (!override?.overrides?.includes(status)) {
+        errors.push(
+          `inputs.json ${key} (${pin.path}) is bundled, but held by ${where} (${status}), and its release_override (${override?.decision}) does not override that status.`,
+        );
+      }
+    }
+  }
+  return errors;
 }
 
 function unquote(value: string | null): string | null {
