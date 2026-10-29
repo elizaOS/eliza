@@ -7127,6 +7127,20 @@ function resolveRejectedCallsSupersededBy(
                 .map(([, value]) => value)
             : [],
     );
+    // Related retries often restate the same payload under another target
+    // field (body → content with added context). Exact equality alone would
+    // leave a typed NOTES_CREATE refusal unresolved after that success, and
+    // failure authority would replace the verified finish reply. Coverage
+    // matches the malformed-call path that already works for umbrella NOTES.
+    const completedLeaves = correlationLeafStrings(call.params ?? {});
+    const completedHaystack = {
+      text: normalizeCorrelationText(completedLeaves.join(" ")),
+      terms: new Set(
+        correlationContentTerms(completedLeaves.join(" ")).flatMap(
+          inflectionTermKeys,
+        ),
+      ),
+    };
     if (
       targets.some((target) => {
         let current: unknown = call.params;
@@ -7135,15 +7149,19 @@ function resolveRejectedCallsSupersededBy(
             isObjectRecord(current) && Object.hasOwn(current, field)
               ? current[field]
               : undefined;
-        return (
-          !correlationValuesEqual(target.value, current) &&
-          !(
-            target.mayMove &&
-            completedTargets.some((value) =>
-              correlationValuesEqual(target.value, value),
-            )
+        if (correlationValuesEqual(target.value, current)) return false;
+        if (
+          target.mayMove &&
+          completedTargets.some((value) =>
+            correlationValuesEqual(target.value, value),
           )
-        );
+        ) {
+          return false;
+        }
+        if (parameterValueCoveredBy(target.value, completedHaystack)) {
+          return false;
+        }
+        return true;
       })
     )
       continue;
