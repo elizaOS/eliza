@@ -79,9 +79,18 @@ export {
 export {
   type ConversationRoom,
   type ConversationStopResult,
+  type ConversationTurnContext,
   ConversationTurnController,
+  type ConversationTurnFailure,
   type ConversationTurnObserver,
+  ConversationTurnRefusal,
+  type ConversationTurnRefusalCode,
   type ConversationTurnTransport,
+  findStoppedUserTurn,
+  isConversationTurnRefusal,
+  STOPPED_TURN_CLOCK_SKEW_MS,
+  type StoppedConversationTurn,
+  type StoppedUserTurn,
 } from "./api/conversation-turn-controller.js";
 export { fetchWithCsrf } from "./api/csrf-client.js";
 export type {

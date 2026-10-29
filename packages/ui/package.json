@@ -219,6 +219,12 @@
       "import": "./dist/api/transport.js",
       "default": "./dist/api/transport.js"
     },
+    "./api/conversation-turn-controller": {
+      "eliza-source": "./src/api/conversation-turn-controller.ts",
+      "types": "./dist/api/conversation-turn-controller.d.ts",
+      "import": "./dist/api/conversation-turn-controller.js",
+      "default": "./dist/api/conversation-turn-controller.js"
+    },
     "./installed-apps-launcher": {
       "eliza-source": "./src/components/pages/InstalledAppsLauncher.tsx",
       "types": "./dist/components/pages/InstalledAppsLauncher.d.ts",
