@@ -48,6 +48,25 @@ tooling (`aosp-ota-update.mjs`) and read-only image checks (`verify-launcher-ima
 take each brand's release descriptor and channel; see
 [the release guide](../../android/releases/README.md).
 
+`aosp-ota-update.mjs retain-known-good` archives a verified signed release (its
+compatibility record, signed target-files and fastboot image) into a new, read-only
+directory with a `known-good.json` of their hashes; it refuses placeholders, test-keys or
+dev-keys builds and any input whose bytes differ from the record. `stock-archive
+--known-good DIR` re-hashes that directory and offers its reflash plan beside the stock
+plan. Neither flashes a device.
+
+`image-apk-admission.mjs` admits a launcher APK into an image overlay (no test-mocks path
+or web bundle, the product's release-row judgement, debug builds only for development)
+and the reviewed source overrides of a staging run (exact patch preimages, revisions,
+paths and bytes). `apk-release-record.mjs` names the blockers of a recorded APK release
+row (open-source licence flags never block) and compares an in-place APK update
+(signer-equal, higher versionCode, per-domain data readback). A product passes its
+signer and licence policy as data.
+
+`update-channel-client.mjs` is a read-only, default-off client: it verifies the signed
+contract a `publish-update-manifest.ts` manifest embeds for the booted device and compares
+it with the booted fingerprint. It never downloads, stages or applies an update.
+
 Physical writes and publication require a signed v2 contract. Run contract tests
 with `bun run --cwd packages/os test:release` from the repository root.
 
