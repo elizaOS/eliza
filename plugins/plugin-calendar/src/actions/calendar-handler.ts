@@ -5617,12 +5617,6 @@ export function createCalendarActionRunner(
             transcriptVisibility: "internal",
             turnComplete: false,
             modelReplyRequired: true,
-            ...(payload.canonicalReadText
-              ? {
-                  userFacingText: payload.canonicalReadText,
-                  verifiedUserFacing: true,
-                }
-              : {}),
             // Applied receipts and complete event facts remain authoritative.
             // The normal final response model phrases them for the conversation;
             // a mechanically verified fact sentence is internal evidence only.
@@ -5642,7 +5636,12 @@ export function createCalendarActionRunner(
                 : {}),
               replyContext: toActionData(
                 typeof payload.text === "string"
-                  ? renderReply("action_outcome", payload.text)
+                  ? renderReply(
+                      "action_outcome",
+                      payload.text,
+                      undefined,
+                      payload.canonicalReadText,
+                    )
                   : payload.text,
               ),
             },

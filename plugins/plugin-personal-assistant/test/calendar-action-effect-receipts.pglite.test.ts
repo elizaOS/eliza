@@ -703,6 +703,17 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       expect(next.effectReceipts?.[0]?.operation).not.toBe(
         "calendar.feed.read",
       );
+      expect(next.transcriptVisibility).toBe("internal");
+      expect(next).not.toHaveProperty("userFacingText");
+      expect(next).not.toHaveProperty("verifiedUserFacing");
+      expect(next).not.toHaveProperty("userFacingEffectReceiptIds");
+      expect(next.data?.replyContext).toMatchObject({
+        scenario: "next_event",
+        userFacingFacts: expect.stringContaining("Tomorrow upcoming event"),
+      });
+      expect(JSON.stringify(next.data?.replyContext)).not.toContain(
+        "Elapsed afternoon event",
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -1051,15 +1062,26 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       id: "00000000-0000-0000-0000-000000009978",
       requiresInput: false,
       startAt: null,
+      missingAuthority: false,
     },
     {
       id: "00000000-0000-0000-0000-000000009977",
       requiresInput: true,
       startAt: "2026-07-30T10:00:00Z",
+      missingAuthority: false,
+    },
+    {
+      id: "00000000-0000-0000-0000-000000009976",
+      requiresInput: false,
+      startAt: "2026-07-30T10:00:00Z",
+      missingAuthority: true,
     },
   ])(
-    "blocks preset-only or clarification-required creation ($requiresInput)",
-    async ({ id, requiresInput, startAt }) => {
+    "blocks preset-only or clarification-required creation ($requiresInput, missingAuthority=$missingAuthority)",
+    async ({ id, requiresInput, startAt, missingAuthority }) => {
+      const original =
+        "Create an event called Create extraction timing check on July 30, 2026 in the morning for 15 minutes.";
+      const evidence = [{ sourceId: `current:${id}`, quote: original }];
       const useModel = runtime.useModel.bind(runtime);
       let extractionCalls = 0;
       vi.spyOn(runtime, "useModel").mockImplementation((async (
@@ -1084,6 +1106,10 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
                 "endAt",
                 "durationMinutes",
                 "requiresInput",
+                "guestIntent",
+                "noteIntent",
+                "grantId",
+                "calendarId",
               ]),
               properties: { startAt: { type: ["string", "null"] } },
             },
@@ -1091,6 +1117,14 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           return {
             text: JSON.stringify({
               requiresInput,
+              grantId: ELIZA_CALENDAR_GRANT_ID,
+              calendarId: ELIZA_CALENDAR_ID,
+              ...(!missingAuthority
+                ? {
+                    guestIntent: { state: "none", evidence, guests: [] },
+                    noteIntent: { state: "none", evidence, sourceNote: null },
+                  }
+                : {}),
               clarification: "What time in the morning?",
               title: "Create extraction timing check",
               description: null,
@@ -1101,7 +1135,6 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
               recurrence: null,
               travelOriginAddress: null,
               durationMinutes: 15,
-              windowPreset: "tomorrow_morning",
               isShortPreparation: false,
             }),
             toolCalls: [],
@@ -1111,10 +1144,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         return useModel(type, params);
       }) as typeof runtime.useModel);
       const { result } = await invoke(
-        message(
-          id,
-          "Create an event called Create extraction timing check on July 30, 2026 in the morning for 15 minutes.",
-        ),
+        message(id, original),
         {
           action: "create_event",
           title: "Create extraction timing check",
@@ -1132,7 +1162,15 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       );
       expect(extractionCalls, JSON.stringify(result)).toBe(1);
       expect(result.data?.awaitingUserInput, JSON.stringify(result)).toBe(true);
-      expect(result.effectReceipts?.[0]?.outcome).toBe("noop");
+      if (missingAuthority)
+        expect(result.effectReceipts?.[0]).toMatchObject({
+          outcome: "failed",
+          failure: {
+            code: "CALENDAR_CREATE_AUTHORITY_UNRESOLVED",
+            acceptance: "rejected",
+          },
+        });
+      else expect(result.effectReceipts?.[0]?.outcome).toBe("noop");
       const feed = await calendar.getCalendarFeed(
         new URL("http://internal.local"),
         {
@@ -1612,6 +1650,10 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     });
     // This test exercises approval replay, with explicit extraction output;
     // the domain timing-authority tests cover missing/fabricated timing.
+    const actor = message(
+      "00000000-0000-0000-0000-000000009931",
+      "Add family planning on owner@example.test primary Google calendar on July 30, 2026 from 5 to 6 PM UTC.",
+    );
     const useModel = runtime.useModel.bind(runtime);
     vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
       if (
@@ -1621,21 +1663,31 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         )
       ) {
         expect(params?.temperature).toBe(0);
+        const evidence = [
+          { sourceId: `current:${actor.id}`, quote: actor.content.text },
+        ];
         return JSON.stringify({
+          requiresInput: false,
+          clarification: null,
+          guestIntent: { state: "none", evidence, guests: [] },
+          noteIntent: { state: "none", evidence, sourceNote: null },
           grantId: grant.id,
           calendarId: "primary",
           title: "Family planning",
+          description: null,
+          location: null,
           startAt: "2026-07-30T17:00:00Z",
           endAt: "2026-07-30T18:00:00Z",
           timeZone: "UTC",
+          recurrence: null,
+          travelOriginAddress: null,
+          durationMinutes: 60,
+          isShortPreparation: false,
         });
       }
       return useModel(type, params);
     }) as typeof runtime.useModel);
-    const actor = message(
-      "00000000-0000-0000-0000-000000009931",
-      "Add family planning on owner@example.test primary Google calendar on July 30, 2026 from 5 to 6 PM UTC.",
-    );
+
     const params = {
       action: "create_event",
       title: "Family planning",
