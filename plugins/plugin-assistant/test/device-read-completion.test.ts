@@ -612,7 +612,7 @@ it("refuses an expired binding and a changed original request without another re
   }
 });
 it("matches an unchanged original request whose text the capture had to redact", async () => {
-  const token = "tok_live_9f2c41";
+  const token = "SYNTHETIC-QA-TOKEN-9F2C41";
   const f = await fixture({
     originalText: `Read the synthetic QA note about ${token} and quote its body.`,
     mask: token,
