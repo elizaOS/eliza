@@ -160,7 +160,10 @@ describe("webhook config read failures", () => {
     // Settling here would drop a message the provider already acknowledged.
     expect(outcome).toEqual({
       kind: "held",
-      signal: { code: "webhook_config_unavailable", retryAfterSeconds: null },
+      signal: {
+        code: "personal_cutover_in_progress",
+        retryAfterSeconds: null,
+      },
     });
   });
 });

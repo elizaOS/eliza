@@ -1199,10 +1199,9 @@ export async function redeliverHeldWebhook(
       // drain pass retries instead of settling the message as undeliverable.
       return {
         kind: "held",
-        signal: {
-          code: "webhook_config_unavailable",
-          retryAfterSeconds: null,
-        },
+        // Keep the original hold code so the release log still names the
+        // cutover reason.
+        signal: { code: held.code, retryAfterSeconds: null },
       };
     }
     if (
