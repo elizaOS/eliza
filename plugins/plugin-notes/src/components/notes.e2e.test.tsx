@@ -488,7 +488,7 @@ describe("Notes capability-to-UI journey", () => {
     await waitFor(() => expect(draftEvent).toHaveBeenCalledTimes(1));
     expect(draftEvent.mock.calls[0][0]).toMatchObject({
       title: "Venue plan",
-      body: "Book the venue",
+      body: "\nBook the venue",
     });
     await waitFor(() =>
       expect(
@@ -501,7 +501,7 @@ describe("Notes capability-to-UI journey", () => {
         "The draft could not be opened. Nothing was scheduled.",
       ),
     ).toBeTruthy();
-    expect(activeService().snapshot().notes[0].body).toBe("Book the venue");
+    expect(activeService().snapshot().notes[0].body).toBe("\nBook the venue");
   });
 
   it("saves a Home card before Notes has ever been opened without navigating", async () => {
