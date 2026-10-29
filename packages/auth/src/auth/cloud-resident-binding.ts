@@ -13,7 +13,7 @@
  *   otherwise inference is unbound. Cloud still decides every request once reachable.
  * - `apply`: binds or clears the provider and confirms the credential did not change meanwhile.
  *   A failed bind is cleared; a removal the host cannot confirm is reported as `unknown`.
- * - `requestRebind`: at most one rebind runs; one more is queued behind it.
+ * - `requestRebind` (`ResidentRebindQueue`): at most one rebind runs; one more is queued behind it.
  * - `replaceCredential`: a new key revokes the key it replaces first (once, best effort) and only
  *   then stores the new one.
  * - `beginSignIn`: one sign-in step at a time; cancelling the step aborts it.
@@ -226,12 +226,81 @@ export function recentResidentPlanAdmission<E extends string>(
   return age >= 0 && age <= OFFLINE_PLAN_GRACE_MS ? record : null;
 }
 
+/**
+ * At most one rebind of the running resident runs; one more is queued behind it and further
+ * requests coalesce. A host whose admission controller is short-lived (one per account read) keeps
+ * one of these for the life of the resident so the rule survives across admissions.
+ */
+export class ResidentRebindQueue {
+  private running: Promise<void> | null = null;
+  private queued: {
+    rebind: () => Promise<void>;
+    blocked: () => boolean;
+  } | null = null;
+  private wanted = false;
+
+  /**
+   * Runs `rebind` now, or queues it behind the running one. `blocked` lets the host defer the run
+   * (another operation is in progress); call `resume` once that ends. A queued request runs with
+   * its own `rebind` and `blocked` once the running one settles. The returned promise settles with
+   * the run this call started, or the running one it queued behind; it rejects when that run does.
+   */
+  request(
+    rebind: () => Promise<void>,
+    blocked: () => boolean = () => false,
+  ): Promise<void> {
+    if (this.running || blocked()) {
+      this.wanted = true;
+      this.queued = { rebind, blocked };
+      return this.running ?? Promise.resolve();
+    }
+    this.wanted = false;
+    this.queued = null;
+    const run = (async () => {
+      try {
+        await rebind();
+      } finally {
+        this.running = null;
+      }
+    })();
+    this.running = run;
+    return run.finally(() => {
+      const next = this.queued ?? { rebind, blocked };
+      if (this.wanted && !this.running && !next.blocked())
+        void this.request(next.rebind, next.blocked).catch(() => {});
+    });
+  }
+
+  /** Whether a rebind is waiting for the current work to end. */
+  get pending(): boolean {
+    return this.wanted;
+  }
+
+  /** Whether a rebind is running now. */
+  get active(): boolean {
+    return this.running !== null;
+  }
+
+  /** Marks a rebind as wanted without running it (the host runs it with `resume` once idle). */
+  queue(): void {
+    this.wanted = true;
+  }
+
+  /** Runs a wanted rebind when nothing is running and nothing blocks it. */
+  resume(
+    rebind: () => Promise<void>,
+    blocked: () => boolean = () => false,
+  ): Promise<void> | undefined {
+    if (!this.wanted || this.running || blocked()) return undefined;
+    return this.request(rebind, blocked);
+  }
+}
+
 export class CloudResidentBindingController<
   V = unknown,
   E extends string = string,
 > {
-  private rebinding: Promise<void> | null = null;
-  private rebindQueued = false;
+  private readonly rebinds = new ResidentRebindQueue();
   private signIn: AbortController | null = null;
 
   readonly environment: E;
@@ -446,42 +515,22 @@ export class CloudResidentBindingController<
     return { binding: "unbound" };
   }
 
-  /**
-   * Runs `rebind` now, or queues it behind the running one. At most one rebind runs and one more
-   * is queued; further requests while queued coalesce. `blocked` lets the host defer the run
-   * (another operation is in progress); call `resumeQueued` once it ends.
-   */
+  /** Runs `rebind` now or queues it; see `ResidentRebindQueue.request`. */
   requestRebind(
     rebind: () => Promise<void>,
     blocked: () => boolean = () => false,
   ): Promise<void> {
-    if (this.rebinding || blocked()) {
-      this.rebindQueued = true;
-      return this.rebinding ?? Promise.resolve();
-    }
-    this.rebindQueued = false;
-    const run = (async () => {
-      try {
-        await rebind();
-      } finally {
-        this.rebinding = null;
-      }
-    })();
-    this.rebinding = run;
-    return run.finally(() => {
-      if (this.rebindQueued && !blocked())
-        void this.requestRebind(rebind, blocked).catch(() => {});
-    });
+    return this.rebinds.request(rebind, blocked);
   }
 
   /** Whether a rebind is waiting for the current work to end. */
   get rebindPending(): boolean {
-    return this.rebindQueued;
+    return this.rebinds.pending;
   }
 
   /** Marks a rebind as wanted without running it (the host runs it once idle). */
   queueRebind(): void {
-    this.rebindQueued = true;
+    this.rebinds.queue();
   }
 
   /** Runs a queued rebind when nothing blocks it. */
@@ -489,8 +538,7 @@ export class CloudResidentBindingController<
     rebind: () => Promise<void>,
     blocked: () => boolean = () => false,
   ): Promise<void> | undefined {
-    if (!this.rebindQueued || this.rebinding || blocked()) return undefined;
-    return this.requestRebind(rebind, blocked);
+    return this.rebinds.resume(rebind, blocked);
   }
 
   /**

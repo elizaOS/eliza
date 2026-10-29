@@ -9,6 +9,7 @@ import {
   type ResidentPlanAdmissionRecord,
   type ResidentPlanCheck,
   recentResidentPlanAdmission,
+  ResidentRebindQueue,
 } from "./cloud-resident-binding.ts";
 
 const NOW = 1_800_000_000_000;
@@ -346,6 +347,68 @@ describe("resident Cloud binding coordination", () => {
     await controller.resumeQueued(rebind, () => busy);
     expect(runs).toBe(1);
     expect(controller.resumeQueued(rebind)).toBeUndefined();
+  });
+
+  it("runs a queued request with its own predicate once the running rebind settles", async () => {
+    const queue = new ResidentRebindQueue();
+    let release: () => void = () => {};
+    const runs: string[] = [];
+    let replying = true;
+    const first = queue.request(
+      () => {
+        runs.push("first");
+        return new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      },
+      () => false,
+    );
+    expect(queue.active).toBe(true);
+    // Queued behind the running rebind with a predicate that ignores the reply in flight.
+    void queue.request(async () => {
+      runs.push("interrupting");
+    });
+    expect(queue.pending).toBe(true);
+    release();
+    await first;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runs).toEqual(["first", "interrupting"]);
+    expect(queue.pending).toBe(false);
+    // A deferred request waits for the host to resume it.
+    await queue.request(
+      async () => {
+        runs.push("deferred");
+      },
+      () => replying,
+    );
+    expect(runs).toHaveLength(2);
+    replying = false;
+    await queue.resume(async () => {
+      runs.push("deferred");
+    });
+    expect(runs).toEqual(["first", "interrupting", "deferred"]);
+  });
+
+  it("reports a failed rebind to its caller and still runs the one queued behind it", async () => {
+    const queue = new ResidentRebindQueue();
+    let fail: (error: Error) => void = () => {};
+    let runs = 0;
+    const failing = queue.request(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          fail = reject;
+        }),
+    );
+    queue.queue();
+    void queue.request(async () => {
+      runs++;
+    });
+    fail(new Error("start failed"));
+    await expect(failing).rejects.toThrow("start failed");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(runs).toBe(1);
+    expect(queue.active).toBe(false);
+    expect(queue.resume(async () => {})).toBeUndefined();
   });
 
   it("allows one sign-in at a time and cancels it without touching the stored sign-in", async () => {
