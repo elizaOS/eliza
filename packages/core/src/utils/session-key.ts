@@ -80,7 +80,7 @@ export function parseAgentSessionKey(
 	const isSubagent = parts[2] === "subagent";
 
 	// Check for thread suffix
-	const threadIndex = parts.indexOf("thread");
+	const threadIndex = parts.indexOf("thread", 2);
 	let threadId: string | undefined;
 	let parentKey: string | undefined;
 
