@@ -22,14 +22,12 @@ const jsonJar = () => {
     ".gradle/caches/modules-2/files-2.1/org.json/json/20250517",
   );
   if (!fs.existsSync(cache)) return undefined;
-  return fs
-    .readdirSync(cache)
-    .flatMap((dir) =>
-      fs
-        .readdirSync(path.join(cache, dir))
-        .filter((file) => file === "json-20250517.jar")
-        .map((file) => path.join(cache, dir, file)),
-    )[0];
+  return fs.readdirSync(cache).flatMap((dir) =>
+    fs
+      .readdirSync(path.join(cache, dir))
+      .filter((file) => file === "json-20250517.jar")
+      .map((file) => path.join(cache, dir, file)),
+  )[0];
 };
 const java = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
