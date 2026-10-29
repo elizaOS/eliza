@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
+import ai.eliza.plugins.system.clock.ClockProfile;
 import android.content.Intent;
 import android.app.AlertDialog;
 import android.net.Uri;
@@ -31,6 +32,14 @@ import org.json.JSONObject;
  */
 @CapacitorPlugin(name = "SlotClock")
 public final class SlotClockPlugin extends Plugin {
+    /**
+     * The Clock profile this app advertises. Eliza keeps its own alarm store (ElizaAlarms,
+     * clock.alarms.v1); the shared handoff-only policy (Android Clock owns alarms) is a recorded
+     * product decision (eliza-research/alphaphone#681 item 5). Switching to HANDOFF_ONLY also needs
+     * the saved-alarm path chosen ({@link ClockProfile.SavedAlarms}); until then saved alarms keep
+     * ringing as before.
+     */
+    static final ClockProfile CLOCK_PROFILE = ClockProfile.OWNED_ALARMS;
     private final ThreadPoolExecutor workers = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(16), runnable -> { Thread thread = new Thread(runnable, "eliza-clock-host"); thread.setDaemon(true); return thread; });
     private NativeSecureStore store;
@@ -125,7 +134,7 @@ public final class SlotClockPlugin extends Plugin {
                 if ("requestAgent".equals(call.getMethodName())) throw new SecurityException("Native chat owner retired before admission");
                 store.ensureClockDevice();
                 ClockHostClient client = new ClockHostClient(store, store.snapshot(), url -> CookieManager.getInstance().getCookie(url),
-                        ZoneId.systemDefault().getId(), new ClockHostClient.AlarmMetadata() {
+                        ZoneId.systemDefault().getId(), CLOCK_PROFILE == ClockProfile.HANDOFF_ONLY ? null : new ClockHostClient.AlarmMetadata() {
                             @Override public JSONObject context(ClockHostClient selected) throws Exception {
                                 return ClockOwnedAlarms.metadata(getContext(), selected);
                             }

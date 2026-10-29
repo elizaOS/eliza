@@ -325,3 +325,25 @@ browser storage returns (`sanitizeCrashEntries`), names renderer errors
 (`errorClassOf`), describes entries and builds the redacted export.
 `test/crash-log.test.mjs` covers both on a host JVM and Node; a real crash and
 Android's exit history need an instrumented run.
+
+## Clock handoff
+
+`clock.ClockHandoff` builds the standard Android Clock intents (`set`, `show`,
+`dismiss`, `snooze`) for a reviewed request and starts the resolved external
+handler as an explicit component. The host itself never receives its own
+handoff. Dismiss and snooze carry no target, and `EXTRA_SKIP_UI` is always
+false. A launched Activity is not a receipt: the strongest result is `opened`,
+which only means Clock received the request. `launch(...)` adds a host form's
+checks: reviewed, host in front, phone unlocked, and an unchanged time zone for
+a set.
+
+`clock.ClockDays` admits repeat days (`java.util.Calendar` values, Sunday = 1).
+`strict` takes a host form's unique ascending list. `agent` takes an agent
+operation's days in any order, sorts and de-duplicates them, and reads an empty
+list as a one-time alarm. `explicit` keeps a reviewed request's order.
+`clock.ClockProfile` names what a host advertises: `HANDOFF_ONLY`
+(`clock.handoff.v1,clock.handoff.v2`, Android Clock owns alarms) or
+`OWNED_ALARMS` (`clock.alarms.v1`, the Eliza app's `ElizaAlarms`). A host that
+leaves `OWNED_ALARMS` must also choose a `SavedAlarms` path for alarms it
+already saved. `test/clock.test.mjs` runs on a host JVM; real Clock apps need
+an instrumented run.
