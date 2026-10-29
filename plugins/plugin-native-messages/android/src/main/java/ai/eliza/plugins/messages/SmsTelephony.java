@@ -43,7 +43,8 @@ import org.json.JSONObject;
  * SMS app, which writes its own (see {@link #dispatch}); delivery is never claimed for those rows.
  *
  * Every entry point is reached only from the host's {@link TelephonyPlugin} or its callback receiver,
- * both of which require {@link SmsTelephonyConfiguration#admission}.
+ * both of which require {@link SmsTelephonyConfiguration#admission}. {@link ReviewedSmsSend} shares
+ * the work thread, SmsManager lookup and default-SMS-app row helpers, with its own journal.
  */
 public final class SmsTelephony {
  private SmsTelephony() {}
@@ -238,7 +239,7 @@ public final class SmsTelephony {
   * never ends it as unknown: the journal keeps the receipt either way, and an unrecorded row can still
   * be attributed later by creator, address, time window and body hash.
   */
- private static void storeOwnRow(Context context, SmsSendJournal journal, SmsSendJournal.Record record, int recipient, String body, int subscriptionId) {
+ static void storeOwnRow(Context context, SmsSendJournal journal, SmsSendJournal.Record record, int recipient, String body, int subscriptionId) {
   long row;
   try { row = MmsStore.persistOutgoingSms(context, record.recipients[recipient], body, subscriptionId, record.createdAt); }
   catch (RuntimeException refused) { android.util.Log.w("SmsTelephony", "Outgoing SMS was not stored in the provider"); return; }
@@ -247,7 +248,7 @@ public final class SmsTelephony {
  }
 
  /** Moves the default SMS app's own row for this part's recipient out of the outbox once its sent callbacks decide it. */
- private static void settleOwnRow(Context context, SmsSendJournal journal, String operationId, int index) {
+ static void settleOwnRow(Context context, SmsSendJournal journal, String operationId, int index) {
   long[] settled = journal.settledRow(operationId, index);
   if (settled == null || !MmsStore.isDefaultSmsApp(context)) return;
   SmsSendJournal.Record record = journal.get(operationId);

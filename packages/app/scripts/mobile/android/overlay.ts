@@ -437,6 +437,7 @@ export function overlayAndroid({
       "ElizaSmsGatewayService",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
@@ -467,6 +468,7 @@ export function overlayAndroid({
       "ElizaSmsGatewayService",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
       "ElizaBrowserActivity",
       "ElizaContactsActivity",
@@ -480,6 +482,7 @@ export function overlayAndroid({
       "ElizaMmsReceiver",
       "ElizaRespondViaMessageService",
       "ElizaSmsComposeActivity",
+      "ElizaSmsReplyReviewActivity",
       "ElizaBootReceiver",
     ]) {
       const nextXml = removeApplicationComponentClassBlock(xml, component);
@@ -695,6 +698,18 @@ export function overlayAndroid({
                 <data android:scheme="mmsto" />
             </intent-filter>
         </service>`,
+    );
+    // Owner review of a Cloud-drafted SMS reply: not exported, opened from the app's own notice.
+    xml = appendMissingApplicationBlock(
+      xml,
+      `${androidPackage}.ElizaSmsReplyReviewActivity`,
+      `
+        <activity
+            android:name="${androidPackage}.ElizaSmsReplyReviewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />`,
     );
     xml = appendMissingApplicationBlock(
       xml,
@@ -982,6 +997,7 @@ export function sanitizeAndroidManifestWhenPlatformTemplatesMissing() {
     "ElizaSmsGatewayService",
     "ElizaRespondViaMessageService",
     "ElizaSmsComposeActivity",
+    "ElizaSmsReplyReviewActivity",
     "ElizaBootReceiver",
     "ElizaBrowserActivity",
     "ElizaContactsActivity",

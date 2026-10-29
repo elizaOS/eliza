@@ -146,6 +146,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaSmsGatewayService",
   "ElizaRespondViaMessageService",
   "ElizaSmsComposeActivity",
+  "ElizaSmsReplyReviewActivity",
   "ElizaBootReceiver",
   "ElizaBrowserActivity",
   "ElizaContactsActivity",
@@ -225,6 +226,19 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
+/**
+ * Helpers of the SMS components that are not manifest components: the reviewed
+ * reply proposals, the gateway flow and this app's reviewed-send identity. Cloud
+ * builds strip them with the SMS components; SMS gateway builds keep them.
+ */
+export const ANDROID_SMS_REVIEWED_SEND_JAVA_FILES = [
+  "ElizaSmsGatewayFlow.java",
+  "ElizaSmsReplyProposals.java",
+  "ElizaSmsReviewedSend.java",
+];
+export const ANDROID_SMS_REVIEWED_SEND_NATIVE_PLUGIN =
+  "@elizaos/plugin-native-messages";
+
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "BatteryOptimizationPlugin.java",
   "BrowserNativeMessagingService.java",
@@ -281,6 +295,8 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRespondViaMessageService.java",
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
+  ...ANDROID_SMS_REVIEWED_SEND_JAVA_FILES,
+  "ElizaSmsReplyReviewActivity.java",
   ...ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
 ];
 
@@ -302,6 +318,7 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "ElizaAgentWatchdogPolicyInstrumentedTest.java",
   "ElizaAssetExtractionPolicyTest.java",
   "ElizaAssistantSurfaceInstrumentedTest.java",
+  "ElizaSmsReplyReviewTest.java",
   "ElizaWorkSchedulerPolicyTest.java",
   "InferenceMemoryPolicyTest.java",
   "NativeTranscriptReducerTest.java",
@@ -996,6 +1013,7 @@ export const ANDROID_SMS_GATEWAY_COMPONENTS = new Set([
   "ElizaRespondViaMessageService",
   "ElizaSmsComposeActivity",
   "ElizaSmsGatewayService",
+  "ElizaSmsReplyReviewActivity",
 ]);
 
 export const ANDROID_SMS_GATEWAY_PERMISSIONS = new Set([
@@ -1021,14 +1039,20 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
   ...ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-    (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
+    (file) =>
+      !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")) &&
+      !ANDROID_SMS_REVIEWED_SEND_JAVA_FILES.includes(file),
   ),
   "SafePushNotificationsPlugin.java",
   "ElizaReminderMessagingService.java",
 ];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
-  ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+  // The gateway keeps plugin-native-messages: its replies are sent only through
+  // that plugin's reviewed send (ReviewedSmsSend), after the owner's review.
+  ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.filter(
+    ([pkg]) => pkg !== ANDROID_SMS_REVIEWED_SEND_NATIVE_PLUGIN,
+  ),
   ["@capacitor/background-runner", "capacitor-background-runner"],
   ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
   ["@capacitor/haptics", "capacitor-haptics"],
