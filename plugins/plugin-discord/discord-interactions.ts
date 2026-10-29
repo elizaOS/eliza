@@ -189,7 +189,14 @@ export async function handleInteractionCreate(
 				client: service.client,
 				commands: service.slashCommands,
 			};
-			service.runtime.emitEvent(DiscordEventTypes.SLASH_COMMAND, slashPayload);
+			try {
+				await service.runtime.emitEvent(DiscordEventTypes.SLASH_COMMAND, slashPayload);
+			} catch (emitError) {
+				service.runtime.reportError("discord:emit-event", emitError, {
+					accountId,
+					events: DiscordEventTypes.SLASH_COMMAND,
+				});
+			}
 			service.runtime.logger.debug(
 				{
 					src: "plugin:discord",
@@ -224,7 +231,14 @@ export async function handleInteractionCreate(
 			client: service.client,
 			commands: service.slashCommands,
 		};
-		service.runtime.emitEvent(DiscordEventTypes.MODAL_SUBMIT, modalPayload);
+		try {
+			await service.runtime.emitEvent(DiscordEventTypes.MODAL_SUBMIT, modalPayload);
+		} catch (emitError) {
+			service.runtime.reportError("discord:emit-event", emitError, {
+				accountId,
+				events: DiscordEventTypes.MODAL_SUBMIT,
+			});
+		}
 	}
 
 	// Message component interactions. The in-chat widget system only ever emits
@@ -705,20 +719,34 @@ export async function onReady(
 					accountId,
 				};
 
-				service.runtime.emitEvent([DiscordEventTypes.WORLD_CONNECTED], {
-					runtime: service.runtime,
-					source: "discord",
-					accountId,
-					world: standardizedData.world,
-					rooms: standardizedData.rooms,
-					entities: standardizedData.entities,
-					server: fullGuild,
-				} as EventPayload);
+				try {
+					await service.runtime.emitEvent([DiscordEventTypes.WORLD_CONNECTED], {
+						runtime: service.runtime,
+						source: "discord",
+						accountId,
+						world: standardizedData.world,
+						rooms: standardizedData.rooms,
+						entities: standardizedData.entities,
+						server: fullGuild,
+					} as EventPayload);
+				} catch (emitError) {
+					service.runtime.reportError("discord:emit-event", emitError, {
+						accountId,
+						events: DiscordEventTypes.WORLD_CONNECTED,
+					});
+				}
 
-				service.runtime.emitEvent(
-					[EventType.WORLD_CONNECTED],
-					standardizedData,
-				);
+				try {
+					await service.runtime.emitEvent(
+						[EventType.WORLD_CONNECTED],
+						standardizedData,
+					);
+				} catch (emitError) {
+					service.runtime.reportError("discord:emit-event", emitError, {
+						accountId,
+						events: EventType.WORLD_CONNECTED,
+					});
+				}
 			} catch (error) {
 				service.runtime.logger.error(
 					{
