@@ -4118,6 +4118,13 @@ public class ElizaAgentService extends Service {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
             return;
         }
+        // The user-visible problem log (Settings > Diagnostics) keeps only the failure class of
+        // each problem exit; the developer diagnostics below keep their fuller record.
+        try {
+            ai.eliza.plugins.system.crash.CrashLog.collectExitReasons(this);
+        } catch (Exception unavailable) {
+            Log.w(TAG, "Could not record exit reasons in the problem log: " + unavailable.getClass().getSimpleName());
+        }
         ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
         if (manager == null) {
             return;

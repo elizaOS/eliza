@@ -256,7 +256,11 @@ A host builds one `DataReset` with its installed identities and shares it:
   storage) and the recovery activity. Keep both stable across releases.
 - `beforeDispatch(...)` optionally adds bounded, best-effort work that runs only
   while a confirmed reset is pending, such as revoking this device's remote
-  sign-in. It never blocks or cancels the local reset beyond its budget.
+  sign-in. It never blocks or cancels the local reset beyond its budget. Eliza
+  Cloud hosts pass `CloudKeyRevocation.resetStep(() -> registration,
+  Store::readSlot)::run` from `@elizaos/auth` (Android `ai.eliza.auth.cloud`):
+  it revokes each registered environment's saved key on an interrupted daemon
+  worker, capped at 8 seconds.
 - The same-signer image listener (`SenseListenerClient.resetForData()`) must
   acknowledge first. An installed listener that does not durably acknowledge
   consent revocation keeps the marker and all app data; an absent listener is
@@ -299,3 +303,25 @@ app in front. `test/reset.test.mjs` covers authorization, bounded admission,
 background starts, interrupted dispatch and single dispatch against host-JVM
 stand-ins. Real self-clear, the listener's provider IPC and the recovery task
 returning instead of HOME require installed and device qualification.
+
+## Problem log
+
+`crash.CrashLog` is a privacy-bounded local problem log for Settings
+diagnostics. It records failure classes only: an uncaught exception's class and
+root-cause class, Android's recorded problem exit reasons (Android 11+, read once
+each; ordinary user, update and clean exits are skipped) and renderer failure
+kinds. It never stores messages, stack traces, exit descriptions, trace files,
+URLs or user content. The log is one `AtomicFile` at
+`no_backup/crash-log/v1.json`, bounded to 50 entries, 30 days and 256 KiB; a
+damaged file starts again. `export(context)` re-applies the field allowlist for
+a support bundle.
+
+A host calls `CrashLog.install(this)` in its main process's `Application`, and
+exposes `read`, `recordRenderer` and `clear` through its bridge, calling
+`collectExitReasons` before a read. The Eliza app's `ElizaAgentService` records
+its exit-reason read here too. `src/crash-log.ts`
+(`@elizaos/capacitor-system/crash-log`) re-sanitizes whatever the bridge or
+browser storage returns (`sanitizeCrashEntries`), names renderer errors
+(`errorClassOf`), describes entries and builds the redacted export.
+`test/crash-log.test.mjs` covers both on a host JVM and Node; a real crash and
+Android's exit history need an instrumented run.
