@@ -237,9 +237,12 @@ export function resolveBundledKeyringPath(options: {
       .sort();
     if (matches.length !== 1) return null;
     return path.join(runtimeDir, matches[0]);
-  } catch {
-    // error-policy:J3 the packaged runtime directory may not exist.
-    return null;
+  } catch (err) {
+    // error-policy:J3 the packaged runtime directory may not exist — that is a
+    // legitimate absence. Anything else (EACCES/ENOTDIR/EIO) means the install
+    // is broken and must not be reported as "no bundled binding".
+    if ((err as NodeJS.ErrnoException)?.code === "ENOENT") return null;
+    throw err;
   }
 }
 
