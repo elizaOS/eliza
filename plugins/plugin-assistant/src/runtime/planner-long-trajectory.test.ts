@@ -12,6 +12,7 @@ import {
   type IAgentRuntime,
   type Memory,
   type PlannerRuntime,
+  type PlannerToolCall,
   type PlannerToolResult,
   type PlannerTrajectory,
   PROVIDER_CONTEXT_OVERFLOW,
@@ -3506,4 +3507,111 @@ it("parent projection cannot promote an explicit failed terminal with a raw succ
     messageToUser: "The work remains incomplete.",
   });
   expect(raw).toMatchObject({ success: true, messageToUser: "Created it." });
+});
+
+describe("identical effect calls inside one planner batch", () => {
+  const sendArgs = (scope?: string) => ({
+    target: "alice",
+    text: "running late",
+    ...(scope ? { eliza_turn_scope: scope } : {}),
+  });
+
+  async function runSend(firstOutput: { text: string; toolCalls: unknown[] }) {
+    const sends: PlannerToolCall[] = [];
+    let plans = 0;
+    await runPlannerLoop({
+      codingMode: false,
+      context: {
+        id: "batch-duplicate-send",
+        events: [
+          {
+            id: "handler",
+            type: "message_handler",
+            content: "Send Alice 'running late'.",
+          },
+        ],
+      },
+      runtime: {
+        useModel: async () => {
+          plans++;
+          if (plans > 3) throw new Error("planner did not settle");
+          if (plans === 1) return firstOutput as never;
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: `reply-${plans}`,
+                name: "REPLY",
+                arguments: { text: "Sent.", eliza_turn_scope: "final" },
+              },
+            ],
+          } as never;
+        },
+      },
+      executeToolCall: async (call) => {
+        if (call.name !== "SEND_MESSAGE") throw new Error(call.name);
+        sends.push(call);
+        const id = `msg-${sends.length}`;
+        return {
+          success: true,
+          transcriptVisibility: "internal" as const,
+          effectReceipts: [
+            {
+              ...receipt,
+              receiptId: `send-${sends.length}`,
+              operation: "message.send",
+              resource: { kind: "message", id, version: "1" },
+              idempotency: { key: `send-${sends.length}`, replayed: false },
+              commit: { ...receipt.commit, id },
+            } as EffectReceipt,
+          ],
+        };
+      },
+      evaluate: async () => ({
+        decision: "FINISH",
+        success: true,
+        thought: "sent",
+        messageToUser: "Sent.",
+      }),
+    });
+    return sends;
+  }
+
+  it("sends once when one native batch repeats the identical call", async () => {
+    const sends = await runSend({
+      text: "",
+      toolCalls: [
+        { id: "a", name: "SEND_MESSAGE", arguments: sendArgs("final") },
+        { id: "b", name: "SEND_MESSAGE", arguments: sendArgs("final") },
+      ],
+    });
+    expect(sends).toHaveLength(1);
+  });
+
+  it("sends once when the native call is also narrated as JSON text", async () => {
+    const sends = await runSend({
+      text:
+        `I'll send it now: {"name":"SEND_MESSAGE","arguments":${JSON.stringify(sendArgs())}}` +
+        ` Then reply: {"name":"REPLY","arguments":{"text":"Sent."}}`,
+      toolCalls: [
+        { id: "a", name: "SEND_MESSAGE", arguments: sendArgs("final") },
+      ],
+    });
+    expect(sends).toHaveLength(1);
+  });
+
+  it("still runs distinct calls from the same batch", async () => {
+    const sends = await runSend({
+      text: "",
+      toolCalls: [
+        { id: "a", name: "SEND_MESSAGE", arguments: sendArgs("final") },
+        {
+          id: "b",
+          name: "SEND_MESSAGE",
+          arguments: { ...sendArgs("final"), target: "bob" },
+        },
+      ],
+    });
+    expect(sends.map((call) => call.params?.target)).toEqual(["alice", "bob"]);
+  });
 });
