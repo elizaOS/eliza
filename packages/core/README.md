@@ -19,6 +19,8 @@ evict themselves so the next explicit read can retry.
 Browser log sinks use `@elizaos/core/logging` for the canonical logger types and
 credential redaction. `@elizaos/core/view-interaction` exposes renderer routing
 and completed-action handoff contracts without the full protocol catalog.
+`@elizaos/core/schema-types` exposes the JSON value, action-parameter schema,
+generated-object schema and view-capability types as a type-only leaf entry.
 
 Model providers use request guards from `@elizaos/core`. The protocol entry
 exports only their types, so browser code does not load the Node turn context.

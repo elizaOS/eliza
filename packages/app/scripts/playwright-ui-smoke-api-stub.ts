@@ -3711,11 +3711,6 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (req.method === "GET" && url.pathname === "/api/registry/status") {
-    sendJson(req, res, 200, { connected: false, online: false });
-    return;
-  }
-
   if (
     req.method === "GET" &&
     url.pathname === "/api/local-inference/downloads/stream"

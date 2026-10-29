@@ -683,6 +683,7 @@ it("persists the timezone through pause and re-enable and schedules in that zone
         error: (_res: http.ServerResponse, message: string) => {
           throw new Error(message);
         },
+        getTriggerLimit,
         listTriggerTasks: async () => {
           const task = await fixture.runtime.getTask(taskId);
           return task ? [task] : [];
@@ -860,6 +861,57 @@ it.each([
     }
   },
 );
+
+it("runs a cron time that a DST change skips one gap later, not the next day", () => {
+  const nextRun = (
+    cronExpression: string,
+    timezone: string,
+    nowIso: string,
+  ): string | undefined => {
+    const normalized = normalizeTriggerDraft({
+      input: {
+        kind: "prompt",
+        displayName: "DST gap",
+        instructions: "Do not execute",
+        triggerType: "cron",
+        cronExpression,
+        timezone,
+      },
+      fallback: {
+        displayName: "DST gap",
+        instructions: "Do not execute",
+        triggerType: "cron",
+        wakeMode: "inject_now",
+        enabled: true,
+        createdBy: "api",
+      },
+    });
+    if (!normalized.draft) throw new Error(normalized.error ?? "Missing draft");
+    const trigger = buildTriggerConfig({
+      draft: normalized.draft,
+      triggerId: randomUUID() as UUID,
+    });
+    const ms = buildTriggerMetadata({ trigger, nowMs: Date.parse(nowIso) })
+      ?.trigger?.nextRunAtMs;
+    return ms === undefined ? undefined : new Date(ms).toISOString();
+  };
+  // 2026-03-08 New York has no 02:30; the run is at 03:30 EDT.
+  expect(
+    nextRun("30 2 * * *", "America/New_York", "2026-03-07T08:00:00.000Z"),
+  ).toBe("2026-03-08T07:30:00.000Z");
+  // 2026-09-06 Santiago has no midnight; the run is at 01:00 -03.
+  expect(
+    nextRun("0 0 * * *", "America/Santiago", "2026-09-05T05:00:00.000Z"),
+  ).toBe("2026-09-06T04:00:00.000Z");
+  // A scan that starts inside the shifted span still sees the gap.
+  expect(
+    nextRun("*/15 2 * * *", "America/New_York", "2026-03-08T07:00:00.000Z"),
+  ).toBe("2026-03-08T07:15:00.000Z");
+  // The repeated hour of the fall-back day still runs once.
+  expect(
+    nextRun("30 1 * * *", "America/New_York", "2026-11-01T05:30:00.000Z"),
+  ).toBe("2026-11-02T06:30:00.000Z");
+});
 
 it("keeps an interval trigger's next run when an edit leaves the interval", async () => {
   const displayName = `Weekly report ${randomUUID()}`;

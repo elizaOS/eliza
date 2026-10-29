@@ -32,7 +32,7 @@
     "@elizaos/plugin-network": "workspace:*"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.5.15",
+    "@biomejs/biome": "2.6.3",
     "@elizaos/cloud-shared": "workspace:*",
     "@types/hashring": "^3.2.5",
     "@types/node": "22.19.17",

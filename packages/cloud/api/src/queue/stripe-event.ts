@@ -52,6 +52,7 @@ import {
 } from "@elizaos/cloud-shared/agents";
 import { dbRead } from "@elizaos/cloud-shared/db/helpers";
 import { organizationsRepository } from "@elizaos/cloud-shared/db/repositories/organizations";
+import { referralSignupsRepository } from "@elizaos/cloud-shared/db/repositories/referrals";
 import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
 import { agentSandboxes } from "@elizaos/cloud-shared/db/schemas/agent-sandboxes";
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
@@ -1926,6 +1927,35 @@ async function clawbackForReversal(params: {
       idempotencyKey,
     });
   }
+  const purchaseCents = chargeAmountCents ?? grantAmountMicros / 10_000n;
+  if (!autoTopUpCharge && purchaseCents > 0n) {
+    // A referred buyer's Checkout purchase also paid the referrers revenue
+    // splits as earnings; take back the same share of those. Only a referral
+    // that existed when the credits were granted owes splits: a code applied
+    // after the purchase never booked any, so it must not hold the clawback.
+    const referral = checkoutOrder
+      ? await referralSignupsRepository.findByReferredUserId(
+          checkoutOrder.initiated_by_user_id,
+        )
+      : null;
+    const owedSplits =
+      checkoutOrder && referral && referral.created_at <= grant.created_at
+        ? (
+            await referralsService.calculateRevenueSplits(
+              checkoutOrder.initiated_by_user_id,
+              Number(purchaseCents) / 100,
+            )
+          ).splits.filter((split) => split.amount > 0)
+        : [];
+    await redeemableEarningsService.reverseRevenueSplits({
+      paymentIntentId,
+      reversedCents,
+      chargeCents: purchaseCents,
+      reversalSeries,
+      idempotencyKey,
+      owedRecipients: owedSplits.map((split) => split.userId),
+    });
+  }
   const result = await creditsService.clawbackCredits({
     organizationId: grant.organization_id,
     amount: cappedUsdReversed,
@@ -2059,11 +2089,15 @@ async function handleChargeDisputeFundsReinstated(
   }
 
   if (paymentIntentId) {
-    await redeemableEarningsService.reinstateAutoTopUpAffiliateFee({
+    const reinstatement = {
       paymentIntentId,
       reversalSeries: clawbackKey,
       reinstatementKey: `${clawbackKey}:reinstated`,
-    });
+    };
+    await redeemableEarningsService.reinstateAutoTopUpAffiliateFee(
+      reinstatement,
+    );
+    await redeemableEarningsService.reinstateRevenueSplits(reinstatement);
   }
 
   // Stripe returned the disputed funds, so the unrecovered shortfall is no

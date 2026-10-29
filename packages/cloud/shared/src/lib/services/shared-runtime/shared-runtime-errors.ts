@@ -8,6 +8,7 @@
  * boundary).
  */
 import { ElizaError } from "@elizaos/core/protocol";
+import { isKnownUnacceptedProviderStatus } from "../inference-provider-outcome";
 
 export class SharedRuntimeCacheWarmingError extends Error {
   constructor(message: string) {
@@ -866,6 +867,24 @@ function findSharedRuntimeFailureDiagnostic(
     // error-policy:J7 a diagnostic cause walk cannot replace the original classification.
     return undefined;
   }
+}
+
+/**
+ * True when the turn's first model call was clearly refused by the provider
+ * (a known-unaccepted HTTP status) and no model call completed in the turn,
+ * so no provider work was accepted.
+ */
+export function isUnacceptedSharedModelFailure(error: unknown): boolean {
+  const diagnostic =
+    error instanceof SharedRuntimeTurnError && error.failureDiagnostic
+      ? error.failureDiagnostic
+      : findSharedRuntimeFailureDiagnostic(error);
+  const status = diagnostic?.modelFailure?.providerStatus;
+  return (
+    diagnostic?.lastModelCompletion === null &&
+    typeof status === "number" &&
+    isKnownUnacceptedProviderStatus(status)
+  );
 }
 
 /**

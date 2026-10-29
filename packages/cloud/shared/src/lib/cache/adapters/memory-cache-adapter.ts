@@ -4,6 +4,7 @@
  * TTL expiry checked on read.
  */
 
+import { rangeOf, removeOccurrences } from "./list-emulation";
 import type { CacheRedisClient } from "./types";
 
 export class MemoryCacheAdapter implements CacheRedisClient {
@@ -180,5 +181,20 @@ export class MemoryCacheAdapter implements CacheRedisClient {
 
   async llen(key: string): Promise<number> {
     return this.getList(key)?.length ?? 0;
+  }
+
+  async rpoplpush(source: string, destination: string): Promise<string | null> {
+    const value = await this.rpop(source);
+    if (value !== null) await this.lpush(destination, value);
+    return value;
+  }
+
+  async lrem(key: string, count: number, value: string): Promise<number> {
+    const list = this.getList(key);
+    return list ? removeOccurrences(list, count, value) : 0;
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    return rangeOf(this.getList(key) ?? [], start, stop);
   }
 }

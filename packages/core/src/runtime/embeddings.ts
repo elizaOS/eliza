@@ -645,6 +645,19 @@ export class RuntimeEmbeddings {
 	 * once; a chunk failure is reported and the rest still proceed.
 	 */
 	async reembedMemoriesByIds(memoryIds: UUID[]): Promise<void> {
+		// The embedding service registers the request handler when it starts. At
+		// boot that is after this re-embed is scheduled, and a request sent with
+		// no handler is dropped, so the reclaimed memory would keep no vector.
+		try {
+			await this.runtime.getServiceLoadPromise("embedding-generation");
+		} catch (error) {
+			// error-policy:J7 without the embedding service nothing can re-embed; report the memories left without vectors.
+			this.runtime.reportError("AgentRuntime.reembedMemoriesByIds", error, {
+				agentId: this.runtime.agentId,
+				count: memoryIds.length,
+			});
+			return;
+		}
 		const CHUNK = 200;
 		for (let i = 0; i < memoryIds.length; i += CHUNK) {
 			try {

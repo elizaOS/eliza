@@ -1,8 +1,8 @@
 /**
  * A paired USER session (a guest device) passes the shared API gate. Wallet
- * writes, config and character writes and the memory store are owner-only:
- * real API server, SQLite runtime, host bridge that maps the guest bearer to
- * USER.
+ * writes, config and character writes, the runtime model switch and the memory
+ * store are owner-only: real API server, SQLite runtime, host bridge that maps
+ * the guest bearer to USER.
  */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -54,6 +54,12 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
   let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
   try {
     await runtime.init();
+    // The character PUT refuses a save storage did not confirm, so the agent
+    // row must exist like it does after a full runtime start.
+    await runtime.ensureAgentExists({
+      ...runtime.character,
+      id: runtime.agentId,
+    } as never);
     server = await startApiServer({
       port: 0,
       runtime,
@@ -154,6 +160,10 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
         { method: "POST", body: JSON.stringify({ message: "hello" }) },
       ],
       [
+        "/api/runtime/model-switch",
+        { method: "POST", body: JSON.stringify({ target: "cloud" }) },
+      ],
+      [
         "/api/first-run",
         {
           method: "POST",
@@ -200,6 +210,19 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
       },
     );
     expect(ownerSign.status).not.toBe(403);
+    // The owner keeps the runtime model switch; the gate only rejects a guest.
+    // Point the handler's loopback write at a closed port so the assertion
+    // never reaches another process listening on the default API port.
+    vi.stubEnv("ELIZA_API_PORT", "1");
+    const ownerModelSwitch = await send(
+      OWNER_TOKEN,
+      "/api/runtime/model-switch",
+      {
+        method: "POST",
+        body: JSON.stringify({ target: "cloud" }),
+      },
+    );
+    expect(ownerModelSwitch.status).not.toBe(403);
   } finally {
     await server?.close();
     await runtime.close();

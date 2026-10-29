@@ -35,6 +35,7 @@ import {
   type IAgentRuntime,
   projectWorldId,
   type RecordedTrajectory,
+  resolveSetting,
   resolveStateDir,
   resolveTrajectoryGate,
   rollUpTrajectoryUsage,
@@ -250,6 +251,7 @@ import {
   resolveAllowedWorkdir,
 } from "./workdir-validation.js";
 import {
+  baselinePathsNotWritten,
   captureChangeSet,
   subtractChangeSetBaseline,
   type WorkspaceChangeSet,
@@ -1169,10 +1171,7 @@ export class OrchestratorTaskService extends Service {
           adapter: this.runtime.adapter,
           databaseAdapter: this.runtime.databaseAdapter,
           logger: this.runtime.logger,
-          getSetting: (key) => {
-            const value = this.runtime.getSetting?.(key);
-            return typeof value === "string" ? value : undefined;
-          },
+          getSetting: (key) => this.readSetting(key),
         },
       });
   }
@@ -2953,9 +2952,21 @@ export class OrchestratorTaskService extends Service {
           )
         : []),
     ];
-    const changeSet = rawChangeSet
-      ? subtractChangeSetBaseline(rawChangeSet, baselinePaths)
-      : rawChangeSet;
+    // The capture keeps a baseline file the session wrote with a tool call (a
+    // user's uncommitted file it was asked to edit, or the file a new-session
+    // retry fixes after the previous attempt), so only the baseline paths this
+    // session did not write are subtracted.
+    const changeSet =
+      rawChangeSet && baselineSession && baselinePaths.length > 0
+        ? subtractChangeSetBaseline(
+            rawChangeSet,
+            baselinePathsNotWritten(
+              baselineSession.workdir,
+              baselinePaths,
+              this.acp()?.getChangedPaths(sessionId) ?? [],
+            ),
+          )
+        : rawChangeSet;
     const diffSummary =
       changeSet && changeSet.changedFiles.length > 0
         ? renderChangeSetBody(changeSet)
@@ -3876,9 +3887,12 @@ export class OrchestratorTaskService extends Service {
     // A paused task must not dispatch — drop it from the in-memory order but
     // KEEP its admission record so resume can replay the original spawn.
     await this.dequeueAdmission(taskId, false);
-    const hadActiveWork = doc.sessions.some(
-      (s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status),
-    );
+    // A repeated pause finds every session already stopped; it must keep the
+    // first pause's record of interrupted work, or resume re-engages nothing.
+    const hadActiveWork =
+      doc.sessions.some((s) => !TERMINAL_TASK_SESSION_STATUSES.has(s.status)) ||
+      (doc.task.paused === true &&
+        doc.task.metadata?.pausedWithActiveWork === true);
     await this.stopActiveSessions(doc);
     await this.store.updateTask(taskId, {
       paused: true,
@@ -4777,10 +4791,7 @@ export class OrchestratorTaskService extends Service {
       );
       const workerCaps = capabilitiesForBackend(
         workerSession?.framework,
-        (key) => {
-          const value = this.runtime.getSetting?.(key);
-          return typeof value === "string" ? value : undefined;
-        },
+        (key) => this.readSetting(key),
       );
       if (evidenceBundle) {
         // Reuse the bundle assembled on the task_complete path. When assembly
@@ -5178,16 +5189,10 @@ export class OrchestratorTaskService extends Service {
   ): Promise<IndependentVerifierVerdict | null> {
     const changeSet = await this.resolveCompletionChangeSet(sessionId, doc);
     const hasCodeChanges = (changeSet?.changedFiles.length ?? 0) > 0;
-    // shouldRunIndependentVerify wants (key) => string | undefined | null.
     // Resolve from runtime settings, then fall back to process.env so the
     // ELIZA_ORCHESTRATOR_INDEPENDENT_VERIFY flag is honored consistently with the
-    // env-driven shouldAutoVerifyGoal gate (runtime.getSetting may be absent).
-    const getSetting = (key: string): string | undefined => {
-      const value = this.runtime.getSetting?.(key);
-      if (typeof value === "string") return value;
-      const fromEnv = process.env[key];
-      return typeof fromEnv === "string" ? fromEnv : undefined;
-    };
+    // env-driven shouldAutoVerifyGoal gate.
+    const getSetting = (key: string) => this.readSetting(key);
     if (!shouldRunIndependentVerify(getSetting, hasCodeChanges)) return null;
     // #20794: the verifier reports through a CompletionEnvelope, but the
     // default spawn backend (elizaos) never emits one — every such run is
@@ -5395,6 +5400,14 @@ export class OrchestratorTaskService extends Service {
           });
         }
       }
+    } else if (doc.task.paused) {
+      // A paused task must not dispatch: a worker started here would run
+      // while every status writer ignores the paused task, and resume would
+      // start a second one. The message stays on the task for resume.
+      failedTo.push({
+        sessionId: "(paused)",
+        error: "Task is paused; resume it to continue with this message.",
+      });
     } else {
       // No active coding agent — auto-spawn one to work on the message so
       // messaging the orchestrator "just works" (parity with claude/codex):
@@ -7155,11 +7168,13 @@ export class OrchestratorTaskService extends Service {
     );
   }
 
+  /** Runtime setting, then process.env. AgentRuntime.getSetting returns a
+   *  saved "true"/"false" as a boolean; resolveSetting keeps it as a string. */
   private readSetting(key: string): string | undefined {
-    const raw = this.runtime.getSetting?.(key);
-    if (typeof raw === "string" && raw.length > 0) return raw;
-    const env = process.env[key];
-    return typeof env === "string" && env.length > 0 ? env : undefined;
+    // Some hand-rolled host runtimes do not have getSetting.
+    const runtime =
+      typeof this.runtime.getSetting === "function" ? this.runtime : null;
+    return resolveSetting(runtime, key);
   }
 
   /** Read the admission record off a task's metadata, or null if not queued. */

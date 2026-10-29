@@ -60,3 +60,35 @@ test("device Wer normalizes like the host wer.ts", () => {
     assert.equal(java[index], normalizeWords(line).join(" "), line);
   });
 });
+
+test("the on-device recognizer accepts only plain language tags and defaults to en-US", () => {
+  const androidJar = path.join(
+    process.env.ANDROID_HOME ?? path.join(os.homedir(), "Android/Sdk"),
+    "platforms/android-36/android.jar",
+  );
+  execFileSync(
+    "javac",
+    [
+      "--release",
+      "21",
+      "-cp",
+      androidJar,
+      "-sourcepath",
+      path.join(library, "src/main/java"),
+      "-d",
+      classes,
+      path.join(here, "plugin-contract/RecognizerLanguageCheck.java"),
+    ],
+    { stdio: "pipe" },
+  );
+  const out = execFileSync(
+    "java",
+    [
+      "-cp",
+      `${classes}${path.delimiter}${androidJar}`,
+      "ai.eliza.voice.RecognizerLanguageCheck",
+    ],
+    { encoding: "utf8", timeout: 15000 },
+  );
+  assert.match(out, /PASS recognizer language tags/);
+});

@@ -72,3 +72,28 @@ import {
 const voiceOptions: EchoReferenceBufferOptions = { capacitySamples: 32 };
 const voiceReference = new EchoReferenceBuffer(voiceOptions);
 voiceReference.push(new Float32Array([0, 1]));
+
+import type {
+	ActionParameterSchema as RootActionParameterSchema,
+	JSONSchema as RootJSONSchema,
+	JsonValue as RootJsonValue,
+	ViewCapability as RootViewCapability,
+} from "@elizaos/core";
+import type {
+	ActionParameterSchema,
+	JSONSchema,
+	JsonValue,
+	ViewCapability,
+} from "@elizaos/core/schema-types";
+
+type SameType<A, B> = [A] extends [B]
+	? [B] extends [A]
+		? true
+		: false
+	: false;
+export const schemaTypesMatchRoot: [
+	SameType<ActionParameterSchema, RootActionParameterSchema>,
+	SameType<JSONSchema, RootJSONSchema>,
+	SameType<JsonValue, RootJsonValue>,
+	SameType<ViewCapability, RootViewCapability>,
+] = [true, true, true, true];

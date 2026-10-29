@@ -23,6 +23,18 @@
       "types": "./dist/esm/sense-bridge.d.ts",
       "import": "./dist/esm/sense-bridge.js",
       "default": "./dist/esm/sense-bridge.js"
+    },
+    "./reset": {
+      "eliza-source": "./src/reset.ts",
+      "types": "./dist/esm/reset.d.ts",
+      "import": "./dist/esm/reset.js",
+      "default": "./dist/esm/reset.js"
+    },
+    "./settings": {
+      "eliza-source": "./src/settings.ts",
+      "types": "./dist/esm/settings.d.ts",
+      "import": "./dist/esm/settings.js",
+      "default": "./dist/esm/settings.js"
     }
   },
   "files": [
@@ -51,7 +63,7 @@
   },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
-    "rollup": "^4.64.9",
+    "rollup": "^4.65.0",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",
     "vitest": "^5.0.5",

@@ -13,6 +13,12 @@ import {
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGoogleConnectorAccountProvider } from "../../../plugin-google-workspace/src/connector-account-provider.js";
+import {
+  __resetConnectorRegistryForTests,
+  createConnectorRegistry,
+  registerConnectorRegistry,
+  registerDefaultConnectorPack,
+} from "../lifeops/connectors/index.js";
 import { connectorAction } from "./connector.js";
 
 vi.mock("@elizaos/plugin-assistant", async (importOriginal) => ({
@@ -195,4 +201,32 @@ describe("CONNECTOR Google capability selection", () => {
     expect(google.success).toBe(false);
     expect(google.data.requiresConfirmation).toBe(true);
   });
+
+  it.each(["twilio", "duffel"])(
+    "refuses to report %s as disconnected while its environment credentials stay in place",
+    async (connector) => {
+      const registry = createConnectorRegistry();
+      registerDefaultConnectorPack(registry, runtime);
+      registerConnectorRegistry(runtime, registry);
+      try {
+        const parameters = { action: "disconnect", connector };
+        const result = (await connectorAction.handler(
+          runtime,
+          {
+            agentId: runtime.agentId,
+            entityId: runtime.agentId,
+            roomId: runtime.agentId,
+            content: { text: `yes, disconnect my ${connector}` },
+          },
+          undefined,
+          { parameters },
+        )) as { success: boolean; data: Record<string, unknown> };
+
+        expect(result.success).toBe(false);
+        expect(result.data.error).toBe("UNSUPPORTED_OPERATION");
+      } finally {
+        __resetConnectorRegistryForTests(runtime);
+      }
+    },
+  );
 });

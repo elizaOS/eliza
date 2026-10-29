@@ -1,5 +1,7 @@
 // Coordinates cloud service google search behavior behind route handlers.
+
 import { assertModelOutputComplete } from "@elizaos/core";
+import { APICallError } from "ai";
 import { calculateCost, estimateRequestCost, normalizeModelName } from "../pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "../pricing-constants";
 import { logger } from "../utils/logger";
@@ -247,9 +249,13 @@ export async function executeHostedGoogleSearch(
       );
       const body = (await response.json()) as GoogleSearchResponse;
       if (!response.ok) {
-        throw new Error(
-          body.error?.message || `Google Search request failed with ${response.status}`,
-        );
+        // Keep the status so billing can tell a rejection from an ambiguous failure.
+        throw new APICallError({
+          message: body.error?.message || `Google Search request failed with ${response.status}`,
+          url: response.url,
+          requestBodyValues: {},
+          statusCode: response.status,
+        });
       }
       assertModelOutputComplete({
         finishReason: body.candidates?.[0]?.finishReason,

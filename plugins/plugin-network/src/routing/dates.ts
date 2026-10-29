@@ -100,8 +100,13 @@ function nextDayOfMonth(n: number, today: Date): Date | null {
   return null;
 }
 
-/** This exact date if it exists and is after today. */
-function futureDay(
+/**
+ * This exact date if it exists and is not before today. A date the member
+ * names with its month is a calendar date, not "the next time that date
+ * comes around": "until October 14" said on October 14 ends today, and a
+ * range that starts today must not move to next year.
+ */
+function statedDay(
   year: number,
   m: number,
   n: number,
@@ -113,7 +118,26 @@ function futureDay(
   // date, so reject it — the same existence check nextDayOfMonth applies.
   if (candidate.getUTCMonth() !== m || candidate.getUTCDate() !== n)
     return null;
-  return candidate > today ? candidate : null;
+  return candidate >= today ? candidate : null;
+}
+
+/** This exact date if it exists and is after today. */
+function futureDay(
+  year: number,
+  m: number,
+  n: number,
+  today: Date,
+): Date | null {
+  const candidate = statedDay(year, m, n, today);
+  return candidate && candidate > today ? candidate : null;
+}
+
+/** The stated month/day this year or next, including today. */
+function statedMonthDay(m: number, n: number, today: Date): Date | null {
+  return (
+    statedDay(today.getUTCFullYear(), m, n, today) ??
+    statedDay(today.getUTCFullYear() + 1, m, n, today)
+  );
 }
 
 /** Next occurrence (today excluded) of month/day, or of the month's first day. */
@@ -132,10 +156,10 @@ function monthDay(
   today: Date,
 ): Date | null {
   const y = /^(?:,?\s+(\d{4})|\/(\d{4}|\d{2}))\b/.exec(rest);
-  if (!y) return nextMonthDay(m, n, today);
+  if (!y) return statedMonthDay(m, n, today);
   const stated = y[1] ?? y[2];
   const year = stated.length === 2 ? 2000 + Number(stated) : Number(stated);
-  return futureDay(year, m, n, today);
+  return statedDay(year, m, n, today);
 }
 
 function nextWeekday(w: number, today: Date, nextWeek: boolean): Date {
@@ -219,7 +243,11 @@ export interface DateWindow {
 }
 
 const iso = (d: Date | null) => (d ? d.toISOString() : null);
-const END = String.raw`(?:until|till|til|'til|thru|through|back\s+(?:on|by|in)?|by)`;
+// "back" ends a stay with a preposition or right before "the": "back on the
+// 5th" and "back the 5th" alike. authz.ts END_MARKER treats "back the" as an
+// end marker, so this must resolve it. The old `back\s+(?:on|by|in)?` needed a
+// second space after "back" whenever the preposition was left out.
+const END = String.raw`(?:until|till|til|'til|thru|through|back(?:\s+(?:on|by|in)|(?=\s+the\s))|by)`;
 
 /**
  * The start a member states for a stay ("from Monday", "starting December
@@ -253,15 +281,26 @@ export function resolveWindow(
   const today = startOfDay(now);
   const out: DateWindow = { from: null, until: null };
 
-  const range = new RegExp(String.raw`\bfrom\s+(.+?)\s+${END}\s+(.+)$`).exec(t);
+  // A range word. "to" only closes a range it can see a start for ("from
+  // Monday to Friday"): on its own it is a preposition that appears in almost
+  // every sentence ("I need to fly out Monday"), so the standalone end pattern
+  // below keeps using END alone.
+  const range = new RegExp(
+    String.raw`\bfrom\s+(.+?)\s+(?:${END}|to)\s+(.+)$`,
+  ).exec(t);
   if (range?.[1] && range[2]) {
     const from = parseDateExpr(range[1], now);
-    let until = parseDateExpr(range[2], now);
-    // "from friday until monday": the end day comes next after the start day.
-    if (from && until && until <= from) until = parseDateExpr(range[2], from);
-    out.from = iso(from);
-    out.until = iso(until);
-    if (out.until) return out;
+    // A place-to-place phrase ("from Boston to New York on Friday") has the
+    // shape of a range but states no start date. Adopting it set from to null
+    // and until to the departure day, so the member's duration never ran.
+    if (from) {
+      let until = parseDateExpr(range[2], now);
+      // "from friday until monday": the end day comes next after the start day.
+      if (until && until <= from) until = parseDateExpr(range[2], from);
+      out.from = iso(from);
+      out.until = iso(until);
+      if (out.until) return out;
+    }
   }
   const end = new RegExp(String.raw`\b${END}\s+(?:the\s+)?(.+)$`).exec(t);
   if (end) {

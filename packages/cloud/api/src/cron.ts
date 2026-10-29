@@ -107,6 +107,11 @@ export const CRON_FANOUT: Record<string, string[]> = {
     "/api/v1/cron/provisioning-worker-health",
     "/api/v1/cron/process-provisioning-jobs",
     "/api/cron/process-stripe-queue",
+    // Auto-confirm direct crypto payments left in `broadcast` (the payer's
+    // confirm call never landed) and retry pending treasury sweeps. It is the
+    // only caller of that recovery; without it a paid deposit is never
+    // credited. Sized for this cadence (60 verify attempts ≈ 1 hour).
+    "/api/cron/process-pending-crypto-payments",
     "/api/cron/reconcile-app-billing",
     "/api/v1/cron/pool-replenish",
     // #9899 Tier-2 optimistic-billing backstop (no-op when the flag is off).

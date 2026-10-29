@@ -23,4 +23,10 @@ export interface CacheRedisClient {
   lpush(key: string, ...values: string[]): Promise<number>;
   rpop(key: string): Promise<string | null>;
   llen(key: string): Promise<number>;
+  /** LMOVE source destination RIGHT LEFT: the tail of `source` becomes the head of `destination`. */
+  rpoplpush(source: string, destination: string): Promise<string | null>;
+  /** LREM: removes `count` occurrences of `value` (0 = all, negative = from the tail). */
+  lrem(key: string, count: number, value: string): Promise<number>;
+  /** LRANGE with inclusive `stop`; negative offsets count from the tail. */
+  lrange(key: string, start: number, stop: number): Promise<string[]>;
 }

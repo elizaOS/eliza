@@ -33,6 +33,7 @@ import {
 import { contentSafetyService } from "./content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import { generationsService } from "./generations";
+import { isKnownUnacceptedProviderError } from "./inference-provider-outcome";
 
 const MAX_IMAGES = 4;
 
@@ -269,13 +270,17 @@ async function generateProviderImage(
       billingSource: provider.billingSource,
       error: error instanceof Error ? error.message : String(error),
     });
-    throw new ApiError(
+    const ErrorType = isKnownUnacceptedProviderError(error) ? ImageProviderRejectedError : ApiError;
+    throw new ErrorType(
       503,
       "internal_error",
       "Image generation is temporarily unavailable. Please try again shortly.",
     );
   }
 }
+
+/** The provider clearly refused the request, so it produced no image. */
+class ImageProviderRejectedError extends ApiError {}
 
 export function createImageGenerationExecutor(deps: ImageGenerationDependencies) {
   return async function execute(
@@ -292,6 +297,18 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
       throw new ApiError(503, "internal_error", getAiProviderConfigurationError());
     }
 
+    const costFor = (imageCount: number) =>
+      deps.calculateCost({
+        model: request.model,
+        provider: definition.provider,
+        billingSource: definition.billingSource,
+        imageCount,
+        dimensions: {
+          ...definition.defaultDimensions,
+          ...imageDimensions(request),
+        },
+        cache: input.pricingCache,
+      });
     const [, cost] = await Promise.all([
       deps.assertSafe({
         surface: "media_generation_prompt",
@@ -302,17 +319,7 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
         allowDataImages: true,
         metadata: { type: "image", model: request.model },
       }),
-      deps.calculateCost({
-        model: request.model,
-        provider: definition.provider,
-        billingSource: definition.billingSource,
-        imageCount: request.numImages,
-        dimensions: {
-          ...definition.defaultDimensions,
-          ...imageDimensions(request),
-        },
-        cache: input.pricingCache,
-      }),
+      costFor(request.numImages),
     ]);
     const billingContext = {
       organizationId: input.actor.organizationId,
@@ -339,11 +346,13 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
     const generationIds: string[] = [];
     let billingUncertain = false;
     let providerDispatchStarted = false;
+    let dispatchedImageCount = 0;
     try {
       const provider = deps.getProvider(definition.billingSource);
       await admission?.markProviderDispatched?.();
       for (let index = 0; index < request.numImages; index += 1) {
         providerDispatchStarted = true;
+        dispatchedImageCount += 1;
         const generated = await generateProviderImage(request, input.providerKeys, provider);
         const key = `generations/images/${input.actor.organizationId}/${input.actor.userId}/${deps.randomUuid()}.${extensionForMimeType(generated.mimeType)}`;
         const stored = await putGeneratedMediaObject(
@@ -492,12 +501,31 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
                 provider: definition.provider,
                 billingSource: definition.billingSource,
                 generatedImageCount: storedImages.length,
+                dispatchedImageCount,
                 requestedImageCount: request.numImages,
                 settlementMode: "unknown",
                 error: error instanceof Error ? error.message : String(error),
               },
             );
-            await admission?.settleUnknown();
+            // A clear provider rejection before any image was stored means
+            // nothing was produced; otherwise bill what was dispatched.
+            if (error instanceof ImageProviderRejectedError && storedImages.length === 0) {
+              await admission?.settle(0);
+            } else {
+              // Images never sent to the provider are not billed. The one that
+              // failed may still have been produced, so it is.
+              const dispatchedCost =
+                dispatchedImageCount < request.numImages
+                  ? // error-policy:J7 a repricing failure falls back to the
+                    // conservative full settlement below.
+                    await costFor(dispatchedImageCount).catch(() => null)
+                  : null;
+              if (dispatchedCost) {
+                await admission?.settle(dispatchedCost.totalCost);
+              } else {
+                await admission?.settleUnknown();
+              }
+            }
           } else {
             await admission?.settle(0);
           }

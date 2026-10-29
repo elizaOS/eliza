@@ -333,10 +333,90 @@ upstream or dependency roots; selected native files can be copied without admitt
 whole plugin source directories. Existing unmarked projects, identity changes,
 unowned-file collisions and symlink escapes are rejected. Generated ownership
 permits regeneration and removal of formerly selected generated files while
-preserving other build outputs. Hosts keep authored manifests/resources outside
+preserving other build outputs. Ownership is recorded with the output's place in
+the consumer, so a moved or renamed checkout still owns its generated host, while
+the marker copied to another place owns nothing there. Hosts keep authored manifests/resources outside
 the generated project and supply already-verified optional runtime payloads. The
-generator owns the non-translatable `app_name` brand string; host resources must
-not redefine it. Other UI strings can use the host's localized resource directories.
+generator owns the non-translatable `app_name` brand string (written under the
+generated `eliza-consumer-host/res`); host resources must not redefine it. Other UI
+strings can use the host's localized resource directories. A manifest already at its
+source-set location in an in-place host is used where it is; other manifests are
+copied into the generated app module, where lint resolves the classes they name.
+
+`inPlace: true` writes the generated build files into the consumer's own authored
+Android directory, beside its standard `app/src` layout: an existing unmarked
+directory is admitted, but no authored file is ever replaced. The profile can also
+declare, as data:
+
+- `signing`: the four environment variable *names* for the release key store,
+  password, alias and key password. Gradle signs releases only when all four are
+  set, fails on a partial set by name, and never prints a value. `versionOverride`
+  names the release version code/name variables, validated like the identity.
+- `buildTypes`: debug/release ABI filters and BuildConfig fields, release resource
+  shrinking and Proguard files (both require `releaseMinify`); `kotlin: false`
+  leaves a Java-only app without the Kotlin plugin (its sources then need package
+  directories, which lint uses to resolve manifest classes); `preserveRuntimeBytes` keeps
+  packaged runtime libraries unstripped; `runtimeDirectory` implies it and
+  rejects an explicit `false`.
+- `testMocks`: debug-only Java, resource and manifest sources plus androidTest
+  sources attached only when the named switch (Gradle property or environment,
+  for example `ELIZA_DEV_ALLOW_TEST_MOCKS`) is exactly `1`; the named BuildConfig
+  field is `true` only in those debug variants.
+- `admission`: argv commands (no shell) run as tasks before every `preBuild`, and
+  `settingsAdmission` commands run before any module is configured.
+  `generatedSources` adds build directories those tasks produce; `assetFiles` stages
+  named files into the APK assets; `appScripts` applies consumer-owned Gradle files
+  for product configuration after the generated policy.
+- `generationInputs`: files whose digests the host records; a changed input makes
+  the generated host refuse to configure until it is regenerated.
+- dependencies may name a `module` with a `toolchainVersion` key to take the
+  reviewed toolchain version. A `path` of `.` names a declared root itself.
+
+Modules from the upstream and dependency roots, and consumer modules marked
+`relocateBuild` (for example an authenticated staged copy), keep their build outputs
+under the generated host's `build/modules/<name>`, so shared checkouts, dependency
+trees and staged sources stay unchanged.
+
+`scripts/mobile/android/build-consumer.mjs` builds the selected distributions of a
+generated host and retains only verified artifacts. Hosts choose the Gradle project
+and output directories, `-Pname=value`/`--offline` arguments, where instrumentation
+APKs and R8 mappings are kept, a sequential low-disk mode, and the signing
+environment names: a signed release keeps `<variant>-release.apk`, an unsigned one
+is `-release-unsigned.apk`, and an unsigned release fails when every named signing
+variable is set. Stale release outputs and an earlier `apk-manifest.json` are removed
+before Gradle runs, so a failed or partly copied build never keeps old verification
+beside its artifacts. A host build `record` (a named JSON file, for example the build
+options its verifier checks) is written only after every artifact of the build is in
+place and before verification, so it always describes the artifacts beside it; a
+failed build keeps the previous record with the previous artifacts. The archive is
+optional. Run
+`node --test packages/app/scripts/mobile/android/build-consumer.test.mjs`.
+
+`scripts/mobile/android/resident-host-sources.mjs` stages the resident runtime's
+Android classes (`RESIDENT_HOST_CLASSES`) into a host's own application package so
+`R`, `BuildConfig` and installed component names keep that host's identity. The
+host supplies data: abstract socket names for the agent, inference and secure-store
+routes, the notification small icon, an optional `0xAARRGGBB` accent and string
+resources for the runtime notifications, an optional static environment hook, and
+the shared helpers it compiles beside them: main Java sources of native plugins
+(`plugins/plugin-native-*/android/src/main/java/...`), which keep their packages. A
+helper reviewed in `RESIDENT_HOST_HELPERS` as reading the host's `BuildConfig` gains
+that import; every other helper is staged verbatim (`residentHelperKind`), so a host
+adopts a new shared helper without an edit here. The rewrite anchors live here and
+fail closed when the upstream source changes; each staged file reports source and
+generated digests for the host's provenance receipt. Run
+`node --test packages/app/scripts/mobile/android/resident-host-sources.test.mjs`.
+
+`scripts/mobile/artifact-inspection/apk-distribution.mjs` is the shared distribution
+check of a built consumer APK. `readApk` collects aapt badging/xmltree, zip entries and
+dex markers; `apkDistributionProblems` judges them against a host policy given as data:
+the exported-component allowlist (each with its guarding permission or `null`),
+development class names, manifest text and entries tolerated only in a test-mocks debug
+build, forbidden permissions, entries and dex prefixes, and required entries. Backup,
+cleartext, release network security config, test-only names, source maps and version
+fields are checked for every host. `parseApkSignerDigest` reads `apksigner --print-certs`
+and requires an explicit API level for rotated signers. Product-specific checks stay with
+the host. Run `node --test packages/app/scripts/mobile/artifact-inspection/apk-distribution.test.mjs`.
 
 The reviewed consumer toolchain remains Gradle 8.13 / AGP 8.13 / Kotlin 2.2.20 /
 JDK 21, independently of the full app's newer default wrapper. The distribution

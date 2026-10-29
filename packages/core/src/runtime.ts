@@ -535,6 +535,11 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 	private invalidateTurnIdentityClusters(): void {
 		invalidateTurnMemoPrefix(`identity-cluster:${this.agentId}:`);
+		// Verified clusters live under a different prefix but are invalidated
+		// by the same relationship/entity mutations; without this, a verified
+		// cluster memoized earlier in the turn survives a link removal until
+		// the turn ends. invalidateRelatedEntityIds already clears both.
+		invalidateTurnMemoPrefix(`verified-identity-cluster:${this.agentId}:`);
 	}
 	readonly fetch: FetchLike = fetch;
 	services = new Map<ServiceTypeName, Service[]>();
@@ -3253,22 +3258,28 @@ export class AgentRuntime implements IAgentRuntime {
 	}: Room) {
 		if (!worldId) throw new Error("worldId is required");
 
-		// Check if room exists (for logging only)
+		// Check if room exists (for logging and for the merge below)
 		const room = await this.getRoom(id);
 
-		// Atomic upsert - handles both insert and update
+		// Atomic upsert - handles both insert and update. A field the caller
+		// omits keeps the stored room's value, the same rule
+		// ensureWorldExists applies to a world's name and messageServerId:
+		// the fixed-shape object built from the destructured parameters
+		// otherwise carries every omitted field as `undefined`, and an
+		// adapter merge-write overwrites the stored name, type, channel and
+		// server binding with it.
 		await this.adapter.upsertRooms([
 			{
 				id,
-				name,
+				name: name ?? room?.name,
 				agentId: this.agentId,
-				source,
-				type,
-				channelId,
-				serverId,
-				messageServerId,
+				source: source ?? room?.source,
+				type: type ?? room?.type,
+				channelId: channelId ?? room?.channelId,
+				serverId: serverId ?? room?.serverId,
+				messageServerId: messageServerId ?? room?.messageServerId,
 				worldId,
-				metadata,
+				metadata: metadata ?? room?.metadata,
 			},
 		]);
 		// The existence probe above may have memoized null/stale for this id.

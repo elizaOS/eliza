@@ -231,6 +231,16 @@ describe("Calendar operation bindings", () => {
       operation: "feed",
       action: "CALENDAR_FEED",
     },
+    {
+      text: "Find an open 45-minute time for a planning call Friday afternoon",
+      operation: "propose_times",
+      action: "CALENDAR_PROPOSE_TIMES",
+    },
+    {
+      text: "Check whether 11:00 to 11:30 Thursday is free",
+      operation: "check_availability",
+      action: "CALENDAR_CHECK_AVAILABILITY",
+    },
   ] as const)(
     "preserves the declared $operation rather than a feed heuristic for $text",
     async ({ text, operation, action }) => {

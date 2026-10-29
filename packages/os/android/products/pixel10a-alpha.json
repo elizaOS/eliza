@@ -10,7 +10,13 @@
   "releaseConfig": "cp2a",
   "launcher": {
     "moduleName": "AlphaPhone",
-    "packageName": "ai.elizaresearch.alphaphone"
+    "packageName": "ai.elizaresearch.alphaphone",
+    "refuseLockScreenSurfaces": true,
+    "imageProvisioning": {
+      "module": "AlphaImageCapabilityOverlay",
+      "overlayable": "AlphaImageProvisioning",
+      "resource": "alpha_aosp_image_capability"
+    }
   },
   "releaseQualified": false,
   "sense": {

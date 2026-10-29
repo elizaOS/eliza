@@ -118,7 +118,11 @@ import { createSharedMemoryStore, type SharedMemoryStore } from "./shared-memory
 import { buildSharedRecallContext, SHARED_RECALL_EMBEDDING_MODEL } from "./shared-recall";
 import { embedSharedRecallTexts, sharedRecallEnabled } from "./shared-recall-embeddings";
 import type { SharedRuntimeAgent } from "./shared-runtime-agent";
-import { SharedRuntimeCacheWarmingError, SharedTurnConflictError } from "./shared-runtime-errors";
+import {
+  isUnacceptedSharedModelFailure,
+  SharedRuntimeCacheWarmingError,
+  SharedTurnConflictError,
+} from "./shared-runtime-errors";
 import {
   parseSharedReminderActionProvenance,
   sharedRuntimeModelHistoryMessages,
@@ -1348,7 +1352,9 @@ function isProvablyZeroProviderFailure(error: unknown): boolean {
     providerBoundaryAdmissionFailure(error) !== null ||
     isInferenceAdmissionDispatchMarkError(error) ||
     isKnownPreDispatchProviderConfigurationError(error) ||
-    isKnownUnacceptedProviderError(error)
+    isKnownUnacceptedProviderError(error) ||
+    // The runtime wraps the SDK error; its diagnostic keeps the status.
+    isUnacceptedSharedModelFailure(error)
   );
 }
 

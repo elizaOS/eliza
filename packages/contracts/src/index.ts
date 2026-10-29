@@ -1,5 +1,6 @@
 export * from "./calendar.js";
 export * from "./calendar-linked-sync.js";
+export * from "./client-turn-observation.js";
 export * from "./contracts/agent-backup-capture-v2.js";
 export * from "./contracts/agent-backup-manifest.js";
 export * from "./contracts/agent-backup-manifest-v3.js";
@@ -133,6 +134,9 @@ export * from "./lifeops-normalize/time-util.js";
 export * from "./lifeops-normalize/time-zone.js";
 export * from "./native-notes-query.js";
 export * from "./native-transcript.js";
+export * from "./notice-routes.js";
 export * from "./os-intent/assistant-launch.js";
 export * from "./os-intent/contract.js";
 export * from "./os-intent/decode.js";
+export * from "./phone-workflow.js";
+export * from "./workflow-client.js";

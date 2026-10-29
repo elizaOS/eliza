@@ -330,7 +330,9 @@ export class InboxUnsubscribeService {
       if (!message.fromEmail && !listUnsubscribe) {
         continue;
       }
-      const senderEmail = message.fromEmail ?? message.from;
+      // Gmail's from: search ignores case, so one sender can arrive as
+      // "News@Shop.example" and "news@shop.example"; group them together.
+      const senderEmail = (message.fromEmail ?? message.from).toLowerCase();
       const existing = senders.get(senderEmail);
       const options = listUnsubscribeOptions(listUnsubscribe);
       const method = unsubscribeMethod({
@@ -361,6 +363,22 @@ export class InboxUnsubscribeService {
       existing.messageCount += 1;
       existing.allMessageIds.push(message.id);
       existing.allThreadIds.push(message.threadId);
+      // A sender does not publish List-Unsubscribe on every message (a
+      // one-off "your order shipped" can be newer than the newsletter that
+      // carries it), so keep the first mechanism the batch publishes instead
+      // of only the one on the first message. The method and its headers are
+      // taken from the same message so the reported method never disagrees
+      // with the stored target.
+      if (
+        !existing.unsubscribeHttpUrl &&
+        !existing.unsubscribeMailto &&
+        (options.httpUrl || options.mailto)
+      ) {
+        existing.unsubscribeMethod = method;
+        existing.unsubscribeHttpUrl = options.httpUrl;
+        existing.unsubscribeMailto = options.mailto;
+        existing.listUnsubscribePost = listUnsubscribePost;
+      }
       // Gmail lists newest-first, so derive the extremes by timestamp rather
       // than iteration order. Unparseable timestamps never become an extreme.
       const receivedAtMs = Date.parse(message.receivedAt);

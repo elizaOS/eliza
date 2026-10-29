@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.11, <3.13"
 resolution-markers = [
     "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
@@ -147,8 +147,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "huggingface-hub" },
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
@@ -344,7 +343,7 @@ dependencies = [
     { name = "bitsandbytes" },
     { name = "torch" },
     { name = "transformers", version = "5.10.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
+    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ee/83/dccb2c2506b36f12a3440a6b09d0a064676710a932b12e971e86f26a452f/apollo_torch-1.0.3.tar.gz", hash = "sha256:1c661475f1a1b5cbaeda82fcc19a5145d7b333b2e67b7e4ce3a48426236c174a", size = 29994, upload-time = "2025-02-06T06:45:32.339Z" }
 wheels = [
@@ -358,8 +357,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "ctranslate2" },
     { name = "minisbd" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "sacremoses" },
     { name = "sentencepiece" },
     { name = "spacy" },
@@ -426,8 +424,7 @@ version = "0.49.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "torch" },
 ]
 wheels = [
@@ -719,7 +716,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "torch" },
     { name = "transformers", version = "5.10.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
+    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-serve' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/2c/9e/d7f18bd9a0354088abc11a0c1f2c7698f7c49e5a709faedf6a46e388f693/compressed_tensors-0.17.0.tar.gz", hash = "sha256:15c20d06bdbcf35b51fc99fd125e7b9be1e1855567c33b7a46dfac26ad6fb126", size = 257091, upload-time = "2026-06-03T16:49:17.208Z" }
 wheels = [
@@ -818,7 +815,7 @@ name = "cuda-bindings"
 version = "13.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cuda-pathfinder", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-serve')" },
+    { name = "cuda-pathfinder", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or extra == 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-serve'" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/e0/a9/3a8241c6e19483ac1f1dcf5c10238205dcb8a6e9d0d4d4709240dff28ff4/cuda_bindings-13.2.0-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:721104c603f059780d287969be3d194a18d0cc3b713ed9049065a1107706759d", size = 5730273, upload-time = "2026-03-11T00:12:37.18Z" },
@@ -892,43 +889,43 @@ wheels = [
 
 [package.optional-dependencies]
 cublas = [
-    { name = "nvidia-cublas", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cublas", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cuda-nvrtc", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 cudart = [
-    { name = "nvidia-cuda-runtime", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cuda-runtime", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 cufft = [
-    { name = "nvidia-cufft", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cufft", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-nvjitlink", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 cufile = [
-    { name = "nvidia-cufile", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cufile", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 cupti = [
-    { name = "nvidia-cuda-cupti", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cuda-cupti", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 curand = [
-    { name = "nvidia-curand", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-curand", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 cusolver = [
-    { name = "nvidia-cublas", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-cusolver", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-cusparse", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cublas", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cusolver", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-cusparse", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-nvjitlink", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 cusparse = [
-    { name = "nvidia-cusparse", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cusparse", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
+    { name = "nvidia-nvjitlink", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 nvjitlink = [
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-nvjitlink", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 nvrtc = [
-    { name = "nvidia-cuda-nvrtc", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cuda-nvrtc", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 nvtx = [
-    { name = "nvidia-nvtx", marker = "(platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine != 'aarch64' and platform_machine != 'x86_64' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (platform_machine == 'aarch64' and sys_platform == 'linux') or (platform_machine == 'x86_64' and sys_platform == 'linux') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform != 'linux' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-nvtx", marker = "platform_machine == 'aarch64' or platform_machine == 'x86_64'" },
 ]
 
 [[package]]
@@ -966,8 +963,7 @@ dependencies = [
     { name = "huggingface-hub" },
     { name = "multiprocess" },
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "pandas" },
     { name = "pyarrow" },
     { name = "pyyaml" },
@@ -1039,11 +1035,11 @@ wheels = [
 
 [[package]]
 name = "dnspython"
-version = "2.8.0"
+version = "2.9.0"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/8c/8b/57666417c0f90f08bcafa776861060426765fdb422eb10212086fb811d26/dnspython-2.8.0.tar.gz", hash = "sha256:181d3c6996452cb1189c4046c61599b84a5a86e099562ffde77d26984ff26d0f", size = 368251, upload-time = "2025-09-07T18:58:00.022Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ef/4a/50822184bd67cc6493f0fb6a880749158fcd31ab3fa07409acfd91f9fc85/dnspython-2.9.0.tar.gz", hash = "sha256:b44dc6b18f07a8b1c56676a19fbfdb5209415b046a9cece286baafa87ff3f7f1", size = 423560, upload-time = "2026-10-09T00:07:24.352Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ba/5a/18ad964b0086c6e62e2e7500f7edc89e3faa45033c71c1893d34eed2b2de/dnspython-2.8.0-py3-none-any.whl", hash = "sha256:01d9bbc4a2d76bf0db7c1f729812ded6d912bd318d3b1cf81d30c0f845dbf3af", size = 331094, upload-time = "2025-09-07T18:57:58.071Z" },
+    { url = "https://files.pythonhosted.org/packages/10/02/cdcc9b7c051786a103c3b09e1003a82fa0c66bcb91ffbdabcfbf7b4163b9/dnspython-2.9.0-py3-none-any.whl", hash = "sha256:9a4aedb833c3c1b49214d04d44d3032ab7a9135f7c1d29a549b4ff78fd82fda9", size = 354822, upload-time = "2026-10-09T00:07:22.622Z" },
 ]
 
 [[package]]
@@ -1100,7 +1096,7 @@ dev = [
     { name = "tenacity" },
     { name = "torch" },
     { name = "transformers", version = "5.10.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
+    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
     { name = "ty" },
 ]
 reward = [
@@ -1402,11 +1398,11 @@ wheels = [
 
 [[package]]
 name = "filelock"
-version = "3.29.0"
+version = "4.2.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/b5/fe/997687a931ab51049acce6fa1f23e8f01216374ea81374ddee763c493db5/filelock-3.29.0.tar.gz", hash = "sha256:69974355e960702e789734cb4871f884ea6fe50bd8404051a3530bc07809cf90", size = 57571, upload-time = "2026-04-19T15:39:10.068Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d5/98/771d8ca889f220d7d7e352addf500666368f0fd081c6080a83767580c6e4/filelock-4.2.1.tar.gz", hash = "sha256:c4c937ccac2a813cee448e662a56366cfb374c0f8702e75f295c412cc1c5d5a3", size = 650997, upload-time = "2026-10-17T16:48:14.435Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/47/dd9a212ef6e343a6857485ffe25bba537304f1913bdbed446a23f7f592e1/filelock-3.29.0-py3-none-any.whl", hash = "sha256:96f5f6344709aa1572bbf631c640e4ebeeb519e08da902c39a001882f30ac258", size = 39812, upload-time = "2026-04-19T15:39:08.752Z" },
+    { url = "https://files.pythonhosted.org/packages/28/00/db89d339bc4ecdc8087fa7b8607ba22ffc27bf96286f340c9620bea428b3/filelock-4.2.1-py3-none-any.whl", hash = "sha256:7be2662e9e826b9bba28afc0f843a123280d799a2ea44bb5d35ccec67905ae44", size = 162455, upload-time = "2026-10-17T16:48:12.937Z" },
 ]
 
 [[package]]
@@ -1426,8 +1422,7 @@ dependencies = [
     { name = "nvidia-cudnn-frontend" },
     { name = "nvidia-cutlass-dsl" },
     { name = "nvidia-ml-py" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
+    { name = "packaging" },
     { name = "requests" },
     { name = "tabulate" },
     { name = "torch" },
@@ -1811,10 +1806,9 @@ dependencies = [
     { name = "click" },
     { name = "filelock" },
     { name = "fsspec" },
-    { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "hf-xet", marker = "platform_machine == 'AMD64' or platform_machine == 'aarch64' or platform_machine == 'amd64' or platform_machine == 'arm64' or platform_machine == 'x86_64'" },
     { name = "httpx" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "pyyaml" },
     { name = "tqdm" },
     { name = "typing-extensions" },
@@ -1838,7 +1832,7 @@ dependencies = [
     { name = "tqdm" },
     { name = "triton", version = "3.6.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
     { name = "triton", version = "3.7.0", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "triton", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "triton", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/70/d2/e286acb9f594f998bbc2d99617966a4f01a603c699d829793a86a42c2440/humming_kernels-0.1.16.tar.gz", hash = "sha256:a5356a63c4adf6c16c46f541749dec90fc2d49cf29ebc33ac05e23c744731809", size = 317590, upload-time = "2026-09-22T02:41:16.516Z" }
 wheels = [
@@ -1856,16 +1850,16 @@ cu13 = [
 
 [[package]]
 name = "hydra-core"
-version = "1.3.7"
+version = "1.3.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "antlr4-python3-runtime" },
     { name = "omegaconf" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" } },
+    { name = "packaging" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5c/a9/fe2c936f36881e3197a8800f5bfba078d7846d54eb5d009b445eda1ee281/hydra_core-1.3.7.tar.gz", hash = "sha256:d4ff629c7e23b64a9db5fe5b027cf7c55b633b737f03be51ef41b77ed016f75e", size = 3278662, upload-time = "2026-09-14T18:02:55.528Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7c/1d/e1ad315ca93f1b090b0782942535fea8344e8b2d749c92117b2bf45f4407/hydra_core-1.3.8.tar.gz", hash = "sha256:18d5dfb841734a936507e75e7b8390b406ed22494f7fb8b4b7b7c122102de3d5", size = 3278858, upload-time = "2026-10-25T13:42:22.491Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/25/0c/21890c10cc94da917c8e47efc1c55cd3e56a1d25ab5947bdd35abaf9fdc1/hydra_core-1.3.7-py3-none-any.whl", hash = "sha256:83606c4a05c770f1e026e0489875f28989829d151799eabd8cfa8cbe82164515", size = 168790, upload-time = "2026-09-14T18:02:53.661Z" },
+    { url = "https://files.pythonhosted.org/packages/13/69/8e5cf7ad847538fc180fbd06e8442b8bede53ee4852458a16e24231395e9/hydra_core-1.3.8-py3-none-any.whl", hash = "sha256:d5f184c291691cba835c7f04bc4e36270ad88b1d7e394a3712f5af084c30b394", size = 168949, upload-time = "2026-10-25T13:42:20.959Z" },
 ]
 
 [[package]]
@@ -2143,37 +2137,33 @@ wheels = [
 
 [[package]]
 name = "litellm"
-version = "1.104.0"
+version = "1.103.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "boto3" },
     { name = "click" },
     { name = "fastuuid" },
-    { name = "filelock" },
     { name = "httpx", extra = ["http2"], marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "huggingface-hub" },
     { name = "importlib-metadata" },
     { name = "jinja2" },
     { name = "jsonschema" },
     { name = "openai" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" } },
     { name = "pydantic" },
     { name = "pydantic-settings" },
     { name = "python-dotenv" },
-    { name = "pyyaml" },
     { name = "tiktoken" },
     { name = "tokenizers", version = "0.22.2", source = { registry = "https://pypi.org/simple" } },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/55/9f/7cc04ca18e936ef9b61b99f25164c71ca1ae0b586c1a3f52ec9397d603a2/litellm-1.104.0.tar.gz", hash = "sha256:df550ab471974edefd7cb0cc6b88b42db453f0de6b91db3cc570f5e1e8d8b173", size = 19695442, upload-time = "2026-10-03T22:43:30.728Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/d8/c41f2f98321a46222bf6230ff9427f75acea0f85f6255e87afa7d479de0c/litellm-1.103.7.tar.gz", hash = "sha256:42caa25a8e601e3fe327b4447966e5268d09274c19ac05ef24e86163d821e3f5", size = 18995147, upload-time = "2026-10-21T09:36:09.647Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/73/e9/a98bb9df6f66c54526129656857c7d0dcdbd96fb1d50220c63018f0372ab/litellm-1.104.0-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:574acb77ed62ca2b2a751f7182e2fa1055dbbf047fabfa03d8e8af6d5502636d", size = 36188373, upload-time = "2026-10-03T22:42:59.518Z" },
-    { url = "https://files.pythonhosted.org/packages/c7/fb/f703b98f03cba9df6af291ca6b15fab3ff6af4b849b0d4b1168dbad3b85b/litellm-1.104.0-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:5494970a1f035db8557aa87fd5e289757a26b204f25e53430c181e608a42a864", size = 34643294, upload-time = "2026-10-03T22:43:04.692Z" },
-    { url = "https://files.pythonhosted.org/packages/07/4c/6206fc1119f42cbd00d39e6098d51a0028932ed464350fd2e34520a91869/litellm-1.104.0-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:98fd18c8fdb3074f130e01e95c5848906f42860ca45c376fcb6a5e0cc8755f9f", size = 35908415, upload-time = "2026-10-03T22:43:08.819Z" },
-    { url = "https://files.pythonhosted.org/packages/cb/44/fd2733a47dbe201819ddfe61078d7b3e26fc9a0a20ec93bae72219dcfaa9/litellm-1.104.0-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:b0a690d18b0d25f907d08329027ca57b03f0173a4824b89b8f91528490d10bde", size = 36828930, upload-time = "2026-10-03T22:43:13.323Z" },
-    { url = "https://files.pythonhosted.org/packages/d5/a3/9ceea12f47cc2728cef090e8bdd0f2e1ebf65035636498e0391faab4019d/litellm-1.104.0-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:3c4a15692a9dd259033195c5d4ca1697a14e6bd50d679435a799a9028e99b453", size = 36002177, upload-time = "2026-10-03T22:43:17.731Z" },
-    { url = "https://files.pythonhosted.org/packages/e1/79/a5e907a87f14c67cc032b4163f86835db4f13ab230fe98c0d36864143876/litellm-1.104.0-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:6ffed0207c6fba822fa484754f8fea40d8e9705673189d4bb6f18fa866e59a8e", size = 36967363, upload-time = "2026-10-03T22:43:22.482Z" },
-    { url = "https://files.pythonhosted.org/packages/59/80/03920dc49bf92adfc80ad568df229007a76428abd340eef2b53e22edb3fb/litellm-1.104.0-cp310-abi3-win_amd64.whl", hash = "sha256:414d31b0bda41aa8fb8696c78d5f728a446e37a34476c6f5f2b6fa17ddd66ee4", size = 37605934, upload-time = "2026-10-03T22:43:27.164Z" },
+    { url = "https://files.pythonhosted.org/packages/e3/13/a90933c355c6ec0f677c5cc12d28d3e684e9547f9669874ee4f83139c47e/litellm-1.103.7-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:75cce8d8081f056f70e6df7233babd7691f7a892411fed2af057b2fc19002a2c", size = 27806450, upload-time = "2026-10-21T09:35:44.838Z" },
+    { url = "https://files.pythonhosted.org/packages/68/8e/e1e408699d39ee9f39ffa054b48ada1140b5af180936a555afb0d4927a72/litellm-1.103.7-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:49ef58786989ae621e5d67fa54d0ab85de44f00f8c9b85fb548d3c3e6127b0b8", size = 27269162, upload-time = "2026-10-21T09:35:48.962Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/81/0954bf10131cdbd9cd89783c208f384582099de9ea5444316ba1e96281d0/litellm-1.103.7-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:6d4bd664d45a8dd3acff46f5b8aba5fded1c31968b1047f76e30ce4c81d9274e", size = 27576672, upload-time = "2026-10-21T09:35:52.306Z" },
+    { url = "https://files.pythonhosted.org/packages/fd/ea/2c3a787d2d9a92aa1eda8447c6b7bd89633351f2018ca3afdc6630289ae9/litellm-1.103.7-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:4a86631887d5a03a63f911066d4eb4cedbe37da3c746f65d9375b8ec505dcb54", size = 28121861, upload-time = "2026-10-21T09:35:55.425Z" },
+    { url = "https://files.pythonhosted.org/packages/08/29/20140f59fb45844bcf32ed6a682a5a618327c58f51bb56903e8e742445bb/litellm-1.103.7-cp310-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:176244e87c85a19c4d02ae645fb4ee7f29b1e97e480a4e126dccdb295849f2a7", size = 27659297, upload-time = "2026-10-21T09:35:58.815Z" },
+    { url = "https://files.pythonhosted.org/packages/a3/dd/ef53749d8454b1dcb61742dfcb30636d26c8e6129fd45fc14f5b17986239/litellm-1.103.7-cp310-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:58146feccf874638f547f892daf64a2e17c42c704069e2c55f7baa6427876da6", size = 28238662, upload-time = "2026-10-21T09:36:02.58Z" },
+    { url = "https://files.pythonhosted.org/packages/04/48/3a4a5b380018cd54276f6aef809d72d51ee47a96f3f961886a08b12f1494/litellm-1.103.7-cp310-abi3-win_amd64.whl", hash = "sha256:1ff7e90c72663f79981e79e02a069643ec3f195516d7eaa81f0339f807430cec", size = 28183383, upload-time = "2026-10-21T09:36:06.256Z" },
 ]
 
 [[package]]
@@ -2226,8 +2216,7 @@ version = "0.11.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "interegular" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
+    { name = "packaging" },
     { name = "pydantic" },
     { name = "pyyaml" },
 ]
@@ -2447,32 +2436,32 @@ wheels = [
 
 [[package]]
 name = "msgpack"
-version = "1.2.1"
+version = "1.2.3"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/31/f9/c0a1c127f9049db9155afc316952ea571720dd01833ff5e4d7e8e6352dbb/msgpack-1.2.1.tar.gz", hash = "sha256:04c721c2c7448767e9e3f2520a475663d8ee0f09c31890f6d2bd70fd636a9647", size = 183960, upload-time = "2026-06-18T16:13:52.594Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0a/e7/bb605a7bab2d8425a64b3fa762b39dc1bf1c7e3f11ba6fb5413d6db0ff8c/msgpack-1.2.3.tar.gz", hash = "sha256:32edb81a2b5eb7cd7c9d941b2bfbbb082fd2cd09e0e725930316af6b708db186", size = 196517, upload-time = "2026-09-29T02:33:52.276Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f4/6b/e9b1cdc042c4458801d2545ed782a95f3d6ba8e270cce8745b8603c7f748/msgpack-1.2.1-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:29a3f6e9667868429d8240dfd063ea5ffdc1321c13d783aa23827a38de0dcb22", size = 82812, upload-time = "2026-06-18T16:12:45.022Z" },
-    { url = "https://files.pythonhosted.org/packages/0c/3a/dd518a1bf78ed1e9ad8afe57307c079a00eafe4b3068932a27ca1ea56b4f/msgpack-1.2.1-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:aded5bdf32609dc7987a49bbbd15a8ef096193f96dd8bbeb791de729e650acf5", size = 82739, upload-time = "2026-06-18T16:12:46.025Z" },
-    { url = "https://files.pythonhosted.org/packages/70/e0/7ba9e1542bf0771a27b8b37c1316e3f95ae9d748fd765284655c476ad4ef/msgpack-1.2.1-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:146ee4e9ce80b365c6d4c47073da9da7bcec473e58194ceee5dd7620ace77e06", size = 414233, upload-time = "2026-06-18T16:12:47.029Z" },
-    { url = "https://files.pythonhosted.org/packages/03/8d/671d81534ea0e2b0e8a121be100020da09eb78861fe3aa8f3ef7dcd3bed1/msgpack-1.2.1-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:a28d076ca7c82b9c8728ad90b7147489449557038bed50e4241eb832395169b4", size = 423843, upload-time = "2026-06-18T16:12:48.19Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/b6/e5c737515ed1f166664b87601b532f58cbb73d8aa6a90b99f7c2c5037e8e/msgpack-1.2.1-cp311-cp311-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:7d31c0ac0c640f877804c67cb2bc9f4e23dc2db97e96c2e67fa27d38283b41f8", size = 390772, upload-time = "2026-06-18T16:12:49.624Z" },
-    { url = "https://files.pythonhosted.org/packages/a8/46/62ed8c2e87d7021eab19921594d961ef3aa3794eec76c716dc30f3bfd433/msgpack-1.2.1-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:8ff92d7feeaf5bc26c51495b69e2f99ed97ab79346fb6555f44be7dd2ac6503b", size = 409559, upload-time = "2026-06-18T16:12:50.936Z" },
-    { url = "https://files.pythonhosted.org/packages/70/ff/59aa3887b860bbf43532835e192b1c388a17590d6068ae4f8b2bc74c906e/msgpack-1.2.1-cp311-cp311-musllinux_1_2_riscv64.whl", hash = "sha256:779197a6513bab3c3632265e3d0f7cb3227e62510841a6f34f1eaa37efbb345e", size = 387838, upload-time = "2026-06-18T16:12:52.161Z" },
-    { url = "https://files.pythonhosted.org/packages/09/11/f8563e471093420cf6478cb3271a0175d8402b82d879783d4035d2d03360/msgpack-1.2.1-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:67f6dd22fa72a93752643f07889796d62739a13415ee630169a8ce764f86cf9f", size = 421732, upload-time = "2026-06-18T16:12:53.556Z" },
-    { url = "https://files.pythonhosted.org/packages/57/cf/e673683c4c6c90c1022b24c65af4b03eda72b182a1176ef6449069d66acc/msgpack-1.2.1-cp311-cp311-win32.whl", hash = "sha256:91054a783328e0ea7954b8771095705c8d2243b814743fbaadf14552c9c52c5d", size = 64091, upload-time = "2026-06-18T16:12:54.821Z" },
-    { url = "https://files.pythonhosted.org/packages/3f/07/ca212739d179f9083bff2c7c08c24101c3555a334fadc2b876b18768a3ae/msgpack-1.2.1-cp311-cp311-win_amd64.whl", hash = "sha256:2eda0b7ebb1283a98d3e4492ac933c8af6aff59fd3df1c3ed024f536af4b1dc8", size = 70462, upload-time = "2026-06-18T16:12:55.898Z" },
-    { url = "https://files.pythonhosted.org/packages/6d/be/6798347b425e26f35db82e69dd83c09716c856a3714e7bffc4c0860fd830/msgpack-1.2.1-cp311-cp311-win_arm64.whl", hash = "sha256:6ee967f7c7e1df2890c671ff2ee51a28ded0efc95da3e507176dee881ce36c66", size = 65059, upload-time = "2026-06-18T16:12:57.053Z" },
-    { url = "https://files.pythonhosted.org/packages/bc/dd/9e8cbd8f5582ca4b590336f2b91ee5662f6a6ca562b565abaf696a0f81ff/msgpack-1.2.1-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:2ef59c659f289eddf8aa6623823f19fa2f40a4029266889eac7a2505dd210c35", size = 83531, upload-time = "2026-06-18T16:12:58.249Z" },
-    { url = "https://files.pythonhosted.org/packages/50/2e/ebdb85a8da151397a2790363676b7ed7c125924fe618e4c6d8befb0cc62c/msgpack-1.2.1-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:d3567748a5107cb40cdf66a275430c2f87c07777698f4bfd25c35f44d533258c", size = 82657, upload-time = "2026-06-18T16:12:59.396Z" },
-    { url = "https://files.pythonhosted.org/packages/26/aa/753ad8b007b464e1d8aa0c8e650b9c5f4f725e658fc5ac8a7635c55b7f6e/msgpack-1.2.1-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:60926b75d00c8e816ef98f3034f484a8bc64242d66839cef4cf7e503142316a0", size = 410634, upload-time = "2026-06-18T16:13:00.383Z" },
-    { url = "https://files.pythonhosted.org/packages/6a/fd/6adabd4f6d5e686f97dd02ce7fce3fe4cf672cbac36b8f67ff4040e8ad8b/msgpack-1.2.1-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:020e881a764b20d8d7ca1a54fc01b8175519d108e3c3f194fddc200bda95951a", size = 419989, upload-time = "2026-06-18T16:13:01.776Z" },
-    { url = "https://files.pythonhosted.org/packages/5a/cc/85039b7b0eb168aaad7383a23c97e291a11f08351cb45a606ce865e4e3f1/msgpack-1.2.1-cp312-cp312-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:4202c74688ca06591f78cb18988228bd4cca2cc75d57b60008372892d2f1e6e6", size = 377544, upload-time = "2026-06-18T16:13:03.637Z" },
-    { url = "https://files.pythonhosted.org/packages/ed/bf/35963899493b32030c85fc513b723ae66144ac70c11ebc52e889e16e3d99/msgpack-1.2.1-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:8b267ce94efb76fbd1b3373511420074ee3187f0f7811bf394531de13294735a", size = 400842, upload-time = "2026-06-18T16:13:05.012Z" },
-    { url = "https://files.pythonhosted.org/packages/a6/df/8e2ac970c8f99264cd9997d1c73df5466bc19da3301d7dc5500862a9b089/msgpack-1.2.1-cp312-cp312-musllinux_1_2_riscv64.whl", hash = "sha256:e4f1d0f8f98ade9634e01fb704a408f9336c0a8f1117b369f5db83dc7551d8b1", size = 374108, upload-time = "2026-06-18T16:13:06.232Z" },
-    { url = "https://files.pythonhosted.org/packages/17/dd/fa8bd265110dfa51c20cb529f9e6d240a16fafe7e645004c6af2d01353ba/msgpack-1.2.1-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:f02cf17a6ca1abe29b5f980644f7551f94d71f2011509b26d8625ce038f0df64", size = 414939, upload-time = "2026-06-18T16:13:07.478Z" },
-    { url = "https://files.pythonhosted.org/packages/2e/b9/8377a5ad8953fc0437c70cc98d9ae29f27fe5ac5109fbec0812085865735/msgpack-1.2.1-cp312-cp312-win32.whl", hash = "sha256:0c0d9802354507bcba62af19c17918e3eb437cc25e6f50657d511b5856a77aac", size = 64504, upload-time = "2026-06-18T16:13:08.822Z" },
-    { url = "https://files.pythonhosted.org/packages/57/7f/ce1e377df7e62461fefd9eb23bfb93a4a523f40a517b377b8f844d836828/msgpack-1.2.1-cp312-cp312-win_amd64.whl", hash = "sha256:5c24aa15d5963051e1a5c62b12c50cd705992502b5ec1f3bece6046f33c9fc24", size = 71421, upload-time = "2026-06-18T16:13:09.828Z" },
-    { url = "https://files.pythonhosted.org/packages/8f/32/ebfe84c9929f08f188d56c7a2fd913406a9ddad76a634697c1c43b8112e6/msgpack-1.2.1-cp312-cp312-win_arm64.whl", hash = "sha256:4227224aaec8f7fbcbfbd4272319347b2bb4030366502600f8c45588c5187b07", size = 64775, upload-time = "2026-06-18T16:13:11.056Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/95/b9c651ccb9d720b2e2c8d537954dff528ab869a03bf89598145716db823c/msgpack-1.2.3-cp311-cp311-macosx_10_9_x86_64.whl", hash = "sha256:ec90a9ae3e1169fa1171147340f0e97d941aa19fcd3b34e8339a55933ed042af", size = 90404, upload-time = "2026-09-29T02:31:44.826Z" },
+    { url = "https://files.pythonhosted.org/packages/50/cd/fc9e2e367e80f1493e2ec5f610dda558b344eeede296f88976db133e8f2c/msgpack-1.2.3-cp311-cp311-macosx_11_0_arm64.whl", hash = "sha256:9d7e9cbb0998bbfd363fd9a09c330520d5e9cb323c05b5a1a05865d23ccf2226", size = 89683, upload-time = "2026-09-29T02:31:46.413Z" },
+    { url = "https://files.pythonhosted.org/packages/19/9e/1028485c6886c1c117f777cc9b053e541eff0fedb3292dfb1da95040edb5/msgpack-1.2.3-cp311-cp311-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:6707d2fa2aa1bb5424ea0b05f44ffc989b15ab41a73ff5855bff4944fec7c8ac", size = 465347, upload-time = "2026-09-29T02:31:47.934Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/83/800570e6a22376eb8d599920f70aead4779a63611696f567477c4e85a70f/msgpack-1.2.3-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:382b219de3d436de3baba0f4b0c6d4336e8f5858d0eb047918b13b69a71c6c55", size = 477820, upload-time = "2026-09-29T02:31:49.479Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/ff/817e4a2052f848d3fb67726908d6e4e7c19f68ee7c19553a82ce7b0ed415/msgpack-1.2.3-cp311-cp311-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:186e6c602b8a9968b8e864c67d622a69279f7d1e55ae25f40e3bff7e815b2b62", size = 436656, upload-time = "2026-09-29T02:31:51.18Z" },
+    { url = "https://files.pythonhosted.org/packages/3d/42/040cc55dde6a7d92057baac8d1fc9cfb9f4fd4162900e2ec16dc33917a7d/msgpack-1.2.3-cp311-cp311-musllinux_1_2_aarch64.whl", hash = "sha256:9276ba88891338f2617044429dfd080ae008c9868a25f6f1a7d004a35dc9ac0a", size = 460939, upload-time = "2026-09-29T02:31:53.026Z" },
+    { url = "https://files.pythonhosted.org/packages/09/93/4dc007bdef930eed247346773bc0189b710078961d3218d5ee7ba59f322c/msgpack-1.2.3-cp311-cp311-musllinux_1_2_riscv64.whl", hash = "sha256:c942c21a93f36b3a69e828c8945bb72c94dc2ffe488a2086950c812f3edf046c", size = 433608, upload-time = "2026-09-29T02:31:54.981Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/97/a1b944046f283ec89445cb2a982c42233b5b07cc630f9be739f4f1d469a3/msgpack-1.2.3-cp311-cp311-musllinux_1_2_x86_64.whl", hash = "sha256:18a6ed513023001b28dcd3ba54966f6bb90a38274ba8d2640464bcab3a1b81d4", size = 477373, upload-time = "2026-09-29T02:31:56.713Z" },
+    { url = "https://files.pythonhosted.org/packages/59/79/ab411d0d172743732ab2503f4c32a22dd1a7d1436a6feecbb160e4b6376a/msgpack-1.2.3-cp311-cp311-win32.whl", hash = "sha256:d0238cd05dec9ffbe0de1071df685ba63e30a36ac155285b1a094e727c38cbe9", size = 67514, upload-time = "2026-09-29T02:31:58.267Z" },
+    { url = "https://files.pythonhosted.org/packages/63/8d/6f0cb2b84e484e96278455c26870196d025bb0cec312b226a663f1fa9000/msgpack-1.2.3-cp311-cp311-win_amd64.whl", hash = "sha256:30e1522e4173230dca4d9ad896f038f73c0da6c1edd42f4dbad88ac583cf5d46", size = 75850, upload-time = "2026-09-29T02:31:59.449Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/25/f99e13a2c1d3f5a1dcaa5aab27f474e8c4358188bbc68ad79fecb0d1aefe/msgpack-1.2.3-cp311-cp311-win_arm64.whl", hash = "sha256:8ca67f77938ea6a3663aa9bd22b3e031f6da84d665be850abab910ee90728dfd", size = 72338, upload-time = "2026-09-29T02:32:00.885Z" },
+    { url = "https://files.pythonhosted.org/packages/af/12/4d7c6d6203416d9fbf0f59ebaa805e70fb929b93a41b611bc821ec5964a0/msgpack-1.2.3-cp312-cp312-macosx_10_13_x86_64.whl", hash = "sha256:89c930aece4e972b208ba589c8410b4167b05e411a5ea2cb25fd96f8bc47ee43", size = 91577, upload-time = "2026-09-29T02:32:02.141Z" },
+    { url = "https://files.pythonhosted.org/packages/eb/c7/8576ad39f4ca42ddad26f68eb8621d2d0a60501193d480f504bd9d7f36c4/msgpack-1.2.3-cp312-cp312-macosx_11_0_arm64.whl", hash = "sha256:905a189853d6bdb204c7ae5f4ab77fb857448abfff574d3d93c62e2815b24b4f", size = 90027, upload-time = "2026-09-29T02:32:03.508Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/3a/aa9c580aea1314529a0f3562461479780b0d254b064f0880956bfbcc74a8/msgpack-1.2.3-cp312-cp312-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f3d7b3d0018746b5997dd6b14a1870b07cc4c327d9101145d94a1fc264a51a06", size = 460343, upload-time = "2026-09-29T02:32:04.906Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/cf/9c2e4d6c179529d5bf4a64cff76fa581486569e9fbdd35bd98f51cb624bf/msgpack-1.2.3-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:ede33b2892ceb976283e009ad12fa1834cfdf1f9c43ee9c97849fc588d00a618", size = 472998, upload-time = "2026-09-29T02:32:06.69Z" },
+    { url = "https://files.pythonhosted.org/packages/7b/41/915c81fe6df2d3cbdb0dece4f1a5cd313e1cd2abd9f501d0f50c0582517e/msgpack-1.2.3-cp312-cp312-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:666ef5601ab0e6e345e47febc96aa81143cc932201543480cbb9499164f05ffb", size = 423216, upload-time = "2026-09-29T02:32:08.739Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/e7/7dda8b1039abfd9bba4c5068172c67135c9e33089f503512db9226f23c24/msgpack-1.2.3-cp312-cp312-musllinux_1_2_aarch64.whl", hash = "sha256:87cf2ef05ff2f2493ba29fcdaef27e960ca64dacfd13460ae29e6f92e0ed05bb", size = 451218, upload-time = "2026-09-29T02:32:10.517Z" },
+    { url = "https://files.pythonhosted.org/packages/16/5b/ce995c1ed4a0522b7f2d034bc2034fd63005f240b945961b70fb56fbaf3d/msgpack-1.2.3-cp312-cp312-musllinux_1_2_riscv64.whl", hash = "sha256:b774ff994d844e541439ac5d2d49a14def4104830c3465e9394c153f86200ffb", size = 422453, upload-time = "2026-09-29T02:32:11.956Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/3f/ce191fb87e2650d0166b34c437e499ee4a7f9db9c1eb164f41725eb6160e/msgpack-1.2.3-cp312-cp312-musllinux_1_2_x86_64.whl", hash = "sha256:eaf7e82249837e3aa97297b34a0bb9ff562027381631e057cea6e1367f10b438", size = 469003, upload-time = "2026-09-29T02:32:13.663Z" },
+    { url = "https://files.pythonhosted.org/packages/42/35/539123407fe200fb16609c835675496fbeb6017ace9fc93909f0613223ae/msgpack-1.2.3-cp312-cp312-win32.whl", hash = "sha256:7c047250096f9fc19dba26e3d1639b5e7a84114003605c94def667149a70ced1", size = 68303, upload-time = "2026-09-29T02:32:15.02Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/4c/331b45f9b86fbda6b9e103244d189068e51f726d8c40021ed66e1f2c415e/msgpack-1.2.3-cp312-cp312-win_amd64.whl", hash = "sha256:3ec409b0d6aa8e9eec6eaf881b893caa215dbe68c5319ca96e8a271d81bb111d", size = 76744, upload-time = "2026-09-29T02:32:16.344Z" },
+    { url = "https://files.pythonhosted.org/packages/13/9f/fb572dc42b9fac06c7ea848aaee6e140d84469743bd1402bc07089fc4566/msgpack-1.2.3-cp312-cp312-win_arm64.whl", hash = "sha256:59612b4ed48a04cf024584218e813562f3b30a3bafa5f55abe300b15da314751", size = 71580, upload-time = "2026-09-29T02:32:17.617Z" },
 ]
 
 [[package]]
@@ -2599,8 +2588,7 @@ dependencies = [
     { name = "cuda-pathfinder" },
     { name = "nccl4py" },
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
+    { name = "packaging" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/81/70/8cb06143dc7926020f717d649d91b9302eb3346e29b8fdb13b257ef78d4b/nccl_extensions-0.1.0-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b5130d94bbc02852f1deb5ab38e944dc7e0db0f1b4769f5f3c8d652eb5776a86", size = 22293375, upload-time = "2026-09-02T15:37:43.985Z" },
@@ -2617,8 +2605,7 @@ dependencies = [
     { name = "cuda-core" },
     { name = "cuda-pathfinder" },
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or (extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')" },
+    { name = "packaging" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f2/db/76b4c0f7a42c822161779545d8b7e36ceb37e7add3cac2c40685b63c1e55/nccl4py-0.4.1-cp311-cp311-manylinux_2_24_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:8b571069843bf10ec02c7a869661844bf6d443eccd5de94faf68e3e15a90be37", size = 2859403, upload-time = "2026-08-11T23:46:04.939Z" },
@@ -2664,7 +2651,7 @@ wheels = [
 
 [[package]]
 name = "nltk"
-version = "3.10.3"
+version = "3.10.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
@@ -2673,9 +2660,9 @@ dependencies = [
     { name = "regex" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e0/e6/fe51d2bb1a3b446f59c5c8165999a9fee208bc346af90a7cbf7657bc0d75/nltk-3.10.3.tar.gz", hash = "sha256:bb9327a461c3811c2fa4900e03840401f2126adfb30c0072827c433bd2444ea4", size = 5137152, upload-time = "2026-08-12T23:46:37.258Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3a/cb/bbaa9be58e95d21729c6b9194376610230e0755f6de0bf38b6acc0dce079/nltk-3.10.4.tar.gz", hash = "sha256:44679f4e9220abfd496d2c8cdb22f8425ccbe557604f9aa5cacb1c44003dabc1", size = 4300570, upload-time = "2026-10-21T11:34:35.851Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b6/6d/ebd2af4640b12168fdf0cb74b6118df2f32a2f62ec7e0c06fbfd80706639/nltk-3.10.3-py3-none-any.whl", hash = "sha256:ff9598a8e20518ee0d557745890cc4435b9578489e2dcbc69c4f81fa060caf7c", size = 1798643, upload-time = "2026-08-12T23:44:13.478Z" },
+    { url = "https://files.pythonhosted.org/packages/a2/04/e7816813e409ca874ba2fcc35455db0e4130b79eb277e1f9edd270ca3c69/nltk-3.10.4-py3-none-any.whl", hash = "sha256:769ba5413f265b7d3e87cd163cc28efa01e29eeef8bb6080bc907949d9fcfb51", size = 1722994, upload-time = "2026-10-21T11:34:27.975Z" },
 ]
 
 [[package]]
@@ -2740,12 +2727,11 @@ name = "nvidia-cublas"
 version = "13.1.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cuda-nvrtc", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cuda-nvrtc" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a7/a1/0bd24ee8c8d03adac032fd2909426a00c88f8c57961b1277ded97f91119f/nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:b7a210458267ac818974c53038fbec2e969d5c99f305ab15c72522fa9f001dd5", size = 542848918, upload-time = "2026-04-08T18:46:22.985Z" },
     { url = "https://files.pythonhosted.org/packages/3b/cd/154ca20c38269e05eff77c1464e6c1da89f50a6390b565e9d82e06bc11e1/nvidia_cublas-13.1.1.3-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:37936a16db8fe4ac1f065c2139360608a543a09275cb1a1af612e08cfa065436", size = 423138758, upload-time = "2026-04-08T18:46:58.655Z" },
-    { url = "https://files.pythonhosted.org/packages/45/9e/2f562daf80eb8f7a685fb7bea4fda71f6048e4f359d6fdd1b6e70206cb2f/nvidia_cublas-13.1.1.3-py3-none-win_amd64.whl", hash = "sha256:b6cdce694e47ff6aadf0a69df1cab6628d696f5ff56e8d16af50309d855fa20f", size = 404358158, upload-time = "2026-04-08T18:47:26.987Z" },
 ]
 
 [[package]]
@@ -2775,7 +2761,6 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2a/2a/80353b103fc20ce05ef51e928daed4b6015db4aaa9162ed0997090fe2250/nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_aarch64.whl", hash = "sha256:796bd679890ee55fb14a94629b698b6db54bcfd833d391d5e94017dd9d7d3151", size = 10310827, upload-time = "2025-09-04T08:26:42.012Z" },
     { url = "https://files.pythonhosted.org/packages/33/6d/737d164b4837a9bbd202f5ae3078975f0525a55730fe871d8ed4e3b952b0/nvidia_cuda_cupti-13.0.85-py3-none-manylinux_2_25_x86_64.whl", hash = "sha256:4eb01c08e859bf924d222250d2e8f8b8ff6d3db4721288cf35d14252a4d933c8", size = 10715597, upload-time = "2025-09-04T08:26:51.312Z" },
-    { url = "https://files.pythonhosted.org/packages/ad/df/b74b10025c1205695c5676373f2edd3e87a7202cc62ead0dfbc373b0f6ea/nvidia_cuda_cupti-13.0.85-py3-none-win_amd64.whl", hash = "sha256:683f58d301548deeefcb8f6fac1b8d907691b9d8b18eccab417f51e362102f00", size = 7736776, upload-time = "2025-09-04T08:38:08.38Z" },
 ]
 
 [[package]]
@@ -2828,12 +2813,11 @@ name = "nvidia-cudnn-cu13"
 version = "9.20.0.48"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas", marker = "(sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cublas" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/c5/83384d846b2fd17c44bd499b36c75a45ed4f095fbbb2252294e89cea5c5c/nvidia_cudnn_cu13-9.20.0.48-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:e31454ae00094b0c55319d9d15b6fa2fc50a9e1c0f5c8c80fb75258234e731e1", size = 444574296, upload-time = "2026-03-09T19:28:27.751Z" },
     { url = "https://files.pythonhosted.org/packages/6e/5e/edb9c0ae051602c3ccaffe424256463636d639e27d7f302dde9975ef9e7a/nvidia_cudnn_cu13-9.20.0.48-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:0c45dd8eeb50b603f07995b1b300c62ffe6a1980482b82b3bcf94a4ca9d49304", size = 366173588, upload-time = "2026-03-09T19:29:34.474Z" },
-    { url = "https://files.pythonhosted.org/packages/78/39/21507455b1bca8b5702a9e9fc6ce73735f216f558dac2c9ede58e4d456b8/nvidia_cudnn_cu13-9.20.0.48-py3-none-win_amd64.whl", hash = "sha256:af8139732b99c0118be65ea5aac97f0d46018f8c552889e49d2fb0c6261a4a24", size = 350712614, upload-time = "2026-03-09T19:31:11.398Z" },
 ]
 
 [[package]]
@@ -2858,12 +2842,11 @@ name = "nvidia-cufft"
 version = "12.0.0.61"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-nvjitlink" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/8b/ae/f417a75c0259e85c1d2f83ca4e960289a5f814ed0cea74d18c353d3e989d/nvidia_cufft-12.0.0.61-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:2708c852ef8cd89d1d2068bdbece0aa188813a0c934db3779b9b1faa8442e5f5", size = 214053554, upload-time = "2025-09-04T08:31:38.196Z" },
     { url = "https://files.pythonhosted.org/packages/a8/2f/7b57e29836ea8714f81e9898409196f47d772d5ddedddf1592eadb8ab743/nvidia_cufft-12.0.0.61-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:6c44f692dce8fd5ffd3e3df134b6cdb9c2f72d99cf40b62c32dde45eea9ddad3", size = 214085489, upload-time = "2025-09-04T08:31:56.044Z" },
-    { url = "https://files.pythonhosted.org/packages/85/b2/f8af21a2ed1beed337a6a02c5a28aeb85441f4d578ec3d529543c775ea4b/nvidia_cufft-12.0.0.61-py3-none-win_amd64.whl", hash = "sha256:2abce5b39d2f5ae12730fb7e5db6696533e36c26e2d3e8fd1750bdd2853364eb", size = 213342123, upload-time = "2025-09-04T08:40:51.145Z" },
 ]
 
 [[package]]
@@ -2882,7 +2865,6 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/1e/72/7c2ae24fb6b63a32e6ae5d241cc65263ea18d08802aaae087d9f013335a2/nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:133df5a7509c3e292aaa2b477afd0194f06ce4ea24d714d616ff36439cee349a", size = 61962106, upload-time = "2025-08-04T10:21:41.128Z" },
     { url = "https://files.pythonhosted.org/packages/a5/9f/be0a41ca4a4917abf5cb9ae0daff1a6060cc5de950aec0396de9f3b52bc5/nvidia_curand-10.4.0.35-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:1aee33a5da6e1db083fe2b90082def8915f30f3248d5896bcec36a579d941bfc", size = 59544258, upload-time = "2025-08-04T10:22:03.992Z" },
-    { url = "https://files.pythonhosted.org/packages/99/27/72103153b1ffc00e09fdc40ac970235343dcd1ea8bd762e84d2d73219ffa/nvidia_curand-10.4.0.35-py3-none-win_amd64.whl", hash = "sha256:65b1710aa6961d326b411e314b374290904c5ddf41dc3f766ebc3f1d7d4ca69f", size = 55242481, upload-time = "2025-08-04T10:30:41.831Z" },
 ]
 
 [[package]]
@@ -2890,14 +2872,13 @@ name = "nvidia-cusolver"
 version = "12.0.4.66"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-cublas", marker = "(platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-cusparse", marker = "(platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cublas" },
+    { name = "nvidia-cusparse" },
+    { name = "nvidia-nvjitlink" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c8/c3/b30c9e935fc01e3da443ec0116ed1b2a009bb867f5324d3f2d7e533e776b/nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:02c2457eaa9e39de20f880f4bd8820e6a1cfb9f9a34f820eb12a155aa5bc92d2", size = 223467760, upload-time = "2025-09-04T08:33:04.222Z" },
     { url = "https://files.pythonhosted.org/packages/5f/67/cba3777620cdacb99102da4042883709c41c709f4b6323c10781a9c3aa34/nvidia_cusolver-12.0.4.66-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:0a759da5dea5c0ea10fd307de75cdeb59e7ea4fcb8add0924859b944babf1112", size = 200941980, upload-time = "2025-09-04T08:33:22.767Z" },
-    { url = "https://files.pythonhosted.org/packages/99/ef/332a0101260ca78a1daef046bf0b06199e8ed4dac1d2aa698289c358169c/nvidia_cusolver-12.0.4.66-py3-none-win_amd64.whl", hash = "sha256:16515bd33a8e76bb54d024cfa068fa68d30e80fc34b9e1090813ea9362e0cb65", size = 193551444, upload-time = "2025-09-04T08:41:46.813Z" },
 ]
 
 [[package]]
@@ -2905,12 +2886,11 @@ name = "nvidia-cusparse"
 version = "12.6.3.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "nvidia-nvjitlink", marker = "(platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (platform_machine == 's390x' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-nvjitlink" },
 ]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f8/94/5c26f33738ae35276672f12615a64bd008ed5be6d1ebcb23579285d960a9/nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:80bcc4662f23f1054ee334a15c72b8940402975e0eab63178fc7e670aa59472c", size = 162155568, upload-time = "2025-09-04T08:33:42.864Z" },
     { url = "https://files.pythonhosted.org/packages/fa/18/623c77619c31d62efd55302939756966f3ecc8d724a14dab2b75f1508850/nvidia_cusparse-12.6.3.3-py3-none-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:2b3c89c88d01ee0e477cb7f82ef60a11a4bcd57b6b87c33f789350b59759360b", size = 145942937, upload-time = "2025-09-04T08:33:58.029Z" },
-    { url = "https://files.pythonhosted.org/packages/02/b0/b043d6f3480f102f885cf87fc3ffd3edcb5e23b855025a50e2ef4d059185/nvidia_cusparse-12.6.3.3-py3-none-win_amd64.whl", hash = "sha256:cbcf42feb737bd7ec15b4c0a63e62351886bd3f975027b8815d7f720a2b5ea79", size = 143783033, upload-time = "2025-09-04T08:42:12.391Z" },
 ]
 
 [[package]]
@@ -2920,7 +2900,6 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/46/e1/cdc1797eadf82d3a9a575a19b33fdc871a97edbec42c00b5b5e914f4aff4/nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_aarch64.whl", hash = "sha256:4dca476c50bf4780d46cd0bfbd82e2bc10a08e4fef7950917ce8d7578d22a23f", size = 221051344, upload-time = "2025-09-05T18:49:51.289Z" },
     { url = "https://files.pythonhosted.org/packages/34/7d/2661f2fb3ac4302f3a246f5fc030213ac60c1fe0bce84f9783dbd831dbb7/nvidia_cusparselt_cu13-0.8.1-py3-none-manylinux2014_x86_64.whl", hash = "sha256:786ce87568c303fadb5afcc7102d454cd3040d75f6f8626f5db460d1871f4dd0", size = 170148586, upload-time = "2025-09-05T18:50:50.248Z" },
-    { url = "https://files.pythonhosted.org/packages/31/83/f3647ce26916c94a6ca4ff1810623e2c405cff2dea6e78d29516b2514df9/nvidia_cusparselt_cu13-0.8.1-py3-none-win_amd64.whl", hash = "sha256:dccbd362f91a7b9024d1f55ee9f548ac065027ff15d8c8b0db889ab3a8f31215", size = 156885108, upload-time = "2025-09-05T18:51:35.958Z" },
 ]
 
 [[package]]
@@ -3037,7 +3016,6 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/56/7a/123e033aaff487c77107195fa5a2b8686795ca537935a24efae476c41f05/nvidia_nvjitlink-13.0.88-py3-none-manylinux2010_x86_64.manylinux_2_12_x86_64.whl", hash = "sha256:13a74f429e23b921c1109976abefacc69835f2f433ebd323d3946e11d804e47b", size = 40713933, upload-time = "2025-09-04T08:35:43.553Z" },
     { url = "https://files.pythonhosted.org/packages/ab/2c/93c5250e64df4f894f1cbb397c6fd71f79813f9fd79d7cd61de3f97b3c2d/nvidia_nvjitlink-13.0.88-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:e931536ccc7d467a98ba1d8b89ff7fa7f1fa3b13f2b0069118cd7f47bff07d0c", size = 38768748, upload-time = "2025-09-04T08:35:20.008Z" },
-    { url = "https://files.pythonhosted.org/packages/e4/01/07530b0e37546231052e30234540289c42eaffa486f1a34a87fed340157b/nvidia_nvjitlink-13.0.88-py3-none-win_amd64.whl", hash = "sha256:634e96e3da9ef845ae744097a1f289238ecf946ce0b82e93cdce14b9782e682f", size = 36035115, upload-time = "2025-09-04T08:43:03.001Z" },
 ]
 
 [[package]]
@@ -3056,7 +3034,6 @@ source = { registry = "https://pypi.org/simple" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/c2/f3/d86c845465a2723ad7e1e5c36dcd75ddb82898b3f53be47ebd429fb2fa5d/nvidia_nvtx-13.0.85-py3-none-manylinux1_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:4936d1d6780fbe68db454f5e72a42ff64d1fd6397df9f363ae786930fd5c1cd4", size = 148047, upload-time = "2025-09-04T08:29:01.761Z" },
     { url = "https://files.pythonhosted.org/packages/a8/64/3708a90d1ebe202ffdeb7185f878a3c84d15c2b2c31858da2ce0583e2def/nvidia_nvtx-13.0.85-py3-none-manylinux2014_aarch64.manylinux_2_17_aarch64.whl", hash = "sha256:cb7780edb6b14107373c835bf8b72e7a178bac7367e23da7acb108f973f157a6", size = 148878, upload-time = "2025-09-04T08:28:53.627Z" },
-    { url = "https://files.pythonhosted.org/packages/d2/50/0e2220f8620a177de994211186ffc5bfa9f2ce1e1282797f8f90096f9f88/nvidia_nvtx-13.0.85-py3-none-win_amd64.whl", hash = "sha256:d66ea44254dd3c6eacc300047af6e1288d2269dd072b417e0adffbf479e18519", size = 137066, upload-time = "2025-09-04T08:39:25.649Z" },
 ]
 
 [[package]]
@@ -3103,8 +3080,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "flatbuffers" },
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "protobuf" },
 ]
 wheels = [
@@ -3182,128 +3158,160 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-api"
-version = "1.44.0"
+version = "1.45.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ee/8b/aa9e2d8b8dfa7c946f7dec5d1f8f6ba8eca062f43509a06bdb5ce93d26c0/opentelemetry_api-1.44.0.tar.gz", hash = "sha256:67647e5e9566edcf421166fdf022b3537f818635daa852b289e34604dc6fb33a", size = 72406, upload-time = "2026-07-16T15:25:32.678Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/2e/02/6e0ae9cc61bd3169d401077b507b3ebc344745171e1051ab430be012dcd9/opentelemetry_api-1.45.1.tar.gz", hash = "sha256:aa38ed19bcc084ba42782a73255b3582283eced7ad6dddbd6695189e69adfb75", size = 72804, upload-time = "2026-10-06T17:32:58.133Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ca/6f/a04e900f465ff3221ccc395522503e2d10e79fa21f2723c8e177aae1e0d1/opentelemetry_api-1.44.0-py3-none-any.whl", hash = "sha256:94b98c893a91b88657eaac1e3ba89618cdb85be6918196705354f34728b2cdef", size = 60018, upload-time = "2026-07-16T15:25:11.657Z" },
+    { url = "https://files.pythonhosted.org/packages/1e/41/f7dcf80b81ee8e71c1a2b59f14208bc723edbd89ed027a73b175abf6348e/opentelemetry_api-1.45.1-py3-none-any.whl", hash = "sha256:b31553efa588ae44bc306f863c785c5333a9ecc091248c6ee68b4b6c87fdedfb", size = 60256, upload-time = "2026-10-06T17:32:33.506Z" },
+]
+
+[[package]]
+name = "opentelemetry-exporter-http-transport"
+version = "0.66b1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-api" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/62/0c/e3ebdb4b507f66afcc905e6885a4946969bd75b45988492643356fbbdc63/opentelemetry_exporter_http_transport-0.66b1.tar.gz", hash = "sha256:443080203bf52586ce0b2ad901e8951c61833eab1aa539ae6f1f16fe9e8e7952", size = 11693, upload-time = "2026-10-06T17:32:59.65Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/04/69/6af86ff66492b481c6a4c05dcfd68beb47ed8ba046440a26a2aac76b95c7/opentelemetry_exporter_http_transport-0.66b1-py3-none-any.whl", hash = "sha256:2f95404bdee7f9d2d529c7de56c7bd86d014d774d8fbf137810e0167f8a492bf", size = 12155, upload-time = "2026-10-06T17:32:35.454Z" },
+]
+
+[package.optional-dependencies]
+requests = [
+    { name = "requests" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-otlp"
-version = "1.44.0"
+version = "1.45.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-exporter-otlp-proto-grpc" },
     { name = "opentelemetry-exporter-otlp-proto-http" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f2/45/7af37fe54e5d3e66e7dcd7ba8b8aeee73f202bfac909cc94b8c4e428f9ac/opentelemetry_exporter_otlp-1.44.0.tar.gz", hash = "sha256:af1cde7c33ea8ed624bf04ac49a885730fe44c1f1ad698656e592c38f70ce106", size = 6090, upload-time = "2026-07-16T15:25:34.585Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e3/6f/5a561048ea372894f22f58f70e8478e4cd97d9a4e2d6f014559584a29bc5/opentelemetry_exporter_otlp-1.45.1.tar.gz", hash = "sha256:d0ac35592e77663a9fabf2740b4818c57196b1b764e0c8449d0d7bb2c7b2bc67", size = 6094, upload-time = "2026-10-06T17:33:00.966Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/18/c3/7b466a9463944e70b37b744072a0c1b88a425dade3fff0631adec66c9bcc/opentelemetry_exporter_otlp-1.44.0-py3-none-any.whl", hash = "sha256:4a498fa8d8fd8be9e8e2d175fe5524a3fe581ccffadd8509db86526a5fb97051", size = 6727, upload-time = "2026-07-16T15:25:14.445Z" },
+    { url = "https://files.pythonhosted.org/packages/36/e1/68c28d7da4482ce882a640b2c61405a78284c0a3a17a4db125647189b0b7/opentelemetry_exporter_otlp-1.45.1-py3-none-any.whl", hash = "sha256:ef3910d32b36ccbaf62390189759bd43a8109885e2d50b738ed9c9b255bf5cb5", size = 6730, upload-time = "2026-10-06T17:32:37.236Z" },
+]
+
+[[package]]
+name = "opentelemetry-exporter-otlp-common"
+version = "0.66b1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "opentelemetry-sdk" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/cb/19/41de712173f43057e4532d42ece7d0c6d4210d353e5752433cb14987643f/opentelemetry_exporter_otlp_common-0.66b1.tar.gz", hash = "sha256:6b1403487a2185ac1feb45fd5546fdf8630ce71c36bcefaadf51e2130e9e23f9", size = 14325, upload-time = "2026-10-06T17:33:01.725Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fc/39/8c23d67665c762aa51840fa06f86e902e8f6f1693bc8d7e3d98cd6e2f753/opentelemetry_exporter_otlp_common-0.66b1-py3-none-any.whl", hash = "sha256:00ff8592c3a7cb729ff3fdc7ffa12372c243bdf2163e80c180994d0c7bd83ee9", size = 12385, upload-time = "2026-10-06T17:32:38.177Z" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-otlp-proto-common"
-version = "1.44.0"
+version = "1.45.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-proto" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/61/09/4d717852c1cf3f854b76c7110a5d00883bc3c99288b9b0dbcbeb9e306eb6/opentelemetry_exporter_otlp_proto_common-1.44.0.tar.gz", hash = "sha256:dc87a5a5bc58f149a56d1547e4691588fa12994cdc3bc039a694ccb3375862ac", size = 20202, upload-time = "2026-07-16T15:25:37.658Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c1/8e/65e85e5137991a3c493b11682151d198638a5bc1dd4b4c5f67e013c57d7c/opentelemetry_exporter_otlp_proto_common-1.45.1.tar.gz", hash = "sha256:2e4adcc3a67bcf57804fc49514f0ef64974ca7590aa3491da389852b4a0628f6", size = 18873, upload-time = "2026-10-06T17:33:04.471Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/5e/71/65fd9d54c10b860f87c045ccee1264cab7011268895d3528818a29c1172a/opentelemetry_exporter_otlp_proto_common-1.44.0-py3-none-any.whl", hash = "sha256:9a9fe61bba73d802904bc989f1d6b4a7b1ee40f06c40e98d6f85af65aaebb694", size = 17045, upload-time = "2026-07-16T15:25:18.201Z" },
+    { url = "https://files.pythonhosted.org/packages/84/aa/92f225d353904e7f70b8b3e3c1b02db0cf56f744c2e83c581dc372e78873/opentelemetry_exporter_otlp_proto_common-1.45.1-py3-none-any.whl", hash = "sha256:2f446183ae7047b036226f1d846c41a834b0e8755ad13b51a51dd38952eb466c", size = 15393, upload-time = "2026-10-06T17:32:41.911Z" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-otlp-proto-grpc"
-version = "1.44.0"
+version = "1.45.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
     { name = "grpcio" },
     { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-otlp-common" },
     { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-proto" },
     { name = "opentelemetry-sdk" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1f/47/80d9e9d468dc5de3af5096f5ccdb065fa4dd1470f74495cc53e59e397f47/opentelemetry_exporter_otlp_proto_grpc-1.44.0.tar.gz", hash = "sha256:40d1ae9e03fcc36de3cbac610cc99f35894938bff9cfd90fc4ec68bd85448463", size = 27225, upload-time = "2026-07-16T15:25:38.308Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d6/00/a82af0be959dc58495740b169c6669a86e0811f6cd353a01eda34d255db3/opentelemetry_exporter_otlp_proto_grpc-1.45.1.tar.gz", hash = "sha256:3b3dcfbfdcb4e35149fcf309972282054b45228f5c10547d0095d6578510a9a0", size = 25997, upload-time = "2026-10-06T17:33:05.114Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/54/29/6ae42ba32b153ae0a44ae125f0caff2188bbe62d99c82d1768da30864e72/opentelemetry_exporter_otlp_proto_grpc-1.44.0-py3-none-any.whl", hash = "sha256:6a1a645ea182a2f59440c51fa8301d309f3324a8f9d65f8395584b064b67ee4e", size = 19624, upload-time = "2026-07-16T15:25:19.096Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/46/2d1da202f1e17c81aae7efcf702898d524b46709e4d3e2bf1f7f8ca8fbc6/opentelemetry_exporter_otlp_proto_grpc-1.45.1-py3-none-any.whl", hash = "sha256:e42ecb789d2fc5d8145e3dadc3e2991c9f18cd166d7c7514e234702540274b76", size = 19492, upload-time = "2026-10-06T17:32:42.838Z" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-otlp-proto-http"
-version = "1.44.0"
+version = "1.45.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "googleapis-common-protos" },
     { name = "opentelemetry-api" },
+    { name = "opentelemetry-exporter-http-transport", extra = ["requests"], marker = "extra == 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-serve'" },
+    { name = "opentelemetry-exporter-otlp-common" },
     { name = "opentelemetry-exporter-otlp-proto-common" },
     { name = "opentelemetry-proto" },
     { name = "opentelemetry-sdk" },
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/1a/87/95e2a5aaa795b4e2260d74e16df2d5541deb2ea9de010bcd615f4dee2654/opentelemetry_exporter_otlp_proto_http-1.44.0.tar.gz", hash = "sha256:c633d7270ad6b57cd4cfbe8b0007a9e2e7c0cb50bd6c50fe2a7b245f721a09d8", size = 25806, upload-time = "2026-07-16T15:25:39.162Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/17/26487707ea4caa97b17e6e4b5fa72133a53512ffa2f5cf7a49ef284b29cb/opentelemetry_exporter_otlp_proto_http-1.45.1.tar.gz", hash = "sha256:45c218405ce3fd879596924b1874bf9a8f6880206d61065c5a912c8e5c297fb7", size = 28839, upload-time = "2026-10-06T17:33:05.713Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cd/d0/fdeb1a98d8d3a6205f5f297c51b4a9bfe65126ab60339669bbe3dd54c2e2/opentelemetry_exporter_otlp_proto_http-1.44.0-py3-none-any.whl", hash = "sha256:838592fce774c1c8bb7b9a0a7facbfa82e17be5a8a4e94cef10cb84ae026bae3", size = 21850, upload-time = "2026-07-16T15:25:20.006Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/1f/517eaa0187ba106a9da97160ce2add3a371812681dc440930b267f714e42/opentelemetry_exporter_otlp_proto_http-1.45.1-py3-none-any.whl", hash = "sha256:24a97cf3753c7fb52fad44a696e452ff371686339e2acf3309e2eda3d0230700", size = 22180, upload-time = "2026-10-06T17:32:43.946Z" },
 ]
 
 [[package]]
 name = "opentelemetry-exporter-prometheus"
-version = "0.65b0"
+version = "0.66b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-sdk" },
     { name = "prometheus-client" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/85/3a1af7b90a76d6c069bcbbc86cc641c93d15057f2674cc8226f47c5260e8/opentelemetry_exporter_prometheus-0.65b0.tar.gz", hash = "sha256:2777cbf41c403c119e10f418fce5d645c956b47f673a2ee120285d1d0c6df2d5", size = 16411, upload-time = "2026-07-16T15:25:39.971Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/58/e552853748c3a1478d3f0db31bb4e3bef2e45385f64d658148693183410e/opentelemetry_exporter_prometheus-0.66b1.tar.gz", hash = "sha256:1c702a0cc7a1b8c5e1f3f246aeb4273dbd707179af30dbb66182a75e16a06ed8", size = 16987, upload-time = "2026-10-06T17:33:06.358Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/82/0d/d7cdc030edeed0fea03448446b88f1a1f8c4a565bad30dac0f5477ebe290/opentelemetry_exporter_prometheus-0.65b0-py3-none-any.whl", hash = "sha256:3b3d24b586d0ad9712c7b52b7d19c8a9dfbb318b9b284121b5f95e90ed019367", size = 13031, upload-time = "2026-07-16T15:25:20.906Z" },
+    { url = "https://files.pythonhosted.org/packages/4d/8a/5e7262d970586a8d69dd159bebc68fbee7457088883b179599a562881a6f/opentelemetry_exporter_prometheus-0.66b1-py3-none-any.whl", hash = "sha256:a938e6af7295d5bacf82da9ca845cab9a9cb1c5f565abe39f54ef8bf511c05d9", size = 13222, upload-time = "2026-10-06T17:32:44.94Z" },
 ]
 
 [[package]]
 name = "opentelemetry-proto"
-version = "1.44.0"
+version = "1.45.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "protobuf" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/64/01/40ac4ae9a149263cc52c2cee200ddd80cb6d8db1a4610abf8eabce0fe771/opentelemetry_proto-1.44.0.tar.gz", hash = "sha256:c547a79c2f8c0c515d31509154682e5921c7cfd5ca67b70e1f9266e2c3e103f3", size = 46488, upload-time = "2026-07-16T15:25:45.34Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/7f/15f014fb195da6c2dbb6c71399b8e76824878718e94de6454038488eed28/opentelemetry_proto-1.45.1.tar.gz", hash = "sha256:79e0fb95e4616691a469439238aa9224d75779b3e108e895d1aa125ab29ca77c", size = 46488, upload-time = "2026-10-06T17:33:11.49Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/d1/7c/8be563d68e93bbefa5c8affb82ddcff91b3ad858ce49957ba7b16fd3e0ab/opentelemetry_proto-1.44.0-py3-none-any.whl", hash = "sha256:898b155a0e1557afd867478fb6158e8122a46329ca0bb8dc53cc55e98f017f56", size = 72483, upload-time = "2026-07-16T15:25:28.429Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/9a/42ec8180a769516ae757e893b69736826efceac7332553915b4528a91c6d/opentelemetry_proto-1.45.1-py3-none-any.whl", hash = "sha256:f38e2a8413053c180cd3d2637fbb279673ec2f6a6e09c995aafa2f452c52b46e", size = 72488, upload-time = "2026-10-06T17:32:53.057Z" },
 ]
 
 [[package]]
 name = "opentelemetry-sdk"
-version = "1.44.0"
+version = "1.45.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "opentelemetry-semantic-conventions" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/5d/77/a6592cbc7c8d9bcc9d6757a9df45e04a7c585e3e6e7a13456da522b21109/opentelemetry_sdk-1.44.0.tar.gz", hash = "sha256:cebe7f65dc12f26ead75c6064de12fd2a9052e5060c0272d402cfa203aae123b", size = 208624, upload-time = "2026-07-16T15:25:46.078Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a1/79/7392e21a1c8f0c61d90b223e31c7e48cb9d452e91a6b820ad24cca5f23c4/opentelemetry_sdk-1.45.1.tar.gz", hash = "sha256:63d24a6ca645019a631e6a51999c73e93adcac1196ca640b8ae78a7cc4762bf3", size = 218324, upload-time = "2026-10-06T17:33:13.26Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/23/ff077e61886ee020a17ce9c8b6fa11c601c8d8345b09ea24f605445df62a/opentelemetry_sdk-1.44.0-py3-none-any.whl", hash = "sha256:df081c4c6bcfdb1211e3e86140376792643128a25f8d72d1d27675936e7e96ad", size = 137221, upload-time = "2026-07-16T15:25:29.534Z" },
+    { url = "https://files.pythonhosted.org/packages/95/3c/87c42b4bd6dd297536f04cd9383d212ac557ecd49f2cbdcd46da1c9ef5c8/opentelemetry_sdk-1.45.1-py3-none-any.whl", hash = "sha256:c604c11dc429810812348989115fa44bd558772a3d7442afc43d024f2c250ca4", size = 140063, upload-time = "2026-10-06T17:32:55.04Z" },
 ]
 
 [[package]]
 name = "opentelemetry-semantic-conventions"
-version = "0.65b0"
+version = "0.66b1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "opentelemetry-api" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8f/73/0cbdebcb4cf545fdd328da14f5137e37d0770c3f26185e478b0d15d94f50/opentelemetry_semantic_conventions-0.65b0.tar.gz", hash = "sha256:f9b2b81e9d5b64f11bc952075e7e9c7fb0aab075c7fd1c46d597f1b919852d60", size = 148774, upload-time = "2026-07-16T15:25:46.902Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/46/e4/dbbfb2a010c4db2224a5114638acede6fe563d33cc20fb1752cebcbe6298/opentelemetry_semantic_conventions-0.66b1.tar.gz", hash = "sha256:497ca63bf383723411e8eaf60c8779e9877633c936bb641080adab59d0eb6ec8", size = 150250, upload-time = "2026-10-06T17:33:14.073Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a6/0e/49df70d9b81fb5cbae4bbf2a49d865b09bcbcbc4eb53f5851b1027738d78/opentelemetry_semantic_conventions-0.65b0-py3-none-any.whl", hash = "sha256:1cacde7b0ad306f84c5ef08c3dbe1bbaf20165bba6f8bff43b670e555a086bcb", size = 204645, upload-time = "2026-07-16T15:25:30.688Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/14/67f8aa798857f8cf686f515bf93d9bb877ce952ddc8efae0fa25b45ce0d6/opentelemetry_semantic_conventions-0.66b1-py3-none-any.whl", hash = "sha256:d4cddeb4315490b35213f55e2bdc9ac54bb1e4d318927475bed62b35545e581b", size = 206279, upload-time = "2026-10-06T17:32:56.103Z" },
 ]
 
 [[package]]
@@ -3406,135 +3414,8 @@ wheels = [
 
 [[package]]
 name = "packaging"
-version = "26.2"
-source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train'",
-]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/f1/e7a6dd94a8d4a5626c03e4e99c87f241ba9e350cd9e6d75123f992427270/packaging-26.2.tar.gz", hash = "sha256:ff452ff5a3e828ce110190feff1178bb1f2ea2281fa2075aadb987c2fb221661", size = 228134, upload-time = "2026-04-24T20:15:23.917Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/df/b2/87e62e8c3e2f4b32e5fe99e0b86d576da1312593b39f47d8ceef365e95ed/packaging-26.2-py3-none-any.whl", hash = "sha256:5fc45236b9446107ff2415ce77c807cee2862cb6fac22b8a73826d0693b0980e", size = 100195, upload-time = "2026-04-24T20:15:22.081Z" },
-]
-
-[[package]]
-name = "packaging"
 version = "26.3"
 source = { registry = "https://pypi.org/simple" }
-resolution-markers = [
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "(python_full_version >= '3.12' and platform_machine != 'aarch64' and platform_machine != 's390x' and sys_platform == 'linux' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train') or (python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version >= '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 'aarch64' and sys_platform == 'linux' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "(python_full_version < '3.12' and platform_machine != 'aarch64' and platform_machine != 's390x' and sys_platform == 'linux' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train') or (python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'linux' and sys_platform != 'win32' and extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train')",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform == 'darwin' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine == 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and platform_machine != 's390x' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-    "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
-]
 sdist = { url = "https://files.pythonhosted.org/packages/7d/fa/3944b40b07da9ce895c0e6303a5ab7d53da063554f534556b134a54d6093/packaging-26.3.tar.gz", hash = "sha256:94edc256424af38762eb31306eed28beb9f0efc50a8837492c9d6fd6004aed79", size = 313412, upload-time = "2026-08-04T18:15:28.737Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/63/34/ba1c580383c9eada3711951fef0795c80b829a078d72188184bcab9dd527/packaging-26.3-py3-none-any.whl", hash = "sha256:d7193f7c8e4e93f444fde0262bf90af30e16fa0ad0ad44cb553c87339b23cd1c", size = 129956, upload-time = "2026-08-04T18:15:27.159Z" },
@@ -3547,7 +3428,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "numpy" },
     { name = "python-dateutil" },
-    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "tzdata", marker = "sys_platform == 'emscripten' or sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/f8/87/4341c6252d1c47b08768c3d25ac487362bf403f0313ddae4a2a26c9b1b4c/pandas-3.0.3.tar.gz", hash = "sha256:696a4a00a2a2a35d4e5deb3fc946641b96c944f02230e4f76137fe35d806c4fc", size = 4651414, upload-time = "2026-05-11T18:54:29.21Z" }
 wheels = [
@@ -3586,15 +3467,14 @@ dependencies = [
     { name = "accelerate" },
     { name = "huggingface-hub" },
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
+    { name = "packaging" },
     { name = "psutil" },
     { name = "pyyaml" },
     { name = "safetensors" },
     { name = "torch" },
     { name = "tqdm" },
     { name = "transformers", version = "5.10.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
+    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-train' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve')" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/86/cf/037f1e3d5186496c05513a6754639e2dab3038a05f384284d49a9bd06a2d/peft-0.19.1.tar.gz", hash = "sha256:0d97542fe96dcdaa20d3b81c06f26f988618f416a73544ab23c3618ccb674a40", size = 763738, upload-time = "2026-04-16T15:46:45.105Z" }
 wheels = [
@@ -4145,10 +4025,9 @@ name = "pytest"
 version = "9.0.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
     { name = "iniconfig" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "pluggy" },
     { name = "pygments" },
 ]
@@ -4322,7 +4201,7 @@ dependencies = [
     { name = "filelock" },
     { name = "jsonschema" },
     { name = "msgpack" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" } },
+    { name = "packaging" },
     { name = "protobuf" },
     { name = "pyyaml" },
     { name = "requests" },
@@ -4804,8 +4683,7 @@ dependencies = [
     { name = "jinja2" },
     { name = "murmurhash" },
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "preshed" },
     { name = "pydantic" },
     { name = "requests" },
@@ -4977,7 +4855,7 @@ dependencies = [
     { name = "grpcio" },
     { name = "markdown" },
     { name = "numpy" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" } },
+    { name = "packaging" },
     { name = "pillow" },
     { name = "protobuf" },
     { name = "setuptools" },
@@ -5007,7 +4885,7 @@ dependencies = [
     { name = "importlib-metadata" },
     { name = "numpy" },
     { name = "orjson" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" } },
+    { name = "packaging" },
     { name = "torch" },
 ]
 wheels = [
@@ -5041,8 +4919,7 @@ dependencies = [
     { name = "cymem" },
     { name = "murmurhash" },
     { name = "numpy" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "preshed" },
     { name = "pydantic" },
     { name = "setuptools" },
@@ -5293,7 +5170,7 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
 ]
 dependencies = [
-    { name = "huggingface-hub", marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
+    { name = "huggingface-hub", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/18/1e/bc6587c5ab643b2e17776cace9070a2ae73549c86bffac9934a600bf3c31/tokenizers-0.23.2.tar.gz", hash = "sha256:7f0f085686b9de0d0079e6f874ae053600db64c5d13049e0bbc0119926d25aac", size = 385745, upload-time = "2026-09-03T08:55:42.89Z" }
 wheels = [
@@ -5346,19 +5223,19 @@ name = "torch"
 version = "2.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cuda-bindings", marker = "sys_platform == 'linux' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "cuda-toolkit", extra = ["cublas", "cudart", "cufft", "cufile", "cupti", "curand", "cusolver", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "sys_platform == 'linux' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "cuda-bindings", marker = "sys_platform == 'linux'" },
+    { name = "cuda-toolkit", extra = ["cublas", "cudart", "cufft", "cufile", "cupti", "curand", "cusolver", "cusparse", "nvjitlink", "nvrtc", "nvtx"], marker = "sys_platform == 'linux'" },
     { name = "filelock" },
     { name = "fsspec" },
     { name = "jinja2" },
     { name = "networkx" },
-    { name = "nvidia-cudnn-cu13", marker = "sys_platform == 'linux' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-cusparselt-cu13", marker = "sys_platform == 'linux' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-nccl-cu13", marker = "sys_platform == 'linux' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
-    { name = "nvidia-nvshmem-cu13", marker = "sys_platform == 'linux' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "nvidia-cudnn-cu13", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-cusparselt-cu13", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-nccl-cu13", marker = "sys_platform == 'linux'" },
+    { name = "nvidia-nvshmem-cu13", marker = "sys_platform == 'linux'" },
     { name = "setuptools" },
     { name = "sympy" },
-    { name = "triton", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "triton", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform == 'linux'" },
     { name = "typing-extensions" },
 ]
 wheels = [
@@ -5459,7 +5336,7 @@ name = "tqdm"
 version = "4.67.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/09/a9/6ba95a270c6f1fbcd8dac228323f2777d886cb206987444e4bce66338dd4/tqdm-4.67.3.tar.gz", hash = "sha256:7d825f03f89244ef73f1d4ce193cb1774a8179fd96f31d7e1dcde62092b960bb", size = 169598, upload-time = "2026-02-03T17:35:53.048Z" }
 wheels = [
@@ -5493,7 +5370,7 @@ resolution-markers = [
 dependencies = [
     { name = "huggingface-hub", marker = "extra == 'extra-14-eliza-training-rl'" },
     { name = "numpy", marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
+    { name = "packaging", marker = "extra == 'extra-14-eliza-training-rl'" },
     { name = "pyyaml", marker = "extra == 'extra-14-eliza-training-rl'" },
     { name = "regex", marker = "extra == 'extra-14-eliza-training-rl'" },
     { name = "safetensors", marker = "extra == 'extra-14-eliza-training-rl'" },
@@ -5609,16 +5486,15 @@ resolution-markers = [
     "python_full_version < '3.12' and sys_platform != 'darwin' and sys_platform != 'emscripten' and sys_platform != 'win32' and extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra != 'extra-14-eliza-training-train'",
 ]
 dependencies = [
-    { name = "huggingface-hub", marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
-    { name = "numpy", marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-train')" },
-    { name = "pyyaml", marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
-    { name = "regex", marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
-    { name = "safetensors", marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
-    { name = "tokenizers", version = "0.23.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
-    { name = "tqdm", marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
-    { name = "typer", marker = "extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train' or extra != 'extra-14-eliza-training-rl'" },
+    { name = "huggingface-hub", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
+    { name = "numpy", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
+    { name = "packaging", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
+    { name = "pyyaml", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
+    { name = "regex", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
+    { name = "safetensors", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
+    { name = "tokenizers", version = "0.23.2", source = { registry = "https://pypi.org/simple" }, marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
+    { name = "tqdm", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
+    { name = "typer", marker = "extra != 'extra-14-eliza-training-rl' or extra == 'extra-14-eliza-training-rl-tinker' or extra == 'extra-14-eliza-training-serve' or extra == 'extra-14-eliza-training-train'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/0e/9e/750649904a065007a838981785b2bd8d9ff26154c6c341ac67d0b7f82c68/transformers-5.17.0.tar.gz", hash = "sha256:a153be279169b55b92d8000bf4af294aed684503d091cca7804da2dd8a9de000", size = 9817878, upload-time = "2026-09-09T15:39:56.886Z" }
 wheels = [
@@ -5774,7 +5650,7 @@ dependencies = [
     { name = "accelerate" },
     { name = "datasets" },
     { name = "jinja2" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" } },
+    { name = "packaging" },
     { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" } },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ac/fe/eaa56e5d1bb7c418340dcc97c7d1a724dda0d42419e1b3c16c230af942b1/trl-1.4.0.tar.gz", hash = "sha256:37f9b9a4401922469f02be85c6230ddfc680d746338c5d3f6fc5641fbff83908", size = 619070, upload-time = "2026-05-08T23:24:14.346Z" }
@@ -5965,7 +5841,7 @@ dependencies = [
     { name = "dill" },
     { name = "hydra-core" },
     { name = "numpy" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" } },
+    { name = "packaging" },
     { name = "pandas" },
     { name = "peft" },
     { name = "pyarrow" },
@@ -5985,18 +5861,18 @@ wheels = [
 
 [[package]]
 name = "virtualenv"
-version = "21.14.9"
+version = "21.14.13"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "distlib" },
     { name = "filelock" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" } },
+    { name = "packaging" },
     { name = "platformdirs" },
     { name = "python-discovery" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d0/04/2f69ba1207ce59630ecea8ebfdaf5c8f9a14726f2408ccd145a18d1ef619/virtualenv-21.14.9.tar.gz", hash = "sha256:4d1bee354cd81c820da3bee56e38be3426490f8d1fc54e10ea5b2072ebad8ef8", size = 5500672, upload-time = "2026-10-17T16:09:42.345Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/70/aa/bff50daee0488e16d611258a9b6c5a1d0c9e128f8ca424e9f4e1c0444ef2/virtualenv-21.14.13.tar.gz", hash = "sha256:de5307ba4b9a0001d9c8ea02832d38f63ca432880f416c1bface61c4323fd905", size = 5570301, upload-time = "2026-10-22T20:10:16.952Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/64/e5/9a3918219745e8bdd64fe0fd9a2d7ce4fffde9268fbc791634b7d4779de9/virtualenv-21.14.9-py3-none-any.whl", hash = "sha256:ac51744da66ae56ff814b087d65096c94de698ec520adc624b108b679655809b", size = 5494452, upload-time = "2026-10-17T16:09:40.584Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/a9/c10d8a44a29fb94a18b43fdf11f38caca53ae7c9406f11a72b1cb8f624f1/virtualenv-21.14.13-py3-none-any.whl", hash = "sha256:5fbb04138a4861580b78ba9110d529a26bc48fcc93c8ec36bc0202eeed96a788", size = 5557094, upload-time = "2026-10-22T20:10:15.096Z" },
 ]
 
 [[package]]
@@ -6069,7 +5945,7 @@ dependencies = [
     { name = "tiktoken" },
     { name = "tilelang" },
     { name = "tokenizers", version = "0.22.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "tokenizers", version = "0.23.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
+    { name = "tokenizers", version = "0.23.2", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-serve' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
     { name = "tokenspeed-mla", marker = "sys_platform == 'linux'" },
     { name = "torch" },
     { name = "torchaudio" },
@@ -6077,7 +5953,7 @@ dependencies = [
     { name = "torchvision" },
     { name = "tqdm" },
     { name = "transformers", version = "5.10.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
+    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-serve' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
     { name = "typing-extensions" },
     { name = "watchfiles" },
     { name = "xgrammar", marker = "platform_machine == 'aarch64' or platform_machine == 'arm64' or platform_machine == 'ppc64le' or platform_machine == 's390x' or platform_machine == 'x86_64'" },
@@ -6095,8 +5971,7 @@ source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "gitpython" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
+    { name = "packaging" },
     { name = "platformdirs" },
     { name = "protobuf" },
     { name = "pydantic" },
@@ -6123,7 +5998,7 @@ name = "wasabi"
 version = "1.1.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "colorama", marker = "sys_platform == 'win32' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/ac/f9/054e6e2f1071e963b5e746b48d1e3727470b2a490834d18ad92364929db3/wasabi-1.1.3.tar.gz", hash = "sha256:4bb3008f003809db0c3e28b4daf20906ea871a2bb43f9914197d540f4f2e0878", size = 30391, upload-time = "2024-05-31T16:56:18.99Z" }
 wheels = [
@@ -6179,8 +6054,7 @@ dependencies = [
     { name = "cloudpathlib" },
     { name = "confection" },
     { name = "httpx" },
-    { name = "packaging", version = "26.2", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train') or (extra != 'extra-14-eliza-training-rl-tinker' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
-    { name = "packaging", version = "26.3", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl' or extra != 'extra-14-eliza-training-train'" },
+    { name = "packaging" },
     { name = "pydantic" },
     { name = "smart-open" },
     { name = "srsly" },
@@ -6286,7 +6160,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "torch" },
     { name = "transformers", version = "5.10.4", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-rl'" },
-    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "(extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra != 'extra-14-eliza-training-rl-tinker' and extra == 'extra-14-eliza-training-serve') or (extra != 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-serve') or (extra == 'extra-14-eliza-training-rl' and extra != 'extra-14-eliza-training-serve' and extra == 'extra-14-eliza-training-train')" },
+    { name = "transformers", version = "5.17.0", source = { registry = "https://pypi.org/simple" }, marker = "extra == 'extra-14-eliza-training-serve' or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-rl-tinker') or (extra == 'extra-14-eliza-training-rl' and extra == 'extra-14-eliza-training-train')" },
     { name = "triton", version = "3.7.1", source = { registry = "https://pypi.org/simple" }, marker = "platform_machine == 'x86_64' and sys_platform == 'linux'" },
     { name = "typing-extensions" },
 ]
