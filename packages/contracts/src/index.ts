@@ -67,6 +67,7 @@ export {
 export * from "./contracts/wallet-routes.js";
 export * from "./contracts/wallet-types.js";
 export * from "./contracts/workbench-routes.js";
+export * from "./deletion-window.js";
 export * from "./device-action-execution.js";
 export * from "./device-reviews.js";
 export type {

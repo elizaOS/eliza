@@ -57,3 +57,38 @@ test("journal transitions, replay, bounds, crash ordering and host policy", {
   );
   assert.match(output, /^\d+ assertions passed/);
 });
+
+test("deletion Undo window: deadline, journal, dispatch claim, receipt recovery and coordinator ports", {
+  skip: jar ? false : "org.json jar unavailable (set ELIZA_ORG_JSON_JAR)",
+}, (t) => {
+  const classes = fs.mkdtempSync(path.join(os.tmpdir(), "deferred-deletion-"));
+  t.after(() => fs.rmSync(classes, { recursive: true, force: true }));
+  const bin = (name) =>
+    process.env.JAVA_HOME
+      ? path.join(process.env.JAVA_HOME, "bin", name)
+      : name;
+  const deletion = path.join(sources, "deletion");
+  execFileSync(
+    bin("javac"),
+    [
+      "-cp",
+      jar,
+      "-d",
+      classes,
+      path.join(sources, "ActionJournal.java"),
+      path.join(sources, "ActionJournalConfiguration.java"),
+      ...fs
+        .readdirSync(deletion)
+        .filter((name) => name.endsWith(".java"))
+        .map((name) => path.join(deletion, name)),
+      path.join(plugin, "test/native-host/DeferredDeletionTest.java"),
+    ],
+    { timeout: 60000 },
+  );
+  const output = execFileSync(
+    bin("java"),
+    ["-cp", [classes, jar].join(path.delimiter), "DeferredDeletionTest"],
+    { timeout: 120000, encoding: "utf8" },
+  );
+  assert.match(output, /^\d+ assertions passed/);
+});

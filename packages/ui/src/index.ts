@@ -293,6 +293,11 @@ export {
   type ElizaCloudTier,
 } from "./components/cockpit/cockpit-modes.js";
 export { DiffReviewPanel } from "./components/composites/DiffReviewPanel.js";
+export {
+  type DeferredDeletionIdentity,
+  DeferredDeletionNotice,
+  type DeferredDeletionNoticeProps,
+} from "./components/composites/deferred-deletion-notice.js";
 export { PageLoadingState } from "./components/composites/page-panel/content-state.js";
 export { PagePanel } from "./components/composites/page-panel/index.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";

@@ -40,6 +40,12 @@
       "import": "./dist/workflow-client.js",
       "default": "./dist/workflow-client.js"
     },
+    "./deletion-window": {
+      "eliza-source": "./src/deletion-window.ts",
+      "types": "./dist/deletion-window.d.ts",
+      "import": "./dist/deletion-window.js",
+      "default": "./dist/deletion-window.js"
+    },
     "./notice-routes": {
       "eliza-source": "./src/notice-routes.ts",
       "types": "./dist/notice-routes.d.ts",
