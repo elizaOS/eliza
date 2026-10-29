@@ -703,7 +703,13 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
           ? body.eventFilter
           : undefined
         : current.eventFilter,
-      maxRuns: typeof body.maxRuns === 'number' ? body.maxRuns : current.maxRuns,
+      // null removes the limit; an absent field keeps it.
+      maxRuns:
+        body.maxRuns === null
+          ? undefined
+          : typeof body.maxRuns === 'number'
+            ? body.maxRuns
+            : current.maxRuns,
       kind: nextKind,
       workflowId: nextWorkflowId,
       workflowName: nextWorkflowName,

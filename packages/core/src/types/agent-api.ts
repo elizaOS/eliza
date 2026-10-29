@@ -119,7 +119,8 @@ export interface UpdateTriggerRequest {
 	cronExpression?: string;
 	eventKind?: string;
 	eventFilter?: Record<string, unknown>;
-	maxRuns?: number;
+	/** null removes the run limit; an absent field keeps the current one. */
+	maxRuns?: number | null;
 	kind?: TriggerKind;
 	workflowId?: string;
 	workflowName?: string;
