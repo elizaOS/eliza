@@ -976,6 +976,46 @@ export function MapsScreen({
             <div style={{ fontSize: 14, color: color.muted, marginTop: 8 }}>
               {directions.via}
             </div>
+            {directions.routes.length ? (
+              <fieldset
+                aria-label="Routes"
+                data-maps-route-choice
+                style={{
+                  border: 0,
+                  padding: 0,
+                  minWidth: 0,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                  marginTop: 14,
+                }}
+              >
+                {directions.routes.map((choice) => (
+                  <button
+                    key={choice.id}
+                    type="button"
+                    aria-pressed={choice.selected}
+                    aria-label={`${choice.label}, ${choice.duration}, ${choice.meta}`}
+                    onClick={() => controller.chooseRoute(choice.id)}
+                    style={{
+                      ...pillButton(
+                        choice.selected ? color.accent : color.surface,
+                        choice.selected ? color.accentText : color.fg,
+                      ),
+                      justifyContent: "space-between",
+                      minHeight: 44,
+                      padding: "0 16px",
+                      fontSize: 14,
+                    }}
+                  >
+                    <span>{choice.label}</span>
+                    <span>
+                      {choice.duration} · {choice.meta}
+                    </span>
+                  </button>
+                ))}
+              </fieldset>
+            ) : null}
             <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
               <button
                 type="button"

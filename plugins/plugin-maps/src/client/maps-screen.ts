@@ -148,6 +148,17 @@ export type MapsScreenModeChoice = Readonly<{
   available: boolean;
 }>;
 
+/** One route of the provider's ordered choice; the first is its recommendation. */
+export type MapsScreenRouteChoice = Readonly<{
+  id: string;
+  /** "Recommended" for the first route, then "Alternative 1", "Alternative 2". */
+  label: string;
+  duration: string;
+  meta: string;
+  via: string;
+  selected: boolean;
+}>;
+
 export interface MapsScreenView {
   mode: MapsScreenMode;
   revision: number;
@@ -193,6 +204,8 @@ export interface MapsScreenView {
     via: string;
     modes: readonly MapsScreenModeChoice[];
     routeReady: boolean;
+    /** The provider's ordered route choice; empty when it offered one route. */
+    routes: readonly MapsScreenRouteChoice[];
   };
   navigation?: {
     arrived: boolean;
@@ -897,6 +910,13 @@ export class MapsScreenController {
     if (this.state?.origin) void controller.planRoute();
   }
 
+  /** The user's choice among the provider's offered routes; nothing is requested again. */
+  chooseRoute(id: string): void {
+    if (this.navigating || !this.directions) return;
+    if (this.ensure().chooseRoute(id)) this.message = "";
+    this.invalidate();
+  }
+
   shareRoute(): void {
     const target = this.selected;
     const route = this.readyRoute();
@@ -1375,6 +1395,14 @@ export class MapsScreenController {
           available: modes.includes(choice),
         })),
         routeReady: snapshot.route.phase === "ready" && !!route,
+        routes: snapshot.routeOptions.map((option, index) => ({
+          id: option.id,
+          label: index === 0 ? "Recommended" : `Alternative ${index}`,
+          duration: `${Math.max(1, Math.round(option.durationSeconds / 60))} min`,
+          meta: `${(option.distanceMeters / 1000).toFixed(1)} km`,
+          via: option.steps[0]?.instruction || "",
+          selected: option.id === route?.id,
+        })),
       };
     }
     if (this.navigating && selected) {

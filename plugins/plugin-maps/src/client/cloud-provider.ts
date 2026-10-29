@@ -272,6 +272,9 @@ export function cloudMapsFailure(
       failure.data && typeof failure.data === "object"
         ? (failure.data as { code?: unknown }).code
         : undefined;
+    // Cloud saw the request abort before admission: nothing was dispatched or counted.
+    if (code === "maps_request_cancelled")
+      return new MapsFailure("cancelled", "Maps request cancelled.");
     if (code === "maps_allowance_unconfigured")
       return new MapsFailure(
         "unconfigured",
@@ -412,7 +415,8 @@ export function createCloudMaps(
     constructor(
       readonly providerId: string,
       readonly connectionId: string,
-      private readonly request: CloudMapsRequest,
+      private readonly send: CloudMapsRequest,
+      private readonly alternatives: boolean,
     ) {}
     private places(value: unknown): readonly Place[] {
       if (!Array.isArray(value) || value.length > 100)
@@ -431,16 +435,43 @@ export function createCloudMaps(
       if (text.length > 300)
         throw new MapsFailure("unsupported", "Search text is too long.");
       return this.places(
-        (await call(this.request, "places/search", signal, { query: text }))
+        (await call(this.send, "places/search", signal, { query: text }))
           .places,
       );
     }
     async detail(id: string, signal: AbortSignal): Promise<Place | null> {
       if (!boundedText(id, 512)) return null;
-      const result = (
-        await call(this.request, "places/details", signal, { id })
-      ).place;
+      const result = (await call(this.send, "places/details", signal, { id }))
+        .place;
       return result === null ? null : place(result, this.providerId);
+    }
+    private async fetchRoutes(
+      from: Coordinate,
+      to: Coordinate,
+      mode: TravelMode,
+      signal: AbortSignal,
+      alternatives: boolean,
+    ): Promise<readonly Route[]> {
+      const routes = (
+        await call(this.send, "routes", signal, {
+          from: coordinate(from),
+          to: coordinate(to),
+          mode,
+          ...(alternatives ? { alternatives: true } : {}),
+        })
+      ).routes;
+      // The controller validates each route's identity, endpoints, geometry and steps.
+      if (
+        !Array.isArray(routes) ||
+        routes.length < 1 ||
+        routes.length > (alternatives ? 3 : 1) ||
+        !routes.every((route) => route && typeof route === "object")
+      )
+        throw new MapsFailure(
+          "invalid-response",
+          "The Maps route response is invalid.",
+        );
+      return routes as Route[];
     }
     async route(
       from: Coordinate,
@@ -448,20 +479,18 @@ export function createCloudMaps(
       mode: TravelMode,
       signal: AbortSignal,
     ): Promise<Route> {
-      const routes = (
-        await call(this.request, "routes", signal, {
-          from: coordinate(from),
-          to: coordinate(to),
-          mode,
-        })
-      ).routes;
-      // The controller validates the route's identity, endpoints, geometry and steps.
-      if (!Array.isArray(routes) || !routes[0] || typeof routes[0] !== "object")
-        throw new MapsFailure(
-          "invalid-response",
-          "The Maps route response is invalid.",
-        );
-      return routes[0] as Route;
+      return (
+        await this.fetchRoutes(from, to, mode, signal, false)
+      )[0] as Route;
+    }
+    /** One admitted request; Cloud returns the recommended route first. */
+    routes(
+      from: Coordinate,
+      to: Coordinate,
+      mode: TravelMode,
+      signal: AbortSignal,
+    ): Promise<readonly Route[]> {
+      return this.fetchRoutes(from, to, mode, signal, this.alternatives);
     }
   }
   /** Reads coverage and configures the provider. On failure Maps stays unconfigured; nothing falls back. */
@@ -511,6 +540,8 @@ export function createCloudMaps(
         caps.placeDetails !== true ||
         caps.traffic !== "none" ||
         caps.transit !== "none" ||
+        (caps.alternatives !== undefined &&
+          typeof caps.alternatives !== "boolean") ||
         !Array.isArray(caps.modes) ||
         caps.modes.length < 1 ||
         !caps.modes.every((mode) => MODES.includes(mode))
@@ -519,6 +550,7 @@ export function createCloudMaps(
           "invalid-response",
           "Cloud Maps coverage is invalid.",
         );
+      const alternatives = caps.alternatives === true;
       const sources = sourcesOf(meta.sources),
         disclosure = disclosureOf(meta.disclosure);
       coverage = Object.freeze({
@@ -553,9 +585,15 @@ export function createCloudMaps(
             traffic: "none",
             transit: "none",
             offline: { map: false, search: false, routing: false },
+            alternatives,
           },
         },
-        new CloudProvider(meta.providerId, meta.connectionId, request),
+        new CloudProvider(
+          meta.providerId,
+          meta.connectionId,
+          request,
+          alternatives,
+        ),
       );
       installed = true;
     } catch (error) {

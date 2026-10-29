@@ -187,9 +187,161 @@ const memory = () => {
   assert.deepEqual(calls[1][1], { query: "Port" });
   assert.deepEqual(
     calls[3][1],
-    { from: CASINO, to: PORT, mode: "walk" },
-    "location travels only in the body; no alternatives are requested",
+    { from: CASINO, to: PORT, mode: "walk", alternatives: true },
+    "location travels only in the body; Cloud serves alternatives, so one request asks for them",
   );
+  assert.equal(config.capabilities.alternatives, true);
+  assert.deepEqual(
+    controller.snapshot().routeOptions,
+    [],
+    "a single answered route offers no choice",
+  );
+}
+
+// Route alternatives: one request, the provider's order kept, the user's choice requests nothing more.
+{
+  const calls = [];
+  let config, provider;
+  const alternative = {
+    ...route,
+    id: "route_fedcba9876543210fedcba98",
+    distanceMeters: 910,
+    durationSeconds: 660,
+    steps: [
+      {
+        instruction: "Walk along the harbour",
+        coordinate: CASINO,
+        distanceMeters: 910,
+      },
+    ],
+  };
+  const answer = (routes) => async (path, _signal, body) => {
+    calls.push([path, body]);
+    if (path === "capabilities") return structuredClone(coverage);
+    if (path === "places/details")
+      return {
+        providerId: coverage.providerId,
+        attribution: ATTRIBUTION,
+        place,
+      };
+    if (path === "routes")
+      return {
+        providerId: coverage.providerId,
+        attribution: ATTRIBUTION,
+        routes,
+      };
+    throw new Error(`unexpected ${path}`);
+  };
+  let routes = [route, alternative];
+  const maps = createCloudMaps(
+    () => (path, signal, body) => answer(routes)(path, signal, body),
+    (nextConfig, nextProvider) => {
+      config = nextConfig;
+      provider = nextProvider;
+    },
+  );
+  await maps.initializeCloudMaps();
+  const controller = new MapsController(
+    config,
+    provider,
+    new SavedPlaces("test.maps.saved", memory()),
+    location,
+  );
+  await controller.select(place);
+  controller.setOrigin(CASINO);
+  controller.setMode("walk");
+  await controller.planRoute();
+  let state = controller.snapshot();
+  assert.equal(state.route.phase, "ready", state.route.error?.message);
+  assert.deepEqual(
+    state.routeOptions.map((option) => option.id),
+    [route.id, alternative.id],
+    "the provider's order is kept; the first is recommended",
+  );
+  assert.equal(
+    state.route.value.id,
+    route.id,
+    "the recommendation is chosen first",
+  );
+  const before = calls.length;
+  assert.equal(controller.chooseRoute(alternative.id), true);
+  state = controller.snapshot();
+  assert.equal(state.route.value.id, alternative.id);
+  assert.equal(state.route.value.distanceMeters, 910);
+  assert.equal(calls.length, before, "choosing a route requests nothing");
+  assert.equal(controller.chooseRoute("route_unknown"), false);
+  // Changing the mode drops the old choice.
+  controller.setMode("drive");
+  assert.deepEqual(controller.snapshot().routeOptions, []);
+  // More than three routes, duplicates or an alternative to other endpoints are refused whole.
+  for (const refused of [
+    [
+      route,
+      alternative,
+      { ...alternative, id: "route_a" },
+      { ...alternative, id: "route_b" },
+    ],
+    [route, route],
+    [route, { ...alternative, to: CASINO }],
+  ]) {
+    routes = refused;
+    controller.setMode("walk");
+    await controller.planRoute();
+    state = controller.snapshot();
+    assert.equal(state.route.phase, "error");
+    assert.equal(state.route.error.code, "invalid-response");
+    assert.deepEqual(state.routeOptions, []);
+  }
+}
+
+// A Cloud that does not serve alternatives is asked for one route only.
+{
+  const calls = [];
+  let config, provider;
+  const maps = createCloudMaps(
+    () => async (path, _signal, body) => {
+      calls.push([path, body]);
+      if (path === "capabilities")
+        return {
+          ...structuredClone(coverage),
+          capabilities: { ...coverage.capabilities, alternatives: false },
+        };
+      if (path === "places/details")
+        return {
+          providerId: coverage.providerId,
+          attribution: ATTRIBUTION,
+          place,
+        };
+      if (path === "routes")
+        return {
+          providerId: coverage.providerId,
+          attribution: ATTRIBUTION,
+          routes: [route],
+        };
+      throw new Error(`unexpected ${path}`);
+    },
+    (nextConfig, nextProvider) => {
+      config = nextConfig;
+      provider = nextProvider;
+    },
+  );
+  await maps.initializeCloudMaps();
+  assert.equal(config.capabilities.alternatives, false);
+  const controller = new MapsController(
+    config,
+    provider,
+    new SavedPlaces("test.maps.saved", memory()),
+    location,
+  );
+  controller.setOrigin(CASINO);
+  await controller.select(place);
+  controller.setMode("walk");
+  await controller.planRoute();
+  assert.equal(controller.snapshot().route.phase, "ready");
+  assert.deepEqual(calls.at(-1), [
+    "routes",
+    { from: CASINO, to: PORT, mode: "walk" },
+  ]);
 }
 
 // Typed Cloud refusals become device failures; none becomes data.
@@ -201,6 +353,8 @@ for (const [status, code, expected] of [
   [503, "maps_not_configured", "unconfigured"],
   [503, "provider_unavailable", "unavailable"],
   [502, "provider_invalid_response", "invalid-response"],
+  // Cloud saw the request abort before admission: a typed cancellation, not an outage.
+  [408, "maps_request_cancelled", "cancelled"],
 ])
   assert.equal(
     cloudMapsFailure(cloudError(status, code)).code,

@@ -11,7 +11,7 @@ import { MapsController } from "../src/client/state.ts";
 const ORIGIN = { latitude: 43.73, longitude: 7.42 };
 const END = { latitude: 43.74, longitude: 7.42 };
 const OFF_ROUTE = { latitude: 43.735, longitude: 7.43 };
-const config = (modes = ["drive", "walk"]) => ({
+const config = (modes = ["drive", "walk"], alternatives = false) => ({
   status: "configured",
   providerId: "fixture",
   connectionId: "conn_fixture_123456789",
@@ -24,6 +24,7 @@ const config = (modes = ["drive", "walk"]) => ({
     traffic: "none",
     transit: "none",
     offline: { map: false, search: false, routing: false },
+    ...(alternatives ? { alternatives: true } : {}),
   },
 });
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -71,8 +72,25 @@ function fixture(options = {}) {
     async detail() {
       return destination;
     },
-    async route(from, to, mode) {
-      calls.routes.push({ from, mode });
+    async routes(from, to, mode, signal) {
+      calls.routes.push({ from, mode, alternatives: true });
+      const recommended = await this.route(from, to, mode, signal, true);
+      return [
+        recommended,
+        {
+          ...recommended,
+          id: `${recommended.id}_alt`,
+          distanceMeters: 1500,
+          durationSeconds: 420,
+          steps: [
+            { ...recommended.steps[0], instruction: "Head east" },
+            ...recommended.steps.slice(1),
+          ],
+        },
+      ];
+    },
+    async route(from, to, mode, _signal, nested) {
+      if (!nested) calls.routes.push({ from, mode });
       return {
         providerId: "fixture",
         id: `route_0123456789abcdef_${calls.routes.length}`,
@@ -132,7 +150,7 @@ function fixture(options = {}) {
   const connection = {
     config: options.unconfigured
       ? { status: "unconfigured" }
-      : config(options.modes),
+      : config(options.modes, !!options.alternatives),
   };
   const host = {
     connection: () => ({
@@ -390,6 +408,53 @@ test("directions need a real origin and a served mode", async () => {
     false,
     "editing the origin clears the route",
   );
+});
+
+test("an offered route choice keeps the provider's order; choosing requests nothing and Start follows it", async () => {
+  const f = fixture({ alternatives: true, background: true });
+  await planned(f);
+  let view = f.screen.view();
+  assert.deepEqual(f.calls.routes, [
+    { from: ORIGIN, mode: "drive", alternatives: true },
+  ]);
+  assert.deepEqual(
+    view.directions?.routes.map(({ label, duration, meta, selected }) => [
+      label,
+      duration,
+      meta,
+      selected,
+    ]),
+    [
+      ["Recommended", "5 min", "1.2 km", true],
+      ["Alternative 1", "7 min", "1.5 km", false],
+    ],
+  );
+  f.screen.chooseRoute(view.directions.routes[1].id);
+  view = f.screen.view();
+  assert.equal(view.directions?.duration, "7 min");
+  assert.equal(view.directions?.via, "Head east");
+  assert.deepEqual(
+    view.directions?.routes.map((choice) => choice.selected),
+    [false, true],
+  );
+  assert.equal(view.map.route?.id, view.directions.routes[1].id);
+  assert.equal(f.calls.routes.length, 1, "choosing a route requests nothing");
+  f.screen.start();
+  await settle();
+  f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+  view = f.screen.view();
+  assert.equal(view.mode, "navigation");
+  assert.equal(view.navigation?.instruction, "Head east");
+  // The choice cannot change under active guidance.
+  f.screen.chooseRoute(`route_0123456789abcdef_1`);
+  assert.equal(f.screen.view().navigation?.instruction, "Head east");
+  f.screen.end();
+  await settle();
+  // Without the capability one route is requested and no choice is shown.
+  const single = fixture();
+  await planned(single);
+  assert.deepEqual(single.screen.view().directions?.routes, []);
+  assert.deepEqual(single.calls.routes, [{ from: ORIGIN, mode: "drive" }]);
 });
 
 test("a named origin offers saved places and provider results, then plans", async () => {
