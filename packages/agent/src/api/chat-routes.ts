@@ -3888,13 +3888,17 @@ export function resolveTrustedApiPrincipal(
     principalId: "non-owner-api",
   };
 }
-function syncRuntimeCharacterToChatStateConfig(state: ChatRouteState): void {
+/** @internal Ordinary chat synchronization carries no implicit rename intent. */
+export function syncRuntimeCharacterToChatStateConfig(
+  state: Pick<ChatRouteState, "runtime" | "config">,
+): void {
   if (!state.runtime || !state.config) {
     return;
   }
   syncCharacterIntoConfig(
     state.config,
     state.runtime.character as Parameters<typeof syncCharacterIntoConfig>[1],
+    { nameWasExplicitlyEdited: false },
   );
 }
 // ---------------------------------------------------------------------------

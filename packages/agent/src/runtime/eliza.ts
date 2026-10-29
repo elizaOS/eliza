@@ -229,7 +229,7 @@ import {
   STATIC_ELIZA_PLUGIN_LOADERS,
   STATIC_ELIZA_PLUGINS,
 } from "./plugin-types.ts";
-import { prepareProductCharacterConfig } from "./prepare-product-character-config.ts";
+import { buildProductCharacterFromConfig } from "./prepare-product-character-config.ts";
 import {
   type AgentProcessLifecycle,
   createAgentProcessLifecycle,
@@ -4408,20 +4408,40 @@ export async function startEliza(
       "./canonical-file-boot.ts"
     );
     applyCanonicalFileBootToConfig(config);
-    const productCharacter = getAgentHostBridge().productCharacter;
-    // Explicit/provisioned characters retain their existing precedence. Product
-    // branding applies only to the normally selected canonical local identity.
-    if (
-      productCharacter &&
-      !sandboxRouteAgentId &&
-      !process.env.ELIZA_AGENT_CHARACTER_JSON?.trim() &&
-      !process.env.ELIZA_CHARACTER_PATH?.trim()
-    )
-      config = prepareProductCharacterConfig(config, productCharacter);
   }
-  const character = restoredGeneration
+  let character = restoredGeneration
     ? restoredGeneration.character()
     : buildCharacterFromConfig(config);
+  const productCharacter = getAgentHostBridge().productCharacter;
+  let scopeName = character.name;
+  if (restoredGeneration && productCharacter?.name === character.name) {
+    const configured = buildCharacterFromConfig(config);
+    if (
+      !configured.name ||
+      (configured.id ?? stringToUuid(configured.name)) !== character.id
+    )
+      throw new ElizaError(
+        "Restored product profile scope is not established by its canonical config",
+        { code: "PRODUCT_CHARACTER_RESTORE_SCOPE_UNRESOLVED" },
+      );
+    scopeName = configured.name;
+  }
+  // Existing vault, signer, wallet and bridge scopes use this pre-branding
+  // name-derived key. Changing a display persona must not select new scopes.
+  const agentId = scopeName?.toLowerCase().replace(/\s+/g, "-") ?? "main";
+  // Explicit/provisioned characters retain their existing precedence. Product
+  // branding applies only to the normally selected canonical local identity.
+  if (
+    productCharacter &&
+    !restoredGeneration &&
+    !sandboxRouteAgentId &&
+    !process.env.ELIZA_AGENT_CHARACTER_JSON?.trim() &&
+    !process.env.ELIZA_CHARACTER_PATH?.trim()
+  ) {
+    // Keep the canonical config unchanged so unrelated Settings writes cannot
+    // turn the product label into the next boot's vault/wallet scope key.
+    character = buildProductCharacterFromConfig(config, productCharacter);
+  }
   assertNoRetiredCharacterToolRestrictions(character.settings);
   // Pin the runtime agent id to the platform character_id so the gateways can
   // resolve `agent:<id>:server` and address `/agents/<id>/message` against
@@ -4447,7 +4467,6 @@ export async function startEliza(
     recursive: true,
   });
   // 5. Create the Eliza bridge plugin (workspace context + session keys)
-  const agentId = character.name?.toLowerCase().replace(/\s+/g, "-") ?? "main";
   // 5-pre0. Apply per-agent vault profile overrides to process.env.
   //
   // Vault keys with multiple named profiles (work / personal / throwaway)

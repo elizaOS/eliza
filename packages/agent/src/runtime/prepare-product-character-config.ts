@@ -2,14 +2,47 @@
  * Call only after the normal config/restore selection has settled. This does
  * not authorize writes or choose an existing profile from a display label.
  */
-import { ElizaError, stringToUuid } from "@elizaos/core";
-import type { ElizaConfig } from "@elizaos/host/protocol";
+import {
+  ElizaError,
+  normalizeCharacterLanguage,
+  stringToUuid,
+} from "@elizaos/core";
+import {
+  type ElizaConfig,
+  getDefaultStylePreset,
+} from "@elizaos/host/protocol";
 import { syncCharacterIntoConfig } from "../services/character-persistence.ts";
 import {
   agentIdentityName,
   buildCharacterFromConfig,
 } from "./build-character-config.ts";
 import { resolveSandboxRouteAgentId } from "./sandbox-character.ts";
+
+/** Normal hosts provide defaults; stored user names and biography remain authoritative. */
+export function buildProductCharacterFromConfig(
+  config: ElizaConfig,
+  product: { readonly name: string; readonly bio?: readonly string[] },
+) {
+  const original = buildCharacterFromConfig(config);
+  const storedIdentity = config.agents?.list?.[0]?.identityName?.trim();
+  const defaultName = getDefaultStylePreset(
+    normalizeCharacterLanguage(config.ui?.language),
+  ).name;
+  if (
+    original.name !== defaultName ||
+    (storedIdentity && storedIdentity !== original.name)
+  )
+    return original;
+  return buildCharacterFromConfig(
+    prepareProductCharacterConfig(config, {
+      name: product.name,
+      ...(config.agents?.list?.[0]?.bio === undefined &&
+      product.bio !== undefined
+        ? { bio: product.bio }
+        : {}),
+    }),
+  );
+}
 
 export function prepareProductCharacterConfig(
   config: ElizaConfig,

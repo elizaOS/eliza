@@ -409,6 +409,7 @@ async function runUpdateIdentity(
 
   const result = await persistence.persistCharacter({
     previousName,
+    nameWasExplicitlyEdited: Boolean(name),
     source: "agent",
   });
 
