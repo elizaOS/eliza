@@ -86,7 +86,11 @@ export function articleMatchesNewsTopic(
   own: { title: string; excerpts: string[] },
   query: string,
 ): boolean {
-  const topic = query.match(/^latest public (.+?) news dated /u)?.[1];
+  const match = query.match(/^latest public (?:(.+?) )?news dated /u);
+  if (!match) return false;
+  // A dated request with no topic ("one top headline from today") accepts any own article.
+  const topic = match[1];
+  if (!topic) return true;
   const words = (text: string) =>
     new Set(
       text
@@ -99,7 +103,7 @@ export function articleMatchesNewsTopic(
     .join("\n")
     .split(/\n(?:_?Related(?: coverage)?|#{1,6}\s+(?:Related|More))\b/iu)[0];
   const bodyWords = words(body);
-  return Boolean(topic) && [...words(topic ?? "")].every((word) => bodyWords.has(word));
+  return [...words(topic)].every((word) => bodyWords.has(word));
 }
 
 export type SharedNewsArticleConflict = "article_title_conflict" | "article_publication_conflict";
