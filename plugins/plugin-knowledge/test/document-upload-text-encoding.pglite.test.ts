@@ -111,3 +111,54 @@ it("stores text files the browser labels with a binary MIME as their literal tex
     await fixture.cleanup();
   }
 }, 120_000);
+
+it("returns the text of a note whose letters happen to look like base64", async () => {
+  const owner = randomUUID() as UUID;
+  const fixture = await createTestRuntime({
+    characterName: "UploadTextPreview",
+    settings: { ELIZA_ADMIN_ENTITY_ID: owner },
+  });
+  try {
+    const { runtime } = fixture;
+    await runtime.createEntity({
+      id: owner,
+      names: ["Owner"],
+      agentId: runtime.agentId,
+    });
+    await runtime.registerService(DocumentService);
+    // 24 letters once the spaces go, no punctuation: base64-shaped, but text.
+    const text = "Remember to call the dentist";
+
+    const upload = await routeFor(
+      "POST",
+      "/api/documents",
+    )(
+      context(runtime, "POST", "/api/documents", {
+        filename: "todo.txt",
+        contentType: "text/plain",
+        content: text,
+        scope: "owner-private",
+        metadata: { includeImageDescriptions: false },
+      }),
+    );
+    expect(upload.status).toBe(200);
+    const documentId = (upload.body as { documentId: string }).documentId;
+
+    const detail = await routeFor(
+      "GET",
+      "/api/documents/:id",
+    )(context(runtime, "GET", `/api/documents/${documentId}`));
+    expect(detail.status).toBe(200);
+    const document = (
+      detail.body as {
+        document: { canEditText: boolean; content?: { text?: string } };
+      }
+    ).document;
+    expect({
+      canEditText: document.canEditText,
+      content: document.content,
+    }).toEqual({ canEditText: true, content: { text } });
+  } finally {
+    await fixture.cleanup();
+  }
+}, 120_000);

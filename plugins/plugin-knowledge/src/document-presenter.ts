@@ -329,9 +329,11 @@ export function getDocumentPreviewText(memory: Memory): string | undefined {
   const contentText = memory.content.text;
   if (typeof contentText !== "string") return undefined;
   const trimmed = contentText.trim();
-  if (trimmed.length === 0 || looksLikeBase64(trimmed)) {
-    return undefined;
-  }
+  if (trimmed.length === 0) return undefined;
+  // Text that ingestion recorded as the document itself is shown as is; the
+  // base64 guess is only for records that do not say what their text is.
+  if (asRecord(memory.metadata)?.textBacked === true) return trimmed;
+  if (looksLikeBase64(trimmed)) return undefined;
   return trimmed;
 }
 
