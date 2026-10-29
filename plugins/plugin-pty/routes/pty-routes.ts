@@ -46,6 +46,11 @@ function num(v: unknown): number | undefined {
 }
 function getStr(runtime: IAgentRuntime, key: string): string | undefined {
   const fromSetting = runtime.getSetting?.(key);
+  // Core getSetting returns a stored "true"/"false" as a boolean (and keeps
+  // numbers), so a saved PTY_INTERACTIVE_ENABLED=false must not fall through.
+  if (typeof fromSetting === "boolean" || typeof fromSetting === "number") {
+    return String(fromSetting);
+  }
   if (typeof fromSetting === "string" && fromSetting.trim().length > 0) {
     return fromSetting.trim();
   }
