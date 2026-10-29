@@ -2200,7 +2200,7 @@ it("grounds the observed relative-create reply against the real CalendarService 
     await import(
       "../../plugin-assistant/src/services/message/egress-policy.ts"
     );
-  const wrong = "Created your meeting with Shaw for tonight, 5:52–6:52 PM.",
+  const wrong = "Done. Meet with Shaw, tonight 5:52 to 6:52 PM.",
     correct = "Created your meeting with Shaw for today, 4:52–5:52 PM.";
   expect(
     evaluatePlannedReplyEgress({

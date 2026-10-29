@@ -16,7 +16,7 @@ import {
 import { calendarMutationTimeIsUngrounded } from "./time-observations.ts";
 
 const request = "Create an event to meet with Shaw in 20 mins for 1hr";
-const wrong = "Created your meeting with Shaw for tonight, 5:52–6:52 PM.";
+const wrong = "Done. Meet with Shaw, tonight 5:52 to 6:52 PM.";
 const correct = "Created your meeting with Shaw for today, 4:52–5:52 PM.";
 const runtimes: ReturnType<typeof createSQLiteTestRuntime>[] = [];
 afterEach(async () => {
