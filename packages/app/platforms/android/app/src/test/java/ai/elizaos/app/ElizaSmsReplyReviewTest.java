@@ -195,14 +195,14 @@ public class ElizaSmsReplyReviewTest {
     }
 
     @Test
-    public void staleAndBoundedProposals() throws Exception {
+    public void unreviewedDraftsAreKeptUntilTheyExpire() throws Exception {
         ElizaSmsReplyProposals proposals = new ElizaSmsReplyProposals(new Memory());
-        for (int i = 0; i < ElizaSmsReplyProposals.MAX_PENDING + 5; i++) {
+        for (int i = 0; i < 60; i++) {
             proposals.add(new ElizaSmsReplyProposals.Proposal("sms-reply-" + i, "+15555550100", "draft " + i, 1, "in-" + i, NOW), NOW);
         }
         List<ElizaSmsReplyProposals.Proposal> pending = proposals.pending(NOW);
-        assertEquals(ElizaSmsReplyProposals.MAX_PENDING, pending.size());
-        assertEquals("the oldest drafts are dropped first", "sms-reply-5", pending.get(0).operationId);
+        assertEquals("no unreviewed draft is dropped because others are waiting", 60, pending.size());
+        assertEquals("sms-reply-0", pending.get(0).operationId);
         assertTrue("a week-old draft is dropped unsent", proposals.pending(NOW + ElizaSmsReplyProposals.MAX_AGE_MS + 1).isEmpty());
     }
 

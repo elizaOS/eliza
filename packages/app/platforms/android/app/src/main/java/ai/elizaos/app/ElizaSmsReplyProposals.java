@@ -19,7 +19,6 @@ import org.json.JSONObject;
  * Plain Java so the JVM tests exercise it without Android.
  */
 final class ElizaSmsReplyProposals {
-    static final int MAX_PENDING = 50;
     /** A draft older than this is dropped unsent: a reply that late is no longer the reply that was reviewed for. */
     static final long MAX_AGE_MS = 7L * 24 * 60 * 60 * 1000;
 
@@ -99,11 +98,6 @@ final class ElizaSmsReplyProposals {
         if (pending.containsKey(proposal.operationId)) {
             if (changed) save();
             return false;
-        }
-        Iterator<String> oldest = pending.keySet().iterator();
-        while (pending.size() >= MAX_PENDING && oldest.hasNext()) {
-            oldest.next();
-            oldest.remove();
         }
         pending.put(proposal.operationId, proposal);
         save();
