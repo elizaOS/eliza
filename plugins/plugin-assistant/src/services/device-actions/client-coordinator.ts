@@ -1018,6 +1018,7 @@ export class DeviceActionCoordinator<
       context: C;
       workflowReview?: R;
       requestKey?: string;
+      currentRequest?: CurrentDeviceActionRequest;
     }
   >();
   private readReplies = new Map<
@@ -1081,7 +1082,8 @@ export class DeviceActionCoordinator<
       proposal.operation,
       authoredBrowserDestination(proof.text),
     );
-    this.browserPolicy.set(proposal.id, { key, allowed });
+    if (this.browserPolicy.has(proposal.id) || this.browserPolicy.size < 128)
+      this.browserPolicy.set(proposal.id, { key, allowed });
     return allowed;
   }
   private consumeBrowserRequest(proof: CurrentDeviceActionRequest): boolean {
@@ -1569,6 +1571,7 @@ export class DeviceActionCoordinator<
           !this.consumeBrowserRequest(proof)
         )
           continue;
+        entry.currentRequest = proof;
       }
       const result = await this.approve(proposalId, context, signal);
       results.push(result);
@@ -1858,10 +1861,21 @@ export class DeviceActionCoordinator<
     this.proposals.delete(proposalId);
     let execution: ReturnType<typeof createDeviceActionExecution> | undefined;
     try {
+      const assertCurrent = () => {
+        assertProposalContext(p.operation, context, this.profile);
+        if (reviewed.currentRequest) {
+          reviewed.currentRequest.current();
+          if (
+            reviewed.requestKey !==
+            this.requestKey(reviewed.currentRequest.messageId)
+          )
+            throw Error("The current device action request changed");
+        }
+      };
       execution = createDeviceActionExecution(
         { scope: this.scope, proposalId, operationId },
         signal,
-        () => assertProposalContext(p.operation, context, this.profile),
+        assertCurrent,
       );
       if (p.workflow) {
         if (!reviewed.workflowReview)
@@ -1898,6 +1912,7 @@ export class DeviceActionCoordinator<
       execution.assertIdentity(reserved.entry);
       execution.assertPrepared();
       await this.mutation(p, "decision", { decision: "approve" }, signal);
+      execution.assertPrepared();
       const claimed = await this.mutation(p, "claim", {}, signal);
       if (
         isSmsSend(p.operation) &&
@@ -2012,6 +2027,7 @@ export class DeviceActionCoordinator<
           result.status === "succeeded"
         ) {
           try {
+            if (reviewed.currentRequest) assertCurrent();
             result.presentBrowser?.();
           } catch {
             /* A retired foreground must not replace a journaled outcome. */
