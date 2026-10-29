@@ -48,11 +48,12 @@ export function prepareProductCharacterConfig(
   }
   const original = buildCharacterFromConfig(config);
   const identityName = agentIdentityName(original);
-  if (!identityName)
+  const originalName = original.name;
+  if (!identityName || !originalName)
     throw new ElizaError("The original canonical identity is unavailable.", {
       code: "PRODUCT_CHARACTER_IDENTITY_UNRESOLVED",
     });
-  const originalId = original.id ?? stringToUuid(original.name);
+  const originalId = original.id ?? stringToUuid(originalName);
   const next = structuredClone(config);
   // Passing only the approved patch avoids pinning all derived preset fields,
   // settings or secrets into the canonical file.
@@ -62,8 +63,10 @@ export function prepareProductCharacterConfig(
     settings: { identityName },
   });
   const rebuilt = buildCharacterFromConfig(next);
+  const rebuiltName = rebuilt.name;
   if (
-    (rebuilt.id ?? stringToUuid(rebuilt.name)) !== originalId ||
+    !rebuiltName ||
+    (rebuilt.id ?? stringToUuid(rebuiltName)) !== originalId ||
     agentIdentityName(rebuilt) !== identityName
   ) {
     throw new ElizaError(
