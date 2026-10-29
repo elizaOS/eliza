@@ -83,6 +83,23 @@ test("test-mocks paths and test-mocks web bundles are never admitted", (t) => {
     () => admitImageApk(base(f, { apk: mocked, development: true })),
     /test-mocks\/ builds are never staged/,
   );
+  // A file whose name starts with ".." is still inside the directory.
+  const dotted = path.join(f.mocks, "..launcher.apk");
+  fs.copyFileSync(f.apk, dotted);
+  assert.throws(
+    () => admitImageApk(base(f, { apk: dotted, development: true })),
+    /never staged/,
+  );
+  // A test-mocks directory named through a symlink still refuses its real contents.
+  const mocksLink = path.join(f.dir, "mocks-link");
+  fs.symlinkSync(f.mocks, mocksLink);
+  assert.throws(
+    () =>
+      admitImageApk(
+        base(f, { apk: mocked, testMocksDir: mocksLink, development: true }),
+      ),
+    /never staged/,
+  );
   // A symlink outside the directory that resolves into it is refused too.
   const link = path.join(f.dir, "linked.apk");
   fs.symlinkSync(mocked, link);

@@ -150,9 +150,41 @@ test("a verified signed release is archived with its hashes", (t) => {
   assert.deepEqual(plan.problems, []);
   assert.deepEqual(
     plan.steps.map((step) => step.slice(3).join(" ")),
-    ["reboot bootloader", "update stallion-img.zip"],
+    ["reboot bootloader", "flashing unlock", "-w update stallion-img.zip"],
   );
+  assert.match(plan.notes.join("\n"), /erase all user data/);
   assert.equal(plan.executed, false);
+  // The retention directory itself is read-only.
+  assert.equal(fs.statSync(retained).mode & 0o222, 0);
+  // An edited known-good.json naming other bytes is refused: the image is re-bound to the
+  // record's vbmeta, not only to the manifest's own hashes.
+  const forged = path.join(f.dir, "forged");
+  fs.cpSync(retained, forged, { recursive: true });
+  execFileSync("chmod", ["-R", "u+w", forged]);
+  const other = zip(f.dir, "other-img.zip", {
+    "vbmeta.img": "unsigned vbmeta",
+    "boot.img": "boot",
+  });
+  fs.rmSync(path.join(forged, "stallion-img.zip"));
+  fs.copyFileSync(other, path.join(forged, "stallion-img.zip"));
+  const forgedManifest = JSON.parse(
+    fs.readFileSync(path.join(forged, "known-good.json"), "utf8"),
+  );
+  forgedManifest.signedImage = {
+    ...forgedManifest.signedImage,
+    sha256: sha256(fs.readFileSync(other)),
+    sizeBytes: fs.statSync(other).size,
+  };
+  fs.writeFileSync(
+    path.join(forged, "known-good.json"),
+    JSON.stringify(forgedManifest),
+  );
+  const forgedPlan = knownGoodRecoveryPlan({
+    channel: CHANNEL,
+    directory: forged,
+  });
+  assert.match(forgedPlan.problems.join(), /vbmeta\.img is not the record's/);
+  assert.deepEqual(forgedPlan.steps, []);
   // Tampering with a retained file after retention removes the plan.
   fs.chmodSync(path.join(retained, "stallion-img.zip"), 0o644);
   fs.appendFileSync(path.join(retained, "stallion-img.zip"), "x");
@@ -240,7 +272,7 @@ test("stock-archive offers a verified known-good plan alongside the stock plan",
   // The stock archive fixture has no images, so only the known-good plan is offered.
   assert.deepEqual(plan.steps, []);
   assert.deepEqual(plan.knownGood.problems, []);
-  assert.equal(plan.knownGood.steps.length, 2);
+  assert.equal(plan.knownGood.steps.length, 3);
   assert.equal(
     stockRecoveryPlan({ channel, sourceLock: {}, archive, entries: [] })
       .knownGood,

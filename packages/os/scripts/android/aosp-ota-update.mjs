@@ -1051,8 +1051,10 @@ export function stockRecoveryPlan({
       "This restores Google's stock image; it is not a signed update or rollback of the product.",
     ],
     problems,
-    // A retained known-good release is offered first when one verifies: it keeps the
-    // product image and user data. Its problems never block the stock plan.
+    // A retained known-good release is offered beside it when one verifies: it keeps the
+    // product image and its AVB key (no stock image or key re-enrolment), but a locked
+    // bootloader still has to be unlocked, which erases user data. Its problems never block
+    // the stock plan.
     knownGood: knownGood
       ? knownGoodRecoveryPlan({ channel, directory: knownGood })
       : null,
@@ -1217,6 +1219,8 @@ export function retainKnownGood({
       { flag: "wx", mode: 0o444 },
     );
     fs.renameSync(temporary, archiveDir);
+    // The retention is immutable: no file can be added to, renamed in or removed from it.
+    fs.chmodSync(archiveDir, 0o555);
     return {
       retained: true,
       archiveDir,
@@ -1231,11 +1235,20 @@ export function retainKnownGood({
 
 /**
  * Re-verify a retained known-good directory and return the operator's fastboot plan
- * that reflashes it. The device keeps the product's AVB key, so this needs no unlock
- * and keeps user data; the bootloader refuses it when the device's stored rollback
- * index is above the retained image's. It is never executed by this tool.
+ * that reflashes it. The retained files are re-hashed and re-bound to their record (the
+ * target-files digest and the image's vbmeta.img), so an edited known-good.json cannot
+ * substitute other bytes. A locked bootloader refuses fastboot flashing, so the plan
+ * unlocks it, which erases user data; the device keeps the product's AVB key
+ * (avb_custom_key is not erased), so no stock image or key re-enrolment is needed. The
+ * bootloader refuses it when the device's stored rollback index is above the retained
+ * image's. It is never executed by this tool.
  */
-export function knownGoodRecoveryPlan({ channel, directory }) {
+export function knownGoodRecoveryPlan({
+  channel,
+  directory,
+  readImageEntries = archiveEntries,
+  readImageEntry = archiveEntry,
+}) {
   const problems = [];
   let manifest = null;
   try {
@@ -1280,7 +1293,21 @@ export function knownGoodRecoveryPlan({ channel, directory }) {
     const record = JSON.parse(
       fs.readFileSync(path.join(directory, manifest.record.file), "utf8"),
     );
-    for (const problem of releaseRecordProblems(record, channel, "known-good"))
+    const image = path.join(directory, manifest.signedImage.file);
+    let imageEntries = [];
+    try {
+      imageEntries = readImageEntries(image);
+    } catch {
+      problems.push("the retained image could not be listed");
+    }
+    for (const problem of knownGoodProblems({
+      record,
+      channel,
+      signedTargetFiles: manifest.signedTargetFiles,
+      signedImage: manifest.signedImage,
+      imageEntries,
+      readImageEntry: (name) => readImageEntry(image, name),
+    }))
       problems.push(problem);
     if (record.build?.fingerprint !== manifest.fingerprint)
       problems.push("the retained record is not the retained build");
@@ -1294,10 +1321,13 @@ export function knownGoodRecoveryPlan({ channel, directory }) {
       ? []
       : [
           ["adb", "-s", serial, "reboot", "bootloader"],
-          ["fastboot", "-s", serial, "update", manifest.signedImage.file],
+          ["fastboot", "-s", serial, "flashing", "unlock"],
+          ["fastboot", "-s", serial, "-w", "update", manifest.signedImage.file],
         ],
     notes: [
       "Run the steps from the retained directory; the image is re-hashed before every plan.",
+      "A locked bootloader refuses fastboot flashing: flashing unlock (refused unless OEM unlocking was enabled in the running image) and -w update erase all user data, and the device asks for physical confirmation. A device already unlocked skips that step; its data is still erased by -w.",
+      "Relock (fastboot flashing lock, which wipes again) only after the retained build boots and verifies.",
       "The device must still trust the product's AVB key; a stock-recovered device needs the product's key re-enrolled first.",
       "The bootloader refuses an image whose rollback index is below the device's stored index; recovery to an older known-good build is then not possible and stock recovery applies.",
       "This reflashes a retained signed release. It is not a signed update, and no drill is recorded by this tool.",

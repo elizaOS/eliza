@@ -103,6 +103,10 @@ export function evaluateUpdateChannel({
     problems.push(
       `the channel's release is a ${offered.type} build; the booted build is ${identity.type}`,
     );
+  if (offered && offered.tags !== identity.tags)
+    problems.push(
+      `the channel's release is signed with ${offered.tags}; the booted build is ${identity.tags}`,
+    );
   if (problems.length) return { state: "refused", problems };
   const summary = {
     releaseId: release.releaseId,
@@ -160,7 +164,19 @@ export function createUpdateChannelClient({
           applied: false,
         };
       }
-      const booted = { fingerprint: await readBootedFingerprint() };
+      let booted;
+      try {
+        booted = { fingerprint: await readBootedFingerprint() };
+      } catch (error) {
+        return {
+          state: "unavailable",
+          problems: [
+            `the booted build fingerprint could not be read: ${error.message}`,
+          ],
+          downloaded: false,
+          applied: false,
+        };
+      }
       return {
         downloaded: false,
         applied: false,

@@ -48,9 +48,12 @@ export function aaptManifestTree(
 
 function inside(directory, candidate) {
   const relative = path.relative(directory, candidate);
+  // A name such as "..x.apk" is inside: only a ".." path segment leaves the directory.
   return (
     relative === "" ||
-    (!relative.startsWith("..") && !path.isAbsolute(relative))
+    (relative !== ".." &&
+      !relative.startsWith(`..${path.sep}`) &&
+      !path.isAbsolute(relative))
   );
 }
 
@@ -88,8 +91,11 @@ export function admitImageApk({
   const relativeMocks = path.relative(process.cwd(), mocks);
   const shown =
     relativeMocks && inside(process.cwd(), mocks) ? relativeMocks : mocks;
+  // The directory may itself be reached through a symlink: compare against both spellings.
+  const mocksDirs = [mocks];
+  if (fs.existsSync(mocks)) mocksDirs.push(fs.realpathSync(mocks));
   for (const candidate of [path.resolve(apk), real])
-    if (inside(mocks, candidate))
+    if (mocksDirs.some((directory) => inside(directory, candidate)))
       throw new Error(
         `Refusing ${apk}: ${shown}/ builds are never staged into an image.`,
       );

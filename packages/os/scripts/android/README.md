@@ -52,8 +52,10 @@ take each brand's release descriptor and channel; see
 compatibility record, signed target-files and fastboot image) into a new, read-only
 directory with a `known-good.json` of their hashes; it refuses placeholders, test-keys or
 dev-keys builds and any input whose bytes differ from the record. `stock-archive
---known-good DIR` re-hashes that directory and offers its reflash plan beside the stock
-plan. Neither flashes a device.
+--known-good DIR` re-hashes that directory, re-binds its image to the record's vbmeta and
+offers its reflash plan beside the stock plan. That plan keeps the product image and AVB
+key but, like stock recovery, unlocks the bootloader and erases user data. Neither flashes
+a device.
 
 `image-apk-admission.mjs` admits a launcher APK into an image overlay (no test-mocks path
 or web bundle, the product's release-row judgement, debug builds only for development)

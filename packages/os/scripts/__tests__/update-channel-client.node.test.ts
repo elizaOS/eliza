@@ -115,6 +115,10 @@ test("anything that does not bind to the booted product is refused", () => {
     /userdebug build/,
   );
   refused(
+    evaluate(manifest(release(OFFERED.replace("release-keys", "test-keys")))),
+    /signed with test-keys/,
+  );
+  refused(
     evaluate(manifest(release(), { sha256: "b".repeat(64) })),
     /not the signed contract's archive/,
   );
@@ -202,4 +206,19 @@ test("an enabled client reads only the manifest", async () => {
     /could not be read: offline/,
   );
   assert.equal((await offline.check()).state, "unavailable");
+  const unreadable = createUpdateChannelClient({
+    enabled: true,
+    channel: "stable",
+    fetchManifest: async () => manifest(),
+    readBootedFingerprint: () => {
+      throw new Error("no getprop");
+    },
+    validate: verified,
+  });
+  assert.deepEqual(await unreadable.check(), {
+    state: "unavailable",
+    problems: ["the booted build fingerprint could not be read: no getprop"],
+    downloaded: false,
+    applied: false,
+  });
 });
