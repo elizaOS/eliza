@@ -78,16 +78,16 @@ it("never reports a settled deletion as kept", async () => {
   await flush();
   fireEvent.click(screen.getByRole("button", { name: "Undo" }));
   await flush();
-  // The follow-up refresh may clear the message once the receipt is read again.
+  // The follow-up refresh succeeds and must not clear the failed Undo result.
   expect(fake.undo).toHaveBeenCalledTimes(1);
+  expect(fake.pending.mock.calls.length).toBeGreaterThan(1);
+  expect(screen.getByRole("status").textContent).toBe(UNDO_TOO_LATE);
   fake.undo.mockRejectedValueOnce(new Error("lost"));
-  fake.pending.mockRejectedValue(new Error("offline"));
   fireEvent.click(screen.getByRole("button", { name: "Undo" }));
   await flush();
   expect(screen.getByRole("status").textContent).toBe(
     DELETION_NOTICE_TEXT.undoUnconfirmed,
   );
-  expect(UNDO_TOO_LATE).toMatch(/already went ahead/);
 });
 
 it("an uncertain outcome is refreshed or dismissed, never undone or repeated", async () => {

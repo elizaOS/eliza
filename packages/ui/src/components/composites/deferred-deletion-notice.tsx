@@ -47,6 +47,12 @@ export interface DeferredDeletionNoticeProps {
 }
 
 const STATUS_FAILURES_BEFORE_ERROR = 3;
+/** Failed Undo or dismissal results stay visible after a refresh until the next action. */
+const ACTION_FAILURES: ReadonlySet<string> = new Set([
+  UNDO_TOO_LATE,
+  DELETION_NOTICE_TEXT.undoUnconfirmed,
+  DELETION_NOTICE_TEXT.dismissFailed,
+]);
 /** Neutral default placement; hosts with their own theme pass `className`. */
 const DEFAULT_CLASS =
   "fixed inset-x-3 bottom-24 z-50 max-h-[30vh] overflow-auto rounded-md border border-border bg-card px-3 py-2 text-txt shadow-lg [&>div]:flex [&>div]:items-center [&>div]:gap-3 [&_p]:flex-1 [&_p]:break-words [&_button]:min-h-12 [&_button]:min-w-16";
@@ -108,7 +114,7 @@ export function DeferredDeletionNotice({
         signature.current = next;
         failures = 0;
         setEntries(pendingDeletionNotices(result.deletions));
-        setError("");
+        setError((shown) => (ACTION_FAILURES.has(shown) ? shown : ""));
       } catch {
         if (current() && ++failures >= STATUS_FAILURES_BEFORE_ERROR)
           setError(DELETION_NOTICE_TEXT.statusUnavailable);
@@ -167,6 +173,7 @@ export function DeferredDeletionNotice({
                 disabled={!!busy}
                 onClick={async () => {
                   setBusy(entry.id);
+                  setError("");
                   try {
                     const result = await ports.current.bridge.undo({
                       kind: entry.kind,
@@ -201,6 +208,7 @@ export function DeferredDeletionNotice({
                   disabled={!!busy}
                   onClick={async () => {
                     setBusy(entry.id);
+                    setError("");
                     try {
                       await ports.current.bridge.dismiss({
                         kind: entry.kind,
