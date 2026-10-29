@@ -36,6 +36,26 @@ flight and a recording is reported saved only for a complete receipt the host's
 never retried automatically after an error; `rearm()` lets a resume grant (see
 `restartAfterResume`) start it again.
 
+## Document scans
+
+[`scan-document`](src/scan-document.ts) is the presentation-free state of a
+document scan. `createScanDocument` holds the ordered pages a person captured or
+chose (JPEG, PNG or WebP; at most 20 pages, 16 MB per page, 64 MB per document
+and 32 megapixels, via `admitScanImage`/`admitScanDimensions`), runs one page
+operation, draft action or export at a time and reports the enabled state of
+every control in `snapshot().controls`, so a host renders it without re-deriving
+the rules. Exports read an immutable page snapshot; a final or unconfirmed export
+ends editing, while a cancelled, failed, unavailable or too-large one leaves the
+pages editable (`scanExportRetryable`). With `autosave` (for a native host the
+platform may end while a system picker covers it) every page change is written to
+the host's draft store one save at a time, compare-and-set on the draft revision,
+and a confirmed export removes only the draft the document wrote itself.
+`createScanCapture` reviews one scanned page: a scan-mode capture stays in memory
+(`unsaved`) and reaches the host's library only through its explicit Keep port,
+under one operation identity until a definite failure. Nothing is kept, uploaded
+or handed off implicitly; any outbound use of a page stays an explicit host
+action.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
