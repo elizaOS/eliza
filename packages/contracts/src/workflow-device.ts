@@ -541,9 +541,10 @@ export function assertWorkflowOperation(
   review: WorkflowPhoneReview,
   binding: WorkflowDeviceBinding,
   target: WorkflowDeviceTarget,
-  operation: { type: string; [key: string]: unknown },
+  request: { readonly type: string },
   now = Date.now(),
 ): void {
+  const operation = request as { type: string; [key: string]: unknown };
   if (
     review.finished ||
     review.cancellationRequestedAt ||
