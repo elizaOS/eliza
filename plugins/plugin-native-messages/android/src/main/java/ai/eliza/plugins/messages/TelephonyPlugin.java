@@ -339,8 +339,8 @@ public abstract class TelephonyPlugin extends Plugin {
     while (rows.length() < limit && cursor.moveToNext()) {
      cancel.throwIfCanceled();
      String id = cursor.getString(0); long date = cursor.getLong(3);
-     // A row the shared parser would refuse (bad ID, repeated, out of order) is skipped, never repaired.
-     if (!CallLogRows.publishable(id, date, previous) || !seen.add(id)) continue;
+     // A row the shared parser would refuse (bad ID, repeated, out of order) fails the whole read; it is never skipped or repaired.
+     if (!CallLogRows.publishable(id, date, previous) || !seen.add(id)) throw new IllegalStateException("Unreadable call-log row");
      previous = date;
      JSObject row = new JSObject();
      row.put("id", id);

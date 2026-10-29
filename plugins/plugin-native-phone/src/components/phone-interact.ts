@@ -4,6 +4,7 @@
  * makes an undeclared operation or an unimplemented declaration a type error.
  */
 
+import { TELEPHONY_CALL_LOG_MAX } from "@elizaos/contracts/native-telephony";
 import { ElizaError } from "@elizaos/core/protocol";
 import { Phone } from "@elizaos/plugin-native-phone/bridge";
 import {
@@ -32,7 +33,8 @@ const PHONE_CAPABILITY_HANDLERS: Record<
     const profile = telephonyProfile();
     if (profile) {
       // Behind the telephony profile only the host's newest bounded page is
-      // readable, and only with access the person already granted.
+      // readable, and only with access the person already granted. A full
+      // page may hide older calls, so it is refused, never returned partial.
       const recents = await loadProfileRecents(profile);
       if (recents.access !== "granted")
         throw new ElizaError(
@@ -41,13 +43,20 @@ const PHONE_CAPABILITY_HANDLERS: Record<
             : "Recent calls are not available on this phone.",
           { code: "NATIVE_PHONE_STATE_UNAVAILABLE" },
         );
+      if (recents.calls.length === TELEPHONY_CALL_LOG_MAX)
+        throw new ElizaError(
+          "Phone-state read reached the recent-calls page limit; refusing to return a potentially incomplete call log.",
+          {
+            code: "NATIVE_PHONE_STATE_READ_INCOMPLETE",
+            context: { limit: TELEPHONY_CALL_LOG_MAX },
+          },
+        );
       const number =
         typeof params?.number === "string"
           ? normalizeNumber(params.number)
           : "";
       return {
         status: { voiceCapable: recents.voiceCapable, dialHandoff: true },
-        bounded: true,
         calls: recents.calls
           .filter((call) => !number || call.number === number)
           .map((call) => ({
