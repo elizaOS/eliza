@@ -74,7 +74,10 @@ import {
   requireCanonicalTelegramIdentity,
   telegramIdentityNotReadyResponse,
 } from "./telegram-identity";
-import { resolveWebhookConfig } from "./webhook-config";
+import {
+  resolveWebhookConfig,
+  WebhookConfigUnavailableError,
+} from "./webhook-config";
 
 const PERSONAL_SHARED_DELIVERY_LEASE_MS = 90_000;
 // Must outlive the 75s non-idempotent message-forward budget plus Telegram
@@ -705,15 +708,36 @@ export async function handleWebhook(
 
   // ── Synchronous phase: verify + extract + dedup (fast, <100ms) ──
 
-  const config = await resolveWebhookConfig(
-    redis,
-    cloudBaseUrl,
-    authHeader,
-    adapter.platform,
-    project,
-    agentId,
-    reauth,
-  );
+  let config: WebhookConfig | null;
+  try {
+    config = await resolveWebhookConfig(
+      redis,
+      cloudBaseUrl,
+      authHeader,
+      adapter.platform,
+      project,
+      agentId,
+      reauth,
+    );
+  } catch (error) {
+    // Only "the cloud says this agent has no connector" is final. A read
+    // failure is retryable, so it must not answer 404: Telegram/Meta/Twilio
+    // never redeliver a 4xx and the inbound message would be lost.
+    if (!(error instanceof WebhookConfigUnavailableError)) throw error;
+    logger.error("Webhook config unavailable", {
+      project,
+      platform: adapter.platform,
+      agentId,
+      error: error.message,
+    });
+    return new Response(JSON.stringify({ error: "config unavailable" }), {
+      status: 503,
+      headers: {
+        "Content-Type": "application/json",
+        "Retry-After": "5",
+      },
+    });
+  }
   if (!config) {
     logger.warn("No webhook config found", {
       project,
@@ -1169,6 +1193,17 @@ export async function redeliverHeldWebhook(
     // failure Cloud classified as not retryable would only be refused again
     // until the hold budget ran out, so it settles like the first delivery,
     // including the failure notice to the sender.
+    if (err instanceof WebhookConfigUnavailableError) {
+      // The turn was never executed and the config API was only unreachable —
+      // this is not "the connector is gone". Keep the hold queued so the next
+      // drain pass retries instead of settling the message as undeliverable.
+      return {
+        kind: "held",
+        // Keep the original hold code so the release log still names the
+        // cutover reason.
+        signal: { code: held.code, retryAfterSeconds: null },
+      };
+    }
     if (
       err instanceof PersonalSharedPreEgressError &&
       (err.hold !== null || err.failure?.retryable !== false)
@@ -1236,15 +1271,29 @@ export async function releaseExpiredHeldWebhook(
       "inspect the Dedicated target's attestation; the turn was never executed",
   });
   const expired = new PersonalSharedPreEgressError("cutover hold expired");
-  const config = await resolveWebhookConfig(
-    deps.redis,
-    deps.cloudBaseUrl,
-    deps.getAuthHeader(),
-    adapter.platform,
-    held.project,
-    held.agentId,
-    deps.reacquireAuthHeader ?? reacquireAuthHeader,
-  );
+  let config: WebhookConfig | null = null;
+  try {
+    config = await resolveWebhookConfig(
+      deps.redis,
+      deps.cloudBaseUrl,
+      deps.getAuthHeader(),
+      adapter.platform,
+      held.project,
+      held.agentId,
+      deps.reacquireAuthHeader ?? reacquireAuthHeader,
+    );
+  } catch (err) {
+    // The turn is already past its hold budget, so a config read failure only
+    // costs the sender the notice — the same outcome as a missing config. It
+    // must not abort the drain pass for the holds behind this one.
+    if (!(err instanceof WebhookConfigUnavailableError)) throw err;
+    logger.error("Expired hold could not read webhook config", {
+      project: held.project,
+      platform: adapter.platform,
+      agentId: held.agentId,
+      error: err.message,
+    });
+  }
   if (!config) {
     await settleBackgroundDeliveryFailure(deps.redis, expired, {
       dedupKey: held.dedupKey,

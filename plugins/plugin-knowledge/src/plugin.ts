@@ -23,7 +23,10 @@ import type {
   RouteHandlerContext,
   RouteHandlerResult,
 } from "@elizaos/host/protocol";
-import { handleDocumentsRoutes } from "./routes.js";
+import {
+  DOCUMENT_UPLOAD_MAX_BODY_BYTES,
+  handleDocumentsRoutes,
+} from "./routes.js";
 
 function json(res: http.ServerResponse, data: unknown, status = 200): void {
   httpSendJson(res, data, status);
@@ -249,18 +252,34 @@ function documentRouteHandler(): (
     return capturedToResult(captured);
   };
 }
+// Uploads and text edits carry whole documents (binary files base64-encoded),
+// so they declare the handler's own body budget instead of the host's 1 MiB
+// default, which would answer 413 before the handler runs.
 const DOCUMENT_ROUTES: Array<{
   type: string;
   path: string;
+  maxBodyBytes?: number;
 }> = [
   { type: "GET", path: "/api/documents" },
   { type: "GET", path: "/api/documents/stats" },
-  { type: "POST", path: "/api/documents" },
-  { type: "POST", path: "/api/documents/bulk" },
+  {
+    type: "POST",
+    path: "/api/documents",
+    maxBodyBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
+  },
+  {
+    type: "POST",
+    path: "/api/documents/bulk",
+    maxBodyBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
+  },
   { type: "POST", path: "/api/documents/url" },
   { type: "GET", path: "/api/documents/search" },
   { type: "GET", path: "/api/documents/:id" },
-  { type: "PATCH", path: "/api/documents/:id" },
+  {
+    type: "PATCH",
+    path: "/api/documents/:id",
+    maxBodyBytes: DOCUMENT_UPLOAD_MAX_BODY_BYTES,
+  },
   { type: "PATCH", path: "/api/documents/:id/access" },
   { type: "GET", path: "/api/documents/:id/access" },
   { type: "GET", path: "/api/documents/:id/pins" },
@@ -274,6 +293,7 @@ export const documentsRoutes: Route[] = DOCUMENT_ROUTES.map(
       type: route.type as Route["type"],
       path: route.path,
       rawPath: true as const,
+      ...(route.maxBodyBytes ? { maxBodyBytes: route.maxBodyBytes } : {}),
       routeHandler: documentRouteHandler(),
     }) as Route,
 );

@@ -18,6 +18,37 @@ const CONFIG_MISS_CACHE_TTL_SECONDS = 15;
 
 type CachedWebhookConfig = WebhookConfig | { notFound: true };
 
+/**
+ * The config read did not produce an answer: the cloud API was unreachable,
+ * answered non-2xx, or returned a body that is not a config. Callers must treat
+ * this as retryable — it is never evidence that the agent has no connector.
+ */
+export class WebhookConfigUnavailableError extends Error {
+  readonly code = "WEBHOOK_CONFIG_UNAVAILABLE";
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "WebhookConfigUnavailableError";
+  }
+}
+
+/** Cache writes are an optimisation; a failed write must not fail the read. */
+async function remember(
+  redis: GatewayRedis,
+  key: string,
+  value: CachedWebhookConfig,
+  ttlSeconds: number,
+): Promise<void> {
+  try {
+    await redis.set(key, JSON.stringify(value), { ex: ttlSeconds });
+  } catch (err) {
+    logger.warn("Webhook config cache write failed", {
+      key,
+      error: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
 /** Resolves a project connector from the gateway's protected local configuration. */
 export function resolveSharedWebhookConfig(
   platform: Platform,
@@ -112,25 +143,24 @@ export async function resolveWebhookConfig(
         });
       }
 
+      // The cloud answered: this agent genuinely has no such connector.
       if (res.status === 404) {
-        await redis.set(cacheKey, JSON.stringify({ notFound: true }), {
-          ex: CONFIG_MISS_CACHE_TTL_SECONDS,
-        });
+        await remember(
+          redis,
+          cacheKey,
+          { notFound: true },
+          CONFIG_MISS_CACHE_TTL_SECONDS,
+        );
         return null;
       }
       if (!res.ok) {
-        logger.error("Webhook config fetch failed", {
-          status: res.status,
-          agentId,
-          platform,
-        });
-        return null;
+        throw new WebhookConfigUnavailableError(
+          `config API answered ${res.status}`,
+        );
       }
 
       const config = (await res.json()) as WebhookConfig;
-      await redis.set(cacheKey, JSON.stringify(config), {
-        ex: CONFIG_CACHE_TTL_SECONDS,
-      });
+      await remember(redis, cacheKey, config, CONFIG_CACHE_TTL_SECONDS);
       return config;
     } finally {
       clearTimeout(timeoutId);
@@ -141,7 +171,13 @@ export async function resolveWebhookConfig(
       agentId,
       platform,
     });
-    return null;
+    // A read failure is not the cloud saying "no config": the platform is told
+    // to retry (5xx) instead of receiving a final 404 that drops the update.
+    throw err instanceof WebhookConfigUnavailableError
+      ? err
+      : new WebhookConfigUnavailableError("config API unreachable", {
+          cause: err,
+        });
   }
 }
 
