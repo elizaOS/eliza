@@ -3,6 +3,8 @@ import { System } from "@elizaos/capacitor-system";
 import {
   appKey,
   createLauncher,
+  createSystemLauncherBridge,
+  type LauncherBridge,
   localFavorites,
   observeLauncher,
 } from "@elizaos/capacitor-system/launcher";
@@ -38,29 +40,18 @@ export function NativeInstalledAppsLauncher({
     entries.map((entry) => [`eliza:${entry.id}`, entry]),
   );
   const controller = useMemo(() => {
-    const bridge = {
-      list: (options?: { icons?: boolean }) => System.listLauncherApps(options),
-      launch: async (target: {
-        packageName: string;
-        activityName?: string;
-        user?: string;
-      }) => {
+    const system = createSystemLauncherBridge(System);
+    // Registered views open in the shell; only installed apps reach Android.
+    const bridge: LauncherBridge = {
+      ...system,
+      launch: async (target) => {
         const builtin = currentEntries.current.get(appKey(target));
         if (builtin) {
           await launch.current(builtin);
           return;
         }
-        await System.launchApp(target);
+        await system.launch(target);
       },
-      resolveDefault: () => System.resolveDefaultApp({ role: "dial" }),
-      openDefault: () => System.openDefaultApp({ role: "dial" }),
-      addListener: (
-        _event: "appsChanged",
-        listener: (change: Record<string, unknown>) => void,
-      ) =>
-        System.addListener("launcherAppsChanged", (change) =>
-          listener({ ...change }),
-        ),
     };
     return {
       launcher: createLauncher(bridge, changed, {

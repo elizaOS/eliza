@@ -1,6 +1,8 @@
 import type {
   DefaultAppStatus as DefaultApp,
   LauncherApp,
+  LauncherRefusalCode,
+  SystemPlugin,
 } from "../definitions";
 /** Builtin views can omit a native activity; Android entries retain the exact component. */
 export type InstalledApp = Omit<LauncherApp, "activityName"> & {
@@ -22,6 +24,71 @@ export interface LauncherBridge {
   /** `appsChanged`: a package was added, removed or changed, or a profile was paused/unlocked. */
   addListener?(event: "appsChanged", listener: (change: Bag) => void): unknown;
 }
+/** The `ElizaSystem` methods a launcher uses; the registered plugin satisfies it. */
+export type SystemLauncherPlugin = Pick<
+  SystemPlugin,
+  | "listLauncherApps"
+  | "launchApp"
+  | "resolveDefaultApp"
+  | "openDefaultApp"
+  | "addListener"
+>;
+
+/** Every stable rejection `code` of a launcher read or launch. */
+export const LAUNCHER_REFUSAL_CODES: readonly LauncherRefusalCode[] = [
+  "not-installed",
+  "disabled",
+  "no-launcher",
+  "profile-locked",
+  "profile-unavailable",
+  "failed",
+];
+
+/** The stable refusal code a native rejection carries, or undefined for any other error. */
+export function launcherRefusalCode(
+  error: unknown,
+): LauncherRefusalCode | undefined {
+  const code =
+    error && typeof error === "object"
+      ? (error as { code?: unknown }).code
+      : undefined;
+  return typeof code === "string" &&
+    (LAUNCHER_REFUSAL_CODES as readonly string[]).includes(code)
+    ? (code as LauncherRefusalCode)
+    : undefined;
+}
+
+/**
+ * The one launcher bridge over `ElizaSystem`. Native plugin proxies resolve
+ * their methods when read, so each call is delegated by name at call time;
+ * nothing is cached or spread. The default-handler and change methods are
+ * offered only when the plugin has them.
+ */
+export function createSystemLauncherBridge(
+  system: SystemLauncherPlugin,
+): LauncherBridge {
+  const bridge: LauncherBridge = {
+    list: (options) =>
+      system.listLauncherApps(options?.icons ? { icons: true } : undefined),
+    launch: (target) => {
+      const request: LaunchTarget = { packageName: target.packageName };
+      if (target.activityName) request.activityName = target.activityName;
+      if (target.user) request.user = target.user;
+      return system.launchApp(request);
+    },
+  };
+  if (typeof system.resolveDefaultApp === "function")
+    bridge.resolveDefault = (options) => system.resolveDefaultApp(options);
+  if (typeof system.openDefaultApp === "function")
+    bridge.openDefault = (options) => system.openDefaultApp(options);
+  if (typeof system.addListener === "function")
+    bridge.addListener = (_event, listener) =>
+      system.addListener("launcherAppsChanged", (change) =>
+        listener({ ...change }),
+      );
+  return bridge;
+}
+
 /** Ordered favorite keys, kept on this device only. `write` throws when storage refuses. */
 export interface FavoritesStore {
   read(): string[] | null;

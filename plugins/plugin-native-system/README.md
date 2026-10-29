@@ -77,8 +77,19 @@ also declare an `ACTION_DIAL` query with the `tel` scheme. Default handoffs use
 an explicit eligible activity or a chooser of eligible activities. The host,
 disabled apps and unexported activities cannot be destinations. Web fallback
 reports no handlers and rejects launch requests. Hosts retain user-intent policy.
+Refusals carry a stable `code` (`not-installed`, `disabled`, `no-launcher`,
+`profile-locked`, `profile-unavailable`); `failed` means Android refused the read or
+the start itself. A package-only launch is refused with the same codes.
+
+`getBuildInfo`, `getLaunchInfo` and `getLocaleInfo` are reads only. By default a
+build that declares a HOME activity is the launcher, the assist entry is
+`ACTION_ASSIST`, and the locale and 24-hour setting are Android's. Hosts override
+the protected hooks (`isLauncherBuild`, `buildVersion`, `isAssistantLaunch`,
+`localeTag`, `is24HourClock`) for their own build flags or assist marker extra.
 
 `@elizaos/capacitor-system/launcher` exposes the browser-safe installed-app controller,
+`createSystemLauncherBridge(System)` (the one bridge from `ElizaSystem` to the
+controller, delegating each call by name),
 identity/search helpers, favorites persistence and package/resume observation. Hosts
 inject their native bridge and rerender on the change callback. Use `localFavorites`
 with the existing host storage key and default-policy marker when migrating a

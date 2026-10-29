@@ -1248,3 +1248,135 @@ test("retired launch and dialer failures do not refresh an inactive host", async
     assert.equal(reads, 2, "the controller remains usable");
   }
 });
+
+test("the system bridge delegates each launcher call to ElizaSystem by name at call time", async () => {
+  const { createSystemLauncherBridge } = await import(
+    "../src/client/launcher.ts"
+  );
+  const calls = [];
+  const handle = { remove: async () => calls.push(["remove"]) };
+  let listenerSeen = null;
+  // A proxy like Capacitor's: methods are resolved when read, so spreading would drop them.
+  const system = new Proxy(
+    {},
+    {
+      get(_, name) {
+        if (name === "then") return undefined;
+        return async (...args) => {
+          calls.push([name, ...args]);
+          if (name === "listLauncherApps") return { apps };
+          if (name === "resolveDefaultApp")
+            return { role: "dial", available: false };
+          if (name === "addListener") {
+            listenerSeen = args;
+            return handle;
+          }
+          return undefined;
+        };
+      },
+    },
+  );
+  const bridge = createSystemLauncherBridge(system);
+  assert.deepEqual(await bridge.list({ icons: true }), { apps });
+  assert.deepEqual(await bridge.list(), { apps });
+  await bridge.launch({
+    packageName: "org.example.one",
+    activityName: "org.example.one.Main",
+    user: "10",
+    label: "ignored",
+  });
+  await bridge.launch({ packageName: "org.example.two" });
+  assert.deepEqual(await bridge.resolveDefault({ role: "dial" }), {
+    role: "dial",
+    available: false,
+  });
+  await bridge.openDefault({ role: "dial" });
+  const changes = [];
+  const subscription = await bridge.addListener("appsChanged", (change) =>
+    changes.push(change),
+  );
+  assert.equal(subscription, handle);
+  assert.equal(listenerSeen[0], "launcherAppsChanged");
+  listenerSeen[1]({ reason: "added", packageName: "org.example.three" });
+  assert.deepEqual(changes, [
+    { reason: "added", packageName: "org.example.three" },
+  ]);
+  assert.deepEqual(calls.slice(0, 6), [
+    ["listLauncherApps", { icons: true }],
+    ["listLauncherApps", undefined],
+    [
+      "launchApp",
+      {
+        packageName: "org.example.one",
+        activityName: "org.example.one.Main",
+        user: "10",
+      },
+    ],
+    ["launchApp", { packageName: "org.example.two" }],
+    ["resolveDefaultApp", { role: "dial" }],
+    ["openDefaultApp", { role: "dial" }],
+  ]);
+});
+
+test("a launcher over the system bridge shows a refused launch and re-reads the inventory", async () => {
+  const { createSystemLauncherBridge, launcherRefusalCode } = await import(
+    "../src/client/launcher.ts"
+  );
+  let lists = 0;
+  const refusal = Object.assign(new Error("App could not be opened"), {
+    code: "failed",
+  });
+  const system = {
+    listLauncherApps: async () => {
+      lists++;
+      return { apps };
+    },
+    launchApp: async () => {
+      throw refusal;
+    },
+    resolveDefaultApp: async () => {
+      throw new Error("Default app unavailable in this product");
+    },
+    openDefaultApp: async () => {},
+    addListener: async () => ({ remove: async () => {} }),
+  };
+  const launcher = createLauncher(createSystemLauncherBridge(system), () => {});
+  await launcher.load();
+  assert.equal(
+    launcher.snapshot().dial,
+    null,
+    "a host-disabled role shows no dial entry",
+  );
+  await launcher.launch(apps[0]);
+  assert.match(launcher.snapshot().launchError, /Settings could not be opened/);
+  assert.equal(lists, 2);
+  assert.equal(launcherRefusalCode(refusal), "failed");
+  assert.equal(
+    launcherRefusalCode(Object.assign(new Error("x"), { code: "no-launcher" })),
+    "no-launcher",
+  );
+  assert.equal(launcherRefusalCode(new Error("plain")), undefined);
+  assert.equal(launcherRefusalCode({ code: "UNIMPLEMENTED" }), undefined);
+});
+
+test("the web plugin reports host reads without inventing native facts", async () => {
+  const { webLocaleInfo } = await import("../src/web.ts");
+  assert.deepEqual(
+    webLocaleInfo(() => ({ locale: "de-DE", hourCycle: "h23" })),
+    { locale: "de-DE", hour24: true },
+  );
+  assert.deepEqual(
+    webLocaleInfo(() => ({ locale: "en-US", hourCycle: "h12" })),
+    { locale: "en-US", hour24: false },
+  );
+  assert.deepEqual(
+    webLocaleInfo(() => ({ locale: "fr-FR", hour12: false })),
+    { locale: "fr-FR", hour24: true },
+  );
+  assert.deepEqual(
+    webLocaleInfo(() => {
+      throw new Error("no Intl");
+    }),
+    { locale: "en-US", hour24: false },
+  );
+});

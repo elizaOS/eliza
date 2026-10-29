@@ -17,16 +17,21 @@ import { ELIZA_DEFAULT_THEME } from "../../config/theme";
 import { BUILTIN_ROUTE_DESCRIPTORS } from "../../navigation/builtin-route-descriptors";
 import {
   applyMobileShellTheme,
+  compareMobileFeatureManifests,
   createMobileShellLauncher,
   createMobileViewRegistry,
   defineMobileProductRegistration,
+  ELIZA_MOBILE_PRODUCT,
   MOBILE_SHELL_HOME,
+  MOBILE_SHELL_LAUNCHER_CAPABILITIES,
   MOBILE_SHELL_VIEW_IDS,
   type MobileProductRegistration,
   MobileAllAppsDrawer,
   MobileHomeScreen,
   MobileViewHost,
   migrateLauncherViewIds,
+  mobileFeatureDifferenceKey,
+  mobileFeatureManifest,
   mobileShellThemeVariables,
   mobileShellViewPath,
   mobileShellViewPaths,
@@ -623,6 +628,7 @@ describe("Home, All apps and view host", () => {
         key: "notes",
         label: "Notes",
         glyphUrl: "/icons/sticky-note.svg",
+        iconId: "sticky-note",
         onOpen: () => opened.push("notes"),
       },
       {
@@ -640,6 +646,7 @@ describe("Home, All apps and view host", () => {
         header={<p>Notice</p>}
         cards={<button type="button">Next event</button>}
         onOpenAllApps={allApps}
+        allAppsIconId="layout-grid"
         data-host-layer="home"
         gridProps={{ "data-host-apps": "" }}
       />,
@@ -657,6 +664,20 @@ describe("Home, All apps and view host", () => {
     expect(allApps).toHaveBeenCalledTimes(1);
     expect(screen.getByRole("button", { name: "Next event" })).toBeTruthy();
     expect(home.querySelector("[data-mobile-shell-tile-badge]")).toBeTruthy();
+    const notes = screen.getByRole("button", { name: "Notes" });
+    expect(notes.getAttribute("data-mobile-shell-tile-icon")).toBe(
+      "sticky-note",
+    );
+    expect(
+      screen
+        .getByRole("button", { name: "All apps" })
+        .getAttribute("data-mobile-shell-tile-icon"),
+    ).toBe("layout-grid");
+    expect(
+      screen
+        .getByRole("button", { name: "Clock" })
+        .hasAttribute("data-mobile-shell-tile-icon"),
+    ).toBe(false);
     rerender(<MobileHomeScreen tiles={tiles} covered />);
     expect(home.hasAttribute("inert")).toBe(true);
     expect(screen.queryByRole("region", { name: "Home" })).toBeNull();
@@ -767,6 +788,131 @@ describe("Home, All apps and view host", () => {
   });
 });
 
+describe("feature manifest", () => {
+  it("emits identity and theme as branding and the rest as sorted functional features", () => {
+    const manifest = mobileFeatureManifest(
+      defineMobileProductRegistration({
+        ...product(),
+        features: {
+          capabilities: ["notes.local-record.v1", "launcher.installed-apps"],
+          actions: ["create_note"],
+        },
+      }),
+    );
+    expect(manifest.schema).toBe("elizaos.mobile-feature-manifest");
+    expect(manifest.branding).toMatchObject({
+      appName: "Example Phone",
+      appId: "com.example.phone",
+      themeId: "example",
+      order: ["notes", "calendar", "automations", "settings"],
+      labels: { automations: "Workflows" },
+      storage: { launcherFavorites: "example.launcher.favorites.v1" },
+    });
+    expect(manifest.functional).toEqual({
+      views: [
+        { id: "automations", serves: [] },
+        { id: "calendar", serves: ["reminders"] },
+        { id: "notes", serves: [] },
+        { id: "settings", serves: [] },
+      ],
+      capabilities: ["launcher.installed-apps", "notes.local-record.v1"],
+      actions: ["create_note"],
+    });
+    expect(JSON.stringify(mobileFeatureManifest(product()))).toBe(
+      JSON.stringify(mobileFeatureManifest(product())),
+    );
+  });
+
+  it("two brands that differ only by identity and theme are functionally equal", () => {
+    const rebranded: MobileProductRegistration = {
+      ...product(),
+      identity: {
+        appName: "Other Phone",
+        appId: "org.other.phone",
+        characterName: "Oz",
+      },
+      theme: { ...product().theme, id: "other", name: "Other" },
+      views: {
+        ...product().views,
+        order: ["settings", "automations", "calendar", "notes"],
+        labels: { ...product().views.labels, automations: "Automations" },
+      },
+      storage: {
+        ...product().storage,
+        launcherFavorites: "other.launcher.favorites.v1",
+        launcherBuiltinPrefix: "other:",
+      },
+    };
+    expect(
+      compareMobileFeatureManifests(
+        mobileFeatureManifest(product()),
+        mobileFeatureManifest(rebranded),
+      ),
+    ).toEqual([]);
+  });
+
+  it("names every functional difference on the side that has it", () => {
+    const a = mobileFeatureManifest({
+      ...product(),
+      features: { capabilities: ["clock.handoff.v1"], actions: ["open_view"] },
+    });
+    const b = mobileFeatureManifest({
+      ...product(),
+      views: {
+        ...product().views,
+        order: ["notes", "calendar", "maps"],
+        labels: { ...product().views.labels, maps: "Maps" },
+        rendererKeys: {},
+        serves: {},
+      },
+      features: { actions: ["open_view", "create_note"] },
+    });
+    expect(compareMobileFeatureManifests(a, b).map(mobileFeatureDifferenceKey))
+      .toEqual([
+        "view:automations:only-a",
+        "view:maps:only-b",
+        "view:settings:only-a",
+        "serves:calendar:reminders:only-a",
+        "capability:clock.handoff.v1:only-a",
+        "action:create_note:only-b",
+      ]);
+  });
+
+  it("refuses malformed or repeated feature names", () => {
+    expect(
+      validateMobileProductRegistration({
+        ...product(),
+        features: { capabilities: ["ok.v1", "ok.v1", "bad name"], actions: 3 },
+      }),
+    ).toEqual([
+      "features.capabilities: ok.v1 is listed twice",
+      "features.capabilities: bad name is not a feature name",
+      "features.actions: must be a list of names",
+    ]);
+  });
+
+  it("Eliza's reference record keeps its installed launcher names and provides the shell launcher", () => {
+    expect(validateMobileProductRegistration(ELIZA_MOBILE_PRODUCT)).toEqual(
+      [],
+    );
+    expect(ELIZA_MOBILE_PRODUCT.storage).toMatchObject({
+      launcherFavorites: "eliza.launcher.favorites.v1",
+      launcherBuiltinPrefix: "eliza:",
+      launcherDefaultPolicy: "eliza-apps",
+    });
+    const manifest = mobileFeatureManifest(ELIZA_MOBILE_PRODUCT);
+    expect(manifest.functional.capabilities).toEqual(
+      [...MOBILE_SHELL_LAUNCHER_CAPABILITIES].sort(),
+    );
+    const registry = createMobileViewRegistry(ELIZA_MOBILE_PRODUCT);
+    expect(registry.find("wallet")?.id).toBe("inventory");
+    expect(registry.target("reminders")).toMatchObject({
+      kind: "view",
+      view: { id: "calendar" },
+    });
+  });
+});
+
 describe("entries", () => {
   const src = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
@@ -807,6 +953,8 @@ describe("entries", () => {
   const core = [
     "config/theme.ts",
     "mobile-shell/core.ts",
+    "mobile-shell/eliza-product.ts",
+    "mobile-shell/feature-manifest.ts",
     "mobile-shell/navigation.ts",
     "mobile-shell/product-registration.ts",
     "mobile-shell/view-id-migration.ts",

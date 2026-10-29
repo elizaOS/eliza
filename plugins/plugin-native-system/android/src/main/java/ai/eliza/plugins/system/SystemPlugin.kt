@@ -384,7 +384,14 @@ open class SystemPlugin : Plugin() {
     fun listLauncherApps(call: PluginCall) {
         val icons = call.getBoolean("icons", false) == true
         val apps = JSArray()
-        for (app in SystemLauncherApps.list(context)) {
+        val listed = try {
+            SystemLauncherApps.list(context)
+        } catch (error: RuntimeException) {
+            // An unreadable inventory is reported, never a partial list and never a crash of Home.
+            call.reject("Installed apps could not be read", SystemLauncherApps.FAILED, error)
+            return
+        }
+        for (app in listed) {
             val item = JSObject()
             item.put("packageName", app.packageName)
             item.put("activityName", app.activityName)
@@ -418,10 +425,12 @@ open class SystemPlugin : Plugin() {
                 return
             }
             if (intent == null) {
-                call.reject("App is unavailable", SystemLauncherApps.NOT_INSTALLED)
+                // Worded as the component refusals: removed, disabled, or no openable screen.
+                val refusal = SystemLauncherApps.explain(context.packageManager, call.getString("packageName"))
+                call.reject(refusal.message, refusal.code)
                 return
             }
-            startHandoff(call, intent)
+            startHandoff(call, intent, SystemLauncherApps.FAILED)
             return
         }
         val target = try {
@@ -432,10 +441,13 @@ open class SystemPlugin : Plugin() {
         } catch (refusal: SystemLauncherApps.Refusal) {
             call.reject(refusal.message, refusal.code)
             return
+        } catch (error: RuntimeException) {
+            call.reject("App could not be opened", SystemLauncherApps.FAILED, error)
+            return
         }
         val user = target.user
         if (user == null) {
-            startHandoff(call, SystemLauncherApps.launchIntent(target.component))
+            startHandoff(call, SystemLauncherApps.launchIntent(target.component), SystemLauncherApps.FAILED)
             return
         }
         try {
@@ -444,7 +456,7 @@ open class SystemPlugin : Plugin() {
             call.resolve()
         } catch (error: RuntimeException) {
             // Removed between resolve and start, or refused by Android.
-            call.reject("App could not be opened", error)
+            call.reject("App could not be opened", SystemLauncherApps.FAILED, error)
         }
     }
 
@@ -494,16 +506,67 @@ open class SystemPlugin : Plugin() {
         startHandoff(call, intent)
     }
 
-    private fun startHandoff(call: PluginCall, intent: Intent) {
+    private fun startHandoff(call: PluginCall, intent: Intent, code: String? = null) {
         try {
             // Launchers start other apps in their own tasks, like the settings hand-offs above.
             context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             call.resolve()
-        } catch (error: android.content.ActivityNotFoundException) {
-            call.reject("App could not be opened", error)
-        } catch (error: SecurityException) {
-            call.reject("App could not be opened", error)
+        } catch (error: RuntimeException) {
+            // ActivityNotFoundException, SecurityException, or a component gone since resolve.
+            if (code == null) call.reject("App could not be opened", error)
+            else call.reject("App could not be opened", code, error)
         }
+    }
+
+    /** True when the host is the launcher distribution. Default: it declares a HOME activity. */
+    protected open fun isLauncherBuild(): Boolean {
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME).setPackage(context.packageName)
+        return try {
+            context.packageManager.queryIntentActivities(home, 0).isNotEmpty()
+        } catch (error: RuntimeException) {
+            false
+        }
+    }
+
+    /** The host's version name; empty when Android does not report one. */
+    protected open fun buildVersion(): String = try {
+        context.packageManager.getPackageInfo(context.packageName, 0).versionName ?: ""
+    } catch (error: Exception) {
+        ""
+    }
+
+    /** True only for the assistant entry. Hosts that forward ACTION_ASSIST through their own
+     * Activity add their marker extra by overriding this. */
+    protected open fun isAssistantLaunch(intent: Intent?): Boolean =
+        intent != null && Intent.ACTION_ASSIST == intent.action
+
+    /** Device locale as a BCP 47 tag. */
+    protected open fun localeTag(): String = java.util.Locale.getDefault().toLanguageTag()
+
+    /** Android's 24-hour clock setting for this user. */
+    protected open fun is24HourClock(): Boolean = android.text.format.DateFormat.is24HourFormat(context)
+
+    @PluginMethod
+    fun getBuildInfo(call: PluginCall) {
+        val result = JSObject()
+        result.put("launcher", isLauncherBuild())
+        result.put("version", buildVersion())
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun getLaunchInfo(call: PluginCall) {
+        val result = JSObject()
+        result.put("assistant", isAssistantLaunch(activity?.intent))
+        call.resolve(result)
+    }
+
+    @PluginMethod
+    fun getLocaleInfo(call: PluginCall) {
+        val result = JSObject()
+        result.put("locale", localeTag())
+        result.put("hour24", is24HourClock())
+        call.resolve(result)
     }
 
     private fun iconDataUrl(packageName: String): String? =

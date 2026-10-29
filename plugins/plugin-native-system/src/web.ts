@@ -9,7 +9,10 @@ import type {
   FlashlightStatus,
   LauncherApp,
   NotificationShadeOutcome,
+  SystemBuildInfo,
   SystemFacts,
+  SystemLaunchInfo,
+  SystemLocaleInfo,
   SystemPlugin,
   SystemSettingsPage,
   SystemSettingsPageResult,
@@ -58,6 +61,28 @@ function validateDefaultRole(role: unknown): DefaultAppRole {
   return role;
 }
 
+/** The browser's locale and whether its default time format uses a 24-hour cycle. */
+export function webLocaleInfo(
+  format: () => Intl.ResolvedDateTimeFormatOptions = () =>
+    new Intl.DateTimeFormat(undefined, { hour: "numeric" }).resolvedOptions(),
+): SystemLocaleInfo {
+  try {
+    const options = format();
+    const cycle = options.hourCycle;
+    return {
+      locale: options.locale || "en-US",
+      hour24:
+        cycle === "h23" || cycle === "h24"
+          ? true
+          : cycle === "h11" || cycle === "h12"
+            ? false
+            : options.hour12 === false,
+    };
+  } catch {
+    return { locale: "en-US", hour24: false };
+  }
+}
+
 export class SystemWeb extends WebPlugin implements SystemPlugin {
   async listLauncherApps(): Promise<{ apps: LauncherApp[] }> {
     // A browser exposes no installed apps; an empty list is the honest answer.
@@ -84,6 +109,19 @@ export class SystemWeb extends WebPlugin implements SystemPlugin {
   async openDefaultApp(options: { role: DefaultAppRole }): Promise<void> {
     const role = validateDefaultRole(options?.role);
     throw new Error(`The default ${role} app is only available on Android.`);
+  }
+
+  async getBuildInfo(): Promise<SystemBuildInfo> {
+    // A browser is never the launcher distribution and carries no native version.
+    return { launcher: false, version: "web" };
+  }
+
+  async getLaunchInfo(): Promise<SystemLaunchInfo> {
+    return { assistant: false };
+  }
+
+  async getLocaleInfo(): Promise<SystemLocaleInfo> {
+    return webLocaleInfo();
   }
 
   async getStatus(): Promise<SystemStatus> {
