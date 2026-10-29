@@ -278,6 +278,7 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       return { type: p.type, text: text(p.text, 5000) };
     case "read_selected_notes":
     case "read_calendar_range":
+    case "read_selected_reminders":
       return validateWorkflowReadOperation(p);
     case "notes_query":
       return validateNativeNotesQuery(p);
@@ -373,6 +374,7 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     [
       "read_selected_notes",
       "read_calendar_range",
+      "read_selected_reminders",
       "post_notification",
       "speak_text",
     ].includes(operation.type) &&

@@ -18,6 +18,7 @@ export const PHONE_WORKFLOW_MAX_SPEC_BYTES = 65_536;
 export const PHONE_WORKFLOW_DEVICE_OPERATIONS: readonly string[] =
   Object.freeze([
     "selected_notes",
+    "selected_reminders",
     "calendar_range",
     "save_note",
     "app_notification",
@@ -26,6 +27,31 @@ export const PHONE_WORKFLOW_DEVICE_OPERATIONS: readonly string[] =
 /** Device operations that need the foreground presentation protocol (workflow device protocol 2). */
 export const PHONE_WORKFLOW_PRESENTATION_OPERATIONS: readonly string[] =
   Object.freeze(["app_notification", "read_aloud"]);
+/** Device operations that need the selected-reminders read (workflow device protocol 3). */
+export const PHONE_WORKFLOW_REMINDER_OPERATIONS: readonly string[] =
+  Object.freeze(["selected_reminders"]);
+/** Highest workflow device protocol a phone may register. */
+export const PHONE_WORKFLOW_DEVICE_PROTOCOL = 3 as const;
+/** Minimum workflow device protocol an enrolled phone needs for one typed step operation. */
+export function phoneWorkflowOperationProtocol(operation: string): 1 | 2 | 3 {
+  if (PHONE_WORKFLOW_REMINDER_OPERATIONS.includes(operation)) return 3;
+  if (PHONE_WORKFLOW_PRESENTATION_OPERATIONS.includes(operation)) return 2;
+  return 1;
+}
+/** Minimum workflow device protocol for every step of a specification. */
+export function phoneWorkflowRequiredProtocol(spec: {
+  steps: ReadonlyArray<{ operation: string }>;
+}): 1 | 2 | 3 {
+  return Math.max(
+    1,
+    ...spec.steps.map((step) => phoneWorkflowOperationProtocol(step.operation)),
+  ) as 1 | 2 | 3;
+}
+/**
+ * The reviewed reminder window: open reminders due by the end of the owner's
+ * local day (overdue included) plus reminders completed during that day.
+ */
+export const SELECTED_REMINDERS_WINDOW = "open_and_completed_today" as const;
 /**
  * A scheduled occurrence admitted later than this after its local time is
  * recorded as missed. It is never run late and never replayed as a backlog.
@@ -42,6 +68,17 @@ export interface PhoneCalendarRange {
   end: string;
   timeZone: string;
   maximumEvents: number;
+}
+/**
+ * A reviewed reminder read scope. The day is not stored: each run reads the
+ * owner's current local day in `timeZone`, and the agent and phone both refuse
+ * any other day.
+ */
+export interface PhoneSelectedRemindersScope {
+  window: typeof SELECTED_REMINDERS_WINDOW;
+  timeZone: string;
+  /** 1..200. Overflow fails explicitly; it is never presented as complete. */
+  maximumItems: number;
 }
 export type PhoneStep =
   | {
@@ -63,6 +100,12 @@ export type PhoneStep =
       kind: "Read";
       operation: "calendar_range";
       range: PhoneCalendarRange;
+    }
+  | {
+      id: string;
+      kind: "Read";
+      operation: "selected_reminders";
+      scope: PhoneSelectedRemindersScope;
     }
   | {
       id: string;
@@ -176,6 +219,30 @@ export function isPhoneWorkflowTimeZone(value: unknown): value is string {
   } catch {
     return false;
   }
+}
+
+/** The exact reviewed reminder scope; any other window, zone or bound is refused. */
+export function validatePhoneSelectedRemindersScope(
+  value: unknown,
+): PhoneSelectedRemindersScope {
+  const scope = record(value, "Choose which reminders this step reads");
+  keys(scope, ["window", "timeZone", "maximumItems"]);
+  if (scope.window !== SELECTED_REMINDERS_WINDOW)
+    return fail("This reminder window is unavailable");
+  if (!isPhoneWorkflowTimeZone(scope.timeZone))
+    return fail("Choose a valid reminder time zone");
+  if (
+    typeof scope.maximumItems !== "number" ||
+    !Number.isInteger(scope.maximumItems) ||
+    scope.maximumItems < 1 ||
+    scope.maximumItems > 200
+  )
+    return fail("Choose between 1 and 200 reminders");
+  return {
+    window: SELECTED_REMINDERS_WINDOW,
+    timeZone: scope.timeZone as string,
+    maximumItems: scope.maximumItems,
+  };
 }
 
 /** Exact trigger shapes; anything else (cron text, events, places, messages) is unavailable. */
@@ -312,6 +379,14 @@ export function validatePhoneWorkflowSpec(input: unknown): PhoneWorkflowSpec {
           maximumEvents: r.maximumEvents,
         },
       };
+    } else if (s.kind === "Read" && s.operation === "selected_reminders") {
+      keys(s, ["id", "kind", "operation", "scope"]);
+      step = {
+        id,
+        kind: "Read",
+        operation: "selected_reminders",
+        scope: validatePhoneSelectedRemindersScope(s.scope),
+      };
     } else {
       const source = text(s.source, 80);
       if (!seen.has(source)) fail("Choose an earlier step as the input");
@@ -432,6 +507,145 @@ export function describePhoneWorkflowTrigger(
           ? "Weekends"
           : trigger.days.map((day) => WEEKDAY_LABELS[day]).join(", ");
   return `${when} at ${trigger.localTime} (${trigger.timeZone})`;
+}
+
+const zoneFormats = new Map<string, Intl.DateTimeFormat>();
+function zoneFormat(timeZone: string): Intl.DateTimeFormat {
+  let format = zoneFormats.get(timeZone);
+  if (!format) {
+    format = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      hourCycle: "h23",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+    zoneFormats.set(timeZone, format);
+  }
+  return format;
+}
+function zoneParts(ms: number, timeZone: string) {
+  const parts = Object.fromEntries(
+    zoneFormat(timeZone)
+      .formatToParts(ms)
+      .map((part) => [part.type, part.value]),
+  );
+  return {
+    year: Number(parts.year),
+    month: Number(parts.month),
+    day: Number(parts.day),
+    hour: Number(parts.hour) % 24,
+    minute: Number(parts.minute),
+    second: Number(parts.second),
+  };
+}
+/** UTC offset in minutes of `timeZone` at instant `ms` (whole seconds). Throws for an unknown zone. */
+export function zoneOffsetMinutes(ms: number, timeZone: string): number {
+  const p = zoneParts(ms, timeZone);
+  const at = Math.floor(ms / 1000) * 1000;
+  return Math.round(
+    (Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - at) /
+      60_000,
+  );
+}
+/** The owner's local calendar day (`YYYY-MM-DD`) in `timeZone` at instant `ms`. */
+export function phoneWorkflowLocalDay(ms: number, timeZone: string): string {
+  const p = zoneParts(ms, timeZone);
+  return `${String(p.year).padStart(4, "0")}-${String(p.month).padStart(2, "0")}-${String(p.day).padStart(2, "0")}`;
+}
+/** True for a real `YYYY-MM-DD` calendar date. */
+export function isPhoneWorkflowLocalDay(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^\d{4}-\d{2}-\d{2}$/.test(value) &&
+    Number.isFinite(Date.parse(`${value}T00:00:00Z`)) &&
+    new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value
+  );
+}
+/** First instant (whole second) whose local day in `timeZone` is `day` or later. */
+function localDayStart(day: string, timeZone: string): number {
+  const wall = Date.parse(`${day}T00:00:00Z`);
+  // Every real offset lies within ±18 hours, so the boundary is inside this interval.
+  let low = wall - 20 * 3_600_000,
+    high = wall + 20 * 3_600_000;
+  while (high - low > 1000) {
+    const mid = low + Math.floor((high - low) / 2000) * 1000;
+    if (phoneWorkflowLocalDay(mid, timeZone) < day) low = mid;
+    else high = mid;
+  }
+  return high;
+}
+/** The owner's local day `[start, end)` in epoch milliseconds, including 23- and 25-hour days. */
+export function phoneWorkflowLocalDayBounds(
+  day: string,
+  timeZone: string,
+): { start: number; end: number } {
+  if (!isPhoneWorkflowLocalDay(day) || !isPhoneWorkflowTimeZone(timeZone))
+    return fail("Choose a valid local day and time zone");
+  const next = new Date(Date.parse(`${day}T00:00:00Z`) + 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  return {
+    start: localDayStart(day, timeZone),
+    end: localDayStart(next, timeZone),
+  };
+}
+
+const DAY_MS = 86_400_000,
+  MINUTE_MS = 60_000;
+const wallClock = (localMs: number) =>
+  new Date(localMs).toISOString().slice(11, 16);
+/**
+ * A scheduled local time that does not exist on a clock-change day (the hour
+ * skipped when clocks move forward) never comes due that day: no run starts.
+ * Names the next such day within a year, or returns "". Review copy only; the
+ * agent's own schedule admission is unchanged.
+ */
+export function phoneTriggerClockChangeNote(
+  trigger: PhoneTimeTrigger,
+  now = Date.now(),
+): string {
+  try {
+    const [hour, minute] = trigger.localTime.split(":").map(Number);
+    const target = hour * 60 + minute;
+    let at = Math.floor(now / MINUTE_MS) * MINUTE_MS,
+      offset = zoneOffsetMinutes(at, trigger.timeZone);
+    for (let day = 0; day < 371; day++) {
+      const next = at + DAY_MS,
+        nextOffset = zoneOffsetMinutes(next, trigger.timeZone);
+      if (nextOffset > offset) {
+        // Minute-precise transition instant: the first minute already on the later offset.
+        let low = at,
+          high = next;
+        while (high - low > MINUTE_MS) {
+          const mid =
+            low + Math.floor((high - low) / MINUTE_MS / 2) * MINUTE_MS;
+          if (zoneOffsetMinutes(mid, trigger.timeZone) === offset) low = mid;
+          else high = mid;
+        }
+        const gapStart = high + offset * MINUTE_MS,
+          gapEnd = high + nextOffset * MINUTE_MS;
+        for (const edge of [gapStart, gapEnd - MINUTE_MS]) {
+          const midnight = Math.floor(edge / DAY_MS) * DAY_MS,
+            candidate = midnight + target * MINUTE_MS;
+          if (
+            candidate >= gapStart &&
+            candidate < gapEnd &&
+            trigger.days.includes(new Date(midnight).getUTCDay())
+          )
+            return `On ${new Date(midnight).toISOString().slice(0, 10)} the clock in ${trigger.timeZone} moves forward from ${wallClock(gapStart)} to ${wallClock(gapEnd)}, so ${trigger.localTime} does not occur and this workflow does not run that day.`;
+        }
+      }
+      at = next;
+      offset = nextOffset;
+    }
+  } catch {
+    /* An unknown zone is refused by the shared trigger contract; no note. */
+  }
+  return "";
 }
 
 export interface PhoneWorkflowTriggerCapability {

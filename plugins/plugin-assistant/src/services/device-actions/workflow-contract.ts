@@ -1,4 +1,11 @@
-import { calendarEventOverlapsRange } from "@elizaos/contracts";
+import {
+  calendarEventOverlapsRange,
+  checkWorkflowReminderRows,
+  parseWorkflowReminderRead,
+  type WorkflowReminderReadOperation,
+  type WorkflowReminderRow,
+  workflowReminderRevisionInput,
+} from "@elizaos/contracts";
 import { calendarRangeFitsLocalDays } from "../../../../plugin-calendar/src/internal/time.ts";
 import { calendarIdentifier } from "./calendar-contract.ts";
 /** Canonical device proposal extension. These are data scopes, never executable code. */
@@ -30,7 +37,13 @@ export type WorkflowReadOperation =
       timeZone: string;
       /** 1..200. Overflow fails explicitly; it is never presented as complete. */
       maximumEvents: number;
-    };
+    }
+  /**
+   * Open reminders due by the end of the owner's local `day` (overdue included)
+   * plus reminders completed during it, at most `maximumItems`. `day` must be the
+   * run's current local day in the reviewed zone; the step stores only the scope.
+   */
+  | WorkflowReminderReadOperation;
 export type WorkflowPresentationOperation =
   | { type: "post_notification"; title: string; body: string }
   | { type: "speak_text"; text: string };
@@ -56,7 +69,8 @@ export type WorkflowReadResult =
         end: string;
         allDay: boolean;
       }>;
-    };
+    }
+  | { kind: "reminders"; reminders: WorkflowReminderRow[] };
 /**
  * Existing payload keeps action=device_action, version=1, installationId/enrollmentId.
  * Optional workflow binding is digest-covered and displayed on every review.
@@ -174,6 +188,13 @@ export function validateWorkflowReadOperation(
       maximumEvents: p.maximumEvents,
     };
   }
+  if (p.type === "read_selected_reminders") {
+    try {
+      return parseWorkflowReminderRead(p);
+    } catch {
+      return reject("Invalid reminder read scope");
+    }
+  }
   return reject("Unsupported workflow read operation");
 }
 export function validateWorkflowReadResult(
@@ -183,6 +204,22 @@ export function validateWorkflowReadResult(
   if (Buffer.byteLength(JSON.stringify(value) ?? "") > 65536)
     return reject("Workflow read result exceeds reviewed bound");
   const p = object(value);
+  if (operation.type === "read_selected_reminders") {
+    let reminders: WorkflowReminderRow[];
+    try {
+      reminders = checkWorkflowReminderRows(operation, p);
+    } catch {
+      return reject("Reminder result is outside the reviewed window");
+    }
+    for (const { revision, ...row } of reminders)
+      if (
+        createHash("sha256")
+          .update(JSON.stringify(workflowReminderRevisionInput(row)))
+          .digest("hex") !== revision
+      )
+        return reject("Reminder revision mismatched");
+    return { kind: "reminders", reminders };
+  }
   if (operation.type === "read_selected_notes") {
     exactKeys(p, ["kind", "notes"]);
     if (

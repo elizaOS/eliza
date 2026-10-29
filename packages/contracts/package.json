@@ -40,6 +40,24 @@
       "import": "./dist/workflow-client.js",
       "default": "./dist/workflow-client.js"
     },
+    "./workflow-device": {
+      "eliza-source": "./src/workflow-device.ts",
+      "types": "./dist/workflow-device.d.ts",
+      "import": "./dist/workflow-device.js",
+      "default": "./dist/workflow-device.js"
+    },
+    "./workflow-intents": {
+      "eliza-source": "./src/workflow-intents.ts",
+      "types": "./dist/workflow-intents.d.ts",
+      "import": "./dist/workflow-intents.js",
+      "default": "./dist/workflow-intents.js"
+    },
+    "./workflow-scope": {
+      "eliza-source": "./src/workflow-scope.ts",
+      "types": "./dist/workflow-scope.d.ts",
+      "import": "./dist/workflow-scope.js",
+      "default": "./dist/workflow-scope.js"
+    },
     "./notice-routes": {
       "eliza-source": "./src/notice-routes.ts",
       "types": "./dist/notice-routes.d.ts",

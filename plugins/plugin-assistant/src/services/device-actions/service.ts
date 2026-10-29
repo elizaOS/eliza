@@ -5,6 +5,8 @@ import {
   CALENDAR_NAMED_READ_CAPABILITY,
   NAMED_TARGET_CAPABILITY,
   NOTES_SEARCH_CAPABILITY,
+  PHONE_WORKFLOW_DEVICE_PROTOCOL,
+  workflowReminderDayIsCurrent,
 } from "@elizaos/contracts";
 import type { NativeNotesDeferredRead } from "@elizaos/contracts/native-notes-query";
 import {
@@ -161,6 +163,13 @@ import {
   type WorkflowDeviceBinding,
   type WorkflowDeviceDispatch,
 } from "./workflow-contract.ts";
+
+/** Minimum enrolled workflow device protocol for one bound device operation. */
+function workflowOperationProtocol(type: string): number {
+  if (type === "read_selected_reminders") return 3;
+  if (type === "post_notification" || type === "speak_text") return 2;
+  return 1;
+}
 
 export interface DeviceCredential {
   subjectUserId: string;
@@ -1684,9 +1693,9 @@ export class DeviceActionService {
     userTextFormatVersion: 1;
   }> {
     if (
-      workflowProtocol !== 0 &&
-      workflowProtocol !== 1 &&
-      workflowProtocol !== 2
+      !Number.isInteger(workflowProtocol) ||
+      workflowProtocol < 0 ||
+      workflowProtocol > PHONE_WORKFLOW_DEVICE_PROTOCOL
     )
       throw new DeviceActionError("Unsupported workflow device protocol");
     const hash = keyHash(c.deviceKey);
@@ -2250,9 +2259,7 @@ export class DeviceActionService {
         rows.length !== 1 ||
         rows[0]?.revoked !== false ||
         Number(rows[0]?.workflow_protocol) <
-          (["post_notification", "speak_text"].includes(operation.type)
-            ? 2
-            : 1) ||
+          workflowOperationProtocol(operation.type) ||
         rows[0]?.enrollment_id !== dispatch.target.enrollmentId
       )
         throw new DeviceActionError("Workflow device enrollment unavailable");
@@ -2315,6 +2322,18 @@ export class DeviceActionService {
           stableStringify(step.notes) !== stableStringify(operation.notes)
         )
           throw new DeviceActionError("Workflow selected Notes scope changed");
+      } else if (operation.type === "read_selected_reminders") {
+        const { type: _type, day: _day, ...scope } = operation;
+        if (
+          step.kind !== "Read" ||
+          step.operation !== "selected_reminders" ||
+          stableStringify(step.scope) !== stableStringify(scope)
+        )
+          throw new DeviceActionError("Workflow reminder scope changed");
+        if (!workflowReminderDayIsCurrent(operation))
+          throw new DeviceActionError(
+            "Workflow reminder read names a day other than today",
+          );
       } else if (operation.type === "read_calendar_range") {
         const { type: _type, ...range } = operation;
         if (
@@ -2516,9 +2535,7 @@ export class DeviceActionService {
       activeWorkflowTx &&
       payload.workflow &&
       Number(row.workflow_protocol) <
-        (["post_notification", "speak_text"].includes(payload.operation.type)
-          ? 2
-          : 1)
+        workflowOperationProtocol(payload.operation.type)
     )
       throw new DeviceActionError("Workflow device protocol unavailable");
     if (activeWorkflowTx && payload.workflow)
@@ -2654,7 +2671,8 @@ export class DeviceActionService {
         throw new DeviceActionError("Notes capability unavailable");
       const read =
         payload.operation.type === "read_selected_notes" ||
-        payload.operation.type === "read_calendar_range";
+        payload.operation.type === "read_calendar_range" ||
+        payload.operation.type === "read_selected_reminders";
       if (isSmsSend(payload.operation)) {
         if (receipt.operationId !== request.execution?.providerIdempotencyKey)
           throw new DeviceActionError(
@@ -3057,7 +3075,8 @@ export class DeviceActionService {
         }
       } else if (
         (payload.operation.type === "read_selected_notes" ||
-          payload.operation.type === "read_calendar_range") &&
+          payload.operation.type === "read_calendar_range" ||
+          payload.operation.type === "read_selected_reminders") &&
         receipt.outcome === "applied"
       ) {
         receipt = {

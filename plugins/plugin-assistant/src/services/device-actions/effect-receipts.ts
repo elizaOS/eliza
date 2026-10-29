@@ -196,6 +196,7 @@ function deviceOperationIsRead(operation: DeviceOperation): boolean {
     case "calendar_read_selected":
     case "read_selected_notes":
     case "read_calendar_range":
+    case "read_selected_reminders":
       return true;
     case "calendar_named":
       return operation.action === "read";

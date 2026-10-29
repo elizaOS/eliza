@@ -14,6 +14,7 @@ import {
 import { WorkflowApiError } from '../types/index';
 import { compilePhoneWorkflowV1 } from './phone-workflow-compiler-v1';
 import { compilePhoneWorkflowV2 } from './phone-workflow-compiler-v2';
+import { compilePhoneWorkflowV3 } from './phone-workflow-compiler-v3';
 
 export type {
   PhoneCalendarRange,
@@ -24,9 +25,9 @@ export type {
   PhoneWorkflowTrigger,
 };
 export { PHONE_SCHEDULE_ADMISSION_WINDOW_MS };
-/** Revision 4 offers the reviewed local-time trigger beside manual runs. */
-export const PHONE_CATALOG_REVISION = 'phone-workflow-catalog-4';
-export const PHONE_COMPILER_REVISION = 'phone-workflow-compiler-3';
+/** Revision 5 offers the selected-reminders read (workflow device protocol 3). */
+export const PHONE_CATALOG_REVISION = 'phone-workflow-catalog-5';
+export const PHONE_COMPILER_REVISION = 'phone-workflow-compiler-4';
 export const PHONE_SPEC_KEY = 'elizaPhoneWorkflowSpec';
 export const PHONE_COMPILER_KEY = 'elizaPhoneCompilerRevision';
 /** Execution input key holding a scheduled occurrence's admission record. */
@@ -65,6 +66,13 @@ export function phoneWorkflowCatalog(modelAvailable: boolean, deviceAvailable = 
             label: 'Selected Notes',
             available: deviceAvailable,
             reason: deviceAvailable ? undefined : 'Workflow-bound native read bridge required',
+          },
+          {
+            id: 'selected_reminders',
+            label: "Today's reminders (open and completed today)",
+            available: deviceAvailable,
+            requiredDeviceProtocol: 3,
+            reason: deviceAvailable ? undefined : 'Workflow-bound reminder read bridge required',
           },
           {
             id: 'calendar_range',
@@ -285,6 +293,7 @@ export default smithers(()=><Workflow name="typed-phone-workflow"><Task id="type
  let value='';
  if(step.operation==='supplied_text')value=step.text;
  else if(step.operation==='selected_notes'||step.operation==='calendar_range'){const operation=step.operation==='selected_notes'?{type:'read_selected_notes',notes:step.notes}:{type:'read_calendar_range',...step.range};const receipt=await globalThis.__elizaSmithers.device({stepId:step.id,operation});value=JSON.stringify(receipt.result);}
+ else if(step.operation==='selected_reminders'){const parts=Object.fromEntries(new Intl.DateTimeFormat('en-US',{timeZone:step.scope.timeZone,year:'numeric',month:'2-digit',day:'2-digit'}).formatToParts(Date.now()).map(part=>[part.type,part.value]));const operation={type:'read_selected_reminders',window:step.scope.window,day:parts.year+'-'+parts.month+'-'+parts.day,timeZone:step.scope.timeZone,maximumItems:step.scope.maximumItems};const receipt=await globalThis.__elizaSmithers.device({stepId:step.id,operation});value=JSON.stringify(receipt.result);}
 
  else{const prior=values.get(step.source);if(typeof prior!=='string')throw Error('Typed step input missing');
  if(step.operation==='contains'){allowed=step.caseSensitive?prior.includes(step.text):prior.toLocaleLowerCase('en-US').includes(step.text.toLocaleLowerCase('en-US'));value=prior;}
@@ -307,6 +316,7 @@ export function verifyPhoneWorkflowSource(
   const versions = [
     ['phone-workflow-compiler-1', compilePhoneWorkflowV1],
     ['phone-workflow-compiler-2', compilePhoneWorkflowV2],
+    ['phone-workflow-compiler-3', compilePhoneWorkflowV3],
     [PHONE_COMPILER_REVISION, compilePhoneWorkflow],
   ] as const;
   return versions.some(

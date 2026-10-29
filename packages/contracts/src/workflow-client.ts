@@ -24,6 +24,10 @@ import {
   phoneWorkflowBytes,
   validatePhoneWorkflowSpec,
 } from "./phone-workflow.ts";
+import {
+  parseWorkflowPhoneReview,
+  type WorkflowPhoneReview,
+} from "./workflow-device.ts";
 
 /** Metadata key holding a typed phone workflow's reviewed specification. */
 export const WORKFLOW_PHONE_SPEC_METADATA_KEY = "elizaPhoneWorkflowSpec";
@@ -637,12 +641,15 @@ export class WorkflowClient {
     const scope = (s: PhoneWorkflowSpec["steps"][number]) =>
       JSON.stringify(
         s.operation === "selected_notes"
-          ? (s as { notes: unknown }).notes
-          : (s as { range?: unknown }).range,
+          ? s.notes
+          : s.operation === "selected_reminders"
+            ? s.scope
+            : (s as { range?: unknown }).range,
       );
     for (const step of spec.steps) {
       if (
         step.operation !== "selected_notes" &&
+        step.operation !== "selected_reminders" &&
         step.operation !== "calendar_range"
       )
         continue;
@@ -1231,5 +1238,24 @@ export class WorkflowClient {
     if (run.id !== id || run.workflowId !== workflowId)
       throw new Error("Execution identity mismatch");
     return run;
+  }
+  /**
+   * The run's reviewed phone specification, accepted only for this exact run,
+   * workflow and version with a matching digest. A phone checks every incoming
+   * step request against it (`assertWorkflowOperation`).
+   */
+  async phoneReview(
+    run: Pick<WorkflowRun, "id" | "workflowId" | "versionId">,
+    signal: AbortSignal,
+  ): Promise<WorkflowPhoneReview> {
+    return parseWorkflowPhoneReview(
+      await this.request(
+        `/api/workflow/executions/${encodeURIComponent(str(run.id))}/phone-review`,
+        undefined,
+        signal,
+      ),
+      run,
+      { normalizePhoneSpec: this.normalizeSpec },
+    );
   }
 }
