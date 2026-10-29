@@ -269,7 +269,9 @@ export class PdfService extends Service {
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: 1 });
         const textContent = await page.getTextContent();
-        const nativeText = this.cleanUpContent(collectTextStrings(textContent.items).join(" "));
+        const nativeText = this.cleanUpContent(
+          collectTextStrings(textContent.items, "\n").join("")
+        );
         const nativePositionedText = collectPositionedTextItems(textContent.items, pageNumber);
         const operatorList = await page.getOperatorList();
         if (!Array.isArray(operatorList.fnArray)) {
@@ -525,7 +527,7 @@ export class PdfService extends Service {
       const viewport = page.getViewport({ scale: 1.0 });
       const textContent = await page.getTextContent();
 
-      const pageText = collectTextStrings(textContent.items).join(" ");
+      const pageText = collectTextStrings(textContent.items, "\n").join("");
 
       pages.push({
         pageNumber: pageNum,
