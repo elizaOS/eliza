@@ -291,6 +291,9 @@ export class StructuredFieldStreamExtractor implements IStreamExtractor {
 		if (this.state === "failed") {
 			return "";
 		}
+		if (this.config.abortSignal?.aborted) {
+			return this.push("");
+		}
 
 		this.processAvailableLines(true);
 		this.completeCurrentField();
@@ -648,6 +651,9 @@ export class ResponseSkeletonStreamExtractor implements IStreamExtractor {
 	flush(): string {
 		if (this.state === "failed") {
 			return "";
+		}
+		if (this.config.abortSignal?.aborted) {
+			return this.push("");
 		}
 		if (!this.formatDecided) {
 			this.decideFormat();
