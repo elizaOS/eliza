@@ -92,6 +92,8 @@ export interface EndpointResult {
   decision: EndpointDecision;
   reason?: string;
   latencyMs?: number;
+  /** The end-of-turn stage that answered (`createEndpointChain`): the local scorer or Clef. */
+  path?: "local" | "clef";
 }
 /** What the semantic endpoint said for the utterance that was submitted. */
 export type EndpointOutcome =
@@ -109,6 +111,8 @@ export interface EndpointRecord {
   reason?: string;
   /** Scorer latency reported by the agent, or the client round trip when it gave none. */
   latencyMs?: number;
+  /** The end-of-turn stage whose answer this records, when the port named one. */
+  path?: "local" | "clef";
 }
 export interface AssistantHeard {
   turnId: string;
@@ -800,16 +804,31 @@ export class VoiceAssistantSession {
                     ? Math.round(result.latencyMs as number)
                     : Math.max(0, Math.round(this.clock.now() - askedAt));
                 const latencyMs = Math.min(reported, 3_600_000);
+                const path =
+                  result.path === "local" || result.path === "clef"
+                    ? { path: result.path }
+                    : {};
                 if (result.decision === "finished")
-                  return { finished: true, semantic: "complete", latencyMs };
+                  return {
+                    finished: true,
+                    semantic: "complete",
+                    latencyMs,
+                    ...path,
+                  };
                 if (result.decision === "continue")
-                  return { finished: false, semantic: "incomplete", latencyMs };
+                  return {
+                    finished: false,
+                    semantic: "incomplete",
+                    latencyMs,
+                    ...path,
+                  };
                 return {
                   finished: false,
                   semantic: "unavailable",
                   ...(typeof result.reason === "string"
                     ? { reason: result.reason }
                     : {}),
+                  ...path,
                 };
               },
               (): Settled => ({ finished: false, semantic: "error" }),

@@ -14,6 +14,7 @@ import {
   splitSpokenSentences,
   VoiceAssistantSession,
 } from "./voice-assistant-session";
+import { createEndpointChain } from "./voice-endpoint-chain";
 
 // Fake clock, capture, agent and speaker. These are controller contracts, not microphone,
 // recognition, playback or latency evidence.
@@ -385,6 +386,97 @@ describe("VoiceAssistantSession endpointing", () => {
     ]);
     expect(h.log.endpoints).toEqual([
       { by: "gap", semantic: "incomplete", latencyMs: 300 },
+    ]);
+  });
+});
+
+describe("VoiceAssistantSession with the end-of-turn chain", () => {
+  it("records the chain stage that answered, and resumed speech cancels a pending Clef submit", async () => {
+    const clefCalls: Deferred<unknown>[] = [];
+    const chain = createEndpointChain({
+      local: async () => ({ decision: "unavailable", reason: "ram-pressure" }),
+      // The chain measures Clef's round trip on its own clock; fixed here.
+      now: () => 0,
+      clef: {
+        enabled: true,
+        timeoutMs: 10_000,
+        client: () => {
+          const d = deferred<unknown>();
+          clefCalls.push(d);
+          return d.promise;
+        },
+      },
+    });
+    const h = harness({ endpoint: chain });
+    await h.session.start();
+    await h.say("set a timer for");
+    await h.clock.advance(shortGapMs);
+    expect(clefCalls).toHaveLength(1);
+    // Speech resumes before Clef answers: its yes is dropped and nothing is sent.
+    h.mic().onSpeechStart(h.clock.now());
+    await flush();
+    at(clefCalls, 0).resolve({
+      status: "ok",
+      kind: "turn",
+      complete: true,
+      completeProbability: 0.9,
+    });
+    await flush();
+    expect(h.log.sends).toHaveLength(0);
+    await h.clock.advance(400);
+    h.mic().onSpeechEnd(h.clock.now());
+    h.mic().onSegment("ten minutes");
+    await flush();
+    await h.clock.advance(shortGapMs);
+    expect(clefCalls).toHaveLength(2);
+    at(clefCalls, 1).resolve({
+      status: "ok",
+      kind: "turn",
+      complete: true,
+      completeProbability: 0.8,
+    });
+    await flush();
+    expect(h.log.sends.map((send) => send.text)).toEqual([
+      "set a timer for ten minutes",
+    ]);
+    expect(h.log.endpoints).toEqual([
+      { by: "semantic", semantic: "complete", latencyMs: 0, path: "clef" },
+    ]);
+
+    // Clef unavailable is never a yes: the long gap submits and the record names the stage.
+    const off = harness({
+      endpoint: createEndpointChain({
+        local: async () => ({ decision: "unavailable", reason: "unscored" }),
+        clef: {
+          enabled: true,
+          client: async () => ({ status: "unavailable", reason: "disabled" }),
+        },
+      }),
+    });
+    await off.session.start();
+    await off.say("turn off the lights");
+    await off.clock.advance(longGapMs - 1);
+    expect(off.log.sends).toHaveLength(0);
+    await off.clock.advance(1);
+    expect(off.log.endpoints).toEqual([
+      {
+        by: "gap",
+        semantic: "unavailable",
+        reason: "clef-disabled",
+        path: "clef",
+      },
+    ]);
+
+    const local = harness({
+      endpoint: createEndpointChain({
+        local: async () => ({ decision: "finished", latencyMs: 9 }),
+      }),
+    });
+    await local.session.start();
+    await local.say("what time is it");
+    await local.clock.advance(shortGapMs);
+    expect(local.log.endpoints).toEqual([
+      { by: "semantic", semantic: "complete", latencyMs: 9, path: "local" },
     ]);
   });
 });

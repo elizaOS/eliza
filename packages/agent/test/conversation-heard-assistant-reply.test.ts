@@ -451,3 +451,132 @@ it("trims a reply stored in content segments", async () => {
     fs.rmSync(dataDir, { recursive: true, force: true });
   }
 }, 120_000);
+
+it("replaces a reply that was interrupted before any of it was heard", async () => {
+  const { agentId, adapter, adminId, dataDir, runtime, state } =
+    await createFixture();
+  try {
+    const { conversation } = (
+      await call(state, "POST", "/api/conversations", { title: "nothing" })
+    ).payload as { conversation: { id: string; roomId: UUID } };
+    const userId = await runtime.createMemory(
+      {
+        entityId: adminId,
+        agentId,
+        roomId: conversation.roomId,
+        content: { text: "When does my flight leave?" },
+        createdAt: Date.now() - 2_000,
+      } as Memory,
+      "messages",
+    );
+    const assistantId = await runtime.createMemory(
+      {
+        entityId: agentId,
+        agentId,
+        roomId: conversation.roomId,
+        content: { text: FULL_REPLY, inReplyTo: userId },
+        createdAt: Date.now() - 1_000,
+      } as Memory,
+      "messages",
+    );
+    const url = `/api/conversations/${conversation.id}/messages/${assistantId}/heard`;
+    // Only an explicit `true` states that nothing was heard.
+    for (const body of [
+      { nothingHeard: false },
+      { nothingHeard: "yes" },
+      { nothingHeard: true, heardText: "Your flight" },
+    ])
+      expect((await call(state, "POST", url, body)).status).toBe(400);
+    // A user message cannot be marked.
+    expect(
+      (
+        await call(
+          state,
+          "POST",
+          `/api/conversations/${conversation.id}/messages/${userId}/heard`,
+          { nothingHeard: true },
+        )
+      ).status,
+    ).toBe(400);
+
+    const first = await call(state, "POST", url, { nothingHeard: true });
+    expect(first.status).toBe(200);
+    expect(first.payload).toEqual({
+      ok: true,
+      messageId: assistantId,
+      text: "",
+      truncated: true,
+      changed: true,
+    });
+    // Idempotent.
+    const repeat = await call(state, "POST", url, { nothingHeard: true });
+    expect(repeat.payload).toMatchObject({ text: "", changed: false });
+    // Nothing can grow back after nothing was heard.
+    expect(
+      (await call(state, "POST", url, { heardText: "Your flight" })).status,
+    ).toBe(409);
+
+    const [stored] = await runtime.getMemoriesByIds([assistantId], "messages");
+    expect(stored?.content).toMatchObject({
+      text: "",
+      interrupted: true,
+      heardTruncated: true,
+      heardNothing: true,
+      inReplyTo: userId,
+    });
+    const history = await call(
+      state,
+      "GET",
+      `/api/conversations/${conversation.id}/messages`,
+    );
+    const messages = history.payload.messages as Array<{
+      id: string;
+      text: string;
+      interrupted?: boolean;
+    }>;
+    expect(messages.find((m) => m.id === assistantId)).toMatchObject({
+      text: "",
+      interrupted: true,
+    });
+    const [userMemory] = await runtime.getMemoriesByIds([userId], "messages");
+    const context = await recentMessagesProvider.get(
+      runtime,
+      userMemory as Memory,
+      { values: {}, data: {}, text: "" },
+    );
+    expect(context.text).not.toContain("gate is B12");
+  } finally {
+    await adapter.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}, 120_000);
+
+it("accepts nothing heard after an earlier heard prefix", async () => {
+  const { agentId, adapter, dataDir, runtime, state } = await createFixture();
+  try {
+    const { conversation } = (
+      await call(state, "POST", "/api/conversations", { title: "shorter" })
+    ).payload as { conversation: { id: string; roomId: UUID } };
+    const assistantId = await runtime.createMemory(
+      {
+        entityId: agentId,
+        agentId,
+        roomId: conversation.roomId,
+        content: { text: FULL_REPLY },
+      } as Memory,
+      "messages",
+    );
+    const url = `/api/conversations/${conversation.id}/messages/${assistantId}/heard`;
+    expect(
+      (await call(state, "POST", url, { heardText: "Your flight leaves" }))
+        .status,
+    ).toBe(200);
+    const emptied = await call(state, "POST", url, { nothingHeard: true });
+    expect(emptied.payload).toMatchObject({ text: "", changed: true });
+    const [stored] = await runtime.getMemoriesByIds([assistantId], "messages");
+    expect(stored?.content).toMatchObject({ text: "", heardNothing: true });
+  } finally {
+    await adapter.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}, 120_000);

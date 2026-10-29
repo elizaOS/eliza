@@ -116,6 +116,24 @@ export {
   VoiceAssistantError,
   VoiceAssistantSession,
 } from "./voice-assistant-session.js";
+export type {
+  ChainedEndpointResult,
+  ClefEndpointStage,
+  ClefEndpointUnavailableReason,
+  ClefTurnClient,
+  ClefTurnRequest,
+  EndpointChainOptions,
+  EndpointPath,
+  EndpointPort,
+} from "./voice-endpoint-chain.js";
+export {
+  CLEF_ENDPOINT_TIMEOUT_MS,
+  CLEF_ENDPOINT_UNAVAILABLE_REASONS,
+  CLEF_TURN_MAX_CHARS,
+  clefEndpointStageEnabled,
+  createEndpointChain,
+  readClefTurn,
+} from "./voice-endpoint-chain.js";
 export { scoreEndOfTurnHeuristic } from "./voice-eot.js";
 export type {
   EndOfTurnUnavailableReason,

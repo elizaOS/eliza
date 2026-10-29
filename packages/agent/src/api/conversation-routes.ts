@@ -4653,6 +4653,8 @@ async function deleteConversationMessageRoute(
  * the text TTS speaks); whitespace runs compare as one space. A spoken-form
  * prefix is stored as the matching stored-text prefix, rounded up to the end
  * of the word. Anything else is 409; nothing can extend the reply.
+ * Or `{ nothingHeard: true }`: the reply was interrupted before any of it
+ * played; it is replaced with an empty, interruption-marked memory.
  * Response: `{ ok, messageId, text, truncated, changed }`.
  */
 async function recordHeardConversationMessageRoute(
@@ -4686,7 +4688,13 @@ async function recordHeardConversationMessageRoute(
   if (rawBody === null) return true;
   const parsed = PostConversationMessageHeardRequestSchema.safeParse(rawBody);
   if (!parsed.success) {
-    error(res, parsed.error.issues[0]?.message ?? "Invalid request body", 400);
+    error(
+      res,
+      rawBody && typeof rawBody === "object" && "heardText" in rawBody
+        ? "heardText must be non-empty text"
+        : "Body must be { heardText } or { nothingHeard: true }",
+      400,
+    );
     return true;
   }
   const runtime = state.runtime;
@@ -4730,13 +4738,7 @@ async function recordHeardConversationMessageRoute(
     const result = await runtime.roomHandlerQueue.runInLease(
       conv.roomId,
       historyLease,
-      () =>
-        recordHeardAssistantMessage(
-          runtime,
-          conv,
-          messageId,
-          parsed.data.heardText,
-        ),
+      () => recordHeardAssistantMessage(runtime, conv, messageId, parsed.data),
     );
     if (result.changed) {
       conv.updatedAt = new Date().toISOString();

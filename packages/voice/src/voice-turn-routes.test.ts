@@ -107,7 +107,7 @@ function reporter(responses: Response[], assistant = [replyId]) {
         next ?? {
           ok: true,
           messageId: replyId,
-          text: (body as { heardText: string }).heardText,
+          text: (body as { heardText?: string }).heardText ?? "",
           truncated: true,
           changed: true,
         },
@@ -167,7 +167,7 @@ describe("heard route", () => {
     expect(await idempotent.heard.report(interrupted())).toBe("unchanged");
   });
 
-  it("sends nothing when the reply was fully heard, not interrupted, or nothing was heard", async () => {
+  it("sends nothing when the reply was fully heard or not interrupted", async () => {
     const r = reporter([]);
     expect(
       await r.heard.report(interrupted({ interrupted: false, unheard: "" })),
@@ -175,10 +175,61 @@ describe("heard route", () => {
     expect(await r.heard.report(interrupted({ unheard: "  " }))).toBe(
       "not-needed",
     );
+    expect(r.calls).toEqual([]);
+  });
+
+  it("reports a reply interrupted before any of it was heard explicitly", async () => {
+    const r = reporter([
+      {
+        ok: true,
+        messageId: replyId,
+        text: "",
+        truncated: true,
+        changed: true,
+      },
+    ]);
+    expect(
+      await r.heard.report(interrupted({ heard: "  ", unheard: "All of it." })),
+    ).toBe("recorded");
+    expect(r.calls).toEqual([
+      {
+        path: `/api/conversations/room-1/messages/${replyId}/heard`,
+        body: { nothingHeard: true },
+      },
+    ]);
+    expect(r.outcomes).toEqual([["recorded", { attempts: 1, status: 200 }]]);
+    // One report per reply.
     expect(
       await r.heard.report(interrupted({ heard: "", unheard: "All of it." })),
-    ).toBe("nothing-heard");
-    expect(r.calls).toEqual([]);
+    ).toBe("unchanged");
+    expect(r.calls).toHaveLength(1);
+    // The same fences as a heard prefix: binding, conversation and reply id.
+    const fenced = reporter([]);
+    fenced.setCurrent(false);
+    expect(
+      await fenced.heard.report(interrupted({ heard: "", unheard: "All." })),
+    ).toBe("stale");
+    expect(
+      await fenced.heard.report(
+        interrupted({ heard: "", unheard: "All.", conversationId: "room-2" }),
+      ),
+    ).toBe("invalid");
+    expect(fenced.calls).toEqual([]);
+    // Retried once like a heard prefix; an agent that predates the report refuses it (400).
+    const restarting = reporter([503]);
+    expect(
+      await restarting.heard.report(
+        interrupted({ heard: "", unheard: "All." }),
+      ),
+    ).toBe("recorded");
+    expect(restarting.calls.map((call) => call.body)).toEqual([
+      { nothingHeard: true },
+      { nothingHeard: true },
+    ]);
+    const older = reporter([400]);
+    expect(
+      await older.heard.report(interrupted({ heard: "", unheard: "All." })),
+    ).toBe("rejected");
   });
 
   it("accepts only assistant replies of the current conversation, and nothing after the binding changed", async () => {

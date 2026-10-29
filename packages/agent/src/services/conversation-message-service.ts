@@ -348,21 +348,40 @@ async function readStoredMessageText(
 
 /**
  * Keep only the part of a stored assistant reply that the user heard before
- * they interrupted playback. `heardText` must be non-empty and either a prefix
- * of the stored text or a prefix of its spoken form (`sanitizeSpeechText`);
- * whitespace runs compare as one space. A spoken-form prefix is stored as the
- * matching stored-text prefix, so the reply keeps its written form and can
- * only get shorter. Repeating the same request returns the same result
- * without a second write. The trimmed reply is marked `interrupted` and
- * `heardTruncated`, written through the segment-aware content replacement,
- * and re-embedded so semantic search no longer matches the unheard text.
+ * they interrupted playback. `heard` is either `{ heardText }` or
+ * `{ nothingHeard: true }`.
+ *
+ * `heardText` must be non-empty and either a prefix of the stored text or a
+ * prefix of its spoken form (`sanitizeSpeechText`); whitespace runs compare as
+ * one space. A spoken-form prefix is stored as the matching stored-text
+ * prefix, so the reply keeps its written form and can only get shorter.
+ *
+ * `nothingHeard` replaces the reply with an empty, interruption-marked memory
+ * (`heardNothing`): the agent's history keeps that it answered and was cut
+ * off, but none of the unheard words. Empty is a prefix of every reply, so it
+ * is accepted after an earlier heard prefix too; once nothing was heard, any
+ * non-empty heard text is a conflict.
+ *
+ * Repeating the same request returns the same result without a second write.
+ * The trimmed reply is marked `interrupted` and `heardTruncated`, written
+ * through the segment-aware content replacement, and re-embedded so semantic
+ * search no longer matches the unheard text (an empty reply has no text to
+ * embed; recall reads the stored content, which no longer holds the reply).
  */
 export async function recordHeardAssistantMessage(
   runtime: AgentRuntime,
   conversation: ConversationMeta,
   messageId: UUID,
-  heardText: string,
+  heard: string | { heardText: string } | { nothingHeard: true },
 ): Promise<{ text: string; truncated: boolean; changed: boolean }> {
+  const nothingHeard =
+    typeof heard === "object" && "nothingHeard" in heard && heard.nothingHeard;
+  const heardText =
+    typeof heard === "string"
+      ? heard
+      : "heardText" in heard
+        ? heard.heardText
+        : "";
   const [memory] = await runtime.getMemoriesByIds([messageId], "messages");
   if (!memory?.id || memory.roomId !== conversation.roomId) {
     throw conversationMessageNotFound();
@@ -383,6 +402,14 @@ export async function recordHeardAssistantMessage(
     id: memory.id,
   });
   const storedComparable = spokenComparable(stored);
+  const alreadyTruncated = memory.content.heardTruncated === true;
+  if (nothingHeard) {
+    if (!storedComparable && alreadyTruncated)
+      return { text: "", truncated: true, changed: false };
+    return writeHeardContent(runtime, { ...memory, id: memory.id }, "", {
+      heardNothing: true,
+    });
+  }
   const heardComparable = spokenComparable(heardText);
   if (!heardComparable) {
     throw Object.assign(
@@ -392,7 +419,6 @@ export async function recordHeardAssistantMessage(
       { status: 400 },
     );
   }
-  const alreadyTruncated = memory.content.heardTruncated === true;
   const unchanged = {
     text: stored,
     truncated: alreadyTruncated,
@@ -412,15 +438,28 @@ export async function recordHeardAssistantMessage(
     if (spokenComparable(prefix) === storedComparable) return unchanged;
     text = prefix;
   }
+  return writeHeardContent(runtime, { ...memory, id: memory.id }, text);
+}
+
+async function writeHeardContent(
+  runtime: AgentRuntime,
+  memory: Memory & { id: UUID },
+  text: string,
+  marker: { heardNothing?: true } = {},
+): Promise<{ text: string; truncated: true; changed: true }> {
   // The new text is inline; drop the full reply's segment manifest so its
   // segments are removed.
-  const { messageTextSource: _fullReplySource, ...storedContent } =
-    memory.content;
+  const {
+    messageTextSource: _fullReplySource,
+    heardNothing: _previousMarker,
+    ...storedContent
+  } = memory.content;
   const content = {
     ...storedContent,
     text,
     interrupted: true,
     heardTruncated: true,
+    ...marker,
   };
   await replaceStoredMessageContent(runtime, memory.id, content);
   // The stored vector still describes the full reply. Queue a new one for the

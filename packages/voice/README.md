@@ -48,9 +48,21 @@ whose text only becomes an editable draft (never sent).
 `@elizaos/voice/turn-routes` holds the clients for the resident's end-of-turn route
 (`residentEndpoint`, the controller's `endpoint` port: unavailable, malformed or over-long input is
 never complete) and the heard route (`createHeardReporter`: after a barge-in only the played
-prefix is kept, with one retry and never blocking the next turn). Hosts supply the owner-bound
-request port; neither module carries audio anywhere else, stores or logs text. Vitest covers them
-against stub agents; this is not microphone, recognition, scorer or latency evidence.
+prefix is kept, with one retry and never blocking the next turn; a reply interrupted before any of
+it played is reported as `{ nothingHeard: true }`, so the agent keeps an empty, interruption-marked
+reply instead of words the user never heard). Hosts supply the owner-bound request port; neither
+module carries audio anywhere else, stores or logs text. Vitest covers them against stub agents;
+this is not microphone, recognition, scorer or latency evidence.
+
+`@elizaos/voice/endpoint-chain` composes the controller's `endpoint` port as a chain: the local
+fused scorer decides when it can score; only when it cannot does an optional Clef `turn` stage
+(Eliza Cloud, `createClefDecisionsClient` from `@elizaos/cloud-sdk`) see the transcript text, under
+its own timeout; otherwise the session's long silence gap submits. Clef unavailable, disabled,
+late or refused is never a yes. The Clef stage is built only when the host passes
+`clef: { enabled: true, client }`; either alone leaves it out. Each answer names its `path`
+(`local` or `clef`), which the controller's `EndpointRecord` and the timing `endpoint` section
+keep; resumed speech aborts the chain between stages. Vitest covers the chain with stub stages
+and a fake clock; it is not Clef, scorer or latency evidence.
 
 ## Voice turn latency records
 

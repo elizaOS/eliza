@@ -82,15 +82,20 @@ export const PostConversationTruncateRequestSchema = z
   }));
 
 /**
- * The part of a stored assistant reply that the user heard before they
- * interrupted playback: a non-empty prefix of the stored reply text or of its
- * spoken form (`sanitizeSpeechText`).
+ * What the user heard of a stored assistant reply before they interrupted
+ * playback. Either `heardText`, a non-empty prefix of the stored reply text or
+ * of its spoken form (`sanitizeSpeechText`), or `nothingHeard: true` when the
+ * reply was interrupted before any of it was played. An empty `heardText` is
+ * refused: hearing nothing must be stated explicitly.
  */
-export const PostConversationMessageHeardRequestSchema = z
-  .object({
-    heardText: z.string().regex(/\S/, "heardText must not be empty"),
-  })
-  .strict();
+export const PostConversationMessageHeardRequestSchema = z.union([
+  z
+    .object({
+      heardText: z.string().regex(/\S/, "heardText must not be empty"),
+    })
+    .strict(),
+  z.object({ nothingHeard: z.literal(true) }).strict(),
+]);
 
 export const PatchConversationRequestSchema = z
   .object({
