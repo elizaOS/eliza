@@ -31,6 +31,12 @@
       "import": "./dist/mailbox/index.js",
       "default": "./dist/mailbox/index.js"
     },
+    "./mailbox/views": {
+      "eliza-source": "./src/components/mailbox/index.ts",
+      "types": "./dist/components/mailbox/index.d.ts",
+      "import": "./dist/components/mailbox/index.js",
+      "default": "./dist/components/mailbox/index.js"
+    },
     "./*.css": "./dist/*.css"
   },
   "dependencies": {

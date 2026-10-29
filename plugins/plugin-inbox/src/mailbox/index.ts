@@ -3,10 +3,12 @@
  * contract, incremental grants, validated Cloud client, durable reviewed
  * operations, read state, attachments, retained edits, reviewed agent
  * hand-off and the mailbox list (paging, bounded caches, saved snapshots and
- * the Home attention summary). No Node built-ins and no React; hosts inject
+ * the Home attention summary), the background new-mail notice bridge and
+ * the reviewed "Use in email" destination. No Node built-ins and no React; hosts inject
  * transport and storage.
  */
 export * from "./attachments.ts";
+export * from "./background-notices.ts";
 export * from "./drafts-controller.ts";
 export * from "./failures.ts";
 export * from "./grants.ts";
@@ -20,4 +22,5 @@ export * from "./read-ahead.ts";
 export * from "./read-state.ts";
 export * from "./retained-draft.ts";
 export * from "./review-controller.ts";
+export * from "./use-in-email.ts";
 export type * from "./types.ts";
