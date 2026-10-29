@@ -28,7 +28,10 @@ import type { ElizaConfig } from "@elizaos/host/protocol";
 import { hasTextGenerationHandler } from "@elizaos/plugin-assistant";
 import { isCloudProvisionedContainer } from "@elizaos/plugin-elizacloud/cloud-config/cloud-provisioning";
 import { createDevCloudConfigAuthorityView } from "../config/dev-cloud-env-authority.ts";
-import { isSensitiveConfigKey } from "../config/sensitive-keys.ts";
+import {
+  isSensitiveConfigKey,
+  redactSensitiveLeaf,
+} from "../config/sensitive-keys.ts";
 import { getDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
@@ -110,16 +113,6 @@ interface RuntimeDebugSerializeOptions {
   maxArrayLength: number;
   maxObjectEntries: number;
   maxStringLength: number;
-}
-
-/** Match walkConfigSecretFilter leaf policy for runtime debug dumps. */
-function redactRuntimeDebugLeaf(value: unknown): unknown {
-  if (value === null || value === undefined) return value;
-  if (typeof value === "string") return value.length > 0 ? "[REDACTED]" : "";
-  if (typeof value === "number" || typeof value === "boolean") {
-    return "[REDACTED]";
-  }
-  return "[REDACTED]";
 }
 
 /**
@@ -247,7 +240,7 @@ export function serializeForRuntimeDebug(
     if (current === null) return null;
     const kind = typeof current;
     if (redactAll && kind !== "object") {
-      return redactRuntimeDebugLeaf(current);
+      return redactSensitiveLeaf(current);
     }
     if (kind === "string") {
       if ((current as string).length <= options.maxStringLength) return current;
