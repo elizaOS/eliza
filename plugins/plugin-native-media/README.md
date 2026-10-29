@@ -79,6 +79,22 @@ Selected documents:
   revision the renderer listed and deletion needs explicit confirmation. Android grants the folder
   in place: nothing is copied or imported, and no broad storage permission is used. Choosing
   another tree releases only the previous tree's grant.
+- `SelectedDocumentCalls` – the bridge contract of `SelectedDocuments` (restore, describe, rename,
+  PDF page, read, open, share, forget by opaque `selectionId`), so a host plugin keeps its own
+  plugin and method names and delegates each method.
+- `DocumentExport` / `DocumentDestinations` – owner-chosen import and export: strict UTF-8 text up
+  to 64 KiB, safe file titles, Android's open/create document pickers and a write that reads the
+  bytes back. An export that reached the provider and could not be confirmed is `unverified`,
+  never `failed`. `DocumentExport` is pure Java.
+- `ReviewedFileHandoff` – one temporary read-only copy of reviewed bytes for one viewer, through
+  the host's FileProvider; the host injects the authority, cache folder and provider path name.
+  A new copy revokes and deletes the previous one.
+- `IsolatedPdfRenderService` / `IsolatedPdfViewerActivity` / `PdfPageLimits` – untrusted PDF pages
+  rendered in a permissionless isolated process into read-only shared memory, and a viewer that
+  maps those pixels only after checking the reply came from a different, isolated,
+  network-denied uid within the size limits. The renderer ends its process past a 10 s deadline
+  or 128 MiB PSS. The host declares concrete subclasses (the service with
+  `android:isolatedProcess="true"`) and says which sources the viewer admits.
 
 Recordings:
 
@@ -120,8 +136,26 @@ SelectedDocuments documents =
     new SelectedDocuments(context, "myapp-selected-documents", "myapp-document-", links::retains);
 DocumentFolderTree folders =
     new DocumentFolderTree(context, "myapp-files-tree", uri -> documents.authorize(uri, 0));
+ReviewedFileHandoff handoff = new ReviewedFileHandoff(
+    context, context.getPackageName() + ".attachments", "attachments", "attachments");
 RecordingStore recordings = new RecordingStore(
     new File(context.getNoBackupFilesDir(), "recordings"), "myapp-recording:v1:", "ownerId", slots);
+```
+
+An isolated PDF viewer is two host components:
+
+```java
+public final class MyPdfService extends IsolatedPdfRenderService {}
+public final class MyPdfActivity extends IsolatedPdfViewerActivity {
+  @Override protected Class<? extends IsolatedPdfRenderService> renderer() { return MyPdfService.class; }
+  @Override protected boolean admits(Uri source) { return handoff(this).admits(source); }
+}
+```
+
+```xml
+<activity android:name=".MyPdfActivity" android:exported="false" />
+<service android:name=".MyPdfService" android:exported="false" android:isolatedProcess="true"
+    android:process=":isolated_pdf" android:stopWithTask="true" />
 ```
 
 `DocumentFolderTree` methods run on one serial worker through `guarded(...)`; launch
