@@ -458,6 +458,11 @@ async function main() {
     path.join(espeakDir, "data", "espeak-ng-data"),
     path.join(paradeeDir, "espeak-ng-data"),
   );
+  const missingEspeak = inputs.espeak.data.filter(
+    (relative) => !existsSync(path.join(paradeeDir, "espeak-ng-data", relative)),
+  );
+  if (missingEspeak.length)
+    fail(`eSpeak NG data missing from the bundle: ${missingEspeak.join(", ")}`);
   const notices = path.join(bundle, "notices");
   mkdirSync(notices, { recursive: true });
   copyFileSync(

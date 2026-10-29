@@ -227,7 +227,16 @@ async function ensureEspeakNg({ dir, abi, ndk, forkSrc }) {
   // The stamp names the build options too, so an older build (160-byte
   // N_PATH_HOME) is rebuilt.
   const stampValue = `${pin.sha256} N_PATH_HOME=${ESPEAK_PATH_HOME}`;
-  if (existsSync(stamp) && readFileSync(stamp, "utf8").trim() === stampValue) {
+  // Reuse needs the compiled data too: a pin that adds a language (es_dict)
+  // keeps the same archive and library stamp.
+  const dataReady = pin.data.every((relative) =>
+    existsSync(path.join(dir, "data", "espeak-ng-data", relative)),
+  );
+  if (
+    dataReady &&
+    existsSync(stamp) &&
+    readFileSync(stamp, "utf8").trim() === stampValue
+  ) {
     log(`eSpeak NG ${pin.version} for ${abi}: reusing ${path.join(dir, abi)}`);
     return path.join(dir, abi);
   }
