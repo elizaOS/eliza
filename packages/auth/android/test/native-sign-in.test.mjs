@@ -84,6 +84,16 @@ test("registration, PKCE, callback, pending record, failures, routes, readiness 
   );
 });
 
+test("bounded saved-key revocation for a confirmed reset (plain JVM)", () => {
+  assert.match(
+    runJvm(
+      [...pure, ...support, join(tests, "CloudKeyRevocationResetTest.java")],
+      "ai.eliza.auth.cloud.CloudKeyRevocationResetTest",
+    ),
+    /^PASS cloud reset revocation \(\d+ checks\)/,
+  );
+});
+
 test("callback contract vectors through the native parser", () => {
   const contract = JSON.parse(
     read(join(root, "test/fixtures/app-auth-callback-contract.json")),
