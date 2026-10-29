@@ -164,6 +164,13 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
           body: JSON.stringify({ name: "Guest", systemPrompt: "Guest set." }),
         },
       ],
+      ["/api/logs", {}],
+      ["/api/logs", { method: "DELETE" }],
+      [
+        "/api/logs/export",
+        { method: "POST", body: JSON.stringify({ format: "json" }) },
+      ],
+      ["/api/security/audit", {}],
     ];
     for (const [path, init] of guestRequests) {
       const response = await send("guest-session-id", path, init);

@@ -1135,6 +1135,18 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     // for writes, but the experience GETs were left open — the same
     // stored-content class as the owner-gated memory reads.
     under("/api/character/experiences") ||
+    // Runtime logs and the security audit feed are the owner's developer /
+    // ops surface: they disclose prompts, paths, errors, signing decisions,
+    // and secret-token replacement metadata. DELETE /api/logs also lets a
+    // caller wipe that evidence. Both paths sit behind the shared session
+    // gate only, so a paired USER guest reaches them unless the whole
+    // diagnostics surface is owner-only (same class as /api/discord GETs).
+    // Exact /api/security/audit covers the JSON snapshot and the live SSE
+    // stream on the same path. Do NOT add /api/agent/events here — that
+    // REST gate alone was rejected in #37876 because the same events also
+    // fan out over WebSocket to USER sockets; fix that surface separately.
+    under("/api/logs") ||
+    pathname === "/api/security/audit" ||
     (write &&
       [
         "import",
