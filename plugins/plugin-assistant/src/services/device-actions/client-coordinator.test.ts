@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   actionScope,
+  type CurrentDeviceActionRequest,
   type DeviceActionClientProfile,
   DeviceActionCoordinator,
   type DeviceActionJournal,
@@ -195,16 +196,20 @@ function coordinator(
   request: (p: string, b: unknown, s: AbortSignal) => Promise<unknown>,
   journal: DeviceActionJournal,
   execute: DeviceExecutor,
+  currentRequestBrowserPolicy = false,
 ) {
-  return new DeviceActionCoordinator({
-    session,
-    credential,
-    scope,
-    request,
-    journal,
-    execute,
-    profile,
-  });
+  return new DeviceActionCoordinator(
+    {
+      session,
+      credential,
+      scope,
+      request,
+      journal,
+      execute,
+      profile,
+    },
+    { currentRequestBrowserPolicy },
+  );
 }
 
 describe("DeviceActionCoordinator", () => {
@@ -502,5 +507,356 @@ describe("publishCommittedDeviceChanges", () => {
       published.push(view),
     );
     expect(published).toEqual(["notes", "calendar"]);
+  });
+});
+
+describe("opt-in current browser request policy", () => {
+  const context: DeviceContextEnvelope = {
+    view: "browser",
+    revision: 1,
+    sensitive: false,
+  };
+  const proof = (
+    text = "open https://example.com/path?q=1#x",
+  ): CurrentDeviceActionRequest => ({
+    messageId: "message",
+    text,
+    current() {},
+  });
+  function browserFixture(policy = true) {
+    const fixture = fixtureServer({
+      type: "browser_navigate",
+      url: "https://example.com/path?q=1#x",
+    });
+    let messageId = "message",
+      proposalId = "proposal",
+      proposalDigest = digest;
+    const request = async (path: string, body: unknown, s: AbortSignal) => {
+      const response = await fixture.request(path, body, s);
+      if ("proposals" in response)
+        for (const item of response.proposals) {
+          Object.assign(item.payload, { requestMessageId: messageId });
+          Object.assign(item, { id: proposalId, digest: proposalDigest });
+        }
+      if ("proposal" in response) {
+        Object.assign(response.proposal.payload, {
+          requestMessageId: messageId,
+        });
+        Object.assign(response.proposal, {
+          id: proposalId,
+          digest: proposalDigest,
+        });
+      }
+      return response;
+    };
+    const { journal, entries } = memoryJournal();
+    let effects = 0;
+    const actions = coordinator(
+      request,
+      journal,
+      async () => {
+        effects++;
+        return { status: "succeeded", summary: "Opened" };
+      },
+      policy,
+    );
+    return {
+      ...fixture,
+      actions,
+      entries,
+      effects: () => effects,
+      bind(message: string, id = "proposal", nextDigest = digest) {
+        messageId = message;
+        proposalId = id;
+        proposalDigest = nextDigest;
+      },
+    };
+  }
+  it("blocks missing, ungrounded and stale authority locally with validated provenance", async () => {
+    const f = browserFixture();
+    for (const current of [
+      undefined,
+      proof("read my calendar"),
+      proof("open example.com"),
+      {
+        ...proof(),
+        current() {
+          throw Error("retired");
+        },
+      },
+    ]) {
+      expect(
+        await f.actions.pendingReview(context, signal(), current),
+      ).toMatchObject([
+        {
+          proposal: null,
+          proposalId: "proposal",
+          notice: expect.stringContaining("blocked"),
+        },
+      ]);
+    }
+    expect(f.server.state).toBe("pending");
+    expect(f.server.claims).toBe(0);
+    expect(f.effects()).toBe(0);
+  });
+  it("does not attach unvalidated IDs to malformed sibling notices", async () => {
+    const fixture = fixtureServer(note);
+    const { journal } = memoryJournal();
+    const actions = coordinator(
+      async (path, body, s) => {
+        const response = await fixture.request(path, body, s);
+        if ("proposals" in response)
+          response.proposals.push({
+            ...response.proposals[0],
+            id: "untrusted",
+            subjectUserId: "other-owner",
+          });
+        return response;
+      },
+      journal,
+      async () => ({ status: "succeeded", summary: "Saved" }),
+      true,
+    );
+    const items = await actions.pendingReview(notesContext, signal());
+    expect(items[0]).toMatchObject({
+      proposalId: "proposal",
+      proposal: { id: "proposal" },
+    });
+    expect(items[1].proposal).toBeNull();
+    expect(items[1]).not.toHaveProperty("proposalId");
+  });
+  it("accepts quoted explicit destinations and preserves path, query and fragment grounding", async () => {
+    for (const text of [
+      'open "https://example.com/path?q=1#x"',
+      "https://example.com/path?q=1#x",
+      "visit example.com/path?q=1#x",
+    ]) {
+      const f = browserFixture();
+      const current = proof(text);
+      expect(
+        (await f.actions.pendingReview(context, signal(), current))[0].proposal
+          ?.id,
+      ).toBe("proposal");
+      expect(
+        await f.actions.performRequested(
+          "message",
+          context,
+          signal(),
+          async () => true,
+          undefined,
+          current,
+        ),
+      ).toHaveLength(1);
+    }
+  });
+  it("grounds the exact destination and consumes once before concurrent approval", async () => {
+    const f = browserFixture();
+    const current = proof();
+    expect(
+      await f.actions.pendingReview(context, signal(), current),
+    ).toMatchObject([{ proposalId: "proposal", proposal: { id: "proposal" } }]);
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const attempt = () =>
+      f.actions.performRequested(
+        "message",
+        context,
+        signal(),
+        async () => {
+          await gate;
+          return true;
+        },
+        "browser_navigate",
+        current,
+      );
+    const a = attempt(),
+      b = attempt();
+    release();
+    const receipts = await Promise.all([a, b]);
+    expect(receipts.flat()).toHaveLength(1);
+    expect(f.effects()).toBe(1);
+    expect(f.server.claims).toBe(1);
+  });
+  it("rechecks cancellation and current authority after asynchronous preference", async () => {
+    const f = browserFixture();
+    let active = true;
+    const current = {
+      ...proof(),
+      current() {
+        if (!active) throw Error("retired");
+      },
+    };
+    await f.actions.pendingReview(context, signal(), current);
+    expect(
+      await f.actions.performRequested(
+        "message",
+        context,
+        signal(),
+        async () => {
+          active = false;
+          return true;
+        },
+        undefined,
+        current,
+      ),
+    ).toEqual([]);
+    expect(f.server.state).toBe("pending");
+    expect(f.effects()).toBe(0);
+  });
+  it("preserves the legacy five-argument automatic browser caller", async () => {
+    const f = browserFixture(false);
+    await f.actions.pendingReview(context, signal());
+    expect(
+      await f.actions.performRequested(
+        "message",
+        context,
+        signal(),
+        async () => true,
+        "browser_navigate",
+      ),
+    ).toHaveLength(1);
+    expect(f.effects()).toBe(1);
+  });
+  it("keeps once markers across A to B to A and refuses a full live ledger", async () => {
+    const f = browserFixture();
+    let firstRetired = false;
+    for (let i = 0; i < 128; i++) {
+      const messageId = `message-${i}`;
+      f.bind(messageId, `proposal-${i}`);
+      f.server.state = "pending";
+      const current = {
+        ...proof(),
+        messageId,
+        current() {
+          if (i === 0 && firstRetired) throw Error("retired");
+        },
+      };
+      await f.actions.pendingReview(context, signal(), current);
+      await f.actions.performRequested(
+        messageId,
+        context,
+        signal(),
+        async () => true,
+        undefined,
+        current,
+      );
+    }
+    expect(f.effects()).toBe(128);
+    for (const messageId of ["message-0", "message-128"]) {
+      f.bind(messageId, `new-${messageId}`);
+      f.server.state = "pending";
+      const current = { ...proof(), messageId };
+      await f.actions.pendingReview(context, signal(), current);
+      expect(
+        await f.actions.performRequested(
+          messageId,
+          context,
+          signal(),
+          async () => true,
+          undefined,
+          current,
+        ),
+      ).toEqual([]);
+    }
+    expect(f.effects()).toBe(128);
+    firstRetired = true;
+    const current = { ...proof(), messageId: "after-retirement" };
+    f.bind(current.messageId, "after-retirement");
+    f.server.state = "pending";
+    await f.actions.pendingReview(context, signal(), current);
+    expect(
+      await f.actions.performRequested(
+        current.messageId,
+        context,
+        signal(),
+        async () => true,
+        undefined,
+        current,
+      ),
+    ).toHaveLength(1);
+    expect(f.effects()).toBe(129);
+  });
+  it("reevaluates changed proposal digests", async () => {
+    const f = browserFixture();
+    const current = proof("open https://other.example");
+    expect(
+      (await f.actions.pendingReview(context, signal(), current))[0].proposal,
+    ).toBeNull();
+    f.bind("message", "proposal", "d".repeat(64));
+    expect(
+      (await f.actions.pendingReview(context, signal(), proof()))[0].proposal
+        ?.id,
+    ).toBe("proposal");
+  });
+  it("refuses session rebinding or abort during preference checks", async () => {
+    const f = browserFixture();
+    const current = proof();
+    await f.actions.pendingReview(context, signal(), current);
+    const previous = session.sessionId;
+    try {
+      session.sessionId = "already-rebound";
+      expect(
+        await f.actions.performRequested(
+          "message",
+          context,
+          signal(),
+          async () => true,
+          undefined,
+          current,
+        ),
+      ).toEqual([]);
+      session.sessionId = previous;
+      expect(
+        await f.actions.performRequested(
+          "message",
+          context,
+          signal(),
+          async () => {
+            session.sessionId = "new-session";
+            return true;
+          },
+          undefined,
+          current,
+        ),
+      ).toEqual([]);
+    } finally {
+      session.sessionId = previous;
+    }
+    const abort = new AbortController();
+    await expect(
+      f.actions.performRequested(
+        "message",
+        context,
+        abort.signal,
+        async () => {
+          abort.abort();
+          return true;
+        },
+        undefined,
+        current,
+      ),
+    ).rejects.toThrow();
+    expect(f.effects()).toBe(0);
+  });
+  it("strips only calendarDay from the durable context and retains full live context", async () => {
+    const f = fixtureServer(note);
+    const { entries, journal } = memoryJournal();
+    const full = {
+      ...notesContext,
+      calendarDay: { date: "2026-10-29" },
+      extraField: { retained: true },
+    };
+    const actions = coordinator(f.request, journal, async (_op, _id, live) => {
+      expect(live).toEqual(full);
+      return { status: "succeeded", summary: "Saved" };
+    });
+    await actions.pending(full, signal());
+    await actions.approve("proposal", full, signal());
+    expect(entries.get("proposal")?.record.context).toEqual({
+      ...notesContext,
+      extraField: { retained: true },
+    });
   });
 });
