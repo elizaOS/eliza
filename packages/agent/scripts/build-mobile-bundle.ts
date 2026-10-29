@@ -28,6 +28,7 @@ import {
   MOBILE_VIEW_PLUGINS,
 } from "../src/runtime/core-plugins.ts";
 import { createMobileBundleDependencies } from "./mobile-bundle-dependencies.ts";
+import { mobileWalletConnectorStubPlugin } from "./mobile-wallet-connectors.ts";
 import {
   canUseWorkspaceEntry,
   findWorkspaceSourceEntry,
@@ -1448,6 +1449,8 @@ const buildResult = await Bun.build({
     ethersCjsResolverPlugin,
     viemCjsResolverPlugin,
     stubCssPlugin,
+    // Before the generic resolvers: no wallet-connector closure reaches a mobile bundle.
+    mobileWalletConnectorStubPlugin(path.join(stubsDir, "null-plugin.ts")),
     dedupePlugin,
     nativeCapacitorPlugin,
     exactMobileStubPlugin,
