@@ -81,7 +81,8 @@ Selected documents:
   another tree releases only the previous tree's grant.
 - `SelectedDocumentCalls` – the bridge contract of `SelectedDocuments` (restore, describe, rename,
   PDF page, read, open, share, forget by opaque `selectionId`), so a host plugin keeps its own
-  plugin and method names and delegates each method.
+  plugin and method names and delegates each method, passing its registry lazily so a registry
+  that cannot load is reported as a fixed rejection.
 - `DocumentExport` / `DocumentDestinations` – owner-chosen import and export: strict UTF-8 text up
   to 64 KiB, safe file titles, Android's open/create document pickers and a write that reads the
   bytes back. An export that reached the provider and could not be confirmed is `unverified`,
