@@ -215,10 +215,7 @@ export class AudioMonitor {
 				this.lastFlagged = this.buffers.length;
 			}
 			this.buffers.push(chunk);
-			let currentSize = this.buffers.reduce(
-				(acc, cur) => acc + cur.length,
-				0,
-			);
+			let currentSize = this.buffers.reduce((acc, cur) => acc + cur.length, 0);
 			while (currentSize > this.maxSize) {
 				const dropped = this.buffers.shift();
 				if (!dropped) break;
