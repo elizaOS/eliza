@@ -193,7 +193,9 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
       method: "PUT",
       body: JSON.stringify({ system: "Set by the owner." }),
     });
-    expect(ownerCharacter.status).toBe(200);
+    expect(ownerCharacter.status, await ownerCharacter.clone().text()).toBe(
+      200,
+    );
     // The wallet gate passes the owner through to the wallet routes.
     const ownerSign = await send(
       OWNER_TOKEN,
