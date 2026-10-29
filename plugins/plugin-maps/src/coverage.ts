@@ -26,14 +26,15 @@ const MODE_ORDER: readonly TravelMode[] = [
 ];
 
 /**
- * Travel modes to offer for a provider. A reported coverage is authoritative;
- * without one, the road modes are offered and transit is never advertised,
- * because no provider serves it unless it says so.
+ * Travel modes to offer for a provider. A reported coverage is authoritative,
+ * so transit is offered only where it lists transit (Eliza Cloud reports none).
+ * A provider that publishes no coverage, or whose coverage cannot be read, is
+ * not narrowed: it answers each mode itself, as before coverage existed.
  */
 export function offeredTravelModes(
   coverage: Pick<MapsCoverage, "travelModes"> | null | undefined,
 ): TravelMode[] {
-  if (!coverage) return MODE_ORDER.filter((mode) => mode !== "transit");
+  if (!coverage) return [...MODE_ORDER];
   return MODE_ORDER.filter((mode) => coverage.travelModes.includes(mode));
 }
 

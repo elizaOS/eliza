@@ -5,7 +5,15 @@
  * Providers, stores and hosts are in-process stubs; no request leaves the test.
  */
 import type { HandlerOptions, IAgentRuntime, Memory } from "@elizaos/core";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+// Owner access is resolved by core from world roles; the stub runtime has none,
+// so the test names the owner entity directly.
+vi.mock("@elizaos/core", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@elizaos/core")>()),
+  hasOwnerAccess: async (_runtime: unknown, message: { entityId?: string }) =>
+    message?.entityId === OWNER,
+}));
 import { mapsAction } from "../src/action.js";
 import type { MapsProviderAdapter } from "../src/adapter.js";
 import { SavedPlaces } from "../src/client/saved-places.ts";
@@ -103,17 +111,24 @@ function adapter(
 
 const runtimeWith = (service: MapsService) =>
   ({ getService: () => service }) as unknown as IAgentRuntime;
-const message = (parameters: Record<string, unknown>) =>
+const message = (parameters: Record<string, unknown>, entityId = OWNER) =>
   ({
     id: "00000000-0000-4000-8000-000000000001",
-    entityId: OWNER,
+    entityId,
     roomId: "00000000-0000-4000-8000-000000000003",
     content: { text: "", ...parameters },
   }) as unknown as Memory;
-const run = (service: MapsService, parameters: Record<string, unknown>) =>
-  mapsAction.handler?.(runtimeWith(service), message(parameters), undefined, {
-    parameters,
-  } as HandlerOptions);
+const run = (
+  service: MapsService,
+  parameters: Record<string, unknown>,
+  entityId = OWNER,
+) =>
+  mapsAction.handler?.(
+    runtimeWith(service),
+    message(parameters, entityId),
+    undefined,
+    { parameters } as HandlerOptions,
+  );
 
 describe("cancelled before admission", () => {
   it("is a typed cancelled result that the planner must not retry", async () => {
@@ -140,9 +155,15 @@ describe("cancelled before admission", () => {
   });
 });
 
-describe("transit is offered only where a provider reports it", () => {
-  it("derives offered modes from coverage, never assuming transit", () => {
-    expect(offeredTravelModes(null)).toEqual(["drive", "walk", "bicycle"]);
+describe("transit is offered only where a reported coverage lists it", () => {
+  it("derives offered modes from a reported coverage only", () => {
+    // No reported coverage narrows nothing: the provider answers each mode.
+    expect(offeredTravelModes(null)).toEqual([
+      "drive",
+      "walk",
+      "bicycle",
+      "transit",
+    ]);
     expect(offeredTravelModes({ travelModes: ["walk", "transit"] })).toEqual([
       "walk",
       "transit",
@@ -202,6 +223,15 @@ describe("transit is offered only where a provider reports it", () => {
       ...coordinates,
     });
     expect(routed).toEqual(["transit"]);
+    // A provider that publishes no coverage (Google) still answers transit itself.
+    const unreported = new MapsService(undefined, store([]));
+    unreported.registerAdapter(adapter(null, routed));
+    await run(unreported, {
+      action: "route",
+      travelMode: "transit",
+      ...coordinates,
+    });
+    expect(routed).toEqual(["transit", "transit"]);
   });
 
   it("answers the view's coverage read", async () => {
@@ -283,7 +313,7 @@ describe("saved places reconciled with the phone's list", () => {
       }),
     ).toThrow(MapsError);
     const memory = new Map<string, string>();
-    const phone = new SavedPlaces("alpha.maps.saved-places.v1", {
+    const phone = new SavedPlaces("phone.maps.saved-places.v1", {
       getItem: (key) => memory.get(key) ?? null,
       setItem: (key, value) => void memory.set(key, value),
     });
@@ -305,7 +335,7 @@ describe("saved places reconciled with the phone's list", () => {
       data: {
         action: "saved",
         device: "listed",
-        namespace: "alpha.maps.saved-places.v1",
+        namespace: "phone.maps.saved-places.v1",
       },
     });
     expect(
@@ -314,7 +344,20 @@ describe("saved places reconciled with the phone's list", () => {
       )?.places.map((row) => row.source),
     ).toEqual(["both", "device"]);
 
-    memory.set("alpha.maps.saved-places.v1", "{not json");
+    // The phone's list is the owner's: another sender never reads it.
+    const stranger = await run(
+      service,
+      { action: "saved" },
+      "00000000-0000-4000-8000-000000000009",
+    );
+    expect(stranger).toMatchObject({
+      success: true,
+      text: "You have no saved places.",
+      data: { device: "none", places: [] },
+    });
+    expect(JSON.stringify(stranger)).not.toContain("Pin");
+
+    memory.set("phone.maps.saved-places.v1", "{not json");
     const degraded = await run(service, { action: "saved" });
     expect(degraded).toMatchObject({
       success: true,

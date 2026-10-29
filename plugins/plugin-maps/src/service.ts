@@ -176,16 +176,20 @@ export class MapsService extends Service {
   }
 
   /**
-   * The owner's saved places reconciled with the registered host's list. A host
+   * The entity's saved places, reconciled with the registered host's list only
+   * when the caller passes `includeDevice` after an owner-access check. A host
    * that fails or answers malformed data is reported as unavailable; the agent's
    * own places are still listed and nothing is written to either store.
    */
   async listReconciledSavedPlaces(
     ownerEntityId: string,
-    signal?: AbortSignal,
+    options: { includeDevice: boolean; signal?: AbortSignal },
   ): Promise<SavedPlacesListing> {
+    const { includeDevice, signal } = options;
     const agent = await this.listSavedPlaces(ownerEntityId);
-    const host = this.savedPlacesHost;
+    // The device list belongs to the phone's owner; a caller that has not
+    // established owner access never reads it.
+    const host = includeDevice ? this.savedPlacesHost : null;
     if (!host)
       return { places: reconcileSavedPlaces(agent, []), device: "none" };
     try {

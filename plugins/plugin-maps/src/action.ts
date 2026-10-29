@@ -13,7 +13,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { appendInteractionBlock } from "@elizaos/core";
+import { appendInteractionBlock, hasOwnerAccess } from "@elizaos/core";
 import {
   appendMapsCard,
   handoffCard,
@@ -241,7 +241,10 @@ function travelModeField(
   };
 }
 
-/** Modes the provider reports; an unreadable or unreported coverage offers road modes only. */
+/**
+ * Modes the provider reports. An unreported or unreadable coverage narrows
+ * nothing: a malformed coverage fact never refuses a route (README).
+ */
 async function servedTravelModes(
   service: MapsService,
   provider?: string,
@@ -256,7 +259,7 @@ async function servedTravelModes(
   }
 }
 
-/** Refuses transit before dispatch unless the provider reports serving it. */
+/** Refuses transit before dispatch when the provider's reported coverage omits it. */
 async function assertTransitServed(
   service: MapsService,
   travelMode: TravelMode,
@@ -334,8 +337,8 @@ function actionError(error: MapsError): ActionResult {
     error.code === "MAPS_PROVIDER_FAILURE" ||
     error.code === "MAPS_PROVIDER_TIMEOUT" ||
     error.code === "MAPS_PROVIDER_NETWORK";
-  // A request cancelled before admission is a settled outcome, not a failure to
-  // retry: nothing reached the provider and the planner must not replay it.
+  // A cancelled request is a settled outcome, not a failure to retry. Cloud may
+  // report it before admission or after dispatch, so the planner must not replay it.
   const cancelled = error.code === "MAPS_REQUEST_CANCELLED";
   return {
     success: false,
@@ -889,10 +892,12 @@ async function execute(
         );
       }
       case "saved": {
-        // Read-only: the owner's saved places, reconciled with the phone's own
-        // Maps list when the device host registered one. Nothing is written.
+        // Read-only: the sender's saved places, reconciled with the phone's own
+        // Maps list when the device host registered one. The device list is the
+        // owner's, so only an owner-authorized sender reads it. Nothing is written.
         const listing = await service.listReconciledSavedPlaces(
           message.entityId,
+          { includeDevice: await hasOwnerAccess(runtime, message) },
         );
         const names = listing.places.map((row) => row.label);
         const deviceNote =

@@ -923,8 +923,8 @@ export function MapsView({
     setRouteError(null);
     setRoutes([]);
     try {
-      // Plan only the modes the provider serves: transit is offered only where
-      // its coverage lists it, so no request is spent on a refused mode.
+      // Plan only the modes a reported coverage lists, so no request is spent
+      // on a mode it omits; an unreported coverage narrows nothing.
       const coverage = transport.coverage
         ? await transport
             .coverage(provider, controller.signal)

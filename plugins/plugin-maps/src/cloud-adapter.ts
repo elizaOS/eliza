@@ -203,7 +203,7 @@ const MESSAGE_BY_CODE: Partial<Record<MapsErrorCode, string>> = {
   MAPS_REQUEST_ALREADY_ADMITTED:
     "This Maps request was already admitted. It will not be dispatched again.",
   MAPS_REQUEST_CANCELLED:
-    "The Maps request was cancelled before Eliza Cloud admitted it. Nothing was sent to the maps provider.",
+    "The Maps request was cancelled. Do not replay it; ask again to make a new request.",
   MAPS_BUDGET_EXHAUSTED:
     "The separate Maps request allowance is exhausted until its reset.",
   MAPS_NOT_ENTITLED: "Maps needs an active Eliza subscription.",
