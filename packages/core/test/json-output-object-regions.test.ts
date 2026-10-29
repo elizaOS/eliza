@@ -43,6 +43,27 @@ describe("parseJsonObject object regions after prose", () => {
 		).toEqual(DRAFT);
 	});
 
+	it("reads the whole object after a prose quote when a string value holds braces", () => {
+		const reply = { action: "REPLY", text: "Use {} as the empty set" };
+		expect(
+			parseJsonObject(`The shelf is 5" wide. ${JSON.stringify(reply)}`),
+		).toEqual(reply);
+		const note = { a: "{ }", b: 2 };
+		expect(parseJsonObject(`Note: 5" gap\n${JSON.stringify(note)}`)).toEqual(
+			note,
+		);
+	});
+
+	it("validates the whole object after a prose quote against the schema", () => {
+		const draft = { ...DRAFT, name: "Use {} here" };
+		const result = parseAndValidate(
+			`The label is 5" wide, then:\n${JSON.stringify(draft)}`,
+			SCHEMA,
+		);
+		expect(result.valid).toBe(true);
+		expect(result.parsed).toEqual(draft);
+	});
+
 	it("still reads the first complete object when two are present", () => {
 		expect(parseJsonObject('{"a":1}\n{"b":2}')).toEqual({ a: 1 });
 	});
