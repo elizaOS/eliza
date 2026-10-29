@@ -102,10 +102,12 @@ runs:
         rm -f "$BUNDLE/asr/eliza-1-asr.gguf" "$BUNDLE/asr/eliza-1-asr-mmproj.gguf"
 
         # Product voice stack: Phonon-2 ASR (asr/phonon-2-fv5.gguf + notices)
-        # and Paradee-8M v1.1 TTS (tts/paradee/paradee-8m-v1_1.gguf + misaki
+        # and Paradee-8M v1.2 TTS (tts/paradee/paradee-8m-v1_2.gguf + misaki
         # lexicon), converted from FermionResearch/Phonon-2 and
-        # sahilmahendrakar/Paradee-8M-v1.1 at the revisions the fork pins. The
-        # builder hashes every download and every converted file.
+        # sahilmahendrakar/Paradee-8M-v1.2 at the revisions the fork pins. The
+        # builder hashes every download and every converted file. The desktop
+        # speaks English only; --models-only never builds the opt-in Spanish
+        # voice.
         VOICE_PY="$HOME/.eliza/local-inference/.voice-python"
         FORK="$GITHUB_WORKSPACE/plugins/plugin-local-inference/native/llama.cpp"
         if [ ! -x "$VOICE_PY/bin/python" ] || [ ! -f "$VOICE_PY/.ready-v1" ]; then
@@ -126,7 +128,7 @@ runs:
         stage vad/silero-vad-v5.1.2.ggml.bin voice/vad/silero-vad-v5.1.2.ggml.bin     29940d98d42b91fbd05ce489f3ecf7c72f0a42f027e4875919a28fb4c04ea2cf
         # Kokoro voice packs: only the keyless human corpus (#9577) and the
         # workbench enrollment speakers, which need several distinct voices.
-        # The desktop agent speaks with Paradee v1.1 (tts/paradee above).
+        # The desktop agent speaks with Paradee v1.2 (tts/paradee above).
         stage tts/kokoro/kokoro-82m-v1_0.gguf bundles/e2b/tts/kokoro/kokoro-82m-v1_0.gguf 165acd9d2d9b6c2d71fa5bd52b92a2559be08567f58ed496bade076e3d9cb46c
         stage tts/kokoro/voices/af_bella.bin    bundles/e2b/tts/kokoro/voices/af_bella.bin    f69d836209b78eb8c66e75e3cda491e26ea838a3674257e9d4e5703cbaf55c8b
         stage tts/kokoro/voices/af_nicole.bin   bundles/e2b/tts/kokoro/voices/af_nicole.bin   cd2191ab31b914ed7b318416b0e4440fdf392ddad9106a060819aa600a64f59a

@@ -279,12 +279,16 @@ export function convertJsonSchemaToActionParams(
       name,
       description: buildDescription(name, prop),
       required: required.has(name),
-      schema: {
-        ...(types.length === 1 ? { type: types[0] } : { anyOf: types.map((type) => ({ type })) }),
-        default: prop.default,
-        enum: prop.enum?.map((value) => String(value)),
-        enumValues: prop.enum?.map((value) => String(value)),
-      },
+      // Core rejects constraints beside an untyped `anyOf`; the description keeps them.
+      schema:
+        types.length === 1
+          ? {
+              type: types[0],
+              default: prop.default,
+              enum: prop.enum?.map((value) => String(value)),
+              enumValues: prop.enum?.map((value) => String(value)),
+            }
+          : { anyOf: types.map((type) => ({ type })) },
     });
   }
 

@@ -5,5 +5,18 @@ android {
  // Signing-certificate pinning (GET_SIGNING_CERTIFICATES) and listener rebind require API 28+.
  defaultConfig { minSdk 28; targetSdk project.hasProperty('targetSdkVersion') ? rootProject.ext.targetSdkVersion : 36 }
  compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+ // The Capacitor bridge (NotificationsHostPlugin) is built only for a Capacitor host. A host
+ // without a ':capacitor-android' project keeps the framework-free library unchanged.
+ if (rootProject.findProject(':capacitor-android') != null) {
+  sourceSets { main { java.srcDirs += 'src/capacitor/java' } }
+ }
 }
 repositories { google(); mavenCentral() }
+dependencies {
+ if (rootProject.findProject(':capacitor-android') != null) {
+  implementation project(':capacitor-android')
+  // Plugin.getActivity() exposes AppCompatActivity in Capacitor's Java API.
+  implementation "androidx.appcompat:appcompat:${rootProject.ext.has('androidxAppCompatVersion') ? rootProject.ext.androidxAppCompatVersion : '1.7.1'}"
+  implementation "androidx.activity:activity:${rootProject.ext.has('androidxActivityVersion') ? rootProject.ext.androidxActivityVersion : '1.8.0'}"
+ }
+}
