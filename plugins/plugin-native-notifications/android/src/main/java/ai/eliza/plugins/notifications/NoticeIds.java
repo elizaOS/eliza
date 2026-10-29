@@ -30,6 +30,7 @@ public final class NoticeIds {
  public static String bounded(CharSequence text,int limit){
   String value=text==null?"":text.toString();
   if(value.length()<=limit)return value;
+  if(limit<1)return "";
   // Do not split a surrogate pair at the bound.
   int end=Character.isHighSurrogate(value.charAt(limit-1))?limit-1:limit;
   return value.substring(0,end);

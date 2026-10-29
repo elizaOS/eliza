@@ -34,6 +34,7 @@ public final class NoticeIdsTest {
   String emoji="abcd😀";
   check(NoticeIds.bounded(emoji,5).equals("abcd"));
   check(NoticeIds.bounded(emoji,6).equals(emoji));
+  check(NoticeIds.bounded("abc",0).isEmpty());check(NoticeIds.bounded("",0).isEmpty());
 
   try{new NoticeWorker(0,"x");check(false);}catch(IllegalArgumentException expected){check(true);}
   try{new NoticeWorker(1," ");check(false);}catch(IllegalArgumentException expected){check(true);}
