@@ -36,6 +36,8 @@ export class CartesiaRestTtsError extends Error {
     readonly status: number,
     readonly classification: CartesiaRestErrorClassification,
     readonly safeProviderMessage: string,
+    /** True when the provider refused before producing any audio. */
+    readonly beforeAudio = false,
   ) {
     super(safeProviderMessage);
     this.name = "CartesiaRestTtsError";
@@ -84,6 +86,7 @@ export async function synthesizeCartesiaBytes(args: {
       response.status,
       classifyCartesiaRestFailure(response.status),
       safeCartesiaRestMessage(response.status),
+      !response.ok,
     );
   }
 

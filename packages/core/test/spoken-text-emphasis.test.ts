@@ -65,4 +65,20 @@ describe("sanitizeSpeechText star spans", () => {
 			"Do not share the code with anyone.",
 		);
 	});
+
+	it("speaks a line with more emphasis spans than the peel budget", () => {
+		const items = Array.from(
+			{ length: 17 },
+			(_, index) => `**Item${index + 1}** value`,
+		);
+		expect(sanitizeSpeechText(`Report: ${items.join(", ")}.`)).toBe(
+			`Report: ${items.map((_, index) => `Item${index + 1} value`).join(", ")}.`,
+		);
+	});
+
+	it("still drops a line whose emphasis layers exceed the peel budget", () => {
+		expect(sanitizeSpeechText(`${"*".repeat(20)}hello${"*".repeat(20)}`)).toBe(
+			"",
+		);
+	});
 });

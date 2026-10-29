@@ -830,7 +830,11 @@ export class AccountDeletionRequestsRepository {
     });
   }
 
-  async findExpiredRecoveryRequestIds(now: Date, limit: number): Promise<string[]> {
+  async findExpiredRecoveryRequestIds(
+    now: Date,
+    limit: number,
+    excludeIds: readonly string[] = [],
+  ): Promise<string[]> {
     const rows = await dbWrite
       .select({ id: accountDeletionRequests.id })
       .from(accountDeletionRequests)
@@ -838,6 +842,7 @@ export class AccountDeletionRequestsRepository {
         and(
           inArray(accountDeletionRequests.status, ["reserved", "recovery"]),
           lte(accountDeletionRequests.execute_after, now),
+          excludeIds.length ? notInArray(accountDeletionRequests.id, [...excludeIds]) : undefined,
         ),
       )
       .orderBy(asc(accountDeletionRequests.execute_after))

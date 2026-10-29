@@ -1,3 +1,4 @@
+import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_STT_MODEL,
   CloudflareSpeechError,
@@ -9,6 +10,10 @@ import {
  * not spend provider, billing, or signature-parsing work.
  */
 
+import {
+  isKnownUnacceptedProviderError,
+  isKnownUnacceptedProviderStatus,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import type {
   AppContext,
   AppEnv,
@@ -759,9 +764,16 @@ async function __hono_POST(c: AppContext) {
       reservation = deepgramReservation.reservation;
       settleUnknown = deepgramReservation.settleUnknown;
 
-      const settleDeepgramFailure = async (reason: string) => {
+      const settleDeepgramFailure = async (
+        reason: string,
+        // A clear HTTP rejection proves the provider did not transcribe.
+        rejectedStatus?: number,
+      ) => {
         if (!reservation) return;
-        await (providerWorkMayHaveStarted && settleUnknown
+        const rejected =
+          rejectedStatus !== undefined &&
+          isKnownUnacceptedProviderStatus(rejectedStatus);
+        await (providerWorkMayHaveStarted && settleUnknown && !rejected
           ? settleUnknown()
           : reservation.reconcile(0));
         reservation = undefined;
@@ -815,7 +827,10 @@ async function __hono_POST(c: AppContext) {
           // error-policy:J6 response-body drain is best-effort after upstream failure.
           return undefined;
         });
-        await settleDeepgramFailure("upstream_http_error");
+        await settleDeepgramFailure(
+          "upstream_http_error",
+          deepgramResponse.status,
+        );
         logger.error("[Voice STT API] Deepgram request failed", {
           status: deepgramResponse.status,
         });
@@ -986,9 +1001,16 @@ async function __hono_POST(c: AppContext) {
       reservation = cartesiaAdmission.reservation;
       settleUnknown = cartesiaAdmission.settleUnknown;
 
-      const settleCartesiaFailure = async (reason: string) => {
+      const settleCartesiaFailure = async (
+        reason: string,
+        // A clear HTTP rejection proves the provider did not transcribe.
+        rejectedStatus?: number,
+      ) => {
         if (!reservation) return;
-        await (providerWorkMayHaveStarted && settleUnknown
+        const rejected =
+          rejectedStatus !== undefined &&
+          isKnownUnacceptedProviderStatus(rejectedStatus);
+        await (providerWorkMayHaveStarted && settleUnknown && !rejected
           ? settleUnknown()
           : reservation.reconcile(0));
         reservation = undefined;
@@ -1060,7 +1082,10 @@ async function __hono_POST(c: AppContext) {
           // error-policy:J6 response-body drain is best-effort after upstream failure.
           return undefined;
         });
-        await settleCartesiaFailure("upstream_http_error");
+        await settleCartesiaFailure(
+          "upstream_http_error",
+          cartesiaResponse.status,
+        );
         logger.error("[Voice STT API] Cartesia request failed", {
           status: cartesiaResponse.status,
         });
@@ -1473,8 +1498,16 @@ async function __hono_POST(c: AppContext) {
     });
 
     if (reservation) {
+      // A clear provider rejection (the ElevenLabs SDK error carries the HTTP
+      // status) proves nothing was transcribed.
+      const rejectedStatus =
+        error instanceof ElevenLabsError ? error.statusCode : undefined;
+      const rejected =
+        isKnownUnacceptedProviderError(error) ||
+        (rejectedStatus !== undefined &&
+          isKnownUnacceptedProviderStatus(rejectedStatus));
       const settlement =
-        providerWorkMayHaveStarted && settleUnknown
+        providerWorkMayHaveStarted && settleUnknown && !rejected
           ? settleUnknown()
           : reservation.reconcile(0);
       const executionCtx = getGenerativeExecutionContext(c);

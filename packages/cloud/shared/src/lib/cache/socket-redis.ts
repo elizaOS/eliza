@@ -784,6 +784,29 @@ export class SocketRedis {
     return asNumber(v);
   }
 
+  async lmove<T = string>(
+    source: string,
+    destination: string,
+    from: "LEFT" | "RIGHT",
+    to: "LEFT" | "RIGHT",
+  ): Promise<T | null> {
+    const [v] = await this.conn.send([["LMOVE", source, destination, from, to]]);
+    const s = asString(v);
+    return s === null ? null : decodeMaybeJson<T>(s);
+  }
+
+  async lrem(key: string, count: number, value: unknown): Promise<number> {
+    const [v] = await this.conn.send([["LREM", key, count, serializeArg(value)]]);
+    return asNumber(v);
+  }
+
+  async lrange<T = string>(key: string, start: number, stop: number): Promise<T[]> {
+    const [v] = await this.conn.send([["LRANGE", key, start, stop]]);
+    return asArray(v).map((item) =>
+      decodeMaybeJson<T>(typeof item === "string" ? item : String(item)),
+    );
+  }
+
   async sadd(key: string, ...members: string[]): Promise<number> {
     const [v] = await this.conn.send([["SADD", key, ...members]]);
     return asNumber(v);

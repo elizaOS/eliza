@@ -456,3 +456,22 @@ describe("globHandler — result ordering", () => {
     ).toEqual(["m-newest.ts", path.join("sub", "a-tied.ts"), "z-tied.ts"]);
   });
 });
+
+describe("globHandler — search root that cannot be listed", () => {
+  it.each([
+    { name: "a missing directory", searchPath: "fooo", code: "ENOENT" },
+    { name: "a regular file", searchPath: "foo/a.ts", code: "ENOTDIR" },
+  ])(
+    "reports $name as a failure, not 0 files",
+    async ({ searchPath, code }) => {
+      const { runtime, message } = env;
+      const result = await globHandler(runtime, message, state, {
+        parameters: { pattern: "**/*.ts", path: searchPath },
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.text).toContain("io_error: readdir failed:");
+      expect(result.text).toContain(code);
+    },
+  );
+});

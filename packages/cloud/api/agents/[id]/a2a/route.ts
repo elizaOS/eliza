@@ -51,6 +51,7 @@ import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/cre
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import type { InferenceCredentialCheck } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
+import { isKnownUnacceptedProviderError } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type {
@@ -484,11 +485,17 @@ async function handleChat(
   }
 
   let providerDispatchStarted = false;
+  // The provider error of a failed stream; the thrown error is a generic
+  // "No output generated" that does not carry the provider status.
+  let streamError: unknown;
   try {
     await admission.markProviderDispatched?.();
     providerDispatchStarted = true;
     const result = await streamText({
       model: getLanguageModel(model),
+      onError: ({ error }) => {
+        streamError = error;
+      },
       messages: fullMessages,
       ...mergeAnthropicCotProviderOptions(
         model,
@@ -561,9 +568,12 @@ async function handleChat(
     // error-policy:J1 the JSON-RPC boundary conservatively settles dispatches
     // with unknown usage, while failures before provider dispatch are safe to
     // refund in full.
-    const terminal = providerDispatchStarted
-      ? admission.settleUnknown()
-      : admission.settle(0);
+    // A clear provider rejection means no inference was accepted.
+    const terminal =
+      providerDispatchStarted &&
+      !isKnownUnacceptedProviderError(streamError ?? error)
+        ? admission.settleUnknown()
+        : admission.settle(0);
     if (authUser.executionCtx) authUser.executionCtx.waitUntil(terminal);
     else await terminal;
     if (error instanceof InsufficientCreditsError) {

@@ -18,6 +18,8 @@ const CRON_SCAN_WINDOW_MS = 8 * 366 * 24 * 60 * 60 * 1000;
 const CRON_DAY_MS = 24 * 60 * 60 * 1000;
 const CRON_MINUTE_MS = 60_000;
 const CRON_HOUR_MS = 60 * CRON_MINUTE_MS;
+// The largest DST gap in use is two hours; look back past it.
+const CRON_SPRING_FORWARD_LOOKBACK_MS = 3 * CRON_HOUR_MS;
 const CRON_FALLBACK_LOOKBACKS_MS = [
 	30 * CRON_MINUTE_MS,
 	CRON_HOUR_MS,
@@ -261,14 +263,33 @@ function cronMatches(
 	if (!timezone || timezone === "UTC" || !formatter) {
 		return cronMatchesUTC(schedule, candidateMs);
 	}
-	const wallMs = candidateMs + offsetMsFromFormatter(formatter, candidateMs);
-	if (!cronMatchesUTC(schedule, wallMs)) return false;
+	const candidateOffset = offsetMsFromFormatter(formatter, candidateMs);
+	const wallMs = candidateMs + candidateOffset;
+	if (!cronMatchesUTC(schedule, wallMs)) {
+		// DST spring-forward skips the wall times between the old and new
+		// offset. A skipped time the schedule names runs one gap later
+		// (02:30 -> 03:30 for a one-hour gap), as
+		// resolveScheduledAtIsoInTimeZone and Date.parse read a skipped local
+		// time, instead of not running that day. The candidate is in the first
+		// gap-length span after the transition when the offset one gap earlier
+		// is still the old offset. No state is carried between candidates, so
+		// the whole-day skip in computeNextCronRunAtMs stays correct.
+		const priorOffset = offsetMsFromFormatter(
+			formatter,
+			candidateMs - CRON_SPRING_FORWARD_LOOKBACK_MS,
+		);
+		if (priorOffset >= candidateOffset) return false;
+		const gapMs = candidateOffset - priorOffset;
+		return (
+			offsetMsFromFormatter(formatter, candidateMs - gapMs) === priorOffset &&
+			cronMatchesUTC(schedule, candidateMs + priorOffset)
+		);
+	}
 	// DST fall-back: an ambiguous local time repeats. Fire only the FIRST
 	// instant, matching common cron implementations. The repeated span is not
 	// always one hour (Australia/Lord_Howe falls back by 30 minutes), so derive
 	// the actual offset delta and reject candidates whose wall-clock already
 	// existed at candidate-delta.
-	const candidateOffset = offsetMsFromFormatter(formatter, candidateMs);
 	for (const lookbackMs of CRON_FALLBACK_LOOKBACKS_MS) {
 		const priorOffset = offsetMsFromFormatter(
 			formatter,

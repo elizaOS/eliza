@@ -176,22 +176,46 @@ function runGit(workdir: string, args: string[]): GitProbe {
   };
 }
 
-function porcelainPaths(line: string): string[] {
-  const rawPath = line.slice(3).trim();
-  if (!rawPath) return [];
-  const renameParts = rawPath.split(" -> ");
-  return renameParts.length > 1
-    ? renameParts.map((part) => part.trim()).filter(Boolean)
-    : [rawPath];
+/** One `git status --porcelain -z` record: the `XY path` line reported as a
+ * residual item (`XY orig -> path` for a rename/copy) and the raw paths it
+ * names. */
+interface PorcelainEntry {
+  line: string;
+  paths: string[];
+}
+
+/** Parse `git status --porcelain -z`. Without `-z` git C-quotes any path with
+ * a space or non-ASCII byte (`?? "r\303\251sum\303\251.md"`), so it would never
+ * match the spawn baselines, which are captured with `-z` as raw paths. A
+ * rename/copy record is followed by its original path. */
+function parsePorcelainZ(out: string): PorcelainEntry[] {
+  const records = out.split("\0");
+  const entries: PorcelainEntry[] = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (record.length < 4) continue;
+    const code = record.slice(0, 2);
+    const path = record.slice(3);
+    if (/[RC]/.test(code)) {
+      const original = records[index + 1] ?? "";
+      index += 1;
+      entries.push({
+        line: `${code} ${original} -> ${path}`,
+        paths: [original, path].filter(Boolean),
+      });
+    } else {
+      entries.push({ line: record, paths: [path] });
+    }
+  }
+  return entries;
 }
 
 function isOrchestratorOwnedDirtyLine(
-  line: string,
+  { line, paths }: PorcelainEntry,
   workdir: string,
   artifactsByPath: ReadonlyMap<string, OrchestratorOwnedArtifact>,
 ): boolean {
   if (!line.startsWith("?? ")) return false;
-  const paths = porcelainPaths(line);
   return (
     paths.length > 0 &&
     paths.every((path) => {
@@ -215,12 +239,11 @@ function ownedArtifactsByPath(
  * never match — those are judged against the untracked baseline instead. A
  * rename line is exempt only when BOTH sides were baseline-dirty. */
 function isBaselineDirtyLine(
-  line: string,
+  { line, paths }: PorcelainEntry,
   baselineDirtyPaths: ReadonlySet<string>,
 ): boolean {
   if (baselineDirtyPaths.size === 0) return false;
   if (line.startsWith("?? ")) return false;
-  const paths = porcelainPaths(line);
   return (
     paths.length > 0 && paths.every((path) => baselineDirtyPaths.has(path))
   );
@@ -231,12 +254,11 @@ function isBaselineDirtyLine(
  * Non-`??` lines never match: a baseline-untracked path that became TRACKED
  * dirty (the worker staged or committed over it) is this run's work. */
 function isBaselineUntrackedLine(
-  line: string,
+  { line, paths }: PorcelainEntry,
   baselineUntrackedPaths: ReadonlySet<string>,
 ): boolean {
   if (baselineUntrackedPaths.size === 0) return false;
   if (!line.startsWith("?? ")) return false;
-  const paths = porcelainPaths(line);
   return (
     paths.length > 0 && paths.every((path) => baselineUntrackedPaths.has(path))
   );
@@ -396,7 +418,7 @@ export async function collectCompletionResiduals(
     // the persisted snapshot so the skip is visible, never a silent pass.
     gitLegsSkipped = "shared_route_workdir";
   } else if (workdir !== undefined) {
-    const status = runGit(workdir, ["status", "--porcelain"]);
+    const status = runGit(workdir, ["status", "--porcelain", "-z"]);
     if (!status.ok) {
       return unverifiable(
         "git_failed",
@@ -417,20 +439,20 @@ export async function collectCompletionResiduals(
         .map((path) => path.trim())
         .filter((path) => path.length > 0),
     );
-    const dirty = status.stdout
-      .split("\n")
-      .map((line) => line.trimEnd())
-      .filter((line) => line.length > 0)
+    const dirty = parsePorcelainZ(status.stdout)
       .filter(
-        (line) =>
+        (entry) =>
           !isOrchestratorOwnedDirtyLine(
-            line,
+            entry,
             workdir,
             orchestratorOwnedArtifacts,
           ),
       )
-      .filter((line) => !isBaselineDirtyLine(line, baselineDirtyPaths))
-      .filter((line) => !isBaselineUntrackedLine(line, baselineUntrackedPaths));
+      .filter((entry) => !isBaselineDirtyLine(entry, baselineDirtyPaths))
+      .filter(
+        (entry) => !isBaselineUntrackedLine(entry, baselineUntrackedPaths),
+      )
+      .map((entry) => entry.line);
     if (dirty.length > 0) {
       residuals.push({
         kind: "uncommitted_changes",

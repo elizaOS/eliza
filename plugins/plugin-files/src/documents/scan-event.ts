@@ -260,7 +260,11 @@ const monthPattern =
   "(" +
   months
     .map((month) =>
-      month.length === 3 ? month : `${month.slice(0, 3)}(?:${month.slice(3)})?`,
+      month === "september"
+        ? "sep(?:t(?:ember)?)?"
+        : month.length === 3
+          ? month
+          : `${month.slice(0, 3)}(?:${month.slice(3)})?`,
     )
     .join("|") +
   ")\\.?";

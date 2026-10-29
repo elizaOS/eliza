@@ -30,6 +30,10 @@ import {
   type OrchestratorOwnedArtifact,
   readOwnedArtifactsFromMetadata,
 } from "../services/orchestrator-artifact-ownership.js";
+import {
+  captureBaselineDirty,
+  captureBaselineUntracked,
+} from "../services/workspace-diff.js";
 
 const roots: string[] = [];
 afterAll(() => {
@@ -598,6 +602,68 @@ describe("collectCompletionResiduals — spawn-time baseline + shared route work
       baselineUntrackedPaths: ["pre-existing.txt"],
     });
     expect(result.status).toBe("residuals");
+  });
+
+  it("exempts spawn-baseline paths whose names git quotes (space, non-ASCII)", async () => {
+    const { workdir } = makeRepo();
+    mkdirSync(join(workdir, "docs"));
+    writeFileSync(join(workdir, "docs", "release notes.md"), "seed\n");
+    git(workdir, "add", ".");
+    git(workdir, "commit", "-q", "-m", "docs");
+    git(workdir, "push", "-q");
+    // Lived-in state before spawn: a macOS screenshot, a non-ASCII file and
+    // an uncommitted edit to a tracked file whose name has a space.
+    writeFileSync(
+      join(workdir, "Screenshot 2026-10-26 at 10.00.00.png"),
+      "png",
+    );
+    writeFileSync(join(workdir, "résumé.md"), "cv\n");
+    writeFileSync(join(workdir, "docs", "release notes.md"), "draft\n");
+    // The baselines AcpService.spawnSession records.
+    const baselineDirtyPaths = await captureBaselineDirty(workdir);
+    const baselineUntrackedPaths = await captureBaselineUntracked(workdir);
+    expect(baselineDirtyPaths).toEqual(["docs/release notes.md"]);
+    expect([...baselineUntrackedPaths].sort()).toEqual([
+      "Screenshot 2026-10-26 at 10.00.00.png",
+      "résumé.md",
+    ]);
+
+    // The worker changed nothing.
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+      baselineDirtyPaths,
+      baselineUntrackedPaths,
+    });
+    expect(result.residuals).toEqual([]);
+    expect(result.status).toBe("clean");
+  });
+
+  it("names a run-produced path with a space by its real name", async () => {
+    const { workdir } = makeRepo();
+    writeFileSync(join(workdir, "run notes.md"), "after spawn\n");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+    });
+    expect(result.status).toBe("residuals");
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual(["?? run notes.md"]);
+  });
+
+  it("reports a staged rename once, original path first", async () => {
+    const { workdir } = makeRepo();
+    git(workdir, "mv", "README.md", "GUIDE.md");
+    const result = await collectCompletionResiduals({
+      workdir,
+      repoExpected: true,
+    });
+    const residual = result.residuals.find(
+      (row) => row.kind === "uncommitted_changes",
+    );
+    expect(residual?.items).toEqual(["R  README.md -> GUIDE.md"]);
   });
 
   it("shared route workdir: skips the git legs on a dirty, unpushed shared checkout and records the skip", async () => {

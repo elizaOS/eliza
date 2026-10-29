@@ -43,7 +43,9 @@ describe("gateway routing facade conformance", () => {
         "hello discord",
         { platformRecordId: "discord-1" },
       ),
-    ).resolves.toBe("agent completed the turn");
+    ).resolves.toBe(
+      "agent completed the turn\nhttps://cdn.example.com/cat.png",
+    );
     await expect(
       forwardWebhook(
         server.url.origin,
@@ -173,6 +175,28 @@ describe("gateway routing facade conformance", () => {
         else process.env[key] = value;
       }
     }
+  });
+
+  test("sends a Discord reply that has only an image", async () => {
+    const server = Bun.serve({
+      hostname: "127.0.0.1",
+      port: 0,
+      fetch: () =>
+        Response.json({
+          response: "",
+          mediaUrls: ["https://cdn.example.com/generated.png"],
+        }),
+    });
+    servers.push(server);
+    await expect(
+      forwardDiscord(
+        server.url.origin,
+        "direct",
+        "test-agent",
+        "user-1",
+        "draw a cat",
+      ),
+    ).resolves.toBe("https://cdn.example.com/generated.png");
   });
 
   test("runs a Discord agent turn once when it times out or fails", async () => {

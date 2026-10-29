@@ -69,4 +69,16 @@ export class UpstashRedisAdapter implements CacheRedisClient {
   llen(key: string): Promise<number> {
     return this.client.llen(key);
   }
+
+  rpoplpush(source: string, destination: string): Promise<string | null> {
+    return this.client.lmove<string | null>(source, destination, "right", "left");
+  }
+
+  lrem(key: string, count: number, value: string): Promise<number> {
+    return this.client.lrem(key, count, value);
+  }
+
+  lrange(key: string, start: number, stop: number): Promise<string[]> {
+    return this.client.lrange<string>(key, start, stop);
+  }
 }

@@ -24,18 +24,27 @@ export type DatabaseLockAcquireResult =
 	| { ok: false; snapshot: DatabaseLockSnapshot; error: string };
 
 const DEFAULT_STALE_AFTER_MS = 10 * 60 * 1000;
+/** pid_t is signed 32-bit: anything outside that range cannot name a live process. */
+const MAX_PID = 2_147_483_647;
 
 export function databaseStartupLockPath(pgliteDataDir: string): string {
 	return `${pgliteDataDir}.startup.lock`;
 }
 
 function defaultIsProcessAlive(pid: number): boolean {
-	if (!Number.isFinite(pid) || pid <= 0) return false;
+	if (!Number.isInteger(pid) || pid <= 0 || pid > MAX_PID) return false;
 	try {
 		process.kill(pid, 0);
 		return true;
-	} catch {
-		return false;
+	} catch (error) {
+		// error-policy:J3 signal 0 is a liveness probe, not a kill: ESRCH means the
+		// owner is gone, but EPERM means it is alive under another user and only
+		// signal delivery was denied. Reading EPERM as "dead" marked a live lock
+		// stale, so acquireDatabaseStartupLock deleted it and opened a second
+		// writer on the same PGlite data dir. A code the probe cannot explain does
+		// not prove the owner is gone, so the lock stays held and the age window
+		// still recovers it.
+		return (error as NodeJS.ErrnoException | undefined)?.code !== "ESRCH";
 	}
 }
 

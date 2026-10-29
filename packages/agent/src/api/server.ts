@@ -942,6 +942,21 @@ async function handleBuiltinOptionalRoutes(
       error(res, "script is required", 400);
       return true;
     }
+    // Mirror the plugin route's opt-in check: eval with a user script
+    // stays off unless ELIZA_BROWSER_WORKSPACE_ALLOW_USER_SCRIPT is set.
+    // The plugin route runs first when the plugin is registered; this
+    // inline path serves the same route when it is not, and must not
+    // skip the check. script_forbidden maps to 403, as in the route.
+    try {
+      browserPlugin.assertBrowserWorkspaceUserScriptAllowed(
+        body.script,
+        "eval",
+        "desktop",
+      );
+    } catch (err) {
+      error(res, err instanceof Error ? err.message : "script forbidden", 403);
+      return true;
+    }
     json(res, {
       value: await browserPlugin.evaluateBrowserWorkspaceTab({
         id: tabId,
@@ -1066,16 +1081,55 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
   const under = (base: string) =>
     pathname === base || pathname.startsWith(`${base}/`);
   return (
+    // The database API exposes the agent's own database over HTTP:
+    // table listings and row reads, plus caller-supplied SQL that
+    // runs mutations whenever the request sets readOnly to false.
+    // Reads disclose the same store the writes mutate, so the whole
+    // prefix is owner-only.
+    under("/api/database") ||
     under("/api/memory") ||
     under("/api/memories") ||
+    // The workbench overview serves every trigger's full instructions,
+    // the same content the owner-gated trigger routes protect — so
+    // this one aggregate route is owner-only. (The VFS sub-path is
+    // gated separately and is untouched here.)
+    pathname === "/api/workbench/overview" ||
     // Served by the memory handler from the same stored notes.
     under("/api/context/quick") ||
     // Whole-agent data: export/snapshot carry the memories and secrets,
     // restore/import/reset replace or wipe them.
     under("/api/snapshot") ||
+    // The Discord channel-picker reads (guilds, channels, DM
+    // recipients) are owner-dashboard data: the subscriptions write
+    // is gated, but these GETs pass paired guest sessions through
+    // with no check at any layer, so the whole prefix is owner-only.
+    under("/api/discord") ||
     pathname === "/api/restore" ||
+    // Voice identity reads: the speaker-centroid list, the preset
+    // list, and preset sample audio. The writes on these prefixes
+    // are already write-gated; the GETs were left open, and plugin
+    // dispatch alone only rejects unauthenticated sessions, so a
+    // paired guest session reads them. All-method, not write-only.
+    under("/api/voice/profiles") ||
+    under("/v1/voice/speaker-profiles") ||
     under("/api/backups") ||
     under("/api/agent/export") ||
+    // iMessage history, chats, and contacts are owner-private, and send
+    // and contact CRUD mutate the owner's identity and address book.
+    // The Blooio webhook stays open: it carries no session and is
+    // authenticated by its HMAC signature, not the local gate.
+    (under("/api/imessage") && pathname !== "/api/imessage/webhook/blooio") ||
+    // Custom actions live in the owner's config, are live-registered
+    // into the runtime, and their http handlers can carry the owner's
+    // webhook secrets — reads disclose them, writes plant persistent
+    // actions the owner's agent later invokes.
+    under("/api/custom-actions") ||
+    // Character experiences: distilled episodic records learned
+    // from the owner's conversations (context, outcome, learning,
+    // source rooms/messages). The write section gates /api/character
+    // for writes, but the experience GETs were left open — the same
+    // stored-content class as the owner-gated memory reads.
+    under("/api/character/experiences") ||
     (write &&
       [
         "import",
@@ -1091,18 +1145,54 @@ function isOwnerOnlyApiRequest(method: string, pathname: string): boolean {
     (write && pathname === "/api/restart") ||
     (write &&
       (pathname.startsWith("/api/wallet/") ||
+        // Release-channel policy: a silent flip to nightly changes what
+        // the owner's next update installs. Status stays a GET read.
+        under("/api/update") ||
+        // MCP config writes can point the agent at an attacker-controlled
+        // remote server; stdio writes are terminal-gated but not role-gated.
+        under("/api/mcp") ||
+        // Connector setup (Telegram, Discord, iMessage): saves, replaces or
+        // clears the owner's connector credentials and sessions.
+        under("/api/setup") ||
         under("/api/config") ||
         under("/api/character") ||
+        // Model selection writes into the same config the owner gate protects.
+        under("/api/models/config") ||
         // Deleting a stored file removes the owner's attachments for good.
         under("/api/files") ||
+        // A GitHub token lets its holder act as the owner on GitHub.
+        under("/api/github") ||
         // Shell, trading, automation and computer-use permissions.
         under("/api/permissions") ||
+        // Loading code into the running agent process: VFS project
+        // writes, compiles, and loads, plus on-disk directory load/unload.
+        under("/api/workbench/vfs") ||
+        pathname === "/api/plugins/load-from-directory" ||
+        pathname === "/api/plugins/unload-from-directory" ||
         // Bot tokens and allowlists of the owner's connectors. The provider's
         // OAuth callback is authenticated by its state/code, not the owner.
         (under("/api/connectors") &&
           !/^\/api\/connectors\/[^/]+\/oauth\/callback\/?$/.test(pathname)) ||
         // Who receives the model traffic, and with which key.
-        pathname === "/api/provider/switch"))
+        pathname === "/api/provider/switch" ||
+        // Eliza Cloud connection mutations: disconnect deletes the
+        // owner's persisted cloud API key, and login/persist writes a
+        // caller-supplied key into it. Exact paths only, not the whole
+        // /api/cloud prefix — billing, relay, and container routes are
+        // a separate surface, and the GET login-status poll stays open
+        // (it requires a session id only a gated POST can mint).
+        pathname === "/api/cloud/disconnect" ||
+        pathname === "/api/cloud/login" ||
+        pathname === "/api/cloud/login/persist" ||
+        // Model credentials themselves: adding, editing, deleting an
+        // account, or changing the provider strategy, re-routes the
+        // owner's model traffic (prompts included) under another key.
+        under("/api/accounts") ||
+        under("/api/providers") ||
+        // iMessage connector setup: a guest session could enable or
+        // wipe the owner's iMessage connector config. Write-only, so
+        // GET /api/setup/imessage/status stays open.
+        under("/api/setup/imessage")))
   );
 }
 

@@ -1,8 +1,10 @@
+import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_TTS_MAX_CHARACTERS,
   CloudflareSpeechError,
   synthesizeCloudflareAudio,
 } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
+
 /** Handles authenticated cloud text-to-speech generation, safety checks, and billing. */
 
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
@@ -23,6 +25,7 @@ import {
   hasTtsSynthesisOptions,
   TtsSynthesisOptions,
 } from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import { isKnownUnacceptedProviderStatus } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
@@ -1035,8 +1038,17 @@ async function __hono_POST(c: AppContext) {
       errorType: error instanceof Error ? error.name : "unknown",
     });
     if (reservation) {
+      // A clear rejection before any audio proves nothing was synthesized:
+      // the Cartesia REST refusal, or an ElevenLabs SDK error with its status.
+      const sdkStatus =
+        error instanceof ElevenLabsError ? error.statusCode : undefined;
+      const rejected =
+        (error instanceof CartesiaRestTtsError &&
+          error.beforeAudio &&
+          isKnownUnacceptedProviderStatus(error.status)) ||
+        (sdkStatus !== undefined && isKnownUnacceptedProviderStatus(sdkStatus));
       const settlement =
-        providerWorkMayHaveStarted && settleUnknown
+        providerWorkMayHaveStarted && settleUnknown && !rejected
           ? settleUnknown()
           : reservation.reconcile(0);
       const executionCtx = getGenerativeExecutionContext(c);

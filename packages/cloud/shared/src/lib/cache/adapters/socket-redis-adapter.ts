@@ -72,4 +72,18 @@ export class SocketRedisAdapter implements CacheRedisClient {
   llen(key: string): Promise<number> {
     return this.client.llen(key);
   }
+
+  async rpoplpush(source: string, destination: string): Promise<string | null> {
+    const v = await this.client.lmove<string>(source, destination, "RIGHT", "LEFT");
+    return v === null ? null : typeof v === "string" ? v : JSON.stringify(v);
+  }
+
+  lrem(key: string, count: number, value: string): Promise<number> {
+    return this.client.lrem(key, count, value);
+  }
+
+  async lrange(key: string, start: number, stop: number): Promise<string[]> {
+    const values = await this.client.lrange<string>(key, start, stop);
+    return values.map((v) => (typeof v === "string" ? v : JSON.stringify(v)));
+  }
 }

@@ -33,6 +33,7 @@ import {
 import { contentSafetyService } from "./content-safety";
 import type { CreditReconciliationResult, CreditReservation } from "./credits";
 import { generationsService } from "./generations";
+import { isKnownUnacceptedProviderError } from "./inference-provider-outcome";
 
 const MAX_IMAGES = 4;
 
@@ -269,13 +270,17 @@ async function generateProviderImage(
       billingSource: provider.billingSource,
       error: error instanceof Error ? error.message : String(error),
     });
-    throw new ApiError(
+    const ErrorType = isKnownUnacceptedProviderError(error) ? ImageProviderRejectedError : ApiError;
+    throw new ErrorType(
       503,
       "internal_error",
       "Image generation is temporarily unavailable. Please try again shortly.",
     );
   }
 }
+
+/** The provider clearly refused the request, so it produced no image. */
+class ImageProviderRejectedError extends ApiError {}
 
 export function createImageGenerationExecutor(deps: ImageGenerationDependencies) {
   return async function execute(
@@ -502,18 +507,24 @@ export function createImageGenerationExecutor(deps: ImageGenerationDependencies)
                 error: error instanceof Error ? error.message : String(error),
               },
             );
-            // Images never sent to the provider are not billed. The one that
-            // failed may still have been produced, so it is.
-            const dispatchedCost =
-              dispatchedImageCount < request.numImages
-                ? // error-policy:J7 a repricing failure falls back to the
-                  // conservative full settlement below.
-                  await costFor(dispatchedImageCount).catch(() => null)
-                : null;
-            if (dispatchedCost) {
-              await admission?.settle(dispatchedCost.totalCost);
+            // A clear provider rejection before any image was stored means
+            // nothing was produced; otherwise bill what was dispatched.
+            if (error instanceof ImageProviderRejectedError && storedImages.length === 0) {
+              await admission?.settle(0);
             } else {
-              await admission?.settleUnknown();
+              // Images never sent to the provider are not billed. The one that
+              // failed may still have been produced, so it is.
+              const dispatchedCost =
+                dispatchedImageCount < request.numImages
+                  ? // error-policy:J7 a repricing failure falls back to the
+                    // conservative full settlement below.
+                    await costFor(dispatchedImageCount).catch(() => null)
+                  : null;
+              if (dispatchedCost) {
+                await admission?.settle(dispatchedCost.totalCost);
+              } else {
+                await admission?.settleUnknown();
+              }
             }
           } else {
             await admission?.settle(0);

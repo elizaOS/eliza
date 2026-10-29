@@ -100,8 +100,13 @@ function nextDayOfMonth(n: number, today: Date): Date | null {
   return null;
 }
 
-/** This exact date if it exists and is after today. */
-function futureDay(
+/**
+ * This exact date if it exists and is not before today. A date the member
+ * names with its month is a calendar date, not "the next time that date
+ * comes around": "until October 14" said on October 14 ends today, and a
+ * range that starts today must not move to next year.
+ */
+function statedDay(
   year: number,
   m: number,
   n: number,
@@ -113,7 +118,26 @@ function futureDay(
   // date, so reject it — the same existence check nextDayOfMonth applies.
   if (candidate.getUTCMonth() !== m || candidate.getUTCDate() !== n)
     return null;
-  return candidate > today ? candidate : null;
+  return candidate >= today ? candidate : null;
+}
+
+/** This exact date if it exists and is after today. */
+function futureDay(
+  year: number,
+  m: number,
+  n: number,
+  today: Date,
+): Date | null {
+  const candidate = statedDay(year, m, n, today);
+  return candidate && candidate > today ? candidate : null;
+}
+
+/** The stated month/day this year or next, including today. */
+function statedMonthDay(m: number, n: number, today: Date): Date | null {
+  return (
+    statedDay(today.getUTCFullYear(), m, n, today) ??
+    statedDay(today.getUTCFullYear() + 1, m, n, today)
+  );
 }
 
 /** Next occurrence (today excluded) of month/day, or of the month's first day. */
@@ -132,10 +156,10 @@ function monthDay(
   today: Date,
 ): Date | null {
   const y = /^(?:,?\s+(\d{4})|\/(\d{4}|\d{2}))\b/.exec(rest);
-  if (!y) return nextMonthDay(m, n, today);
+  if (!y) return statedMonthDay(m, n, today);
   const stated = y[1] ?? y[2];
   const year = stated.length === 2 ? 2000 + Number(stated) : Number(stated);
-  return futureDay(year, m, n, today);
+  return statedDay(year, m, n, today);
 }
 
 function nextWeekday(w: number, today: Date, nextWeek: boolean): Date {

@@ -685,6 +685,22 @@ export class SecretSwapSession {
 		});
 	}
 
+	/**
+	 * Apply the user-reply policy to text whose values were already restored
+	 * (tool-call sends: the execution boundary restores handler args). Known
+	 * values go back to placeholders, then {@link restoreUserReplyText} decides
+	 * what stays readable, so both reply paths share one policy.
+	 */
+	redactRestoredSecretValues(text: string): string {
+		let result = text;
+		for (const entry of this.entries.sort(
+			(a, b) => b.value.length - a.value.length,
+		)) {
+			result = replaceValue(result, entry);
+		}
+		return this.restoreUserReplyText(result);
+	}
+
 	restoreText(
 		text: string,
 		options: { failOnUnresolved?: boolean } = {},

@@ -1,10 +1,14 @@
-import { ApiError as PrivateOwnerApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import {
+  ApiError as PrivateOwnerApiError,
+  safeUnknownErrorMessage,
+} from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requirePrivateOwnerCredential } from "@elizaos/cloud-shared/lib/auth/private-owner-credential";
 /** Updates and deletes managed Google Calendar events. */
 
 import type { RouteContext } from "@elizaos/cloud-shared/lib/api/hono-next-style-params";
 import { agentGoogleRouteDeps } from "@elizaos/cloud-shared/lib/services/agent-google-route-deps";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
 import { z } from "zod";
@@ -86,12 +90,10 @@ async function __hono_PATCH(
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
+    logger.error("[Google Calendar] Failed to update event:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to update Google Calendar event.",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );
@@ -149,12 +151,10 @@ async function __hono_DELETE(
     if (error instanceof agentGoogleRouteDeps.AgentGoogleConnectorError) {
       return Response.json({ error: error.message }, { status: error.status });
     }
+    logger.error("[Google Calendar] Failed to delete event:", error);
     return Response.json(
       {
-        error:
-          error instanceof Error
-            ? error.message
-            : "Failed to delete Google Calendar event.",
+        error: safeUnknownErrorMessage(error),
       },
       { status: 500 },
     );

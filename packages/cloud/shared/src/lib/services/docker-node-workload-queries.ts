@@ -78,9 +78,14 @@ export function isDeletionContinuation(row: {
  * once by the recount, once by the deletion CAS — which is the exact double-free
  * #17185 exists to close. A row with no `node_id` was never placed at all.
  */
-export function holdsCountedNodeSlot(row: { status: string; node_id: string | null }): boolean {
+export function holdsCountedNodeSlot(row: {
+  status: string;
+  node_id: string | null;
+  retained_runtime?: unknown;
+}): boolean {
   if (!row.node_id) return false;
-  return !TERMINAL_SANDBOX_STATUS_SET.has(row.status);
+  // A runtime stopped in place keeps its slot in the recount, so it keeps it here.
+  return !TERMINAL_SANDBOX_STATUS_SET.has(row.status) || row.retained_runtime != null;
 }
 
 type WorkloadCountDatabase = Pick<typeof dbRead, "select">;
@@ -133,6 +138,9 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
       WHERE ${containers.node_id} = ${nodeId}
         AND ${containers.status} not in ('failed','stopped','deleted')
     )`,
+    // A runtime stopped in place (#30746) keeps its container, memory ceiling
+    // and ports on the node and resumes there without admission, so it keeps
+    // its slot.
     agentCount: sql<number>`(
       SELECT count(*)::int
       FROM ${agentSandboxes}
@@ -141,10 +149,13 @@ export async function countAllocatedWorkloadsOnNodeWithDatabase(
           ${agentSandboxes.deletion_allocation_counted} IS TRUE
           OR (
             ${agentSandboxes.deletion_allocation_counted} IS NULL
-            AND ${agentSandboxes.status} not in (${sql.join(
-              TERMINAL_SANDBOX_STATUSES.map((status) => sql`${status}`),
-              sql`, `,
-            )})
+            AND (
+              ${agentSandboxes.status} not in (${sql.join(
+                TERMINAL_SANDBOX_STATUSES.map((status) => sql`${status}`),
+                sql`, `,
+              )})
+              OR ${agentSandboxes.retained_runtime} IS NOT NULL
+            )
           )
         )
     )`,

@@ -1,4 +1,5 @@
 // Defines cloud shared fal image generation behavior for backend service consumers.
+import { APICallError } from "ai";
 import { getAiProviderConfigurationError } from "../language-model";
 import type { GeneratedImage, ImageGenRequest, ImageProvider } from "./types";
 
@@ -122,7 +123,13 @@ export async function generateFalImageWithFetch(
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
     const detail = typeof payload.detail === "string" ? payload.detail : undefined;
-    throw new Error(detail ?? `fal image generation failed: ${response.status}`);
+    // Keep the status so billing can tell a rejection from an ambiguous failure.
+    throw new APICallError({
+      message: detail ?? `fal image generation failed: ${response.status}`,
+      url: response.url,
+      requestBodyValues: {},
+      statusCode: response.status,
+    });
   }
 
   const { url, text } = extractFalImageUrl(payload);

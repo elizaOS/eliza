@@ -49,11 +49,7 @@ import {
 	type DiscordSlashCommand,
 	type DiscordSlashCommandPayload,
 } from "./types";
-import {
-	buildDiscordComponents,
-	getMessageService,
-	sendMessageInChunks,
-} from "./utils";
+import { buildDiscordComponents, getMessageService } from "./utils";
 
 /**
  * Subset of DiscordService fields needed by interaction handling.
@@ -297,6 +293,7 @@ export async function handleInteractionCreate(
 					return [];
 				}
 				const lastIndex = Math.max(0, chunks.length - 1);
+				let accepted = 0;
 				try {
 					if (chunks.length === 0 && components) {
 						await interaction.followUp({ content: "​", components });
@@ -306,33 +303,41 @@ export async function handleInteractionCreate(
 							content: chunks[i],
 							...(components && i === lastIndex ? { components } : {}),
 						});
+						accepted = i + 1;
 					}
 					return [];
 				} catch (error) {
 					// error-policy:J1 interaction delivery failed (token expired or
-					// missing) — fall back to a channel send where the bot can.
+					// missing) — send the chunks Discord has not accepted yet over
+					// the channel where the bot can; sending all of them again
+					// would repeat the ones the user already has.
 					const channel = interaction.channel as TextChannel | null;
 					if (channel && typeof channel.send === "function") {
-						await sendMessageInChunks(
-							channel,
-							render.text,
-							"",
-							[],
-							render.components.length > 0 ? render.components : undefined,
-							service.runtime,
-						);
-					} else {
-						service.runtime.logger.warn(
-							{
-								src: "plugin:discord",
-								agentId: service.runtime.agentId,
-								customId: interaction.customId,
-								error: error instanceof Error ? error.message : String(error),
-							},
-							"Button-reply delivery failed and no channel send is available",
-						);
+						const remaining = chunks.slice(accepted);
+						if (remaining.length === 0) {
+							await channel.send({ content: "​", components });
+						}
+						for (let i = 0; i < remaining.length; i++) {
+							await channel.send({
+								content: remaining[i],
+								...(components && i === remaining.length - 1
+									? { components }
+									: {}),
+							});
+						}
+						return [];
 					}
-					return [];
+					service.runtime.logger.warn(
+						{
+							src: "plugin:discord",
+							agentId: service.runtime.agentId,
+							customId: interaction.customId,
+							acceptedChunks: accepted,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Button-reply delivery failed and no channel send is available",
+					);
+					throw error;
 				}
 			};
 			const messageService = getMessageService(service.runtime);
