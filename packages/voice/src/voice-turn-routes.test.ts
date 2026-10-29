@@ -232,6 +232,40 @@ describe("heard route", () => {
     ).toBe("rejected");
   });
 
+  it("never empties a reply when playback failed before any sentence finished", async () => {
+    const r = reporter([
+      {
+        ok: true,
+        messageId: replyId,
+        text: "First.",
+        truncated: true,
+        changed: true,
+      },
+    ]);
+    expect(
+      await r.heard.report(
+        interrupted({
+          heard: "",
+          unheard: "All of it.",
+          playbackFailed: true,
+        }),
+      ),
+    ).toBe("nothing-heard");
+    expect(r.calls).toEqual([]);
+    expect(r.outcomes).toEqual([["nothing-heard", { attempts: 0 }]]);
+    // A failure after a sentence finished still keeps only the heard prefix.
+    expect(
+      await r.heard.report(
+        interrupted({
+          heard: "First.",
+          unheard: "Second.",
+          playbackFailed: true,
+        }),
+      ),
+    ).toBe("recorded");
+    expect(r.calls.map((call) => call.body)).toEqual([{ heardText: "First." }]);
+  });
+
   it("accepts only assistant replies of the current conversation, and nothing after the binding changed", async () => {
     const r = reporter([]);
     expect(

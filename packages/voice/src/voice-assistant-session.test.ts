@@ -605,6 +605,29 @@ describe("VoiceAssistantSession barge-in and heard content", () => {
     ]);
   });
 
+  it("marks a reply whose playback failed, so a speech failure is not reported as an interruption", async () => {
+    const h = harness();
+    await h.session.start();
+    await h.say("what time is it");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "It is nine thirty. The sun is up.");
+    await flush();
+    h.speeches[0]?.done.reject(
+      Object.assign(Error("speech refused"), { status: 429 }),
+    );
+    await flush();
+    expect(h.log.heard).toEqual([
+      {
+        turnId: h.log.sends[0]?.turnId,
+        replyId: "a-0",
+        heard: "",
+        unheard: "It is nine thirty. The sun is up.",
+        interrupted: true,
+        playbackFailed: true,
+      },
+    ]);
+  });
+
   it("never sends the reply's own echo as a turn", async () => {
     const echo: AssistantPorts["shouldRespond"] = (text, context) =>
       !(context.agentSpeaking || context.replyAgeMs < 9000) ||

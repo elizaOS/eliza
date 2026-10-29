@@ -50,7 +50,8 @@ whose text only becomes an editable draft (never sent).
 never complete) and the heard route (`createHeardReporter`: after a barge-in only the played
 prefix is kept, with one retry and never blocking the next turn; a reply interrupted before any of
 it played is reported as `{ nothingHeard: true }`, so the agent keeps an empty, interruption-marked
-reply instead of words the user never heard). Hosts supply the owner-bound request port; neither
+reply instead of words the user never heard; a reply whose playback failed before any sentence
+finished, `playbackFailed`, is kept as stored). Hosts supply the owner-bound request port; neither
 module carries audio anywhere else, stores or logs text. Vitest covers them against stub agents;
 this is not microphone, recognition, scorer or latency evidence.
 

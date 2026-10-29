@@ -122,6 +122,11 @@ export interface AssistantHeard {
   /** Everything not played to the end, including the sentence that was interrupted. */
   unheard: string;
   interrupted: boolean;
+  /**
+   * Playback of the reply failed (for example the speech service refused it); the user did not
+   * interrupt it. A reporter must not empty the stored reply for a failure.
+   */
+  playbackFailed?: boolean;
 }
 export interface AssistantCapture {
   /** Finalize: segments closed by this call still deliver their final before it resolves. */
@@ -1041,7 +1046,7 @@ export class VoiceAssistantSession {
     } catch (error) {
       if (!this.owned(session, turn, response)) return; // Interrupted or stopped: already accounted.
       if ((error as { name?: unknown })?.name === "AbortError") return;
-      if (response.replyId) this.reportInterrupted(response);
+      if (response.replyId) this.reportInterrupted(response, true);
       this.response = undefined;
       await this.fail(session, error);
     }
@@ -1075,7 +1080,7 @@ export class VoiceAssistantSession {
     this.ports.onTurn?.("interrupted", response.turnId);
   }
 
-  private reportInterrupted(response: Response) {
+  private reportInterrupted(response: Response, playbackFailed = false) {
     if (!response.replyId) return;
     const heard = response.sentences.slice(0, response.played).join(" ");
     const unheard = response.sentences.slice(response.played).join(" ");
@@ -1085,6 +1090,7 @@ export class VoiceAssistantSession {
       heard,
       unheard,
       interrupted: true,
+      ...(playbackFailed ? { playbackFailed: true } : {}),
     });
   }
 
