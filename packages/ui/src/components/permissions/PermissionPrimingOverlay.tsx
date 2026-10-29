@@ -10,6 +10,8 @@ import { PermissionPrimingModal } from "./PermissionPrimingModal";
 import {
   hasPrimedPermissions,
   markPermissionsPrimed,
+  PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+  primingWalkthroughMemory,
   resolvePrimingSet,
 } from "./permission-priming";
 
@@ -26,6 +28,11 @@ import {
  *    right after onboarding — priming waits its turn instead of covering it),
  *  - the platform has a non-empty priming set (web is intentionally empty), and
  *  - it hasn't already been shown (persisted flag; re-trigger lives in Settings).
+ *
+ * It keeps walkthrough memory, so an OS prompt it already fired is never fired again (that card
+ * routes to system settings), and it reopens when `primingWalkthroughMemory().reopen()` is called.
+ * The sequence stays unfinished until it completes, so a restart mid-way resumes it; permissions
+ * granted meanwhile drop out on the next status check.
  */
 export function PermissionPrimingOverlay(): React.JSX.Element | null {
   const authed = useIsAuthenticated();
@@ -33,8 +40,28 @@ export function PermissionPrimingOverlay(): React.JSX.Element | null {
   const tutorial = useTutorial();
 
   const ids = React.useMemo(() => resolvePrimingSet(), []);
+  const memory = React.useMemo(primingWalkthroughMemory, []);
   const [primed, setPrimed] = React.useState<boolean>(hasPrimedPermissions);
   const [open, setOpen] = React.useState(false);
+
+  // A reopen entry (e.g. Settings) clears the dismissal; offer the walkthrough again. It requests
+  // nothing itself: every OS prompt still needs an explicit Enable tap.
+  React.useEffect(() => {
+    const reopen = () => setPrimed(false);
+    try {
+      globalThis.addEventListener?.(
+        PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+        reopen,
+      );
+    } catch {
+      return undefined;
+    }
+    return () =>
+      globalThis.removeEventListener?.(
+        PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+        reopen,
+      );
+  }, []);
 
   const eligible =
     authed &&
@@ -58,6 +85,11 @@ export function PermissionPrimingOverlay(): React.JSX.Element | null {
   if (!open || primed || ids.length === 0) return null;
 
   return (
-    <PermissionPrimingModal ids={ids} open={open} onComplete={handleComplete} />
+    <PermissionPrimingModal
+      ids={ids}
+      open={open}
+      onComplete={handleComplete}
+      memory={memory}
+    />
   );
 }

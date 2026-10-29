@@ -59,6 +59,46 @@ Full permitted library (other apps' media, as far as Android grants it):
   WebP, at most 5 MiB) whose revision survives the whole copy; never a thumbnail and never an
   unredacted-location request.
 
+Capacitor bindings (a host registers a subclass under its own plugin name):
+
+- `PhotosPlugin` – the Photos bridge over the engines above: library access (`libraryAccess`,
+  `requestLibraryAccess` from an explicit control only, `openLibrarySettings`), permitted and owned
+  listings with bounded previews (`list`, `listPermitted`, `read`, `readPermitted`, `summary`),
+  favorite and Recently deleted changes (single and 1–20 item batches, permitted items through the
+  native review), two-step permanent removal, custom albums, still-photo and video edit copies,
+  explicit capture keeps, single and multi-item share, and same-origin video playback. Every
+  permitted read is published only under the catalog ticket it started with; pausing the activity
+  cancels running video copies, stops observation and marks the catalog background; destroying it
+  closes every engine. The host answers `mediaConfig()` and `playbackPath()` and may log the fixed
+  `Diagnostic` markers in debug builds. The recovery of a closed failed video copy
+  (`preserveClosedFailure`) is native-only.
+- `DeviceLibraryPlugin` – the agent's album facade over the same catalog and review (one epoch,
+  one observer, one review at a time): scope (`full`, `partial`, Android 14 `selected` or
+  `denied`, per images and videos), bounded pages, item inspection, revision validation of up to
+  200 items under one fence, and favorite/unfavorite/Recently deleted through the native review.
+  Permanent deletion stays in the system photos app. The host names its `PhotosPlugin` in
+  `photosPluginName()`.
+- `PhotoLibraryAccess` – the bridge rules both apply: permission aliases per API level, the scope
+  answer, listing filters, page and selection bounds and change mapping. Pure Java.
+
+Both host subclasses declare the permission aliases `libraryLegacy` (`READ_EXTERNAL_STORAGE`),
+`libraryImages`, `libraryVideos` and `librarySelected`; loading refuses a host that does not.
+
+```java
+@CapacitorPlugin(name = "MyPhotos", permissions = {
+  @Permission(alias = "libraryLegacy", strings = {Manifest.permission.READ_EXTERNAL_STORAGE}),
+  @Permission(alias = "libraryImages", strings = {Manifest.permission.READ_MEDIA_IMAGES}),
+  @Permission(alias = "libraryVideos", strings = {Manifest.permission.READ_MEDIA_VIDEO}),
+  @Permission(alias = "librarySelected", strings = {Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED})
+})
+public final class MyPhotosPlugin extends PhotosPlugin {
+  @Override protected OwnedMediaConfig mediaConfig() { return MyMedia.CONFIG; }
+  @Override protected String playbackPath() { return "/_myapp_owned_video/"; }
+}
+```
+
+Register the `PhotosPlugin` subclass before the `DeviceLibraryPlugin` subclass.
+
 Selected documents:
 
 - `SelectedDocuments` – opaque capabilities for documents chosen in Android's picker. Renderers
@@ -79,6 +119,23 @@ Selected documents:
   revision the renderer listed and deletion needs explicit confirmation. Android grants the folder
   in place: nothing is copied or imported, and no broad storage permission is used. Choosing
   another tree releases only the previous tree's grant.
+- `SelectedDocumentCalls` – the bridge contract of `SelectedDocuments` (restore, describe, rename,
+  PDF page, read, open, share, forget by opaque `selectionId`), so a host plugin keeps its own
+  plugin and method names and delegates each method, passing its registry lazily so a registry
+  that cannot load is reported as a fixed rejection.
+- `DocumentExport` / `DocumentDestinations` – owner-chosen import and export: strict UTF-8 text up
+  to 64 KiB, safe file titles, Android's open/create document pickers and a write that reads the
+  bytes back. An export that reached the provider and could not be confirmed is `unverified`,
+  never `failed`. `DocumentExport` is pure Java.
+- `ReviewedFileHandoff` – one temporary read-only copy of reviewed bytes for one viewer, through
+  the host's FileProvider; the host injects the authority, cache folder and provider path name.
+  A new copy revokes and deletes the previous one.
+- `IsolatedPdfRenderService` / `IsolatedPdfViewerActivity` / `PdfPageLimits` – untrusted PDF pages
+  rendered in a permissionless isolated process into read-only shared memory, and a viewer that
+  maps those pixels only after checking the reply came from a different, isolated,
+  network-denied uid within the size limits. The renderer ends its process past a 10 s deadline
+  or 128 MiB PSS. The host declares concrete subclasses (the service with
+  `android:isolatedProcess="true"`) and says which sources the viewer admits.
 
 Recordings:
 
@@ -120,8 +177,26 @@ SelectedDocuments documents =
     new SelectedDocuments(context, "myapp-selected-documents", "myapp-document-", links::retains);
 DocumentFolderTree folders =
     new DocumentFolderTree(context, "myapp-files-tree", uri -> documents.authorize(uri, 0));
+ReviewedFileHandoff handoff = new ReviewedFileHandoff(
+    context, context.getPackageName() + ".attachments", "attachments", "attachments");
 RecordingStore recordings = new RecordingStore(
     new File(context.getNoBackupFilesDir(), "recordings"), "myapp-recording:v1:", "ownerId", slots);
+```
+
+An isolated PDF viewer is two host components:
+
+```java
+public final class MyPdfService extends IsolatedPdfRenderService {}
+public final class MyPdfActivity extends IsolatedPdfViewerActivity {
+  @Override protected Class<? extends IsolatedPdfRenderService> renderer() { return MyPdfService.class; }
+  @Override protected boolean admits(Uri source) { return handoff(this).admits(source); }
+}
+```
+
+```xml
+<activity android:name=".MyPdfActivity" android:exported="false" />
+<service android:name=".MyPdfService" android:exported="false" android:isolatedProcess="true"
+    android:process=":isolated_pdf" android:stopWithTask="true" />
 ```
 
 `DocumentFolderTree` methods run on one serial worker through `guarded(...)`; launch

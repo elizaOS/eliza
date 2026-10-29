@@ -30,6 +30,12 @@
       "import": "./dist/esm/reset.js",
       "default": "./dist/esm/reset.js"
     },
+    "./crash-log": {
+      "eliza-source": "./src/crash-log.ts",
+      "types": "./dist/esm/crash-log.d.ts",
+      "import": "./dist/esm/crash-log.js",
+      "default": "./dist/esm/crash-log.js"
+    },
     "./settings": {
       "eliza-source": "./src/settings.ts",
       "types": "./dist/esm/settings.d.ts",

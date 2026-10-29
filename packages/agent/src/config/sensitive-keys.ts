@@ -42,3 +42,14 @@ export function isSensitiveConfigKey(key: string): boolean {
     lastSegment === "AUTH"
   );
 }
+
+/**
+ * Leaf value written in place of a secret by every redaction walk
+ * (`/api/config`, connectors, and the `/api/runtime` debug snapshot).
+ * Empty strings and nullish values stay as they are, so the reader can
+ * still see that no value is set.
+ */
+export function redactSensitiveLeaf(value: unknown): unknown {
+  if (value === null || value === undefined || value === "") return value;
+  return "[REDACTED]";
+}

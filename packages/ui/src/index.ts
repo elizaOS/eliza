@@ -79,9 +79,18 @@ export {
 export {
   type ConversationRoom,
   type ConversationStopResult,
+  type ConversationTurnContext,
   ConversationTurnController,
+  type ConversationTurnFailure,
   type ConversationTurnObserver,
+  ConversationTurnRefusal,
+  type ConversationTurnRefusalCode,
   type ConversationTurnTransport,
+  findStoppedUserTurn,
+  isConversationTurnRefusal,
+  STOPPED_TURN_CLOCK_SKEW_MS,
+  type StoppedConversationTurn,
+  type StoppedUserTurn,
 } from "./api/conversation-turn-controller.js";
 export { fetchWithCsrf } from "./api/csrf-client.js";
 export type {
@@ -293,6 +302,11 @@ export {
   type ElizaCloudTier,
 } from "./components/cockpit/cockpit-modes.js";
 export { DiffReviewPanel } from "./components/composites/DiffReviewPanel.js";
+export {
+  type DeferredDeletionIdentity,
+  DeferredDeletionNotice,
+  type DeferredDeletionNoticeProps,
+} from "./components/composites/deferred-deletion-notice.js";
 export { PageLoadingState } from "./components/composites/page-panel/content-state.js";
 export { PagePanel } from "./components/composites/page-panel/index.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";
@@ -308,6 +322,12 @@ export {
 } from "./components/pages/WalletSectionNav.js";
 export { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay.js";
 export { PermissionRecoveryCallout } from "./components/permissions/PermissionRecoveryCallout.js";
+export {
+  PERMISSION_WALKTHROUGH_MEMORY_KEY,
+  PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+  primingWalkthroughMemory,
+} from "./components/permissions/permission-priming.js";
+export * from "./components/permissions/permission-walkthrough.js";
 export { ShellModalityProvider } from "./components/ShellModalityProvider.js";
 export { ShellRoleProvider } from "./components/ShellRoleProvider.js";
 export {

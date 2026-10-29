@@ -232,6 +232,7 @@ describe("ElizaCloudMapsAdapter", () => {
     [503, "maps_allowance_unconfigured", "MAPS_ALLOWANCE_UNCONFIGURED"],
     [503, "maps_admission_unknown", "MAPS_ADMISSION_UNKNOWN"],
     [409, "maps_request_already_admitted", "MAPS_REQUEST_ALREADY_ADMITTED"],
+    [408, "maps_request_cancelled", "MAPS_REQUEST_CANCELLED"],
     [429, "allowance_exhausted", "MAPS_BUDGET_EXHAUSTED"],
     [503, "maps_not_configured", "MAPS_PROVIDER_UNAVAILABLE"],
     [503, "provider_unavailable", "MAPS_PROVIDER_FAILURE"],

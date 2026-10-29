@@ -44,13 +44,8 @@ import {
   type MapsViewTransport,
   mapsViewTransport,
 } from "./maps-view-data.js";
+import { planCoveredRoutes } from "./plan-covered-routes.js";
 
-const TRAVEL_MODES: readonly TravelMode[] = [
-  "drive",
-  "walk",
-  "bicycle",
-  "transit",
-];
 const MAP_GRID_LINES = ["a", "b", "c", "d", "e", "f", "g"] as const;
 const LOADING_ROWS = ["a", "b", "c", "d", "e"] as const;
 
@@ -928,17 +923,17 @@ export function MapsView({
     setRouteError(null);
     setRoutes([]);
     try {
-      const outcomes = await Promise.allSettled(
-        TRAVEL_MODES.map((mode) =>
-          transport.planRoute(
-            origin,
-            selected,
-            mode,
-            provider,
-            controller.signal,
-          ),
-        ),
+      // Plan only the modes a reported coverage lists, so no request is spent
+      // on a mode it omits; an unreported coverage narrows nothing.
+      const plan = await planCoveredRoutes(
+        transport,
+        origin,
+        selected,
+        provider,
+        controller.signal,
       );
+      if (!plan) return;
+      const { outcomes } = plan;
       if (
         controller.signal.aborted ||
         routeRequest.current !== controller ||
