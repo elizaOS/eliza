@@ -5,19 +5,19 @@ credential storage. Keep credentials in the trusted host; never log them.
 
 ## Entry points
 
-| Import | Owner |
-| --- | --- |
-| `@elizaos/auth` | Browser-safe login client, types, chain metadata and signature verification |
-| `@elizaos/auth/auth` | Account storage, provider login and serialized credential refresh |
-| `@elizaos/auth/accounts` | Node-only linked-account selection, usage accounting and credential bridges |
-| `@elizaos/auth/providers` | Provider credential verification and usage adapters |
-| `@elizaos/auth/vault` | Encrypted credential vault |
-| `@elizaos/auth/kms` | Key management adapters |
-| `@elizaos/auth/server` | Identity router without process startup |
-| `@elizaos/auth/start` | Hosted Bun service with PostgreSQL |
-| `@elizaos/auth/embedded` | Embedded Bun service with persistent PGlite |
-| `@elizaos/auth/native-host` | Trusted Node enrollment flow |
-| `@elizaos/auth/testing` | Vault fixtures for tests only |
+| Import                      | Owner                                                                       |
+| --------------------------- | --------------------------------------------------------------------------- |
+| `@elizaos/auth`             | Browser-safe login client, types, chain metadata and signature verification |
+| `@elizaos/auth/auth`        | Account storage, provider login and serialized credential refresh           |
+| `@elizaos/auth/accounts`    | Node-only linked-account selection, usage accounting and credential bridges |
+| `@elizaos/auth/providers`   | Provider credential verification and usage adapters                         |
+| `@elizaos/auth/vault`       | Encrypted credential vault                                                  |
+| `@elizaos/auth/kms`         | Key management adapters                                                     |
+| `@elizaos/auth/server`      | Identity router without process startup                                     |
+| `@elizaos/auth/start`       | Hosted Bun service with PostgreSQL                                          |
+| `@elizaos/auth/embedded`    | Embedded Bun service with persistent PGlite                                 |
+| `@elizaos/auth/native-host` | Trusted Node enrollment flow                                                |
+| `@elizaos/auth/testing`     | Vault fixtures for tests only                                               |
 
 Use these barrels in repository consumers. Explicit old account/vault paths and
 `/credentials` remain compatibility aliases; new implementation files are private.
