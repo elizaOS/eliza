@@ -459,6 +459,51 @@ describe("Notes capability-to-UI journey", () => {
     );
   });
 
+  it("hands the selected note to the host's reviewed Calendar and reminder draft ports", async () => {
+    await interactWithService(
+      "create-note",
+      { content: "Venue plan\nBook the venue" },
+      activeService(),
+    );
+    const draftEvent = vi.fn(async () => {});
+    const draftReminder = vi.fn(async () => {
+      throw new Error("Calendar unavailable");
+    });
+    render(
+      <NotesWorkspace
+        client={createNotesClient({
+          fetch: (url: string, init?: RequestInit) =>
+            transportFetch(url, init).then((response: Response) =>
+              response.json(),
+            ),
+        })}
+        binding={{ key: "draft-owner", current: () => true }}
+        ports={{ draftEvent, draftReminder }}
+      />,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Note Venue plan" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Calendar draft" }));
+    await waitFor(() => expect(draftEvent).toHaveBeenCalledTimes(1));
+    expect(draftEvent.mock.calls[0][0]).toMatchObject({
+      title: "Venue plan",
+      body: "Book the venue",
+    });
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Reminder draft" }),
+      ).toHaveProperty("disabled", false),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Reminder draft" }));
+    expect(
+      await screen.findByText(
+        "The draft could not be opened. Nothing was scheduled.",
+      ),
+    ).toBeTruthy();
+    expect(activeService().snapshot().notes[0].body).toBe("Book the venue");
+  });
+
   it("saves a Home card before Notes has ever been opened without navigating", async () => {
     const workspace = createRef<NotesWorkspaceHandle>();
     let receipt: { id: string; revision: number } | undefined;

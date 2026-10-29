@@ -1,5 +1,8 @@
 export * from "./note-dates.ts";
+export * from "./note-deleted-origins.ts";
+export * from "./note-documents.ts";
 export * from "./note-origin.ts";
+export * from "./note-schedule-draft.ts";
 export * from "./note-share-text.ts";
 export {
   createNotesClient,

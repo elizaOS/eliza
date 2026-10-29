@@ -36,6 +36,14 @@ export interface NotesWorkspacePorts {
   readAloud?(note: StickyNote, signal: AbortSignal): Promise<void>;
   dictate?(signal: AbortSignal): Promise<string>;
   openSource?(note: StickyNote, signal: AbortSignal): Promise<void>;
+  /**
+   * Opens a reviewed Calendar event draft from this note (see `noteScheduleDraft`). Nothing is
+   * scheduled until the owner saves it there; the host stores the draft's origin link with the
+   * saved event.
+   */
+  draftEvent?(note: StickyNote, signal: AbortSignal): Promise<void>;
+  /** As {@link draftEvent}, for a reminder draft. */
+  draftReminder?(note: StickyNote, signal: AbortSignal): Promise<void>;
 }
 export interface NotesWorkspaceProps {
   /** Retained hidden hosts keep drafts but admit no foreground actions. */
@@ -402,7 +410,9 @@ function WorkspaceSession(
             ? "Reading did not finish. The note is unchanged."
             : name === "openSource"
               ? "The source could not be opened. The note is unchanged."
-              : "This note could not be shared. Try again.",
+              : name === "draftEvent" || name === "draftReminder"
+                ? "The draft could not be opened. Nothing was scheduled."
+                : "This note could not be shared. Try again.",
         );
       }
     } finally {
@@ -729,6 +739,8 @@ function WorkspaceSession(
               ["composeEmail", "Email draft"],
               ["readAloud", "Read aloud"],
               ["openSource", "Open source"],
+              ["draftReminder", "Reminder draft"],
+              ["draftEvent", "Calendar draft"],
             ] as const
           ).map(([name, label]) =>
             props.ports?.[name] ? (
