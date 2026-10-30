@@ -29,6 +29,7 @@ function tree({
   homes = 1,
   homeExported = "(type 0x12)0xffffffff",
   assistantExported = "(type 0x12)0xffffffff",
+  assistantPresent = true,
   autofillExported = "(type 0x12)0xffffffff",
   autofillPermission = "android.permission.BIND_AUTOFILL_SERVICE",
 } = {}) {
@@ -49,13 +50,15 @@ function tree({
         "android.intent.category.DEFAULT",
       ]),
     ]).flat(),
-    ...element(6, "activity", {
-      name: `${PKG}.AlphaAssistActivity`,
-      exported: assistantExported,
-    }),
-    ...filter(8, "android.intent.action.ASSIST", [
-      "android.intent.category.DEFAULT",
-    ]),
+    ...(assistantPresent ? [
+      ...element(6, "activity", {
+        name: `${PKG}.AlphaAssistActivity`,
+        exported: assistantExported,
+      }),
+      ...filter(8, "android.intent.action.ASSIST", [
+        "android.intent.category.DEFAULT",
+      ]),
+    ] : []),
     ...element(6, "service", {
       name: "ai.eliza.plugins.passwords.ElizaPasswordAutofillService",
       permission: autofillPermission,
@@ -158,7 +161,8 @@ test("provisioning requires each selected component to be explicitly exported", 
 
 test("explicitly deferred assistant leaves HOME and Autofill provisioning unchanged", () => {
   const withDisabled = tree({ assistantExported: "(type 0x12)0x0" });
-  const withoutAssistant = withDisabled.replace(/    E: activity \(line=1\)\n      A: android:name[^\n]*AlphaAssistActivity[^\n]*\n[\s\S]*?(?=    E: service)/, "");
+  const withoutAssistant = tree({ assistantPresent: false });
+  assert.ok(!withoutAssistant.includes("android.intent.action.ASSIST"));
   for (const manifest of [withDisabled, withoutAssistant]) {
     const selected = provisioningComponents(manifest, PKG, { assistantRequired: false });
     assert.equal(selected.assistant, null);
