@@ -40,6 +40,15 @@ import {
   validateNativeNotesReadReplyOrigin,
 } from "@elizaos/contracts/native-notes-query";
 import {
+  isPhoneDial,
+  type PhoneDialOperation,
+  type PhoneDialResult,
+  phoneDialCapabilityAvailable,
+  phoneDialReceiptOutcome,
+  validatePhoneDial,
+  validatePhoneDialResult,
+} from "@elizaos/contracts/phone-dial";
+import {
   isSmsSend,
   SMS_SEND_CAPABILITY,
   type SmsSendOperation,
@@ -208,6 +217,7 @@ export type LegacyDeviceOperation =
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
+  | PhoneDialOperation
   | ReminderCreateOperation
   | WorkflowPresentationOperation
   | ClockHandoffOperation
@@ -307,6 +317,7 @@ export interface DeviceExecutionResult {
   photoLibraryResult?: LibraryAgentResult;
   cameraResult?: CameraCaptureResult;
   smsResult?: SmsSendResult;
+  dialResult?: PhoneDialResult;
   /** Local Browser presentation only; never persisted or uploaded. */
   presentBrowser?: () => void;
 }
@@ -348,6 +359,7 @@ export type DeviceRecovery = (
   status: string;
   reminderResult?: ReminderResult | ReminderCreateResult;
   smsResult?: SmsSendResult;
+  dialResult?: PhoneDialResult;
 }>;
 
 // ── Product profile ─────────────────────────────────────────────────────────
@@ -464,6 +476,12 @@ export function smsDeviceStatus(
       ? "failed"
       : "unknown";
 }
+/** A dial receipt proves only that the dial screen opened, never a placed call. */
+export function dialDeviceStatus(
+  result: PhoneDialResult,
+): "succeeded" | "failed" {
+  return phoneDialReceiptOutcome(result) === "applied" ? "succeeded" : "failed";
+}
 export function validateDeviceOperation(
   value: unknown,
   policy: DeviceOperationPolicy,
@@ -471,6 +489,7 @@ export function validateDeviceOperation(
   const p = object(value);
   if (isCameraCapture(p)) return validateCameraCapture(p);
   if (isSmsSend(p)) return validateSmsSend(p);
+  if (isPhoneDial(p)) return validatePhoneDial(p);
   if (isReminderCreate(p)) return validateReminderCreate(p);
   if (isClockHandoffOperation(p)) return validateClockHandoffDispatch(p);
   if (isMapsOperation(p)) return validateMapsOperation(p);
@@ -479,7 +498,11 @@ export function validateDeviceOperation(
   if (isNotesOperation(p)) return validateNotesOperation(p);
   if (isCalendarOperation(p)) return validateCalendarOperation(p);
   if (p.type === "notes_query") return validateNativeNotesQuery(p);
-  if (p.type === "read_selected_notes" || p.type === "read_calendar_range")
+  if (
+    p.type === "read_selected_notes" ||
+    p.type === "read_calendar_range" ||
+    p.type === "read_selected_reminders"
+  )
     return policy.parseWorkflowRead(p);
   if (p.type === "post_notification") {
     if (Object.keys(p).some((k) => !["type", "title", "body"].includes(k)))
@@ -733,6 +756,10 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     throw new ContextNotice(CAMERA_CONTEXT_NOTICE);
   if (isForegroundReviewOperation(operation))
     assertForegroundContext(operation, context, ports);
+  if (isPhoneDial(operation) && (context.sensitive || ports.foregroundHidden()))
+    throw new ContextNotice(
+      "Unlock the phone and keep it open to review this number.",
+    );
   if (
     isSmsSend(operation) &&
     (context.sensitive ||
@@ -1184,6 +1211,11 @@ export class DeviceActionCoordinator<
       );
     if (isCameraCapture(op) && !this.capability(CAMERA_CAPTURE_CAPABILITY))
       throw Error("Camera capture was not negotiated with this agent");
+    if (
+      isPhoneDial(op) &&
+      !phoneDialCapabilityAvailable(op, this.credential.capabilities)
+    )
+      throw Error("Dialing was not negotiated with this phone");
     if (isSmsSend(op) && !this.capability(SMS_SEND_CAPABILITY))
       throw Error("Native SMS was not negotiated with this phone");
     if (
@@ -1239,6 +1271,7 @@ export class DeviceActionCoordinator<
       [
         "read_selected_notes",
         "read_calendar_range",
+        "read_selected_reminders",
         "post_notification",
         "speak_text",
       ].includes(op.type) &&
@@ -1352,6 +1385,12 @@ export class DeviceActionCoordinator<
           readReply),
       };
     }
+    if (isPhoneDial(op))
+      return {
+        ...base,
+        title: "Open dial screen",
+        description: `${op.target.kind === "number" ? `Number: ${op.target.number}` : `Contact: ${op.target.query}`}\n\n${this.profile.appName} opens your phone app with this number. You place the call there; ${this.profile.appName} does not know whether it connects.`,
+      };
     if (isSmsSend(op))
       return {
         ...base,
@@ -1646,17 +1685,19 @@ export class DeviceActionCoordinator<
       const op = p.operation;
       const w = p.workflow as WorkflowDeviceBinding;
       const scope =
-        op.type === "read_selected_notes"
-          ? `Read only ${op.notes.length} selected Notes at the recorded revisions. Text and titles will be sent to this agent.\nSelected IDs: ${op.notes.map((n: { id: string }) => n.id).join(", ")}`
-          : op.type === "read_calendar_range"
-            ? `Read calendars ${op.calendarIds.join(", ")} from ${op.start} up to (excluding) ${op.end}, shown in ${op.timeZone}. At most ${op.maximumEvents} events; overflow fails. Event titles, times and IDs will be sent; descriptions, locations and attendees are excluded.`
-            : op.type === "create_note"
-              ? `Save one note “${op.title}” on this phone:\n${op.body}`
-              : op.type === "post_notification"
-                ? `Post this notification on this device: ${op.title}\n${op.body}`
-                : op.type === "speak_text"
-                  ? `Read this exact text aloud on this device:\n${op.text}`
-                  : "Unsupported phone step";
+        op.type === "read_selected_reminders"
+          ? `Read reminders open by the end of ${op.day} (overdue included) and reminders completed that day, in ${op.timeZone}. At most ${op.maximumItems} reminders; overflow fails. Titles, due times and completion times will be sent; reminder notes and alarms are excluded.`
+          : op.type === "read_selected_notes"
+            ? `Read only ${op.notes.length} selected Notes at the recorded revisions. Text and titles will be sent to this agent.\nSelected IDs: ${op.notes.map((n: { id: string }) => n.id).join(", ")}`
+            : op.type === "read_calendar_range"
+              ? `Read calendars ${op.calendarIds.join(", ")} from ${op.start} up to (excluding) ${op.end}, shown in ${op.timeZone}. At most ${op.maximumEvents} events; overflow fails. Event titles, times and IDs will be sent; descriptions, locations and attendees are excluded.`
+              : op.type === "create_note"
+                ? `Save one note “${op.title}” on this phone:\n${op.body}`
+                : op.type === "post_notification"
+                  ? `Post this notification on this device: ${op.title}\n${op.body}`
+                  : op.type === "speak_text"
+                    ? `Read this exact text aloud on this device:\n${op.text}`
+                    : "Unsupported phone step";
       const identity = `Owner: ${this.session.ownerId}\nWorkflow: ${w.workflowId}\nRun: ${w.runId}\nVersion: ${w.versionId}\nStep: ${w.stepId}\nSpec: ${w.specDigest}`;
       return {
         id: p.id,
@@ -1704,6 +1745,16 @@ export class DeviceActionCoordinator<
     context: C,
   ) {
     const op = p.operation;
+    let dialResult: PhoneDialResult | undefined;
+    if (isPhoneDial(op)) {
+      if (result.dialResult !== undefined) {
+        dialResult = validatePhoneDialResult(op, result.dialResult);
+        if (dialDeviceStatus(dialResult) !== result.status)
+          throw Error("Dial outcome mismatch");
+      } else if (result.status !== "unknown")
+        throw Error("Missing dial result");
+    } else if (result.dialResult !== undefined)
+      throw Error("Unexpected dial result");
     let smsResult: SmsSendResult | undefined;
     if (isSmsSend(op)) {
       if (result.smsResult !== undefined) {
@@ -1818,7 +1869,8 @@ export class DeviceActionCoordinator<
     let readResult: WorkflowReadResult | undefined;
     if (
       op.type === "read_selected_notes" ||
-      op.type === "read_calendar_range"
+      op.type === "read_calendar_range" ||
+      op.type === "read_selected_reminders"
     ) {
       if (result.status === "succeeded")
         readResult = await this.profile.workflow.validateResult(
@@ -1832,6 +1884,7 @@ export class DeviceActionCoordinator<
     // Journal field order is part of the stored record shape; keep it stable.
     return {
       smsResult,
+      dialResult,
       clockResult,
       mapsResult,
       photoLibraryResult,
@@ -2522,6 +2575,7 @@ export class DeviceActionCoordinator<
   private async savedResults(p: DeviceProposal, entry: DeviceJournalEntry) {
     return {
       smsResult: await this.savedSmsResult(p, entry),
+      dialResult: await this.savedDialResult(p, entry),
       clockResult: await this.savedClockResult(p, entry),
       mapsResult: await this.savedMapsResult(p, entry),
       cameraResult: await this.savedCameraResult(p, entry),
@@ -2630,6 +2684,29 @@ export class DeviceActionCoordinator<
     );
     if (read.status !== smsDeviceStatus(result))
       throw Error("Reconciled SMS outcome mismatch");
+    return result;
+  }
+  private async savedDialResult(
+    p: DeviceProposal,
+    summary: DeviceJournalEntry,
+  ): Promise<PhoneDialResult | undefined> {
+    if (!isPhoneDial(p.operation)) return undefined;
+    const entry = await this.savedEntry(
+      p,
+      summary,
+      "No exact saved dial receipt; the handoff will not be repeated",
+      { device: true },
+    );
+    if (entry.result?.dialResult === undefined) {
+      if (entry.status !== "unknown") throw Error("Missing saved dial receipt");
+      return undefined;
+    }
+    const result = validatePhoneDialResult(
+      p.operation,
+      entry.result.dialResult,
+    );
+    if (entry.status !== dialDeviceStatus(result))
+      throw Error("Saved dial outcome mismatch");
     return result;
   }
   private async savedClockResult(
@@ -2794,7 +2871,11 @@ export class DeviceActionCoordinator<
     summary: DeviceJournalEntry,
   ): Promise<WorkflowReadResult | undefined> {
     const op = p.operation;
-    if (op.type !== "read_selected_notes" && op.type !== "read_calendar_range")
+    if (
+      op.type !== "read_selected_notes" &&
+      op.type !== "read_calendar_range" &&
+      op.type !== "read_selected_reminders"
+    )
       return undefined;
     if (summary.status !== "succeeded") return undefined;
     const refusal =
@@ -2838,6 +2919,13 @@ export class DeviceActionCoordinator<
       throw Error(
         "SMS reconciliation requires exact saved evidence; unknown or partial sends cannot be called not sent",
       );
+    const dialResult = entry ? await this.savedDialResult(p, entry) : undefined;
+    if (
+      isPhoneDial(op) &&
+      (!dialResult ||
+        applied !== (dialDeviceStatus(dialResult) === "succeeded"))
+    )
+      throw Error("Dial reconciliation requires exact saved handoff evidence");
     const clockResult = entry
       ? await this.savedClockResult(p, entry)
       : undefined;
@@ -2898,7 +2986,8 @@ export class DeviceActionCoordinator<
     if (
       applied &&
       (op.type === "read_selected_notes" ||
-        op.type === "read_calendar_range") &&
+        op.type === "read_calendar_range" ||
+        op.type === "read_selected_reminders") &&
       !readResult
     )
       throw new Error("Applied read requires its exact saved result");
@@ -2910,11 +2999,16 @@ export class DeviceActionCoordinator<
         resolution: {
           confirmed: true,
           outcome,
-          ...((applied || isClockHandoffOperation(op) || isSmsSend(op)) && entry
+          ...((applied ||
+            isClockHandoffOperation(op) ||
+            isSmsSend(op) ||
+            isPhoneDial(op)) &&
+          entry
             ? { operationId: entry.operationId }
             : {}),
           ...receiptResult({
             smsResult,
+            dialResult,
             foregroundResult,
             clockResult,
             mapsResult,
@@ -2934,6 +3028,7 @@ export class DeviceActionCoordinator<
 
 type TypedResults = {
   smsResult?: SmsSendResult;
+  dialResult?: PhoneDialResult;
   clockResult?: ClockHandoffResult;
   mapsResult?: MapsResult;
   cameraResult?: CameraCaptureResult;
@@ -2957,6 +3052,7 @@ function receiptOutcome(
 function receiptResult(results: TypedResults): CommittedReceiptResult {
   const value =
     results.smsResult ??
+    results.dialResult ??
     results.foregroundResult ??
     results.clockResult ??
     results.mapsResult ??

@@ -13,6 +13,11 @@ import {
   publishCommittedDeviceChanges,
   validateDeviceOperation,
 } from "./client-coordinator.ts";
+import {
+  validateWorkflowBinding,
+  validateWorkflowReadOperation,
+  validateWorkflowReadResult,
+} from "./workflow-contract.ts";
 
 const session = {
   ownerId: "owner",
@@ -72,7 +77,11 @@ const profile: DeviceActionClientProfile = {
  * while the attempt is executing; a replay to a durable outcome must be
  * identical, and any other state refuses it.
  */
-function fixtureServer(operation: Record<string, unknown>, id = "proposal") {
+function fixtureServer(
+  operation: Record<string, unknown>,
+  id = "proposal",
+  workflow?: Record<string, unknown>,
+) {
   const server = {
     state: "pending",
     attemptId: undefined as string | undefined,
@@ -95,6 +104,7 @@ function fixtureServer(operation: Record<string, unknown>, id = "proposal") {
       installationId: "device",
       enrollmentId: "enrollment",
       operation,
+      ...(workflow ? { workflow } : {}),
     },
     execution: server.attemptId
       ? {
@@ -1082,5 +1092,195 @@ describe("opt-in current browser request policy", () => {
       ...notesContext,
       extraField: { retained: true },
     });
+  });
+});
+
+describe("shared phone and reminder-read parity", () => {
+  const home = { view: "home", revision: 3, sensitive: false };
+  const dial = {
+    type: "phone_dial",
+    target: { kind: "number", number: "+15551234567" },
+  } as const;
+  const dialResult = {
+    kind: "phone-dial",
+    status: "handed-off",
+    handler: "system.dialer",
+    contact: false,
+  } as const;
+  const make = (
+    request: (p: string, b: unknown, s: AbortSignal) => Promise<unknown>,
+    journal: DeviceActionJournal,
+    execute: DeviceExecutor,
+    capabilities = ["phone.dial.v1"],
+  ) =>
+    new DeviceActionCoordinator({
+      session,
+      credential: { ...credential, capabilities },
+      scope,
+      request,
+      journal,
+      execute,
+      profile,
+    });
+  it("negotiates the dial handoff and journals/replays the exact result without dialing twice", async () => {
+    const { server, request } = fixtureServer(dial);
+    const { journal, entries } = memoryJournal();
+    let effects = 0;
+    const execute: DeviceExecutor = async () => {
+      effects++;
+      expect(entries.get("proposal")?.phase).toBe("applying");
+      return { status: "succeeded", summary: "Opened dial screen", dialResult };
+    };
+    const actions = make(request, journal, execute);
+    const [card] = await actions.pending(home, signal());
+    expect(card.title).toBe("Open dial screen");
+    expect(card.description).toContain("+15551234567");
+    server.receiptOutage = true;
+    expect((await actions.approve("proposal", home, signal())).status).toBe(
+      "succeeded",
+    );
+    expect(entries.get("proposal")?.result?.dialResult).toEqual(dialResult);
+    server.receiptOutage = false;
+    await make(request, journal, execute).syncReceipts(signal());
+    expect(server.receipts[0].receipt).toMatchObject({
+      outcome: "applied",
+      result: dialResult,
+    });
+    expect(effects).toBe(1);
+  });
+  it("refuses unnegotiated contact lookup and hides dialing on a locked screen", async () => {
+    const { request } = fixtureServer({
+      type: "phone_dial",
+      target: { kind: "contact", query: "Alex" },
+    });
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = make(request, journal, async () => {
+      effects++;
+      return { status: "unknown", summary: "not dispatched" };
+    });
+    await expect(actions.pending(home, signal())).rejects.toThrow(/negotiated/);
+    expect(
+      proposalContextNotice(dial, { ...home, sensitive: true }, profile),
+    ).toMatch(/Unlock/);
+    expect(effects).toBe(0);
+  });
+  it("does not reconcile an unknown dial handoff from the owner's guess", async () => {
+    const { request } = fixtureServer(dial);
+    const { journal } = memoryJournal();
+    let effects = 0;
+    const actions = make(request, journal, async () => {
+      effects++;
+      throw Error("lost result");
+    });
+    await actions.pending(home, signal());
+    expect((await actions.approve("proposal", home, signal())).status).toBe(
+      "unknown",
+    );
+    await expect(
+      actions.reconcile("proposal", "applied", signal()),
+    ).rejects.toThrow(/exact saved handoff/);
+    await expect(
+      actions.reconcile("proposal", "not_applied", signal()),
+    ).rejects.toThrow(/exact saved handoff/);
+    expect(effects).toBe(1);
+  });
+  it("requires a workflow and validates/replays selected reminder reads without rereading", async () => {
+    const operation = {
+      type: "read_selected_reminders",
+      window: "open_and_completed_today",
+      day: "2026-10-08",
+      timeZone: "America/Los_Angeles",
+      maximumItems: 3,
+    };
+    const workflow = {
+      workflowId: "wf-1",
+      versionId: "ver-1",
+      runId: "run-1",
+      stepId: "reminders",
+      specDigest: "a".repeat(64),
+    };
+    const readResult = { kind: "reminders", reminders: [] } as const;
+    const workflowProfile: DeviceActionClientProfile = {
+      ...profile,
+      operations: {
+        ...profile.operations,
+        parseWorkflowRead: validateWorkflowReadOperation,
+      },
+      workflow: {
+        ...profile.workflow,
+        parseBinding: validateWorkflowBinding,
+        parseRead: validateWorkflowReadOperation,
+        validateResult: async (op, value) =>
+          validateWorkflowReadResult(op, value),
+        assertOperation: (_review, binding) => {
+          expect(binding).toEqual(workflow);
+        },
+      },
+    };
+    const { journal } = memoryJournal();
+    let reads = 0;
+    const execute: DeviceExecutor = async () => {
+      reads++;
+      return {
+        status: "succeeded",
+        summary: "Read selected reminders",
+        readResult: { ...readResult, reminders: [] },
+      };
+    };
+    const standalone = fixtureServer(operation);
+    const unbound = new DeviceActionCoordinator({
+      session,
+      credential,
+      scope,
+      request: standalone.request,
+      journal,
+      execute,
+      profile: workflowProfile,
+    });
+    await expect(unbound.pending(home, signal())).rejects.toThrow(
+      /Workflow binding/,
+    );
+    const { request, server } = fixtureServer(operation, "proposal", workflow);
+    const actions = new DeviceActionCoordinator({
+      session,
+      credential,
+      scope,
+      request,
+      journal,
+      execute,
+      profile: workflowProfile,
+    });
+    const review = {
+      ...workflow,
+      finished: false,
+      cancellationRequestedAt: null,
+    };
+    const workflowContext = {
+      view: "workflows",
+      revision: 3,
+      selectedObject: {
+        kind: "workflow-run",
+        id: workflow.runId,
+        revision: workflow.versionId,
+      },
+    };
+    const [card] = await actions.pendingForWorkflow(
+      review,
+      workflowContext,
+      signal(),
+    );
+    expect(card.reviewScope).toContain("At most 3 reminders");
+    server.receiptOutage = true;
+    expect(
+      (await actions.approve("proposal", workflowContext, signal())).status,
+    ).toBe("succeeded");
+    server.receiptOutage = false;
+    await actions.syncReceipts(signal(), workflow);
+    expect(server.receipts[0].receipt).toMatchObject({
+      outcome: "applied",
+      result: readResult,
+    });
+    expect(reads).toBe(1);
   });
 });
