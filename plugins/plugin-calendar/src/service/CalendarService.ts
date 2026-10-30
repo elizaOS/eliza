@@ -3974,8 +3974,24 @@ export class CalendarService extends Service {
       } catch (error) {
         const calendar = managedCalendarPlaceholder(request?.grantId);
         const sourceError = calendarSourceError(error);
+        let diagnosticOnly = false;
+        try {
+          if (
+            error instanceof ElizaError &&
+            sourceError.code === "MANAGED_CALENDAR_READ_UNAVAILABLE"
+          ) {
+            const severity = Object.getOwnPropertyDescriptor(error, "severity");
+            diagnosticOnly =
+              !!severity &&
+              Object.hasOwn(severity, "value") &&
+              (severity.value === undefined || severity.value === "ephemeral");
+          }
+        } catch {
+          // Unreadable classification stays on the normal reporting path.
+        }
         this.runtime.reportError("calendar:list-managed-source", error, {
           source: calendarSourceKey(calendar),
+          ...(diagnosticOnly ? { diagnosticOnly: true } : {}),
         });
         failures.push(
           calendarSourceHealth({

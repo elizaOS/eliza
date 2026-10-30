@@ -152,6 +152,73 @@ describe("owner-only managed Calendar read diagnostics", () => {
     await service.stop();
   });
 
+  it.each([
+    ["managed default", "default", true, false, "MANAGED_CALENDAR_READ_UNAVAILABLE"],
+    ["managed ephemeral", "ephemeral", true, true, "MANAGED_CALENDAR_READ_UNAVAILABLE"],
+    ["managed fatal", "fatal", false, false, "MANAGED_CALENDAR_READ_UNAVAILABLE"],
+    ["invalid severity", "invalid", false, false, "MANAGED_CALENDAR_READ_UNAVAILABLE"],
+    ["missing own severity", "missing", false, false, "MANAGED_CALENDAR_READ_UNAVAILABLE"],
+    ["severity accessor", "accessor", false, true, "MANAGED_CALENDAR_READ_UNAVAILABLE"],
+    ["model failure", "model", false, false, "MODEL_UNAVAILABLE"],
+    ["unknown failure", "unknown", false, true, "CALENDAR_SOURCE_ERROR"],
+  ] as const)("classifies %s reporting without clearing failed source health", async (_label, kind, diagnosticOnly, retryable, expectedCode) => {
+    let severityReads = 0;
+    const failure = kind === "unknown" ? new Error("Scripted unknown source failure") :
+      new ElizaError("Scripted source failure", { code: kind === "model" ? "MODEL_UNAVAILABLE" : "MANAGED_CALENDAR_READ_UNAVAILABLE",
+        ...(kind === "ephemeral" ? { severity: "ephemeral" as const } : kind === "fatal" ? { severity: "fatal" as const } : {}) });
+    if (kind === "invalid") Object.defineProperty(failure, "severity", { value: "invalid-fixture-severity" });
+    if (kind === "missing") Reflect.deleteProperty(failure, "severity");
+    if (kind === "accessor") Object.defineProperty(failure, "severity", { get() { severityReads++; return "ephemeral"; } });
+    responseSource(() => { throw failure; });
+    const report = vi.spyOn(testRuntime.runtime, "reportError").mockImplementation(() => {});
+    const service = new CalendarService(testRuntime.runtime);
+    try {
+      const feed = await service.getCalendarFeed(INTERNAL_URL, { ...WINDOW, includeHiddenCalendars: true });
+      expect(feed.state).toBe("partial");
+      expect(feed.sources.some(source => source.key.provider === "eliza" && source.status === "fresh")).toBe(true);
+      const failed = feed.sources.find(source => source.key.grantId === "alpha-google:broker");
+      expect(failed).toMatchObject({ status: "error", error: { code: expectedCode, message: failure.message, retryable } });
+      const calls = report.mock.calls.filter(call => call[0] === "calendar:list-managed-source");
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls) {
+        expect(call[1]).toBe(failure);
+        expect(call[2]).toMatchObject({ source: expect.objectContaining({ provider: "google", side: "owner", grantId: "alpha-google:broker" }) });
+        if (!isObjectRecord(call[2])) throw new Error("Expected report context");
+        expect(Object.hasOwn(call[2], "diagnosticOnly")).toBe(diagnosticOnly);
+        if (diagnosticOnly) expect(call[2].diagnosticOnly).toBe(true);
+      }
+      // The existing domain mapper reads accessor severity once per failure;
+      // the new optional reporting classification adds no accessor reads.
+      expect(severityReads).toBe(kind === "accessor" ? calls.length : 0);
+    } finally {
+      await service.stop();
+      report.mockRestore();
+    }
+  });
+
+  it("joins handled-read reporting with private diagnostics while retaining partial health", async () => {
+    responseSource(() => brokerResponse());
+    const report = vi.spyOn(testRuntime.runtime, "reportError").mockImplementation(() => {});
+    const service = new CalendarService(testRuntime.runtime);
+    try {
+      const feed = await service.getCalendarFeed(INTERNAL_URL, { ...WINDOW, includeHiddenCalendars: true });
+      expect(feed.state).toBe("partial");
+      expect(sourceError(feed)).toMatchObject({ code: "MANAGED_CALENDAR_READ_UNAVAILABLE", retryable: false });
+      expect(JSON.stringify(feed)).not.toContain('"diagnostic"');
+      const calls = report.mock.calls.filter(call => call[0] === "calendar:list-managed-source");
+      expect(calls.length).toBeGreaterThan(0);
+      for (const call of calls) {
+        expect(call[1]).toBeInstanceOf(ElizaError);
+        expect(call[2]).toMatchObject({ diagnosticOnly: true });
+        expect(managedCalendarReadDiagnostic(call[1])?.broker).toEqual(BROKER);
+      }
+      expect(sourceError(ownerCalendarFeedWithReadDiagnostics(feed)).diagnostic).toMatchObject({ httpStatus: 409, broker: BROKER });
+    } finally {
+      await service.stop();
+      report.mockRestore();
+    }
+  });
+
   it("keeps a valid empty managed list and fresh local feed complete", async () => {
     const { reader } = responseSource(() => Response.json({ calendars: [] }));
     expect(await reader.sources()).toEqual([]);
