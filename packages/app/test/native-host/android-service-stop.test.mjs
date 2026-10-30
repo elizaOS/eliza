@@ -49,6 +49,10 @@ const methods = [
 ]
   .map(method)
   .join("\n");
+const admission = source.slice(
+  source.indexOf("    private static long ownerRequestEpoch;"),
+  source.indexOf("    private static final String CREDENTIAL_SHUTDOWN_EPOCH"),
+);
 const java = String.raw`
 import java.io.*;import java.nio.file.*;import java.util.*;import java.util.concurrent.*;
 class Base { public void onDestroy(){} }
@@ -68,7 +72,7 @@ public class StopRace extends Base {
  static void invalidateCredentialShutdown(){credentialShutdown.beforeStart();}
  void ensureBionicVoiceHost(){}
  void updateNotification(){}
- static CountDownLatch startEntered,startProceed;void startAgentProcess(boolean adopt){starts++;if(startEntered!=null){startEntered.countDown();try{startProceed.await(2,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}}
+ static CountDownLatch startEntered,startProceed;boolean startAgentProcess(boolean adopt){starts++;if(startEntered!=null){startEntered.countDown();try{startProceed.await(2,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}return true;}
 
  static final long PROCESS_TERMINATE_GRACE_MS=500;
  final Object processLock=new Object(); Process agentProcess; Thread stdoutPump,stderrPump;
@@ -107,6 +111,7 @@ public class StopRace extends Base {
   }
  }
  boolean hasUnknown(){return shell!=null&&shell.isAlive()||unproven!=null&&unproven.isAlive();}
+ __ADMISSION__
  __METHODS__
  void cleanup()throws Exception {
   Path pid=dir.resolve("resident.pid");if(Files.exists(pid))ProcessHandle.of(Long.parseLong(Files.readString(pid).trim())).ifPresent(ProcessHandle::destroyForcibly);
@@ -186,7 +191,7 @@ test("Android stop settles a delayed detached fork before ownership release and 
   try {
     writeFileSync(
       join(dir, "StopRace.java"),
-      java.replace("__METHODS__", methods),
+      java.replace("__ADMISSION__", admission).replace("__METHODS__", methods),
     );
     mkdirSync(join(dir, "android/os"), { recursive: true });
     writeFileSync(

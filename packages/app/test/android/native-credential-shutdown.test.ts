@@ -46,7 +46,7 @@ function runJava(name: string, text: string, extra: string[] = []) {
 
 test("actual service credential shutdown confirms process exit and exact lifecycle request only", () => {
   const fieldsStart = source.indexOf(
-    "    private static final String CREDENTIAL_SHUTDOWN_EPOCH",
+    "    private static long ownerRequestEpoch;",
   );
   const fieldsEnd = source.indexOf(
     "    /** Called by the Capacitor agent plugin Android binding. */",
@@ -72,7 +72,7 @@ test("actual service credential shutdown confirms process exit and exact lifecyc
     ),
   );
   const launchStart = source.indexOf(
-    "    private void startAgentProcess(boolean allowAdoption)",
+    "    private boolean startAgentProcess(boolean allowAdoption)",
   );
   const launchPrefix = source.slice(
     launchStart,
@@ -98,7 +98,7 @@ public class ElizaAgentService extends BaseService {
  static class Intent {String action;long epoch=-1;Intent(Context c,Class<?> target){}void setAction(String value){action=value;}void putExtra(String key,long value){epoch=value;}long getLongExtra(String key,long fallback){return epoch;}boolean hasExtra(String key){return epoch>=0;}}
  void appendDiagnosticEvent(String event,Object value){diagnostics++;}void deleteLocalAgentTokenFile(){deleted++;}void persistDetachedLaunchTimestamp(long value){timestamps++;}long safePid(Process p){return 1;}void stopDetachedAgentProcess(long deadline){inventory.run();}void stopSelf(){}
  ${fields}
- ${launchPrefix} launches++;}}
+ ${launchPrefix} launches++;return true;}}
  ${method(source, "    private void stopAgentProcess(boolean terminalStop) {")}
  ${method(source, "    private void stopAgentProcess(boolean terminalStop, boolean confirmTermination)")}
  ${method(source, "    private boolean stopAgentProcessForCredentialChange(")}
