@@ -4414,7 +4414,11 @@ export async function startEliza(
     : buildCharacterFromConfig(config);
   const productCharacter = getAgentHostBridge().productCharacter;
   let scopeName = character.name;
-  if (restoredGeneration && productCharacter?.name === character.name) {
+  if (
+    restoredGeneration &&
+    productCharacter &&
+    productCharacter.name === character.name
+  ) {
     const configured = buildCharacterFromConfig(config);
     const expectedProduct = buildProductCharacterFromConfig(
       config,
