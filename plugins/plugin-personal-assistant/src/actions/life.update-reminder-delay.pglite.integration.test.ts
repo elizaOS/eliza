@@ -116,14 +116,18 @@ const STRETCH_CADENCE: LifeOpsCadence = {
 };
 const DAILY_CADENCE: LifeOpsCadence = { kind: "daily", windows: ["morning"] };
 
-function updateReminder(params: Record<string, unknown>) {
+function updateReminder(
+  params: Record<string, unknown>,
+  text = "actually make that 30 minutes",
+  name = "OWNER_REMINDERS_UPDATE",
+) {
   const message = {
     id: crypto.randomUUID() as UUID,
     agentId: fixture.runtime.agentId,
     entityId: service.ownerEntityId() as UUID,
     roomId,
     createdAt: MESSAGE_AT,
-    content: { text: "actually make that 30 minutes", source: "client_chat" },
+    content: { text, source: "client_chat" },
   } as Memory;
   return attestDeliveryAudienceFromCanonicalRoom(fixture.runtime, message).then(
     () =>
@@ -135,7 +139,7 @@ function updateReminder(params: Record<string, unknown>) {
           activeContexts: ["general", "tasks"],
           replyOwner: "planner",
         },
-        { name: "OWNER_REMINDERS_UPDATE", params },
+        { name, params },
       ),
   );
 }
@@ -336,4 +340,35 @@ it("keeps an existing id ahead of a title that names another reminder", async ()
   ).toEqual(stretch.definition);
   await service.deleteDefinition(stretch.definition.id);
   await service.deleteDefinition(oven.definition.id);
+});
+
+// A title rescues an invented target only under the target's own guards: on a
+// delete it may not alias an item the owner said to keep, nor replace the item
+// the owner's words name.
+it.each([
+  {
+    name: "the owner keeps the title's item",
+    titles: ["Stretch", "Stretch legs"],
+    text: "keep stretch, delete the old one",
+  },
+  {
+    name: "the owner names another item",
+    titles: ["Stretch", "Oven check"],
+    text: "delete the oven check reminder",
+  },
+])("refuses a delete by title when $name", async ({ titles, text }) => {
+  const seeded = [];
+  for (const title of titles) seeded.push(await seed(title, STRETCH_CADENCE));
+  const result = await updateReminder(
+    { action: "delete", title: "Stretch", target: "old-reminder-0630" },
+    text,
+    "OWNER_REMINDERS_DELETE",
+  );
+  expect(result.success, JSON.stringify(result)).toBe(false);
+  for (const entry of seeded) {
+    expect(
+      (await service.getDefinition(entry.definition.id)).definition,
+    ).toEqual(entry.definition);
+    await service.deleteDefinition(entry.definition.id);
+  }
 });

@@ -1266,11 +1266,22 @@ async function resolveDefinitionForMutation(
     const byTarget = resolveDefinitionInRecords(defs, handle, destructive);
     if (byTarget.match || byTarget.ambiguousCandidates.length > 0 || !title)
       return byTarget;
-    const byTitle = matchByTitle(
-      defs,
-      title,
-      (entry) => entry.definition.title,
+    // The title inherits the target's guards: it may not alias an item a keep
+    // cue protects, nor replace an item the owner's words name.
+    const keptTitle = allDefinitions.some(
+      (entry) =>
+        normalizeTitle(entry.definition.title) === normalizeTitle(title) &&
+        !defs.includes(entry),
     );
+    const byTitle = keptTitle
+      ? []
+      : matchByTitle(defs, title, (entry) => entry.definition.title);
+    if (
+      byTitle.length === 1 &&
+      explicitlyNamed.length > 0 &&
+      !explicitlyNamed.includes(byTitle[0])
+    )
+      return { match: null, ambiguousCandidates: [] };
     return byTitle.length === 1
       ? { match: byTitle.at(0) ?? null, ambiguousCandidates: [] }
       : {
