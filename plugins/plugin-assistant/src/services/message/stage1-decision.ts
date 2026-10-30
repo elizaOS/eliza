@@ -645,8 +645,9 @@ export async function generateStage1Decision(
     // into one generation on every channel, so it stays uncapped: the adapter
     // uses the selected provider/model maximum, and an application ceiling
     // could turn a valid long answer into an incomplete envelope. Only the
-    // non-coding planner's planning rounds take a default cap, after a live
-    // runaway tool call streamed 40,960 tokens (see resolvePlannerMaxTokens).
+    // non-coding planner's planning rounds take a default cap, on remote
+    // providers, after a live runaway tool call streamed 40,960 tokens (see
+    // plannerDefaultMaxTokens).
     maxTokens: undefined,
     omitMaxTokens: true,
     // Streamed structured generation: the local engine (W4) streams the

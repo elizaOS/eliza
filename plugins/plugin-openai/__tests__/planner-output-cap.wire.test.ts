@@ -4,7 +4,7 @@
  * surfaced as "invalid tool arguments", so the planner could not retry it.
  */
 import { createServer, type Server } from "node:http";
-import type { IAgentRuntime, ToolDefinition } from "@elizaos/core";
+import { AgentRuntime, type IAgentRuntime, ModelType, type ToolDefinition } from "@elizaos/core";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { runPlannerLoop } from "../../plugin-assistant/src/runtime/planner-loop.ts";
 import { handleActionPlanner } from "../models/text";
@@ -129,16 +129,25 @@ const tools: ToolDefinition[] = [
 it("retries a planner call cut off at the default cap and completes the turn", async () => {
   finishes = ["length", "tool_calls"];
   const errors: unknown[] = [];
+  // Dispatch through the runtime as the registered openai provider: the
+  // planner's default cap is set per resolved registration, as it is live.
+  const runtime = new AgentRuntime({ character: { name: "Ada", bio: [] }, logLevel: "fatal" });
+  runtime.registerDatabaseAdapter({ createLogs: async () => undefined } as never);
+  runtime.registerModel(
+    ModelType.ACTION_PLANNER,
+    async (_runtime, params) => {
+      try {
+        return (await handleActionPlanner(host, params as never)) as never;
+      } catch (error) {
+        errors.push(error);
+        throw error;
+      }
+    },
+    "openai"
+  );
   const result = await runPlannerLoop({
     runtime: {
-      useModel: async (_type, params) => {
-        try {
-          return (await handleActionPlanner(host, params as never)) as never;
-        } catch (error) {
-          errors.push(error);
-          throw error;
-        }
-      },
+      useModel: (type, params, provider) => runtime.useModel(type, params as never, provider),
     },
     context: { id: "planner-output-cap-wire", events: [] },
     tools,
@@ -149,7 +158,7 @@ it("retries a planner call cut off at the default cap and completes the turn", a
       thought: "The event exists.",
       messageToUser: "Created qa dinner.",
     }),
-  });
+  }).finally(() => runtime.stop());
 
   expect(result.finalMessage).toBe("Created qa dinner.");
   expect(requests.map((body) => body.max_tokens)).toEqual([8192, 8192]);
