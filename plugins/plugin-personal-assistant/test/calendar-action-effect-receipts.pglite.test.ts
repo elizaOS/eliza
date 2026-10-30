@@ -205,6 +205,8 @@ const icsTransport = {
 };
 
 beforeEach(() => {
+  // A case may select a connected account; later cases keep the default owner gate.
+  calendar.setGate(gate(String(runtime.agentId)));
   const sync = calendar.syncIcsCalendarSource.bind(calendar);
   // Every forced refresh crosses the same remote fixture boundary; the real
   // synchronizer still validates, parses and persists the subscription.
@@ -2180,7 +2182,7 @@ it("grounds the observed relative-create reply against the real CalendarService 
     calendarAction.name,
     "planner",
   );
-  expect(result.success).toBe(true);
+  expect(result.success, JSON.stringify(result)).toBe(true);
   const event = result.data?.event;
   if (!isObjectRecord(event) || !isObjectRecord(event.metadata))
     throw Error("Created event shape missing");

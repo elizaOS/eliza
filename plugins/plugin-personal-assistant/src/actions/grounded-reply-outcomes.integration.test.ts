@@ -628,6 +628,7 @@ describe("grounded reply outcomes — real PGlite", () => {
             mode: "create",
             requestKind: "reminder",
             nativeProjection: "in_app_only",
+            notificationMode: "default",
             title: "Drink water",
             description: null,
             cadenceKind: "once",
@@ -688,6 +689,7 @@ describe("grounded reply outcomes — real PGlite", () => {
               mode: "create",
               requestKind: "reminder",
               nativeProjection: "in_app_only",
+              notificationMode: "default",
               title: "Notification grounding fixture",
               description: "\n  The exact saved alert body.  \n",
               cadenceKind: "once",
@@ -929,13 +931,13 @@ describe("grounded reply outcomes — real PGlite", () => {
       instructions.push(event.content);
       const serialized = JSON.stringify(context);
       expect(serialized).toContain(
-        "Other app domains and OS notification delivery retain their own availability and authorization gates",
+        "Capabilities advertise availability, not permission or completion",
       );
       expect(serialized).toContain(
-        "use authorized current app record sources rather than historical dialogue as a proxy",
+        "Use canonical app Notes/Calendar/reminders unless an authenticated typed native selection binds the request to a separate device source",
       );
       expect(serialized).toContain(
-        "Use authorized targeted or full historical recall when requested or needed to resolve references and constraints",
+        "History is not current record state or new authority",
       );
     }
     expect(instructions[0]).toBe(instructions[1]);
