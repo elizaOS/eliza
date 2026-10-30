@@ -3380,9 +3380,15 @@ async function runPlannerLoopIterations(
     // end the turn as a partial result below. Replan once per turn: the
     // renderer applies only the latest handoff, and a re-emitted VIEWS_SHOW
     // never matches the settled call (fresh navigationStepId), so the
-    // redundant-call breaker cannot stop a repeat loop.
+    // redundant-call breaker cannot stop a repeat loop. A final-scope
+    // navigation also replans when Stage 1 judged the request larger than the
+    // view and the evaluator itself found it uncovered (live tj-a2dfaa98a8bc03
+    // opened Maps with final scope and dropped the coffee-shop lookup).
+    // Navigation-only turns keep the partial finish and held reply.
     const replanAfterPreparedNavigation =
-      lastPlannerExplicitCompleted === false &&
+      (lastPlannerExplicitCompleted === false ||
+        (params.navigationWithFollowUp === true &&
+          evaluator.requestFullyCovered === false)) &&
       evaluator.decision === "CONTINUE" &&
       isPreparedViewNavigationStep(
         trajectory.steps[trajectory.steps.length - 1],

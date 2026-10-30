@@ -59,6 +59,9 @@ function durableDeviceRequest() {
   };
 }
 
+const HONEST_REPLY =
+  "Calendar will open, but I couldn't create qa teaa from here, so nothing was added.";
+
 const created = {
   success: true,
   transcriptVisibility: "internal",
@@ -80,6 +83,9 @@ async function run(
     first?: "navigation" | "device";
     decision?: "CONTINUE" | "FINISH";
     repeatNavigation?: boolean;
+    followUp?: boolean;
+    covered?: boolean;
+    next?: "create" | "reply";
   } = {},
 ) {
   const executed: string[] = [];
@@ -99,6 +105,7 @@ async function run(
       ],
     },
     deferInternalReplyRecoveryToCaller: true,
+    ...(options.followUp ? { navigationWithFollowUp: true } : {}),
     tools: [
       {
         name: first,
@@ -123,6 +130,17 @@ async function run(
                   view: "calendar",
                   eliza_turn_scope: options.scope ?? "more_work_pending",
                 },
+              },
+            ],
+          };
+        if (planners === 2 && options.next === "reply")
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "reply-call",
+                name: "REPLY",
+                arguments: { text: HONEST_REPLY, eliza_turn_scope: "final" },
               },
             ],
           };
@@ -153,20 +171,28 @@ async function run(
         ? {
             success: true,
             decision: options.decision ?? "CONTINUE",
-            requestFullyCovered: false,
+            requestFullyCovered: options.covered ?? false,
             replyEffectStatus: "none",
             messageToUser: "",
             thought:
               "Calendar navigation is prepared; the event has not been created yet.",
           }
-        : {
-            success: true,
-            decision: "FINISH",
-            requestFullyCovered: true,
-            replyEffectStatus: "applied",
-            messageToUser: "Created qa teaa for 7am today.",
-            effectReceiptIds: ["calendar-receipt-1"],
-          };
+        : options.next === "reply"
+          ? {
+              success: false,
+              decision: "FINISH",
+              requestFullyCovered: false,
+              replyEffectStatus: "non_applied",
+              messageToUser: HONEST_REPLY,
+            }
+          : {
+              success: true,
+              decision: "FINISH",
+              requestFullyCovered: true,
+              replyEffectStatus: "applied",
+              messageToUser: "Created qa teaa for 7am today.",
+              effectReceiptIds: ["calendar-receipt-1"],
+            };
     },
   } as never);
   return { result, executed, planners, evaluations };
@@ -226,6 +252,60 @@ describe("prepared app-view navigation with explicitly pending work", () => {
       decision: "FINISH",
       success: false,
       requestFullyCovered: false,
+      replyEffectStatus: "non_applied",
+    });
+  });
+});
+
+// Live tj-a2dfaa98a8bc03: "open maps to the nearest coffee shop". Stage 1
+// judged navigation plus follow-up work (visualContinuation disposition
+// "planning"), but the planner opened Maps with eliza_turn_scope=final. The
+// evaluator answered CONTINUE with requestFullyCovered=false (the coffee-shop
+// lookup had not run). The loop ended the turn on the prepared marker, the
+// follow-up never ran, and host reply recovery failed the turn.
+describe("prepared app-view navigation inside a larger request", () => {
+  it("replans the follow-up after a final-scope navigation the evaluator finds uncovered", async () => {
+    const h = await run({ scope: "final", followUp: true });
+    expect(h.executed).toEqual(["VIEWS_SHOW", "CALENDAR_CREATE_EVENT"]);
+    expect(h.planners).toBe(2);
+    expect(h.evaluations).toBe(2);
+    expect(h.result.replyRecoveryRequired).not.toBe(true);
+    expect(h.result.evaluator).toMatchObject({
+      decision: "FINISH",
+      success: true,
+    });
+  });
+
+  it("delivers an honest planner reply when no follow-up tool fits", async () => {
+    const h = await run({ scope: "final", followUp: true, next: "reply" });
+    expect(h.executed).toEqual(["VIEWS_SHOW"]);
+    expect(h.planners).toBe(2);
+    expect(h.result.replyRecoveryRequired).not.toBe(true);
+    expect(h.result.finalMessage).toBe(HONEST_REPLY);
+  });
+
+  it("keeps the partial finish when the evaluator did not find the request uncovered", async () => {
+    const h = await run({ scope: "final", followUp: true, covered: true });
+    expect(h.executed).toEqual(["VIEWS_SHOW"]);
+    expect(h.planners).toBe(1);
+    expect(h.result.evaluator).toMatchObject({
+      decision: "FINISH",
+      success: false,
+      replyEffectStatus: "non_applied",
+    });
+  });
+
+  it("still replans only once per turn", async () => {
+    const h = await run({
+      scope: "final",
+      followUp: true,
+      repeatNavigation: true,
+    });
+    expect(h.executed).toEqual(["VIEWS_SHOW", "VIEWS_SHOW"]);
+    expect(h.evaluations).toBe(2);
+    expect(h.result.evaluator).toMatchObject({
+      decision: "FINISH",
+      success: false,
       replyEffectStatus: "non_applied",
     });
   });
