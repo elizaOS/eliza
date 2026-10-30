@@ -462,9 +462,10 @@ export function validateViewCoverage(
 
 /**
  * Render a compact "Active View" awareness block for the planner. Describes the
- * surface the user is looking at and reminds the agent it can drive every
- * element through the view-interact capabilities. Exposed for the planner /
- * context-renderer to inject; pure so it is trivially testable.
+ * surface the user is looking at and, when the view exposes scoped actions,
+ * reminds the agent it can drive its elements through the view-interact
+ * capabilities. Exposed for the planner / context-renderer to inject; pure so
+ * it is trivially testable.
  */
 export function renderActiveViewContextBlock(
   runtime: IAgentRuntime,
@@ -484,19 +485,24 @@ export function renderActiveViewContextBlock(
       `The user just switched into this view${view.source === "agent" ? " (you navigated here)" : ""}.`,
     );
   }
-  lines.push(
-    "You can inspect and drive everything in it through the view-interact capabilities:",
-    "- list-elements — enumerate addressable controls/data (id, role, label, value, focus).",
-    "- get-agent-state — read the whole view snapshot, including the focused element.",
-    "- agent-click {id} / agent-fill {id,value} / agent-focus {id} / agent-scroll-to {id} — act on an element by its id.",
-    "Prefer acting directly on the view over describing what the user should click.",
-  );
+  // The view's scoped actions are the only planner path into its
+  // view-interact capabilities; without one, these lines name controls the
+  // planner cannot reach and contradict the UI context.
+  const named = viewScopedNamedActions(runtime, view.viewId, view.viewType);
+  if (named.length > 0) {
+    lines.push(
+      "You can inspect and drive everything in it through the view-interact capabilities:",
+      "- list-elements — enumerate addressable controls/data (id, role, label, value, focus).",
+      "- get-agent-state — read the whole view snapshot, including the focused element.",
+      "- agent-click {id} / agent-fill {id,value} / agent-focus {id} / agent-scroll-to {id} — act on an element by its id.",
+      "Prefer acting directly on the view over describing what the user should click.",
+    );
+  }
   if (scoped.length > 0) {
     lines.push(
       `Actions most relevant while on this view (prefer these when the request fits): ${scoped.join(", ")}.`,
     );
   }
-  const named = viewScopedNamedActions(runtime, view.viewId, view.viewType);
   if (named.length > 0) {
     lines.push(
       "Named actions this view exposes only while it is active (invoke by name — they drive its controls for you):",
