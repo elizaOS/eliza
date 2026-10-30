@@ -181,6 +181,28 @@ async function plan(handle: ReturnType<typeof setup>) {
 }
 
 describe("MapsScreen view", () => {
+  it.each([false, true])(
+    "focuses Search after Enter coordinates (navigating: %s)",
+    async (navigating) => {
+      const handle = setup();
+      render(<MapsScreen screen={handle} attribution="credits" />);
+      if (navigating) {
+        await plan(handle);
+        fireEvent.click(screen.getByRole("button", { name: "Start" }));
+        await settle();
+      }
+      fireEvent.click(screen.getByLabelText("Map information"));
+      fireEvent.click(
+        screen.getByRole("button", { name: "Enter coordinates" }),
+      );
+      await settle();
+      expect(document.activeElement).toBe(
+        screen.getByRole("textbox", { name: "Search places" }),
+      );
+      expect(handle.controller.isNavigating()).toBe(false);
+    },
+  );
+
   it("measures scaled hosts in layout pixels so sheets keep their clearance", async () => {
     const handle = setup();
     const { container } = render(

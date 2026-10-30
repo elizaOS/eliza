@@ -239,12 +239,19 @@ export function MapsScreen({
   const view: MapsScreenView = controller.view();
   const icons = { ...DEFAULT_MAPS_SCREEN_ICONS, ...iconOverrides };
   const root = useRef<HTMLElement | null>(null);
+  const searchInput = useRef<HTMLInputElement | null>(null);
+  const focusSearch = useRef(false);
   const scrollElement = useRef<HTMLDivElement | null>(null);
   const textMeasure = useRef<HTMLSpanElement | null>(null);
   const sheetElement = useRef<HTMLDivElement | null>(null);
   const primaryElement = useRef<HTMLDivElement | null>(null);
   const planeElement = useRef<HTMLDivElement | null>(null);
   const plane = useRef<MapsScreenPlane | null>(null);
+  useLayoutEffect(() => {
+    if (!focusSearch.current || !searchInput.current) return;
+    focusSearch.current = false;
+    searchInput.current.focus();
+  });
   const [planeGeneration, setPlaneGeneration] = useState(0);
   const [size, setSize] = useState({
     width: 0,
@@ -530,6 +537,7 @@ export function MapsScreen({
                 />
               </button>
               <input
+                ref={searchInput}
                 aria-label="Search places"
                 placeholder="Search"
                 value={view.query}
@@ -1003,7 +1011,13 @@ export function MapsScreen({
             >
               <button
                 type="button"
-                onClick={() => controller.manualLocation()}
+                onClick={(event) => {
+                  focusSearch.current = true;
+                  event.currentTarget
+                    .closest("details")
+                    ?.removeAttribute("open");
+                  controller.manualLocation();
+                }}
                 style={pillButton(color.surface, color.fg)}
               >
                 Enter coordinates
