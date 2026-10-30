@@ -224,9 +224,11 @@ Cloud sign-in and that `accountId` is still the connected grant holding the
 scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
 Writes are never retried. Dispatch captures the reviewed input before any
 asynchronous work and accepts only a receipt for that exact effect and review.
-An unreadable or mismatched reply fails with `outcome_unknown`; the host reads
-the receipt before offering another dispatch. A reply is withheld if the owner
-or connected Google grant changes while the request is in flight.
+An unreadable or mismatched reply fails with `outcome_unknown`. A reply is
+withheld if the owner or connected Google grant changes while the request is in
+flight, so a dispatch failure such as `account_changed` can follow a completed
+write: after any dispatch failure the host reads the receipt with `observe`
+before offering another dispatch.
 
 `createCloudRoutes({ verifiedAccountStore, pendingCredentialStore })` optionally
 uses one native-owned credential/owner snapshot with `read()` and
