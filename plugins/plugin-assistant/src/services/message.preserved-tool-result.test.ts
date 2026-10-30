@@ -400,8 +400,9 @@ describe("planner-loop death after a completed tool", () => {
         throw new Error("Missing dossier reply");
       const text = outcome.result.responseContent?.text;
       if (explicitCalendar) {
-        expect(text).toContain("couldn't confirm");
-        expect(text).not.toContain("calendar is clear");
+        expect(text).toBe(
+          "I couldn't read your calendar for those dates just now.",
+        );
       } else {
         expect(text).toBe(dossierText);
         expect(text).not.toMatch(/Gmail|inbox|not connected/);
@@ -2104,9 +2105,9 @@ describe("planner-loop death after a completed tool", () => {
             "Saved the requested file.",
           );
         }
-        expect(result.responseContent?.text).toContain(
-          "request remains incomplete",
-        );
+        expect(result.responseContent?.text).toContain("couldn't finish");
+        // A committed write is never reported as an unchanged request.
+        expect(result.responseContent?.text).not.toContain("nothing was");
         expect(result.responseContent?.text).not.toContain("private");
         expect(visibleTexts(h.callbacks)).toEqual([
           result.responseContent?.text,
@@ -2134,9 +2135,7 @@ describe("planner-loop death after a completed tool", () => {
     );
 
     expect(result.responseContent?.text).toContain(USER_FACING);
-    expect(result.responseContent?.text).toContain(
-      "request remains incomplete",
-    );
+    expect(result.responseContent?.text).toContain("couldn't finish");
     expect(result.requestFulfilled).toBe(false);
     expect(result.outcome).toMatchObject({
       status: "failed",
@@ -2265,13 +2264,67 @@ describe("planner-loop death after a completed tool", () => {
     const delivered = visibleTexts(harness.callbacks);
     expect(delivered.length).toBeGreaterThan(0);
     // Diagnostic tool text remains evidence, never assistant prose.
-    expect(delivered.join("\n")).toContain("request remains incomplete");
+    expect(delivered.join("\n")).toContain("couldn't finish");
+    expect(delivered.join("\n")).not.toContain("nothing was");
     expect(result.outcome).toMatchObject({
       status: "failed",
       error: { kind: "rate_limited" },
     });
     expect(delivered.join("\n")).not.toContain(DIAGNOSTIC);
     expect(result.responseContent?.text ?? "").not.toContain(DIAGNOSTIC);
+  });
+
+  it("says plainly that nothing changed when every call was refused before it ran", async () => {
+    // Live tj-7471737298abb6: four TRIGGER_CREATE calls for "remind me to
+    // drink water in 15 minutes" were rejected before dispatch, and the user
+    // got "The request remains incomplete because processing stopped
+    // unexpectedly. Recorded tool outcomes are preserved; ..."
+    let plans = 0;
+    const h = await createHarness({
+      evaluatorFailure: new Error("private evaluator diagnostic"),
+      plannerCall: () => ({
+        ...plannerCalendarCall(),
+        toolCalls: [
+          {
+            id: `create-${++plans}`,
+            name: "LOOKUP",
+            arguments: { action: "create", eliza_turn_scope: "final" },
+          },
+        ],
+      }),
+      actionResult: {
+        success: false,
+        text: "Provide an explicit schedule before creating a trigger.",
+        error: "MISSING_SCHEDULE",
+        data: {
+          error: "MISSING_SCHEDULE",
+          acceptance: "rejected",
+          executionStatus: "not_started",
+        },
+        failureProvenance: {
+          kind: "handler_error",
+          boundary: "handler",
+          code: "MISSING_SCHEDULE",
+          retryable: true,
+        },
+      },
+    });
+    const result = await new DefaultMessageService().handleMessage(
+      h.runtime,
+      makeMessage(h.runtime, "remind me to drink water in 15 minutes"),
+      h.callback,
+    );
+    expect(result.responseContent?.text).toBe(
+      "I couldn't do that, so nothing was changed.",
+    );
+    // The same refused call repeats until the planner's failure limit stops it.
+    expect(plans).toBeGreaterThan(1);
+    expect(result.requestFulfilled).toBe(false);
+    expect(result.outcome).toMatchObject({
+      status: "failed",
+      error: { code: "PLANNER_INTERRUPTED_AFTER_ACTION" },
+    });
+    expect(visibleTexts(h.callbacks)).toEqual([result.responseContent?.text]);
   });
 });
 

@@ -79,10 +79,11 @@ export function createSessionProvider(options?: {
 			message: Memory,
 			_state: State,
 		): Promise<ProviderResult> {
+			// Like the send policy below, an absent session adds no prompt text.
 			const context = extractSessionContext(message);
 			if (!context) {
 				return {
-					text: "No session context available.",
+					text: "",
 					data: { hasSession: false },
 				};
 			}
@@ -171,7 +172,7 @@ export function createSessionSkillsProvider(options?: {
 			const context = extractSessionContext(message);
 			if (!context) {
 				return {
-					text: "No session skills available.",
+					text: "",
 					data: { hasSkills: false },
 				};
 			}
@@ -181,7 +182,7 @@ export function createSessionSkillsProvider(options?: {
 			const snapshot = entry?.skillsSnapshot;
 			if (!snapshot?.skills.length) {
 				return {
-					text: "No skills configured for this session.",
+					text: "",
 					data: { hasSkills: false, skills: [] },
 				};
 			}

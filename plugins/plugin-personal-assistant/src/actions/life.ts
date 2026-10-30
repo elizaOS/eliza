@@ -200,6 +200,9 @@ type LifeParams = {
   title?: string;
   target?: string;
   minutes?: number;
+  /** update: move a one-off to this long after the request. */
+  delayMinutes?: unknown;
+  delaySeconds?: unknown;
   preset?: string;
   /**
    * Declared on the owner surfaces but not read: consent to save a previewed
@@ -1187,6 +1190,7 @@ async function resolveDefinitionForMutation(
   ownerText: string,
   domain?: LifeOpsDomain,
   destructive = false,
+  title?: string,
 ): Promise<DefinitionResult> {
   const allDefinitions = await listCallerDefinitions(service, domain);
   const normalizedOwnerText = normalizeTitle(ownerText);
@@ -1254,11 +1258,41 @@ async function resolveDefinitionForMutation(
           ),
         };
   }
+  // A planner can pair an invented handle with the item's real title (live:
+  // target "stretch-20min-2026-10-30T13-01z", title "Stretch"). When the
+  // target names nothing, the title may resolve the one item it matches;
+  // ambiguity asks and zero matches refuse.
+  const resolveTarget = (handle: string): DefinitionResult => {
+    const byTarget = resolveDefinitionInRecords(defs, handle, destructive);
+    if (byTarget.match || byTarget.ambiguousCandidates.length > 0 || !title)
+      return byTarget;
+    // The title inherits the target's guards: it may not alias an item a keep
+    // cue protects, nor replace an item the owner's words name.
+    const keptTitle = allDefinitions.some(
+      (entry) =>
+        normalizeTitle(entry.definition.title) === normalizeTitle(title) &&
+        !defs.includes(entry),
+    );
+    const byTitle = keptTitle
+      ? []
+      : matchByTitle(defs, title, (entry) => entry.definition.title);
+    if (
+      byTitle.length === 1 &&
+      explicitlyNamed.length > 0 &&
+      !explicitlyNamed.includes(byTitle[0])
+    )
+      return { match: null, ambiguousCandidates: [] };
+    return byTitle.length === 1
+      ? { match: byTitle.at(0) ?? null, ambiguousCandidates: [] }
+      : {
+          match: null,
+          ambiguousCandidates: byTitle.map(definitionDisambiguationLabel),
+        };
+  };
   // A destructive target that failed exact matching must not be replaced by
   // a different title elsewhere in the request. Retain the existing narrow
   // target alias/substring contract, including its refusal to guess by tokens.
-  if (destructive && target?.trim())
-    return resolveDefinitionInRecords(defs, target, true);
+  if (destructive && target?.trim()) return resolveTarget(target);
   if (explicitlyNamed.length === 1) {
     return {
       match: explicitlyNamed.at(0) ?? null,
@@ -1310,7 +1344,7 @@ async function resolveDefinitionForMutation(
     };
   }
   return target
-    ? resolveDefinitionInRecords(defs, target, destructive)
+    ? resolveTarget(target)
     : { match: null, ambiguousCandidates: [] };
 }
 
@@ -1788,6 +1822,9 @@ function buildRuleBasedLifeReply(args: {
 
   switch (args.scenario) {
     case "updated_definition":
+      if (title && typeof updated?.firesAtLocal === "string") {
+        return `Moved ${title} to ${updated.firesAtLocal}.`;
+      }
       if (title) {
         return `${title} is updated.`;
       }
@@ -3260,6 +3297,77 @@ export function buildCadenceFromUpdateFields(args: {
     }
   }
   return null;
+}
+
+// Same cap as TRIGGER: a far-future one-off takes a date, not a delay.
+const MAX_RELATIVE_UPDATE_DELAY_MS = 366 * 24 * 60 * 60 * 1000;
+
+function positiveWholeNumber(raw: unknown): number | undefined {
+  const value =
+    typeof raw === "number" && Number.isInteger(raw)
+      ? raw
+      : typeof raw === "string" && /^\d+$/.test(raw.trim())
+        ? Number(raw.trim())
+        : undefined;
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? value
+    : undefined;
+}
+
+/**
+ * The relative move an update carries ("actually make that 30 minutes"),
+ * read as TRIGGER_UPDATE reads it: delaySeconds wins over delayMinutes, each a
+ * positive whole number. The tool parameter outranks the same key in
+ * details, where the planner also puts it. Null when neither was sent; ms null
+ * when one was sent but is unusable.
+ */
+export function readRelativeUpdateDelay(
+  params: { delayMinutes?: unknown; delaySeconds?: unknown },
+  details: Record<string, unknown> | undefined,
+): { ms: number | null } | null {
+  const rawSeconds = params.delaySeconds ?? details?.delaySeconds;
+  const rawMinutes = params.delayMinutes ?? details?.delayMinutes;
+  if (rawSeconds === undefined && rawMinutes === undefined) return null;
+  const seconds = positiveWholeNumber(rawSeconds);
+  const minutes = positiveWholeNumber(rawMinutes);
+  // Reject a supplied fractional winning value instead of silently flooring it
+  // or falling back to a lower-priority unit. Valid seconds still outrank minutes.
+  if (
+    (typeof rawSeconds === "number" &&
+      Number.isFinite(rawSeconds) &&
+      !Number.isInteger(rawSeconds)) ||
+    (seconds === undefined &&
+      typeof rawMinutes === "number" &&
+      Number.isFinite(rawMinutes) &&
+      !Number.isInteger(rawMinutes))
+  )
+    return { ms: null };
+  const ms =
+    seconds !== undefined
+      ? seconds * 1000
+      : minutes !== undefined
+        ? minutes * 60_000
+        : null;
+  return { ms: ms !== null && ms <= MAX_RELATIVE_UPDATE_DELAY_MS ? ms : null };
+}
+
+/** "5:31 AM" today, "Oct 31, 5:31 AM" on another local day. */
+function formatLocalFireTime(dueAt: string, timeZone: string): string | null {
+  const zone = explicitCadenceTimeZone(timeZone);
+  const due = new Date(dueAt);
+  if (!zone || Number.isNaN(due.getTime())) return null;
+  const dueDay = getZonedDateParts(due, zone);
+  const today = getZonedDateParts(new Date(), zone);
+  const sameDay =
+    dueDay.year === today.year &&
+    dueDay.month === today.month &&
+    dueDay.day === today.day;
+  return due.toLocaleString("en-US", {
+    ...(sameDay ? {} : { month: "short", day: "numeric" }),
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: zone,
+  });
 }
 
 function hasDefinitionUpdateChanges(
@@ -4926,6 +5034,9 @@ async function runLifeOperationHandlerInner(
   ].find(
     (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
   );
+  const targetTitle = [params.title, routedParams?.title].find(
+    (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
+  );
   // Consent must come from the owner's current text. A pending draft proves
   // only that a preview exists; neither a planner `confirmed:true` field nor a
   // Stage-1 applied-effect claim can authorize the consequential write.
@@ -6205,6 +6316,8 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          false,
+          targetTitle,
         );
       if (!target)
         return {
@@ -6248,7 +6361,52 @@ async function runLifeOperationHandlerInner(
           text: `Which timezone should I use for ${requestedTime} on "${target.definition.title}"?`,
         };
       }
-      const cadence = normalizeCadenceDetail(detailObject(details, "cadence"));
+      const explicitCadence = normalizeCadenceDetail(
+        detailObject(details, "cadence"),
+      );
+      // A relative delay moves a one-off to that long after the request, the
+      // way create anchors "in N minutes". Ignored before this, "actually make
+      // that 30 minutes" fell through to the free-text extractor, which spent
+      // 11 s reasoning over the bare message and then changed nothing (live
+      // tj-b020ae0157c06c). An explicit cadence outranks it, as scheduledAtIso
+      // outranks a delay on TRIGGER_UPDATE.
+      const relativeDelay = explicitCadence
+        ? null
+        : readRelativeUpdateDelay(params, details);
+      let delayedCadence: LifeOpsCadence | undefined;
+      if (relativeDelay) {
+        const currentCadence = target.definition.cadence;
+        const title = target.definition.title;
+        const dueAtMs =
+          relativeDelay.ms === null
+            ? null
+            : Date.parse(lifeEffectObservedAt(message)) + relativeDelay.ms;
+        if (
+          dueAtMs === null ||
+          currentCadence.kind !== "once" ||
+          dueAtMs <= Date.now()
+        )
+          return {
+            success: false,
+            text:
+              dueAtMs === null
+                ? `Nothing changed on "${title}". How many minutes from now should it go off?`
+                : currentCadence.kind !== "once"
+                  ? `"${title}" repeats, so a delay can't move it and nothing changed. Tell me its new schedule, or snooze the next one.`
+                  : `That time has already passed, so nothing changed on "${title}". When should it go off?`,
+            data: {
+              actionName: ownerSurfaceActionName,
+              definitionId: target.definition.id,
+              reason: "relative_delay_unusable",
+            },
+          };
+        // Keeps the stored lead, so the reminder still fires at dueAt.
+        delayedCadence = {
+          ...currentCadence,
+          dueAt: new Date(dueAtMs).toISOString(),
+        };
+      }
+      const cadence = explicitCadence ?? delayedCadence;
       const request: UpdateLifeOpsDefinitionRequest = {
         ownership,
         title:
@@ -6378,6 +6536,15 @@ async function runLifeOperationHandlerInner(
         target.definition.id,
         request,
       );
+      // A moved one-off is confirmed by its new clock time in the owner's zone.
+      const firesAtLocal =
+        request.cadence?.kind === "once" &&
+        updated.definition.cadence.kind === "once"
+          ? formatLocalFireTime(
+              updated.definition.cadence.dueAt,
+              updated.definition.timezone,
+            )
+          : null;
       const fallback = `Updated "${updated.definition.title}".`;
       const text = await renderLifeActionReply({
         runtime,
@@ -6392,6 +6559,7 @@ async function runLifeOperationHandlerInner(
             title: updated.definition.title,
             description: updated.definition.description,
             cadence: updated.definition.cadence,
+            ...(firesAtLocal ? { firesAtLocal } : {}),
             timezone: updated.definition.timezone,
             notificationChannels:
               updated.reminderPlan?.steps.map((step) => step.channel) ?? [],
@@ -6618,6 +6786,7 @@ async function runLifeOperationHandlerInner(
           // Destructive: a fuzzy near-miss must ask, never delete (the
           // wrong-item deletion guard — sibling of TRIGGER_REF_MISMATCH).
           true,
+          targetTitle,
         );
       if (!target) {
         // Users call scheduled triggers "reminders" too: "delete the landlord
@@ -6757,6 +6926,8 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          false,
+          targetTitle,
         );
       if (ambiguousCandidates.length > 0)
         return {

@@ -84,7 +84,9 @@ Document titles, revisions and paragraphs render as plain text.
 ## Native mobile sign-in
 
 `@elizaos/ui/android-cloud/NativeCloudSignInView` renders the common email,
-SMS, Google and MFA surface. Its `NativeCloudSignInController` comes from the
+SMS, Google and MFA surface. Its styles ship in `@elizaos/ui/styles`; a host that
+does not load that sheet imports `@elizaos/ui/styles/native-cloud-sign-in.css`.
+The module itself imports no stylesheet, so Node can load the package root. Its `NativeCloudSignInController` comes from the
 adjacent `native-cloud-sign-in-controller` entry. The app owns that controller's
 lifetime: call `start()` after mounting the owner and `dispose()` when retiring
 it. A view may unmount without retiring an application-owned attempt.
@@ -268,3 +270,19 @@ process omits the optional field until a new verified session is created. This f
 handshake grants no Calendar access and does not replace the host's visibility checks.
 Turn cancellation stops only that caller's wait. Session retirement also cancels the
 shared handshake, so another turn cannot inherit a cancelled caller's failure.
+
+Mobile discovery uses `mobileViewIsAvailable` from `mobile-shell/core`: registered
+implementations, runtime/view-kind declarations and installed native adapters
+determine availability; product ordering is presentation only. The
+`styles/mobile-workspaces.css` export compiles scoped domain utilities with the
+host's Tailwind integration and semantic theme. It does not import the app reset.
+
+`selectHomeCalendar` in `overview/daily-overview` ranks the full local today, week
+and month from a complete current-owner feed and readable included sources. Each
+period prefers unended events, then the most recent past event. Coverage must
+include the full week and month before any item or empty answer is established;
+an incomplete query or retired owner stays unverified. Hosts
+retain their existing reads and mutation owners. The compact tray passes its
+explicit surface to keep its near-future glance window; product identity never
+selects the Calendar policy. Run `test:mobile-workspaces-style` to check scoped
+utilities from emitted package files.

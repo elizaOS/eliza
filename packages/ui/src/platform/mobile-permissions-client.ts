@@ -15,7 +15,6 @@ import {
   type AppBlockerPluginLike,
   type AppleCalendarPermissionStatus,
   type AppleCalendarPluginLike,
-  type CameraPermissionStatus,
   type CameraPluginLike,
   type ContactsPermissionStatus,
   type ContactsPluginLike,
@@ -32,6 +31,7 @@ import {
   getScreenCapturePlugin,
   getSystemPlugin,
   getTalkModePlugin,
+  hasCameraPermissionMethods,
   type LocationPermissionStatus,
   type LocationPluginLike,
   type MessagesPermissionStatus,
@@ -187,16 +187,6 @@ function stateFromPromptLike(
         ? "Limited access is enabled; manage selected items in system settings."
         : reason,
   });
-}
-function stateFromCamera(
-  id: Extract<MobilePermissionId, "camera" | "microphone" | "photos">,
-  permissions: CameraPermissionStatus,
-): PermissionState {
-  if (id === "camera") return stateFromPromptLike(id, permissions.camera);
-  if (id === "microphone") {
-    return stateFromPromptLike(id, permissions.microphone);
-  }
-  return stateFromPromptLike(id, permissions.photos);
 }
 function stateFromTalkMode(
   id: Extract<MobilePermissionId, "microphone" | "speech-recognition">,
@@ -552,6 +542,10 @@ export function createMobileSignalsPermissionsRegistry(
     system: nativePlugins.system ?? getSystemPlugin(),
     talkMode: nativePlugins.talkMode ?? getTalkModePlugin(),
   };
+  const scopedCamera = nativePlugins.camera
+    ? typeof native.camera.checkCameraPermission === "function" &&
+      typeof native.camera.requestCameraPermission === "function"
+    : hasCameraPermissionMethods(native.camera);
   const notify = () => {
     const snapshot = Array.from(states.values());
     for (const subscriber of subscribers) {
@@ -598,13 +592,23 @@ export function createMobileSignalsPermissionsRegistry(
         stateFromMessages(await native.messages.checkPermissions()),
       );
     }
-    if (id === "camera" || id === "photos") {
-      if (typeof native.camera.checkPermissions !== "function") {
+    if (id === "camera") {
+      if (
+        !scopedCamera ||
+        typeof native.camera.checkCameraPermission !== "function"
+      ) {
         return commit(defaultMobileState(id));
       }
       return commit(
-        stateFromCamera(id, await native.camera.checkPermissions()),
+        stateFromPromptLike(
+          id,
+          (await native.camera.checkCameraPermission()).camera,
+        ),
       );
+    }
+    if (id === "photos") {
+      // Capturing a photo is not permission to read the device photo library.
+      return commit(defaultMobileState(id));
     }
     if (id === "microphone") {
       if (typeof native.talkMode.checkPermissions === "function") {
@@ -613,11 +617,6 @@ export function createMobileSignalsPermissionsRegistry(
             "microphone",
             await native.talkMode.checkPermissions(),
           ),
-        );
-      }
-      if (typeof native.camera.checkPermissions === "function") {
-        return commit(
-          stateFromCamera("microphone", await native.camera.checkPermissions()),
         );
       }
       return commit(defaultMobileState("microphone"));
@@ -771,19 +770,23 @@ export function createMobileSignalsPermissionsRegistry(
         } else {
           await openMobilePermissionSettings(id, plugin, native.system);
         }
-      } else if (id === "camera" || id === "photos") {
+      } else if (id === "camera") {
         const current = await checkMobilePermission(id);
         if (
           current.canRequest &&
-          typeof native.camera.requestPermissions === "function"
+          typeof native.camera.requestCameraPermission === "function"
         ) {
-          requestedState = stateFromCamera(
+          requestedState = stateFromPromptLike(
             id,
-            await native.camera.requestPermissions(),
+            (await native.camera.requestCameraPermission()).camera,
           );
-        } else {
+        } else if (current.status === "denied") {
           await openMobilePermissionSettings(id, plugin, native.system);
+        } else {
+          requestedState = current;
         }
+      } else if (id === "photos") {
+        requestedState = await checkMobilePermission(id);
       } else if (id === "microphone") {
         const current = await checkMobilePermission(id);
         if (
@@ -794,16 +797,10 @@ export function createMobileSignalsPermissionsRegistry(
             "microphone",
             await native.talkMode.requestPermissions(),
           );
-        } else if (
-          current.canRequest &&
-          typeof native.camera.requestPermissions === "function"
-        ) {
-          requestedState = stateFromCamera(
-            "microphone",
-            await native.camera.requestPermissions(),
-          );
-        } else {
+        } else if (current.status === "denied") {
           await openMobilePermissionSettings(id, plugin, native.system);
+        } else {
+          requestedState = current;
         }
       } else if (id === "speech-recognition") {
         const current = await checkMobilePermission(id);

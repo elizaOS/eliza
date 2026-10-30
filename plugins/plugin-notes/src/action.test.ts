@@ -380,6 +380,50 @@ describe("promoted Notes execution", () => {
     );
   });
 
+  it("adds one item in a plain note's own list form on both edit paths", async () => {
+    // Live tj-792ca892257ad2 ("add eggs to my packing note"): UPDATE
+    // authoredEdit append failed with NOTES_EDIT_CONFLICT on this plain note,
+    // then a PATCH literal " eggs" glued the item to the last one.
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const packing = await service.createNoteWithCommit({
+      content: "packing\ncharger, passport, socks",
+    });
+    const viaUpdate = await execute(
+      runtime,
+      {
+        name: "NOTES_UPDATE",
+        params: {
+          action: "update",
+          noteId: packing.value.id,
+          authoredEdit: { field: "checklist", action: "append", text: "eggs" },
+          expectedRevision: packing.snapshot.revision,
+        },
+      },
+      ["OWNER"],
+      "add eggs to my packing note",
+    );
+    expect(viaUpdate.success).toBe(true);
+    const viaPatch = await execute(
+      runtime,
+      {
+        name: "NOTES_PATCH",
+        params: {
+          target: { kind: "id", value: packing.value.id },
+          changes: [],
+          textEdit: { action: "append", field: "item", text: "sunscreen" },
+          expectedRevision: service.snapshot().revision,
+        },
+      },
+      ["OWNER"],
+      "add sunscreen to my packing note",
+    );
+    expect(viaPatch.success).toBe(true);
+    expect(reconstructNoteContent(service.getNote(packing.value.id))).toBe(
+      "packing\ncharger, passport, socks, eggs, sunscreen",
+    );
+  });
+
   it("routes a plain append to the operation whose strict wire requires its target and revision", async () => {
     // Live tj-9fbee52dd6eab4 ("add bread to that note"): the family text sent
     // append to NOTES_UPDATE, whose strict wire requires no target, edit or
