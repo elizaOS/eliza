@@ -43,6 +43,7 @@ const claimKinds = {
   financial_completion: true,
   financial_holding: true,
   stated_time: true,
+  calendar_time: true,
   view_navigation: true,
   empty_tracked_state: true,
 } satisfies Record<PlannedReplyClaimKind, true>;

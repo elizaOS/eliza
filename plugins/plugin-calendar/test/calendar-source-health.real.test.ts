@@ -1,3 +1,9 @@
+import { calendarAvailabilityKindFromMetadata } from "../src/internal/availability-metadata.js";
+import { calendarSourcesProvider } from "../src/providers/calendar-sources.js";
+import {
+  CALENDAR_SOURCE_INTERNAL_URL,
+  listCalendarSourceAdministration,
+} from "../src/source-administration/adapter.js";
 /**
  * Multi-account source identity and partial-failure semantics against real
  * PGlite persistence, with only the external Google transport substituted.
@@ -17,7 +23,16 @@ import {
 import { GoogleCalendarSyncTokenExpiredError } from "@elizaos/plugin-google-workspace";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { createConflictDetectAction } from "../src/actions/conflict-detect.js";
 import {
   CALENDAR_GUEST_AVAILABILITY_PURPOSE,
@@ -410,11 +425,241 @@ beforeEach(async () => {
   }
 });
 
+afterEach(() => vi.restoreAllMocks());
+
 afterAll(async () => {
   await pg.close();
 });
 
 describe("CalendarService source truth", () => {
+  it("composes the current authorized catalog without reading feeds or losing hidden preferences", async () => {
+    await calendar.setCalendarIncluded(INTERNAL_URL, {
+      provider: "google",
+      side: "owner",
+      grantId: GRANT_B.id,
+      connectorAccountId: GRANT_B.connectorAccountId,
+      calendarId: "primary",
+      includeInFeed: false,
+      expectedVersion: 1,
+    });
+    const discovery = vi.spyOn(calendar, "discoverCalendars");
+    const feeds = vi.spyOn(calendar, "getCalendarFeedSnapshot");
+    const localReads = vi.spyOn(
+      calendar as unknown as {
+        readElizaCalendarFeed(...args: unknown[]): Promise<unknown>;
+      },
+      "readElizaCalendarFeed",
+    );
+    const result = await calendarSourcesProvider.get(
+      runtime,
+      {
+        agentId: AGENT_ID,
+        entityId: AGENT_ID,
+        roomId: AGENT_ID,
+        content: { text: "Move my event" },
+      } as Memory,
+      {} as never,
+    );
+    expect(discovery).toHaveBeenCalledExactlyOnceWith(
+      CALENDAR_SOURCE_INTERNAL_URL,
+      { side: "owner" },
+    );
+    expect(feeds).not.toHaveBeenCalled();
+    expect(localReads).not.toHaveBeenCalled();
+    const snapshot = result.data?.calendarSourceAdministration as {
+      state: string;
+      sources: Array<Record<string, unknown>>;
+    };
+    expect(snapshot.state).toBe("partial");
+    expect(
+      snapshot.sources.find(
+        (source) => (source.key as { grantId: string }).grantId === GRANT_B.id,
+      ),
+    ).toMatchObject({
+      includeInFeed: false,
+      selectionVersion: 2,
+      health: {
+        status: "stale",
+        syncedAt: null,
+        error: { code: "CALENDAR_SOURCE_HEALTH_NOT_OBSERVED" },
+      },
+    });
+    expect(result.text).toContain("Feed health is not observed here");
+    expect(result.text).toContain("health=not_observed");
+    expect(result.values?.calendarSourceAdministrationAvailable).toBe(true);
+    expect(result.values?.calendarSourceFeedHealthObserved).toBe(false);
+  });
+
+  it("retains catalog discovery failures as unselectable rather than healthy empty context", async () => {
+    const lookup = runtime.getService.bind(runtime);
+    const google = lookup("google") as unknown as {
+      listCalendars(request: { accountId: string }): Promise<unknown[]>;
+    };
+    const list = google.listCalendars.bind(google);
+    vi.spyOn(runtime, "getService").mockImplementation(((name: string) =>
+      name === "google" ? google : lookup(name)) as typeof runtime.getService);
+    vi.spyOn(google, "listCalendars").mockImplementation(async (request) => {
+      if (request.accountId === GRANT_B.connectorAccountId)
+        throw Error("Synthetic account catalog unavailable");
+      return list(request);
+    });
+    const feeds = vi.spyOn(calendar, "getCalendarFeedSnapshot");
+    const snapshot = await listCalendarSourceAdministration(runtime, {
+      includeFeedHealth: false,
+      forceSync: true,
+    });
+    expect(feeds).not.toHaveBeenCalled();
+    expect(snapshot.state).toBe("partial");
+    expect(
+      snapshot.sources.find((source) => source.key.grantId === GRANT_B.id),
+    ).toMatchObject({
+      includeInFeed: null,
+      selectionVersion: null,
+      health: { status: "error" },
+    });
+    expect(
+      snapshot.sources.find((source) => source.key.grantId === GRANT_A.id),
+    ).toMatchObject({
+      includeInFeed: true,
+      selectionVersion: 1,
+      health: {
+        status: "stale",
+        error: { code: "CALENDAR_SOURCE_HEALTH_NOT_OBSERVED" },
+      },
+    });
+  });
+
+  it("does not discover any catalog for a caller without owner access", async () => {
+    const discovery = vi.spyOn(calendar, "discoverCalendars");
+    const result = await calendarSourcesProvider.get(
+      runtime,
+      {
+        agentId: AGENT_ID,
+        entityId: "non-owner",
+        roomId: "unknown-room",
+        content: { text: "List calendars" },
+      } as Memory,
+      {} as never,
+    );
+    expect(discovery).not.toHaveBeenCalled();
+    expect(result.data?.calendarSourceAdministration).toBe(null);
+  });
+
+  it("does not invent observed feed failures in catalog-only context", async () => {
+    failAccountB = true;
+    const snapshot = await listCalendarSourceAdministration(runtime, {
+      includeFeedHealth: false,
+    });
+    expect(
+      snapshot.sources.find((source) => source.key.grantId === GRANT_B.id),
+    ).toMatchObject({
+      includeInFeed: true,
+      selectionVersion: 1,
+      health: {
+        status: "stale",
+        syncedAt: null,
+        error: { code: "CALENDAR_SOURCE_HEALTH_NOT_OBSERVED" },
+      },
+    });
+    const observed = await listCalendarSourceAdministration(runtime, {
+      forceSync: true,
+    });
+    expect(
+      observed.sources.find((source) => source.key.grantId === GRANT_B.id)
+        ?.health.status,
+    ).toBe("error");
+  });
+
+  it("shares one discovery observation for source administration without losing hidden versions", async () => {
+    await calendar.setCalendarIncluded(INTERNAL_URL, {
+      provider: "google",
+      side: "owner",
+      grantId: GRANT_B.id,
+      connectorAccountId: GRANT_B.connectorAccountId,
+      calendarId: "primary",
+      includeInFeed: false,
+      expectedVersion: 1,
+    });
+    const discovery = vi.spyOn(
+      calendar as unknown as {
+        discoverCalendars(...args: unknown[]): Promise<unknown>;
+      },
+      "discoverCalendars",
+    );
+    try {
+      const snapshot = await listCalendarSourceAdministration(runtime, {
+        forceSync: true,
+      });
+      expect(discovery).toHaveBeenCalledTimes(1);
+      const hidden = snapshot.sources.find(
+        (source) => source.key.grantId === GRANT_B.id,
+      );
+      expect(hidden).toMatchObject({
+        includeInFeed: false,
+        selectionVersion: 2,
+        accountEmail: "account-b@example.test",
+        health: { status: "fresh" },
+      });
+      expect(snapshot.state).toBe("complete");
+    } finally {
+      discovery.mockRestore();
+    }
+  });
+
+  it("retains per-source failures alongside the same versioned administrative catalog", async () => {
+    failAccountB = true;
+    const discovery = vi.spyOn(
+      calendar as unknown as {
+        discoverCalendars(...args: unknown[]): Promise<unknown>;
+      },
+      "discoverCalendars",
+    );
+    const snapshot = await listCalendarSourceAdministration(runtime, {
+      forceSync: true,
+    });
+    expect(discovery).toHaveBeenCalledTimes(1);
+    expect(snapshot.state).toBe("partial");
+    expect(
+      snapshot.sources.find((source) => source.key.grantId === GRANT_A.id),
+    ).toMatchObject({
+      includeInFeed: true,
+      selectionVersion: 1,
+      health: { status: "fresh" },
+    });
+    expect(
+      snapshot.sources.find((source) => source.key.grantId === GRANT_B.id),
+    ).toMatchObject({
+      includeInFeed: true,
+      selectionVersion: 1,
+      health: { status: "error" },
+    });
+  });
+
+  it("reads the built-in feed once for a purely local source while preserving its fresh observation", async () => {
+    const localRead = vi.spyOn(
+      calendar as unknown as {
+        readElizaCalendarFeed(...args: unknown[]): Promise<unknown>;
+      },
+      "readElizaCalendarFeed",
+    );
+    try {
+      const feed = await calendar.getCalendarFeed(INTERNAL_URL, {
+        grantId: "eliza-calendar",
+        timeMin: TIME_MIN,
+        timeMax: TIME_MAX,
+      });
+      expect(localRead).toHaveBeenCalledTimes(1);
+      expect(feed.state).toBe("complete");
+      expect(feed.sources).toHaveLength(1);
+      expect(feed.sources[0]).toMatchObject({
+        status: "fresh",
+        key: { provider: "eliza", grantId: "eliza-calendar" },
+      });
+    } finally {
+      localRead.mockRestore();
+    }
+  });
+
   it("returns the reconciled local snapshot on the first provider edit and deletion read", async () => {
     const created = await calendar.createCalendarEventMutation(INTERNAL_URL, {
       title: googleEvent("account-a").title,
@@ -459,7 +704,26 @@ describe("CalendarService source truth", () => {
     await controls.resume(selected.revision);
     linkedProviderTitle = "Pickup changed in Google";
     const request = { timeMin: TIME_MIN, timeMax: TIME_MAX, forceSync: true };
+    const localReads = vi.spyOn(
+      calendar as unknown as {
+        readElizaCalendarFeed(
+          ...args: unknown[]
+        ): Promise<{ events: Array<{ title: string }> }>;
+      },
+      "readElizaCalendarFeed",
+    );
     const edited = await calendar.getCalendarFeed(INTERNAL_URL, request);
+    expect(localReads).toHaveBeenCalledTimes(2);
+    expect(
+      (await localReads.mock.results[0].value).events.map(
+        (event) => event.title,
+      ),
+    ).toEqual([event.title]);
+    expect(
+      (await localReads.mock.results[1].value).events.map(
+        (event) => event.title,
+      ),
+    ).toEqual([linkedProviderTitle]);
     const localEvents = edited.events.filter(
       (item) => item.provider === "eliza",
     );
@@ -484,6 +748,8 @@ describe("CalendarService source truth", () => {
     });
     linkedProviderDeleted = true;
     const deleted = await calendar.getCalendarFeed(INTERNAL_URL, request);
+    expect(localReads).toHaveBeenCalledTimes(4);
+    expect((await localReads.mock.results[3].value).events).toEqual([]);
     expect(
       deleted.events.some(
         (item) =>
@@ -576,6 +842,35 @@ describe("CalendarService source truth", () => {
       ).toMatchObject({
         status: "error",
         error: { code: "CALENDAR_SOURCE_ERROR" },
+      });
+
+      const beforeAdministration = brokerCalls.length;
+      const administration = await listCalendarSourceAdministration(
+        {
+          ...runtime,
+          getService: () => managedCalendar,
+        } as unknown as IAgentRuntime,
+        { forceSync: true },
+      );
+      expect(brokerCalls.length - beforeAdministration).toBe(1);
+      expect(administration.state).toBe("partial");
+      expect(
+        administration.sources.find(
+          (source) => source.key.grantId === "alpha-google:broker",
+        ),
+      ).toMatchObject({
+        includeInFeed: null,
+        selectionVersion: null,
+        health: { status: "error" },
+      });
+      expect(
+        administration.sources.find(
+          (source) => source.key.grantId === GRANT_A.id,
+        ),
+      ).toMatchObject({
+        includeInFeed: true,
+        selectionVersion: 1,
+        health: { status: "fresh" },
       });
 
       const callsAfterAggregateRead = brokerCalls.length;
@@ -895,8 +1190,10 @@ describe("CalendarService source truth", () => {
       "SELECT metadata_json, start_at, end_at FROM app_calendar.life_calendar_events WHERE metadata_json LIKE '%locallyManagedAvailability%' ORDER BY start_at",
     );
     expect(rows.rows).toHaveLength(2);
-    const travelRow = rows.rows.find((row) =>
-      row.metadata_json.includes('"availabilityKind":"travel"'),
+    const travelRow = rows.rows.find(
+      (row) =>
+        calendarAvailabilityKindFromMetadata(JSON.parse(row.metadata_json)) ===
+        "travel",
     );
     expect(travelRow).toMatchObject({
       start_at: "2026-07-27T15:30:00.000Z",

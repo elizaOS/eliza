@@ -20,6 +20,8 @@
  * on: an occurrence that passed while the agent was not running is recorded
  * once as missed, never replayed (the shared policy in `@elizaos/core`).
  */
+
+import type { AgentHostBridge } from "@elizaos/agent/runtime/host-bridge";
 import type { ServiceRouteConfig } from "@elizaos/contracts";
 import { MISSED_SCHEDULED_OCCURRENCES_SETTING } from "@elizaos/core";
 import { buildElizaCloudServiceRoute } from "@elizaos/host/protocol";
@@ -134,18 +136,35 @@ export function nativeRuntimeRoutingPreferences(
   };
 }
 
-/** Product input from the host's admitted resources: its Cloud deployment only. */
-export interface NativeCloudRuntimeDeclaration {
+/** Required routing input from the host's admitted resources. */
+export interface NativeCloudRoutingDeclaration {
   readonly apiBaseUrl: string;
 }
 
-export function parseNativeCloudRuntimeDeclaration(
+/** Product input from the host's admitted resources, independent of sign-in. */
+export interface NativeCloudRuntimeDeclaration
+  extends NativeCloudRoutingDeclaration {
+  readonly productCharacter?: AgentHostBridge["productCharacter"];
+}
+
+/** Admit routing independently of optional product presentation. */
+export function parseNativeCloudRoutingDeclaration(
   value: unknown,
-): NativeCloudRuntimeDeclaration {
-  if (!value || typeof value !== "object" || Array.isArray(value))
+): NativeCloudRoutingDeclaration {
+  if (
+    !value ||
+    typeof value !== "object" ||
+    Array.isArray(value) ||
+    !("apiBaseUrl" in value)
+  )
     throw new Error("Native Cloud runtime declaration is invalid");
-  const { apiBaseUrl, ...rest } = value as Record<string, unknown>;
-  if (Object.keys(rest).length > 0 || typeof apiBaseUrl !== "string")
+  const { apiBaseUrl } = value;
+  if (
+    Object.keys(value).some(
+      (key) => key !== "apiBaseUrl" && key !== "productCharacter",
+    ) ||
+    typeof apiBaseUrl !== "string"
+  )
     throw new Error("Native Cloud runtime declaration is invalid");
   let url: URL;
   try {
@@ -165,6 +184,40 @@ export function parseNativeCloudRuntimeDeclaration(
   )
     throw new Error("Native Cloud runtime declaration is invalid");
   return Object.freeze({ apiBaseUrl: url.href });
+}
+
+export function parseNativeCloudRuntimeDeclaration(
+  value: unknown,
+): NativeCloudRuntimeDeclaration {
+  const routing = parseNativeCloudRoutingDeclaration(value);
+  const { productCharacter: character } = value as Record<string, unknown>;
+  let productCharacter: AgentHostBridge["productCharacter"];
+  if (character !== undefined) {
+    if (
+      !character ||
+      typeof character !== "object" ||
+      Array.isArray(character) ||
+      !("name" in character) ||
+      typeof character.name !== "string" ||
+      !character.name.trim() ||
+      Object.keys(character).some((key) => key !== "name" && key !== "bio")
+    )
+      throw new Error("Native Cloud runtime declaration is invalid");
+    const bio = "bio" in character ? character.bio : undefined;
+    if (
+      bio !== undefined &&
+      (!Array.isArray(bio) || !bio.every((line) => typeof line === "string"))
+    )
+      throw new Error("Native Cloud runtime declaration is invalid");
+    productCharacter = Object.freeze({
+      name: character.name.trim(),
+      ...(bio !== undefined ? { bio: Object.freeze([...bio]) } : {}),
+    });
+  }
+  return Object.freeze({
+    ...routing,
+    ...(productCharacter ? { productCharacter } : {}),
+  });
 }
 
 type ElizaConfigLike = {
@@ -205,11 +258,11 @@ async function defaultStores(): Promise<NativeRuntimeProfileStores> {
  */
 export async function applyNativeCloudRuntimeProfile(
   env: NodeJS.ProcessEnv,
-  declaration: NativeCloudRuntimeDeclaration,
+  declaration: NativeCloudRoutingDeclaration,
   stores?: NativeRuntimeProfileStores,
 ): Promise<NativeRuntimeProfile> {
   const profile = resolveNativeRuntimeProfile(env.ELIZA_RUNTIME_PROFILE);
-  const { apiBaseUrl } = parseNativeCloudRuntimeDeclaration(declaration);
+  const { apiBaseUrl } = parseNativeCloudRoutingDeclaration(declaration);
   const small = env.ELIZAOS_CLOUD_SMALL_MODEL;
   const large = env.ELIZAOS_CLOUD_LARGE_MODEL;
   if (!small || !large || env.ELIZAOS_CLOUD_BASE_URL !== apiBaseUrl)

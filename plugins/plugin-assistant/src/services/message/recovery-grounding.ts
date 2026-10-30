@@ -32,16 +32,18 @@ const claimSchema = z
 
 export type RecoveredReplyClaim = z.infer<typeof claimSchema>;
 
+const groundingVerdictSchema = z
+  .object({
+    grounded: z.boolean(),
+    claims: z.array(claimSchema),
+  })
+  .strict()
+  .refine((verdict) => verdict.grounded || verdict.claims.length > 0, {
+    message: "An ungrounded verdict lists the claims it rejects",
+  });
+
 const verdictSchema = z.union([
-  z
-    .object({
-      grounded: z.boolean(),
-      claims: z.array(claimSchema),
-    })
-    .strict()
-    .refine((verdict) => verdict.grounded || verdict.claims.length > 0, {
-      message: "An ungrounded verdict lists the claims it rejects",
-    }),
+  groundingVerdictSchema,
   z.object({ contextRequest: z.literal("full") }).strict(),
 ]);
 
@@ -77,9 +79,16 @@ export async function reviewRecoveredReply(args: {
     const raw = await runWithSuppressedModelStream(() =>
       args.runtime.useModel(ModelType.TEXT_SMALL, {
         prompt,
-        // This fixed union emits object-valued property schemas; Zod also types
-        // boolean property schemas that core JSONSchema does not accept.
-        responseSchema: z.toJSONSchema(verdictSchema) as JSONSchema,
+        // Offer the read only when the caller can honor it. Structured output
+        // makes every offered branch valid, so after restored originals a
+        // still-offered read was chosen and failed a grounded prepared
+        // navigation reply (live tj-35f6b24bfaf1b0). Local parsing below still
+        // rejects an unoffered read.
+        // These fixed schemas emit object-valued property schemas; Zod also
+        // types boolean property schemas that core JSONSchema does not accept.
+        responseSchema: z.toJSONSchema(
+          args.allowFullContextRequest ? verdictSchema : groundingVerdictSchema,
+        ) as JSONSchema,
         providerOptions: { eliza: { thinking: "off" } },
       }),
     );

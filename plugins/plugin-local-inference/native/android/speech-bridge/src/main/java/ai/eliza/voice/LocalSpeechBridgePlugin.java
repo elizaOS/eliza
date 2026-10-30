@@ -183,6 +183,13 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
 
  /** One request's work on the serial speech worker. */
  protected interface Work { void run(SpeechRequestGate.Request request)throws Exception; }
+ /** Maps a work failure to a renderer-safe rejection only after request cleanup.
+  * Hosts may attach their validated retry metadata; never expose the exception's raw message.
+  * Cancellation and destruction take precedence and never reach this hook.
+  * Cleanup failures discard the work exception and its status code. */
+ protected void rejectFailure(PluginCall call,String message,String code,Exception failure){
+  if(code!=null)call.reject(message,code);else call.reject(message);
+ }
  /**
   * Admits one request (by its {@code requestId}) and runs it on the speech worker with a 120 s
   * deadline. The call resolves with {@code request.result} (a JSObject), or rejects with
@@ -195,11 +202,12 @@ public abstract class LocalSpeechBridgePlugin extends Plugin {
   SpeechRequestGate.Request request=admission.request;
   Runnable deadline=request::cancel;request.deadline=deadline;main.postDelayed(deadline,REQUEST_TIMEOUT_MS);
   submitWork(()->{
-   try{if(request.cancelled)throw new IOException();work.run(request);}catch(Exception error){request.failure=request.cancelled?"Voice request cancelled":"Voice request failed";if(!request.cancelled&&error instanceof SpeechHttpException)request.failureCode="voice-http-"+((SpeechHttpException)error).status;}
-   finally{try{if(request.connection!=null)request.connection.disconnect();}catch(RuntimeException error){request.failure="Voice request cleanup failed";}finally{gate.settle(request);main.removeCallbacks(deadline);}}
+   Exception workFailure=null;
+   try{if(request.cancelled)throw new IOException();work.run(request);}catch(Exception error){workFailure=error;request.failure=request.cancelled?"Voice request cancelled":"Voice request failed";if(!request.cancelled&&error instanceof SpeechHttpException)request.failureCode="voice-http-"+((SpeechHttpException)error).status;}
+   finally{try{if(request.connection!=null)request.connection.disconnect();}catch(RuntimeException error){request.failure="Voice request cleanup failed";request.failureCode=null;workFailure=null;}finally{gate.settle(request);main.removeCallbacks(deadline);}}
    // A continuation may submit immediately when this resolves: release admission first.
    // A streamed utterance resolved at its first chunk; its playback events report the rest.
-   if(request.resolvedEarly){/* Settled. */}else if(request.cancelled||destroyed)call.reject("Voice request cancelled");else if(request.failure!=null){if(request.failureCode!=null)call.reject(request.failure,request.failureCode);else call.reject(request.failure);}else if(!(request.result instanceof JSObject))call.reject("Voice request failed");else call.resolve((JSObject)request.result);
+   if(request.resolvedEarly){/* Settled. */}else if(request.cancelled||destroyed)call.reject("Voice request cancelled");else if(request.failure!=null){rejectFailure(call,request.failure,request.failureCode,workFailure);}else if(!(request.result instanceof JSObject))call.reject("Voice request failed");else call.resolve((JSObject)request.result);
   },()->{main.removeCallbacks(deadline);gate.settle(request);call.reject("Voice unavailable");});
  }
  /** Cancels the request {@code requestId} and the playback it prepared (reported as failed). */

@@ -446,12 +446,15 @@ function commitStagedCharacter(
 function syncRuntimeCharacterToConfig(
   state: CharacterRouteState,
   saveConfig?: (config: ElizaConfig) => void,
+  nameWasExplicitlyEdited = false,
 ): void {
   const runtime = state.runtime;
   const config = state.config;
   if (!runtime || !config) return;
 
-  syncCharacterIntoConfig(config, runtime.character as RuntimeCharacterLike);
+  syncCharacterIntoConfig(config, runtime.character as RuntimeCharacterLike, {
+    nameWasExplicitlyEdited,
+  });
   saveConfig?.(config);
 }
 
@@ -954,7 +957,11 @@ export async function handleCharacterRoutes(
       }
     }
 
-    syncRuntimeCharacterToConfig(state, saveConfig);
+    syncRuntimeCharacterToConfig(
+      state,
+      saveConfig,
+      readOwnDataValue(body, "name") != null,
+    );
 
     const submittedAgentName = readOwnDataValue(body, "name");
     if (submittedAgentName) state.agentName = String(submittedAgentName);
