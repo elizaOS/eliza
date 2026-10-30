@@ -22,9 +22,9 @@ it('keeps assistant and retained editor mounted while one host navigation owner 
  function Assistant(){const[draft,setDraft]=useState(()=>{mounts++;return ''});return <input aria-label="Assistant draft" value={draft} onChange={event=>setDraft(event.target.value)}/>;}
  function Host(){const[nav,setNav]=useState({...MOBILE_SHELL_HOME});navigate=action=>setNav(current=>navigateMobileShell(current,action));return <MobileApplication catalog={catalog} navigation={nav} navigate={navigate} bridge={bridge} appearance="light" favorites={saved} retainedViews={<textarea aria-label="Retained Notes draft" defaultValue="saved"/>} assistant={<Assistant/>} renderView={page=><h1>{page.label}</h1>}/>;}
  render(<Host/>);fireEvent.change(screen.getByLabelText('Assistant draft'),{target:{value:'unsent'}});fireEvent.change(screen.getByLabelText('Retained Notes draft'),{target:{value:'edited'}});
- fireEvent.click(screen.getByRole('button',{name:'Maps',exact:true}));expect(screen.getByRole('heading',{name:'Maps'})).toBeTruthy();
+ fireEvent.click(screen.getByRole('button',{name:'Maps'}));expect(screen.getByRole('heading',{name:'Maps'})).toBeTruthy();
  expect(document.querySelector('[data-mobile-shell-home]')?.hasAttribute('inert')).toBe(true);
- await act(async()=>navigate({type:'home'}));fireEvent.click(screen.getByRole('button',{name:'All apps',exact:true}));expect(await screen.findByRole('dialog',{name:'All apps'})).toBeTruthy();
+ await act(async()=>navigate({type:'home'}));fireEvent.click(screen.getByRole('button',{name:'All apps'}));expect(await screen.findByRole('dialog',{name:'All apps'})).toBeTruthy();
  fireEvent.keyDown(screen.getByRole('dialog',{name:'All apps'}),{key:'Escape'});expect(screen.queryByRole('dialog',{name:'All apps'})).toBeNull();expect((screen.getByLabelText('Assistant draft') as HTMLInputElement).value).toBe('unsent');expect((screen.getByLabelText('Retained Notes draft') as HTMLTextAreaElement).value).toBe('edited');expect(mounts).toBe(1);expect(bridge.launch).not.toHaveBeenCalled();
 });
 
