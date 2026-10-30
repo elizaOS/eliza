@@ -760,6 +760,7 @@ export function retrieveContextualPlannerActions(args: {
         const wordsFor = (action: Action) =>
           operationWords(action.name, parentWords);
         const retained = new Set<string>();
+        const considered = new Set<string>();
         for (const clause of clauses) {
           const unquoted = clause.replace(
             /"[^"]*"|(?<![\p{L}\p{N}])'[^']*'(?![\p{L}\p{N}])|“[^”]*”|‘[^’]*’|`[^`]*`/gu,
@@ -778,6 +779,7 @@ export function retrieveContextualPlannerActions(args: {
           const candidates = children.filter((action) =>
             preferred.has(action.name),
           );
+          for (const action of candidates) considered.add(action.name);
           // Unstructured compound wording is ambiguous. Keep its alternatives;
           // model-selected intents provide independent outcome boundaries.
           if (/\band\b|[;,]/iu.test(unquoted)) {
@@ -821,9 +823,13 @@ export function retrieveContextualPlannerActions(args: {
             if (!superseded) retained.add(action.name);
           }
         }
+        // Only a clause's own operations compete here. An operation selected
+        // by the whole request alone (the update beside a delete-and-set
+        // edit) has no clause to lose to.
         if (retained.size > 0)
           for (const child of children)
-            if (!retained.has(child.name)) wanted.delete(child.name);
+            if (considered.has(child.name) && !retained.has(child.name))
+              wanted.delete(child.name);
       }
       for (const action of owners)
         if (wanted.has(action.name)) selected.add(action);
