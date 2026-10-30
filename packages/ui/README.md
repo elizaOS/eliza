@@ -46,6 +46,17 @@ before its first read. `@elizaos/ui/mobile-shell/core` is the same model
 without React components for runtime code such as agent navigation. Neither
 entry loads the package root.
 
+`MobileApplication` is the production Android entry inside the app's existing
+startup/auth provider. It owns Home, All apps and registered view placement;
+`createMobileApplicationCatalog` projects the authoritative AppShellPage registry
+without using product order as an allowlist. Hosts pass their current navigation
+owner, retained view trees, assistant and system overlays. Canonical shell
+storage goes through its existing guarded shell writer; compatibility hosts
+provide their own storage port. These ports do not
+create another session, action dispatcher or conversation owner. The canonical
+app retains its existing ViewRouter; compatibility consumers can keep individual
+legacy domain views while migrating their implementations separately.
+
 `@elizaos/ui/api/transport` exposes the browser-safe request helpers and
 `SseEventFramer`. It preserves event lines across fragmented network reads;
 hosts retain UTF-8 decoding policy, limits, cancellation, validation and receipts.
