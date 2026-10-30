@@ -40,6 +40,7 @@ import { LifeOpsService } from "../lifeops/service.js";
 import { entityAction } from "./entity.js";
 import { runUpdateMeetingPreferencesHandler } from "./lib/scheduling-handler.js";
 import { runLifeOperationHandler } from "./life.js";
+import { coerceDeferredLifeDraft } from "./lib/lifeops-deferred-draft.js";
 
 const failure = {
   kind: "rate_limited" as const,
@@ -482,6 +483,125 @@ describe("grounded reply outcomes — real PGlite", () => {
           slots: [{ minuteOfDay: 720 }],
         });
       }
+    },
+  );
+
+  it.each([
+    { delay: 30_000, savedCount: 1, relative: true },
+    { delay: 180_000, savedCount: 0, relative: true },
+    { delay: 180_000, savedCount: 1, relative: false },
+  ])(
+    "preserves a preview relative deadline across confirmation after $delay ms",
+    async ({ delay, savedCount, relative }) => {
+      vi.spyOn(assistant, "renderGroundedActionReply").mockResolvedValue({
+        kind: "deferred",
+        grounding: "Saved reminder facts",
+      });
+      const now = Date.now();
+      const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+      const title = `Preview timing ${relative ? "relative" : "absolute"} ${delay}`;
+      const request = message(
+        relative
+          ? `Preview a reminder in two minutes to ${title}`
+          : `Preview a reminder on January 1 2099 at noon to ${title}`,
+      );
+      request.createdAt = now;
+      request.content.source = "client_chat";
+      const preview = await runLifeOperationHandler(
+        runtime,
+        request,
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            kind: "definition",
+            ownerSurface: "OWNER_REMINDERS",
+            intent: request.content.text,
+            createPlan: {
+              mode: "create",
+              requestKind: "reminder",
+              nativeProjection: "in_app_only",
+              notificationMode: "default",
+              title,
+              description: null,
+              cadenceKind: "once",
+              dueInMinutes: relative ? 2 : null,
+              dueDate: relative ? null : "2099-01-01",
+              timeOfDay: relative ? null : "12:00",
+              timeZone: "UTC",
+              multiStep: false,
+            },
+          },
+        },
+      );
+      expect(preview.data?.lifeDraft).toBeDefined();
+      const draft = preview.data?.lifeDraft as Record<string, unknown>;
+      const expectedDue = relative
+        ? new Date(now + 120_000).toISOString()
+        : "2099-01-01T12:00:00.000Z";
+      expect(draft.relativeDeadline).toBe(relative ? expectedDue : undefined);
+      expect(coerceDeferredLifeDraft(draft)).not.toBeNull();
+      expect(
+        coerceDeferredLifeDraft({ ...draft, relativeDeadline: "bad" }),
+      ).toBeNull();
+      if (relative) {
+        const request = draft.request as Record<string, unknown>;
+        expect(
+          coerceDeferredLifeDraft({
+            ...draft,
+            request: {
+              ...request,
+              cadence: {
+                kind: "once",
+                dueAt: new Date(now + 240_000).toISOString(),
+              },
+            },
+          }),
+        ).toBeNull();
+        expect(
+          coerceDeferredLifeDraft({
+            ...draft,
+            relativeDeadline: new Date(now + 120_000).toUTCString(),
+          }),
+        ).toBeNull();
+      }
+      expect(
+        (await service.listDefinitions()).filter(
+          (row) => row.definition.title === title,
+        ),
+      ).toHaveLength(0);
+      clock.mockReturnValue(now + delay);
+      const confirmation = {
+        ...message("Yes, save it"),
+        roomId: request.roomId,
+        createdAt: now + delay,
+      };
+      confirmation.content.source = "client_chat";
+      const result = await runLifeOperationHandler(
+        runtime,
+        confirmation,
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            kind: "definition",
+            ownerSurface: "OWNER_REMINDERS",
+            intent: confirmation.content.text,
+          },
+        },
+      );
+      const saved = (await service.listDefinitions()).filter(
+        (row) => row.definition.title === title,
+      );
+      expect(saved).toHaveLength(savedCount);
+      expect(result.success).toBe(savedCount === 1);
+      if (savedCount === 0)
+        expect(result.data?.error).toBe("REMINDER_TIME_PASSED");
+      else
+        expect(saved[0].definition.cadence).toMatchObject({
+          kind: "once",
+          dueAt: expectedDue,
+        });
     },
   );
 
