@@ -259,6 +259,12 @@ export interface DocumentMutationSnapshot {
 	revision: number;
 	ingestionAttemptId?: UUID;
 	ingestionState?: "pending" | "ready" | "failed";
+	/**
+	 * Runtime bookkeeping stored as a document (`metadata.runtimeInternal`).
+	 * Only AGENT/RUNTIME requesters may read or mutate it; it never appears in
+	 * owner or user document listings.
+	 */
+	runtimeInternal?: true;
 }
 
 /** Compare-and-swap document replacement under canonical mutation policy. */
