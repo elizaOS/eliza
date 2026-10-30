@@ -332,9 +332,7 @@ it("ignores a held action when its bridge is replaced without an identity change
   );
   await act(async () => held.resolve({ phase: "deleted" }));
   expect(screen.queryByRole("status")).toBeNull();
-  expect(
-    (screen.getByRole("button", { name: "Undo" }) as HTMLButtonElement).disabled,
-  ).toBe(false);
+  expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   expect(onChanged).not.toHaveBeenCalled();
   expect(newBridge.pending).not.toHaveBeenCalled();
 });
@@ -430,3 +428,90 @@ it("settles current-owner busy state while concealed without leaving the returni
       .disabled,
   ).toBe(false);
 });
+
+it("rejects a pending read from the replaced bridge before displaying its rows", async () => {
+  const previous = bridge([]);
+  const successor = bridge([row("successor", "queued", "open")]);
+  const held = deferred<{ deletions: DeferredDeletionEntry[] }>();
+  previous.pending.mockImplementationOnce(() => held.promise);
+  const view = render(
+    <DeferredDeletionNotice
+      bridge={previous}
+      refreshEvents={["test:refresh"]}
+      pollMs={60_000}
+    />,
+  );
+  view.rerender(
+    <DeferredDeletionNotice
+      bridge={successor}
+      refreshEvents={["test:refresh"]}
+      pollMs={60_000}
+    />,
+  );
+  await act(async () =>
+    held.resolve({ deletions: [row("old", "queued", "open")] }),
+  );
+  expect(screen.queryByText("Event old")).toBeNull();
+  await act(async () => window.dispatchEvent(new Event("test:refresh")));
+  expect(screen.getByText("Event successor")).toBeTruthy();
+});
+
+it("rejects a pending read when the owner changes before its subscription notifies", async () => {
+  const fake = bridge([]);
+  const held = deferred<{ deletions: DeferredDeletionEntry[] }>();
+  fake.pending.mockImplementationOnce(() => held.promise);
+  let owner = "owner-A";
+  const identity = { read: () => owner, subscribe: () => () => {} };
+  render(
+    <DeferredDeletionNotice
+      bridge={fake}
+      identity={identity}
+      pollMs={60_000}
+    />,
+  );
+  owner = "owner-B";
+  await act(async () =>
+    held.resolve({ deletions: [row("old", "queued", "open")] }),
+  );
+  expect(screen.queryByText("Event old")).toBeNull();
+});
+
+it("does not dispatch a displayed old row through a replacement bridge", async () => {
+  const previous = bridge([row("old", "queued", "open")]);
+  const successor = bridge([row("successor", "queued", "open")]);
+  const view = render(
+    <DeferredDeletionNotice bridge={previous} pollMs={60_000} />,
+  );
+  await flush();
+  const oldButton = screen.getByRole("button", { name: "Undo" });
+  view.rerender(<DeferredDeletionNotice bridge={successor} pollMs={60_000} />);
+  fireEvent.click(oldButton);
+  await flush();
+  expect(successor.undo).not.toHaveBeenCalled();
+  expect(previous.undo).not.toHaveBeenCalled();
+  expect(screen.queryByText("Event old")).toBeNull();
+});
+
+it.each(["Undo", "Dismiss outcome"])(
+  "does not dispatch displayed %s after an unnotified owner change",
+  async (button) => {
+    const fake = bridge([
+      row("old", button === "Undo" ? "queued" : "unknown", "open"),
+    ]);
+    let owner = "owner-A";
+    const identity = { read: () => owner, subscribe: () => () => {} };
+    render(
+      <DeferredDeletionNotice
+        bridge={fake}
+        identity={identity}
+        pollMs={60_000}
+      />,
+    );
+    await flush();
+    owner = "owner-B";
+    fireEvent.click(screen.getByRole("button", { name: button }));
+    await flush();
+    expect(fake.undo).not.toHaveBeenCalled();
+    expect(fake.dismiss).not.toHaveBeenCalled();
+  },
+);
