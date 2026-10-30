@@ -268,3 +268,9 @@ process omits the optional field until a new verified session is created. This f
 handshake grants no Calendar access and does not replace the host's visibility checks.
 Turn cancellation stops only that caller's wait. Session retirement also cancels the
 shared handshake, so another turn cannot inherit a cancelled caller's failure.
+
+Mobile discovery uses `mobileViewIsAvailable` from `mobile-shell/core`: registered
+implementations, runtime/view-kind declarations and installed native adapters
+determine availability; product ordering is presentation only. The
+`styles/mobile-workspaces.css` export compiles scoped domain utilities with the
+host's Tailwind integration and semantic theme. It does not import the app reset.

@@ -344,6 +344,10 @@
       "types": "./dist/first-run/local-agent-token.d.ts",
       "import": "./dist/first-run/local-agent-token.js",
       "default": "./dist/first-run/local-agent-token.js"
+    },
+    "./styles/mobile-workspaces.css": {
+      "eliza-source": "./src/styles/mobile-workspaces.css",
+      "default": "./dist/styles/mobile-workspaces.css"
     }
   },
   "peerDependencies": {
