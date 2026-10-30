@@ -797,9 +797,16 @@ public abstract class CloudSignInPlugin extends Plugin {
      String saved = credentials(current.credentialGuard).read(config().credentialSlot(current.environment));
      if (saved == null || !outcome.getString("credentialId").equals(new JSONObject(saved).optString("credentialId", null)))
       throw new IllegalStateException("Saved sign-in changed");
+     // Older renderers have a strict four-field parser and supplied no request ID.
+     JSObject delivered = outcome;
+     if (current.requestId == null) {
+      delivered = new JSObject().put("status", "authenticated").put("environment", current.environment.name)
+       .put("expiresAt", outcome.opt("expiresAt")).put("accountCreated", outcome.opt("accountCreated"));
+      if (outcome.has("previousSignIn")) delivered.put("previousSignIn", outcome.opt("previousSignIn"));
+     }
      PluginCall waiting = current.waiting; current.waiting = null; attempt = null;
-     if (waiting != null) waiting.resolve(outcome);
-     else notifyListeners("signInCompleted", outcome, true);
+     if (waiting != null) waiting.resolve(delivered);
+     else notifyListeners("signInCompleted", delivered, true);
      return null;
     });
    } catch (Exception superseded) {

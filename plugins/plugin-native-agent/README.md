@@ -364,6 +364,17 @@ move or change shape. The later native profile overrides Cloud embeddings with
 the admitted local BGE route; this extraction preserves the existing generic
 provider behavior.
 
+`CredentialMutationConductor` shares the resident credential commit boundary. It
+reserves a stop request before dispatch, waits without holding the vault lock,
+and commits only after that exact request has confirmed process absence.
+`CredentialShutdownLease` keeps startup fenced between acknowledgement and the
+credential commit. Pre-commit cancellation or timeout records abandonment and
+releases only after the eventual stop acknowledgement; uncertain writes stay
+fenced. Superseded owners can retire only their own request and cannot clear a
+newer mutation's lifecycle state. The native sign-in outcome carries request and
+credential identity when the renderer supplies a request ID, while preserving
+the existing response shape for older renderers.
+
 ### First-party connection transport and resident lifecycle
 
 `connection/` holds the pure policies a first-party renderer transport plugin

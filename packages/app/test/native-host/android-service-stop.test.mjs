@@ -55,7 +55,7 @@ class Base { public void onDestroy(){} }
 class ElizaAgentService {}
 public class StopRace extends Base {
  static java.util.concurrent.CompletableFuture<Void> serviceLifecycleCompletion=java.util.concurrent.CompletableFuture.completedFuture(null);
- static StopRace activeInstance;static long credentialShutdownEpoch;static boolean credentialShutdownConfirmed,credentialShutdownPending;
+ static StopRace activeInstance;static final ai.eliza.plugins.agent.runtime.CredentialShutdownLease credentialShutdown=new ai.eliza.plugins.agent.runtime.CredentialShutdownLease();
  long admittedCredentialShutdownEpoch=-1,recoveryMaintenanceEpoch;boolean shuttingDown,foregroundStartDenied;
  Thread watchdog,startWorker;String currentStatus="starting";int starts;
  static class Resource {void close(){}void stop(){}}
@@ -65,7 +65,7 @@ public class StopRace extends Base {
  static class NotificationManager{void cancel(int id){}}
  static class Context{static final String NOTIFICATION_SERVICE="notification";}
  static final int NOTIFICATION_ID=1;Object getSystemService(String s){return null;}
- static void invalidateCredentialShutdown(){if(credentialShutdownPending)throw new IllegalStateException();++credentialShutdownEpoch;credentialShutdownConfirmed=false;}
+ static void invalidateCredentialShutdown(){credentialShutdown.beforeStart();}
  void ensureBionicVoiceHost(){}
  void updateNotification(){}
  static CountDownLatch startEntered,startProceed;void startAgentProcess(boolean adopt){starts++;if(startEntered!=null){startEntered.countDown();try{startProceed.await(2,TimeUnit.SECONDS);}catch(InterruptedException e){Thread.currentThread().interrupt();throw new IllegalStateException(e);}}}
@@ -83,13 +83,19 @@ public class StopRace extends Base {
  File agentAbiDir(String x){return dir.toFile();}File nativeLibraryDir(){return dir.toFile();}
  String resolveRuntimeAbi(){return "fixture";}String findMuslLoader(File f){return "loader";}
  String packagedMuslLoaderName(String x){return null;}
- File preferPackagedExecutable(File f,String n){return f;}static final String BUN_BINARY="bun";
+ File preferPackagedExecutable(File f,String n){return f;}static final String BUN_BINARY="bun",WORKFLOW_STATE_DIR_NAME="smthrs";
+ static class RuntimeLaunchPaths{final File processExecutable;RuntimeLaunchPaths(File value){processExecutable=value;}}
+ RuntimeLaunchPaths runtimeLaunchPaths(String abi){return new RuntimeLaunchPaths(new File(agentAbiDir(abi),"loader"));}
  void deleteLocalAgentTokenFile(){credentialDeleted=true;}void persistDetachedLaunchTimestamp(long t){}
  long safePid(Process p){return p.pid();}void appendDiagnosticEvent(String event,Object detail){}
  static class Log {static void i(String t,String m){} static void w(String t,String m,Throwable e){} static void w(String t,String m){} }
  static class ElizaWorkScheduler {static void runtimeStopped(Object c){((StopRace)c).ownershipStopped=true;}}
  static class IpcStartupRecovery {static void requireSoleUidProcess()throws Exception{requireSoleUidProcess(Long.MAX_VALUE);}static void requireSoleUidProcess(long deadline)throws Exception {if(current.hasUnknown())throw new IOException("unknown");}}
  static class WorkflowSurvivorInventory {
+  static final class ExecutableDigests implements AutoCloseable{public void close(){}}
+  static ExecutableDigests executableDigests(){return new ExecutableDigests();}
+  static void stopResident(File bun,File loader,File bundle,long deadline,ExecutableDigests observation)throws Exception{stopResident(bun,loader,bundle,deadline);}
+  static void requireClassified(File home,File state,File bun,File loader,long deadline,ExecutableDigests observation)throws IOException{requireClassified(home,state,bun,loader,deadline);}
   static void stopResident(File bun,File loader,File bundle)throws Exception{stopResident(bun,loader,bundle,Long.MAX_VALUE);}static void stopResident(File bun,File loader,File bundle,long deadline)throws Exception {
    StopRace h=current;h.stopChecks++;
    Path pid=h.dir.resolve("resident.pid");
@@ -145,14 +151,16 @@ public class StopRace extends Base {
    serviceLifecycleCompletion.get(2,TimeUnit.SECONDS);
    Thread next=successor.startWorker;if(next!=null)next.join(2000);
    check(successor.starts==1,"Normal startup resumes after release");
-   check(!credentialShutdownConfirmed,"Ordinary worker-preserving stop must never grant strict credential acknowledgement");
+   check(!credentialShutdown.isConfirmed(-1),"Ordinary worker-preserving stop must never grant strict credential acknowledgement");
   }finally{previous.cleanup();}
   StopRace strict=new StopRace(d.resolve("strict"));Files.createDirectories(strict.dir);
   try{
    strict.agentProcess=new ProcessBuilder("sh","-c","exit 0").start();
-   strict.shuttingDown=true;strict.admittedCredentialShutdownEpoch=credentialShutdownEpoch=42;credentialShutdownPending=true;
+   strict.shuttingDown=true;long strictRequest=credentialShutdown.acquire();strict.admittedCredentialShutdownEpoch=strictRequest;
    strict.onDestroy();serviceLifecycleCompletion.get(2,TimeUnit.SECONDS);
-   check(credentialShutdownConfirmed&&!credentialShutdownPending&&activeInstance==null,"Strict credential acknowledgement requires proved release and matching epoch");
+   check(credentialShutdown.isConfirmed(strictRequest)&&!credentialShutdown.isReleased(strictRequest)&&activeInstance==null,"Strict acknowledgement proves release but still fences startup until commit");
+   try{credentialShutdown.beforeStart();throw new AssertionError("ACK alone admitted start");}catch(ai.eliza.plugins.agent.runtime.CredentialShutdownLease.Pending expected){}
+   check(credentialShutdown.release(strictRequest),"Credential commit releases its exact acknowledged request");
   }finally{strict.cleanup();}
   StopRace reserved=new StopRace(d.resolve("reserved"));Files.createDirectories(reserved.dir);
   startEntered=new CountDownLatch(1);startProceed=new CountDownLatch(1);
@@ -199,6 +207,10 @@ test("Android stop settles a delayed detached fork before ownership release and 
         resolve(
           app,
           "../../plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java",
+        ),
+        resolve(
+          app,
+          "../../plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialShutdownLease.java",
         ),
         join(dir, "android/os/SystemClock.java"),
         join(dir, "StopRace.java"),

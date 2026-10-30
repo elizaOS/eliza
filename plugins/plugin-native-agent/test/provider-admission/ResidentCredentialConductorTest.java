@@ -15,7 +15,7 @@ public final class ResidentCredentialConductorTest {
     final Object lifecycle = new Object(), credentials = new Object();
     final Process child;
     final CredentialShutdownLease lease = new CredentialShutdownLease();
-    boolean current = true, acknowledge = true, supersede, stopping, finished;
+    boolean current = true, acknowledge = true, supersede, stopping, finished, failDispatch, replaceEpoch;
     int commits, stops;
     long epoch, clockReads;
     Host() throws Exception {
@@ -34,16 +34,18 @@ public final class ResidentCredentialConductorTest {
       check(Thread.holdsLock(lifecycle), "owner check holds lifecycle");
       if (!current || epoch != expected) throw new IllegalStateException("Superseded owner");
     }
-    public long requestStop() {
+    public long reserveStop() { return lease.acquire(); }
+    public void requestStop(long request) {
       check(Thread.holdsLock(lifecycle) && !Thread.holdsLock(credentials), "stop dispatch holds no credential lock");
       stops++;
       child.destroy();
-      return lease.acquire();
+      if (failDispatch) throw new IllegalStateException("Dispatch uncertain");
     }
     public boolean stopped() throws Exception {
       check(!Thread.holdsLock(lifecycle) && !Thread.holdsLock(credentials), "process observation holds no owner lock");
       boolean dead = child.waitFor(2, TimeUnit.SECONDS);
       if (supersede) current = false;
+      if (replaceEpoch) ++epoch;
       return dead;
     }
     public boolean stopAcknowledged(long request) {
@@ -54,10 +56,9 @@ public final class ResidentCredentialConductorTest {
     public void sleep(long millis) throws InterruptedException { Thread.sleep(millis); }
     public void finishMutation(long expected, long request, boolean attempted, boolean committed) {
       check(Thread.holdsLock(lifecycle) && !Thread.holdsLock(credentials), "finish holds lifecycle and no store lock");
-      if (expected == epoch) {
-        finished = true;
-        if (current && (!attempted || committed)) lease.release(request);
-      }
+      if (!attempted) lease.abandon(request);
+      else if (committed) lease.release(request);
+      if (expected == epoch) finished = true;
     }
     public <T> T commit(CredentialMutationConductor.Mutation<T> mutation) throws Exception {
       check(Thread.holdsLock(lifecycle) && Thread.holdsLock(credentials), "commit holds lifecycle then credential lock");
@@ -200,13 +201,21 @@ public final class ResidentCredentialConductorTest {
       host.acknowledge = false;
       try { CredentialMutationConductor.mutate(host, () -> {}, change()); throw new AssertionError("unconfirmed stop committed"); }
       catch (IllegalStateException expected) { check(expected.getMessage().contains("unconfirmed"), "exact stop acknowledgement is required"); }
-      check(host.commits == 0 && host.finished && host.stopping, "failed stop releases mutation but retains the start fence");
+      check(host.commits == 0 && host.finished && !host.lease.isReleased(1), "timeout retains the start fence before actual ACK");
+      try { host.lease.beforeStart(); throw new AssertionError("timed-out stop admitted start"); }
+      catch (CredentialShutdownLease.Pending expected) { }
+      host.lease.acknowledge(1, !host.child.isAlive());
+      check(host.lease.isReleased(1), "late stop ACK releases an abandoned pre-commit timeout");
+      host.lease.beforeStart();
     }
     try (Host host = new Host()) {
       host.supersede = true;
       try { CredentialMutationConductor.mutate(host, () -> { if (!host.current) throw new IllegalStateException("Owner changed"); }, change()); throw new AssertionError("superseded owner committed"); }
       catch (IllegalStateException expected) { /* Owner changed after observation, before commit. */ }
-      check(host.commits == 0 && host.finished && host.stopping, "newer owner wins without writing old credential");
+      check(host.commits == 0 && host.finished && !host.lease.isReleased(1), "cancelled owner writes nothing and waits for the stop ACK");
+      host.lease.acknowledge(1, !host.child.isAlive());
+      check(host.lease.isReleased(1), "late stop ACK releases cancelled pre-commit owner");
+      host.lease.beforeStart();
     }
     try (Host host = new Host()) {
       try {
@@ -222,6 +231,23 @@ public final class ResidentCredentialConductorTest {
       } catch (IllegalStateException expected) { check("uncertain commit".equals(expected.getMessage()), "commit error retained"); }
       check(!host.lease.isReleased(1), "failed commit retains exact lease");
     }
+    try (Host host = new Host()) {
+      host.replaceEpoch = true;
+      try { CredentialMutationConductor.mutate(host, () -> {}, change()); throw new AssertionError("superseded epoch committed"); }
+      catch (IllegalStateException expected) { }
+      check(host.commits == 0 && !host.finished && !host.lease.isReleased(1), "stale owner leaves successor metadata intact and waits for ACK");
+      host.lease.acknowledge(1, !host.child.isAlive());
+      check(host.lease.isReleased(1), "stale owner abandons only its own uncommitted lease");
+    }
+    try (Host host = new Host()) {
+      host.failDispatch = true;
+      try { CredentialMutationConductor.mutate(host, () -> {}, change()); throw new AssertionError("uncertain dispatch committed"); }
+      catch (IllegalStateException expected) { check("Dispatch uncertain".equals(expected.getMessage()), "dispatch failure preserved"); }
+      check(host.commits == 0 && host.finished && !host.lease.isReleased(1), "failed dispatch retains its reserved request until absence proof");
+      check(host.child.waitFor(5, TimeUnit.SECONDS), "dispatched child eventually exits");
+      host.lease.acknowledge(1, true);
+      check(host.lease.isReleased(1), "late ACK after throwing dispatch releases exact pre-commit owner");
+    }
     CredentialShutdownLease lease = new CredentialShutdownLease();
     long first = lease.acquire();
     check(!lease.release(first), "unconfirmed stop cannot release");
@@ -235,6 +261,7 @@ public final class ResidentCredentialConductorTest {
     check(!external.isAlive() && refused.get(), "external start after ACK waits for credential commit release");
     long newer = lease.acquire();
     check(!lease.release(first), "stale release cannot unlock a newer mutation");
+    check(!lease.abandon(first), "stale abandonment cannot unlock a newer mutation");
     lease.acknowledge(first, true);
     check(!lease.isConfirmed(newer), "stale ACK cannot confirm a newer mutation");
     lease.acknowledge(newer, false);

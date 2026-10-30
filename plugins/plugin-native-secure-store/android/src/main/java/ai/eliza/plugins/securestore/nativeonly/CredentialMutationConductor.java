@@ -18,15 +18,17 @@ public final class CredentialMutationConductor {
     /** Retire calls/enrollment and return the existing lifecycle epoch. Called without the vault lock. */
     long beginRetirement() throws Exception;
     void requireCurrent(long epoch) throws Exception;
-    /** Record the request before dispatch, preserving an uncertain dispatch as a closed fence. */
-    long requestStop() throws Exception;
+    /** Reserve the exact request before crossing Android's fallible dispatch boundary. */
+    long reserveStop() throws Exception;
+    void requestStop(long request) throws Exception;
     boolean stopped() throws Exception;
     boolean stopAcknowledged(long request) throws Exception;
     long elapsedRealtime();
     void sleep(long millis) throws InterruptedException;
     /**
      * End this mutation owner. Release its exact service lease only if no commit was attempted
-     * or the commit completed. A failed/unconfirmed commit or stop keeps starts fenced; stale
+     * or the commit completed. Abandonment still waits for the exact stop acknowledgement.
+     * A failed/unconfirmed commit keeps starts fenced; stale
      * owners must never release a newer request. Called with lifecycle lock and no vault lock.
      */
     void finishMutation(long epoch, long stopRequest, boolean commitAttempted, boolean commitConfirmed);
@@ -49,7 +51,8 @@ public final class CredentialMutationConductor {
       synchronized (host.lifecycleLock()) {
         assertOwner.run();
         host.requireCurrent(epoch);
-        request = host.requestStop();
+        request = host.reserveStop();
+        host.requestStop(request);
       }
       long deadline = host.elapsedRealtime() + 15_000;
       while (true) {

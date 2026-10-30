@@ -121,10 +121,12 @@ import android.content.Context;
 
 /** This packaging excludes the resident service and its assets. No process is stopped here. */
 final class ElizaCredentialRetirement {
-    static long request(Context context) { return 0; }
+    static long reserve() { return 0; }
+    static void request(Context context, long request) { }
     static boolean stopped(Context context) { return true; }
     static boolean acknowledged(long request) { return request == 0; }
     static void release(long request) { }
+    static void abandon(long request) { }
 }
 `,
       "utf8",

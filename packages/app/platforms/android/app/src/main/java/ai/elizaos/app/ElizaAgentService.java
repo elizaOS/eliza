@@ -266,10 +266,13 @@ public class ElizaAgentService extends Service {
 
     /** Native credential writers retain this exact request through their durable commit. */
     public static long stopForCredentialChange(Context context) {
-        long request = credentialShutdown.acquire();
-        dispatchCredentialShutdown(context, request);
+        long request = reserveCredentialShutdown();
+        retryCredentialShutdown(context, request);
         return request;
     }
+
+    /** Reserve before dispatch so a throwing Android call cannot lose the request identity. */
+    public static long reserveCredentialShutdown() { return credentialShutdown.acquire(); }
 
     /** Retry only the existing owner; a newer mutation cannot be released by this caller. */
     public static long retryCredentialShutdown(Context context, long request) {
@@ -297,6 +300,11 @@ public class ElizaAgentService extends Service {
     /** Called after a confirmed commit or proven pre-commit cancellation, never on uncertain writes. */
     public static boolean releaseCredentialShutdown(long request) {
         return credentialShutdown.release(request);
+    }
+
+    /** A pre-commit cancellation remains fenced until this request's actual stop ACK. */
+    public static boolean abandonCredentialShutdown(long request) {
+        return credentialShutdown.abandon(request);
     }
 
 

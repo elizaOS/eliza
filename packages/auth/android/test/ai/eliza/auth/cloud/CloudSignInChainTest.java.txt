@@ -139,7 +139,7 @@ public class CloudSignInChainTest {
   String stored=slots.get("cloud:production");check(NEW.equals(new JSONObject(stored).optString("token"))==committed,"key commit "+mode);
   check("preserved-other-environment".equals(slots.get("cloud:staging")),"environment isolation "+mode);
   if(events.contains("authorization"))check(events.get(events.size()-1).equals("logout")||events.contains("logout"),"the Steward session is revoked "+mode);
-  if(authenticated){check(events.indexOf("receipt")<events.indexOf("key")&&events.indexOf("key")<events.indexOf("ack"),"durable receipt ordering");check(events.indexOf("revoke")>events.indexOf("ack"),"old key revoked only after ack");}
+  if(authenticated){check(!call.result.has("attemptId")&&!call.result.has("credentialId")&&!call.result.has("requestId"),"legacy awaited outcome remains compatible");check(events.indexOf("receipt")<events.indexOf("key")&&events.indexOf("key")<events.indexOf("ack"),"durable receipt ordering");check(events.indexOf("revoke")>events.indexOf("ack"),"old key revoked only after ack");}
   else check(call.error!=null,"failure is explicit "+mode);
   if(mode.equals("wrong-ack"))check("activation-pending".equals(call.error)&&slots.containsKey(TestRegistration.PRODUCT.receiptSlot(request.environment)),"unacknowledged receipt retained");
   if(mode.equals("superseded"))check(!events.contains("ack")&&!events.contains("key"),"a superseded commit writes no key and sends no ack");
@@ -155,8 +155,13 @@ public class CloudSignInChainTest {
   if(mode.equals("retained-completion")){
    check(call.result==null&&notifications.size()==1,"unclaimed current completion is retained once");
    JSObject outcome=notifications.get(0);
-   check(original.id.equals(outcome.getString("attemptId")),"retained native attempt identity");
-   check(saved.getString("credentialId").equals(outcome.getString("credentialId")),"retained committed local credential identity");
+   if(requestId!=null){
+    check(original.id.equals(outcome.getString("attemptId")),"retained native attempt identity");
+    check(saved.getString("credentialId").equals(outcome.getString("credentialId")),"retained committed local credential identity");
+   }else{
+    check(!outcome.has("attemptId")&&!outcome.has("credentialId"),"legacy strict parser has no correlation extras");
+    check(outcome.length()==4&&outcome.has("status")&&outcome.has("environment")&&outcome.has("expiresAt")&&outcome.has("accountCreated"),"legacy retained outcome exact shape");
+   }
    check(Objects.equals(requestId,outcome.optString("requestId",null)),"retained caller identity is exact or unscoped legacy");
    check(!outcome.toString().contains(NEW),"completion does not expose credential");
   }else if(mode.equals("valid")){

@@ -139,7 +139,8 @@ final class ElizaResidentCredentials {
                     if (epoch != lifecycleEpoch || mutationEpoch != epoch)
                         throw new IllegalStateException("Credential mutation superseded");
                 }
-                public long requestStop() { return ElizaCredentialRetirement.request(context); }
+                public long reserveStop() { return ElizaCredentialRetirement.reserve(); }
+                public void requestStop(long request) { ElizaCredentialRetirement.request(context, request); }
                 public boolean stopped() throws Exception {
                     return ElizaCredentialRetirement.stopped(context);
                 }
@@ -148,9 +149,11 @@ final class ElizaResidentCredentials {
                 public void sleep(long millis) throws InterruptedException { Thread.sleep(millis); }
                 public <T> T commit(CredentialMutationConductor.Mutation<T> mutation) throws Exception { return mutation.commit(); }
                 public void finishMutation(long epoch, long request, boolean attempted, boolean committed) {
-                    if (mutationEpoch != epoch) return;
-                    mutationEpoch = -1;
-                    if ((!attempted || committed) && request >= 0) ElizaCredentialRetirement.release(request);
+                    if (request >= 0) {
+                        if (!attempted) ElizaCredentialRetirement.abandon(request);
+                        else if (committed) ElizaCredentialRetirement.release(request);
+                    }
+                    if (mutationEpoch == epoch) mutationEpoch = -1;
                 }
             };
         }
