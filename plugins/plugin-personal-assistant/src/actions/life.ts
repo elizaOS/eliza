@@ -5156,23 +5156,6 @@ async function runLifeOperationHandlerInner(
                 plannerCadence: llmCadence.cadence,
               })
             ) {
-              // Do not move an elapsed relative deadline forward or create an
-              // immediately due reminder when processing outlasts the request.
-              if (
-                relativeReminder &&
-                llmCadence.cadence.kind === "once" &&
-                Date.parse(llmCadence.cadence.dueAt) <= Date.now()
-              ) {
-                return {
-                  success: false as const,
-                  text: "That reminder time has already passed. When should I remind you?",
-                  data: {
-                    actionName: ownerSurfaceActionName,
-                    error: "REMINDER_TIME_PASSED",
-                    awaitingUserInput: true,
-                  },
-                };
-              }
               cadence = llmCadence.cadence;
               windowPolicy = llmCadence.windowPolicy ?? windowPolicy;
             }
@@ -5676,26 +5659,14 @@ async function runLifeOperationHandlerInner(
         };
       }
 
-      // Lookup and draft preparation may outlast a short relative deadline.
-      // Recheck after those awaits, immediately before entering the write path.
-      if (
+      const relativeReminderDeadline =
         ownerSurfaceActionName === "OWNER_REMINDERS" &&
         llmPlan?.cadenceKind === "once" &&
         typeof llmPlan.dueInMinutes === "number" &&
         llmPlan.dueInMinutes > 0 &&
-        leadShaped.cadence.kind === "once" &&
-        Date.parse(leadShaped.cadence.dueAt) <= Date.now()
-      ) {
-        return {
-          success: false as const,
-          text: "That reminder time has already passed. When should I remind you?",
-          data: {
-            actionName: ownerSurfaceActionName,
-            error: "REMINDER_TIME_PASSED",
-            awaitingUserInput: true,
-          },
-        };
-      }
+        leadShaped.cadence.kind === "once"
+          ? Date.parse(leadShaped.cadence.dueAt)
+          : undefined;
       const created = await service.createDefinition(
         {
           idempotencyKey: definitionDraft.request.idempotencyKey,
@@ -5724,6 +5695,19 @@ async function runLifeOperationHandlerInner(
             typeof params.intent === "string" && params.intent.trim().length > 0
               ? "argument"
               : "message",
+          ...(relativeReminderDeadline !== undefined
+            ? {
+                assertNewCreation: () => {
+                  if (relativeReminderDeadline <= Date.now()) {
+                    throw new LifeOpsServiceError(
+                      400,
+                      "That reminder time has already passed. When should I remind you?",
+                      "REMINDER_TIME_PASSED",
+                    );
+                  }
+                },
+              }
+            : {}),
         },
       );
       await clearDeferredLifeDraftCache(runtime, message);
@@ -7284,6 +7268,17 @@ async function runLifeOperationHandlerInner(
   } catch (err) {
     // error-policy:J1 The action boundary translates typed domain failures into a rejected user-visible operation.
     if (err instanceof LifeOpsServiceError) {
+      if (err.code === "REMINDER_TIME_PASSED") {
+        return {
+          success: false as const,
+          text: err.message,
+          data: {
+            actionName: ownerSurfaceActionName,
+            error: err.code,
+            awaitingUserInput: true,
+          },
+        };
+      }
       logger.error(
         {
           boundary: "lifeops-owner-action",
