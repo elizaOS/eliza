@@ -12,6 +12,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { Profiler } from "react";
 import { afterEach, expect, it, vi } from "vitest";
 import { DeferredDeletionNotice } from "../deferred-deletion-notice";
 
@@ -515,3 +516,57 @@ it.each(["Undo", "Dismiss outcome"])(
     expect(fake.dismiss).not.toHaveBeenCalled();
   },
 );
+
+it("retires displayed rows before waiting for a read under an unnotified successor owner", async () => {
+  const fake = bridge([row("old", "queued", "open")]);
+  let owner = "owner-A";
+  const identity = { read: () => owner, subscribe: () => () => {} };
+  render(
+    <DeferredDeletionNotice
+      bridge={fake}
+      identity={identity}
+      refreshEvents={["test:refresh"]}
+      pollMs={60_000}
+    />,
+  );
+  await flush();
+  expect(screen.getByText("Event old")).toBeTruthy();
+  const held = deferred<{ deletions: DeferredDeletionEntry[] }>();
+  fake.pending.mockImplementationOnce(() => held.promise);
+  owner = "owner-B";
+  await act(async () => window.dispatchEvent(new Event("test:refresh")));
+  expect(screen.queryByText("Event old")).toBeNull();
+  await act(async () =>
+    held.resolve({ deletions: [row("successor", "queued", "open")] }),
+  );
+  expect(screen.getByText("Event successor")).toBeTruthy();
+});
+
+it("keeps current-owner cached rows in place during an ordinary held refresh", async () => {
+  const fake = bridge([row("current", "queued", "open")]);
+  const commits = vi.fn();
+  render(
+    <Profiler id="notice" onRender={commits}>
+      <DeferredDeletionNotice
+        bridge={fake}
+        refreshEvents={["test:refresh"]}
+        pollMs={60_000}
+      />
+    </Profiler>,
+  );
+  await flush();
+  const cachedRow = screen.getByText("Event current");
+  const undo = screen.getByRole("button", { name: "Undo" });
+  const held = deferred<{ deletions: DeferredDeletionEntry[] }>();
+  fake.pending.mockImplementationOnce(() => held.promise);
+  const committedBeforePoll = commits.mock.calls.length;
+  await act(async () => window.dispatchEvent(new Event("test:refresh")));
+  expect(commits).toHaveBeenCalledTimes(committedBeforePoll);
+  expect(screen.getByText("Event current")).toBe(cachedRow);
+  expect(screen.getByRole("button", { name: "Undo" })).toBe(undo);
+  expect((undo as HTMLButtonElement).disabled).toBe(false);
+  await act(async () =>
+    held.resolve({ deletions: [row("current", "queued", "open")] }),
+  );
+  expect(screen.getByText("Event current")).toBe(cachedRow);
+});

@@ -91,8 +91,18 @@ export function DeferredDeletionNotice({
     concealed,
     onDeletedOrigins,
     onChanged,
+    noticeRead,
+    error,
   });
-  ports.current = { bridge, identity, concealed, onDeletedOrigins, onChanged };
+  ports.current = {
+    bridge,
+    identity,
+    concealed,
+    onDeletedOrigins,
+    onChanged,
+    noticeRead,
+    error,
+  };
   const events = refreshEvents.join("\n");
 
   useEffect(() => {
@@ -118,7 +128,12 @@ export function DeferredDeletionNotice({
       };
     };
     const refresh = async () => {
-      if (inflight || retired) return;
+      if (retired) return;
+      if (ports.current.noticeRead && !ports.current.noticeRead.scope.current())
+        setNoticeRead((shown) => (shown?.scope.current() ? shown : null));
+      if (ports.current.error && !ports.current.error.scope.current())
+        setError((shown) => (shown?.scope.current() ? shown : null));
+      if (inflight) return;
       if (hidden()) {
         setNoticeRead(null);
         return;
