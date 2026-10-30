@@ -4,7 +4,7 @@ import { loadNativeRuntimeModule } from "./native-runtime-module.js";
 import {
   applyNativeCloudRuntimeProfile,
   type NativeRuntimeProfileStores,
-  parseNativeCloudRuntimeDeclaration,
+  parseNativeCloudRoutingDeclaration,
 } from "./native-runtime-profile.js";
 
 const brokerKeys = [
@@ -73,7 +73,7 @@ export async function startNativeManagedGoogleHost(
       // shared runtime profile owns every routing decision.
       await applyNativeCloudRuntimeProfile(
         env,
-        parseNativeCloudRuntimeDeclaration(module.nativeCloudRuntime),
+        parseNativeCloudRoutingDeclaration(module.nativeCloudRuntime),
         profileStores,
       );
       if (env.ELIZAOS_CLOUD_API_KEY !== token)

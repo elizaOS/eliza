@@ -136,15 +136,21 @@ export function nativeRuntimeRoutingPreferences(
   };
 }
 
-/** Product input from the host's admitted resources, independent of sign-in. */
-export interface NativeCloudRuntimeDeclaration {
+/** Required routing input from the host's admitted resources. */
+export interface NativeCloudRoutingDeclaration {
   readonly apiBaseUrl: string;
+}
+
+/** Product input from the host's admitted resources, independent of sign-in. */
+export interface NativeCloudRuntimeDeclaration
+  extends NativeCloudRoutingDeclaration {
   readonly productCharacter?: AgentHostBridge["productCharacter"];
 }
 
-export function parseNativeCloudRuntimeDeclaration(
+/** Admit routing independently of optional product presentation. */
+export function parseNativeCloudRoutingDeclaration(
   value: unknown,
-): NativeCloudRuntimeDeclaration {
+): NativeCloudRoutingDeclaration {
   if (
     !value ||
     typeof value !== "object" ||
@@ -160,9 +166,33 @@ export function parseNativeCloudRuntimeDeclaration(
     typeof apiBaseUrl !== "string"
   )
     throw new Error("Native Cloud runtime declaration is invalid");
+  let url: URL;
+  try {
+    url = new URL(apiBaseUrl);
+  } catch {
+    throw new Error("Native Cloud runtime declaration is invalid");
+  }
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.search ||
+    url.hash ||
+    url.pathname !== "/api/v1" ||
+    url.href !== `${url.origin}/api/v1`
+  )
+    throw new Error("Native Cloud runtime declaration is invalid");
+  return Object.freeze({ apiBaseUrl: url.href });
+}
+
+export function parseNativeCloudRuntimeDeclaration(
+  value: unknown,
+): NativeCloudRuntimeDeclaration {
+  const routing = parseNativeCloudRoutingDeclaration(value);
+  const { productCharacter: character } = value as Record<string, unknown>;
   let productCharacter: AgentHostBridge["productCharacter"];
-  if ("productCharacter" in value && value.productCharacter !== undefined) {
-    const character = value.productCharacter;
+  if (character !== undefined) {
     if (
       !character ||
       typeof character !== "object" ||
@@ -184,25 +214,8 @@ export function parseNativeCloudRuntimeDeclaration(
       ...(bio !== undefined ? { bio: Object.freeze([...bio]) } : {}),
     });
   }
-  let url: URL;
-  try {
-    url = new URL(apiBaseUrl);
-  } catch {
-    throw new Error("Native Cloud runtime declaration is invalid");
-  }
-  if (
-    url.protocol !== "https:" ||
-    url.username ||
-    url.password ||
-    url.port ||
-    url.search ||
-    url.hash ||
-    url.pathname !== "/api/v1" ||
-    url.href !== `${url.origin}/api/v1`
-  )
-    throw new Error("Native Cloud runtime declaration is invalid");
   return Object.freeze({
-    apiBaseUrl: url.href,
+    ...routing,
     ...(productCharacter ? { productCharacter } : {}),
   });
 }
@@ -245,11 +258,11 @@ async function defaultStores(): Promise<NativeRuntimeProfileStores> {
  */
 export async function applyNativeCloudRuntimeProfile(
   env: NodeJS.ProcessEnv,
-  declaration: NativeCloudRuntimeDeclaration,
+  declaration: NativeCloudRoutingDeclaration,
   stores?: NativeRuntimeProfileStores,
 ): Promise<NativeRuntimeProfile> {
   const profile = resolveNativeRuntimeProfile(env.ELIZA_RUNTIME_PROFILE);
-  const { apiBaseUrl } = parseNativeCloudRuntimeDeclaration(declaration);
+  const { apiBaseUrl } = parseNativeCloudRoutingDeclaration(declaration);
   const small = env.ELIZAOS_CLOUD_SMALL_MODEL;
   const large = env.ELIZAOS_CLOUD_LARGE_MODEL;
   if (!small || !large || env.ELIZAOS_CLOUD_BASE_URL !== apiBaseUrl)

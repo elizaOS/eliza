@@ -24,9 +24,10 @@ Missing or remote logos use the app name instead. The canonical Eliza host
 sets its own marks explicitly.
 
 Native product presentation uses an admitted host module before agent startup.
-An unavailable optional module leaves the canonical agent identity in place and
-reports a typed warning. Required Cloud routing still prevents startup when its
-native resources cannot be admitted.
+An unavailable optional module or invalid product presentation leaves the
+canonical agent identity in place and reports a typed warning. Required Cloud
+routing is admitted independently and still prevents startup when its native
+resources cannot be admitted.
 
 ## Eliza alarms
 

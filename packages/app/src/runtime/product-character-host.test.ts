@@ -138,6 +138,43 @@ test("an admitted invalid product declaration cannot stop optional local boot", 
   expect(warnings[0]).not.toContain("other");
 });
 
+test("invalid optional presentation cannot stop admitted Cloud routing", async () => {
+  const f = fixture({ name: "Alpha", settings: { identityName: "other" } });
+  const warnings: string[] = [];
+  let saved: unknown;
+  await expect(
+    prepareNativeRuntimeForBoot(
+      {
+        ...f.env,
+        ELIZA_PLATFORM: "android",
+        ELIZAOS_CLOUD_USE_INFERENCE: "true",
+        ELIZAOS_CLOUD_API_KEY: "synthetic-only",
+        ELIZA_API_TOKEN: "Z_-q".repeat(16),
+        ELIZAOS_CLOUD_BASE_URL: "https://cloud.example.com/api/v1",
+        ELIZAOS_CLOUD_SMALL_MODEL: "cerebras/test",
+        ELIZAOS_CLOUD_LARGE_MODEL: "cerebras/test",
+      },
+      (message) => warnings.push(message),
+      {
+        loadConfig: () => ({}),
+        saveConfig: (config) => {
+          saved = config;
+        },
+        updateRoutingPreferences: async (update) =>
+          update({ preferredProvider: {}, policy: {} }),
+      },
+    ),
+  ).resolves.toBeUndefined();
+  expect(saved).toMatchObject({
+    cloud: { enabled: true, baseUrl: "https://cloud.example.com/api/v1" },
+    serviceRouting: { llmText: { backend: "elizacloud" } },
+  });
+  expect(getAgentHostBridge().productCharacter).toBeUndefined();
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("NATIVE_PRODUCT_CHARACTER_UNAVAILABLE");
+  expect(warnings[0]).not.toContain("other");
+});
+
 test("rejects tampering and escaped resources before host installation", async () => {
   const f = fixture();
   fs.appendFileSync(f.entry, "\nthrow Error('must not execute');");
