@@ -2514,3 +2514,127 @@ describe("redacted source placeholders (real PGlite)", {
     });
   });
 });
+
+// Live QA 2026-10-29: at 11:07 PM PDT "make event for today that says qa lunch
+// at 12pm" (tj-6bd43ea36dc7e0) paused as a past start and asked which date,
+// while "make an event for today at 8am called qa stretchh" (tj-593942fca07d65)
+// was created only because the planner happened to add allowPast. The user had
+// already stated the date, so the past-start pause must not depend on it.
+describe("past start on a stated date (real PGlite)", {
+  timeout: 30_000,
+}, () => {
+  const NOW = "2026-10-30T06:07:42.142Z"; // Thu Oct 29, 11:07 PM PDT
+  const TIME_ZONE = "America/Los_Angeles";
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  async function createQaLunch(
+    id: string,
+    text: string,
+    details: Record<string, unknown>,
+  ) {
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: vi.fn(async ({ actionType }) =>
+        actionType === "lifeops.calendar.extract_create_event"
+          ? {
+              rawResponse: "{}",
+              parsed: {
+                ...createEvidence(id, text),
+                title: "qa lunch",
+                grantId: ELIZA_CALENDAR_GRANT_ID,
+                calendarId: ELIZA_CALENDAR_ID,
+                startAt: "2026-10-29T12:00:00-07:00",
+                endAt: "2026-10-29T13:00:00-07:00",
+                timeZone: TIME_ZONE,
+              },
+            }
+          : null,
+      ),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    return action.handler(
+      runtime,
+      {
+        id,
+        entityId: "00000000-0000-0000-0000-000000000102",
+        roomId: "00000000-0000-0000-0000-000000000103",
+        createdAt: Date.parse(NOW),
+        content: { text },
+      } as Memory,
+      undefined,
+      { parameters: { subaction: "create_event", title: "qa lunch", details } },
+    );
+  }
+
+  it("creates an explicitly requested time earlier today without allowPast", async () => {
+    // The trajectory's CALENDAR_CREATE_EVENT details, verbatim.
+    const result = await createQaLunch(
+      "00000000-0000-0000-0000-000000000911",
+      "make event for today that says qa lunch at 12pm",
+      {
+        start: "2026-10-29T12:00:00",
+        durationMinutes: 60,
+        recurrence: [],
+        sourceNote: {
+          agentId: AGENT_ID,
+          noteId: "message-handler:1793340462693",
+          contentHash:
+            "73449ec497d8444d78c85746a751b23f86f3bc4b4f748092769fc37d92fc07db",
+        },
+        attendees: [{ email: "user@example.com", displayName: "User" }],
+      },
+    );
+    expect(result?.success, JSON.stringify(result)).toBe(true);
+    expect(result?.data?.event).toMatchObject({
+      title: "qa lunch",
+      startAt: "2026-10-29T19:00:00.000Z",
+      endAt: "2026-10-29T20:00:00.000Z",
+    });
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(1);
+  });
+
+  it.each([
+    ["no stated date", "add qa lunch at 12pm", undefined],
+    [
+      "a bare weekday",
+      "add qa lunch thursday at 12pm",
+      // Next Thursday at noon, after the November 1 return to PST.
+      "2026-11-05T20:00:00.000Z",
+    ],
+  ])(
+    "still asks before creating a past start with %s",
+    async (_label, text, suggestedStartAt) => {
+      const result = await createQaLunch(
+        "00000000-0000-0000-0000-000000000912",
+        text,
+        { start: "2026-10-29T12:00:00", durationMinutes: 60 },
+      );
+      expect(result).toMatchObject({
+        success: false,
+        data: {
+          requiresInput: true,
+          missing: ["confirmed date"],
+          requestedStartAt: "2026-10-29T19:00:00.000Z",
+        },
+        effectReceipts: [
+          { operation: "calendar.event.create", outcome: "noop" },
+        ],
+      });
+      expect(result?.data?.suggestedStartAt).toBe(suggestedStartAt);
+      expect(
+        (await pg.query("SELECT id FROM app_calendar.life_calendar_events"))
+          .rows,
+      ).toHaveLength(0);
+    },
+  );
+});
