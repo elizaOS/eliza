@@ -309,6 +309,11 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
         catch(error){emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),status:cloudResponse.status,outcome:"threw",upstreamTraceId:speechUpstreamTraceId(cloudResponse)});throw error;}
         emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes:audioBuffer.length,status:cloudResponse.status,outcome:"returned",upstreamTraceId:speechUpstreamTraceId(cloudResponse)});
         client.signal.throwIfAborted();
+        // A 200 with an empty body is a failed synthesis, not a silent clip.
+        if (audioBuffer.length === 0) {
+            sendJsonErrorResponse(res, 502, "Eliza Cloud TTS returned an empty audio response");
+            return true;
+        }
         forwardCloudSpeechHeaders(cloudResponse, res, "tts");
         ttsDebug("server:cloud-tts:success", {
             bytes: audioBuffer.length,
