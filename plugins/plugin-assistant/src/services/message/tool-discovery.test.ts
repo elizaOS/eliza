@@ -35,6 +35,60 @@ const runtime = {} as IAgentRuntime;
 const message = {} as Memory;
 
 describe("canonical discovery surface", () => {
+  it("treats empty names, contexts and a blank query as omitted selectors (live: describe with names=[] beside a query, tj-786ca91739ceaa)", async () => {
+    const loads: string[][] = [];
+    const update: Action = {
+      name: "CALENDAR_UPDATE_EVENT",
+      description: "Move a calendar event to a new time",
+      contexts: ["calendar"],
+      handler: async () => ({ success: true }),
+    };
+    const notes: Action = {
+      name: "NOTES_LIST",
+      description: "Search saved notes by title",
+      contexts: ["notes"],
+      handler: async () => ({ success: true }),
+    };
+    const discovery = createPlannerToolDiscoveryAction(
+      [update, notes],
+      (actions) => loads.push(actions.map((action) => action.name)),
+      async () => [update, notes],
+      { deferNameIndex: true },
+    );
+    const call = (parameters: Record<string, unknown>) =>
+      discovery.handler?.(runtime, message, undefined, { parameters });
+    const described = await call({
+      mode: "describe",
+      names: [],
+      query: "move calendar event time update event",
+    });
+    expect(described?.success).toBe(true);
+    expect(described?.data?.catalog).toEqual([
+      expect.objectContaining({ name: "CALENDAR_UPDATE_EVENT" }),
+    ]);
+    expect(loads).toEqual([]);
+    const loaded = await call({
+      names: [],
+      contexts: [],
+      query: "move calendar event",
+    });
+    expect(loaded?.data?.loadedTools).toEqual(["CALENDAR_UPDATE_EVENT"]);
+    const scoped = await call({ names: [], query: " ", contexts: ["notes"] });
+    expect(scoped?.data?.loadedTools).toEqual(["NOTES_LIST"]);
+    const catalog = await call({ mode: "describe", query: "" });
+    expect(catalog?.success).toBe(true);
+    expect(catalog?.data?.catalog).toEqual([
+      expect.objectContaining({ name: "CALENDAR_UPDATE_EVENT" }),
+      expect.objectContaining({ name: "NOTES_LIST" }),
+    ]);
+    const conflicting = await call({
+      names: ["NOTES_LIST"],
+      contexts: ["notes"],
+    });
+    expect(conflicting?.error).toContain("not both");
+    expect(loads).toEqual([["CALENDAR_UPDATE_EVENT"], ["NOTES_LIST"]]);
+  });
+
   it("emits identical complete tools and alias contracts across discovery orders", async () => {
     const parent: Action = {
       name: "LEDGER",

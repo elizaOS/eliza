@@ -377,6 +377,15 @@ export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
     const edit = requireRecord(record.textEdit, "textEdit");
     if (edit.action === "append") {
       assertOnlyKeys(edit, ["action", "field", "text"], "textEdit");
+      // One list item: the service supplies the note's own separator.
+      if (edit.field === "item")
+        return parseUpdateNoteInput({
+          authoredEdit: {
+            field: "checklist",
+            action: "append",
+            text: edit.text,
+          },
+        });
       if (
         edit.field !== "body" ||
         typeof edit.text !== "string" ||
@@ -384,7 +393,7 @@ export function parseUpdateNoteInput(value: unknown): UpdateNoteInput {
         edit.text.length > MAX_BODY_LENGTH
       ) {
         throw validationError(
-          "Append requires field=body and a nonempty exact text suffix.",
+          "Append requires field=item with one item, or field=body with a nonempty exact suffix.",
           "textEdit",
         );
       }

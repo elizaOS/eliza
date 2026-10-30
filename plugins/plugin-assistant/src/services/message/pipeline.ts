@@ -2579,9 +2579,29 @@ export async function runV5MessageRuntimeStage1(
             sanitizedPartial?.kind === "text"
               ? sanitizedPartial.text
               : undefined;
+          // The notice never claims success. "Nothing was changed" needs every
+          // executed call to prove it was refused before dispatch, as the four
+          // rejected reminder calls of tj-7471737298abb6 did; otherwise it
+          // says that part of the work may already be done.
+          const unchanged = [
+            ...actionResults,
+            ...settledPlannerToolResults.map(({ result }) => result),
+          ].every(
+            (result) =>
+              result.success === false &&
+              !result.effectReceipts?.length &&
+              result.data?.acceptance === "rejected" &&
+              result.data?.executionStatus === "not_started",
+          );
           const notice = rateLimited
-            ? "The model provider is temporarily rate limited. The request remains incomplete; recorded tool outcomes are preserved. Check the conversation before sending again."
-            : "The request remains incomplete because processing stopped unexpectedly. Recorded tool outcomes are preserved; remaining work has not been completed.";
+            ? unchanged
+              ? "I hit a rate limit, so nothing was changed."
+              : "I hit a rate limit and couldn't finish that, so check what's done before sending it again."
+            : unchanged
+              ? "I couldn't do that, so nothing was changed."
+              : safePartial
+                ? "I couldn't finish the rest of that."
+                : "I couldn't finish that, and part of it may already be done.";
           const text = [safePartial, notice].filter(Boolean).join("\n\n");
           endStatus = "errored";
           args.runtime.reportError("MessageService.plannerLoop", error, {
