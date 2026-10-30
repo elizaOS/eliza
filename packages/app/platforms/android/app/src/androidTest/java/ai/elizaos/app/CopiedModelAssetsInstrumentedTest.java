@@ -68,11 +68,6 @@ public final class CopiedModelAssetsInstrumentedTest {
         assertEquals(67_308_128, bge.length());
         assertEquals(BgeEmbeddingSession.SHA256, sha256(bge));
         long bgeModified = bge.lastModified();
-        File bundle = new File(privateRoot, "bge-bundle"), text = new File(bundle, "text");
-        assertTrue(text.mkdirs());
-        Files.createLink(new File(text, BgeEmbeddingSession.MODEL).toPath(), bge.toPath());
-        assertEquals(bundle.getCanonicalPath(), BgeEmbeddingSession.verifyBundle(bundle.getPath()));
-
         JSONArray voiceWarm = new JSONArray(), bgeWarm = new JSONArray();
         for (int i = 0; i < 5; i++) {
             long start = SystemClock.elapsedRealtimeNanos();
@@ -92,20 +87,26 @@ public final class CopiedModelAssetsInstrumentedTest {
         try (var corrupt = new java.io.RandomAccessFile(vad, "rw")) { corrupt.setLength(1); }
         VoiceBundleAssets.install(context);
         assertEquals(vadHash, sha256(vad));
+        // The loader expects text/<model>; move the already-verified private file into
+        // that fixture layout only after warm-copy checks. Android may forbid hardlinks.
+        File bundle = new File(privateRoot, "bge-bundle"), text = new File(bundle, "text");
+        assertTrue(text.mkdirs());
+        File loaderBge = new File(text, BgeEmbeddingSession.MODEL);
+        Files.move(bge.toPath(), loaderBge.toPath());
+        assertEquals(bundle.getCanonicalPath(), BgeEmbeddingSession.verifyBundle(bundle.getPath()));
         // The BGE loader refuses corrupted private bytes before constructing a native context.
-        try (var corrupt = new java.io.RandomAccessFile(bge, "rw")) { corrupt.setLength(1); }
+        try (var corrupt = new java.io.RandomAccessFile(loaderBge, "rw")) { corrupt.setLength(1); }
         BgeEmbeddingSession.Failure corruptBge = assertThrows(BgeEmbeddingSession.Failure.class,
             () -> BgeEmbeddingSession.verifyBundle(bundle.getPath()));
         assertEquals("EMBEDDING_ARTIFACT_INVALID", corruptBge.code);
-        Files.delete(new File(text, BgeEmbeddingSession.MODEL).toPath());
-        Files.delete(bge.toPath());
+        Files.delete(loaderBge.toPath());
         extract.invoke(service, context.getAssets(), files, state, false);
-        Files.createLink(new File(text, BgeEmbeddingSession.MODEL).toPath(), bge.toPath());
+        Files.move(bge.toPath(), loaderBge.toPath());
         assertEquals(bundle.getCanonicalPath(), BgeEmbeddingSession.verifyBundle(bundle.getPath()));
         JSONObject result = new JSONObject()
             .put("scope", "APK extraction and warm file reuse; no full-app startup or inference measurement")
             .put("package", context.getPackageName()).put("fingerprint", Build.FINGERPRINT)
-            .put("voiceFiles", verified).put("bgeBytes", bge.length()).put("bgeSha256", sha256(bge))
+            .put("voiceFiles", verified).put("bgeBytes", loaderBge.length()).put("bgeSha256", sha256(loaderBge))
             .put("voiceFirstExtractionWallNanos", voiceWall).put("voiceFirstExtractionThreadCpuNanos", voiceCpu)
             .put("bgeAuxFirstExtractionWallNanos", bgeWall).put("bgeAuxFirstExtractionThreadCpuNanos", bgeCpu)
             .put("voiceWarmWallNanos", voiceWarm).put("bgeAuxWarmWallNanos", bgeWarm)
