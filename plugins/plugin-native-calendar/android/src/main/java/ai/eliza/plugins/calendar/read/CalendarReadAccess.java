@@ -36,12 +36,18 @@ public final class CalendarReadAccess {
   }
 
   /** Event id to creation id for this host's journaled creations; empty when not configured. */
-  private java.util.Map<Long, String> creations() {
+  private java.util.Map<Long, String> creations(java.util.Set<Long> selected) {
     java.util.Map<Long, String> result = new java.util.HashMap<>();
-    if (packageName == null) return result;
+    if (packageName == null || selected != null && selected.isEmpty()) return result;
     String[] fields = {CalendarContract.Events._ID, CalendarContract.Events.CUSTOM_APP_URI};
-    try (Cursor rows = resolver.query(CalendarContract.Events.CONTENT_URI, fields,
-        CalendarContract.Events.CUSTOM_APP_PACKAGE + "=? AND " + CalendarContract.Events.DELETED + "=0",
+    String where = CalendarContract.Events.CUSTOM_APP_PACKAGE + "=? AND " + CalendarContract.Events.DELETED + "=0";
+    if (selected != null) {
+      // IDs came from the provider as longs, not from caller text. Bound the metadata query too.
+      StringBuilder ids = new StringBuilder();
+      for (long id : selected) { if (ids.length() > 0) ids.append(','); ids.append(id); }
+      where += " AND " + CalendarContract.Events._ID + " IN (" + ids + ")";
+    }
+    try (Cursor rows = resolver.query(CalendarContract.Events.CONTENT_URI, fields, where,
         new String[]{packageName}, null)) {
       if (rows == null) throw new IllegalStateException("Calendar provider returned no cursor");
       while (rows.moveToNext()) {
@@ -73,6 +79,16 @@ public final class CalendarReadAccess {
 
   /** Complete non-deleted instances in the authorized range; never silently truncates. */
   public JSONArray events(long begin, long end) throws JSONException {
+    return read(begin, end, 0).getJSONArray("events");
+  }
+
+  /** First instances by start, with an explicit incomplete result if the bound is exceeded. */
+  public JSONObject window(long begin, long end, int maximumEvents) throws JSONException {
+    if (maximumEvents < 1) throw new IllegalArgumentException("A positive calendar read bound is required");
+    return read(begin, end, maximumEvents);
+  }
+
+  private JSONObject read(long begin, long end, int maximumEvents) throws JSONException {
     if (begin < 0 || end <= begin || end - begin > 370L * 86400000)
       throw new IllegalArgumentException("A valid calendar range of at most 370 days is required");
     Uri.Builder range = CalendarContract.Instances.CONTENT_URI.buildUpon();
@@ -81,22 +97,30 @@ public final class CalendarReadAccess {
       CalendarContract.Instances.TITLE, CalendarContract.Instances.DESCRIPTION, CalendarContract.Instances.EVENT_LOCATION,
       CalendarContract.Instances.BEGIN, CalendarContract.Instances.END, CalendarContract.Instances.ALL_DAY, CalendarContract.Instances.RRULE};
     JSONArray result = new JSONArray();
-    java.util.Map<Long, String> creations = creations();
+    boolean truncated = false;
+    java.util.Set<Long> selected = maximumEvents > 0 ? new java.util.HashSet<>() : null;
     try (Cursor rows = resolver.query(range.build(), fields, CalendarContract.Events.DELETED + "=0", null,
         CalendarContract.Instances.BEGIN + " ASC")) {
       if (rows == null) throw new IllegalStateException("Calendar provider returned no cursor");
       while (rows.moveToNext()) {
+        // One additional row proves incompleteness without reading its fields.
+        if (maximumEvents > 0 && result.length() == maximumEvents) { truncated = true; break; }
         String recurrence = rows.getString(8);
         JSONObject event = new JSONObject().put("id", Long.toString(rows.getLong(0))).put("calendarId", Long.toString(rows.getLong(1)))
           .put("title", rows.getString(2)).put("body", rows.getString(3)).put("location", rows.getString(4))
           .put("begin", rows.getLong(5)).put("end", rows.getLong(6)).put("allDay", rows.getInt(7) != 0)
           .put("recurring", recurrence != null && !recurrence.isEmpty());
-        String creation = creations.get(rows.getLong(0));
-        if (creation != null) event.put("creationId", creation);
+        if (selected != null) selected.add(rows.getLong(0));
         result.put(event);
       }
     }
-    return result;
+    java.util.Map<Long, String> creations = creations(selected);
+    for (int i = 0; i < result.length(); i++) {
+      JSONObject event = result.getJSONObject(i);
+      String creation = creations.get(Long.parseLong(event.getString("id")));
+      if (creation != null) event.put("creationId", creation);
+    }
+    return new JSONObject().put("events", result).put("truncated", truncated);
   }
 
   /** Constructs an editor request only. Dispatch and any eventual save remain user/host decisions. */

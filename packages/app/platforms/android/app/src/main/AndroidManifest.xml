@@ -11,6 +11,11 @@
             <action android:name="android.intent.action.DIAL" />
             <data android:scheme="tel" />
         </intent>
+        <!-- The shared Calendar handoff resolves an installed editor before dispatch. -->
+        <intent>
+            <action android:name="android.intent.action.INSERT" />
+            <data android:scheme="content" android:host="com.android.calendar" android:mimeType="vnd.android.cursor.dir/event" />
+        </intent>
         <!-- Capability detection must not confuse package invisibility with
              absent Google Play services and replace a working FCM path. -->
         <package android:name="com.google.android.gms" />
@@ -550,6 +555,8 @@
          hands-free voice loop (engages the platform AEC). See TalkModePlugin. -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
     <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.RECEIVE_SMS" />

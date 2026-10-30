@@ -20,7 +20,7 @@ import org.json.JSONObject;
 public final class CalendarCreationStore {
  private final String journalName, creationUriPrefix;
  private final String[] bindingFields;
- private static final class State { boolean quarantined; String prefix; State(String prefix){this.prefix=prefix;} }
+ private static final class State { final String identity; boolean quarantined; String prefix; State(String identity,String prefix){this.identity=identity;this.prefix=prefix;} }
  private static final java.util.Map<String,State> STATES=new java.util.HashMap<>();
  public CalendarCreationStore(CalendarConfiguration configuration){this(configuration.journalName,configuration.creationUriPrefix,null);}
  /** Reuse the same journal protocol with a preserved namespace and ordered provider-field binding. */
@@ -31,7 +31,7 @@ public final class CalendarCreationStore {
   final String key;
   try{key=new java.io.File(context.getDataDir(),"shared_prefs/"+journalName+".xml").getCanonicalPath();}catch(java.io.IOException failure){throw new IllegalStateException("Calendar journal identity unavailable",failure);}
   String contract=creationUriPrefix+"|"+java.util.Arrays.toString(bindingFields);
-  synchronized(STATES){State value=STATES.get(key);if(value==null){value=new State(contract);STATES.put(key,value);}else if(!value.prefix.equals(contract))throw new IllegalStateException("Calendar journal identity configuration changed");return value;}
+  synchronized(STATES){State value=STATES.get(key);if(value==null){value=new State(key,contract);STATES.put(key,value);}else if(!value.prefix.equals(contract))throw new IllegalStateException("Calendar journal identity configuration changed");return value;}
  }
 
  private SharedPreferences preferences(Context context) {
@@ -78,6 +78,21 @@ public final class CalendarCreationStore {
    if(!record.getString("argumentHash").equals(digest(actual)))return false;
    record.put("status","saved").put("eventId",Long.toString(rows.getLong(0)));return true;
   }
+ }
+ private interface PairedWork<T> {T run()throws Exception;}
+ private <T> T paired(Context context,CalendarCreationStore other,PairedWork<T> work)throws Exception{
+  State own=state(context),peer=other.state(context);
+  if(own==peer)throw new IllegalArgumentException("Two distinct calendar journals are required");
+  State first=own.identity.compareTo(peer.identity)<0?own:peer,second=first==own?peer:own;
+  synchronized(first){synchronized(second){return work.run();}}
+ }
+ /** One cross-journal admission, including the durable unknown and provider dispatch. */
+ public JSObject createUnlessOtherOwns(Context context,String id,ContentValues values,boolean separate,CalendarCreationStore other)throws Exception{
+  identity(id);return paired(context,other,()->{if(other.read(context).has(id))throw new IllegalArgumentException("Creation identity belongs to another calendar journal");return createLocked(context,id,values,separate);});
+ }
+ /** Refuse ambiguous installed receipts without rewriting either journal. */
+ public static void acknowledgeEither(Context context,String id,CalendarCreationStore first,CalendarCreationStore second)throws Exception{
+  first.identity(id);first.paired(context,second,()->{boolean a=first.read(context).has(id),b=second.read(context).has(id);if(a&&b)throw new IllegalStateException("Creation identity exists in both journals");if(b)second.acknowledgeLocked(context,id);else first.acknowledgeLocked(context,id);return null;});
  }
  public JSObject create(Context context,String id,ContentValues values,boolean separate)throws Exception {synchronized(state(context)){return createLocked(context,id,values,separate);}}
  private JSObject createLocked(Context context,String id,ContentValues values,boolean separate)throws Exception {
