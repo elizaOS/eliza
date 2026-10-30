@@ -266,6 +266,84 @@
       "types": "./dist/android-cloud/native-cloud-service-info.d.ts",
       "import": "./dist/android-cloud/native-cloud-service-info.js",
       "default": "./dist/android-cloud/native-cloud-service-info.js"
+    },
+    "./startup/coordinator": {
+      "eliza-source": "./src/startup/coordinator.ts",
+      "types": "./dist/startup/coordinator.d.ts",
+      "import": "./dist/startup/coordinator.js",
+      "default": "./dist/startup/coordinator.js"
+    },
+    "./app/AppProvider": {
+      "eliza-source": "./src/app/AppProvider.tsx",
+      "types": "./dist/app/AppProvider.d.ts",
+      "import": "./dist/app/AppProvider.js",
+      "default": "./dist/app/AppProvider.js"
+    },
+    "./startup/browser-host": {
+      "eliza-source": "./src/startup/browser-host.ts",
+      "types": "./dist/startup/browser-host.d.ts",
+      "import": "./dist/startup/browser-host.js",
+      "default": "./dist/startup/browser-host.js"
+    },
+    "./app/native-cloud-session": {
+      "eliza-source": "./src/app/native-cloud-session.ts",
+      "types": "./dist/app/native-cloud-session.d.ts",
+      "import": "./dist/app/native-cloud-session.js",
+      "default": "./dist/app/native-cloud-session.js"
+    },
+    "./app/runtime-session": {
+      "eliza-source": "./src/app/runtime-session.tsx",
+      "types": "./dist/app/runtime-session.d.ts",
+      "import": "./dist/app/runtime-session.js",
+      "default": "./dist/app/runtime-session.js"
+    },
+    "./api/android-native-agent-transport": {
+      "eliza-source": "./src/api/android-native-agent-transport.ts",
+      "types": "./dist/api/android-native-agent-transport.d.ts",
+      "import": "./dist/api/android-native-agent-transport.js",
+      "default": "./dist/api/android-native-agent-transport.js"
+    },
+    "./api/native-agent-stream": {
+      "eliza-source": "./src/api/native-agent-stream.ts",
+      "types": "./dist/api/native-agent-stream.d.ts",
+      "import": "./dist/api/native-agent-stream.js",
+      "default": "./dist/api/native-agent-stream.js"
+    },
+    "./api/host-transport": {
+      "eliza-source": "./src/api/host-transport.ts",
+      "types": "./dist/api/host-transport.d.ts",
+      "import": "./dist/api/host-transport.js",
+      "default": "./dist/api/host-transport.js"
+    },
+    "./config/boot-config-store": {
+      "eliza-source": "./src/config/boot-config-store.ts",
+      "types": "./dist/config/boot-config-store.d.ts",
+      "import": "./dist/config/boot-config-store.js",
+      "default": "./dist/config/boot-config-store.js"
+    },
+    "./bridge/storage-bridge": {
+      "eliza-source": "./src/bridge/storage-bridge.ts",
+      "types": "./dist/bridge/storage-bridge.d.ts",
+      "import": "./dist/bridge/storage-bridge.js",
+      "default": "./dist/bridge/storage-bridge.js"
+    },
+    "./app/session": {
+      "eliza-source": "./src/app/session.ts",
+      "types": "./dist/app/session.d.ts",
+      "import": "./dist/app/session.js",
+      "default": "./dist/app/session.js"
+    },
+    "./platform/runtime-management": {
+      "eliza-source": "./src/platform/runtime-management.ts",
+      "types": "./dist/platform/runtime-management.d.ts",
+      "import": "./dist/platform/runtime-management.js",
+      "default": "./dist/platform/runtime-management.js"
+    },
+    "./first-run/local-agent-token": {
+      "eliza-source": "./src/first-run/local-agent-token.ts",
+      "types": "./dist/first-run/local-agent-token.d.ts",
+      "import": "./dist/first-run/local-agent-token.js",
+      "default": "./dist/first-run/local-agent-token.js"
     }
   },
   "peerDependencies": {

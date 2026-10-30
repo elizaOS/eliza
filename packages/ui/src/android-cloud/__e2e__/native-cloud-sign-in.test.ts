@@ -297,7 +297,9 @@ describe("native announcements", () => {
   it("queues a completion for the open request before its view mounts, without also activating the cold owner", async () => {
     const port = mockPort(), cold = vi.fn(), receive = vi.fn();
     const remove = await listenForAndroidNativeCloudSignInCompleted("production", cold, port);
-    const result = requestAndroidNativeCloudSignIn("production");
+    const result = requestAndroidNativeCloudSignIn("production", undefined, {
+      port, copy: { serviceName: "Cloud", productName: "Phone" },
+    });
     port.emit("signInCompleted", authenticated());
     expect(cold).not.toHaveBeenCalled();
     const unsubscribe = subscribeAndroidNativeCloudSignInReturn(1, receive);
