@@ -187,6 +187,7 @@ import { computeCallCostUsd } from "./model-pricing";
 import {
   cacheProviderOptions,
   compactCanonicalToolMessagesForModel,
+  TURN_SCOPE_ARG,
   trajectoryStepsToMessages,
 } from "./planner-rendering.ts";
 
@@ -197,6 +198,7 @@ export {
 } from "@elizaos/core";
 export {
   cacheProviderOptions,
+  TURN_SCOPE_ARG,
   trajectoryStepsToMessages,
 } from "./planner-rendering.ts";
 
@@ -1612,6 +1614,14 @@ async function runPlannerLoopIterations(
             },
           },
         );
+        // Show the corrected calls, not the rejected output: echoing calls
+        // without the argument gave the retry another example to copy. A
+        // batch that declared pending keeps it; otherwise final, which is
+        // still evaluated.
+        const expectedScope =
+          plannerOutput.completed === false
+            ? TURN_SCOPE_MORE_WORK_PENDING
+            : TURN_SCOPE_FINAL;
         appendPlannerModelFeedbackEvent(trajectory, {
           id: `missing-native-scope:${iteration}`,
           type: "instruction",
@@ -1621,8 +1631,17 @@ async function runPlannerLoopIterations(
           content: JSON.stringify({
             code: scopeError.code,
             instruction:
-              "This complete batch was rejected before execution because at least one native call omitted or invalidated eliza_turn_scope while earlier work is explicitly pending. Resubmit the intended calls with final or more_work_pending on every call. Use final when this batch covers the remaining requested operations; their results still require evaluation. Do not repeat settled operations. No call in the rejected batch ran.",
-            rejectedModelOutput: plannerOutput.raw,
+              "This complete batch was rejected before execution because at least one native call omitted or invalidated eliza_turn_scope while earlier work is explicitly pending. No call in it ran. Resubmit the intended calls as expectedCalls shows, with the same eliza_turn_scope on every call: final when this batch covers the remaining requested operations (their results still require evaluation), more_work_pending only when a later operation must be chosen from these results. Do not repeat settled operations.",
+            expectedCalls: plannerOutput.toolCalls.map((call) => ({
+              name: call.name,
+              arguments: {
+                ...projectCompleteToolArgsForModel(
+                  call.params ?? {},
+                  redactDiagnosticText,
+                ),
+                [TURN_SCOPE_ARG]: expectedScope,
+              },
+            })),
           }),
         });
         consecutiveScopeProtocolRejections++;
@@ -4069,23 +4088,8 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
   return tools;
 }
 
-/**
- * Reserved native tool argument carrying the planner's turn-scope declaration
- * (#17034). Native function-calling envelopes have no side channel for the
- * planner schema's top-level `completed` boolean, which left the
- * `tryGateEvaluator` "planner said the turn is incomplete" veto structurally
- * inert on exactly the lane the action-owned `turnComplete` gate targets — a
- * sequential multi-op request could be truncated after its first terminal
- * action result. Every exposed tool schema therefore requires this enum
- * (`withTurnScopeToolArg`), the planner sets it per call, and
- * `parsePlannerOutput` lifts it into the parse result's `completed` field
- * while stripping the argument so no action handler ever sees it. An initially
- * unspecified declaration preserves compatibility. Once the planner explicitly
- * leaves work pending, a later native batch with missing or invalid scope must
- * repair its declaration before execution; it cannot erase that pending scope.
- * JSON callers retain their top-level `completed` contract.
- */
-export const TURN_SCOPE_ARG = "eliza_turn_scope";
+// The turn-scope protocol (#17034) is documented with TURN_SCOPE_ARG beside
+// history rendering, which replays each call's declared scope.
 export const ACTION_CONTEXT_ARG = "eliza_completion_context";
 export const TURN_SCOPE_FINAL = "final";
 export const TURN_SCOPE_MORE_WORK_PENDING = "more_work_pending";
@@ -4340,6 +4344,12 @@ function extractTurnScopeSignal(calls: PlannerToolCall[]): {
     return {
       ...call,
       params,
+      // Handlers never see the scope, but model history replays a valid
+      // declaration: retries copied stripped history calls and kept omitting
+      // the required argument (tj-97b3ddd147b529).
+      ...(value === TURN_SCOPE_FINAL || value === TURN_SCOPE_MORE_WORK_PENDING
+        ? { declaredTurnScope: value }
+        : {}),
       ...(selection !== undefined
         ? {
             completionContext:
