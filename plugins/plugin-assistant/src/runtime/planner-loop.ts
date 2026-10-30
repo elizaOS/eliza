@@ -7274,8 +7274,21 @@ function resolveRejectedCallsSupersededBy(
             isObjectRecord(current) && Object.hasOwn(current, field)
               ? current[field]
               : undefined;
+        // NOTES_CREATE accepts a separate body only alongside its required
+        // content. A rejected body-only draft can be repaired by placing that
+        // exact body after the title in content. This is payload movement,
+        // not a change of record selector; every other target stays bound.
+        const noteBodyMovedIntoContent =
+          call.name.toUpperCase() === "NOTES_CREATE" &&
+          target.path.length === 1 &&
+          target.path[0] === "body" &&
+          !isSuppliedParameterValue(params.content) &&
+          typeof target.value === "string" &&
+          typeof call.params?.content === "string" &&
+          call.params.content.endsWith(`\n${target.value}`);
         return (
           !correlationValuesEqual(target.value, current) &&
+          !noteBodyMovedIntoContent &&
           !(
             target.mayMove &&
             completedTargets.some((value) =>

@@ -1447,14 +1447,20 @@ describe("promoted Notes execution", () => {
     { name: "NOTES", related: false },
     { name: "NOTES_CREATE", related: true },
     { name: "NOTES_CREATE", related: false },
+    { name: "NOTES_CREATE", related: false, bodyOnlyInTitle: true },
+    { name: "NOTES_CREATE", related: false, changedBody: true },
   ])(
-    "retains only unresolved $name failure authority after a related retry: $related",
-    async ({ name, related }) => {
+    "retains only unresolved $name failure authority after a related retry: $related ($bodyOnlyInTitle/$changedBody)",
+    async ({ name, related, bodyOnlyInTitle = false, changedBody = false }) => {
       const runtime = await executorHarness();
       const body = "Bring the blue notebook and charger; no water.";
-      const content = related
-        ? `Conversation context QA\n${body}`
-        : "Dentist appointment\nTuesday afternoon.";
+      const content = bodyOnlyInTitle
+        ? `${body}\nUnrelated note body.`
+        : changedBody
+          ? "Conversation context QA\nBring the blue notebook and charger; add water."
+          : related
+            ? `Conversation context QA\n${body}`
+            : "Dentist appointment\nTuesday afternoon.";
       const useModel = vi
         .fn()
         .mockResolvedValue(
