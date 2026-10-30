@@ -84,6 +84,7 @@ import { isDesktopExternalApiBaseUrl } from "./desktop-external-api-base";
 import { isDesktopLocalApiBaseUrl } from "./desktop-local-api-base";
 import {
   getHostRequestTransport,
+  hostRequestOwnerId,
   isHostInProcessAgentBase,
 } from "./host-transport";
 import { defaultFetchTimeoutMs } from "./request-timeout";
@@ -1507,6 +1508,7 @@ export class ElizaClient implements ElizaClientFetch {
     // setBaseUrl cannot attribute another host's 404 to the new binding.
     let requestBase = this.baseUrl;
     let requestUrl = this.rawRequestUrl(path);
+    const ownerId = hostRequestOwnerId(requestUrl);
     let token =
       this.apiToken ?? (await hydrateAndroidLocalAgentTokenForUrl(requestUrl));
     // One bounded classification loop: EVERY response — first attempt or any
@@ -1537,6 +1539,7 @@ export class ElizaClient implements ElizaClientFetch {
         options,
         token,
         ++requestAttempt,
+        ownerId,
       );
     let res = await requestOnce();
     // Personal-Eliza cutover repoint happens once, before classification: a
@@ -1880,6 +1883,7 @@ export class ElizaClient implements ElizaClientFetch {
       | undefined,
     token: string | null,
     requestAttempt: number,
+    ownerId?: string,
   ): Promise<Response> {
     const timeoutMs = options?.timeoutMs ?? defaultFetchTimeoutMs(path, init);
     const abortController = new AbortController();
@@ -1909,7 +1913,10 @@ export class ElizaClient implements ElizaClientFetch {
         requestAttempt,
       );
       const transport = await this.rawRequestTransport(requestUrl, requestInit);
-      return await transport.request(requestUrl, requestInit, { timeoutMs });
+      return await transport.request(requestUrl, requestInit, {
+        timeoutMs,
+        ownerId,
+      });
     } catch (err) {
       // error-policy:J2 context-adding rethrow — throwRawRequestError wraps
       // the transport failure with path/timeout/abort context and throws.

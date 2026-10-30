@@ -1,8 +1,10 @@
 import {
   configureHostAgentCapabilities,
   configureHostTransport,
-  configureRuntimeManagement,
-} from "@elizaos/ui";
+} from "@elizaos/ui/api/host-transport";
+import { getAuthStatusSnapshot } from "@elizaos/ui/app/session";
+import { isAndroidLocalAgentUrl } from "@elizaos/ui/first-run/local-agent-token";
+import { configureRuntimeManagement } from "@elizaos/ui/platform/runtime-management";
 import {
   androidNativeAgentLifecycleForUrl,
   androidNativeAgentTransportForUrl,
@@ -43,6 +45,13 @@ configureHostTransport(async (url, purpose, init) => {
 });
 
 configureHostAgentCapabilities({
+  requestOwnerIdForUrl: (url) => {
+    if (!isAndroidLocalAgentUrl(url)) return undefined;
+    const auth = getAuthStatusSnapshot();
+    return auth.phase === "authenticated" && auth.identity.kind === "owner"
+      ? auth.identity.id
+      : undefined;
+  },
   isInProcessAgentBase: isIosInProcessLocalAgentBase,
   isTerminalBootError: isTerminalIosNativeAgentBootErrorMessage,
   lifecycleForUrl: androidNativeAgentLifecycleForUrl,

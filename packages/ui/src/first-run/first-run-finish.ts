@@ -25,7 +25,7 @@ import {
   getDesktopRuntimeMode,
   invokeDesktopBridgeRequest,
 } from "../bridge/electrobun-rpc";
-import { type AgentPluginLike, getAgentPlugin } from "../bridge/native-plugins";
+import { getAgentPlugin } from "../bridge/native-plugins";
 import {
   clearPendingCloudHandoff,
   loadPendingCloudHandoff,
@@ -334,9 +334,8 @@ async function startMobileLocalAgent(): Promise<void> {
   } catch {
     // error-policy:J4 the agent plugin is not registered on this host —
     // load it directly; a failure of this direct start still propagates
-    const agentPluginId = "@elizaos/capacitor-agent";
-    const { Agent } = await import(/* @vite-ignore */ agentPluginId);
-    await (Agent as AgentPluginLike | undefined)?.start?.({
+    const { Agent } = await import("@elizaos/capacitor-agent");
+    await Agent.start({
       apiBase: resolveFirstRunLocalAgentApiBase(),
       mode: "local",
     });

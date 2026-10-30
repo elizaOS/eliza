@@ -30,10 +30,11 @@ export interface AndroidNativeCloudSignInViewProps {
 }
 export function AndroidNativeCloudSignInView({
   request,
-  port = androidNativeCloudSignInPort(),
+  port: portOverride,
   onAuthenticated,
   onAbandon,
 }: AndroidNativeCloudSignInViewProps) {
+  const port = portOverride ?? request.port ?? androidNativeCloudSignInPort();
   const t = useAppSelector((state) => state.t);
   const latest = useRef({ request, onAuthenticated, onAbandon });
   latest.current = { request, onAuthenticated, onAbandon };
@@ -84,7 +85,7 @@ export function AndroidNativeCloudSignInView({
   return (
     <NativeCloudSignInView
       controller={controller}
-      copy={ELIZA_NATIVE_CLOUD_SIGN_IN_COPY}
+      copy={request.copy ?? ELIZA_NATIVE_CLOUD_SIGN_IN_COPY}
       serviceLoader={serviceLoader}
       translate={(key, options) => t(key, options)}
     />
