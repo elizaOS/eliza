@@ -521,9 +521,9 @@ describe("planner tool discovery", () => {
       await call(discovery, { names: ["REVOKED"], mode: "describe" }),
     ).toMatchObject({ success: false });
     expect(loads).toEqual([]);
-    // The read above carries every full definition. Copy that sold it as a
-    // compact name index sent a planner with NOTES_LIST already exposed into a
-    // 407,397-char catalog read (live 2026-10-30, tj-7138d70800aff4).
+    // The read above carries every full definition, but its copy sold it as a
+    // name index; a planner with NOTES_LIST already exposed made that read and
+    // received 407,397 chars of catalog (live 2026-10-30, tj-7138d70800aff4).
     const copy = [discovery, legacy].flatMap((action) => [
       action.description,
       ...(action.parameters ?? []).map((parameter) => parameter.description),
