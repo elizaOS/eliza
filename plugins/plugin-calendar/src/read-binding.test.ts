@@ -50,6 +50,90 @@ describe("Calendar operation bindings", () => {
       ).toBeNull();
     }
   });
+  it("binds a bare intent number to its canonical intent ID", async () => {
+    // Live tj-97b3ddd147b529: Stage 1 wrote intentId "1" for "Find me a
+    // 30-minute slot tomorrow afternoon.", and the whole binding was dropped,
+    // so CALENDAR_PROPOSE_TIMES was never offered.
+    const runtime = new AgentRuntime({
+      character: { name: "Bare intent number", bio: [] },
+      logLevel: "fatal",
+    });
+    const text = "Find me a 30-minute slot tomorrow afternoon.";
+    const message: Memory = {
+      id: stringToUuid("bare-intent"),
+      agentId: runtime.agentId,
+      entityId: stringToUuid("owner"),
+      roomId: stringToUuid("room"),
+      createdAt: 1000,
+      content: { text },
+    };
+    const context = {
+      runtime,
+      message,
+      state: { values: {}, data: {}, text: "" },
+      senderRole: "OWNER" as const,
+      turnSignal: new AbortController().signal,
+    };
+    const value = calendarReadBindingField.parse?.(
+      [{ intentId: "1", operation: "propose_times", execution: "required" }],
+      context,
+    );
+    expect(value).toEqual([
+      {
+        intentId: "intent:1",
+        operation: "propose_times",
+        execution: "required",
+      },
+    ]);
+    if (!value) throw new Error("Bare intent number rejected");
+    const parsed = { intents: [text], calendarReadBindings: value };
+    const effect = await calendarReadBindingField.handle?.({
+      ...context,
+      parsed,
+      value,
+    });
+    effect?.mutateResult?.(parsed);
+    const bindings = parsed.calendarReadBindings as CalendarReadBinding[];
+    expect(bindings.map(({ intentId }) => intentId)).toEqual(["intent:1"]);
+    const handler: MessageHandlerResult = {
+      processMessage: "RESPOND",
+      thought: "",
+      plan: {
+        contexts: ["calendar"],
+        intents: [text],
+        candidateActions: [],
+        calendarReadBindings: bindings,
+      },
+    };
+    await runResponseHandlerEvaluators({
+      runtime,
+      message,
+      state: context.state,
+      messageHandler: handler,
+      availableContexts: [],
+      userRoles: ["OWNER"],
+      evaluators: [calendarReadBindingEvaluator],
+    });
+    expect(handler.plan.candidateActions).toEqual(["CALENDAR_PROPOSE_TIMES"]);
+    expect(handler.plan.requiresTool).toBe(true);
+    // Both spellings name one intent, so the same read twice stays a duplicate.
+    expect(
+      calendarReadBindingField.parse?.(
+        [
+          { intentId: "1", operation: "feed", execution: "required" },
+          { intentId: "intent:1", operation: "feed", execution: "required" },
+        ],
+        context,
+      ),
+    ).toBeNull();
+    for (const intentId of ["0", "01", "-1", "1x", " 1", "1\nx"])
+      expect(
+        calendarReadBindingField.parse?.(
+          [{ intentId, operation: "feed", execution: "required" }],
+          context,
+        ),
+      ).toBeNull();
+  });
   it("activates for an owner Notes request when Calendar reads are registered", async () => {
     const runtime = new AgentRuntime({
       character: { name: "Notes request", bio: [] },
