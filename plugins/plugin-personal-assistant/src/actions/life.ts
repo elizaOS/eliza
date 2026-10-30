@@ -1190,6 +1190,7 @@ async function resolveDefinitionForMutation(
   ownerText: string,
   domain?: LifeOpsDomain,
   destructive = false,
+  title?: string,
 ): Promise<DefinitionResult> {
   const allDefinitions = await listCallerDefinitions(service, domain);
   const normalizedOwnerText = normalizeTitle(ownerText);
@@ -1257,11 +1258,30 @@ async function resolveDefinitionForMutation(
           ),
         };
   }
+  // A planner can pair an invented handle with the item's real title (live:
+  // target "stretch-20min-2026-10-30T13-01z", title "Stretch"). When the
+  // target names nothing, the title may resolve the one item it matches;
+  // ambiguity asks and zero matches refuse.
+  const resolveTarget = (handle: string): DefinitionResult => {
+    const byTarget = resolveDefinitionInRecords(defs, handle, destructive);
+    if (byTarget.match || byTarget.ambiguousCandidates.length > 0 || !title)
+      return byTarget;
+    const byTitle = matchByTitle(
+      defs,
+      title,
+      (entry) => entry.definition.title,
+    );
+    return byTitle.length === 1
+      ? { match: byTitle.at(0) ?? null, ambiguousCandidates: [] }
+      : {
+          match: null,
+          ambiguousCandidates: byTitle.map(definitionDisambiguationLabel),
+        };
+  };
   // A destructive target that failed exact matching must not be replaced by
   // a different title elsewhere in the request. Retain the existing narrow
   // target alias/substring contract, including its refusal to guess by tokens.
-  if (destructive && target?.trim())
-    return resolveDefinitionInRecords(defs, target, true);
+  if (destructive && target?.trim()) return resolveTarget(target);
   if (explicitlyNamed.length === 1) {
     return {
       match: explicitlyNamed.at(0) ?? null,
@@ -1313,7 +1333,7 @@ async function resolveDefinitionForMutation(
     };
   }
   return target
-    ? resolveDefinitionInRecords(defs, target, destructive)
+    ? resolveTarget(target)
     : { match: null, ambiguousCandidates: [] };
 }
 
@@ -4997,6 +5017,9 @@ async function runLifeOperationHandlerInner(
   ].find(
     (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
   );
+  const targetTitle = [params.title, routedParams?.title].find(
+    (candidate) => typeof candidate === "string" && candidate.trim().length > 0,
+  );
   // Consent must come from the owner's current text. A pending draft proves
   // only that a preview exists; neither a planner `confirmed:true` field nor a
   // Stage-1 applied-effect claim can authorize the consequential write.
@@ -6276,6 +6299,8 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          false,
+          targetTitle,
         );
       if (!target)
         return {
@@ -6744,6 +6769,7 @@ async function runLifeOperationHandlerInner(
           // Destructive: a fuzzy near-miss must ask, never delete (the
           // wrong-item deletion guard — sibling of TRIGGER_REF_MISMATCH).
           true,
+          targetTitle,
         );
       if (!target) {
         // Users call scheduled triggers "reminders" too: "delete the landlord
@@ -6883,6 +6909,8 @@ async function runLifeOperationHandlerInner(
           targetName,
           messageText(message) || intent,
           domain,
+          false,
+          targetTitle,
         );
       if (ambiguousCandidates.length > 0)
         return {

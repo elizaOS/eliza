@@ -269,3 +269,71 @@ it("keeps explicit cadence ahead of fractional delay inputs", async () => {
   expect((await service.getDefinition(seeded.definition.id)).definition.cadence).toEqual(cadence);
   await service.deleteDefinition(seeded.definition.id);
 });
+
+// Live on Eliza Cloud the planner invented a non-UUID handle for the target
+// while naming the reminder by its real title, and the update refused.
+const INVENTED_TARGET_ARGS = {
+  action: "update",
+  intent: "Change the stretch reminder from 20 minutes to 30 minutes from now",
+  title: "Stretch",
+  target: "stretch-20min-2026-10-30T13-01z",
+  delayMinutes: 30,
+};
+
+it("resolves an invented target by the one reminder its title names", async () => {
+  const seeded = await seed("Stretch", STRETCH_CADENCE);
+  const result = await updateReminder(INVENTED_TARGET_ARGS);
+  expect(result.success, JSON.stringify(result)).toBe(true);
+  expect(
+    (await service.getDefinition(seeded.definition.id)).definition.cadence,
+  ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:31:55.162Z" });
+  expect(result.effectReceipts).toEqual([
+    expect.objectContaining({
+      outcome: "applied",
+      resource: expect.objectContaining({ id: seeded.definition.id }),
+    }),
+  ]);
+  await service.deleteDefinition(seeded.definition.id);
+});
+
+it.each([
+  { name: "two reminders share the title", titles: ["Stretch", "Stretch"] },
+  { name: "no reminder has the title", titles: ["Water plants"] },
+])(
+  "refuses an invented target without writing when $name",
+  async ({ titles }) => {
+    const seeded = [];
+    for (const title of titles) seeded.push(await seed(title, STRETCH_CADENCE));
+    const result = await updateReminder(INVENTED_TARGET_ARGS);
+    expect(result.success).toBe(false);
+    for (const entry of seeded) {
+      expect(
+        (await service.getDefinition(entry.definition.id)).definition,
+      ).toEqual(entry.definition);
+      await service.deleteDefinition(entry.definition.id);
+    }
+    expect(
+      (result.effectReceipts ?? []).some(
+        (receipt) => receipt.outcome === "applied",
+      ),
+    ).toBe(false);
+  },
+);
+
+it("keeps an existing id ahead of a title that names another reminder", async () => {
+  const stretch = await seed("Stretch", STRETCH_CADENCE);
+  const oven = await seed("Oven check", STRETCH_CADENCE);
+  const result = await updateReminder({
+    ...INVENTED_TARGET_ARGS,
+    target: oven.definition.id,
+  });
+  expect(result.success, JSON.stringify(result)).toBe(true);
+  expect(
+    (await service.getDefinition(oven.definition.id)).definition.cadence,
+  ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:31:55.162Z" });
+  expect(
+    (await service.getDefinition(stretch.definition.id)).definition,
+  ).toEqual(stretch.definition);
+  await service.deleteDefinition(stretch.definition.id);
+  await service.deleteDefinition(oven.definition.id);
+});
