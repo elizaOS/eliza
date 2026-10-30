@@ -251,14 +251,13 @@ test("advice for another origin is ignored, a removed bar returns and no advice 
   assert.notEqual(bar(), host, "Advice after removal is drawn fresh");
 });
 
-function fakeBrowser() {
+function fakeBrowser(url = "https://example.test/") {
   const listeners = {};
   const listen = (name) => ({
     addListener: (listener) => {
       listeners[name] = listener;
     },
   });
-  const url = "https://example.test/";
   const browser = {
     injections: [],
     listeners,
@@ -366,4 +365,35 @@ test("the unavailable detail makes no claim about list age", () => {
     );
     assert.doesNotMatch(browser.injections[0].detail, /out of date|stale/i);
   });
+});
+
+test("with unscanned advice off, unavailable lists draw no bar and a lookalike still warns", async () => {
+  const quiet = fakeBrowser();
+  createProtectionAdvisory(quiet, { unscanned: false });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(
+    quiet.injections,
+    [null],
+    "The page is told to show nothing",
+  );
+  assert.equal(page.root.children.length, 0);
+
+  Object.defineProperty(globalThis, "location", {
+    configurable: true,
+    value: { origin: "https://paypa1.com", host: "paypa1.com" },
+  });
+  const lookalike = fakeBrowser("https://paypa1.com/");
+  createProtectionAdvisory(lookalike, {
+    unscanned: false,
+    referenceDomains: ["paypal.com"],
+  });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(
+    parts().title.textContent,
+    "This address may be pretending to be another website.",
+  );
+  assert.throws(
+    () => createProtectionAdvisory(fakeBrowser(), { unscanned: "no" }),
+    /Invalid advisory policy/,
+  );
 });

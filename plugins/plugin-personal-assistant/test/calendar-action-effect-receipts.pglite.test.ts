@@ -1109,6 +1109,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       const evidence = [{ sourceId: `current:${id}`, quote: original }];
       const useModel = runtime.useModel.bind(runtime);
       let extractionCalls = 0;
+      let extractionParams: unknown;
       vi.spyOn(runtime, "useModel").mockImplementation((async (
         type,
         params,
@@ -1120,6 +1121,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           )
         ) {
           extractionCalls += 1;
+          extractionParams = params;
           expect(params).toMatchObject({
             temperature: 0,
             responseSchema: {
@@ -1186,6 +1188,12 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         "planner",
       );
       expect(extractionCalls, JSON.stringify(result)).toBe(1);
+      // Asserted outside the stub, as in the update case below: the runner
+      // turns a thrown stub expectation into an empty extraction, which the
+      // missing-authority case would also reject.
+      expect(extractionParams).toMatchObject({
+        providerOptions: { eliza: { thinking: "off" } },
+      });
       expect(result.data?.awaitingUserInput, JSON.stringify(result)).toBe(true);
       if (missingAuthority)
         expect(result.effectReceipts?.[0]).toMatchObject({
@@ -1946,12 +1954,14 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
     if (!target) throw new Error("Calendar fixture was not created");
     const useModel = runtime.useModel.bind(runtime);
     let extractionCalls = 0;
+    let extractionParams: unknown;
     vi.spyOn(runtime, "useModel").mockImplementation((async (type, params) => {
       if (
         type === ModelType.TEXT_LARGE &&
         String(params?.prompt).includes("Extract calendar event update fields")
       ) {
         extractionCalls += 1;
+        extractionParams = params;
         expect(params).toMatchObject({
           temperature: 0,
           responseSchema: {
@@ -1993,6 +2003,11 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       "planner",
     );
     expect(extractionCalls, JSON.stringify(result)).toBe(1);
+    // Asserted outside the stub: the model runner degrades a thrown stub
+    // expectation to an empty extraction, which also asks for input.
+    expect(extractionParams).toMatchObject({
+      providerOptions: { eliza: { thinking: "off" } },
+    });
     expect(result.data?.awaitingUserInput).toBe(true);
     expect(result.effectReceipts?.[0]?.outcome).toBe("noop");
     const unchanged = await calendar.getConditionalCalendarMutationTarget(

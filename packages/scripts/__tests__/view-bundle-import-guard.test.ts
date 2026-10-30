@@ -566,7 +566,10 @@ describe("view bundle import guard", () => {
       [...specifiers].filter((specifier) =>
         specifier.startsWith("@elizaos/ui/"),
       ),
-    ).toEqual(["@elizaos/ui/view-primitives"]);
+    ).toEqual([
+      "@elizaos/ui/view-primitives",
+      "@elizaos/ui/styles/mobile-workspaces.css",
+    ]);
     expect(() =>
       hostExternalSpecifiersFromSources(
         `

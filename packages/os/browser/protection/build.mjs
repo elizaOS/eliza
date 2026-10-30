@@ -47,7 +47,7 @@ export function renderWarningPage(template, values) {
 }
 
 /** @param {string} output
- * @param {{warningDirectory?: string, warning?: {assistantName?: string, copy?: Partial<Record<"title"|"heading"|"stopped"|"mistake"|"feeds"|"limits", string>>}, feeds?: typeof REPUTATION_FEEDS, refreshAlarm?: string, exceptionAlarm?: string, advisory?: {referenceDomains?: string[], copy?: Record<string,string>}}} options
+ * @param {{warningDirectory?: string, warning?: {assistantName?: string, copy?: Partial<Record<"title"|"heading"|"stopped"|"mistake"|"feeds"|"limits", string>>}, feeds?: typeof REPUTATION_FEEDS, refreshAlarm?: string, exceptionAlarm?: string, advisory?: {referenceDomains?: string[], copy?: Record<string,string>, unscanned?: boolean}}} options
  */
 export async function buildBrowserProtection(
   output,

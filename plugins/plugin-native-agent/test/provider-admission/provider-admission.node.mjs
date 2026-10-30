@@ -51,6 +51,45 @@ test("native provider admission preserves account, expiry, generation and rollba
         fileURLToPath(
           new URL("./NativeProviderAdmissionTest.java", import.meta.url),
         ),
+        fileURLToPath(
+          new URL(
+            "../../android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialShutdownLease.java",
+            import.meta.url,
+          ),
+        ),
+        fileURLToPath(
+          new URL(
+            "../../android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialIntentFence.java",
+            import.meta.url,
+          ),
+        ),
+        fileURLToPath(
+          new URL(
+            "../../../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+            import.meta.url,
+          ),
+        ),
+        fileURLToPath(
+          new URL(
+            "../../../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialSlotMutation.java",
+            import.meta.url,
+          ),
+        ),
+        fileURLToPath(
+          new URL(
+            "../../../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialMutationConductor.java",
+            import.meta.url,
+          ),
+        ),
+        fileURLToPath(
+          new URL(
+            "../../android/src/main/java/ai/eliza/plugins/agent/runtime/ResidentCredentialStore.java",
+            import.meta.url,
+          ),
+        ),
+        fileURLToPath(
+          new URL("./ResidentCredentialConductorTest.java", import.meta.url),
+        ),
       ],
       { timeout: 120000, stdio: "pipe" },
     );
@@ -65,6 +104,18 @@ test("native provider admission preserves account, expiry, generation and rollba
         { encoding: "utf8", timeout: 120000 },
       ),
       /^PASS local agent provider admission/,
+    );
+    assert.match(
+      execFileSync(
+        java("java"),
+        [
+          "-cp",
+          output + path.delimiter + jar,
+          "ai.eliza.plugins.agent.runtime.ResidentCredentialConductorTest",
+        ],
+        { encoding: "utf8", timeout: 30000 },
+      ),
+      /^PASS shared resident credential conductor/,
     );
   } finally {
     fs.rmSync(output, { recursive: true, force: true });

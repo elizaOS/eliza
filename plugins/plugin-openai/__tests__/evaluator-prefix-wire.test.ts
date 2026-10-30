@@ -51,6 +51,7 @@ it.for([
       messages: Array<{ role: string; content: string }>;
       prompt_cache_key?: string;
       prompt_cache_retention?: string;
+      reasoning_effort?: string;
     }> = [];
     const server = createServer((request, response) => {
       const chunks: Buffer[] = [];
@@ -278,6 +279,9 @@ it.for([
         expect(user?.indexOf(stable)).toBeLessThan(user?.indexOf("Latest message:") ?? -1);
         expect(wire?.prompt_cache_key).toBeUndefined();
         expect(wire?.prompt_cache_retention).toBeUndefined();
+        // The evaluator prompt forbids hidden reasoning; without thinking off,
+        // Cerebras Qwen runs its provider default "high" effort.
+        expect(wire?.reasoning_effort).toBe(nativeSchema ? undefined : "none");
       }
       expect(bodies).toHaveLength(rejectSchema ? 3 : 2);
       if (rejectSchema) {

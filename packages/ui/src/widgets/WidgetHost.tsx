@@ -168,6 +168,8 @@ function spanClassForSize(size: PluginWidgetDeclaration["size"]): string {
 }
 
 export interface WidgetHostProps {
+  /** Passed through to widgets that have a distinct compact tray presentation. */
+  surface?: WidgetProps["surface"];
   /** Which slot to render widgets for. */
   slot: WidgetSlot;
   /** Activity events forwarded to widgets (primarily chat-sidebar). */
@@ -200,6 +202,7 @@ export interface WidgetHostProps {
 
 export function WidgetHost({
   slot,
+  surface,
   events,
   clearEvents,
   className,
@@ -381,8 +384,8 @@ export function WidgetHost({
   // The fields every widget shares this render - split out so the per-item props
   // object is built from one stable base rather than re-derived inline.
   const widgetPropsBase = useMemo(
-    () => ({ events, clearEvents, slot }),
-    [events, clearEvents, slot],
+    () => ({ events, clearEvents, slot, surface }),
+    [events, clearEvents, slot, surface],
   );
 
   // The rendered children, memoized on the stable order-key + the stable prop

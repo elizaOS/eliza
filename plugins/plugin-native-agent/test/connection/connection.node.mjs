@@ -42,6 +42,9 @@ test("connection and resident lifecycle JVM contracts pass", () => {
   try {
     const shared = [
       "connection/OwnerRoutePolicy",
+      "connection/NativeAppReadPolicy",
+      "connection/NativeAppRequestPolicy",
+      "connection/NativeOwnerTransport",
       "connection/CloudConnectionPolicy",
       "connection/ConnectionTransport",
       "connection/DelegationCallback",
@@ -61,11 +64,25 @@ test("connection and resident lifecycle JVM contracts pass", () => {
       .map((name) => fileURLToPath(new URL(name, import.meta.url)));
     execFileSync(
       java("javac"),
-      ["--release", "11", "-cp", jar, "-d", output, ...shared, ...tests],
+      [
+        "--release",
+        "11",
+        "-cp",
+        jar,
+        "-d",
+        output,
+        path.resolve(
+          root,
+          "../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+        ),
+        ...shared,
+        ...tests,
+      ],
       { timeout: 120000, stdio: "pipe" },
     );
     for (const [name, pass] of [
       ["OwnerRoutePolicyTest", /^PASS owner route policy/],
+      ["NativeOwnerTransportTest", /^PASS native owner transport/],
       ["CloudConnectionPolicyTest", /^PASS cloud connection policy/],
       ["ConnectionTransportTest", /^PASS connection transport/],
       ["ResidentLifecycleTest", /^PASS resident lifecycle/],

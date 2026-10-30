@@ -691,7 +691,9 @@ export function hasDirectCloudAccountTransport(client: ElizaClient): boolean {
  * (`writeStoredStewardToken`), so it resolves here through the canonical Steward
  * branch too. The client REST token is the last fallback.
  */
-export function getCloudAuthToken(client?: ElizaClient): string | null {
+export function getCloudAuthToken(
+  client?: Pick<ElizaClient, "getBaseUrl" | "getRestAuthToken">,
+): string | null {
   const stewardToken = readStoredStewardToken()?.trim();
   if (stewardToken) return stewardToken;
 

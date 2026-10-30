@@ -7,7 +7,9 @@ import type { PermissionId } from "@elizaos/core/protocol";
 import {
   AudioLines,
   Bell,
+  Calendar,
   Camera,
+  Images,
   type LucideIcon,
   MapPin,
   Mic,
@@ -49,6 +51,8 @@ const ICONS: Record<string, LucideIcon> = {
   "map-pin": MapPin,
   bell: Bell,
   camera: Camera,
+  calendar: Calendar,
+  images: Images,
 };
 export interface PermissionPrimingModalProps {
   /** Ordered permissions to prime; resolved per-platform by the caller. */
@@ -180,6 +184,7 @@ function PermissionPrimingModalView({
             key={active.id}
             id={active.id}
             status={active.status}
+            reason={active.reason}
             canRequest={active.canRequest}
             requesting={active.requesting}
             requestError={active.requestError}
@@ -209,6 +214,7 @@ function PermissionPrimingModalView({
 interface PrimingCardProps {
   id: PermissionId;
   status: PermissionPrimingController["items"][number]["status"];
+  reason?: string;
   canRequest: boolean;
   requesting: boolean;
   requestError: boolean;
@@ -226,6 +232,7 @@ interface PrimingCardProps {
 function PrimingCard({
   id,
   status,
+  reason,
   canRequest,
   requesting,
   requestError,
@@ -268,9 +275,12 @@ function PrimingCard({
         permission: fallbackName,
       });
   const denied = status === "denied";
+  const limited = status === "limited";
+  const currentAccess = limited || status === "granted";
   // A prompt this walkthrough already showed is never fired again: recover through settings.
   const needsRecovery =
-    denied || requestError || recheckError || (promptShown && !canRequest);
+    !currentAccess &&
+    (denied || requestError || recheckError || (promptShown && !canRequest));
   return (
     <div className="flex flex-col gap-4" data-testid={`priming-card-${id}`}>
       <div className="flex items-start gap-3">
@@ -284,6 +294,16 @@ function PrimingCard({
           <p className="mt-1 text-sm leading-snug text-txt">{rationale}</p>
         </div>
       </div>
+
+      {reason ? (
+        <p
+          className="text-sm text-txt"
+          role="status"
+          data-testid={`priming-scope-${id}`}
+        >
+          {reason}
+        </p>
+      ) : null}
 
       {needsRecovery ? (
         <PermissionRecoveryCallout
@@ -358,7 +378,18 @@ function PrimingCard({
           })}
         </span>
         <div className="flex items-center gap-2">
-          {needsRecovery ? (
+          {currentAccess ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onSkip}
+              data-testid={`priming-continue-${id}`}
+            >
+              {t("permissionpriming.continueCurrentAccess", {
+                defaultValue: "Continue with current access",
+              })}
+            </Button>
+          ) : needsRecovery ? (
             <Button
               type="button"
               size="sm"

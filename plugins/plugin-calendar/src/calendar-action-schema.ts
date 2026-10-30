@@ -227,6 +227,11 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       type: "array",
       items: { type: "string" },
     },
+    // A planner reference is a hint only: creation re-derives note provenance
+    // from the original request and verifies it exactly against Notes, so an
+    // invented value here never grants authority. No `pattern` on contentHash:
+    // schema rejection of an invented value (e.g. "unknown") only forced a
+    // second planner call; the service boundary still rejects a malformed hash.
     sourceNote: {
       type: "object",
       description:
@@ -234,7 +239,10 @@ export const CALENDAR_DETAILS_PARAMETER_SCHEMA: ActionParameterSchema = {
       properties: {
         agentId: { type: "string" },
         noteId: { type: "string" },
-        contentHash: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        contentHash: {
+          type: "string",
+          description: "64 lowercase hex characters.",
+        },
       },
       required: ["agentId", "noteId", "contentHash"],
       additionalProperties: false,

@@ -3,13 +3,7 @@ package ai.elizaos.app;
 import ai.eliza.auth.cloud.CloudCredentialSlots;
 import ai.eliza.auth.cloud.CloudSignInConfig;
 import ai.eliza.auth.cloud.CloudSignInPlugin;
-import ai.eliza.plugins.securestore.nativeonly.JsonCredentialSlots;
-import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
-import android.content.Context;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import java.io.File;
-import org.json.JSONObject;
-import org.json.JSONTokener;
 
 /**
  * Eliza's host of the shared native Eliza Cloud sign-in client (packages/auth/android,
@@ -26,40 +20,20 @@ import org.json.JSONTokener;
  */
 @CapacitorPlugin(name = "ElizaCloudSignIn")
 public final class ElizaCloudSignInPlugin extends CloudSignInPlugin {
-    /** Native-only slots: a Keystore key of their own, in the no-backup directory. */
-    private static final String NATIVE_SLOT_DIRECTORY = "eliza-cloud-signin";
-    private static final String NATIVE_SLOT_KEY_ALIAS = "ai.elizaos.app.cloud-signin.v1";
-    private static final int NATIVE_SLOT_LIMIT_BYTES = 16 * 1024;
-    private static final String TOKEN_KEY = "session.steward_token";
-
     /** Staging is admitted only by development builds. */
     static final CloudSignInConfig REGISTRATION = ElizaCloudSignInRegistration.registration(
         BuildConfig.DEBUG || BuildConfig.ELIZA_CLOUD_SIGN_IN_STAGING);
 
     @Override protected CloudSignInConfig registration() { return REGISTRATION; }
 
+    @Override protected Runnable reserveCredentialCommit() { return ElizaResidentCredentials.reserve(); }
+
+    @Override protected <T> T withCredentialRead(java.util.concurrent.Callable<T> read) throws Exception {
+        return ElizaResidentCredentials.withCredentialRead(read);
+    }
+
+
     @Override protected CloudCredentialSlots credentials(Runnable guard) {
-        Context context = getContext().getApplicationContext();
-        NativeSecureStore secure = new NativeSecureStore(context);
-        JsonCredentialSlots json = new JsonCredentialSlots(
-            new File(context.getNoBackupFilesDir(), NATIVE_SLOT_DIRECTORY), NATIVE_SLOT_KEY_ALIAS, slot -> NATIVE_SLOT_LIMIT_BYTES);
-        ElizaCloudCredentialSlots.TokenStore tokens = new ElizaCloudCredentialSlots.TokenStore() {
-            @Override public String read() throws Exception { return secure.get(TOKEN_KEY); }
-            @Override public void write(String token) throws Exception { secure.set(TOKEN_KEY, token); }
-            @Override public void remove() throws Exception { secure.remove(TOKEN_KEY); }
-        };
-        // JsonCredentialSlots holds JSON values; each value is kept as one JSON string.
-        ElizaCloudCredentialSlots.NativeSlots slots = new ElizaCloudCredentialSlots.NativeSlots() {
-            @Override public String read(String slot) throws Exception {
-                String raw = json.read(slot);
-                if (raw == null) return null;
-                Object value = new JSONTokener(raw).nextValue();
-                if (!(value instanceof String)) throw new IllegalStateException("Unexpected sign-in record");
-                return (String) value;
-            }
-            @Override public void write(String slot, String value) throws Exception { json.write(slot, JSONObject.quote(value)); }
-            @Override public void remove(String slot) throws Exception { json.remove(slot); }
-        };
-        return new ElizaCloudCredentialSlots(REGISTRATION, guard, tokens, slots);
+        return ElizaResidentCredentials.cloud(getContext(), guard);
     }
 }

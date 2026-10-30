@@ -83,3 +83,10 @@ view into the shared current-turn Calendar-day contract. It refuses month/event/
 views, unready or mutating snapshots and stale owners, and performs civil-day arithmetic
 in the supplied time zone. The application supplies current visibility and owner facts;
 this hint contains no event contents and authorizes no read or mutation.
+
+`CalendarWorkspace` is the controlled day/week/month renderer used by the main
+Calendar section and mobile consumers. The host supplies the current feed,
+source state, navigation and explicit open/create callbacks; it owns authority,
+retained forms and mutations. `CalendarSection` binds the canonical client and
+existing event editor. The shared `@elizaos/ui/styles/mobile-workspaces.css`
+export supplies scoped utilities without an application reset or brand identity.

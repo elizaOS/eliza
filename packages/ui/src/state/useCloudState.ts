@@ -15,6 +15,10 @@
  */
 
 import { Capacitor } from "@capacitor/core";
+import {
+  NativeCloudSignInError,
+  nativeCloudSignInFailureMessage,
+} from "@elizaos/auth/auth/native-cloud-sign-in";
 import { isElizaCloudControlPlaneHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import {
   clearStoredStewardToken,
@@ -52,6 +56,7 @@ import {
   verifyDirectCloudStewardSession,
 } from "../api/client-cloud";
 import type { CloudCredits, CloudStatus } from "../api/client-types-cloud";
+import type { NativeCloudSessionPort } from "../app/native-cloud-session.js";
 import { invokeDesktopBridgeRequestWithTimeout } from "../bridge/electrobun-rpc";
 import { isElectrobunRuntime } from "../bridge/electrobun-runtime";
 import { isAppModeHost } from "../cloud/app-mode/app-mode";
@@ -476,6 +481,8 @@ interface CloudStateParams {
   t: (key: string) => string;
   /** Product/runtime policy can lock cloud auth on, hiding disconnect affordances. */
   disconnectLocked?: boolean;
+  /** Installed native credential owner; no raw token enters renderer storage. */
+  nativeCloudSession?: NativeCloudSessionPort;
 }
 // ── Hook ───────────────────────────────────────────────────────────────────
 export function useCloudState({
@@ -483,7 +490,56 @@ export function useCloudState({
   loadWalletConfig,
   t,
   disconnectLocked = false,
+  nativeCloudSession,
 }: CloudStateParams) {
+  const nativeSessionOwner = useRef({
+    port: nativeCloudSession,
+    revision: 0,
+    operations: new Set<AbortController>(),
+  });
+  if (nativeSessionOwner.current.port !== nativeCloudSession) {
+    for (const operation of nativeSessionOwner.current.operations)
+      operation.abort();
+    nativeSessionOwner.current.port = nativeCloudSession;
+    nativeSessionOwner.current.revision++;
+  }
+  useEffect(
+    () => () => {
+      nativeSessionOwner.current.revision++;
+      for (const operation of nativeSessionOwner.current.operations)
+        operation.abort();
+    },
+    [],
+  );
+  const withNativeSession = useCallback(
+    async <T>(
+      port: NativeCloudSessionPort,
+      action: (signal: AbortSignal) => Promise<T>,
+      signal?: AbortSignal,
+    ): Promise<T> => {
+      const owner = nativeSessionOwner.current;
+      const revision = owner.revision;
+      const operation = new AbortController();
+      const abort = () => operation.abort(signal?.reason);
+      signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted) abort();
+      owner.operations.add(operation);
+      try {
+        operation.signal.throwIfAborted();
+        if (owner.port !== port)
+          throw new DOMException("Account owner changed", "AbortError");
+        const result = await action(operation.signal);
+        operation.signal.throwIfAborted();
+        if (owner.port !== port || owner.revision !== revision)
+          throw new DOMException("Account owner changed", "AbortError");
+        return result;
+      } finally {
+        signal?.removeEventListener("abort", abort);
+        owner.operations.delete(operation);
+      }
+    },
+    [],
+  );
   // ── State ──────────────────────────────────────────────────────────
   const [elizaCloudEnabled, setElizaCloudEnabled] = useState(false);
   const [elizaCloudVoiceProxyAvailable, setElizaCloudVoiceProxyAvailable] =
@@ -563,20 +619,40 @@ export function useCloudState({
   async function runCloudPoll(
     intent: PollIntent = "ambient",
   ): Promise<boolean> {
+    const nativePort = nativeSessionOwner.current.port;
+    const nativeRevision = nativeSessionOwner.current.revision;
+    const nativeReadIsCurrent = () =>
+      !nativePort ||
+      (nativeSessionOwner.current.port === nativePort &&
+        nativeSessionOwner.current.revision === nativeRevision);
     const buildPinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
-    if (intent === "ambient" && !canPollCloudStatus()) {
+    if (intent === "ambient" && !nativePort && !canPollCloudStatus()) {
       if (elizaCloudPollInterval.current) {
         clearInterval(elizaCloudPollInterval.current);
         elizaCloudPollInterval.current = null;
       }
       return lastElizaCloudPollConnectedRef.current;
     }
-    if (elizaCloudDisconnectInFlightRef.current) {
+    if (elizaCloudDisconnectInFlightRef.current || !nativeReadIsCurrent()) {
       return lastElizaCloudPollConnectedRef.current;
     }
     let cloudStatus: CloudStatus | null;
     let prefetchedCloudCredits: CloudCredits | null | undefined;
-    if (intent === "session-verification" && buildPinnedRemoteApiBase) {
+    if (nativePort) {
+      try {
+        const snapshot = await withNativeSession(nativePort, (signal) =>
+          nativePort.read(signal),
+        );
+        cloudStatus = snapshot.status;
+        prefetchedCloudCredits = snapshot.credits;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === "AbortError")
+          return lastElizaCloudPollConnectedRef.current;
+        setElizaCloudStatusUnavailable(true);
+        if (intent === "session-verification") throw error;
+        return lastElizaCloudPollConnectedRef.current;
+      }
+    } else if (intent === "session-verification" && buildPinnedRemoteApiBase) {
       const stewardToken = readStoredStewardToken()?.trim();
       const cloudApiBase =
         getBootConfig().cloudApiBase?.trim() || DEFAULT_DIRECT_CLOUD_BASE_URL;
@@ -602,7 +678,7 @@ export function useCloudState({
         return null;
       });
     }
-    if (elizaCloudDisconnectInFlightRef.current) {
+    if (elizaCloudDisconnectInFlightRef.current || !nativeReadIsCurrent()) {
       return lastElizaCloudPollConnectedRef.current;
     }
     if (!cloudStatus) {
@@ -711,7 +787,8 @@ export function useCloudState({
     // Self-manage the recurring poll interval: start when connected, stop when not.
     // A build-pinned remote may verify a deliberate login against the Cloud
     // control plane, but must never turn that one request into ambient polling.
-    const canScheduleAmbientPolling = canPollCloudStatus();
+    const canScheduleAmbientPolling =
+      Boolean(nativePort) || canPollCloudStatus();
     if (
       isConnected &&
       canScheduleAmbientPolling &&
@@ -735,7 +812,7 @@ export function useCloudState({
     }
     return isConnected;
   }
-  const runStableCloudPoll = useCallback(runCloudPoll, []);
+  const runStableCloudPoll = useCallback(runCloudPoll, [withNativeSession]);
   const pollCloudCredits = useCallback(
     async (intent: PollIntent = "ambient") => {
       cloudStatusPollsInFlight.current += 1;
@@ -788,6 +865,7 @@ export function useCloudState({
     [loadWalletConfig, pollCloudCredits],
   );
   useEffect(() => {
+    if (nativeCloudSession) return;
     if (Capacitor.getPlatform() !== "ios" || !Capacitor.isNativePlatform()) {
       return;
     }
@@ -813,8 +891,57 @@ export function useCloudState({
     return () => {
       cancelled = true;
     };
-  }, [reconcileAndroidCloudSession]);
+  }, [nativeCloudSession, reconcileAndroidCloudSession]);
   useEffect(() => {
+    const port = nativeCloudSession;
+    if (!port) return;
+    const lifetime = new AbortController();
+    let remove = () => {};
+    const refresh = async (
+      outcome?: Parameters<NativeCloudSessionPort["activate"]>[0],
+    ) => {
+      try {
+        if (outcome)
+          await withNativeSession(
+            port,
+            (signal) => port.activate(outcome, signal),
+            lifetime.signal,
+          );
+        lifetime.signal.throwIfAborted();
+        await pollCloudCredits("session-verification");
+      } catch (error) {
+        if (lifetime.signal.aborted) return;
+        setElizaCloudLoginError(
+          nativeCloudSignInFailureMessage(
+            NativeCloudSignInError.from(error).code,
+            port.copy,
+          ),
+        );
+      }
+    };
+    void refresh();
+    void listenForAndroidNativeCloudSignInCompleted(
+      port.environment,
+      (outcome) => {
+        void refresh(outcome);
+      },
+      port.signIn,
+    ).then(
+      (cleanup) => {
+        if (lifetime.signal.aborted) cleanup();
+        else remove = cleanup;
+      },
+      () => {
+        // Explicit sign-in remains available when the native listener is unavailable.
+      },
+    );
+    return () => {
+      lifetime.abort();
+      remove();
+    };
+  }, [nativeCloudSession, pollCloudCredits, withNativeSession]);
+  useEffect(() => {
+    if (nativeCloudSession) return;
     if (!isAndroidCloudBuild() || !Capacitor.isNativePlatform()) return;
     let cancelled = false;
     const reconcile = async (apiBase?: string) => {
@@ -850,8 +977,8 @@ export function useCloudState({
       getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
     );
     let removeCompletedListener: () => void = () => {};
-    void listenForAndroidNativeCloudSignInCompleted(environment, () => {
-      void activateAndroidNativeCloudSession()
+    void listenForAndroidNativeCloudSignInCompleted(environment, (outcome) => {
+      void activateAndroidNativeCloudSession(undefined, outcome)
         .then(() => reconcile(androidNativeCloudApiBase(environment)))
         .catch((err: unknown) => {
           // error-policy:J4 the announced sign-in left no readable key; the
@@ -884,7 +1011,7 @@ export function useCloudState({
       cancelled = true;
       removeCompletedListener();
     };
-  }, [reconcileAndroidCloudSession]);
+  }, [nativeCloudSession, reconcileAndroidCloudSession]);
   const handleCloudLogin = useCallback(
     async (
       prePoppedWindow: Window | null = null,
@@ -907,7 +1034,9 @@ export function useCloudState({
       // Only callers that declare that stronger requirement bypass the normal
       // connected-server short-circuits below.
       const hasRequiredClientAuth = () =>
-        !options.requireClientAuth || Boolean(getCloudAuthToken());
+        !options.requireClientAuth ||
+        Boolean(nativeSessionOwner.current.port) ||
+        Boolean(getCloudAuthToken());
       if (
         !options.forceReauth &&
         isCloudStatusAuthenticated(
@@ -929,7 +1058,7 @@ export function useCloudState({
       setElizaCloudLoginError(null);
       setElizaCloudLoginFallbackUrl(null);
       elizaCloudPreferDisconnectedUntilLoginRef.current = false;
-      if (options.forceReauth) {
+      if (options.forceReauth && !nativeSessionOwner.current.port) {
         // An opaque device-code credential has no local expiry metadata, so it
         // normally counts as usable. Once Cloud rejects it, however, retaining
         // it would let both the cached-status and Steward-token branches
@@ -965,6 +1094,51 @@ export function useCloudState({
         resolveLoginCompletion();
       };
       elizaCloudLoginCompletionRef.current = loginCompletion;
+      const nativePort = nativeSessionOwner.current.port;
+      if (nativePort) {
+        try {
+          closePrePoppedWindow();
+          await requestAndroidNativeCloudSignIn(
+            nativePort.environment,
+            async (signal, outcome) => {
+              await withNativeSession(
+                nativePort,
+                (active) => nativePort.activate(outcome, active),
+                signal,
+              );
+              const connected = await pollCloudCredits("session-verification");
+              signal.throwIfAborted();
+              if (!connected)
+                throw new Error(
+                  "Could not verify your Cloud session. Please sign in again.",
+                );
+              try {
+                await loadWalletConfig();
+              } catch (error) {
+                logger.warn(
+                  { error },
+                  "[useCloudState] wallet unavailable after native account verification",
+                );
+              }
+            },
+            { port: nativePort.signIn, copy: nativePort.copy },
+          );
+        } catch (error) {
+          if (nativeSessionOwner.current.port === nativePort)
+            setElizaCloudLoginError(
+              nativeCloudSignInFailureMessage(
+                NativeCloudSignInError.from(error).code,
+                nativePort.copy,
+              ),
+            );
+          if (options.requireClientAuth) throw error;
+        } finally {
+          elizaCloudLoginBusyRef.current = false;
+          setElizaCloudLoginBusy(false);
+          completeLogin();
+        }
+        return loginCompletion;
+      }
       // The Play and launcher builds sign in natively: an email code, an SMS
       // code or Android's Google account picker through the shared
       // CloudSignInPlugin host (ElizaCloudSignIn). The native host keeps every
@@ -983,16 +1157,21 @@ export function useCloudState({
           if (isAndroidCloudAccountSwitchPending()) {
             await clearAndroidNativeCloudCredentialState();
           }
-          await requestAndroidNativeCloudSignIn(environment);
-          await activateAndroidNativeCloudSession();
-          const connected = await reconcileAndroidCloudSession(
-            androidNativeCloudApiBase(environment),
+          await requestAndroidNativeCloudSignIn(
+            environment,
+            async (signal, outcome) => {
+              await activateAndroidNativeCloudSession(signal, outcome);
+              const connected = await reconcileAndroidCloudSession(
+                androidNativeCloudApiBase(environment),
+              );
+              signal.throwIfAborted();
+              if (!connected) {
+                throw new Error(
+                  "Could not verify your Eliza Cloud session. Please sign in again.",
+                );
+              }
+            },
           );
-          if (!connected) {
-            throw new Error(
-              "Could not verify your Eliza Cloud session. Please sign in again.",
-            );
-          }
           try {
             clearAndroidCloudAccountSwitchPending();
           } catch (error) {
@@ -1613,9 +1792,11 @@ export function useCloudState({
       pollCloudCredits,
       loadWalletConfig,
       reconcileAndroidCloudSession,
+      withNativeSession,
     ],
   );
   useEffect(() => {
+    if (nativeCloudSession) return;
     const sessionId = readCloudLoginReturnSessionId();
     if (!sessionId) {
       clearCloudLoginReturnParams();
@@ -1716,7 +1897,7 @@ export function useCloudState({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [nativeCloudSession]);
   /**
    * Interactive Cloud login entry point for user-facing buttons (Settings,
    * dashboard, onboarding, connectors upsell). It is reached from a click
@@ -1760,8 +1941,57 @@ export function useCloudState({
       handleCloudLogin(null, options),
     [handleCloudLogin],
   );
+  const resetCloudAccountState = useCallback(() => {
+    setElizaCloudEnabled(false);
+    setElizaCloudConnected(false);
+    publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
+      apiConnected: false,
+      enabled: false,
+      cloudVoiceProxyAvailable: false,
+      hasPersistedApiKey: false,
+    });
+    setElizaCloudVoiceProxyAvailable(false);
+    setElizaCloudCredits(null);
+    setElizaCloudCreditsLow(false);
+    setElizaCloudCreditsCritical(false);
+    setElizaCloudAuthRejected(false);
+    setElizaCloudCreditsError(null);
+    setElizaCloudUserId(null);
+    setElizaCloudStatusReason(null);
+    setElizaCloudLoginError(null);
+    setElizaCloudLoginFallbackUrl(null);
+    lastElizaCloudPollConnectedRef.current = false;
+    elizaCloudPreferDisconnectedUntilLoginRef.current = true;
+  }, []);
+  const signOutNativeCloudSession = useCallback(async () => {
+    const owner = nativeSessionOwner.current;
+    const port = owner.port;
+    if (!port || elizaCloudDisconnectInFlightRef.current) return;
+    // Invalidate every account read before asking the native credential owner
+    // to retire its current binding. A failed stop keeps the last account visible.
+    owner.revision++;
+    for (const operation of owner.operations) operation.abort();
+    elizaCloudDisconnectInFlightRef.current = true;
+    setElizaCloudDisconnecting(true);
+    try {
+      await withNativeSession(port, (signal) => port.signOut(signal));
+      resetCloudAccountState();
+      setActionNotice(
+        `Signed out of ${port.copy.serviceName}.`,
+        "success",
+        5000,
+      );
+    } finally {
+      elizaCloudDisconnectInFlightRef.current = false;
+      setElizaCloudDisconnecting(false);
+    }
+  }, [setActionNotice, resetCloudAccountState, withNativeSession]);
   const handleCloudDisconnect = useCallback(
     async (opts?: { skipConfirmation?: boolean }): Promise<void> => {
+      if (nativeSessionOwner.current.port) {
+        await signOutNativeCloudSession();
+        return;
+      }
       const MAIN_CONFIRM_DISCONNECT_MS = 300000;
       const MAIN_POST_ONLY_MS = 12000;
       const RENDERER_DISCONNECT_MS = 12000;
@@ -1964,9 +2194,19 @@ export function useCloudState({
         void pollCloudCredits();
       }
     },
-    [disconnectLocked, elizaCloudConnected, pollCloudCredits, setActionNotice],
+    [
+      disconnectLocked,
+      elizaCloudConnected,
+      pollCloudCredits,
+      setActionNotice,
+      signOutNativeCloudSession,
+    ],
   );
   const handleCloudSignOut = useCallback(async (): Promise<void> => {
+    if (nativeSessionOwner.current.port) {
+      await signOutNativeCloudSession();
+      return;
+    }
     // On a backend-backed session (local app / agent runtime) the Cloud
     // account is also persisted server-side and re-reported by
     // /api/cloud/status. Clearing only the renderer/Steward token there leaves
@@ -2014,26 +2254,7 @@ export function useCloudState({
       await clearManagedCloudAccountBinding();
       clearCloudPairApiToken();
       savePersistedFirstRunComplete(false);
-      setElizaCloudEnabled(false);
-      setElizaCloudConnected(false);
-      publishElizaCloudVoiceSnapshot(setElizaCloudHasPersistedKey, {
-        apiConnected: false,
-        enabled: false,
-        cloudVoiceProxyAvailable: false,
-        hasPersistedApiKey: false,
-      });
-      setElizaCloudVoiceProxyAvailable(false);
-      setElizaCloudCredits(null);
-      setElizaCloudCreditsLow(false);
-      setElizaCloudCreditsCritical(false);
-      setElizaCloudAuthRejected(false);
-      setElizaCloudCreditsError(null);
-      setElizaCloudUserId(null);
-      setElizaCloudStatusReason(null);
-      setElizaCloudLoginError(null);
-      setElizaCloudLoginFallbackUrl(null);
-      lastElizaCloudPollConnectedRef.current = false;
-      elizaCloudPreferDisconnectedUntilLoginRef.current = true;
+      resetCloudAccountState();
       setActionNotice("Signed out of Eliza Cloud.", "success", 5000);
     } finally {
       elizaCloudDisconnectInFlightRef.current = false;
@@ -2045,6 +2266,8 @@ export function useCloudState({
     handleCloudDisconnect,
     pollCloudCredits,
     setActionNotice,
+    resetCloudAccountState,
+    signOutNativeCloudSession,
   ]);
   // ── Effects ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -2076,6 +2299,7 @@ export function useCloudState({
   //
   // biome-ignore lint/correctness/useExhaustiveDependencies: elizaCloudConnected is an intentional re-arm trigger, not read inside — a fresh login writes a new token and flips connected, and the effect must re-run to arm the lifecycle refresh on that token. Presence of a stored token (checked at the top) is the real gate.
   useEffect(() => {
+    if (nativeCloudSession) return;
     if (!readStoredStewardToken()?.trim()) return;
     let disposed = false;
     const checkAndRefresh = async () => {
@@ -2130,7 +2354,7 @@ export function useCloudState({
       disposed = true;
       clearInterval(interval);
     };
-  }, [elizaCloudConnected, pollCloudCredits]);
+  }, [nativeCloudSession, elizaCloudConnected, pollCloudCredits]);
   // ── Return ─────────────────────────────────────────────────────────
   return {
     // State

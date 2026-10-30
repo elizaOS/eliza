@@ -87,6 +87,7 @@ import {
   setDeviceReadReplyContext,
   setDeviceReadReplyConversation,
 } from "../src/services/device-actions/service.ts";
+import { deviceActionTools } from "../src/services/device-actions/tools.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 import {
   projectDiscoverableContext,
@@ -3769,6 +3770,176 @@ test("device approval REST lifecycle survives restart and never duplicates claim
     await rm(directory, { recursive: true, force: true });
   }
 }, 120_000);
+
+// Live tj-009dcc7987718d: "open example.com" in direct-request mode replied
+// "Review this request on your phone before it can run." although the phone
+// opens the page itself. The turn now ends with its own reply and no extra call.
+// Live tj-5503e82f445bf2: Stage 1 asked "Which page are you after?" while the
+// routed planner opened the page; the reply must name the actual request.
+test.each([
+  {
+    stage1: "pending browser acknowledgement",
+    contexts: ["browser"],
+    intents: ["Open example.com"],
+    candidateActionNames: ["DEVICE_BROWSER_OPEN"],
+    replyText: "Opening example.com in the browser.",
+    replyEffectStatus: "pending",
+  },
+  {
+    stage1: "simple clarifying question",
+    contexts: ["simple"],
+    intents: [],
+    candidateActionNames: [],
+    replyText: "Which page are you after?",
+    replyEffectStatus: "none",
+  },
+])(
+  "direct-request URL open ends the turn with one reply and no owner review ($stage1)",
+  async ({
+    contexts,
+    intents,
+    candidateActionNames,
+    replyText,
+    replyEffectStatus,
+  }) => {
+    const fixture = await createRealTestRuntime({
+      characterName: "DirectBrowserOpenFixture",
+    });
+    const runtime = fixture.runtime;
+    const owner = resolveOwnerEntityIdOrDefault(runtime);
+    const credential = {
+      subjectUserId: owner,
+      installationId: randomUUID(),
+      deviceKey: "c".repeat(64),
+    };
+    const service = new DeviceActionService(runtime);
+    try {
+      await service.register(credential, "Direct browser fixture");
+      runtime.registerAction(
+        deviceActionTools.find(({ name }) => name === "DEVICE_BROWSER_OPEN")!,
+      );
+      const roomId = randomUUID() as UUID,
+        nonce = randomUUID(),
+        scope = JSON.stringify([runtime.agentId, roomId, owner]);
+      const outputs: unknown[] = [
+        stage1Response({
+          contexts,
+          intents,
+          candidateActionNames,
+          replyText,
+          extra: { replyEffectStatus },
+        }),
+        {
+          text: "",
+          toolCalls: [
+            {
+              id: "open-example",
+              name: "DEVICE_BROWSER_OPEN",
+              arguments: {
+                operation: {
+                  type: "browser_navigate",
+                  url: "https://example.com",
+                },
+                operationKey: "browser-open-example",
+                reason: "User asked to open example.com.",
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+        },
+      ];
+      const calls: string[] = [];
+      const useModel = vi
+        .spyOn(runtime, "useModel")
+        .mockImplementation(async (type) => {
+          calls.push(type);
+          if (!outputs.length)
+            throw new Error(`Unexpected model call: ${type}`);
+          return outputs.shift() as never;
+        });
+      const message: Memory = {
+        id: conversationClientUserMemoryId(scope, nonce),
+        agentId: runtime.agentId,
+        entityId: owner as UUID,
+        roomId,
+        content: {
+          text: "open example.com",
+          source: "client_chat",
+          role: "user",
+          channelType: ChannelType.DM,
+          chatIdempotency: {
+            version: 1,
+            scope,
+            clientMessageId: nonce,
+            fingerprint: "e".repeat(64),
+          },
+          metadata: {
+            agentActionMode: "direct-request-v1",
+            clientDevice: {
+              context: {
+                view: "home",
+                sensitive: false,
+                revision: 1,
+                timeZone: "America/Los_Angeles",
+              },
+            },
+          },
+        },
+      };
+      if (!(await runtime.getEntityById(owner as UUID)))
+        await runtime.createEntity({
+          id: owner as UUID,
+          names: ["Synthetic browser owner"],
+          metadata: {},
+        });
+      await registerOwnerRoom(runtime, message);
+      const opened = await withOwnerDeviceActionTurn(
+        runtime,
+        credential,
+        async () => {
+          message.createdAt = Date.now();
+          await runtime.createMemory(message, "messages");
+          setDeviceReadReplyConversation(runtime, randomUUID(), roomId);
+          setDeviceReadReplyContext(runtime, message, {
+            id: message.id!,
+            events: [],
+          });
+          return runV5MessageRuntimeStage1({
+            runtime,
+            message,
+            state: {
+              values: { availableContexts: "general" },
+              data: {},
+              text: "",
+            },
+            responseId: randomUUID() as UUID,
+          });
+        },
+      );
+      // Stage 1 and one planner call; no evaluator call and no review text.
+      expect(calls).toHaveLength(2);
+      expect(calls.at(-1)).toBe(ModelType.ACTION_PLANNER);
+      expect(opened.kind).toBe("planned_reply");
+      if (opened.kind === "planned_reply")
+        expect(
+          opened.result.responseContent?.text,
+          JSON.stringify(opened.result.actionResults),
+        ).toBe("Opening example.com.");
+      const proposals = await service.list(credential);
+      expect(proposals).toHaveLength(1);
+      expect(proposals[0]).toMatchObject({
+        state: "pending",
+        payload: {
+          requestMessageId: message.id,
+          operation: { type: "browser_navigate", url: "https://example.com/" },
+        },
+      });
+      useModel.mockRestore();
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
 
 // Complete Core Stage-1, discovery, planner, evaluator and reply-egress path
 // with a real durable queue. Only model judgments are offline fixtures.

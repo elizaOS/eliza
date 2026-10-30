@@ -113,6 +113,36 @@ describe("registered view navigation exposure", () => {
       code: "VIEW_REGISTRY_CLOSED",
     });
   });
+  it("admits a possessive or polite command for one registered view", async () => {
+    const r = fixture();
+    await registerPluginViews(
+      r,
+      {
+        name: "test-calendar-view",
+        views: [
+          {
+            id: "calendar",
+            label: "Calendar",
+            path: "/calendar",
+            bundleUrl: "/calendar.js",
+          },
+        ],
+      } as never,
+      { pluginDir: process.cwd(), indexEmbeddings: false },
+    );
+    // Live :5325 2026-10-30 tj-f923be42254f79 / tj-fae6d1f612ea94: Stage 1
+    // chose direct navigation, but without this route both turns ran the
+    // planner and evaluator for one view switch.
+    for (const text of ["Open my calendar, please.", "open my calendar"])
+      expect((await eligible(r, text)).map((x) => x.action.name)).toEqual([
+        "VIEWS_SHOW",
+      ]);
+    for (const text of [
+      "open my calendar for tomorrow",
+      "Open my calendar, please, then add lunch.",
+    ])
+      expect(await eligible(r, text)).toEqual([]);
+  });
   it("does not expose an unavailable registered view", async () => {
     const r = fixture();
     await registerPluginViews(

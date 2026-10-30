@@ -73,6 +73,12 @@
 			"import": "./dist/protocol.js",
 			"default": "./dist/protocol.js"
 		},
+		"./permissions": {
+			"eliza-source": "./src/types/permissions.ts",
+			"types": "./dist/types/permissions.d.ts",
+			"import": "./dist/types/permissions.js",
+			"default": "./dist/types/permissions.js"
+		},
 		"./security/redact": {
 			"eliza-source": "./src/security/redact.ts",
 			"types": "./dist/security/redact.d.ts",

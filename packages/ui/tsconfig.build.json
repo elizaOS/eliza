@@ -12,15 +12,11 @@
     "stripInternal": true,
     "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "paths": {
-      "@elizaos/ui": [
-        "./src/index.ts"
-      ],
+      "@elizaos/ui": ["./src/index.ts"],
       "@elizaos/plugin-wallet/ui": [
         "../../plugins/plugin-wallet/src/ui/index.ts"
       ],
-      "@elizaos/plugin-browser": [
-        "../../plugins/plugin-browser/src/index.ts"
-      ],
+      "@elizaos/plugin-browser": ["../../plugins/plugin-browser/src/index.ts"],
       "@elizaos/plugin-health/screen-time/mobile-signal-setup": [
         "../../plugins/plugin-health/src/screen-time/mobile-signal-setup.ts"
       ],
@@ -58,6 +54,20 @@
     "src/components/pages/InstalledAppsLauncher.tsx",
     "src/mobile-shell/index.ts",
     "src/mobile-shell/core.ts",
-    "src/api/client-observation.ts"
+    "src/api/client-observation.ts",
+    "src/android-cloud/NativeCloudSignInView.tsx",
+    "src/android-cloud/native-cloud-sign-in-controller.ts",
+    "src/android-cloud/native-cloud-service-info.ts",
+    "src/startup/coordinator.ts",
+    "src/startup/browser-host.ts",
+    "src/app/AppProvider.tsx",
+    "src/app/native-cloud-session.ts",
+    "src/app/runtime-session.tsx",
+    "src/api/android-native-agent-transport.ts",
+    "src/api/native-agent-stream.ts",
+    "src/api/host-transport.ts",
+    "src/config/boot-config-store.ts",
+    "src/bridge/storage-bridge.ts",
+    "src/app/session.ts"
   ]
 }

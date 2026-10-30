@@ -10,6 +10,7 @@
 import { WebPlugin } from "@capacitor/core";
 
 import type {
+  CameraAccessPermissionStatus,
   CameraDevice,
   CameraDirection,
   CameraErrorEvent,
@@ -24,6 +25,7 @@ import type {
   VideoRecordingState,
   VideoResult,
 } from "./definitions";
+import { cameraAccessDenied } from "./host-ports";
 
 type CameraEventData =
   | CameraFrameEvent
@@ -753,6 +755,34 @@ export class CameraWeb extends WebPlugin {
       options.y > 1
     ) {
       throw new Error(`${name} must use finite x/y values between 0 and 1`);
+    }
+  }
+
+  async checkCameraPermission(): Promise<CameraAccessPermissionStatus> {
+    try {
+      const permission = await navigator.permissions.query({
+        name: "camera" as PermissionName,
+      });
+      return { camera: permission.state };
+    } catch {
+      // Browsers without camera queries still require an explicit request.
+      return { camera: "prompt" };
+    }
+  }
+
+  async requestCameraPermission(): Promise<CameraAccessPermissionStatus> {
+    try {
+      const stream = await getMediaDevices().getUserMedia({
+        video: true,
+        audio: false,
+      });
+      stream.getTracks().forEach((track) => {
+        track.stop();
+      });
+      return { camera: "granted" };
+    } catch (error) {
+      if (cameraAccessDenied(error) === "camera") return { camera: "denied" };
+      throw error;
     }
   }
 

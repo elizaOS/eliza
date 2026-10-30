@@ -388,6 +388,14 @@ export default defineConfig({
         replacement: path.join(agentSourceRoot, "runtime", "owner-entity.ts"),
       },
       {
+        find: /^@elizaos\/agent\/runtime\/deferred-boot-status$/,
+        replacement: path.join(
+          agentSourceRoot,
+          "runtime",
+          "deferred-boot-status.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-relationships$/,
         replacement: path.resolve(here, "../plugin-relationships/src/index.ts"),
       },

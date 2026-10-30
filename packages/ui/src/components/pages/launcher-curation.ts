@@ -19,13 +19,14 @@
  * are ordered, grouped sub-pages collapse under their
  * parent tile, duplicate registrations collapse to one tile, and everything else
  * that is genuinely loaded and visible still appears so installing a new plugin
- * app keeps working. Native-OS tiles (phone/messages/contacts/camera/files) only
+ * app keeps working. Native telephony tiles (phone/messages/contacts) only
  * appear on the AOSP ElizaOS fork.
  */
 
 import type { EnabledViewKinds } from "@elizaos/core";
 import { isViewKindEnabled, resolveViewKind } from "@elizaos/core/protocol";
 import type { ViewEntry } from "../../hooks/view-catalog";
+import { mobileViewIsAvailable } from "../../mobile-shell/view-policy";
 import {
   LAUNCHER_AOSP_ONLY_VIEW_IDS,
   pathForTab,
@@ -272,6 +273,7 @@ export function curateLauncherPages(
   }: CurateLauncherOptions,
 ): ViewEntry[] {
   const byCanonical = new Map<string, ViewEntry>();
+  const nativeViews = new Set(isAosp ? LAUNCHER_AOSP_ONLY_IDS : []);
   // Simple Views is the product Calendar surface when its live view-registry
   // entry is available. Native clients intentionally strip remote bundle URLs
   // and contribute the bundled component through the in-process app-shell
@@ -307,12 +309,25 @@ export function curateLauncherPages(
     // unless the user is signed into Eliza Cloud.
     if (LAUNCHER_CLOUD_IDS.has(canonicalId) && !cloudActive) continue;
 
+    if (
+      !mobileViewIsAvailable(
+        { id: canonicalId },
+        {
+          implemented: true,
+          managedCloud: cloudActive,
+          nativeViews,
+        },
+      )
+    )
+      continue;
+
     if (AOSP_INDEX.has(canonicalId)) {
       // Native-OS tiles are gated ONLY by the fork (they are OS surfaces, shown
       // on AOSP regardless of the developer/preview toggles); hidden everywhere
       // else — this is the "system ones that are not native" carve-out on web +
       // the mobile app.
-      if (!isAosp) continue;
+      // Shared mobile policy above owns the native adapter gate. Camera and
+      // Files have ordinary browser/stock-Android implementations.
     } else if (
       // Every other tile follows the view-kind taxonomy: system + release always
       // show; developer + preview are hidden unless their toggle is on. The
