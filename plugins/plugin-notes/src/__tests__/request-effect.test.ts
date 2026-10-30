@@ -23,6 +23,36 @@ import type { RouteKernel } from "../../../../packages/agent/src/api/route-kerne
 import { messageHandlerFromFieldResult } from "../../../plugin-assistant/src/services/message/stage1-output.ts";
 import { resolveNotesRequestHostRestriction } from "../../../plugin-assistant/src/services/message/notes-request-issuer.ts";
 
+import { executePlannedToolCall as sourceExecutePlannedToolCall } from "../../../../packages/core/src/runtime/execute-planned-tool-call.ts";
+import { beginRequestOperationIssuer as sourceBeginRequestOperationIssuer,
+  getRequestOperationIssuer as sourceGetRequestOperationIssuer,
+  readTaskExtractionNotesRestriction } from "../../../../packages/core/src/actions/task-extraction-context.ts";
+
+// Finite fixture diagnostics: no note contents, IDs, arguments, raw errors,
+// model text, credentials or serialized host state enter CI output.
+function actionDiagnostic(result: unknown) {
+  if (!isObjectRecord(result)) return { resultKind: typeof result };
+  const data = isObjectRecord(result.data) ? result.data : {};
+  const provenance = isObjectRecord(result.failureProvenance) ? result.failureProvenance : {};
+  const code = (value: unknown) => typeof value === "string" && /^[A-Z][A-Z0-9_]{0,95}$/.test(value) ? value : undefined;
+  return { success: result.success === true, code: code(data.code), errorCode: code(data.error),
+    provenanceCode: code(provenance.code), executed: data.executed === true,
+    notStarted: data.executionStatus === "not_started", receipts: Array.isArray(result.effectReceipts) ? result.effectReceipts.length : 0 };
+}
+async function diagnosedPlanner(fixture: { diagnostics: () => unknown }, options: Parameters<typeof runPlannerLoop>[0]) {
+  try { return await runPlannerLoop(options); }
+  catch (error) {
+    try {
+      const limit = isObjectRecord(error) ? error : {};
+      console.error(JSON.stringify({ fixture: "notes-request-effect", diagnostics: fixture.diagnostics(),
+        terminalLimit: limit.kind === "terminal_only_continuations",
+        maximum: typeof limit.max === "number" && Number.isFinite(limit.max) ? limit.max : undefined,
+        observed: typeof limit.observed === "number" && Number.isFinite(limit.observed) ? limit.observed : undefined }));
+    } catch { /* Diagnostics must not replace the original thrown object. */ }
+    throw error;
+  }
+}
+
 async function fixture(classification: "read_only" | "mutation_requested" | "unresolved", text: string) {
   const agentId = stringToUuid("request-effects-agent"), actor = stringToUuid("owner");
   const roomId = stringToUuid("room"), worldId = stringToUuid("world");
@@ -35,7 +65,8 @@ async function fixture(classification: "read_only" | "mutation_requested" | "unr
   const notesLookup = vi.fn(() => service);
   const events = vi.fn(async (..._args: Parameters<IAgentRuntime["emitEvent"]>) => undefined);
   const runtime = createMockRuntime({
-    agentId, actions: notesPlugin.actions,
+    agentId, actions: [...(notesPlugin.actions ?? [])],
+    logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() } as IAgentRuntime["logger"],
     contexts: new ContextRegistry([]),
     getRoom: async () => ({ id: roomId, worldId, type: "DM", source: "client_chat" }),
     getWorld: async () => ({ id: worldId, agentId, metadata: { ownership: { ownerId: actor }, roles: { [actor]: "OWNER" } } }),
@@ -81,11 +112,26 @@ async function fixture(classification: "read_only" | "mutation_requested" | "unr
   bindTaskExtractionContext(state, message, context, context, runtime, issuer);
   const before = service.snapshot();
   writes.mockClear(); notesLookup.mockClear(); events.mockClear();
-  const execute = (name: string, params: Record<string, unknown>) => executePlannedToolCall(runtime,
-    { message, state, userRoles: ["OWNER"], activeContexts: ["notes"], replyOwner: "planner" },
-    { name, params });
+  const outcomes: unknown[] = [];
+  const diagnostics = () => ({
+    executorIsSource: executePlannedToolCall === sourceExecutePlannedToolCall,
+    issuerIsSource: beginRequestOperationIssuer === sourceBeginRequestOperationIssuer,
+    issuerGetterIsSource: getRequestOperationIssuer === sourceGetRequestOperationIssuer,
+    hostIssuerPresent: !!getRequestOperationIssuer(runtime, message),
+    sourceIssuerPresent: !!sourceGetRequestOperationIssuer(runtime, message),
+    restriction: readTaskExtractionNotesRestriction(state, message, runtime),
+    outcomes,
+  });
+  const execute = async (name: string, params: Record<string, unknown>) => {
+    const result = await executePlannedToolCall(runtime,
+      { message, state, userRoles: ["OWNER"], activeContexts: ["notes"], replyOwner: "planner" },
+      { name, params });
+    outcomes.push({ operation: /^[A-Z][A-Z0-9_]{0,95}$/.test(name) ? name : "UNKNOWN", ...actionDiagnostic(result) });
+    if (outcomes.length > 8) outcomes.shift();
+    return result;
+  };
   return { runtime, message, state, context, service, historical, writes, notesLookup, events, before, execute,
-    hostRestriction, rawNotesEffect: fieldRun.parsed.notesRequestEffect };
+    diagnostics, hostRestriction, rawNotesEffect: fieldRun.parsed.notesRequestEffect };
 }
 
 describe("request-bound Notes negative constraints", () => {
@@ -99,7 +145,8 @@ describe("request-bound Notes negative constraints", () => {
     try {
       expect(f.rawNotesEffect).toBe("read_only");
       expect(f.hostRestriction).toBeUndefined();
-      expect((await f.execute("NOTES_GET", { noteId: f.historical.value.id })).success).toBe(true);
+      const read = await f.execute("NOTES_GET", { noteId: f.historical.value.id });
+      expect(read.success, JSON.stringify(f.diagnostics())).toBe(true);
       expect(f.writes).not.toHaveBeenCalled();
     } finally { await f.service.stop(); }
   });
@@ -110,7 +157,7 @@ describe("request-bound Notes negative constraints", () => {
     try {
       expect(f.rawNotesEffect).toBe("read_only");
       expect(f.hostRestriction).toMatchObject({ classification: "unresolved", reason: "registered-current-mutation-route", routeIds: ["notes.create"], operations: ["create"] });
-      const result = await runPlannerLoop({
+      const result = await diagnosedPlanner(f, {
         context: f.context,
         tools: [
           { name: "NOTES_CREATE", parameters: { type: "object", properties: { content: { type: "string" } } } },
@@ -174,7 +221,7 @@ describe("request-bound Notes negative constraints", () => {
     const f = await fixture("read_only", "what did I write about ideas?");
     try {
       const result = await f.execute(name, args);
-      expect(result.success).toBe(false);
+      expect(result.success, JSON.stringify(f.diagnostics())).toBe(false);
       expect(result.data).toMatchObject({ code: "REQUEST_OPERATION_RESTRICTED", executionStatus: "not_started", executed: false });
       expect(result.effectReceipts ?? []).toHaveLength(0);
       expect(f.notesLookup).not.toHaveBeenCalled();
@@ -188,7 +235,7 @@ describe("request-bound Notes negative constraints", () => {
     const f = await fixture("read_only", "read the ideas note");
     try {
       const result = await f.execute("NOTES_GET", { noteId: f.historical.value.id });
-      expect(result.success).toBe(true);
+      expect(result.success, JSON.stringify(f.diagnostics())).toBe(true);
       expect(f.writes).not.toHaveBeenCalled();
       expect(f.service.snapshot()).toEqual(f.before);
     } finally { await f.service.stop(); }
@@ -205,7 +252,7 @@ describe("request-bound Notes negative constraints", () => {
       : lookalike) as unknown as NonNullable<Action["restrictRequestOperation"]>;
     try {
       const result = await f.execute("NOTES_CREATE", { content: "Launch" });
-      expect(result.success).toBe(false);
+      expect(result.success, JSON.stringify(f.diagnostics())).toBe(false);
       expect(result.data).toMatchObject({ code: "ACTION_REQUEST_RESTRICTION_INVALID", executionStatus: "not_started", executed: false });
       expect(f.notesLookup).not.toHaveBeenCalled();
       expect(f.writes).not.toHaveBeenCalled();
@@ -217,7 +264,7 @@ describe("request-bound Notes negative constraints", () => {
     const f = await fixture("mutation_requested", "write a new note: generated launch checklist");
     try {
       const result = await f.execute("NOTES_CREATE", { content: "Launch\nDraft the invitation" });
-      expect(result.success).toBe(true);
+      expect(result.success, JSON.stringify(f.diagnostics())).toBe(true);
       expect(result.effectReceipts).toEqual([expect.objectContaining({ operation: "notes.note.create", outcome: "applied" })]);
       expect(f.writes).toHaveBeenCalledTimes(1);
       expect(f.service.snapshot().notes).toHaveLength(f.before.notes.length + 1);
@@ -228,7 +275,7 @@ describe("request-bound Notes negative constraints", () => {
     const f = await fixture("unresolved", "change that somehow");
     try {
       const result = await f.execute("NOTES_CREATE", { content: "Not requested" });
-      expect(result.success).toBe(false);
+      expect(result.success, JSON.stringify(f.diagnostics())).toBe(false);
       expect(result.data).toMatchObject({ code: "REQUEST_OPERATION_UNRESOLVED", executionStatus: "not_started" });
       expect(f.writes).not.toHaveBeenCalled();
       expect(f.service.snapshot()).toEqual(f.before);
@@ -295,7 +342,12 @@ describe("request-bound Notes negative constraints", () => {
     const installation = await registerPluginViews(f.runtime, plugin, { pluginDir: "/fixture/notes", indexEmbeddings: false });
     const entry = getView(f.runtime, "notes");
     if (!entry) throw Error("Actual Notes view installation missing");
+    let kernelEntries = 0;
+    let transportStatus: number | null = null;
+    const brokerDiagnostics = () => JSON.stringify({ ...f.diagnostics(), kernelEntries, transportStatus,
+      brokerHookPresent: typeof entry.beforeAgentInteract === "function" });
     const kernel = { handle: async () => {
+      kernelEntries++;
       // The controlled kernel adapter calls the real shared dispatcher. The
       // in-process port and dispatcher run unchanged, without a TCP server.
       await dispatchViewInteract(entry, "notes", "create-note", { content: "Not requested" }, {
@@ -308,20 +360,25 @@ describe("request-bound Notes negative constraints", () => {
       name: "FORCE_NOTES_API_PORT", description: "Controlled managed transport regression",
       roleGate: { minRole: "OWNER" }, validate: async () => true,
       handler: async () => {
-        await dispatchApiRoute({ runtime: f.runtime, inProcess: true, isAuthorized: () => true,
+        const response = await dispatchApiRoute({ runtime: f.runtime, inProcess: true, isAuthorized: () => true,
           headers: {},
           method: "POST", path: "/api/views/notes/interact", body: {
             capability: "create-note", params: { content: "Not requested" },
             // Caller-controlled origin-like text is not consulted as authority.
             ui: true, origin: "human",
           } });
+        transportStatus = Number.isInteger(response.status) && response.status >= 100 && response.status <= 599 ? response.status : null;
+        if (response.status < 200 || response.status >= 300) return {
+          success: false, data: { code: "FIXTURE_API_TRANSPORT_REFUSED", httpStatus: transportStatus },
+        };
         return { success: true };
       },
     });
     try {
+      expect(f.runtime.actions.filter(action => action.name === "FORCE_NOTES_API_PORT")).toHaveLength(1);
       const result = await f.execute("FORCE_NOTES_API_PORT", {});
-      expect(result.success).toBe(false);
-      expect(result.data).toMatchObject({ code: "REQUEST_OPERATION_RESTRICTED", executionStatus: "not_started", executed: false });
+      expect(result.success, brokerDiagnostics()).toBe(false);
+      expect(result.data, brokerDiagnostics()).toMatchObject({ code: "REQUEST_OPERATION_RESTRICTED", executionStatus: "not_started", executed: false });
       expect(frontendDelivery).not.toHaveBeenCalled();
       expect(serverDelivery).not.toHaveBeenCalled();
       expect(f.notesLookup).not.toHaveBeenCalled();
@@ -362,7 +419,7 @@ describe("request-bound Notes negative constraints", () => {
     let requests = 0;
     const executed: string[] = [];
     try {
-      const result = await runPlannerLoop({
+      const result = await diagnosedPlanner(f, {
         context: f.context,
         tools: [
           { name: writeAction, parameters: { type: "object", properties: { content: { type: "string" }, action: { type: "string" }, op: { type: "string" } } } },
@@ -384,7 +441,7 @@ describe("request-bound Notes negative constraints", () => {
           ? { success: true, decision: "FINISH" as const, thought: "Return the actual read.", messageToUser: "The ideas note says launch on a Tuesday." }
           : { success: false, decision: "CONTINUE" as const, thought: "Continue to the read." },
       });
-      expect(executed).toEqual([writeAction, "NOTES_GET"]);
+      expect(executed, JSON.stringify(f.diagnostics())).toEqual([writeAction, "NOTES_GET"]);
       expect(result.terminalFailure).toBeUndefined();
       expect(f.writes).not.toHaveBeenCalled();
       expect(f.service.snapshot()).toEqual(f.before);
@@ -397,7 +454,7 @@ describe("request-bound Notes negative constraints", () => {
     const f = await fixture("read_only", "create a new launch note saying Draft invitation");
     let requests = 0;
     try {
-      const result = await runPlannerLoop({
+      const result = await diagnosedPlanner(f, {
         context: f.context,
         tools: [
           { name: "NOTES_CREATE", parameters: { type: "object", properties: { content: { type: "string" } } } },
@@ -436,7 +493,7 @@ describe("request-bound Notes negative constraints", () => {
       // This phrasing intentionally lies outside the existing anchored direct
       // route. Do not substitute the narrower route-veto control for it.
       expect(f.hostRestriction).toBeUndefined();
-      const result = await runPlannerLoop({
+      const result = await diagnosedPlanner(f, {
         context: f.context,
         tools: [
           { name: "NOTES_CREATE", parameters: { type: "object", properties: { content: { type: "string" } } } },
@@ -493,7 +550,7 @@ describe("request-bound Notes negative constraints", () => {
     let receiptId: string | undefined;
     const reply = "Saved the launch note.";
     try {
-      const result = await runPlannerLoop({
+      const result = await diagnosedPlanner(f, {
         context: f.context,
         tools: [{ name: "NOTES_CREATE", parameters: { type: "object", properties: { content: { type: "string" } } } }],
         runtime: { useModel: async () => ({ text: "", toolCalls: [{ name: "NOTES_CREATE", id: "actual-create", arguments: { content: "Launch\nDraft invitation", eliza_turn_scope: "final" } }] }) },
@@ -528,7 +585,7 @@ describe("request-bound Notes negative constraints", () => {
         value: 18.3, unit: "°C", observedAtMs: now }],
     };
     try {
-      const result = await runPlannerLoop({
+      const result = await diagnosedPlanner(f, {
         context: f.context,
         tools: [{ name: "NOTES_CREATE", parameters: { type: "object", properties: { content: { type: "string" } } } }],
         runtime: { useModel: async () => ({ text: "", toolCalls: [{ name: "NOTES_CREATE", id: "denied-with-prior-error", arguments: { content: "Launch", eliza_turn_scope: "final" } }] }) },
@@ -560,7 +617,7 @@ describe("request-bound Notes negative constraints", () => {
     let requests = 0;
     const executed: string[] = [];
     try {
-      const result = await runPlannerLoop({
+      const result = await diagnosedPlanner(f, {
         context: f.context,
         tools: [
           { name: writeAction, parameters: { type: "object", properties: { content: { type: "string" }, action: { type: "string" }, op: { type: "string" } } } },
@@ -584,7 +641,7 @@ describe("request-bound Notes negative constraints", () => {
         // for the matching create's actual durable success.
         evaluate: async () => ({ success: true, decision: "FINISH" as const, thought: "Controlled optimistic verdict before the requested create.", messageToUser: "The ideas note is read." }),
       });
-      expect(executed).toEqual([writeAction, "NOTES_GET", writeAction]);
+      expect(executed, JSON.stringify(f.diagnostics())).toEqual([writeAction, "NOTES_GET", writeAction]);
       expect(result.terminalFailure).toBeUndefined();
       expect(f.writes).toHaveBeenCalledTimes(1);
       expect(f.service.snapshot().notes).toHaveLength(f.before.notes.length + 1);

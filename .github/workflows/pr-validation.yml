@@ -286,6 +286,7 @@ jobs:
           retention-days: 3
 
       - name: Build selected workspace closure
+        id: notes_owning_build
         if: steps.affected.outputs.source == 'true'
         env:
           RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
@@ -313,7 +314,11 @@ jobs:
           fi
 
       - name: Verify Notes request effects through the owning config
-        if: steps.notes_owning_scope.outputs.run == 'true'
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
         timeout-minutes: 3
         working-directory: plugins/plugin-notes
         env:
@@ -325,7 +330,11 @@ jobs:
           --execArgv=--max-old-space-size=2048
 
       - name: Verify assistant Notes planning and discovery
-        if: steps.notes_owning_scope.outputs.run == 'true'
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
         timeout-minutes: 3
         working-directory: plugins/plugin-assistant
         env:
@@ -340,7 +349,11 @@ jobs:
           --execArgv=--max-old-space-size=2048
 
       - name: Verify Core context and action authority
-        if: steps.notes_owning_scope.outputs.run == 'true'
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
         timeout-minutes: 3
         working-directory: packages/core
         env:
