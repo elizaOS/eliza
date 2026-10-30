@@ -4,6 +4,7 @@
  */
 import {
   ElizaError,
+  getUserMessageText,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -12,7 +13,9 @@ import {
 import { WORKFLOW_SERVICE_TYPE, type WorkflowService } from '../services/index';
 
 function getWorkflowSearchQuery(message: Memory): string | null {
-  const text = typeof message.content.text === 'string' ? message.content.text.trim() : '';
+  // The user's words: chat augmentation wraps short requests in help
+  // fragments that mention workflows, and the whole envelope became the query.
+  const text = getUserMessageText(message);
   if (!text) return null;
 
   return /\b(workflow|workflows|automation|automations)\b/i.test(text) ? text : null;

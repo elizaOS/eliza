@@ -642,9 +642,12 @@ export async function generateStage1Decision(
     tools: messageHandlerTools,
     toolChoice: "required" as const,
     // Stage 1 packs the complete structured response and user-visible answer
-    // into one generation on every channel. Let the adapter use the selected
-    // provider/model maximum; an application-level ceiling can only turn a
-    // valid long answer into an incomplete envelope.
+    // into one generation on every channel, so it stays uncapped: the adapter
+    // uses the selected provider/model maximum, and an application ceiling
+    // could turn a valid long answer into an incomplete envelope. Only the
+    // non-coding planner's planning rounds take a default cap, on remote
+    // providers, after a live runaway tool call streamed 40,960 tokens (see
+    // plannerDefaultMaxTokens).
     maxTokens: undefined,
     omitMaxTokens: true,
     // Streamed structured generation: the local engine (W4) streams the

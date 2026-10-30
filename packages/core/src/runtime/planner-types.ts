@@ -386,6 +386,12 @@ export interface PlannerLoopParams {
 	admitTypedReadCorrection?: () => boolean;
 	/** Host owns receipt-bound recovery of missing replies after evaluated internal effects. */
 	deferInternalReplyRecoveryToCaller?: boolean;
+	/**
+	 * Stage 1 judged the requested app-view navigation part of a larger request
+	 * (visualContinuation disposition "planning"): opening the view alone does
+	 * not satisfy it. A hint for replanning only; it grants no authority.
+	 */
+	navigationWithFollowUp?: boolean;
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**

@@ -276,12 +276,34 @@ export function isPersistedDeviceApprovalPause(
   result: PlannerToolResult | undefined,
 ): boolean {
   const data = result?.data;
+  return (
+    data?.awaitingUserInput === true &&
+    data.approvalRequired === true &&
+    isPersistedPendingDeviceProposal(result)
+  );
+}
+/** A durable proposal bound to the owner's current message that the requesting
+ * phone runs right after the reply (direct-request mode). It waits for the
+ * device, not for owner input, and is still no proof of its effect. */
+export function isRequestedDeviceHandoff(
+  result: PlannerToolResult | undefined,
+): boolean {
+  const data = result?.data;
+  return (
+    data?.directRequest === true &&
+    data.awaitingDeviceExecution === true &&
+    data.awaitingUserInput !== true &&
+    isPersistedPendingDeviceProposal(result)
+  );
+}
+function isPersistedPendingDeviceProposal(
+  result: PlannerToolResult | undefined,
+): boolean {
+  const data = result?.data;
   if (
     result?.success !== true ||
     data?.state !== "pending" ||
     data.executed !== false ||
-    data.awaitingUserInput !== true ||
-    data.approvalRequired !== true ||
     typeof data.proposalId !== "string"
   )
     return false;

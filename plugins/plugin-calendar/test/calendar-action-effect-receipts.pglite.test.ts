@@ -263,7 +263,12 @@ it("registered CALENDAR cannot substitute backend records for an enrolled phone"
       );
       expect(list).toHaveBeenLastCalledWith(expect.any(URL), { grantId });
       expect(feed.mock.lastCall?.[1]).toMatchObject({ grantId });
-      expect(extraction).toHaveBeenCalledOnce();
+      expect(extraction).toHaveBeenCalledExactlyOnceWith(
+        expect.anything(),
+        expect.objectContaining({
+          providerOptions: { eliza: { thinking: "off" } },
+        }),
+      );
       extraction.mockRestore();
       list.mockRestore();
     }

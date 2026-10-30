@@ -1848,17 +1848,19 @@ export async function generateNativeChatCompletion(
   }
 
   const text = extractChatCompletionText(data);
-  const toolCalls = extractNativeToolCalls(data);
+	// Before tool-call finalization: a truncated tool call is incomplete
+	// output, not an invalid one.
 	assertModelOutputComplete({
 		finishReason: data.choices?.[0]?.finish_reason,
 		provider: "elizacloud",
 		model: context.modelName,
 		maxTokens: typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : null,
 		finishReasonSource: "cloud-chat-completions",
-		emptyVisibleOutput: !text.trim() && toolCalls.length === 0,
+		emptyVisibleOutput: !text.trim() && !data.choices?.[0]?.message?.tool_calls?.length,
 		usage,
 		costUsd: extractCostUsd(data.usage, response),
 	});
+  const toolCalls = extractNativeToolCalls(data);
   if (!text.trim() && toolCalls.length === 0) {
     throw new Error("elizaOS Cloud returned no text or tool calls");
   }
@@ -2342,7 +2344,6 @@ export async function streamNativeChatCompletion(
       }
     }
     const text = extractChatCompletionText(data);
-    const toolCalls = extractNativeToolCalls(data);
     const usage = convertNativeUsage(data.usage);
     const costUsd = extractCostUsd(data.usage, response);
     // Billed tokens are reported before an incomplete output is rejected.
@@ -2352,16 +2353,19 @@ export async function streamNativeChatCompletion(
         ...(typeof costUsd === "number" ? { costUsd } : {}),
       });
     }
+		// Before tool-call finalization: a truncated tool call is incomplete
+		// output, not an invalid one.
 		assertModelOutputComplete({
 			finishReason: data.choices?.[0]?.finish_reason,
 			provider: "elizacloud",
 			model: context.modelName,
 			maxTokens: typeof requestBody.max_tokens === "number" ? requestBody.max_tokens : null,
 			finishReasonSource: "cloud-chat-completions",
-			emptyVisibleOutput: !text.trim() && toolCalls.length === 0,
+			emptyVisibleOutput: !text.trim() && !data.choices?.[0]?.message?.tool_calls?.length,
 			usage,
 			costUsd,
 		});
+    const toolCalls = extractNativeToolCalls(data);
     if (!text.trim() && toolCalls.length === 0) {
       throw new Error("elizaOS Cloud returned no text or tool calls");
     }

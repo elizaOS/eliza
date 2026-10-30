@@ -1199,6 +1199,7 @@ describe("entries", () => {
     "mobile-shell/product-registration.ts",
     "mobile-shell/view-id-migration.ts",
     "mobile-shell/view-ids.ts",
+    "mobile-shell/view-policy.ts",
     "mobile-shell/view-registry.ts",
   ];
 

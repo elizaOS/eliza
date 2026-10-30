@@ -5,6 +5,7 @@ import {
   conversationClientUserMemoryId,
   type IDatabaseAdapter,
   type Memory,
+  type PlannerToolResult,
   runWithStreamingContext,
   type UUID,
 } from "@elizaos/core";
@@ -15,6 +16,11 @@ import { approvalDispatchControlTable } from "../../plugin-sql/src/schema/approv
 import { approvalRequestTable } from "../../plugin-sql/src/schema/approvalRequests.ts";
 import { PgApprovalQueue } from "../src/services/approval/store.ts";
 import { proposeDeviceAction } from "../src/services/device-actions/action.ts";
+import {
+  DEVICE_APPROVAL_REVIEW_TEXT,
+  isPersistedDeviceApprovalPause,
+  isRequestedDeviceHandoff,
+} from "../src/services/device-actions/effect-receipts.ts";
 import {
   DeviceActionService,
   setDeviceReadReplyContext,
@@ -287,7 +293,36 @@ it.each([false, true])(
     const f = await fixture();
     try {
       const result = await f.run("example.com/dashboard", false, direct);
-      expect(result).toMatchObject({ success: true });
+      // Direct mode: the requesting phone opens it after the reply, with no
+      // review card or review text. Review mode keeps the owner approval pause.
+      expect(result).toMatchObject(
+        direct
+          ? {
+              success: true,
+              userFacingText: "Opening example.com.",
+              data: {
+                state: "pending",
+                executed: false,
+                awaitingDeviceExecution: true,
+                directRequest: true,
+                approvalRequired: false,
+              },
+            }
+          : {
+              success: true,
+              userFacingText: DEVICE_APPROVAL_REVIEW_TEXT,
+              data: { awaitingUserInput: true, approvalRequired: true },
+            },
+      );
+      expect(result.data).not.toHaveProperty(
+        direct ? "awaitingUserInput" : "directRequest",
+      );
+      expect(isRequestedDeviceHandoff(result as PlannerToolResult)).toBe(
+        direct,
+      );
+      expect(isPersistedDeviceApprovalPause(result as PlannerToolResult)).toBe(
+        !direct,
+      );
       expect(
         (
           await f.pg.query(

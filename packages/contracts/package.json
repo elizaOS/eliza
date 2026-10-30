@@ -10,6 +10,18 @@
     "dist"
   ],
   "exports": {
+    "./theme": {
+      "eliza-source": "./src/contracts/theme.ts",
+      "types": "./dist/contracts/theme.d.ts",
+      "import": "./dist/contracts/theme.js",
+      "default": "./dist/contracts/theme.js"
+    },
+    "./runtime-management": {
+      "eliza-source": "./src/contracts/runtime-management.ts",
+      "types": "./dist/contracts/runtime-management.d.ts",
+      "import": "./dist/contracts/runtime-management.js",
+      "default": "./dist/contracts/runtime-management.js"
+    },
     ".": {
       "eliza-source": "./src/index.ts",
       "types": "./dist/index.d.ts",

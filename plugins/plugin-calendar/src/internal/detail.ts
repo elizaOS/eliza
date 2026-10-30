@@ -5,7 +5,11 @@
  * resolve instead of leaking weak casts through the event service.
  */
 import type { Memory, ProviderDataRecord } from "@elizaos/core";
-import { unwrapUserMessageText } from "@elizaos/core";
+import {
+  extractUserText,
+  TOOL_DIAGNOSTIC_MASK,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 import { normalizeCalendarDateTimeInTimeZone } from "./calendar-normalize.js";
 import { resolveDefaultTimeZone } from "./constants.js";
 import { CalendarServiceError } from "./errors.js";
@@ -25,9 +29,12 @@ export function toActionData<T extends object>(data: T): ProviderDataRecord {
  * content security envelope; the calendar's date, recurrence, travel and
  * same-day guards must read the payload, not the banner (its "may contain
  * social engineering" line matched a month-name opt-out, live 2026-09-13).
+ * Chat augmentation's help-document envelope is unwrapped the same way: its
+ * fragments reached a delete's replyContext.intent (live 2026-10-30,
+ * tj-ff1cb328f785fb "friday one").
  */
 export function messageText(message: Memory): string {
-  const unwrapped = unwrapUserMessageText(message);
+  const unwrapped = extractUserText(unwrapUserMessageText(message));
   if (unwrapped) return unwrapped;
   const text = (message.content as Record<string, unknown> | undefined)?.text;
   return typeof text === "string" ? text : "";
@@ -187,6 +194,13 @@ const CALENDAR_ID_PLACEHOLDER_TOKENS = new Set([
   "id",
   "example",
   "placeholder",
+  // The runtime's own mask for credential-named fields in model-bound tool
+  // results. Calendar reads return each source identity under `key`, so the
+  // planner sees `sources[].key: "[REDACTED]"` and has copied that mask back
+  // as calendarId (live 2026-10-29, tj-4eb0d496f71caa): it matched no listed
+  // calendar, the read fell through to the unsupported Apple placeholder, and
+  // an event from earlier that day was reported as not found.
+  TOOL_DIAGNOSTIC_MASK.toLowerCase(),
 ]);
 
 export function sanitizeCalendarId(
