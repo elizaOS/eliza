@@ -32,7 +32,7 @@ const args = (f) => ({
 test("review derives the existing shared output schema while keeping ordinary thinking off", async () => {
   const f = fixture('{"grounded":true,"claims":[]}');
   await api.reviewRecoveredReply(args(f));
-  assert.ok(f.calls[0].params.responseSchema?.anyOf);
+  assert.ok(f.calls[0].params.responseSchema?.properties?.claims);
   assert.equal(f.calls[0].params.responseFormat, undefined);
   assert.equal(f.calls[0].params.providerOptions.eliza.thinking, "off");
   assert.equal(f.calls.length, 1);
@@ -159,38 +159,46 @@ for (const raw of [
     assert.equal(f.calls.length, 1);
   });
 
-// The interop assertion is limited to this fixed derived schema.
-test("fixed derived schema satisfies core object-valued properties contract", async () => {
-  const f = fixture('{"grounded":true,"claims":[]}');
-  await api.reviewRecoveredReply(args(f));
-  const schema = f.calls[0].params.responseSchema;
-  let propertyMaps = 0;
-  function inspect(node) {
-    if (node === null || typeof node !== "object") return;
-    if (Array.isArray(node)) {
-      for (const child of node) inspect(child);
-      return;
-    }
-    if (Object.hasOwn(node, "properties")) {
-      propertyMaps++;
-      assert.ok(
-        node.properties !== null &&
-          typeof node.properties === "object" &&
-          !Array.isArray(node.properties),
-      );
-      for (const property of Object.values(node.properties))
+// The interop assertion is limited to these fixed derived schemas.
+for (const [allowFullContextRequest, maps, branches] of [
+  [false, 2, undefined],
+  [true, 3, [["grounded", "claims"], ["contextRequest"]]],
+])
+  test(`fixed derived schema satisfies core object-valued properties contract, read=${allowFullContextRequest}`, async () => {
+    const f = fixture('{"grounded":true,"claims":[]}');
+    await api.reviewRecoveredReply({ ...args(f), allowFullContextRequest });
+    const schema = f.calls[0].params.responseSchema;
+    let propertyMaps = 0;
+    function inspect(node) {
+      if (node === null || typeof node !== "object") return;
+      if (Array.isArray(node)) {
+        for (const child of node) inspect(child);
+        return;
+      }
+      if (Object.hasOwn(node, "properties")) {
+        propertyMaps++;
         assert.ok(
-          property !== null &&
-            typeof property === "object" &&
-            !Array.isArray(property),
+          node.properties !== null &&
+            typeof node.properties === "object" &&
+            !Array.isArray(node.properties),
         );
+        for (const property of Object.values(node.properties))
+          assert.ok(
+            property !== null &&
+              typeof property === "object" &&
+              !Array.isArray(property),
+          );
+      }
+      for (const child of Object.values(node)) inspect(child);
     }
-    for (const child of Object.values(node)) inspect(child);
-  }
-  inspect(schema);
-  assert.equal(propertyMaps, 3);
-  assert.deepEqual(
-    schema.anyOf.map((branch) => Object.keys(branch.properties)),
-    [["grounded", "claims"], ["contextRequest"]],
-  );
-});
+    inspect(schema);
+    assert.equal(propertyMaps, maps);
+    // A read the caller cannot honor is never offered on the wire.
+    assert.equal(JSON.stringify(schema).includes("contextRequest"), !!branches);
+    assert.deepEqual(
+      branches
+        ? schema.anyOf.map((branch) => Object.keys(branch.properties))
+        : Object.keys(schema.properties),
+      branches ?? ["grounded", "claims"],
+    );
+  });
