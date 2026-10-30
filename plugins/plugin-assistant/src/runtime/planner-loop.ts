@@ -1614,14 +1614,9 @@ async function runPlannerLoopIterations(
             },
           },
         );
-        // Show the corrected calls, not the rejected output: echoing calls
-        // without the argument gave the retry another example to copy. A
-        // batch that declared pending keeps it; otherwise final, which is
-        // still evaluated.
-        const expectedScope =
-          plannerOutput.completed === false
-            ? TURN_SCOPE_MORE_WORK_PENDING
-            : TURN_SCOPE_FINAL;
+        // A rejected batch is not a model-authored completion decision.
+        // Preserve only each call's actual recognized declaration; the model
+        // must choose the whole-batch scope for missing or invalid tokens.
         appendPlannerModelFeedbackEvent(trajectory, {
           id: `missing-native-scope:${iteration}`,
           type: "instruction",
@@ -1631,7 +1626,7 @@ async function runPlannerLoopIterations(
           content: JSON.stringify({
             code: scopeError.code,
             instruction:
-              "This complete batch was rejected before execution because at least one native call omitted or invalidated eliza_turn_scope while earlier work is explicitly pending. No call in it ran. Resubmit the intended calls as expectedCalls shows, with the same eliza_turn_scope on every call: final when this batch covers the remaining requested operations (their results still require evaluation), more_work_pending only when a later operation must be chosen from these results. Do not repeat settled operations.",
+              "This complete batch was rejected before execution because at least one native call omitted or invalidated eliza_turn_scope while earlier work is explicitly pending. No call in it ran. The calls below preserve only actual model-declared recognized scope tokens; any absent token is unknown, not final. Decide from the original request, settled outcomes and remaining work, then resubmit the intended calls with the same explicit eliza_turn_scope on every call: final only when this batch covers the remaining requested operations (their results still require evaluation), more_work_pending when a later operation must be chosen from these results. Do not repeat settled operations.",
             expectedCalls: plannerOutput.toolCalls.map((call) => ({
               name: call.name,
               arguments: {
@@ -1639,7 +1634,11 @@ async function runPlannerLoopIterations(
                   call.params ?? {},
                   redactDiagnosticText,
                 ),
-                [TURN_SCOPE_ARG]: expectedScope,
+                ...("declaredTurnScope" in call &&
+                (call.declaredTurnScope === TURN_SCOPE_FINAL ||
+                call.declaredTurnScope === TURN_SCOPE_MORE_WORK_PENDING)
+                  ? { [TURN_SCOPE_ARG]: call.declaredTurnScope }
+                  : {}),
               },
             })),
           }),
@@ -8465,11 +8464,11 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
  */
 function turnChangedNothing(trajectory: PlannerTrajectory): boolean {
   return [...trajectory.archivedSteps, ...trajectory.steps].every(
-    ({ toolCall, result }) =>
-      !toolCall ||
-      isTerminalToolCall(toolCall) ||
-      !result ||
-      (result.effectReceipts?.length
+    ({ toolCall, result }) => {
+      if (!toolCall || isTerminalToolCall(toolCall)) return true;
+      // An unsettled/resumed nonterminal call is not proof of no effect.
+      if (!result) return false;
+      return result.effectReceipts?.length
         ? result.effectReceipts.every(
             (receipt) =>
               (receipt.outcome === "noop" && !receipt.idempotency.replayed) ||
@@ -8480,7 +8479,8 @@ function turnChangedNothing(trajectory: PlannerTrajectory): boolean {
         : result.data?.readOnlyOperation === true ||
           (result.success === false &&
             result.data?.acceptance === "rejected" &&
-            result.data?.executionStatus === "not_started")),
+            result.data?.executionStatus === "not_started");
+    },
   );
 }
 

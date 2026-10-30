@@ -1,4 +1,4 @@
-import type { EffectReceipt } from "@elizaos/core";
+import type { EffectReceipt, PlannerTrajectory } from "@elizaos/core";
 import { expect, it, vi } from "vitest";
 import { runPlannerLoop } from "../planner-loop.ts";
 
@@ -91,5 +91,31 @@ it.each([
     expect(result.terminalFailure?.message).not.toMatch(
       /planner|scope|intent|tool|receipt|—/i,
     );
+  },
+);
+
+
+it.each(["steps", "archivedSteps"] as const)(
+  "does not claim nothing changed for a resumed nonterminal without a result in %s",
+  async (location) => {
+    const unresolved = { iteration: 0, toolCall: { id: "unsettled", name: "WRITE", params: { target: "owned" } } };
+    const seed: PlannerTrajectory = { context: { id: "resume-unknown" }, steps: location === "steps" ? [unresolved] : [], archivedSteps: location === "archivedSteps" ? [unresolved] : [], plannedQueue: [], evaluatorOutputs: [] };
+    let requests = 0;
+    const execute = vi.fn(async (_call: { name: string }) => ({ success: true, effectReceipts: [read] }));
+    const result = await runPlannerLoop({
+      context: { id: "fresh-authorized-context", events: [] },
+      resumeState: { trajectory: seed, modelUsage: { promptTokens: 0, completionTokens: 0, modelCalls: 0 } },
+      tools: [{ name: "CALENDAR_FEED", parameters: { type: "object", properties: { details: { type: "object" } } } }],
+      runtime: { useModel: async (_type, params) => {
+        if (!params.tools) return JSON.stringify({ messageToUser: "" });
+        requests++;
+        return { text: "", toolCalls: [{ id: `read-${requests}`, name: "CALENDAR_FEED", arguments: { details: { date: `day-${requests}` }, ...(requests === 1 ? { eliza_turn_scope: "more_work_pending" } : {}) } }] };
+      } },
+      executeToolCall: execute,
+      evaluate: async () => ({ success: false, decision: "CONTINUE" as const }),
+    });
+    expect(result.terminalFailure).toMatchObject({ code: "PLANNER_SCOPE_DECLARATION_REQUIRED", message: "I couldn't finish that, and part of it may already be done." });
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(execute.mock.calls.every(([call]) => call.name !== "WRITE")).toBe(true);
   },
 );

@@ -150,7 +150,7 @@ it("replays the declared scope so a retry after an argument rejection runs", asy
   );
 });
 
-it("shows the corrected calls when a batch leaves out the pending scope", async () => {
+it("leaves a missing scope unknown until the model explicitly chooses it", async () => {
   let requests = 0;
   let feedback: { expectedCalls?: unknown; rejectedModelOutput?: unknown } = {};
   const execute = vi.fn(async () => read);
@@ -190,7 +190,7 @@ it("shows the corrected calls when a batch leaves out the pending scope", async 
           if (expected)
             return {
               text: "",
-              toolCalls: [{ id: "feed-3", ...expected }],
+              toolCalls: [{ id: "feed-3", ...expected, arguments: { ...expected.arguments, eliza_turn_scope: "final" } }],
             };
         }
         if (requests <= 3)
@@ -215,7 +215,6 @@ it("shows the corrected calls when a batch leaves out the pending scope", async 
       name: "CALENDAR_FEED",
       arguments: {
         details: { date: "2026-10-31" },
-        eliza_turn_scope: "final",
       },
     },
   ]);
@@ -225,4 +224,35 @@ it("shows the corrected calls when a batch leaves out the pending scope", async 
     name: "CALENDAR_FEED",
     params: { details: { date: "2026-10-31" } },
   });
+});
+
+
+it("preserves known per-call scope without guessing another call's missing scope", async () => {
+  let requests = 0;
+  let feedback: { expectedCalls?: unknown } = {};
+  const execute = vi.fn(async () => read);
+  await expect(runPlannerLoop({
+    context: { id: "mixed-scope-feedback", events: [] }, tools,
+    runtime: { useModel: async (_type, params) => {
+      requests++;
+      if (requests === 1) return { text: "", toolCalls: [{ id: "initial", name: "CALENDAR_FEED", arguments: { details: { date: "2026-10-29" }, eliza_turn_scope: "more_work_pending" } }] };
+      if (requests === 2) return { text: "", toolCalls: [
+        { id: "known", name: "CALENDAR_FEED", arguments: { details: { date: "2026-10-30" }, eliza_turn_scope: "more_work_pending" } },
+        { id: "missing", name: "CALENDAR_FEED", arguments: { details: { date: "2026-10-31" } } },
+      ] };
+      const rejection = (params.messages ?? []).map(message => typeof message.content === "string" ? message.content : "").findLast(content => content.includes("PLANNER_SCOPE_DECLARATION_REQUIRED"));
+      if (!rejection) throw new Error("Expected missing-scope feedback before capture");
+      feedback = JSON.parse(rejection.slice(rejection.indexOf("{")));
+      throw new Error("Mixed scope feedback captured");
+    } }, executeToolCall: execute,
+    evaluate: async () => ({ success: false, decision: "CONTINUE" as const }),
+    config: { maxRepeatedFailures: 2, maxIterations: 5 },
+  })).rejects.toThrow("Mixed scope feedback captured");
+  expect(feedback.expectedCalls).toEqual([
+    { name: "CALENDAR_FEED", arguments: { details: { date: "2026-10-30" }, eliza_turn_scope: "more_work_pending" } },
+    { name: "CALENDAR_FEED", arguments: { details: { date: "2026-10-31" } } },
+  ]);
+  // The entire mixed batch was rejected; no missing-scope call or settled
+  // operation was replayed by this diagnostic feedback.
+  expect(execute).toHaveBeenCalledTimes(1);
 });
