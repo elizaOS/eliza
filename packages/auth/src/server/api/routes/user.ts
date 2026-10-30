@@ -69,7 +69,7 @@ import {
   type KeyObject,
   randomBytes,
 } from "node:crypto";
-import { logger } from "@elizaos/core";
+import { ElizaError, logger } from "@elizaos/core";
 import bs58 from "bs58";
 import { and, desc, eq, gte, ilike, inArray, ne, or, sql } from "drizzle-orm";
 import { type Context, Hono, type Next } from "hono";
@@ -437,8 +437,16 @@ function parseStoredUserWalletEncryptedImportSession(
       createdAt,
       expiresAt,
     };
-  } catch {
-    return null;
+  } catch (cause) {
+    // The stored value exists but no longer decrypts: a key-store rotation or
+    // torn write, not an unknown session id. Returning null here makes the
+    // route answer "invalid or expired" and blame the client, so surface the
+    // failure instead and leave the bytes in place for recovery.
+    throw new ElizaError("Stored user wallet import session cannot be read.", {
+      code: "USER_WALLET_IMPORT_SESSION_UNREADABLE",
+      cause,
+      severity: "ephemeral",
+    });
   }
 }
 
