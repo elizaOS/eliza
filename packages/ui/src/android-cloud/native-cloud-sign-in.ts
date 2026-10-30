@@ -125,7 +125,10 @@ interface PendingRequest {
     outcome: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>,
   ) => void;
   reject: (error: NativeCloudSignInError) => void;
-  activate?: (signal: AbortSignal) => Promise<void>;
+  activate?: (
+    signal: AbortSignal,
+    outcome: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>,
+  ) => Promise<void>;
   returned?: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>;
   onReturn?: (
     outcome: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>,
@@ -162,7 +165,10 @@ export function getAndroidNativeCloudSignInRequest(): AndroidNativeCloudSignInRe
  */
 export function requestAndroidNativeCloudSignIn(
   environment: ElizaCloudEnvironment,
-  activate?: (signal: AbortSignal) => Promise<void>,
+  activate?: (
+    signal: AbortSignal,
+    outcome: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>,
+  ) => Promise<void>,
 ): Promise<NativeCloudSignInAuthenticated<ElizaCloudEnvironment>> {
   if (pending) {
     return pending.request.environment === environment
@@ -201,7 +207,7 @@ export async function activateAndroidNativeCloudSignIn(
     outcome,
     current.request.environment,
   );
-  await current.activate?.(signal);
+  await current.activate?.(signal, parsed);
   signal.throwIfAborted();
   if (pending !== current)
     throw new DOMException("Sign-in owner changed", "AbortError");

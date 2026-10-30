@@ -155,6 +155,32 @@ describe("request broker", () => {
     expect(activate).toHaveBeenCalledTimes(2);
   });
 
+  it("passes the committed identity through the broker before activating the account", async () => {
+    storage.getStorageValue.mockResolvedValue("protected-native-token");
+    const outcome = authenticated("production", {
+      attemptId: "00000000-0000-4000-8000-000000000001",
+      credentialId: "00000000-0000-4000-8000-000000000002",
+      requestId: "00000000-0000-4000-8000-000000000003",
+    });
+    const port = {
+      credentialIdentity: vi.fn(async () => ({
+        environment: "production",
+        credentialId: "00000000-0000-4000-8000-000000000004",
+      })),
+    } as unknown as ElizaNativeCloudSignInPort;
+    const completed = requestAndroidNativeCloudSignIn("production", (signal, committed) =>
+      activateAndroidNativeCloudSession(signal, committed, port),
+    );
+    void completed.catch(() => {});
+    await expect(activateAndroidNativeCloudSignIn(1, outcome, new AbortController().signal))
+      .rejects.toMatchObject({ code: "state-mismatch" });
+    expect(port.credentialIdentity).toHaveBeenCalledOnce();
+    expect(session.dispatchStewardSessionChange).not.toHaveBeenCalled();
+    expect(getAndroidNativeCloudSignInRequest()?.id).toBe(1);
+    abandonAndroidNativeCloudSignIn(1, new NativeCloudSignInError("cancelled"));
+    await expect(completed).rejects.toMatchObject({ code: "cancelled" });
+  });
+
   it("abandons with the native failure code and frees the slot", async () => {
     const left = requestAndroidNativeCloudSignIn("staging");
     abandonAndroidNativeCloudSignIn(1, new NativeCloudSignInError("cancelled"));
