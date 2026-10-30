@@ -24,7 +24,6 @@ android {
  namespace 'ai.eliza.sense'
  compileSdk rootProject.ext.compileSdkVersion
  ndkVersion '28.2.13676358'
- androidResources { noCompress += ['gguf', 'lex'] }
  buildFeatures { buildConfig true }
  defaultConfig {
   applicationId host + '.sense'
