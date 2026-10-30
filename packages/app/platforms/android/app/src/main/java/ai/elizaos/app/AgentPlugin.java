@@ -16,22 +16,17 @@ import java.util.Iterator;
 
 @CapacitorPlugin(name = "Agent")
 public class AgentPlugin extends Plugin {
-    private final Object ownerLock = new Object(), enrollmentLock = new Object();
-    private long requestEpoch;
+    private static final Object ownerLock = new Object(), enrollmentLock = new Object();
     private boolean closed;
-    private NativeOwnerTransport.Session ownerSession;
-    private ElizaResidentCredentials.Observation ownerObservation;
+    private static NativeOwnerTransport.Session ownerSession;
+    private static ElizaResidentCredentials.Observation ownerObservation;
 
-    private void retireRequests() {
-        synchronized (ownerLock) { requestEpoch++; ownerSession = null; }
-    }
-
-    private NativeOwnerTransport.Host ownerHost(long epoch, ElizaResidentCredentials.Observation observation, Integer timeoutMs) {
+    private NativeOwnerTransport.Host ownerHost(ElizaResidentCredentials.Observation observation, Integer timeoutMs) {
         return new NativeOwnerTransport.Host() {
             public Object enrollmentLock() { return enrollmentLock; }
             public String root() { return ElizaAgentService.localAgentToken(getContext()); }
             private void requireLocal(String root) {
-                if (closed || epoch != requestEpoch || root == null || root.isEmpty()
+                if (closed || root == null || root.isEmpty()
                         || !root.equals(root())) throw new IllegalStateException("Local request owner changed");
             }
             public void check(String root) throws Exception {
@@ -69,7 +64,6 @@ public class AgentPlugin extends Plugin {
     @PluginMethod
     public void start(PluginCall call) {
         try {
-            retireRequests();
             ElizaAgentService.start(getContext());
             call.resolve(status("starting"));
         } catch (RuntimeException e) {
@@ -80,7 +74,6 @@ public class AgentPlugin extends Plugin {
     @PluginMethod
     public void stop(PluginCall call) {
         try {
-            retireRequests();
             ElizaAgentService.stop(getContext());
             JSObject result = new JSObject();
             result.put("ok", true);
@@ -117,12 +110,14 @@ public class AgentPlugin extends Plugin {
     @PluginMethod
     public void request(PluginCall call) {
         String path = call.getString("path"), method = call.getString("method", "GET"), body = call.getString("body");
-        if (NativeAppReadPolicy.allowed(path, method, body)) {
-            final long epoch;
-            synchronized (ownerLock) { epoch = requestEpoch; }
+        if (NativeAppReadPolicy.claims(path, method)) {
+            if (!NativeAppReadPolicy.allowed(path, method, body)) {
+                call.reject("Unsupported native application read");
+                return;
+            }
             try {
                 ElizaResidentCredentials.Observation observation = ElizaResidentCredentials.observe();
-                NativeOwnerTransport.Host host = ownerHost(epoch, observation, call.getInt("timeoutMs"));
+                NativeOwnerTransport.Host host = ownerHost(observation, call.getInt("timeoutMs"));
                 String requestRoot = host.root();
                 host.check(requestRoot);
                 JSONObject response = "/api/auth/status".equals(path) ? NativeOwnerTransport.requirements(host)
@@ -170,6 +165,10 @@ public class AgentPlugin extends Plugin {
      */
     @PluginMethod
     public void requestStream(PluginCall call) {
+        if (NativeAppReadPolicy.claims(call.getString("path"), call.getString("method", "GET"))) {
+            call.reject("Native application reads require the buffered owner transport");
+            return;
+        }
         final String streamId = java.util.UUID.randomUUID().toString();
         try {
             // Prime the per-process token (see request()).
@@ -308,7 +307,7 @@ public class AgentPlugin extends Plugin {
 
     @Override
     protected void handleOnDestroy() {
-        synchronized (ownerLock) { closed = true; requestEpoch++; ownerSession = null; }
+        synchronized (ownerLock) { closed = true; }
         for (ElizaAgentService.LocalStreamHandle handle : eventSubscriptions.values()) handle.cancel();
         eventSubscriptions.clear();
         super.handleOnDestroy();

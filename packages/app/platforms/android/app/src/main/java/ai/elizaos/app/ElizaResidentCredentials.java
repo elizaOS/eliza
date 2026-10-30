@@ -44,19 +44,20 @@ final class ElizaResidentCredentials {
     /** Read-only request fence over existing lifecycle/intent state; reserves no authority. */
     static final class Observation {
         private final long intent, epoch;
+        private final ElizaAgentService.RequestObservation runtime;
         private Observation() {
             synchronized (LIFECYCLE) {
                 if (mutationEpoch != -1) throw new IllegalStateException("Credential mutation pending");
-                intent = INTENTS.current(); epoch = lifecycleEpoch;
+                intent = INTENTS.current(); epoch = lifecycleEpoch; runtime = ElizaAgentService.observeRequests();
             }
         }
-        boolean same(Observation other) { return other != null && intent == other.intent && epoch == other.epoch; }
+        boolean same(Observation other) { return other != null && intent == other.intent && epoch == other.epoch && runtime.same(other.runtime); }
         <T> T withCurrent(NativeSecureStore.Effect<T> effect) throws Exception {
             synchronized (LIFECYCLE) {
                 INTENTS.require(intent);
                 if (epoch != lifecycleEpoch || mutationEpoch != -1)
                     throw new IllegalStateException("Credential lifecycle changed");
-                return effect.run();
+                return runtime.withCurrent(() -> effect.run());
             }
         }
     }

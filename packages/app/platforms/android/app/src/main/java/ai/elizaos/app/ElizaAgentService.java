@@ -257,6 +257,38 @@ public class ElizaAgentService extends Service {
     // Ordered cross-instance starts and releases. All waits stay off Android's main thread.
     private static volatile java.util.concurrent.CompletableFuture<Void> serviceLifecycleCompletion =
         java.util.concurrent.CompletableFuture.completedFuture(null);
+    private static long ownerRequestEpoch;
+    private static boolean ownerRequestsOpen = true;
+
+    /** The service owns request admission across Activities and asynchronous runtime replacement. */
+    private static void retireRuntimeRequests() {
+        synchronized (ElizaAgentService.class) { ownerRequestEpoch++; ownerRequestsOpen = false; }
+    }
+    private static long beginRuntimeStart() {
+        synchronized (ElizaAgentService.class) { ownerRequestsOpen = false; return ++ownerRequestEpoch; }
+    }
+    private static void runtimeStarted(long epoch) {
+        synchronized (ElizaAgentService.class) { if (ownerRequestEpoch == epoch) ownerRequestsOpen = true; }
+    }
+    public static final class RequestObservation {
+        private final long epoch;
+        private RequestObservation() {
+            synchronized (ElizaAgentService.class) {
+                if (!ownerRequestsOpen) throw new IllegalStateException("Resident requests unavailable");
+                epoch = ownerRequestEpoch;
+            }
+        }
+        public boolean same(RequestObservation other) { return other != null && epoch == other.epoch; }
+        public <T> T withCurrent(java.util.concurrent.Callable<T> effect) throws Exception {
+            synchronized (ElizaAgentService.class) {
+                if (!ownerRequestsOpen || epoch != ownerRequestEpoch)
+                    throw new IllegalStateException("Resident request lifecycle changed");
+                return effect.call();
+            }
+        }
+    }
+    public static RequestObservation observeRequests() { return new RequestObservation(); }
+
     private static final String CREDENTIAL_SHUTDOWN_EPOCH = "credentialShutdownEpoch";
     private static final ai.eliza.plugins.agent.runtime.CredentialShutdownLease credentialShutdown =
         new ai.eliza.plugins.agent.runtime.CredentialShutdownLease();
@@ -282,6 +314,7 @@ public class ElizaAgentService extends Service {
     }
 
     private static void dispatchCredentialShutdown(Context context, long request) {
+        retireRuntimeRequests();
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_STOP);
         intent.putExtra(CREDENTIAL_SHUTDOWN_EPOCH, request);
@@ -1185,6 +1218,7 @@ public class ElizaAgentService extends Service {
                 return START_NOT_STICKY;
             }
             admittedCredentialShutdownEpoch = requested;
+            retireRuntimeRequests();
             shuttingDown = true;
             appendDiagnosticEvent("service-stop-intent", details);
             stopSelf();
@@ -1223,6 +1257,7 @@ public class ElizaAgentService extends Service {
         // its contract is the opposite — "a surviving detached agent process
         // is left untouched for [the next launch] to adopt" — so exclude it.
         boolean requestedStop = shuttingDown && !foregroundStartDenied;
+        if (requestedStop) retireRuntimeRequests();
         Map<String, String> details = new LinkedHashMap<>();
         details.put("shuttingDown", String.valueOf(requestedStop));
         details.put("currentStatus", currentStatus);
@@ -2264,6 +2299,7 @@ public class ElizaAgentService extends Service {
             if (startWorker != null && startWorker.isAlive()) {
                 return;
             }
+            retireRuntimeRequests();
             currentStatus = restartFirst ? "restarting" : "starting";
             updateNotification();
             final java.util.concurrent.CompletableFuture<Void> previousLifecycle, lifecycle =
@@ -2295,7 +2331,8 @@ public class ElizaAgentService extends Service {
                             updateNotification();
                             return;
                         }
-                        startAgentProcess(!restartFirst);
+                        long ownerRequestEpoch = beginRuntimeStart();
+                        if (startAgentProcess(!restartFirst)) runtimeStarted(ownerRequestEpoch);
                     }
                 } finally {
                     synchronized (processLock) {
@@ -2309,12 +2346,12 @@ public class ElizaAgentService extends Service {
         }
     }
 
-    private void startAgentProcess(boolean allowAdoption) {
+    private boolean startAgentProcess(boolean allowAdoption) {
         synchronized (processLock) {
             // A queued worker may acquire this lock after teardown has confirmed absence.
-            if (shuttingDown) return;
+            if (shuttingDown) return false;
             if (agentProcess != null && agentProcess.isAlive()) {
-                return;
+                return true;
             }
 
             // Detached agents outlive the service/app process that launched
@@ -2342,7 +2379,7 @@ public class ElizaAgentService extends Service {
                     currentStatus="runtime-identity-unavailable";
                     appendDiagnosticEvent("runtime-adoption-refused", null);
                     updateNotification();
-                    return; // Preserve the prior owner; never launch a second resident.
+                    return false; // Preserve the prior owner; never launch a second resident.
                 }
                 detachedAgentMode = true;
                 restoreAdoptedRuntimeOwnership();
@@ -2352,7 +2389,7 @@ public class ElizaAgentService extends Service {
                 }
                 appendDiagnosticEvent("detached-agent-adopted", null);
                 Log.i(TAG, "Detached agent already accepting on the request socket; adopting it (no relaunch).");
-                return;
+                return true;
             }
 
             // The agent may have been launched moments ago and still be in its
@@ -2403,7 +2440,7 @@ public class ElizaAgentService extends Service {
                     armDetachedStartupProbeOnce(
                         launchStartedAt,
                         childStart != null ? childStart.startupTraceId : null);
-                    return;
+                    return true;
                 }
                 Map<String, String> staleDetails = new LinkedHashMap<>();
                 staleDetails.put("ageMs", String.valueOf(System.currentTimeMillis() - launchStartedAt));
@@ -2430,7 +2467,7 @@ public class ElizaAgentService extends Service {
                 Log.e(TAG, "Failed to extract agent assets for abi=" + abi, error);
                 currentStatus = "extract-failed";
                 updateNotification();
-                return;
+                return false;
             }
 
             File root = agentRoot();
@@ -2440,7 +2477,7 @@ public class ElizaAgentService extends Service {
             final RuntimeLaunchPaths launchPaths;
             try { launchPaths=runtimeLaunchPaths(abi); }
             catch (IOException invalidTarget) {
-                currentStatus="runtime-identity-unavailable"; updateNotification(); return;
+                currentStatus="runtime-identity-unavailable"; updateNotification(); return false;
             }
             File bun = launchPaths.bun;
             String loaderName = launchPaths.loaderName;
@@ -2449,19 +2486,19 @@ public class ElizaAgentService extends Service {
                 Log.e(TAG, "Agent bundle missing at " + bundle);
                 currentStatus = "missing-bundle";
                 updateNotification();
-                return;
+                return false;
             }
             if (!bun.exists()) {
                 Log.e(TAG, "bun binary missing at " + bun);
                 currentStatus = "missing-bun";
                 updateNotification();
-                return;
+                return false;
             }
             if (!launchScript.exists()) {
                 Log.e(TAG, "Agent launch script missing at " + launchScript);
                 currentStatus = "missing-launcher";
                 updateNotification();
-                return;
+                return false;
             }
             File loader = launchPaths.launchExecutable;
 
@@ -2483,7 +2520,7 @@ public class ElizaAgentService extends Service {
                 Log.e(TAG, "Runtime deployment paths could not be resolved", identityError);
                 currentStatus = "runtime-identity-unavailable";
                 updateNotification();
-                return;
+                return false;
             }
 
             // Serialize recovery across native supervisors, preserving every unproven owner.
@@ -2496,7 +2533,7 @@ public class ElizaAgentService extends Service {
                 Log.e(TAG, "Private IPC recovery refused", recoveryError);
                 appendDiagnosticEvent("ipc-recovery-required", java.util.Collections.singletonMap("reason", recoveryError.getMessage()));
                 updateNotification();
-                return;
+                return false;
             }
 
             // Generate a fresh per-boot token for the WebView↔agent loopback.
@@ -3205,7 +3242,7 @@ public class ElizaAgentService extends Service {
                 pb.redirectOutput(ProcessBuilder.Redirect.to(devNull));
             }
 
-            if (shuttingDown) return;
+            if (shuttingDown) return false;
             Process started;
             try {
                 started = pb.start();
@@ -3214,7 +3251,7 @@ public class ElizaAgentService extends Service {
                 currentStatus = "spawn-failed";
                 updateNotification();
                 scheduleRestart();
-                return;
+                return false;
             }
 
             agentProcess = started;
@@ -3304,6 +3341,7 @@ public class ElizaAgentService extends Service {
             }, "ElizaAgent-exit-watcher");
             exitWatcher.setDaemon(true);
             exitWatcher.start();
+            return true;
         }
     }
 
@@ -4363,6 +4401,7 @@ public class ElizaAgentService extends Service {
                         + " consecutive).");
                     if (decision.restartRequired) {
                         Log.w(TAG, "Agent unresponsive — force-restarting.");
+                        retireRuntimeRequests();
                         if (stopAgentProcessOrPreserve(false)) {
                             scheduleRestart(true);
                         } else {
@@ -4749,6 +4788,7 @@ public class ElizaAgentService extends Service {
 
     /** Request a graceful stop via the ACTION_STOP intent. */
     public static void stop(Context context) {
+        retireRuntimeRequests();
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_STOP);
         context.startService(intent);
@@ -4756,6 +4796,7 @@ public class ElizaAgentService extends Service {
 
     /** Restart the agent process without tearing down the service. */
     public static void restart(Context context) {
+        retireRuntimeRequests();
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_RESTART);
         context.startService(intent);

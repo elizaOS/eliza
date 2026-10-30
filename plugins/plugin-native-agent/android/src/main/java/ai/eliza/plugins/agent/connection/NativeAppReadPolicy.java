@@ -8,6 +8,23 @@ public final class NativeAppReadPolicy {
   private NativeAppReadPolicy() {}
   private static final OwnerRoutePolicy POLICY = policy();
 
+  /** Claim read-shaped requests before validation; aliases cannot use the legacy transport.
+   * Other methods retain the host's existing mutation contracts, including PUT /api/config. */
+  public static boolean claims(String path, String method) {
+    if (path == null || method == null || !"GET".equalsIgnoreCase(method.trim())) return false;
+    String route = path.trim().split("[?#]", 2)[0].replace('\\', '/');
+    try { route = java.net.URLDecoder.decode(route.replace("+", "%2B"), "UTF-8"); }
+    catch (Exception invalid) { /* Match any remaining literal common prefix below. */ }
+    java.util.ArrayList<String> segments = new java.util.ArrayList<>();
+    for (String segment : route.replace('\\', '/').split("/")) {
+      if (segment.isEmpty() || ".".equals(segment)) continue;
+      if ("..".equals(segment)) { if (!segments.isEmpty()) segments.remove(segments.size() - 1); }
+      else segments.add(segment);
+    }
+    route = "/" + String.join("/", segments);
+    return POLICY.allowed("app-reads", route, "GET");
+  }
+
   private static OwnerRoutePolicy policy() {
     try {
       JSONArray paths = new JSONArray(new String[] {
