@@ -82,6 +82,12 @@ export {
   mobileShellViewPaths,
 } from "./view-ids";
 export {
+  MOBILE_NATIVE_VIEW_IDS,
+  type MobileViewPolicyContext,
+  type MobileViewPolicyPage,
+  mobileViewIsAvailable,
+} from "./view-policy";
+export {
   createMobileViewRegistry,
   type MobileViewContribution,
   type MobileViewLoader,

@@ -81,6 +81,45 @@ Public Terms and Privacy read `/api/public/service` from that deployment. Config
 shows an unavailable state with Retry, never another provider's legal policy.
 Document titles, revisions and paragraphs render as plain text.
 
+## Native mobile sign-in
+
+`@elizaos/ui/android-cloud/NativeCloudSignInView` renders the common email,
+SMS, Google and MFA surface. Its styles ship in `@elizaos/ui/styles`; a host that
+does not load that sheet imports `@elizaos/ui/styles/native-cloud-sign-in.css`.
+The module itself imports no stylesheet, so Node can load the package root. Its `NativeCloudSignInController` comes from the
+adjacent `native-cloud-sign-in-controller` entry. The app owns that controller's
+lifetime: call `start()` after mounting the owner and `dispose()` when retiring
+it. A view may unmount without retiring an application-owned attempt.
+
+The controller accepts the shared auth native port and an immutable owner guard.
+`runOperation` can join the host's existing session-operation lock; it must reject
+busy or retired work instead of skipping an action. `activate` verifies the stored
+session and account before completion. A failed activation remains a retry of
+that authenticated outcome, without requesting another code. Native storage,
+credential replacement and provider retirement remain with their existing owners.
+The controller neither stores a token nor treats authentication as entitlement,
+resident startup or AI readiness.
+
+Explicit `leave()` waits for native cancellation acknowledgement before releasing
+the owner. A failed cancellation keeps the current view available for retry and
+blocks retained outcomes and new method dispatch until retirement succeeds.
+`dispose()` is forced teardown, not an acknowledged sign-out. Once native sign-in
+has authenticated, disposal retires renderer work without cancelling the committed
+native attempt, including when account publication itself removes the view.
+Native authenticated
+events currently lack an attempt identity; hosts must not treat them as proof of
+credential retirement or correlation across a destroyed application owner.
+
+The common view accepts product copy, branding, theme tokens and a public
+`serviceInfo` loader. Terms and privacy use the strict plain-text contract in
+`native-cloud-service-info`. Canonical Android requests use the same controller
+and view; the existing request broker routes retained native completions to the
+interactive owner and waits for its account verification before closing it.
+The full-screen surface has an opaque backdrop and scrolls when enlarged text
+exceeds the viewport; `embedded` leaves the surrounding host surface visible.
+Run `bun packages/ui/src/android-cloud/__e2e__/run-native-cloud-sign-in-e2e.mjs`
+for the controlled native overlay, keyboard, MFA and activation-retry browser fixture.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:
@@ -231,3 +270,19 @@ process omits the optional field until a new verified session is created. This f
 handshake grants no Calendar access and does not replace the host's visibility checks.
 Turn cancellation stops only that caller's wait. Session retirement also cancels the
 shared handshake, so another turn cannot inherit a cancelled caller's failure.
+
+Mobile discovery uses `mobileViewIsAvailable` from `mobile-shell/core`: registered
+implementations, runtime/view-kind declarations and installed native adapters
+determine availability; product ordering is presentation only. The
+`styles/mobile-workspaces.css` export compiles scoped domain utilities with the
+host's Tailwind integration and semantic theme. It does not import the app reset.
+
+`selectHomeCalendar` in `overview/daily-overview` ranks the full local today, week
+and month from a complete current-owner feed and readable included sources. Each
+period prefers unended events, then the most recent past event. Coverage must
+include the full week and month before any item or empty answer is established;
+an incomplete query or retired owner stays unverified. Hosts
+retain their existing reads and mutation owners. The compact tray passes its
+explicit surface to keep its near-future glance window; product identity never
+selects the Calendar policy. Run `test:mobile-workspaces-style` to check scoped
+utilities from emitted package files.

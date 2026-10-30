@@ -13,7 +13,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTranslator } from "../../i18n/index";
+import { seedAppValue } from "../../state/app-store";
+import type { AppContextValue } from "../../state/types";
 import {
   AndroidNativeCloudSignInHost,
   AndroidNativeCloudSignInView,
@@ -92,6 +95,9 @@ function renderView(port: MockPort, environment = "production" as const) {
   return { onAuthenticated, onAbandon };
 }
 
+beforeEach(() => {
+  seedAppValue({ t: createTranslator("en") } as AppContextValue);
+});
 afterEach(() => {
   cleanup();
   resetAndroidNativeCloudSignInForTesting();
@@ -141,6 +147,7 @@ describe("AndroidNativeCloudSignInView", () => {
     expect(port.startEmail).toHaveBeenCalledWith({
       environment: "production",
       email: "owner@example.com",
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
     // A resend waits for the cooldown the native host reported.
     expect(
@@ -230,6 +237,18 @@ describe("AndroidNativeCloudSignInView", () => {
     expect(onAuthenticated).not.toHaveBeenCalled();
   });
 
+  it("keeps a Google second factor unauthenticated until the native MFA verification succeeds", async () => {
+    const port = mockPort();
+    vi.mocked(port.startGoogle).mockResolvedValue({ status: "mfa", environment: "production", attemptId: ATTEMPT, method: "totp", expiresAt: later(300_000) });
+    const { onAuthenticated } = renderView(port);
+    fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
+    const code = await screen.findByTestId("native-cloud-sign-in-code");
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    fireEvent.change(code, { target: { value: "123456" } });
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-verify"));
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledOnce());
+  });
+
   it("signs in with the native Google account picker", async () => {
     const port = mockPort();
     const { onAuthenticated } = renderView(port);
@@ -237,21 +256,122 @@ describe("AndroidNativeCloudSignInView", () => {
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
     expect(port.startGoogle).toHaveBeenCalledWith({
       environment: "production",
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
+  });
+
+  it("does not activate a late Google answer after its sign-in view is retired", async () => {
+    const port = mockPort();
+    let finish!: (value: unknown) => void;
+    port.startGoogle = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const { onAuthenticated } = renderView(port);
+    fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
+    await waitFor(() => expect(port.startGoogle).toHaveBeenCalledOnce());
+    cleanup();
+    await act(async () => { finish(authenticated()); });
+    expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it("revalidates a retained MFA challenge using the native active acknowledgement", async () => {
+    const port = mockPort();
+    port.startGoogle = vi.fn(() => new Promise(() => {}));
+    vi.mocked(port.resumeMfa!).mockResolvedValue({ active: true });
+    const { onAuthenticated } = renderView(port);
+    await waitFor(() => expect(port.addListener).toHaveBeenCalledTimes(3));
+    fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
+    await waitFor(() => expect(port.startGoogle).toHaveBeenCalledOnce());
+    await act(async () => port.emit("signInMfaRequired", {
+      status: "mfa", environment: "production", attemptId: ATTEMPT,
+      requestId: vi.mocked(port.startGoogle).mock.calls[0][0].requestId,
+      method: "totp", expiresAt: later(300_000),
+    }));
+    const code = await screen.findByTestId("native-cloud-sign-in-code");
+    expect(port.resumeMfa).toHaveBeenCalledWith({ attemptId: ATTEMPT, environment: "production" });
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    fireEvent.change(code, { target: { value: "123456" } });
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-verify"));
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
+  });
+
+  it("can verify a retained MFA return when the original Google call never answers", async () => {
+    const port = mockPort();
+    let lateGoogle!: (value: unknown) => void;
+    port.startGoogle = vi.fn(() => new Promise(resolve => { lateGoogle = resolve; }));
+    vi.mocked(port.resumeMfa!).mockResolvedValue({ active: true });
+    const { onAuthenticated } = renderView(port);
+    fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
+    await waitFor(() => expect(port.startGoogle).toHaveBeenCalledOnce());
+    await act(async () => port.emit("signInMfaRequired", {
+      status: "mfa", environment: "production", attemptId: ATTEMPT,
+      requestId: vi.mocked(port.startGoogle).mock.calls[0][0].requestId,
+      method: "totp", expiresAt: later(300_000),
+    }));
+    const code = await screen.findByTestId("native-cloud-sign-in-code");
+    fireEvent.change(code, { target: { value: "123456" } });
+    expect((screen.getByTestId("native-cloud-sign-in-verify") as HTMLButtonElement).disabled).toBe(false);
+    // The superseded renderer callback cannot authenticate the still-unverified MFA attempt.
+    await act(async () => { lateGoogle(authenticated()); });
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-verify"));
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledOnce());
+    expect(port.verifyMfa).toHaveBeenCalledWith({ attemptId: ATTEMPT, code: "123456" });
+    expect(port.cancel).not.toHaveBeenCalled();
+  });
+
+  it("keeps an in-flight attempt when the host rerenders its callbacks", async () => {
+    const port = mockPort();
+    const earlier = vi.fn(), latest = vi.fn();
+    let finish!: (value: unknown) => void;
+    port.startGoogle = vi.fn(() => new Promise((resolve) => { finish = resolve; }));
+    const view = render(<AndroidNativeCloudSignInView request={{ id: 1, environment: "production" }} port={port} onAuthenticated={earlier} />);
+    fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
+    await waitFor(() => expect(port.startGoogle).toHaveBeenCalledOnce());
+    view.rerender(<AndroidNativeCloudSignInView request={{ id: 1, environment: "production" }} port={port} onAuthenticated={latest} />);
+    await act(async () => { finish(authenticated()); });
+    expect(latest).toHaveBeenCalledOnce();
+    expect(earlier).not.toHaveBeenCalled();
+    expect(port.cancel).not.toHaveBeenCalled();
   });
 
   it("cancels the native attempt and reports the owner left", async () => {
     const port = mockPort();
     const { onAbandon, onAuthenticated } = renderView(port);
-    await screen.findByTestId("native-cloud-sign-in-email");
+    const email = await screen.findByTestId("native-cloud-sign-in-email");
+    fireEvent.change(email, { target: { value: "owner@example.invalid" } });
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-email-send"));
+    await screen.findByTestId("native-cloud-sign-in-code");
     fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
     expect(port.cancel).toHaveBeenCalledTimes(1);
-    expect(onAbandon).toHaveBeenCalledTimes(1);
+    await screen.findByTestId("native-cloud-sign-in-email");
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
+    await waitFor(() => expect(onAbandon).toHaveBeenCalledTimes(1));
     expect(onAbandon.mock.calls[0][0]).toMatchObject({ code: "cancelled" });
     expect(onAuthenticated).not.toHaveBeenCalled();
   });
 
-  it("completes from a native restart announcement and shows an unverified return", async () => {
+  it("keeps the owner mounted when cancel is unacknowledged and rejects its retained completion", async () => {
+    const port = mockPort();
+    vi.mocked(port.cancel).mockRejectedValue(new Error("bridge acknowledgement lost"));
+    const { onAbandon, onAuthenticated } = renderView(port);
+    const email = await screen.findByTestId("native-cloud-sign-in-email");
+    fireEvent.change(email, { target: { value: "owner@example.invalid" } });
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-email-send"));
+    await screen.findByTestId("native-cloud-sign-in-code");
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
+    await screen.findByTestId("native-cloud-sign-in-error");
+    expect(onAbandon).not.toHaveBeenCalled();
+    const requestId = vi.mocked(port.startEmail).mock.calls[0][0].requestId;
+    await act(async () => port.emit("signInCompleted", { ...authenticated(), requestId, attemptId: ATTEMPT, credentialId: ATTEMPT }));
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    vi.mocked(port.cancel).mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
+    await screen.findByTestId("native-cloud-sign-in-email");
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
+    await waitFor(() => expect(onAbandon).toHaveBeenCalledOnce());
+    expect(port.cancel).toHaveBeenCalledTimes(2);
+  });
+
+  it("ignores an unscoped native restart announcement on a fresh interactive request", async () => {
     const port = mockPort();
     const { onAuthenticated } = renderView(port);
     await waitFor(() => expect(port.addListener).toHaveBeenCalledTimes(3));
@@ -259,12 +379,29 @@ describe("AndroidNativeCloudSignInView", () => {
     expect(
       (await screen.findByTestId("native-cloud-sign-in-error")).textContent,
     ).toContain("Eliza did not receive the sign-in from your browser");
-    act(() => port.emit("signInCompleted", authenticated()));
-    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
+    await act(async () => port.emit("signInCompleted", authenticated()));
+    expect(onAuthenticated).not.toHaveBeenCalled();
   });
 });
 
 describe("AndroidNativeCloudSignInHost", () => {
+  it("keeps the account activation error on the sign-in surface and retries without sending another code", async () => {
+    const port = mockPort();
+    const activate = vi.fn().mockRejectedValueOnce(new Error("private server detail")).mockResolvedValueOnce(undefined);
+    render(<AndroidNativeCloudSignInHost port={port} fallback={<p>Session ready</p>} />);
+    let signedIn!: Promise<unknown>;
+    act(() => { signedIn = requestAndroidNativeCloudSignIn("production", activate); });
+    fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
+    await screen.findByRole("button", { name: "Retry connection" });
+    expect(screen.queryByText("Session ready")).toBeNull();
+    expect(screen.queryByText("private server detail")).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Retry connection" }));
+    await act(async () => { await signedIn; });
+    expect(screen.getByText("Session ready")).toBeTruthy();
+    expect(port.startGoogle).toHaveBeenCalledOnce();
+    expect(activate).toHaveBeenCalledTimes(2);
+  });
+
   it("shows the fallback until a sign-in is requested, then settles the request", async () => {
     const port = mockPort();
     render(

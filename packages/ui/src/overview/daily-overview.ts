@@ -274,6 +274,8 @@ export interface OverviewInboxCardInput {
 /** Everything a Home mail card renders (see `OverviewAttentionCard`). */
 export interface OverviewInboxCardModel {
   state: OverviewInboxCardState;
+  /** Destination named by the card label; independent of its read state. */
+  action: "inbox" | "connections";
   /** "2 unread", "3+ unread", or empty. */
   count: string;
   /** At most two unread messages of the loaded page. */
@@ -308,6 +310,7 @@ export function presentOverviewInboxCard(
   if (stale)
     return {
       state: "stale",
+      action: stale.action,
       count: "",
       rows: [],
       title: "Inbox",
@@ -332,8 +335,10 @@ export function presentOverviewInboxCard(
   const count = unread.length
     ? `${unread.length}${loaded?.more ? "+" : ""} unread`
     : "";
+  const action = !count && input.disconnected ? "connections" : "inbox";
   const text = (value: unknown) => (typeof value === "string" ? value : "");
   return {
+    action,
     state: failure
       ? "error"
       : pending
@@ -364,7 +369,7 @@ export function presentOverviewInboxCard(
     status,
     label: count
       ? `Open Inbox: ${count} email${unread.length === 1 ? "" : "s"}`
-      : input.disconnected
+      : action === "connections"
         ? "Connect email"
         : "Open Inbox",
     description: status,
@@ -1181,4 +1186,206 @@ export function presentOverviewWorkflowFreshness(
     visible: `Loaded ${when}`,
     description: `${source}, loaded ${when}`,
   };
+}
+
+/** The Calendar facts a Home projection may use. The host proves current ownership. */
+export interface OverviewCalendarEvent {
+  id: string;
+  externalId: string;
+  provider: string;
+  side: string;
+  grantId?: string;
+  connectorAccountId?: string;
+  calendarId: string;
+  title: string;
+  status: string;
+  startAt: string;
+  endAt: string;
+  isAllDay: boolean;
+}
+export interface OverviewCalendarSource {
+  provider: string;
+  side: string;
+  grantId: string;
+  connectorAccountId: string | null;
+  calendarId: string;
+  includeInFeed: boolean;
+  accessRole: string;
+}
+export interface OverviewCalendarSnapshot<
+  E extends OverviewCalendarEvent,
+  S extends OverviewCalendarSource = OverviewCalendarSource,
+> {
+  current: boolean;
+  ready: boolean;
+  mutating: boolean;
+  feed: {
+    state: string;
+    timeMin: string;
+    timeMax: string;
+    events: readonly E[];
+  } | null;
+  calendars: readonly S[];
+}
+/** Select today, then the full week, then the full month from the current owner's
+ * visible feed. Each period prefers unended events, then the most recent past event.
+ * A partial query cannot establish priority or emptiness. No data is read here. */
+export function selectHomeCalendar<
+  E extends OverviewCalendarEvent,
+  S extends OverviewCalendarSource,
+>(
+  snapshot: OverviewCalendarSnapshot<E, S> | undefined,
+  timeZone: string,
+  hiddenSource: (source: S) => boolean = () => false,
+  now = new Date(),
+): {
+  event: E | null;
+  candidates: readonly E[];
+  verified: boolean;
+  emptyLabel: string;
+} {
+  const quiet = {
+    event: null,
+    candidates: [],
+    verified: false,
+    emptyLabel: "Calendar",
+  };
+  if (
+    !snapshot?.current ||
+    !snapshot.ready ||
+    snapshot.mutating ||
+    snapshot.feed?.state !== "complete"
+  )
+    return quiet;
+  const parts = (value: Date, zone = timeZone) => {
+    const values = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: zone,
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "numeric",
+        minute: "numeric",
+        second: "numeric",
+        hourCycle: "h23",
+      })
+        .formatToParts(value)
+        .map((part) => [part.type, part.value]),
+    );
+    return {
+      year: Number(values.year),
+      month: Number(values.month),
+      day: Number(values.day),
+      hour: Number(values.hour),
+      minute: Number(values.minute),
+      second: Number(values.second),
+    };
+  };
+  const p = parts(now),
+    today = Date.UTC(p.year, p.month - 1, p.day),
+    monthStart = Date.UTC(p.year, p.month - 1, 1),
+    monthEnd = Date.UTC(p.year, p.month, 1);
+  const weekStart = today - ((new Date(today).getUTCDay() + 6) % 7) * 86400000;
+  const weekEnd = weekStart + 7 * 86400000;
+  const firstRequiredDay = Math.min(monthStart, weekStart);
+  const day = (value: string, allDay = false) => {
+    const instant = new Date(value);
+    if (!Number.isFinite(instant.getTime())) return NaN;
+    const p = parts(instant, allDay ? "UTC" : timeZone);
+    return Date.UTC(p.year, p.month - 1, p.day);
+  };
+  const begin = Date.parse(snapshot.feed.timeMin),
+    end = Date.parse(snapshot.feed.timeMax),
+    firstDay = day(snapshot.feed.timeMin);
+  if (
+    !Number.isFinite(begin) ||
+    !Number.isFinite(end) ||
+    begin > now.getTime() ||
+    firstDay > firstRequiredDay ||
+    day(snapshot.feed.timeMax) < Math.max(monthEnd, weekEnd)
+  )
+    return quiet;
+  if (firstDay === firstRequiredDay) {
+    const first = parts(new Date(begin));
+    if (
+      first.hour !== 0 ||
+      first.minute !== 0 ||
+      first.second !== 0 ||
+      new Date(begin).getUTCMilliseconds() !== 0
+    )
+      return quiet;
+  }
+  const visible = snapshot.feed.events.filter(
+    (event) =>
+      event.status !== "cancelled" &&
+      snapshot.calendars.some(
+        (source) =>
+          source.includeInFeed === true &&
+          ["owner", "writer", "reader"].includes(source.accessRole) &&
+          source.provider === event.provider &&
+          source.side === event.side &&
+          source.grantId === event.grantId &&
+          source.calendarId === event.calendarId &&
+          (!event.connectorAccountId ||
+            source.connectorAccountId === event.connectorAccountId) &&
+          !hiddenSource(source),
+      ),
+  );
+  const periods = [
+    [today, today + 86400000],
+    [weekStart, weekEnd],
+    [monthStart, monthEnd],
+  ];
+  const rank = (event: E) => {
+    const start = day(event.startAt, event.isAllDay);
+    const endInstant = new Date(event.endAt);
+    if (!Number.isFinite(endInstant.getTime())) return -1;
+    const endParts = parts(endInstant, event.isAllDay ? "UTC" : timeZone);
+    // Timed ends retain their local time; all-day ends are exclusive civil dates.
+    const end =
+      day(event.endAt, event.isAllDay) +
+      (event.isAllDay
+        ? 0
+        : (endParts.hour * 3600 + endParts.minute * 60 + endParts.second) *
+            1000 +
+          endInstant.getUTCMilliseconds());
+    return periods.findIndex(
+      ([begin, finish]) => start < finish && end > begin,
+    );
+  };
+  const upcoming = (event: E) =>
+    event.isAllDay
+      ? day(event.endAt, true) > today
+      : Date.parse(event.endAt) > now.getTime();
+  const candidates = visible.filter((event) => rank(event) >= 0);
+  const key = (event: E) =>
+    JSON.stringify([
+      event.provider,
+      event.side,
+      event.grantId ?? "",
+      event.connectorAccountId ?? "",
+      event.calendarId,
+      event.externalId,
+      event.id,
+    ]);
+  candidates.sort((a, b) => {
+    const aUpcoming = upcoming(a),
+      bUpcoming = upcoming(b);
+    return (
+      rank(a) - rank(b) ||
+      Number(bUpcoming) - Number(aUpcoming) ||
+      (aUpcoming
+        ? Date.parse(a.startAt) - Date.parse(b.startAt)
+        : Date.parse(b.startAt) - Date.parse(a.startAt)) ||
+      key(a).localeCompare(key(b))
+    );
+  });
+  return candidates.length
+    ? { event: candidates[0], candidates, verified: true, emptyLabel: "" }
+    : {
+        event: null,
+        candidates,
+        verified: true,
+        emptyLabel: "Nothing planned",
+      };
 }

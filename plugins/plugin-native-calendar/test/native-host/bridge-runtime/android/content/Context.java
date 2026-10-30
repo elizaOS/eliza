@@ -1,0 +1,2 @@
+package android.content;
+public abstract class Context {public static final int MODE_PRIVATE=0;public abstract ContentResolver getContentResolver();public abstract String getPackageName();public abstract java.io.File getDataDir();public abstract SharedPreferences getSharedPreferences(String name,int mode);public android.content.pm.PackageManager getPackageManager(){return new android.content.pm.PackageManager();}}

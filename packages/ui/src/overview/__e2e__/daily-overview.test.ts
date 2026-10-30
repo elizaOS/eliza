@@ -23,6 +23,9 @@ import {
   presentOverviewInboxStatus,
   presentOverviewWorkflowFreshness,
   selectOverviewAgenda,
+  selectHomeCalendar,
+  type OverviewCalendarEvent,
+  type OverviewCalendarSnapshot,
 } from "../daily-overview";
 
 // The suite runs with TZ=UTC; local constructors keep the fixtures readable.
@@ -100,6 +103,7 @@ describe("inbox card", () => {
   it("not connected, unchecked and connected-but-unloaded are distinct and claim no count", () => {
     expect(presentOverviewInboxCard({ ...base, disconnected: true }, f)).toEqual({
       state: "not-connected",
+      action: "connections",
       count: "",
       rows: [],
       title: "Connect email",
@@ -112,6 +116,26 @@ describe("inbox card", () => {
     const idle = presentOverviewInboxCard({ ...base, connected: true }, f);
     expect([idle.state, idle.title, idle.status]).toEqual(["idle", "Inbox", "Open to load email"]);
   });
+  it("returns the named destination through disconnected loading, failure and cached states", () => {
+    const stale = { state: "stale" as const, unread: 2, source: "work@example.test", updatedAt: at(8, 15, 6) };
+    const cases = [
+      { input: { pending: true }, state: "loading", label: "Connect email", action: "connections" },
+      { input: { failure: "error" as const }, state: "error", label: "Connect email", action: "connections" },
+      { input: { failure: "revoked" as const }, state: "error", label: "Connect email", action: "connections" },
+      { input: { loaded: loaded([]) }, state: "ready", label: "Connect email", action: "connections" },
+      { input: { loaded: loaded([{ subject: "Invoice" }]), pending: true }, state: "loading", label: "Open Inbox: 1 unread email", action: "inbox" },
+      { input: { loaded: loaded([{ subject: "Invoice" }]), failure: "error" as const }, state: "error", label: "Open Inbox: 1 unread email", action: "inbox" },
+      { input: { stale }, state: "stale", label: "Open Inbox: work@example.test has not updated since Tue, Oct 6 8:15 AM; 2 unread emails when last read", action: "inbox" },
+      { input: { stale, pending: true }, state: "loading", label: "Connect email", action: "connections" },
+    ];
+    for (const { input, state, label, action } of cases) {
+      const card = presentOverviewInboxCard({ ...base, disconnected: true, ...input }, f);
+      expect({ state: card.state, label: card.label, action: card.action }).toEqual({ state, label, action });
+    }
+    for (const input of [{}, { unchecked: true }, { connected: true }, { pending: true }, { failure: "error" as const }]) {
+      expect(presentOverviewInboxCard({ ...base, ...input }, f).action).toBe("inbox");
+    }
+  });
   it("a loaded page shows its unread count, two subjects and senders, the account and read time", () => {
     const card = presentOverviewInboxCard(
       {
@@ -123,6 +147,7 @@ describe("inbox card", () => {
     );
     expect(card).toEqual({
       state: "ready",
+      action: "inbox",
       count: "3 unread",
       rows: [
         { title: "Invoice", detail: "Billing" },
@@ -157,6 +182,7 @@ describe("inbox card", () => {
     const stale = { state: "stale" as const, unread: 2, source: "work@example.test", updatedAt: at(8, 15, 6) };
     expect(presentOverviewInboxCard({ ...base, connected: true, stale }, f)).toEqual({
       state: "stale",
+      action: "inbox",
       count: "",
       rows: [],
       title: "Inbox",
@@ -490,5 +516,241 @@ describe("workflow freshness", () => {
       visible: "Loaded 3:04 PM",
       description: "Reminders on this phone, loaded 3:04 PM",
     });
+  });
+});
+
+
+describe("shared Home Calendar selection", () => {
+  const clock = new Date("2026-10-30T12:00:00Z");
+  const source = {
+    provider: "eliza",
+    side: "owner",
+    grantId: "grant",
+    connectorAccountId: "account",
+    calendarId: "primary",
+    includeInFeed: true,
+    accessRole: "owner",
+  };
+  const event = (
+    id: string,
+    day: string,
+    hour = 16,
+  ): OverviewCalendarEvent => ({
+    ...source,
+    id,
+    externalId: id,
+    title: id,
+    status: "confirmed",
+    startAt: `${day}T${String(hour).padStart(2, "0")}:00:00Z`,
+    endAt: `${day}T${String(hour + 1).padStart(2, "0")}:00:00Z`,
+    isAllDay: false,
+  });
+  const snapshot = (
+    events: OverviewCalendarEvent[],
+  ): OverviewCalendarSnapshot<OverviewCalendarEvent> => ({
+    current: true,
+    ready: true,
+    mutating: false,
+    calendars: [source],
+    feed: {
+      state: "complete",
+      events,
+      timeMin: "2026-10-01T00:00:00Z",
+      timeMax: "2026-12-01T00:00:00Z",
+    },
+  });
+  const summary = (result: ReturnType<typeof selectHomeCalendar>) => ({
+    event: result.event?.id ?? null,
+    verified: result.verified,
+    emptyLabel: result.emptyLabel,
+  });
+  const cases = [
+    {
+      name: "past current week",
+      model: snapshot([event("yesterday", "2026-10-29")]),
+      expected: { event: "yesterday", verified: true, emptyLabel: "" },
+    },
+    {
+      name: "past current month",
+      model: snapshot([event("month-past", "2026-10-10")]),
+      expected: { event: "month-past", verified: true, emptyLabel: "" },
+    },
+    {
+      name: "upcoming outranks past today",
+      model: snapshot([
+        event("past-today", "2026-10-30", 8),
+        event("upcoming-today", "2026-10-30", 13),
+      ]),
+      expected: { event: "upcoming-today", verified: true, emptyLabel: "" },
+    },
+    {
+      name: "most recent past today",
+      model: snapshot([
+        event("earlier", "2026-10-30", 7),
+        event("later", "2026-10-30", 9),
+      ]),
+      expected: { event: "later", verified: true, emptyLabel: "" },
+    },
+    {
+      name: "week starts in the previous month",
+      model: snapshot([]),
+      now: new Date("2026-10-02T12:00:00Z"),
+      expected: { event: null, verified: false, emptyLabel: "Calendar" },
+    },
+    {
+      name: "nonempty feed lacks priority coverage",
+      model: {
+        ...snapshot([event("today", "2026-10-30", 13)]),
+        feed: {
+          ...snapshot([]).feed!,
+          events: [event("today", "2026-10-30", 13)],
+          timeMin: "2026-10-30T00:00:00Z",
+          timeMax: "2026-10-31T00:00:00Z",
+        },
+      },
+      expected: { event: null, verified: false, emptyLabel: "Calendar" },
+    },
+  ];
+  it.each(cases)("$name", ({ model, now, expected }) => {
+    expect(
+      summary(selectHomeCalendar(model, "UTC", undefined, now ?? clock)),
+    ).toEqual(expected);
+  });
+  it("ranks periods before upcoming status, then unended before past, without mutating the feed", () => {
+    const events = [
+      event("month-future", "2026-10-31"),
+      event("week-past", "2026-10-29"),
+      event("today-past", "2026-10-30", 8),
+      event("today-future", "2026-10-30", 13),
+      { ...event("ongoing", "2026-10-29"), endAt: "2026-10-30T14:00:00Z" },
+    ];
+    const before = [...events];
+    expect(
+      selectHomeCalendar(
+        snapshot(events),
+        "UTC",
+        undefined,
+        clock,
+      ).candidates.map((e) => e.id),
+    ).toEqual([
+      "ongoing",
+      "today-future",
+      "today-past",
+      "month-future",
+      "week-past",
+    ]);
+    expect(events).toEqual(before);
+  });
+  it("rejects retired owners, pending mutation, failed reads and partial data even when they contain an event", () => {
+    const model = snapshot([event("today", "2026-10-30")]);
+    for (const patch of [
+      { current: false },
+      { ready: false },
+      { mutating: true },
+      { feed: { ...model.feed!, state: "partial" } },
+      { feed: null },
+    ])
+      expect(
+        summary(
+          selectHomeCalendar({ ...model, ...patch }, "UTC", undefined, clock),
+        ),
+      ).toEqual({ event: null, verified: false, emptyLabel: "Calendar" });
+  });
+  it("admits only visible exact sources with readable access", () => {
+    const model = snapshot([event("today", "2026-10-30")]);
+    for (const patch of [
+      { includeInFeed: false },
+      { accessRole: "none" },
+      { grantId: "other" },
+      { connectorAccountId: "other" },
+    ])
+      expect(
+        selectHomeCalendar(
+          { ...model, calendars: [{ ...source, ...patch }] },
+          "UTC",
+          undefined,
+          clock,
+        ).event,
+      ).toBeNull();
+    expect(
+      selectHomeCalendar(model, "UTC", () => true, clock).event,
+    ).toBeNull();
+    expect(
+      selectHomeCalendar({ ...model, calendars: [] }, "UTC", undefined, clock)
+        .event,
+    ).toBeNull();
+    expect(
+      selectHomeCalendar(
+        snapshot([
+          { ...event("cancelled", "2026-10-30"), status: "cancelled" },
+        ]),
+        "UTC",
+        undefined,
+        clock,
+      ).event,
+    ).toBeNull();
+  });
+  it("covers the full week across both month boundaries before selecting or claiming empty", () => {
+    const model = snapshot([event("September", "2026-09-30")]);
+    model.feed!.timeMin = "2026-09-28T00:00:00Z";
+    const early = new Date("2026-10-02T12:00:00Z");
+    expect(selectHomeCalendar(model, "UTC", undefined, early).event?.id).toBe(
+      "September",
+    );
+    for (const begin of [
+      "2026-09-28T00:00:00.001Z",
+      "2026-09-28T00:01:00Z",
+      "2026-10-01T00:00:00Z",
+    ]) {
+      model.feed!.timeMin = begin;
+      expect(selectHomeCalendar(model, "UTC", undefined, early).verified).toBe(
+        false,
+      );
+    }
+    const empty = snapshot([]);
+    empty.feed!.timeMax = "2026-11-01T00:00:00Z";
+    expect(selectHomeCalendar(empty, "UTC", undefined, clock).verified).toBe(
+      false,
+    );
+    empty.feed!.timeMax = "2026-11-02T00:00:00Z";
+    expect(summary(selectHomeCalendar(empty, "UTC", undefined, clock))).toEqual(
+      { event: null, verified: true, emptyLabel: "Nothing planned" },
+    );
+  });
+  it("keeps all-day civil dates and exclusive midnight in their correct priority period", () => {
+    const midnight = {
+      ...event("yesterday", "2026-10-29"),
+      endAt: "2026-10-30T00:00:00Z",
+    };
+    const model = snapshot([midnight, event("tomorrow", "2026-10-31", 9)]);
+    expect(selectHomeCalendar(model, "UTC", undefined, clock).event?.id).toBe(
+      "tomorrow",
+    );
+    midnight.endAt = "2026-10-30T00:00:00.001Z";
+    expect(selectHomeCalendar(model, "UTC", undefined, clock).event?.id).toBe(
+      "yesterday",
+    );
+    const allDay = {
+      ...event("all day", "2026-10-30"),
+      isAllDay: true,
+      startAt: "2026-10-30T00:00:00Z",
+      endAt: "2026-10-31T00:00:00Z",
+    };
+    expect(
+      selectHomeCalendar(
+        snapshot([allDay]),
+        "America/Los_Angeles",
+        undefined,
+        new Date("2026-10-31T02:00:00Z"),
+      ).event?.id,
+    ).toBe("all day");
+    expect(
+      selectHomeCalendar(
+        snapshot([event("Sunday", "2026-11-01")]),
+        "UTC",
+        undefined,
+        new Date("2026-10-31T23:00:00Z"),
+      ).event?.id,
+    ).toBe("Sunday");
   });
 });

@@ -46,6 +46,11 @@ export interface DeferredDeletionNoticeProps {
   label?: string;
 }
 
+interface DeletionActionScope {
+  bridge: DeferredDeletionsBridge;
+  current(): boolean;
+}
+
 const STATUS_FAILURES_BEFORE_ERROR = 3;
 /** Failed Undo or dismissal results stay visible after a refresh until the next action. */
 const ACTION_FAILURES: ReadonlySet<string> = new Set([
@@ -68,9 +73,15 @@ export function DeferredDeletionNotice({
   className = DEFAULT_CLASS,
   label = "Pending deletions",
 }: DeferredDeletionNoticeProps) {
-  const [entries, setEntries] = useState<DeferredDeletionEntry[]>([]);
-  const [error, setError] = useState("");
-  const [busy, setBusy] = useState("");
+  const [noticeRead, setNoticeRead] = useState<{
+    entries: DeferredDeletionEntry[];
+    scope: DeletionActionScope;
+  } | null>(null);
+  const [error, setError] = useState<{
+    text: string;
+    scope: DeletionActionScope;
+  } | null>(null);
+  const [busy, setBusy] = useState<DeletionActionScope | null>(null);
   const signature = useRef("");
   const refreshRef = useRef<() => Promise<void>>(async () => {});
   // Props are read through a ref so a re-render never restarts polling or the identity epoch.
@@ -80,8 +91,18 @@ export function DeferredDeletionNotice({
     concealed,
     onDeletedOrigins,
     onChanged,
+    noticeRead,
+    error,
   });
-  ports.current = { bridge, identity, concealed, onDeletedOrigins, onChanged };
+  ports.current = {
+    bridge,
+    identity,
+    concealed,
+    onDeletedOrigins,
+    onChanged,
+    noticeRead,
+    error,
+  };
   const events = refreshEvents.join("\n");
 
   useEffect(() => {
@@ -92,18 +113,36 @@ export function DeferredDeletionNotice({
     const hidden = () =>
       (typeof document !== "undefined" && document.hidden) ||
       !!ports.current.concealed?.();
+    // Retirement only suppresses this notice's completion; it does not cancel the native action.
+    const captureScope = (): DeletionActionScope => {
+      const admittedEpoch = identityEpoch;
+      const admittedBridge = ports.current.bridge;
+      const admittedOwner = ports.current.identity?.read() ?? "";
+      return {
+        bridge: admittedBridge,
+        current: () =>
+          !retired &&
+          admittedEpoch === identityEpoch &&
+          admittedBridge === ports.current.bridge &&
+          admittedOwner === (ports.current.identity?.read() ?? ""),
+      };
+    };
     const refresh = async () => {
-      if (inflight || retired) return;
+      if (retired) return;
+      if (ports.current.noticeRead && !ports.current.noticeRead.scope.current())
+        setNoticeRead((shown) => (shown?.scope.current() ? shown : null));
+      if (ports.current.error && !ports.current.error.scope.current())
+        setError((shown) => (shown?.scope.current() ? shown : null));
+      if (inflight) return;
       if (hidden()) {
-        setEntries([]);
+        setNoticeRead(null);
         return;
       }
       inflight = true;
-      const admittedEpoch = identityEpoch;
-      const current = () =>
-        !retired && admittedEpoch === identityEpoch && !hidden();
+      const scope = captureScope();
+      const current = () => scope.current() && !hidden();
       try {
-        const result = await ports.current.bridge.pending();
+        const result = await scope.bridge.pending();
         if (!current()) return;
         if (result.deletedOrigins?.length)
           await ports.current.onDeletedOrigins?.(result.deletedOrigins);
@@ -111,13 +150,21 @@ export function DeferredDeletionNotice({
         const next = deletionNoticeSignature(result.deletions);
         if (signature.current && next !== signature.current)
           ports.current.onChanged?.();
+        if (!current()) return;
         signature.current = next;
         failures = 0;
-        setEntries(pendingDeletionNotices(result.deletions));
-        setError((shown) => (ACTION_FAILURES.has(shown) ? shown : ""));
+        setNoticeRead({
+          entries: pendingDeletionNotices(result.deletions),
+          scope,
+        });
+        setError((shown) =>
+          shown?.scope.current() && ACTION_FAILURES.has(shown.text)
+            ? shown
+            : null,
+        );
       } catch {
         if (current() && ++failures >= STATUS_FAILURES_BEFORE_ERROR)
-          setError(DELETION_NOTICE_TEXT.statusUnavailable);
+          setError({ text: DELETION_NOTICE_TEXT.statusUnavailable, scope });
       } finally {
         inflight = false;
       }
@@ -132,8 +179,9 @@ export function DeferredDeletionNotice({
       identityEpoch++;
       failures = 0;
       signature.current = "";
-      setEntries([]);
-      setError("");
+      setNoticeRead(null);
+      setError(null);
+      setBusy(null);
       void refresh();
     });
     void refresh();
@@ -150,14 +198,19 @@ export function DeferredDeletionNotice({
     };
   }, [events, pollMs]);
 
-  if (!entries.length && !error) return null;
-  const changed = () => {
+  const entries = noticeRead?.scope.current() ? noticeRead.entries : [];
+  const shownError = error?.scope.current() ? error.text : "";
+  const action = noticeRead?.scope;
+  if (!entries.length && !shownError) return null;
+  const changed = (action?: DeletionActionScope) => {
+    if (action && !action.current()) return;
     ports.current.onChanged?.();
-    void refreshRef.current();
+    // A host callback may itself change the owner or bridge.
+    if (!action || action.current()) void refreshRef.current();
   };
   return (
     <aside className={className} aria-label={label}>
-      {error && <p role="status">{error}</p>}
+      {shownError && <p role="status">{shownError}</p>}
       {entries.map((entry) => {
         const notice = deletionNotice(entry);
         return (
@@ -170,21 +223,29 @@ export function DeferredDeletionNotice({
             {notice.canUndo && (
               <button
                 type="button"
-                disabled={!!busy}
+                disabled={!!busy?.current()}
                 onClick={async () => {
-                  setBusy(entry.id);
-                  setError("");
+                  if (!action?.current()) return;
+                  setBusy(action);
+                  setError(null);
                   try {
-                    const result = await ports.current.bridge.undo({
+                    const result = await action.bridge.undo({
                       kind: entry.kind,
                       id: entry.id,
                     });
-                    if (!undoConfirmed(result)) setError(UNDO_TOO_LATE);
+                    if (action.current() && !undoConfirmed(result))
+                      setError({ text: UNDO_TOO_LATE, scope: action });
                   } catch {
-                    setError(DELETION_NOTICE_TEXT.undoUnconfirmed);
+                    if (action.current())
+                      setError({
+                        text: DELETION_NOTICE_TEXT.undoUnconfirmed,
+                        scope: action,
+                      });
                   } finally {
-                    setBusy("");
-                    changed();
+                    if (action.current()) {
+                      setBusy(null);
+                      changed(action);
+                    }
                   }
                 }}
               >
@@ -195,37 +256,56 @@ export function DeferredDeletionNotice({
               <>
                 <button
                   type="button"
-                  disabled={!!busy}
+                  disabled={!!busy?.current()}
                   onClick={() => {
-                    setError(DELETION_NOTICE_TEXT.refreshing);
-                    changed();
+                    if (!action?.current()) return;
+                    setError({
+                      text: DELETION_NOTICE_TEXT.refreshing,
+                      scope: action,
+                    });
+                    changed(action);
                   }}
                 >
                   Refresh receipt
                 </button>
                 <button
                   type="button"
-                  disabled={!!busy}
+                  disabled={!!busy?.current()}
                   onClick={async () => {
-                    setBusy(entry.id);
-                    setError("");
+                    if (!action?.current()) return;
+                    setBusy(action);
+                    setError(null);
                     try {
-                      await ports.current.bridge.dismiss({
+                      await action.bridge.dismiss({
                         kind: entry.kind,
                         id: entry.id,
                       });
-                      setEntries((rows) =>
-                        rows.filter(
-                          (row) =>
-                            row.id !== entry.id || row.kind !== entry.kind,
-                        ),
+                      if (!action.current()) return;
+                      setNoticeRead((shown) =>
+                        action.current() && shown?.scope.current()
+                          ? {
+                              ...shown,
+                              entries: shown.entries.filter(
+                                (row) =>
+                                  row.id !== entry.id ||
+                                  row.kind !== entry.kind,
+                              ),
+                            }
+                          : shown,
                       );
-                      setError(DELETION_NOTICE_TEXT.dismissed);
-                      changed();
+                      setError({
+                        text: DELETION_NOTICE_TEXT.dismissed,
+                        scope: action,
+                      });
+                      changed(action);
                     } catch {
-                      setError(DELETION_NOTICE_TEXT.dismissFailed);
+                      if (action.current())
+                        setError({
+                          text: DELETION_NOTICE_TEXT.dismissFailed,
+                          scope: action,
+                        });
                     } finally {
-                      setBusy("");
+                      if (action.current()) setBusy(null);
                     }
                   }}
                 >

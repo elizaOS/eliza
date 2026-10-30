@@ -391,6 +391,25 @@ delegation return link; `SecureSlotPolicy` keeps native-owned slot namespaces
 out of renderer storage and limits compare-and-exchange to declared draft
 slots; `PendingRequests` is the cancel/browser-handoff state machine.
 
+`NativeOwnerTransport` shares native owner enrollment, real identity/session
+readback and bearer redaction. Hosts retain their existing cache, lifecycle lock
+and HTTP transport. `NativeAppReadPolicy` admits the exact common AppProvider
+GET routes through `OwnerRoutePolicy`. `NativeAppRequestPolicy` adds only the
+first-run, config, character and stream-settings methods used by the shared
+application, with a 10 MiB UTF-8 body limit. Server schemas and domain approvals
+still decide each effect. First-run preserves the client's bounded, printable
+idempotency header; duplicate header names and control characters are rejected. The
+requirements probe does not enroll an owner. Authenticated requests use the native
+owner bearer and reject a supplied stale owner identity before dispatch. Host
+lifecycle checks fence late responses, and a 401 invalidates only the session
+that made that request. The service closes owner requests before stop/restart and
+only its current sequenced start may reopen them; Activity recreation does not
+replace that owner. This is request admission, not runtime-health proof. Invalid
+common aliases, invalid bodies and streaming requests cannot use the legacy fallback.
+Canonical routes outside this set still use the existing
+generic transport; Alpha retains its explicit domain effect policy and pending-call
+checks through enrollment and dispatch.
+
 `runtime/CredentialIntentFence` is last-intent-wins fencing over credential
 writes. `runtime/NativeProviderSlot` binds a direct provider key (test-mocks
 builds only) with compare-and-exchange readback, clears the slot with readback,

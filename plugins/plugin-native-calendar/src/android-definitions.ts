@@ -126,6 +126,17 @@ export type AndroidCalendarSave = AndroidCalendarEditorFields &
     | { id?: ""; creationId: string; separateCreation?: boolean }
     | { id: string; expected: AndroidCalendarExpected & { revision: string } }
   );
+/** Direct creation options. Richer invitations and alerts use the installed editor. */
+export interface AndroidCalendarOptions {
+  title: string;
+  body?: string;
+  location?: string;
+  begin: number;
+  end: number;
+  allDay?: boolean;
+  timeZone?: string;
+  rrule?: string;
+}
 export interface AndroidCalendarPlugin {
   requestAccess(): Promise<{ status: "granted" | "denied" }>;
   requestWorkflowReadAccess(): Promise<{ status: "granted" | "denied" }>;
@@ -203,6 +214,32 @@ export interface AndroidCalendarPlugin {
     | AndroidCalendarCreation
     | { status: "saved"; id: string; calendarId: string }
     | { status: "permission-required" | "conflict" | "pending-creation" }
+  >;
+  saveOptions(input: {
+    event: AndroidCalendarOptions;
+    calendarId?: string;
+    creationId: string;
+    separateCreation?: boolean;
+  }): Promise<
+    | AndroidCalendarCreation
+    | { status: "permission-required" | "pending-creation" | "read-only" }
+  >;
+  readOptions(input: { id: string }): Promise<
+    | {
+        status: "ready";
+        allDay: boolean;
+        timeZone: string;
+        rrule: string;
+        duration: string;
+      }
+    | { status: "permission-required" | "missing" }
+  >;
+  /** Opening the external editor is not proof that an event was saved. */
+  insertHandoff(input: {
+    event: AndroidCalendarOptions & { attendees?: string[]; alerts?: number[] };
+  }): Promise<
+    | { status: "opened"; alertsPrefilled: boolean }
+    | { status: "unavailable" | "invalid" | "unknown" }
   >;
   pendingCreations(): Promise<
     | { status: "ready"; creations: AndroidCalendarCreation[] }

@@ -259,11 +259,44 @@ jobs:
         if: inputs.candidate_run_id == 0
         run: packages/scripts/github/install-playwright-browsers.sh chromium webkit
 
+      # The auth package's integration lane requires PostgreSQL, as in CI's
+      # "Login browser and PostgreSQL integration" job.
+      - name: Start owned PostgreSQL for login contracts
+        if: inputs.candidate_run_id == 0
+        shell: bash
+        env:
+          LOGIN_TEST_POSTGRES_CONTAINER: eliza-release-login-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          public_pull_config="$(mktemp -d "$RUNNER_TEMP/public-postgres-pull.XXXXXX")"
+          trap 'rm -rf "$public_pull_config"' EXIT
+          printf '{}\n' > "$public_pull_config/config.json"
+          docker --config "$public_pull_config" run --pull=always --detach --name "$LOGIN_TEST_POSTGRES_CONTAINER" \
+            --env POSTGRES_PASSWORD=login_test --publish 5432:5432 \
+            --health-cmd "pg_isready -U postgres" --health-interval 10s \
+            --health-timeout 5s --health-retries 5 postgres:17
+          for ((attempt = 0; attempt < 45; attempt++)); do
+            status="$(docker inspect --format '{{.State.Health.Status}}' "$LOGIN_TEST_POSTGRES_CONTAINER")"
+            if [ "$status" = healthy ]; then exit 0; fi
+            if [ "$status" = unhealthy ]; then break; fi
+            sleep 2
+          done
+          docker logs "$LOGIN_TEST_POSTGRES_CONTAINER"
+          echo "::error::Owned PostgreSQL container did not become healthy within 90 seconds."
+          exit 1
+
       - name: Test release source before first pack
         if: inputs.candidate_run_id == 0
         env:
           RUN_TURBO_CONCURRENCY: "3"
+          LOGIN_TEST_DATABASE_URL: postgres://postgres:login_test@127.0.0.1:5432/postgres
         run: bun run test
+
+      - name: Remove owned PostgreSQL
+        if: always() && inputs.candidate_run_id == 0
+        env:
+          LOGIN_TEST_POSTGRES_CONTAINER: eliza-release-login-postgres-${{ github.run_id }}-${{ github.run_attempt }}
+        run: docker rm --force --volumes "$LOGIN_TEST_POSTGRES_CONTAINER" >/dev/null 2>&1 || true
 
       - name: Rebind source immediately before pack
         if: inputs.candidate_run_id == 0

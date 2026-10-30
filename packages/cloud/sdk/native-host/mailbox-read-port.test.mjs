@@ -98,6 +98,34 @@ test("message body is an explicit text projection, with no HTML, image URLs or s
   for (const field of ["bodyHtml", "refreshToken", "attachmentId"])
     assert.ok(!JSON.stringify(result).includes(field));
   assert.equal(result.attachments[0].downloadable, true);
+  // Without labels or a historyId, the state says so rather than guessing.
+  assert.deepEqual(result.state, {
+    historyId: null,
+    unread: false,
+    inInbox: false,
+    inTrash: false,
+  });
+  const labelled = createMailboxReadPort({
+    accountId,
+    request: async () => ({
+      ...detail,
+      message: {
+        ...message,
+        labels: ["INBOX", "UNREAD", "Label_private"],
+        metadata: { historyId: "4242", dateHeader: "private" },
+      },
+    }),
+  });
+  const state = (await labelled.read(input)).state;
+  assert.deepEqual(state, {
+    historyId: "4242",
+    unread: true,
+    inInbox: true,
+    inTrash: false,
+  });
+  const labelledResult = JSON.stringify(await labelled.read(input));
+  assert.ok(!labelledResult.includes("Label_private"));
+  assert.ok(!labelledResult.includes("dateHeader"));
   const bad = createMailboxReadPort({
     accountId,
     request: async () => ({

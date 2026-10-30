@@ -54,6 +54,10 @@ const HOST_EXTERNAL_REGISTRATION_PATHS = [
 // loader-private modules are not public aliases.
 const LOADER_RELATIVE_IMPORT_BINDINGS = new Map<string, string>([
   ["@elizaos/ui/view-primitives", "../../view-primitives.js"],
+  [
+    "@elizaos/ui/styles/mobile-workspaces.css",
+    "../../styles/mobile-workspaces.css",
+  ],
 ]);
 // Compatibility importers assemble curated namespaces rather than importing a
 // same-named package. Their function identities are therefore part of the

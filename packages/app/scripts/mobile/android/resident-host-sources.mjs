@@ -347,7 +347,7 @@ export function rewriteResidentClass(name, source, identity) {
   if (host.environmentHook) {
     const { className, method, unavailableStatus } = host.environmentHook;
     environment.push(
-      `try { ${className}.${method}(this, agentEnv); } catch (java.io.IOException unavailable) { currentStatus = ${JSON.stringify(unavailableStatus)}; updateNotification(); return; }`,
+      `try { ${className}.${method}(this, agentEnv); } catch (java.io.IOException unavailable) { currentStatus = ${JSON.stringify(unavailableStatus)}; updateNotification(); return false; }`,
     );
   }
   return value.replace(ENVIRONMENT_ANCHOR, () =>

@@ -4,8 +4,13 @@
  */
 import * as React from "react";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
+import { getFrontendPlatform } from "../../platform/platform-guards";
 import { useAppSelector } from "../../state/app-store";
 import { useTutorial } from "../../tutorial/tutorial-service";
+import {
+  supportedNativePrimingPermissions,
+  useNativePermissionHost,
+} from "./native-permission-host";
 import { PermissionPrimingModal } from "./PermissionPrimingModal";
 import {
   hasPrimedPermissions,
@@ -35,13 +40,27 @@ import {
  * granted meanwhile drop out on the next status check.
  */
 export function PermissionPrimingOverlay(): React.JSX.Element | null {
+  const host = useNativePermissionHost();
   const authed = useIsAuthenticated();
   const firstRunComplete = useAppSelector((s) => s.firstRunComplete);
   const tutorial = useTutorial();
 
-  const ids = React.useMemo(() => resolvePrimingSet(), []);
-  const memory = React.useMemo(primingWalkthroughMemory, []);
-  const [primed, setPrimed] = React.useState<boolean>(hasPrimedPermissions);
+  const ids = React.useMemo(
+    () =>
+      resolvePrimingSet({
+        supported:
+          host?.supported ??
+          (getFrontendPlatform() === "android"
+            ? supportedNativePrimingPermissions()
+            : undefined),
+      }),
+    [host],
+  );
+  const defaultMemory = React.useMemo(primingWalkthroughMemory, []);
+  const memory = host?.memory ?? defaultMemory;
+  const [primed, setPrimed] = React.useState<boolean>(() =>
+    host?.memory ? host.memory.read().dismissed : hasPrimedPermissions(),
+  );
   const [open, setOpen] = React.useState(false);
 
   // A reopen entry (e.g. Settings) clears the dismissal; offer the walkthrough again. It requests
@@ -50,7 +69,7 @@ export function PermissionPrimingOverlay(): React.JSX.Element | null {
     const reopen = () => setPrimed(false);
     try {
       globalThis.addEventListener?.(
-        PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+        host?.reopenEvent ?? PERMISSION_WALKTHROUGH_REOPEN_EVENT,
         reopen,
       );
     } catch {
@@ -58,10 +77,10 @@ export function PermissionPrimingOverlay(): React.JSX.Element | null {
     }
     return () =>
       globalThis.removeEventListener?.(
-        PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+        host?.reopenEvent ?? PERMISSION_WALKTHROUGH_REOPEN_EVENT,
         reopen,
       );
-  }, []);
+  }, [host]);
 
   const eligible =
     authed &&
@@ -77,10 +96,11 @@ export function PermissionPrimingOverlay(): React.JSX.Element | null {
   }, [eligible]);
 
   const handleComplete = React.useCallback(() => {
-    markPermissionsPrimed();
+    if (host?.memory) host.memory.write({ dismissed: true });
+    else markPermissionsPrimed();
     setPrimed(true);
     setOpen(false);
-  }, []);
+  }, [host]);
 
   if (!open || primed || ids.length === 0) return null;
 
