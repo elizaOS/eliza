@@ -106,16 +106,30 @@ export function resolveAbortRoomId(
 
 const SENT_TURN_MATCH_SLACK_MS = 60_000;
 
-export function sentUserTurnPresent(
+export function countSentUserTurns(
   messages: readonly ConversationMessage[],
   sentText: string,
   sentAt: number,
-): boolean {
+): number {
   const text = sentText.trim();
-  return messages.some(
+  return messages.filter(
     (message) =>
       message.role === "user" &&
       message.timestamp >= sentAt - SENT_TURN_MATCH_SLACK_MS &&
       message.text.trim() === text,
-  );
+  ).length;
+}
+
+/**
+ * `priorMatches` is the number of identical user rows the thread already held
+ * when the turn was sent ("yes" twice within the slack). Only a row beyond
+ * them is this turn.
+ */
+export function sentUserTurnPresent(
+  messages: readonly ConversationMessage[],
+  sentText: string,
+  sentAt: number,
+  priorMatches = 0,
+): boolean {
+  return countSentUserTurns(messages, sentText, sentAt) > priorMatches;
 }
