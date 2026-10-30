@@ -357,12 +357,14 @@ describe("MapsScreen view", () => {
     const handle = setup(),
       errors: (() => void)[] = [];
     let destroyed = 0;
+    let planeElement: HTMLElement | undefined;
     const updates: unknown[] = [];
     render(
       <MapsScreen
         screen={handle}
         attribution="credits"
-        createPlane={(_element, onError) => {
+        createPlane={(element, onError) => {
+          planeElement = element;
           errors.push(onError);
           return {
             update: (selected, route) => updates.push({ selected, route }),
@@ -377,6 +379,11 @@ describe("MapsScreen view", () => {
     const before = handle.controller.view().map;
     act(() => errors[0]());
     await settle();
+    await act(async () => {
+      if (planeElement) planeElement.dataset.mapReady = "true";
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(handle.controller.view().status.map).toBe("error");
     fireEvent.click(screen.getByRole("button", { name: "Retry map" }));
     await settle();
     expect(destroyed).toBe(1);

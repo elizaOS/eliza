@@ -340,11 +340,15 @@ export function MapsScreen({
     delete element.dataset.mapReady;
     delete element.dataset.mapError;
     let current = true;
+    let failed = false;
     try {
       plane.current = createPlane(
         element,
         () => {
-          if (current) controller.setMapState("error");
+          if (current) {
+            failed = true;
+            controller.setMapState("error");
+          }
         },
         (id) => controller.pin(id),
       );
@@ -355,7 +359,11 @@ export function MapsScreen({
     const observer = new MutationObserver(() => {
       if (current)
         controller.setMapState(
-          element.dataset.mapReady === "true" ? "ready" : "loading",
+          failed
+            ? "error"
+            : element.dataset.mapReady === "true"
+              ? "ready"
+              : "loading",
         );
     });
     observer.observe(element, {
