@@ -72,7 +72,20 @@ const PROSE_CITY_ALIASES = new Set([
   "new york",
 ]);
 
-const CLOCK_TIME_TOKEN_PATTERN = /^(?:\d{1,2}(?::\d{2})?(?:am|pm)?|am|pm)$/;
+const CLOCK_TIME_TOKEN_PATTERN =
+  /^(?:\d{1,2}(?::\d{2}|(?::\d{2})?(?:am|pm))|am|pm|noon|midday|midnight|o['’]?clock)$/;
+// A bare number is a clock time only after a time preposition ("at 5
+// central"); elsewhere it is usually a count ("2 Central Park tickets").
+const BARE_HOUR_TOKEN_PATTERN = /^\d{1,2}$/;
+const TIME_PREPOSITIONS = new Set([
+  "at",
+  "by",
+  "around",
+  "before",
+  "after",
+  "until",
+  "till",
+]);
 
 const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
 
@@ -127,16 +140,32 @@ function freeTextTokens(value: string): string[] {
   return value
     .toLowerCase()
     .replace(/(?<=\d|\s|^)([ap])\.m\.?/g, "$1m")
-    .replace(/[._-]+/g, " ")
+    .replace(/[._,-]+/g, " ")
     .split(/\s+/)
     .filter((token) => token.length > 0);
+}
+
+function isClockTimeToken(tokens: readonly string[], index: number): boolean {
+  const token = tokens[index];
+  if (token === undefined) {
+    return false;
+  }
+  if (CLOCK_TIME_TOKEN_PATTERN.test(token)) {
+    return true;
+  }
+  const preposition = tokens[index - 1];
+  return (
+    BARE_HOUR_TOKEN_PATTERN.test(token) &&
+    preposition !== undefined &&
+    TIME_PREPOSITIONS.has(preposition)
+  );
 }
 
 /**
  * Whether the phrase at `tokens[index, index + size)` is used as a zone or a
  * place: the whole text, followed by "time" ("Tokyo time"), right after a
- * clock time ("10am PT", "3:30 central"), or, for a place, after "in"
- * ("while I'm in Tokyo").
+ * clock time ("10am PT", "3:30 central", "noon PT", "at 5 central"), or, for
+ * a place, after "in" ("while I'm in Tokyo").
  */
 function phraseNamesZone(
   tokens: readonly string[],
@@ -151,12 +180,8 @@ function phraseNamesZone(
   if (next === "time" || next === "timezone") {
     return true;
   }
-  const previous = tokens[index - 1];
-  if (previous === undefined) {
-    return false;
-  }
   return (
-    CLOCK_TIME_TOKEN_PATTERN.test(previous) || (place && previous === "in")
+    isClockTimeToken(tokens, index - 1) || (place && tokens[index - 1] === "in")
   );
 }
 

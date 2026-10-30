@@ -63,6 +63,11 @@ describe("free-text time-zone scan ignores ordinary words", () => {
     "propose times for the Christmas party sync next week",
     "find a slot after I wake up tomorrow",
     "coffee at the community center next week",
+    // A bare number before the word is a count, not a clock time.
+    "book 2 mountain bike sessions saturday at 8am",
+    "remind me to buy 2 Central Park Zoo tickets tomorrow at 10am",
+    "find 2 pacific coast trail hikes next week",
+    "order 3 Berlin guidebooks next week",
   ])("infers no zone from %j", (sentence) => {
     expect(extractExplicitTimeZoneFromText(sentence)).toBeNull();
     expect(inferTimeZoneFromLocationText(sentence)).toBeNull();
@@ -79,12 +84,21 @@ describe("free-text time-zone scan reads a zone where the text names one", () =>
     ["review at 4pm EST", "America/New_York"],
     ["meet at 5pm New York time", "America/New_York"],
     ["remind me at 9am while I'm in Chicago", "America/Chicago"],
+    ["standup at 5 central", "America/Chicago"],
+    ["send the report by 5 ET", "America/New_York"],
+    ["remind me at noon PT", "America/Los_Angeles"],
+    ["call at midnight PT", "America/Los_Angeles"],
+    ["standup at 5 o'clock PT", "America/Los_Angeles"],
+    ["call at noon Pacific", "America/Los_Angeles"],
+    ["lunch at noon eastern", "America/New_York"],
+    ["call at 10am, PT", "America/Los_Angeles"],
   ])("reads %j as %s", (sentence, timeZone) => {
     expect(extractExplicitTimeZoneFromText(sentence)).toBe(timeZone);
   });
 
   it.each([
     ["while I'm in Tokyo next week find slots with Ryan", "Asia/Tokyo"],
+    ["while I'm in Tokyo, find three slots with Ryan", "Asia/Tokyo"],
     ["find three slots, Berlin time", "Europe/Berlin"],
     ["Tokyo", "Asia/Tokyo"],
   ])("infers %j as %s", (sentence, timeZone) => {
