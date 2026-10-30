@@ -2611,10 +2611,12 @@ function namesBareWeekday(text: string): boolean {
  * The action pauses with the facts and, when the user named a bare weekday,
  * the same wall-clock time one week later as the suggestion. The planner may
  * set `allowPast` when the user explicitly wants a past time recorded.
- * A message that states this create's date other than by weekday ("today at
- * 12pm" said at 11 PM, live 2026-10-29) has already confirmed the date the
- * pause asks for, so it is that explicit request whether or not the planner
- * set `allowPast`.
+ * A message that states today as this create's date other than by weekday
+ * ("today at 12pm" said at 11 PM, live 2026-10-29) has already confirmed the
+ * date the pause asks for, so it is that explicit request whether or not the
+ * planner set `allowPast`. An earlier stated day does not: a yearless
+ * "january 5" said in October parses to this year's date, which has passed,
+ * when the user most likely means next year.
  */
 function resolvePastStartClarification(args: {
   request: CreateLifeOpsCalendarEventRequest;
@@ -2646,6 +2648,10 @@ function resolvePastStartClarification(args: {
     statedDate &&
     otherStatedDates.length === 0 &&
     !namesBareWeekday(statedText) &&
+    compareLocalDates(
+      statedDate,
+      getZonedDateParts(args.now, args.timeZone),
+    ) === 0 &&
     compareLocalDates(
       statedDate,
       getZonedDateParts(new Date(startMs), args.timeZone),

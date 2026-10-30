@@ -2539,6 +2539,10 @@ describe("past start on a stated date (real PGlite)", {
     id: string,
     text: string,
     details: Record<string, unknown>,
+    extracted = {
+      startAt: "2026-10-29T12:00:00-07:00",
+      endAt: "2026-10-29T13:00:00-07:00",
+    },
   ) {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
@@ -2551,8 +2555,7 @@ describe("past start on a stated date (real PGlite)", {
                 title: "qa lunch",
                 grantId: ELIZA_CALENDAR_GRANT_ID,
                 calendarId: ELIZA_CALENDAR_ID,
-                startAt: "2026-10-29T12:00:00-07:00",
-                endAt: "2026-10-29T13:00:00-07:00",
+                ...extracted,
                 timeZone: TIME_ZONE,
               },
             }
@@ -2637,4 +2640,30 @@ describe("past start on a stated date (real PGlite)", {
       ).toHaveLength(0);
     },
   );
+
+  it("still asks before creating a yearless date that passed earlier this year", async () => {
+    // "january 5" said in October parses to this year's January 5, and the
+    // stated-date guard moves the extractor's next-year start onto it. Only the
+    // user can say which year they meant.
+    const result = await createQaLunch(
+      "00000000-0000-0000-0000-000000000913",
+      "add qa lunch on january 5 at 12pm",
+      { start: "2027-01-05T12:00:00", durationMinutes: 60 },
+      {
+        startAt: "2027-01-05T12:00:00-08:00",
+        endAt: "2027-01-05T13:00:00-08:00",
+      },
+    );
+    expect(result).toMatchObject({
+      success: false,
+      data: {
+        requiresInput: true,
+        missing: ["confirmed date"],
+        requestedStartAt: "2026-01-05T20:00:00.000Z",
+      },
+    });
+    expect(
+      (await pg.query("SELECT id FROM app_calendar.life_calendar_events")).rows,
+    ).toHaveLength(0);
+  });
 });
