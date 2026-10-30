@@ -369,6 +369,20 @@ for (let i = 0; i < queue.length; i++) {
     const literal = moduleSpecifier(node);
     if (literal) {
       const specifier = literal.text;
+      if (
+        ts.isImportDeclaration(node) &&
+        !node.importClause &&
+        (specifier === "@elizaos/ui/styles" || specifier.endsWith(".css"))
+      ) {
+        // Vite owns these renderer effects in the single styles.js entry.
+        // Public declarations must not require a CSS loader or wallet CSS types.
+        replacements.push({
+          from: node.getFullStart(),
+          to: node.end,
+          text: "",
+        });
+        return;
+      }
       const resolved = ts.resolveModuleName(
         specifier,
         source,

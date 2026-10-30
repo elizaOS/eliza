@@ -3961,9 +3961,9 @@ function AppContent() {
             </div>
           </div>
         ) : null}
-        {/* Android Cloud builds sign in natively; a sign-in started from
-          Settings or chat shows these screens over the shell. */}
-        {androidCloudAuthAutoStart ? <AndroidNativeCloudSignInHost /> : null}
+        {/* Explicit native sign-in also comes from branded local-runtime hosts.
+          The broker renders nothing until requested; only Cloud builds auto-start. */}
+        <AndroidNativeCloudSignInHost />
       </ShellControllerProvider>
     </BugReportProvider>
   );
