@@ -1618,13 +1618,6 @@ export class XService extends Service {
         event_types: ["MessageCreate"],
       });
 
-      const usernameMap = new Map<string, string>();
-      for (const user of iterator.includes?.users ?? []) {
-        if (user.id && user.username) {
-          usernameMap.set(user.id, user.username);
-        }
-      }
-
       const messages: Array<{
         id: string;
         conversationId: string;
@@ -1646,8 +1639,12 @@ export class XService extends Service {
           conversationId: event.dm_conversation_id ?? event.id ?? "",
           senderId: event.sender_id ?? "",
           ownUserId,
+          // The paginator adds each fetched page's includes to
+          // iterator.includes, so read it here and not before the loop.
           senderUsername: event.sender_id
-            ? (usernameMap.get(event.sender_id) ?? null)
+            ? (iterator.includes?.users?.find(
+                (user) => user.id === event.sender_id,
+              )?.username || null)
             : null,
           text: event.text ?? "",
           createdAt: event.created_at ?? null,
