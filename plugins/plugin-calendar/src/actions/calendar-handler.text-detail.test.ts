@@ -70,7 +70,17 @@ describe("current Calendar day observation", () => {
       observedCalendarDayWindow({ ...context, revision: -1 }, original, "UTC"),
     ).toThrow();
   });
-  it.each(["Show my events tomorrow", "Show my schedule next month", "Move my 3pm tomorrow to 4", "Move my 3pm next week to 4", "Move my meeting to 4"])("does not replace qualified targets or ordinary reads: %s",text=>{expect(observedCalendarDayWindow(context,{...original,text},"UTC")).toBeUndefined();});
+  it.each([
+    "Show my events tomorrow",
+    "Show my schedule next month",
+    "Move my 3pm tomorrow to 4",
+    "Move my 3pm next week to 4",
+    "Move my meeting to 4",
+  ])("does not replace qualified targets or ordinary reads: %s", (text) => {
+    expect(
+      observedCalendarDayWindow(context, { ...original, text }, "UTC"),
+    ).toBeUndefined();
+  });
 });
 
 function seoulEvent(title: string, location: string): LifeOpsCalendarEvent {
