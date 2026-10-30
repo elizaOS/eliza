@@ -218,3 +218,5 @@ predicate, and an authenticated status reader. The session learns one API-proces
 then compares fresh status before including Calendar day context. A replaced or unreadable
 process omits the optional field until a new verified session is created. This format
 handshake grants no Calendar access and does not replace the host's visibility checks.
+Turn cancellation stops only that caller's wait. Session retirement also cancels the
+shared handshake, so another turn cannot inherit a cancelled caller's failure.

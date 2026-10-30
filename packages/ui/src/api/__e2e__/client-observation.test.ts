@@ -75,3 +75,63 @@ it("an unreadable peer preserves ordinary observation and never requests status 
   expect(await peer.context(context, signal)).toEqual(ordinary);
   expect(reads).toBe(1);
 });
+
+it("cancelling the first turn does not poison later turns in the same session", async () => {
+  let finish!: (value: unknown) => void;
+  let handshakeSignal!: AbortSignal;
+  let reads = 0;
+  const peer = new ClientObservationSupportSession(identity, () => true, (signal) => {
+    if (++reads !== 1) return Promise.resolve(status());
+    handshakeSignal = signal;
+    return new Promise((resolve, reject) => {
+      finish = resolve;
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  });
+  const turn = new AbortController();
+  const cancelled = peer.context(context, turn.signal);
+  const rejected = expect(cancelled).rejects.toMatchObject({ name: "AbortError" });
+  turn.abort();
+  await rejected;
+  expect(handshakeSignal.aborted).toBe(false);
+  finish(status());
+  expect((await peer.context(context, new AbortController().signal)).calendarDay).toEqual(context.calendarDay);
+  expect(reads).toBe(2);
+}, 1000);
+
+it("concurrent turns do not inherit another turn's handshake cancellation", async () => {
+  let finish!: (value: unknown) => void;
+  let reads = 0;
+  const peer = new ClientObservationSupportSession(identity, () => true, (signal) => {
+    if (++reads !== 1) return Promise.resolve(status());
+    return new Promise((resolve, reject) => {
+      finish = resolve;
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  });
+  const turn = new AbortController();
+  const cancelled = peer.context(context, turn.signal);
+  const current = peer.context(context, new AbortController().signal);
+  const results = Promise.allSettled([cancelled, current]);
+  turn.abort();
+  finish(status());
+  const [first, second] = await results;
+  expect(first).toMatchObject({ status: "rejected", reason: { name: "AbortError" } });
+  expect(second).toMatchObject({ status: "fulfilled", value: { calendarDay: context.calendarDay } });
+  expect(reads).toBe(2);
+});
+
+it("retiring the session aborts its pending handshake", async () => {
+  let handshakeSignal!: AbortSignal;
+  const peer = new ClientObservationSupportSession(identity, () => true, (signal) => {
+    handshakeSignal = signal;
+    return new Promise((_, reject) => {
+      signal.addEventListener("abort", () => reject(signal.reason), { once: true });
+    });
+  });
+  const pending = peer.context(context, new AbortController().signal);
+  const rejected = expect(pending).rejects.toMatchObject({ name: "AbortError" });
+  peer.clear();
+  expect(handshakeSignal.aborted).toBe(true);
+  await rejected;
+}, 1000);

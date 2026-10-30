@@ -99,6 +99,7 @@ export class ClientObservationSupportSession {
   >;
   private known: ClientObservationBinding | undefined;
   private initial: Promise<void> | undefined;
+  private readonly lifetime = new AbortController();
   private retired = false;
   constructor(
     session: Omit<ClientObservationBinding, "serverInstanceId">,
@@ -109,6 +110,7 @@ export class ClientObservationSupportSession {
   }
   clear() {
     this.retired = true;
+    this.lifetime.abort();
     this.known = undefined;
     this.cache.clear();
   }
@@ -118,9 +120,30 @@ export class ClientObservationSupportSession {
       throw new DOMException("The observation session changed", "AbortError");
   }
   /** Learning happens only here, once. A later process nonce is never learned under this session. */
-  handshake(signal: AbortSignal): Promise<void> {
-    this.initial ??= this.learn(signal);
-    return this.initial;
+  async handshake(signal: AbortSignal): Promise<void> {
+    this.check(signal);
+    // The shared negotiation belongs to the session, not its first requesting turn.
+    this.initial ??= this.learn(this.lifetime.signal);
+    const initial = this.initial;
+    await new Promise<void>((resolve, reject) => {
+      const abort = () => {
+        signal.removeEventListener("abort", abort);
+        reject(signal.reason);
+      };
+      signal.addEventListener("abort", abort, { once: true });
+      initial.then(
+        () => {
+          signal.removeEventListener("abort", abort);
+          resolve();
+        },
+        (error) => {
+          signal.removeEventListener("abort", abort);
+          reject(error);
+        },
+      );
+      if (signal.aborted) abort();
+    });
+    this.check(signal);
   }
   private async learn(signal: AbortSignal): Promise<void> {
     this.check(signal);
