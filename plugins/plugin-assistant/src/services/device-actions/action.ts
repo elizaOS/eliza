@@ -1114,6 +1114,13 @@ export const proposeDeviceAction: Action = {
       request.state === "pending" &&
       operation.type === "clock_alarm" &&
       (operation.action === "dismiss" || operation.action === "snooze");
+    // In direct-request mode the service binds the owner's current message, and
+    // the requesting phone opens this exact user-authored address after the
+    // reply without a review card, like opening an app view.
+    const requestedBrowserOpen =
+      request.state === "pending" &&
+      operation.type === "browser_navigate" &&
+      payload.requestMessageId !== undefined;
     return {
       success: true,
       transcriptVisibility: "internal",
@@ -1126,23 +1133,27 @@ export const proposeDeviceAction: Action = {
                 ? "Your snooze request is queued for your phone. It isn’t confirmed yet."
                 : "Your stop request is queued for your phone. It isn’t confirmed yet.",
           }
-        : {}),
-      ...(!pendingRingingControl && request.state === "pending"
-        ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
-        : {}),
+        : requestedBrowserOpen
+          ? { userFacingText: `Opening ${new URL(operation.url).host}.` }
+          : request.state === "pending"
+            ? { userFacingText: DEVICE_APPROVAL_REVIEW_TEXT }
+            : {}),
       text: pendingRingingControl
         ? "Alarm control request recorded and pending for the phone. The phone may request manual review under its native policy. Pending state and approval/pause flags do not prove a visible approval dialog. This tool has performed no device operation. Await an applied native receipt before claiming completion."
-        : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
+        : requestedBrowserOpen
+          ? "The requesting phone opens this exact requested address in its Browser right after this reply, with no review. The page has not loaded yet; do not claim its content or that it loaded."
+          : `Durable device proposal state: ${request.state}. This tool has performed no device operation.`,
       data: {
         proposalId: request.id,
         state: request.state,
         executed: false,
         approvalPersistence: deviceApprovalPersistenceReceipt(outcome),
         ...(reminderTiming ? { reminderTiming } : {}),
-        ...(pendingRingingControl
+        ...(pendingRingingControl || requestedBrowserOpen
           ? { awaitingDeviceExecution: true }
           : { awaitingUserInput: request.state === "pending" }),
-        approvalRequired: request.state === "pending",
+        ...(requestedBrowserOpen ? { directRequest: true } : {}),
+        approvalRequired: request.state === "pending" && !requestedBrowserOpen,
       },
     };
   },

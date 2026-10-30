@@ -167,9 +167,9 @@ export function describeCronSchedule(expression: string): string | null {
 
 /**
  * Describe a one-shot fire time relative to now: a countdown for near-term
- * fires ("in 5 minutes"), then clock forms in the resolved sender timezone
- * ("today at 3pm", "tomorrow at 8am", "on Saturday at 8am"). Returns null
- * only for an unparseable timestamp.
+ * fires that still names the clock time ("in 5 minutes, at 3:05pm"), then
+ * clock forms in the resolved sender timezone ("today at 3pm", "tomorrow at
+ * 8am", "on Saturday at 8am"). Returns null only for an unparseable timestamp.
  */
 export function describeOnceAt(
   scheduledAtIso: string,
@@ -180,14 +180,17 @@ export function describeOnceAt(
   if (Number.isNaN(atMs)) return null;
   const delta = atMs - nowMs;
   if (delta > 0 && delta < MINUTE_MS) return "in under a minute";
+  const at = zonedDateParts(new Date(atMs), timeZone);
+  const time = formatClockTime(at.hour, at.minute);
   if (delta > 0 && delta < RELATIVE_CUTOFF_MS) {
+    // A bare countdown left the clock time to the reply model, which echoed
+    // a misresolved Stage-1 time ("Set for 1:01 AM" for a 2:01am fire, live
+    // 2026-10-30 tj-f85ef1c139592a).
     const minutes = Math.round(delta / MINUTE_MS);
-    return minutes <= 1 ? "in a minute" : `in ${minutes} minutes`;
+    return `${minutes <= 1 ? "in a minute" : `in ${minutes} minutes`}, at ${time}`;
   }
 
-  const at = zonedDateParts(new Date(atMs), timeZone);
   const now = zonedDateParts(new Date(nowMs), timeZone);
-  const time = formatClockTime(at.hour, at.minute);
   const dayDiff = Math.round(
     (Date.UTC(at.year, at.month - 1, at.day) -
       Date.UTC(now.year, now.month - 1, now.day)) /

@@ -7,7 +7,7 @@ import type {
   MessageHandlerExtract,
   State,
 } from "@elizaos/core";
-import { isDiscoveryActionName } from "@elizaos/core";
+import { getUserMessageText, isDiscoveryActionName } from "@elizaos/core";
 import { isReplyActionIdentifier } from "./action-identifiers.js";
 import { escapeRegex } from "./addressing.ts";
 import {
@@ -66,7 +66,10 @@ export function hasPostTurnSemanticSignal(
     )
   )
     return true;
-  let text = message.content.text?.trim() ?? "";
+  // The user's words, not the help-document envelope chat augmentation wraps
+  // around a short command: its FAQ fragments ("show my tasks") matched the
+  // signal on every navigation turn they were attached to.
+  let text = getUserMessageText(message);
   // "Open my calendar" names the receipt's destination, not a user fact.
   for (const effect of navigations)
     for (const name of [effect?.label, effect?.viewId, effect?.resolvedAlias])

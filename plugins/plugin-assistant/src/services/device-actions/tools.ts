@@ -515,8 +515,9 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
   })),
 );
 
-/** Availability for a complete URL-open request; the existing tool still creates
- * a reviewed proposal and the phone's typed receipt owns completion.
+/** Availability for a complete URL-open request. The tool creates a durable
+ * proposal that the requesting phone runs directly in direct-request mode
+ * (reviewed otherwise); the phone's typed receipt owns completion.
  */
 export function registerDeviceBrowserOpenRouting(
   runtime: Parameters<typeof registerDirectActionRoutingRule>[0],

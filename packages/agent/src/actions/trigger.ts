@@ -22,6 +22,7 @@ import {
   type ActionExample,
   type ActionResult,
   type EffectReceipt,
+  extractUserText,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -655,7 +656,10 @@ async function opCreate(
   if (isWorkflowTrigger && !runtime.enableAutonomy) {
     return failed("create", "Autonomy is disabled.", "AUTONOMY_OFF");
   }
-  const text = readString(message.content.text) ?? "";
+  // The user's words, not chat augmentation's help-document envelope: this
+  // text becomes the prompt a reminder fires with when instructions are
+  // omitted. The external-content envelope stays on untrusted text.
+  const text = extractUserText(readString(message.content.text) ?? "");
   const instructions = readString(params.instructions) ?? text;
   if (!instructions) {
     return failed(

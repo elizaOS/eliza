@@ -158,6 +158,7 @@ import {
 import {
   DEVICE_APPROVAL_REVIEW_TEXT,
   isPersistedDeviceApprovalPause,
+  isRequestedDeviceHandoff,
 } from "../services/device-actions/effect-receipts.ts";
 import {
   labelHistorySources,
@@ -3073,28 +3074,47 @@ async function runPlannerLoopIterations(
       continue;
     }
 
-    if (isPersistedDeviceApprovalPause(latestResult)) {
-      // The owner must supply the next event. Do not spend another evaluator or
-      // planner call, manufacture a new operation key, or dispatch the queue.
-      // Preserve pending scope, remaining calls and all prior settled outcomes.
+    // A sole requested handoff (direct-request mode) needs no owner event: the
+    // requesting phone runs it right after this reply.
+    const requestedHandoff =
+      isRequestedDeviceHandoff(latestResult) &&
+      trajectory.plannedQueue.length === 0 &&
+      lastPlannerExplicitCompleted !== false;
+    if (requestedHandoff || isPersistedDeviceApprovalPause(latestResult)) {
+      // Otherwise the owner must supply the next event. Do not spend another
+      // evaluator or planner call, manufacture a new operation key, or dispatch
+      // the queue. Preserve pending scope, remaining calls and settled outcomes.
+      // A handoff reply names the request the tool recorded ("Opening <host>."):
+      // Stage 1 may have asked a question the routed request already answered.
       const startedAt = Date.now();
       const captured = sanitizePlannerMessage(params.stageOneReplyText);
       const message =
+        !requestedHandoff &&
         captured &&
         !isUnsafeUserVisibleText(captured) &&
         !replyClaimsCompletedSideEffect(captured) &&
         !replyClaimsInProgressWork(captured)
           ? captured
           : (latestResult?.userFacingText ?? DEVICE_APPROVAL_REVIEW_TEXT);
-      const paused: EvaluatorOutput = {
-        success: false,
-        decision: "FINISH",
-        requestFullyCovered: false,
-        replyEffectStatus: "non_applied",
-        thought:
-          "The durable device proposal is waiting for explicit owner input. Requested work remains incomplete; no dependent operation ran.",
-        messageToUser: message,
-      };
+      const paused: EvaluatorOutput = requestedHandoff
+        ? {
+            success: true,
+            decision: "FINISH",
+            requestFullyCovered: true,
+            replyEffectStatus: "none",
+            thought:
+              "The requesting phone runs this durable request right after the reply, with no owner review. The reply must not claim its effect.",
+            messageToUser: message,
+          }
+        : {
+            success: false,
+            decision: "FINISH",
+            requestFullyCovered: false,
+            replyEffectStatus: "non_applied",
+            thought:
+              "The durable device proposal is waiting for explicit owner input. Requested work remains incomplete; no dependent operation ran.",
+            messageToUser: message,
+          };
       trajectory.evaluatorOutputs.push(paused);
       appendEvaluatorContextEvent(
         trajectory,
@@ -3111,7 +3131,9 @@ async function runPlannerLoopIterations(
         startedAt,
         endedAt: Date.now(),
         output: paused,
-        reason: "durable_approval_awaiting_user_input",
+        reason: requestedHandoff
+          ? "requested_device_handoff"
+          : "durable_approval_awaiting_user_input",
         logger: params.runtime.logger,
       });
       return {
