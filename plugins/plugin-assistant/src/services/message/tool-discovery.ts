@@ -499,7 +499,7 @@ export function createPlannerToolDiscoveryAction(
         // 93,495 tokens, and the evaluator call 4s later got HTTP 429
         // (2026-10-30, tj-7138d70800aff4). Above it the read returns the
         // complete index instead: every authorized family and child name with
-        // its authored descriptionCompressed, labeled catalogDetail:"index"
+        // any authored descriptionCompressed, labeled catalogDetail:"index"
         // and completeDefinitions:false. This is explicit, not silent
         // truncation or a hard size limit: no entry is dropped or shortened,
         // the index is never cut, and exact names return every full definition.
