@@ -42,6 +42,7 @@ public class CloudSignInChainTest {
  static class Response { final int status;final JSONObject data;Response(int s,JSONObject d){status=s;data=d;} }
  static class CloudKeyRevocation { static boolean revoke(CloudSignInConfig config,CloudSignInEnvironment environment,String token){events.add("revoke");return true;} }
  CloudSignInConfig config(){return TestRegistration.PRODUCT;}
+ <T> T withCredentialRead(java.util.concurrent.Callable<T> read)throws Exception{synchronized(slots){return read.call();}}
  CloudCredentialSlots credentials(Runnable guard){
   return new CloudCredentialSlots(){
    public String read(String key){return slots.get(key);}
@@ -92,6 +93,10 @@ public class CloudSignInChainTest {
   }
   if(path.equals("/api/v1/app-auth/mobile/ack")){
    events.add("ack");check(issuedState.equals(body.getString("state")),"ack state");
+   if(mode.equals("intent-after-commit")||mode.equals("replacement-after-commit")){
+    if(mode.equals("intent-after-commit"))intent++;
+    slots.put(config().credentialSlot(environment),new JSONObject().put("credentialId",REQUEST).put("token",OLD).put("expiresAt",System.currentTimeMillis()+60000).toString());
+   }
    if(mode.equals("cancel-after-commit"))cancel(new PluginCall());
    if(mode.equals("destroy-after-commit")){destroyed=true;attempt.cancel();attempt=null;}
    if(mode.equals("replace-after-commit"))attempt=new Attempt(ID);
@@ -103,6 +108,7 @@ public class CloudSignInChainTest {
   throw new AssertionError("unexpected route");
  }
 
+ /* ACTUAL_CREDENTIAL_IDENTITY */
  /* ACTUAL_CALLER_REQUEST */
  /* ACTUAL_CANCEL */
  /* ACTUAL_CALLBACK */
@@ -210,7 +216,28 @@ public class CloudSignInChainTest {
    }else check(!slots.containsKey(host.config().pendingSlot),"owned pending removed");
   }
  }
+ static void changedAfterCommit(String mode)throws Exception{
+  slots.clear();events.clear();notifications.clear();
+  CloudSignInChainTest host=new CloudSignInChainTest();host.mode=mode;
+  Attempt original=new Attempt(REQUEST);original.credentialGuard=host.reserveCredentialCommit();host.attempt=original;
+  PluginCall call=new PluginCall();call.input.put("attemptId",original.id);call.input.put("code","123456");host.verify(call,false);
+  check(call.result==null&&"state-mismatch".equals(call.error),"old direct completion refused: "+mode);
+  check(notifications.isEmpty(),"no stale retained completion: "+mode);
+  check(REQUEST.equals(new JSONObject(slots.get(host.config().credentialSlot(original.environment))).getString("credentialId")),"successor kept: "+mode);
+ }
+ static void credentialIdentityReads()throws Exception{
+  slots.clear();CloudSignInChainTest host=new CloudSignInChainTest();
+  PluginCall missing=new PluginCall();missing.input.put("environment","production");host.credentialIdentity(missing);
+  check(missing.result!=null&&missing.result.opt("credentialId")==JSONObject.NULL,"missing identity");
+  slots.put("cloud:production",new JSONObject().put("credentialId",REQUEST).put("token",NEW).put("expiresAt",System.currentTimeMillis()+60000).toString());
+  PluginCall current=new PluginCall();current.input.put("environment","production");host.credentialIdentity(current);
+  check(REQUEST.equals(current.result.getString("credentialId"))&&current.result.length()==2,"only current identity and environment returned");
+  slots.put("cloud:production",new JSONObject().put("credentialId",REQUEST).put("token",NEW).put("expiresAt",1).toString());
+  PluginCall expired=new PluginCall();expired.input.put("environment","production");host.credentialIdentity(expired);
+  check(expired.result.opt("credentialId")==JSONObject.NULL,"expired identity not active");
+ }
  public static void main(String[] args)throws Exception{
+  changedAfterCommit("intent-after-commit");changedAfterCommit("replacement-after-commit");credentialIdentityReads();
   scenario("valid",true,true);
   for(String mode:List.of("bad-code","invalid-mfa","mfa-denied","mfa-unsupported","config-denied","token-denied","bad-secret","expired-token","missing-ack-contract","cancelled","expired-attempt","superseded","newer-intent"))scenario(mode,false,false);
   scenario("wrong-ack",false,true);
@@ -225,6 +252,6 @@ public class CloudSignInChainTest {
   mfaScope(false,false);mfaScope(true,false);mfaScope(false,true);
   callbackOwner("live");callbackOwner("cold-after-signout");callbackOwner("live-after-signout");
   for(String mode:List.of("stale","malformed","matching","legacy","queued","queued-completed"))scopedCancel(mode);
-  System.out.println("PASS native sign-in chain (33 scenarios; no browser facilities)");
+  System.out.println("PASS native sign-in chain (38 scenarios; no browser facilities)");
  }
 }

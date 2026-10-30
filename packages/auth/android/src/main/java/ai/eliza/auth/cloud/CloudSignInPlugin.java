@@ -106,6 +106,34 @@ public abstract class CloudSignInPlugin extends Plugin {
  protected abstract CloudSignInConfig registration();
  /** The host's protected credential slots. The store calls {@code guard} before every write and removal. */
  protected abstract CloudCredentialSlots credentials(Runnable guard);
+ /** Run a read/delivery under the same lifecycle then vault locks as credential writes.
+  * The callback performs no I/O other than local credential reads and bridge queueing. */
+ protected abstract <T> T withCredentialRead(java.util.concurrent.Callable<T> read) throws Exception;
+
+ /** Current installed identity only; no credential, account or provider authority crosses the bridge. */
+ @PluginMethod public void credentialIdentity(PluginCall call) {
+  final CloudSignInEnvironment environment;
+  try { environment = config().environment(call.getString("environment")); }
+  catch (Exception invalid) { call.reject("Unsupported Cloud environment", "invalid-request"); return; }
+  final String slot = config().credentialSlot(environment);
+  run(() -> {
+   try {
+    withCredentialRead(() -> {
+     if (destroyed) throw new IllegalStateException("Sign-in closed");
+     String saved = credentials(() -> {}).read(slot);
+     String id = null;
+     if (saved != null) {
+      JSONObject value = new JSONObject(saved);
+      String candidate = value.optString("credentialId", null);
+      if (CloudSignInFlow.validUuid(candidate) && instant(value.opt("expiresAt")) > System.currentTimeMillis()) id = candidate;
+     }
+     call.resolve(new JSObject().put("environment", environment.name).put("credentialId", id == null ? JSONObject.NULL : id));
+     return null;
+    });
+   } catch (Exception unavailable) { call.reject("Saved sign-in could not be read", "storage"); }
+  });
+ }
+
  /**
   * Called once when an explicit attempt is accepted, before asynchronous work. Its check stays
   * with that attempt through verification/MFA and rejects a later write after another credential
@@ -761,11 +789,25 @@ public abstract class CloudSignInPlugin extends Plugin {
    // A committed key may still need its acknowledgement, but a cancelled, destroyed or
    // replaced interaction cannot deliver its completion to a newer renderer owner.
    if (destroyed || current.cancelled || attempt != current) return;
-   PluginCall waiting = current.waiting; current.waiting = null; attempt = null;
-   if (waiting != null) waiting.resolve(outcome);
-   // A retained completion carries its originating request, never a new renderer's identity.
-   // Queue it before cancel can acknowledge retirement of this attempt.
-   else notifyListeners("signInCompleted", outcome, true);
+   try {
+    // P → lifecycle → vault: a newer intent cannot slip between identity readback and
+    // bridge queueing. No credential writer enters P while holding either host lock.
+    withCredentialRead(() -> {
+     current.credentialGuard.run();
+     String saved = credentials(current.credentialGuard).read(config().credentialSlot(current.environment));
+     if (saved == null || !outcome.getString("credentialId").equals(new JSONObject(saved).optString("credentialId", null)))
+      throw new IllegalStateException("Saved sign-in changed");
+     PluginCall waiting = current.waiting; current.waiting = null; attempt = null;
+     if (waiting != null) waiting.resolve(outcome);
+     else notifyListeners("signInCompleted", outcome, true);
+     return null;
+    });
+   } catch (Exception superseded) {
+    // The committed value may have been replaced. Never announce that replacement
+    // as the result of this interaction and never remove the successor's data.
+    PluginCall waiting = current.waiting; current.waiting = null; attempt = null;
+    if (waiting != null) waiting.reject("Saved sign-in changed", "state-mismatch");
+   }
   }
  }
  /** Ends the attempt with a stable code. `burn` also removes a pending Google record (explicit cancel or a failed start). */

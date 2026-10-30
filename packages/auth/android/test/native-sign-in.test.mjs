@@ -176,6 +176,11 @@ test("native Google responses map to a fixed classification and a bounded diagno
 
 test("exact native verify/connect/token/ack chain keeps failures explicit and custody native (plain JVM)", () => {
   const { file, directory } = harness("CloudSignInChainTest.java.txt", {
+    ACTUAL_CREDENTIAL_IDENTITY: between(
+      plugin,
+      " @PluginMethod public void credentialIdentity(",
+      " /**\n  * Called once when an explicit attempt",
+    ).replace("@PluginMethod ", ""),
     ACTUAL_CALLER_REQUEST: between(
       plugin,
       " private static String callerRequestId(",
@@ -244,7 +249,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
         [...pure, ...support, file],
         "ai.eliza.auth.cloud.CloudSignInChainTest",
       ),
-      /^PASS native sign-in chain \(33 scenarios; no browser facilities\)/,
+      /^PASS native sign-in chain \(38 scenarios; no browser facilities\)/,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });

@@ -294,3 +294,5 @@ outcomes for the same account, credential and UI session. A connected outcome st
 canonical account/connection readback; it is not a Google grant. `watchForegroundAccountReturn`
 requires an observed background transition after arming. Cached native resume events,
 late listener registration and a replaced client cannot trigger another account's refresh.
+
+Native mobile completion and `credentialIdentity` readback use the host’s existing lifecycle-to-vault lock order. Completion checks the original credential intent and exact installed credential ID before queueing its result. A newer credential never becomes the result of an older sign-in. Custom native hosts must implement `withCredentialRead` with the same locks used by credential mutation. The identity method returns no token or account data.

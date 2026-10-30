@@ -28,6 +28,11 @@ public final class ElizaCloudSignInPlugin extends CloudSignInPlugin {
 
     @Override protected Runnable reserveCredentialCommit() { return ElizaResidentCredentials.reserve(); }
 
+    @Override protected <T> T withCredentialRead(java.util.concurrent.Callable<T> read) throws Exception {
+        return ElizaResidentCredentials.withCredentialRead(read);
+    }
+
+
     @Override protected CloudCredentialSlots credentials(Runnable guard) {
         return ElizaResidentCredentials.cloud(getContext(), guard);
     }

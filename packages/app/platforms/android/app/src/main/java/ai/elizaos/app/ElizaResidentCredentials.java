@@ -23,6 +23,16 @@ final class ElizaResidentCredentials {
 
     private ElizaResidentCredentials() {}
 
+    static <T> T withCredentialRead(java.util.concurrent.Callable<T> read) throws Exception {
+        synchronized (LIFECYCLE) {
+            synchronized (JsonCredentialSlots.LOCK) {
+                if (mutationEpoch >= 0) throw new IllegalStateException("Credential mutation in progress");
+                return read.call();
+            }
+        }
+    }
+
+
     static boolean isResidentCredential(String key) { return TOKEN_KEY.equals(key); }
 
     /** Reserve before async dispatch, shared by native sign-in and generic SecureStore writes. */
