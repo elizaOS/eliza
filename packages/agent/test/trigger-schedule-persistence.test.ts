@@ -621,6 +621,68 @@ it("moves a one-off trigger by a relative delay on update, as create reads it", 
     await fixture.runtime.deleteTask(taskId);
   }
 });
+it("refuses a fractional relative delay on create and update instead of flooring it", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Set a reminder to stretch." },
+  } as Memory;
+  const create = (parameters: Record<string, unknown>) =>
+    triggerAction.handler(fixture.runtime, message, undefined, {
+      parameters: { action: "create", ...parameters },
+    });
+  // A fractional delay is refused, not floored: 1.5 minutes must not
+  // become 1 minute, and a fractional winning delaySeconds must not fall
+  // back to delayMinutes. The LifeOps relative update reads the same
+  // fields the same way (readRelativeUpdateDelay in life.ts).
+  for (const delay of [
+    { delayMinutes: 1.5 },
+    { delaySeconds: 1.9 },
+    { delaySeconds: 0.5, delayMinutes: 30 },
+  ]) {
+    const instructions = `Fractional stretch ${randomUUID()}`;
+    const refused = await create({ instructions, ...delay });
+    expect(refused, JSON.stringify(delay)).toMatchObject({
+      success: false,
+      error: "INVALID_DELAY",
+    });
+    const tasks = await fixture.runtime.getTasks({ tags: ["trigger"] });
+    expect(
+      tasks.find((t) => t.metadata?.trigger?.instructions === instructions),
+    ).toBeUndefined();
+  }
+  // Whole seconds still outrank fractional minutes.
+  const instructions = `Whole seconds stretch ${randomUUID()}`;
+  const created = await create({
+    instructions,
+    delaySeconds: 90,
+    delayMinutes: 1.5,
+  });
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId } = created.data as { taskId: UUID };
+  try {
+    const stored = await fixture.runtime.getTask(taskId);
+    expect(stored && readTriggerConfig(stored)?.delayMs).toBe(90_000);
+    const before = stored && readTriggerConfig(stored);
+    const refused = await triggerAction.handler(
+      fixture.runtime,
+      message,
+      undefined,
+      { parameters: { action: "update", taskId, delayMinutes: 1.5 } },
+    );
+    expect(refused).toMatchObject({
+      success: false,
+      error: "INVALID_UPDATE",
+    });
+    const after = await fixture.runtime.getTask(taskId);
+    expect(after && readTriggerConfig(after)?.scheduledAtIso).toBe(
+      before?.scheduledAtIso,
+    );
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
 it("sets a second relative reminder asked later, and replays only an immediate retry", async () => {
   const message = {
     entityId: fixture.runtime.agentId,
