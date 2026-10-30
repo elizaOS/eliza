@@ -2,6 +2,7 @@ import { toWellFormedUnicode, truncateWellFormed } from "../utils/unicode.ts";
 import {
 	SENSITIVE_TEXT_PATTERNS as DEFAULT_REDACT_PATTERNS,
 	isSensitiveLogKey,
+	PRIVATE_KEY_ARMOR_RE,
 	redactTrailingArgs,
 	SENSITIVE_ASSIGNMENT_PATTERNS,
 } from "./log-redaction.js";
@@ -118,7 +119,7 @@ function redactPemBlock(block: string): string {
 }
 
 function redactMatch(match: string, groups: string[]): string {
-	if (match.includes("PRIVATE KEY-----")) {
+	if (PRIVATE_KEY_ARMOR_RE.test(match)) {
 		return redactPemBlock(match);
 	}
 	const filteredGroups = groups.filter(

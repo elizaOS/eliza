@@ -160,15 +160,18 @@ export const SENSITIVE_ASSIGNMENT_PATTERNS: readonly string[] = [
 ];
 
 export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
-	...SENSITIVE_ASSIGNMENT_PATTERNS,
-	// JSON fields.
-	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
-	// Quoted credential keys with arbitrary naming — a closing quote sits where
-	// the ENV-style row expects `=`/`:`, so `{"api_key": "…"}` matched nothing.
-	// See core for the full rationale.
-	String.raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(["'])([^"'\\]+)\2`,
-	// CLI flags (space-separated and --flag=value forms).
-	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
+	// Whole-credential shapes run before the assignment rows. An assignment
+	// value stops at whitespace, so `KEY=-----BEGIN …` or `token: Bearer …`
+	// would mask only the first word and remove the header the later row needs,
+	// leaving the key body or bearer credential in the output.
+	// PEM blocks. The body stops at the next BEGIN header, and a block with no
+	// END before that header ends there, so each header scans only to its END
+	// or the next header. An unbounded body rescanned the rest of the text for
+	// every header without an END: quadratic on untrusted log text.
+	String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----(?:(?!-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S])+?(?:-----END [A-Z ]*PRIVATE KEY-----|(?=-----BEGIN [A-Z ]*PRIVATE KEY-----))|-----BEGIN [A-Z ]*PRIVATE KEY-----(?=-----BEGIN [A-Z ]*PRIVATE KEY-----)`,
+	// PGP private key armor (the PEM row needs `PRIVATE KEY-----`; the label
+	// here ends in `KEY BLOCK-----`). Same next-header bound as the PEM row.
+	String.raw`-----BEGIN PGP PRIVATE KEY BLOCK-----(?:(?!-----BEGIN PGP PRIVATE KEY BLOCK-----)[\s\S])+?(?:-----END PGP PRIVATE KEY BLOCK-----|(?=-----BEGIN PGP PRIVATE KEY BLOCK-----))|-----BEGIN PGP PRIVATE KEY BLOCK-----(?=-----BEGIN PGP PRIVATE KEY BLOCK-----)`,
 	// Authorization headers (see core for the full grammar rationale: Basic
 	// first so trailing `=` reads as token68 padding; extension schemes use the
 	// complete token/quoted-string grammar; malformed assignment tails fail
@@ -180,13 +183,17 @@ export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*(?!(?:Basic|Bearer)(?:[ \t]|$))(${HTTP_TOKEN_PATTERN})[ \t]+((?=${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=)[^\r\n]+)(?=[\r\n]|$)`,
 	String.raw`(?:Proxy-)?Authorization\s*[:=]\s*([A-Za-z0-9._~+/\-]{18,}={0,})(?=[\r\n]|$)`,
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
+	...SENSITIVE_ASSIGNMENT_PATTERNS,
+	// JSON fields.
+	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
+	// Quoted credential keys with arbitrary naming — a closing quote sits where
+	// the ENV-style row expects `=`/`:`, so `{"api_key": "…"}` matched nothing.
+	// See core for the full rationale.
+	String.raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(["'])([^"'\\]+)\2`,
+	// CLI flags (space-separated and --flag=value forms).
+	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
 	// URI userinfo (database URLs, curl arguments, remotes carrying passwords).
 	String.raw`\b[a-z][a-z0-9+.-]*:\/\/([^\s/@]+)@`,
-	// PEM blocks. The body stops at the next BEGIN header, and a block with no
-	// END before that header ends there, so each header scans only to its END
-	// or the next header. An unbounded body rescanned the rest of the text for
-	// every header without an END: quadratic on untrusted log text.
-	String.raw`-----BEGIN [A-Z ]*PRIVATE KEY-----(?:(?!-----BEGIN [A-Z ]*PRIVATE KEY-----)[\s\S])+?(?:-----END [A-Z ]*PRIVATE KEY-----|(?=-----BEGIN [A-Z ]*PRIVATE KEY-----))|-----BEGIN [A-Z ]*PRIVATE KEY-----(?=-----BEGIN [A-Z ]*PRIVATE KEY-----)`,
 	// Common token prefixes.
 	String.raw`\b(sk-[A-Za-z0-9_-]{8,})\b`,
 	String.raw`\b(csk-[A-Za-z0-9_-]{8,})\b`,
@@ -232,6 +239,9 @@ const SENSITIVE_TEXT_REGEXPS: readonly RegExp[] = SENSITIVE_TEXT_PATTERNS.map(
 	parseSensitiveTextPattern,
 ).filter((re): re is RegExp => Boolean(re));
 
+/** PEM (`PRIVATE KEY-----`) or PGP (`PRIVATE KEY BLOCK-----`) armor label. */
+export const PRIVATE_KEY_ARMOR_RE = /PRIVATE KEY(?: BLOCK)?-----/;
+
 const SENSITIVE_TEXT_MIN_LENGTH = 18;
 const SENSITIVE_TEXT_KEEP_START = 6;
 const SENSITIVE_TEXT_KEEP_END = 4;
@@ -247,7 +257,7 @@ function maskSensitiveToken(token: string): string {
 }
 
 function redactSensitiveLogMatch(match: string, groups: string[]): string {
-	if (match.includes("PRIVATE KEY-----")) {
+	if (PRIVATE_KEY_ARMOR_RE.test(match)) {
 		return "***";
 	}
 	const filteredGroups = groups.filter(
