@@ -52,12 +52,35 @@ describe("shared native sign-in owner", () => {
     let answer!: (value: unknown) => void;
     const f = fixture({ startGoogle: () => new Promise(resolve => { answer = resolve; }) });
     const pending = f.controller.startGoogle();
-    f.controller.leave();
+    await f.controller.leave();
     await pending;
     answer(authenticated()); await Promise.resolve();
     expect(f.activate).not.toHaveBeenCalled();
     expect(f.abandoned).toHaveBeenCalledOnce();
     expect(f.port.cancel).toHaveBeenCalledOnce();
+  });
+
+  it("requires acknowledged native retirement before dispatching another method", async () => {
+    let active = false;
+    const f = fixture({
+      startGoogle: vi.fn(() => { active = true; return new Promise(() => {}); }),
+      cancel: vi.fn(async () => { throw new Error("bridge disconnected before acknowledgement"); }),
+      startEmail: vi.fn(async () => {
+        if (active) throw { code: "login-active" };
+        return { attemptId, expiresAt: Date.now() + 60_000, resendAt: Date.now() + 1000 };
+      }),
+    });
+    const pending = f.controller.startGoogle();
+    await f.controller.chooseAnotherMethod(); await pending;
+    expect(f.controller.getSnapshot().error?.code).toBe("unavailable");
+    await f.controller.startEmail("owner@example.invalid");
+    expect(f.port.startEmail).not.toHaveBeenCalled();
+    expect(f.controller.getSnapshot().error?.code).toBe("unavailable");
+    vi.mocked(f.port.cancel).mockImplementation(async () => { active = false; });
+    await f.controller.startEmail("owner@example.invalid");
+    expect(f.port.startEmail).toHaveBeenCalledOnce();
+    expect(f.controller.getSnapshot()).toMatchObject({ step: { kind: "code" }, error: null, busy: false });
+    f.controller.dispose();
   });
 
   it("retries account activation from the same authenticated outcome without another sign-in", async () => {

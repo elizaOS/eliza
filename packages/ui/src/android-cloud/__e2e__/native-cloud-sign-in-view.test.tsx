@@ -281,6 +281,30 @@ describe("AndroidNativeCloudSignInView", () => {
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
   });
 
+  it("can verify a retained MFA return when the original Google call never answers", async () => {
+    const port = mockPort();
+    let lateGoogle!: (value: unknown) => void;
+    port.startGoogle = vi.fn(() => new Promise(resolve => { lateGoogle = resolve; }));
+    vi.mocked(port.resumeMfa!).mockResolvedValue({ active: true });
+    const { onAuthenticated } = renderView(port);
+    fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
+    await waitFor(() => expect(port.startGoogle).toHaveBeenCalledOnce());
+    await act(async () => port.emit("signInMfaRequired", {
+      status: "mfa", environment: "production", attemptId: ATTEMPT,
+      method: "totp", expiresAt: later(300_000),
+    }));
+    const code = await screen.findByTestId("native-cloud-sign-in-code");
+    fireEvent.change(code, { target: { value: "123456" } });
+    expect((screen.getByTestId("native-cloud-sign-in-verify") as HTMLButtonElement).disabled).toBe(false);
+    // The superseded renderer callback cannot authenticate the still-unverified MFA attempt.
+    await act(async () => { lateGoogle(authenticated()); });
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-verify"));
+    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledOnce());
+    expect(port.verifyMfa).toHaveBeenCalledWith({ attemptId: ATTEMPT, code: "123456" });
+    expect(port.cancel).not.toHaveBeenCalled();
+  });
+
   it("keeps an in-flight attempt when the host rerenders its callbacks", async () => {
     const port = mockPort();
     const earlier = vi.fn(), latest = vi.fn();
@@ -302,9 +326,25 @@ describe("AndroidNativeCloudSignInView", () => {
     await screen.findByTestId("native-cloud-sign-in-email");
     fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
     expect(port.cancel).toHaveBeenCalledTimes(1);
-    expect(onAbandon).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(onAbandon).toHaveBeenCalledTimes(1));
     expect(onAbandon.mock.calls[0][0]).toMatchObject({ code: "cancelled" });
     expect(onAuthenticated).not.toHaveBeenCalled();
+  });
+
+  it("keeps the owner mounted when cancel is unacknowledged and rejects its retained completion", async () => {
+    const port = mockPort();
+    vi.mocked(port.cancel).mockRejectedValue(new Error("bridge acknowledgement lost"));
+    const { onAbandon, onAuthenticated } = renderView(port);
+    await screen.findByTestId("native-cloud-sign-in-email");
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
+    await screen.findByTestId("native-cloud-sign-in-error");
+    expect(onAbandon).not.toHaveBeenCalled();
+    await act(async () => port.emit("signInCompleted", authenticated()));
+    expect(onAuthenticated).not.toHaveBeenCalled();
+    vi.mocked(port.cancel).mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
+    await waitFor(() => expect(onAbandon).toHaveBeenCalledOnce());
+    expect(port.cancel).toHaveBeenCalledTimes(2);
   });
 
   it("completes from a native restart announcement and shows an unverified return", async () => {

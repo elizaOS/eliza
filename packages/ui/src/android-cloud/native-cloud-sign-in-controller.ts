@@ -75,6 +75,8 @@ export class NativeCloudSignInController<E extends string> {
   private lifetime = 0;
   private pending: AbortController | null = null;
   private cancellation: Promise<void> | null = null;
+  private cancellationRequired = false;
+  private nativeAttemptRetired = false;
   private authenticated: NativeCloudSignInAuthenticated<E> | null = null;
   private activation: Promise<void> | null = null;
   private returned: { owner: AbortController; finish(): void } | null = null;
@@ -129,7 +131,8 @@ export class NativeCloudSignInController<E extends string> {
       this.publish({ readiness: null });
   }
   reportIncomplete(value: unknown) {
-    if (this.current() && !this.authenticated) this.fail(value);
+    if (this.current() && !this.authenticated && !this.cancellationRequired)
+      this.fail(value);
   }
   private fail(cause: unknown) {
     const error = NativeCloudSignInError.from(cause);
@@ -251,9 +254,7 @@ export class NativeCloudSignInController<E extends string> {
     try {
       // A cancelled native attempt must finish retiring before a new method is
       // dispatched. Multiple cleanup paths share the same acknowledgement.
-      const cancellation = this.cancellation;
-      if (cancellation) await cancellation;
-      if (this.cancellation === cancellation) this.cancellation = null;
+      if (this.cancellationRequired) await this.cancelNative();
       this.check(generation, pending.signal);
       const execute = async (signal: AbortSignal) => {
         const cancel = () => pending.abort(signal.reason);
@@ -261,6 +262,7 @@ export class NativeCloudSignInController<E extends string> {
         try {
           if (signal.aborted) cancel();
           this.check(generation, pending.signal);
+          this.nativeAttemptRetired = false;
           const returned = new Promise<void>((finish) => {
             this.returned = { owner: pending, finish };
           });
@@ -314,7 +316,25 @@ export class NativeCloudSignInController<E extends string> {
     }
   }
   private cancelNative() {
-    this.cancellation ??= this.port.cancel().catch(() => {});
+    this.cancellationRequired = true;
+    if (!this.cancellation) {
+      const cancellation = (async () => this.port.cancel())();
+      this.cancellation = cancellation;
+      void cancellation.then(
+        () => {
+          if (this.cancellation === cancellation) {
+            this.cancellation = null;
+            this.cancellationRequired = false;
+            this.nativeAttemptRetired = true;
+          }
+        },
+        () => {
+          // A lost bridge acknowledgement does not prove native retirement.
+          // Keep the fence, but allow the next explicit action to retry cancel.
+          if (this.cancellation === cancellation) this.cancellation = null;
+        },
+      );
+    }
     return this.cancellation;
   }
 
@@ -476,7 +496,8 @@ export class NativeCloudSignInController<E extends string> {
         : this.startPhone(step.destination);
   }
   async acceptReturn(value: unknown) {
-    if (!this.current() || this.authenticated) return;
+    if (!this.current() || this.authenticated || this.cancellationRequired)
+      return;
     let outcome: NativeCloudSignInGoogleOutcome<E>;
     try {
       outcome = nativeSignInGoogleOutcome(value, this.owner.environment);
@@ -486,25 +507,35 @@ export class NativeCloudSignInController<E extends string> {
     // A retained completion may race the pending native call. The same generation
     // accepts it once; the pending call becomes inert after activation starts.
     if (!this.pending)
-      return this.run((generation, signal) =>
-        this.acceptOutcome(outcome, generation, signal),
-      );
+      return this.run(async (generation, signal) => {
+        await this.acceptOutcome(outcome, generation, signal);
+      });
     const pending = this.pending;
-    await this.acceptOutcome(outcome, this.generation, pending.signal);
-    // A retained authenticated return also completes a native call whose
-    // renderer promise did not survive backgrounding. Its late answer remains
-    // fenced; the existing operation stays owned through account activation.
-    if (outcome.status === "authenticated" && this.returned?.owner === pending)
+    const generation = this.generation;
+    const accepted = await this.acceptOutcome(
+      outcome,
+      generation,
+      pending.signal,
+    );
+    // A validated retained result completes a native call whose renderer
+    // promise did not survive backgrounding. MFA retires only that renderer
+    // callback; its native attempt remains available for code verification.
+    if (accepted && this.returned?.owner === pending) {
+      if (outcome.status === "mfa" && generation === this.generation)
+        ++this.generation;
       this.returned.finish();
+    }
   }
   private async acceptOutcome(
     outcome: NativeCloudSignInGoogleOutcome<E>,
     generation: number,
     signal: AbortSignal,
   ) {
-    if (outcome.status === "authenticated")
-      return this.activate(outcome, generation, signal);
-    if (!this.port.resumeMfa) return;
+    if (outcome.status === "authenticated") {
+      await this.activate(outcome, generation, signal);
+      return true;
+    }
+    if (!this.port.resumeMfa) return false;
     try {
       const resumed = await this.port.resumeMfa({
         attemptId: outcome.attemptId,
@@ -516,7 +547,7 @@ export class NativeCloudSignInController<E extends string> {
         typeof resumed === "object" &&
         Reflect.get(resumed, "active") === true &&
         outcome.expiresAt > Date.now()
-      )
+      ) {
         this.publish({
           step: {
             kind: "mfa",
@@ -526,9 +557,12 @@ export class NativeCloudSignInController<E extends string> {
           },
           error: null,
         });
+        return true;
+      }
     } catch (error) {
       if (this.current() && generation === this.generation) this.fail(error);
     }
+    return false;
   }
   async chooseAnotherMethod() {
     if (!this.current() || this.authenticated) return;
@@ -538,8 +572,10 @@ export class NativeCloudSignInController<E extends string> {
     this.publish({ busy: true });
     try {
       await this.cancelNative();
-    } catch {
-      /* The native attempt may already have ended. */
+    } catch (error) {
+      this.fail(error);
+      this.publish({ busy: false, operation: null });
+      return;
     }
     this.publish({
       step: { kind: "methods" },
@@ -584,8 +620,24 @@ export class NativeCloudSignInController<E extends string> {
       if (this.pending === pending) this.pending = null;
     }
   }
-  leave() {
+  async leave() {
     if (!this.current()) return;
+    const generation = ++this.generation;
+    this.pending?.abort();
+    this.pending = null;
+    this.publish({ busy: true, operation: null });
+    if (!this.authenticated) {
+      try {
+        await this.cancelNative();
+      } catch (error) {
+        if (this.current() && generation === this.generation) {
+          this.fail(error);
+          this.publish({ busy: false });
+        }
+        return;
+      }
+    }
+    if (!this.current() || generation !== this.generation) return;
     try {
       this.owner.abandoned(new NativeCloudSignInError("cancelled"));
     } finally {
@@ -605,6 +657,7 @@ export class NativeCloudSignInController<E extends string> {
     for (const handle of this.handles) void this.remove(handle);
     this.handles.clear();
     this.listeners.clear();
-    if (!this.completed && !this.authenticated) void this.cancelNative();
+    if (!this.completed && !this.authenticated && !this.nativeAttemptRetired)
+      void this.cancelNative();
   }
 }

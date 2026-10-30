@@ -87,6 +87,13 @@ credential replacement and provider retirement remain with their existing owners
 The controller neither stores a token nor treats authentication as entitlement,
 resident startup or AI readiness.
 
+Explicit `leave()` waits for native cancellation acknowledgement before releasing
+the owner. A failed cancellation keeps the current view available for retry and
+blocks retained outcomes and new method dispatch until retirement succeeds.
+`dispose()` is forced teardown, not an acknowledged sign-out. Native authenticated
+events currently lack an attempt identity; hosts must not treat them as proof of
+credential retirement or correlation across a destroyed application owner.
+
 The common view accepts product copy, branding, theme tokens and a public
 `serviceInfo` loader. Terms and privacy use the strict plain-text contract in
 `native-cloud-service-info`. Canonical Android requests use the same controller
