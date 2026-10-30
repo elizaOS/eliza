@@ -1,12 +1,8 @@
 /**
- * Eliza as a registered product of the mobile shell: the reference record a
- * branded build compares its feature manifest with. Its views are the
- * canonical views Eliza's launcher offers (the everyday apps, then the
- * native-OS tiles of the AOSP build); Eliza views outside the canonical
- * vocabulary (tasks, character, documents, memories, developer surfaces) are
- * not shell views yet. The installed names are the ones Eliza's launcher
- * already writes: `eliza.launcher.favorites.v1` with `eliza:` view keys, and
- * the older `wallet` key migrates to `inventory`.
+ * Eliza's presentation and installed storage defaults for the mobile shell.
+ * The application catalog discovers every admitted AppShellPage; this record
+ * supplies preferred order, labels and icons without limiting that catalog.
+ * Existing `eliza:` favorites and the legacy wallet alias remain stable.
  */
 import { ELIZA_DEFAULT_THEME } from "../config/theme";
 import {
@@ -55,6 +51,9 @@ export const ELIZA_MOBILE_PRODUCT = defineMobileProductRegistration({
       settings: "settings",
       inventory: "wallet",
       calendar: "calendar",
+      inbox: "mail",
+      maps: "map",
+      photos: "images",
       notes: "sticky-note",
       clock: "clock",
       automations: "workflow",
@@ -71,6 +70,9 @@ export const ELIZA_MOBILE_PRODUCT = defineMobileProductRegistration({
       "settings",
       "inventory",
       "calendar",
+      "inbox",
+      "maps",
+      "photos",
       "notes",
       "clock",
       "automations",
@@ -85,6 +87,9 @@ export const ELIZA_MOBILE_PRODUCT = defineMobileProductRegistration({
       settings: "Settings",
       inventory: "Wallet",
       calendar: "Calendar",
+      inbox: "Inbox",
+      maps: "Maps",
+      photos: "Photos",
       notes: "Notes",
       clock: "Clock",
       automations: "Automations",

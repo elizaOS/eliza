@@ -75,3 +75,11 @@ Browser-safe, erasable-TypeScript controllers for device and browser hosts:
   revisions, the exact result is confirmed and re-read before sharing, free,
   cancelled and declined entries are never busy, and any stale or unknown read
   shares nothing.
+
+### Visible-day observation
+
+`@elizaos/plugin-calendar/client/day-observation` projects a committed canonical day
+view into the shared current-turn Calendar-day contract. It refuses month/event/editor
+views, unready or mutating snapshots and stale owners, and performs civil-day arithmetic
+in the supplied time zone. The application supplies current visibility and owner facts;
+this hint contains no event contents and authorizes no read or mutation.

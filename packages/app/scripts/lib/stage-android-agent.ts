@@ -156,6 +156,19 @@ export function selectAndroidRuntimeTargets(value) {
   return ABI_TARGETS.filter((target) => names.includes(target.androidAbi));
 }
 
+function pruneUnselectedRuntimeAbis({ assetsAgentDir, targets }) {
+  const selected = new Set(targets.map(({ androidAbi }) => androidAbi));
+  let removed = 0;
+  for (const { androidAbi } of ABI_TARGETS) {
+    if (selected.has(androidAbi)) continue;
+    const directory = path.join(assetsAgentDir, androidAbi);
+    if (!fs.existsSync(directory)) continue;
+    removePathRecursiveSync(directory);
+    removed += 1;
+  }
+  return removed;
+}
+
 const NATIVE_LLAMA_ASSET_ENV_KEYS = [
   "ELIZA_ANDROID_AGENT_NATIVE_ASSET_DIR",
   "ELIZA_AOSP_LLAMA_ASSET_DIR",
@@ -1834,6 +1847,9 @@ export async function stageAndroidAgentRuntime({
     assetsAgentDir,
     RUNTIME_PROVENANCE_FILENAME,
   );
+  // JNI abiFilters do not filter assets. Prune only our excluded asset trees
+  // after the selected runtimes and shared payload have staged successfully.
+  stagedCount += pruneUnselectedRuntimeAbis({ assetsAgentDir, targets });
   const runtimeProvenance = {
     schema: "eliza.android_agent_runtime_provenance.v1",
     generated_by: "packages/app/scripts/lib/stage-android-agent.ts",
@@ -1892,6 +1908,7 @@ export async function stageAndroidAgentRuntime({
 }
 
 export const __testables = {
+  pruneUnselectedRuntimeAbis,
   ensureAlpineApkExtracted,
   stageNativeLlamaAssetsForAbi,
   deduplicateProvenanceFiles,

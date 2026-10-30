@@ -46,6 +46,17 @@ before its first read. `@elizaos/ui/mobile-shell/core` is the same model
 without React components for runtime code such as agent navigation. Neither
 entry loads the package root.
 
+`MobileApplication` is the production Android entry inside the app's existing
+startup/auth provider. It owns Home, All apps and registered view placement;
+`createMobileApplicationCatalog` projects the authoritative AppShellPage registry
+without using product order as an allowlist. Hosts pass their current navigation
+owner, retained view trees, assistant and system overlays. Canonical shell
+storage goes through its existing guarded shell writer; compatibility hosts
+provide their own storage port. These ports do not
+create another session, action dispatcher or conversation owner. The canonical
+app retains its existing ViewRouter; compatibility consumers can keep individual
+legacy domain views while migrating their implementations separately.
+
 `@elizaos/ui/api/transport` exposes the browser-safe request helpers and
 `SseEventFramer`. It preserves event lines across fragmented network reads;
 hosts retain UTF-8 decoding policy, limits, cancellation, validation and receipts.
@@ -153,6 +164,13 @@ was `dispatched`. The last stopped dispatched turn is kept in `stopped`, and
 `findStoppedUserTurn` finds its user row in a later conversation read. The leaf
 export `@elizaos/ui/api/conversation-turn-controller` loads it without the package root.
 
+`request(input, {conversation, signal})` awaits that same turn lifecycle. It reserves
+the turn before binding or waiting for Stop, so a declined or cancelled caller
+cannot rebind or stop a later request. Rejections keep their error identity and,
+when mutable, carry `notDispatched`; an `AbortError` alone never proves no send.
+`admitConversationStopReceipt` requires `aborted: true` and the expected room and
+reason. It confirms cancellation was signaled, not that remote cleanup finished.
+
 Browser speech lifecycle APIs are available from the package root.
 `DeviceSpeechController` owns device
 utterance cancellation, stale callbacks and page visibility cleanup; dispose it on
@@ -202,3 +220,14 @@ provider timing/voice quality, mobile WebView or physical speakers.
 `BatchVoiceConversation` shares the foreground capture, turn, reply and playback loop through injected ports. Hosts own credentials, microphone access, Cloud transcription, `VOICE_DM` submission and matching playback completion. Stop retires late replies and drains owned capture before replacement. It never edits a text draft, selects a provider or resumes itself after retirement. `createVoiceTurnAggregator` and `createVoiceActivityDetector` also serve the existing shell; native peak-only activity does not invent RMS measurements.
 
 A durable owner-input reply can pause `BatchVoiceConversation` with `awaitingUserInput`. The host keeps its existing Review controls visible; the coordinator opens no microphone and starts no speech while paused. After the host authenticates and completes that same original request, `resume({pause, reply})` admits its exact new assistant reply once. The pause carries request, conversation, user-message, assistant-message and proposal correlations only. It never approves an action, sends a new user message or restores a retired voice session.
+
+### Optional client observations
+
+`@elizaos/ui/api/client-observation` owns optional observation negotiation. Supply the
+current authenticated origin/owner/agent/session and connection epoch, a currentness
+predicate, and an authenticated status reader. The session learns one API-process nonce,
+then compares fresh status before including Calendar day context. A replaced or unreadable
+process omits the optional field until a new verified session is created. This format
+handshake grants no Calendar access and does not replace the host's visibility checks.
+Turn cancellation stops only that caller's wait. Session retirement also cancels the
+shared handshake, so another turn cannot inherit a cancelled caller's failure.

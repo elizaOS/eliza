@@ -47,6 +47,8 @@ test("connection and resident lifecycle JVM contracts pass", () => {
       "connection/DelegationCallback",
       "connection/PendingRequests",
       "connection/SecureSlotPolicy",
+      "connection/WorkspaceAppReturn",
+      "connection/WorkspaceAppReturnFlow",
       "runtime/CredentialIntentFence",
       "runtime/NativeProviderAdmission",
       "runtime/NativeProviderSlot",
@@ -67,6 +69,8 @@ test("connection and resident lifecycle JVM contracts pass", () => {
       ["CloudConnectionPolicyTest", /^PASS cloud connection policy/],
       ["ConnectionTransportTest", /^PASS connection transport/],
       ["ResidentLifecycleTest", /^PASS resident lifecycle/],
+      ["WorkspaceAppReturnTest", /^PASS Workspace return pure contract/],
+      ["WorkspaceAppReturnFlowTest", /^PASS Workspace flow/],
     ]) {
       assert.match(
         execFileSync(
@@ -75,6 +79,7 @@ test("connection and resident lifecycle JVM contracts pass", () => {
             "-cp",
             output + path.delimiter + jar,
             `ai.eliza.plugins.agent.connection.test.${name}`,
+            "https://client.example/workspace/gmail/callback",
           ],
           { encoding: "utf8", timeout: 120000 },
         ),

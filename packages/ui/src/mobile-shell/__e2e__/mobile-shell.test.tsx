@@ -1168,12 +1168,14 @@ describe("entries", () => {
       )) {
         const specifier = from ?? bare;
         const typeOnly = /^(?:import|export)\s+type\b/.test(statement);
+        if (typeOnly) continue;
         if (!specifier.startsWith(".")) {
           if (!typeOnly) runtime.add(specifier);
           continue;
         }
         const base = path.resolve(path.dirname(file), specifier);
-        const resolved = [`${base}.ts`, `${base}.tsx`, base].find(
+        const extensionless = base.replace(/\.js$/, "");
+        const resolved = [`${extensionless}.ts`, `${extensionless}.tsx`, base].find(
           (candidate) =>
             fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
         );
@@ -1204,12 +1206,16 @@ describe("entries", () => {
     expect(closure("mobile-shell/index.ts")).toEqual({
       files: [
         "components/pages/InstalledAppsLauncher.tsx",
+        "app-shell-pages.ts",
+        "registry-host.ts",
         ...core,
         "mobile-shell/MobileAllAppsDrawer.tsx",
+        "mobile-shell/MobileApplication.tsx",
         "mobile-shell/MobileHomeScreen.tsx",
         "mobile-shell/MobileViewHost.tsx",
         "mobile-shell/index.ts",
         "mobile-shell/mobile-launcher.ts",
+        "mobile-shell/application-catalog.ts",
       ].sort(),
       packages: [
         "@elizaos/capacitor-system/launcher",

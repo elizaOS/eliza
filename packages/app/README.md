@@ -87,6 +87,12 @@ For a system APK targeting Pixel/Cuttlefish ARM64 and x86_64, set
 `bun run --cwd packages/app build:android:system`. Omitting the variable retains
 all runtime targets, including the separately pinned RISC-V artifact requirement.
 
+After building the mobile agent bundle, run
+`node packages/app/scripts/qualify-android-runtime-restaging.ts` from the root
+with the Android SDK and Java configured to check repeated ABI selection with
+real pinned runtimes and Gradle asset merging. Evidence goes to
+`test-results/android-runtime-restaging/`; this does not build or run an APK.
+
 Turbo builds the host `dist/` before the renderer `web-dist/`. For a renderer-only
 rebuild after dependencies are built, use `bun run --cwd packages/app build`.
 
