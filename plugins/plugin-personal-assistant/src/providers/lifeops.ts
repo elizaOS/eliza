@@ -28,6 +28,7 @@ import {
   type ProviderResult,
   type State,
   toWellFormedUnicode,
+  timeInferenceSpan,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import type { ConnectorStatus } from "../lifeops/connectors/contract.js";
@@ -410,13 +411,13 @@ export const lifeOpsProvider: Provider = {
         googleAccountsRead,
         connectorDegradationLines,
       ] = await Promise.all([
-        readLifeOpsOwnerProfile(runtime),
-        resolveOwnerFactStore(runtime).read(),
-        service.getOverview().then(async (refreshed) => ({
+        timeInferenceSpan("provider:lifeops:owner-profile", () => readLifeOpsOwnerProfile(runtime)),
+        timeInferenceSpan("provider:lifeops:owner-facts", () => resolveOwnerFactStore(runtime).read()),
+        timeInferenceSpan("provider:lifeops:overview-completed", () => service.getOverview().then(async (refreshed) => ({
           overview: refreshed,
           completedToday: await service.listOwnerOccurrencesCompletedToday(now),
-        })),
-        (async () => {
+        }))),
+        timeInferenceSpan("provider:lifeops:connector-inventory", async () => {
           try {
             return await accountManager.listAccounts("google");
           } catch (cause) {
@@ -434,8 +435,8 @@ export const lifeOpsProvider: Provider = {
               context: { provider: "google" },
             });
           }
-        })(),
-        (async () => {
+        }),
+        timeInferenceSpan("provider:lifeops:account-privacy", async () => {
           try {
             return mapConnectorAccountPrivacyPolicies(
               await service.repository.listConnectorAccountPrivacy(
@@ -452,8 +453,8 @@ export const lifeOpsProvider: Provider = {
             });
             return mapConnectorAccountPrivacyPolicies([]);
           }
-        })(),
-        (async () => {
+        }),
+        timeInferenceSpan("provider:lifeops:google-accounts", async () => {
           // Captured, not thrown: the Google block below re-raises a failure
           // into its own catch so the degrade path stays exactly as it was.
           try {
@@ -464,8 +465,8 @@ export const lifeOpsProvider: Provider = {
           } catch (cause) {
             return { ok: false as const, cause };
           }
-        })(),
-        summarizeConnectorDegradation(runtime),
+        }),
+        timeInferenceSpan("provider:lifeops:connector-health", () => summarizeConnectorDegradation(runtime)),
       ]);
       const egressContext = createLifeOpsEgressContext({
         isOwner: true,
@@ -635,7 +636,7 @@ export const lifeOpsProvider: Provider = {
             } else {
               try {
                 nextEventContext =
-                  await service.getNextCalendarEventContext(INTERNAL_URL);
+                  await timeInferenceSpan("provider:lifeops:calendar-next", () => service.getNextCalendarEventContext(INTERNAL_URL));
                 calendarLines.push(...summarizeNextEvent(nextEventContext));
               } catch (cause) {
                 // error-policy:J4 the granted calendar read failed — degrade
@@ -666,9 +667,9 @@ export const lifeOpsProvider: Provider = {
               emailLines.push("Gmail context hidden by privacy policy.");
             } else {
               try {
-                const triage = await service.getGmailTriage(INTERNAL_URL, {
+                const triage = await timeInferenceSpan("provider:lifeops:gmail-triage", () => service.getGmailTriage(INTERNAL_URL, {
                   maxResults: 5,
-                });
+                }));
                 gmailSummary = triage.summary;
                 emailLines.push(...summarizeGmailTriage(triage.summary));
               } catch (cause) {
@@ -689,7 +690,7 @@ export const lifeOpsProvider: Provider = {
         if (calendarLines.length === 0 && audience === "owner") {
           try {
             nextEventContext =
-              await service.getNextCalendarEventContext(INTERNAL_URL);
+              await timeInferenceSpan("provider:lifeops:calendar-next", () => service.getNextCalendarEventContext(INTERNAL_URL));
             calendarLines.push(...summarizeNextEvent(nextEventContext));
           } catch (cause) {
             // error-policy:J4 designed absence — with no calendar source
