@@ -1150,7 +1150,14 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       : undefined;
   let typedReadEgress: TypedReadEgressReceipt | undefined;
   if (typedReadTurn) webSearchEnabled = true;
-  const webSearchPlugin = typedReadTurn
+  // Article and non-US weather reads use the existing guarded WEB_FETCH action,
+  // bound to this turn's evidence port. US weather stays search-only.
+  const typedReadEvidence = typedReadTurn?.reads.some(
+    (read) => read.kind === "world-weather" || read.kind === "news",
+  )
+    ? (await import("./shared-read-evidence")).createSharedReadEvidencePort(typedReadTurn.scope)
+    : undefined;
+  const typedReadSearchPlugin = typedReadTurn
     ? createWebSearchEdgePlugin(async (query, options) => {
         const authorized = typedReadTurn.authorizePublicSearch(query);
         if (!authorized) {
@@ -1170,8 +1177,22 @@ async function executeMeasuredSharedElizaRuntimeTurn(
               )
             : await runWebSearchEdge(authorized.query, options);
         const traceable = requireTraceableRealtimeSearch(result, authorized.query);
+        typedReadEvidence?.observePublicSearch?.(traceable, authorized.query);
         return traceable.success === true ? { ...traceable, modelReplyRequired: true } : traceable;
       })
+    : undefined;
+  const webSearchPlugin = typedReadSearchPlugin
+    ? typedReadEvidence
+      ? {
+          ...typedReadSearchPlugin,
+          actions: [
+            ...(typedReadSearchPlugin.actions ?? []),
+            (await import("@elizaos/plugin-coding-tools/edge")).createWebFetchEdgeAction({
+              readEvidence: typedReadEvidence,
+            }),
+          ],
+        }
+      : typedReadSearchPlugin
     : preflightWebSearchResult
       ? createWebSearchEdgePlugin(createMatchingRealtimeSearchRunner(preflightWebSearchResult))
       : publicSearchIntent?.kind === "general"
@@ -1208,12 +1229,8 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ? createSharedGoogleContextPlugin(input.execution.google)
       : undefined;
   const explicitPublicQuery =
-    typedReadTurn?.authorizedPublicQueries.length === 1
-      ? typedReadTurn.authorizedPublicQueries[0]
-      : !typedReadTurn && publicSearchIntent?.kind === "general"
-        ? publicSearchIntent.topic
-        : undefined;
-  if (webSearchPlugin && explicitPublicQuery) {
+    !typedReadTurn && publicSearchIntent?.kind === "general" ? publicSearchIntent.topic : undefined;
+  if (webSearchPlugin && (typedReadTurn || explicitPublicQuery)) {
     webSearchPlugin.responseHandlerEvaluators = [
       {
         name: "shared.explicit_public_search",
@@ -1224,11 +1241,11 @@ async function executeMeasuredSharedElizaRuntimeTurn(
           requiresTool: true,
           setContexts: ["general"],
           clearCandidateActions: true,
-          addCandidateActions: ["WEB_SEARCH"],
+          addCandidateActions: typedReadEvidence ? ["WEB_SEARCH", "WEB_FETCH"] : ["WEB_SEARCH"],
           clearReply: true,
           // Typed reads need the full planner's real tools and opaque egress
           // callback. The single-action shortcut forbids follow-up tool calls.
-          ...(!typedReadTurn
+          ...(!typedReadTurn && explicitPublicQuery
             ? {
                 deterministicToolCall: {
                   name: "WEB_SEARCH",
@@ -1240,25 +1257,32 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       },
     ];
   }
-  const character =
-    typedReadTurn && explicitPublicQuery
+  const character = typedReadTurn
+    ? {
+        ...input.character,
+        system: [
+          input.character.system,
+          ...typedReadTurn.reads.map((read) =>
+            read.kind === "none"
+              ? undefined
+              : read.kind === "world-weather"
+                ? `The weather read for this request is WEB_FETCH url ${JSON.stringify(read.url)}. Use these exact URL bytes; no other weather source can verify this place.`
+                : read.kind === "news"
+                  ? `The news read for this request starts with WEB_SEARCH query ${JSON.stringify(read.query)}. Use these exact query bytes. Then WEB_FETCH one article URL returned by that search to read its own title and publication date.`
+                  : `The public read for this request starts with WEB_SEARCH query ${JSON.stringify(read.query)}. Use these exact query bytes. After returned public sources identify a fully qualified place with the same city, you may request a current observation with WEB_SEARCH query "current public weather in <same original city>, <US state>" using that source location; any explicit original state or country must match. Do not infer a state from private history, profile, or population. A qualified alternative is one possible place, not confirmation of the user's intended place.`,
+          ),
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+      }
+    : publicSearchIntent?.kind === "general"
       ? {
           ...input.character,
-          system: [
-            input.character.system,
-            `The public read for this request starts with WEB_SEARCH query ${JSON.stringify(explicitPublicQuery)}. Use these exact query bytes. After returned public sources identify a fully qualified place with the same city, you may request a current observation with WEB_SEARCH query "current public weather in <same original city>, <US state>" using that source location; any explicit original state or country must match. Do not infer a state from private history, profile, or population. A qualified alternative is one possible place, not confirmation of the user's intended place.`,
-          ]
+          system: [input.character.system, sharedRealtimePromptPolicy(undefined)]
             .filter(Boolean)
             .join("\n\n"),
         }
-      : publicSearchIntent?.kind === "general"
-        ? {
-            ...input.character,
-            system: [input.character.system, sharedRealtimePromptPolicy(undefined)]
-              .filter(Boolean)
-              .join("\n\n"),
-          }
-        : input.character;
+      : input.character;
   // A group turn labels each speaker `Participant <n>` (see
   // `group-participant-labels.ts`). That is a slot, not a name, so the model
   // needs one line telling it where real names come from; scoping it to the
@@ -1732,7 +1756,12 @@ async function executeMeasuredSharedElizaRuntimeTurn(
       ...(input.preflightActionResults ?? []),
       ...(result.actionResults ?? []),
     ];
-    const grounding = input.realtimeGrounding ?? sharedPublicWebGrounding(actionResults);
+    // One stored grounding holds one WEB_SEARCH. A typed turn with a WEB_FETCH
+    // reader (MET origin or article) has facts that search does not back, so
+    // it stores none; a follow-up then makes its own read.
+    const grounding =
+      input.realtimeGrounding ??
+      (typedReadEvidence ? undefined : sharedPublicWebGrounding(actionResults));
     const verifiedTypedReadEgress =
       typedReadTurn &&
       typedReadEgress &&

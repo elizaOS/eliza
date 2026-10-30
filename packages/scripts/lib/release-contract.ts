@@ -363,6 +363,16 @@ export function collectEntrypointMetadata(packageJson) {
   };
 }
 
+/** Map a source range to the range a packed manifest publishes; `workspace:` pins to the cohort version. */
+export function publishedWorkspaceRange(range, targetVersion) {
+  if (!range.startsWith("workspace:")) return range;
+  const remainder = range.slice("workspace:".length);
+  if (remainder === "*") return targetVersion;
+  if (remainder === "^" || remainder === "~")
+    return `${remainder}${targetVersion}`;
+  return remainder;
+}
+
 function validateDependencyRange({
   fromName,
   section,
@@ -370,12 +380,13 @@ function validateDependencyRange({
   range,
   targetVersion,
 }) {
-  if (typeof range !== "string" || range.startsWith("workspace:")) {
+  if (typeof range !== "string") {
     throw new Error(
       `${fromName} ${section}.${dependencyName} must be a published semver range, received ${range}`,
     );
   }
-  const validRange = semver.validRange(range);
+  const publishedRange = publishedWorkspaceRange(range, targetVersion);
+  const validRange = semver.validRange(publishedRange);
   if (
     !validRange ||
     !semver.satisfies(targetVersion, validRange, { includePrerelease: true })

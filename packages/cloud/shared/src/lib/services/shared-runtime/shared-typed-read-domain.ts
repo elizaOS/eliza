@@ -24,6 +24,8 @@ import {
 export interface SharedPublicSearchPart {
   message: string;
   requirement: SharedRealtimeRequirement & { publicationScope?: SharedNewsPublicationScope };
+  /** Set only when the utterance has more than one part; single-part turns keep their route. */
+  compound?: true;
 }
 
 /** Bind positional obligations to their original physical request, not a stale same-index topic. */
@@ -68,6 +70,7 @@ export function resolveTypedPublicReadParts(
       return undefined;
     parts.push({
       message: clause,
+      ...(clauses.length > 1 ? { compound: true as const } : {}),
       requirement: {
         ...requirement,
         ...(requirement.domain === "news"
@@ -114,6 +117,22 @@ export function typedTemperatureEvidenceMessage(message: string): string {
 
 /** A single current temperature can retain its producer's actual unit when the user requests none. */
 export function isSimpleCurrentTemperatureRequest(message: string): boolean {
+  return simpleCurrentRequest(message, false);
+}
+
+/**
+ * The temperature validator for one typed part. A compound turn's "weather now"
+ * clause is answered as its current temperature; a single-part turn keeps the
+ * existing temperature-only rule and its existing route.
+ */
+export function isTypedCurrentTemperaturePart(part: SharedPublicSearchPart): boolean {
+  return (
+    part.requirement.domain === "weather" &&
+    simpleCurrentRequest(part.message, part.compound === true)
+  );
+}
+
+function simpleCurrentRequest(message: string, weatherNoun: boolean): boolean {
   if (!isSharedPublicSearchSafe(message)) return false;
   const request = typedTemperatureEvidenceMessage(message);
   const questions = request
@@ -125,12 +144,14 @@ export function isSimpleCurrentTemperatureRequest(message: string): boolean {
   );
   return (
     substantive.length === 1 &&
-    (request.match(/\btemperature\b/giu)?.length ?? 0) === 1 &&
+    (request.match(weatherNoun ? /\b(?:temperature|weather)\b/giu : /\btemperature\b/giu)?.length ??
+      0) === 1 &&
     /\b(?:current|now|rn)\b/iu.test(request) &&
     !/\b(?:and|also|plus|with|as\s+well)\b/iu.test(request) &&
-    !/\b(?:weather|forecast|tomorrow|tonight|weekend|hourly|later|wind|rain|snow|precipitation|humidity|conditions|feels|high|low|fahrenheit|kelvin)\b|°\s*[FK]\b/iu.test(
+    !/\b(?:forecast|tomorrow|tonight|weekend|hourly|later|wind|rain|snow|precipitation|humidity|conditions|feels|high|low|fahrenheit|kelvin)\b|°\s*[FK]\b/iu.test(
       request,
-    )
+    ) &&
+    (weatherNoun || !/\bweather\b/iu.test(request))
   );
 }
 
@@ -731,11 +752,7 @@ export function resolveTypedNwsReadScope(
   part: SharedPublicSearchPart,
   requestedQuery: string,
 ): TypedNwsReadScope | undefined {
-  if (
-    part.requirement.domain !== "weather" ||
-    !isSimpleCurrentTemperatureRequest(part.message) ||
-    !isSharedPublicSearchSafe(requestedQuery)
-  )
+  if (!isTypedCurrentTemperaturePart(part) || !isSharedPublicSearchSafe(requestedQuery))
     return undefined;
   const prefix = "current public weather in ";
   const originalQuery = part.requirement.query.normalize("NFKC").trim().replace(/\s+/gu, " ");

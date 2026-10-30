@@ -81,12 +81,29 @@ export function ownArticleTitle(value: unknown, url: string): string | undefined
   return matches === 1 ? expected : undefined;
 }
 
+/**
+ * An allowlist of topic-less news wording ("one top news headline from today",
+ * "the top headline today", "today's news headlines"). It reads the user's own
+ * clause, not the extracted query: the extractor can lose or change a topic
+ * ("the latest sports headline about the Lakers"), and any clause that names a
+ * topic must fail closed.
+ */
+export function newsRequestNamesNoTopic(message: string): boolean {
+  return /^(?:(?:what['’]?s|what\s+(?:is|are)|give\s+me|show\s+me|tell\s+me)\s+)?(?:(?:one|a|an|the|today['’]?s|top|latest|current|breaking)\s+)*(?:news\s+)?(?:news|headlines?)(?:\s+(?:(?:from|for)\s+)?today)?[\s.!?]*$/iu.test(
+    message.trim(),
+  );
+}
+
 /** Topic matching uses only the selected article body, excluding related-story navigation. */
 export function articleMatchesNewsTopic(
   own: { title: string; excerpts: string[] },
   query: string,
 ): boolean {
-  const topic = query.match(/^latest public (.+?) news dated /u)?.[1];
+  const match = query.match(/^latest public (?:(.+?) )?news dated /u);
+  if (!match) return false;
+  // A dated request with no topic ("one top headline from today") accepts any own article.
+  const topic = match[1];
+  if (!topic) return true;
   const words = (text: string) =>
     new Set(
       text
@@ -99,7 +116,7 @@ export function articleMatchesNewsTopic(
     .join("\n")
     .split(/\n(?:_?Related(?: coverage)?|#{1,6}\s+(?:Related|More))\b/iu)[0];
   const bodyWords = words(body);
-  return Boolean(topic) && [...words(topic ?? "")].every((word) => bodyWords.has(word));
+  return [...words(topic)].every((word) => bodyWords.has(word));
 }
 
 export type SharedNewsArticleConflict = "article_title_conflict" | "article_publication_conflict";

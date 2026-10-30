@@ -1,8 +1,9 @@
 /**
  * Settings → "Backups" section body (the `advanced` section registered in
  * settings-sections.ts). Drives local-agent backup export/import — create,
- * list, and restore via the typed API client. Developer/preview tooling does
- * not belong in this everyday backup destination.
+ * list, and restore via the typed API client. On the Android app it also holds
+ * "Reset app data" (AndroidDataResetGroup), the native package-scoped reset.
+ * Developer/preview tooling does not belong in this everyday backup destination.
  */
 
 import { Download, Upload } from "lucide-react";
@@ -16,6 +17,7 @@ import { Button } from "../ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "../ui/dialog";
 import { RadioGroup, RadioGroupItem } from "../ui/radio-group";
 import { Spinner } from "../ui/spinner";
+import { AndroidDataResetGroup } from "./AndroidDataResetGroup";
 import { SettingsActionButton } from "./settings-agent-rows";
 import { SettingsGroup, SettingsRow, SettingsStack } from "./settings-layout";
 
@@ -291,6 +293,7 @@ export function AdvancedSection() {
             />
           </SettingsGroup>
         )}
+        <AndroidDataResetGroup />
       </SettingsStack>
 
       <Dialog

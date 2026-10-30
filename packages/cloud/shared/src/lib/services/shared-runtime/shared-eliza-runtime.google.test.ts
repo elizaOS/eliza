@@ -508,3 +508,233 @@ test("actual Core keeps complete public Google queries separate from consented o
   await exercise("connect");
 });
 const initializeOriginal = AgentRuntime.prototype.initialize;
+
+/**
+ * The real Shared runtime wiring (typed read turn, evidence port, WEB_FETCH
+ * registration, search observation and per-read prompt lines) with a scripted
+ * model. Only the network boundary is synthetic: model HTTP, the MET origin and
+ * the public search/article reader.
+ */
+async function mixedWeatherAndNews(articleRead: boolean) {
+  const message = "what's the weather in Tokyo right now, and one top news headline from today?";
+  const articleUrl = "https://news.example.org/2026/synthetic-public-story";
+  const articleTitle = "Synthetic public headline";
+  const now = Date.now();
+  const day = new Date(now).toISOString().slice(0, 10);
+  const savedFetch = globalThis.fetch;
+  const saved = {
+    cerebras: process.env.CEREBRAS_API_KEY,
+    fallback: process.env.OPENROUTER_API_KEY,
+    nodeEnv: process.env.NODE_ENV,
+  };
+  process.env.CEREBRAS_API_KEY = "offline-mixed-read-key";
+  delete process.env.OPENROUTER_API_KEY;
+  process.env.NODE_ENV = "production";
+  const prompted = { metUrl: "", newsQuery: "" };
+  const calls = { met: 0, search: [] as unknown[], article: [] as unknown[] };
+  globalThis.fetch = (async (input, init) => {
+    const url = input instanceof Request ? input.url : String(input);
+    const text = input instanceof Request ? await input.clone().text() : String(init?.body ?? "");
+    if (url.startsWith("https://api.met.no/")) {
+      calls.met += 1;
+      expect(url).toBe(prompted.metUrl);
+      const query = new URL(url).searchParams;
+      const hour = new Date(Math.round(now / 3600000) * 3600000)
+        .toISOString()
+        .replace(/\.000Z$/u, "Z");
+      return Response.json({
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [Number(query.get("lon")), Number(query.get("lat")), 40],
+        },
+        properties: {
+          meta: {
+            updated_at: new Date(Math.floor((now - 600000) / 1000) * 1000)
+              .toISOString()
+              .replace(/\.000Z$/u, "Z"),
+            units: { air_temperature: "celsius" },
+          },
+          timeseries: [{ time: hour, data: { instant: { details: { air_temperature: 16.4 } } } }],
+        },
+      });
+    }
+    if (url === "https://search.parallel.ai/mcp") {
+      const call = JSON.parse(text).params as { name: string; arguments: unknown };
+      const mcp = (payload: unknown) =>
+        Response.json({
+          jsonrpc: "2.0",
+          id: 1,
+          result: { content: [{ type: "text", text: JSON.stringify(payload) }] },
+        });
+      if (call.name === "web_search") {
+        calls.search.push(call.arguments);
+        return mcp({
+          results: [
+            { url: articleUrl, title: articleTitle, excerpts: ["A public synthetic event."] },
+          ],
+          errors: [],
+        });
+      }
+      calls.article.push(call.arguments);
+      return mcp(
+        articleRead
+          ? {
+              results: [
+                {
+                  url: articleUrl,
+                  title: articleTitle,
+                  excerpts: [
+                    `# ${articleTitle}\nPublished: ${day}\n\nA public synthetic event happened today.`,
+                  ],
+                },
+              ],
+              errors: [],
+            }
+          : { results: [], errors: [{ url: articleUrl, error: "OFFLINE_ARTICLE_UNAVAILABLE" }] },
+      );
+    }
+    if (!url.startsWith("https://api.cerebras.ai/"))
+      throw new Error("OFFLINE_NON_MODEL_NETWORK_BLOCKED");
+    const body = JSON.parse(text) as {
+      messages?: Array<{ role?: string; content?: unknown }>;
+      tools?: Array<{ function?: { name?: string } }>;
+    };
+    const names = body.tools?.map((tool) => tool.function?.name) ?? [];
+    const contents = (body.messages ?? []).flatMap((entry) =>
+      typeof entry.content === "string"
+        ? [entry.content]
+        : Array.isArray(entry.content)
+          ? entry.content.flatMap((item: { text?: unknown }) =>
+              typeof item?.text === "string" ? [item.text] : [],
+            )
+          : [],
+    );
+    const all = contents.join("\n");
+    // The scripted model reads the runtime's own per-read prompt lines.
+    prompted.metUrl ||= all.match(/WEB_FETCH url "([^"]+)"/u)?.[1] ?? "";
+    prompted.newsQuery ||=
+      all.match(/news read for this request starts with WEB_SEARCH query "([^"]+)"/u)?.[1] ?? "";
+    if (names.includes("HANDLE_RESPONSE"))
+      return model(null, {
+        name: "HANDLE_RESPONSE",
+        args: {
+          shouldRespond: "RESPOND",
+          thought: "Read both public parts.",
+          contexts: ["general"],
+          intents: [],
+          candidateActionNames: ["WEB_FETCH", "WEB_SEARCH"],
+          requiresTool: true,
+          replyText: "",
+          replyEffectStatus: "none",
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        },
+      });
+    if (names.includes("FACTS_AND_RELATIONSHIPS_VALIDATE"))
+      return model(null, {
+        name: "FACTS_AND_RELATIONSHIPS_VALIDATE",
+        args: { facts: [], relationships: [], thought: "No additional facts." },
+      });
+    if (/(?:^|\n)evaluator_stage:\n/.test(all)) {
+      // The evaluator is asked only when every part has evidence; it selects host facts by ID.
+      const contract = all.split("Typed read answer contract")[1]?.split("\n")[1];
+      const { policy, facts } = JSON.parse(contract ?? "{}") as {
+        policy: { requirements: Array<{ id: string; admittedFactIds: string[] }> };
+        facts: Array<{ id: string; value?: number; title?: string }>;
+      };
+      const typedReadParts = policy.requirements.flatMap((requirement, index) => {
+        const fact = facts.find((item) => item.id === requirement.admittedFactIds[0]);
+        return [
+          ...(index ? [{ kind: "connector", connectorId: "paragraph" }] : []),
+          fact
+            ? {
+                kind: "fact",
+                requirementId: requirement.id,
+                factId: fact.id,
+                value: fact.value ?? fact.title,
+              }
+            : { kind: "unverified", requirementId: requirement.id },
+        ];
+      });
+      return model(
+        JSON.stringify({
+          success: true,
+          decision: "FINISH",
+          thought: "Both reads are settled.",
+          messageToUser: "Draft prose is not delivered.",
+          typedReadParts,
+        }),
+      );
+    }
+    if (/(?:^|\n)planner_stage:\n/.test(all)) {
+      if (calls.met === 0 && names.includes("WEB_FETCH"))
+        return model(null, { name: "WEB_FETCH", args: { url: prompted.metUrl } });
+      if (calls.search.length === 0 && names.includes("WEB_SEARCH"))
+        return model(null, { name: "WEB_SEARCH", args: { query: prompted.newsQuery } });
+      if (calls.article.length === 0 && names.includes("WEB_FETCH"))
+        return model(null, { name: "WEB_FETCH", args: { url: articleUrl } });
+    }
+    return model("Both reads are done.");
+  }) as typeof fetch;
+  try {
+    const agentKey = personalSharedAgentId({
+      userId: "33333333-3333-4333-8333-333333333333",
+      organizationId: "11111111-1111-4111-8111-111111111111",
+    });
+    const turn = await runSharedAgentTurn({
+      character: { name: "Eliza", system: "You are a concise assistant.", model: "qwen-3.8-27b" },
+      history: [],
+      message,
+      capabilityText: message,
+      messageIds: { user: `mixed-read:${articleRead}:user`, assistant: "mixed-read:assistant" },
+      execution: {
+        agentKey,
+        roomKey: agentKey,
+        channel: { type: ChannelType.DM, source: "blooio" },
+        authenticatedPersonalSharedUser: true,
+        typedPublicReadReplies: true,
+      },
+    });
+    expect(prompted.metUrl).toStartWith(
+      "https://api.met.no/weatherapi/locationforecast/2.0/compact?",
+    );
+    expect(prompted.newsQuery).toBe("latest public news");
+    expect(calls.met).toBe(1);
+    // The provider gets the server-owned query bytes, then reads the returned article.
+    expect(calls.search).toEqual([
+      { objective: prompted.newsQuery, search_queries: [prompted.newsQuery] },
+    ]);
+    expect(calls.article).toEqual([expect.objectContaining({ urls: [articleUrl] })]);
+    return { turn, articleUrl, articleTitle, metUrl: prompted.metUrl };
+  } finally {
+    globalThis.fetch = savedFetch;
+    if (saved.cerebras === undefined) delete process.env.CEREBRAS_API_KEY;
+    else process.env.CEREBRAS_API_KEY = saved.cerebras;
+    if (saved.fallback === undefined) delete process.env.OPENROUTER_API_KEY;
+    else process.env.OPENROUTER_API_KEY = saved.fallback;
+    if (saved.nodeEnv === undefined) delete process.env.NODE_ENV;
+    else process.env.NODE_ENV = saved.nodeEnv;
+  }
+}
+
+test("a mixed weather and news turn delivers the verified weather and names the unread headline", async () => {
+  const { turn, metUrl } = await mixedWeatherAndNews(false);
+  expect(turn.reply).toBe(
+    "Temperature: 16.4°C (model estimate; MET Norway/GeoNames).\n\nI couldn't verify a headline for the requested date.",
+  );
+  // No source link: the user did not ask for one (existing source-link rule).
+  expect(turn.reply).not.toContain(metUrl);
+  expect(turn.history.at(-1)).toMatchObject({ role: "assistant", content: turn.reply });
+  expect(turn.history.at(-1)).not.toHaveProperty("grounding");
+});
+
+test("a mixed weather and news turn delivers both verified parts", async () => {
+  const { turn, articleTitle, articleUrl } = await mixedWeatherAndNews(true);
+  expect(turn.reply).toBe(
+    `Temperature: 16.4°C (model estimate; MET Norway/GeoNames).\n\nNews: ${articleTitle}`,
+  );
+  expect(turn.reply).not.toContain(articleUrl);
+  expect(turn.history.at(-1)).not.toHaveProperty("grounding");
+});

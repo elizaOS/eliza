@@ -93,6 +93,16 @@ export function createTaskBindings({
     ]
       .map((byte) => byte.toString(16).padStart(2, "0"))
       .join("");
+  // Rebinds in flight, by tab: the binding being replaced and the promise
+  // that settles when the rebind lands or fails.
+  const rebinding = new Map();
+  /** The tab's binding; during a rebind, the one being replaced. */
+  const liveBinding = (tabId) =>
+    rebinding.has(tabId) ? rebinding.get(tabId).previous : bindings.get(tabId);
+  /** Resolves once no rebind of the tab is in flight. */
+  async function settled(tabId) {
+    while (rebinding.has(tabId)) await rebinding.get(tabId).done;
+  }
   async function bind(message, current) {
     const { id, binding } = message;
     if (
@@ -193,11 +203,25 @@ export function createTaskBindings({
     const next = structuredClone(binding);
     // Fence old work before awaiting storage. Failed persistence leaves the tab
     // blocked; it never restores an older live binding.
-    bindings.set(binding.tabId, { ...next, revoked: true });
-    await clearGuidance(binding.tabId);
-    await write(key, next);
-    if (!current()) throw blocked();
-    bindings.set(binding.tabId, next);
+    let landed;
+    const pending = {
+      previous: bindings.get(binding.tabId),
+      done: new Promise((resolve) => {
+        landed = resolve;
+      }),
+    };
+    rebinding.set(binding.tabId, pending);
+    try {
+      bindings.set(binding.tabId, { ...next, revoked: true });
+      await clearGuidance(binding.tabId);
+      await write(key, next);
+      if (!current()) throw blocked();
+      bindings.set(binding.tabId, next);
+    } finally {
+      if (rebinding.get(binding.tabId) === pending)
+        rebinding.delete(binding.tabId);
+      landed();
+    }
     return {
       bound: !next.revoked,
       bindingRevision: next.bindingRevision,
@@ -411,5 +435,5 @@ export function createTaskBindings({
       expiresAt: grant.expiresAt,
     };
   }
-  return { bind, scope, blocked, validId };
+  return { bind, scope, blocked, validId, liveBinding, settled };
 }

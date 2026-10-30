@@ -2,9 +2,11 @@
  * Proves allowance lifecycle behavior against real subscription migrations on
  * PGlite: caller deadlines persist apart from period expiry, stranded holds are
  * released to their exact sources, ended and terminal periods are retired, a
- * resubscription can be granted over a canceled bucket, active paid windows that
- * straddle a period end fund fully from allowance under payment grace,
- * promo-grant buckets do not receive that grace, and ex-subscribers stay on cash.
+ * resubscription can be granted over a canceled bucket, managed compute spends a
+ * paid period through payment grace (also in dunning grace, bounded by its
+ * expiry) until its renewal is published (not when the subscription is set to
+ * cancel), promo-grant buckets do not receive that
+ * grace, and ex-subscribers stay on cash.
  * Policy caches are exercised on the explicit in-memory test cache backend.
  */
 
@@ -413,8 +415,8 @@ describe("subscription allowance lifecycle", () => {
       available_amount: "23.000000",
       reserved_amount: "2.000000",
     });
-    // Cap math itself is unchanged; callers pass the expiry from
-    // timeMeteredAllowanceExpiry.
+    // Cap math itself is unchanged; callers pass the spending deadline from
+    // managedComputeAllowanceDeadline.
     expect(
       funding.timeMeteredAllowanceCap({
         requestedAmount: "1.000000" as never,
@@ -425,31 +427,350 @@ describe("subscription allowance lifecycle", () => {
     ).toBe("0.333333");
   }, 60_000);
 
-  test("timeMeteredAllowanceExpiry grants payment grace only to paid_invoice buckets", () => {
-    const periodEnd = new Date("2026-10-01T00:00:00.000Z");
-    const paid = funding.timeMeteredAllowanceExpiry({
-      grant_source: "paid_invoice",
-      expires_at: periodEnd,
+  test("after period end, compute renews from the old allowance during payment grace; other work does not", async () => {
+    const now = await databaseNow();
+    const { org, periodId } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() - 60_000),
+      allowance: "25.000000",
+      credits: "0.000000",
     });
-    const promo = funding.timeMeteredAllowanceExpiry({
-      grant_source: "promo_grant",
-      expires_at: periodEnd,
+    // The renewal invoice is not paid yet, so the expire job keeps the period open.
+    await allowance.subscriptionAllowanceRepository.expireEndedPeriods();
+    expect((await readState(org)).periods[0]).toMatchObject({
+      state: "open",
+      available_amount: "25.000000",
     });
-    const pilot = funding.timeMeteredAllowanceExpiry({
-      grant_source: "pilot",
-      expires_at: periodEnd,
+    const window = await helpers.writeTransaction((tx) =>
+      funding.subscriptionFundingService.reserveInTransaction(tx, {
+        organizationId: org,
+        logicalOperationId: "compute.grace-renewal-window-01",
+        operation: "managed_agent_compute",
+        amount: "2.000000",
+        description: "Dedicated renewal inside payment grace",
+        expiresAt: new Date(now.getTime() + 2 * HOUR),
+        timeMeteredFrom: now,
+      }),
+    );
+    expect(window.reservation.expires_at.getTime()).toBe(now.getTime() + 2 * HOUR);
+    // An unused part of a grace reservation returns to the still spendable period.
+    await funding.subscriptionFundingService.settle({
+      organizationId: org,
+      logicalOperationId: "compute.grace-renewal-window-01",
+      operation: "managed_agent_compute",
+      actualAmount: "0.500000",
+      occurredAt: now,
     });
-    const trial = funding.timeMeteredAllowanceExpiry({
-      grant_source: "trial_claim",
-      expires_at: periodEnd,
+    const state = await readState(org);
+    expect(state.balance).toBe("0.000000");
+    expect(state.periods[0]).toMatchObject({
+      id: periodId,
+      state: "open",
+      available_amount: "24.500000",
+      settled_amount: "0.500000",
+      expired_amount: "0.000000",
     });
-    // Same 3-day grace organization-quota-policy.ts applies for active paid.
-    expect(paid.getTime() - periodEnd.getTime()).toBe(3 * 24 * HOUR);
-    // Promo-grant, pilot, and trial keep the stored expires_at (no extra hours).
-    expect(promo.getTime()).toBe(periodEnd.getTime());
-    expect(pilot.getTime()).toBe(periodEnd.getTime());
-    expect(trial.getTime()).toBe(periodEnd.getTime());
-  });
+    expect(state.ledger.map((row) => row.kind)).toEqual(["reserve", "finalize", "release"]);
+    // The grace is for managed agent compute only.
+    await expect(
+      funding.subscriptionFundingService.reserve({
+        organizationId: org,
+        logicalOperationId: "inference-gate:grace-not-for-inference-01",
+        operation: "ai_inference",
+        amount: "1.000000",
+        description: "inference after period end",
+        reservationTtlMs: 60_000,
+      }),
+    ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_INSUFFICIENT });
+  }, 60_000);
+
+  test("a subscription set to cancel at period end gets no payment grace", async () => {
+    const now = await databaseNow();
+    const { subscriptionAuthorityRepository: authority } = await import(
+      "../../db/repositories/subscription-authority"
+    );
+    const { subscriptionEntitlementsRepository: entitlements } = await import(
+      "../../db/repositories/subscription-entitlements"
+    );
+    const scheduleCancellation = async (org: string, sub: string) => {
+      const current = await authority.findById(org, sub);
+      if (!current) throw new Error("Missing seeded subscription");
+      const { id, organization_id, lifecycle_revision, created_at, updated_at, ...values } =
+        current;
+      const advanced = await authority.advance({
+        organizationId: org,
+        subscriptionId: sub,
+        expectedRevision: lifecycle_revision,
+        source: "webhook",
+        observation: "authoritative_provider_retrieval",
+        values: { ...values, cancel_at_period_end: true, provider_object_digest: "9".repeat(64) },
+      });
+      await entitlements.rebuild({
+        organizationId: org,
+        sourceSubscriptionId: sub,
+        sourceSubscriptionRevision: advanced.subscription.lifecycle_revision,
+        expectedProjectionRevision: 1,
+      });
+    };
+    // A window that crosses the end funds only its in-period share from allowance.
+    const straddle = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() + HOUR / 2),
+      allowance: "25.000000",
+      credits: "5.000000",
+    });
+    await scheduleCancellation(straddle.org, straddle.sub);
+    await helpers.writeTransaction((tx) =>
+      funding.subscriptionFundingService.reserveInTransaction(tx, {
+        organizationId: straddle.org,
+        logicalOperationId: "compute.canceling-straddle-window-01",
+        operation: "managed_agent_compute",
+        amount: "2.000000",
+        description: "window crossing a scheduled cancellation",
+        expiresAt: new Date(now.getTime() + 2 * HOUR),
+        timeMeteredFrom: now,
+      }),
+    );
+    const straddleState = await readState(straddle.org);
+    expect(straddleState.allocations).toEqual([
+      expect.objectContaining({ source: "allowance", reserved_amount: "0.500000" }),
+      expect.objectContaining({ source: "purchased_credit", reserved_amount: "1.500000" }),
+    ]);
+    expect(straddleState.balance).toBe("3.500000");
+    // After the end, the period is not spendable and the expire job retires it.
+    const ended = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() - 60_000),
+      allowance: "25.000000",
+      credits: "0.000000",
+    });
+    await scheduleCancellation(ended.org, ended.sub);
+    await expect(
+      helpers.writeTransaction((tx) =>
+        funding.subscriptionFundingService.reserveInTransaction(tx, {
+          organizationId: ended.org,
+          logicalOperationId: "compute.canceling-after-end-window-01",
+          operation: "managed_agent_compute",
+          amount: "2.000000",
+          description: "renewal after a scheduled cancellation",
+          expiresAt: new Date(now.getTime() + 2 * HOUR),
+          timeMeteredFrom: now,
+        }),
+      ),
+    ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_INSUFFICIENT });
+    await allowance.subscriptionAllowanceRepository.expireEndedPeriods();
+    expect((await readState(ended.org)).periods[0]).toMatchObject({
+      state: "expired",
+      available_amount: "0.000000",
+      expired_amount: "25.000000",
+    });
+  }, 60_000);
+
+  test("a published renewal ends the old period's grace and compute uses the new period", async () => {
+    const now = await databaseNow();
+    const oldEnd = new Date(now.getTime() - 60_000);
+    const { org, sub, periodId } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: oldEnd,
+      allowance: "25.000000",
+      credits: "0.000000",
+    });
+    const reserveWindow = (logicalOperationId: string) =>
+      helpers.writeTransaction((tx) =>
+        funding.subscriptionFundingService.reserveInTransaction(tx, {
+          organizationId: org,
+          logicalOperationId,
+          operation: "managed_agent_compute",
+          amount: "2.000000",
+          description: "Dedicated renewal window",
+          expiresAt: new Date(now.getTime() + 2 * HOUR),
+          timeMeteredFrom: now,
+        }),
+      );
+    await reserveWindow("compute.renewal-publish-window-01");
+    // invoice.paid publishes the next period: the source moves to it and it is granted.
+    const { subscriptionAuthorityRepository: authority } = await import(
+      "../../db/repositories/subscription-authority"
+    );
+    const { subscriptionEntitlementsRepository: entitlements } = await import(
+      "../../db/repositories/subscription-entitlements"
+    );
+    const current = await authority.findById(org, sub);
+    if (!current) throw new Error("Missing seeded subscription");
+    const { id, organization_id, lifecycle_revision, created_at, updated_at, ...values } = current;
+    const renewed = await authority.advance({
+      organizationId: org,
+      subscriptionId: sub,
+      expectedRevision: lifecycle_revision,
+      source: "webhook",
+      observation: "authoritative_provider_retrieval",
+      values: {
+        ...values,
+        current_period_start: oldEnd,
+        current_period_end: new Date(oldEnd.getTime() + 30 * 24 * HOUR),
+        provider_object_digest: "8".repeat(64),
+      },
+    });
+    await entitlements.rebuild({
+      organizationId: org,
+      sourceSubscriptionId: sub,
+      sourceSubscriptionRevision: renewed.subscription.lifecycle_revision,
+      expectedProjectionRevision: 1,
+    });
+    const { readPostLockDatabaseNow } = await import(
+      "../../db/repositories/primary-database-clock"
+    );
+    const granted = await helpers.writeTransaction(async (tx) =>
+      allowance.subscriptionAllowanceRepository.grantRenewalInTransaction(tx, {
+        source: renewed.subscription,
+        invoiceId: "in_renewalpublished",
+        requestDigest: "7".repeat(64),
+        databaseNow: await readPostLockDatabaseNow(tx),
+      }),
+    );
+    await reserveWindow("compute.renewal-publish-window-02");
+    // The old period's grace reservation settles after the renewal: its remainder is forfeited.
+    await funding.subscriptionFundingService.settle({
+      organizationId: org,
+      logicalOperationId: "compute.renewal-publish-window-01",
+      operation: "managed_agent_compute",
+      actualAmount: "0.500000",
+      occurredAt: now,
+    });
+    await allowance.subscriptionAllowanceRepository.expireEndedPeriods();
+    const state = await readState(org);
+    expect(state.balance).toBe("0.000000");
+    const grantedAmount = granted.period.granted_amount;
+    expect(state.periods).toEqual([
+      expect.objectContaining({
+        id: periodId,
+        state: "expired",
+        available_amount: "0.000000",
+        settled_amount: "0.500000",
+        expired_amount: "24.500000",
+      }),
+      expect.objectContaining({
+        id: granted.period.id,
+        state: "open",
+        reserved_amount: "2.000000",
+        available_amount: (Number(grantedAmount) - 2).toFixed(6),
+      }),
+    ]);
+  }, 60_000);
+
+  test("a failed renewal charge in dunning grace keeps compute funded until the grace expiry", async () => {
+    const now = await databaseNow();
+    const { subscriptionAuthorityRepository: authority } = await import(
+      "../../db/repositories/subscription-authority"
+    );
+    const { subscriptionEntitlementsRepository: entitlements } = await import(
+      "../../db/repositories/subscription-entitlements"
+    );
+    // Dunning publishes local `grace` from the period end, as dunningLifecycleValues does.
+    const enterDunningGrace = async (
+      org: string,
+      sub: string,
+      dunningStartedAt: Date,
+      graceExpiresAt: Date,
+    ) => {
+      const current = await authority.findById(org, sub);
+      if (!current) throw new Error("Missing seeded subscription");
+      const { id, organization_id, lifecycle_revision, created_at, updated_at, ...values } =
+        current;
+      const advanced = await authority.advance({
+        organizationId: org,
+        subscriptionId: sub,
+        expectedRevision: lifecycle_revision,
+        source: "webhook",
+        observation: "authoritative_provider_retrieval",
+        values: {
+          ...values,
+          status: "grace",
+          dunning_started_at: dunningStartedAt,
+          grace_expires_at: graceExpiresAt,
+          provider_object_digest: "6".repeat(64),
+        },
+      });
+      await entitlements.rebuild({
+        organizationId: org,
+        sourceSubscriptionId: sub,
+        sourceSubscriptionRevision: advanced.subscription.lifecycle_revision,
+        expectedProjectionRevision: 1,
+      });
+    };
+    const periodEnd = new Date(now.getTime() - 60_000);
+    const { org, sub, periodId } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd,
+      allowance: "25.000000",
+      credits: "1.000000",
+    });
+    await enterDunningGrace(org, sub, periodEnd, new Date(periodEnd.getTime() + 3 * 24 * HOUR));
+    await allowance.subscriptionAllowanceRepository.expireEndedPeriods();
+    expect((await readState(org)).periods[0]).toMatchObject({
+      id: periodId,
+      state: "open",
+      available_amount: "25.000000",
+    });
+    // Resume admission counts the same grace allowance that funds compute.
+    const { checkAgentCreditGate } = await import("./agent-billing-gate");
+    expect(await checkAgentCreditGate(org)).toMatchObject({ allowed: true, balance: 26 });
+    await helpers.writeTransaction((tx) =>
+      funding.subscriptionFundingService.reserveInTransaction(tx, {
+        organizationId: org,
+        logicalOperationId: "compute.dunning-grace-window-01",
+        operation: "managed_agent_compute",
+        amount: "2.000000",
+        description: "Dedicated renewal during dunning grace",
+        expiresAt: new Date(now.getTime() + 2 * HOUR),
+        timeMeteredFrom: now,
+      }),
+    );
+    const state = await readState(org);
+    expect(state.balance).toBe("1.000000");
+    expect(state.allocations).toEqual([
+      expect.objectContaining({ source: "allowance", reserved_amount: "2.000000" }),
+    ]);
+    // Other work is cash-only after the period end, and its settlement cannot
+    // claim the compute grace: the stored reservation binds its operation.
+    await funding.subscriptionFundingService.reserve({
+      organizationId: org,
+      logicalOperationId: "inference-gate:dunning-grace-cash-01",
+      operation: "ai_inference",
+      amount: "0.500000",
+      description: "inference during dunning grace",
+      reservationTtlMs: 60_000,
+    });
+    await expect(
+      funding.subscriptionFundingService.settle({
+        organizationId: org,
+        logicalOperationId: "inference-gate:dunning-grace-cash-01",
+        operation: "managed_agent_compute",
+        actualAmount: "3.000000",
+        occurredAt: now,
+      }),
+    ).rejects.toMatchObject({ code: funding.SUBSCRIPTION_FUNDING_REPLAY_CONFLICT });
+    // A dunning grace that already expired ends the spending window, so the
+    // expire job retires the period even while local status is still `grace`.
+    const lapsedEnd = new Date(now.getTime() - 60_000);
+    const lapsed = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: lapsedEnd,
+      allowance: "25.000000",
+      credits: "0.000000",
+    });
+    await enterDunningGrace(
+      lapsed.org,
+      lapsed.sub,
+      new Date(lapsedEnd.getTime() - 10 * 60_000),
+      new Date(now.getTime() - 30_000),
+    );
+    await allowance.subscriptionAllowanceRepository.expireEndedPeriods();
+    expect((await readState(lapsed.org)).periods[0]).toMatchObject({
+      state: "expired",
+      expired_amount: "25.000000",
+    });
+  }, 60_000);
 
   test("a promo-grant straddle window does not receive payment grace and needs credits", async () => {
     const now = await databaseNow();

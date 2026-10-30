@@ -168,9 +168,9 @@ jobs:
     name: Build immutable candidate
     needs: authorize
     runs-on: ubuntu-24.04
-    # The capped turbo fan-out (RUN_TURBO_CONCURRENCY=3, needed to fit the
-    # hosted runner's memory) makes verify+test+build exceed two hours.
-    timeout-minutes: 210
+    # Verify runs one 8 GiB typecheck at a time to fit the 16 GiB hosted
+    # runner, so verify+test+build can exceed three hours.
+    timeout-minutes: 300
     permissions:
       actions: read
       contents: read
@@ -250,10 +250,14 @@ jobs:
       - name: Verify release source before first pack
         if: inputs.candidate_run_id == 0
         env:
-          # verify's default typecheck fan-out (8 concurrent tsc processes)
-          # exceeds hosted-runner memory and gets the step SIGTERMed; cap it.
-          RUN_TURBO_CONCURRENCY: "3"
+          # Cloud API typecheck needs an 8 GiB heap. Three at once exceeds the
+          # 16 GiB hosted runner and the step exits 143; PR Validation uses 1.
+          RUN_TURBO_CONCURRENCY: "1"
         run: bun run verify
+
+      - name: Install Playwright browsers for release tests
+        if: inputs.candidate_run_id == 0
+        run: packages/scripts/github/install-playwright-browsers.sh chromium webkit
 
       - name: Test release source before first pack
         if: inputs.candidate_run_id == 0

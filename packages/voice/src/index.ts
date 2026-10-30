@@ -143,6 +143,17 @@ export {
   VoiceAssistantSession,
 } from "./voice-assistant-session.js";
 export type {
+  CloudClefBlock,
+  CloudClefPlanAdmission,
+  CloudClefStageOptions,
+  CloudClefStatus,
+} from "./voice-cloud-clef.js";
+export {
+  CLOUD_CLEF_BLOCK_REASONS,
+  cloudClefStatus,
+  createCloudClefEndpointStage,
+} from "./voice-cloud-clef.js";
+export type {
   ChainedEndpointResult,
   ClefEndpointStage,
   ClefEndpointUnavailableReason,
@@ -155,12 +166,24 @@ export type {
 export {
   CLEF_ENDPOINT_TIMEOUT_MS,
   CLEF_ENDPOINT_UNAVAILABLE_REASONS,
+  CLEF_RECENT_TURNS_MAX,
   CLEF_TURN_MAX_CHARS,
   clefEndpointStageEnabled,
   createEndpointChain,
   readClefTurn,
 } from "./voice-endpoint-chain.js";
 export { scoreEndOfTurnHeuristic } from "./voice-eot.js";
+export type {
+  SpeechDataKind,
+  SpeechDisclosure,
+  SpeechDisclosureCopy,
+  SpeechRoute,
+} from "./voice-speech-disclosure.js";
+export {
+  SPEECH_DISCLOSURES,
+  speechDisclosure,
+  speechDisclosures,
+} from "./voice-speech-disclosure.js";
 export type {
   EndOfTurnUnavailableReason,
   HeardOutcome,

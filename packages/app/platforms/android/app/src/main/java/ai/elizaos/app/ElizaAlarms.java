@@ -24,7 +24,8 @@ final class ElizaAlarms {
     static final String ACTION_FIRE = "ai.elizaos.app.ownedalarm.FIRE";
     static final String EXTRA_ID = "alarmId";
     static final String EXTRA_GENERATION = "generation";
-    private static final String PREFS = "eliza_owned_native_alarms";
+    /** Installed device-protected preferences name; {@link ElizaDataResetStores} lists it. */
+    static final String PREFS = "eliza_owned_native_alarms";
     private static final String KEY = "state";
     private static final long MAX_INTEGER = 9007199254740991L;
     private static final Object LOCK = new Object();

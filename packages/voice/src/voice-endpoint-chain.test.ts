@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
   CLEF_ENDPOINT_UNAVAILABLE_REASONS,
+  CLEF_RECENT_TURNS_MAX,
   CLEF_TURN_MAX_CHARS,
+  type ClefEndpointStage,
   type ClefTurnClient,
   type ClefTurnRequest,
   clefEndpointStageEnabled,
@@ -281,6 +283,75 @@ describe("createEndpointChain", () => {
     await expect(pending).rejects.toThrow("speech resumed");
     expect(clefSignal?.aborted).toBe(true);
     expect(timers.size).toBe(0);
+  });
+});
+
+describe("Clef gate and recent turns", () => {
+  it("answers the gate's reason without sending, and a throwing or unknown gate is clef-unavailable", async () => {
+    const asked: ClefTurnRequest[] = [];
+    const client: ClefTurnClient = async (request) => {
+      asked.push(request);
+      return turnOk(true);
+    };
+    let gate: () => unknown = () => "clef-disabled";
+    const chain = createEndpointChain({
+      clef: {
+        enabled: true,
+        client,
+        gate: () =>
+          gate() as ReturnType<NonNullable<ClefEndpointStage["gate"]>>,
+      },
+    });
+    expect(await chain?.("I am done", signal())).toEqual({
+      decision: "unavailable",
+      reason: "clef-disabled",
+      path: "clef",
+    });
+    for (const value of [
+      () => {
+        throw new Error("gate failed");
+      },
+      () => "offline",
+    ]) {
+      gate = value;
+      expect(await chain?.("I am done", signal())).toEqual({
+        decision: "unavailable",
+        reason: "clef-unavailable",
+        path: "clef",
+      });
+    }
+    expect(asked).toEqual([]);
+    gate = () => null;
+    expect(await chain?.("I am done", signal())).toMatchObject({
+      decision: "finished",
+      path: "clef",
+    });
+    expect(asked).toHaveLength(1);
+  });
+
+  it("sends at most the newest recent turns, reduced to speaker and text", async () => {
+    const asked: ClefTurnRequest[] = [];
+    const turns = Array.from({ length: CLEF_RECENT_TURNS_MAX + 2 }, (_, i) => ({
+      speaker: "person" as const,
+      text: `t${i}`,
+      audio: new Uint8Array(2),
+    }));
+    const chain = createEndpointChain({
+      clef: {
+        enabled: true,
+        client: async (request) => {
+          asked.push(request);
+          return turnOk(true);
+        },
+        recentTurns: () => turns,
+      },
+    });
+    await chain?.("done", signal());
+    expect(asked[0]?.recentTurns).toEqual(
+      turns
+        .slice(-CLEF_RECENT_TURNS_MAX)
+        .map(({ speaker, text }) => ({ speaker, text })),
+    );
   });
 });
 

@@ -4,7 +4,21 @@
  * never accepts caller time or escapes to a global database connection.
  */
 import { ElizaError } from "@elizaos/core";
-import { and, asc, desc, eq, gt, inArray, isNull, lt, notInArray, or, sql } from "drizzle-orm";
+import {
+  and,
+  asc,
+  desc,
+  eq,
+  gt,
+  inArray,
+  isNull,
+  lt,
+  not,
+  notInArray,
+  or,
+  type SQL,
+  sql,
+} from "drizzle-orm";
 import { ensureInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
 import { assertOrganizationSubscription } from "../../lib/services/organization-subscription-source";
 import {
@@ -20,6 +34,10 @@ import {
   type RenewalSettlementDetails,
 } from "../../lib/services/renewal-settlement-details";
 import { resolveSubscriptionPlanDefinition } from "../../lib/services/subscription-catalog";
+import {
+  SUBSCRIPTION_PAYMENT_GRACE_MS,
+  withSubscriptionPaymentGrace,
+} from "../../lib/services/subscription-payment-grace";
 import { logger } from "../../lib/utils/logger";
 import type { DbTransaction } from "../client";
 import { dbWrite, writeTransaction } from "../helpers";
@@ -77,6 +95,58 @@ async function sha256Hex(parts: readonly string[]): Promise<string> {
 /** Treats the exact expiry instant as expired for both reserve and settlement decisions. */
 export function isAllowanceExpired(databaseNow: Date, expiresAt: Date): boolean {
   return databaseNow.getTime() >= expiresAt.getTime();
+}
+
+/**
+ * True for a paid platform period whose renewal is pending at `at`: its
+ * subscription is active or in dunning `grace`, is not set to cancel, and
+ * still points at this period, and `at` is before the period expiry plus the
+ * shared payment grace and before any stored dunning grace expiry. This is the
+ * window the organization quota policy keeps funded. Managed agent compute may
+ * spend such a period after its expiry, so the expire job keeps it open. A
+ * published renewal moves the subscription to the next period, which ends
+ * this state.
+ */
+export function paidRenewalPendingAt(at: SQL): SQL {
+  const periods = subscriptionAllowancePeriods;
+  const grace = sql.raw(`interval '${SUBSCRIPTION_PAYMENT_GRACE_MS} milliseconds'`);
+  return sql`(${periods.billing_scope_id} IS NULL
+    AND ${periods.grant_source} = 'paid_invoice'
+    AND ${periods.expires_at} + ${grace} > ${at}
+    AND EXISTS (SELECT 1 FROM ${billingSubscriptions}
+      WHERE ${billingSubscriptions.id} = ${periods.subscription_id}
+        AND ${billingSubscriptions.organization_id} = ${periods.organization_id}
+        AND ${billingSubscriptions.status} IN ('active', 'grace')
+        AND (${billingSubscriptions.grace_expires_at} IS NULL
+          OR ${billingSubscriptions.grace_expires_at} > ${at})
+        AND NOT ${billingSubscriptions.cancel_at_period_end}
+        AND ${billingSubscriptions.current_period_end} = ${periods.period_end}))`;
+}
+
+/** Last instant managed agent compute may spend `period`: while its renewal is pending, its expiry plus the payment grace, bounded by any dunning grace expiry; else its expiry. */
+export async function managedComputeAllowanceDeadline(
+  tx: DbTransaction,
+  period: { id: string; expires_at: Date },
+  databaseNow: Date,
+): Promise<Date> {
+  const [pending] = await tx
+    .select({ graceExpiresAt: billingSubscriptions.grace_expires_at })
+    .from(subscriptionAllowancePeriods)
+    .innerJoin(
+      billingSubscriptions,
+      eq(billingSubscriptions.id, subscriptionAllowancePeriods.subscription_id),
+    )
+    .where(
+      and(
+        eq(subscriptionAllowancePeriods.id, period.id),
+        paidRenewalPendingAt(sql`${databaseNow.toISOString()}::timestamptz`),
+      ),
+    );
+  if (!pending) return period.expires_at;
+  const paymentGraceEnd = withSubscriptionPaymentGrace(period.expires_at);
+  return pending.graceExpiresAt && pending.graceExpiresAt < paymentGraceEnd
+    ? pending.graceExpiresAt
+    : paymentGraceEnd;
 }
 
 function conflict(message: string, context: Record<string, unknown>): never {
@@ -184,7 +254,8 @@ export interface ReserveAllowanceInput {
    * The caller's own reservation deadline. It is persisted on the reservation
    * independently of the allowance period expiry, which only bounds new
    * allowance spending; settlement after period expiry forfeits the unused
-   * allowance through `expired_refund`. Defaults to the period expiry.
+   * allowance through `expired_refund`, except while the period is in its
+   * renewal payment grace. Defaults to the period expiry.
    */
   expiresAt?: Date;
 }
@@ -698,8 +769,10 @@ export class SubscriptionAllowanceRepository {
 
   /**
    * Expire job: retires every open period that has ended, plus platform periods
-   * whose source subscription reached a terminal lifecycle state. Each period is
-   * retired in its own transaction so one conflict cannot block the batch.
+   * whose source subscription reached a terminal lifecycle state. A paid period
+   * whose renewal is pending stays open through the payment grace for managed
+   * agent compute. Each period is retired in its own transaction so one
+   * conflict cannot block the batch.
    */
   async expireEndedPeriods(
     options: { batchSize?: number; maxBatches?: number } = {},
@@ -733,6 +806,7 @@ export class SubscriptionAllowanceRepository {
         .where(
           and(
             eq(subscriptionAllowancePeriods.state, "open"),
+            not(paidRenewalPendingAt(sql`clock_timestamp()`)),
             or(
               sql`${subscriptionAllowancePeriods.expires_at} <= clock_timestamp()`,
               and(
@@ -824,7 +898,11 @@ export class SubscriptionAllowanceRepository {
     if (
       period.state !== "open" ||
       period.period_start > databaseNow ||
-      isAllowanceExpired(databaseNow, period.expires_at)
+      (isAllowanceExpired(databaseNow, period.expires_at) &&
+        isAllowanceExpired(
+          databaseNow,
+          await managedComputeAllowanceDeadline(tx, period, databaseNow),
+        ))
     ) {
       conflict("Allowance is expired at post-lock database time", { periodId: period.id });
     }
@@ -1000,9 +1078,16 @@ export class SubscriptionAllowanceRepository {
       });
     const released = reserved - actual;
     // A period retired early (terminal subscription) or already expired never
-    // regains available allowance; the unused reservation is forfeited.
+    // regains available allowance; the unused reservation is forfeited. A paid
+    // period in its renewal payment grace is still spendable by managed agent
+    // compute, so its unused reservation returns to available.
     const expiredRelease =
-      period.state !== "open" || isAllowanceExpired(databaseNow, period.expires_at);
+      period.state !== "open" ||
+      (isAllowanceExpired(databaseNow, period.expires_at) &&
+        isAllowanceExpired(
+          databaseNow,
+          await managedComputeAllowanceDeadline(tx, period, databaseNow),
+        ));
     const availableBefore = moneyToMicros(period.available_amount, "period.availableAmount");
     const reservedBefore = moneyToMicros(period.reserved_amount, "period.reservedAmount");
     const settledBefore = moneyToMicros(period.settled_amount, "period.settledAmount");

@@ -786,6 +786,12 @@ test("recent calls are bounded, newest first and only from hosts that declare th
   assert.equal(recent[1].type, "missed");
   await assert.rejects(client.recentCalls(0), RangeError);
   await assert.rejects(client.recentCalls(51), RangeError);
+  await client.recentCalls(5, "+1 (555) 555-0100");
+  assert.deepEqual(calls[1], [
+    "listRecentCalls",
+    { limit: 5, number: "+15555550100" },
+  ]);
+  await assert.rejects(client.recentCalls(5, "*67"), RangeError);
   // Longer than asked, repeated, out of order, a placed-call claim or an MMI string is refused.
   assert.throws(
     () => parseCallLog({ calls: [row("1", 2), row("2", 1)] }, 1),
@@ -818,7 +824,7 @@ test("recent calls are bounded, newest first and only from hosts that declare th
     createTelephonyClient(plugin, false).recentCalls(),
     TelephonyUnavailable,
   );
-  assert.equal(calls.length, 1);
+  assert.equal(calls.length, 2);
 });
 
 test("call-log access is reported only when the host declares it", () => {

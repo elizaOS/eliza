@@ -160,8 +160,12 @@ export interface TelephonyNativePlugin {
   requestAccess(options: { access: TelephonyAccessKind }): Promise<unknown>;
   requestRole(options: { role: TelephonyRole }): Promise<unknown>;
   searchContacts(options: { query: string; limit: number }): Promise<unknown>;
-  /** Bounded recent calls, newest first. Only hosts that declare recent-call access implement it. */
-  listRecentCalls?(options: { limit: number }): Promise<unknown>;
+  /** Bounded recent calls, newest first, of one number when `number` is set. Only hosts that declare
+   * recent-call access implement it. */
+  listRecentCalls?(options: {
+    limit: number;
+    number?: string;
+  }): Promise<unknown>;
   dial(options: { number: string }): Promise<unknown>;
   composeSms(options: { recipients: string[]; body: string }): Promise<unknown>;
   listThreads(options: {
@@ -967,9 +971,10 @@ export function createTelephonyClient(
         limit,
       );
     },
-    /** Recent calls, newest first, read only while the host is unlocked and in front. An install
+    /** Recent calls, newest first, read only while the host is unlocked and in front. With `number`
+     * the host filters in its query, so the page holds only that number's calls. An install
      * without recent-call access rejects as unavailable; it never answers with an empty list. */
-    async recentCalls(limit = 25) {
+    async recentCalls(limit = 25, number?: string) {
       const bridge = native();
       if (
         !Number.isSafeInteger(limit) ||
@@ -977,11 +982,19 @@ export function createTelephonyClient(
         limit > TELEPHONY_CALL_LOG_MAX
       )
         throw new RangeError("Recent-calls limit must be 1 to 50");
+      const filter =
+        number === undefined ? undefined : normalizePhoneNumber(number);
+      if (filter === null) throw new RangeError("Not a dialable phone number");
       if (!bridge.listRecentCalls)
         throw new TelephonyUnavailable(
           "Recent calls are not available in this install.",
         );
-      return parseCallLog(await bridge.listRecentCalls({ limit }), limit);
+      return parseCallLog(
+        await bridge.listRecentCalls(
+          filter === undefined ? { limit } : { limit, number: filter },
+        ),
+        limit,
+      );
     },
     /** Opens the user's dialer with the number filled in. The person places the call there; the
      * system dialer also handles emergency numbers. */
