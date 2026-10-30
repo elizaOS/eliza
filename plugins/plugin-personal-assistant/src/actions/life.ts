@@ -3273,8 +3273,8 @@ const MAX_RELATIVE_UPDATE_DELAY_MS = 366 * 24 * 60 * 60 * 1000;
 
 function positiveWholeNumber(raw: unknown): number | undefined {
   const value =
-    typeof raw === "number"
-      ? Math.floor(raw)
+    typeof raw === "number" && Number.isInteger(raw)
+      ? raw
       : typeof raw === "string" && /^\d+$/.test(raw.trim())
         ? Number(raw.trim())
         : undefined;
@@ -3299,6 +3299,12 @@ export function readRelativeUpdateDelay(
   if (rawSeconds === undefined && rawMinutes === undefined) return null;
   const seconds = positiveWholeNumber(rawSeconds);
   const minutes = positiveWholeNumber(rawMinutes);
+  // Reject a supplied fractional winning value instead of silently flooring it
+  // or falling back to a lower-priority unit. Valid seconds still outrank minutes.
+  if (
+    (typeof rawSeconds === "number" && Number.isFinite(rawSeconds) && !Number.isInteger(rawSeconds)) ||
+    (seconds === undefined && typeof rawMinutes === "number" && Number.isFinite(rawMinutes) && !Number.isInteger(rawMinutes))
+  ) return { ms: null };
   const ms =
     seconds !== undefined
       ? seconds * 1000
