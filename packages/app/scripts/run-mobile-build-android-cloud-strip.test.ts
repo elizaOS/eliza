@@ -75,12 +75,16 @@ describe("Cloud credential composition", () => {
       );
       expect(retirement).toContain("excludes the resident service");
       expect(retirement).not.toMatch(/startService|stopService/);
-      expect(
-        fs.readFileSync(
-          path.join(androidMainJavaRoot, "ElizaCredentialRetirement.java"),
-          "utf8",
-        ),
-      ).toContain("ElizaAgentService.stopForCredentialChange(context)");
+      const residentRetirement = fs.readFileSync(
+        path.join(androidMainJavaRoot, "ElizaCredentialRetirement.java"),
+        "utf8",
+      );
+      expect(residentRetirement).toContain(
+        "ElizaAgentService.reserveCredentialShutdown()",
+      );
+      expect(residentRetirement).toContain(
+        "ElizaAgentService.retryCredentialShutdown(context, request)",
+      );
       expect(cloudSafeMainActivityJava("ai.elizaos.app")).toContain(
         "initialPlugins.add(ElizaSecureStorePlugin.class)",
       );
