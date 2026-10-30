@@ -45,12 +45,24 @@ export function parseStatedClockTimes(text: string): StatedClockTimes {
   let start: StatedClockTime | undefined;
   let end: StatedClockTime | undefined;
   if (range) {
-    const rangeStart = clockFromStatedParts(
+    const rangeEnd = clockFromStatedParts(range[4], range[5], range[6]);
+    let rangeStart = clockFromStatedParts(
       range[1],
       range[2],
       range[3] ?? range[6],
     );
-    const rangeEnd = clockFromStatedParts(range[4], range[5], range[6]);
+    // A bare start borrows the end's meridiem ("10 to 11pm"), unless that puts
+    // it after the end: "9 to 5pm" means 9am, not 9pm.
+    if (range[3] === undefined && rangeStart && rangeEnd) {
+      const minutes = (clock: StatedClockTime) =>
+        clock.hour * 60 + clock.minute;
+      if (minutes(rangeStart) > minutes(rangeEnd)) {
+        rangeStart = {
+          hour: (rangeStart.hour + 12) % 24,
+          minute: rangeStart.minute,
+        };
+      }
+    }
     if (!rangeStart || !rangeEnd) return { kind: "several" };
     start = rangeStart;
     end = rangeEnd;
