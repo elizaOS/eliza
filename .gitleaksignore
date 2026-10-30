@@ -659,3 +659,10 @@ e4f98fb91068c971a16a71f38697518bd5bd7c5f:packages/cloud/api/internal/network/del
 
 # TypeScript type name TwitterInteractionPayload in a test import; not key material.
 968d0b213bf5e40f818593c0eaf3cce7f665c016:plugins/plugin-x/src/interactions-mention-cursor.test.ts:twitter-api-key:18
+
+# packages/core/test/runtime-settings.test.ts
+# Synthetic secret values in the character secret-map redaction test; not credentials.
+fd42b8ccf4da1f81c9d6125c4ef1923b73d68298:packages/core/test/runtime-settings.test.ts:generic-api-key:287
+fd42b8ccf4da1f81c9d6125c4ef1923b73d68298:packages/core/test/runtime-settings.test.ts:generic-api-key:293
+fd42b8ccf4da1f81c9d6125c4ef1923b73d68298:packages/core/test/runtime-settings.test.ts:generic-api-key:305
+fd42b8ccf4da1f81c9d6125c4ef1923b73d68298:packages/core/test/runtime-settings.test.ts:generic-api-key:307
