@@ -14,8 +14,8 @@ public final class NativeOwnerDispatchTest {
   static final List<String> failures = new ArrayList<>();
   static int checks, requests, pairs;
   static volatile CountDownLatch held, release;
-  static String lastBearer, lastBody, lastMethod;
-  static void check(boolean value, String reason) { checks++; if (!value) failures.add(reason); }
+  static String lastBearer, lastBody, lastMethod, lastIdempotency, lastClient;
+  static void check(boolean value, String reason) { checks++; if (!value) { failures.add(reason); System.err.println("FAIL: "+reason); } }
   static PluginCall call(String path, String method, String body) {
     JSObject value = new JSObject().put("path", path).put("method", method);
     if (body != null) value.put("body", body);
@@ -44,6 +44,8 @@ public final class NativeOwnerDispatchTest {
         else if(path.equals("/api/auth/me")) result=new JSONObject().put("access",new JSONObject().put("role","OWNER")).put("identity",new JSONObject().put("id","owner")).put("session",new JSONObject().put("id","owner-token").put("expiresAt",System.currentTimeMillis()+600000));
         else {
           lastBearer=bearer;lastBody=body;lastMethod=exchange.getRequestMethod();
+          lastIdempotency=exchange.getRequestHeaders().getFirst("Idempotency-Key");
+          lastClient=exchange.getRequestHeaders().getFirst("X-ElizaOS-Client-Id");
           CountDownLatch wait=held,done=release;if(wait!=null){held=null;wait.countDown();await(done);}
           result=new JSONObject().put("data","runtime");
         }
@@ -67,9 +69,20 @@ public final class NativeOwnerDispatchTest {
       for(String method:new String[]{"get"," GET "}){int before=requests;PluginCall c=call("/api/config",method,null);first.request(c);denied(c,"normalized method refused");check(before==requests,"normalized method reached transport");}
       int before=requests;PluginCall c=call("/api/config","GET","");first.request(c);denied(c,"GET body refused");check(before==requests,"GET body reached transport");
       before=requests;c=call("/api/auth/me","GET",null);first.requestStream(c);denied(c,"common stream refused");check(before==requests,"common stream reached transport");
-      c=call("/api/config","PUT","{\"allowedLegacyMutation\":true}");first.request(c);ok(c,"legacy mutation preserved");check("PUT".equals(lastMethod)&&lastBody.contains("allowedLegacyMutation")&&"Bearer root".equals(lastBearer),"legacy mutation bytes/authority unchanged");
+      c=call("/api/config/reload","POST","{}");first.request(c);ok(c,"unrelated legacy mutation preserved");check("POST".equals(lastMethod)&&"{}".equals(lastBody)&&"Bearer root".equals(lastBearer),"unrelated mutation authority unchanged");
+      for(String[] route:new String[][]{{"/api/first-run","POST"},{"/api/config","PUT"},{"/api/character","PUT"},{"/api/stream/settings","POST"}}){
+        c=call(route[0],route[1],"{\"exact\":\"payload\"}");first.request(c);ok(c,"shared setup write "+route[0]);check(route[1].equals(lastMethod)&&"{\"exact\":\"payload\"}".equals(lastBody)&&"Bearer owner-token".equals(lastBearer),"exact setup body and owner "+route[0]);
+        for(String invalidBody:new String[]{null,"","  ","\u00e9".repeat(5*1024*1024+1)}){before=requests;c=call(route[0],route[1],invalidBody);first.request(c);denied(c,"invalid setup body");check(before==requests,"invalid body reached socket");}
+      }
+      c=call("/api/first-run","POST","{}");c.input.put("headers",new JSONObject().put("idempotency-key","setup operation:one/v2").put("x-elizaos-client-id","fixture-client"));first.request(c);ok(c,"normalized HTTP headers");check("setup operation:one/v2".equals(lastIdempotency)&&"fixture-client".equals(lastClient),"first-run idempotency value and lowercase client header preserved");
+      before=requests;c=call("/api/first-run","POST","{}");c.input.put("ownerId","previous-owner");first.request(c);ok(c,"changed owner has a response");check(c.result!=null&&c.result.optInt("status")==409&&requests==before,"changed owner cannot mutate first-run");
+      for(JSONObject headers:new JSONObject[]{new JSONObject().put("Idempotency-Key","a").put("idempotency-key","b"),new JSONObject().put("Idempotency-Key","bad\r\nvalue"),new JSONObject().put("Idempotency-Key","\tvalue"),new JSONObject().put("Idempotency-Key"," "),new JSONObject().put("Idempotency-Key","a".repeat(513)),new JSONObject().put("Idempotency-Key",42)}){before=requests;c=call("/api/first-run","POST","{}");c.input.put("headers",headers);first.request(c);denied(c,"invalid first-run header");check(before==requests,"invalid header reached socket");}
+      String activation="/api/first-run/activation/12345678-1234-1234-1234-123456789abc";
+      for(String path:new String[]{activation,"/api/config/schema","/api/character/schema"}){c=call(path,"GET",null);first.request(c);ok(c,"shared setup read "+path);check("Bearer owner-token".equals(lastBearer),"setup read owner");}
+      for(String path:new String[]{"/api/%66irst-run","/api//first-run","/api/config?extra=1","/api/first-run#fragment","/api/first-run/activation/not-an-id"}){before=requests;c=call(path,"POST","{}");first.request(c);denied(c,"setup alias refused");check(before==requests,"setup alias reached transport");}
       c=call("/api/conversations","GET",null);first.request(c);ok(c,"unrelated legacy read preserved");
-      held=new CountDownLatch(1);release=new CountDownLatch(1);CountDownLatch entered=held;PluginCall stale=call("/api/config","GET",null);Thread pending=thread(()->first.request(stale));await(entered);
+      held=new CountDownLatch(1);release=new CountDownLatch(1);CountDownLatch entered=held;PluginCall changedRoot=call("/api/first-run","POST","{}");Thread pending=thread(()->first.request(changedRoot));await(entered);ElizaAgentService.currentLocalAgentToken="successor-root";release.countDown();join(pending);denied(changedRoot,"old-root setup response retired");ElizaAgentService.currentLocalAgentToken="root";
+      held=new CountDownLatch(1);release=new CountDownLatch(1);entered=held;PluginCall stale=call("/api/first-run","POST","{}");pending=thread(()->first.request(stale));await(entered);
       PluginCall stop=new PluginCall(new JSObject());first.stop(stop);ok(stop,"stop dispatch acknowledged");AgentPlugin replacement=new AgentPlugin();before=requests;denied(read(replacement),"stop blocks new Activity read");check(before==requests,"stopped read reached enrollment");first.handleOnDestroy();denied(read(replacement),"Activity destroy cannot reopen admission");release.countDown();join(pending);denied(stale,"held old response retired");
       replacement.start(new PluginCall(new JSObject()));denied(read(replacement),"queued start alone cannot reopen admission");
       CountDownLatch launchEntered=new CountDownLatch(1),launchRelease=new CountDownLatch(1);CountDownLatch enter1=launchEntered,release1=launchRelease;ElizaAgentService.launch=()->{enter1.countDown();await(release1);};Thread starting=thread(()->new ElizaAgentService().finishStart());await(launchEntered);denied(read(replacement),"held real start remains closed");launchRelease.countDown();join(starting);ok(read(replacement),"sequenced start opens admission");

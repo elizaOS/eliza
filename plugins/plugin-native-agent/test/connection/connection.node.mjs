@@ -43,6 +43,7 @@ test("connection and resident lifecycle JVM contracts pass", () => {
     const shared = [
       "connection/OwnerRoutePolicy",
       "connection/NativeAppReadPolicy",
+      "connection/NativeAppRequestPolicy",
       "connection/NativeOwnerTransport",
       "connection/CloudConnectionPolicy",
       "connection/ConnectionTransport",
