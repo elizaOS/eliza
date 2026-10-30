@@ -3,6 +3,7 @@ import {
   beginRequestOperationIssuer, beginRequestOperationAttempt, bindTaskExtractionContext,
   commitNotesRequestRestriction, executePlannedToolCall,
   getRequestOperationIssuer,
+  isObjectRecord,
   ResponseHandlerFieldRegistry,
   ContextRegistry,
   runWithActionRoutingContext, stringToUuid,
@@ -32,12 +33,12 @@ async function fixture(classification: "read_only" | "mutation_requested" | "unr
   });
   let service: NotesService;
   const notesLookup = vi.fn(() => service);
-  const events = vi.fn(async () => undefined);
+  const events = vi.fn(async (..._args: Parameters<IAgentRuntime["emitEvent"]>) => undefined);
   const runtime = createMockRuntime({
     agentId, actions: notesPlugin.actions,
     contexts: new ContextRegistry([]),
     getRoom: async () => ({ id: roomId, worldId, type: "DM", source: "client_chat" }),
-    getWorld: async () => ({ id: worldId, metadata: { ownership: { ownerId: actor }, roles: { [actor]: "OWNER" } } }),
+    getWorld: async () => ({ id: worldId, agentId, metadata: { ownership: { ownerId: actor }, roles: { [actor]: "OWNER" } } }),
     getService: ((type: string) => type === NOTES_SERVICE_TYPE ? notesLookup() : null) as IAgentRuntime["getService"],
     emitEvent: events,
   });
@@ -66,9 +67,11 @@ async function fixture(classification: "read_only" | "mutation_requested" | "unr
   const context: ContextObject = { id: "current", metadata: { agentId, messageId: message.id, roomId, entityId: actor }, events: [
     { id: String(message.id), type: "message", message: { id: String(message.id), role: "user", content: text } },
     { id: `message-handler:${message.id}`, type: "message_handler", source: "message-service",
-      metadata: { processMessage: handler.processMessage, plan: { contexts: handler.plan.contexts,
-        intents: handler.plan.intents ?? [], notesRequestEffect: handler.plan.notesRequestEffect,
-        requiresTool: handler.plan.requiresTool, replyEffectStatus: handler.plan.replyEffectStatus,
+      metadata: { processMessage: handler.processMessage, plan: { contexts: handler.plan.contexts ?? [],
+        intents: handler.plan.intents ?? [],
+        ...(handler.plan.notesRequestEffect !== undefined ? { notesRequestEffect: handler.plan.notesRequestEffect } : {}),
+        ...(handler.plan.requiresTool !== undefined ? { requiresTool: handler.plan.requiresTool } : {}),
+        ...(handler.plan.replyEffectStatus !== undefined ? { replyEffectStatus: handler.plan.replyEffectStatus } : {}),
         ...(hostRestriction ? { notesRequestHostRestriction: hostRestriction } : {}) } } },
   ] };
   const issuer = beginRequestOperationIssuer({ runtime, message, current: () => true });
@@ -127,8 +130,8 @@ describe("request-bound Notes negative constraints", () => {
           return actionResultToPlannerToolResult(result);
         },
         evaluate: async ({ trajectory }) => trajectory.steps.some(step => step.toolCall?.name === "NOTES_GET" && step.result?.success)
-          ? { success: true, decision: "FINISH" as const, requestFullyCovered: true, messageToUser: "Saved the launch note." }
-          : { success: false, decision: "CONTINUE" as const },
+          ? { success: true, decision: "FINISH" as const, thought: "Controlled optimistic verdict after the read.", requestFullyCovered: true, messageToUser: "Saved the launch note." }
+          : { success: false, decision: "CONTINUE" as const, thought: "Continue to the read." },
       });
       expect(f.writes).not.toHaveBeenCalled();
       expect(f.service.snapshot()).toEqual(f.before);
@@ -306,6 +309,7 @@ describe("request-bound Notes negative constraints", () => {
       roleGate: { minRole: "OWNER" }, validate: async () => true,
       handler: async () => {
         await dispatchApiRoute({ runtime: f.runtime, inProcess: true, isAuthorized: () => true,
+          headers: {},
           method: "POST", path: "/api/views/notes/interact", body: {
             capability: "create-note", params: { content: "Not requested" },
             // Caller-controlled origin-like text is not consulted as authority.
@@ -377,8 +381,8 @@ describe("request-bound Notes negative constraints", () => {
           return actionResultToPlannerToolResult(await f.execute(call.name, call.params ?? {}));
         },
         evaluate: async ({ trajectory }) => trajectory.steps.some(step => step.toolCall?.name === "NOTES_GET" && step.result?.success)
-          ? { success: true, decision: "FINISH" as const, messageToUser: "The ideas note says launch on a Tuesday." }
-          : { success: false, decision: "CONTINUE" as const },
+          ? { success: true, decision: "FINISH" as const, thought: "Return the actual read.", messageToUser: "The ideas note says launch on a Tuesday." }
+          : { success: false, decision: "CONTINUE" as const, thought: "Continue to the read." },
       });
       expect(executed).toEqual([writeAction, "NOTES_GET"]);
       expect(result.terminalFailure).toBeUndefined();
@@ -413,6 +417,7 @@ describe("request-bound Notes negative constraints", () => {
         // Adversarial optimistic verdict: a GET cannot prove the original
         // requested create, even though the safety restriction must block it.
         evaluate: async () => ({ success: true, decision: "FINISH" as const,
+          thought: "Controlled optimistic claim without a create receipt.",
           requestFullyCovered: true, messageToUser: "Saved the launch note." }),
       });
       expect(f.writes).not.toHaveBeenCalled();
@@ -438,7 +443,8 @@ describe("request-bound Notes negative constraints", () => {
           { name: "NOTES_GET", parameters: { type: "object", properties: { noteId: { type: "string" } } } },
         ],
         runtime: { useModel: async (_type, request) => {
-          if (request.responseSchema?.properties?.decision) {
+          if (isObjectRecord(request.responseSchema) && isObjectRecord(request.responseSchema.properties) &&
+            request.responseSchema.properties.decision !== undefined) {
             evaluatorCalls++;
             return JSON.stringify(evaluatorCalls === 1
               ? { success: false, decision: "CONTINUE", thought: "Continue from the denied attempt.",
@@ -576,7 +582,7 @@ describe("request-bound Notes negative constraints", () => {
         // Even an optimistic evaluator cannot clear the requested failed
         // create with an unrelated successful GET; the real ledger must wait
         // for the matching create's actual durable success.
-        evaluate: async () => ({ success: true, decision: "FINISH" as const, messageToUser: "The ideas note is read." }),
+        evaluate: async () => ({ success: true, decision: "FINISH" as const, thought: "Controlled optimistic verdict before the requested create.", messageToUser: "The ideas note is read." }),
       });
       expect(executed).toEqual([writeAction, "NOTES_GET", writeAction]);
       expect(result.terminalFailure).toBeUndefined();
