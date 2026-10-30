@@ -5,12 +5,12 @@ package ai.eliza.plugins.system.clock;
  *
  * <p>{@link #HANDOFF_ONLY} is the shared policy: Android's Clock app owns alarms, the host only
  * opens it with a reviewed request, and a launched Activity is never a receipt that an alarm
- * changed. {@link #OWNED_ALARMS} is a host that keeps its own alarm store (the Eliza app's
- * {@code ElizaAlarms}) and can report applied changes for alarms it owns.
+ * changed. {@link #OWNED_ALARMS} is a host that keeps its own alarm store and can report applied
+ * changes for alarms it owns.
  *
  * <p>Moving a host from {@link #OWNED_ALARMS} to {@link #HANDOFF_ONLY} must also choose what happens
  * to alarms it already saved ({@link SavedAlarms}); until that product decision is recorded a host
- * keeps {@link SavedAlarms#KEEP_OWNED}.
+ * keeps {@link SavedAlarms#KEEP_OWNED}. The Eliza app moved with {@link SavedAlarms#HAND_OFF_TO_CLOCK}.
  */
 public enum ClockProfile {
     HANDOFF_ONLY("clock.handoff.v1,clock.handoff.v2", "clock_handoff"),

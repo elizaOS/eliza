@@ -3,7 +3,7 @@
 
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import { tmpdir } from "node:os";
@@ -51,9 +51,8 @@ const native = vi.hoisted(() => ({
   http: vi.fn(),
   cancel: vi.fn(async () => ({ cancelled: true })),
   list: vi.fn(),
-  alarms: vi.fn(),
-  manage: vi.fn(),
-  permission: vi.fn(),
+  saved: vi.fn(),
+  reviewSaved: vi.fn(),
   review: vi.fn(async () => ({
     result: { kind: "clock-handoff", action: "set", status: "opened" },
     receiptPending: false,
@@ -69,9 +68,8 @@ vi.mock("@capacitor/core", async (original) => ({
   CapacitorHttp: { request: native.http },
   registerPlugin: () => ({
     getStatus: native.status,
-    getAlarmStatus: native.alarms,
-    manageAlarm: native.manage,
-    requestAlarmPermission: native.permission,
+    getSavedAlarms: native.saved,
+    reviewSavedAlarm: native.reviewSaved,
     requestAgent: native.request,
     cancelAgentRequest: native.cancel,
     listProposals: native.list,
@@ -837,96 +835,128 @@ describe("Clock preserves existing agent device routing", () => {
     expect(native.http).not.toHaveBeenCalled();
     expect(requests).toHaveLength(0);
   });
-  it("reads owned alarms independently and rejects false empty or malformed snapshots", async () => {
-    const status = {
-      available: true,
-      reason: null,
-      owner: "e".repeat(64),
-      alarmsRevision: 4,
-      alarmsObservedAt: Date.now(),
-      timeZone: "UTC",
-      alarms: [],
-      exactAlarmsAllowed: true,
-      notificationsAllowed: true,
-      fullScreenAllowed: false,
-      alarmSoundMuted: false,
-      defaultToneAvailable: true,
-    };
-    native.status.mockRejectedValueOnce(new Error("Agent offline"));
-    native.alarms.mockResolvedValue(status);
+  it("is handoff-only: the native host offers no owned alarm store and advertises only Clock handoff", () => {
     const host = getClockHost();
-    expect(await host?.alarmStatus?.()).toEqual(status);
-    native.alarms.mockResolvedValueOnce({
-      ...status,
-      available: false,
-      reason: "Owner unavailable",
-      owner: null,
-      alarmsRevision: null,
-    });
-    await expect(host?.alarmStatus?.()).rejects.toThrow(
-      "Invalid unavailable native alarm inventory",
+    expect(host).not.toBeNull();
+    expect(host?.alarmStatus).toBeUndefined();
+    expect(host?.manageAlarm).toBeUndefined();
+    expect(host?.requestAlarmPermission).toBeUndefined();
+    // The shipped native profile, whose capability header the agent routes by.
+    const root = resolve(
+      dirname(fileURLToPath(import.meta.url)),
+      "../../../..",
     );
-    native.alarms.mockResolvedValueOnce({ ...status, alarmsRevision: -1 });
-    await expect(host?.alarmStatus?.()).rejects.toThrow("Invalid Clock number");
+    const plugin = readFileSync(
+      join(
+        root,
+        "packages/app/platforms/android/app/src/main/java/ai/elizaos/app/SlotClockPlugin.java",
+      ),
+      "utf8",
+    );
+    expect(plugin).toMatch(
+      /static final ClockProfile CLOCK_PROFILE = ClockProfile\.HANDOFF_ONLY;/,
+    );
+    const profile = readFileSync(
+      join(
+        root,
+        "plugins/plugin-native-system/android/src/main/java/ai/eliza/plugins/system/clock/ClockProfile.java",
+      ),
+      "utf8",
+    );
+    expect(profile).toContain(
+      'HANDOFF_ONLY("clock.handoff.v1,clock.handoff.v2", "clock_handoff")',
+    );
   });
-  it("binds local alarm review to the explicit owner and revision and validates its actual receipt", async () => {
-    const owner = "e".repeat(64);
-    const status = {
-      available: true,
-      reason: null,
-      owner,
-      alarmsRevision: 4,
-      alarmsObservedAt: Date.now(),
-      timeZone: "UTC",
-      alarms: [],
-      exactAlarmsAllowed: true,
-      notificationsAllowed: true,
-      fullScreenAllowed: true,
-      alarmSoundMuted: false,
-      defaultToneAvailable: true,
+  it("reads saved Eliza alarm counts and rejects malformed or inactive migrations", async () => {
+    const counts = {
+      active: true,
+      pending: 2,
+      awaitingConfirmation: 1,
+      moved: 3,
+      removed: 0,
     };
-    native.alarms.mockResolvedValue(status);
-    native.manage.mockReset();
+    native.saved.mockReset();
+    native.saved.mockResolvedValueOnce(counts);
     const host = getClockHost();
-    await host?.alarmStatus?.();
-    const operation = {
-      type: "clock_alarm" as const,
-      action: "set" as const,
-      hour: 9,
-      minute: 0,
-      label: "Morning",
-      timeZone: "UTC",
-      days: [2, 3, 4, 5, 6] as (1 | 2 | 3 | 4 | 5 | 6 | 7)[],
-    };
-    const result = {
-      kind: "clock-alarm",
-      action: "set",
-      status: "scheduled",
-      alarmId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-      nextAt: Date.now() + 3_600_000,
-    };
-    native.manage.mockResolvedValue({ result, alarmsRevision: 5 });
-    expect(await host?.manageAlarm?.(operation, 4, owner)).toEqual({
-      result,
-      alarmsRevision: 5,
+    expect(await host?.savedAlarms?.()).toEqual({
+      pending: 2,
+      awaitingConfirmation: 1,
+      moved: 3,
+      removed: 0,
     });
-    expect(native.manage).toHaveBeenCalledWith({
-      operation,
-      alarmsRevision: 4,
-      expectedOwner: owner,
+    native.saved.mockResolvedValueOnce({ ...counts, active: false });
+    await expect(host?.savedAlarms?.()).rejects.toThrow(
+      "Native saved alarm handoff unavailable",
+    );
+    native.saved.mockResolvedValueOnce({ ...counts, pending: -1 });
+    await expect(host?.savedAlarms?.()).rejects.toThrow(
+      "Invalid native saved alarm count",
+    );
+    native.saved.mockResolvedValueOnce({ ...counts, pending: 1.5 });
+    await expect(host?.savedAlarms?.()).rejects.toThrow(
+      "Invalid native saved alarm count",
+    );
+    // Counts only: alarm content never crosses the native boundary.
+    native.saved.mockResolvedValueOnce({ ...counts, alarms: [] });
+    await expect(host?.savedAlarms?.()).rejects.toThrow(
+      "Invalid native Clock fields",
+    );
+    expect(native.saved).toHaveBeenCalledTimes(5);
+    expect(native.http).not.toHaveBeenCalled();
+  });
+  it("reports one native saved-alarm review without treating an opened Clock as a receipt", async () => {
+    const counts = {
+      active: true,
+      pending: 0,
+      awaitingConfirmation: 1,
+      moved: 0,
+      removed: 0,
+    };
+    native.reviewSaved.mockReset();
+    native.reviewSaved.mockResolvedValueOnce({
+      ...counts,
+      outcome: "opened",
+      message:
+        "Clock opened. Save the alarm there, then return to Eliza to confirm. Eliza keeps ringing it until then.",
     });
-    native.manage.mockClear();
-    native.alarms.mockResolvedValue({ ...status, owner: "f".repeat(64) });
-    await host?.alarmStatus?.();
-    await expect(host?.manageAlarm?.(operation, 4, owner)).rejects.toThrow(
-      "Refresh the alarm list",
+    const host = getClockHost();
+    const opened = await host?.reviewSavedAlarm?.();
+    expect(opened?.outcome).toBe("opened");
+    expect(opened?.savedAlarms).toEqual({
+      pending: 0,
+      awaitingConfirmation: 1,
+      moved: 0,
+      removed: 0,
+    });
+    native.reviewSaved.mockResolvedValueOnce({
+      ...counts,
+      awaitingConfirmation: 0,
+      moved: 1,
+      outcome: "saved",
+      message: "Alarm moved to Clock. Eliza no longer rings it.",
+    });
+    expect((await host?.reviewSavedAlarm?.())?.savedAlarms.moved).toBe(1);
+    native.reviewSaved.mockResolvedValueOnce({
+      ...counts,
+      outcome: "applied",
+      message: "Alarm changed",
+    });
+    await expect(host?.reviewSavedAlarm?.()).rejects.toThrow(
+      "Invalid native saved alarm outcome",
     );
-    expect(native.manage).not.toHaveBeenCalled();
-    native.alarms.mockResolvedValue(status);
-    await host?.alarmStatus?.();
-    await expect(host?.manageAlarm?.(operation, 3, owner)).rejects.toThrow(
-      "Alarm list changed",
+    native.reviewSaved.mockResolvedValueOnce({
+      ...counts,
+      outcome: "cancelled",
+      message: "",
+    });
+    await expect(host?.reviewSavedAlarm?.()).rejects.toThrow(
+      "Invalid native saved alarm message",
     );
-    expect(native.manage).not.toHaveBeenCalled();
+    native.reviewSaved.mockResolvedValueOnce(counts);
+    await expect(host?.reviewSavedAlarm?.()).rejects.toThrow(
+      "Invalid native Clock fields",
+    );
+    expect(native.reviewSaved).toHaveBeenCalledTimes(5);
+    expect(native.http).not.toHaveBeenCalled();
   });
 });
