@@ -24,10 +24,6 @@ const { applyNativeRuntimeProfileEnvironment } = await import(
   "./runtime/native-runtime-profile"
 );
 applyNativeRuntimeProfileEnvironment(process.env);
-const { installProductCharacterHost } = await import(
-  "./runtime/install-product-character-host"
-);
-await installProductCharacterHost();
 // Android's bridge command boots the runtime directly; it does not use dev-server.
 // Admit the private Google host and its provider routing before that runtime starts.
 const { prepareNativeRuntimeForBoot } = await import(
