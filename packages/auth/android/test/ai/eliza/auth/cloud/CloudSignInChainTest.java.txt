@@ -7,7 +7,8 @@ import org.json.JSONObject;
 /** Executes the exact injected CloudSignInPlugin methods with synthetic HTTPS/store/bridge facades.
  * No browser, real account, secret, mailbox or device is used. */
 public class CloudSignInChainTest {
- final Object lock=new Object(); boolean destroyed; Attempt attempt; String mode="valid";
+ final Object lock=new Object(); boolean destroyed,defer; Attempt attempt; String mode="valid";
+ final ArrayDeque<Runnable> queued=new ArrayDeque<>();
  String issuedState, issuedChallenge; int requests; long intent, reserved;
  static final String ID="00000000-0000-4000-8000-000000000001";
  static final String NEW="eliza_mobile_"+"a".repeat(64), OLD="eliza_mobile_"+"b".repeat(64);
@@ -18,8 +19,9 @@ public class CloudSignInChainTest {
  static class SignInFailure extends Exception { final String code;SignInFailure(String c){code=c;} }
  static class JSObject extends JSONObject { @Override public JSObject put(String k,Object v){super.put(k,v);return this;} }
  static class PluginCall {
-  final Map<String,String> input=new HashMap<>();JSObject result;String error;
-  String getString(String key){return input.get(key);}
+  final Map<String,Object> input=new HashMap<>();JSObject result;String error;
+  String getString(String key){Object value=input.get(key);return value instanceof String?(String)value:null;}
+  JSObject getData(){JSObject data=new JSObject();for(var entry:input.entrySet())data.put(entry.getKey(),entry.getValue());return data;}
   void resolve(JSObject value){result=value;}
   void resolve(){resolve(new JSObject());}
   void reject(String message,String code){error=code;}
@@ -50,9 +52,8 @@ public class CloudSignInChainTest {
  /** A newer credential intent supersedes this sign-in only when the fixture says so. */
  Runnable reserveCredentialCommit(){reserved++;long mine=++intent;return ()->{if(mode.equals("superseded"))intent++;if(mine!=intent)throw new IllegalStateException("stale intent");};}
  CloudCredentialSlots store(){return credentials(()->{if(destroyed)throw new IllegalStateException("closed");});}
- void run(Runnable task){task.run();}
+ void run(Runnable task){if(defer)queued.add(task);else task.run();}
  void refused(CloudSignInEnvironment environment,String code){}
- void burnUnclaimedPending(){}
  void requireAuthorization(Attempt current)throws Exception{events.add("authorization");}
  void notifyListeners(String event,JSObject value,boolean retained){check(("signInCompleted".equals(event)||"signInMfaRequired".equals(event)||"signInIncomplete".equals(event))&&retained,"only retained auth outcome expected");events.add(event);notifications.add(value);}
 
@@ -105,6 +106,7 @@ public class CloudSignInChainTest {
  /* ACTUAL_CALLER_REQUEST */
  /* ACTUAL_CANCEL */
  /* ACTUAL_CALLBACK */
+ /* ACTUAL_BURN */
  /* ACTUAL_VERIFY */
  /* ACTUAL_RELEASE */
  /* ACTUAL_COMPLETE */
@@ -186,6 +188,28 @@ public class CloudSignInChainTest {
   else check(!slots.containsKey("cloud:production"),"newer signout cannot be undone by an old callback");
   if(mode.equals("cold-after-signout"))check(host.requests==0&&events.contains("signInIncomplete"),"unbound cold callback requires fresh sign-in before network");
  }
+ static void scopedCancel(String mode)throws Exception{
+  slots.clear();events.clear();notifications.clear();CloudSignInChainTest host=new CloudSignInChainTest();
+  Attempt owner=new Attempt(REQUEST);owner.credentialGuard=host.reserveCredentialCommit();host.attempt=owner;
+  owner.mfaType="totp";owner.mfaChallenge="fixture";
+  slots.put(host.config().pendingSlot,"old-pending");
+  PluginCall cancel=new PluginCall();
+  if(!mode.equals("legacy"))cancel.input.put("requestId",mode.equals("malformed")?"invalid":mode.equals("stale")?ID:REQUEST);
+  if(mode.startsWith("queued"))host.defer=true;
+  host.cancel(cancel);
+  if(mode.equals("stale")||mode.equals("malformed")){
+   check(host.attempt==owner&&!owner.cancelled&&"old-pending".equals(slots.get(host.config().pendingSlot)),"stale/malformed cancel cannot retire MFA or burn state");
+   check(mode.equals("malformed")?"invalid-request".equals(cancel.error):cancel.result!=null,"cancel outcome is explicit");
+  }else{
+   check(owner.cancelled&&host.attempt==null&&cancel.result!=null,"matching or legacy cancel retires owner");
+   if(mode.startsWith("queued")){
+    Attempt newer=new Attempt(ID);newer.credentialGuard=host.reserveCredentialCommit();host.attempt=newer;
+    if(mode.equals("queued-completed"))host.attempt=null;
+    slots.put(host.config().pendingSlot,"new-pending");while(!host.queued.isEmpty())host.queued.remove().run();
+    check(!newer.cancelled&&"new-pending".equals(slots.get(host.config().pendingSlot)),"queued old cleanup cannot erase remounted owner");
+   }else check(!slots.containsKey(host.config().pendingSlot),"owned pending removed");
+  }
+ }
  public static void main(String[] args)throws Exception{
   scenario("valid",true,true);
   for(String mode:List.of("bad-code","invalid-mfa","mfa-denied","mfa-unsupported","config-denied","token-denied","bad-secret","expired-token","missing-ack-contract","cancelled","expired-attempt","superseded","newer-intent"))scenario(mode,false,false);
@@ -195,8 +219,12 @@ public class CloudSignInChainTest {
   PluginCall caller=new PluginCall();check(callerRequestId(caller)==null,"legacy request unscoped");
   caller.input.put("requestId",REQUEST);check(REQUEST.equals(callerRequestId(caller)),"valid caller request identity");
   caller.input.put("requestId","not-an-id");boolean refused=false;try{callerRequestId(caller);}catch(SignInFailure invalid){refused=true;}check(refused,"invalid caller identity rejected");
+  for(Object value:List.of(42,JSONObject.NULL)){
+   caller.input.put("requestId",value);refused=false;try{callerRequestId(caller);}catch(SignInFailure invalid){refused=true;}check(refused,"supplied non-string identity rejected");
+  }
   mfaScope(false,false);mfaScope(true,false);mfaScope(false,true);
   callbackOwner("live");callbackOwner("cold-after-signout");callbackOwner("live-after-signout");
-  System.out.println("PASS native sign-in chain (27 scenarios; no browser facilities)");
+  for(String mode:List.of("stale","malformed","matching","legacy","queued","queued-completed"))scopedCancel(mode);
+  System.out.println("PASS native sign-in chain (33 scenarios; no browser facilities)");
  }
 }

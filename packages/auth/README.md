@@ -199,6 +199,10 @@ and MFA. A later sign-out can therefore refuse an earlier pending write. Optiona
 UUID `requestId` input is echoed on MFA and authenticated outcomes; authenticated
 outcomes also include the native `attemptId` and saved local `credentialId`. These
 values correlate an interaction, and do not prove account ownership. Cancellation
+with `requestId` retires only its matching attempt; a stale scoped cancel is a no-op.
+Old callers can still use unscoped cancellation. A queued scoped cleanup also keeps
+the original intent guard, so it cannot erase a newer attempt's pending record.
+Cancellation
 acknowledgement suppresses later delivery for that interaction; it does not roll
 back a key already committed. An old browser pending record without a live intent
 requires a fresh native sign-in. Existing saved-key acknowledgement recovery stays

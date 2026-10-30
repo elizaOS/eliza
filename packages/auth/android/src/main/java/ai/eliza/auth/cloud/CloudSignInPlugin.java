@@ -241,8 +241,9 @@ public abstract class CloudSignInPlugin extends Plugin {
 
  /** Optional caller identity scopes retained events to the interactive request that began them. */
  private static String callerRequestId(PluginCall call) throws SignInFailure {
+  if (!call.getData().has("requestId")) return null;
   String value = call.getString("requestId");
-  if (value != null && !CloudSignInFlow.validUuid(value)) throw new SignInFailure("invalid-request");
+  if (value == null || !CloudSignInFlow.validUuid(value)) throw new SignInFailure("invalid-request");
   return value;
  }
 
@@ -391,6 +392,18 @@ public abstract class CloudSignInPlugin extends Plugin {
  /** Cancelled, ended or consumed: the pending record is never reused. */
  private void burnUnclaimedPending() {
   run(() -> { try { store().remove(config().pendingSlot); } catch (Exception ignored) { /* Absent or unreadable. */ } });
+ }
+ /** A delayed scoped cancellation cannot erase a newer attempt's pending record. */
+ private void burnUnclaimedPending(Attempt owner) {
+  run(() -> {
+   try {
+    synchronized (lock) { if (attempt != null && attempt != owner) return; }
+    credentials(() -> {
+     if (destroyed) throw new IllegalStateException("Sign-in closed");
+     owner.credentialGuard.run();
+    }).remove(config().pendingSlot);
+   } catch (Exception ignored) { /* Closed, superseded, absent or unreadable. */ }
+  });
  }
 
  // ── Email code and MFA: fully native ─────────────────────────────────────────────────────────
@@ -542,11 +555,18 @@ public abstract class CloudSignInPlugin extends Plugin {
  }
 
  @PluginMethod public void cancel(PluginCall call) {
+  final String requestId;
+  try { requestId = callerRequestId(call); }
+  catch (SignInFailure invalid) { call.reject("Invalid sign-in request", "invalid-request"); return; }
   Attempt current;
-  synchronized (lock) { current = attempt; attempt = null; }
+  synchronized (lock) {
+   if (requestId != null && (attempt == null || !requestId.equals(attempt.requestId))) { call.resolve(); return; }
+   current = attempt; attempt = null;
+  }
   if (current != null) { current.cancel(); PluginCall waiting; synchronized (lock) { waiting = current.waiting; current.waiting = null; } if (waiting != null) waiting.reject("cancelled", "cancelled"); }
   // The explicit cancel burns a pending Google record.
-  burnUnclaimedPending();
+  if (requestId != null) burnUnclaimedPending(current);
+  else burnUnclaimedPending();
   call.resolve();
  }
 
