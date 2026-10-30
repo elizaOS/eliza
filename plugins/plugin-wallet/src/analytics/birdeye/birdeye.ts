@@ -1,14 +1,15 @@
 /**
  * `BirdeyeProvider` — low-level Birdeye REST client covering defi/token/
  * wallet/trader/pair/search endpoints. Every call is cached via
- * `runtime.getCache`/`setCache` and retried with a fixed delay on 5xx/429/408/
- * 503 responses or network failures; non-retryable HTTP errors and exhausted
- * retries are rethrown.
+ * `runtime.getCache`/`setCache` for `DEFAULT_BIRDEYE_CACHE_TTL_MS` and
+ * retried with a fixed delay on 5xx/429/408/503 responses or network
+ * failures; non-retryable HTTP errors and exhausted retries are rethrown.
  */
 import { elizaLogger, type IAgentRuntime } from "@elizaos/core";
 import {
   API_BASE_URL,
   BIRDEYE_ENDPOINTS,
+  DEFAULT_BIRDEYE_CACHE_TTL_MS,
   DEFAULT_BIRDEYE_FETCH_TIMEOUT_MS,
   DEFAULT_MAX_RETRIES,
   RETRY_DELAY_MS,
@@ -97,6 +98,7 @@ import type {
   WalletTransactionHistoryParams,
   WalletTransactionHistoryResponse,
 } from "./types/api/wallet";
+import type { CacheWrapper } from "./types/shared";
 import { convertToStringParams, waitFor } from "./utils";
 
 type FetchParams<T> = T & {
@@ -230,8 +232,13 @@ export class BirdeyeProvider {
         : `${url}:${JSON.stringify(params)}`;
 
     // Check cache first
-    const cachedVal = await this.runtime.getCache<T>(cacheKey);
-    if (cachedVal) return cachedVal as T;
+    const cached = await this.runtime.getCache<CacheWrapper<T>>(cacheKey);
+    if (
+      typeof cached?.setAt === "number" &&
+      Date.now() - cached.setAt <= DEFAULT_BIRDEYE_CACHE_TTL_MS
+    ) {
+      return cached.data;
+    }
 
     const urlWithParams =
       method === "GET" && params
@@ -246,7 +253,10 @@ export class BirdeyeProvider {
       ...(method === "POST" && params && { body: JSON.stringify(params) }),
     });
 
-    await this.runtime.setCache(cacheKey, data);
+    await this.runtime.setCache<CacheWrapper<T>>(cacheKey, {
+      data,
+      setAt: Date.now(),
+    });
     return data as T;
   }
 
