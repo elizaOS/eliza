@@ -34,7 +34,7 @@ import type {
 } from "../api/client-types-chat";
 import type { CodingAgentSession } from "../api/client-types-cloud";
 import {
-  type ConversationRoom,
+  admitConversationStopReceipt,
   type ConversationTurnContext,
   ConversationTurnController,
   isConversationTurnRefusal,
@@ -338,15 +338,7 @@ function abortServerConversationTurn(
   return client
     .abortConversationTurn(roomId, reason)
     .then((receipt) => {
-      if (
-        receipt?.aborted !== true ||
-        receipt.roomId !== roomId ||
-        receipt.reason !== reason
-      ) {
-        throw new Error(
-          "The connected host did not confirm this Stop request.",
-        );
-      }
+      admitConversationStopReceipt(receipt, { roomId, reason });
     })
     .catch((err) => {
       // error-policy:J4 the controller reports an unconfirmed Stop and refuses
@@ -359,69 +351,6 @@ function abortServerConversationTurn(
     });
 }
 
-/** Keep the hook's queued draft and history owners while sharing the dispatched turn lifecycle. */
-async function dispatchConversationTurn(
-  turns: ConversationTurnController<ChatTurnDispatch, ConversationStreamResult>,
-  room: ConversationRoom,
-  input: ChatTurnDispatch,
-  signal: AbortSignal,
-): Promise<ConversationStreamResult> {
-  signal.throwIfAborted();
-  let dispatched = false;
-  let cancel!: () => void;
-  const cancelled = new Promise<never>((_, reject) => {
-    cancel = () => {
-      void turns.interrupt();
-      reject(
-        Object.assign(new DOMException("Cancelled", "AbortError"), {
-          cause: signal.reason,
-          notDispatched: !dispatched,
-        }),
-      );
-    };
-  });
-  signal.addEventListener("abort", cancel, { once: true });
-  try {
-    const send = async () => {
-      await turns.bind(room);
-      signal.throwIfAborted();
-      turns.clearStopped();
-      return new Promise<ConversationStreamResult>((resolve, reject) => {
-        let settled = false;
-        const fail = (error: unknown) => {
-          settled = true;
-          reject(error);
-        };
-        void turns
-          .send(
-            {
-              ...input,
-              send: (turn) => {
-                dispatched = true;
-                return input.send(turn);
-              },
-            },
-            {
-              reply: (reply) => {
-                settled = true;
-                resolve(reply);
-              },
-              error: fail,
-              refused: fail,
-              settled: () => {},
-            },
-          )
-          .then((accepted) => {
-            if (!accepted && !settled)
-              fail(new DOMException("The conversation changed.", "AbortError"));
-          }, fail);
-      });
-    };
-    return await Promise.race([send(), cancelled]);
-  } finally {
-    signal.removeEventListener("abort", cancel);
-  }
-}
 export interface QueuedChatSend {
   rawInput: string;
   channelType: ConversationChannelType;
@@ -2002,9 +1931,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       };
       let streamedAssistantText = "";
       try {
-        const data = await dispatchConversationTurn(
-          conversationTurns,
-          { id: convId, roomId: convRoomId },
+        const data = await conversationTurns.request(
           {
             clientMessageId,
             send: (turnContext) =>
@@ -2060,7 +1987,10 @@ export function useChatSend(deps: UseChatSendDeps) {
                 },
               ),
           },
-          controller.signal,
+          {
+            conversation: { id: convId, roomId: convRoomId },
+            signal: controller.signal,
+          },
         );
         // Commit any token parked by the throttle before the terminal
         // drop/complete/fail/interrupt — no streamed tokens may be lost.
@@ -2423,16 +2353,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               replayMessages,
             );
             let replayStreamedText = "";
-            const retryData = await dispatchConversationTurn(
-              conversationTurns,
-              {
-                id: conversation.id,
-                roomId: resolveAbortRoomId(
-                  conversation.id,
-                  conversation.roomId,
-                  undefined,
-                ),
-              },
+            const retryData = await conversationTurns.request(
               {
                 clientMessageId,
                 send: (turnContext) =>
@@ -2485,7 +2406,17 @@ export function useChatSend(deps: UseChatSendDeps) {
                     },
                   ),
               },
-              controller.signal,
+              {
+                conversation: {
+                  id: conversation.id,
+                  roomId: resolveAbortRoomId(
+                    conversation.id,
+                    conversation.roomId,
+                    undefined,
+                  ),
+                },
+                signal: controller.signal,
+              },
             );
             await handoffCompletedAction(retryData.actionResults, handoffView);
             // Commit any throttle-parked token before the terminal modification.
@@ -3147,9 +3078,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         };
         let streamedAssistantText = "";
         try {
-          const data = await dispatchConversationTurn(
-            conversationTurns,
-            { id: convId, roomId: convRoomId },
+          const data = await conversationTurns.request(
             {
               clientMessageId: generateChatClientMessageId(),
               send: (turnContext) =>
@@ -3194,7 +3123,10 @@ export function useChatSend(deps: UseChatSendDeps) {
                   },
                 ),
             },
-            controller.signal,
+            {
+              conversation: { id: convId, roomId: convRoomId },
+              signal: controller.signal,
+            },
           );
           // Commit any token parked by the throttle before the terminal
           // drop/complete/fail/interrupt — no streamed tokens may be lost.
