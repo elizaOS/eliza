@@ -7,8 +7,10 @@ import type {
   Memory,
 } from "@elizaos/core";
 import {
+  ACTION_RESULT_OVERSIZE_WARNING_TOKENS,
   buildPlannerToolsFromActions,
   ContextRegistry,
+  estimateActionResultTokens,
   normalizeActionJsonSchema,
   promoteSubactionsToActions,
 } from "@elizaos/core";
@@ -538,6 +540,164 @@ describe("planner tool discovery", () => {
     expect(describeAllClaims.length).toBeGreaterThan(0);
     for (const sentence of describeAllClaims)
       expect(sentence).not.toMatch(/(?<!not a )\b(name|routing) index\b/i);
+  });
+
+  it("returns the complete name index when full catalog definitions exceed the result budget", async () => {
+    // The live surface had 54 families with these child counts and 407,397
+    // chars of full definitions (2026-10-30, tj-7138d70800aff4). Every entry
+    // here carries an authored summary, more than the live surface had.
+    const childCounts = [
+      0, 0, 7, 0, 0, 0, 3, 0, 7, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 8, 2,
+      8, 3, 5, 26, 0, 6, 0, 0, 11, 5, 3, 0, 0, 6, 5, 0, 0, 0, 0, 0, 0, 0, 0, 6,
+      0, 2, 0, 0, 0,
+    ];
+    const summary = (name: string) =>
+      `${name}: authored summary for list|search|create|update|delete with the exact Ω target.`;
+    const buildCatalog = (counts: readonly number[], detail: string) =>
+      counts.flatMap((count, i) => {
+        const operations = Array.from({ length: count }, (_, j) => `op_${j}`);
+        const parent: Action = {
+          name: `FAMILY_${i}`,
+          description: `FAMILY_${i} documentation. ${detail}`,
+          descriptionCompressed: summary(`FAMILY_${i}`),
+          parameters: [
+            ...(count > 0
+              ? [
+                  {
+                    name: "action",
+                    description: "Operation",
+                    required: true,
+                    schema: { type: "string" as const, enum: operations },
+                  },
+                ]
+              : []),
+            {
+              name: "details",
+              description: `Exact parameter guidance. ${detail}`,
+              schema: { type: "string" as const },
+            },
+          ],
+        };
+        return promoteSubactionsToActions(parent, {
+          overrides: Object.fromEntries(
+            operations.map((operation) => [
+              operation,
+              {
+                description: `Run ${operation}.`,
+                descriptionCompressed: summary(
+                  `FAMILY_${i}_${operation.toUpperCase()}`,
+                ),
+              },
+            ]),
+          ),
+        });
+      });
+    const actions = buildCatalog(
+      childCounts,
+      "Complete guidance Ω. ".repeat(40),
+    );
+    expect(actions).toHaveLength(171);
+    let loads = 0;
+    const discovery = createPlannerToolDiscoveryAction(actions, () => {
+      loads++;
+    });
+    const call = (parameters: Record<string, unknown>) =>
+      discovery.handler?.(runtime, message, undefined, { parameters });
+    const familyNames = childCounts.map((_, i) => `FAMILY_${i}`);
+    const definitions = await call({ names: familyNames, mode: "describe" });
+    expect(
+      estimateActionResultTokens(JSON.stringify(definitions?.data)),
+    ).toBeGreaterThan(ACTION_RESULT_OVERSIZE_WARNING_TOKENS);
+
+    const index = await call({ names: [], mode: "describe" });
+    expect(index).toMatchObject({
+      success: true,
+      data: {
+        readOnlyOperation: true,
+        catalogDetail: "index",
+        completeDefinitions: false,
+      },
+    });
+    expect(index?.text).toContain("mode=describe and exact names");
+    expect(
+      estimateActionResultTokens(JSON.stringify(index?.data)),
+    ).toBeLessThanOrEqual(ACTION_RESULT_OVERSIZE_WARNING_TOKENS);
+    expect(JSON.stringify(index)).not.toContain("Complete guidance");
+    const entries = index?.data?.catalog as Array<{
+      name: string;
+      summary?: string;
+      children: string[];
+      childSummaries?: Record<string, string>;
+    }>;
+    expect(entries.map((entry) => entry.name).sort()).toEqual(
+      [...familyNames].sort(),
+    );
+    expect(
+      entries.flatMap((entry) => [entry.name, ...entry.children]).sort(),
+    ).toEqual(actions.map((action) => action.name).sort());
+    expect(
+      Object.fromEntries(
+        entries.flatMap((entry) => [
+          [entry.name, entry.summary],
+          ...Object.entries(entry.childSummaries ?? {}),
+        ]),
+      ),
+    ).toEqual(
+      Object.fromEntries(
+        actions.map((action) => [action.name, action.descriptionCompressed]),
+      ),
+    );
+
+    // Exact names are unchanged: complete definitions with no budget.
+    const child = actions.find((action) => action.name === "FAMILY_28_OP_25");
+    if (!child) throw new Error("Missing live-sized child");
+    expect(
+      await call({ names: ["FAMILY_28_OP_25"], mode: "describe" }),
+    ).toMatchObject({
+      success: true,
+      data: {
+        catalog: [
+          {
+            name: "FAMILY_28_OP_25",
+            description: child.description,
+            parameters: normalizeActionJsonSchema(child),
+            children: [],
+          },
+        ],
+      },
+    });
+    expect(loads).toBe(0);
+    expect(
+      (await call({ names: ["FAMILY_28_OP_25"] }))?.data?.loadedTools,
+    ).toEqual(["FAMILY_28_OP_25"]);
+    expect(loads).toBe(1);
+
+    // A catalog within the budget keeps returning every full definition.
+    const smallCounts = childCounts.slice(0, 10);
+    const small = createPlannerToolDiscoveryAction(
+      buildCatalog(smallCounts, ""),
+      () => {},
+    );
+    const smallCatalog = await small.handler?.(runtime, message, undefined, {
+      parameters: { names: [], mode: "describe" },
+    });
+    expect(smallCatalog?.text).toBe(
+      "Complete authorized catalog with full descriptions and schemas; no domain work was performed.",
+    );
+    expect(Object.keys(smallCatalog?.data ?? {})).toEqual([
+      "readOnlyOperation",
+      "catalog",
+    ]);
+    expect(smallCatalog?.data?.catalog).toEqual(
+      (
+        await small.handler?.(runtime, message, undefined, {
+          parameters: {
+            names: smallCounts.map((_, i) => `FAMILY_${i}`),
+            mode: "describe",
+          },
+        })
+      )?.data?.catalog,
+    );
   });
 
   it("keeps inline callers unchanged while the reference preserves native parameters", () => {
