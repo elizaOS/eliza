@@ -16,7 +16,8 @@ import java.util.TimeZone;
 public abstract class CalendarPlugin extends Plugin {
  private final CalendarConfiguration configuration;
  private final CalendarCreationStore creations;
- protected CalendarPlugin(CalendarConfiguration configuration){this.configuration=java.util.Objects.requireNonNull(configuration);this.creations=new CalendarCreationStore(configuration);}
+ private final ai.eliza.plugins.calendar.write.CalendarOptionCreationStore optionCreations;
+ protected CalendarPlugin(CalendarConfiguration configuration){this.configuration=java.util.Objects.requireNonNull(configuration);this.creations=new CalendarCreationStore(configuration);this.optionCreations=new ai.eliza.plugins.calendar.write.CalendarOptionCreationStore(configuration);}
 
  /** Opt-in host persistence after native review. The default engine keeps its existing behavior. */
  protected boolean deferReviewedDeletion(){return false;}
@@ -51,7 +52,7 @@ public abstract class CalendarPlugin extends Plugin {
   if(begin==null||end==null||begin<0||end<=begin||end-begin>370L*86400000){c.reject("A valid calendar range of at most 370 days is required");return;}
   try{
    ai.eliza.plugins.calendar.read.CalendarReadAccess reader=new ai.eliza.plugins.calendar.read.CalendarReadAccess(getContext().getContentResolver(),getContext().getPackageName(),configuration.creationUriPrefix);
-   JSObject value=new JSObject();value.put("status","ready");value.put("calendars",reader.calendars());value.put("events",reader.events(begin,end));value.put("truncated",false);c.resolve(value);
+   JSObject value=new JSObject();value.put("status","ready");value.put("calendars",reader.calendars());if(configuration.maximumReadEvents==0){value.put("events",reader.events(begin,end));value.put("truncated",false);}else{org.json.JSONObject window=reader.window(begin,end,configuration.maximumReadEvents);value.put("events",window.getJSONArray("events"));value.put("truncated",window.getBoolean("truncated"));}c.resolve(value);
   }catch(Exception e){c.reject("Calendar provider could not be read");}
  }
  private boolean workflowReadAllowed(){return androidx.core.content.ContextCompat.checkSelfPermission(getContext(),Manifest.permission.READ_CALENDAR)==android.content.pm.PackageManager.PERMISSION_GRANTED;}
@@ -233,11 +234,46 @@ public abstract class CalendarPlugin extends Plugin {
  private boolean writable(long id){return ai.eliza.plugins.calendar.write.CalendarDestinations.writable(getContext().getContentResolver(),id);}
  @PluginMethod public void pendingCreations(PluginCall c){
   if(!allowed()){status(c,"permission-required");return;}
-  try{c.resolve(creations.pendingCreations(getContext()));}catch(Exception unavailable){c.reject("Calendar creation recovery unavailable. Nothing was retried.");}
+  try{JSObject timed=creations.pendingCreations(getContext());JSArray all=new JSArray();org.json.JSONArray first=timed.getJSONArray("creations"),second=optionCreations.pendingCreations(getContext());for(int i=0;i<first.length();i++)all.put(first.get(i));for(int i=0;i<second.length();i++)all.put(second.get(i));JSObject value=statusValue("ready");value.put("creations",all);c.resolve(value);}catch(Exception unavailable){c.reject("Calendar creation recovery unavailable. Nothing was retried.");}
  }
  @PluginMethod public void acknowledgeCreation(PluginCall c){
   if(!allowed()){status(c,"permission-required");return;}
-  try{creations.acknowledge(getContext(),c.getString("creationId"));status(c,"acknowledged");}catch(Exception unavailable){c.reject("Calendar creation receipt could not be acknowledged.");}
+  try{optionCreations.acknowledgeEither(getContext(),c.getString("creationId"),creations);status(c,"acknowledged");}catch(Exception unavailable){c.reject("Calendar creation receipt could not be acknowledged.");}
+ }
+ /** Creates one reviewed option event; unknown creations are reconciled, never replayed. */
+ @PluginMethod public synchronized void saveOptions(PluginCall c){
+  if(!allowed()){status(c,"permission-required");return;}
+  try{
+   ai.eliza.plugins.calendar.write.CalendarEventOptions options=ai.eliza.plugins.calendar.write.CalendarEventOptions.parse(new org.json.JSONObject(c.getObject("event",new JSObject()).toString()));
+   if(creations.owns(getContext(),c.getString("creationId")))throw new IllegalArgumentException("Creation identity already belongs to a timed event");
+   String calendar=c.getString("calendarId","local");long calendarId=calendar.equals("local")?localCalendar():Long.parseLong(calendar);
+   if(!writable(calendarId)){status(c,"read-only");return;}
+   boolean separate=Boolean.TRUE.equals(c.getBoolean("separateCreation"));
+   if(!separate&&creations.pendingCreations(getContext()).getJSONArray("creations").length()>0){status(c,"pending-creation");return;}
+   c.resolve(optionCreations.create(getContext(),c.getString("creationId"),options.values(calendarId),separate,creations));
+  }catch(IllegalArgumentException invalid){c.reject(invalid.getMessage()==null?"Invalid calendar event":invalid.getMessage());}
+  catch(Exception uncertain){c.reject("Calendar write could not be confirmed. Check creation receipts before retrying.");}
+ }
+ /** Exact provider option fields for the selected event; this does not change the row. */
+ @PluginMethod public void readOptions(PluginCall c){
+  if(!allowed()){status(c,"permission-required");return;}
+  try(Cursor row=getContext().getContentResolver().query(ContentUris.withAppendedId(CalendarContract.Events.CONTENT_URI,Long.parseLong(c.getString("id",""))),new String[]{CalendarContract.Events.ALL_DAY,CalendarContract.Events.EVENT_TIMEZONE,CalendarContract.Events.RRULE,CalendarContract.Events.DURATION},null,null,null)){
+   if(row==null||!row.moveToFirst()){status(c,"missing");return;}
+   JSObject value=statusValue("ready");value.put("allDay",row.getInt(0)==1);value.put("timeZone",row.getString(1));value.put("rrule",row.isNull(2)?"":row.getString(2));value.put("duration",row.isNull(3)?"":row.getString(3));c.resolve(value);
+  }catch(Exception unavailable){c.reject("Calendar event could not be read");}
+ }
+ /** Launches an installed editor only. Opened is not a saved-event receipt. */
+ @PluginMethod public void insertHandoff(PluginCall c){
+  try{
+   if(!workflowForeground()){status(c,"unavailable");return;}
+   org.json.JSONObject draft=new org.json.JSONObject(c.getObject("event",new JSObject()).toString());
+   android.content.Intent intent=ai.eliza.plugins.calendar.write.CalendarInsertHandoff.intent(draft);
+   android.content.pm.ResolveInfo editor=getContext().getPackageManager().resolveActivity(intent,0);
+   if(editor==null||editor.activityInfo==null||getContext().getPackageName().equals(editor.activityInfo.packageName)){status(c,"unavailable");return;}
+   getActivity().startActivity(intent);JSObject value=statusValue("opened");value.put("alertsPrefilled",!ai.eliza.plugins.calendar.write.CalendarInsertHandoff.alertsNeedEditor(draft));c.resolve(value);
+  }catch(IllegalArgumentException invalid){status(c,"invalid");}
+  catch(android.content.ActivityNotFoundException missing){status(c,"unavailable");}
+  catch(Exception unknown){status(c,"unknown");}
  }
  @PluginMethod public synchronized void save(PluginCall c){
   if(!allowed()){status(c,"permission-required");return;}
@@ -246,12 +282,13 @@ public abstract class CalendarPlugin extends Plugin {
   if(title.trim().isEmpty()||title.length()>500||body.length()>16000||location.length()>2000||begin==null||end==null||begin<0||end<=begin||end-begin>370L*86400000){c.reject("Invalid calendar event");return;}
 
   try{
+   if(id.isEmpty()&&optionCreations.owns(getContext(),c.getString("creationId"))){c.reject("Creation identity already belongs to an option event");return;}
    long calendarId=calendar.equals("local")?localCalendar():Long.parseLong(calendar);
    if(!writable(calendarId)){c.reject("Calendar is read-only");return;}
    ContentValues values=new ContentValues();values.put(CalendarContract.Events.TITLE,title.trim());values.put(CalendarContract.Events.DESCRIPTION,body);values.put(CalendarContract.Events.EVENT_LOCATION,location);values.put(CalendarContract.Events.DTSTART,begin);values.put(CalendarContract.Events.DTEND,end);values.put(CalendarContract.Events.EVENT_TIMEZONE,TimeZone.getDefault().getID());
    values.put(CalendarContract.Events.CALENDAR_ID,calendarId);
    Uri uri;
-   if(id.isEmpty()){c.resolve(creations.create(getContext(),c.getString("creationId"),values,Boolean.TRUE.equals(c.getBoolean("separateCreation"))));return;}
+   if(id.isEmpty()){c.resolve(optionCreations.createTimed(getContext(),c.getString("creationId"),values,Boolean.TRUE.equals(c.getBoolean("separateCreation")),creations));return;}
    else {
     long eventId=Long.parseLong(id);if(eventId<=0)throw new IllegalArgumentException();
     JSObject expected=c.getObject("expected");

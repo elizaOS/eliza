@@ -58,7 +58,8 @@
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
     "format:check": "bunx @biomejs/biome format .",
-    "test:android-package": "node test/packed-consumer/check.mjs"
+    "test:android-package": "node test/packed-consumer/check.mjs",
+    "test:android-host": "node --test test/native-host/*.test.mjs"
   },
   "capacitor": {
     "ios": {

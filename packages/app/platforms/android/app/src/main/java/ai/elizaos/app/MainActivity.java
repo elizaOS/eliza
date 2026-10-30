@@ -113,6 +113,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
         registerPlugin(SlotClockPlugin.class);
+        registerPlugin(ElizaCalendarPlugin.class);
         // Reset app data: native review and device credential decide; the renderer passes nothing.
         registerPlugin(ElizaDataResetPlugin.class);
         // BridgeActivity appends these after discovery, before the first JS export.
