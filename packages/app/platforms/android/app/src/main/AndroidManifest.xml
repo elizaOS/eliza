@@ -408,6 +408,14 @@
             </intent-filter>
         </service>
 
+        <!-- Owner review of a Cloud-drafted SMS reply; opened only from this app's own notice. -->
+        <activity
+            android:name="ai.elizaos.app.ElizaSmsReplyReviewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />
+
         <activity
             android:name="ai.elizaos.app.ElizaSmsComposeActivity"
             android:exported="true"

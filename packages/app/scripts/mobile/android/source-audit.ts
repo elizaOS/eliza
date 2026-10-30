@@ -30,6 +30,7 @@ import {
   ANDROID_SMS_GATEWAY_COMPONENTS,
   ANDROID_SMS_GATEWAY_PERMISSIONS,
   ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
+  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   assertAndroidLauncherManifest,
   isAndroidLp3ColorPolicyEnabled,
   isCloudBannedAsset,
@@ -434,7 +435,11 @@ export function auditAndroidSmsGatewaySource(phase) {
   );
   failures.push(...auditAndroidSmsGatewayManifest(manifestPath));
   failures.push(...missingAndroidSmsGatewayJavaFiles());
-  failures.push(...androidCloudNativePluginReferenceFailures());
+  failures.push(
+    ...androidCloudNativePluginReferenceFailures(
+      ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
+    ),
+  );
 
   if (failures.length > 0) {
     throw new Error(
@@ -487,7 +492,9 @@ export function missingAndroidSmsGatewayJavaFiles() {
   return missing;
 }
 
-export function androidCloudNativePluginReferenceFailures() {
+export function androidCloudNativePluginReferenceFailures(
+  strippedPlugins = ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+) {
   const failures = [];
   for (const relPath of [
     "capacitor.settings.gradle",
@@ -497,7 +504,7 @@ export function androidCloudNativePluginReferenceFailures() {
     const filePath = path.join(androidDir, relPath);
     if (!fs.existsSync(filePath)) continue;
     const source = fs.readFileSync(filePath, "utf8");
-    for (const [pkg, gradleProject] of ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS) {
+    for (const [pkg, gradleProject] of strippedPlugins) {
       if (source.includes(pkg) || source.includes(gradleProject)) {
         failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
       }
