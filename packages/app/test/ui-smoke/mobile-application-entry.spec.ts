@@ -409,3 +409,427 @@ test("chat-only Android requests a native stop and keeps contradictory receipts 
   await expect(notice).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("stop-confirmed.png") });
 });
+
+test("Android Calendar uses the shared workspace and existing editor", async ({
+  page,
+}, info) => {
+  await fixture(page);
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/api/lifeops/calendar/") &&
+      request.method() !== "GET"
+    )
+      writes.push(request.method());
+  });
+  await page.route("**/api/lifeops/calendar/calendars**", async (route) => {
+    await route.fulfill({
+      json: {
+        calendars: [
+          {
+            provider: "eliza",
+            side: "owner",
+            grantId: "u6-calendar",
+            calendarId: "primary",
+            connectorAccountId: null,
+            accountEmail: null,
+            summary: "Calendar fixture",
+            description: null,
+            primary: true,
+            accessRole: "owner",
+            backgroundColor: null,
+            foregroundColor: null,
+            timeZone: "UTC",
+            selected: true,
+            includeInFeed: true,
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/lifeops/calendar/feed**", async (route) => {
+    const url = new URL(route.request().url());
+    const start = new Date();
+    start.setHours(10, 0, 0, 0);
+    await route.fulfill({
+      json: {
+        events: Array.from({ length: 5 }, (_, index) => ({
+          id: `u6-event-${index}`,
+          externalId: `u6-event-${index}`,
+          agentId: "smoke-agent",
+          provider: "eliza",
+          side: "owner",
+          grantId: "u6-calendar",
+          calendarId: "primary",
+          title: `U6 planning ${index + 1}`,
+          description: "Existing editor owns this event",
+          location: "",
+          status: "confirmed",
+          startAt: start.toISOString(),
+          endAt: new Date(start.getTime() + 3600000).toISOString(),
+          isAllDay: false,
+          timezone: null,
+          htmlLink: null,
+          conferenceLink: null,
+          organizer: null,
+          attendees: [],
+          metadata: { etag: "u6-v1" },
+          syncedAt: start.toISOString(),
+          updatedAt: start.toISOString(),
+        })),
+        source: "cache",
+        state: "complete",
+        sources: [],
+        timeMin: url.searchParams.get("timeMin"),
+        timeMax: url.searchParams.get("timeMax"),
+        syncedAt: start.toISOString(),
+      },
+    });
+  });
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEditable();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "All apps", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "All apps", exact: true })
+    .getByRole("button", { name: /^Open Calendar(?: \(.*\))?$/ })
+    .click();
+  await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible();
+  await expect(page.locator("[data-mobile-application]")).toHaveCount(1);
+  if (!process.env.U6_BASELINE)
+    await expect(page.locator("[data-shared-workspace]")).toHaveCount(1);
+  await page.getByRole("button", { name: "Month", exact: true }).click();
+  await page.getByRole("button", { name: "+2 more", exact: true }).click();
+  const overflow = page.getByTestId("lifeops-calendar-day-overflow");
+  await expect(overflow).toBeVisible();
+  await expect(overflow).toHaveCSS("width", "256px");
+  await page.screenshot({
+    path: info.outputPath("canonical-calendar-month.png"),
+  });
+  await overflow.getByRole("button", { name: /U6 planning 4/ }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Event title", exact: true }),
+  ).toHaveValue("U6 planning 4");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByTestId("lifeops-calendar-new-event").click();
+  await page
+    .getByRole("textbox", { name: "Event title", exact: true })
+    .fill("Keep the existing Calendar editor");
+  await page.screenshot({
+    path: info.outputPath("canonical-calendar-editor.png"),
+  });
+  expect(writes).toEqual([]);
+});
+
+test("Home Calendar ranks the current visible feed and retires held old-owner reads", async ({
+  page,
+}, info) => {
+  let clock = new Date("2026-10-02T12:00:00Z");
+  await page.clock.setFixedTime(clock);
+  await fixture(page);
+  await page.route("**/api/plugins", (route) =>
+    route.fulfill({
+      json: {
+        plugins: [
+          {
+            id: "calendar",
+            name: "Calendar",
+            enabled: true,
+            isActive: true,
+            configured: true,
+            description: "Calendar fixture",
+            envKey: null,
+            category: "feature",
+            source: "bundled",
+            parameters: [],
+            validationErrors: [],
+            validationWarnings: [],
+          },
+        ],
+      },
+    }),
+  );
+  let futureMinutes: number | null = null;
+  let owner = "First",
+    feedState = "complete",
+    feedReads = 0,
+    sourceReads = 0,
+    hold = false;
+  let held: import("@playwright/test").Route | undefined;
+  const source = {
+    provider: "eliza",
+    side: "owner",
+    grantId: "home-grant",
+    connectorAccountId: "home-account",
+    calendarId: "primary",
+    includeInFeed: true,
+    accessRole: "owner",
+    summary: "Calendar",
+    description: null,
+    primary: true,
+    timeZone: "UTC",
+    selected: true,
+    selectionVersion: 0,
+    backgroundColor: null,
+    foregroundColor: null,
+    accountEmail: null,
+  };
+  let eventOverrides:
+    | { title: string; startAt: string; endAt: string }[]
+    | undefined;
+  let feedBegin: string | undefined;
+  const windows: { timeMin: string | null; timeMax: string | null }[] = [];
+  const payload = (url: URL, label: string) => {
+    const start = new Date(clock);
+    if (futureMinutes === null) start.setHours(0, 0, 0, 0);
+    else start.setTime(clock.getTime() + futureMinutes * 60000);
+    const result = {
+      state: feedState,
+      source: "cache",
+      sources: [],
+      timeMin: url.searchParams.get("timeMin"),
+      timeMax: url.searchParams.get("timeMax"),
+      syncedAt: new Date().toISOString(),
+      events: [
+        {
+          ...source,
+          id: "home-event",
+          externalId: "home-event",
+          agentId: "smoke-agent",
+          title: `${label} today`,
+          description: "",
+          location: "",
+          status: "confirmed",
+          startAt: start.toISOString(),
+          endAt: new Date(start.getTime() + 3600000).toISOString(),
+          isAllDay: false,
+          timezone: null,
+          htmlLink: null,
+          conferenceLink: null,
+          organizer: null,
+          attendees: [],
+          metadata: { etag: "v1" },
+          updatedAt: start.toISOString(),
+        },
+      ],
+    };
+    if (eventOverrides)
+      result.events = eventOverrides.map((event, index) => ({
+        ...result.events[0],
+        ...event,
+        id: `period-${index}`,
+        externalId: `period-${index}`,
+      }));
+    if (feedBegin) result.timeMin = feedBegin;
+    return result;
+  };
+  await page.route("**/api/lifeops/calendar/calendars**", (route) => {
+    sourceReads++;
+    return route.fulfill({ json: { calendars: [source] } });
+  });
+  await page.route("**/api/lifeops/calendar/feed**", async (route) => {
+    feedReads++;
+    const url = new URL(route.request().url());
+    windows.push({
+      timeMin: url.searchParams.get("timeMin"),
+      timeMax: url.searchParams.get("timeMax"),
+    });
+    if (hold) {
+      hold = false;
+      held = route;
+      return;
+    }
+    await route.fulfill({
+      json: payload(new URL(route.request().url()), owner),
+    });
+  });
+  await page.route("**/api/connectors/google/accounts", (route) =>
+    route.fulfill({
+      json: { accounts: [{ id: "test", status: "connected" }] },
+    }),
+  );
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEditable();
+  const card = page.getByTestId("chat-widget-calendar-upcoming");
+  if (process.env.U6_HOME_BASELINE) {
+    await expect.poll(() => feedReads).toBeGreaterThan(0);
+    await expect(card).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath("home-before.png") });
+    return;
+  }
+  await expect(card).toContainText("First today");
+  const clientPath = new URL("../../../ui/src/api/client.ts", import.meta.url)
+    .pathname;
+  const originalToken = await page.evaluate(async (path) => {
+    const { client } = await import(path);
+    return client.getRestAuthToken();
+  }, `/@fs${clientPath}`);
+  const initial = { feed: feedReads, sources: sourceReads };
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: info.outputPath("home-shared-feed.png") });
+  expect({ feed: feedReads, sources: sourceReads }).toEqual(initial);
+  expect(windows[0]).toEqual({
+    timeMin: "2026-09-28T00:00:00.000Z",
+    timeMax: "2026-11-01T00:00:00.000Z",
+  });
+  const refresh = async () => {
+    for (const visibilityState of ["hidden", "visible"])
+      await page.evaluate((value) => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          value,
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      }, visibilityState);
+  };
+  const item = (title: string, date: string, hour = 9) => ({
+    title,
+    startAt: `${date}T${String(hour).padStart(2, "0")}:00:00Z`,
+    endAt: `${date}T${String(hour + 1).padStart(2, "0")}:00:00Z`,
+  });
+  clock = new Date("2026-10-30T12:00:00Z");
+  await page.clock.setFixedTime(clock);
+  for (const scenario of [
+    {
+      name: "past-week",
+      events: [item("Past week", "2026-10-29")],
+      expected: "Past week",
+    },
+    {
+      name: "past-month",
+      events: [item("Past month", "2026-10-10")],
+      expected: "Past month",
+    },
+    {
+      name: "upcoming-today",
+      events: [
+        item("Past today", "2026-10-30", 8),
+        item("Upcoming today", "2026-10-30", 13),
+      ],
+      expected: "Upcoming today",
+    },
+    {
+      name: "recent-past",
+      events: [
+        item("Earlier today", "2026-10-30", 7),
+        item("Recent past today", "2026-10-30", 9),
+      ],
+      expected: "Recent past today",
+    },
+  ]) {
+    eventOverrides = scenario.events;
+    await refresh();
+    await expect(card).toContainText(scenario.expected);
+    await page.screenshot({
+      path: info.outputPath(`home-${scenario.name}.png`),
+    });
+  }
+  feedBegin = "2026-10-30T00:00:00Z";
+  eventOverrides = [item("Incomplete priority", "2026-10-30", 13)];
+  await refresh();
+  await expect(card).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("home-incomplete-priority.png"),
+  });
+  clock = new Date("2026-10-02T12:00:00Z");
+  await page.clock.setFixedTime(clock);
+  feedBegin = "2026-10-01T00:00:00Z";
+  eventOverrides = [];
+  await refresh();
+  await expect(card).toHaveCount(0);
+  feedBegin = undefined;
+  eventOverrides = [item("Hidden source", "2026-10-02", 13)];
+  source.includeInFeed = false;
+  await refresh();
+  await expect(card).toHaveCount(0);
+  source.includeInFeed = true;
+  eventOverrides = undefined;
+  await refresh();
+  await expect(card).toContainText("First today");
+  hold = true;
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => !!held).toBe(true);
+  owner = "Second";
+  await page.evaluate(async (path) => {
+    const { client } = await import(path);
+    client.setToken("synthetic-owner-two-fixture");
+  }, `/@fs${clientPath}`);
+  await expect(card).toContainText("Second today");
+  const retired = held;
+  if (!retired) throw new Error("Held Calendar read was not captured");
+  await retired
+    .fulfill({ json: payload(new URL(retired.request().url()), "Retired") })
+    .catch(() => {});
+  await expect(card).toContainText("Second today");
+  await expect(card).not.toContainText("Retired");
+  feedState = "partial";
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(card).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("home-partial-unconfirmed.png"),
+  });
+  feedState = "complete";
+  await page.evaluate(
+    async ({ path, token }) => {
+      const { client } = await import(path);
+      client.setToken(token);
+    },
+    { path: `/@fs${clientPath}`, token: originalToken },
+  );
+  await page.goto("/chat?shellMode=tray-popover", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByTestId("tray-popover-shell")).toBeVisible();
+  await expect(card).toHaveCount(0);
+  futureMinutes = 45;
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(card).toContainText("Second today");
+  await page.screenshot({ path: info.outputPath("tray-near-event.png") });
+  await info.attach("request-counts", {
+    body: JSON.stringify({
+      initial,
+      windows,
+      total: { feed: feedReads, sources: sourceReads },
+    }),
+    contentType: "application/json",
+  });
+});
