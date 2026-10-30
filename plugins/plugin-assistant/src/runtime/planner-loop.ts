@@ -3327,13 +3327,19 @@ async function runPlannerLoopIterations(
     // planner declared more work and the evaluator chose CONTINUE, replan that
     // work instead of ending the turn (live tj-6941f5b0efa216 dropped the
     // requested create). Durable device requests and completion claims still
-    // end the turn as a partial result below.
+    // end the turn as a partial result below. Replan once per turn: the
+    // renderer applies only the latest handoff, and a re-emitted VIEWS_SHOW
+    // never matches the settled call (fresh navigationStepId), so the
+    // redundant-call breaker cannot stop a repeat loop.
     const replanAfterPreparedNavigation =
       lastPlannerExplicitCompleted === false &&
       evaluator.decision === "CONTINUE" &&
       isPreparedViewNavigationStep(
         trajectory.steps[trajectory.steps.length - 1],
-      );
+      ) &&
+      [...trajectory.archivedSteps, ...trajectory.steps].filter((step) =>
+        isPreparedViewNavigationStep(step),
+      ).length === 1;
     const pendingCompletionCorrection = replanAfterPreparedNavigation
       ? null
       : correctPendingSuccessfulFinish(evaluator, iteration);

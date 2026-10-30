@@ -79,6 +79,7 @@ async function run(
     scope?: "more_work_pending" | "final";
     first?: "navigation" | "device";
     decision?: "CONTINUE" | "FINISH";
+    repeatNavigation?: boolean;
   } = {},
 ) {
   const executed: string[] = [];
@@ -111,7 +112,7 @@ async function run(
     runtime: {
       useModel: async () => {
         planners++;
-        if (planners === 1)
+        if (planners === 1 || (planners === 2 && options.repeatNavigation))
           return {
             text: "",
             toolCalls: [
@@ -148,7 +149,7 @@ async function run(
     },
     evaluate: async () => {
       evaluations++;
-      return evaluations === 1
+      return evaluations === 1 || options.repeatNavigation
         ? {
             success: true,
             decision: options.decision ?? "CONTINUE",
@@ -203,6 +204,18 @@ describe("prepared app-view navigation with explicitly pending work", () => {
       decision: "FINISH",
       success: false,
       requestFullyCovered: false,
+    });
+  });
+
+  it("replans once: a repeated prepared navigation ends the turn", async () => {
+    const h = await run({ repeatNavigation: true });
+    expect(h.executed).toEqual(["VIEWS_SHOW", "VIEWS_SHOW"]);
+    expect(h.evaluations).toBe(2);
+    expect(h.result.evaluator).toMatchObject({
+      decision: "FINISH",
+      success: false,
+      requestFullyCovered: false,
+      replyEffectStatus: "non_applied",
     });
   });
 
