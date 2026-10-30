@@ -100,6 +100,7 @@ describe("inbox card", () => {
   it("not connected, unchecked and connected-but-unloaded are distinct and claim no count", () => {
     expect(presentOverviewInboxCard({ ...base, disconnected: true }, f)).toEqual({
       state: "not-connected",
+      action: "connections",
       count: "",
       rows: [],
       title: "Connect email",
@@ -112,6 +113,26 @@ describe("inbox card", () => {
     const idle = presentOverviewInboxCard({ ...base, connected: true }, f);
     expect([idle.state, idle.title, idle.status]).toEqual(["idle", "Inbox", "Open to load email"]);
   });
+  it("returns the named destination through disconnected loading, failure and cached states", () => {
+    const stale = { state: "stale" as const, unread: 2, source: "work@example.test", updatedAt: at(8, 15, 6) };
+    const cases = [
+      { input: { pending: true }, state: "loading", label: "Connect email", action: "connections" },
+      { input: { failure: "error" as const }, state: "error", label: "Connect email", action: "connections" },
+      { input: { failure: "revoked" as const }, state: "error", label: "Connect email", action: "connections" },
+      { input: { loaded: loaded([]) }, state: "ready", label: "Connect email", action: "connections" },
+      { input: { loaded: loaded([{ subject: "Invoice" }]), pending: true }, state: "loading", label: "Open Inbox: 1 unread email", action: "inbox" },
+      { input: { loaded: loaded([{ subject: "Invoice" }]), failure: "error" as const }, state: "error", label: "Open Inbox: 1 unread email", action: "inbox" },
+      { input: { stale }, state: "stale", label: "Open Inbox: work@example.test has not updated since Tue, Oct 6 8:15 AM; 2 unread emails when last read", action: "inbox" },
+      { input: { stale, pending: true }, state: "loading", label: "Connect email", action: "connections" },
+    ];
+    for (const { input, state, label, action } of cases) {
+      const card = presentOverviewInboxCard({ ...base, disconnected: true, ...input }, f);
+      expect({ state: card.state, label: card.label, action: card.action }).toEqual({ state, label, action });
+    }
+    for (const input of [{}, { unchecked: true }, { connected: true }, { pending: true }, { failure: "error" as const }]) {
+      expect(presentOverviewInboxCard({ ...base, ...input }, f).action).toBe("inbox");
+    }
+  });
   it("a loaded page shows its unread count, two subjects and senders, the account and read time", () => {
     const card = presentOverviewInboxCard(
       {
@@ -123,6 +144,7 @@ describe("inbox card", () => {
     );
     expect(card).toEqual({
       state: "ready",
+      action: "inbox",
       count: "3 unread",
       rows: [
         { title: "Invoice", detail: "Billing" },
@@ -157,6 +179,7 @@ describe("inbox card", () => {
     const stale = { state: "stale" as const, unread: 2, source: "work@example.test", updatedAt: at(8, 15, 6) };
     expect(presentOverviewInboxCard({ ...base, connected: true, stale }, f)).toEqual({
       state: "stale",
+      action: "inbox",
       count: "",
       rows: [],
       title: "Inbox",
