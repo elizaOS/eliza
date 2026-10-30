@@ -132,6 +132,10 @@ export function stripAugmentationForPersistence<
 const USER_REQUEST_BLOCK = /<user_request>\n?([\s\S]*?)\n?<\/user_request>\s*$/;
 
 export function userRequestFromAugmentedText(text: string): string {
-	const match = USER_REQUEST_BLOCK.exec(text);
+	// A trailing language suffix defeats the block regex, which anchors on the
+	// close tag. Strip it first, as extractUserText does, so both unwrappers
+	// agree on the same input. Text without a block is returned unchanged.
+	const cleaned = text.replace(LANGUAGE_INSTRUCTION_SUFFIX, "");
+	const match = USER_REQUEST_BLOCK.exec(cleaned);
 	return match ? match[1].trim() : text;
 }
