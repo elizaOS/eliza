@@ -86,6 +86,7 @@ import {
   hasReasoningResidue,
   inflectionTermKeys,
   isDiscoveryActionName,
+  isModelOutputLimitFinishReason,
   isModelProviderError,
   isObjectRecord,
   isPlainObject,
@@ -96,6 +97,7 @@ import {
   MODEL_CANONICAL_CONTEXT,
   ModelType,
   mergeChainingLoopConfig,
+  modelOutputIncompleteEvidence,
   modelProviderErrorDetail,
   normalizeEffectReceipts,
   normalizePromptSegments,
@@ -281,18 +283,28 @@ export function resolvePositivePlannerInt(
 }
 
 /**
- * Resolve an explicitly configured planner output ceiling. Unset settings do
- * not impose a core-owned cap: the selected provider owns its real output
- * boundary and must reject an unsupported explicit override before dispatch.
- * A set-but-malformed override throws rather than silently defaulting.
+ * Resolve the planner output ceiling. Non-coding planning rounds default to
+ * 8192 tokens, overridable via `ELIZA_PLANNER_MAX_TOKENS`. Without a cap a
+ * degenerate tool call runs to the provider maximum: live 2026-10-30, a
+ * calendar create streamed 40,960 tokens in 29s before failing, and a sibling
+ * call carried 5,786 empty attendee objects. 8192 still fits a complete tool
+ * call or REPLY and stops a runaway in about 6s; the dispatch retries a capped
+ * generation once. Reply-only synthesis rounds (user-facing prose, no effect
+ * tools) and coding planners keep the earlier rule: unset means no core-owned
+ * cap, and the provider owns its real output boundary. A set-but-malformed
+ * override throws rather than silently defaulting.
  */
-function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
+function resolvePlannerMaxTokens(
+  codingMode: boolean,
+  replyOnly: boolean,
+): number | undefined {
   const envVarName = codingMode
     ? "ELIZA_CODING_PLANNER_MAX_TOKENS"
     : "ELIZA_PLANNER_MAX_TOKENS";
   const rawValue = process.env[envVarName];
-  if (rawValue === undefined || rawValue === "") return undefined;
-  return resolvePositivePlannerInt(envVarName, rawValue, 1);
+  if ((codingMode || replyOnly) && (rawValue === undefined || rawValue === ""))
+    return undefined;
+  return resolvePositivePlannerInt(envVarName, rawValue, 8192);
 }
 
 /**
@@ -4606,6 +4618,7 @@ async function dispatchPlannerModelCall(params: {
   };
   const configuredMaxTokens = resolvePlannerMaxTokens(
     params.trajectory.codingMode === true,
+    params.allowReplyContextProjection === true,
   );
   if (configuredMaxTokens !== undefined) {
     modelParams.maxTokens = configuredMaxTokens;
@@ -4887,7 +4900,7 @@ async function dispatchPlannerModelCall(params: {
       : plannerSchema;
   }
 
-  const startedAt = Date.now();
+  let startedAt = Date.now();
   const modelType = params.modelType ?? ModelType.ACTION_PLANNER;
   // Measure the exact request shape after tool augmentation and structured
   // decode metadata are final. No flag or fallback may rewrite this request to
@@ -4926,39 +4939,66 @@ async function dispatchPlannerModelCall(params: {
   // (live: 63s, only the messageHandler stage recorded). Bound that single
   // call; non-coding turns keep their exact prior behavior.
   let raw: string | GenerateTextResult;
-  try {
-    raw =
-      params.trajectory.codingMode === true
-        ? await dispatchWithCodingCallTimeout({
-            dispatch: invokeUseModel,
-            ambientSignal: streamingContext?.abortSignal,
-            timeoutMs: resolveCodingPlannerCallTimeoutMs(),
-            iteration: params.iteration,
-            logger: params.runtime.logger,
-          })
-        : await invokeUseModel();
-  } catch (error) {
-    // error-policy:J2 record the attempted input before propagating the
-    // provider failure. A rejected request has no generated response, but
-    // losing its messages/tools makes context-overflow diagnosis impossible.
-    await recordPlannerStage({
-      runtime: params.runtime,
-      recorder: params.recorder,
-      trajectoryId: params.trajectoryId,
-      parentStageId: params.parentStageId,
-      iteration: params.iteration ?? 1,
-      modelType,
-      provider: params.provider,
-      modelParams,
-      raw: "",
-      startedAt,
-      endedAt: Date.now(),
-      segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-      prefixHash,
-      logger: params.runtime.logger,
-      providerAttributionState: params.providerAttributionState,
-    });
-    throw error;
+  let retryIdx: number | undefined;
+  for (;;) {
+    try {
+      raw =
+        params.trajectory.codingMode === true
+          ? await dispatchWithCodingCallTimeout({
+              dispatch: invokeUseModel,
+              ambientSignal: streamingContext?.abortSignal,
+              timeoutMs: resolveCodingPlannerCallTimeoutMs(),
+              iteration: params.iteration,
+              logger: params.runtime.logger,
+            })
+          : await invokeUseModel();
+      break;
+    } catch (error) {
+      // error-policy:J2 record the attempted input before propagating the
+      // provider failure. A rejected request has no generated response, but
+      // losing its messages/tools makes context-overflow diagnosis impossible.
+      await recordPlannerStage({
+        runtime: params.runtime,
+        recorder: params.recorder,
+        trajectoryId: params.trajectoryId,
+        parentStageId: params.parentStageId,
+        iteration: params.iteration ?? 1,
+        retryIdx,
+        modelType,
+        provider: params.provider,
+        modelParams,
+        raw: "",
+        startedAt,
+        endedAt: Date.now(),
+        segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+        prefixHash,
+        logger: params.runtime.logger,
+        providerAttributionState: params.providerAttributionState,
+      });
+      // A non-coding generation that reached its output cap is usually
+      // degenerate, not long. Sample the identical request once more; a
+      // second cap or any other failure keeps the existing failure path.
+      if (
+        retryIdx !== undefined ||
+        params.trajectory.codingMode === true ||
+        modelParams.maxTokens === undefined ||
+        !isModelOutputLimitFinishReason(
+          modelOutputIncompleteEvidence(error)?.finishReason,
+        )
+      )
+        throw error;
+      streamingContext?.abortSignal?.throwIfAborted();
+      params.runtime.logger?.warn?.(
+        {
+          src: "planner-loop",
+          iteration: params.iteration,
+          maxTokens: modelParams.maxTokens,
+        },
+        "[planner-loop] planner output reached its token cap; retrying the generation once",
+      );
+      retryIdx = 1;
+      startedAt = Date.now();
+    }
   }
   const endedAt = Date.now();
 
@@ -5110,6 +5150,7 @@ async function dispatchPlannerModelCall(params: {
     trajectoryId: params.trajectoryId,
     parentStageId: params.parentStageId,
     iteration: params.iteration ?? 1,
+    retryIdx,
     modelType,
     provider: params.provider,
     modelParams,
@@ -5387,6 +5428,8 @@ async function recordPlannerStage(args: {
   trajectoryId?: string;
   parentStageId?: string;
   iteration: number;
+  /** Set on the single fresh attempt after a capped planner generation. */
+  retryIdx?: number;
   modelType: TextGenerationModelType;
   provider?: string;
   modelParams: {
@@ -5430,9 +5473,12 @@ async function recordPlannerStage(args: {
       prompt: flattenTrajectoryMessages(args.modelParams.messages),
     });
     const stage: RecordedStage = {
-      stageId: `stage-planner-iter-${args.iteration}-${args.startedAt}`,
+      stageId: `stage-planner-iter-${args.iteration}-${args.startedAt}${
+        args.retryIdx === undefined ? "" : `-retry-${args.retryIdx}`
+      }`,
       kind: "planner",
       iteration: args.iteration,
+      ...(args.retryIdx === undefined ? {} : { retryIdx: args.retryIdx }),
       parentStageId: args.parentStageId,
       startedAt: args.startedAt,
       endedAt: args.endedAt,
