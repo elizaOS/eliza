@@ -671,3 +671,13 @@ test("conversation-only entry does not register, bind or consume an external inv
   assert.equal(nativeCalls, 0);
   assert.equal(hostCalls, 0);
 });
+
+test("the shared mobile default preserves verified AOSP invocation without changing listener state", async () => {
+  const {
+    mobileVoiceEntryPolicy,
+    CONVERSATION_ONLY_VOICE_ENTRY,
+    ASSISTANT_INVOCATION_VOICE_ENTRY,
+  } = await import("../src/sense.ts");
+  assert.equal(mobileVoiceEntryPolicy(false), CONVERSATION_ONLY_VOICE_ENTRY);
+  assert.equal(mobileVoiceEntryPolicy(true), ASSISTANT_INVOCATION_VOICE_ENTRY);
+});

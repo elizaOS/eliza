@@ -205,6 +205,15 @@ export const CONVERSATION_ONLY_VOICE_ENTRY: SenseVoiceEntryPolicy =
 export const ASSISTANT_INVOCATION_VOICE_ENTRY: SenseVoiceEntryPolicy =
   Object.freeze({ externalInvocation: true });
 
+/** Common mobile default. An admitted AOSP host retains native-verified one-shot
+ * gestures and opted-in listener wakes; selecting this policy never starts or
+ * resumes the listener. Consent and invocation origin remain native authority. */
+export function mobileVoiceEntryPolicy(aosp: boolean): SenseVoiceEntryPolicy {
+  return aosp
+    ? ASSISTANT_INVOCATION_VOICE_ENTRY
+    : CONVERSATION_ONLY_VOICE_ENTRY;
+}
+
 /** Bind before consuming. Cold-start, changed-owner and stale async results cannot open the mic. */
 export function createSenseInvocationController(
   native: Pick<

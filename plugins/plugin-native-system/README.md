@@ -379,3 +379,8 @@ assistant-entry behavior and remains the default for existing callers. Policy se
 is application behavior, not branding. A host adopting chat-only mode must separately
 request the native listener's `turnOff` and report an unconfirmed stop; this controller
 does not claim to stop a previously running listener.
+
+`mobileVoiceEntryPolicy(aosp)` applies the same mobile default to every product:
+conversation-only outside the admitted AOSP lane, existing native-verified
+invocation handling within it. It never enables or resumes the listener, and
+listener consent does not replace the separate native system/Power receipt rules.

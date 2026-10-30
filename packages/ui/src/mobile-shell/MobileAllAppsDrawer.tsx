@@ -4,32 +4,43 @@
  * the product icon set; installed apps keep their platform icon.
  */
 import { appKey } from "@elizaos/capacitor-system/launcher";
-import type { CSSProperties } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { InstalledAppsLauncher } from "../components/pages/InstalledAppsLauncher";
 import type { MobileShellPartProps } from "./MobileHomeScreen";
-import type { MobileShellLauncher } from "./mobile-launcher";
-import type { MobileViewRegistry } from "./view-registry";
+import type {
+  MobileLauncherRegistry,
+  MobileLauncherView,
+  MobileShellLauncher,
+} from "./mobile-launcher";
+import type { MobileViewRegistration } from "./view-registry";
 
-export interface MobileAllAppsDrawerProps extends MobileShellPartProps {
-  shellLauncher: MobileShellLauncher;
-  registry: MobileViewRegistry;
+export interface MobileAllAppsDrawerProps<
+  View extends MobileLauncherView = MobileViewRegistration,
+> extends MobileShellPartProps<HTMLDivElement> {
+  shellLauncher: MobileShellLauncher<View>;
+  registry: MobileLauncherRegistry<View>;
   query: string;
+  renderViewIcon?: (view: View) => ReactNode;
   onQuery: (query: string) => void;
   onClose: () => void;
   /** Style of the inventory inside the drawer (launcher properties included). */
   inventoryStyle?: CSSProperties;
 }
 
-export function MobileAllAppsDrawer({
+export function MobileAllAppsDrawer<
+  View extends MobileLauncherView = MobileViewRegistration,
+>({
   shellLauncher,
   registry,
   query,
   onQuery,
   onClose,
   inventoryStyle,
+  renderViewIcon,
+  onKeyDown,
   style,
   ...attributes
-}: MobileAllAppsDrawerProps) {
+}: MobileAllAppsDrawerProps<View>) {
   const { product } = registry;
   return (
     <div
@@ -38,6 +49,14 @@ export function MobileAllAppsDrawer({
       aria-label="All apps"
       {...attributes}
       data-mobile-shell-drawer=""
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.key === "Escape" && !event.defaultPrevented) {
+          event.preventDefault();
+          event.stopPropagation();
+          onClose();
+        }
+      }}
       style={{
         position: "absolute",
         inset: 0,
@@ -69,6 +88,7 @@ export function MobileAllAppsDrawer({
         }
         renderIcon={(app) => {
           const view = registry.fromLauncherKey(appKey(app));
+          if (view && renderViewIcon) return renderViewIcon(view);
           const url = view && registry.iconUrl(view);
           if (!url) return undefined;
           const mask = `url("${url}") center / contain no-repeat`;

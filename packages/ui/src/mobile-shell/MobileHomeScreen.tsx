@@ -3,11 +3,13 @@
  * cards, and the app grid with its All apps entry. Cards and notices come
  * from their owning features; the product theme supplies every color.
  */
-import type { CSSProperties, HTMLAttributes, ReactNode } from "react";
+import type { CSSProperties, HTMLAttributes, ReactNode, Ref } from "react";
 
 export interface MobileHomeTile {
   key: string;
   label: string;
+  /** Existing host icon presentation; the shell still owns tile placement. */
+  face?: ReactNode;
   /** Accessible name when it differs from the label. */
   ariaLabel?: string;
   /** Platform icon image of an installed app. */
@@ -24,9 +26,11 @@ export interface MobileHomeTile {
 }
 
 /** Element props a host adds to a Home part, such as its own test hooks. */
-export type MobileShellPartProps = HTMLAttributes<HTMLElement> & {
-  [attribute: `data-${string}`]: string | boolean | undefined;
-};
+export type MobileShellPartProps<Element extends HTMLElement = HTMLElement> =
+  HTMLAttributes<Element> & {
+    ref?: Ref<Element>;
+    [attribute: `data-${string}`]: string | boolean | undefined;
+  };
 
 export interface MobileHomeScreenProps extends MobileShellPartProps {
   tiles: readonly MobileHomeTile[];
@@ -37,14 +41,15 @@ export interface MobileHomeScreenProps extends MobileShellPartProps {
   /** Opens All apps; omit when the platform has no app inventory. */
   onOpenAllApps?: () => void;
   allAppsGlyphUrl?: string;
+  allAppsFace?: ReactNode;
   /** Host icon id of the All apps tile (`data-mobile-shell-tile-icon`). */
   allAppsIconId?: string;
   /** Covered by another layer: out of focus order and the accessibility tree. */
   covered?: boolean;
-  layoutProps?: MobileShellPartProps;
-  cardsProps?: MobileShellPartProps;
-  gridProps?: MobileShellPartProps;
-  clearanceProps?: MobileShellPartProps;
+  layoutProps?: MobileShellPartProps<HTMLDivElement>;
+  cardsProps?: MobileShellPartProps<HTMLDivElement>;
+  gridProps?: MobileShellPartProps<HTMLDivElement>;
+  clearanceProps?: MobileShellPartProps<HTMLDivElement>;
 }
 
 const MOBILE_HOME_CSS = `
@@ -78,6 +83,7 @@ function glyph(url: string): CSSProperties {
 
 function Tile({
   label,
+  face,
   ariaLabel,
   image,
   glyphUrl,
@@ -98,14 +104,16 @@ function Tile({
       data-mobile-shell-tile-icon={iconId || undefined}
       onClick={onClick}
     >
-      <span data-mobile-shell-tile-face="">
-        {image ? (
-          <img alt="" src={image} />
-        ) : glyphUrl ? (
-          <span aria-hidden="true" style={glyph(glyphUrl)} />
-        ) : null}
-        {badge ? <span data-mobile-shell-tile-badge="" /> : null}
-      </span>
+      {face ?? (
+        <span data-mobile-shell-tile-face="">
+          {image ? (
+            <img alt="" src={image} />
+          ) : glyphUrl ? (
+            <span aria-hidden="true" style={glyph(glyphUrl)} />
+          ) : null}
+          {badge ? <span data-mobile-shell-tile-badge="" /> : null}
+        </span>
+      )}
       <span data-mobile-shell-tile-label="">{label}</span>
     </button>
   );
@@ -117,6 +125,7 @@ export function MobileHomeScreen({
   cards,
   onOpenAllApps,
   allAppsGlyphUrl,
+  allAppsFace,
   allAppsIconId,
   covered,
   layoutProps,
@@ -150,6 +159,7 @@ export function MobileHomeScreen({
           {onOpenAllApps ? (
             <Tile
               label="All apps"
+              face={allAppsFace}
               glyphUrl={allAppsGlyphUrl}
               iconId={allAppsIconId}
               onClick={onOpenAllApps}
