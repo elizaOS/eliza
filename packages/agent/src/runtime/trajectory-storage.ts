@@ -9,6 +9,7 @@ import { randomUUID } from "node:crypto";
 import path from "node:path";
 import {
   canonicalPromptForModelCall,
+  cloneTrajectoryValue,
   composeToolDiagnosticRedactor,
   logger as coreLogger,
   ElizaError,
@@ -17,6 +18,7 @@ import {
   omitUnvalidatedProviderSpans,
   parseTrajectorySemanticStages,
   projectProtectedModelCallValue,
+  projectRecordedStageToolDiagnostics,
   projectToolDiagnosticValue,
   type RecordedStage,
   recordedStageToSemanticStage,
@@ -2015,18 +2017,26 @@ async function appendSemanticStage(
 /**
  * Validate one `logSemanticStage` payload into its persisted envelope. Returns
  * null for a structurally absent payload; throws when a present payload is
- * malformed so the caller can report it as an invalid capture.
+ * malformed so the caller can report it as an invalid capture. Callers pass
+ * the raw recorder stage, so this final persistence boundary applies the
+ * projection the file recorder applies before the stage reaches steps_json.
  */
 function normalizeSemanticStagePayload(
+  runtime: IAgentRuntime,
   args: unknown[],
 ): { stepId: string; semantic: TrajectorySemanticStageRecord } | null {
   const record = asRecord(args[0]);
   if (!record) return null;
   const stepId = normalizeStepId(record.stepId);
   if (!stepId) return null;
+  const stage = cloneTrajectoryValue(record.stage as RecordedStage);
+  projectRecordedStageToolDiagnostics(
+    stage,
+    composeToolDiagnosticRedactor(runtime),
+  );
   return {
     stepId,
-    semantic: recordedStageToSemanticStage(record.stage as RecordedStage),
+    semantic: recordedStageToSemanticStage(stage),
   };
 }
 
@@ -2549,7 +2559,7 @@ export async function installDatabaseTrajectoryLogger(
     if (!bridgeAcceptsCapture()) return;
     let normalized: ReturnType<typeof normalizeSemanticStagePayload>;
     try {
-      normalized = normalizeSemanticStagePayload(args);
+      normalized = normalizeSemanticStagePayload(runtime, args);
     } catch (error) {
       // error-policy:J7 malformed instrumentation cannot fail the agent loop.
       reportInvalidTrajectoryCapture(runtime, "semanticStage", error);
@@ -3705,7 +3715,7 @@ export class DatabaseTrajectoryLogger extends Service {
     if (!this.acceptsCapture()) return;
     let normalized: ReturnType<typeof normalizeSemanticStagePayload>;
     try {
-      normalized = normalizeSemanticStagePayload([params]);
+      normalized = normalizeSemanticStagePayload(this.runtime, [params]);
     } catch (error) {
       // error-policy:J7 malformed instrumentation cannot fail the agent loop.
       reportInvalidTrajectoryCapture(this.runtime, "semanticStage", error);

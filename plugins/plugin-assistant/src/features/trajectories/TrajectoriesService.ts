@@ -17,6 +17,7 @@ import type {
 } from "@elizaos/core";
 import {
   canonicalPromptForModelCall,
+  cloneTrajectoryValue,
   composeToolDiagnosticRedactor,
   createTrajectoryJsonBudget,
   ElizaError,
@@ -24,6 +25,7 @@ import {
   omitUnvalidatedProviderSpans,
   parseTrajectorySemanticStages,
   projectProtectedModelCallValue,
+  projectRecordedStageToolDiagnostics,
   projectToolDiagnosticValue,
   recordedStageToSemanticStage,
   Service,
@@ -2239,7 +2241,15 @@ export class TrajectoriesService extends Service {
     }
     let semantic: TrajectorySemanticStageRecord;
     try {
-      semantic = recordedStageToSemanticStage(params.stage);
+      // Final persistence boundary for the database mirror: callers pass the
+      // raw stage, so apply the projection the file recorder applies before
+      // the stage reaches steps_json.
+      const stage = cloneTrajectoryValue(params.stage);
+      projectRecordedStageToolDiagnostics(
+        stage,
+        composeToolDiagnosticRedactor(this.runtime),
+      );
+      semantic = recordedStageToSemanticStage(stage);
     } catch (err) {
       // error-policy:J7 an unconvertible stage payload is a diagnostics
       // defect, not a turn failure; report it instead of persisting garbage.
