@@ -46,6 +46,11 @@ export interface DeferredDeletionNoticeProps {
   label?: string;
 }
 
+interface DeletionActionScope {
+  bridge: DeferredDeletionsBridge;
+  current(): boolean;
+}
+
 const STATUS_FAILURES_BEFORE_ERROR = 3;
 /** Failed Undo or dismissal results stay visible after a refresh until the next action. */
 const ACTION_FAILURES: ReadonlySet<string> = new Set([
@@ -70,9 +75,10 @@ export function DeferredDeletionNotice({
 }: DeferredDeletionNoticeProps) {
   const [entries, setEntries] = useState<DeferredDeletionEntry[]>([]);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState("");
+  const [busy, setBusy] = useState<DeletionActionScope | null>(null);
   const signature = useRef("");
   const refreshRef = useRef<() => Promise<void>>(async () => {});
+  const captureAction = useRef<() => DeletionActionScope | null>(() => null);
   // Props are read through a ref so a re-render never restarts polling or the identity epoch.
   const ports = useRef({
     bridge,
@@ -92,6 +98,20 @@ export function DeferredDeletionNotice({
     const hidden = () =>
       (typeof document !== "undefined" && document.hidden) ||
       !!ports.current.concealed?.();
+    // Retirement only suppresses this notice's completion; it does not cancel the native action.
+    captureAction.current = () => {
+      const admittedEpoch = identityEpoch;
+      const admittedBridge = ports.current.bridge;
+      const admittedOwner = ports.current.identity?.read() ?? "";
+      return {
+        bridge: admittedBridge,
+        current: () =>
+          !retired &&
+          admittedEpoch === identityEpoch &&
+          admittedBridge === ports.current.bridge &&
+          admittedOwner === (ports.current.identity?.read() ?? ""),
+      };
+    };
     const refresh = async () => {
       if (inflight || retired) return;
       if (hidden()) {
@@ -134,6 +154,7 @@ export function DeferredDeletionNotice({
       signature.current = "";
       setEntries([]);
       setError("");
+      setBusy(null);
       void refresh();
     });
     void refresh();
@@ -151,9 +172,11 @@ export function DeferredDeletionNotice({
   }, [events, pollMs]);
 
   if (!entries.length && !error) return null;
-  const changed = () => {
+  const changed = (action?: DeletionActionScope) => {
+    if (action && !action.current()) return;
     ports.current.onChanged?.();
-    void refreshRef.current();
+    // A host callback may itself change the owner or bridge.
+    if (!action || action.current()) void refreshRef.current();
   };
   return (
     <aside className={className} aria-label={label}>
@@ -170,21 +193,27 @@ export function DeferredDeletionNotice({
             {notice.canUndo && (
               <button
                 type="button"
-                disabled={!!busy}
+                disabled={!!busy?.current()}
                 onClick={async () => {
-                  setBusy(entry.id);
+                  const action = captureAction.current();
+                  if (!action?.current()) return;
+                  setBusy(action);
                   setError("");
                   try {
-                    const result = await ports.current.bridge.undo({
+                    const result = await action.bridge.undo({
                       kind: entry.kind,
                       id: entry.id,
                     });
-                    if (!undoConfirmed(result)) setError(UNDO_TOO_LATE);
+                    if (action.current() && !undoConfirmed(result))
+                      setError(UNDO_TOO_LATE);
                   } catch {
-                    setError(DELETION_NOTICE_TEXT.undoUnconfirmed);
+                    if (action.current())
+                      setError(DELETION_NOTICE_TEXT.undoUnconfirmed);
                   } finally {
-                    setBusy("");
-                    changed();
+                    if (action.current()) {
+                      setBusy(null);
+                      changed(action);
+                    }
                   }
                 }}
               >
@@ -195,7 +224,7 @@ export function DeferredDeletionNotice({
               <>
                 <button
                   type="button"
-                  disabled={!!busy}
+                  disabled={!!busy?.current()}
                   onClick={() => {
                     setError(DELETION_NOTICE_TEXT.refreshing);
                     changed();
@@ -205,15 +234,18 @@ export function DeferredDeletionNotice({
                 </button>
                 <button
                   type="button"
-                  disabled={!!busy}
+                  disabled={!!busy?.current()}
                   onClick={async () => {
-                    setBusy(entry.id);
+                    const action = captureAction.current();
+                    if (!action?.current()) return;
+                    setBusy(action);
                     setError("");
                     try {
-                      await ports.current.bridge.dismiss({
+                      await action.bridge.dismiss({
                         kind: entry.kind,
                         id: entry.id,
                       });
+                      if (!action.current()) return;
                       setEntries((rows) =>
                         rows.filter(
                           (row) =>
@@ -221,11 +253,12 @@ export function DeferredDeletionNotice({
                         ),
                       );
                       setError(DELETION_NOTICE_TEXT.dismissed);
-                      changed();
+                      changed(action);
                     } catch {
-                      setError(DELETION_NOTICE_TEXT.dismissFailed);
+                      if (action.current())
+                        setError(DELETION_NOTICE_TEXT.dismissFailed);
                     } finally {
-                      setBusy("");
+                      if (action.current()) setBusy(null);
                     }
                   }}
                 >
