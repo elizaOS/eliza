@@ -4240,14 +4240,14 @@ export function withTurnScopeToolArg(
 ): ToolDefinition[] | undefined {
   if (!tools) return tools;
   // Keep the complete protocol once in the trusted system instructions rather
-  // than repeating it in every tool. Standalone/custom-template callers retain
-  // the full schema description unless that exact instruction is present.
-  const scopeSchema = sharedSystemPrompt?.includes(plannerBatchScopeDescription)
-    ? {
-        ...TURN_SCOPE_ARG_SCHEMA,
-        description:
-          'Required on every native call, with the same value throughout the batch. "final": this batch covers the remaining operations; evaluation still follows. "more_work_pending": results must ground a later operation. Stripped before execution.',
-      }
+  // than repeating it in every tool: a per-tool summary still cost about 6.5k
+  // tokens per demo (token audit F5). The enum and `required` stay on every
+  // tool. Standalone/custom-template callers retain the full schema
+  // description unless that exact instruction is present.
+  const scopeSchema: JSONSchema = sharedSystemPrompt?.includes(
+    plannerBatchScopeDescription,
+  )
+    ? { type: TURN_SCOPE_ARG_SCHEMA.type, enum: TURN_SCOPE_ARG_SCHEMA.enum }
     : TURN_SCOPE_ARG_SCHEMA;
   return tools.map((tool) => {
     const parameters = tool.parameters;
