@@ -14,7 +14,9 @@ import {
   readBrowserAppPins,
   stageBrowserApps,
 } from "../android/stage-browser-apps.ts";
+import { stageImageLauncher } from "../android/image-launcher.ts";
 import { syncToAosp } from "../android/sync-to-aosp.ts";
+import { fakeTools } from "./image-launcher-fixture.ts";
 
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const rootUrl = new URL("../../browser/", import.meta.url);
@@ -143,6 +145,28 @@ function fixture(t, application = "ai.elizaos.app") {
     `#!/usr/bin/env node\nimport fs from 'node:fs';import path from 'node:path';const pins=JSON.parse(fs.readFileSync(${JSON.stringify(path.join(vendorDir, "manifests/browser-apps.json"))},'utf8'));const pin=process.argv.at(-1).endsWith('Chromium.apk')?pins.chromium.variants.x86_64:pins.bitwarden;let fault='';try{fault=fs.readFileSync(${JSON.stringify(path.join(vendorDir, "fault"))},'utf8')}catch{};if(process.argv[2]==='verify')console.log('Signer #1 certificate SHA-256 digest: '+(fault==='signer'?'f'.repeat(64):pin.signerSha256));else console.log("package: name='"+(fault==='package'?'wrong':pin.packageName)+"' versionCode='"+pin.versionCode+"' versionName='"+pin.versionName+"'\\nnative-code: '"+(fault==='abi'?'wrong':"x86_64' 'arm64-v8a")+"'");\n`,
   );
   fs.chmodSync(tool, 0o755);
+  // A system-only x86_64 product: the staged launcher carries no native runtime.
+  const brand = {
+    brand: "eliza",
+    appName: "Eliza",
+    distroName: "elizaOS",
+    packageName: "ai.elizaos.app",
+    architecture: "x86_64",
+    productName: "eliza_gsi_x86_64",
+    lunchTarget: "eliza_gsi_x86_64-cp2a-userdebug",
+    buildAndroidSystemCmd: ["bun", "run", "build:android:system"],
+  };
+  const launcherTools = fakeTools(
+    path.join(path.dirname(vendorDir), `${path.basename(vendorDir)}-tools`),
+  );
+  stageImageLauncher({
+    brand,
+    apk: launcherTools.apk,
+    development: true,
+    output: path.join(vendorDir, "launcher"),
+    aapt: launcherTools.aapt,
+    apksigner: launcherTools.apksigner,
+  });
   return {
     vendorDir,
     pins,
@@ -161,15 +185,7 @@ function fixture(t, application = "ai.elizaos.app") {
       apksigner: tool,
       aapt: tool,
     },
-    brand: {
-      brand: "eliza",
-      appName: "Eliza",
-      distroName: "elizaOS",
-      architecture: "x86_64",
-      productName: "eliza_cf_x86_64_phone",
-      lunchTarget: "eliza_cf_x86_64_phone-trunk_staging-userdebug",
-      buildAndroidSystemCmd: ["bun", "run", "build:android:system"],
-    },
+    brand,
   };
 }
 test("owned component preserves exact APK admission and explicit development status", (t) => {

@@ -1,10 +1,15 @@
 #!/usr/bin/env node
-/** Stages a complete privileged APK vendor tree into the selected AOSP checkout. */
+/**
+ * Stages a complete vendor tree, with its verified nonprivileged launcher, into
+ * the selected AOSP checkout. The unsigned build output under apps/<AppName>
+ * is an input to signing and is never copied.
+ */
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 import { loadBrandFromArgv } from "./brand-config.ts";
+import { LAUNCHER_DIRECTORY, verifyStagedLauncher } from "./image-launcher.ts";
 import { admitBrowserVendor } from "./stage-browser-apps.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -89,21 +94,19 @@ export function syncToAosp({
   ) {
     throw new Error("Source and destination vendor trees must not overlap.");
   }
-  const sourceApk = path.join(
+  const sourceLauncher = path.join(source, LAUNCHER_DIRECTORY);
+  if (!fs.existsSync(sourceLauncher)) {
+    throw new Error(
+      `Missing staged launcher: ${sourceLauncher}. Run ${brand.buildAndroidSystemCmd.join(" ")}, sign the APK and stage it with scripts/android/image-launcher.ts before syncing.`,
+    );
+  }
+  const staged = verifyStagedLauncher(sourceLauncher, brand);
+  const unsignedBuildOutput = path.join(
     source,
     "apps",
     brand.appName,
     `${brand.appName}.apk`,
   );
-  if (
-    !fs.existsSync(sourceApk) ||
-    !fs.statSync(sourceApk).isFile() ||
-    fs.statSync(sourceApk).size === 0
-  ) {
-    throw new Error(
-      `Missing non-empty privileged APK: ${sourceApk}. Run ${brand.buildAndroidSystemCmd.join(" ")} before syncing.`,
-    );
-  }
   const admission = admitBrowserVendor(source, brand, {
     allowDevelopmentBrowser,
   });
@@ -114,7 +117,8 @@ export function syncToAosp({
   try {
     fs.cpSync(source, temporary, {
       recursive: true,
-      filter: (file) => !file.endsWith(".DS_Store"),
+      filter: (file) =>
+        !file.endsWith(".DS_Store") && file !== unsignedBuildOutput,
     });
     const copied = admitBrowserVendor(temporary, brand, {
       allowDevelopmentBrowser,
@@ -123,18 +127,12 @@ export function syncToAosp({
       throw new Error(
         "Browser pin manifest changed while copying the vendor tree.",
       );
-    const apk = path.join(
-      temporary,
-      "apps",
-      brand.appName,
-      `${brand.appName}.apk`,
+    const copiedLauncher = verifyStagedLauncher(
+      path.join(temporary, LAUNCHER_DIRECTORY),
+      brand,
     );
-    if (
-      !fs.existsSync(apk) ||
-      !fs.statSync(apk).isFile() ||
-      fs.statSync(apk).size === 0
-    )
-      throw new Error(`Synced vendor tree is missing ${brand.appName}.apk.`);
+    if (copiedLauncher.apkSha256 !== staged.apkSha256)
+      throw new Error("Staged launcher changed while copying the vendor tree.");
     fs.rmSync(targetVendor, {
       recursive: true,
       force: true,
