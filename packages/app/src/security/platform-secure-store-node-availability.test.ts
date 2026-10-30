@@ -16,7 +16,9 @@ function loaderThrowing(error: unknown) {
 describe("native Keychain availability probe", () => {
   it("surfaces a binding that cannot load instead of reporting no Keychain", async () => {
     const dlopenFailure = Object.assign(
-      new Error("dlopen(keyring.node): mach-o file, but is an incompatible architecture"),
+      new Error(
+        "dlopen(keyring.node): mach-o file, but is an incompatible architecture",
+      ),
       { code: "ERR_DLOPEN_FAILED" },
     );
     const store = createNodePlatformSecureStore({
@@ -29,7 +31,9 @@ describe("native Keychain availability probe", () => {
 
   it("still reports absence when no native binding is installed", async () => {
     const notInstalled = Object.assign(
-      new Error("Cannot find package '@napi-rs/keyring' imported from index.js"),
+      new Error(
+        "Cannot find package '@napi-rs/keyring' imported from index.js",
+      ),
       { code: "ERR_MODULE_NOT_FOUND" },
     );
     const store = createNodePlatformSecureStore({
