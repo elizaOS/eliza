@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { webcrypto } from "node:crypto";
 import fs from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import test from "node:test";
@@ -6,7 +7,8 @@ import vm from "node:vm";
 
 function fixture(basemap, effects = {}) {
   const maps = [],
-    protocols = effects.protocols ?? [];
+    protocols = effects.protocols ?? [],
+    removedProtocols = effects.removedProtocols ?? [];
   let nativeRequests = 0,
     errors = 0;
   const element = () => ({
@@ -33,6 +35,7 @@ function fixture(basemap, effects = {}) {
   });
   class ControlledMap {
     constructor(options) {
+      if (effects.failMap) throw new Error("GPU context unavailable");
       this.options = options;
       this.events = {};
       this.sources = {};
@@ -79,6 +82,7 @@ function fixture(basemap, effects = {}) {
     }
     remove() {
       this.removed = true;
+      this.removeCalls = (this.removeCalls ?? 0) + 1;
     }
   }
   class Marker {
@@ -106,6 +110,7 @@ function fixture(basemap, effects = {}) {
     }
   }
   const box = {
+    crypto: webcrypto,
     document: { createElement: element },
     MapLibre: ControlledMap,
     Marker,
@@ -113,6 +118,7 @@ function fixture(basemap, effects = {}) {
     setWorkerUrl() {},
     setWorkerCount() {},
     addProtocol: (...input) => protocols.push(input),
+    removeProtocol: (name) => removedProtocols.push(name),
   };
   const source = fs
     .readFileSync(
@@ -127,9 +133,10 @@ function fixture(basemap, effects = {}) {
       ";globalThis.MapPlane=MapPlane;",
     box,
   );
-  const container = { dataset: {} },
-    plane = new box.MapPlane(
-      container,
+  const container = { dataset: {} };
+  const create = (overrides = {}, target = { dataset: {} }) =>
+    new box.MapPlane(
+      target,
       basemap,
       () => errors++,
       { land: "#fff" },
@@ -141,18 +148,23 @@ function fixture(basemap, effects = {}) {
         routePadding: { top: 1, bottom: 1, left: 1, right: 1 },
         selectionPadding: effects.selectionPadding,
         onPin: effects.onPin,
-        nativeRegion: () => false,
+        nativeRegion: effects.nativeRegion ?? (() => false),
         nativeRequest: async () => {
           nativeRequests++;
           return { status: 200, bytes: new Uint8Array() };
         },
+        ...overrides,
       },
     );
+  const plane = create({}, container);
   return {
     plane,
     map: maps[0],
     container,
     protocols,
+    removedProtocols,
+    create,
+    maps,
     get nativeRequests() {
       return nativeRequests;
     },
@@ -172,6 +184,99 @@ const global = {
   styleUrl: "https://tiles.openfreemap.org/styles/bright",
   attribution: "OpenFreeMap © OpenMapTiles Data from OpenStreetMap",
 };
+
+test("regional maps keep separate tile transports and retire their own protocol", async () => {
+  const f = fixture(regional);
+  let secondRequests = 0;
+  const second = f.create({
+    nativeRequest: async () => {
+      secondRequests++;
+      return { status: 204, bytes: new Uint8Array() };
+    },
+  });
+  const [[firstName, firstHandler], [secondName, secondHandler]] = f.protocols;
+  assert.notEqual(firstName, secondName);
+  const request = (name) => ({ url: `${name}://tiles/1/0/1.pbf` });
+  const abort = { signal: new AbortController().signal };
+  await firstHandler(request(firstName), abort);
+  await secondHandler(request(secondName), abort);
+  await assert.rejects(
+    firstHandler(request(secondName), abort),
+    /Invalid regional tile/,
+  );
+  assert.equal(f.nativeRequests, 1);
+  assert.equal(secondRequests, 1);
+  f.plane.destroy();
+  assert.deepEqual(f.removedProtocols, [firstName]);
+  await assert.rejects(firstHandler(request(firstName), abort), /disposed/);
+  await secondHandler(request(secondName), abort);
+  assert.equal(secondRequests, 2);
+  second.destroy();
+  assert.deepEqual(f.removedProtocols, [firstName, secondName]);
+});
+
+test("invalid regional options do not register a tile protocol", () => {
+  const effects = {
+    protocols: [],
+    nativeRegion() {
+      throw new Error("Region configuration unavailable");
+    },
+  };
+  assert.throws(
+    () => fixture(regional, effects),
+    /Region configuration unavailable/,
+  );
+  assert.deepEqual(effects.protocols, []);
+});
+
+test("failed map construction releases its registered protocol", async () => {
+  const effects = { failMap: true, protocols: [], removedProtocols: [] };
+  assert.throws(() => fixture(regional, effects), /GPU context unavailable/);
+  assert.equal(effects.protocols.length, 1);
+  assert.deepEqual(effects.removedProtocols, [effects.protocols[0][0]]);
+  const [name, handler] = effects.protocols[0];
+  await assert.rejects(
+    handler(
+      { url: `${name}://tiles/1/0/1.pbf` },
+      { signal: new AbortController().signal },
+    ),
+    /disposed/,
+  );
+});
+
+test("a retired map rejects a late in-flight tile response", async () => {
+  const f = fixture(regional);
+  let complete;
+  const plane = f.create({
+    nativeRequest: () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  });
+  const [name, handler] = f.protocols[1];
+  const pending = handler(
+    { url: `${name}://tiles/1/0/1.pbf` },
+    { signal: new AbortController().signal },
+  );
+  plane.destroy();
+  complete({ status: 204, bytes: new Uint8Array() });
+  await assert.rejects(pending, /disposed/);
+  f.plane.destroy();
+});
+
+test("destroy is idempotent and ignores late map callbacks and updates", () => {
+  const f = fixture(regional);
+  f.plane.destroy();
+  f.plane.destroy();
+  f.map.events.error({ error: Error("late tile failure") });
+  f.map.events.load();
+  f.map.events.idle();
+  f.plane.update({ latitude: 43.74, longitude: 7.42 });
+  assert.equal(f.errors, 0);
+  assert.equal(f.map.removeCalls, 1);
+  assert.equal(f.map.marker, undefined);
+  assert.equal(f.container.dataset.mapReady, undefined);
+});
 test("explicit global style starts at world scale, permits global manual pins and retains existing ownership cleanup", () => {
   const f = fixture(global);
   assert.equal(f.map.options.style, global.styleUrl);
@@ -229,14 +334,15 @@ test("regional renderer keeps its original zoom, coverage, bundled font and owne
   f.map.events.idle();
   assert.deepEqual(Array.from(f.map.query.layers), ["roads"]);
   const handler = f.protocols[0][1];
+  const protocol = f.protocols[0][0];
   await handler(
-    { url: "test-region://tiles/1/0/1.pbf" },
+    { url: `${protocol}://tiles/1/0/1.pbf` },
     { signal: new AbortController().signal },
   );
   assert.equal(f.nativeRequests, 1);
   await assert.rejects(
     handler(
-      { url: "test-region://tiles/1/4/1.pbf" },
+      { url: `${protocol}://tiles/1/4/1.pbf` },
       { signal: new AbortController().signal },
     ),
     /Invalid regional tile/,

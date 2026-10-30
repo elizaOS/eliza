@@ -975,8 +975,11 @@ export class MapsScreenController {
         else this.invalidate();
       })
       .then((running) => {
-        if (session !== this.navSession || !this.navigating) {
-          if (running) void this.host.background.stop();
+        if (session !== this.navSession || !this.navigating || this.arrived) {
+          // A later Start owns the same port. Only retire this completion when
+          // navigation ended or this is still the session that reached arrival.
+          if (running && (!this.navigating || session === this.navSession))
+            void this.host.background.stop();
           return;
         }
         this.backgroundRunning = running;
@@ -985,16 +988,22 @@ export class MapsScreenController {
             "Waiting for a fresh location fix. Guidance continues with the screen off.";
         this.invalidate();
       });
-    void this.host.navigationLocation.start(
-      false,
-      (fix) => this.onFix(fix),
-      (error) => {
-        if (session !== this.navSession) return;
-        this.message = failure(error).message;
-        void this.stopGuidance().catch(() => {});
-        this.invalidate();
-      },
-    );
+    const locationFailed = (error: unknown) => {
+      if (session !== this.navSession || !this.navigating || this.arrived)
+        return;
+      this.message = failure(error).message;
+      void this.stopGuidance().catch(() => {});
+      this.invalidate();
+    };
+    void this.host.navigationLocation
+      .start(
+        false,
+        (fix) => {
+          if (session === this.navSession) this.onFix(fix);
+        },
+        locationFailed,
+      )
+      .catch(locationFailed);
     this.invalidate();
   }
 
@@ -1514,7 +1523,7 @@ export class MapsScreenController {
   }
 
   private onFix(fix: Position): void {
-    if (!this.navigating) return;
+    if (!this.navigating || this.arrived) return;
     const current =
       this.state?.route.phase === "ready" ? this.state.route.value : null;
     if (!usableNavigationFix(fix, this.now())) {

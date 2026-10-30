@@ -2,7 +2,9 @@ import {
   addProtocol,
   type GeoJSONSource,
   Map as MapLibre,
+  type MapOptions,
   Marker,
+  removeProtocol,
   setWorkerCount,
   setWorkerUrl,
 } from "maplibre-gl";
@@ -46,6 +48,7 @@ export interface MapPlaneOptions {
   fontUrl: string;
   workerUrl: string;
   accent: string;
+  /** Host prefix; each instance owns a distinct registered protocol beneath it. */
   protocol: string;
   routePadding: { top: number; bottom: number; left: number; right: number };
   /** Selection camera space is independent of route fitting. */
@@ -76,6 +79,8 @@ export class MapPlane {
   private position?: Marker;
   private lastPosition = "";
   private following = false;
+  private readonly protocol?: string;
+  private destroyed = false;
   constructor(
     container: HTMLElement,
     region: MapBasemap,
@@ -93,34 +98,19 @@ export class MapPlane {
         "Global basemap requires an HTTPS style without credentials",
       );
     this.globalBasemap = global;
+    if (!global) {
+      if (!/^[a-z][a-z0-9+.-]*$/.test(options.protocol))
+        throw new Error("Invalid regional map protocol");
+      // MapLibre shares its protocol registry between maps in this renderer.
+      // Each map owns an entry while another map is mounted or replaced.
+      this.protocol = `${options.protocol}-${crypto.getRandomValues(new Uint32Array(2)).join("-")}`;
+    }
     const [w, s, e, n] = global ? [-180, -85, 180, 85] : region.bounds;
     setWorkerUrl(options.workerUrl);
     setWorkerCount(1);
-    if (!global)
-      addProtocol(options.protocol, async (request, abort) => {
-        // WebView's custom-scheme URL parser can put the authority in pathname.
-        // Match the complete wire format instead; never accept another target or query.
-        const tile =
-          /^[a-z][a-z0-9+.-]*:\/\/tiles\/([0-9]{1,2})\/([0-9]{1,6})\/([0-9]{1,6})\.pbf$/.exec(
-            request.url,
-          );
-        if (!tile) throw new Error("Invalid regional tile");
-        const [, z, x, y] = tile;
-        const zoom = Number(z),
-          column = Number(x),
-          row = Number(y);
-        if (zoom > 14 || column >= 2 ** zoom || row >= 2 ** zoom)
-          throw new Error("Invalid regional tile");
-        const result = await options.nativeRequest(
-          `/tiles/${zoom}/${column}/${row}.pbf`,
-          abort.signal,
-        );
-        if (result.status !== 200 && result.status !== 204)
-          throw new Error("Regional tile unavailable");
-        return { data: result.bytes.buffer };
-      });
+    const protocol = this.protocol;
 
-    this.map = new MapLibre({
+    const mapOptions: MapOptions = {
       container,
       center: global ? [0, 20] : [(w + e) / 2, (s + n) / 2],
       zoom: global ? 2 : 14,
@@ -155,8 +145,8 @@ export class MapPlane {
                 type: "vector",
                 tiles: [
                   options.nativeRegion(region.base)
-                    ? options.protocol + "://tiles/{z}/{x}/{y}.pbf"
-                    : region.base + "/tiles/{z}/{x}/{y}.pbf",
+                    ? `${protocol}://tiles/{z}/{x}/{y}.pbf`
+                    : `${region.base}/tiles/{z}/{x}/{y}.pbf`,
                 ],
                 maxzoom: 14,
                 bounds: [w, s, e, n],
@@ -238,8 +228,43 @@ export class MapPlane {
               },
             ],
           },
-    });
+    };
+    if (protocol)
+      addProtocol(protocol, async (request, abort) => {
+        if (this.destroyed) throw new Error("Regional map is disposed");
+        // WebView's custom-scheme URL parser can put the authority in pathname.
+        // Match the complete wire format instead; never accept another target or query.
+        const tile =
+          /^[a-z][a-z0-9+.-]*:\/\/tiles\/([0-9]{1,2})\/([0-9]{1,6})\/([0-9]{1,6})\.pbf$/.exec(
+            request.url,
+          );
+        if (!tile || !request.url.startsWith(`${protocol}://`))
+          throw new Error("Invalid regional tile");
+        const [, z, x, y] = tile;
+        const zoom = Number(z),
+          column = Number(x),
+          row = Number(y);
+        if (zoom > 14 || column >= 2 ** zoom || row >= 2 ** zoom)
+          throw new Error("Invalid regional tile");
+        const result = await options.nativeRequest(
+          `/tiles/${zoom}/${column}/${row}.pbf`,
+          abort.signal,
+        );
+        if (this.destroyed) throw new Error("Regional map is disposed");
+        if (result.status !== 200 && result.status !== 204)
+          throw new Error("Regional tile unavailable");
+        return { data: result.bytes.buffer };
+      });
+
+    try {
+      this.map = new MapLibre(mapOptions);
+    } catch (error) {
+      this.destroyed = true;
+      if (protocol) removeProtocol(protocol);
+      throw error;
+    }
     this.map.on("idle", () => {
+      if (this.destroyed) return;
       container.dataset.mapZoom = String(this.map.getZoom());
       container.dataset.mapFeatureCount = String(
         this.map.queryRenderedFeatures(
@@ -250,6 +275,7 @@ export class MapPlane {
         this.updateSelectionCamera(false);
     });
     this.map.on("error", (event) => {
+      if (this.destroyed) return;
       const message = String(event.error?.message || "");
       container.dataset.mapError = /worker/i.test(message)
         ? "worker-load"
@@ -261,6 +287,7 @@ export class MapPlane {
       onError();
     });
     this.map.on("load", () => {
+      if (this.destroyed) return;
       container.dataset.mapReady = "true";
       this.update(this.requested, this.requestedRoute, this.requestedOverlay);
     });
@@ -284,7 +311,7 @@ export class MapPlane {
       element.style.cssText = `width:22px;height:22px;border-radius:11px;border:3px solid ${this.options.accent};background:#fff;padding:0;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.35)`;
       element.addEventListener("click", (event) => {
         event.stopPropagation();
-        this.options.onPin?.(pin.id);
+        if (!this.destroyed) this.options.onPin?.(pin.id);
       });
       const marker = new Marker({ element })
         .setLngLat([pin.coordinate.longitude, pin.coordinate.latitude])
@@ -376,6 +403,7 @@ export class MapPlane {
     route?: Route | null,
     overlay: MapOverlay = {},
   ) {
+    if (this.destroyed) return;
     this.requested = selected;
     this.requestedRoute = route;
     this.requestedOverlay = overlay;
@@ -440,10 +468,16 @@ export class MapPlane {
     }
   }
   destroy() {
-    for (const entry of this.pins.values()) entry.marker.remove();
-    this.pins.clear();
-    this.position?.remove();
-    this.marker?.remove();
-    this.map.remove();
+    if (this.destroyed) return;
+    this.destroyed = true;
+    try {
+      for (const entry of this.pins.values()) entry.marker.remove();
+      this.pins.clear();
+      this.position?.remove();
+      this.marker?.remove();
+      this.map.remove();
+    } finally {
+      if (this.protocol) removeProtocol(this.protocol);
+    }
   }
 }
