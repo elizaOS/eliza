@@ -65,7 +65,8 @@ export function createSharedReadEvidencePort(
       typedTemperatureEvidenceMessage(part.message),
       scope.turnStartedAtMs,
     );
-    return world
+    // A US place keeps its NWS search reader; only a non-US place gets origin targets.
+    return world && world.place.countryCode !== "US"
       ? [
           {
             part,

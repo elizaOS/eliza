@@ -246,7 +246,7 @@ jobs:
             --asset-root "$ELIZAOS_ELIZA_ROOT"/packages/app/platforms/android/app/src/main/assets/agent \
             "${args[@]}" | tee "$CVD_REPORT_DIR"/native-runtime.json
 
-      - name: Build privileged APK (${{ steps.brand.outputs.distro-name }})
+      - name: Build image APK (${{ steps.brand.outputs.distro-name }})
         env:
           ELIZAOS_OS_REPO_ROOT: ${{ github.workspace }}/packages/os
           ELIZA_BUN_RISCV64_URL: ${{ inputs.bun-riscv64-url }}
@@ -265,9 +265,46 @@ jobs:
           fi
           node --input-type=module <<'NODE'
           import { loadBrandConfig } from "./scripts/android/brand-config.ts";
-          import { rebuildPrivilegedApk } from "./scripts/android/build-aosp.ts";
-          rebuildPrivilegedApk(loadBrandConfig(process.env.BRAND_CONFIG));
+          import { rebuildLauncherApk } from "./scripts/android/build-aosp.ts";
+          rebuildLauncherApk(loadBrandConfig(process.env.BRAND_CONFIG));
           NODE
+
+      # The image installs Eliza as a presigned, nonprivileged product launcher.
+      # This lane signs with a disposable per-run key, so the image is a
+      # development image; release images are staged from the release signer
+      # with an independently reviewed descriptor.
+      - name: Sign and stage the development launcher
+        env:
+          ELIZA_SOURCE_COMMIT: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          build_tools="$ANDROID_HOME/build-tools/36.0.0"
+          key_dir="$(mktemp -d)"
+          trap 'rm -rf "$key_dir"' EXIT
+          DEV_LAUNCHER_KEY_PASS="$(openssl rand -hex 24)"
+          export DEV_LAUNCHER_KEY_PASS
+          keytool -genkeypair -noprompt -keystore "$key_dir/development.p12" \
+            -storetype PKCS12 -storepass:env DEV_LAUNCHER_KEY_PASS \
+            -alias development -keyalg RSA -keysize 3072 -validity 2 \
+            -dname "CN=elizaOS development image launcher" >/dev/null
+          unsigned="$(node --input-type=module -e 'import path from "node:path"; import { loadBrandConfig } from "./scripts/android/brand-config.ts"; const b = loadBrandConfig(process.env.BRAND_CONFIG); console.log(path.join(b.vendorDir, "apps", b.appName, `${b.appName}.apk`));')"
+          "$build_tools/zipalign" -f -p 4 "$unsigned" "$key_dir/aligned.apk"
+          "$build_tools/apksigner" sign --ks "$key_dir/development.p12" \
+            --ks-pass env:DEV_LAUNCHER_KEY_PASS \
+            --out "$key_dir/signed.apk" "$key_dir/aligned.apk"
+          output=()
+          if [ -n "$VENDOR_SOURCE" ]; then
+            output=(--output "$VENDOR_SOURCE/launcher")
+          fi
+          node scripts/android/image-launcher.ts \
+            --brand-config "$BRAND_CONFIG" \
+            "${output[@]}" \
+            --apk "$key_dir/signed.apk" \
+            --development \
+            --source-commit "$ELIZA_SOURCE_COMMIT" \
+            --aapt "$build_tools/aapt" \
+            --apksigner "$build_tools/apksigner" \
+            | tee "$CVD_REPORT_DIR/image-launcher.json"
 
       - name: Static brand validation
         run: |
@@ -355,31 +392,45 @@ jobs:
             --config playwright.android.config.ts \
             test/android/voice-selftest.android.spec.ts
 
-      - name: Exercise privileged Android instrumentation on Cuttlefish
+      # The image installs Eliza under the nonprivileged-launcher profile, so
+      # this runs only the image contract (ElizaOsInstrumentedTest) and the
+      # manifest surfaces; fixture-gated classes skip by design and run in
+      # their own lanes. The image APK carries the disposable per-run signer
+      # while the test APK is debug-signed: AMS admits that mismatch only for
+      # root on a debuggable build, so instrument from root adbd on the bound
+      # disposable userdebug guest.
+      - name: Exercise image-contract instrumentation on Cuttlefish
         if: success() && inputs.launch == true
         working-directory: packages/app/platforms/android
         shell: bash
         run: |
           set -euo pipefail
+          report="$CVD_REPORT_DIR/instrumentation/image-contract.txt"
           mkdir -p "$CVD_REPORT_DIR/instrumentation"
+          device="$(adb shell getprop ro.product.device | tr -d '\r')"
+          case "$device" in vsoc_x86_64|vsoc_x86_64_only) ;; *) echo "::error::Expected a disposable Cuttlefish guest"; exit 1 ;; esac
+          test "$(adb shell getprop ro.build.type | tr -d '\r')" = userdebug
           ./gradlew :app:assembleDebugAndroidTest --stacktrace
           test_apk=$(find app/build/outputs/apk/androidTest/debug -type f -name '*androidTest*.apk' -print -quit)
           test -n "$test_apk"
           adb install -r -t "$test_apk"
+          adb root
+          adb wait-for-device
+          test "$(adb shell id -u | tr -d '\r')" = 0
           set +e
           adb shell am instrument -w -r \
+            -e class ai.elizaos.app.ElizaOsInstrumentedTest,ai.elizaos.app.ElizaAssistantSurfaceInstrumentedTest \
             ai.elizaos.app.test/androidx.test.runner.AndroidJUnitRunner \
-            | tee "$CVD_REPORT_DIR/instrumentation/privileged.txt"
+            | tee "$report"
           instrument_status=${PIPESTATUS[0]}
           set -e
           test "$instrument_status" -eq 0
-          grep -Eq '^OK \([1-9][0-9]* tests?\)$' \
-            "$CVD_REPORT_DIR/instrumentation/privileged.txt"
-          if grep -q 'INSTRUMENTATION_STATUS_CODE: -3' \
-            "$CVD_REPORT_DIR/instrumentation/privileged.txt"; then
-            echo "::error::Privileged instrumentation contained an assumption-skip"
+          grep -Eq '^OK \([1-9][0-9]* tests?\)$' "$report"
+          if grep -q 'INSTRUMENTATION_STATUS_CODE: -3' "$report"; then
+            echo "::error::Image-contract instrumentation contained an assumption-skip"
             exit 1
           fi
+          grep -q 'class=ai.elizaos.app.ElizaOsInstrumentedTest' "$report"
 
       - name: Verify assistant role, IME, and assist-key routing
         if: success() && inputs.launch == true

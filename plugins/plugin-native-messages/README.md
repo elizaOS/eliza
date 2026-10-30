@@ -84,8 +84,30 @@ newest shown message); its receipt labels never claim more than a result proves.
   "sent" is the carrier's send confirmation (M-Send.conf Ok); MMS delivery is
   never claimed. `status().mmsSend` reports whether the path is available.
 
-`android/src/test` holds JVM tests for the journal (SMS and MMS records), cursor
-and provider mapping.
+## Host-native reviewed send (`ReviewedSmsSend`)
+
+A host's own native components (a review screen for a drafted reply, a
+call-screen quick reply) send one `sms.send.v1` operation with
+`ReviewedSmsSend.send(context, host, operationId, recipients, body,
+subscriptionId, callback)`. It reviews nothing itself: the caller is the
+review and calls it only after the owner's decision. It uses the same journal
+rules as the telephony profile. The send is recorded before the first
+SmsManager call and bound to the exact recipients, text and SIM. A repeated
+operation ID only reads its record, so a second Send press, a retried worker or
+a redelivered intent never sends twice. Sent receipts are package-private
+one-shot PendingIntents held in process (`SmsSendRequest`). "sent" needs every
+part's RESULT_OK receipt, and a receipt missing after
+`RECEIPT_TIMEOUT_MS`, or lost with the process, reads "unknown" and is never
+retried. Delivery is not requested. While the host is the default SMS app it
+stores each recipient's outbox row before the platform call and the receipts
+settle it; hosts never write sent-box rows themselves. `ReviewedSmsSend.Host`
+names the host's encrypted journal slot and retired-ID namespace; keep them once
+shipped, and do not share the slot with a `SmsTelephonyConfiguration`. No AOSP
+admission or manifest receiver is needed.
+
+`android/src/test` holds JVM tests for the journal (SMS and MMS records), cursor,
+provider mapping and the host-native reviewed send (`ReviewedSmsSendCoreTest`,
+with a fake radio).
 Real SIMs, carrier delivery reports and role grants need device qualification.
 
 ## Default SMS app (SMS role)
@@ -119,6 +141,18 @@ A host that can hold the SMS role declares thin subclasses of
   recipient's sent callbacks move it to sent or failed. A refused write never
   blocks or repeats the send. Delivery is not claimed for these rows: an
   immutable delivery callback carries no status report.
+
+Recent calls are optional. A host that declares the `callLog` permission alias
+(and `READ_CALL_LOG` in its own manifest; this library does not declare it)
+gets `listRecentCalls({limit})`: at most 50 newest rows, read only while the
+phone is unlocked and the host is in front, under the same cancel-and-fence
+rules as SMS reads. Numbers are reduced to the dial shape (`CallLogRows`);
+withheld or undialable entries become `""`, and voicemail transcriptions,
+accounts and locations are not read. `status().permissions.callLog` is present
+only for such hosts, and access is asked for only through
+`requestAccess({access: "callLog"})`. Without the alias the read answers
+unavailable, never an empty list. Dialing stays a handoff (`dial`): the
+person places the call on the dial screen.
 
 `MmsPdu` encodes M-Send.req, M-NotifyResp.ind and M-Acknowledge.ind. Outgoing
 user MMS (group messages and attachments) is not offered yet. Carrier MMSC

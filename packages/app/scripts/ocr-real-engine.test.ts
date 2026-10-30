@@ -23,19 +23,16 @@ import {
   evaluateOcrContent,
   type OcrResult,
 } from "../test/ui-smoke/ocr-content-rules";
-import {
-  loadBaselineManifest,
-  resolveBaselinePath,
-} from "./mvp-visual-verify/baselines.ts";
 import { runOcrTriage } from "./ocr-triage";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const baselineRoot = resolve(HERE, "mvp-visual-verify/baseline");
-const LAUNCHER_CAPTURE = resolveBaselinePath(
-  baselineRoot,
-  await loadBaselineManifest(baselineRoot),
-  "mobile-portrait",
-  "builtin-rolodex",
+// Archived launcher capture, kept as an explicit fixture. It used to be read out
+// of the visual baseline store through the `mobile-portrait/builtin-rolodex`
+// state; the store no longer holds that state, because the audit registry stopped
+// rendering that view, and the pixels have not changed.
+const LAUNCHER_CAPTURE = resolve(
+  HERE,
+  "../test/ui-smoke/fixtures/launcher-capture-mobile-portrait.png",
 );
 const dir = mkdtempSync(join(tmpdir(), "ocr-real-engine-"));
 const previousEngine = process.env.ELIZA_MVP_OCR_ENGINE;

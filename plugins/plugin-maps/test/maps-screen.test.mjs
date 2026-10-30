@@ -4,6 +4,8 @@
 // GPS, local speech or physical navigation.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { BackgroundNavigation } from "../src/client/background-navigation.ts";
+import { MapsFailure } from "../src/client/contracts.ts";
 import { MapsScreenController } from "../src/client/maps-screen.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
@@ -11,7 +13,7 @@ import { MapsController } from "../src/client/state.ts";
 const ORIGIN = { latitude: 43.73, longitude: 7.42 };
 const END = { latitude: 43.74, longitude: 7.42 };
 const OFF_ROUTE = { latitude: 43.735, longitude: 7.43 };
-const config = (modes = ["drive", "walk"]) => ({
+const config = (modes = ["drive", "walk"], alternatives = false) => ({
   status: "configured",
   providerId: "fixture",
   connectionId: "conn_fixture_123456789",
@@ -24,6 +26,7 @@ const config = (modes = ["drive", "walk"]) => ({
     traffic: "none",
     transit: "none",
     offline: { map: false, search: false, routing: false },
+    ...(alternatives ? { alternatives: true } : {}),
   },
 });
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -71,8 +74,25 @@ function fixture(options = {}) {
     async detail() {
       return destination;
     },
-    async route(from, to, mode) {
-      calls.routes.push({ from, mode });
+    async routes(from, to, mode, signal) {
+      calls.routes.push({ from, mode, alternatives: true });
+      const recommended = await this.route(from, to, mode, signal, true);
+      return [
+        recommended,
+        {
+          ...recommended,
+          id: `${recommended.id}_alt`,
+          distanceMeters: 1500,
+          durationSeconds: 420,
+          steps: [
+            { ...recommended.steps[0], instruction: "Head east" },
+            ...recommended.steps.slice(1),
+          ],
+        },
+      ];
+    },
+    async route(from, to, mode, _signal, nested) {
+      if (!nested) calls.routes.push({ from, mode });
       return {
         providerId: "fixture",
         id: `route_0123456789abcdef_${calls.routes.length}`,
@@ -132,7 +152,7 @@ function fixture(options = {}) {
   const connection = {
     config: options.unconfigured
       ? { status: "unconfigured" }
-      : config(options.modes),
+      : config(options.modes, !!options.alternatives),
   };
   const host = {
     connection: () => ({
@@ -392,6 +412,53 @@ test("directions need a real origin and a served mode", async () => {
   );
 });
 
+test("an offered route choice keeps the provider's order; choosing requests nothing and Start follows it", async () => {
+  const f = fixture({ alternatives: true, background: true });
+  await planned(f);
+  let view = f.screen.view();
+  assert.deepEqual(f.calls.routes, [
+    { from: ORIGIN, mode: "drive", alternatives: true },
+  ]);
+  assert.deepEqual(
+    view.directions?.routes.map(({ label, duration, meta, selected }) => [
+      label,
+      duration,
+      meta,
+      selected,
+    ]),
+    [
+      ["Recommended", "5 min", "1.2 km", true],
+      ["Alternative 1", "7 min", "1.5 km", false],
+    ],
+  );
+  f.screen.chooseRoute(view.directions.routes[1].id);
+  view = f.screen.view();
+  assert.equal(view.directions?.duration, "7 min");
+  assert.equal(view.directions?.via, "Head east");
+  assert.deepEqual(
+    view.directions?.routes.map((choice) => choice.selected),
+    [false, true],
+  );
+  assert.equal(view.map.route?.id, view.directions.routes[1].id);
+  assert.equal(f.calls.routes.length, 1, "choosing a route requests nothing");
+  f.screen.start();
+  await settle();
+  f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+  view = f.screen.view();
+  assert.equal(view.mode, "navigation");
+  assert.equal(view.navigation?.instruction, "Head east");
+  // The choice cannot change under active guidance.
+  f.screen.chooseRoute(`route_0123456789abcdef_1`);
+  assert.equal(f.screen.view().navigation?.instruction, "Head east");
+  f.screen.end();
+  await settle();
+  // Without the capability one route is requested and no choice is shown.
+  const single = fixture();
+  await planned(single);
+  assert.deepEqual(single.screen.view().directions?.routes, []);
+  assert.deepEqual(single.calls.routes, [{ from: ORIGIN, mode: "drive" }]);
+});
+
 test("a named origin offers saved places and provider results, then plans", async () => {
   const f = fixture();
   f.screen.setQuery("Destination");
@@ -446,6 +513,147 @@ test("Start guides from fresh fixes; arrival and End release the watch", async (
   await settle();
   assert.equal(f.screen.view().mode, "directions");
   assert.ok(f.stops() >= 1);
+});
+
+test("a retired location callback cannot guide a later Start", async () => {
+  const f = fixture({ background: true });
+  const watches = [];
+  const start = f.host.navigationLocation.start;
+  f.host.navigationLocation.start = (...args) => {
+    watches.push(args[1]);
+    return start(...args);
+  };
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    f.screen.end();
+    f.screen.start();
+    await settle();
+    const surface = f.screen.surface(async () => true);
+    const effects = f.calls.voice.length;
+    watches[0](f.fix());
+    assert.equal(surface.guidance().fix, undefined);
+    assert.equal(f.calls.voice.length, effects);
+    watches[1](f.fix());
+    assert.deepEqual(surface.guidance().fix, f.fix());
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("arrival ignores later fixes until End", async () => {
+  const f = fixture({ background: true });
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    f.emit(f.fix({ coordinate: END }));
+    const effects = f.calls.voice.length;
+    f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+    assert.equal(f.screen.view().navigation.arrived, true);
+    assert.equal(f.screen.view().status.text, "Destination reached.");
+    assert.equal(f.calls.voice.length, effects);
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("a completed old background Start cannot stop its replacement", async () => {
+  const f = fixture();
+  const pending = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const started = [],
+    active = new Set();
+  f.host.background = new BackgroundNavigation(
+    {
+      async navigationAvailability() {
+        return { background: true };
+      },
+      async addListener() {
+        return { remove: async () => {} };
+      },
+      async startNavigation({ sessionId }) {
+        started.push(sessionId);
+        if (started.length === 1) {
+          entered.resolve();
+          await pending.promise;
+        }
+        active.add(sessionId);
+      },
+      async stopNavigation({ sessionId }) {
+        active.delete(sessionId);
+        return { stopped: true };
+      },
+      async updateNavigation({ sessionId }) {
+        return { active: active.has(sessionId) };
+      },
+    },
+    () => true,
+  );
+  try {
+    await planned(f);
+    f.screen.start();
+    await entered.promise;
+    pending.resolve();
+    // Let the helper finish, then replace the screen session before its completion callback.
+    queueMicrotask(() =>
+      queueMicrotask(() => {
+        f.screen.end();
+        f.screen.start();
+      }),
+    );
+    await settle();
+    assert.equal(f.screen.isNavigating(), true);
+    assert.equal(f.host.background.active(), true);
+    assert.equal(f.screen.view().navigation.background, true);
+    assert.equal(started.length, 2);
+    assert.deepEqual([...active], [started[1]]);
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("a rejected navigation watch ends guidance and reports the failure", async () => {
+  const f = fixture({ background: true });
+  const start = f.host.navigationLocation.start;
+  f.host.navigationLocation.start = async () => {
+    throw new MapsFailure(
+      "unavailable",
+      "Native location is unavailable in this build.",
+    );
+  };
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    assert.equal(f.screen.isNavigating(), false);
+    assert.equal(f.host.background.active(), false);
+    assert.equal(
+      f.screen.view().status.text,
+      "Native location is unavailable in this build.",
+    );
+    const pending = Promise.withResolvers();
+    f.host.navigationLocation.start = () => pending.promise;
+    f.screen.start();
+    f.screen.end();
+    f.host.navigationLocation.start = start;
+    f.screen.start();
+    await settle();
+    const effects = f.calls.voice.length;
+    pending.reject(new MapsFailure("unavailable", "Retired watch failed."));
+    await settle();
+    assert.equal(f.screen.isNavigating(), true);
+    assert.equal(f.host.background.active(), true);
+    assert.equal(f.calls.voice.length, effects);
+    f.emit(f.fix());
+    assert.deepEqual(
+      f.screen.surface(async () => true).guidance().fix,
+      f.fix(),
+    );
+  } finally {
+    f.screen.dispose();
+  }
 });
 
 test("a notification Stop ends navigation once; a refused service stays foreground-only", async () => {

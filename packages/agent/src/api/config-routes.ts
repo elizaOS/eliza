@@ -37,6 +37,8 @@ import {
   agentIdentityName,
   buildCharacterFromConfig,
 } from "../runtime/build-character-config.ts";
+import { getAgentHostBridge } from "../runtime/host-bridge.ts";
+import { buildProductCharacterFromConfig } from "../runtime/prepare-product-character-config.ts";
 import {
   reconcileConfigEnvSettings,
   reconcileDirectTextModelSettings,
@@ -311,7 +313,14 @@ async function applyReloadedConfig(params: {
     // The live agent keeps its id after a rename; keep the identity name that
     // id came from instead of the rebuilt one (the new display name).
     const liveIdentityName = agentIdentityName(runtime.character);
-    const rebuilt = buildCharacterFromConfig(next);
+    const product = getAgentHostBridge().productCharacter;
+    const rebuilt =
+      product &&
+      !process.env.SANDBOX_ROUTE_AGENT_ID?.trim() &&
+      !process.env.ELIZA_AGENT_CHARACTER_JSON?.trim() &&
+      !process.env.ELIZA_CHARACTER_PATH?.trim()
+        ? buildProductCharacterFromConfig(next, product)
+        : buildCharacterFromConfig(next);
     const character = asConfigRecord(runtime.character);
     const HOT_CHARACTER_FIELDS = [
       "name",

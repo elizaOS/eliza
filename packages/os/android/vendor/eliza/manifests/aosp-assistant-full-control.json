@@ -13,12 +13,7 @@
       "value": "android.intent.action.VOICE_COMMAND"
     }
   },
-  "appOps": [
-    {
-      "grantPath": "ElizaBootReceiver via MANAGE_APP_OPS_MODES",
-      "op": "android:get_usage_stats"
-    }
-  ],
+  "appOps": [],
   "assistantEntryPoints": [
     "android.intent.action.ASSIST",
     "android.intent.action.VOICE_COMMAND"
@@ -35,30 +30,30 @@
       "android.intent.action.VOICE_COMMAND"
     ],
     "role": "android.app.role.ASSISTANT",
-    "roleResolution": "config_defaultAssistant -> ai.elizaos.app resolves to the ElizaVoiceInteractionService now that the package exposes a VoiceInteractionService (RoleManager binds ROLE_ASSISTANT to the VIS holder, not to the ACTION_ASSIST activity). ElizaAssistActivity stays as the ACTION_ASSIST fallback for OEM flows that deliver the assist intent directly. The overlays/.../config.xml default remains valid and does not change.",
-    "stockAssistantPackagesStripped": [
-      "QuickSearchBox",
-      "SetupWizard"
-    ]
+    "roleResolution": "config_defaultAssistant -> ai.elizaos.app comes from the staged launcher's provisioning overlay (vendor/eliza/launcher/provisioning, generated from the admitted APK manifest). It resolves to the ElizaVoiceInteractionService because the package exposes a VoiceInteractionService (RoleManager binds ROLE_ASSISTANT to the VIS holder, not to the ACTION_ASSIST activity). ElizaAssistActivity stays as the ACTION_ASSIST fallback for OEM flows that deliver the assist intent directly.",
+    "stockAssistantPackagesStripped": [],
+    "stockPackagesRetained": "The nonprivileged-launcher profile removes no stock package; QuickSearchBox and the stock launcher stay installed as recovery paths."
   },
-  "buildTarget": "aosp-system-privileged",
+  "buildTarget": "aosp-product-nonprivileged-launcher",
   "capabilityDeclarations": {
     "accessibility": {
       "component": "ElizaAccessibilityService",
       "componentPolicy": "Declare only in the AOSP/system build; Play/cloud builds must strip the service, Java source, and accessibility-service XML resource.",
       "intentAction": "android.accessibilityservice.AccessibilityService",
       "metadata": "@xml/eliza_accessibility_service",
-      "notes": "Used for accessibility tree observation and user-consented gesture dispatch on non-privileged paths; privileged AOSP input uses INJECT_EVENTS.",
+      "notes": "Used for accessibility tree observation and user-consented gesture dispatch. The nonprivileged image has no INJECT_EVENTS path, so this is the only input-control path.",
       "permission": "android.permission.BIND_ACCESSIBILITY_SERVICE",
       "status": "declared-aosp-system-service"
     },
     "appInventory": {
-      "consumerPath": "UsageStatsManager when Usage Access is granted",
-      "systemPath": "REAL_GET_TASKS and GET_USAGE_STATS appop granted at boot"
+      "consumerPath": "UsageStatsManager when the person grants Usage Access in Settings",
+      "systemPath": null,
+      "systemPathStatus": "removed-nonprivileged-launcher"
     },
     "inputControl": {
-      "consumerPath": "Accessibility gesture dispatch when the user enables the service",
-      "systemPath": "InputManager.injectInputEvent with INJECT_EVENTS"
+      "consumerPath": "Accessibility gesture dispatch when the person enables the service",
+      "systemPath": null,
+      "systemPathStatus": "removed-nonprivileged-launcher"
     },
     "inputMethod": {
       "component": "ElizaVoiceInputMethodService",
@@ -75,7 +70,7 @@
       "component": "ElizaNotificationListenerService",
       "componentPolicy": "Declare only in the AOSP/system build; cloud/Play builds must strip the service and Java source.",
       "intentAction": "android.service.notification.NotificationListenerService",
-      "notes": "Used by the privileged assistant image to observe notification lifecycle events for the local agent.",
+      "notes": "Observes notification lifecycle events for the local agent once the person grants notification access.",
       "permission": "android.permission.BIND_NOTIFICATION_LISTENER_SERVICE",
       "status": "declared-aosp-system-service"
     },
@@ -84,7 +79,8 @@
       "foregroundServiceType": "mediaProjection",
       "playPolicy": "strip plugin and FOREGROUND_SERVICE_MEDIA_PROJECTION from android-cloud",
       "plugin": "@elizaos/capacitor-screencapture",
-      "systemPath": "SurfaceControl.captureDisplay with READ_FRAME_BUFFER"
+      "systemPath": null,
+      "systemPathStatus": "removed-nonprivileged-launcher"
     },
     "voiceCommand": {
       "activity": "ElizaAssistActivity",
@@ -100,7 +96,7 @@
       "metadata": "@xml/eliza_voice_interaction_service",
       "notes": "Digital-assistant (ROLE_ASSISTANT) holder. On the ROM, config_defaultAssistant -> ai.elizaos.app resolves the assistant role to this VoiceInteractionService, so the assist gesture / long-press-power / keyguard voice-assist launch invokes Eliza over the current app. The framework requires the paired session + recognition services (see recognitionService + sessionService) or it rejects the VIS and Eliza never appears as an assistant candidate.",
       "permission": "android.permission.BIND_VOICE_INTERACTION",
-      "permissionHolder": "system (framework binds to the VIS; the app does not hold BIND_VOICE_INTERACTION — role ownership comes from config_defaultAssistant / ROLE_ASSISTANT, not a manifest permission)",
+      "permissionHolder": "system (framework binds to the VIS; the app does not hold BIND_VOICE_INTERACTION \u2014 role ownership comes from config_defaultAssistant / ROLE_ASSISTANT, not a manifest permission)",
       "recognitionService": "ElizaRecognitionService",
       "sessionService": "ElizaVoiceInteractionSessionService",
       "status": "declared-aosp-system-service"
@@ -140,7 +136,10 @@
   "hardwareKeyRemap": {
     "status": "explicitly-unsupported-no-dedicated-key",
     "mechanism": "framework-role-routing",
-    "applicableTargets": ["grizzly", "Cuttlefish"],
+    "applicableTargets": [
+      "grizzly",
+      "Cuttlefish"
+    ],
     "notes": "Pixel 11 Pro and Cuttlefish do not expose a dedicated branded assistant scancode that needs a vendor .kl remap. elizaOS therefore does not claim support for such a key on these targets. The supported physical gesture is Pixel long-press-power through ROLE_ASSISTANT; the automated lane separately injects KEYCODE_ASSIST to verify framework routing. A future product with a dedicated key must add and physically prove its exact scan-code .kl mapping before that product is exposed."
   },
   "packageName": "ai.elizaos.app",
@@ -185,20 +184,11 @@
     "reason": "ROLE_ASSISTANT/default-role components, the digital-assistant VoiceInteractionService trio, privileged permissions, screen capture, boot receivers, foreground local-agent/voice services, and local agent services are AOSP/system-image only. The voice-input IME is Play-compliant on its own but is stripped from android-cloud too because its transcription depends on the on-device engine's loopback ASR the thin client does not ship.",
     "stripTarget": "android-cloud"
   },
-  "privilegedPermissions": [
-    "android.permission.PACKAGE_USAGE_STATS",
-    "android.permission.SCHEDULE_EXACT_ALARM",
-    "android.permission.MANAGE_APP_OPS_MODES",
-    "android.permission.MANAGE_VIRTUAL_MACHINE",
-    "android.permission.READ_FRAME_BUFFER",
-    "android.permission.INJECT_EVENTS",
-    "android.permission.REAL_GET_TASKS"
-  ],
+  "privilegedPermissions": [],
   "roleDefaults": {
     "android.app.role.ASSISTANT": "ai.elizaos.app",
     "android.app.role.BROWSER": "ai.elizaos.app",
-    "android.app.role.DIALER": "ai.elizaos.app",
-    "android.app.role.SMS": "ai.elizaos.app"
+    "android.app.role.HOME": "ai.elizaos.app"
   },
   "runtimeAndNormalPermissions": [
     "android.permission.RECORD_AUDIO",
@@ -215,15 +205,28 @@
   "schemaVersion": 1,
   "systemImageRequirements": {
     "artifactPath": "/product/etc/eliza/aosp-assistant-full-control.json",
-    "installPath": "/system/priv-app/Eliza/Eliza.apk",
+    "installPath": "/product/app/Eliza/Eliza.apk",
+    "installPathBySystemOnlyImage": "/system/app/Eliza/Eliza.apk",
     "permissionXml": [
-      "/system/etc/permissions/privapp-permissions-ai.elizaos.app.xml",
-      "/system/etc/default-permissions/default-permissions-ai.elizaos.app.xml"
+      "/product/etc/default-permissions/default-permissions-ai.elizaos.app.xml"
     ],
+    "preferredActivities": "/product/etc/preferred-apps/launcher-home.xml",
+    "policy": "android/products/eliza-images.json",
     "soong": {
-      "certificate": "platform",
       "moduleType": "android_app_import",
-      "privileged": true
-    }
-  }
+      "presigned": true,
+      "privileged": false,
+      "productSpecific": true
+    },
+    "stagedBy": "packages/os/scripts/android/image-launcher.ts"
+  },
+  "privilegedPermissionsPolicy": "The image launcher is nonprivileged: it holds no signature|privileged permission and ships no privapp allowlist. Permissions the APK declares but the image never grants include PACKAGE_USAGE_STATS (user-granted Usage Access), SCHEDULE_EXACT_ALARM (user-granted alarm access), MANAGE_APP_OPS_MODES, MANAGE_VIRTUAL_MACHINE, READ_FRAME_BUFFER, INJECT_EVENTS and REAL_GET_TASKS.",
+  "roleDefaultsNotPreassigned": [
+    "android.app.role.DIALER",
+    "android.app.role.SMS"
+  ],
+  "defaultGrantedRuntimePermissions": [
+    "android.permission.RECORD_AUDIO",
+    "android.permission.POST_NOTIFICATIONS"
+  ]
 }

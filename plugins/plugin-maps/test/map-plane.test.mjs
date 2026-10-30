@@ -1,12 +1,15 @@
 import assert from "node:assert/strict";
+import { webcrypto } from "node:crypto";
 import fs from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import test from "node:test";
 import vm from "node:vm";
+import { visibleMapPadding } from "../src/client/map-layout.ts";
 
 function fixture(basemap, effects = {}) {
   const maps = [],
-    protocols = effects.protocols ?? [];
+    protocols = effects.protocols ?? [],
+    removedProtocols = effects.removedProtocols ?? [];
   let nativeRequests = 0,
     errors = 0;
   const element = () => ({
@@ -33,6 +36,7 @@ function fixture(basemap, effects = {}) {
   });
   class ControlledMap {
     constructor(options) {
+      if (effects.failMap) throw new Error("GPU context unavailable");
       this.options = options;
       this.events = {};
       this.sources = {};
@@ -51,7 +55,8 @@ function fixture(basemap, effects = {}) {
     easeTo(value) {
       this.center = value;
       this.easeCalls = (this.easeCalls ?? 0) + 1;
-      this.options.zoom = value.zoom ?? this.options.zoom;
+      if (!effects.deferAnimations || value.duration === 0)
+        this.options.zoom = value.zoom ?? this.options.zoom;
     }
     setPadding(value) {
       this.padding = value;
@@ -79,6 +84,7 @@ function fixture(basemap, effects = {}) {
     }
     remove() {
       this.removed = true;
+      this.removeCalls = (this.removeCalls ?? 0) + 1;
     }
   }
   class Marker {
@@ -106,6 +112,7 @@ function fixture(basemap, effects = {}) {
     }
   }
   const box = {
+    crypto: webcrypto,
     document: { createElement: element },
     MapLibre: ControlledMap,
     Marker,
@@ -113,6 +120,7 @@ function fixture(basemap, effects = {}) {
     setWorkerUrl() {},
     setWorkerCount() {},
     addProtocol: (...input) => protocols.push(input),
+    removeProtocol: (name) => removedProtocols.push(name),
   };
   const source = fs
     .readFileSync(
@@ -127,9 +135,10 @@ function fixture(basemap, effects = {}) {
       ";globalThis.MapPlane=MapPlane;",
     box,
   );
-  const container = { dataset: {} },
-    plane = new box.MapPlane(
-      container,
+  const container = { dataset: {} };
+  const create = (overrides = {}, target = { dataset: {} }) =>
+    new box.MapPlane(
+      target,
       basemap,
       () => errors++,
       { land: "#fff" },
@@ -141,18 +150,23 @@ function fixture(basemap, effects = {}) {
         routePadding: { top: 1, bottom: 1, left: 1, right: 1 },
         selectionPadding: effects.selectionPadding,
         onPin: effects.onPin,
-        nativeRegion: () => false,
+        nativeRegion: effects.nativeRegion ?? (() => false),
         nativeRequest: async () => {
           nativeRequests++;
           return { status: 200, bytes: new Uint8Array() };
         },
+        ...overrides,
       },
     );
+  const plane = create({}, container);
   return {
     plane,
     map: maps[0],
     container,
     protocols,
+    removedProtocols,
+    create,
+    maps,
     get nativeRequests() {
       return nativeRequests;
     },
@@ -172,6 +186,99 @@ const global = {
   styleUrl: "https://tiles.openfreemap.org/styles/bright",
   attribution: "OpenFreeMap © OpenMapTiles Data from OpenStreetMap",
 };
+
+test("regional maps keep separate tile transports and retire their own protocol", async () => {
+  const f = fixture(regional);
+  let secondRequests = 0;
+  const second = f.create({
+    nativeRequest: async () => {
+      secondRequests++;
+      return { status: 204, bytes: new Uint8Array() };
+    },
+  });
+  const [[firstName, firstHandler], [secondName, secondHandler]] = f.protocols;
+  assert.notEqual(firstName, secondName);
+  const request = (name) => ({ url: `${name}://tiles/1/0/1.pbf` });
+  const abort = { signal: new AbortController().signal };
+  await firstHandler(request(firstName), abort);
+  await secondHandler(request(secondName), abort);
+  await assert.rejects(
+    firstHandler(request(secondName), abort),
+    /Invalid regional tile/,
+  );
+  assert.equal(f.nativeRequests, 1);
+  assert.equal(secondRequests, 1);
+  f.plane.destroy();
+  assert.deepEqual(f.removedProtocols, [firstName]);
+  await assert.rejects(firstHandler(request(firstName), abort), /disposed/);
+  await secondHandler(request(secondName), abort);
+  assert.equal(secondRequests, 2);
+  second.destroy();
+  assert.deepEqual(f.removedProtocols, [firstName, secondName]);
+});
+
+test("invalid regional options do not register a tile protocol", () => {
+  const effects = {
+    protocols: [],
+    nativeRegion() {
+      throw new Error("Region configuration unavailable");
+    },
+  };
+  assert.throws(
+    () => fixture(regional, effects),
+    /Region configuration unavailable/,
+  );
+  assert.deepEqual(effects.protocols, []);
+});
+
+test("failed map construction releases its registered protocol", async () => {
+  const effects = { failMap: true, protocols: [], removedProtocols: [] };
+  assert.throws(() => fixture(regional, effects), /GPU context unavailable/);
+  assert.equal(effects.protocols.length, 1);
+  assert.deepEqual(effects.removedProtocols, [effects.protocols[0][0]]);
+  const [name, handler] = effects.protocols[0];
+  await assert.rejects(
+    handler(
+      { url: `${name}://tiles/1/0/1.pbf` },
+      { signal: new AbortController().signal },
+    ),
+    /disposed/,
+  );
+});
+
+test("a retired map rejects a late in-flight tile response", async () => {
+  const f = fixture(regional);
+  let complete;
+  const plane = f.create({
+    nativeRequest: () =>
+      new Promise((resolve) => {
+        complete = resolve;
+      }),
+  });
+  const [name, handler] = f.protocols[1];
+  const pending = handler(
+    { url: `${name}://tiles/1/0/1.pbf` },
+    { signal: new AbortController().signal },
+  );
+  plane.destroy();
+  complete({ status: 204, bytes: new Uint8Array() });
+  await assert.rejects(pending, /disposed/);
+  f.plane.destroy();
+});
+
+test("destroy is idempotent and ignores late map callbacks and updates", () => {
+  const f = fixture(regional);
+  f.plane.destroy();
+  f.plane.destroy();
+  f.map.events.error({ error: Error("late tile failure") });
+  f.map.events.load();
+  f.map.events.idle();
+  f.plane.update({ latitude: 43.74, longitude: 7.42 });
+  assert.equal(f.errors, 0);
+  assert.equal(f.map.removeCalls, 1);
+  assert.equal(f.map.marker, undefined);
+  assert.equal(f.container.dataset.mapReady, undefined);
+});
 test("explicit global style starts at world scale, permits global manual pins and retains existing ownership cleanup", () => {
   const f = fixture(global);
   assert.equal(f.map.options.style, global.styleUrl);
@@ -229,14 +336,15 @@ test("regional renderer keeps its original zoom, coverage, bundled font and owne
   f.map.events.idle();
   assert.deepEqual(Array.from(f.map.query.layers), ["roads"]);
   const handler = f.protocols[0][1];
+  const protocol = f.protocols[0][0];
   await handler(
-    { url: "test-region://tiles/1/0/1.pbf" },
+    { url: `${protocol}://tiles/1/0/1.pbf` },
     { signal: new AbortController().signal },
   );
   assert.equal(f.nativeRequests, 1);
   await assert.rejects(
     handler(
-      { url: "test-region://tiles/1/4/1.pbf" },
+      { url: `${protocol}://tiles/1/4/1.pbf` },
       { signal: new AbortController().signal },
     ),
     /Invalid regional tile/,
@@ -336,6 +444,119 @@ test("global selection follows changed host layout without resetting zoom, repla
   assert.equal("padding" in regionalMap.map.center, false);
 });
 
+test("a sheet reflow cannot cancel the initial global selection zoom", () => {
+  let padding = { top: 80, bottom: 430, left: 30, right: 30 };
+  const f = fixture(global, {
+    deferAnimations: true,
+    selectionPadding: () => padding,
+  });
+  const point = { longitude: -122.42, latitude: 37.77 };
+  f.plane.update(point);
+  padding = { top: 80, bottom: 250, left: 30, right: 30 };
+  f.plane.update(point);
+  assert.equal(f.map.getZoom(), 14);
+  f.map.options.zoom = 12;
+  padding = { top: 80, bottom: 250, left: 30, right: 340 };
+  f.plane.update(point);
+  assert.equal(f.map.getZoom(), 12, "later reflow preserves the user's zoom");
+});
+
+test("canonical overlays leave camera space in landscape and keyboard viewports", () => {
+  const rect = (left, top, width, height) => ({
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+  });
+  let bounds = rect(100, 50, 600, 300);
+  const boxes = {
+    "[data-maps-search]": rect(112, 62, 324, 54),
+    "[data-maps-sheet]": rect(460, 62, 228, 276),
+  };
+  const container = {
+    getBoundingClientRect: () => bounds,
+    parentElement: {
+      querySelector: (selector) =>
+        boxes[selector] && {
+          getBoundingClientRect: () => boxes[selector],
+        },
+    },
+  };
+  const padding = () => visibleMapPadding(container);
+  assert.deepEqual(padding(), { top: 114, bottom: 48, left: 24, right: 264 });
+  const routePadding = Object.fromEntries(
+    ["top", "bottom", "left", "right"].map((edge) => [edge, 0]),
+  );
+  for (const edge of Object.keys(routePadding))
+    Object.defineProperty(routePadding, edge, { get: () => padding()[edge] });
+  const f = fixture(global, { selectionPadding: padding });
+  const routed = f.create({ routePadding });
+  const point = { longitude: -122.42, latitude: 37.77 };
+  routed.update(point, {
+    id: "landscape",
+    geometry: [point, { ...point, latitude: 37.78 }],
+  });
+  assert.equal(f.maps[1].fit.options.padding.right, 264);
+  bounds = rect(100, 50, 600, 180);
+  boxes["[data-maps-credits]"] = rect(112, 200, 200, 18);
+  routed.update(point, {
+    id: "keyboard",
+    geometry: [point, { ...point, latitude: 37.78 }],
+  });
+  const fitted = f.maps[1].fit.options.padding;
+  assert.equal(fitted.top + fitted.bottom, 160);
+  assert.ok(
+    bounds.top + fitted.top - 41 >= boxes["[data-maps-search]"].bottom,
+    "the selected pin's head clears the panel, not only its coordinate",
+  );
+  assert.ok(
+    bounds.bottom - fitted.bottom <= boxes["[data-maps-credits]"].top - 16,
+  );
+  assert.ok(fitted.left + fitted.right <= 520);
+  assert.ok(
+    Object.values(padding()).every(
+      (value) => Number.isFinite(value) && value >= 0,
+    ),
+  );
+});
+
+test("flow controls outside the map do not move the selected pin", () => {
+  const bounds = {
+    left: 0,
+    top: 100,
+    right: 400,
+    bottom: 300,
+    width: 400,
+    height: 200,
+  };
+  const outside = {
+    "[data-maps-search]": { left: 0, top: 0, right: 400, bottom: 100 },
+    "[data-maps-credits]": { left: 0, top: 300, right: 400, bottom: 330 },
+    "[data-maps-sheet]": { left: 0, top: 350, right: 400, bottom: 900 },
+  };
+  const container = {
+    getBoundingClientRect: () => bounds,
+    parentElement: {
+      querySelector: (selector) => ({
+        getBoundingClientRect: () => outside[selector],
+      }),
+    },
+  };
+  const f = fixture(global, {
+    selectionPadding: () => visibleMapPadding(container),
+  });
+  f.plane.update({ longitude: -122.42, latitude: 37.77 });
+  assert.deepEqual(Array.from(f.map.center.offset), [0, 0]);
+  assert.deepEqual(visibleMapPadding(container), {
+    top: 48,
+    bottom: 48,
+    left: 24,
+    right: 24,
+  });
+});
+
 test("canonical overlay pins and following survive the global rendering port", () => {
   const chosen = [],
     f = fixture(global, { onPin: (id) => chosen.push(id) });
@@ -369,4 +590,78 @@ test("canonical overlay pins and following survive the global rendering port", (
   assert.equal(f.map.center.bearing, 0);
   f.plane.destroy();
   assert.equal(f.map.removed, true);
+});
+
+test("route fitting clears the whole primary panel and sibling navigation controls", () => {
+  const rect = (left, top, width, height) => ({
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+  });
+  const boxes = {
+    "[data-maps-primary]": rect(12, 12, 400, 180),
+    "[data-maps-sheet]": rect(540, 12, 248, 376),
+    "[data-maps-credits]": rect(12, 370, 480, 18),
+    "[data-maps-navigation-controls]": rect(552, 312, 224, 76),
+  };
+  const root = {
+    querySelector: (selector) =>
+      boxes[selector] && { getBoundingClientRect: () => boxes[selector] },
+  };
+  const container = {
+    getBoundingClientRect: () => rect(0, 0, 800, 400),
+    parentElement: { querySelector: () => null },
+    closest: (selector) => (selector === "[data-maps-root]" ? root : null),
+  };
+  assert.deepEqual(visibleMapPadding(container), {
+    top: 240,
+    bottom: 48,
+    left: 24,
+    right: 284,
+  });
+  delete boxes["[data-maps-sheet]"];
+  delete boxes["[data-maps-primary]"];
+  delete boxes["[data-maps-credits]"];
+  boxes["[data-maps-navigation-controls]"] = rect(0, 300, 800, 100);
+  assert.deepEqual(visibleMapPadding(container), {
+    top: 48,
+    bottom: 116,
+    left: 24,
+    right: 24,
+  });
+});
+
+test("scaled screen overlays return MapLibre layout-pixel insets", () => {
+  const rect = (left, top, width, height) => ({
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+  });
+  const boxes = {
+    "[data-maps-primary]": rect(6, 6, 200, 90),
+    "[data-maps-sheet]": rect(270, 6, 124, 188),
+    "[data-maps-credits]": rect(6, 185, 240, 9),
+  };
+  const root = {
+    querySelector: (selector) =>
+      boxes[selector] && { getBoundingClientRect: () => boxes[selector] },
+  };
+  const container = {
+    clientWidth: 800,
+    clientHeight: 400,
+    getBoundingClientRect: () => rect(0, 0, 400, 200),
+    closest: () => root,
+  };
+  assert.deepEqual(visibleMapPadding(container), {
+    top: 240,
+    bottom: 48,
+    left: 24,
+    right: 284,
+  });
 });

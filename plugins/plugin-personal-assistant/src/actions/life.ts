@@ -3814,7 +3814,11 @@ function lifeEffectRequestId(message: Memory): string {
 const lifeEffectObservedAtFallbacks = new WeakMap<object, string>();
 
 function lifeEffectObservedAt(message: Memory): string {
-  if (message.createdAt !== undefined) {
+  if (
+    typeof message.createdAt === "number" &&
+    Number.isFinite(message.createdAt) &&
+    Number.isFinite(new Date(message.createdAt).getTime())
+  ) {
     return new Date(message.createdAt).toISOString();
   }
   const existing = lifeEffectObservedAtFallbacks.get(message);
@@ -5132,9 +5136,17 @@ async function runLifeOperationHandlerInner(
                   deferredDefinitionDraft?.request.timezone ??
                   windowPolicy?.timezone,
               ) ?? ownerFactTimeZone;
+            const relativeReminder =
+              ownerSurfaceActionName === "OWNER_REMINDERS" &&
+              llmPlan.cadenceKind === "once" &&
+              typeof llmPlan.dueInMinutes === "number" &&
+              llmPlan.dueInMinutes > 0;
             const llmCadence = buildCadenceFromLlmParams(llmPlan, {
               allowUnscheduled: ownerSurfaceActionName === "OWNER_TODOS",
               intent: currentText,
+              ...(relativeReminder
+                ? { now: new Date(lifeEffectObservedAt(message)) }
+                : {}),
               timeZone: llmCadenceTimeZone ?? undefined,
             });
             if (
@@ -5461,9 +5473,20 @@ async function runLifeOperationHandlerInner(
           stopWhenComplete: true as const,
         };
       })();
+      const relativeDeadline =
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        leadShaped.cadence.kind === "once" &&
+        ((llmPlan?.cadenceKind === "once" &&
+          typeof llmPlan.dueInMinutes === "number" &&
+          llmPlan.dueInMinutes > 0) ||
+          deferredDefinitionDraft?.relativeDeadline ===
+            leadShaped.cadence.dueAt)
+          ? leadShaped.cadence.dueAt
+          : undefined;
       const definitionDraft = {
         intent,
         operation: "create_definition",
+        ...(relativeDeadline !== undefined ? { relativeDeadline } : {}),
         createdAt: editingDeferredDefinitionDraft
           ? Date.now()
           : (deferredDefinitionDraft?.createdAt ?? Date.now()),
@@ -5647,6 +5670,10 @@ async function runLifeOperationHandlerInner(
         };
       }
 
+      const relativeReminderDeadline =
+        definitionDraft.relativeDeadline !== undefined
+          ? Date.parse(definitionDraft.relativeDeadline)
+          : undefined;
       const created = await service.createDefinition(
         {
           idempotencyKey: definitionDraft.request.idempotencyKey,
@@ -5675,6 +5702,19 @@ async function runLifeOperationHandlerInner(
             typeof params.intent === "string" && params.intent.trim().length > 0
               ? "argument"
               : "message",
+          ...(relativeReminderDeadline !== undefined
+            ? {
+                assertNewCreation: () => {
+                  if (relativeReminderDeadline <= Date.now()) {
+                    throw new LifeOpsServiceError(
+                      400,
+                      "That reminder time has already passed. When should I remind you?",
+                      "REMINDER_TIME_PASSED",
+                    );
+                  }
+                },
+              }
+            : {}),
         },
       );
       await clearDeferredLifeDraftCache(runtime, message);
@@ -7235,6 +7275,17 @@ async function runLifeOperationHandlerInner(
   } catch (err) {
     // error-policy:J1 The action boundary translates typed domain failures into a rejected user-visible operation.
     if (err instanceof LifeOpsServiceError) {
+      if (err.code === "REMINDER_TIME_PASSED") {
+        return {
+          success: false as const,
+          text: err.message,
+          data: {
+            actionName: ownerSurfaceActionName,
+            error: err.code,
+            awaitingUserInput: true,
+          },
+        };
+      }
       logger.error(
         {
           boundary: "lifeops-owner-action",
@@ -7277,6 +7328,9 @@ export async function runLifeOperationHandler(
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
+  // Capture the existing receipt clock before extraction or other awaits.
+  // Legacy messages without a valid timestamp keep this instant on retries.
+  lifeEffectObservedAt(message);
   const result = settleLifeActionReply(
     await runLifeOperationHandlerInner(runtime, message, state, options),
   );

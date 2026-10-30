@@ -953,6 +953,7 @@ function apkManifestSummary(apk) {
     "app.eliza.ElizaSmsGatewayService",
     "app.eliza.ElizaRespondViaMessageService",
     "app.eliza.ElizaSmsComposeActivity",
+    "app.eliza.ElizaSmsReplyReviewActivity",
     "android.provider.Telephony.SMS_DELIVER",
     "android.provider.Telephony.WAP_PUSH_DELIVER",
     "android.intent.action.RESPOND_VIA_MESSAGE",

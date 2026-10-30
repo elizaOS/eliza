@@ -28,6 +28,7 @@ import {
 } from "../ui/dialog";
 import { PermissionRecoveryCallout } from "./PermissionRecoveryCallout";
 import { PRIMING_COPY } from "./permission-priming";
+import type { WalkthroughMemoryStore } from "./permission-walkthrough";
 import {
   type PermissionPrimingController,
   usePermissionPriming,
@@ -57,6 +58,11 @@ export interface PermissionPrimingModalProps {
   onComplete: () => void;
   /** Test/story seam to inject a controller instead of the live hook. */
   controllerOverride?: PermissionPrimingController;
+  /**
+   * Walkthrough memory (see `primingWalkthroughMemory`): an OS prompt already shown is never
+   * fired again; its card routes to system settings. Omitted, every Enable tap may prompt.
+   */
+  memory?: WalkthroughMemoryStore;
 }
 /**
  * Container: routes to the live hook, or an injected controller for
@@ -80,8 +86,9 @@ function PermissionPrimingModalLive({
   ids,
   open,
   onComplete,
+  memory,
 }: PermissionPrimingModalProps): React.JSX.Element {
-  const controller = usePermissionPriming(ids);
+  const controller = usePermissionPriming(ids, { memory });
   return (
     <PermissionPrimingModalView
       controller={controller}
@@ -177,6 +184,7 @@ function PermissionPrimingModalView({
             requesting={active.requesting}
             requestError={active.requestError}
             recheckError={active.recheckError}
+            promptShown={active.promptShown === true}
             currentStep={currentStep}
             totalSteps={totalSteps}
             onEnable={() => void request(active.id)}
@@ -205,6 +213,7 @@ interface PrimingCardProps {
   requesting: boolean;
   requestError: boolean;
   recheckError: boolean;
+  promptShown: boolean;
   currentStep: number;
   totalSteps: number;
   onEnable: () => void;
@@ -221,6 +230,7 @@ function PrimingCard({
   requesting,
   requestError,
   recheckError,
+  promptShown,
   currentStep,
   totalSteps,
   onEnable,
@@ -258,7 +268,9 @@ function PrimingCard({
         permission: fallbackName,
       });
   const denied = status === "denied";
-  const needsRecovery = denied || requestError || recheckError;
+  // A prompt this walkthrough already showed is never fired again: recover through settings.
+  const needsRecovery =
+    denied || requestError || recheckError || (promptShown && !canRequest);
   return (
     <div className="flex flex-col gap-4" data-testid={`priming-card-${id}`}>
       <div className="flex items-start gap-3">

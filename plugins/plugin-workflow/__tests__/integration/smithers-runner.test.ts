@@ -369,6 +369,30 @@ export default smithers(() => { throw new Error("Select a project before running
     expect(requests).toBe(2);
     expect(result.events.filter((event) => event.type === 'NodeRetrying')).toHaveLength(1);
   }, 45_000);
+
+  test('bridges a model reply that contains Unicode line and paragraph separators', async () => {
+    // TEXT_LARGE returns plain text, and a model can copy U+2028/U+2029 from
+    // the content it reads. The worker reads its responses line by line.
+    const message = 'Line one\u2028Line two\u2029Line three';
+    let requests = 0;
+    const result = await runSmithersWorkflow({
+      tenantId,
+      workflow,
+      runId: `separators-${Date.now()}`,
+      mode: 'manual',
+      input: {},
+      timeoutMs: 20_000,
+      generate: async () => {
+        requests += 1;
+        return JSON.stringify({ message });
+      },
+    });
+
+    expect(result.error?.message).toBeUndefined();
+    expect(result.status).toBe('finished');
+    expect(result.output).toEqual([expect.objectContaining({ message })]);
+    expect(requests).toBe(1);
+  }, 45_000);
 });
 
 test('preserves the complete native finish receipt when abort releases pending event delivery', async () => {

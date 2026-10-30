@@ -1,4 +1,8 @@
 import { createHash } from 'node:crypto';
+import {
+  PHONE_WORKFLOW_DEVICE_OPERATIONS,
+  phoneWorkflowRequiredProtocol,
+} from '@elizaos/contracts/phone-workflow';
 /**
  * Chat-facing facade for authoring, searching, deploying, and inspecting native
  * Smithers workflows. Generation uses the selected elizaOS model and produces
@@ -214,15 +218,7 @@ export class WorkflowService extends Service {
       compilerRevision: PHONE_COMPILER_REVISION,
       catalogRevision: PHONE_CATALOG_REVISION,
       effects: spec.steps
-        .filter((step) =>
-          [
-            'selected_notes',
-            'calendar_range',
-            'save_note',
-            'app_notification',
-            'read_aloud',
-          ].includes(step.operation)
-        )
+        .filter((step) => PHONE_WORKFLOW_DEVICE_OPERATIONS.includes(step.operation))
         .map((step) => ({
           stepId: step.id,
           operation: step.operation,
@@ -239,13 +235,7 @@ export class WorkflowService extends Service {
     } | null;
     if (!bridge) throw new WorkflowApiError('Workflow device bridge unavailable', 409);
     try {
-      await bridge.validateTarget(
-        owner,
-        spec.device,
-        spec.steps.some((step) => ['app_notification', 'read_aloud'].includes(step.operation))
-          ? 2
-          : 1
-      );
+      await bridge.validateTarget(owner, spec.device, phoneWorkflowRequiredProtocol(spec));
     } catch {
       throw new WorkflowApiError('Workflow device enrollment unavailable', 409);
     }

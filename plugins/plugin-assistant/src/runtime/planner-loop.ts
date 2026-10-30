@@ -6369,8 +6369,16 @@ function mergeToolCalls(
   if (fromText.length === 0) {
     return native;
   }
-  const callKey = (call: PlannerToolCall) =>
-    `${call.name.toUpperCase()}:${JSON.stringify(call.params ?? {})}`;
+  // Reserved turn-scope/completion args are protocol metadata, not operation
+  // parameters: a narrated JSON copy of a native call usually omits them.
+  const callKey = (call: PlannerToolCall) => {
+    const {
+      [TURN_SCOPE_ARG]: _scope,
+      [ACTION_CONTEXT_ARG]: _selection,
+      ...params
+    } = (call.params ?? {}) as Record<string, unknown>;
+    return `${call.name.toUpperCase()}:${canonicalParamsString(params)}`;
+  };
   const seen = new Set(native.map(callKey));
   const merged = [...native];
   for (const call of fromText) {
@@ -8350,15 +8358,22 @@ export function partitionRedundantSucceededCalls(
   const fresh: PlannerToolCall[] = [];
   const redundant: PlannerToolCall[] = [];
   const nonRetryable: PlannerToolCall[] = [];
+  // An identical call repeated inside one batch is the same operation, not a
+  // second request: queue auto-advance would otherwise run the copy without
+  // consulting the trajectory guard above.
+  const batched = new Set<string>();
   for (const call of calls) {
     const identity = toolCallIdentity(call);
-    if (succeeded.has(identity)) redundant.push(call);
+    if (succeeded.has(identity) || batched.has(identity)) redundant.push(call);
     else if (
       invalidDefinitions.has(call.name.toUpperCase()) ||
       failedNonRetryable.has(identity)
     )
       nonRetryable.push(call);
-    else fresh.push(call);
+    else {
+      batched.add(identity);
+      fresh.push(call);
+    }
   }
   return { fresh, redundant, nonRetryable };
 }

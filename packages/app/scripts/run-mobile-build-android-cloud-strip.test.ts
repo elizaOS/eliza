@@ -136,15 +136,25 @@ describe("Android cloud WebView visibility", () => {
         "super.onStop()",
       );
     }
-    const launcher = cloudSafeMainActivityJava("ai.elizaos.app", {
-      launcherKiosk: true,
-    });
-    ordered(
-      method(launcher, "private void restoreBundledRendererAfterAuthCallback("),
-      "|| rendererGone",
-      "return;",
-      "webView.loadUrl(localUrl)",
-    );
+  });
+
+  it("registers the native Cloud sign-in host and never reloads the WebView on an auth callback", () => {
+    for (const launcherKiosk of [false, true]) {
+      const source = cloudSafeMainActivityJava("ai.elizaos.app", {
+        launcherKiosk,
+      });
+      const positions = [
+        "protected void onCreate(",
+        "registerPlugin(ElizaCloudSignInPlugin.class);",
+        "super.onCreate(savedInstanceState);",
+      ].map((marker) => source.indexOf(marker));
+      expect(positions[0]).toBeGreaterThan(-1);
+      expect(positions[1]).toBeGreaterThan(positions[0]);
+      expect(positions[2]).toBeGreaterThan(positions[1]);
+      expect(source).not.toMatch(
+        /isCloudAuthCallback|restoreBundledRendererAfterAuthCallback|loadUrl\(/,
+      );
+    }
   });
 
   it("gives the launcher page only its back intent, never minimize or WebView history", () => {

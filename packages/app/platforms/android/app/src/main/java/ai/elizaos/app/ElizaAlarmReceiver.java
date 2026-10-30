@@ -38,6 +38,8 @@ public final class ElizaAlarmReceiver extends BroadcastReceiver {
                     // Restore broadcasts have no media-playback foreground-service exemption.
                     // Confirmed active sound resumes through a future exact-alarm delivery instead.
                     ElizaAlarms.reconcile(context, true);
+                    // Builds without ElizaBootReceiver still write the saved-alarm handoff marker.
+                    ElizaAlarmMigration.begin(context);
                 }
             } catch (RuntimeException error) {
                 // error-policy:J1 durable/platform failures remain explicit in native state and logs.

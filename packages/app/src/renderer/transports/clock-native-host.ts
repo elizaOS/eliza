@@ -1,4 +1,5 @@
-/** Connects the renderer to the native-owned Clock session and reviewed effect path; streaming chat retains native credential custody. */
+/** Connects the renderer to the native Clock handoff session and reviewed effect path; streaming chat retains native credential custody.
+ * Eliza is handoff-only: Android Clock owns alarms, and alarms Eliza saved earlier move there through native owner review. */
 import {
   Capacitor,
   type PluginListenerHandle,
@@ -8,7 +9,6 @@ import {
   CLOCK_ALARMS_CAPABILITY,
   CLOCK_CAPABILITY,
   CLOCK_REPEAT_CAPABILITY,
-  type ClockAlarmOperation,
   type ClockReviewBridge,
   type ClockReviewReply,
   clockCapabilityAvailable,
@@ -16,13 +16,15 @@ import {
   createClockReviewExecutor,
   validateClockAlarmContext,
   validateClockOperation,
-  validateClockResult,
 } from "@elizaos/plugin-assistant/device-clock-review";
 import {
   type AgentRequestTransport,
   bodyToString,
+  CLOCK_SAVED_ALARM_OUTCOMES,
   type ClockHost,
   type ClockProposal,
+  type ClockSavedAlarmOutcome,
+  type ClockSavedAlarms,
   type ClockStatus,
   configureClockHost,
   headersToRecord,
@@ -39,15 +41,10 @@ interface AgentChunk {
   error?: string;
 }
 interface SlotClockBridge extends ClockReviewBridge {
-  getAlarmStatus(): Promise<unknown>;
-  manageAlarm(input: {
-    operation: ClockAlarmOperation;
-    alarmsRevision: number;
-    expectedOwner: string;
-  }): Promise<unknown>;
-  requestAlarmPermission(input: {
-    permission: "exact" | "notifications" | "fullScreen";
-  }): Promise<unknown>;
+  /** Counts of alarms Eliza saved before it became handoff-only. */
+  getSavedAlarms(): Promise<unknown>;
+  /** Native owner review of the next saved alarm; resolves once that review settles. */
+  reviewSavedAlarm(): Promise<unknown>;
   reviewClock(
     input: Parameters<ClockReviewBridge["reviewClock"]>[0],
   ): Promise<ClockReviewReply & { receiptPending?: boolean }>;
@@ -236,69 +233,54 @@ function nativeStatus(raw: unknown): ClockStatus {
         },
   };
 }
-type AlarmStatus = Awaited<ReturnType<NonNullable<ClockHost["alarmStatus"]>>>;
-function nativeAlarmStatus(raw: unknown): AlarmStatus {
-  const value = nativeObject(raw, [
-    "available",
-    "reason",
-    "owner",
-    "alarmsRevision",
-    "alarmsObservedAt",
-    "timeZone",
-    "alarms",
-    "exactAlarmsAllowed",
-    "notificationsAllowed",
-    "fullScreenAllowed",
-    "alarmSoundMuted",
-    "defaultToneAvailable",
-  ]);
-  for (const field of [
-    "available",
-    "exactAlarmsAllowed",
-    "notificationsAllowed",
-    "fullScreenAllowed",
-    "alarmSoundMuted",
-    "defaultToneAvailable",
-  ])
-    if (typeof value[field] !== "boolean")
-      throw new Error("Invalid native alarm availability");
-  if (
-    typeof value.alarmsObservedAt !== "number" ||
-    !Number.isSafeInteger(value.alarmsObservedAt) ||
-    value.alarmsObservedAt < 1
-  )
-    throw new Error("Invalid native alarm observation time");
-  const timeZone = clockTimeZone(value.timeZone);
-  if (!value.available) {
+const SAVED_ALARM_COUNTS = [
+  "pending",
+  "awaitingConfirmation",
+  "moved",
+  "removed",
+] as const;
+/** Eliza is handoff-only (clock.handoff.v1/v2): its saved alarms move to Clock one native review at a time. */
+function nativeSavedAlarms(
+  raw: unknown,
+  review: boolean,
+): ClockSavedAlarms & { outcome?: ClockSavedAlarmOutcome; message?: string } {
+  const value = nativeObject(
+    raw,
+    review
+      ? ["active", ...SAVED_ALARM_COUNTS, "outcome", "message"]
+      : ["active", ...SAVED_ALARM_COUNTS],
+  );
+  if (value.active !== true)
+    throw new Error("Native saved alarm handoff unavailable");
+  const counts = {} as ClockSavedAlarms;
+  for (const field of SAVED_ALARM_COUNTS) {
+    const count = value[field];
     if (
-      value.owner !== null ||
-      value.alarmsRevision !== null ||
-      value.alarms !== null ||
-      typeof value.reason !== "string" ||
-      value.reason.length === 0
+      typeof count !== "number" ||
+      !Number.isSafeInteger(count) ||
+      count < 0 ||
+      count > 100_000
     )
-      throw new Error("Invalid unavailable native alarm inventory");
-    return { ...value, timeZone } as unknown as AlarmStatus;
+      throw new Error("Invalid native saved alarm count");
+    counts[field] = count;
   }
-  if (value.reason !== null)
-    throw new Error("Invalid available native alarm inventory");
-  const owner = nativeDigest(value.owner);
-  const snapshot = validateClockAlarmContext({
-    sensitive: false,
-    revision: 0,
-    timeZone,
-    alarmsStatus: "available",
-    alarmsObservedAt: value.alarmsObservedAt,
-    alarmsRevision: value.alarmsRevision,
-    alarms: value.alarms,
-  });
+  if (!review) return counts;
+  if (
+    typeof value.outcome !== "string" ||
+    !(CLOCK_SAVED_ALARM_OUTCOMES as readonly string[]).includes(value.outcome)
+  )
+    throw new Error("Invalid native saved alarm outcome");
+  if (
+    typeof value.message !== "string" ||
+    value.message.length === 0 ||
+    value.message.length > 500
+  )
+    throw new Error("Invalid native saved alarm message");
   return {
-    ...value,
-    owner,
-    timeZone,
-    alarmsRevision: snapshot.alarmsRevision,
-    alarms: snapshot.alarms,
-  } as unknown as AlarmStatus;
+    ...counts,
+    outcome: value.outcome as ClockSavedAlarmOutcome,
+    message: value.message,
+  };
 }
 function nativeProposal(raw: unknown): ClockProposal {
   const value = nativeObject(raw, [
@@ -373,16 +355,6 @@ if (bridge) {
     cancelClock: (input) => bridge.cancelClock(input),
   });
   let currentScope: string | null = null;
-  let alarmOwner: string | null = null;
-  let alarmRead = 0;
-  const alarmStatus = async () => {
-    const reading = ++alarmRead;
-    const value = nativeAlarmStatus(await bridge.getAlarmStatus());
-    if (reading !== alarmRead)
-      throw new Error("Native alarm owner read was replaced");
-    alarmOwner = value.owner;
-    return value;
-  };
   const status = async () => {
     const value = nativeStatus(await bridge.getStatus());
     if (currentScope !== null && currentScope !== value.scope)
@@ -393,59 +365,17 @@ if (bridge) {
   let activeControls: ReturnType<typeof createClockActiveControls>;
   let controlsListener: Promise<PluginListenerHandle>;
   const host: ClockHost = {
-    alarmStatus,
-    async manageAlarm(operation, alarmsRevision, expectedOwner) {
-      const validated = validateClockOperation(operation);
-      if (validated.type !== "clock_alarm")
-        throw new Error("Owned alarm operation required");
-      const owner = nativeDigest(expectedOwner);
-      if (
-        owner !== alarmOwner ||
-        !Number.isSafeInteger(alarmsRevision) ||
-        alarmsRevision < 0
-      )
-        throw new Error("Refresh the alarm list before changing an alarm");
-      const before = await alarmStatus();
-      if (
-        !before.available ||
-        before.owner !== owner ||
-        before.alarmsRevision !== alarmsRevision
-      )
-        throw new Error("Alarm list changed. Refresh before saving.");
-      const raw = nativeObject(
-        await bridge.manageAlarm({
-          operation: validated,
-          alarmsRevision,
-          expectedOwner: owner,
-        }),
-        ["result", "alarmsRevision"],
-      );
-      if (
-        owner !== alarmOwner ||
-        typeof raw.alarmsRevision !== "number" ||
-        !Number.isSafeInteger(raw.alarmsRevision) ||
-        raw.alarmsRevision < alarmsRevision
-      )
-        throw new Error("Alarm owner or revision changed");
-      const result = raw.result;
-      if (!isObject(result) || typeof result.status !== "string")
-        throw new Error("Invalid native alarm result");
-      const outcome = ["unavailable", "denied", "failed", "unknown"].includes(
-        result.status,
-      )
-        ? result.status === "unknown"
-          ? "unknown"
-          : "failed"
-        : "applied";
-      const checked = validateClockResult(validated, result, outcome);
-      if (checked.kind !== "clock-alarm")
-        throw new Error("Invalid owned alarm receipt");
-      return { result: checked, alarmsRevision: raw.alarmsRevision };
+    async savedAlarms() {
+      return nativeSavedAlarms(await bridge.getSavedAlarms(), false);
     },
-    async requestAlarmPermission(permission) {
-      if (!["exact", "notifications", "fullScreen"].includes(permission))
-        throw new Error("Invalid alarm permission");
-      await bridge.requestAlarmPermission({ permission });
+    async reviewSavedAlarm() {
+      const { outcome, message, ...savedAlarms } = nativeSavedAlarms(
+        await bridge.reviewSavedAlarm(),
+        true,
+      );
+      if (outcome === undefined || message === undefined)
+        throw new Error("Native saved alarm review unavailable");
+      return { outcome, message, savedAlarms };
     },
     status,
     async proposals() {
@@ -496,8 +426,6 @@ if (bridge) {
     },
     async retire() {
       activeControls.stop();
-      ++alarmRead;
-      alarmOwner = null;
       await executor.retire();
       await (await controlsListener).remove();
     },

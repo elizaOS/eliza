@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Follows the system light/dark setting where the platform theme exists (API 29+). -->
+    <style name="ElizaDataResetRecoveryTheme" parent="@android:style/Theme.DeviceDefault.DayNight" />
+</resources>

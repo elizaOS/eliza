@@ -1,5 +1,6 @@
 import {
   type AgentHostBridge,
+  getAgentHostBridge,
   setAgentHostBridge,
 } from "@elizaos/agent/runtime/host-bridge";
 import {
@@ -98,6 +99,7 @@ export function installAgentHostBridge(): void {
       : { ok: false, role: "NONE" };
   };
   const bridge: AgentHostBridge = {
+    productCharacter: getAgentHostBridge().productCharacter,
     captureWalletEnvBootBaseline,
     hydrateWalletKeysFromNodePlatformSecureStore,
     runVaultBootstrap,

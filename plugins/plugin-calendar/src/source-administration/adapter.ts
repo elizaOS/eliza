@@ -78,7 +78,10 @@ function resolveCalendarService(runtime: IAgentRuntime): CalendarService {
 }
 
 export interface ListCalendarSourceAdministrationOptions {
+  /** Applies only when feed health is included; catalog-only reads never sync. */
   forceSync?: boolean;
+  /** Context may discover identities and versions without reading feed health. */
+  includeFeedHealth?: boolean;
 }
 
 export async function listCalendarSourceAdministration(
@@ -87,40 +90,30 @@ export async function listCalendarSourceAdministration(
 ): Promise<LifeOpsCalendarSourceAdministrationSnapshot> {
   const service = resolveCalendarService(runtime);
   const observedAt = new Date();
-  const feed = await service.getCalendarFeed(
-    CALENDAR_SOURCE_INTERNAL_URL,
-    {
-      side: "owner",
-      includeHiddenCalendars: true,
-      forceSync: options.forceSync === true,
-      timeMin: observedAt.toISOString(),
-      timeMax: new Date(
-        observedAt.getTime() + 24 * 60 * 60 * 1000,
-      ).toISOString(),
-    },
-    observedAt,
-  );
-  let calendars: LifeOpsCalendarSummary[];
-  try {
-    calendars = await service.listCalendars(CALENDAR_SOURCE_INTERNAL_URL, {
-      side: "owner",
-    });
-  } catch (error) {
-    // error-policy:J4 Feed health is an explicit unavailable/degraded state;
-    // preserve it when discovery has no selectable rows instead of fabricating
-    // a healthy empty source list.
-    if (
-      error instanceof CalendarServiceError &&
-      error.code === "CALENDAR_SOURCES_UNAVAILABLE"
-    ) {
-      calendars = [];
-    } else {
-      throw error;
-    }
-  }
-
+  // Cost: one current authorized discovery; catalog-only context reads no feeds.
+  const observation =
+    options.includeFeedHealth === false
+      ? await service.discoverCalendars(CALENDAR_SOURCE_INTERNAL_URL, {
+          side: "owner",
+        })
+      : await service.getCalendarFeedSnapshot(
+          CALENDAR_SOURCE_INTERNAL_URL,
+          {
+            side: "owner",
+            includeHiddenCalendars: true,
+            forceSync: options.forceSync === true,
+            timeMin: observedAt.toISOString(),
+            timeMax: new Date(
+              observedAt.getTime() + 24 * 60 * 60 * 1000,
+            ).toISOString(),
+          },
+          observedAt,
+        );
+  const calendars = observation.calendars;
+  const health =
+    "feed" in observation ? observation.feed.sources : observation.failures;
   const healthByIdentity = new Map(
-    feed.sources.map((health) => [sourceIdentityKey(health.key), health]),
+    health.map((source) => [sourceIdentityKey(source.key), source]),
   );
   const entries: LifeOpsCalendarSourceAdministrationEntry[] = [];
   const selectableIdentities = new Set<string>();
@@ -128,7 +121,7 @@ export async function listCalendarSourceAdministration(
     const key = sourceKey(calendar);
     const identity = sourceIdentityKey(key);
     selectableIdentities.add(identity);
-    // listCalendars already reads the versioned preference for every exact
+    // The shared discovery already reads the versioned preference for every exact
     // source and throws CALENDAR_SOURCE_PREFERENCE_INCOMPLETE (CalendarService)
     // when either field is missing. Reuse that snapshot: zero additional
     // preference SQL per source.

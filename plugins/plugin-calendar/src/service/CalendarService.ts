@@ -3753,7 +3753,8 @@ export class CalendarService extends Service {
     }
   }
 
-  private async discoverCalendars(
+  /** Authorized catalog and preference observation; no event feeds are read or synchronized. */
+  async discoverCalendars(
     requestUrl: URL,
     request?: ListLifeOpsCalendarsRequest,
   ): Promise<CalendarSourceDiscovery> {
@@ -5522,6 +5523,20 @@ export class CalendarService extends Service {
     request: GetLifeOpsCalendarFeedRequest = {},
     now = new Date(),
   ): Promise<LifeOpsCalendarFeed> {
+    return (await this.getCalendarFeedSnapshot(requestUrl, request, now)).feed;
+  }
+
+  /** One authorized discovery observation for feed health and its full versioned catalog.
+   * The snapshot is request-local: no catalog or owner authority is cached between reads.
+   */
+  async getCalendarFeedSnapshot(
+    requestUrl: URL,
+    request: GetLifeOpsCalendarFeedRequest = {},
+    now = new Date(),
+  ): Promise<{
+    feed: LifeOpsCalendarFeed;
+    calendars: LifeOpsCalendarSummary[];
+  }> {
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const explicitCalendarId = normalizeOptionalString(request.calendarId);
@@ -5573,14 +5588,17 @@ export class CalendarService extends Service {
     if (calendars.length === 0) {
       if (discoveryFailures.length > 0) {
         return {
-          calendarId: explicitCalendarId ?? "all",
-          events: [],
-          source: "cache",
-          state: "unavailable",
-          sources: discoveryFailures,
-          timeMin,
-          timeMax,
-          syncedAt: null,
+          calendars: listedCalendars,
+          feed: {
+            calendarId: explicitCalendarId ?? "all",
+            events: [],
+            source: "cache",
+            state: "unavailable",
+            sources: discoveryFailures,
+            timeMin,
+            timeMax,
+            syncedAt: null,
+          },
         };
       }
       if (
@@ -5650,38 +5668,44 @@ export class CalendarService extends Service {
           selectionVersion: 0,
         };
         return {
-          calendarId: disconnected.calendarId,
-          events: [],
-          source: "cache",
-          state: "unavailable",
-          sources: [
-            calendarSourceHealth({
-              calendar: disconnected,
-              status: "disconnected",
-              syncedAt: null,
-              error: {
-                code: "CALENDAR_SOURCE_DISCONNECTED",
-                message: "No authorized calendar source is connected.",
-                retryable: true,
-              },
-            }),
-          ],
-          timeMin,
-          timeMax,
-          syncedAt: null,
+          calendars: listedCalendars,
+          feed: {
+            calendarId: disconnected.calendarId,
+            events: [],
+            source: "cache",
+            state: "unavailable",
+            sources: [
+              calendarSourceHealth({
+                calendar: disconnected,
+                status: "disconnected",
+                syncedAt: null,
+                error: {
+                  code: "CALENDAR_SOURCE_DISCONNECTED",
+                  message: "No authorized calendar source is connected.",
+                  retryable: true,
+                },
+              }),
+            ],
+            timeMin,
+            timeMax,
+            syncedAt: null,
+          },
         };
       }
     }
-    return this.aggregateCalendarFeedsAcrossCalendars(
-      requestUrl,
-      calendars,
-      timeMin,
-      timeMax,
-      timeZone,
-      forceSync,
-      now,
-      discoveryFailures,
-    );
+    return {
+      calendars: listedCalendars,
+      feed: await this.aggregateCalendarFeedsAcrossCalendars(
+        requestUrl,
+        calendars,
+        timeMin,
+        timeMax,
+        timeZone,
+        forceSync,
+        now,
+        discoveryFailures,
+      ),
+    };
   }
 
   private async aggregateCalendarFeedsAcrossCalendars(
@@ -5866,8 +5890,14 @@ export class CalendarService extends Service {
     }
     // Provider synchronization can update or delete the linked local event.
     // Read local snapshots afterwards so this response reflects that change.
+    const maySyncLinkedLocalRecords = calendars.some(
+      (calendar) => calendar.provider !== ELIZA_CALENDAR_PROVIDER,
+    );
     for (const source of sources) {
-      if (source.calendar.provider === ELIZA_CALENDAR_PROVIDER) {
+      if (
+        maySyncLinkedLocalRecords &&
+        source.calendar.provider === ELIZA_CALENDAR_PROVIDER
+      ) {
         source.feed = await this.readElizaCalendarFeed({
           calendar: source.calendar,
           timeMin,

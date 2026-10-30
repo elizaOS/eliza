@@ -15,9 +15,12 @@ make -C packages/os/android build ARCH=x86_64 AOSP_ROOT=/path/to/aosp \
 ```
 
 `ARCH` accepts `x86_64`, `arm64`, or `riscv64`. `build` stages native inference,
-rebuilds the privileged APK, syncs the vendor tree, builds AOSP, then launches and
-validates Cuttlefish. `make -C packages/os/android help` lists hardware-specific
-commands. Building an image does not flash a physical device.
+rebuilds the unsigned image APK, syncs the vendor tree with the staged launcher,
+builds AOSP, then launches and validates Cuttlefish. Sign that APK and pass it as
+`ARGS="--launcher-apk /absolute/signed.apk --development-launcher"` (or
+`--launcher-descriptor` for a reviewed release), or stage it first; see
+[Eliza image launcher](#eliza-image-launcher). `make -C packages/os/android help`
+lists hardware-specific commands. Building an image does not flash a physical device.
 The Pixel 11 Pro lock targets stock B1 (`CD1A.260905.001.B1`) with the pinned
 Android 17 `cp2a` release and vendor API `202604`. Its hashed vendor reference is
 a build input; physical installation still requires qualification and a signed contract.
@@ -170,10 +173,58 @@ make -C packages/os/android bootanimation
 
 The rendered frames and `bootanimation.zip` are gitignored build outputs.
 
+## Eliza image launcher
+
+Eliza's own Cuttlefish (x86_64, arm64, riscv64, riscv64 E1), GSI and grizzly
+products install Eliza with the nonprivileged-launcher profile, as the Pixel 10a
+Eliza product does. There is no priv-app placement, platform certificate, privapp
+allowlist, init grant or app SELinux policy, and no Soong override removes a stock
+app: the stock launcher, dialer, messaging and Clock stay installed as recovery
+paths. The image preassigns default HOME, the assistant role and, when the APK
+declares one, the Autofill service. Dialer and SMS are not preassigned.
+
+`build:android:system` writes an unsigned `vendor/eliza/apps/Eliza/Eliza.apk`.
+Sign it (the release signer for a release; a developer key for development
+images), then stage it:
+
+```bash
+node packages/os/scripts/android/image-launcher.ts \
+  --brand-config packages/os/scripts/android/brand.eliza.json \
+  --apk /absolute/signed.apk --development --source-commit ELIZA_COMMIT
+```
+
+A release passes `--descriptor /absolute/reviewed.json` instead of
+`--development`. `android/products/eliza-images.json` is the reviewed policy: the
+launcher identity, the first-boot runtime grants (revocable `RECORD_AUDIO` and
+`POST_NOTIFICATIONS`), each product's partition (GSIs use `/system`, everything
+else `/product`) and its native installation target. A reviewed descriptor must
+match that policy exactly. Staging pins the APK hash and certificate, writes
+`vendor/eliza/launcher/` (gitignored) and `image-launcher.json` staging evidence,
+and refuses a product it was not staged for when the product makefile is read.
+`sync-to-aosp.ts`, `validate.ts` and `build-grizzly-bundle.ts` re-verify those
+pins.
+
+The launcher runs as `untrusted_app`, which may not execute app data (AOSP's W^X
+neverallow), so the resident runtime must be installed beside the APK. Only
+`eliza_cf_x86_64_phone` has a native installation target today; it requires
+`--source-commit` and stages the admitted runtime under
+`/product/app/Eliza/lib/x86_64/`. The other products stage without the resident
+runtime, and production staging refuses them until they have a target.
+
+Installed data is kept across the change: Android retains a system package's data
+when its signer changes with a system update, and the package name and UID do not
+change. Permissions the APK still declares but the image no longer grants
+(`PACKAGE_USAGE_STATS`, `MANAGE_APP_OPS_MODES`, `INJECT_EVENTS`, `READ_FRAME_BUFFER`
+and the other former priv-app permissions) fall back to their user-granted or
+unavailable paths.
+
+This is staging only. A built image, a Cuttlefish boot (`boot-validate.ts`) and a
+device run are separate evidence.
+
 ## Downstream launcher APKs
 
 Stage an independently built HOME application without replacing the Eliza runtime
-or inheriting its privileged permission list:
+or inheriting its permission list:
 
 ```bash
 node packages/os/scripts/android/stage-launcher-overlay.ts \
@@ -219,8 +270,9 @@ The explicit Pixel 10a path uses the same hardware composition for both launcher
 name, model, brand and launcher package/module. Device configuration, the stock
 kernel, eSIM flags provider, source patches and SELinux inputs live once under
 `devices/pixel10a`. Both main APKs are presigned, nonprivileged product apps.
-The legacy privileged `eliza_common.mk` is not included by this target; existing
-Cuttlefish, grizzly and GSI products keep their current policy.
+`eliza_common.mk` is not included by this target. The Cuttlefish, grizzly and GSI
+products use the same nonprivileged-launcher profile through `eliza_common.mk`
+(see [Eliza image launcher](#eliza-image-launcher)).
 
 ```bash
 make -C packages/os/android stage-pixel10a ARGS="--product packages/os/android/products/pixel10a-eliza.json --launcher-descriptor /absolute/launcher.json --apk /absolute/launcher.apk --aosp-root /absolute/aosp --vendor-archive /absolute/factory.zip --output /absolute/new-overlay --source-commit REVIEWED_ELIZA_COMMIT --development"

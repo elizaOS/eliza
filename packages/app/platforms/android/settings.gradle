@@ -16,3 +16,7 @@ apply from: 'capacitor.settings.gradle'
 include ':sense', ':sense-speech'
 
 include ':voice-assets'
+
+// Shared native Eliza Cloud sign-in client (packages/auth/android); ElizaCloudSignInPlugin hosts it.
+include ':eliza-auth-cloud'
+project(':eliza-auth-cloud').projectDir = new File(settingsDir, '../../../auth/android')

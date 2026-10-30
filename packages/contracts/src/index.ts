@@ -67,6 +67,7 @@ export {
 export * from "./contracts/wallet-routes.js";
 export * from "./contracts/wallet-types.js";
 export * from "./contracts/workbench-routes.js";
+export * from "./deletion-window.js";
 export * from "./device-action-execution.js";
 export * from "./device-reviews.js";
 export type {
@@ -140,3 +141,6 @@ export * from "./os-intent/contract.js";
 export * from "./os-intent/decode.js";
 export * from "./phone-workflow.js";
 export * from "./workflow-client.js";
+export * from "./workflow-device.js";
+export * from "./workflow-intents.js";
+export * from "./workflow-scope.js";

@@ -137,6 +137,11 @@ export const backgroundUploadImageRoute: Route = {
   path: "/api/background/upload-image",
   rawPath: true,
   name: "background-upload-image",
+  // Uploads carry whole images (base64 data URLs up to the handler's own
+  // 8 MiB budget), so declare that budget instead of the host's 1 MiB
+  // default, which would answer 413 before the handler runs — the same
+  // defect fixed for document uploads in #38198.
+  maxBodyBytes: BACKGROUND_UPLOAD_MAX_CHARS,
   routeHandler: async (ctx) => {
     const body = (ctx.body ?? {}) as UploadImageBody;
     const dataUrl = typeof body.dataUrl === "string" ? body.dataUrl.trim() : "";

@@ -238,12 +238,16 @@ func evaluateRelease(d releaseDescriptor, device admissionDevice, policy admissi
 	if !contains(device.Health, d.Safety.Health) || !contains(device.Activation, d.Safety.Activation) {
 		return deferFor("unsupported-safety-profile")
 	}
-	sum := sha256.Sum256([]byte(host.CohortDomain + "\x00" + d.Rollout.Seed + "\x00" + device.CohortID))
-	bucket := int64(binary.BigEndian.Uint32(sum[:4]) % 10000)
-	if bucket >= d.Rollout.Threshold {
+	if cohortBucket(host.CohortDomain, d.Rollout.Seed, device.CohortID) >= d.Rollout.Threshold {
 		return deferFor("outside-cohort")
 	}
 	return &AdmissionResult{Decision: "eligible", ReleaseID: d.ID, Sequence: d.Sequence, CandidateSHA256: d.Candidate.SHA256, RecoverySHA256: d.Recovery.SHA256}, nil
+}
+
+// cohortBucket places a device in one of 10000 rollout buckets of a release.
+func cohortBucket(domain, seed, cohortID string) int64 {
+	sum := sha256.Sum256([]byte(domain + "\x00" + seed + "\x00" + cohortID))
+	return int64(binary.BigEndian.Uint32(sum[:4]) % 10000)
 }
 
 const idPattern = `^[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}$`

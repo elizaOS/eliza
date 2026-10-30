@@ -1,6 +1,7 @@
 package ai.elizaos.app;
 
 import ai.eliza.plugins.securestore.nativeonly.NativeSecureStore;
+import ai.eliza.plugins.system.clock.ClockProfile;
 import android.content.Intent;
 import android.app.AlertDialog;
 import android.net.Uri;
@@ -31,6 +32,14 @@ import org.json.JSONObject;
  */
 @CapacitorPlugin(name = "SlotClock")
 public final class SlotClockPlugin extends Plugin {
+    /**
+     * The Clock profile this app advertises: the shared handoff-only policy (Android Clock owns
+     * alarms; clock.handoff.v1 and clock.handoff.v2). Alarms Eliza saved under its former
+     * clock.alarms.v1 profile take {@link ElizaAlarmMigration#DECISION}: each is offered to the
+     * owner as a reviewed Clock handoff and keeps ringing from Eliza until the owner confirms it is
+     * saved in Clock.
+     */
+    static final ClockProfile CLOCK_PROFILE = ClockProfile.HANDOFF_ONLY;
     private final ThreadPoolExecutor workers = new ThreadPoolExecutor(2, 2, 30, TimeUnit.SECONDS,
             new ArrayBlockingQueue<>(16), runnable -> { Thread thread = new Thread(runnable, "eliza-clock-host"); thread.setDaemon(true); return thread; });
     private NativeSecureStore store;
@@ -43,6 +52,7 @@ public final class SlotClockPlugin extends Plugin {
     private AlertDialog localAlarmDialog;
     private PluginCall localAlarmCall;
     private final Runnable alarmChanged = () -> notifyListeners("proposalsChanged", new JSObject());
+    private ElizaAlarmMigration savedAlarms;
     private interface Work { void run(Session session) throws Exception; }
     private final class Session {
         final ClockHostClient client;
@@ -95,6 +105,7 @@ public final class SlotClockPlugin extends Plugin {
         store = new NativeSecureStore(getContext());
         ElizaAlarmRingingService.observe(alarmChanged);
         refreshAlarmPermission();
+        savedAlarms = new ElizaAlarmMigration(getActivity(), () -> foreground, alarmChanged);
     }
 
     private boolean supported() {
@@ -125,7 +136,7 @@ public final class SlotClockPlugin extends Plugin {
                 if ("requestAgent".equals(call.getMethodName())) throw new SecurityException("Native chat owner retired before admission");
                 store.ensureClockDevice();
                 ClockHostClient client = new ClockHostClient(store, store.snapshot(), url -> CookieManager.getInstance().getCookie(url),
-                        ZoneId.systemDefault().getId(), new ClockHostClient.AlarmMetadata() {
+                        ZoneId.systemDefault().getId(), CLOCK_PROFILE == ClockProfile.HANDOFF_ONLY ? null : new ClockHostClient.AlarmMetadata() {
                             @Override public JSONObject context(ClockHostClient selected) throws Exception {
                                 return ClockOwnedAlarms.metadata(getContext(), selected);
                             }
@@ -388,6 +399,11 @@ public final class SlotClockPlugin extends Plugin {
                 ClockHandoff.Request request = ClockHostClient.decode(call.getData().getJSONObject("operation"));
                 if (!request.owned || request.action == ClockHandoff.Action.SHOW)
                     throw new IllegalArgumentException("Local alarm operation unavailable");
+                // Handoff-only: new and edited alarms belong to the phone's Clock app. Saved alarms
+                // can still be stopped, snoozed, turned off or deleted until they move.
+                if (!CLOCK_PROFILE.reportsAppliedChanges()
+                        && (request.action == ClockHandoff.Action.SET || request.action == ClockHandoff.Action.UPDATE))
+                    throw new IllegalArgumentException("New alarms are saved in the Clock app");
                 long revision = alarmRevision(call.getData(), "alarmsRevision");
                 ClockHostClient client = localClient();
                 String owner = ClockOwnedAlarms.owner(getContext(), client);
@@ -400,7 +416,7 @@ public final class SlotClockPlugin extends Plugin {
                 store.withSnapshot(client.snapshot, () -> ElizaAlarms.withRevision(getContext(), revision, () -> null));
                 getActivity().runOnUiThread(() -> {
                     try {
-                        if (!foreground || localAlarmCall != null) throw new SecurityException("Another alarm review is active");
+                        if (!foreground || localAlarmCall != null || (savedAlarms != null && savedAlarms.reviewing())) throw new SecurityException("Another alarm review is active");
                         client.current();
                         if (!owner.equals(ClockOwnedAlarms.owner(getContext(), client)))
                             throw new SecurityException("Alarm inventory owner changed");
@@ -492,6 +508,28 @@ public final class SlotClockPlugin extends Plugin {
         localAlarmCall = null; localAlarmDialog = null;
         if (dialog != null) dialog.dismiss();
         if (call != null) call.reject("Alarm review cancelled");
+    }
+    /** Counts of alarms Eliza saved before it became handoff-only; no alarm content. */
+    @PluginMethod public void getSavedAlarms(PluginCall call) {
+        enqueue(call, () -> {
+            try { call.resolve(js(ElizaAlarmMigration.status(getContext()))); }
+            catch (Exception error) {
+                // error-policy:J1 an unreadable journal is an error, never "no saved alarms".
+                call.reject("Saved Eliza alarms could not be read");
+            }
+        });
+    }
+    /** Native review of the next saved alarm: move it to Clock, confirm it was saved, or remove it. */
+    @PluginMethod public void reviewSavedAlarm(PluginCall call) {
+        getActivity().runOnUiThread(() -> {
+            try {
+                if (!foreground || localAlarmCall != null || savedAlarms == null) throw new SecurityException("Alarm review owner unavailable");
+                savedAlarms.review((outcome, message) -> {
+                    try { call.resolve(js(ElizaAlarmMigration.status(getContext()).put("outcome", outcome).put("message", message))); }
+                    catch (Exception error) { call.reject("Saved Eliza alarms could not be read"); }
+                });
+            } catch (Exception error) { call.reject("Saved alarm review could not be opened"); }
+        });
     }
     @PluginMethod public void requestAlarmPermission(PluginCall call) {
         getActivity().runOnUiThread(() -> {
@@ -648,7 +686,11 @@ public final class SlotClockPlugin extends Plugin {
             else { JSObject reply = new JSObject(); reply.put("retired", true); call.resolve(reply); }
         });
     }
-    @Override protected void handleOnPause() { foreground = false; cancelLocalAlarm(); retire(); }
+    @Override protected void handleOnPause() {
+        foreground = false; cancelLocalAlarm();
+        if (savedAlarms != null) savedAlarms.paused();
+        retire();
+    }
     private void refreshAlarmPermission() {
         try { ElizaAlarms.refreshPermissionState(getContext()); }
         catch (RuntimeException error) {
@@ -656,6 +698,16 @@ public final class SlotClockPlugin extends Plugin {
             android.util.Log.e("ElizaClock", "Alarm permission state could not be read", error);
         }
     }
-    @Override protected void handleOnResume() { if (retirement.isBlocked()) retire(); foreground = true; refreshAlarmPermission(); }
-    @Override protected void handleOnDestroy() { foreground = false; cancelLocalAlarm(); retire(); ElizaAlarmRingingService.unobserve(alarmChanged); workers.shutdownNow(); }
+    @Override protected void handleOnResume() {
+        if (retirement.isBlocked()) retire();
+        foreground = true; refreshAlarmPermission();
+        // Returning from Clock: ask whether the alarm opened there was saved before retiring it.
+        if (savedAlarms != null && savedAlarms.awaitingConfirmation())
+            getActivity().getWindow().getDecorView().post(() -> { if (foreground && localAlarmCall == null) savedAlarms.resumed(); });
+    }
+    @Override protected void handleOnDestroy() {
+        foreground = false; cancelLocalAlarm();
+        if (savedAlarms != null) savedAlarms.paused();
+        retire(); ElizaAlarmRingingService.unobserve(alarmChanged); workers.shutdownNow();
+    }
 }

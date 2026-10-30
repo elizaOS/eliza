@@ -220,6 +220,30 @@ try {
             .focus(),
       });
     }, tabId);
+    // A refresh with unchanged advice keeps the same bar and the focused button, so a screen
+    // reader neither hears the status again nor loses its place.
+    const sameBar = () =>
+      worker.evaluate(async (id) => {
+        const [result] = await chrome.scripting.executeScript({
+          target: { tabId: id, frameIds: [0] },
+          world: "ISOLATED",
+          func: () => {
+            const advice = globalThis.__elizaProtectionAdvisory;
+            globalThis.firstAdvice ??= advice.shadow;
+            const first = globalThis.firstAdvice;
+            return (
+              first === advice.shadow &&
+              advice.shadow.activeElement ===
+                advice.shadow.querySelector("button")
+            );
+          },
+        });
+        return result.result;
+      }, tabId);
+    assert.equal(await sameBar(), true);
+    await worker.evaluate(() => testProtection.advisory.refreshAll());
+    await setOwner("account-a");
+    assert.equal(await sameBar(), true, "Refresh keeps the bar and its focus");
     await page.keyboard.press("Enter");
     await wait((state) => state?.text.includes("Marked as not suspicious"));
     await hold();

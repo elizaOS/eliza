@@ -36,6 +36,11 @@ import {
   validateNotesOperation,
 } from "./notes-contract.ts";
 import {
+  PHONE_DIAL_CAPABILITY,
+  type PhoneDialOperation,
+  validatePhoneDial,
+} from "./phone-dial-contract.ts";
+import {
   type ReminderOperation,
   validateReminderOperation,
 } from "./reminder-contract.ts";
@@ -84,6 +89,7 @@ export const DEVICE_VIEWS = [
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
+  | PhoneDialOperation
   | ReminderCreateOperation
   | ClockOperation
   | MapsOperation
@@ -108,6 +114,9 @@ export function deviceOperationSupportedByCapabilities(
     return capabilities?.includes(CAMERA_CAPTURE_CAPABILITY) === true;
   if (type === "sms_send")
     return capabilities?.includes(SMS_SEND_CAPABILITY) === true;
+  // A contact target also needs contacts.lookup.v1 (phoneDialCapabilityAvailable).
+  if (type === "phone_dial")
+    return capabilities?.includes(PHONE_DIAL_CAPABILITY) === true;
   if (type === "calendar_create_local")
     return capabilities?.includes(CALENDAR_CREATE_CAPABILITY) === true;
   if (type === "calendar_read_next")
@@ -266,6 +275,14 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       } catch {
         throw new DeviceActionError("Invalid reviewed SMS operation");
       }
+    case "phone_dial":
+      try {
+        return validatePhoneDial(p);
+      } catch {
+        throw new DeviceActionError(
+          "Invalid dial operation. Use target {kind: number, number: digits with optional leading +} or {kind: contact, query: the contact name}.",
+        );
+      }
     case "post_notification":
       exactKeys(p, ["type", "title", "body"]);
       return {
@@ -278,6 +295,7 @@ export function validateDeviceOperation(value: unknown): DeviceOperation {
       return { type: p.type, text: text(p.text, 5000) };
     case "read_selected_notes":
     case "read_calendar_range":
+    case "read_selected_reminders":
       return validateWorkflowReadOperation(p);
     case "notes_query":
       return validateNativeNotesQuery(p);
@@ -373,6 +391,7 @@ export function validateDevicePayload(value: unknown): DeviceActionPayload {
     [
       "read_selected_notes",
       "read_calendar_range",
+      "read_selected_reminders",
       "post_notification",
       "speak_text",
     ].includes(operation.type) &&

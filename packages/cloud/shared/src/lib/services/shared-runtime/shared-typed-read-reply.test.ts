@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { PlannerTrajectory } from "@elizaos/core";
+import { createWebFetchEdgeAction } from "@elizaos/plugin-coding-tools/edge";
 import {
   type CurrentNwsObservation,
   isVerifiedCurrentNwsObservation,
@@ -131,13 +132,21 @@ describe("default-off owner-scoped typed public reads", () => {
     };
     expect(createSharedTypedReadTurn({ ...input, enabled: undefined })).toBeUndefined();
     expect(createSharedTypedReadTurn({ ...input, channelSource: "telegram" })).toBeUndefined();
+    // A single-part turn keeps its existing route: only US current temperature is typed.
     for (const message of [
       "What's the latest tech news today? Please include a source.",
       "What's the current temperature in Tokyo, Japan? Please include a source.",
       "What's the current temperature in Tokyo? Please include a source.",
       "What's the current temperature in San Francisco, Canada? Please include a source.",
+      "what's the weather in San Francisco, CA now?",
+      "how is the weather now in Austin, TX",
+      "what's the weather in Tokyo right now?",
+      "latest news today",
     ])
       expect(createSharedTypedReadTurn({ ...input, message })).toBeUndefined();
+    expect(isSimpleCurrentTemperatureRequest("what's the weather in San Francisco, CA now?")).toBe(
+      false,
+    );
     for (const message of [
       exactApprovedSF,
       "What's the current temperature in San Francisco, California? Please include a source.",
@@ -146,7 +155,10 @@ describe("default-off owner-scoped typed public reads", () => {
       expect(createSharedTypedReadTurn({ ...input, message })).toBeDefined();
     const turn = createSharedTypedReadTurn(input);
     if (!turn) throw new Error("Expected scoped synthetic public request");
-    expect(turn.authorizedPublicQueries).toEqual(["current public weather in San Francisco"]);
+    // A single US weather turn keeps its search-only NWS reader.
+    expect(turn.reads).toEqual([
+      { kind: "us-weather", query: "current public weather in San Francisco" },
+    ]);
     expect(turn.authorizePublicSearch(" CURRENT PUBLIC WEATHER IN SAN FRANCISCO ")).toMatchObject({
       kind: "search",
       query: "current public weather in San Francisco",
@@ -254,9 +266,11 @@ describe("default-off owner-scoped typed public reads", () => {
     expect(
       resolverFor("Current temperature in San Francisco? What is 17 plus 26?"),
     ).toBeUndefined();
+    // One weather part and one dated news part are separate typed requirements.
     expect(
       resolverFor("Current temperature in San Francisco and latest AI news today?"),
-    ).toBeUndefined();
+    ).toBeDefined();
+    expect(resolverFor("Latest AI news today and latest tech news today?")).toBeUndefined();
     expect(
       resolveTypedPublicReadParts(
         "What is in my calendar and the current temperature in San Francisco?",
@@ -367,6 +381,310 @@ describe("default-off owner-scoped typed public reads", () => {
       admittedToolNames: ["WEB_SEARCH"],
     });
     expect(wrongSource?.facts).toHaveLength(0);
+  });
+
+  describe("a mixed weather and news request keeps each verified part", () => {
+    const mixed = "what's the weather in Tokyo right now, and one top news headline from today?";
+    const articleUrl = "https://news.example.org/2026/synthetic-public-story";
+    const articleTitle = "Synthetic public headline";
+    const day = new Date(now).toISOString().slice(0, 10);
+    const turnInput = {
+      enabled: true as const,
+      authenticatedPersonalSharedUser: true as const,
+      channelSource: "blooio",
+      channelType: "DM",
+      agentKey: "canonical-agent",
+      roomKey: "canonical-room",
+      userEntityId: "canonical-owner",
+      turnId,
+      message: mixed,
+      history: [],
+      turnStartedAtMs: now - 2000,
+    };
+    const metBody = (url: string) => {
+      const query = new URL(url).searchParams;
+      const hour = new Date(Math.round(now / 3600000) * 3600000)
+        .toISOString()
+        .replace(/\.000Z$/u, "Z");
+      return {
+        type: "Feature",
+        geometry: {
+          type: "Point",
+          coordinates: [Number(query.get("lon")), Number(query.get("lat")), 40],
+        },
+        properties: {
+          meta: {
+            updated_at: new Date(Math.floor((now - 600000) / 1000) * 1000)
+              .toISOString()
+              .replace(/\.000Z$/u, "Z"),
+            units: { air_temperature: "celsius" },
+          },
+          timeseries: [{ time: hour, data: { instant: { details: { air_temperature: 16.4 } } } }],
+        },
+      };
+    };
+    async function readSteps(options: { newsArticleRead: boolean }) {
+      const turn = createSharedTypedReadTurn(turnInput);
+      if (!turn) throw new Error("Expected the mixed request to bind typed reads");
+      const port = createSharedReadEvidencePort(turn.scope);
+      if (!port) throw new Error("Expected an evidence port for article and MET reads");
+      const metUrl = turn.reads.find((read) => read.kind === "world-weather");
+      if (!metUrl || metUrl.kind !== "world-weather") throw new Error("Expected a MET read");
+      const originalFetch = globalThis.fetch;
+      globalThis.fetch = (async () =>
+        new Response(JSON.stringify(metBody(metUrl.url)), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        })) as unknown as typeof fetch;
+      let weather: Awaited<
+        ReturnType<NonNullable<ReturnType<typeof createWebFetchEdgeAction>["handler"]>>
+      >;
+      try {
+        weather = await createWebFetchEdgeAction({ readEvidence: port }).handler(
+          {} as never,
+          {} as never,
+          undefined,
+          { url: metUrl.url },
+        );
+      } finally {
+        globalThis.fetch = originalFetch;
+      }
+      const newsQuery = "latest public news";
+      const search = {
+        success: true,
+        text: JSON.stringify({
+          results: [
+            { url: articleUrl, title: articleTitle, excerpts: ["A public synthetic event."] },
+          ],
+          errors: [],
+        }),
+        data: { actionName: "WEB_SEARCH", query: newsQuery, provider: "parallel" },
+      };
+      port.observePublicSearch?.(search, newsQuery);
+      const article = {
+        url: articleUrl,
+        title: articleTitle,
+        excerpts: [
+          `# ${articleTitle}\nPublished: ${day}\n\nA public synthetic event happened today.`,
+        ],
+      };
+      const retrievedAt = now - 500;
+      const provider = {
+        kind: "provider-extract" as const,
+        provider: "parallel",
+        url: articleUrl,
+        text: JSON.stringify(article),
+        observedAt: retrievedAt,
+        requestedAt: now - 1000,
+        truncated: false as const,
+      };
+      const steps: PlannerTrajectory["steps"] = [
+        {
+          iteration: 1,
+          toolCall: { id: "met-read", name: "WEB_FETCH", params: { url: metUrl.url } },
+          result: weather as never,
+        },
+        {
+          iteration: 2,
+          toolCall: { id: "news-search", name: "WEB_SEARCH", params: { query: newsQuery } },
+          result: search,
+        },
+        {
+          iteration: 3,
+          toolCall: { id: "news-article", name: "WEB_FETCH", params: { url: articleUrl } },
+          result: options.newsArticleRead
+            ? {
+                success: true,
+                text: provider.text,
+                data: {
+                  action: "WEB_FETCH",
+                  url: articleUrl,
+                  provider: "parallel",
+                  read_method: "provider_extract",
+                  kind: "provider-extract",
+                  truncated: false,
+                  retrieved_at: retrievedAt,
+                  readEvidence: port.projectProvider?.(provider),
+                },
+              }
+            : {
+                success: false,
+                text: "Public URL reader returned no content",
+                data: { action: "WEB_FETCH", url: articleUrl },
+              },
+        },
+      ];
+      const binding = turn.resolveTypedReadReply({
+        trajectory: {
+          context: { id: "mixed-public-read", events: [] },
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+          steps,
+        },
+        nowMs: now,
+        admittedToolNames: ["WEB_SEARCH", "WEB_FETCH"],
+      });
+      return { turn, metUrl: metUrl.url, binding };
+    }
+
+    test("binds a MET read for the non-US place and a search plus article read for the news", () => {
+      const turn = createSharedTypedReadTurn(turnInput);
+      expect(turn?.requirementIds).toHaveLength(2);
+      expect(turn?.reads.map((read) => read.kind)).toEqual(["world-weather", "news"]);
+      expect(turn?.authorizePublicSearch("latest public news")).toMatchObject({
+        kind: "search",
+        query: "latest public news",
+      });
+    });
+
+    test("both parts verified: each requirement admits its own sourced fact", async () => {
+      const { binding, metUrl } = await readSteps({ newsArticleRead: true });
+      expect(binding?.phase).toBe("final-answer");
+      const [weather, news] = binding?.policy.requirements ?? [];
+      expect(weather?.admittedFactIds).toHaveLength(1);
+      expect(news?.admittedFactIds).toHaveLength(1);
+      expect(binding?.facts).toEqual([
+        expect.objectContaining({ kind: "quantity", value: 16.4, unit: "°C", sourceUrl: metUrl }),
+        expect.objectContaining({
+          kind: "publication",
+          title: articleTitle,
+          publicationDay: day,
+          sourceUrl: articleUrl,
+        }),
+      ]);
+    });
+
+    test("news unverified, weather verified: only the weather fact is admitted", async () => {
+      const { binding } = await readSteps({ newsArticleRead: false });
+      expect(binding?.phase).toBe("final-answer");
+      const [weather, news] = binding?.policy.requirements ?? [];
+      expect(weather?.admittedFactIds).toHaveLength(1);
+      expect(news?.admittedFactIds).toEqual([]);
+      expect(news?.unverifiedText).toBe("I couldn't verify a headline for the requested date.");
+      expect(binding?.facts.map((fact) => fact.kind)).toEqual(["quantity"]);
+    });
+
+    test("an unread non-US place keeps the exact MET read pending instead of a search", () => {
+      const turn = createSharedTypedReadTurn(turnInput);
+      const empty = turn?.resolveTypedReadReply({
+        trajectory: {
+          context: { id: "mixed-empty", events: [] },
+          archivedSteps: [],
+          plannedQueue: [],
+          evaluatorOutputs: [],
+          steps: [],
+        },
+        nowMs: now,
+        admittedToolNames: ["WEB_SEARCH", "WEB_FETCH"],
+      });
+      expect(empty?.phase).toBe("planning");
+      expect(empty?.remainingReadActionNames?.slice().sort()).toEqual(["WEB_FETCH", "WEB_SEARCH"]);
+      expect(empty?.facts).toEqual([]);
+    });
+
+    const emptyTrajectory: PlannerTrajectory = {
+      context: { id: "mixed-unread", events: [] },
+      archivedSteps: [],
+      plannedQueue: [],
+      evaluatorOutputs: [],
+      steps: [],
+    };
+
+    test("a US city keeps its NWS search reader and gets no MET or wttr.in target", () => {
+      const turn = createSharedTypedReadTurn({
+        ...turnInput,
+        message: "what's the weather in Boston right now, and one top news headline from today?",
+      });
+      expect(turn?.reads).toEqual([
+        { kind: "us-weather", query: "current public weather in Boston" },
+        { kind: "news", query: "latest public news" },
+      ]);
+      const port = turn && createSharedReadEvidencePort(turn.scope);
+      expect(port?.authorizedUrls?.()).toEqual([]);
+      expect(port?.acceptsOriginUrl?.("https://wttr.in/42.36,-71.06?format=j1")).toBe(false);
+    });
+
+    test("a weather part with no reader keeps its uncertainty sentence and the news part proceeds", () => {
+      for (const [message, unverifiedText] of [
+        [
+          "what's the weather in Tokyo tomorrow, and one top news headline from today?",
+          "I couldn't verify the requested weather details.",
+        ],
+        [
+          "what's the current temperature in San Francisco, Canada, and one top news headline from today?",
+          "I couldn't verify the current temperature.",
+        ],
+      ] as const) {
+        const turn = createSharedTypedReadTurn({ ...turnInput, message });
+        if (!turn) throw new Error(`Expected the news part to stay typed: ${message}`);
+        expect(turn.reads.map((read) => read.kind)).toEqual(["none", "news"]);
+        // The weather part's own query is outside every reader.
+        const weatherQuery = turn.scope.parts[0].requirement.query;
+        expect(turn.authorizePublicSearch(weatherQuery)).toBeUndefined();
+        const planned = turn.resolveTypedReadReply({
+          trajectory: emptyTrajectory,
+          nowMs: now,
+          admittedToolNames: ["WEB_SEARCH", "WEB_FETCH"],
+        });
+        const [weather, news] = planned?.policy.requirements ?? [];
+        expect(weather?.unverifiedText).toBe(unverifiedText);
+        expect(news?.label).toBe("News");
+        expect(planned?.remainingReadActionNames).toEqual(["WEB_SEARCH"]);
+      }
+    });
+
+    test("a news part gets a reader only when the user's news clause names no topic", () => {
+      // The issue's own clause names no topic, so it keeps its search plus article reader.
+      for (const news of [
+        "one top news headline from today?",
+        "the top headline today?",
+        "the latest news today?",
+        "today's news headlines?",
+      ]) {
+        const turn = createSharedTypedReadTurn({
+          ...turnInput,
+          message: `what's the weather in Tokyo right now, and ${news}`,
+        });
+        expect(turn?.reads).toEqual([
+          expect.objectContaining({ kind: "world-weather" }),
+          { kind: "news", query: "latest public news" },
+        ]);
+      }
+      // A clause that names a topic fails closed, whatever query the extractor made:
+      // the topic check cannot prove that an article is about the requested topic.
+      for (const news of [
+        "one top sports headline from today?",
+        "the top tech news today?",
+        "one top business news headline from today?",
+        "the latest tech news today?",
+        "the latest news headline about sports from today?",
+        "the latest sports headline about the Lakers today?",
+        "the current news headline for Tokyo today?",
+        "breaking news headline about the election today?",
+      ]) {
+        const turn = createSharedTypedReadTurn({
+          ...turnInput,
+          message: `what's the weather in Tokyo right now, and ${news}`,
+        });
+        const query = turn?.scope.parts[1]?.requirement.query ?? "";
+        expect(turn?.reads.map((read) => read.kind)).toEqual(["world-weather", "none"]);
+        expect(turn?.authorizePublicSearch(query)).toBeUndefined();
+        const planned = turn?.resolveTypedReadReply({
+          trajectory: emptyTrajectory,
+          nowMs: now,
+          admittedToolNames: ["WEB_SEARCH", "WEB_FETCH"],
+        });
+        const [weatherPart, newsPart] = planned?.policy.requirements ?? [];
+        expect(newsPart?.admittedFactIds).toEqual([]);
+        expect(newsPart?.unverifiedText).toBe(
+          "I couldn't verify a headline for the requested date.",
+        );
+        // The weather part keeps its MET read.
+        expect(weatherPart?.unverifiedText).toBe("I couldn't verify the current temperature.");
+        expect(planned?.remainingReadActionNames).toEqual(["WEB_FETCH"]);
+      }
+    });
   });
 
   test("typed origin dispatch cannot append private bytes or use unrelated public URLs", () => {

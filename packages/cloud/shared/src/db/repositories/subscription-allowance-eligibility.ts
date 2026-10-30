@@ -1,6 +1,6 @@
 /** Reads the canonical eligibility for new allowance spending in the caller's transaction and database clock; historical reservations never pass through this gate. */
 import { ElizaError } from "@elizaos/core";
-import { and, desc, eq, gt, isNull, lte, ne, sql } from "drizzle-orm";
+import { and, desc, eq, gt, isNull, lte, ne, type SQL, sql } from "drizzle-orm";
 import {
   type OrganizationQuotaPolicy,
   readOrganizationQuotaPolicyInTransaction,
@@ -12,16 +12,26 @@ import {
 } from "../schemas/billing-subscriptions";
 import { organizations } from "../schemas/organizations";
 import { subscriptionAllowancePeriods } from "../schemas/subscription-allowance-periods";
+import { paidRenewalPendingAt } from "./subscription-allowance";
 
 function fundingError(code: string, message: string, context: Record<string, unknown>): never {
   throw new ElizaError(message, { code, context });
 }
+export interface AllowanceEligibilityOptions {
+  /**
+   * Managed agent compute only: while no period is current, a paid period
+   * whose renewal is pending stays spendable through the shared payment grace.
+   */
+  managedComputePaymentGrace?: boolean;
+}
+
 async function findCurrentAllowance(
   tx: DbTransaction,
   organizationId: string,
   now: Date,
   lock: boolean,
   policy: OrganizationQuotaPolicy,
+  options: AllowanceEligibilityOptions,
 ): Promise<typeof subscriptionAllowancePeriods.$inferSelect | undefined> {
   // A grant's buckets fund only the grant policy; while a paid subscription is
   // effective, only its own (non-grant) buckets are spendable.
@@ -31,22 +41,31 @@ async function findCurrentAllowance(
         ? eq(subscriptionAllowancePeriods.promo_grant_id, policy.authority.sourceGrantId)
         : sql`false`
       : ne(subscriptionAllowancePeriods.grant_source, "promo_grant");
-  const query = tx
-    .select()
-    .from(subscriptionAllowancePeriods)
-    .where(
-      and(
-        eq(subscriptionAllowancePeriods.organization_id, organizationId),
-        isNull(subscriptionAllowancePeriods.billing_scope_id),
-        eq(subscriptionAllowancePeriods.state, "open"),
-        lte(subscriptionAllowancePeriods.period_start, now),
-        gt(subscriptionAllowancePeriods.expires_at, now),
-        sourcePredicate,
-      ),
-    )
-    .orderBy(desc(subscriptionAllowancePeriods.expires_at))
-    .limit(2);
-  const periods = await (lock ? query.for("update") : query);
+  const select = (spendable: SQL | undefined) => {
+    const query = tx
+      .select()
+      .from(subscriptionAllowancePeriods)
+      .where(
+        and(
+          eq(subscriptionAllowancePeriods.organization_id, organizationId),
+          isNull(subscriptionAllowancePeriods.billing_scope_id),
+          eq(subscriptionAllowancePeriods.state, "open"),
+          lte(subscriptionAllowancePeriods.period_start, now),
+          spendable,
+          sourcePredicate,
+        ),
+      )
+      .orderBy(desc(subscriptionAllowancePeriods.expires_at))
+      .limit(2);
+    return lock ? query.for("update") : query;
+  };
+  let periods = await select(gt(subscriptionAllowancePeriods.expires_at, now));
+  if (
+    periods.length === 0 &&
+    options.managedComputePaymentGrace &&
+    policy.authority.source === "subscription"
+  )
+    periods = await select(paidRenewalPendingAt(sql`${now.toISOString()}::timestamptz`));
   if (periods.length > 1)
     fundingError(
       "SUBSCRIPTION_FUNDING_AUTHORITY_UNAVAILABLE",
@@ -63,6 +82,7 @@ export async function readEligibleSubscriptionAllowance(
   lock: boolean,
   /** Policy the caller already read in this transaction at `now`; avoids re-reading it. */
   observedPolicy?: OrganizationQuotaPolicy,
+  options: AllowanceEligibilityOptions = {},
 ) {
   const [org] = await tx
     .select({
@@ -92,7 +112,7 @@ export async function readEligibleSubscriptionAllowance(
   // allowance-eligible work is funded entirely from purchased credits, and any
   // bucket its terminal source left open is never spendable.
   if (!policy.subscriptionFunded) return undefined;
-  const period = await findCurrentAllowance(tx, organizationId, now, lock, policy);
+  const period = await findCurrentAllowance(tx, organizationId, now, lock, policy, options);
   if (period && policy.authority.source === "promo_grant") {
     if (
       period.grant_source !== "promo_grant" ||
@@ -179,6 +199,7 @@ export async function observeSubscriptionAllowanceEligibility(
   now: Date,
   /** Policy the caller already read in this transaction at `now`. */
   observedPolicy?: OrganizationQuotaPolicy,
+  options: AllowanceEligibilityOptions = {},
 ): Promise<SubscriptionAllowanceEligibility> {
   try {
     return {
@@ -189,6 +210,7 @@ export async function observeSubscriptionAllowanceEligibility(
         now,
         false,
         observedPolicy,
+        options,
       ),
     };
   } catch (error) {

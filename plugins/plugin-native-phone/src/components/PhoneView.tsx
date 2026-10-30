@@ -14,7 +14,12 @@ import {
   dispatchNavigateViewEvent,
 } from "@elizaos/ui";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { callFromPhone } from "../telephony-profile.ts";
+import {
+  callFromPhone,
+  loadProfileRecents,
+  openDialerFromPhone,
+  telephonyProfile,
+} from "../telephony-profile.ts";
 import {
   type PhoneCallRow,
   type PhoneSnapshot,
@@ -69,9 +74,43 @@ export function PhoneView() {
     useState<PhoneSnapshot["historyStatus"]>("loading");
   const [error, setError] = useState<string | null>(null);
 
-  const refreshCalls = useCallback(async () => {
+  const refreshCalls = useCallback(async (request = false) => {
     setHistoryStatus("loading");
     setError(null);
+    const profile = telephonyProfile();
+    if (profile) {
+      // Behind the telephony profile: the host's bounded, foreground-only read.
+      // Access is asked for only from the person's explicit refresh.
+      try {
+        const recents = await loadProfileRecents(profile, {
+          limit: 50,
+          request,
+        });
+        setCallReady(recents.voiceCapable);
+        if (recents.access === "granted") {
+          setCalls(
+            recents.calls.map((entry) =>
+              toPhoneCallRow(entry, formatWhen(entry.date)),
+            ),
+          );
+          setHistoryStatus("ready");
+          return;
+        }
+        setCalls([]);
+        setHistoryStatus("unavailable");
+        setError(
+          recents.access === "needed"
+            ? "Recent calls need call-history access. Tap refresh to allow it; dialing works without it."
+            : "Recent calls are not available on this phone. Dialing opens your phone app.",
+        );
+      } catch (err) {
+        // error-policy:J4 A refused or unreadable profile read stays visible; it is never an empty history.
+        setError(err instanceof Error ? err.message : String(err));
+        setCalls([]);
+        setHistoryStatus("unavailable");
+      }
+      return;
+    }
     try {
       const status = await Phone.requestPermissions();
       if (status.phone !== "granted") {
@@ -121,6 +160,8 @@ export function PhoneView() {
       void refreshCalls();
     }
     const interval = setInterval(() => {
+      // Never read the call log while the page is hidden.
+      if (typeof document !== "undefined" && document.hidden) return;
       void refreshCalls();
     }, 20_000);
     return () => clearInterval(interval);
@@ -151,7 +192,17 @@ export function PhoneView() {
     const number = normalizeNumber(dialed);
     setError(null);
     try {
-      await Phone.openDialer(number ? { number } : undefined);
+      if (telephonyProfile() && !number) {
+        setError("Enter a number to open it in your phone app.");
+        return;
+      }
+      const outcome = await openDialerFromPhone(number);
+      if (
+        outcome.path === "handoff" &&
+        outcome.result.status !== "handed-off"
+      ) {
+        setError(outcome.result.message);
+      }
     } catch (err) {
       // error-policy:J4 Bridge failures remain visible and disable calling until a successful refresh.
       setError(err instanceof Error ? err.message : String(err));
@@ -190,7 +241,7 @@ export function PhoneView() {
           openContacts();
           return;
         case "refresh":
-          void refreshCalls();
+          void refreshCalls(true);
           return;
       }
     },

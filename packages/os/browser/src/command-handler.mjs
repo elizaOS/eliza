@@ -13,20 +13,25 @@ export function createCommandHandler(api) {
   let protectionRevision = 0;
   const cancelled = new Set();
   const bindings = new Map();
-  const activity = createManualActivity(api, (tabId) => bindings.get(tabId));
+  const activity = createManualActivity(
+    api,
+    (tabId) => liveBinding(tabId),
+    (tabId) => settled(tabId),
+  );
   let bindingQueue = Promise.resolve();
   const guidance = createTaskGuidance(api, (...args) => scope(...args));
-  const { bind, scope, blocked, validId } = createTaskBindings({
-    bindings,
-    read: async (key) => (await api.storage.local.get(key))[key],
-    write: (key, value) => api.storage.local.set({ [key]: value }),
-    clearGuidance: (tabId) => guidance.clearTab(tabId),
-    getUrl: async (tabId) => (await api.tabs.get(Number(tabId))).url,
-    validTabId: (value) =>
-      typeof value === "string" &&
-      /^\d+$/.test(value) &&
-      Number.isSafeInteger(Number(value)),
-  });
+  const { bind, scope, blocked, validId, liveBinding, settled } =
+    createTaskBindings({
+      bindings,
+      read: async (key) => (await api.storage.local.get(key))[key],
+      write: (key, value) => api.storage.local.set({ [key]: value }),
+      clearGuidance: (tabId) => guidance.clearTab(tabId),
+      getUrl: async (tabId) => (await api.tabs.get(Number(tabId))).url,
+      validTabId: (value) =>
+        typeof value === "string" &&
+        /^\d+$/.test(value) &&
+        Number.isSafeInteger(Number(value)),
+    });
   let processing = Promise.resolve();
 
   async function handle(message, sender, connectionCurrent) {
@@ -90,9 +95,27 @@ export function createCommandHandler(api) {
           });
           if (!isCurrent()) throw blocked();
           const manualActivity = await activity.read(binding);
-          manualActivity.captureGap = installed.some(
-            (frame) => frame.result?.captureGap === true,
+          // A submit whose reply was lost is a gap only when the journal
+          // does not hold its event. Each gap names its submit's event ID, so
+          // the host tells a new failure from one it already checked.
+          const recorded = new Set(
+            manualActivity.events.map((event) => event.eventId),
           );
+          const gapEvents = new Set();
+          for (const frame of installed) {
+            const ids = (list) =>
+              (Array.isArray(list) ? list : []).filter(
+                (id) => typeof id === "string" && /^[a-f0-9-]{36}$/.test(id),
+              );
+            for (const id of ids(frame.result?.refused)) gapEvents.add(id);
+            for (const id of ids(frame.result?.unconfirmed))
+              if (!recorded.has(id)) gapEvents.add(id);
+          }
+          // The newest gaps are kept when a document has more than 256.
+          manualActivity.captureGapEvents = [...gapEvents].slice(-256);
+          manualActivity.captureGap =
+            gapEvents.size > 0 ||
+            installed.some((frame) => frame.result?.captureGap === true);
           if (!isCurrent()) throw blocked();
           for (const frame of result.frames || [])
             if (frame.frameId === 0) frame.manualActivity = manualActivity;

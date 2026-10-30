@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/contracts",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "description": "Browser-safe shared domain contracts and validation for Eliza hosts, plugins and renderers.",
   "type": "module",
   "license": "MIT",
@@ -40,6 +40,30 @@
       "import": "./dist/workflow-client.js",
       "default": "./dist/workflow-client.js"
     },
+    "./workflow-device": {
+      "eliza-source": "./src/workflow-device.ts",
+      "types": "./dist/workflow-device.d.ts",
+      "import": "./dist/workflow-device.js",
+      "default": "./dist/workflow-device.js"
+    },
+    "./workflow-intents": {
+      "eliza-source": "./src/workflow-intents.ts",
+      "types": "./dist/workflow-intents.d.ts",
+      "import": "./dist/workflow-intents.js",
+      "default": "./dist/workflow-intents.js"
+    },
+    "./workflow-scope": {
+      "eliza-source": "./src/workflow-scope.ts",
+      "types": "./dist/workflow-scope.d.ts",
+      "import": "./dist/workflow-scope.js",
+      "default": "./dist/workflow-scope.js"
+    },
+    "./deletion-window": {
+      "eliza-source": "./src/deletion-window.ts",
+      "types": "./dist/deletion-window.d.ts",
+      "import": "./dist/deletion-window.js",
+      "default": "./dist/deletion-window.js"
+    },
     "./notice-routes": {
       "eliza-source": "./src/notice-routes.ts",
       "types": "./dist/notice-routes.d.ts",
@@ -76,6 +100,12 @@
       "import": "./dist/sms-send.js",
       "default": "./dist/sms-send.js"
     },
+    "./phone-dial": {
+      "eliza-source": "./src/phone-dial.ts",
+      "types": "./dist/phone-dial.d.ts",
+      "import": "./dist/phone-dial.js",
+      "default": "./dist/phone-dial.js"
+    },
     "./mms-send": {
       "eliza-source": "./src/mms-send.ts",
       "types": "./dist/mms-send.d.ts",
@@ -93,6 +123,24 @@
       "types": "./dist/native-telephony-session.d.ts",
       "import": "./dist/native-telephony-session.js",
       "default": "./dist/native-telephony-session.js"
+    },
+    "./browser-address-input": {
+      "eliza-source": "./src/browser-address-input.ts",
+      "types": "./dist/browser-address-input.d.ts",
+      "import": "./dist/browser-address-input.js",
+      "default": "./dist/browser-address-input.js"
+    },
+    "./browser-request-grounding": {
+      "eliza-source": "./src/browser-request-grounding.ts",
+      "types": "./dist/browser-request-grounding.d.ts",
+      "import": "./dist/browser-request-grounding.js",
+      "default": "./dist/browser-request-grounding.js"
+    },
+    "./stated-clock-time": {
+      "eliza-source": "./src/stated-clock-time.ts",
+      "types": "./dist/stated-clock-time.d.ts",
+      "import": "./dist/stated-clock-time.js",
+      "default": "./dist/stated-clock-time.js"
     }
   },
   "scripts": {

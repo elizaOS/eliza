@@ -232,7 +232,7 @@ export interface CalendarActionDeps {
       timeZone: string;
       maximumEvents: number;
     };
-  }): Promise<ActionResult>;
+  }): Promise<ActionResult | undefined>;
   /** Run a text-model call; returns the raw string or `null` on failure. */
   runTextModel(args: CalendarModelCallArgs): Promise<string | null>;
   /** Run a model call and parse the response as a JSON record. */

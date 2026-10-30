@@ -146,6 +146,7 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   "ElizaSmsGatewayService",
   "ElizaRespondViaMessageService",
   "ElizaSmsComposeActivity",
+  "ElizaSmsReplyReviewActivity",
   "ElizaBootReceiver",
   "ElizaBrowserActivity",
   "ElizaContactsActivity",
@@ -157,6 +158,10 @@ export const ANDROID_CLOUD_STRIPPED_COMPONENTS = [
   // cloud thin client or its manifest allowlist.
   "BrowserNativeMessagingService",
   "PasswordsActivity",
+  // Reset app data hosts the shared coordinator from @elizaos/capacitor-system
+  // (stripped below) and admits pending resets from ElizaApplication (also
+  // stripped); the thin Cloud client relies on Android's own Clear storage.
+  "ElizaDataResetRecoveryActivity",
   ...ANDROID_LP3_COLOR_POLICY_COMPONENTS,
 ];
 
@@ -225,6 +230,19 @@ export const ANDROID_CLOUD_MANIFEST_MERGER_REMOVED_PERMISSIONS = [
 
 // Java sources removed from the merged sources tree so they don't
 // reference manifest-stripped classes and break compilation.
+/**
+ * Helpers of the SMS components that are not manifest components: the reviewed
+ * reply proposals, the gateway flow and this app's reviewed-send identity. Cloud
+ * builds strip them with the SMS components; SMS gateway builds keep them.
+ */
+export const ANDROID_SMS_REVIEWED_SEND_JAVA_FILES = [
+  "ElizaSmsGatewayFlow.java",
+  "ElizaSmsReplyProposals.java",
+  "ElizaSmsReviewedSend.java",
+];
+export const ANDROID_SMS_REVIEWED_SEND_NATIVE_PLUGIN =
+  "@elizaos/plugin-native-messages";
+
 export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "BatteryOptimizationPlugin.java",
   "BrowserNativeMessagingService.java",
@@ -264,6 +282,9 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaVoiceInputMethodService.java",
   "ElizaBootReceiver.java",
   "ElizaApplication.java",
+  "ElizaDataResetPlugin.java",
+  "ElizaDataResetRecoveryActivity.java",
+  "ElizaDataResetStores.java",
   "ElizaWorkScheduler.java",
   "ElizaNotificationListenerService.java",
   "ElizaVoiceCaptureService.java",
@@ -281,6 +302,8 @@ export const ANDROID_CLOUD_STRIPPED_JAVA_FILES = [
   "ElizaRespondViaMessageService.java",
   "ElizaSmsComposeActivity.java",
   "ElizaSmsReceiver.java",
+  ...ANDROID_SMS_REVIEWED_SEND_JAVA_FILES,
+  "ElizaSmsReplyReviewActivity.java",
   ...ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
 ];
 
@@ -298,10 +321,12 @@ export const ANDROID_CLOUD_STRIPPED_TEST_JAVA_FILES = [
   "BionicDecodeLoopTest.java",
   "DeviceRamTierPolicyTest.java",
   "ElizaAgentAutostartPolicyTest.java",
+  "ElizaDataResetStoresTest.java",
   "ElizaAgentEventSubscriptionTest.java",
   "ElizaAgentWatchdogPolicyInstrumentedTest.java",
   "ElizaAssetExtractionPolicyTest.java",
   "ElizaAssistantSurfaceInstrumentedTest.java",
+  "ElizaSmsReplyReviewTest.java",
   "ElizaWorkSchedulerPolicyTest.java",
   "InferenceMemoryPolicyTest.java",
   "NativeTranscriptReducerTest.java",
@@ -489,6 +514,14 @@ export function resolveAndroidCloudStripPolicy(env = process.env) {
   };
 }
 
+// Native Eliza Cloud sign-in host (packages/auth/android's CloudSignInPlugin):
+// every Cloud variant signs in through it, so the strip must keep these.
+export const ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES = Object.freeze([
+  "ElizaCloudSignInPlugin.java",
+  "ElizaCloudSignInRegistration.java",
+  "ElizaCloudCredentialSlots.java",
+]);
+
 // Java sources that survive the cloud strip but are rewritten (or deleted) by
 // rewriteCloudJavaSources() so that the android-cloud tree compiles without
 // ElizaAgentService. Kept as an exported single source of truth so the strip
@@ -616,16 +649,15 @@ export const ANDROID_PLAY_ALLOWED_CAPACITOR_CONFIG_PLUGINS = Object.freeze([
   "SplashScreen",
 ]);
 
-export const ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS = Object.freeze([
-  "cloud.eliza.app",
-  "cloud-staging.eliza.app",
-]);
-
+/**
+ * Sign-in is native (ElizaCloudSignInPlugin: email code, SMS code, native
+ * Google), so no build navigates its WebView to a hosted login page: neither
+ * variant packages a `server.allowNavigation` entry.
+ */
 /** Resolves the one sanitizer policy shared by write-time and source audits. */
 export function resolveAndroidCloudCapacitorConfigPolicy(env = process.env) {
   const launcherKiosk = env.ELIZA_ANDROID_LAUNCHER_BUILD === "1";
   return {
-    allowInAppAuthNavigation: launcherKiosk,
     launcherKiosk,
     webViewDebugging: launcherKiosk && env.ELIZA_WEBVIEW_DEBUG === "1",
   };
@@ -638,11 +670,7 @@ export function isJsonRecord(value) {
 /** Returns the minimal runtime config that is safe to package in a Play APK/AAB. */
 export function sanitizeAndroidCloudCapacitorConfig(
   value,
-  {
-    allowInAppAuthNavigation = false,
-    launcherKiosk = false,
-    webViewDebugging = false,
-  } = {},
+  { launcherKiosk = false, webViewDebugging = false } = {},
 ) {
   if (!isJsonRecord(value)) {
     throw new Error(
@@ -663,9 +691,6 @@ export function sanitizeAndroidCloudCapacitorConfig(
     loggingBehavior: "none",
     server: {
       androidScheme: "https",
-      ...(allowInAppAuthNavigation
-        ? { allowNavigation: [...ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS] }
-        : {}),
     },
     plugins,
     android: {
@@ -692,11 +717,31 @@ export const ANDROID_PLAY_ALLOWED_PERMISSIONS = Object.freeze([
   `${APP.appId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION`,
 ]);
 
+/**
+ * Components and metadata that Android's Credential Manager and Google
+ * Identity libraries declare. The shared native Cloud sign-in library
+ * (packages/auth/android) brings them for the native Google account picker;
+ * none is exported without a Google Play services signature permission.
+ */
+export const ANDROID_NATIVE_SIGN_IN_COMPONENTS = Object.freeze([
+  "activity:androidx.credentials.playservices.controllers.identityauth.HiddenActivity",
+  "activity:androidx.credentials.playservices.controllers.identitycredentials.IdentityCredentialApiHiddenActivity",
+  "activity:com.google.android.gms.auth.api.signin.internal.SignInHubActivity",
+  "activity:com.google.android.gms.common.api.GoogleApiActivity",
+  "service:androidx.credentials.playservices.CredentialProviderMetadataHolder",
+  "service:com.google.android.gms.auth.api.signin.RevocationBoundService",
+]);
+
+export const ANDROID_NATIVE_SIGN_IN_METADATA_NAMES = Object.freeze([
+  "androidx.credentials.CREDENTIAL_PROVIDER_KEY",
+  "com.google.android.gms.version",
+]);
+
 export const ANDROID_PLAY_ALLOWED_COMPONENTS = Object.freeze([
+  ...ANDROID_NATIVE_SIGN_IN_COMPONENTS,
   `activity:${APP.appId}.ElizaShareActivity`,
   `activity:${APP.appId}.MainActivity`,
   "activity:com.capacitorjs.plugins.browser.BrowserControllerActivity",
-  "activity:com.google.android.gms.common.api.GoogleApiActivity",
   "provider:com.capacitorjs.plugins.localnotifications.LocalNotificationsAssetProvider",
   "provider:com.google.firebase.provider.FirebaseInitProvider",
   "provider:androidx.core.content.FileProvider",
@@ -734,6 +779,7 @@ export const ANDROID_PLAY_ALLOWED_ACTIONS = Object.freeze([
 ]);
 
 export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
+  ...ANDROID_NATIVE_SIGN_IN_METADATA_NAMES,
   "android.app.shortcuts",
   "android.support.FILE_PROVIDER_PATHS",
   "androidx.emoji2.text.EmojiCompatInitializer",
@@ -741,7 +787,6 @@ export const ANDROID_PLAY_ALLOWED_METADATA_NAMES = Object.freeze([
   "androidx.profileinstaller.ProfileInstallerInitializer",
   "backend:com.google.android.datatransport.cct.CctBackendFactory",
   "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
-  "com.google.android.gms.version",
   "com.google.firebase.components:com.google.firebase.FirebaseCommonKtxRegistrar",
   "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
   "com.google.firebase.components:com.google.firebase.installations.FirebaseInstallationsKtxRegistrar",
@@ -947,8 +992,9 @@ export function createAndroidPlayManifestPolicy({
     targetSdkVersion: "36",
   };
   if (!firebaseIndependent) return policy;
+  // Google Play services' API activity and version metadata stay: the native
+  // sign-in library needs them without Firebase.
   const firebaseComponents = [
-    "activity:com.google.android.gms.common.api.GoogleApiActivity",
     "provider:com.google.firebase.provider.FirebaseInitProvider",
     "receiver:com.google.android.datatransport.runtime.scheduling.jobscheduling.AlarmManagerSchedulerBroadcastReceiver",
     "receiver:com.google.firebase.iid.FirebaseInstanceIdReceiver",
@@ -960,7 +1006,6 @@ export function createAndroidPlayManifestPolicy({
     "service:com.google.firebase.messaging.FirebaseMessagingService",
   ];
   const firebaseMetadata = [
-    "com.google.android.gms.version",
     "backend:com.google.android.datatransport.cct.CctBackendFactory",
     "com.google.android.gms.cloudmessaging.FINISHED_AFTER_HANDLED",
     "com.google.firebase.components:com.google.firebase.datatransport.TransportRegistrar",
@@ -996,6 +1041,7 @@ export const ANDROID_SMS_GATEWAY_COMPONENTS = new Set([
   "ElizaRespondViaMessageService",
   "ElizaSmsComposeActivity",
   "ElizaSmsGatewayService",
+  "ElizaSmsReplyReviewActivity",
 ]);
 
 export const ANDROID_SMS_GATEWAY_PERMISSIONS = new Set([
@@ -1021,14 +1067,20 @@ export const ANDROID_SMS_GATEWAY_STRIPPED_PERMISSIONS =
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_JAVA_FILES = [
   ...ANDROID_CLOUD_STRIPPED_JAVA_FILES.filter(
-    (file) => !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")),
+    (file) =>
+      !ANDROID_SMS_GATEWAY_COMPONENTS.has(file.replace(/\.java$/, "")) &&
+      !ANDROID_SMS_REVIEWED_SEND_JAVA_FILES.includes(file),
   ),
   "SafePushNotificationsPlugin.java",
   "ElizaReminderMessagingService.java",
 ];
 
 export const ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS = [
-  ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+  // The gateway keeps plugin-native-messages: its replies are sent only through
+  // that plugin's reviewed send (ReviewedSmsSend), after the owner's review.
+  ...ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS.filter(
+    ([pkg]) => pkg !== ANDROID_SMS_REVIEWED_SEND_NATIVE_PLUGIN,
+  ),
   ["@capacitor/background-runner", "capacitor-background-runner"],
   ["@capacitor/barcode-scanner", "capacitor-barcode-scanner"],
   ["@capacitor/haptics", "capacitor-haptics"],

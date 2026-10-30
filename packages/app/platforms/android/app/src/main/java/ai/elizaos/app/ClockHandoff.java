@@ -6,17 +6,17 @@
  */
 package ai.elizaos.app;
 
+import ai.eliza.plugins.system.clock.ClockDays;
 import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
-import android.provider.AlarmClock;
 import java.time.ZoneId;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.TreeSet;
 
 final class ClockHandoff {
     enum Action { SET, SHOW, DISMISS, SNOOZE, UPDATE, DELETE, ENABLE }
@@ -56,14 +56,8 @@ final class ClockHandoff {
         }
 
         static Request set(int hour, int minute, String label, String timeZone, List<Integer> days) {
-            List<Integer> copy = Collections.unmodifiableList(new ArrayList<>(Objects.requireNonNull(days)));
-            boolean[] seen = new boolean[8];
-            for (int day : copy) {
-                if (day < 1 || day > 7 || seen[day])
-                    throw new IllegalArgumentException("Invalid Clock repeat days");
-                seen[day] = true;
-            }
-            return setRequest(hour, minute, label, timeZone, copy);
+            // Shared admission (plugin-native-system clock.ClockDays): unique 1..7, caller order kept.
+            return setRequest(hour, minute, label, timeZone, ClockDays.explicit(Objects.requireNonNull(days)));
         }
 
         private static Request setRequest(int hour, int minute, String label, String timeZone, List<Integer> days) {
@@ -168,22 +162,16 @@ final class ClockHandoff {
         return Outcome.OPENED;
     }
 
+    /** The standard Clock intent, built by the shared plugin-native-system clock.ClockHandoff. */
     private static Intent intentFor(Request request) {
         switch (request.action) {
-            case SET:
-                Intent alarm = new Intent(AlarmClock.ACTION_SET_ALARM)
-                        .putExtra(AlarmClock.EXTRA_HOUR, request.hour)
-                        .putExtra(AlarmClock.EXTRA_MINUTES, request.minute)
-                        .putExtra(AlarmClock.EXTRA_MESSAGE, request.label)
-                        .putExtra(AlarmClock.EXTRA_SKIP_UI, false);
-                if (request.days != null && !request.days.isEmpty())
-                    alarm.putIntegerArrayListExtra(AlarmClock.EXTRA_DAYS, new ArrayList<>(request.days));
-                return alarm;
-            case SHOW: return new Intent(AlarmClock.ACTION_SHOW_ALARMS);
-            case DISMISS: return new Intent(AlarmClock.ACTION_DISMISS_ALARM);
-            case SNOOZE:
-                return new Intent(AlarmClock.ACTION_SNOOZE_ALARM)
-                        .putExtra(AlarmClock.EXTRA_ALARM_SNOOZE_DURATION, request.snoozeMinutes);
+            case SET: {
+                List<Integer> days = request.days == null || request.days.isEmpty() ? null : new ArrayList<>(new TreeSet<>(request.days));
+                return ai.eliza.plugins.system.clock.ClockHandoff.intent("set", request.hour, request.minute, request.label, null, days);
+            }
+            case SHOW: return ai.eliza.plugins.system.clock.ClockHandoff.intent("show", null, null, null, null, null);
+            case DISMISS: return ai.eliza.plugins.system.clock.ClockHandoff.intent("dismiss", null, null, null, null, null);
+            case SNOOZE: return ai.eliza.plugins.system.clock.ClockHandoff.intent("snooze", null, null, null, request.snoozeMinutes, null);
             default: throw new IllegalArgumentException("Unsupported Clock action");
         }
     }

@@ -24,6 +24,8 @@ describe("Shared public weather location", () => {
     ],
     ["weather in Springfield, Missouri and include temperature", "Springfield, Missouri"],
     ["weather in Austin", "Austin"],
+    ["what's the weather in Tokyo right now?", "Tokyo"],
+    ["weather in Paris, France right now", "Paris, France"],
   ] as const) {
     test(`preserves bounded public weather location: ${message}`, () => {
       expect(resolveSharedRealtimeRequirement(message, [])).toMatchObject({

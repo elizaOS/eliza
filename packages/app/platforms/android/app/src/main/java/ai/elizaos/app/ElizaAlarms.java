@@ -24,7 +24,8 @@ final class ElizaAlarms {
     static final String ACTION_FIRE = "ai.elizaos.app.ownedalarm.FIRE";
     static final String EXTRA_ID = "alarmId";
     static final String EXTRA_GENERATION = "generation";
-    private static final String PREFS = "eliza_owned_native_alarms";
+    /** Installed device-protected preferences name; {@link ElizaDataResetStores} lists it. */
+    static final String PREFS = "eliza_owned_native_alarms";
     private static final String KEY = "state";
     private static final long MAX_INTEGER = 9007199254740991L;
     private static final Object LOCK = new Object();
@@ -275,6 +276,37 @@ final class ElizaAlarms {
                 save(context, state);
                 cancel(context, id, previous); cancelOccurrences(context, id, occurrences); return true;
             } catch (JSONException error) { throw invalid(error); }
+        }
+    }
+
+    interface HandoffStep<T> { T apply(JSONObject state, long now) throws JSONException; }
+
+    /**
+     * Runs one {@link ElizaAlarmHandoff} journal step on the durable state under the store lock and
+     * commits only a changed state. The journal never gates ringing: {@link #load} ignores it.
+     */
+    static <T> T handoff(Context context, HandoffStep<T> step) {
+        synchronized (LOCK) {
+            State state = load(context);
+            try {
+                String before = state.value.toString();
+                T result = step.apply(state.value, System.currentTimeMillis());
+                if (!before.equals(state.value.toString())) save(context, state);
+                return result;
+            } catch (JSONException error) { throw invalid(error); }
+        }
+    }
+
+    /**
+     * Retires a saved alarm the owner moved to Clock (or removed): the definition, its occurrences
+     * and the journal entry leave in one commit, then its platform tokens are cancelled.
+     */
+    static ElizaAlarmHandoff.Retirement retireForHandoff(Context context, String id, String attempt, String digest, String reason) {
+        requireId(id);
+        synchronized (LOCK) {
+            ElizaAlarmHandoff.Retirement retired = handoff(context, (state, now) -> ElizaAlarmHandoff.retire(state, id, attempt, digest, reason, now));
+            if (!retired.already) { cancel(context, id, retired.generation); cancelOccurrences(context, id, retired.occurrences); }
+            return retired;
         }
     }
 

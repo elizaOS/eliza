@@ -506,6 +506,9 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
         : undefined;
     }
     if (!account || account.deletedAt != null) return null;
+    // Match plugin-sql: an account owned by another agent is not visible.
+    if (account.agentId !== (params.agentId ?? this.sqlite.agentId))
+      return null;
     return {
       ...account,
       scopes: [...account.scopes],
@@ -542,6 +545,12 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
     const existingByRequestedId = requestedId
       ? this.connectorAccountsById.get(requestedId)
       : undefined;
+    if (existingByRequestedId && existingByRequestedId.agentId !== agentId) {
+      // Do not take over another agent's account (plugin-sql rejects it too).
+      throw new ElizaError("Connector account id belongs to another agent", {
+        code: "SQLITE_CONNECTOR_INVALID",
+      });
+    }
     if (existingByRequestedId?.deletedAt != null) {
       throw new ElizaError(
         "Connector account id already belongs to a deleted account",
@@ -654,7 +663,10 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
     };
     this.connectorAccountsById.set(String(id), record);
     this.connectorAccountIdsByKey.set(lookupKey, String(id));
-    return this.getConnectorAccount({ id }) as Promise<ConnectorAccountRecord>;
+    return this.getConnectorAccount({
+      id,
+      agentId,
+    }) as Promise<ConnectorAccountRecord>;
   }
 
   async deleteConnectorAccount(
@@ -764,7 +776,11 @@ export class SQLiteAdapterBase extends SQLiteRecordAdapter {
   ): Promise<number> {
     let deleted = 0;
     for (const [key, credential] of this.connectorCredentialRefs) {
-      if (credential.accountId === params.accountId) {
+      // Match plugin-sql: delete only refs owned by this agent.
+      if (
+        credential.accountId === params.accountId &&
+        credential.agentId === this.sqlite.agentId
+      ) {
         this.connectorCredentialRefs.delete(key);
         deleted += 1;
       }

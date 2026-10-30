@@ -68,6 +68,32 @@ export {
   webSocketAgentEvents,
 } from "./live-voice-session.js";
 export type {
+  NativeCaptureOpenOptions,
+  NativeListenerHandle,
+  NativeLiveCapturePort,
+  NativeLiveVoice,
+  NativeLiveVoiceOptions,
+  NativeResidentBinding,
+  NativeResidentCaptureInput,
+  NativeVoiceTimingPort,
+} from "./native-live-voice.js";
+export {
+  createNativeLiveVoice,
+  NATIVE_FINISHED_TURNS,
+  NATIVE_PENDING_FINALS,
+  nativeVoiceStageSink,
+  openNativeResidentCapture,
+  openNativeSegmentCapture,
+  readNativeVoiceTiming,
+  residentLiveTransport,
+} from "./native-live-voice.js";
+export type {
+  NativeSpeechRequestBinding,
+  NativeSpeechRequestRunner,
+  NativeSpeechRequestWork,
+} from "./native-speech-request.js";
+export { createNativeSpeechRequests } from "./native-speech-request.js";
+export type {
   NlmsEchoCancellerOptions,
   ResidualSuppressionOptions,
 } from "./nlms-echo-canceller.js";
@@ -116,7 +142,48 @@ export {
   VoiceAssistantError,
   VoiceAssistantSession,
 } from "./voice-assistant-session.js";
+export type {
+  CloudClefBlock,
+  CloudClefPlanAdmission,
+  CloudClefStageOptions,
+  CloudClefStatus,
+} from "./voice-cloud-clef.js";
+export {
+  CLOUD_CLEF_BLOCK_REASONS,
+  cloudClefStatus,
+  createCloudClefEndpointStage,
+} from "./voice-cloud-clef.js";
+export type {
+  ChainedEndpointResult,
+  ClefEndpointStage,
+  ClefEndpointUnavailableReason,
+  ClefTurnClient,
+  ClefTurnRequest,
+  EndpointChainOptions,
+  EndpointPath,
+  EndpointPort,
+} from "./voice-endpoint-chain.js";
+export {
+  CLEF_ENDPOINT_TIMEOUT_MS,
+  CLEF_ENDPOINT_UNAVAILABLE_REASONS,
+  CLEF_RECENT_TURNS_MAX,
+  CLEF_TURN_MAX_CHARS,
+  clefEndpointStageEnabled,
+  createEndpointChain,
+  readClefTurn,
+} from "./voice-endpoint-chain.js";
 export { scoreEndOfTurnHeuristic } from "./voice-eot.js";
+export type {
+  SpeechDataKind,
+  SpeechDisclosure,
+  SpeechDisclosureCopy,
+  SpeechRoute,
+} from "./voice-speech-disclosure.js";
+export {
+  SPEECH_DISCLOSURES,
+  speechDisclosure,
+  speechDisclosures,
+} from "./voice-speech-disclosure.js";
 export type {
   EndOfTurnUnavailableReason,
   HeardOutcome,

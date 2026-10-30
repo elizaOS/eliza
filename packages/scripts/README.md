@@ -68,7 +68,7 @@ exit status still gates the package result. No counts are inferred from stdout.
 
 ## Release preparation
 
-Use `bun run release:candidate --help` for candidate, verification, and publication commands, or the protected `release.yaml` workflow. Direct `release`, `release:next`, and `release:beta` publication shortcuts are retired. Prepare one exact cohort version, public access, and published dependency ranges before pinning the source SHA; the workflow does not rewrite manifests while publishing. The cohort in `release-cohort.json` contains the surviving publishable packages. Npm channels `latest`, `next`, and `beta` remain distinct from desktop channels.
+Use `bun run release:candidate --help` for candidate, verification, and publication commands, or the protected `release.yaml` workflow. Direct `release`, `release:next`, and `release:beta` publication shortcuts are retired. Prepare one exact cohort version and public access before pinning the source SHA. Source manifests keep `workspace:*` ranges; only each packed tarball pins them to the exact cohort version, and the source bytes are restored before the next check. The cohort in `release-cohort.json` contains the surviving publishable packages. Npm channels `latest`, `next`, and `beta` remain distinct from desktop channels.
 
 The protected **Mobile App Auth Registration Admin** workflow has a read-only
 `inventory` operation for Alpha Phone recovery. It reports only presence of the

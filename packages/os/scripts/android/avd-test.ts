@@ -2,15 +2,17 @@
 // Boot a stock Android emulator AVD and install the brand Capacitor APK
 // for app-level smoke testing without needing the AOSP system image.
 //
-// Brand-aware: APK path defaults to the brand's vendor staging
-// (`<brand.vendorDir>/apps/<brand.appName>/<brand.appName>.apk`).
+// Brand-aware: APK path defaults to the signed launcher staged for the image
+// (`<brand.vendorDir>/launcher/Launcher.apk`), falling back to the unsigned
+// build output (`<brand.vendorDir>/apps/<brand.appName>/<brand.appName>.apk`).
 // Override with --apk. Package id comes from `brand.packageName`.
 //
 // This is the *short* iteration loop: validates the WebView, gateway
 // service, and deep-link routing without paying for an AOSP rebuild.
-// The privileged-system-app behaviour (HOME role, default-permissions,
-// privapp whitelist) is NOT exercised here — for that, use Cuttlefish
-// + e2e-validate against the brand's `<brand>_cf_x86_64_phone` build.
+// The image launcher behaviour (system-partition install, first-boot grants,
+// default HOME and assistant provisioning) is NOT exercised here: an AVD
+// install is a user app. For that, use Cuttlefish + boot-validate against the
+// brand's `<brand>_cf_x86_64_phone` build.
 //
 // Usage:
 //   node scripts/android/avd-test.ts --avd <name>
@@ -38,9 +40,11 @@ import { resolveAdb } from "./capture-screens.ts";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(here, "../..");
 
-function defaultApkPath(brand) {
+export function defaultApkPath(brand, root = repoRoot) {
+  const staged = path.join(root, brand.vendorDir, "launcher", "Launcher.apk");
+  if (fs.existsSync(staged)) return staged;
   return path.join(
-    repoRoot,
+    root,
     brand.vendorDir,
     "apps",
     brand.appName,
@@ -339,9 +343,9 @@ export async function avdTest(options, brand) {
 
   await waitForBoot(adb, serial, options.bootTimeoutMs);
 
-  // Soong resigns prebuilts with the platform key for AOSP, so the staged
-  // APK is unsigned. AVD/emulator refuses unsigned APKs, so debug-sign on
-  // the fly using ~/.android/debug.keystore.
+  // The staged image launcher is presigned and installs as is. The unsigned
+  // build output (signed only before image staging) is debug-signed on the
+  // fly using ~/.android/debug.keystore, because Android refuses unsigned APKs.
   const installApk = ensureDebugSignedApk(options.apk, brand);
 
   // Re-install fresh so each run starts from a clean app state.

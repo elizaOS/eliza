@@ -45,12 +45,72 @@ port (full duplex only when the device's echo canceller is active), and `createL
 into Transcribe, a recorder-shaped driver whose Stop finalizes exactly the audio up to the tap and
 whose text only becomes an editable draft (never sent).
 
+`@elizaos/voice/native-live` is the renderer side of a native speech bridge
+(plugin-local-inference's `LocalSpeechBridgePlugin` or a product subclass), with no Capacitor
+import: the host passes the bridge as a `NativeLiveCapturePort` and the current resident agent
+as a `NativeResidentBinding` (`sessionId`, `ownerId`, owner-authenticated `request`, optional
+event `subscribe`). `createNativeLiveVoice` gives `ready` (bridge VAD capture plus the agent's
+streaming loader), `open` (a `LiveCaptureOpener`), `assistantListener` and `dictation`. When the
+bridge routes segments to the owner's agent itself (`nativeTransport`), no PCM crosses the
+bridge: events are admitted only for the current capture id while the owner and session hold
+(a change ends the capture as lost), each final is delivered once in VAD order, an ASR failure
+yields a null segment, and partials are display-only for the open turn. Otherwise frames cross
+the bridge and post through `residentLiveTransport`, which refuses once the session changed.
+`nativeVoiceStageSink` and `readNativeVoiceTiming` connect `turn-timing` to the bridge's native
+latency collector. `@elizaos/voice/native-speech` (`createNativeSpeechRequests`) runs one bridge
+request bound to the host's selection: a binding change or abort cancels the bridge request and
+the result is never returned. Vitest covers both against a fake bridge (not microphone,
+recognition or latency evidence).
+
 `@elizaos/voice/turn-routes` holds the clients for the resident's end-of-turn route
 (`residentEndpoint`, the controller's `endpoint` port: unavailable, malformed or over-long input is
 never complete) and the heard route (`createHeardReporter`: after a barge-in only the played
-prefix is kept, with one retry and never blocking the next turn). Hosts supply the owner-bound
-request port; neither module carries audio anywhere else, stores or logs text. Vitest covers them
-against stub agents; this is not microphone, recognition, scorer or latency evidence.
+prefix is kept, with one retry and never blocking the next turn; a reply interrupted before any of
+it played is reported as `{ nothingHeard: true }`, so the agent keeps an empty, interruption-marked
+reply instead of words the user never heard; a reply whose playback failed before any sentence
+finished, `playbackFailed`, is kept as stored). Hosts supply the owner-bound request port; neither
+module carries audio anywhere else, stores or logs text. Vitest covers them against stub agents;
+this is not microphone, recognition, scorer or latency evidence.
+
+`@elizaos/voice/endpoint-chain` composes the controller's `endpoint` port as a chain: the local
+fused scorer decides when it can score; only when it cannot does an optional Clef `turn` stage
+(Eliza Cloud, `createClefDecisionsClient` from `@elizaos/cloud-sdk`) see the transcript text, under
+its own timeout; otherwise the session's long silence gap submits. Clef unavailable, disabled,
+late or refused is never a yes. The Clef stage is built only when the host passes
+`clef: { enabled: true, client }`; either alone leaves it out. Each answer names its `path`
+(`local` or `clef`), which the controller's `EndpointRecord` and the timing `endpoint` section
+keep; resumed speech aborts the chain between stages. Vitest covers the chain with stub stages
+and a fake clock; it is not Clef, scorer or latency evidence.
+
+`@elizaos/voice/cloud-clef` binds Eliza Cloud's Clef `turn` decision (`POST /api/v1/decisions`)
+into that `clef` slot: `createCloudClefEndpointStage({ enabled, client, isOnline, hasCredential,
+entitlement, recentTurns })`. With the switch off or no client the stage has a null client and the
+chain leaves it out. Otherwise the stage asks its ports on every turn before anything is sent:
+offline answers `clef-unavailable`; no Cloud credential, or a plan gate (`planAdmission(view)` from
+`@elizaos/cloud-sdk/subscription-entitlement`) of `needs-plan` or no plan state, answers
+`clef-disabled`. A blocked turn sends nothing, the timing record still names the `clef` path, and
+the long gap submits; the local scorer is asked first either way. An `unknown` plan state (still
+checking, billing outage) admits, because Cloud authorizes each Clef call itself and its
+`unavailable` answer is never a yes. The gate reads cached plan state only and never adds a billing
+request to a turn. `cloudClefStatus(options)` gives Settings the same answer with a specific
+`block` (`disabled`, `no-client`, `offline`, `no-credential`, `no-plan`). Recent turns are reduced
+to `{ speaker, text }` and capped at `CLEF_RECENT_TURNS_MAX` (6); audio is never part of a Clef
+request. Vitest drives the real `createClefDecisionsClient` over a mock fetch; nothing reaches
+Eliza Cloud, and it is not Clef, network or latency evidence.
+
+`@elizaos/voice/speech-disclosure` is the one table of what leaves the device per speech route,
+which products render instead of writing their own copy (`SPEECH_DISCLOSURES`,
+`speechDisclosures({ serviceName, deviceNoun })`, `speechDisclosure(route)`):
+
+| Route | Leaves the device |
+| --- | --- |
+| `local-turn`, `local-stt`, `local-tts` | nothing |
+| `clef-turn` | the current transcript text and at most 6 recent text turns; never audio |
+| `cloud-stt` | the recorded audio |
+| `cloud-tts` | the reply text |
+
+Only the service name and the device noun can be substituted. The table covers speech routes;
+conversation text sent to a language model is the model setting's disclosure.
 
 ## Voice turn latency records
 

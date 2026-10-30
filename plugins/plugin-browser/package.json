@@ -1,6 +1,6 @@
 {
   "name": "@elizaos/plugin-browser",
-  "version": "2.0.3-beta.7",
+  "version": "2.0.12-beta.0",
   "type": "module",
   "description": "Browser automation through the embedded desktop workspace, JSDOM, and optional Stagehand targets.",
   "main": "./dist/index.js",

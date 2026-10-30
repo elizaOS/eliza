@@ -156,7 +156,7 @@ export class NotesEditor {
         {
           ...(captured.id
             ? { id: captured.id, expectedRevision: captured.baseRevision }
-            : {}),
+            : { forceNew: true }),
           content,
           color: captured.color,
           ...(captured.format ? { format: captured.format } : {}),

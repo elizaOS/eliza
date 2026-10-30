@@ -373,13 +373,7 @@ function buildTarget(target) {
   const revision = forkRevision(srcDir);
   log(`target=${target} sdk=${t.sdk} fork=${revision}`);
   log(`source: ${srcDir}`);
-  const metalDeploymentFlag = t.isSimulator
-    ? `-mios-simulator-version-min=${DEPLOYMENT_TARGET}`
-    : `-miphoneos-version-min=${DEPLOYMENT_TARGET}`;
-  // ggml appends GGML_METAL_STD after -std=; CMake list expansion lets this
-  // also pass the iOS deployment target into the embedded metallib compile.
   const metalStd = t.isSimulator ? IOS_SIM_METAL_STD : IOS_METAL_STD;
-  const metalStdAndDeployment = `${metalStd};${metalDeploymentFlag}`;
 
   const buildDir = path.join(STATE_DIR, "local-inference", "mtp-build", target);
   if (process.env.ELIZA_MTP_FORCE_REBUILD === "1") {
@@ -408,7 +402,11 @@ function buildTarget(target) {
     // (ggml-metal/CMakeLists.txt ELIZA-KERNEL-EMBED-PATCH-V1).
     "-DGGML_METAL=ON",
     "-DGGML_METAL_EMBED_LIBRARY=ON",
-    `-DGGML_METAL_STD=${metalStdAndDeployment}`,
+    `-DGGML_METAL_STD=${metalStd}`,
+    // ggml turns this plus CMAKE_OSX_DEPLOYMENT_TARGET (and a simulator
+    // sysroot) into -mtargetos=ios<version>[-simulator] for every metallib,
+    // including the OS 26 tensor-API library.
+    "-DGGML_METAL_TARGET_OS=ios",
     "-DGGML_METAL_USE_BF16=ON",
     "-DGGML_ACCELERATE=ON",
     "-DGGML_BLAS=OFF",

@@ -97,8 +97,11 @@ export async function* readTimedSpeech(response) {
         continue;
       }
       pending += decoder.decode(chunk.value, { stream: true });
-      let end;
-      while ((end = pending.indexOf("\n")) !== -1) {
+      for (
+        let end = pending.indexOf("\n");
+        end !== -1;
+        end = pending.indexOf("\n")
+      ) {
         if (end > MAX_LINE || terminal) throw fail("Invalid speech frame");
         let frame;
         try {

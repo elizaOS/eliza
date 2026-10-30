@@ -96,7 +96,7 @@ async function runCreditGate(
   insufficientMessage: (balance: number) => string,
 ): Promise<CreditGateResult> {
   try {
-    const org = await readAgentFundingAccount(organizationId);
+    const org = await readAgentFundingAccount(organizationId, { managedComputePaymentGrace: true });
     if (!org) {
       return {
         allowed: false,

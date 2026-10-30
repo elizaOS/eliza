@@ -354,6 +354,40 @@ public final class SmsSendJournal {
   return true;
  }
 
+ /**
+  * The in-process sent receipts of this send ({@link ReviewedSmsSend}) can no longer arrive: they
+  * timed out or were released. Parts still waiting stay unknown and the record reads "unknown" unless
+  * recorded evidence already decides it; nothing is marked failed and nothing is resent. Returns
+  * whether the record changed.
+  */
+ synchronized boolean receiptsLost(String operationId) throws IOException {
+  Record record = records.get(operationId);
+  if (!loseReceipts(record)) return false;
+  save();
+  return true;
+ }
+ /**
+  * Every record still waiting for sent receipts loses them. Only for a journal whose receipts are held
+  * in process ({@link ReviewedSmsSend}), on its first load in a new process: the receivers that could
+  * have reported them died with the previous process. Never resends.
+  */
+ synchronized boolean allReceiptsLost() throws IOException {
+  boolean changed = false;
+  for (Record record : records.values()) changed |= loseReceipts(record);
+  if (changed) save();
+  return changed;
+ }
+ private static boolean loseReceipts(Record record) {
+  if (record == null || record.decision != null || record.unknown || record.dispatching) return false;
+  for (int i = 0; i < record.parts(); i++) if (record.sent[i] == UNKNOWN) { record.unknown = true; return true; }
+  return false;
+ }
+
+ /** True when this operation ID was ever recorded: a record, a tombstone or the retired filter. Such an ID never sends again. */
+ public synchronized boolean known(String operationId) {
+  return records.containsKey(operationId) || tombstones.containsKey(operationId) || isRetired(operationId);
+ }
+
  /** A delivery PendingIntent arrived for this part. Its outcome is resolved from the provider status. */
  synchronized boolean deliveryReported(String operationId, int index) throws IOException {
   Record record = records.get(operationId);

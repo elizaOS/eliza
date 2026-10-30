@@ -267,7 +267,7 @@ export function selectBestProfile(
  * Flags produced (in order):
  *   --n-gpu-layers <N>
  *   --flash-attn             (when flash_attn is true)
- *   --no-mmap                (when use_mmap is false)
+ *   --load-mode none         (when use_mmap is false)
  *   --numa                   (when numa is true)
  *   --ctx-size <N>
  *
@@ -298,7 +298,7 @@ export function buildLlamaCppArgs(
   }
 
   if (!flags.use_mmap) {
-    argv.push("--no-mmap");
+    argv.push("--load-mode", "none");
   }
 
   if (flags.numa) {

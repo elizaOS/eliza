@@ -17,6 +17,27 @@ const MODE_NAME: Record<TravelMode, string> = {
   transit: "transit",
 };
 
+/** Canonical display order of travel modes. */
+const MODE_ORDER: readonly TravelMode[] = [
+  "drive",
+  "walk",
+  "bicycle",
+  "transit",
+];
+
+/**
+ * Travel modes to offer for a provider. A reported coverage is authoritative,
+ * so transit is offered only where it lists transit (Eliza Cloud reports none).
+ * A provider that publishes no coverage, or whose coverage cannot be read, is
+ * not narrowed: it answers each mode itself, as before coverage existed.
+ */
+export function offeredTravelModes(
+  coverage: Pick<MapsCoverage, "travelModes"> | null | undefined,
+): TravelMode[] {
+  if (!coverage) return [...MODE_ORDER];
+  return MODE_ORDER.filter((mode) => coverage.travelModes.includes(mode));
+}
+
 function list(items: readonly string[], conjunction: "and" | "or"): string {
   if (items.length <= 1) return items[0] ?? "";
   return `${items.slice(0, -1).join(", ")} ${conjunction} ${items.at(-1)}`;

@@ -17,7 +17,6 @@ import {
   COMMAND_PALETTE_EVENT,
   clearStandaloneBottomReclaim,
   client,
-  completeAndroidCloudSignIn,
   createPersistedActiveServer,
   createTranslator,
   dedicatedCloudAgentIdFromBase,
@@ -87,7 +86,6 @@ import {
   setBootConfig,
   setStorageValue,
   shellLocalStorage,
-  shouldAcknowledgeAndroidCloudCallback,
   shouldInstallMainWindowFirstRunPatches,
   shouldInstallStandaloneBottomReclaim,
   startRendererServiceHost,
@@ -1137,19 +1135,6 @@ async function handleAuthCallbackDeepLink(
   path: string,
   url: string,
 ): Promise<boolean> {
-  if (isAndroid && isAndroidCloudBuild()) {
-    try {
-      await completeAndroidCloudSignIn(url);
-      return true;
-    } catch (error) {
-      console.warn(
-        `${APP_LOG_PREFIX} Android Cloud sign-in callback failed:`,
-        error instanceof Error ? error.message : error,
-      );
-      if (shouldAcknowledgeAndroidCloudCallback(error)) return true;
-      throw error;
-    }
-  }
   const outcome = rejectOsDeliveredAuthCallback();
   let activeServerBefore = "";
   try {

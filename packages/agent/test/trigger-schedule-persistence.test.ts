@@ -957,6 +957,64 @@ it("keeps an interval trigger's next run when an edit leaves the interval", asyn
   }
 });
 
+it("removes a trigger's run limit when an edit clears Stop after", async () => {
+  const runtime = fixture.runtime;
+  const created = await requestTrigger("POST", "/api/triggers", {
+    kind: "prompt",
+    displayName: `Stretch reminder ${randomUUID()}`,
+    instructions: "Remind me to stretch.",
+    triggerType: "interval",
+    intervalMs: 3_600_000,
+    maxRuns: 1,
+  });
+  expect(created.status).toBe(201);
+  const { id: triggerId, taskId } = created.payload.trigger;
+  const schedule = { triggerType: "interval", intervalMs: 3_600_000 };
+  try {
+    // An edit that does not send the field keeps the limit.
+    const renamed = await requestTrigger("PUT", `/api/triggers/${triggerId}`, {
+      ...schedule,
+      displayName: "Stretch reminder (renamed)",
+    });
+    expect(renamed.status).toBe(200);
+    expect(renamed.payload.trigger.maxRuns).toBe(1);
+    // The Automations form sends a cleared "Stop after" field as null.
+    const cleared = await requestTrigger("PUT", `/api/triggers/${triggerId}`, {
+      ...schedule,
+      maxRuns: null,
+    });
+    expect(cleared.status).toBe(200);
+    expect(cleared.payload.trigger.maxRuns).toBeUndefined();
+    const task = await runtime.getTask(taskId);
+    if (!task) throw new Error("Edited task missing");
+    expect(readTriggerConfig(task)?.maxRuns).toBeUndefined();
+    const priorMessageService = runtime.messageService;
+    runtime.messageService = {
+      handleMessage: async () => ({
+        outcome: { status: "completed", effects: [] },
+        didRespond: false,
+        responseMessages: [],
+      }),
+    } satisfies Pick<
+      IMessageService,
+      "handleMessage"
+    > as unknown as IMessageService;
+    try {
+      const result = await executeTriggerTask(runtime, task, {
+        source: "scheduler",
+        force: true,
+      });
+      expect(result.status).toBe("success");
+      expect(result.taskDeleted).toBe(false);
+    } finally {
+      runtime.messageService = priorMessageService;
+    }
+    expect(await runtime.getTask(taskId)).not.toBeNull();
+  } finally {
+    await runtime.deleteTask(taskId);
+  }
+});
+
 const onceUpdates: { enabled: boolean; body: JsonObject; status: number }[] = [
   {
     enabled: true,
@@ -1217,6 +1275,106 @@ it.each([
     }
   },
 );
+
+it("delivers a workflow trigger edited into a prompt through the owner room", async () => {
+  const runtime = fixture.runtime;
+  const broadcasts: unknown[] = [];
+  const ownerState = () =>
+    ({
+      runtime,
+      config: {},
+      agentName: "TriggerScheduleBoundary",
+      adminEntityId: null,
+      chatUserId: null,
+      logBuffer: [],
+      conversations: new Map(),
+      activeChatTurnCount: 0,
+      conversationRestorePromise: null,
+      deletedConversationIds: new Set(),
+      broadcastWs: (event: unknown) => broadcasts.push(event),
+    }) as unknown as ServerState;
+  const instructions = `Edited into a prompt ${randomUUID()}`;
+  const created = await requestTrigger("POST", "/api/triggers", {
+    kind: "workflow",
+    workflowId: `wf-${randomUUID()}`,
+    workflowName: "Morning digest",
+    displayName: instructions,
+    triggerType: "interval",
+    intervalMs: 3_600_000,
+  });
+  expect(created.status).toBe(201);
+  const { id: triggerId, taskId } = created.payload.trigger;
+  // The Automations form: kind toggle -> Prompt, then Save.
+  const edit: JsonObject = {
+    kind: "prompt",
+    instructions,
+    triggerType: "interval",
+    intervalMs: 3_600_000,
+  };
+  try {
+    const unavailable = ownerState();
+    const lost = await ensureOwnerConversation(unavailable, runtime);
+    await runtime.deleteRoom(lost.roomId);
+    const before = await runtime.getTask(taskId);
+    const refused = await requestTrigger(
+      "PUT",
+      `/api/triggers/${triggerId}`,
+      edit,
+      unavailable,
+    );
+    expect(refused.status).toBe(503);
+    expect(await runtime.getTask(taskId)).toEqual(before);
+
+    const state = ownerState();
+    registerClientChatSendHandler(runtime, state);
+    const updated = await requestTrigger(
+      "PUT",
+      `/api/triggers/${triggerId}`,
+      edit,
+      state,
+    );
+    expect(updated.status).toBe(200);
+    expect(updated.payload.trigger.kind).toBe("prompt");
+    const conversation = await ensureOwnerConversation(state, runtime);
+    const task = await runtime.getTask(taskId);
+    if (!task) throw new Error("Edited task missing");
+    expect(task.roomId).toBe(conversation.roomId);
+    const priorMessageService = runtime.messageService;
+    runtime.messageService = {
+      handleMessage: async (_runtime, message, callback) => {
+        expect(message.roomId).toBe(conversation.roomId);
+        if (!callback) throw new Error("Missing delivery callback");
+        const responseMessages = await callback({ text: instructions });
+        return {
+          outcome: { status: "completed", effects: [] },
+          didRespond: true,
+          responseMessages: responseMessages ?? [],
+        };
+      },
+    } satisfies Pick<
+      IMessageService,
+      "handleMessage"
+    > as unknown as IMessageService;
+    try {
+      const result = await executeTriggerTask(runtime, task, {
+        source: "manual",
+        force: true,
+      });
+      expect(result.status).toBe("success");
+      expect(broadcasts).toContainEqual(
+        expect.objectContaining({
+          type: "proactive-message",
+          conversationId: conversation.id,
+          message: expect.objectContaining({ text: instructions }),
+        }),
+      );
+    } finally {
+      runtime.messageService = priorMessageService;
+    }
+  } finally {
+    await runtime.deleteTask(taskId);
+  }
+});
 
 it("rejects a prompt delivery binding when the host runtime changes during conversation restore", async () => {
   const runtime = fixture.runtime;

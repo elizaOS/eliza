@@ -439,6 +439,117 @@ describe("NotesStore", () => {
     );
   });
 
+  it("keeps another note when an edit by id passes through its text", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    // The edited note is the older one, so the list must show it, not the
+    // other note, while both have the same text.
+    const typed = await service.createNote({
+      title: "Call",
+      body: "",
+      color: "yellow",
+    });
+    const other = await service.createNote({
+      title: "Call mom",
+      body: "",
+      color: "yellow",
+    });
+
+    // The editor saves on each keystroke: "Call" -> "Call mom" -> "Call mom tomorrow".
+    const reached = await service.updateNoteWithCommit(
+      typed.id,
+      { title: "Call mom" },
+      service.snapshot().revision,
+    );
+    expect(reached.consolidatedIds).toEqual([]);
+    expect(reached.snapshot.notes.map((note) => note.id)).toContain(typed.id);
+    const left = await service.updateNoteWithCommit(
+      typed.id,
+      { title: "Call mom tomorrow" },
+      service.snapshot().revision,
+    );
+    expect(left.consolidatedIds).toEqual([]);
+
+    expect(service.getNote(other.id)).toMatchObject({ title: "Call mom" });
+    expect(service.getNote(typed.id)).toMatchObject({
+      title: "Call mom tomorrow",
+    });
+  });
+
+  it("keeps another note when a new draft's first save matches its text", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const existing = await service.createNote({
+      title: "A",
+      body: "",
+      color: "yellow",
+    });
+
+    // Without forceNew, create replays the existing note (agent idempotency).
+    const replayed = await service.createNoteWithCommit({
+      title: "A",
+      body: "",
+      color: "yellow",
+    });
+    expect(replayed.replayed).toBe(true);
+    expect(replayed.value.id).toBe(existing.id);
+
+    // The Notes editor passes forceNew on create-note for a new draft. The
+    // first keystroke save may equal another note; that draft must still get
+    // its own id so later keystrokes do not overwrite the other note.
+    const created = await service.createNoteWithCommit({
+      title: "A",
+      body: "",
+      color: "yellow",
+      forceNew: true,
+    });
+    expect(created.replayed).toBe(false);
+    expect(created.value.id).not.toBe(existing.id);
+
+    const left = await service.updateNoteWithCommit(
+      created.value.id,
+      { title: "AB" },
+      service.snapshot().revision,
+    );
+    expect(left.value.title).toBe("AB");
+    expect(service.getNote(existing.id)).toMatchObject({ title: "A" });
+    expect(service.getNote(created.value.id)).toMatchObject({ title: "AB" });
+    expect(service.listNotes()).toHaveLength(2);
+  });
+
+  it("create-note with forceNew keeps the other note through interact", async () => {
+    const service = await serviceFor(await temporaryStateFile());
+    const first = await interact(
+      "create-note",
+      { content: "A", color: "yellow" },
+      service,
+    );
+    const existingId = (first.data as { note: { id: string } }).note.id;
+
+    const created = await interact(
+      "create-note",
+      { content: "A", color: "yellow", forceNew: true },
+      service,
+    );
+    expect(created).toMatchObject({
+      success: true,
+      data: { replayed: false },
+    });
+    const draftId = (created.data as { note: { id: string } }).note.id;
+    expect(draftId).not.toBe(existingId);
+
+    await interact(
+      "update-note",
+      {
+        id: draftId,
+        content: "AB",
+        expectedRevision: service.snapshot().revision,
+      },
+      service,
+    );
+    expect(service.getNote(existingId)).toMatchObject({ title: "A" });
+    expect(service.getNote(draftId)).toMatchObject({ title: "AB" });
+    expect(service.listNotes()).toHaveLength(2);
+  });
+
   it("serializes concurrent writes without losing a mutation", async () => {
     const filePath = await temporaryStateFile();
     const service = await serviceFor(filePath);

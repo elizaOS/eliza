@@ -238,9 +238,15 @@ describe("LP3 direct Cloud build flag", () => {
       "service:com.capacitorjs.plugins.pushnotifications.MessagingService",
     );
     expect(manifestPolicy.components).not.toContain(
+      "service:com.google.firebase.messaging.FirebaseMessagingService",
+    );
+    // Google Play services' API activity and version metadata stay without
+    // Firebase: the native Cloud sign-in library (Google account picker)
+    // declares them.
+    expect(manifestPolicy.components).toContain(
       "activity:com.google.android.gms.common.api.GoogleApiActivity",
     );
-    expect(manifestPolicy.metadataNames).not.toContain(
+    expect(manifestPolicy.metadataNames).toContain(
       "com.google.android.gms.version",
     );
     expect(manifestPolicy.application.debuggable).toBe("true");

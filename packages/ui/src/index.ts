@@ -5,8 +5,15 @@ export { AgentSurfaceProvider } from "./agent-surface/AgentSurfaceContext.js";
 export { AgentButton } from "./agent-surface/components.js";
 export { getViewRegistry } from "./agent-surface/registry.js";
 export { useAgentElement } from "./agent-surface/useAgentElement.js";
-export { completeAndroidCloudSignIn } from "./android-cloud/android-cloud-auth.js";
-export { shouldAcknowledgeAndroidCloudCallback } from "./android-cloud/android-cloud-client.js";
+export {
+  AndroidNativeCloudSignInHost,
+  AndroidNativeCloudSignInView,
+} from "./android-cloud/AndroidNativeCloudSignInView.js";
+export {
+  type AndroidNativeCloudSignInRequest,
+  type ElizaCloudEnvironment,
+  requestAndroidNativeCloudSignIn,
+} from "./android-cloud/native-cloud-sign-in.js";
 export {
   abortableResponse,
   runAbortableRequest,
@@ -79,9 +86,18 @@ export {
 export {
   type ConversationRoom,
   type ConversationStopResult,
+  type ConversationTurnContext,
   ConversationTurnController,
+  type ConversationTurnFailure,
   type ConversationTurnObserver,
+  ConversationTurnRefusal,
+  type ConversationTurnRefusalCode,
   type ConversationTurnTransport,
+  findStoppedUserTurn,
+  isConversationTurnRefusal,
+  STOPPED_TURN_CLOCK_SKEW_MS,
+  type StoppedConversationTurn,
+  type StoppedUserTurn,
 } from "./api/conversation-turn-controller.js";
 export { fetchWithCsrf } from "./api/csrf-client.js";
 export type {
@@ -158,9 +174,13 @@ export { AppBackground } from "./backgrounds/AppBackground.js";
 export { BRAND_PATHS, LOGO_FILES } from "./brand/index.js";
 export { initializeCapacitorBridge } from "./bridge/capacitor-bridge.js";
 export {
+  CLOCK_SAVED_ALARM_OUTCOMES,
   type ClockAlarmStatus,
   type ClockHost,
   type ClockProposal,
+  type ClockSavedAlarmOutcome,
+  type ClockSavedAlarmReview,
+  type ClockSavedAlarms,
   type ClockStatus,
   configureClockHost,
   getClockHost,
@@ -293,6 +313,11 @@ export {
   type ElizaCloudTier,
 } from "./components/cockpit/cockpit-modes.js";
 export { DiffReviewPanel } from "./components/composites/DiffReviewPanel.js";
+export {
+  type DeferredDeletionIdentity,
+  DeferredDeletionNotice,
+  type DeferredDeletionNoticeProps,
+} from "./components/composites/deferred-deletion-notice.js";
 export { PageLoadingState } from "./components/composites/page-panel/content-state.js";
 export { PagePanel } from "./components/composites/page-panel/index.js";
 export { CustomActionEditor } from "./components/custom-actions/CustomActionEditor.js";
@@ -308,6 +333,12 @@ export {
 } from "./components/pages/WalletSectionNav.js";
 export { PermissionPrimingOverlay } from "./components/permissions/PermissionPrimingOverlay.js";
 export { PermissionRecoveryCallout } from "./components/permissions/PermissionRecoveryCallout.js";
+export {
+  PERMISSION_WALKTHROUGH_MEMORY_KEY,
+  PERMISSION_WALKTHROUGH_REOPEN_EVENT,
+  primingWalkthroughMemory,
+} from "./components/permissions/permission-priming.js";
+export * from "./components/permissions/permission-walkthrough.js";
 export { ShellModalityProvider } from "./components/ShellModalityProvider.js";
 export { ShellRoleProvider } from "./components/ShellRoleProvider.js";
 export {

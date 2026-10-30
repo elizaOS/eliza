@@ -29,6 +29,7 @@ import {
 import {
   getSharedWhatsAppVerifyToken,
   resolveWebhookConfig,
+  WebhookConfigUnavailableError,
 } from "./webhook-config";
 import {
   handleWebhook,
@@ -153,14 +154,26 @@ app.get("/webhook/:project/whatsapp/:agentId", async (c) => {
   const challenge = c.req.query("hub.challenge");
   const agentId = c.req.param("agentId");
 
-  const config = await resolveWebhookConfig(
-    redis,
-    ELIZA_CLOUD_URL,
-    getAuthHeader(),
-    "whatsapp",
-    c.req.param("project"),
-    agentId,
-  );
+  let config: Awaited<ReturnType<typeof resolveWebhookConfig>>;
+  try {
+    config = await resolveWebhookConfig(
+      redis,
+      ELIZA_CLOUD_URL,
+      getAuthHeader(),
+      "whatsapp",
+      c.req.param("project"),
+      agentId,
+    );
+  } catch (error) {
+    // Meta retries a 5xx handshake; a 403 would tell it the callback URL is
+    // permanently wrong because our own config read failed.
+    if (!(error instanceof WebhookConfigUnavailableError)) throw error;
+    logger.error("WhatsApp verify config unavailable", {
+      agentId,
+      error: error.message,
+    });
+    return c.text("Service Unavailable", 503);
+  }
 
   if (
     mode === "subscribe" &&

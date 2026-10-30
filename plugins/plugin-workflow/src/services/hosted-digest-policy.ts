@@ -10,8 +10,15 @@
  * from the current time, so a long absence leaves one record and no backlog.
  */
 
-/** An occurrence admitted more than this long after its scheduled time is missed. */
-export const DIGEST_RUN_WINDOW_MS = 120_000;
+/**
+ * An occurrence admitted more than this long after its scheduled time is
+ * missed: thirty minutes, the same window as phone typed schedules
+ * (`PHONE_SCHEDULE_ADMISSION_WINDOW_MS`) and core scheduling
+ * (`SCHEDULED_OCCURRENCE_WINDOW_MS`); hosted-digests-client.test.ts pins all
+ * three together. Kept a literal so this module stays import-free for clients
+ * that project it on its own.
+ */
+export const DIGEST_RUN_WINDOW_MS = 30 * 60_000;
 
 /** Occurrences the agent records without running them. They are records, not briefs. */
 export const DIGEST_NOT_RUN_STATUSES = ['missed', 'overlap', 'unavailable'] as const;

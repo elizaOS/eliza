@@ -58,6 +58,8 @@ android {
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_WEBHOOK_URL') ?: 'https://api.eliza.app/api/webhooks/blooio/local?bridge=bluebubbles').collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')}\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_PHONE_NUMBER') ?: '+14159611510').collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')}\""
         buildConfigField "String", "ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL", "\"${(System.getenv('ELIZA_ANDROID_SMS_GATEWAY_PHONE_LABEL') ?: 'Eliza Cloud Gateway (+14159611510)').collect { ch -> ch == '\\' ? '\\\\' : ch == '"' ? '\\"' : (ch.codePointAt(0) < 32 || ch.codePointAt(0) == 127) ? String.format('\\%03o', ch.codePointAt(0)) : ch }.join('')}\""
+        // Development builds may also admit the staging Cloud deployment for native sign-in.
+        buildConfigField "boolean", "ELIZA_CLOUD_SIGN_IN_STAGING", "${['1', 'true', 'yes'].contains((System.getenv('ELIZA_CLOUD_SIGN_IN_STAGING') ?: 'false').toLowerCase())}"
         def browserPackage = System.getenv('ELIZA_CHROMIUM_PACKAGE_NAME')
         if (browserPackage == null) browserPackage = 'org.chromium.chrome'
         if (!(browserPackage in ['org.chromium.chrome', 'ai.elizaos.chromium'])) {
@@ -610,6 +612,8 @@ dependencies {
         implementation "com.google.guava:guava:31.1-android"
     }
     implementation project(':capacitor-android')
+    // Native Eliza Cloud sign-in (email code, SMS code, native Google): ElizaCloudSignInPlugin.
+    implementation project(':eliza-auth-cloud')
     implementation "com.google.code.gson:gson:2.14.0"
     if (project.findProperty('elizaCloudBuild') != 'true') {
         implementation "com.google.firebase:firebase-common-ktx:21.0.0"
