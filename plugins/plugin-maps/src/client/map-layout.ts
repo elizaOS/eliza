@@ -1,41 +1,98 @@
-/** Space covered by the canonical MapsScreen controls. Controls outside the map
- * reserve no space; short viewports retain room for the camera bounds. */
+/** Fit inside the largest rectangle not covered by canonical MapsScreen controls.
+ * Flow controls outside the plane reserve no space. The root also owns the
+ * navigation actions, which are siblings of the map's scroll container. */
 export function visibleMapPadding(container: HTMLElement) {
   const map = container.getBoundingClientRect();
-  const parent = container.parentElement;
-  const inset = { top: 24, bottom: 24, left: 24, right: 24 };
-  const overlap = (selector: string) => {
-    const box = parent?.querySelector(selector)?.getBoundingClientRect();
-    return box &&
-      box.right > map.left &&
-      box.left < map.right &&
-      box.bottom > map.top &&
-      box.top < map.bottom
-      ? box
-      : null;
+  const root =
+    container.closest?.("[data-maps-root]") ?? container.parentElement;
+  const horizontal = Math.min(24, map.width / 4);
+  const vertical = Math.min(24, map.height / 4);
+  const frame = {
+    left: map.left + horizontal,
+    right: map.right - horizontal,
+    top: map.top + vertical,
+    bottom: map.bottom - vertical,
   };
-  const header = overlap("[data-maps-search]");
-  const credits = overlap("[data-maps-credits]");
-  const sheet = overlap("[data-maps-sheet]");
-  if (header) inset.top = Math.max(inset.top, header.bottom - map.top + 16);
-  if (credits)
-    inset.bottom = Math.max(inset.bottom, map.bottom - credits.top + 16);
-  if (sheet) {
-    if (sheet.left > map.left + map.width * 0.35)
-      inset.right = Math.max(inset.right, map.right - sheet.left + 24);
-    else inset.bottom = Math.max(inset.bottom, map.bottom - sheet.top + 24);
-  }
-  for (const [start, end, length] of [
-    ["top", "bottom", map.height],
-    ["left", "right", map.width],
-  ] as const) {
-    const total = inset[start] + inset[end];
-    const available = Math.max(0, length - Math.min(80, length / 2));
-    if (total > available) {
-      const scale = available / total;
-      inset[start] *= scale;
-      inset[end] *= scale;
+  const primary =
+    root?.querySelector("[data-maps-primary]") ??
+    root?.querySelector("[data-maps-search]");
+  const overlays = [
+    [primary, 16],
+    [root?.querySelector("[data-maps-credits]"), 16],
+    [root?.querySelector("[data-maps-sheet]"), 24],
+    [root?.querySelector("[data-maps-navigation-controls]"), 16],
+  ] as const;
+  const boxes = overlays.flatMap(([element, gap]) => {
+    const box = element?.getBoundingClientRect();
+    if (
+      !box ||
+      box.width === 0 ||
+      box.height === 0 ||
+      box.right <= map.left ||
+      box.left >= map.right ||
+      box.bottom <= map.top ||
+      box.top >= map.bottom
+    )
+      return [];
+    const clipped = {
+      left: Math.max(frame.left, box.left - gap),
+      right: Math.min(frame.right, box.right + gap),
+      top: Math.max(frame.top, box.top - gap),
+      bottom: Math.min(frame.bottom, box.bottom + gap),
+    };
+    return clipped.right > clipped.left && clipped.bottom > clipped.top
+      ? [clipped]
+      : [];
+  });
+  const xs = [
+    ...new Set([
+      frame.left,
+      frame.right,
+      ...boxes.flatMap((box) => [box.left, box.right]),
+    ]),
+  ].sort((a, b) => a - b);
+  const ys = [
+    ...new Set([
+      frame.top,
+      frame.bottom,
+      ...boxes.flatMap((box) => [box.top, box.bottom]),
+    ]),
+  ].sort((a, b) => a - b);
+  let best = frame,
+    area = 0;
+  for (let left = 0; left < xs.length - 1; left++)
+    for (let right = left + 1; right < xs.length; right++) {
+      for (let top = 0; top < ys.length - 1; top++)
+        for (let bottom = top + 1; bottom < ys.length; bottom++) {
+          const candidate = {
+            left: xs[left],
+            right: xs[right],
+            top: ys[top],
+            bottom: ys[bottom],
+          };
+          if (
+            boxes.some(
+              (box) =>
+                candidate.left < box.right &&
+                candidate.right > box.left &&
+                candidate.top < box.bottom &&
+                candidate.bottom > box.top,
+            )
+          )
+            continue;
+          const size =
+            (candidate.right - candidate.left) *
+            (candidate.bottom - candidate.top);
+          if (size > area) {
+            best = candidate;
+            area = size;
+          }
+        }
     }
-  }
-  return inset;
+  return {
+    top: best.top - map.top,
+    bottom: map.bottom - best.bottom,
+    left: best.left - map.left,
+    right: map.right - best.right,
+  };
 }

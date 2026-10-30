@@ -506,7 +506,11 @@ test("canonical overlays leave camera space in landscape and keyboard viewports"
     geometry: [point, { ...point, latitude: 37.78 }],
   });
   const fitted = f.maps[1].fit.options.padding;
-  assert.equal(fitted.top + fitted.bottom, 100);
+  assert.equal(fitted.top + fitted.bottom, 128);
+  assert.ok(bounds.top + fitted.top >= boxes["[data-maps-search]"].bottom + 16);
+  assert.ok(
+    bounds.bottom - fitted.bottom <= boxes["[data-maps-credits]"].top - 16,
+  );
   assert.ok(fitted.left + fitted.right <= 520);
   assert.ok(
     Object.values(padding()).every(
@@ -583,4 +587,46 @@ test("canonical overlay pins and following survive the global rendering port", (
   assert.equal(f.map.center.bearing, 0);
   f.plane.destroy();
   assert.equal(f.map.removed, true);
+});
+
+test("route fitting clears the whole primary panel and sibling navigation controls", () => {
+  const rect = (left, top, width, height) => ({
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+  });
+  const boxes = {
+    "[data-maps-primary]": rect(12, 12, 400, 180),
+    "[data-maps-sheet]": rect(540, 12, 248, 376),
+    "[data-maps-credits]": rect(12, 370, 480, 18),
+    "[data-maps-navigation-controls]": rect(552, 312, 224, 76),
+  };
+  const root = {
+    querySelector: (selector) =>
+      boxes[selector] && { getBoundingClientRect: () => boxes[selector] },
+  };
+  const container = {
+    getBoundingClientRect: () => rect(0, 0, 800, 400),
+    parentElement: { querySelector: () => null },
+    closest: (selector) => (selector === "[data-maps-root]" ? root : null),
+  };
+  assert.deepEqual(visibleMapPadding(container), {
+    top: 208,
+    bottom: 46,
+    left: 24,
+    right: 284,
+  });
+  delete boxes["[data-maps-sheet]"];
+  delete boxes["[data-maps-primary]"];
+  delete boxes["[data-maps-credits]"];
+  boxes["[data-maps-navigation-controls]"] = rect(0, 300, 800, 100);
+  assert.deepEqual(visibleMapPadding(container), {
+    top: 24,
+    bottom: 116,
+    left: 24,
+    right: 24,
+  });
 });
