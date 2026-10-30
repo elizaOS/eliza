@@ -64,6 +64,35 @@ describe("collectFsObservedFiles", () => {
       fs.rmSync(workdir, { recursive: true, force: true });
     }
   });
+
+  it("returns paths that the route URL mapping matches, from an absolute claim", () => {
+    const workdir = fs.mkdtempSync(path.join(os.tmpdir(), "qa-evidence-"));
+    try {
+      const appDir = path.join(workdir, "data", "apps", "dawn-mesa");
+      fs.mkdirSync(appDir, { recursive: true });
+      const file = path.join(appDir, "index.html");
+      fs.writeFileSync(file, "<html></html>");
+
+      const observed = collectFsObservedFiles({
+        workdir,
+        candidatePaths: [file],
+        sessionStartedAt: Date.now() - 60_000,
+      });
+      expect(
+        deriveRouteMappedUrls(observed, [
+          { urlPrefix: "https://nubilio.org/apps", localPath: "data/apps" },
+        ]).sort(),
+      ).toEqual([
+        "https://nubilio.org/apps/dawn-mesa/",
+        "https://nubilio.org/apps/dawn-mesa/index.html",
+      ]);
+      expect(
+        readFsVerifiedContents(workdir, observed).map((entry) => entry.path),
+      ).toEqual(["data/apps/dawn-mesa/index.html"]);
+    } finally {
+      fs.rmSync(workdir, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("deriveRouteMappedUrls", () => {

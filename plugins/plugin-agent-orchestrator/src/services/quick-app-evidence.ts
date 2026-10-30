@@ -58,6 +58,15 @@ function defaultStat(absolutePath: string): { mtimeMs: number } | undefined {
 }
 
 /**
+ * Workdir-relative paths in evidence use `/`, as in worker claims and route
+ * `localPath` mappings. On Windows `path.relative` returns `\`, which would
+ * never match a mapping.
+ */
+function toEvidencePath(relative: string): string {
+  return relative.split(path.sep).join("/");
+}
+
+/**
  * Verify candidate paths by direct filesystem inspection: the file must
  * resolve INSIDE the session workdir (no traversal) and carry an mtime at or
  * after session start. Returns workdir-relative paths, deterministic order.
@@ -79,7 +88,7 @@ export function collectFsObservedFiles(input: FsObservedFilesInput): string[] {
     const info = stat(absolute);
     if (!info) continue;
     if (info.mtimeMs + 1 < input.sessionStartedAt) continue;
-    observed.push(relative);
+    observed.push(toEvidencePath(relative));
   }
   return [...new Set(observed)].sort();
 }
@@ -265,7 +274,7 @@ export function readFsVerifiedContents(
     const content = read(absolute);
     if (content === undefined) continue;
     out.push({
-      path: relative,
+      path: toEvidencePath(relative),
       content,
     });
   }
