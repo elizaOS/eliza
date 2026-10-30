@@ -1870,7 +1870,8 @@ const SEARCH_FOLD_MAP: ReadonlyMap<string, string> = new Map(
  */
 export function foldForSearch(text: string): string {
 	let folded = "";
-	for (const ch of text.toLowerCase()) {
+	// Postgres lower() maps İ (U+0130) to "i"; JS toLowerCase() gives "i" + U+0307.
+	for (const ch of text.replaceAll("\u0130", "i").toLowerCase()) {
 		if (SEARCH_FOLD_STRIP.includes(ch)) continue;
 		folded += SEARCH_FOLD_MAP.get(ch) ?? ch;
 	}

@@ -8,6 +8,7 @@ import { join } from "node:path";
 import {
   ChannelType,
   compareMemoryIds,
+  foldForSearch,
   type Log,
   type Memory,
   MemoryType,
@@ -1962,6 +1963,38 @@ describe("durable SQLite agent adapter", () => {
       limit: 50,
     });
     expect(hits.map((hit) => hit.memory.id)).toEqual([sorenId]);
+  });
+
+  it("folds dotted capital İ to i the way Postgres lower() does", async () => {
+    // JS "İ".toLowerCase() is "i" + U+0307; Postgres lower() gives "i".
+    expect(foldForSearch("İstanbul")).toBe("istanbul");
+    expect(foldForSearch("İSTANBUL")).toBe(foldForSearch("istanbul"));
+    expect(foldForSearch("İstanbul")).not.toContain("\u0307");
+    // Negative controls: other letters are unchanged and unrelated words differ.
+    expect(foldForSearch("Izmir")).toBe("izmir");
+    expect(foldForSearch("ılık")).toBe("ılık");
+    expect(foldForSearch("Ankara")).not.toBe(foldForSearch("İstanbul"));
+
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const istanbulId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("İstanbul office opens Monday"), id: istanbulId },
+        tableName: "messages",
+      },
+    ]);
+    const search = async (query: string) =>
+      (
+        await adapter.searchMessages({
+          roomIds: [roomId],
+          query,
+          tableName: "messages",
+          limit: 50,
+        })
+      ).map((hit) => hit.memory.id);
+    expect(await search("istanbul")).toEqual([istanbulId]);
+    expect(await search("izmir")).toEqual([]);
   });
 });
 
