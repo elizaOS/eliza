@@ -248,6 +248,24 @@
       "types": "./dist/api/client-observation.d.ts",
       "import": "./dist/api/client-observation.js",
       "default": "./dist/api/client-observation.js"
+    },
+    "./android-cloud/NativeCloudSignInView": {
+      "eliza-source": "./src/android-cloud/NativeCloudSignInView.tsx",
+      "types": "./dist/android-cloud/NativeCloudSignInView.d.ts",
+      "import": "./dist/android-cloud/NativeCloudSignInView.js",
+      "default": "./dist/android-cloud/NativeCloudSignInView.js"
+    },
+    "./android-cloud/native-cloud-sign-in-controller": {
+      "eliza-source": "./src/android-cloud/native-cloud-sign-in-controller.ts",
+      "types": "./dist/android-cloud/native-cloud-sign-in-controller.d.ts",
+      "import": "./dist/android-cloud/native-cloud-sign-in-controller.js",
+      "default": "./dist/android-cloud/native-cloud-sign-in-controller.js"
+    },
+    "./android-cloud/native-cloud-service-info": {
+      "eliza-source": "./src/android-cloud/native-cloud-service-info.ts",
+      "types": "./dist/android-cloud/native-cloud-service-info.d.ts",
+      "import": "./dist/android-cloud/native-cloud-service-info.js",
+      "default": "./dist/android-cloud/native-cloud-service-info.js"
     }
   },
   "peerDependencies": {

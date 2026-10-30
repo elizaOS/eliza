@@ -850,8 +850,8 @@ export function useCloudState({
       getBootConfig().cloudApiBase ?? DEFAULT_DIRECT_CLOUD_BASE_URL,
     );
     let removeCompletedListener: () => void = () => {};
-    void listenForAndroidNativeCloudSignInCompleted(environment, () => {
-      void activateAndroidNativeCloudSession()
+    void listenForAndroidNativeCloudSignInCompleted(environment, (outcome) => {
+      void activateAndroidNativeCloudSession(undefined, outcome)
         .then(() => reconcile(androidNativeCloudApiBase(environment)))
         .catch((err: unknown) => {
           // error-policy:J4 the announced sign-in left no readable key; the
@@ -983,16 +983,21 @@ export function useCloudState({
           if (isAndroidCloudAccountSwitchPending()) {
             await clearAndroidNativeCloudCredentialState();
           }
-          await requestAndroidNativeCloudSignIn(environment);
-          await activateAndroidNativeCloudSession();
-          const connected = await reconcileAndroidCloudSession(
-            androidNativeCloudApiBase(environment),
+          await requestAndroidNativeCloudSignIn(
+            environment,
+            async (signal, outcome) => {
+              await activateAndroidNativeCloudSession(signal, outcome);
+              const connected = await reconcileAndroidCloudSession(
+                androidNativeCloudApiBase(environment),
+              );
+              signal.throwIfAborted();
+              if (!connected) {
+                throw new Error(
+                  "Could not verify your Eliza Cloud session. Please sign in again.",
+                );
+              }
+            },
           );
-          if (!connected) {
-            throw new Error(
-              "Could not verify your Eliza Cloud session. Please sign in again.",
-            );
-          }
           try {
             clearAndroidCloudAccountSwitchPending();
           } catch (error) {

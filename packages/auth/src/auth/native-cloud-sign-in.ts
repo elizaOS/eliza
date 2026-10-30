@@ -76,6 +76,11 @@ export interface NativeCloudSignInAuthenticated<E extends string = string> {
   accountCreated: boolean | null;
   /** What happened to the key this sign-in replaced; absent when none was saved. */
   previousSignIn?: "revoked" | "unconfirmed";
+  /** Native attempt and installed local credential generation; absent on older hosts. */
+  attemptId?: string;
+  credentialId?: string;
+  /** Echo of the caller's immutable interactive request, never a credential. */
+  requestId?: string;
 }
 export interface NativeCloudSignInCodeStarted {
   attemptId: string;
@@ -83,6 +88,7 @@ export interface NativeCloudSignInCodeStarted {
   resendAt: number;
 }
 export interface NativeCloudSignInMfaRequired {
+  requestId?: string;
   attemptId?: string;
   status: "mfa";
   method: "totp" | "sms" | "passkey";
@@ -105,17 +111,28 @@ export interface NativeCloudSignInReadiness {
 /** The plugin methods of `CloudSignInPlugin`, as a renderer port. Answers are untrusted until parsed. */
 export interface NativeCloudSignInPort<E extends string = string> {
   serviceInfo?(input: { environment: E }): Promise<unknown>;
+  /** Current installed identity only; available on hosts that emit credentialId. */
+  credentialIdentity?(input: { environment: E }): Promise<unknown>;
   /** Opens Android's native Google account picker; answers only authenticated or MFA metadata. */
-  startGoogle(input: { environment: E }): Promise<unknown>;
-  startEmail(input: { environment: E; email: string }): Promise<unknown>;
-  startPhone?(input: { environment: E; phone: string }): Promise<unknown>;
+  startGoogle(input: { environment: E; requestId?: string }): Promise<unknown>;
+  startEmail(input: {
+    environment: E;
+    email: string;
+    requestId?: string;
+  }): Promise<unknown>;
+  startPhone?(input: {
+    environment: E;
+    phone: string;
+    requestId?: string;
+  }): Promise<unknown>;
   verifyPhone?(input: { attemptId: string; code: string }): Promise<unknown>;
   verifyEmail(input: { attemptId: string; code: string }): Promise<unknown>;
   verifyMfa(input: { attemptId: string; code: string }): Promise<unknown>;
   /** Revalidates a retained MFA event against the current native attempt; no network or secrets. */
   resumeMfa?(input: { attemptId: string; environment: E }): Promise<unknown>;
-  /** Ends the attempt and burns any pending Google record. Idempotent. */
-  cancel(): Promise<void>;
+  /** A supplied request scopes cancellation and pending cleanup to that native attempt.
+   * Unscoped cancellation is retained for older callers; shared views always supply their ID. */
+  cancel(input?: { requestId: string }): Promise<void>;
   /** Clears only the native credential picker session after explicit sign-out. */
   clearCredentialState?(): Promise<void>;
   /** Which methods the host offers and whether Cloud is ready for in-app sign-in (`inApp`). */
@@ -258,6 +275,9 @@ export function nativeSignInAuthenticated<E extends string>(
         "expiresAt",
         "accountCreated",
         "previousSignIn",
+        "attemptId",
+        "credentialId",
+        "requestId",
       ].includes(key)
     )
       throw new NativeCloudSignInError("unavailable");
@@ -267,10 +287,33 @@ export function nativeSignInAuthenticated<E extends string>(
     row.previousSignIn !== "unconfirmed"
   )
     throw new NativeCloudSignInError("unavailable");
+  const hasIdentity =
+    row.attemptId !== undefined ||
+    row.credentialId !== undefined ||
+    row.requestId !== undefined;
+  if (
+    hasIdentity &&
+    (typeof row.attemptId !== "string" ||
+      !UUID.test(row.attemptId) ||
+      typeof row.credentialId !== "string" ||
+      !UUID.test(row.credentialId) ||
+      (row.requestId !== undefined &&
+        (typeof row.requestId !== "string" || !UUID.test(row.requestId))))
+  )
+    throw new NativeCloudSignInError("unavailable");
   return {
     status: "authenticated",
     environment,
     expiresAt: time(row.expiresAt),
+    ...(hasIdentity
+      ? {
+          attemptId: row.attemptId as string,
+          credentialId: row.credentialId as string,
+        }
+      : {}),
+    ...(row.requestId === undefined
+      ? {}
+      : { requestId: row.requestId as string }),
     accountCreated:
       typeof row.accountCreated === "boolean" ? row.accountCreated : null,
     ...(row.previousSignIn === undefined
@@ -310,6 +353,7 @@ export function nativeSignInVerified<E extends string>(
             "expiresAt",
             "attemptId",
             "environment",
+            "requestId",
           ].includes(key),
       ) ||
       (row.environment !== undefined && row.environment !== environment)
@@ -326,8 +370,16 @@ export function nativeSignInVerified<E extends string>(
       (typeof row.attemptId !== "string" || !ATTEMPT_ID.test(row.attemptId))
     )
       throw new NativeCloudSignInError("unavailable");
+    if (
+      row.requestId !== undefined &&
+      (typeof row.requestId !== "string" || !UUID.test(row.requestId))
+    )
+      throw new NativeCloudSignInError("unavailable");
     return {
       status: "mfa",
+      ...(row.requestId === undefined
+        ? {}
+        : { requestId: row.requestId as string }),
       method: row.method,
       expiresAt: time(row.expiresAt),
       ...(row.attemptId === undefined
@@ -356,9 +408,14 @@ export function nativeSignInGoogleOutcome<E extends string>(
   if (
     Object.keys(row).some(
       (key) =>
-        !["status", "method", "expiresAt", "attemptId", "environment"].includes(
-          key,
-        ),
+        ![
+          "status",
+          "method",
+          "expiresAt",
+          "attemptId",
+          "environment",
+          "requestId",
+        ].includes(key),
     )
   )
     throw new NativeCloudSignInError("unavailable");

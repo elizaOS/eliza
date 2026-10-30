@@ -258,3 +258,43 @@ describe("native Cloud sign-in renderer contract", () => {
     expect(validNativeSignInPhone("4155550100")).toBe(false);
   });
 });
+
+describe("native completion correlation metadata", () => {
+  const completion = {
+    status: "authenticated",
+    environment: "production",
+    expiresAt: NOW,
+    attemptId: ATTEMPT,
+    credentialId: ATTEMPT,
+    requestId: ATTEMPT,
+  };
+  it("retains validated request, native attempt and installed credential identities", () => {
+    expect(nativeSignInAuthenticated(completion, "production")).toMatchObject(
+      completion,
+    );
+    expect(
+      nativeSignInGoogleOutcome(
+        {
+          status: "mfa",
+          environment: "production",
+          attemptId: ATTEMPT,
+          requestId: ATTEMPT,
+          method: "totp",
+          expiresAt: NOW,
+        },
+        "production",
+        NOW - 1,
+      ),
+    ).toMatchObject({ requestId: ATTEMPT });
+  });
+  it.each([
+    { ...completion, credentialId: undefined },
+    { ...completion, requestId: "invalid" },
+    { ...completion, attemptId: "invalid" },
+    { ...completion, credentialId: "secret" },
+  ])("refuses malformed or partial completion identities", (bad) => {
+    expect(code(() => nativeSignInAuthenticated(bad, "production"))).toBe(
+      "unavailable",
+    );
+  });
+});
