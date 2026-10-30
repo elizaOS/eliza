@@ -198,7 +198,10 @@ export function detectPlatformCapabilities(
     options.osName === "win32"
       ? { available: true, tool: "powershell.exe" }
       : (() => {
-          const shell = options.shell ?? "/bin/bash";
+          // Terminal sessions always spawn /bin/bash on POSIX
+          // (resolveShell in ./terminal.ts); $SHELL is not used there.
+          // Check the shell that will really run, not $SHELL.
+          const shell = "/bin/bash";
           return options.commandExists(shell)
             ? { available: true, tool: shell }
             : { available: false, tool: `none (no shell found: ${shell})` };
