@@ -8,6 +8,12 @@
 # packages/core/src/__tests__/swap-user-reply.test.ts
 f4183d5e94da24623d2290ed3bd19db99453c4f1:packages/core/src/__tests__/swap-user-reply.test.ts:generic-api-key:37
 
+# packages/core/test/connector-outbound-guard.pglite.test.ts
+# plugins/plugin-assistant/src/integration/message-edit-outbound-guard.test.ts
+# Synthetic DEPLOY_TOKEN secret-swap value the outbound-guard tests expect to see redacted; not a credential.
+65122faa3fc54780cf49b02cba91bbc1cf681ff3:packages/core/test/connector-outbound-guard.pglite.test.ts:generic-api-key:140
+65122faa3fc54780cf49b02cba91bbc1cf681ff3:plugins/plugin-assistant/src/integration/message-edit-outbound-guard.test.ts:generic-api-key:77
+
 # packages/cloud/shared/src/lib/services/agent-google-connector/gmail.test.ts
 67580d208dad5269a7df2c87bb2a9e8e245c0612:packages/cloud/shared/src/lib/services/agent-google-connector/gmail.test.ts:generic-api-key:41
 
