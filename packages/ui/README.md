@@ -153,6 +153,13 @@ was `dispatched`. The last stopped dispatched turn is kept in `stopped`, and
 `findStoppedUserTurn` finds its user row in a later conversation read. The leaf
 export `@elizaos/ui/api/conversation-turn-controller` loads it without the package root.
 
+`request(input, {conversation, signal})` awaits that same turn lifecycle. It reserves
+the turn before binding or waiting for Stop, so a declined or cancelled caller
+cannot rebind or stop a later request. Rejections keep their error identity and,
+when mutable, carry `notDispatched`; an `AbortError` alone never proves no send.
+`admitConversationStopReceipt` requires `aborted: true` and the expected room and
+reason. It confirms cancellation was signaled, not that remote cleanup finished.
+
 Browser speech lifecycle APIs are available from the package root.
 `DeviceSpeechController` owns device
 utterance cancellation, stale callbacks and page visibility cleanup; dispose it on

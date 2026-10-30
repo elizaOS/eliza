@@ -55,6 +55,39 @@ export function isConversationTurnRefusal(
   return value instanceof ConversationTurnRefusal;
 }
 
+/** A matching acknowledgment confirms cancellation signaling, not remote cleanup. */
+export type ConversationStopReceipt = Readonly<{
+  aborted: true;
+  roomId: string;
+  reason: string;
+}>;
+export function admitConversationStopReceipt(
+  value: unknown,
+  expected: Readonly<{ roomId: string; reason: string }>,
+): ConversationStopReceipt {
+  const receipt = value as Partial<ConversationStopReceipt> | null;
+  if (
+    !receipt ||
+    typeof receipt !== "object" ||
+    Array.isArray(receipt) ||
+    receipt.aborted !== true ||
+    receipt.roomId !== expected.roomId ||
+    receipt.reason !== expected.reason
+  ) {
+    throw new ConversationTurnRefusal(
+      "stop-unconfirmed",
+      "The connected host did not confirm this Stop request.",
+    );
+  }
+  return { aborted: true, roomId: receipt.roomId, reason: receipt.reason };
+}
+
+export type ConversationTurnRequestOptions = Readonly<{
+  /** Adopt this identity as part of the same exclusive send operation. */
+  conversation?: ConversationRoom;
+  signal?: AbortSignal;
+}>;
+
 /** Per-turn identity and liveness handed to the transport. */
 export type ConversationTurnContext = Readonly<{
   clientMessageId: string;
@@ -132,6 +165,29 @@ function freeze(room: ConversationRoom): ConversationRoom {
   return Object.freeze({ id: room.id, roomId: room.roomId });
 }
 
+function markDispatch(error: unknown, notDispatched: boolean): unknown {
+  if (error && (typeof error === "object" || typeof error === "function")) {
+    try {
+      Object.defineProperty(error, "notDispatched", {
+        value: notDispatched,
+        configurable: true,
+      });
+    } catch {
+      /* A foreign immutable error keeps its original identity. */
+    }
+  }
+  return error;
+}
+function requestAborted(dispatched: boolean, cause?: unknown) {
+  return Object.assign(
+    new DOMException("The conversation request was cancelled.", "AbortError"),
+    {
+      notDispatched: !dispatched,
+      cause,
+    },
+  );
+}
+
 export class ConversationTurnController<Input, Reply> {
   private room: ConversationRoom | null = null;
   private turn: Turn<Input> | null = null;
@@ -171,23 +227,38 @@ export class ConversationTurnController<Input, Reply> {
    * one. Binding another conversation stops a dispatched turn first and
    * advances the generation. Rebinding the same identity is a no-op.
    */
-  bind(conversation: ConversationRoom): Promise<ConversationStopResult> {
+  bind(
+    conversation: ConversationRoom,
+    signal?: AbortSignal,
+  ): Promise<ConversationStopResult> {
+    signal?.throwIfAborted();
     if (!validRoom(conversation))
       throw new ConversationTurnRefusal(
         "invalid-identity",
         "Invalid conversation identity",
       );
+    let binding: Promise<ConversationStopResult>;
     if (
       this.room &&
       this.room.id === conversation.id &&
       this.room.roomId === conversation.roomId
-    )
-      return this.stopping ?? Promise.resolve({ status: "idle" });
-    const stopped = this.interrupt();
-    this.generationValue++;
-    this.stoppedTurn = null;
-    this.room = freeze(conversation);
-    return stopped;
+    ) {
+      binding = this.stopping ?? Promise.resolve({ status: "idle" });
+    } else {
+      binding = this.interrupt();
+      this.generationValue++;
+      this.stoppedTurn = null;
+      this.room = freeze(conversation);
+    }
+    if (!signal) return binding;
+    return new Promise((resolve, reject) => {
+      const cancelled = () => reject(requestAborted(false, signal.reason));
+      signal.addEventListener("abort", cancelled, { once: true });
+      if (signal.aborted) cancelled();
+      void binding
+        .then(resolve, reject)
+        .finally(() => signal.removeEventListener("abort", cancelled));
+    });
   }
 
   /** Clears a dispatched-turn record once the host matched or abandoned it. */
@@ -199,9 +270,88 @@ export class ConversationTurnController<Input, Reply> {
       this.stoppedTurn = null;
   }
 
-  async send(
+  send(
     input: Input,
     observer: ConversationTurnObserver<Reply>,
+  ): Promise<boolean> {
+    return this.execute(input, observer);
+  }
+
+  /** Await the same exclusive turn used by send(), including binding and Stop.
+   * Declined or already-cancelled requests never change the binding. Cancelling
+   * a caller only interrupts its own reserved turn; no write is replayed.
+   * Errors carry `notDispatched` when mutable, and stopped history is retained. */
+  request(
+    input: Input,
+    options: ConversationTurnRequestOptions = {},
+  ): Promise<Reply> {
+    return new Promise((resolve, reject) => {
+      const { signal } = options;
+      let turn: Turn<Input> | undefined;
+      let settled = false;
+      const cleanup = () => {
+        signal?.removeEventListener("abort", cancelled);
+        turn?.abort.signal.removeEventListener("abort", interrupted);
+      };
+      const fail = (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(error);
+      };
+      const interrupted = () =>
+        fail(
+          requestAborted(turn?.dispatched ?? false, turn?.abort.signal.reason),
+        );
+      const cancelled = () => {
+        if (settled) return;
+        if (turn && this.turn === turn) void this.interrupt();
+        fail(requestAborted(turn?.dispatched ?? false, signal?.reason));
+      };
+      if (signal?.aborted) {
+        cancelled();
+        return;
+      }
+      signal?.addEventListener("abort", cancelled, { once: true });
+      void this.execute(
+        input,
+        {
+          reply: (reply) => {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            resolve(reply);
+          },
+          error: (error, failure) =>
+            fail(markDispatch(error, !failure?.dispatched)),
+          refused: (error) => fail(markDispatch(error, true)),
+          settled: () => {},
+        },
+        options.conversation,
+        (reserved) => {
+          turn = reserved;
+          if (settled) {
+            if (this.turn === turn) void this.interrupt();
+            return;
+          }
+          turn.abort.signal.addEventListener("abort", interrupted, {
+            once: true,
+          });
+        },
+      ).then(
+        (accepted) => {
+          if (!accepted && !settled) interrupted();
+        },
+        (error) => fail(markDispatch(error, !(turn?.dispatched ?? false))),
+      );
+    });
+  }
+
+  private async execute(
+    input: Input,
+    observer: ConversationTurnObserver<Reply>,
+    conversation?: ConversationRoom,
+    reserved?: (turn: Turn<Input>) => void,
   ): Promise<boolean> {
     const refuse = (refusal: ConversationTurnRefusal) =>
       observer.refused ? observer.refused(refusal) : observer.error(refusal);
@@ -210,6 +360,15 @@ export class ConversationTurnController<Input, Reply> {
         new ConversationTurnRefusal(
           "busy",
           "Wait for the current reply or stop it.",
+        ),
+      );
+      return false;
+    }
+    if (conversation && !validRoom(conversation)) {
+      refuse(
+        new ConversationTurnRefusal(
+          "invalid-identity",
+          "Invalid conversation identity",
         ),
       );
       return false;
@@ -227,6 +386,19 @@ export class ConversationTurnController<Input, Reply> {
       this.turn === turn && turn.generation === this.generationValue;
     this.turn = turn;
     try {
+      reserved?.(turn);
+      if (!owned()) return false;
+      if (
+        conversation &&
+        (!this.room ||
+          this.room.id !== conversation.id ||
+          this.room.roomId !== conversation.roomId)
+      ) {
+        this.generationValue++;
+        turn.generation = this.generationValue;
+        this.stoppedTurn = null;
+        this.room = freeze(conversation);
+      }
       const stopping = this.stopping;
       if (stopping) {
         const result = await stopping;
