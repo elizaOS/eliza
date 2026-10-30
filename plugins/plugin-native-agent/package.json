@@ -52,6 +52,9 @@
     "format:check": "bunx @biomejs/biome format .",
     "test:native-host": "node scripts/test-native-host.mjs && node --test test/provider-admission/provider-admission.node.mjs test/connection/connection.node.mjs"
   },
+  "dependencies": {
+    "@elizaos/capacitor-secure-store": "workspace:*"
+  },
   "devDependencies": {
     "@capacitor/core": "^8.3.1",
     "rollup": "^4.65.0",

@@ -258,38 +258,45 @@ public class ElizaAgentService extends Service {
     private static volatile java.util.concurrent.CompletableFuture<Void> serviceLifecycleCompletion =
         java.util.concurrent.CompletableFuture.completedFuture(null);
     private static final String CREDENTIAL_SHUTDOWN_EPOCH = "credentialShutdownEpoch";
-    private static long credentialShutdownEpoch;
-    private static boolean credentialShutdownConfirmed;
-    private static volatile boolean credentialShutdownPending;
+    private static final ai.eliza.plugins.agent.runtime.CredentialShutdownLease credentialShutdown =
+        new ai.eliza.plugins.agent.runtime.CredentialShutdownLease();
     private long admittedCredentialShutdownEpoch = -1;
 
-    private static synchronized void invalidateCredentialShutdown() {
-        if (credentialShutdownPending) throw new IllegalStateException("Credential shutdown is pending");
-        ++credentialShutdownEpoch;
-        credentialShutdownConfirmed = false;
+    private static void invalidateCredentialShutdown() { credentialShutdown.beforeStart(); }
+
+    /** Native credential writers retain this exact request through their durable commit. */
+    public static long stopForCredentialChange(Context context) {
+        long request = credentialShutdown.acquire();
+        dispatchCredentialShutdown(context, request);
+        return request;
     }
 
-    /** Native credential writers must await this exact request and normal service/socket absence. */
-    public static synchronized long stopForCredentialChange(Context context) {
-        // Retry the same fenced request if Android did not deliver its earlier stop intent.
-        long epoch = credentialShutdownPending ? credentialShutdownEpoch : ++credentialShutdownEpoch;
-        credentialShutdownPending = true;
-        credentialShutdownConfirmed = false;
+    /** Retry only the existing owner; a newer mutation cannot be released by this caller. */
+    public static long retryCredentialShutdown(Context context, long request) {
+        credentialShutdown.retry(request);
+        if (!credentialShutdown.isConfirmed(request)) dispatchCredentialShutdown(context, request);
+        return request;
+    }
+
+    private static void dispatchCredentialShutdown(Context context, long request) {
         Intent intent = new Intent(context, ElizaAgentService.class);
         intent.setAction(ACTION_STOP);
-        intent.putExtra(CREDENTIAL_SHUTDOWN_EPOCH, epoch);
-        try {
-            context.startService(intent);
-        } catch (RuntimeException unavailable) {
-            // Dispatch may be uncertain. Keep starts fenced until an actual teardown acknowledges it.
-            throw unavailable;
-        }
-        return epoch;
+        intent.putExtra(CREDENTIAL_SHUTDOWN_EPOCH, request);
+        // No service/credential monitor is held across Android's dispatch boundary.
+        context.startService(intent);
     }
 
-    /** Correlation only: never grants credentials, runtime enrollment or owner authority. */
-    public static synchronized boolean isCredentialShutdownConfirmed(long epoch) {
-        return epoch == credentialShutdownEpoch && credentialShutdownConfirmed;
+    public static boolean isCredentialShutdownConfirmed(long request) {
+        return credentialShutdown.isConfirmed(request);
+    }
+
+    public static boolean isCredentialShutdownReleased(long request) {
+        return credentialShutdown.isReleased(request);
+    }
+
+    /** Called after a confirmed commit or proven pre-commit cancellation, never on uncertain writes. */
+    public static boolean releaseCredentialShutdown(long request) {
+        return credentialShutdown.release(request);
     }
 
 
@@ -1164,10 +1171,12 @@ public class ElizaAgentService extends Service {
             return START_NOT_STICKY;
         }
         if (ACTION_STOP.equals(action)) {
-            synchronized (ElizaAgentService.class) {
-                long requested = intent.getLongExtra(CREDENTIAL_SHUTDOWN_EPOCH, -1);
-                admittedCredentialShutdownEpoch = requested == credentialShutdownEpoch ? requested : -1;
+            long requested = intent.getLongExtra(CREDENTIAL_SHUTDOWN_EPOCH, -1);
+            if (intent.hasExtra(CREDENTIAL_SHUTDOWN_EPOCH) && !credentialShutdown.isCurrent(requested)) {
+                appendDiagnosticEvent("credential-stop-superseded", null);
+                return START_NOT_STICKY;
             }
+            admittedCredentialShutdownEpoch = requested;
             shuttingDown = true;
             appendDiagnosticEvent("service-stop-intent", details);
             stopSelf();
@@ -1254,10 +1263,10 @@ public class ElizaAgentService extends Service {
                 }
                 synchronized (ElizaAgentService.class) {
                     if (activeInstance == this && (!requestedStop || confirmed)) activeInstance = null;
-                    if (admittedCredentialShutdownEpoch == credentialShutdownEpoch) {
-                        credentialShutdownConfirmed = strictCredentialStop && confirmed && activeInstance == null;
-                        credentialShutdownPending = false;
-                    }
+                    credentialShutdown.acknowledge(admittedCredentialShutdownEpoch,
+                        strictCredentialStop && confirmed && activeInstance == null);
+                    // ACK is an absence proof. The credential writer still owns the launch
+                    // fence until its commit or explicit pre-commit cleanup releases it.
                 }
             } finally {
                 // Completion means no teardown work can still launch or signal a process.

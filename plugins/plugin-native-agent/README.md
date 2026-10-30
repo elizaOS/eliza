@@ -19,6 +19,13 @@ packages. They share payload extraction, installation identity, request deadline
 update journaling, qualified-clock projection and cancellable job ownership.
 Hosts supply the inventory format, durability/clock adapters and release policy;
 these APIs neither authorize an installation nor expose renderer capabilities.
+`ResidentCredentialStore` shares provider admission, conditional removal and
+credential ownership over the host's protected slots. It composes the generic
+mutation conductor in `plugin-native-secure-store`. `CredentialShutdownLease`
+retains the service start fence after exact stop acknowledgement until its owner
+releases it after commit or proven pre-commit cancellation. Failed stop or uncertain
+commit stays fenced, and stale release cannot clear a newer request. The retained
+`CredentialIntentFence` name delegates to the same secure-store implementation.
 File-based primitives require Android API 26 or newer. Run their portable JVM
 crash/recovery tests with JDK 21 and `bun run --cwd plugins/plugin-native-agent test:native-host`.
 

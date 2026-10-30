@@ -21,6 +21,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, it } from "vitest";
+import { rewriteCloudJavaSources } from "./mobile/android/strip.ts";
 import { cloudSafeMainActivityJava } from "./mobile/android/templates/main-activity.ts";
 
 import {
@@ -38,6 +39,56 @@ const androidTestJavaRoot = path.resolve(
   scriptsDir,
   "../platforms/android/app/src/test/java/ai/elizaos/app",
 );
+
+describe("Cloud credential composition", () => {
+  it("keeps the shared credential path with an explicit absent-runtime adapter", () => {
+    const fixture = fs.mkdtempSync(
+      path.join(os.tmpdir(), "eliza-cloud-credentials-"),
+    );
+    try {
+      for (const name of [
+        "ElizaCloudSignInPlugin.java",
+        "ElizaCloudCredentialSlots.java",
+        "ElizaResidentCredentials.java",
+        "ElizaSecureStorePlugin.java",
+        "ElizaCredentialRetirement.java",
+      ]) {
+        fs.copyFileSync(
+          path.join(androidMainJavaRoot, name),
+          path.join(fixture, name),
+        );
+      }
+      rewriteCloudJavaSources([fixture], "ai.elizaos.app");
+      const sources = fs
+        .readdirSync(fixture)
+        .filter((name) => name.endsWith(".java"))
+        .map((name) => fs.readFileSync(path.join(fixture, name), "utf8"))
+        .join("\n");
+      expect(sources).not.toMatch(
+        /ElizaAgentService|ai\.eliza\.plugins\.agent/,
+      );
+      expect(sources).toContain("CredentialSlotMutation.replace");
+      expect(sources).toContain("ElizaResidentCredentials.reserve()");
+      const retirement = fs.readFileSync(
+        path.join(fixture, "ElizaCredentialRetirement.java"),
+        "utf8",
+      );
+      expect(retirement).toContain("excludes the resident service");
+      expect(retirement).not.toMatch(/startService|stopService/);
+      expect(
+        fs.readFileSync(
+          path.join(androidMainJavaRoot, "ElizaCredentialRetirement.java"),
+          "utf8",
+        ),
+      ).toContain("ElizaAgentService.stopForCredentialChange(context)");
+      expect(cloudSafeMainActivityJava("ai.elizaos.app")).toContain(
+        "initialPlugins.add(ElizaSecureStorePlugin.class)",
+      );
+    } finally {
+      fs.rmSync(fixture, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("Android push bridge startup", () => {
   it("registers SafePush after discovery but before the initial renderer header", () => {

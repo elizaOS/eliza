@@ -114,6 +114,23 @@ export function rewriteCloudJavaSources(
       touched += 1;
     }
     fs.writeFileSync(
+      path.join(root, "ElizaCredentialRetirement.java"),
+      `package ${androidPackage};
+
+import android.content.Context;
+
+/** This packaging excludes the resident service and its assets. No process is stopped here. */
+final class ElizaCredentialRetirement {
+    static long request(Context context) { return 0; }
+    static boolean stopped(Context context) { return true; }
+    static boolean acknowledged(long request) { return request == 0; }
+    static void release(long request) { }
+}
+`,
+      "utf8",
+    );
+    touched += 1;
+    fs.writeFileSync(
       path.join(root, "ElizaSecureCredentialsPlugin.java"),
       cloudSafeSecureCredentialsPluginJava(androidPackage),
       "utf8",

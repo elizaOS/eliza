@@ -12,6 +12,14 @@ bun run --cwd plugins/plugin-native-secure-store build
 
 Native storage behavior requires testing on the target Apple or Android device.
 
+Android hosts can bind `SecureStorePlugin` mutation hooks to their existing
+credential intent and resident shutdown policy. Reservation occurs before queued
+work; only host-selected keys use the asynchronous worker. The shared native
+`CredentialIntentFence`, `CredentialMutationConductor` and `CredentialSlotMutation`
+keep intent checks, retirement, commit and exact readback in one path. Hosts provide
+their locks and service proof. A build without a resident supplies an explicit
+absent-runtime port. This does not create an account, provider or second token store.
+
 `KeystoreTextFrame` is a native-only codec for existing
 `Base64(IV):Base64(AES-GCM ciphertext/tag)` records. Hosts retain the deployed
 alias, storage and access policy; the format has no unlock requirement.

@@ -107,6 +107,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ResourceProbePlugin.class);
         registerPlugin(CredentialManagerPlugin.class);
         registerPlugin(ElizaCloudSignInPlugin.class);
+        // BridgeActivity appends this list after generated plugins, so the resident-aware
+        // secure-store binding cannot be replaced by the generic auto-discovered plugin.
+        initialPlugins.add(ElizaSecureStorePlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
         registerPlugin(SlotClockPlugin.class);

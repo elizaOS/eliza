@@ -193,6 +193,17 @@ minted key in the secure store's `session.steward_token` that its renderer reads
 policy, the exact plugin methods and Eliza's host registration and storage on a
 plain JVM, not on a device.
 
+Native sign-in hosts reserve credential-write intent when an attempt is accepted,
+before network work. The same guard stays with that attempt through verification
+and MFA. A later sign-out can therefore refuse an earlier pending write. Optional
+UUID `requestId` input is echoed on MFA and authenticated outcomes; authenticated
+outcomes also include the native `attemptId` and saved local `credentialId`. These
+values correlate an interaction, and do not prove account ownership. Cancellation
+acknowledgement suppresses later delivery for that interaction; it does not roll
+back a key already committed. An old browser pending record without a live intent
+requires a fresh native sign-in. Existing saved-key acknowledgement recovery stays
+separate from interactive completion.
+
 The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
 (`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a
 `NativeCloudSignInPort`, strict parsers for every answer (`nativeSignInAuthenticated`,

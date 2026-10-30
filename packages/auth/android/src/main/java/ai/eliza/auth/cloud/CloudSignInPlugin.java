@@ -39,7 +39,7 @@ import org.json.JSONTokener;
  * The host subclass declares the Capacitor plugin name and supplies its registration
  * ({@link #registration()}: client id, device label, product name, admitted deployments and installed
  * storage names), its protected credential storage ({@link #credentials(Runnable)}) and, optionally, a
- * fence for the moment the minted key is committed ({@link #reserveCredentialCommit()}).
+ * credential intent reserved when an attempt is accepted ({@link #reserveCredentialCommit()}).
  *
  * The resulting `eliza_mobile_` key is written to the host's credential slot for the environment
  * after a durable acknowledgement receipt, so an interrupted ack resumes on the next start. Plugin
@@ -65,6 +65,9 @@ public abstract class CloudSignInPlugin extends Plugin {
   final long startedAt = System.currentTimeMillis();
   final CloudSignInEnvironment environment;
   final boolean google;
+  /** Renderer correlation only; never account or credential authority. */
+  final String requestId;
+  final Runnable credentialGuard;
   volatile boolean cancelled, callbackReceived;
   volatile HttpURLConnection connection;
   volatile android.os.CancellationSignal googleCancellation;
@@ -76,7 +79,9 @@ public abstract class CloudSignInPlugin extends Plugin {
   long expiresAt, resendAt;
   int failedVerifies;
   boolean busy;
-  Attempt(CloudSignInEnvironment environment, boolean google) { this.environment = environment; this.google = google; }
+  Attempt(CloudSignInEnvironment environment, boolean google, String requestId, Runnable credentialGuard) {
+   this.environment = environment; this.google = google; this.requestId = requestId; this.credentialGuard = credentialGuard;
+  }
   void cancel() { cancelled = true; CountDownLatch decision = authorizationDecision; if (decision != null) decision.countDown(); android.os.CancellationSignal picker = googleCancellation; if (picker != null) picker.cancel(); googleVerifier = null; googleChallengeId = null; HttpURLConnection current = connection; if (current != null) current.disconnect(); }
  }
  private static final class Response {
@@ -102,9 +107,9 @@ public abstract class CloudSignInPlugin extends Plugin {
  /** The host's protected credential slots. The store calls {@code guard} before every write and removal. */
  protected abstract CloudCredentialSlots credentials(Runnable guard);
  /**
-  * Called just before the minted key is written. The returned check runs inside the store's guard
-  * and throws when another writer has superseded this sign-in (for example a local agent rebinding
-  * its provider). The default admits the write.
+  * Called once when an explicit attempt is accepted, before asynchronous work. Its check stays
+  * with that attempt through verification/MFA and rejects a later write after another credential
+  * action supersedes it. Completion must never reserve a new intent. The default admits the write.
   */
  protected Runnable reserveCredentialCommit() { return () -> {}; }
  protected final CloudSignInConfig config() {
@@ -234,13 +239,25 @@ public abstract class CloudSignInPlugin extends Plugin {
  }
  // ── Google: native Credential Manager with server-bound nonce and PKCE ────────────────────
 
+ /** Optional caller identity scopes retained events to the interactive request that began them. */
+ private static String callerRequestId(PluginCall call) throws SignInFailure {
+  String value = call.getString("requestId");
+  if (value != null && !CloudSignInFlow.validUuid(value)) throw new SignInFailure("invalid-request");
+  return value;
+ }
+
  @PluginMethod public void startGoogle(PluginCall call) {
   final CloudSignInEnvironment environment;
   try { environment = config().environment(call.getString("environment")); }
   catch (Exception invalid) { call.reject("Unsupported Cloud environment", "invalid-request"); return; }
-  final Attempt next = new Attempt(environment, true);
+  final String requestId;
+  try { requestId = callerRequestId(call); }
+  catch (SignInFailure invalid) { call.reject("Invalid sign-in request", "invalid-request"); return; }
+  final Attempt next;
   synchronized (lock) {
+   if (destroyed) { call.reject("Sign-in closed", "unavailable"); return; }
    if (attempt != null) { call.reject("Another sign-in is in progress", "login-active"); return; }
+   next = new Attempt(environment, true, requestId, reserveCredentialCommit());
    attempt = next; next.waiting = call;
   }
   next.googleVerifier = CloudSignInFlow.newVerifier();
@@ -348,10 +365,10 @@ public abstract class CloudSignInPlugin extends Plugin {
    Attempt owner = waiting;
    if (owner != null) synchronized (lock) { owner.callbackReceived = true; }
    else {
-    // A cold start (process death in the browser) or a step that already ended: complete into storage
-    // and announce it (signInCompleted) unless another sign-in has started meanwhile.
-    owner = new Attempt(returned, true);
-    synchronized (lock) { if (attempt != null) return; attempt = owner; }
+    // Legacy browser input carries no live credential intent. It cannot acquire fresh
+    // authority after a sign-out or process restart; begin a new explicit native sign-in.
+    notifyListeners("signInIncomplete", new JSObject().put("code", "app-link-unverified"), true);
+    return;
    }
    if (pending.expired(now)) { end(owner, "expired", false); return; }
    owner.expiresAt = pending.expiresAt;
@@ -383,15 +400,19 @@ public abstract class CloudSignInPlugin extends Plugin {
   final String email = call.getString("email") == null ? null : call.getString("email").trim().toLowerCase(java.util.Locale.ROOT);
   try { environment = config().environment(call.getString("environment")); }
   catch (Exception invalid) { call.reject("Unsupported Cloud environment", "invalid-request"); return; }
+  final String requestId;
+  try { requestId = callerRequestId(call); }
+  catch (SignInFailure invalid) { call.reject("Invalid sign-in request", "invalid-request"); return; }
   if (!CloudSignInFlow.validEmail(email)) { call.reject("Enter a valid email address", "invalid-email"); return; }
   final Attempt current;
   synchronized (lock) {
+   if (destroyed) { call.reject("Sign-in closed", "unavailable"); return; }
    long now = System.currentTimeMillis();
    if (attempt != null && (attempt.google || attempt.busy)) { call.reject("Another sign-in is in progress", "login-active"); return; }
    // The minimum applies across addresses; Cloud may require a longer wait.
    if (now < Math.max(lastEmailSendAt + CloudSignInFlow.RESEND_COOLDOWN_MS, emailSendAllowedAt)) { call.reject("Wait before requesting another code", "cooldown"); return; }
    if (attempt != null) attempt.cancel();
-   current = new Attempt(environment, false);
+   current = new Attempt(environment, false, requestId, reserveCredentialCommit());
    current.email = email; current.emailVerifier = CloudSignInFlow.newVerifier(); current.busy = true; attempt = current;
    lastEmailSendAt = now;
   }
@@ -417,15 +438,19 @@ public abstract class CloudSignInPlugin extends Plugin {
   final String phone = call.getString("phone") == null ? null : call.getString("phone").trim();
   try { environment = config().environment(call.getString("environment")); }
   catch (Exception invalid) { call.reject("Unsupported Cloud environment", "invalid-request"); return; }
+  final String requestId;
+  try { requestId = callerRequestId(call); }
+  catch (SignInFailure invalid) { call.reject("Invalid sign-in request", "invalid-request"); return; }
   if (!CloudSmsCode.validPhone(phone)) { call.reject("Enter a phone number with country code", "invalid-phone"); return; }
   final Attempt current;
   synchronized (lock) {
+   if (destroyed) { call.reject("Sign-in closed", "unavailable"); return; }
    long now = System.currentTimeMillis();
    if (attempt != null && (attempt.google || attempt.busy)) { call.reject("Another sign-in is in progress", "login-active"); return; }
    // The send interval applies across email and SMS, whatever the address (Steward also limits sends server-side).
    if (now < lastEmailSendAt + CloudSignInFlow.RESEND_COOLDOWN_MS) { call.reject("Wait before requesting another code", "cooldown"); return; }
    if (attempt != null) attempt.cancel();
-   current = new Attempt(environment, false);
+   current = new Attempt(environment, false, requestId, reserveCredentialCommit());
    current.phone = phone; current.busy = true; attempt = current;
    lastEmailSendAt = now;
   }
@@ -579,14 +604,15 @@ public abstract class CloudSignInPlugin extends Plugin {
    long expiresAt = challenge == null ? 0 : instant(challenge.opt("expiresAt"));
    if (id == null || id.isEmpty() || id.length() > 256 || expiresAt <= System.currentTimeMillis()
        || !("totp".equals(type) || "sms".equals(type) || "passkey".equals(type))) throw new SignInFailure("unavailable");
-   PluginCall waiting;
    synchronized (lock) {
-    if (attempt != current || current.cancelled || current.waiting == null) throw new SignInFailure("cancelled");
+    if (destroyed || attempt != current || current.cancelled || current.waiting == null) throw new SignInFailure("cancelled");
     current.mfaType = type; current.mfaChallenge = id; current.failedVerifies = 0;
     current.expiresAt = Math.min(current.expiresAt, expiresAt); current.busy = false;
-    waiting = current.waiting; current.waiting = null;
+    PluginCall waiting = current.waiting; current.waiting = null;
+    JSObject required = new JSObject().put("status", "mfa").put("attemptId", current.id).put("environment", current.environment.name).put("method", type).put("expiresAt", current.expiresAt);
+    if (current.requestId != null) required.put("requestId", current.requestId);
+    waiting.resolve(required);
    }
-   waiting.resolve(new JSObject().put("status", "mfa").put("attemptId", current.id).put("environment", current.environment.name).put("method", type).put("expiresAt", current.expiresAt));
    return;
   }
   complete(current, session);
@@ -600,20 +626,21 @@ public abstract class CloudSignInPlugin extends Plugin {
    String type = challenge == null ? null : challenge.optString("type", null), id = challenge == null ? null : challenge.optString("challengeId", null);
    long expiresAt = challenge == null ? 0 : instant(challenge.opt("expiresAt"));
    if (id == null || id.isEmpty() || id.length() > 256 || !("totp".equals(type) || "sms".equals(type) || "passkey".equals(type))) throw new SignInFailure("unavailable");
-   PluginCall waiting;
    synchronized (lock) {
-    if (attempt != current || current.cancelled) throw new SignInFailure("cancelled");
+    if (destroyed || attempt != current || current.cancelled) throw new SignInFailure("cancelled");
     if (current.mfaType != null) throw new SignInFailure("unavailable");
     long deadline = Math.min(current.expiresAt, expiresAt);
     if (deadline <= System.currentTimeMillis()) throw new SignInFailure("expired");
     current.mfaType = type; current.mfaChallenge = id; current.failedVerifies = 0; current.expiresAt = deadline;
-    current.busy = false; waiting = current.waiting; current.waiting = null;
+    current.busy = false; PluginCall waiting = current.waiting; current.waiting = null;
+    // Serialize delivery with cancellation acknowledgement. The bridge queues these replies;
+    // no storage or lifecycle callback runs while this attempt lock is held.
+    JSObject required = new JSObject().put("status", "mfa").put("method", type).put("expiresAt", current.expiresAt)
+     .put("attemptId", current.id).put("environment", current.environment.name);
+    if (current.requestId != null) required.put("requestId", current.requestId);
+    if (waiting != null) waiting.resolve(required);
+    else notifyListeners("signInMfaRequired", required, true);
    }
-   // Only the local attempt ID crosses the bridge; the server challenge stays native.
-   JSObject required = new JSObject().put("status", "mfa").put("method", type).put("expiresAt", current.expiresAt)
-    .put("attemptId", current.id).put("environment", current.environment.name);
-   if (waiting != null) waiting.resolve(required);
-   else notifyListeners("signInMfaRequired", required, true);
    return;
   }
   String token = session.optString("token", null), refresh = session.optString("refreshToken", null);
@@ -639,12 +666,14 @@ public abstract class CloudSignInPlugin extends Plugin {
     throw new SignInFailure("unavailable");
    synchronized (lock) { if (current.cancelled || attempt != current) throw new SignInFailure("cancelled"); }
    // Durable receipt first (no secret: the key is read back from its slot), then the key itself.
-   CloudCredentialSlots receipts = store();
+   CloudCredentialSlots receipts = credentials(() -> {
+    if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed");
+    current.credentialGuard.run();
+   });
    receipts.write(config().receiptSlot(environment), new JSONObject(proof.toString()).put("credentialId", credentialId).put("acknowledgeBy", acknowledgeBy).toString());
    // The key this sign-in replaces, if any, is revoked after the new one is active (as CloudProtocol.login does).
    String previous = previousToken(receipts, config().credentialSlot(environment), secret);
-   Runnable commit = reserveCredentialCommit();
-   CloudCredentialSlots credentials = credentials(() -> { if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed"); commit.run(); });
+   CloudCredentialSlots credentials = credentials(() -> { if (destroyed || current.cancelled) throw new IllegalStateException("Sign-in closed"); current.credentialGuard.run(); });
    JSONObject saved = new JSONObject().put("credentialId", UUID.randomUUID().toString()).put("token", secret).put("expiresAt", expiresAt).put("serverCredentialId", credentialId);
    credentials.write(config().credentialSlot(environment), saved.toString());
    // Commit point: the key is stored. Cancelling now cannot unstore it; activation proceeds.
@@ -652,7 +681,9 @@ public abstract class CloudSignInPlugin extends Plugin {
    if (acknowledged) try { receipts.remove(config().receiptSlot(environment)); } catch (Exception kept) { /* Retried on next start. */ }
    if (!acknowledged) throw new SignInFailure("activation-pending");
    JSObject outcome = new JSObject().put("status", "authenticated").put("environment", environment.name).put("expiresAt", expiresAt)
+    .put("attemptId", current.id).put("credentialId", saved.getString("credentialId"))
     .put("accountCreated", created instanceof Boolean ? created : JSONObject.NULL);
+   if (current.requestId != null) outcome.put("requestId", current.requestId);
    if (previous != null) outcome.put("previousSignIn", CloudKeyRevocation.revoke(config(), environment, previous) ? "revoked" : "unconfirmed");
    finish(current, outcome);
   } finally {
@@ -706,12 +737,16 @@ public abstract class CloudSignInPlugin extends Plugin {
  // ── Outcomes and transport ───────────────────────────────────────────────────────────────────
 
  private void finish(Attempt current, JSObject outcome) {
-  PluginCall waiting;
-  synchronized (lock) { waiting = current.waiting; current.waiting = null; if (attempt == current) attempt = null; }
-  if (waiting != null) waiting.resolve(outcome);
-  // A return that completed without a waiting renderer call (after process death, or after the
-  // waiting step ended) is announced, retained until the renderer listens. It carries no secret.
-  else notifyListeners("signInCompleted", outcome, true);
+  synchronized (lock) {
+   // A committed key may still need its acknowledgement, but a cancelled, destroyed or
+   // replaced interaction cannot deliver its completion to a newer renderer owner.
+   if (destroyed || current.cancelled || attempt != current) return;
+   PluginCall waiting = current.waiting; current.waiting = null; attempt = null;
+   if (waiting != null) waiting.resolve(outcome);
+   // A retained completion carries its originating request, never a new renderer's identity.
+   // Queue it before cancel can acknowledge retirement of this attempt.
+   else notifyListeners("signInCompleted", outcome, true);
+  }
  }
  /** Ends the attempt with a stable code. `burn` also removes a pending Google record (explicit cancel or a failed start). */
  private void end(Attempt current, String code, boolean burn) {
