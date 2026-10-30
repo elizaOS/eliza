@@ -445,7 +445,15 @@ function documentVisibilityCondition(
   params: DocumentListQueryParams | DocumentGetQueryParams | DocumentFragmentQueryParams,
   metadata: SQLWrapper = memoryTable.metadata
 ): SQL {
-  const validAuthorizationMetadata = validDocumentAuthorizationMetadata(metadata);
+  if (params.requesterRole === "AGENT" || params.requesterRole === "RUNTIME") {
+    return validDocumentAuthorizationMetadata(metadata);
+  }
+  // Runtime-internal bookkeeping rows are readable only by AGENT/RUNTIME,
+  // mirroring isDocumentVisibleToRequester.
+  const validAuthorizationMetadata = sql`(
+    ${validDocumentAuthorizationMetadata(metadata)}
+    AND COALESCE(${metadata}->'runtimeInternal' <> 'true'::jsonb, true)
+  )`;
   if (documentRoleHasGlobalVisibility(params.requesterRole)) {
     return validAuthorizationMetadata;
   }
