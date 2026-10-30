@@ -214,6 +214,39 @@ export function mobileVoiceEntryPolicy(aosp: boolean): SenseVoiceEntryPolicy {
     : CONVERSATION_ONLY_VOICE_ENTRY;
 }
 
+/** Retire a previously enabled listener when this host selects chat-only entry.
+ * This is a native acknowledgement, not permission to enable or resume capture.
+ * Inspect raw fields: the status presentation parser intentionally normalizes
+ * inconsistent listening bits and must not be used to confirm a stop. */
+export async function stopSenseListenerForChatOnly(
+  native: Pick<SensePlugin, "turnOff"> | undefined,
+): Promise<boolean> {
+  if (!native) return false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    const reply: unknown = await Promise.race([
+      native.turnOff(),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error("Wake listener stop timed out")),
+          5000,
+        );
+      }),
+    ]);
+    const value = record(reply);
+    return (
+      value.available === true &&
+      value.state === "OFF" &&
+      value.listening === false &&
+      value.microphoneOpen === false
+    );
+  } catch {
+    return false;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 /** Bind before consuming. Cold-start, changed-owner and stale async results cannot open the mic. */
 export function createSenseInvocationController(
   native: Pick<

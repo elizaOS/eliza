@@ -30,6 +30,7 @@ async function fixture(page: Page) {
     };
     const methods: Record<string, string[]> = {
       ElizaSecureStore: ["get", "set", "remove", "status"],
+      ElizaSense: ["turnOff"],
       Preferences: ["get", "set", "remove", "keys", "clear"],
       ElizaSystem: [
         "listLauncherApps",
@@ -68,6 +69,20 @@ async function fixture(page: Page) {
         method: string,
         options: { key?: string; value?: string } = {},
       ) => {
+        if (plugin === "ElizaSense" && method === "turnOff") {
+          Reflect.set(
+            window,
+            "u1NativeStopCalls",
+            Number(Reflect.get(window, "u1NativeStopCalls") ?? 0) + 1,
+          );
+          return {
+            available: true,
+            state: "OFF",
+            listening:
+              Reflect.get(window, "u1UnconfirmedListenerStop") === true,
+            microphoneOpen: false,
+          };
+        }
         if (plugin === "ElizaSecureStore" || plugin === "Preferences") {
           const key =
             plugin === "ElizaSecureStore"
@@ -364,4 +379,33 @@ test("routed Experience content remains clickable outside the mobile launcher ca
   await page.screenshot({
     path: info.outputPath("routed-experience-interaction.png"),
   });
+});
+
+test("chat-only Android requests a native stop and keeps contradictory receipts visible", async ({
+  page,
+}, info) => {
+  await page.addInitScript(() =>
+    Reflect.set(window, "u1UnconfirmedListenerStop", true),
+  );
+  await fixture(page);
+  await openAppPath(page, "/chat");
+  const notice = page.getByTestId("wake-listener-stop-unconfirmed");
+  await expect(notice).toBeVisible();
+  await page.screenshot({ path: info.outputPath("stop-unconfirmed.png") });
+  await page.waitForTimeout(750);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Number(Reflect.get(window, "u1NativeStopCalls") ?? 0),
+      ),
+    )
+    .toBeGreaterThan(0);
+  await page.evaluate(() =>
+    Reflect.set(window, "u1UnconfirmedListenerStop", false),
+  );
+  await notice
+    .getByRole("button", { name: "Retry stopping wake listening" })
+    .click();
+  await expect(notice).toHaveCount(0);
+  await page.screenshot({ path: info.outputPath("stop-confirmed.png") });
 });

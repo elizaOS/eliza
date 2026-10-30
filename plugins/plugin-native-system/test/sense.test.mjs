@@ -9,6 +9,7 @@ import {
   listenerStartsVoice,
   parseAssistantInvocation,
   parseListenerStatus,
+  stopSenseListenerForChatOnly,
 } from "../src/sense.ts";
 
 const root = path.resolve(import.meta.dirname, "..");
@@ -680,4 +681,50 @@ test("the shared mobile default preserves verified AOSP invocation without chang
   } = await import("../src/sense.ts");
   assert.equal(mobileVoiceEntryPolicy(false), CONVERSATION_ONLY_VOICE_ENTRY);
   assert.equal(mobileVoiceEntryPolicy(true), ASSISTANT_INVOCATION_VOICE_ENTRY);
+});
+
+test("chat-only stop requires an exact raw acknowledgement", async () => {
+  const accepted = {
+    available: true,
+    state: "OFF",
+    listening: false,
+    microphoneOpen: false,
+  };
+  assert.equal(
+    await stopSenseListenerForChatOnly({ turnOff: async () => accepted }),
+    true,
+  );
+  for (const receipt of [
+    { ...accepted, listening: true },
+    { ...accepted, microphoneOpen: true },
+    { ...accepted, state: "PAUSED_USER" },
+    { ...accepted, available: false },
+    { available: true, state: "OFF", listening: false },
+    { available: true, state: "OFF", microphoneOpen: false },
+    null,
+  ]) {
+    assert.equal(
+      await stopSenseListenerForChatOnly({ turnOff: async () => receipt }),
+      false,
+      JSON.stringify(receipt),
+    );
+  }
+  assert.equal(await stopSenseListenerForChatOnly(undefined), false);
+  assert.equal(
+    await stopSenseListenerForChatOnly({
+      turnOff: async () => {
+        throw Error("native unavailable");
+      },
+    }),
+    false,
+  );
+});
+
+test("chat-only stop is bounded even when the native bridge never replies", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const stopped = stopSenseListenerForChatOnly({
+    turnOff: () => new Promise(() => {}),
+  });
+  t.mock.timers.tick(5000);
+  assert.equal(await stopped, false);
 });

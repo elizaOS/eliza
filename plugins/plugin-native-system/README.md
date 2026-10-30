@@ -384,3 +384,9 @@ does not claim to stop a previously running listener.
 conversation-only outside the admitted AOSP lane, existing native-verified
 invocation handling within it. It never enables or resumes the listener, and
 listener consent does not replace the separate native system/Power receipt rules.
+
+Chat-only native hosts call `stopSenseListenerForChatOnly` separately from the
+inert invocation controller. It waits at most five seconds and accepts only a
+raw available/OFF/listening-false/microphone-closed receipt; missing or contradictory
+fields stay unconfirmed. Hosts display that failure and may retry the same stop.
+The helper never requests consent, enables or resumes the listener.

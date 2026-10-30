@@ -4,6 +4,7 @@ import {
   mobileVoiceEntryPolicy,
   Sense,
   type SenseVoiceEntryPolicy,
+  stopSenseListenerForChatOnly,
 } from "@elizaos/capacitor-system/sense";
 import { loadSecretsManagerSection } from "@elizaos/ui";
 /**
@@ -211,6 +212,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -2430,6 +2432,53 @@ function ChatOverlayMount({
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
 }): ReactNode {
+  const t = useAppSelector((state) => state.t);
+  const [wakeStopUnconfirmed, setWakeStopUnconfirmed] = useState(false);
+  const [wakeStopRetry, retryWakeStop] = useReducer(
+    (attempt: number) => attempt + 1,
+    0,
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a visible retry repeats the bounded native acknowledgement.
+  useEffect(() => {
+    if (
+      Capacitor.getPlatform() !== "android" ||
+      voiceEntryPolicy?.externalInvocation !== false
+    ) {
+      setWakeStopUnconfirmed(false);
+      return;
+    }
+    let active = true;
+    void stopSenseListenerForChatOnly(
+      Capacitor.isPluginAvailable("ElizaSense") ? Sense : undefined,
+    ).then((stopped) => {
+      if (active) setWakeStopUnconfirmed(!stopped);
+    });
+    return () => {
+      active = false;
+    };
+  }, [voiceEntryPolicy, wakeStopRetry]);
+  const wakeStopNotice = wakeStopUnconfirmed ? (
+    <div
+      role="alert"
+      data-testid="wake-listener-stop-unconfirmed"
+      className="fixed inset-x-3 top-[calc(var(--safe-area-top,0px)+0.5rem)] z-[2000] mx-auto max-w-xl rounded-sm border border-border bg-card p-3 text-sm text-txt shadow-lg"
+    >
+      <p>
+        {t("voicesection.listenerStopUnconfirmed", {
+          defaultValue: "Wake listening could not be confirmed off.",
+        })}
+      </p>
+      <button
+        type="button"
+        className="mt-2 min-h-11 underline"
+        onClick={() => retryWakeStop()}
+      >
+        {t("voicesection.retryListenerStop", {
+          defaultValue: "Retry stopping wake listening",
+        })}
+      </button>
+    </div>
+  ) : null;
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete, startupPhase } =
     useAppSelectorShallow((s) => ({
@@ -2513,26 +2562,29 @@ function ChatOverlayMount({
       onFirstRunChatMounted?.(firstRunMountEpoch);
     }
   }, [controller, firstRunMountEpoch, firstRunOpen, onFirstRunChatMounted]);
-  if (!controller) return null;
+  if (!controller) return wakeStopNotice;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
   // reported name; "Eliza" is the default the overlay falls back to.
   const agentName =
     characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
   return (
-    <ChatOverlay
-      controller={controller}
-      agentName={agentName}
-      initialMode={initialMode}
-      fillHostAtHalf={fillHostAtHalf}
-      firstRunOpen={firstRunOpen}
-      acceptPendingFirstRunText={firstRunComplete}
-      releaseFirstRunToFull={releaseFirstRunToFull}
-      onFirstRunReleaseHandled={onFirstRunReleaseHandled}
-      onPilledChange={onPilledChange}
-      onDetentChange={onDetentChange}
-      onStateChange={onStateChange}
-    />
+    <>
+      {wakeStopNotice}
+      <ChatOverlay
+        controller={controller}
+        agentName={agentName}
+        initialMode={initialMode}
+        fillHostAtHalf={fillHostAtHalf}
+        firstRunOpen={firstRunOpen}
+        acceptPendingFirstRunText={firstRunComplete}
+        releaseFirstRunToFull={releaseFirstRunToFull}
+        onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+        onPilledChange={onPilledChange}
+        onDetentChange={onDetentChange}
+        onStateChange={onStateChange}
+      />
+    </>
   );
 }
 /**
