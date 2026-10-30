@@ -291,6 +291,32 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
 
+      - name: Verify owning Calendar regressions
+        if: steps.affected.outputs.source == 'true'
+        timeout-minutes: 10
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          TEST_LANE: pr
+          VITEST_LANE: pr
+          ELIZA_LIVE_TEST: "0"
+          CALENDAR_LLM_LIVE_TEST: "0"
+        run: |
+          set -euo pipefail
+          calendar_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            plugins/plugin-calendar packages/contracts/src/calendar.ts || calendar_diff_status=$?
+          if [ "$calendar_diff_status" -eq 0 ]; then
+            echo "No owning Calendar source changed."
+            exit 0
+          fi
+          if [ "$calendar_diff_status" -ne 1 ]; then
+            exit "$calendar_diff_status"
+          fi
+          node packages/scripts/with-test-runtime.ts \
+            bun run --cwd plugins/plugin-calendar test \
+            --maxWorkers=1 --no-file-parallelism
+
       - name: Verify gateway routing and release preparation
         if: steps.affected.outputs.cloud == 'true'
         timeout-minutes: 3
