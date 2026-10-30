@@ -448,12 +448,15 @@ and the shared browser-control worker. It advertises `protection-owner`; older
 or disabled peers reject this capability. Trusted hosts call
 `NativeSocketBrowserTarget.setProtectionOwner(opaqueOwnerOrNull)` after profile
 registration and each account transition. Disconnect and worker recovery retire
-the context. The receipt counts updated and unavailable tabs; it is not a task
+the context. Setting the owner it already has changes no page and counts no tabs.
+The receipt counts updated and unavailable tabs; it is not a task
 permission. Consumer account-lifecycle and Android qualification remain required.
 
 Acknowledgements stay in worker memory, scoped to exact origin and evidence;
 owner changes, worker restart and a later blacklist warning clear them.
-Undo is available. Messages bind the extension, main frame, document and display
+Undo is available. A refresh keeps the drawn bar and rewrites only text that
+changed, so a screen reader announces the advice again only when it changes and
+focus stays on the bar. Messages bind the extension, main frame, document and display
 nonce, and only trusted clicks submit. No exception rule or task binding is
 changed. The closed shadow tree keeps warning text out of ordinary page reads;
 it is an in-page advisory, not tamper-proof browser chrome. The existing DNR
