@@ -94,10 +94,12 @@ describe("computeProposedSlots", () => {
       "2026-10-31T19:30:00.000Z",
       "2026-10-31T22:00:00.000Z",
     ]);
+    // Node's ICU writes "Sat, Oct 31, 12:00 PM"; Bun's writes "Sat, Oct 31
+    // at 12:00 PM".
     expect(slots.map((slot) => slot.localStart)).toEqual([
-      expect.stringMatching(/^Sat, Oct 31, 12:00\sPM$/),
-      expect.stringMatching(/^Sat, Oct 31, 12:30\sPM$/),
-      expect.stringMatching(/^Sat, Oct 31, 3:00\sPM$/),
+      expect.stringMatching(/^Sat, Oct 31(?: at |, )12:00\sPM$/),
+      expect.stringMatching(/^Sat, Oct 31(?: at |, )12:30\sPM$/),
+      expect.stringMatching(/^Sat, Oct 31(?: at |, )3:00\sPM$/),
     ]);
     expectSeparateFreeSlots(slots, events);
   });
@@ -124,9 +126,9 @@ describe("computeProposedSlots", () => {
       "2026-11-01T23:00:00.000Z",
     ]);
     expect(slots.map((slot) => slot.localStart)).toEqual([
-      expect.stringMatching(/^Sun, Nov 1, 12:00\sPM$/),
-      expect.stringMatching(/^Sun, Nov 1, 12:30\sPM$/),
-      expect.stringMatching(/^Sun, Nov 1, 3:00\sPM$/),
+      expect.stringMatching(/^Sun, Nov 1(?: at |, )12:00\sPM$/),
+      expect.stringMatching(/^Sun, Nov 1(?: at |, )12:30\sPM$/),
+      expect.stringMatching(/^Sun, Nov 1(?: at |, )3:00\sPM$/),
     ]);
     expectSeparateFreeSlots(slots, events);
   });
