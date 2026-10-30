@@ -52,12 +52,16 @@ export function resolveExplicitRegisteredViewRequest<
   views: readonly T[],
   text: string,
 ): { view: T; resolvedAlias?: string } | undefined {
+  // "Open my calendar, please." names the Calendar view as plainly as "open
+  // calendar"; without the possessive and trailing please it took the
+  // planner path (two extra model calls, live 2026-10-30 tj-f923be42254f79).
   const request = text
     .trim()
     .replace(/[.!]+$/u, "")
+    .replace(/,?\s+please$/iu, "")
     .trim();
   const command =
-    /^(?:please\s+)?(?:open|show|go(?:\s+to)?)\s+(?:the\s+)?(.+)$/iu.exec(
+    /^(?:please\s+)?(?:open|show|go(?:\s+to)?)\s+(?:(?:the|my)\s+)?(.+)$/iu.exec(
       request,
     );
   if (!command) return;
