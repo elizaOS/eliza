@@ -127,10 +127,128 @@ export const LIFEOPS_CALENDAR_SOURCE_VISIBILITIES = [
 ] as const;
 export type LifeOpsCalendarSourceVisibility =
   (typeof LIFEOPS_CALENDAR_SOURCE_VISIBILITIES)[number];
+const calendarReadBrokerStages = [
+  "credential", "signal", "client", "identity", "accounts", "account-projection",
+  "credential-recheck", "permission-recheck", "calendar-sources", "request-validation",
+  "fetch", "response-json",
+] as const;
+const calendarReadBrokerCodes = [
+  "invalid-response", "http", "expired", "credentials-missing", "credential-consumed",
+  "login-active", "account-changed", "unclassified",
+] as const;
+const calendarReadBrokerClasses = [
+  "CloudProtocolError", "CalendarAgentWriteRefused", "AbortError", "TypeError", "Error", "unknown",
+] as const;
+
+/** Authenticated read-refusal diagnostics only. These fields cannot establish
+ * identity, authorization, freshness, availability or a committed operation.
+ */
+export interface CalendarReadBrokerDiagnostic {
+  readonly version: 1;
+  readonly operation: "sources" | "feed";
+  readonly stage: (typeof calendarReadBrokerStages)[number] | null;
+  readonly code: (typeof calendarReadBrokerCodes)[number];
+  readonly status: number | null;
+  readonly errorClass: (typeof calendarReadBrokerClasses)[number];
+  readonly capabilities: { readonly abortAny: boolean; readonly abortTimeout: boolean; readonly fetch: boolean };
+}
+
+function calendarReadBrokerRecord(value: unknown, fields: readonly string[]): Record<string, unknown> | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return;
+  const prototype = Object.getPrototypeOf(value);
+  if (prototype !== Object.prototype && prototype !== null) return;
+  const keys = Reflect.ownKeys(value);
+  if (keys.length !== fields.length || keys.some(key => typeof key !== "string" || !fields.includes(key))) return;
+  const copy: Record<string, unknown> = Object.create(null);
+  for (const field of fields) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, field);
+    if (!descriptor || !Object.hasOwn(descriptor, "value") || !descriptor.enumerable) return;
+    copy[field] = descriptor.value;
+  }
+  return copy;
+}
+
+function calendarReadBrokerMember<T extends string>(values: readonly T[], value: unknown): value is T {
+  return values.some(candidate => candidate === value);
+}
+
+function calendarReadBrokerValue(value: unknown): CalendarReadBrokerDiagnostic | undefined {
+  try {
+    const v = calendarReadBrokerRecord(value, ["version", "operation", "stage", "code", "status", "errorClass", "capabilities"]);
+    if (!v || v.version !== 1 || (v.operation !== "sources" && v.operation !== "feed") ||
+      (v.stage !== null && !calendarReadBrokerMember(calendarReadBrokerStages, v.stage)) ||
+      !calendarReadBrokerMember(calendarReadBrokerCodes, v.code) ||
+      !calendarReadBrokerMember(calendarReadBrokerClasses, v.errorClass) ||
+      !(v.status === null || (typeof v.status === "number" && Number.isInteger(v.status) && v.status >= 100 && v.status <= 599))) return;
+    const c = calendarReadBrokerRecord(v.capabilities, ["abortAny", "abortTimeout", "fetch"]);
+    if (!c || typeof c.abortAny !== "boolean" || typeof c.abortTimeout !== "boolean" || typeof c.fetch !== "boolean") return;
+    return Object.freeze({ version: 1, operation: v.operation, stage: v.stage, code: v.code,
+      status: v.status, errorClass: v.errorClass,
+      capabilities: Object.freeze({ abortAny: c.abortAny, abortTimeout: c.abortTimeout, fetch: c.fetch }) });
+  } catch {
+    // Invalid optional diagnostics, including accessors/proxies, cannot alter
+    // the refusal or cause arbitrary error context to be inspected.
+    return undefined;
+  }
+}
+
+function encodeCalendarReadBrokerDiagnostic(value: unknown): string | undefined {
+  const diagnostic = calendarReadBrokerValue(value);
+  if (!diagnostic) return;
+  // Null-prototype wire objects cannot run an inherited toJSON hook.
+  const wire = Object.assign(Object.create(null), diagnostic);
+  wire.capabilities = Object.assign(Object.create(null), diagnostic.capabilities);
+  const encoded = JSON.stringify(wire);
+  return encoded.length <= 512 ? encoded : undefined;
+}
+
+/** One shared codec. Emit only on an authenticated, classified Calendar read
+ * refusal (HTTP 409); never on authentication, success or mutation responses.
+ * Accepted wire values are canonical compact ASCII JSON, at most 512 bytes.
+ */
+export const calendarReadBrokerDiagnosticHeader = Object.freeze({
+  name: "x-eliza-calendar-read-diagnostic",
+  maximumBytes: 512,
+  encode: encodeCalendarReadBrokerDiagnostic,
+  decode(value: unknown, expectedOperation: "sources" | "feed"): CalendarReadBrokerDiagnostic | undefined {
+    if (typeof value !== "string" || value.length > 512) return;
+    for (let index = 0; index < value.length; index++) if (value.charCodeAt(index) > 127) return;
+    try {
+      const parsed: unknown = JSON.parse(value);
+      const diagnostic = calendarReadBrokerValue(parsed);
+      if (!diagnostic || diagnostic.operation !== expectedOperation || encodeCalendarReadBrokerDiagnostic(diagnostic) !== value) return;
+      return diagnostic;
+    } catch {
+      return undefined;
+    }
+  },
+});
+
 export interface LifeOpsCalendarSourceError {
   code: string;
   message: string;
   retryable: boolean;
+  /** Bounded owner HTTP read diagnostics; absent from internal/model JSON.
+   * Never provider payload, credentials or evidence of authorization,
+   * source freshness or availability. */
+  diagnostic?: {
+    version: 1;
+    operation: "sources" | "feed";
+    stage: "http" | "body" | "schema";
+    httpStatus: number | null;
+    code:
+      | "HTTP_STATUS"
+      | "BODY_MISSING"
+      | "BODY_LIMIT"
+      | "RESPONSE_NOT_OBJECT"
+      | "SOURCES_SCHEMA_INVALID"
+      | "REQUEST_SOURCE_INVALID"
+      | "FEED_SCHEMA_INVALID"
+      | "SOURCE_HEALTH_INVALID"
+      | "EVENT_SCHEMA_INVALID";
+    /** Optional matching authenticated read-refusal header, never raw body. */
+    broker?: CalendarReadBrokerDiagnostic;
+  };
 }
 export const LIFEOPS_CALENDAR_CHANGE_DELIVERY_STATUSES = [
   "unconfigured",

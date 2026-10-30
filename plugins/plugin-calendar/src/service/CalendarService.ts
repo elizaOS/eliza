@@ -239,6 +239,7 @@ import {
 } from "./linked-calendar-sync.js";
 import {
   createManagedCalendarRead,
+  attachManagedCalendarReadDiagnostic,
   managedCalendarPlaceholder,
 } from "./managed-calendar-read.js";
 import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
@@ -563,11 +564,11 @@ function calendarSourceError(error: unknown): LifeOpsCalendarSourceError {
     };
   }
   if (error instanceof ElizaError) {
-    return {
+    return attachManagedCalendarReadDiagnostic({
       code: error.code,
       message: error.message,
       retryable: error.severity === "ephemeral",
-    };
+    }, error);
   }
   return {
     code: "CALENDAR_SOURCE_ERROR",
