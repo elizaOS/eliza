@@ -273,6 +273,9 @@
         "@elizaos/plugin-computeruse#build"
       ]
     },
+    "@elizaos/capacitor-browser-surface#typecheck": {
+      "dependsOn": ["typecheck:deps", "^build"]
+    },
     "@elizaos/plugin-native-contacts#typecheck": {
       "dependsOn": ["typecheck:deps", "^build"]
     },
