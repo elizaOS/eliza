@@ -5473,9 +5473,20 @@ async function runLifeOperationHandlerInner(
           stopWhenComplete: true as const,
         };
       })();
+      const relativeDeadline =
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        leadShaped.cadence.kind === "once" &&
+        ((llmPlan?.cadenceKind === "once" &&
+          typeof llmPlan.dueInMinutes === "number" &&
+          llmPlan.dueInMinutes > 0) ||
+          deferredDefinitionDraft?.relativeDeadline ===
+            leadShaped.cadence.dueAt)
+          ? leadShaped.cadence.dueAt
+          : undefined;
       const definitionDraft = {
         intent,
         operation: "create_definition",
+        ...(relativeDeadline !== undefined ? { relativeDeadline } : {}),
         createdAt: editingDeferredDefinitionDraft
           ? Date.now()
           : (deferredDefinitionDraft?.createdAt ?? Date.now()),
@@ -5660,12 +5671,8 @@ async function runLifeOperationHandlerInner(
       }
 
       const relativeReminderDeadline =
-        ownerSurfaceActionName === "OWNER_REMINDERS" &&
-        llmPlan?.cadenceKind === "once" &&
-        typeof llmPlan.dueInMinutes === "number" &&
-        llmPlan.dueInMinutes > 0 &&
-        leadShaped.cadence.kind === "once"
-          ? Date.parse(leadShaped.cadence.dueAt)
+        definitionDraft.relativeDeadline !== undefined
+          ? Date.parse(definitionDraft.relativeDeadline)
           : undefined;
       const created = await service.createDefinition(
         {
