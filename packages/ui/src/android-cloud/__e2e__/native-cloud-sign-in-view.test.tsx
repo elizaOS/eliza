@@ -147,6 +147,7 @@ describe("AndroidNativeCloudSignInView", () => {
     expect(port.startEmail).toHaveBeenCalledWith({
       environment: "production",
       email: "owner@example.com",
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
     // A resend waits for the cooldown the native host reported.
     expect(
@@ -255,6 +256,7 @@ describe("AndroidNativeCloudSignInView", () => {
     await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
     expect(port.startGoogle).toHaveBeenCalledWith({
       environment: "production",
+      requestId: expect.stringMatching(/^[0-9a-f-]{36}$/),
     });
   });
 
@@ -272,11 +274,15 @@ describe("AndroidNativeCloudSignInView", () => {
 
   it("revalidates a retained MFA challenge using the native active acknowledgement", async () => {
     const port = mockPort();
+    port.startGoogle = vi.fn(() => new Promise(() => {}));
     vi.mocked(port.resumeMfa!).mockResolvedValue({ active: true });
     const { onAuthenticated } = renderView(port);
     await waitFor(() => expect(port.addListener).toHaveBeenCalledTimes(3));
+    fireEvent.click(await screen.findByTestId("native-cloud-sign-in-google"));
+    await waitFor(() => expect(port.startGoogle).toHaveBeenCalledOnce());
     await act(async () => port.emit("signInMfaRequired", {
       status: "mfa", environment: "production", attemptId: ATTEMPT,
+      requestId: vi.mocked(port.startGoogle).mock.calls[0][0].requestId,
       method: "totp", expiresAt: later(300_000),
     }));
     const code = await screen.findByTestId("native-cloud-sign-in-code");
@@ -297,6 +303,7 @@ describe("AndroidNativeCloudSignInView", () => {
     await waitFor(() => expect(port.startGoogle).toHaveBeenCalledOnce());
     await act(async () => port.emit("signInMfaRequired", {
       status: "mfa", environment: "production", attemptId: ATTEMPT,
+      requestId: vi.mocked(port.startGoogle).mock.calls[0][0].requestId,
       method: "totp", expiresAt: later(300_000),
     }));
     const code = await screen.findByTestId("native-cloud-sign-in-code");
@@ -329,9 +336,14 @@ describe("AndroidNativeCloudSignInView", () => {
   it("cancels the native attempt and reports the owner left", async () => {
     const port = mockPort();
     const { onAbandon, onAuthenticated } = renderView(port);
-    await screen.findByTestId("native-cloud-sign-in-email");
+    const email = await screen.findByTestId("native-cloud-sign-in-email");
+    fireEvent.change(email, { target: { value: "owner@example.invalid" } });
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-email-send"));
+    await screen.findByTestId("native-cloud-sign-in-code");
     fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
     expect(port.cancel).toHaveBeenCalledTimes(1);
+    await screen.findByTestId("native-cloud-sign-in-email");
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
     await waitFor(() => expect(onAbandon).toHaveBeenCalledTimes(1));
     expect(onAbandon.mock.calls[0][0]).toMatchObject({ code: "cancelled" });
     expect(onAuthenticated).not.toHaveBeenCalled();
@@ -341,19 +353,25 @@ describe("AndroidNativeCloudSignInView", () => {
     const port = mockPort();
     vi.mocked(port.cancel).mockRejectedValue(new Error("bridge acknowledgement lost"));
     const { onAbandon, onAuthenticated } = renderView(port);
-    await screen.findByTestId("native-cloud-sign-in-email");
+    const email = await screen.findByTestId("native-cloud-sign-in-email");
+    fireEvent.change(email, { target: { value: "owner@example.invalid" } });
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-email-send"));
+    await screen.findByTestId("native-cloud-sign-in-code");
     fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
     await screen.findByTestId("native-cloud-sign-in-error");
     expect(onAbandon).not.toHaveBeenCalled();
-    await act(async () => port.emit("signInCompleted", authenticated()));
+    const requestId = vi.mocked(port.startEmail).mock.calls[0][0].requestId;
+    await act(async () => port.emit("signInCompleted", { ...authenticated(), requestId, attemptId: ATTEMPT, credentialId: ATTEMPT }));
     expect(onAuthenticated).not.toHaveBeenCalled();
     vi.mocked(port.cancel).mockResolvedValue(undefined);
+    fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
+    await screen.findByTestId("native-cloud-sign-in-email");
     fireEvent.click(screen.getByTestId("native-cloud-sign-in-cancel"));
     await waitFor(() => expect(onAbandon).toHaveBeenCalledOnce());
     expect(port.cancel).toHaveBeenCalledTimes(2);
   });
 
-  it("completes from a native restart announcement and shows an unverified return", async () => {
+  it("ignores an unscoped native restart announcement on a fresh interactive request", async () => {
     const port = mockPort();
     const { onAuthenticated } = renderView(port);
     await waitFor(() => expect(port.addListener).toHaveBeenCalledTimes(3));
@@ -361,8 +379,8 @@ describe("AndroidNativeCloudSignInView", () => {
     expect(
       (await screen.findByTestId("native-cloud-sign-in-error")).textContent,
     ).toContain("Eliza did not receive the sign-in from your browser");
-    act(() => port.emit("signInCompleted", authenticated()));
-    await waitFor(() => expect(onAuthenticated).toHaveBeenCalledTimes(1));
+    await act(async () => port.emit("signInCompleted", authenticated()));
+    expect(onAuthenticated).not.toHaveBeenCalled();
   });
 });
 

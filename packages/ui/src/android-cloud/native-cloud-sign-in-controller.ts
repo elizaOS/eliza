@@ -77,6 +77,8 @@ export class NativeCloudSignInController<E extends string> {
   private cancellation: Promise<void> | null = null;
   private cancellationRequired = false;
   private nativeAttemptRetired = false;
+  /** Set only by an actual native dispatch, never by a retained event. */
+  private requestId: string | null = null;
   private authenticated: NativeCloudSignInAuthenticated<E> | null = null;
   private activation: Promise<void> | null = null;
   private returned: { owner: AbortController; finish(): void } | null = null;
@@ -320,9 +322,18 @@ export class NativeCloudSignInController<E extends string> {
     }
   }
   private cancelNative() {
+    if (this.cancellation) return this.cancellation;
+    const requestId = this.requestId;
+    // Readiness and queued host work own no native attempt. In particular,
+    // disposing either cannot cancel a different mounted request.
+    if (!requestId) {
+      this.nativeAttemptRetired = true;
+      return Promise.resolve();
+    }
     this.cancellationRequired = true;
     if (!this.cancellation) {
-      const cancellation = (async () => this.port.cancel())();
+      // Capture the originating ID before disposal or a later method changes state.
+      const cancellation = (async () => this.port.cancel({ requestId }))();
       this.cancellation = cancellation;
       void cancellation.then(
         () => {
@@ -330,6 +341,7 @@ export class NativeCloudSignInController<E extends string> {
             this.cancellation = null;
             this.cancellationRequired = false;
             this.nativeAttemptRetired = true;
+            if (this.requestId === requestId) this.requestId = null;
           }
         },
         () => {
@@ -350,6 +362,7 @@ export class NativeCloudSignInController<E extends string> {
   ) {
     this.check(generation, signal);
     const outcome = nativeSignInVerified(answer, this.owner.environment);
+    this.checkResponseRequest(outcome);
     if (outcome.status === "authenticated")
       return this.activate(outcome, generation, signal);
     this.publish({
@@ -360,6 +373,12 @@ export class NativeCloudSignInController<E extends string> {
         expiresAt: outcome.expiresAt,
       },
     });
+  }
+  private checkResponseRequest(outcome: { requestId?: string }) {
+    // Older hosts can answer a directly awaited RPC without correlation metadata.
+    // A supplied echo, however, must always identify our native dispatch.
+    if (outcome.requestId !== undefined && outcome.requestId !== this.requestId)
+      throw new NativeCloudSignInError("state-mismatch");
   }
   private async activate(
     outcome: NativeCloudSignInAuthenticated<E>,
@@ -397,10 +416,13 @@ export class NativeCloudSignInController<E extends string> {
       return Promise.resolve();
     }
     return this.run(async (generation, signal) => {
+      const requestId = crypto.randomUUID();
+      this.requestId = requestId;
       const started = nativeSignInCodeStarted(
         await this.port.startEmail({
           environment: this.owner.environment,
           email: address,
+          requestId,
         }),
       );
       this.check(generation, signal);
@@ -423,10 +445,13 @@ export class NativeCloudSignInController<E extends string> {
     return this.run(async (generation, signal) => {
       if (!this.port.startPhone)
         throw new NativeCloudSignInError("unavailable");
+      const requestId = crypto.randomUUID();
+      this.requestId = requestId;
       const started = nativeSignInCodeStarted(
         await this.port.startPhone({
           environment: this.owner.environment,
           phone: number,
+          requestId,
         }),
       );
       this.check(generation, signal);
@@ -442,11 +467,17 @@ export class NativeCloudSignInController<E extends string> {
   }
   startGoogle() {
     return this.run(async (generation, signal) => {
+      const requestId = crypto.randomUUID();
+      this.requestId = requestId;
       const outcome = nativeSignInGoogleOutcome(
-        await this.port.startGoogle({ environment: this.owner.environment }),
+        await this.port.startGoogle({
+          environment: this.owner.environment,
+          requestId,
+        }),
         this.owner.environment,
       );
       this.check(generation, signal);
+      this.checkResponseRequest(outcome);
       if (outcome.status === "authenticated")
         await this.activate(outcome, generation, signal);
       else
@@ -500,11 +531,19 @@ export class NativeCloudSignInController<E extends string> {
         : this.startPhone(step.destination);
   }
   async acceptReturn(value: unknown) {
-    if (!this.current() || this.authenticated || this.cancellationRequired)
+    if (
+      !this.current() ||
+      this.authenticated ||
+      this.cancellationRequired ||
+      !this.requestId
+    )
       return;
     let outcome: NativeCloudSignInGoogleOutcome<E>;
     try {
       outcome = nativeSignInGoogleOutcome(value, this.owner.environment);
+      // A retained event cannot establish an interactive request. Cold-start
+      // recovery reads the current installed credential through the session owner.
+      if (outcome.requestId !== this.requestId) return;
     } catch {
       return;
     }

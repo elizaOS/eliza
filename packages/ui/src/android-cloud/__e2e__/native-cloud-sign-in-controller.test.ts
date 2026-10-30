@@ -58,6 +58,7 @@ describe("shared native sign-in owner", () => {
     expect(f.activate).not.toHaveBeenCalled();
     expect(f.abandoned).toHaveBeenCalledOnce();
     expect(f.port.cancel).toHaveBeenCalledOnce();
+    expect(f.port.cancel).toHaveBeenCalledWith({ requestId: expect.stringMatching(/^[0-9a-f-]{36}$/) });
   });
 
   it("requires acknowledged native retirement before dispatching another method", async () => {
@@ -97,7 +98,8 @@ describe("shared native sign-in owner", () => {
 
   it("joins a retained completion to a held native request through account activation", async () => {
     let nativeAnswer!: (value: unknown) => void, activated!: () => void;
-    const f = fixture({ startGoogle: () => new Promise(resolve => { nativeAnswer = resolve; }) });
+    let requestId = "";
+    const f = fixture({ startGoogle: input => { requestId = input.requestId!; return new Promise(resolve => { nativeAnswer = resolve; }); } });
     let locked = false;
     const activate = vi.fn(() => new Promise<void>(resolve => { activated = resolve; }));
     const controller = new NativeCloudSignInController(f.port, {
@@ -105,7 +107,7 @@ describe("shared native sign-in owner", () => {
       runOperation: async (action, signal) => { locked = true; try { await action(signal); } finally { locked = false; } },
     });
     const native = controller.startGoogle();
-    const returned = controller.acceptReturn(authenticated());
+    const returned = controller.acceptReturn({ ...authenticated(), requestId, attemptId, credentialId: attemptId });
     await Promise.resolve();
     expect(locked).toBe(true);
     expect(activate).toHaveBeenCalledOnce();
@@ -146,6 +148,46 @@ describe("shared native sign-in owner", () => {
   });
 });
 
+
+describe("native retained completion correlation", () => {
+  it("rejects the cancelled controller's retained completion after closing and reopening", async () => {
+    const listeners = new Set<(value: unknown) => void>();
+    let request = "";
+    const port: Partial<NativeCloudSignInPort<"production">> = {
+      startGoogle: vi.fn(input => { request = Reflect.get(input, "requestId"); return new Promise(() => {}); }),
+      cancel: vi.fn(async () => { throw new Error("bridge acknowledgement lost"); }),
+      addListener: async (event, receive) => { if (event === "signInCompleted") listeners.add(receive); return { remove: async () => { listeners.delete(receive); } }; },
+    };
+    const old = fixture(port); old.controller.start();
+    const pending = old.controller.startGoogle();
+    await Promise.resolve();
+    const oldRequest = request;
+    old.controller.dispose(); await pending;
+    const next = fixture(port); next.controller.start();
+    await Promise.resolve();
+    for (const receive of listeners) receive(authenticated());
+    for (const receive of listeners) receive({ ...authenticated(), attemptId, credentialId: attemptId, requestId: oldRequest });
+    await Promise.resolve(); await Promise.resolve();
+    expect(next.activate).not.toHaveBeenCalled();
+    expect(next.controller.getSnapshot().stage).toBe("choosing");
+    next.controller.dispose();
+  });
+
+  it("accepts only this dispatched request, keeping native and credential identities", async () => {
+    let request = "";
+    const f = fixture({ startGoogle: vi.fn(input => { request = Reflect.get(input, "requestId"); return new Promise(() => {}); }) });
+    const pending = f.controller.startGoogle(); await Promise.resolve();
+    expect(request).toMatch(/^[0-9a-f-]{36}$/);
+    const completion = { ...authenticated(), attemptId, credentialId: attemptId, requestId: request };
+    await f.controller.acceptReturn({ ...completion, requestId: "deadbeef-dead-4eef-8ead-deadbeefdead" });
+    await f.controller.acceptReturn(authenticated());
+    expect(f.activate).not.toHaveBeenCalled();
+    await f.controller.acceptReturn(completion); await pending;
+    expect(f.activate).toHaveBeenCalledWith(completion, expect.any(AbortSignal));
+    f.controller.dispose();
+  });
+});
+
 describe("canonical broker completion teardown", () => {
   it("does not cancel the authenticated native attempt when broker publication unmounts the view", async () => {
     const { requestAndroidNativeCloudSignIn, getAndroidNativeCloudSignInRequest, activateAndroidNativeCloudSignIn, subscribeAndroidNativeCloudSignInRequest, resetAndroidNativeCloudSignInForTesting } = await import("../native-cloud-sign-in");
@@ -166,5 +208,70 @@ describe("canonical broker completion teardown", () => {
       expect(f.port.cancel).not.toHaveBeenCalled();
       expect(f.abandoned).not.toHaveBeenCalled();
     } finally { unsubscribe(); controller.dispose(); resetAndroidNativeCloudSignInForTesting(); }
+  });
+});
+
+
+describe("native cancellation request correlation", () => {
+  it("does not cancel another request when a readiness-only chooser closes", async () => {
+    const cancel = vi.fn(async () => {});
+    const old = fixture({ cancel });
+    old.controller.start();
+    old.controller.dispose();
+    await Promise.resolve();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("does not cancel native while an aborted host operation is still awaiting admission", async () => {
+    let admit!: () => void;
+    const f = fixture();
+    const controller = new NativeCloudSignInController(f.port, {
+      environment: "production", current: () => true, activate: f.activate, abandoned: f.abandoned,
+      runOperation: async (action, signal) => {
+        await new Promise<void>(resolve => { admit = resolve; });
+        await action(signal);
+      },
+    });
+    const pending = controller.startGoogle();
+    controller.dispose();
+    admit();
+    await pending;
+    expect(f.port.startGoogle).not.toHaveBeenCalled();
+    expect(f.port.cancel).not.toHaveBeenCalled();
+  });
+
+  it("keeps a newer native request when the old teardown reaches native late", async () => {
+    let active: string | null = null;
+    let deliverCancel!: () => void;
+    const port = {
+      startGoogle: vi.fn((input: { requestId?: string }) => {
+        active = input.requestId!;
+        return new Promise(() => {});
+      }),
+      cancel: vi.fn((input?: { requestId: string }) => new Promise<void>(resolve => {
+        deliverCancel = () => {
+          if (!input || input.requestId === active) active = null;
+          resolve();
+        };
+      })),
+    };
+    const old = fixture(port);
+    const original = old.controller.startGoogle();
+    const oldRequest = active;
+    old.controller.dispose();
+    await original;
+    // The old picker has ended independently while its renderer cancellation is delayed.
+    active = null;
+    const next = fixture(port);
+    const current = next.controller.startGoogle();
+    const nextRequest = active;
+    expect(nextRequest).not.toBe(oldRequest);
+    deliverCancel();
+    await Promise.resolve();
+    expect(active).toBe(nextRequest);
+    expect(port.cancel).toHaveBeenCalledWith({ requestId: oldRequest });
+    next.controller.dispose();
+    deliverCancel();
+    await current;
   });
 });
