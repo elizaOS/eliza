@@ -72,6 +72,28 @@ describe("verifySessionToken", () => {
     expect(outcome).toEqual({ rejected: failure });
   });
 
+  test("still reports a revoked token as no session", async () => {
+    const { revocationStore, TokenRevokedError } = await import(
+      "../auth/revocation.ts"
+    );
+    const token = await signAccessToken({
+      address: "0x0000000000000000000000000000000000000001",
+      tenantId: randomUUID(),
+      userId: randomUUID(),
+    });
+
+    const original = revocationStore.isRevoked;
+    revocationStore.isRevoked = async () => {
+      throw new TokenRevokedError();
+    };
+    try {
+      // A revoked `jti` is a credential verdict, not an outage.
+      expect(await verifySessionToken(token)).toBeNull();
+    } finally {
+      revocationStore.isRevoked = original;
+    }
+  });
+
   test("still reports an unverifiable or expired token as no session", async () => {
     expect(await verifySessionToken("not-a-jwt")).toBeNull();
 
