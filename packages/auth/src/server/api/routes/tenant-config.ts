@@ -8,7 +8,7 @@ import { resolveMasterPassword } from "../services/vault-factory";
  */
 
 import { randomBytes, randomUUID } from "node:crypto";
-import { resolveTxt } from "node:dns/promises";
+import { promises as dns } from "node:dns";
 import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { hashSha256Hex } from "../../auth/index.ts";
@@ -1043,14 +1043,37 @@ function serializeTenantSamlSsoConfig(
   };
 }
 
-async function hasSsoDomainVerificationTxt(
+/**
+ * Resolver errors that say nothing about the published record. Mirrors
+ * `packages/cloud/api/v1/apps/[id]/domains/verify/route.ts`: only a missing
+ * name or an empty RRset proves the token is not published.
+ */
+const TRANSIENT_DNS_ERROR_CODES = new Set([
+  "ETIMEOUT",
+  "ESERVFAIL",
+  "ECONNREFUSED",
+  "EREFUSED",
+  "ECANCELLED",
+  "EAI_AGAIN",
+]);
+
+function isTransientDnsError(error: unknown): boolean {
+  const code = (error as { code?: unknown } | null)?.code;
+  return typeof code === "string" && TRANSIENT_DNS_ERROR_CODES.has(code);
+}
+
+export async function hasSsoDomainVerificationTxt(
   domain: string,
   token: string,
 ): Promise<boolean> {
   try {
-    const records = await resolveTxt(`_steward-sso.${domain}`);
+    const records = await dns.resolveTxt(`_steward-sso.${domain}`);
     return records.some((chunks) => chunks.join("").trim() === token);
-  } catch {
+  } catch (error) {
+    // ENOTFOUND/ENODATA prove the token is absent. A timeout or resolver
+    // failure proves nothing, and answering "missing" would send the tenant
+    // admin to re-publish a record that is already correct.
+    if (isTransientDnsError(error)) throw error;
     return false;
   }
 }
@@ -2146,12 +2169,24 @@ tenantConfigRoutes.post(
         409,
       );
     }
-    if (
-      !(await hasSsoDomainVerificationTxt(
+    let hasVerificationTxt: boolean;
+    try {
+      hasVerificationTxt = await hasSsoDomainVerificationTxt(
         domain,
         previousDomain.verificationToken,
-      ))
-    ) {
+      );
+    } catch {
+      // The resolver failed, not the DNS zone: a 409 "missing record" here
+      // would send the admin to republish a record that is already correct.
+      return c.json<ApiResponse>(
+        {
+          ok: false,
+          error: `DNS lookup for _steward-sso.${domain} failed — retry shortly`,
+        },
+        503,
+      );
+    }
+    if (!hasVerificationTxt) {
       return c.json<ApiResponse>(
         { ok: false, error: `Missing DNS TXT record _steward-sso.${domain}` },
         409,
