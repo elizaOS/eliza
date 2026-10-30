@@ -12,6 +12,12 @@ public final class NativeAppReadPolicy {
    * Other methods retain the host's existing mutation contracts, including PUT /api/config. */
   public static boolean claims(String path, String method) {
     if (path == null || method == null || !"GET".equalsIgnoreCase(method.trim())) return false;
+    return POLICY.allowed("app-reads", candidatePath(path), "GET");
+  }
+
+  /** Only for claiming aliases before strict validation; never dispatch this normalized path. */
+  static String candidatePath(String path) {
+    if (path == null) return "";
     String route = path.trim().split("[?#]", 2)[0].replace('\\', '/');
     try { route = java.net.URLDecoder.decode(route.replace("+", "%2B"), "UTF-8"); }
     catch (Exception invalid) { /* Match any remaining literal common prefix below. */ }
@@ -21,8 +27,7 @@ public final class NativeAppReadPolicy {
       if ("..".equals(segment)) { if (!segments.isEmpty()) segments.remove(segments.size() - 1); }
       else segments.add(segment);
     }
-    route = "/" + String.join("/", segments);
-    return POLICY.allowed("app-reads", route, "GET");
+    return "/" + String.join("/", segments);
   }
 
   private static OwnerRoutePolicy policy() {

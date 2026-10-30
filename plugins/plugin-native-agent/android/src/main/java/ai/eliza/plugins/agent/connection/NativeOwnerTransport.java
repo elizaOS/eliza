@@ -80,7 +80,7 @@ public final class NativeOwnerTransport {
   /** Route admission is decided before this call. Every request uses the verified native owner. */
   public static JSONObject request(Host host, String path, String method, String body,
       String expectedOwner, JSONObject headers) throws Exception {
-    JSONObject safeHeaders = requestHeaders(headers);
+    JSONObject safeHeaders = requestHeaders(headers, path, method);
     Session session = enroll(host);
     host.check(session.root);
     if (expectedOwner != null && !expectedOwner.equals(session.identity))
@@ -99,15 +99,30 @@ public final class NativeOwnerTransport {
 
   /** A renderer never supplies the owner bearer or transport headers. */
   public static JSONObject requestHeaders(JSONObject supplied) throws Exception {
+    return requestHeaders(supplied, null, null);
+  }
+
+  /** First-run uses the client's idempotency header. Keep its HTTP field value unchanged;
+   * the server owns operation semantics. Match names without case, as Headers does. */
+  public static JSONObject requestHeaders(JSONObject supplied, String path, String method) throws Exception {
     JSONObject result = new JSONObject();
-    if (supplied != null) for (String key : new String[] {
-        "X-Eliza-Device-Id", "X-Eliza-Device-Key", "X-Eliza-Device-Capabilities", "X-ElizaOS-Client-Id"}) {
-      if (!supplied.has(key)) continue;
+    if (supplied != null) for (java.util.Iterator<String> keys = supplied.keys(); keys.hasNext();) {
+      String key = keys.next(), name = null;
+      for (String candidate : new String[] {
+          "X-Eliza-Device-Id", "X-Eliza-Device-Key", "X-Eliza-Device-Capabilities", "X-ElizaOS-Client-Id"})
+        if (candidate.equalsIgnoreCase(key)) name = candidate;
+      if ("Idempotency-Key".equalsIgnoreCase(key)
+          && NativeAppRequestPolicy.acceptsIdempotencyKey(path, method)) name = "Idempotency-Key";
+      if (name == null) continue;
+      if (result.has(name) || !(supplied.opt(key) instanceof String))
+        throw new IllegalArgumentException("Invalid native request header");
       String value = supplied.getString(key);
       if (value.length() > 2048 || value.contains("\r") || value.contains("\n")
-          || "X-ElizaOS-Client-Id".equals(key) && !value.matches("[A-Za-z0-9._-]{1,128}"))
+          || "X-ElizaOS-Client-Id".equals(name) && !value.matches("[A-Za-z0-9._-]{1,128}")
+          || "Idempotency-Key".equals(name) && (value.trim().isEmpty()
+              || value.length() > 512 || !value.matches("[\\x20-\\x7e]+")))
         throw new IllegalArgumentException("Invalid native request header");
-      result.put(key, value);
+      result.put(name, value);
     }
     return result;
   }

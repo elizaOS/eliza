@@ -76,6 +76,9 @@ test("actual canonical native dispatch fences aliases, held stops and Activity r
     for (const name of [
       "NativeOwnerTransport",
       "NativeAppReadPolicy",
+      ...(source(`${app}AgentPlugin.java`).includes("NativeAppRequestPolicy")
+        ? ["NativeAppRequestPolicy"]
+        : []),
       "OwnerRoutePolicy",
     ])
       write(

@@ -1,6 +1,6 @@
 package ai.elizaos.app;
 
-import ai.eliza.plugins.agent.connection.NativeAppReadPolicy;
+import ai.eliza.plugins.agent.connection.NativeAppRequestPolicy;
 import ai.eliza.plugins.agent.connection.NativeOwnerTransport;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
@@ -49,7 +49,7 @@ public class AgentPlugin extends Plugin {
             }
             public long now() { return System.currentTimeMillis(); }
             public JSONObject exchange(String path, String method, String body, String bearer, JSONObject headers) throws Exception {
-                JSONObject safeHeaders = NativeOwnerTransport.requestHeaders(headers);
+                JSONObject safeHeaders = NativeOwnerTransport.requestHeaders(headers, path, method);
                 safeHeaders.put("Accept", "application/json");
                 safeHeaders.put("Content-Type", "application/json");
                 if (bearer != null) safeHeaders.put("Authorization", "Bearer " + bearer);
@@ -110,9 +110,9 @@ public class AgentPlugin extends Plugin {
     @PluginMethod
     public void request(PluginCall call) {
         String path = call.getString("path"), method = call.getString("method", "GET"), body = call.getString("body");
-        if (NativeAppReadPolicy.claims(path, method)) {
-            if (!NativeAppReadPolicy.allowed(path, method, body)) {
-                call.reject("Unsupported native application read");
+        if (NativeAppRequestPolicy.claims(path, method)) {
+            if (!NativeAppRequestPolicy.allowed(path, method, body)) {
+                call.reject("Unsupported native application request");
                 return;
             }
             try {
@@ -165,8 +165,8 @@ public class AgentPlugin extends Plugin {
      */
     @PluginMethod
     public void requestStream(PluginCall call) {
-        if (NativeAppReadPolicy.claims(call.getString("path"), call.getString("method", "GET"))) {
-            call.reject("Native application reads require the buffered owner transport");
+        if (NativeAppRequestPolicy.claims(call.getString("path"), call.getString("method", "GET"))) {
+            call.reject("Native application requests require the buffered owner transport");
             return;
         }
         final String streamId = java.util.UUID.randomUUID().toString();
