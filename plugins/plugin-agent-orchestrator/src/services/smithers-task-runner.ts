@@ -692,7 +692,13 @@ export async function runTaskWithSmithers(
   let taskResultReceived = false;
 
   const writeResponse = (response: StepResponse): void => {
-    if (proc.stdin.writable) proc.stdin.write(`${JSON.stringify(response)}\n`);
+    if (!proc.stdin.writable) return;
+    // The worker reads stdin with readline, which also ends a line at U+2028
+    // and U+2029. JSON.stringify leaves both unescaped inside strings.
+    const line = JSON.stringify(response)
+      .replace(/\u2028/g, "\\u2028")
+      .replace(/\u2029/g, "\\u2029");
+    proc.stdin.write(`${line}\n`);
   };
 
   const record = (
