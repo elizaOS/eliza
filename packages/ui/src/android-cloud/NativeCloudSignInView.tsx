@@ -13,7 +13,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-import "../styles/native-cloud-sign-in.css";
 import {
   type CloudServiceInfo,
   parseCloudServiceInfo,
