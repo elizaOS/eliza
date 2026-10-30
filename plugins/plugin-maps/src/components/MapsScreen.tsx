@@ -11,7 +11,9 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useEffect,
+  useLayoutEffect,
   useRef,
+  useState,
   useSyncExternalStore,
 } from "react";
 import type { Coordinate, Route, TravelMode } from "../client/contracts.ts";
@@ -89,6 +91,7 @@ const color = {
   accent: "var(--maps-accent, var(--accent, #ff5800))",
   accentText: "var(--maps-accent-text, #fff)",
   accentStrong: "var(--maps-accent-strong, var(--maps-accent, #d94b00))",
+  link: "var(--maps-link, var(--maps-fg, var(--text, #141414)))",
   shadow: "var(--maps-shadow, rgba(0, 0, 0, 0.16))",
   guidance: "var(--maps-guidance, var(--maps-accent, #ff5800))",
   guidanceThen: "var(--maps-guidance-then, rgba(0, 0, 0, 0.35))",
@@ -96,7 +99,16 @@ const color = {
   navButton: "var(--maps-nav-button, #262626)",
 };
 const font = "var(--maps-font, inherit)";
+const textSize = (pixels: number) =>
+  `calc(${pixels}px * var(--maps-text-scale, 1))`;
 const displayFont = "var(--maps-display-font, var(--maps-font, inherit))";
+const inset = {
+  top: "var(--maps-inset-top, env(safe-area-inset-top, 0px))",
+  right: "var(--maps-inset-right, env(safe-area-inset-right, 0px))",
+  bottom:
+    "calc(var(--maps-inset-bottom, env(safe-area-inset-bottom, 0px)) + var(--maps-bottom-clearance, 0px))",
+  left: "var(--maps-inset-left, env(safe-area-inset-left, 0px))",
+};
 
 export interface MapsScreenProps {
   screen: MapsScreenHandle;
@@ -226,19 +238,117 @@ export function MapsScreen({
   const controller = screen.controller;
   const view: MapsScreenView = controller.view();
   const icons = { ...DEFAULT_MAPS_SCREEN_ICONS, ...iconOverrides };
+  const root = useRef<HTMLElement | null>(null);
+  const searchInput = useRef<HTMLInputElement | null>(null);
+  const focusSearch = useRef(false);
+  const scrollElement = useRef<HTMLDivElement | null>(null);
+  const textMeasure = useRef<HTMLSpanElement | null>(null);
+  const sheetElement = useRef<HTMLDivElement | null>(null);
+  const primaryElement = useRef<HTMLDivElement | null>(null);
   const planeElement = useRef<HTMLDivElement | null>(null);
   const plane = useRef<MapsScreenPlane | null>(null);
+  useLayoutEffect(() => {
+    if (!focusSearch.current || !searchInput.current) return;
+    focusSearch.current = false;
+    searchInput.current.focus();
+  });
+  const [planeGeneration, setPlaneGeneration] = useState(0);
+  const [size, setSize] = useState({
+    width: 0,
+    height: 0,
+    sheetHeight: 0,
+    primaryHeight: 0,
+    textScale: 1,
+  });
+  const flowLayout =
+    size.textScale >= 2 || (size.height > 0 && size.height < 360);
+  const sideBySide =
+    !flowLayout && size.width >= 720 && size.width > size.height * 1.2;
+  const panelWidth = "min(440px, 50%)";
+  const compactHeight = `calc((100% - ${inset.top} - ${inset.bottom} - 36px) / 2)`;
+  const sheetClearance = Math.max(88, size.primaryHeight + 24);
+  const sheetStyle: CSSProperties = {
+    ...sheet,
+    position: flowLayout ? "relative" : "absolute",
+    left: flowLayout || sideBySide ? "auto" : inset.left,
+    right: flowLayout ? "auto" : inset.right,
+    bottom: flowLayout ? "auto" : inset.bottom,
+    width: sideBySide ? panelWidth : undefined,
+    maxHeight: flowLayout
+      ? "none"
+      : `calc(100% - ${inset.top} - ${inset.bottom} - ${sideBySide ? 24 : sheetClearance}px)`,
+    overflowY: flowLayout ? "visible" : "auto",
+    marginTop: flowLayout ? 12 : undefined,
+    overscrollBehavior: "contain",
+  };
+
+  // Use the space the host gives this view, including split windows and keyboards.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: A mode change replaces the sheet DOM node that must be observed.
+  useLayoutEffect(() => {
+    const element = root.current;
+    if (!element) return;
+    if (flowLayout && scrollElement.current)
+      scrollElement.current.scrollTop = 0;
+    const measure = () => {
+      const bounds = element.getBoundingClientRect();
+      const width = element.clientWidth || bounds.width;
+      const height = element.clientHeight || bounds.height;
+      const layoutScale = bounds.height > 0 ? height / bounds.height : 1;
+      const sheetHeight =
+        (sheetElement.current?.getBoundingClientRect().height ?? 0) *
+        layoutScale;
+      const primaryHeight =
+        (primaryElement.current?.getBoundingClientRect().height ?? 0) *
+        layoutScale;
+      const textScale =
+        Number.parseFloat(getComputedStyle(element).fontSize) / 16 || 1;
+      setSize((previous) =>
+        previous.width === width &&
+        previous.height === height &&
+        previous.sheetHeight === sheetHeight &&
+        previous.primaryHeight === primaryHeight &&
+        previous.textScale === textScale
+          ? previous
+          : {
+              width,
+              height,
+              sheetHeight,
+              primaryHeight,
+              textScale,
+            },
+      );
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    if (sheetElement.current) observer.observe(sheetElement.current);
+    if (primaryElement.current) observer.observe(primaryElement.current);
+    if (textMeasure.current) observer.observe(textMeasure.current);
+    return () => observer.disconnect();
+  }, [view.mode, flowLayout]);
+
+  const retryMap = () => {
+    controller.retryMap();
+    setPlaneGeneration((generation) => generation + 1);
+  };
 
   // The map plane lives as long as the view; failures and readiness are reported to the screen.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: An explicit retry recreates the plane even when its factory is unchanged.
   useEffect(() => {
     const element = planeElement.current;
     if (!element || !createPlane) return;
+    delete element.dataset.mapReady;
+    delete element.dataset.mapError;
     let current = true;
+    let failed = false;
     try {
       plane.current = createPlane(
         element,
         () => {
-          if (current) controller.setMapState("error");
+          if (current) {
+            failed = true;
+            controller.setMapState("error");
+          }
         },
         (id) => controller.pin(id),
       );
@@ -249,7 +359,11 @@ export function MapsScreen({
     const observer = new MutationObserver(() => {
       if (current)
         controller.setMapState(
-          element.dataset.mapReady === "true" ? "ready" : "loading",
+          failed
+            ? "error"
+            : element.dataset.mapReady === "true"
+              ? "ready"
+              : "loading",
         );
     });
     observer.observe(element, {
@@ -262,7 +376,7 @@ export function MapsScreen({
       plane.current?.destroy();
       plane.current = null;
     };
-  }, [controller, createPlane]);
+  }, [controller, createPlane, planeGeneration]);
 
   useEffect(() => {
     plane.current?.update(view.map.selected, view.map.route, view.map.overlay);
@@ -276,704 +390,974 @@ export function MapsScreen({
   );
 
   const status = view.status;
-  const directionsOpen =
-    view.mode === "directions" ||
-    view.mode === "origin" ||
-    view.mode === "navigation";
   const place = view.place;
   const directions = view.directions;
   const navigation = view.navigation;
   const resultsSheet = view.mode === "results" || view.mode === "origin";
 
+  const navigationSummary = navigation ? (
+    <div style={{ flexGrow: 1, minWidth: 0, textAlign: "center" }}>
+      <div
+        style={{
+          fontFamily: displayFont,
+          fontSize: textSize(flowLayout ? 16 : 30),
+          lineHeight: 1.05,
+        }}
+      >
+        {navigation.remainingTime}
+      </div>
+      <div style={{ fontSize: textSize(13), color: "#8f8f8f", marginTop: 3 }}>
+        {navigation.meta}
+      </div>
+      {navigation.offRoute ? (
+        <button
+          type="button"
+          onClick={() => controller.reroute()}
+          disabled={!navigation.canReroute}
+          style={{
+            ...pillButton(color.navButton, "#fff"),
+            minHeight: 36,
+            marginTop: 4,
+            fontSize: textSize(13),
+          }}
+        >
+          Reroute from here
+        </button>
+      ) : null}
+    </div>
+  ) : null;
+
   return (
     <section
+      ref={root}
       data-maps-root
       data-map-diagnostics={JSON.stringify(view.diagnostics)}
       aria-label="Maps"
       style={{
         position: "relative",
         height: "100%",
-        overflow: "hidden",
+        overflowX: "hidden",
+        overflowY: "hidden",
+        display: flowLayout ? "flex" : undefined,
+        flexDirection: flowLayout ? "column" : undefined,
+        boxSizing: "border-box",
+        padding: flowLayout
+          ? `calc(${inset.top} + 12px) calc(${inset.right} + 12px) calc(${inset.bottom} + 12px) calc(${inset.left} + 12px)`
+          : undefined,
         background: color.surface,
         color: color.fg,
         fontFamily: font,
+        fontSize: textSize(16),
+        overflowWrap: "anywhere",
         ...style,
       }}
     >
-      <div
-        ref={planeElement}
-        data-map-plane
-        role="img"
-        aria-label={mapLabel}
-        style={{ position: "absolute", inset: 0, zIndex: 1 }}
-      />
-      <div
-        data-maps-credits
+      <span
+        ref={textMeasure}
+        aria-hidden="true"
         style={{
           position: "absolute",
-          left: 12,
-          right: 12,
-          bottom: directionsOpen ? 310 : place ? 410 : 130,
-          zIndex: 2,
-          display: "flex",
-          alignItems: "flex-end",
-          justifyContent: "space-between",
-          gap: 8,
-          fontSize: 11,
-          color: color.muted,
+          width: "1em",
+          height: "1em",
+          visibility: "hidden",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        ref={scrollElement}
+        data-maps-scroll
+        style={{
+          display: flowLayout ? "block" : "contents",
+          position: flowLayout ? "relative" : undefined,
+          flex: flowLayout ? 1 : undefined,
+          minHeight: 0,
+          overflowY: flowLayout ? "auto" : undefined,
         }}
       >
-        <span
-          style={{
-            background: color.bg,
-            borderRadius: 8,
-            padding: "2px 6px",
-          }}
-        >
-          {attribution}
-        </span>
-        <details>
-          <summary
-            aria-label="Map information"
-            title="Map information"
-            style={{ listStyle: "none", cursor: "pointer" }}
-          >
-            <Icon d={icons.info} size={18} />
-          </summary>
-          <div
-            style={{
-              position: "absolute",
-              right: 0,
-              bottom: 28,
-              maxWidth: 300,
-              padding: 12,
-              borderRadius: 16,
-              background: color.bg,
-              color: color.fg,
-              fontSize: 13,
-              boxShadow: `0 6px 22px ${color.shadow}`,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => controller.manualLocation()}
-              style={pillButton(color.surface, color.fg)}
-            >
-              Enter coordinates
-            </button>
-            {mapPrivacy ? <p>{mapPrivacy}</p> : null}
-            {disclosure ? <p data-maps-disclosure>{disclosure}</p> : null}
-          </div>
-        </details>
-      </div>
-
-      {view.showSearch ? (
         <div
-          data-maps-search
+          ref={primaryElement}
+          data-maps-primary
           style={{
-            position: "absolute",
-            left: 12,
-            right: 12,
-            top: 12,
-            height: 54,
-            borderRadius: 27,
-            background: color.bg,
-            boxShadow: `0 6px 22px ${color.shadow}, 0 0 0 1px ${color.line}`,
-            display: "flex",
-            alignItems: "center",
-            padding: "0 5px",
-            zIndex: 3,
-          }}
-        >
-          {onBack && view.searchLead === "search" ? (
-            <button
-              type="button"
-              aria-label="Back to apps"
-              onClick={onBack}
-              style={roundButton(44, "transparent")}
-            >
-              <Icon d={icons.back} />
-            </button>
-          ) : null}
-          <button
-            type="button"
-            aria-label={view.searchLead === "back" ? "Back" : "Search"}
-            onClick={() => controller.searchLead()}
-            style={roundButton(44, "transparent")}
-          >
-            <Icon d={view.searchLead === "back" ? icons.back : icons.search} />
-          </button>
-          <input
-            aria-label="Search places"
-            placeholder="Search"
-            value={view.query}
-            onChange={(event) => controller.setQuery(event.target.value)}
-            onClick={() => controller.focusQuery()}
-            onKeyDown={onEnter(() => controller.submit())}
-            style={{
-              flexGrow: 1,
-              minWidth: 0,
-              height: 44,
-              border: 0,
-              outline: 0,
-              background: "transparent",
-              color: color.fg,
-              fontSize: 16,
-              padding: "0 4px",
-              font: "inherit",
-            }}
-          />
-          {view.query ? (
-            <button
-              type="button"
-              aria-label="Clear search"
-              onClick={() => controller.clearQuery()}
-              style={roundButton(44, "transparent")}
-            >
-              <Icon d={icons.close} size={18} />
-            </button>
-          ) : null}
-        </div>
-      ) : null}
-
-      {view.mode === "base" && view.saved.length ? (
-        <div
-          style={{
-            position: "absolute",
-            left: 0,
-            right: 0,
-            top: 76,
-            display: "flex",
-            gap: 8,
-            overflowX: "auto",
-            padding: "0 12px 10px",
-            zIndex: 3,
-          }}
-        >
-          {view.saved.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => controller.chooseSaved(item.id)}
-              style={{
-                ...pillButton(color.bg, color.fg),
-                minHeight: 40,
-                boxShadow: `0 4px 14px ${color.shadow}, 0 0 0 1px ${color.line}`,
-              }}
-            >
-              <Icon d={icons.pin} size={18} />
-              {item.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
-
-      {eventReturn && (view.showSearch || view.mode === "directions") ? (
-        <button
-          type="button"
-          data-maps-event-return
-          aria-label="Back to event"
-          title={eventReturn.title}
-          onClick={eventReturn.onReturn}
-          style={{
-            ...pillButton(color.bg, color.fg),
-            position: "absolute",
-            left: 12,
-            top: view.showSearch ? 76 : 190,
-            zIndex: 5,
-            boxShadow: `0 6px 22px ${color.shadow}, 0 0 0 1px ${color.line}`,
-          }}
-        >
-          <Icon d={icons.back} size={18} />
-          Back to event
-        </button>
-      ) : null}
-
-      {view.mode !== "navigation" ? (
-        <button
-          type="button"
-          aria-label="Recenter"
-          onClick={() => controller.recenter()}
-          style={{
-            ...roundButton(50, color.bg),
-            position: "absolute",
-            right: 16,
-            bottom: place ? 414 : view.mode === "results" ? 534 : 124,
-            zIndex: 3,
-            boxShadow: `0 6px 20px ${color.shadow}, 0 0 0 1px ${color.line}`,
-          }}
-        >
-          <Icon d={icons.locate} />
-        </button>
-      ) : (
-        <button
-          type="button"
-          aria-label="Recenter"
-          onClick={() => controller.recenter()}
-          style={{
-            ...roundButton(54, color.navBar),
-            color: "#fff",
-            position: "absolute",
-            right: 16,
-            bottom: 136,
-            zIndex: 3,
-          }}
-        >
-          <Icon d={icons.locate} />
-        </button>
-      )}
-
-      {status.visible && view.mode !== "navigation" ? (
-        <div
-          data-maps-status
-          data-location-state={status.location}
-          data-map-state={status.map}
-          style={{
-            position: "absolute",
-            left: 20,
-            right: 20,
-            top: directionsOpen
-              ? 232
-              : place
-                ? 128
-                : view.mode === "results"
-                  ? 130
-                  : 134,
-            zIndex: 2,
-            padding: 16,
-            borderRadius: 22,
-            background: color.bg,
-            color: color.muted,
-            fontSize: 14,
-            lineHeight: 1.45,
-            boxShadow: `0 0 0 1px ${color.line}`,
-          }}
-        >
-          <p role="status" style={{ margin: 0 }}>
-            {status.text}
-          </p>
-          {status.mapsAppHandoff ? (
-            <button
-              type="button"
-              aria-label="Open in maps app"
-              onClick={() => controller.openInMapsApp()}
-              style={{
-                ...pillButton(color.accent, color.accentText),
-                marginTop: 8,
-              }}
-            >
-              Open in maps app
-            </button>
-          ) : null}
-          {status.controls ? (
-            <>
-              {status.mapText ? (
-                <p style={{ margin: "6px 0" }}>{status.mapText}</p>
-              ) : null}
-              <p style={{ margin: "6px 0" }}>{status.locationHelp}</p>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                <button
-                  type="button"
-                  aria-label={status.locationLabel}
-                  disabled={status.locationBusy}
-                  onClick={() => controller.locate()}
-                  style={pillButton(color.accent, color.accentText)}
-                >
-                  {status.locationLabel}
-                </button>
-                {status.locationDenied && onOpenLocationSettings ? (
-                  <button
-                    type="button"
-                    aria-label="Location settings"
-                    onClick={onOpenLocationSettings}
-                    style={pillButton(color.surface, color.fg)}
-                  >
-                    Location settings
-                  </button>
-                ) : null}
-                {status.mapRetry ? (
-                  <button
-                    type="button"
-                    aria-label="Retry map"
-                    onClick={() => controller.retryMap()}
-                    style={pillButton(color.surface, color.fg)}
-                  >
-                    Retry map
-                  </button>
-                ) : null}
-              </div>
-            </>
-          ) : null}
-        </div>
-      ) : null}
-
-      {resultsSheet ? (
-        <div
-          data-maps-sheet="results"
-          style={{
-            ...sheet,
-            height: 520,
+            position: flowLayout ? "relative" : "absolute",
+            top: flowLayout ? "auto" : `calc(${inset.top} + 12px)`,
+            left: flowLayout ? "auto" : `calc(${inset.left} + 12px)`,
+            right: flowLayout
+              ? "auto"
+              : sideBySide &&
+                  (resultsSheet || place || directions || navigation)
+                ? `calc(${inset.right} + ${panelWidth} + 12px)`
+                : `calc(${inset.right} + ${navigation ? 80 : 12}px)`,
+            maxHeight: flowLayout
+              ? "none"
+              : sideBySide
+                ? `calc(100% - ${inset.top} - ${inset.bottom} - 24px)`
+                : compactHeight,
+            maxWidth: flowLayout
+              ? undefined
+              : sideBySide
+                ? "min(440px, calc(50% - 24px))"
+                : size.width >= 720
+                  ? 560
+                  : undefined,
             display: "flex",
             flexDirection: "column",
-            paddingTop: 20,
+            gap: 8,
+            overflowY: flowLayout ? "visible" : "auto",
+            overscrollBehavior: "contain",
+            zIndex: 5,
           }}
         >
-          <div style={{ flexGrow: 1, overflowY: "auto", paddingBottom: 120 }}>
-            {view.emptyQuery ? (
-              <>
-                {categories.length ? (
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 8,
-                      overflowX: "auto",
-                      padding: "4px 20px 14px",
-                    }}
-                  >
-                    {categories.map((category) => (
-                      <button
-                        key={category.label}
-                        type="button"
-                        onClick={() => controller.searchFor(category.label)}
-                        style={{
-                          ...pillButton(color.surface, color.fg),
-                          minHeight: 40,
-                        }}
-                      >
-                        <Icon d={category.icon ?? icons.search} size={18} />
-                        {category.label}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {view.saved.map((item) => (
-                  <ResultRow
-                    key={item.id}
-                    icon={icons.pin}
-                    name={item.label}
-                    detail={`${item.coordinate.latitude.toFixed(5)}, ${item.coordinate.longitude.toFixed(5)}`}
-                    onSelect={() => controller.chooseSaved(item.id)}
-                  />
-                ))}
-              </>
-            ) : null}
-            {view.results.map((row) => (
-              <ResultRow
-                key={row.key}
-                icon={row.saved ? icons.star : icons.pin}
-                name={row.name}
-                detail={row.detail}
-                onSelect={() => controller.choose(row.key)}
-              />
-            ))}
-            {view.noResults ? (
-              <div
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "18px 20px 6px",
-                  color: color.muted,
-                }}
-              >
-                <Icon d={icons.search} size={28} />
-                <div style={{ fontSize: 15 }}>No places</div>
-                {onAskAgent ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      onAskAgent(view.query || "Help me with Maps.")
-                    }
-                    style={pillButton(color.surface, color.fg)}
-                  >
-                    Ask {agentName} about this search
-                  </button>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
-
-      {place && view.mode === "place" ? (
-        <div
-          data-maps-sheet="place"
-          style={{ ...sheet, padding: "18px 20px 24px" }}
-        >
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ flexGrow: 1, minWidth: 0 }}>
-              {place.editingName ? (
-                <div style={{ display: "flex", gap: 8 }}>
-                  <input
-                    aria-label="Place name"
-                    value={place.name}
-                    maxLength={300}
-                    onChange={(event) => controller.rename(event.target.value)}
-                    onKeyDown={onEnter(() => controller.applyName())}
-                    style={{
-                      minWidth: 0,
-                      flexGrow: 1,
-                      height: 44,
-                      padding: "0 14px",
-                      border: 0,
-                      borderRadius: 22,
-                      background: color.surface,
-                      color: color.fg,
-                      fontSize: 15,
-                      font: "inherit",
-                    }}
-                  />
-                  <button
-                    type="button"
-                    aria-label="Apply place name"
-                    onClick={() => controller.applyName()}
-                    style={pillButton(color.surface, color.fg)}
-                  >
-                    Done
-                  </button>
-                </div>
-              ) : (
-                <h1
-                  style={{
-                    margin: 0,
-                    fontFamily: displayFont,
-                    fontSize: 32,
-                    lineHeight: 1.1,
-                  }}
-                >
-                  <button
-                    type="button"
-                    aria-label="Rename place"
-                    onClick={() => controller.startRename()}
-                    style={{
-                      border: 0,
-                      padding: 0,
-                      background: "transparent",
-                      color: "inherit",
-                      font: "inherit",
-                      textAlign: "left",
-                      cursor: "text",
-                    }}
-                  >
-                    {place.name}
-                  </button>
-                </h1>
-              )}
-              <div style={{ fontSize: 14, color: color.muted, marginTop: 6 }}>
-                {place.meta}
-              </div>
-              {place.hours ? (
-                <div style={{ fontSize: 14, marginTop: 4 }}>
-                  <span style={{ fontWeight: 600 }}>Hours</span>
-                  <span style={{ color: color.muted }}> · {place.hours}</span>
-                </div>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              aria-label="Close place"
-              onClick={() => controller.closePlace()}
-              style={roundButton(40)}
-            >
-              <Icon d={icons.close} size={18} />
-            </button>
-          </div>
-          <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
-            {place.canDirections ? (
-              <button
-                type="button"
-                aria-label="Directions"
-                onClick={() => controller.openDirections()}
-                style={{
-                  ...pillButton(color.accent, color.accentText),
-                  flexGrow: 1,
-                  height: 52,
-                  borderRadius: 26,
-                }}
-              >
-                <Icon d={icons.modes.drive} />
-                Directions
-              </button>
-            ) : null}
-            <button
-              type="button"
-              aria-label={place.saved ? "Remove from saved" : "Save"}
-              aria-pressed={place.saved}
-              onClick={() => controller.toggleSaved()}
+          {view.showSearch ? (
+            <div
+              data-maps-search
               style={{
-                ...roundButton(52),
-                color: place.saved ? color.accentStrong : "inherit",
+                position: "relative",
+                order: 0,
+                flexShrink: 0,
+                minHeight: 54,
+                borderRadius: 27,
+                background: color.bg,
+                boxShadow: `0 6px 22px ${color.shadow}, 0 0 0 1px ${color.line}`,
+                display: "flex",
+                alignItems: "center",
+                padding: "0 5px",
+                zIndex: 3,
               }}
             >
-              <Icon d={icons.star} />
-            </button>
-            <button
-              type="button"
-              aria-label="Share"
-              onClick={() => controller.sharePlace()}
-              style={roundButton(52)}
-            >
-              <Icon d={icons.share} />
-            </button>
-            {place.website ? (
+              {onBack && view.searchLead === "search" ? (
+                <button
+                  type="button"
+                  aria-label="Back to apps"
+                  onClick={onBack}
+                  style={roundButton(44, "transparent")}
+                >
+                  <Icon d={icons.back} />
+                </button>
+              ) : null}
               <button
                 type="button"
-                aria-label="Website"
-                onClick={() => controller.openWebsite()}
-                style={roundButton(52)}
-              >
-                <Icon d={icons.globe} />
-              </button>
-            ) : null}
-          </div>
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              marginTop: 20,
-              fontSize: 14,
-              color: color.muted,
-            }}
-          >
-            <Icon d={icons.pin} size={18} />
-            {place.address}
-          </div>
-        </div>
-      ) : null}
-
-      {directions && view.mode === "directions" ? (
-        <>
-          <div
-            data-maps-directions
-            style={{
-              position: "absolute",
-              left: 12,
-              right: 12,
-              top: 12,
-              borderRadius: 26,
-              background: color.bg,
-              boxShadow: `0 6px 22px ${color.shadow}, 0 0 0 1px ${color.line}`,
-              padding: "6px 12px 12px 4px",
-              zIndex: 3,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-              <button
-                type="button"
-                aria-label="Back to place"
-                onClick={() => controller.back()}
+                aria-label={view.searchLead === "back" ? "Back" : "Search"}
+                onClick={() => controller.searchLead()}
                 style={roundButton(44, "transparent")}
               >
-                <Icon d={icons.back} />
+                <Icon
+                  d={view.searchLead === "back" ? icons.back : icons.search}
+                />
               </button>
-              <div
+              <input
+                ref={searchInput}
+                aria-label="Search places"
+                placeholder="Search"
+                value={view.query}
+                onChange={(event) => controller.setQuery(event.target.value)}
+                onClick={() => controller.focusQuery()}
+                onKeyDown={onEnter(() => controller.submit())}
                 style={{
                   flexGrow: 1,
                   minWidth: 0,
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 2,
+                  minHeight: 44,
+                  border: 0,
+                  outline: 0,
+                  background: "transparent",
+                  color: color.fg,
+                  fontSize: textSize(16),
+                  padding: "0 4px",
+                  font: "inherit",
                 }}
-              >
-                <input
-                  aria-label="Route origin coordinates"
-                  placeholder="Origin latitude, longitude"
-                  value={directions.originText}
-                  onChange={(event) =>
-                    controller.setOriginText(event.target.value)
-                  }
-                  onKeyDown={onEnter(() => controller.planOrigin())}
-                  style={{
-                    height: 32,
-                    border: 0,
-                    background: "transparent",
-                    color: color.fg,
-                    fontSize: 15,
-                    width: "100%",
-                    font: "inherit",
-                  }}
-                />
+              />
+              {view.query ? (
                 <button
                   type="button"
-                  aria-label="Use current location for route"
-                  onClick={() => controller.locate()}
-                  style={{
-                    border: 0,
-                    background: "transparent",
-                    padding: 0,
-                    fontSize: 12,
-                    textAlign: "left",
-                    color: color.accentStrong,
-                    cursor: "pointer",
-                    font: "inherit",
-                  }}
+                  aria-label="Clear search"
+                  onClick={() => controller.clearQuery()}
+                  style={roundButton(44, "transparent")}
                 >
-                  Use current location for route
+                  <Icon d={icons.close} size={18} />
                 </button>
-                <div
+              ) : null}
+            </div>
+          ) : null}
+
+          {eventReturn && (view.showSearch || view.mode === "directions") ? (
+            <button
+              type="button"
+              data-maps-event-return
+              aria-label="Back to event"
+              title={eventReturn.title}
+              onClick={eventReturn.onReturn}
+              style={{
+                position: "relative",
+                order: 1,
+                alignSelf: "flex-start",
+                flexShrink: 0,
+
+                ...pillButton(color.bg, color.fg),
+                zIndex: 5,
+                boxShadow: `0 6px 22px ${color.shadow}, 0 0 0 1px ${color.line}`,
+              }}
+            >
+              <Icon d={icons.back} size={18} />
+              Back to event
+            </button>
+          ) : null}
+
+          {view.mode === "base" && view.saved.length ? (
+            <div
+              data-maps-saved
+              style={{
+                position: "relative",
+                order: 2,
+                flexShrink: 0,
+                display: "flex",
+                gap: 8,
+                overflowX: "auto",
+                padding: "0 12px 10px",
+                zIndex: 3,
+              }}
+            >
+              {view.saved.map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => controller.chooseSaved(item.id)}
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 12,
-                    height: 32,
-                    fontSize: 15,
-                    fontWeight: 600,
+                    ...pillButton(color.bg, color.fg),
+                    minHeight: 40,
+                    boxShadow: `0 4px 14px ${color.shadow}, 0 0 0 1px ${color.line}`,
                   }}
                 >
                   <Icon d={icons.pin} size={18} />
-                  {directions.name}
+                  {item.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+
+          {status.visible && view.mode !== "navigation" ? (
+            <div
+              data-maps-status
+              data-location-state={status.location}
+              data-map-state={status.map}
+              style={{
+                position: "relative",
+                order: 3,
+                flexShrink: 0,
+                boxSizing: "border-box",
+                zIndex: 5,
+                padding: 12,
+                borderRadius: 22,
+                background: color.bg,
+                color: color.muted,
+                fontSize: textSize(14),
+                lineHeight: 1.45,
+                boxShadow: `0 0 0 1px ${color.line}`,
+              }}
+            >
+              <p role="status" style={{ margin: 0 }}>
+                {status.text}
+              </p>
+              {status.mapsAppHandoff ? (
+                <button
+                  type="button"
+                  aria-label="Open in maps app"
+                  onClick={() => controller.openInMapsApp()}
+                  style={{
+                    ...pillButton(color.accent, color.accentText),
+                    marginTop: 8,
+                  }}
+                >
+                  Open in maps app
+                </button>
+              ) : null}
+              {status.controls ? (
+                <>
+                  {status.mapText ? (
+                    <p style={{ margin: "6px 0" }}>{status.mapText}</p>
+                  ) : null}
+                  <p style={{ margin: "6px 0" }}>{status.locationHelp}</p>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <button
+                      type="button"
+                      aria-label={status.locationLabel}
+                      disabled={status.locationBusy}
+                      onClick={() => controller.locate()}
+                      style={pillButton(color.accent, color.accentText)}
+                    >
+                      {status.locationLabel}
+                    </button>
+                    {status.locationDenied && onOpenLocationSettings ? (
+                      <button
+                        type="button"
+                        aria-label="Location settings"
+                        onClick={onOpenLocationSettings}
+                        style={pillButton(color.surface, color.fg)}
+                      >
+                        Location settings
+                      </button>
+                    ) : null}
+                  </div>
+                </>
+              ) : null}
+              {status.mapRetry ? (
+                <button
+                  type="button"
+                  aria-label="Retry map"
+                  onClick={retryMap}
+                  style={{
+                    ...pillButton(color.surface, color.fg),
+                    marginTop: 8,
+                  }}
+                >
+                  Retry map
+                </button>
+              ) : null}
+            </div>
+          ) : null}
+
+          {directions && view.mode === "directions" ? (
+            <div
+              data-maps-directions
+              style={{
+                position: "relative",
+                order: 0,
+                flexShrink: 0,
+                boxSizing: "border-box",
+                borderRadius: 26,
+                background: color.bg,
+                boxShadow: `0 6px 22px ${color.shadow}, 0 0 0 1px ${color.line}`,
+                padding: "6px 12px 12px 4px",
+                zIndex: 3,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <button
+                  type="button"
+                  aria-label="Back to place"
+                  onClick={() => controller.back()}
+                  style={roundButton(44, "transparent")}
+                >
+                  <Icon d={icons.back} />
+                </button>
+                <div
+                  style={{
+                    flexGrow: 1,
+                    minWidth: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                  }}
+                >
+                  <input
+                    aria-label="Route origin coordinates"
+                    placeholder="Origin latitude, longitude"
+                    value={directions.originText}
+                    onChange={(event) =>
+                      controller.setOriginText(event.target.value)
+                    }
+                    onKeyDown={onEnter(() => controller.planOrigin())}
+                    style={{
+                      minHeight: 32,
+                      border: 0,
+                      background: "transparent",
+                      color: color.fg,
+                      fontSize: textSize(15),
+                      width: "100%",
+                      font: "inherit",
+                    }}
+                  />
+                  <button
+                    type="button"
+                    aria-label="Use current location for route"
+                    onClick={() => controller.locate()}
+                    style={{
+                      border: 0,
+                      background: "transparent",
+                      padding: 0,
+                      fontSize: textSize(12),
+                      textAlign: "left",
+                      color: color.link,
+                      cursor: "pointer",
+                      font: "inherit",
+                    }}
+                  >
+                    Use current location for route
+                  </button>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 12,
+                      minHeight: 32,
+                      fontSize: textSize(15),
+                      fontWeight: 600,
+                    }}
+                  >
+                    <Icon d={icons.pin} size={18} />
+                    {directions.name}
+                  </div>
                 </div>
               </div>
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 6,
+                  margin: "8px 0 0 8px",
+                }}
+              >
+                {directions.modes.map((choice) => (
+                  <button
+                    key={choice.mode}
+                    type="button"
+                    aria-label={MODE_LABEL[choice.mode]}
+                    aria-pressed={choice.selected}
+                    onClick={() => controller.setMode(choice.mode)}
+                    style={{
+                      ...pillButton(
+                        choice.selected ? color.accent : color.surface,
+                        choice.selected ? color.accentText : color.fg,
+                      ),
+                      flex: "1 1 auto",
+                      minWidth: 0,
+                      padding: "0 8px",
+                      gap: 4,
+                      minHeight: 40,
+                      fontSize: textSize(13),
+                      opacity: choice.available ? 1 : 0.6,
+                    }}
+                  >
+                    <Icon d={icons.modes[choice.mode]} size={18} />
+                    {MODE_LABEL[choice.mode]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
+          {navigation ? (
+            <>
+              <div
+                data-maps-guidance
+                style={{
+                  position: "relative",
+                  order: 0,
+                  flexShrink: 0,
+                  borderRadius: 28,
+                  background: color.guidance,
+                  color: "#fff",
+                  padding: "18px 20px",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 16,
+                  zIndex: 5,
+                }}
+              >
+                <Icon
+                  d={navigation.arrived ? icons.check : navigation.maneuverIcon}
+                  size={flowLayout ? 32 : 52}
+                />
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontFamily: displayFont,
+                      fontSize: textSize(flowLayout ? 16 : 40),
+                      lineHeight: 1,
+                    }}
+                  >
+                    {navigation.distance}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: textSize(flowLayout ? 16 : 19),
+                      fontWeight: 600,
+                      marginTop: 4,
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {navigation.instruction}
+                  </div>
+                </div>
+              </div>
+              {navigation.following ? (
+                <div
+                  data-maps-following
+                  style={{
+                    position: "relative",
+                    order: 1,
+                    alignSelf: "flex-start",
+                    flexShrink: 0,
+                    minHeight: 40,
+                    padding: "0 14px",
+                    borderRadius: "0 0 16px 16px",
+                    background: color.guidanceThen,
+                    color: "#fff",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    fontSize: textSize(14),
+                    fontWeight: 600,
+                    zIndex: 4,
+                  }}
+                >
+                  Then
+                  <Icon d={navigation.following.icon} size={20} />
+                  <span
+                    style={{
+                      maxWidth: 220,
+                      overflowWrap: "anywhere",
+                    }}
+                  >
+                    {navigation.following.text}
+                  </span>
+                </div>
+              ) : null}
+              {flowLayout ? navigationSummary : null}
+              {status.visible ? (
+                <div
+                  data-maps-navigation-status
+                  style={{
+                    position: "relative",
+                    order: 3,
+                    flexShrink: 0,
+                    margin: 0,
+                    padding: "10px 14px",
+                    borderRadius: 16,
+                    background: color.bg,
+                    color: color.fg,
+                    fontSize: textSize(14),
+                    lineHeight: 1.45,
+                    boxShadow: `0 0 0 1px ${color.line}`,
+                    zIndex: 5,
+                  }}
+                >
+                  <p role="status" style={{ margin: 0 }}>
+                    {status.text}
+                  </p>
+                  {status.mapRetry ? (
+                    <button
+                      type="button"
+                      onClick={retryMap}
+                      style={{
+                        ...pillButton(color.surface, color.fg),
+                        marginTop: 8,
+                      }}
+                    >
+                      Retry map
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+
+        <div
+          ref={planeElement}
+          data-map-plane
+          role="img"
+          aria-label={mapLabel}
+          style={{ position: "absolute", inset: 0, zIndex: 1 }}
+        />
+        <div
+          data-maps-credits
+          style={{
+            position: flowLayout ? "relative" : "absolute",
+            left: flowLayout
+              ? "auto"
+              : sideBySide && view.mode === "directions"
+                ? `calc(100% - ${inset.right} - ${panelWidth} + 12px)`
+                : `calc(${inset.left} + 12px)`,
+            right: flowLayout
+              ? "auto"
+              : sideBySide &&
+                  (resultsSheet || view.mode === "place" || navigation)
+                ? `calc(${inset.right} + ${panelWidth} + 12px)`
+                : `calc(${inset.right} + 12px)`,
+            bottom: flowLayout
+              ? "auto"
+              : `calc(${inset.bottom} + ${view.mode === "navigation" ? (sideBySide ? 96 : 180) : sideBySide && view.mode !== "directions" ? 12 : size.sheetHeight + 12}px)`,
+            marginTop: flowLayout ? 12 : undefined,
+            zIndex: 2,
+            display: "flex",
+            alignItems: "flex-end",
+            justifyContent: "space-between",
+            gap: 8,
+            fontSize: textSize(11),
+            color: color.muted,
+          }}
+        >
+          <span
+            style={{
+              background: color.bg,
+              borderRadius: 8,
+              padding: "2px 6px",
+            }}
+          >
+            {attribution}
+          </span>
+          <details>
+            <summary
+              aria-label="Map information"
+              title="Map information"
+              style={{ listStyle: "none", cursor: "pointer" }}
+            >
+              <Icon d={icons.info} size={18} />
+            </summary>
+            <div
+              style={{
+                position: flowLayout ? "relative" : "absolute",
+                right: 0,
+                bottom: flowLayout ? "auto" : 28,
+                maxWidth: flowLayout ? "none" : 300,
+                padding: 12,
+                borderRadius: 16,
+                background: color.bg,
+                color: color.fg,
+                fontSize: textSize(13),
+                boxShadow: `0 6px 22px ${color.shadow}`,
+              }}
+            >
+              <button
+                type="button"
+                onClick={(event) => {
+                  focusSearch.current = true;
+                  event.currentTarget
+                    .closest("details")
+                    ?.removeAttribute("open");
+                  controller.manualLocation();
+                }}
+                style={pillButton(color.surface, color.fg)}
+              >
+                Enter coordinates
+              </button>
+              {mapPrivacy ? <p>{mapPrivacy}</p> : null}
+              {disclosure ? <p data-maps-disclosure>{disclosure}</p> : null}
+            </div>
+          </details>
+        </div>
+
+        {view.mode !== "navigation" ? (
+          <button
+            type="button"
+            aria-label="Recenter"
+            onClick={() => controller.recenter()}
+            style={{
+              ...roundButton(50, color.bg),
+              position: flowLayout ? "relative" : "absolute",
+              right: flowLayout
+                ? "auto"
+                : sideBySide && (resultsSheet || place || directions)
+                  ? `calc(${inset.right} + ${panelWidth} + 16px)`
+                  : `calc(${inset.right} + 16px)`,
+              bottom: flowLayout
+                ? "auto"
+                : `calc(${inset.bottom} + ${sideBySide ? 64 : size.sheetHeight + 64}px)`,
+              margin: flowLayout ? "12px 0 0 auto" : undefined,
+              zIndex: 3,
+              boxShadow: `0 6px 20px ${color.shadow}, 0 0 0 1px ${color.line}`,
+            }}
+          >
+            <Icon d={icons.locate} />
+          </button>
+        ) : (
+          <button
+            type="button"
+            aria-label="Recenter"
+            onClick={() => controller.recenter()}
+            style={{
+              ...roundButton(54, color.navBar),
+              color: "#fff",
+              position: flowLayout ? "relative" : "absolute",
+              right: flowLayout ? "auto" : `calc(${inset.right} + 16px)`,
+              top: flowLayout ? "auto" : `calc(${inset.top} + 12px)`,
+              margin: flowLayout ? "12px 0 0 auto" : undefined,
+              zIndex: 3,
+            }}
+          >
+            <Icon d={icons.locate} />
+          </button>
+        )}
+
+        {resultsSheet ? (
+          <div
+            ref={sheetElement}
+            data-maps-sheet="results"
+            style={{
+              ...sheetStyle,
+              height: flowLayout ? "auto" : 520,
+              display: "flex",
+              flexDirection: "column",
+              paddingTop: 20,
+            }}
+          >
+            <div
+              style={{
+                flexGrow: 1,
+                minHeight: 0,
+                overflowY: "auto",
+                paddingBottom: 24,
+              }}
+            >
+              {view.emptyQuery ? (
+                <>
+                  {categories.length ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 8,
+                        overflowX: "auto",
+                        padding: "4px 20px 14px",
+                      }}
+                    >
+                      {categories.map((category) => (
+                        <button
+                          key={category.label}
+                          type="button"
+                          onClick={() => controller.searchFor(category.label)}
+                          style={{
+                            ...pillButton(color.surface, color.fg),
+                            minHeight: 40,
+                          }}
+                        >
+                          <Icon d={category.icon ?? icons.search} size={18} />
+                          {category.label}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {view.saved.map((item) => (
+                    <ResultRow
+                      key={item.id}
+                      icon={icons.pin}
+                      name={item.label}
+                      detail={`${item.coordinate.latitude.toFixed(5)}, ${item.coordinate.longitude.toFixed(5)}`}
+                      onSelect={() => controller.chooseSaved(item.id)}
+                    />
+                  ))}
+                </>
+              ) : null}
+              {view.results.map((row) => (
+                <ResultRow
+                  key={row.key}
+                  icon={row.saved ? icons.star : icons.pin}
+                  name={row.name}
+                  detail={row.detail}
+                  onSelect={() => controller.choose(row.key)}
+                />
+              ))}
+              {view.noResults ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "18px 20px 6px",
+                    color: color.muted,
+                  }}
+                >
+                  <Icon d={icons.search} size={28} />
+                  <div style={{ fontSize: textSize(15) }}>No places</div>
+                  {onAskAgent ? (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        onAskAgent(view.query || "Help me with Maps.")
+                      }
+                      style={pillButton(color.surface, color.fg)}
+                    >
+                      Ask {agentName} about this search
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
+        {place && view.mode === "place" ? (
+          <div
+            ref={sheetElement}
+            data-maps-sheet="place"
+            style={{ ...sheetStyle, padding: "18px 20px 24px" }}
+          >
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
+              <div style={{ flexGrow: 1, minWidth: 0 }}>
+                {place.editingName ? (
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      aria-label="Place name"
+                      value={place.name}
+                      maxLength={300}
+                      onChange={(event) =>
+                        controller.rename(event.target.value)
+                      }
+                      onKeyDown={onEnter(() => controller.applyName())}
+                      style={{
+                        minWidth: 0,
+                        flexGrow: 1,
+                        minHeight: 44,
+                        padding: "0 14px",
+                        border: 0,
+                        borderRadius: 22,
+                        background: color.surface,
+                        color: color.fg,
+                        fontSize: textSize(15),
+                        font: "inherit",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      aria-label="Apply place name"
+                      onClick={() => controller.applyName()}
+                      style={pillButton(color.surface, color.fg)}
+                    >
+                      Done
+                    </button>
+                  </div>
+                ) : (
+                  <h1
+                    style={{
+                      margin: 0,
+                      fontFamily: displayFont,
+                      fontSize: textSize(flowLayout ? 20 : 32),
+                      lineHeight: 1.1,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      aria-label="Rename place"
+                      onClick={() => controller.startRename()}
+                      style={{
+                        border: 0,
+                        padding: 0,
+                        background: "transparent",
+                        color: "inherit",
+                        font: "inherit",
+                        textAlign: "left",
+                        cursor: "text",
+                      }}
+                    >
+                      {place.name}
+                    </button>
+                  </h1>
+                )}
+                <div
+                  style={{
+                    fontSize: textSize(14),
+                    color: color.muted,
+                    marginTop: 6,
+                  }}
+                >
+                  {place.meta}
+                </div>
+                {place.hours ? (
+                  <div style={{ fontSize: textSize(14), marginTop: 4 }}>
+                    <span style={{ fontWeight: 600 }}>Hours</span>
+                    <span style={{ color: color.muted }}> · {place.hours}</span>
+                  </div>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                aria-label="Close place"
+                onClick={() => controller.closePlace()}
+                style={roundButton(40)}
+              >
+                <Icon d={icons.close} size={18} />
+              </button>
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
+              {place.canDirections ? (
+                <button
+                  type="button"
+                  aria-label="Directions"
+                  onClick={() => controller.openDirections()}
+                  style={{
+                    ...pillButton(color.accent, color.accentText),
+                    flexGrow: 1,
+                    height: 52,
+                    borderRadius: 26,
+                  }}
+                >
+                  <Icon d={icons.modes.drive} />
+                  Directions
+                </button>
+              ) : null}
+              <button
+                type="button"
+                aria-label={place.saved ? "Remove from saved" : "Save"}
+                aria-pressed={place.saved}
+                onClick={() => controller.toggleSaved()}
+                style={{
+                  ...roundButton(52),
+                  color: place.saved ? color.accentStrong : "inherit",
+                }}
+              >
+                <Icon d={icons.star} />
+              </button>
+              <button
+                type="button"
+                aria-label="Share"
+                onClick={() => controller.sharePlace()}
+                style={roundButton(52)}
+              >
+                <Icon d={icons.share} />
+              </button>
+              {place.website ? (
+                <button
+                  type="button"
+                  aria-label="Website"
+                  onClick={() => controller.openWebsite()}
+                  style={roundButton(52)}
+                >
+                  <Icon d={icons.globe} />
+                </button>
+              ) : null}
             </div>
             <div
               style={{
                 display: "flex",
-                flexWrap: "wrap",
-                gap: 6,
-                margin: "8px 0 0 8px",
+                alignItems: "center",
+                gap: 10,
+                marginTop: 20,
+                fontSize: textSize(14),
+                color: color.muted,
               }}
             >
-              {directions.modes.map((choice) => (
-                <button
-                  key={choice.mode}
-                  type="button"
-                  aria-label={MODE_LABEL[choice.mode]}
-                  aria-pressed={choice.selected}
-                  onClick={() => controller.setMode(choice.mode)}
-                  style={{
-                    ...pillButton(
-                      choice.selected ? color.accent : color.surface,
-                      choice.selected ? color.accentText : color.fg,
-                    ),
-                    flex: "1 1 0",
-                    minHeight: 40,
-                    fontSize: 13,
-                    opacity: choice.available ? 1 : 0.6,
-                  }}
-                >
-                  <Icon d={icons.modes[choice.mode]} size={18} />
-                  {MODE_LABEL[choice.mode]}
-                </button>
-              ))}
+              <Icon d={icons.pin} size={18} />
+              {place.address}
             </div>
           </div>
+        ) : null}
+
+        {directions && view.mode === "directions" ? (
           <div
+            ref={sheetElement}
             data-maps-sheet="directions"
-            style={{ ...sheet, padding: "22px 20px 24px" }}
+            style={{ ...sheetStyle, padding: "22px 20px 24px" }}
           >
             <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
               <span
-                style={{ fontFamily: displayFont, fontSize: 44, lineHeight: 1 }}
+                style={{
+                  fontFamily: displayFont,
+                  fontSize: textSize(flowLayout ? 20 : 44),
+                  lineHeight: 1,
+                }}
               >
                 {directions.duration}
               </span>
-              <span style={{ fontSize: 15, color: color.muted }}>
+              <span style={{ fontSize: textSize(15), color: color.muted }}>
                 {directions.meta}
               </span>
             </div>
-            <div style={{ fontSize: 14, color: color.muted, marginTop: 8 }}>
+            <div
+              style={{
+                fontSize: textSize(14),
+                color: color.muted,
+                marginTop: 8,
+              }}
+            >
               {directions.via}
             </div>
             {directions.routes.length ? (
@@ -1005,7 +1389,7 @@ export function MapsScreen({
                       justifyContent: "space-between",
                       minHeight: 44,
                       padding: "0 16px",
-                      fontSize: 14,
+                      fontSize: textSize(14),
                     }}
                   >
                     <span>{choice.label}</span>
@@ -1023,9 +1407,9 @@ export function MapsScreen({
                 style={{
                   ...pillButton(color.accent, color.accentText),
                   flexGrow: 1,
-                  height: 56,
+                  minHeight: 56,
                   borderRadius: 28,
-                  fontSize: 17,
+                  fontSize: textSize(17),
                 }}
               >
                 <Icon d={icons.navigate} />
@@ -1041,177 +1425,67 @@ export function MapsScreen({
               </button>
             </div>
           </div>
-        </>
-      ) : null}
-
+        ) : null}
+      </div>
       {navigation ? (
-        <>
-          <div
-            data-maps-guidance
-            style={{
-              position: "absolute",
-              left: 12,
-              right: 12,
-              top: 12,
-              borderRadius: 28,
-              background: color.guidance,
-              color: "#fff",
-              padding: "18px 20px",
-              display: "flex",
-              alignItems: "center",
-              gap: 16,
-              zIndex: 5,
-            }}
+        <div
+          data-maps-navigation-controls
+          style={{
+            maxHeight: flowLayout ? "none" : compactHeight,
+            overflowY: flowLayout ? "visible" : "auto",
+            position: flowLayout ? "sticky" : "absolute",
+            left:
+              flowLayout || sideBySide ? "auto" : `calc(${inset.left} + 12px)`,
+            right: flowLayout ? "auto" : `calc(${inset.right} + 12px)`,
+            bottom: flowLayout ? 0 : `calc(${inset.bottom} + 12px)`,
+            marginTop: flowLayout ? 12 : undefined,
+            flexShrink: flowLayout ? 0 : undefined,
+            width: sideBySide ? `calc(${panelWidth} - 24px)` : undefined,
+            boxSizing: "border-box",
+            borderRadius: 32,
+            background: color.navBar,
+            color: "#fff",
+            padding: 10,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: flowLayout ? "space-between" : undefined,
+            gap: 12,
+            zIndex: 5,
+          }}
+        >
+          <button
+            type="button"
+            aria-label="End navigation"
+            onClick={() => controller.end()}
+            style={roundButton(56, color.navButton)}
           >
-            <Icon
-              d={navigation.arrived ? icons.check : navigation.maneuverIcon}
-              size={52}
-            />
-            <div style={{ minWidth: 0 }}>
-              <div
-                style={{ fontFamily: displayFont, fontSize: 40, lineHeight: 1 }}
-              >
-                {navigation.distance}
-              </div>
-              <div
-                style={{
-                  fontSize: 19,
-                  fontWeight: 600,
-                  marginTop: 4,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {navigation.instruction}
-              </div>
-            </div>
-          </div>
-          {navigation.following ? (
-            <div
-              style={{
-                position: "absolute",
-                left: 28,
-                top: 120,
-                height: 40,
-                padding: "0 14px",
-                borderRadius: "0 0 16px 16px",
-                background: color.guidanceThen,
-                color: "#fff",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                fontSize: 14,
-                fontWeight: 600,
-                zIndex: 4,
-              }}
-            >
-              Then
-              <Icon d={navigation.following.icon} size={20} />
-              <span
-                style={{
-                  maxWidth: 220,
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {navigation.following.text}
-              </span>
-            </div>
-          ) : null}
-          <div
-            style={{
-              position: "absolute",
-              left: 12,
-              right: 12,
-              bottom: 26,
-              borderRadius: 32,
-              background: color.navBar,
-              color: "#fff",
-              padding: 10,
-              display: "flex",
-              alignItems: "center",
-              gap: 12,
-              zIndex: 5,
-            }}
-          >
+            <Icon d={icons.close} />
+          </button>
+          {!flowLayout ? navigationSummary : null}
+          {onAskAgent ? (
             <button
               type="button"
-              aria-label="End navigation"
-              onClick={() => controller.end()}
+              aria-label={`Ask ${agentName}`}
+              onClick={() => onAskAgent("Help me with this route.")}
               style={roundButton(56, color.navButton)}
             >
-              <Icon d={icons.close} />
+              <Icon d={icons.search} />
             </button>
-            <div style={{ flexGrow: 1, minWidth: 0, textAlign: "center" }}>
-              <div
-                style={{
-                  fontFamily: displayFont,
-                  fontSize: 30,
-                  lineHeight: 1.05,
-                }}
-              >
-                {navigation.remainingTime}
-              </div>
-              <div style={{ fontSize: 13, color: "#8f8f8f", marginTop: 3 }}>
-                {navigation.meta}
-              </div>
-              {navigation.offRoute ? (
-                <button
-                  type="button"
-                  onClick={() => controller.reroute()}
-                  disabled={!navigation.canReroute}
-                  style={{
-                    ...pillButton(color.navButton, "#fff"),
-                    minHeight: 36,
-                    marginTop: 4,
-                    fontSize: 13,
-                  }}
-                >
-                  Reroute from here
-                </button>
-              ) : null}
-            </div>
-            {onAskAgent ? (
-              <button
-                type="button"
-                aria-label={`Ask ${agentName}`}
-                onClick={() => onAskAgent("Help me with this route.")}
-                style={roundButton(56, color.navButton)}
-              >
-                <Icon d={icons.search} />
-              </button>
-            ) : null}
-            <button
-              type="button"
-              aria-label={
-                navigation.voiceEnabled
-                  ? "Mute voice guidance"
-                  : "Enable voice guidance"
-              }
-              aria-pressed={navigation.voiceEnabled}
-              onClick={() => controller.toggleVoice()}
-              style={roundButton(56, color.navButton)}
-            >
-              <Icon d={icons.voice} />
-            </button>
-          </div>
-          {status.visible ? (
-            <p
-              role="status"
-              style={{
-                position: "absolute",
-                width: 1,
-                height: 1,
-                overflow: "hidden",
-                clip: "rect(0 0 0 0)",
-              }}
-            >
-              {status.text}
-            </p>
           ) : null}
-        </>
+          <button
+            type="button"
+            aria-label={
+              navigation.voiceEnabled
+                ? "Mute voice guidance"
+                : "Enable voice guidance"
+            }
+            aria-pressed={navigation.voiceEnabled}
+            onClick={() => controller.toggleVoice()}
+            style={roundButton(56, color.navButton)}
+          >
+            <Icon d={icons.voice} />
+          </button>
+        </div>
       ) : null}
     </section>
   );
@@ -1250,13 +1524,15 @@ function ResultRow({
         <Icon d={icon} size={20} />
       </span>
       <span style={{ minWidth: 0 }}>
-        <span style={{ display: "block", fontSize: 16, fontWeight: 600 }}>
+        <span
+          style={{ display: "block", fontSize: textSize(16), fontWeight: 600 }}
+        >
           {name}
         </span>
         <span
           style={{
             display: "block",
-            fontSize: 13,
+            fontSize: textSize(13),
             color: color.muted,
             marginTop: 2,
           }}

@@ -395,7 +395,9 @@ export class MapPlane {
             ] as [number, number],
           }
         : {}),
-      duration: 350,
+      // A measured sheet reflow can replace this camera move immediately.
+      // Apply the initial global zoom before later moves preserve its zoom.
+      duration: newSelection && this.globalBasemap ? 0 : 350,
     });
   }
   update(

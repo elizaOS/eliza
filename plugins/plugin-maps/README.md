@@ -35,6 +35,11 @@ updates and idle after resize, so a selected place stays visible when panels
 move. Layout changes preserve the current zoom and marker, and do not take the
 camera from a route or active position following.
 
+`visibleMapPadding` (`./client/map-layout`) measures the canonical React screen's
+overlapping controls and keeps a usable camera area in short windows. Pass a
+callback to `selectionPadding`; numeric getters in `routePadding` can call the
+same helper when a route is fitted. Controls outside the map reserve no space.
+
 ## Phone Maps screen
 
 `MapsScreenController` (`./client/maps-screen`) is the phone Maps screen without
@@ -48,8 +53,16 @@ voice, screen-off session, share sheet, website opening and agent context.
 `createMapsScreen` adds a change subscription, and the `./screen` entry exports
 `MapsScreen`, a React rendering of the same controller. Hosts theme it with
 `--maps-*` custom properties (`--maps-bg`, `--maps-fg`, `--maps-accent`,
-`--maps-font`, …) and their own icon paths, and supply the map plane. The screen
-never invents a place, route, arrival time or location.
+`--maps-font`, `--maps-link`, …) and their own icon paths, and supply the map plane. The screen
+uses `--maps-inset-top`, `--maps-inset-right`, `--maps-inset-bottom` and
+`--maps-inset-left` (safe-area insets by default), plus `--maps-bottom-clearance`
+(zero by default) for host controls such as a composer. Sheets scroll within that
+space and use side-by-side panels in wide, short windows. `--maps-text-scale`
+(one by default) scales text; enlarged text uses one reading column with sticky
+navigation actions, while ordinary text keeps map overlays. Primary
+controls precede the map and sheets in reading order. Map Retry recreates only
+the map plane; the selected place, route and navigation remain in the controller.
+The screen never invents a place, route, arrival time or location.
 
 ## Eliza Cloud Maps
 
