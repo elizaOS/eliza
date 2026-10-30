@@ -1,12 +1,14 @@
 /** Determines whether a completed response warrants post-turn semantic work or represents a stop decision. */
 
 import type {
+  ActionResult,
   Content,
   Memory,
   MessageHandlerExtract,
   State,
 } from "@elizaos/core";
 import { isReplyActionIdentifier } from "./action-identifiers.js";
+import { structuredEffectFromToolResult } from "./structured-tool-effect.ts";
 
 export function isSimpleReplyResponse(
   responseContent: Pick<Content, "actions"> | null | undefined,
@@ -16,6 +18,14 @@ export function isSimpleReplyResponse(
     responseContent.actions.length === 1 &&
     typeof responseContent.actions[0] === "string" &&
     isReplyActionIdentifier(responseContent.actions[0])
+  );
+}
+
+/** A view switch records where the UI went, never anything about the user. */
+function isViewNavigationReceipt(result: ActionResult): boolean {
+  return (
+    !result.effectReceipts?.length &&
+    structuredEffectFromToolResult(result)?.effect === "view_navigation"
   );
 }
 
@@ -32,8 +42,13 @@ export function hasPostTurnSemanticSignal(
   // suppress its durable review; the background worker still validates sources.
   if (extract?.facts?.length || extract?.relationships?.length) return true;
   if (!isSimpleReplyResponse(responseContent)) return true;
+  // Navigation-only turns fall through to the message-text check below.
   const actionResults = state?.data?.actionResults;
-  if (Array.isArray(actionResults) && actionResults.length > 0) return true;
+  if (
+    Array.isArray(actionResults) &&
+    actionResults.some((result) => !isViewNavigationReceipt(result))
+  )
+    return true;
   const text = message.content.text?.trim() ?? "";
   return POST_TURN_SEMANTIC_SIGNAL.test(text);
 }
