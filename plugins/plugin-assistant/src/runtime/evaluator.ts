@@ -931,6 +931,19 @@ async function runEvaluatorWithSelectedModel(
   ) {
     responseSchema.properties.replyEffectStatus.enum = ["none", "non_applied"];
   }
+  // Coverage guards match exact intent IDs. Unconstrained, the model often
+  // cited intent text instead (tj-6eb9a245fd912d), which voided a committed
+  // move. The set is fixed for the turn, so its evaluator calls share a schema.
+  const coverageItem = responseSchema.properties?.outcomeCoverage?.items;
+  if (
+    decisionState.intents.length > 0 &&
+    coverageItem &&
+    !Array.isArray(coverageItem) &&
+    coverageItem.properties?.intentId
+  )
+    coverageItem.properties.intentId.enum = decisionState.intents.map(
+      (intent) => intent.id,
+    );
   const initialBudgetOptions = budgetResolution.contextWindowTokens
     ? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
     : {};

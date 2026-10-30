@@ -10,6 +10,7 @@ import {
   type ContextObject,
   type EvaluatorOutput,
   executePlannedToolCall,
+  type JSONSchema,
   type Memory,
   type PlannerTrajectory,
   promoteSubactionsToActions,
@@ -632,6 +633,138 @@ describe("request-bound Calendar read coverage", () => {
     });
     expect(stale.messageToUser).not.toContain("STALE SAME-DAY FACT");
     expect(stale.messageToUser).toContain("Notes view is open.");
+  });
+});
+
+/** tj-6eb9a245fd912d: "move the coffee with Sam to 2pm", search then a committed update. */
+function liveMoveFixture() {
+  const f = fixture();
+  const bindings = f.context.metadata
+    ?.calendarReadBindings as CalendarReadBinding[];
+  bindings[0].operation = "search_events";
+  const id = "agent:eliza:owner:grant:eliza-calendar:calendar:primary:event-1";
+  const before = {
+    id,
+    provider: "eliza",
+    grantId: "eliza-calendar",
+    calendarId: "primary",
+    title: "coffee with Sam",
+    startAt: "2026-10-31T17:00:00.000Z",
+    endAt: "2026-10-31T18:00:00.000Z",
+    metadata: { etag: '"eliza-1"' },
+  };
+  const after = {
+    ...before,
+    startAt: "2026-10-31T21:00:00.000Z",
+    endAt: "2026-10-31T22:00:00.000Z",
+    metadata: { etag: '"eliza-2"' },
+  };
+  const committedAt = "2026-10-30T10:50:33.794Z";
+  f.trajectory.outcomeIntents = [
+    "find the coffee-with-Sam event",
+    "reschedule it to 2pm",
+  ];
+  f.trajectory.steps = [
+    {
+      iteration: 1,
+      toolCall: { id: "search", name: "CALENDAR_SEARCH_EVENTS", params: {} },
+      result: {
+        success: true,
+        data: {
+          events: [before],
+          replyContext: { domain: "calendar", scenario: "search_results" },
+        },
+      },
+    },
+    {
+      iteration: 2,
+      toolCall: { id: "discover", name: "DISCOVER_ACTIONS", params: {} },
+      result: {
+        success: true,
+        data: { loadedTools: ["CALENDAR_UPDATE_EVENT"] },
+      },
+    },
+    {
+      iteration: 3,
+      toolCall: { id: "move", name: "CALENDAR_UPDATE_EVENT", params: {} },
+      result: {
+        success: true,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        effectReceipts: [
+          {
+            receiptId: "calendar-event-mutation-receipt-v1:move",
+            operation: "calendar.event.update",
+            resource: { kind: "calendar.event", id, version: '"eliza-2"' },
+            artifacts: [],
+            idempotency: { key: "move-key", replayed: false },
+            observedAt: committedAt,
+            outcome: "applied",
+            commit: { kind: "durable", id, committedAt },
+          },
+        ],
+        data: { event: after, targetEvent: before },
+      },
+    },
+  ];
+  // The live model's verdict, with the intent text it cited as intent IDs.
+  const live: EvaluatorOutput = {
+    thought: "Locate and time change succeeded.",
+    success: true,
+    decision: "FINISH",
+    requestFullyCovered: true,
+    outcomeCoverage: [
+      {
+        intentId: "find the coffee-with-Sam event",
+        status: "completed",
+        evidenceStepIds: ["step:1"],
+      },
+      {
+        intentId: "reschedule it to 2pm",
+        status: "completed",
+        evidenceStepIds: ["step:3"],
+      },
+    ],
+    messageToUser: 'Moved "coffee with Sam" to 2pm on Saturday, Oct 31 PDT.',
+    replyEffectStatus: "applied",
+    effectReceiptIds: ["calendar-event-mutation-receipt-v1:move"],
+  };
+  return { ...f, live };
+}
+
+describe("committed Calendar mutations behind a read binding", () => {
+  it("restricts coverage to the turn's intent IDs so a committed move keeps its reply", async () => {
+    const f = liveMoveFixture();
+    let intentIds: unknown;
+    // Strict structured decoding can emit only values the schema allows.
+    const useModel = vi.fn(
+      async (_type: unknown, request: { responseSchema: JSONSchema }) => {
+        const coverage = request.responseSchema.properties?.outcomeCoverage;
+        const item = Array.isArray(coverage?.items)
+          ? undefined
+          : coverage?.items;
+        intentIds = item?.properties?.intentId?.enum;
+        return JSON.stringify({
+          ...f.live,
+          outcomeCoverage: f.live.outcomeCoverage?.map((entry, index) =>
+            Array.isArray(intentIds)
+              ? { ...entry, intentId: intentIds[index] }
+              : entry,
+          ),
+        });
+      },
+    );
+    const result = await runEvaluator({
+      runtime: { useModel },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.messageToUser).toBe(f.live.messageToUser);
+    expect(intentIds).toEqual(["intent:1", "intent:2"]);
+    expect(result.success).toBe(true);
+    expect(result.decision).toBe("FINISH");
+    expect(result.effectReceiptIds).toEqual(f.live.effectReceiptIds);
+    expect(useModel).toHaveBeenCalledTimes(1);
   });
 });
 

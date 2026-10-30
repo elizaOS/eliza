@@ -77,6 +77,7 @@ test("actual evaluator changes only cloned eligibility enum; raw applied verdict
     "availableReceiptIds",
     "params",
     "isDeliveredNavigationOnlyTurn",
+    "decisionState = { intents: [] }",
     source.slice(start, end) + "return responseSchema;",
   );
   const original = {
