@@ -1631,8 +1631,12 @@ async function runPlannerLoopIterations(
             kind: "provider_issue" as const,
             code: scopeError.code,
             transient: false,
-            message:
-              "The planner stopped after repeated invalid scope declarations. Earlier action outcomes are preserved; the rejected batch did not run.",
+            // Shown when no failure summary is usable. "Nothing was changed"
+            // needs proof from every executed call, as in the pipeline's
+            // interrupted-turn notice; the rejected batches never ran.
+            message: turnChangedNothing(trajectory)
+              ? "I couldn't finish that, and nothing was changed."
+              : "I couldn't finish that, and part of it may already be done.",
           };
           try {
             const summary = await finishWithForcedSynthesis({
@@ -8441,6 +8445,33 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
     ? DISCOVER_ACTIONS_NAME
     : toolCall.name;
   return `${name} ${canonicalParamsString(toolCall.params ?? {})}`;
+}
+
+/**
+ * True only when every executed call proves it changed nothing: refused before
+ * dispatch, a declared read-only result, or receipts that are all fresh no-ops,
+ * previews or rejected failures. A replayed no-op or a call without proof may
+ * have done the requested work, so it never counts as unchanged.
+ */
+function turnChangedNothing(trajectory: PlannerTrajectory): boolean {
+  return [...trajectory.archivedSteps, ...trajectory.steps].every(
+    ({ toolCall, result }) =>
+      !toolCall ||
+      isTerminalToolCall(toolCall) ||
+      !result ||
+      (result.effectReceipts?.length
+        ? result.effectReceipts.every(
+            (receipt) =>
+              (receipt.outcome === "noop" && !receipt.idempotency.replayed) ||
+              receipt.outcome === "preview" ||
+              (receipt.outcome === "failed" &&
+                receipt.failure.acceptance === "rejected"),
+          )
+        : result.data?.readOnlyOperation === true ||
+          (result.success === false &&
+            result.data?.acceptance === "rejected" &&
+            result.data?.executionStatus === "not_started")),
+  );
 }
 
 /** Observations may change; applied effects and committed replays stay settled. */
