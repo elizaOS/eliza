@@ -270,6 +270,54 @@ describe("grounded reply outcomes — real PGlite", () => {
     ).toHaveLength(0);
   });
 
+  it("refuses a relative reminder that expires during the final lookup", async () => {
+    const now = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(now);
+    const listDefinitions = LifeOpsService.prototype.listDefinitions;
+    vi.spyOn(
+      LifeOpsService.prototype,
+      "listDefinitions",
+    ).mockImplementationOnce(async function (
+      this: LifeOpsService,
+      ...args: Parameters<LifeOpsService["listDefinitions"]>
+    ) {
+      const result = await listDefinitions.apply(this, args);
+      clock.mockReturnValue(now + 181_000);
+      return result;
+    });
+    const title = "Expires during lookup";
+    const request = message(`Remind me in three minutes to ${title}`);
+    request.createdAt = now;
+    const result = await runLifeOperationHandler(runtime, request, undefined, {
+      parameters: {
+        action: "create",
+        kind: "definition",
+        ownerSurface: "OWNER_REMINDERS",
+        confirmed: true,
+        intent: request.content.text,
+        createPlan: {
+          mode: "create",
+          requestKind: "reminder",
+          nativeProjection: "in_app_only",
+          notificationMode: "default",
+          title,
+          description: null,
+          cadenceKind: "once",
+          dueInMinutes: 3,
+          timeZone: "UTC",
+          multiStep: false,
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("REMINDER_TIME_PASSED");
+    expect(
+      (await service.listDefinitions()).filter(
+        (row) => row.definition.title === title,
+      ),
+    ).toHaveLength(0);
+  });
+
   it.each([
     {
       title: "Absolute clock unaffected",
