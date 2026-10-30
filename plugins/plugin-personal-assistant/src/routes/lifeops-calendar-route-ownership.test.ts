@@ -256,7 +256,7 @@ describe("LifeOps calendar reads during deferred boot", () => {
 
     const handled = handleLifeOpsRoutes(context);
     const request = track(handled);
-    await vi.advanceTimersByTimeAsync(9_999);
+    await vi.advanceTimersByTimeAsync(7_999);
     expect(request.settled()).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
 

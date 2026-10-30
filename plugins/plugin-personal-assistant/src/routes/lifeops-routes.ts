@@ -773,8 +773,12 @@ async function runRoute(
     throw error;
   }
 }
-/** Upper bound a calendar read waits for the deferred calendar service. */
-const DEFERRED_CALENDAR_SERVICE_WAIT_MS = 10_000;
+/**
+ * Upper bound a calendar read waits for the deferred calendar service. Stays
+ * under the client's 10s default GET timeout so an absent service still
+ * answers its 503 before the caller aborts.
+ */
+const DEFERRED_CALENDAR_SERVICE_WAIT_MS = 8_000;
 /**
  * These routes mount when the runtime reports ready, but
  * `@elizaos/plugin-calendar` registers in the deferred plugin wave after it,
