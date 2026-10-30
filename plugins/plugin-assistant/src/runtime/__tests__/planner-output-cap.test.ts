@@ -275,45 +275,24 @@ describe("default cap by resolved registration", () => {
   });
 });
 
-describe("default cap with Anthropic extended thinking", () => {
+describe("default cap with Anthropic", () => {
   const anthropic: ModelAttemptContext = {
     modelType: ModelType.ACTION_PLANNER,
     provider: "anthropic",
   };
 
-  // The AI SDK adds a fixed thinking budget on top of max_tokens on the wire
-  // (plugin-anthropic planner-output-cap.wire.test.ts), so it keeps the default.
+  // Whether Anthropic thinks adaptively (spending max_tokens) depends on the
+  // model plugin-anthropic resolves, so every configuration keeps the previous
+  // omitted-cap request (plugin-anthropic planner-output-cap.wire.test.ts).
   it.each<[string, Record<string, string>]>([
-    ["no thinking", {}],
-    ["a shared thinking budget", { ANTHROPIC_COT_BUDGET: "10000" }],
-    ["a large-model thinking budget", { ANTHROPIC_COT_BUDGET_LARGE: "16000" }],
-  ])("sends 8192 with %s", async (_label, settings) => {
+    ["no thinking settings", {}],
+    ["a thinking budget", { ANTHROPIC_COT_BUDGET: "10000" }],
+    ["an effort", { ANTHROPIC_EFFORT_LARGE: "high" }],
+  ])("sends the omitted-cap request with %s", async (_label, settings) => {
     const { result, requests } = await run([reply()], {
       attempt: anthropic,
       settings,
     });
-    await result;
-    expect(requests).toEqual([{ maxTokens: 8192, omitted: false }]);
-  });
-
-  it.each<[string, Record<string, string>]>([
-    ["a shared effort", { ANTHROPIC_EFFORT: "medium" }],
-    ["a large-model effort", { ANTHROPIC_EFFORT_LARGE: "high" }],
-  ])(
-    "omits the default with adaptive thinking from %s",
-    async (_label, settings) => {
-      const { result, requests } = await run([reply()], {
-        attempt: anthropic,
-        settings,
-      });
-      await result;
-      expect(requests).toEqual([{ maxTokens: undefined, omitted: true }]);
-    },
-  );
-
-  it("reads the effort from the process environment", async () => {
-    vi.stubEnv("ANTHROPIC_EFFORT_SMALL", "low");
-    const { result, requests } = await run([reply()], { attempt: anthropic });
     await result;
     expect(requests).toEqual([{ maxTokens: undefined, omitted: true }]);
   });

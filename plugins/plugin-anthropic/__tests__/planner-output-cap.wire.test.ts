@@ -1,8 +1,9 @@
 /**
- * The non-coding planner's default output cap on the Anthropic wire, through
- * the runtime's per-attempt preparation, the real text handler and AI SDK, and
- * a loopback Messages API that enforces the extended-thinking rule
- * (max_tokens must exceed thinking.budget_tokens).
+ * The non-coding planner on the Anthropic wire, through the runtime's
+ * per-attempt preparation, the real text handler and AI SDK, and a loopback
+ * Messages API that enforces the extended-thinking rule (max_tokens must exceed
+ * thinking.budget_tokens). The planner sets no default cap for Anthropic, so
+ * every thinking configuration keeps the request it had before the default.
  */
 import { createServer, type Server } from "node:http";
 import { AgentRuntime, type IAgentRuntime, ModelType, type ToolDefinition } from "@elizaos/core";
@@ -105,12 +106,12 @@ const tools: ToolDefinition[] = [
 ];
 
 /** Plan one turn with the anthropic registration; return the wire bodies. */
-async function plan(thinking: Record<string, string>) {
+async function plan(thinking: Record<string, string>, model: string = MODEL) {
   const settings: Record<string, string> = {
     ANTHROPIC_API_KEY: "loopback-only-key",
     ANTHROPIC_AUTH_MODE: "apikey",
     ANTHROPIC_BASE_URL: baseUrl,
-    ANTHROPIC_ACTION_PLANNER_MODEL: MODEL,
+    ANTHROPIC_ACTION_PLANNER_MODEL: model,
     ...thinking,
   };
   const host = {
@@ -146,35 +147,57 @@ async function plan(thinking: Record<string, string>) {
   return bodies;
 }
 
-it("sends the 8192 default without extended thinking", async () => {
+/** The plugin's own output limit for a model: what an omitted cap sends. */
+const outputLimit = (model: string) =>
+  resolveAnthropicMaxOutputTokens({ getSetting: () => null } as never, model as never);
+
+it("sends the model output limit without thinking settings, as before the default", async () => {
   const sent = await plan({});
   expect(sent).toHaveLength(1);
-  expect(sent[0]).toMatchObject({ max_tokens: 8192 });
+  expect(sent[0]).toMatchObject({ max_tokens: outputLimit(MODEL) });
   expect(sent[0]).not.toHaveProperty("thinking");
 });
 
-it("keeps max_tokens above a thinking budget at or above the default", async () => {
-  // The SDK adds the budget to the requested output, so the answer still
-  // gets the full 8192 tokens beyond its thinking.
+it("keeps max_tokens above a thinking budget", async () => {
+  // The SDK adds the budget to the output limit and clamps to the model's.
   const sent = await plan({ ANTHROPIC_COT_BUDGET: "10000" });
   expect(sent).toEqual([
     expect.objectContaining({
       thinking: { type: "enabled", budget_tokens: 10000 },
-      max_tokens: 8192 + 10000,
+      max_tokens: outputLimit(MODEL),
     }),
   ]);
 });
 
 it("leaves adaptive thinking the model output limit, as before the default", async () => {
-  // Adaptive thinking spends max_tokens; the default would share 8192 with it.
+  // Adaptive thinking spends max_tokens; a default would share it with the answer.
   const sent = await plan({ ANTHROPIC_EFFORT_LARGE: "high" });
   expect(sent).toEqual([
     expect.objectContaining({
       thinking: { type: "adaptive" },
-      max_tokens: resolveAnthropicMaxOutputTokens(
-        { getSetting: () => null } as never,
-        MODEL as never
-      ),
+      max_tokens: outputLimit(MODEL),
+    }),
+  ]);
+});
+
+it("leaves a model that always thinks adaptively its output limit", async () => {
+  // claude-fable-5 turns a thinking budget into adaptive thinking.
+  const sent = await plan({ ANTHROPIC_COT_BUDGET: "10000" }, "claude-fable-5");
+  expect(sent).toEqual([
+    expect.objectContaining({
+      thinking: { type: "adaptive" },
+      max_tokens: outputLimit("claude-fable-5"),
+    }),
+  ]);
+});
+
+it("sends the planner override above a thinking budget", async () => {
+  vi.stubEnv("ELIZA_PLANNER_MAX_TOKENS", "8192");
+  const sent = await plan({ ANTHROPIC_COT_BUDGET: "10000" });
+  expect(sent).toEqual([
+    expect.objectContaining({
+      thinking: { type: "enabled", budget_tokens: 10000 },
+      max_tokens: 8192 + 10000,
     }),
   ]);
 });

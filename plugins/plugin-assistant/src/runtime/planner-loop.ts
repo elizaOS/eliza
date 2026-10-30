@@ -303,13 +303,6 @@ function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
 
 const PLANNER_DEFAULT_MAX_TOKENS = 8192;
 
-/** Settings with which plugin-anthropic attaches adaptive thinking. */
-const ANTHROPIC_EFFORT_SETTINGS = [
-  "ANTHROPIC_EFFORT",
-  "ANTHROPIC_EFFORT_SMALL",
-  "ANTHROPIC_EFFORT_LARGE",
-];
-
 /**
  * Default output cap for one resolved non-coding planner attempt, or
  * undefined to send that attempt uncapped exactly as before the default
@@ -327,29 +320,21 @@ const ANTHROPIC_EFFORT_SETTINGS = [
  *   older capacitor bridge rejects any cap above 256, and the iOS bridge
  *   forwards it past its context window.
  * - A registered `maxOutputTokens` below 8192 lowers the default to it.
- * - Anthropic with an effort setting (adaptive thinking) gets no default:
- *   adaptive thinking spends max_tokens, so it would share the 8192 with the
- *   answer. A fixed thinking budget (`ANTHROPIC_COT_BUDGET*`) needs no
- *   exception: the AI SDK sends max_tokens as the requested output plus the
- *   budget, which exceeds the budget as the API requires.
+ * - Anthropic gets no default. Adaptive thinking spends max_tokens, so it
+ *   would share the 8192 with the answer, and it is not the planner's to
+ *   predict: an effort setting turns it on, claude-opus-5-5 and claude-fable-5
+ *   always think adaptively and turn an `ANTHROPIC_COT_BUDGET` into adaptive
+ *   thinking, and the model id is resolved inside plugin-anthropic. An
+ *   `ANTHROPIC_MAX_OUTPUT_TOKENS` below 8192 would also make the plugin reject
+ *   the explicit cap before dispatch.
  */
 function plannerDefaultMaxTokens(
   attempt: ModelAttemptContext,
-  runtime: PlannerRuntime,
 ): number | undefined {
   if (
     attempt.provider === "eliza-router" ||
+    attempt.provider === "anthropic" ||
     (attempt.metadata?.local ?? isLocalProvider(attempt.provider))
-  )
-    return undefined;
-  if (
-    attempt.provider === "anthropic" &&
-    ANTHROPIC_EFFORT_SETTINGS.some((key) =>
-      [runtime.getSetting?.(key), process.env[key]].some(
-        (value) =>
-          value !== undefined && value !== null && String(value).trim() !== "",
-      ),
-    )
   )
     return undefined;
   const registered = attempt.metadata?.maxOutputTokens;
@@ -4693,7 +4678,7 @@ async function dispatchPlannerModelCall(params: {
     modelParams.prepareModelAttempt = (attempt, request) => {
       attemptMaxTokens =
         request.maxTokens === undefined
-          ? plannerDefaultMaxTokens(attempt, params.runtime)
+          ? plannerDefaultMaxTokens(attempt)
           : undefined;
       if (attemptMaxTokens !== undefined) request.maxTokens = attemptMaxTokens;
     };
