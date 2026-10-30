@@ -223,12 +223,8 @@ android {
         }
     }
 
-    // Preserve .gguf / .so as-is in the packaged APK.
-    //
-    // .gguf is added so bundled chat + embedding models stay byte-identical
-    // for memory-mapped loading; .so already ships uncompressed but
-    // declaring it here matches AGP's recommended noCompress list and
-    // protects against future packaging-default changes.
+    // Native libraries retain their packaging policy. Model assets may be
+    // compressed: their installers verify extracted bytes before native mmap.
     //
     // `tar.gz` / `tar` are NOT listed because aapt2 pre-processes
     // `*.tar.gz` by stripping the `.gz` suffix at packaging time
@@ -239,7 +235,7 @@ android {
     // writing them to disk as `.tar.gz` so PGlite's runtime loader
     // (`new URL("../vector.tar.gz", import.meta.url)`) finds them.
     androidResources {
-        noCompress += ['gguf', 'lex', 'so']
+        noCompress += ['so']
     }
 
     compileOptions {
@@ -272,11 +268,11 @@ android {
         }
     }
 
-    // Preserve .tar.gz / .tar / .gguf / .so as-is in the packaged APK.
+    // Preserve .tar.gz / .tar / .so as-is in the packaged APK.
     // aapt2 otherwise rewrites .tar.gz to .tar and PGlite's runtime
     // extension loader fails to find vector.tar.gz / fuzzystrmatch.tar.gz.
     androidResources {
-        noCompress += ['gguf', 'tar.gz', 'so', 'tar']
+        noCompress += ['tar.gz', 'so', 'tar']
     }
 }
 // Bundle the NDK (bionic) fused inference stack into the APK's jniLibs.
@@ -625,6 +621,7 @@ dependencies {
     testImplementation "junit:junit:$junitVersion"
     testImplementation "org.json:json:20250517"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test:runner:$androidxTestRunnerVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
     implementation project(':capacitor-cordova-android-plugins')
 }

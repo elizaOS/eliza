@@ -57,7 +57,6 @@ android {
     if (!packageInference) {
         packaging.jniLibs.excludes += ['**/libc++_shared.so', '**/libelizainference.so']
     }
-    androidResources { noCompress += ['gguf', 'lex'] }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_21
         targetCompatibility JavaVersion.VERSION_21

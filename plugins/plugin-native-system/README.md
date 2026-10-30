@@ -369,3 +369,24 @@ leaves `OWNED_ALARMS` must also choose a `SavedAlarms` path for alarms it
 already saved. The Eliza app is `HANDOFF_ONLY` and takes `HAND_OFF_TO_CLOCK`
 for the alarms it saved earlier. `test/clock.test.mjs` runs on a host JVM; real Clock apps need
 an instrumented run.
+
+### Voice entry policy
+
+`createSenseInvocationController` accepts an optional `SenseVoiceEntryPolicy`. Pass
+`CONVERSATION_ONLY_VOICE_ENTRY` for a chat-only application: external events do not bind,
+consume or start a voice session. `ASSISTANT_INVOCATION_VOICE_ENTRY` preserves the existing
+assistant-entry behavior and remains the default for existing callers. Policy selection
+is application behavior, not branding. A host adopting chat-only mode must separately
+request the native listener's `turnOff` and report an unconfirmed stop; this controller
+does not claim to stop a previously running listener.
+
+`mobileVoiceEntryPolicy(aosp)` applies the same mobile default to every product:
+conversation-only outside the admitted AOSP lane, existing native-verified
+invocation handling within it. It never enables or resumes the listener, and
+listener consent does not replace the separate native system/Power receipt rules.
+
+Chat-only native hosts call `stopSenseListenerForChatOnly` separately from the
+inert invocation controller. It waits at most five seconds and accepts only a
+raw available/OFF/listening-false/microphone-closed receipt; missing or contradictory
+fields stay unconfirmed. Hosts display that failure and may retry the same stop.
+The helper never requests consent, enables or resumes the listener.

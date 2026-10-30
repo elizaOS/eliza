@@ -3,7 +3,9 @@ import type { CollapsedView, ViewDeclaration } from "../types/plugin.js";
 /** View declaration types carried by plugins; host presentation policies live in shared. */
 
 /** A view's category. See {@link VIEW_KINDS}. */
-export type ViewKind = "system" | "release" | "developer" | "preview";
+import type { ViewKind } from "../types/view-kind.js";
+
+export type { ViewKind } from "../types/view-kind.js";
 
 /**
  * The two user-controllable toggles. `system` and `release` are always on, so

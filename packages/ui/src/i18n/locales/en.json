@@ -6039,6 +6039,8 @@
   "memoryviewer.temporarilyUnavailableDescription": "Reconnect to Eliza, then try again.",
   "voicesection.continuousChat": "Continuous chat",
   "voicesection.continuousChatDesc": "When on, the mic stays open and the agent decides when you finished speaking.",
+  "voicesection.listenerStopUnconfirmed": "Wake listening could not be confirmed off.",
+  "voicesection.retryListenerStop": "Retry stopping wake listening",
   "voicesection.wakeWord": "Wake word",
   "voicesection.wakeWordDesc": "Listen for a phrase like 'Hey {{appName}}' before opening the mic.",
   "voicesection.wakeWordInactive": "Wake word detector is not running: {{reason}}",

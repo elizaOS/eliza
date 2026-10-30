@@ -17,6 +17,7 @@ credential storage. Keep credentials in the trusted host; never log them.
 | `@elizaos/auth/start`       | Hosted Bun service with PostgreSQL                                          |
 | `@elizaos/auth/embedded`    | Embedded Bun service with persistent PGlite                                 |
 | `@elizaos/auth/native-host` | Trusted Node enrollment flow                                                |
+| `@elizaos/auth/app-return` | Browser-safe foreground return and registered Workspace AppReturn v2 policy |
 | `@elizaos/auth/testing`     | Vault fixtures for tests only                                               |
 
 Use these barrels in repository consumers. Explicit old account/vault paths and
@@ -271,3 +272,10 @@ pass `--apply-source-quiesced` to publish atomically. Conflicting live values fa
 expired records are skipped and existing expiration times are never extended.
 Snapshots contain secrets: keep them out of logs and Git. Other Redis records,
 including enforcement counters and telemetry, need their own transfer.
+
+`createWorkspaceAppReturn` takes the product's exact HTTPS callback, native plugin name
+and method names. It validates the offered redirect and consumes only bounded Workspace
+outcomes for the same account, credential and UI session. A connected outcome still needs
+canonical account/connection readback; it is not a Google grant. `watchForegroundAccountReturn`
+requires an observed background transition after arming. Cached native resume events,
+late listener registration and a replaced client cannot trigger another account's refresh.

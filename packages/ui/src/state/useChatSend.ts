@@ -33,6 +33,12 @@ import type {
   MessageAttachmentContentType,
 } from "../api/client-types-chat";
 import type { CodingAgentSession } from "../api/client-types-cloud";
+import {
+  admitConversationStopReceipt,
+  type ConversationTurnContext,
+  ConversationTurnController,
+  isConversationTurnRefusal,
+} from "../api/conversation-turn-controller";
 import { describeCreditGateError } from "../api/credit-gate-error";
 import {
   describePersonalRouteRefusal,
@@ -109,8 +115,10 @@ type ConversationStreamResult = Awaited<
 interface ActiveChatTurn {
   controller: AbortController;
   conversationId: string | null;
-  roomId: string | null;
-  abortServerTurn: (() => void) | null;
+}
+interface ChatTurnDispatch {
+  clientMessageId: string;
+  send: (turn: ConversationTurnContext) => Promise<ConversationStreamResult>;
 }
 interface ChatViewHandoffOwner {
   conversationId: string | null;
@@ -322,18 +330,27 @@ function abortServerConversationTurn(
   roomId: string | null | undefined,
   reason: string,
   onFailure?: () => void,
-): void {
-  if (!roomId) return;
-  // error-policy:J6 best-effort abort signal for a turn the user already
-  // stopped locally. Paired remote turns continue after transport loss, so
-  // the explicit abort route is the server-side Stop boundary.
-  void client.abortConversationTurn(roomId, reason).catch((err) => {
-    onFailure?.();
-    logger.warn(
-      `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
-    );
-  });
+): Promise<void> {
+  if (!roomId) return Promise.resolve();
+  // The route acknowledges cancellation signaling, not completion of cleanup.
+  // false can mean already-aborted work is still active, so it cannot confirm
+  // this request. Check the echoed target before releasing a replacement send.
+  return client
+    .abortConversationTurn(roomId, reason)
+    .then((receipt) => {
+      admitConversationStopReceipt(receipt, { roomId, reason });
+    })
+    .catch((err) => {
+      // error-policy:J4 the controller reports an unconfirmed Stop and refuses
+      // the next dispatch; retain the original failure for diagnostics.
+      onFailure?.();
+      logger.warn(
+        `[useChatSend] abortConversationTurn(${roomId}) failed: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      throw err;
+    });
 }
+
 export interface QueuedChatSend {
   rawInput: string;
   channelType: ConversationChannelType;
@@ -719,6 +736,39 @@ export function useChatSend(deps: UseChatSendDeps) {
   const admittedSendKeysRef = useRef(new Map<string, number>());
   const sendCancellationGenerationRef = useRef(0);
   const activeChatTurnRef = useRef<ActiveChatTurn | null>(null);
+  // Teardown retains the durable pending-turn receipt for the next page.
+  // It must not start a room-only HTTP Stop that can arrive after a remount's send.
+  const unmountingRef = useRef(false);
+  const turnNoticeRef = useRef(setActionNotice);
+  turnNoticeRef.current = setActionNotice;
+  const conversationTurnsRef = useRef<ConversationTurnController<
+    ChatTurnDispatch,
+    ConversationStreamResult
+  > | null>(null);
+  if (!conversationTurnsRef.current) {
+    conversationTurnsRef.current = new ConversationTurnController({
+      create: async () => {
+        throw new Error("Bind the chat conversation before dispatch.");
+      },
+      clientMessageId: (input) => input.clientMessageId,
+      send: (_room, input, turn) => input.send(turn),
+      stop: (room) => {
+        if (unmountingRef.current) return Promise.resolve();
+        return abortServerConversationTurn(room.roomId, "ui-chat-stop", () => {
+          turnNoticeRef.current(
+            "The connected host did not confirm Stop. This turn may still finish; check its history before retrying.",
+            "error",
+            12000,
+          );
+        });
+      },
+      ownershipLost: (error) => {
+        const status = (error as { status?: number } | null)?.status;
+        return status === 401 || status === 403;
+      },
+    });
+  }
+  const conversationTurns = conversationTurnsRef.current;
   // ElizaClient owns a mutable base outside React state. Snapshot it each render
   // so selecting another agent retriggers the prewarm effect.
   const chatScopePrewarmBase = client.getBaseUrl();
@@ -735,11 +785,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       );
     });
   }, [chatScopePrewarmBase]);
-  // A lifecycle abort is different from an explicit Stop. During teardown the
-  // new page owns recovery, so the durable pending-turn receipt must survive
-  // the abort/finally microtask. Explicit stops and all other terminal paths
-  // still clear it normally.
-  const unmountingRef = useRef(false);
   // Freeze-on-shared (cloud-agent handoff, PR2). While a shared→dedicated
   // handoff is migrating, the user is still pointed at the SHARED agent but the
   // shared transcript has already been (or is about to be) snapshotted. The
@@ -1024,12 +1069,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       unmountingRef.current = true;
       sendCancellationGenerationRef.current += 1;
       const activeTurn = activeChatTurnRef.current;
-      if (activeTurn?.abortServerTurn) {
-        activeTurn.controller.signal.removeEventListener(
-          "abort",
-          activeTurn.abortServerTurn,
-        );
-      }
+      void conversationTurnsRef.current?.reset();
       activeTurn?.controller.abort();
       chatAbortRef.current?.abort();
       activeChatTurnRef.current = null;
@@ -1107,21 +1147,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       const restoredQueuedDraft = resolveQueuedChatSends(
         activeConversationIdRef.current ?? activeTurn?.conversationId ?? null,
       );
-      if (activeTurn?.roomId) {
-        abortServerConversationTurn(activeTurn.roomId, "ui-chat-stop", () => {
-          setActionNotice(
-            "Stop could not reach the connected host. This turn may still finish; check its history before retrying.",
-            "error",
-            12000,
-          );
-        });
-      }
-      if (activeTurn?.abortServerTurn) {
-        activeTurn.controller.signal.removeEventListener(
-          "abort",
-          activeTurn.abortServerTurn,
-        );
-      }
+      void conversationTurnsRef.current?.interrupt();
       activeTurn?.controller.abort();
       chatAbortRef.current?.abort();
       // Commit any parked partial text (so a stopped turn keeps what the user saw)
@@ -1143,7 +1169,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       setChatFirstTokenReceived,
       setServerTurnStatus,
       setChatSending,
-      setActionNotice,
     ]);
   const interruptActiveChatPipeline = useCallback((): string => {
     return interruptActiveChatPipelineWithDraft().text;
@@ -1622,7 +1647,6 @@ export function useChatSend(deps: UseChatSendDeps) {
           ? claimConversationMessagesOwnership(optimisticOwnerConversationId)
           : null;
       let controller: AbortController | null = null;
-      let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
       const viewHandoffOwner: ChatViewHandoffOwner = {
         conversationId: optimisticOwnerConversationId,
@@ -1633,29 +1657,32 @@ export function useChatSend(deps: UseChatSendDeps) {
       // Stop must also invalidate setup work before the streaming controller
       // exists (command resolution and first-conversation creation).
       const cancellationGeneration = sendCancellationGenerationRef.current;
-      const restoreUnsentSetup = (): void => {
+      const restoreUnsentSetup = (
+        ownerConversationId = optimisticOwnerConversationId,
+        ownerGeneration = optimisticOwnerGeneration,
+      ): void => {
         if (unmountingRef.current) return;
         const ids = [
           turn.optimisticTurn.userMsgId,
           turn.optimisticTurn.assistantMsgId,
         ];
         setConversationMessagesForConversation(
-          optimisticOwnerConversationId,
+          ownerConversationId,
           (previous) => previous.filter((message) => !ids.includes(message.id)),
         );
         for (const messageId of ids) {
           applyConversationMessageOverlayModification(
-            optimisticOwnerConversationId,
+            ownerConversationId,
             messageId,
             { messageId, mode: "drop" },
           );
         }
         if (
-          optimisticOwnerGeneration !== null &&
-          activeConversationIdRef.current === optimisticOwnerConversationId &&
+          ownerGeneration !== null &&
+          activeConversationIdRef.current === ownerConversationId &&
           isConversationMessagesOwnershipCurrent(
-            optimisticOwnerConversationId,
-            optimisticOwnerGeneration,
+            ownerConversationId,
+            ownerGeneration,
           )
         ) {
           const draft = [turn.rawInput, chatInputRef.current]
@@ -1898,61 +1925,72 @@ export function useChatSend(deps: UseChatSendDeps) {
       controller = new AbortController();
       viewHandoffOwner.controller = controller;
       chatAbortRef.current = controller;
-      abortServerTurn = () => {
-        abortServerConversationTurn(convRoomId, "ui-chat-abort");
-      };
-      controller.signal.addEventListener("abort", abortServerTurn, {
-        once: true,
-      });
       activeChatTurnRef.current = {
         controller,
         conversationId: convId,
-        roomId: convRoomId,
-        abortServerTurn,
       };
       let streamedAssistantText = "";
       try {
-        const data = await client.sendConversationMessageStream(
-          convId,
-          text,
-          (token, accumulatedText, provisional) => {
-            const nextText =
-              typeof accumulatedText === "string"
-                ? accumulatedText
-                : mergeStreamingText(streamedAssistantText, token);
-            if (nextText === streamedAssistantText) return;
-            streamedAssistantText = nextText;
-            if (isConversationCommitActive(convId)) {
-              setChatFirstTokenReceived(true);
-            }
-            // Coalesce tokens delivered in one transport burst into a microtask;
-            // the parked text is flushed synchronously before terminal changes.
-            // Provisional (action-callback) text is stamped on the message so
-            // voice output holds it until the final reply confirms or replaces
-            // it (double-speak fix).
-            scheduleStreamingText(
-              convId,
-              assistantMsgId,
-              nextText,
-              provisional === true,
-            );
+        const data = await conversationTurns.request(
+          {
+            clientMessageId,
+            send: (turnContext) =>
+              client.sendConversationMessageStream(
+                convId,
+                text,
+                (token, accumulatedText, provisional) => {
+                  if (!turnContext.current()) return;
+                  const nextText =
+                    typeof accumulatedText === "string"
+                      ? accumulatedText
+                      : mergeStreamingText(streamedAssistantText, token);
+                  if (nextText === streamedAssistantText) return;
+                  streamedAssistantText = nextText;
+                  if (isConversationCommitActive(convId)) {
+                    setChatFirstTokenReceived(true);
+                  }
+                  // Coalesce tokens delivered in one transport burst into a microtask;
+                  // the parked text is flushed synchronously before terminal changes.
+                  // Provisional (action-callback) text is stamped on the message so
+                  // voice output holds it until the final reply confirms or replaces
+                  // it (double-speak fix).
+                  scheduleStreamingText(
+                    convId,
+                    assistantMsgId,
+                    nextText,
+                    provisional === true,
+                  );
+                },
+                channelType,
+                turnContext.signal,
+                imagesToSend,
+                turn.metadata,
+                // Live server phase → the rich status indicator. Additive; the reply
+                // streams through onToken above regardless. Coalesced into the same
+                // transport-burst microtask as text/tool commits and flushed
+                // synchronously before any terminal transition.
+                (status) => {
+                  if (turnContext.current())
+                    scheduleServerTurnStatus(convId, assistantMsgId, status);
+                },
+                // Inline tool-call steps → the turn's tool rows (call → result/error),
+                // merged by callId so one row flips running → settled (#13535).
+                // Coalesced into the current transport burst with the text + status.
+                (event) => {
+                  if (turnContext.current())
+                    scheduleToolEvent(convId, assistantMsgId, event);
+                },
+                // Stable idempotency key for this logical turn.
+                turnContext.clientMessageId,
+                (results) => {
+                  if (turnContext.current()) handoffView(results);
+                },
+              ),
           },
-          channelType,
-          controller.signal,
-          imagesToSend,
-          turn.metadata,
-          // Live server phase → the rich status indicator. Additive; the reply
-          // streams through onToken above regardless. Coalesced into the same
-          // transport-burst microtask as text/tool commits and flushed
-          // synchronously before any terminal transition.
-          (status) => scheduleServerTurnStatus(convId, assistantMsgId, status),
-          // Inline tool-call steps → the turn's tool rows (call → result/error),
-          // merged by callId so one row flips running → settled (#13535).
-          // Coalesced into the current transport burst with the text + status.
-          (event) => scheduleToolEvent(convId, assistantMsgId, event),
-          // Stable idempotency key for this logical turn.
-          clientMessageId,
-          handoffView,
+          {
+            conversation: { id: convId, roomId: convRoomId },
+            signal: controller.signal,
+          },
         );
         // Commit any token parked by the throttle before the terminal
         // drop/complete/fail/interrupt — no streamed tokens may be lost.
@@ -2120,7 +2158,22 @@ export function useChatSend(deps: UseChatSendDeps) {
         flushStreamingText();
         const abortError = err as Error;
         if (abortError.name === "AbortError" || controller?.signal.aborted) {
-          dropEmptyAssistantPlaceholder(convId, assistantMsgId);
+          if ((err as { notDispatched?: boolean } | null)?.notDispatched) {
+            restoreUnsentSetup(
+              viewHandoffOwner.conversationId,
+              viewHandoffOwner.generation,
+            );
+          } else {
+            dropEmptyAssistantPlaceholder(convId, assistantMsgId);
+          }
+          return;
+        }
+        if (isConversationTurnRefusal(err)) {
+          restoreUnsentSetup(
+            viewHandoffOwner.conversationId,
+            viewHandoffOwner.generation,
+          );
+          setActionNotice(err.message, "error", 8000);
           return;
         }
         // A terminal SSE `error` event that carried a structured gate must
@@ -2300,42 +2353,70 @@ export function useChatSend(deps: UseChatSendDeps) {
               replayMessages,
             );
             let replayStreamedText = "";
-            const retryData = await client.sendConversationMessageStream(
-              conversation.id,
-              text,
-              (token, accumulatedText, provisional) => {
-                const nextText =
-                  typeof accumulatedText === "string"
-                    ? accumulatedText
-                    : mergeStreamingText(replayStreamedText, token);
-                if (nextText === replayStreamedText) return;
-                replayStreamedText = nextText;
-                if (isConversationCommitActive(conversation.id)) {
-                  setChatFirstTokenReceived(true);
-                }
-                scheduleStreamingText(
-                  conversation.id,
-                  replayAssistantId,
-                  nextText,
-                  provisional === true,
-                );
+            const retryData = await conversationTurns.request(
+              {
+                clientMessageId,
+                send: (turnContext) =>
+                  client.sendConversationMessageStream(
+                    conversation.id,
+                    text,
+                    (token, accumulatedText, provisional) => {
+                      if (!turnContext.current()) return;
+                      const nextText =
+                        typeof accumulatedText === "string"
+                          ? accumulatedText
+                          : mergeStreamingText(replayStreamedText, token);
+                      if (nextText === replayStreamedText) return;
+                      replayStreamedText = nextText;
+                      if (isConversationCommitActive(conversation.id)) {
+                        setChatFirstTokenReceived(true);
+                      }
+                      scheduleStreamingText(
+                        conversation.id,
+                        replayAssistantId,
+                        nextText,
+                        provisional === true,
+                      );
+                    },
+                    channelType,
+                    turnContext.signal,
+                    imagesToSend,
+                    turn.metadata,
+                    (serverStatus) => {
+                      if (turnContext.current())
+                        scheduleServerTurnStatus(
+                          conversation.id,
+                          replayAssistantId,
+                          serverStatus,
+                        );
+                    },
+                    (event) => {
+                      if (turnContext.current())
+                        scheduleToolEvent(
+                          conversation.id,
+                          replayAssistantId,
+                          event,
+                        );
+                    },
+                    // Same idempotency key across the whole logical turn, including
+                    // the 404 recreate-and-replay recovery.
+                    turnContext.clientMessageId,
+                    (results) => {
+                      if (turnContext.current()) handoffView(results);
+                    },
+                  ),
               },
-              channelType,
-              controller?.signal,
-              imagesToSend,
-              turn.metadata,
-              (serverStatus) =>
-                scheduleServerTurnStatus(
-                  conversation.id,
-                  replayAssistantId,
-                  serverStatus,
-                ),
-              (event) =>
-                scheduleToolEvent(conversation.id, replayAssistantId, event),
-              // Same idempotency key across the whole logical turn, including
-              // the 404 recreate-and-replay recovery.
-              clientMessageId,
-              handoffView,
+              {
+                conversation: {
+                  id: conversation.id,
+                  roomId: resolveAbortRoomId(
+                    conversation.id,
+                    conversation.roomId,
+                    undefined,
+                  ),
+                },
+                signal: controller.signal,
+              },
             );
             await handoffCompletedAction(retryData.actionResults, handoffView);
             // Commit any throttle-parked token before the terminal modification.
@@ -2459,9 +2540,6 @@ export function useChatSend(deps: UseChatSendDeps) {
           convId || optimisticOwnerConversationId,
           null,
         );
-        if (controller && abortServerTurn) {
-          controller.signal.removeEventListener("abort", abortServerTurn);
-        }
         if (chatAbortRef.current === controller) {
           chatAbortRef.current = null;
         }
@@ -2474,6 +2552,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
     },
     [
+      conversationTurns,
       appendLocalCommandTurn,
       createTurnViewHandoff,
       handlePersonalRouteRefusal,
@@ -2860,7 +2939,6 @@ export function useChatSend(deps: UseChatSendDeps) {
       chatSendBusyRef.current = true;
       const sendNonce = ++chatSendNonceRef.current;
       let controller: AbortController | null = null;
-      let abortServerTurn: (() => void) | null = null;
       let convRoomId: string | null = null;
       try {
         const optimisticOwnerConversationId =
@@ -2994,53 +3072,61 @@ export function useChatSend(deps: UseChatSendDeps) {
         controller = new AbortController();
         viewHandoffOwner.controller = controller;
         chatAbortRef.current = controller;
-        abortServerTurn = () => {
-          abortServerConversationTurn(convRoomId, "ui-chat-abort");
-        };
-        controller.signal.addEventListener("abort", abortServerTurn, {
-          once: true,
-        });
         activeChatTurnRef.current = {
           controller,
           conversationId: convId,
-          roomId: convRoomId,
-          abortServerTurn,
         };
         let streamedAssistantText = "";
         try {
-          const data = await client.sendConversationMessageStream(
-            convId,
-            trimmed,
-            (token, accumulatedText, provisional) => {
-              const nextText =
-                typeof accumulatedText === "string"
-                  ? accumulatedText
-                  : mergeStreamingText(streamedAssistantText, token);
-              if (nextText === streamedAssistantText) return;
-              streamedAssistantText = nextText;
-              if (isConversationCommitActive(convId)) {
-                setChatFirstTokenReceived(true);
-              }
-              // Coalesce tokens delivered in one transport burst into a microtask;
-              // flush synchronously before terminal changes.
-              scheduleStreamingText(
-                convId,
-                assistantMsgId,
-                nextText,
-                provisional === true,
-              );
+          const data = await conversationTurns.request(
+            {
+              clientMessageId: generateChatClientMessageId(),
+              send: (turnContext) =>
+                client.sendConversationMessageStream(
+                  convId,
+                  trimmed,
+                  (token, accumulatedText, provisional) => {
+                    if (!turnContext.current()) return;
+                    const nextText =
+                      typeof accumulatedText === "string"
+                        ? accumulatedText
+                        : mergeStreamingText(streamedAssistantText, token);
+                    if (nextText === streamedAssistantText) return;
+                    streamedAssistantText = nextText;
+                    if (isConversationCommitActive(convId)) {
+                      setChatFirstTokenReceived(true);
+                    }
+                    // Coalesce tokens delivered in one transport burst into a microtask;
+                    // flush synchronously before terminal changes.
+                    scheduleStreamingText(
+                      convId,
+                      assistantMsgId,
+                      nextText,
+                      provisional === true,
+                    );
+                  },
+                  "DM",
+                  turnContext.signal,
+                  undefined,
+                  buildChatViewMetadata(tab, options?.metadata),
+                  // No overlay status on the action/DM path (its finally doesn't clear
+                  // it); still stream inline tool rows onto the turn (#13535),
+                  // coalesced into the current transport burst with the text.
+                  undefined,
+                  (event) => {
+                    if (turnContext.current())
+                      scheduleToolEvent(convId, assistantMsgId, event);
+                  },
+                  turnContext.clientMessageId,
+                  (results) => {
+                    if (turnContext.current()) handoffView(results);
+                  },
+                ),
             },
-            "DM",
-            controller.signal,
-            undefined,
-            buildChatViewMetadata(tab, options?.metadata),
-            // No overlay status on the action/DM path (its finally doesn't clear
-            // it); still stream inline tool rows onto the turn (#13535),
-            // coalesced into the current transport burst with the text.
-            undefined,
-            (event) => scheduleToolEvent(convId, assistantMsgId, event),
-            undefined,
-            handoffView,
+            {
+              conversation: { id: convId, roomId: convRoomId },
+              signal: controller.signal,
+            },
           );
           // Commit any token parked by the throttle before the terminal
           // drop/complete/fail/interrupt — no streamed tokens may be lost.
@@ -3097,6 +3183,24 @@ export function useChatSend(deps: UseChatSendDeps) {
           // Commit any throttled-but-uncommitted token first so an abort/error
           // never drops a placeholder the user already saw fill with text.
           flushStreamingText();
+          if (
+            isConversationTurnRefusal(err) ||
+            (err as { notDispatched?: boolean } | null)?.notDispatched
+          ) {
+            const ids = [userMsgId, assistantMsgId];
+            setConversationMessagesForConversation(convId, (previous) =>
+              previous.filter((message) => !ids.includes(message.id)),
+            );
+            for (const messageId of ids) {
+              applyConversationMessageOverlayModification(convId, messageId, {
+                messageId,
+                mode: "drop",
+              });
+            }
+            if (isConversationTurnRefusal(err))
+              setActionNotice(err.message, "error", 8000);
+            return false;
+          }
           const abortError = err as Error;
           if (abortError.name === "AbortError" || controller?.signal.aborted) {
             dropEmptyAssistantPlaceholder(convId, assistantMsgId);
@@ -3142,9 +3246,6 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
         return true;
       } finally {
-        if (controller && abortServerTurn) {
-          controller.signal.removeEventListener("abort", abortServerTurn);
-        }
         if (controller == null && chatSendNonceRef.current === sendNonce) {
           chatSendBusyRef.current = false;
           notifyChatSendIdle();
@@ -3155,6 +3256,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
     },
     [
+      conversationTurns,
       activeConversationId,
       createTurnViewHandoff,
       claimConversationMessagesOwnership,
@@ -3167,6 +3269,7 @@ export function useChatSend(deps: UseChatSendDeps) {
       loadConversationMessages,
       loadConversations,
       pollCloudCredits,
+      applyConversationMessageOverlayModification,
       applyStreamingModificationForConversation,
       reconcileTerminalStream,
       restoreEvictedUserTurn,

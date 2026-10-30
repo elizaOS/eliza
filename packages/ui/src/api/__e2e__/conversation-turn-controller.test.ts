@@ -6,6 +6,7 @@ import {
   type ConversationTurnFailure,
   ConversationTurnRefusal,
   type ConversationTurnTransport,
+  admitConversationStopReceipt,
   findStoppedUserTurn,
 } from "../conversation-turn-controller";
 
@@ -318,6 +319,196 @@ describe("ConversationTurnController", () => {
     expect(codes).toEqual(["invalid-identity"]);
     expect(failure).toBeUndefined();
   });
+});
+
+describe("ConversationTurnController.request", () => {
+  const room = { id: "bound", roomId: "bound-room" };
+
+  it("uses the same controller for an awaited bound request", async () => {
+    const h = harness();
+    const reply = h.controller.request("hello", { conversation: room });
+    await tick();
+    expect(h.sends[0].room).toEqual(room);
+    expect(h.sends[0].turn.clientMessageId).toBe("client-1");
+    h.sends[0].reply.resolve("done");
+    expect(await reply).toBe("done");
+    expect(h.controller.pending).toBe(false);
+  });
+
+  it("keeps a dispatched AbortError's identity and does not mark it unsent", async () => {
+    const h = harness();
+    const failure = Object.assign(new DOMException("Stream dropped", "AbortError"), { notDispatched: true });
+    const reply = h.controller.request("hello", { conversation: room });
+    const rejected = expect(reply).rejects.toBe(failure);
+    await tick();
+    h.sends[0].reply.reject(failure);
+    await rejected;
+    expect(failure.notDispatched).toBe(false);
+    expect(h.stops).toEqual([]);
+  });
+
+  it("keeps a creation error's identity and marks it unsent", async () => {
+    const failure = new TypeError("Creation failed");
+    const controller = new ConversationTurnController({
+      create: async () => { throw failure; },
+      send: async () => "unexpected",
+      stop: async () => {},
+      ownershipLost: () => false,
+    });
+    await expect(controller.request("hello")).rejects.toBe(failure);
+    expect(failure).toMatchObject({ notDispatched: true });
+  });
+
+  it("declines a concurrent request without changing the binding or stopping its owner", async () => {
+    const h = harness();
+    const first = h.controller.request("first", { conversation: room });
+    await tick();
+    const signal = new AbortController();
+    await expect(h.controller.request("second", {
+      conversation: { id: "other", roomId: "other-room" }, signal: signal.signal,
+    })).rejects.toMatchObject({ code: "busy", notDispatched: true });
+    signal.abort();
+    expect(h.controller.conversation).toEqual(room);
+    expect(h.stops).toEqual([]);
+    expect(h.sends).toHaveLength(1);
+    h.sends[0].reply.resolve("first reply");
+    expect(await first).toBe("first reply");
+  });
+
+  it("does not bind or create for an already-cancelled request", async () => {
+    const h = harness();
+    const abort = new AbortController(); abort.abort();
+    await expect(h.controller.request("cancelled", { conversation: room, signal: abort.signal }))
+      .rejects.toMatchObject({ name: "AbortError", notDispatched: true });
+    expect(h.controller.conversation).toBeNull();
+    expect(h.sends).toEqual([]);
+    expect(h.stops).toEqual([]);
+    expect(h.controller.generation).toBe(0);
+  });
+
+  it("settles local cancellation even if the transport never settles", async () => {
+    const h = harness();
+    const abort = new AbortController();
+    const reply = h.controller.request("active", { conversation: room, signal: abort.signal });
+    const rejected = expect(reply).rejects.toMatchObject({ name: "AbortError", notDispatched: false });
+    await tick(); abort.abort(); await rejected;
+    expect(h.sends[0].turn.signal.aborted).toBe(true);
+    expect(h.stops).toEqual([room]);
+  });
+
+  it("never lets an old caller's cancellation interrupt its successor", async () => {
+    const h = harness();
+    const oldAbort = new AbortController();
+    const first = h.controller.request("first", { conversation: room, signal: oldAbort.signal });
+    await tick(); h.sends[0].reply.resolve("first done"); await first;
+    const second = h.controller.request("second", { conversation: room });
+    await tick(); oldAbort.abort();
+    expect(h.stops).toEqual([]);
+    expect(h.sends[1].turn.current()).toBe(true);
+    expect(h.sends[1].turn.signal.aborted).toBe(false);
+    h.sends[1].reply.resolve("second done");
+    expect(await second).toBe("second done");
+  });
+
+  it("does not install a late-created room after cancellation and a successor bind", async () => {
+    const created = deferred<ConversationRoom>();
+    const replies = deferred<string>();
+    const stops: ConversationRoom[] = [];
+    let current: ConversationTurnContext | undefined;
+    const controller = new ConversationTurnController<string, string>({
+      create: () => created.promise,
+      send: (_room, _input, turn) => { current = turn; return replies.promise; },
+      stop: async (room) => { stops.push(room); },
+      ownershipLost: () => false,
+    });
+    const abort = new AbortController();
+    const first = controller.request("first", { signal: abort.signal });
+    const rejected = expect(first).rejects.toMatchObject({ notDispatched: true });
+    abort.abort(); await rejected;
+    const successorRoom = { id: "successor", roomId: "successor-room" };
+    const successor = controller.request("successor", { conversation: successorRoom });
+    created.resolve({ id: "stale", roomId: "stale-room" }); await tick();
+    expect(controller.conversation).toEqual(successorRoom);
+    expect(current?.current()).toBe(true);
+    expect(stops).toEqual([]);
+    replies.resolve("successor reply"); expect(await successor).toBe("successor reply");
+  });
+
+  it("cancels a stop waiter without rebinding after a successor", async () => {
+    const h = harness();
+    const first = h.controller.request("first", { conversation: room });
+    const firstRejected = expect(first).rejects.toMatchObject({ notDispatched: false });
+    await tick(); const stop = h.blockStop(); void h.controller.interrupt(); await firstRejected;
+    const abort = new AbortController();
+    const waiting = h.controller.request("waiting", { conversation: { id: "waiting", roomId: "waiting-room" }, signal: abort.signal });
+    const waitingRejected = expect(waiting).rejects.toMatchObject({ notDispatched: true });
+    abort.abort(); await waitingRejected;
+    const nextRoom = { id: "next", roomId: "next-room" };
+    const next = h.controller.request("next", { conversation: nextRoom });
+    expect(h.controller.conversation).toEqual(nextRoom);
+    expect(h.sends).toHaveLength(1);
+    stop.resolve(undefined); await tick();
+    expect(h.sends).toHaveLength(2);
+    expect(h.sends[1].room).toEqual(nextRoom);
+    expect(h.stops).toEqual([room]);
+    h.sends[1].reply.resolve("next done"); expect(await next).toBe("next done");
+    expect(h.controller.conversation).toEqual(nextRoom);
+  });
+
+  it("reset settles a request waiting for Stop and fences its continuation", async () => {
+    const h = harness();
+    const first = h.controller.request("first", { conversation: room });
+    const firstRejected = expect(first).rejects.toMatchObject({ notDispatched: false });
+    await tick(); const stop = h.blockStop(); void h.controller.interrupt(); await firstRejected;
+    const waiting = h.controller.request("waiting", { conversation: { id: "later", roomId: "later-room" } });
+    const waitingRejected = expect(waiting).rejects.toMatchObject({ name: "AbortError", notDispatched: true });
+    void h.controller.reset(); await waitingRejected;
+    expect(h.controller.conversation).toBeNull();
+    stop.resolve(undefined); await tick();
+    expect(h.sends).toHaveLength(1);
+    expect(h.controller.conversation).toBeNull();
+  });
+
+  it("marks an unconfirmed stop refusal as never dispatched", async () => {
+    const h = harness();
+    const first = h.controller.request("first", { conversation: room });
+    const firstRejected = expect(first).rejects.toMatchObject({ notDispatched: false });
+    await tick(); const stop = h.blockStop(); void h.controller.interrupt(); await firstRejected;
+    const stopped = h.controller.stopped;
+    const waiting = h.controller.request("waiting", { conversation: room });
+    const rejected = expect(waiting).rejects.toMatchObject({ code: "stop-unconfirmed", notDispatched: true });
+    stop.reject(new Error("not acknowledged")); await rejected;
+    expect(h.sends).toHaveLength(1);
+    expect(h.controller.stopped).toBe(stopped);
+    expect(h.controller.stopped?.input).toBe("first");
+  });
+
+  it("can cancel a bind wait without cancelling the old room's Stop", async () => {
+    const h = harness();
+    void h.controller.send("old", h.observer); await tick();
+    const stop = h.blockStop();
+    const abort = new AbortController();
+    const binding = h.controller.bind(room, abort.signal);
+    const rejected = expect(binding).rejects.toMatchObject({ notDispatched: true });
+    abort.abort(); await rejected;
+    expect(h.stops).toHaveLength(1);
+    stop.resolve(undefined); await tick();
+    expect(h.controller.conversation).toEqual(room);
+  });
+});
+
+describe("admitConversationStopReceipt", () => {
+  const expected = { roomId: "expected-room", reason: "client-stop" };
+  it("admits only an acknowledged signal for the expected room and request reason", () => {
+    expect(admitConversationStopReceipt({ aborted: true, ...expected }, expected)).toEqual({ aborted: true, ...expected });
+  });
+  for (const receipt of [null, [], {}, { aborted: false, ...expected },
+    { aborted: true, roomId: "other", reason: expected.reason },
+    { aborted: true, roomId: expected.roomId, reason: "other" }]) {
+    it(`refuses unconfirmed receipt ${JSON.stringify(receipt)}`, () => {
+      expect(() => admitConversationStopReceipt(receipt, expected)).toThrow(ConversationTurnRefusal);
+    });
+  }
 });
 
 describe("findStoppedUserTurn", () => {

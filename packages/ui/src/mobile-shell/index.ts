@@ -4,11 +4,28 @@
  * hosting. This entry imports only these leaves, never the package barrel;
  * `@elizaos/ui/mobile-shell/core` is the same model without React components.
  */
+
+export type { AppShellPageRegistration } from "../app-shell-pages";
+export {
+  getAppShellPageRegistrySnapshot,
+  listAppShellPages,
+  registerAppShellPage,
+  subscribeAppShellPages,
+} from "../app-shell-pages";
+export {
+  createMobileApplicationCatalog,
+  type MobileApplicationCatalog,
+  type MobileApplicationPage,
+} from "./application-catalog";
 export * from "./core";
 export {
   MobileAllAppsDrawer,
   type MobileAllAppsDrawerProps,
 } from "./MobileAllAppsDrawer";
+export {
+  MobileApplication,
+  type MobileApplicationProps,
+} from "./MobileApplication";
 export {
   MobileHomeScreen,
   type MobileHomeScreenProps,
