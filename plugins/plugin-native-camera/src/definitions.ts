@@ -108,6 +108,12 @@ export interface CameraPermissionStatus {
   photos: "granted" | "denied" | "prompt" | "limited";
 }
 
+/** Camera-only permission; this never establishes microphone or photo-library access. */
+export type CameraAccessPermissionStatus = Pick<
+  CameraPermissionStatus,
+  "camera"
+>;
+
 export interface CameraErrorEvent {
   code: string;
   message: string;
@@ -120,6 +126,12 @@ export interface CameraFrameEvent {
 }
 
 export interface CameraPlugin {
+  /** Read camera permission without opening a stream or requesting other access. */
+  checkCameraPermission(): Promise<CameraAccessPermissionStatus>;
+
+  /** Request only camera access. Does not start preview, microphone or library access. */
+  requestCameraPermission(): Promise<CameraAccessPermissionStatus>;
+
   /**
    * Get list of available camera devices
    */

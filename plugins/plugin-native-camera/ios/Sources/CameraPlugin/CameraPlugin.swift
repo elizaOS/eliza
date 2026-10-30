@@ -27,6 +27,8 @@ public class ElizaCameraPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "setExposurePoint", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "checkPermissions", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "requestPermissions", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "checkCameraPermission", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "requestCameraPermission", returnType: CAPPluginReturnPromise),
     ]
 
     // MARK: - Properties
@@ -834,6 +836,22 @@ public class ElizaCameraPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     // MARK: - Permissions
+
+    @objc public func checkCameraPermission(_ call: CAPPluginCall) {
+        call.resolve(["camera": permissionString(from: AVCaptureDevice.authorizationStatus(for: .video))])
+    }
+
+    @objc public func requestCameraPermission(_ call: CAPPluginCall) {
+        AVCaptureDevice.requestAccess(for: .video) { [weak self] _ in
+            DispatchQueue.main.async {
+                guard let self = self else {
+                    call.reject("Camera plugin was destroyed", "CAMERA_DESTROYED")
+                    return
+                }
+                self.checkCameraPermission(call)
+            }
+        }
+    }
 
     @objc public override func checkPermissions(_ call: CAPPluginCall) {
         let cameraStatus = AVCaptureDevice.authorizationStatus(for: .video)
