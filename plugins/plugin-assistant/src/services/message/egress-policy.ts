@@ -692,6 +692,31 @@ function withoutObservedTimestampLabels(
  * this boundary; it never starts a second planner trajectory, which would lose
  * the first trajectory's results and could replay a partially-applied effect.
  */
+/** Same completed-effect barrier for visible delivery and planner FINISH.
+ * Pure receipt validation; it never executes, retries or repairs an action.
+ */
+export function completedSideEffectClaimIsUngrounded(args: {
+  reply: string;
+  pendingWork?: boolean;
+  actionResults: readonly ActionResult[];
+  evaluator?: EvaluatorOutput;
+}): boolean {
+  const reply = args.reply.trim();
+  const assertionText =
+    !args.pendingWork &&
+    (!args.evaluator ||
+      (args.evaluator.success === true && args.evaluator.decision === "FINISH"))
+      ? withoutObservedTimestampLabels(reply, args.actionResults)
+      : reply;
+  return replyClaimsCompletedSideEffect(assertionText, { pendingWork: args.pendingWork }) &&
+    !plannedReplyHasClaimGroundingReceipt({
+      kind: "completed_side_effect", reply, results: args.actionResults,
+      // This claim kind uses exact text and active committed receipts, not
+      // action-name/tag hints. Other egress kinds retain their action surface.
+      actions: [], evaluator: args.evaluator,
+    });
+}
+
 export function evaluatePlannedReplyEgress(args: {
   reply: string;
   /** Early progress for a turn whose work has not settled. */
@@ -738,34 +763,8 @@ export function evaluatePlannedReplyEgress(args: {
   ) {
     return { verdict: "reject", kind: "stated_time" };
   }
-  const assertionText =
-    !args.pendingWork &&
-    (!args.evaluator ||
-      (args.evaluator.success === true && args.evaluator.decision === "FINISH"))
-      ? withoutObservedTimestampLabels(reply, args.actionResults)
-      : reply;
-  if (
-    replyClaimsCompletedSideEffect(assertionText, {
-      pendingWork: args.pendingWork,
-    })
-  ) {
-    // A grounded completion must not excuse a second, ungrounded claim
-    // in the same reply: fall through to the empty-state check below
-    // instead of allowing here, so every asserted kind is grounded.
-    if (
-      !plannedReplyHasClaimGroundingReceipt({
-        kind: "completed_side_effect",
-        reply,
-        results: args.actionResults,
-        actions: args.actions,
-        evaluator: args.evaluator,
-      })
-    ) {
-      return {
-        verdict: "reject",
-        kind: "completed_side_effect",
-      };
-    }
+  if (completedSideEffectClaimIsUngrounded(args)) {
+    return { verdict: "reject", kind: "completed_side_effect" };
   }
   if (replyClaimsEmptyTrackedWorkState(reply)) {
     if (

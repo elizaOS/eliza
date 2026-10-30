@@ -756,6 +756,19 @@ export function messageHandlerFromFieldResult(
     plan.calendarReadBindings = result.calendarReadBindings;
   }
   if (
+    fieldRun !== undefined &&
+    result.notesRequestEffect === fieldRun.parsed.notesRequestEffect &&
+    (result.notesRequestEffect === "read_only" ||
+      result.notesRequestEffect === "mutation_requested" ||
+      result.notesRequestEffect === "unresolved") &&
+    fieldRun.traces.some((trace) =>
+      trace.fieldName === "notesRequestEffect" && trace.active &&
+      trace.parsed && trace.handled && trace.parseOutcome === "ok" &&
+      !trace.errorMessage)
+  ) {
+    plan.notesRequestEffect = result.notesRequestEffect;
+  }
+  if (
     !terminalNonAppliedReply &&
     !preferCompleteDirectReply &&
     !preferInlineCodeSnippetDirectReply &&

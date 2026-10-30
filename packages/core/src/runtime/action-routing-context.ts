@@ -1,7 +1,11 @@
+import type { BoundRequestOperationAttempt } from "../actions/task-extraction-context";
 /** AsyncLocalStorage propagates the executing action’s modelClass to nested useModel calls across asynchronous boundaries. */
 
 import { getAmbientSingleton, setAmbientSingleton } from "../ambient-context";
 import type { ActionModelClass } from "../types/components";
+import type { Memory } from "../types/memory";
+import type { State } from "../types/state";
+import type { IAgentRuntime } from "../types/runtime";
 import { AsyncContextManager } from "../utils/async-context-manager";
 
 export interface ActionRoutingContext {
@@ -12,6 +16,13 @@ export interface ActionRoutingContext {
 	/** Trusted caller owns final synthesis; never inferred from tool arguments. */
 	readonly replyOwner?: "planner";
 	readonly messageId?: string;
+	/** Host-only current action provenance; never populated from tool arguments. */
+	readonly requestMessage?: Memory;
+	readonly requestState?: State;
+	readonly requestRuntime?: IAgentRuntime;
+	readonly hostAttemptId?: string;
+	/** Actual opaque executor attempt, never reconstructed from that string. */
+	readonly requestOperationAttempt?: BoundRequestOperationAttempt;
 }
 
 interface IActionRoutingContextManager {

@@ -567,3 +567,25 @@ export {
 	ttsDebugTextPreview,
 } from "./utils/tts-debug.js";
 export { validateUuid } from "./utils/uuid.js";
+
+// Request-bound negative operation constraints; never positive permission.
+export {
+  beginRequestOperationIssuer,
+  getRequestOperationIssuer,
+  commitNotesRequestRestriction,
+  beginRequestOperationAttempt,
+  BoundRequestOperationError,
+  checkBoundNotesOperation,
+  readTaskExtractionNotesRestriction,
+  bindRequestOperationResult,
+  transferBoundOperationDenial,
+  getBoundOperationDenialAttempt,
+  getBoundOperationDenialOperation,
+  isVerifiedOutsideRequestDenial,
+  type BoundRequestOperationAttempt,
+  type RequestOperationClassification,
+  type NotesRequestOperation,
+} from "./actions/task-extraction-context";
+
+export { copyBoundOperationDenial } from "./runtime/operation-restriction-projection";
+export { READ_ONLY_VIEW_CAPABILITY_IDS } from "./views/view-interact-protocol";

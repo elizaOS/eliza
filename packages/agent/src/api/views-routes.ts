@@ -22,6 +22,7 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import {
   AGENT_SURFACE_CAPABILITY_IDS,
+  READ_ONLY_VIEW_CAPABILITY_IDS,
   createShellNavigateViewWsFrame,
   ElizaError,
   EventType,
@@ -205,14 +206,6 @@ const STANDARD_CAPABILITY_IDS: ReadonlySet<string> = new Set<string>([
   ...Object.values(STANDARD_CAPABILITIES),
   ...AGENT_SURFACE_CAPABILITY_IDS,
 ]);
-const READ_ONLY_VIEW_CAPABILITIES: ReadonlySet<string> = new Set<string>([
-  STANDARD_CAPABILITIES.GET_STATE,
-  STANDARD_CAPABILITIES.GET_TEXT,
-  "list-elements",
-  "describe-element",
-  "get-focus",
-  "get-agent-state",
-]);
 function isSurfaceBrokeredCapability(capability: string): boolean {
   return (
     STANDARD_CAPABILITY_IDS.has(capability) ||
@@ -220,7 +213,7 @@ function isSurfaceBrokeredCapability(capability: string): boolean {
   );
 }
 function isReadOnlyViewCapability(capability: string): boolean {
-  return READ_ONLY_VIEW_CAPABILITIES.has(capability);
+  return READ_ONLY_VIEW_CAPABILITY_IDS.has(capability);
 }
 function viewManifestAllowsCapability(
   entry: ViewRegistryEntry,
@@ -1530,6 +1523,10 @@ export async function dispatchViewInteract(
       error: capabilityAuthorityDeniedMessage(viewId, capability),
     };
   }
+  // Run the owner's agent-operation restriction before either delivery path.
+  // Typed direct UI retains the existing broker authority; the owner callback
+  // consumes host execution provenance, never a caller's origin flag.
+  entry.beforeAgentInteract?.(capability, params, { runtime: transport.runtime });
   const hasServerInteract = typeof entry.serverInteract === "function";
   const preferFrontend =
     !hasServerInteract || isSurfaceBrokeredCapability(capability);

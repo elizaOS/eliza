@@ -1,3 +1,4 @@
+import { copyBoundOperationDenial, bindRequestOperationResult, getBoundOperationDenialAttempt, getRequestOperationIssuer } from "@elizaos/core";
 import { projectBackgroundHistory } from "./history-discovery.ts";
 /** Adapts planner tool calls to the existing action executor and settles stream events and evidence-sensitive provider caches. */
 
@@ -315,6 +316,8 @@ export async function executeV5PlannedToolCall(
       executorCtx.message,
       actionContext,
       projectedActionContext,
+      args.runtime,
+      getRequestOperationIssuer(args.runtime, executorCtx.message),
     );
   }
   if (
@@ -417,11 +420,15 @@ export async function executeV5PlannedToolCall(
           executionActions.find((candidate) => candidate.name === name),
         )
       : undefined;
-  return inferred
+  const finalPlannerResult = inferred
     ? { ...plannerResult, inferredSubaction: inferred.record }
     : pinned
       ? { ...plannerResult, registeredSubaction: pinned }
       : plannerResult;
+  const projectionAttempt = getBoundOperationDenialAttempt(plannerResult);
+  if (projectionAttempt) bindRequestOperationResult(finalPlannerResult, projectionAttempt);
+  copyBoundOperationDenial(plannerResult, finalPlannerResult, projectionAttempt);
+  return finalPlannerResult;
 }
 
 /**

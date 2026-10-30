@@ -941,6 +941,7 @@ export async function runV5MessageRuntimeStage1(
           await resolvePlannedReplyEgress({
             providers: args.state.data.providers,
             contexts: messageHandler.plan.contexts,
+
             runtime: args.runtime,
             message: args.message,
             reply,
@@ -1637,6 +1638,12 @@ export async function runV5MessageRuntimeStage1(
           : {}),
         plan: {
           contexts: messageHandler.plan.contexts,
+          ...(messageHandler.plan.notesRequestEffect !== undefined
+            ? { notesRequestEffect: messageHandler.plan.notesRequestEffect }
+            : {}),
+          ...(messageHandler.plan.notesRequestHostRestriction !== undefined
+            ? { notesRequestHostRestriction: messageHandler.plan.notesRequestHostRestriction }
+            : {}),
           ...(messageHandler.plan.replyEffectStatus !== undefined
             ? { replyEffectStatus: messageHandler.plan.replyEffectStatus }
             : {}),

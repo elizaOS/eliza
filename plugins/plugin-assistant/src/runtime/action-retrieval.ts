@@ -818,13 +818,25 @@ export function preferredOperationNames(
     ],
     rename: ["rename"],
     delete: ["delete", "remove", "erase"],
-    get: ["get", "read", "retrieve"],
+    get: ["get", "read", "retrieve", "query"],
     next: ["next", "upcoming"],
     open: ["open", "navigate"],
     close: ["close"],
     send: ["send"],
   };
   const wanted = new Set<string>();
+  // A retrospective operation is evidence being asked about, not necessarily
+  // a new command to repeat it ("what did I write ..."). Keep observation
+  // operations alongside lexical matches. This is only retrieval: it grants
+  // no write authority and never removes a compound request's mutation tools.
+  if (
+    /\bdid\s+(?:i|we|you|they|he|she)\s+(?:(?:ever|already|previously)\s+)?(?:create|add|write|save|update|edit|change|modify|replace|rename|append|prepend|delete|remove|erase|send)\b/iu.test(query)
+  ) {
+    wanted.add("get");
+    wanted.add("read");
+    wanted.add("list");
+    wanted.add("search");
+  }
   // An imperative scheduling outcome creates a record. A schedule mentioned
   // as data ("read my schedule") and rescheduling retain their own operations.
   if (/^\s*schedule\s+(?:an?\s+|one(?:[- ]time)?\s+|new\s+)?/iu.test(query))

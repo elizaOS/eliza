@@ -1,3 +1,4 @@
+import { restrictNotesAction } from "./request-effect-gate.js";
 /**
  * NOTES — the chat door onto the durable notes store.
  *
@@ -24,6 +25,7 @@ import {
   isObjectRecord,
   type Memory,
   normalizeEffectReceipt,
+  promotedSubactionDescription,
   type State,
   stringToUuid,
 } from "@elizaos/core";
@@ -350,6 +352,16 @@ export const notesAction: Action = {
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
+  restrictRequestOperation: ({ runtime, message, state, action, params }) => {
+    // The fixed operation is owned by actual promotion metadata, never by
+    // splitting an arbitrary action name or accepting a caller origin flag.
+    const promoted = promotedSubactionDescription(action);
+    const parsed = readOp(promoted?.parent === notesAction.name
+      ? { action: promoted.subaction }
+      : isObjectRecord(params) ? params : {});
+    if (parsed && !parsed.recognized) return undefined;
+    return restrictNotesAction(runtime, message, state, parsed?.op ?? "list");
+  },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -368,6 +380,8 @@ export const notesAction: Action = {
       );
     }
     const op: NotesOp = parsed?.op ?? "list";
+    const restricted = restrictNotesAction(runtime, message, _state, op);
+    if (restricted) return restricted;
     const alternatives = readAlternatives(params, [
       "content",
       "text",

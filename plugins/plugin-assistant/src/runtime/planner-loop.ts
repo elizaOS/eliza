@@ -1,5 +1,6 @@
+import { copyBoundOperationDenial, bindRequestOperationResult, getBoundOperationDenialAttempt, getBoundOperationDenialOperation, isVerifiedOutsideRequestDenial } from "@elizaos/core";
 import { findViewActionHandoff } from "@elizaos/core/protocol";
-import { evaluatePlannedReplyEgress } from "../services/message/egress-policy.ts";
+import { completedSideEffectClaimIsUngrounded, evaluatePlannedReplyEgress } from "../services/message/egress-policy.ts";
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
 import {
   replyNamesStructuredEffectDestination,
@@ -174,10 +175,12 @@ import {
   getSourceReplyBinding,
   resolveSuppliedSourceReply,
   SOURCE_REPLY_SCHEMA,
+  sourceReplyAssertionText,
   type SourceReplyRendering,
   transformSourceReplyProse,
 } from "../services/message/source-reply.ts";
 import {
+  applyEvaluatorEffects,
   declaredIntentsFromContext,
   repairFinishWithProgressPromise,
   runEvaluator,
@@ -402,6 +405,54 @@ interface RawPlannerOutput {
  * results (#16935). Deliberate silence (STOP/IGNORE, suppressPlannerReply) is
  * flagged by the loop and respected.
  */
+/** A failed attempt may be outside the task without becoming evidence for a
+ * completed change. Keep every step for audit and validate current receipts
+ * independently of the requested-failure ledger, including custom evaluators.
+ */
+function plannerActionResults(trajectory: PlannerTrajectory): ActionResult[] {
+  // Only actual current trajectory results. Provider text and prior stored
+  // records cannot turn an old create into a receipt for this turn's claim.
+  return allTrajectorySteps(trajectory).flatMap(step => step.toolCall && step.result ? [{
+    success: step.result.success === true,
+    text: step.result.text,
+    userFacingText: step.result.userFacingText,
+    verifiedUserFacing: step.result.verifiedUserFacing,
+    userFacingEffectReceiptIds: step.result.userFacingEffectReceiptIds,
+    effectReceipts: step.result.effectReceipts,
+    data: step.result.data as ActionResult["data"],
+  }] : []);
+}
+
+function enforcePlannerFinishClaimGrounding(
+  params: PlannerLoopParams, result: PlannerLoopResult,
+): PlannerLoopResult {
+  // Keep the existing message-egress coding-mode policy separate.
+  if (params.codingMode === true || result.status !== "finished" || !result.finalMessage) return result;
+  const metadata = params.context.metadata;
+  const scope = params.postToolReplySeed?.sourceReply?.scope ??
+    (typeof metadata?.agentId === "string" && typeof metadata?.roomId === "string" && typeof metadata?.messageId === "string"
+      ? { agentId: metadata.agentId, roomId: metadata.roomId, messageId: metadata.messageId } : undefined);
+  const source = result.finalContent && scope && getSourceReplyBinding(result.finalContent, scope);
+  if (source && sourceReplyAssertionText(source) === "") return result;
+  if (!completedSideEffectClaimIsUngrounded({
+    reply: result.finalMessage, actionResults: plannerActionResults(result.trajectory), evaluator: result.evaluator,
+  })) return result;
+  const message = "I couldn’t verify that change from the recorded results.";
+  const failure = { kind: "reply_generation_error" as const, code: "REPLY_GROUNDING_FAILED", transient: false as const, message };
+  return {
+    ...result, finalMessage: message, finalContent: undefined,
+    terminalFailure: result.terminalFailure ?? failure,
+    evaluator: {
+      ...result.evaluator, decision: "FINISH", success: false, requestFullyCovered: false,
+      thought: result.evaluator?.thought ?? "The final change claim lacked a current committed receipt binding.",
+      messageToUser: message, replyEffectStatus: "non_applied",
+      effectReceiptIds: undefined, outcomeCoverage: undefined,
+      plannerReply: undefined, copyToClipboard: undefined,
+      replyFailure: result.evaluator?.replyFailure ?? failure,
+    },
+  };
+}
+
 export async function runPlannerLoop(
   params: PlannerLoopParams,
 ): Promise<PlannerLoopResult> {
@@ -539,15 +590,18 @@ export async function runPlannerLoop(
         ? partialTypedReadReply(output, binding)
         : checked;
       const receipt = createTypedReadEgressReceipt(guarded, binding);
-      if (receipt) params.onTypedReadEgress?.(receipt);
-      return {
+      const candidate: PlannerLoopResult = {
         ...final,
         evaluator: guarded,
         finalMessage: guarded.messageToUser,
         modelUsage: usage,
       };
+      const settled = enforcePlannerFinishClaimGrounding(params, candidate);
+      if (receipt && settled === candidate)
+        params.onTypedReadEgress?.(receipt);
+      return settled;
     }
-    return { ...final, modelUsage: usage };
+    return enforcePlannerFinishClaimGrounding(params, { ...final, modelUsage: usage });
   } catch (error) {
     // error-policy:J4 Preserve settled effects and pending work at a resource boundary.
     getStreamingContext()?.abortSignal?.throwIfAborted();
@@ -562,7 +616,7 @@ export async function runPlannerLoop(
       const message = contextOverflow
         ? "The coding task remains incomplete because its full context exceeded the model's capacity. Earlier recorded tool outcomes are preserved; no context was discarded to force completion."
         : "The model returned an incomplete response, so the coding task could not finish. Earlier recorded tool outcomes are preserved; remaining work has not been completed.";
-      return {
+      return enforcePlannerFinishClaimGrounding(params, {
         status: "finished",
         trajectory: liveTrajectory,
         evaluator: { success: false, decision: "FINISH", thought: message },
@@ -574,7 +628,7 @@ export async function runPlannerLoop(
         },
         finalMessage: message,
         modelUsage: usage,
-      };
+      });
     }
     if (
       params.codingMode === true &&
@@ -584,7 +638,7 @@ export async function runPlannerLoop(
     ) {
       const message =
         "The coding task remains incomplete because the model connection failed. Earlier recorded tool outcomes are preserved; remaining work has not been completed.";
-      return {
+      return enforcePlannerFinishClaimGrounding(params, {
         status: "finished",
         trajectory: liveTrajectory,
         evaluator: { success: false, decision: "FINISH", thought: message },
@@ -596,7 +650,7 @@ export async function runPlannerLoop(
         },
         finalMessage: message,
         modelUsage: usage,
-      };
+      });
     }
     const timeout =
       error instanceof ElizaError && error.code === PLANNER_MODEL_CALL_TIMEOUT;
@@ -619,7 +673,7 @@ export async function runPlannerLoop(
               error.kind === "repeated_failures"
             ? "Planning stopped after repeated tool failures. The request remains incomplete; earlier recorded outcomes are preserved."
             : "Planning reached its configured resource limit before the request was complete. Earlier recorded outcomes are preserved; remaining work has not been completed.";
-      return {
+      return enforcePlannerFinishClaimGrounding(params, {
         status: "finished",
         trajectory: liveTrajectory,
         evaluator: { success: false, decision: "FINISH", thought: message },
@@ -631,7 +685,7 @@ export async function runPlannerLoop(
         },
         finalMessage: message,
         modelUsage: usage,
-      };
+      });
     }
     throw error;
   }
@@ -5795,14 +5849,17 @@ async function evaluateTrajectory(
     });
   }
 
-  return runEvaluator({
+  const output = await runEvaluator({
     ...typedReadOptions,
     hasUnresolvedToolFailure:
       latestUnresolvedFailedNonTerminalToolStep(trajectory) !== undefined,
     runtime: params.runtime,
     context: trajectory.context,
     trajectory,
-    effects: params.evaluatorEffects,
+    // Non-coding planner delivery waits for the same completed-effect guard
+    // as the final result. Standalone runEvaluator behavior stays unchanged.
+    effects: params.codingMode === true ? params.evaluatorEffects
+      : params.evaluatorEffects?.copyToClipboard === false ? { copyToClipboard: false } : undefined,
     recorder: params.recorder,
     trajectoryId: params.trajectoryId,
     cacheConversationId: params.cacheConversationId,
@@ -5810,6 +5867,19 @@ async function evaluateTrajectory(
     iteration,
     onUsage: params.onModelUsage,
   });
+  if (params.codingMode === true) return output;
+  const guarded = output.decision === "FINISH"
+    ? enforcePlannerFinishClaimGrounding(params, {
+        status: "finished", trajectory, evaluator: output, finalMessage: output.messageToUser,
+      }).evaluator ?? output
+    : output;
+  const effects = output.decision !== "FINISH" && output.messageToUser && completedSideEffectClaimIsUngrounded({
+    reply: output.messageToUser, actionResults: plannerActionResults(trajectory), evaluator: output,
+  }) ? { ...params.evaluatorEffects, messageToUser: undefined } : params.evaluatorEffects;
+  // A CONTINUE message is still an assistant assertion. Withhold only its
+  // unsupported message; clipboard text is not interpreted as assistant prose.
+  await applyEvaluatorEffects(guarded, effects);
+  return guarded;
 }
 
 function evaluationContextEvent(args: {
@@ -7130,6 +7200,22 @@ function latestUnresolvedFailedNonTerminalToolStep(
       isTerminalToolCall(step.toolCall) ||
       step.result === undefined
     ) {
+      continue;
+    }
+    const metadata = trajectory.context.metadata;
+    const deniedAttempt = getBoundOperationDenialAttempt(step.result);
+    const deniedOperation = getBoundOperationDenialOperation(step.result);
+    if (deniedAttempt && deniedOperation && step.result.success === false &&
+      typeof metadata?.messageId === "string" &&
+      typeof metadata?.roomId === "string" &&
+      isVerifiedOutsideRequestDenial(step.result, {
+        messageId: metadata.messageId, roomId: metadata.roomId,
+        attempt: deniedAttempt, operation: deniedOperation,
+        ...(typeof metadata.entityId === "string" ? { entityId: metadata.entityId } : {}),
+      })) {
+      // This exact host-issued not-started attempt violated the current
+      // read-only constraint. It creates no NEW requested-write obligation.
+      // Original task coverage, ordinary failures and effects remain intact.
       continue;
     }
     // Input/confirmation pauses are deliberate partial completions, not failed
@@ -11882,6 +11968,9 @@ export function actionResultToPlannerToolResult(
   if (options.summary) {
     plannerResult.summary = options.summary;
   }
+  const projectionAttempt = getBoundOperationDenialAttempt(result);
+  if (projectionAttempt) bindRequestOperationResult(plannerResult, projectionAttempt);
+  copyBoundOperationDenial(result, plannerResult, projectionAttempt);
   return plannerResult;
 }
 

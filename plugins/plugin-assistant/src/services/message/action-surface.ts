@@ -576,6 +576,29 @@ export function retrieveContextualPlannerActions(args: {
     }
     if (domains.size === 0) return selectMatches([]);
   }
+  const operationQuery = [args.query, ...(args.intents ?? [])]
+    .map(positiveIntentText)
+    .filter(Boolean)
+    .join("\n");
+  // A zero lexical score is not evidence that a registered owner lacks a
+  // requested operation. Retain matching operations for already selected,
+  // strongly owned domains before the lexical >0 filter can erase them.
+  // Inputs here have already passed admission; this adds no authorization.
+  const retainedNames = new Set(matches.map((action) => action.name));
+  if (args.query.trim()) {
+    for (const domain of domains) {
+      const strongest = Math.max(0, ...args.actions.map((action) => plannerDomainOwnership(action, domain)));
+      if (strongest === 0) continue;
+      const owned = args.actions.filter((action) => plannerDomainOwnership(action, domain) === strongest);
+      const operations = preferredOperationNames(operationQuery, owned.map((action) => action.name));
+      for (const action of owned) {
+        if (operations.has(action.name) && !retainedNames.has(action.name)) {
+          matches.push(action);
+          retainedNames.add(action.name);
+        }
+      }
+    }
+  }
   const domainMatches = matches.filter((action) =>
     actionDiscoveryContexts(action).some((context) =>
       domains.has(normalizeContextId(context)),
@@ -594,10 +617,7 @@ export function retrieveContextualPlannerActions(args: {
   const selected = new Set<Action>();
   // Model interpretation enriches the original request; it cannot erase an
   // explicit operation when a prerequisite read was selected as a hint.
-  const operationQuery = [args.query, ...(args.intents ?? [])]
-    .map(positiveIntentText)
-    .filter(Boolean)
-    .join("\n");
+
   for (const domain of searchDomains) {
     const candidates =
       domain === undefined

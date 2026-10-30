@@ -154,6 +154,15 @@ export type CompletionContextSelection = {
 };
 
 export interface MessageHandlerPlan {
+	/** Same-call model-classified negative Notes restriction; never permission. */
+	notesRequestEffect?: "read_only" | "mutation_requested" | "unresolved";
+	/** Host-only contradiction evidence; never a model field or write grant. */
+	notesRequestHostRestriction?: {
+		classification: "unresolved";
+		reason: "registered-current-mutation-route" | "registered-route-ambiguous";
+		routeIds: string[];
+		operations: string[];
+	};
 	contexts: AgentContext[];
 	reply?: string;
 	replyEffectStatus?: ReplyEffectStatus;
@@ -382,6 +391,20 @@ export interface Action {
 
 	/** Handler function */
 	handler: Handler;
+
+	/** Source-owned negative restriction before argument validation. Must be
+	 * synchronous and effect-free. Return a privately issued negative result
+	 * bound to this executor attempt or nothing; invalid output fails closed.
+	 * Returning nothing grants no authority and all ordinary gates still run.
+	 * Raw params may be malformed. Resolve only the owner's known operation.
+	 */
+	restrictRequestOperation?: (args: {
+		runtime: IAgentRuntime;
+		message: Memory;
+		state?: State;
+		action: Action;
+		params: unknown;
+	}) => ActionResult | undefined;
 
 	/** Validation function */
 	validate: Validator;
