@@ -485,7 +485,7 @@ test("canonical overlays leave camera space in landscape and keyboard viewports"
     },
   };
   const padding = () => visibleMapPadding(container);
-  assert.deepEqual(padding(), { top: 82, bottom: 24, left: 24, right: 264 });
+  assert.deepEqual(padding(), { top: 114, bottom: 48, left: 24, right: 264 });
   const routePadding = Object.fromEntries(
     ["top", "bottom", "left", "right"].map((edge) => [edge, 0]),
   );
@@ -506,8 +506,11 @@ test("canonical overlays leave camera space in landscape and keyboard viewports"
     geometry: [point, { ...point, latitude: 37.78 }],
   });
   const fitted = f.maps[1].fit.options.padding;
-  assert.equal(fitted.top + fitted.bottom, 128);
-  assert.ok(bounds.top + fitted.top >= boxes["[data-maps-search]"].bottom + 16);
+  assert.equal(fitted.top + fitted.bottom, 160);
+  assert.ok(
+    bounds.top + fitted.top - 41 >= boxes["[data-maps-search]"].bottom,
+    "the selected pin's head clears the panel, not only its coordinate",
+  );
   assert.ok(
     bounds.bottom - fitted.bottom <= boxes["[data-maps-credits]"].top - 16,
   );
@@ -547,8 +550,8 @@ test("flow controls outside the map do not move the selected pin", () => {
   f.plane.update({ longitude: -122.42, latitude: 37.77 });
   assert.deepEqual(Array.from(f.map.center.offset), [0, 0]);
   assert.deepEqual(visibleMapPadding(container), {
-    top: 24,
-    bottom: 24,
+    top: 48,
+    bottom: 48,
     left: 24,
     right: 24,
   });
@@ -614,8 +617,8 @@ test("route fitting clears the whole primary panel and sibling navigation contro
     closest: (selector) => (selector === "[data-maps-root]" ? root : null),
   };
   assert.deepEqual(visibleMapPadding(container), {
-    top: 208,
-    bottom: 46,
+    top: 240,
+    bottom: 48,
     left: 24,
     right: 284,
   });
@@ -624,7 +627,7 @@ test("route fitting clears the whole primary panel and sibling navigation contro
   delete boxes["[data-maps-credits]"];
   boxes["[data-maps-navigation-controls]"] = rect(0, 300, 800, 100);
   assert.deepEqual(visibleMapPadding(container), {
-    top: 24,
+    top: 48,
     bottom: 116,
     left: 24,
     right: 24,
@@ -656,8 +659,8 @@ test("scaled screen overlays return MapLibre layout-pixel insets", () => {
     closest: () => root,
   };
   assert.deepEqual(visibleMapPadding(container), {
-    top: 208,
-    bottom: 46,
+    top: 240,
+    bottom: 48,
     left: 24,
     right: 284,
   });

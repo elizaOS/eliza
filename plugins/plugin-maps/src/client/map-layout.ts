@@ -11,7 +11,10 @@ export function visibleMapPadding(container: HTMLElement) {
   const scaleY =
     map.height > 0 ? (container.clientHeight || map.height) / map.height : 1;
   const horizontal = Math.min(24 / scaleX, map.width / 4);
-  const vertical = Math.min(24 / scaleY, map.height / 4);
+  // The default map pin is 41px tall and anchored at its bottom. Keep the
+  // whole marker clear, not only the projected coordinate at its tip.
+  const markerHeadroom = 48;
+  const vertical = Math.min(markerHeadroom / scaleY, map.height / 4);
   const frame = {
     left: map.left + horizontal,
     right: map.right - horizontal,
@@ -43,7 +46,10 @@ export function visibleMapPadding(container: HTMLElement) {
       left: Math.max(frame.left, box.left - gap / scaleX),
       right: Math.min(frame.right, box.right + gap / scaleX),
       top: Math.max(frame.top, box.top - gap / scaleY),
-      bottom: Math.min(frame.bottom, box.bottom + gap / scaleY),
+      bottom: Math.min(
+        frame.bottom,
+        box.bottom + Math.max(gap, markerHeadroom) / scaleY,
+      ),
     };
     return clipped.right > clipped.left && clipped.bottom > clipped.top
       ? [clipped]
