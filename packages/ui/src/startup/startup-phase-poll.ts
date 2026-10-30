@@ -37,9 +37,8 @@ import {
   isManagedCloudSharedAgentBase,
   isPersonalSharedElizaId,
 } from "../utils/cloud-agent-base.js";
-
-import type { RestoringSessionCtx } from "./startup-phase-restore";
 import { createNativeRuntimePreparation } from "./native-runtime-preparation.js";
+import type { RestoringSessionCtx } from "./startup-phase-restore";
 
 export interface PollingBackendDeps {
   setStartupError: (v: StartupErrorState | null) => void;

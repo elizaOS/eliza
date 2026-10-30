@@ -18,14 +18,14 @@ vi.mock("./App", () => ({ App: () => null }));
 vi.mock("./transports/configure", () => ({}));
 
 import {
-  createBrowserConsumerHost,
-  initializeBrowserConsumer,
-} from "./browser-consumer";
-import {
   configureHostAgentCapabilities,
   hostAgentLifecycleForUrl,
   hostRequestOwnerId,
 } from "../../../ui/src/api/host-transport";
+import {
+  createBrowserConsumerHost,
+  initializeBrowserConsumer,
+} from "./browser-consumer";
 
 afterEach(() => {
   vi.resetAllMocks();

@@ -2,7 +2,7 @@ import type {
   IPermissionsRegistry,
   PermissionId,
 } from "@elizaos/core/permissions";
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 import {
   getLocationPlugin,
   getMobileSignalsPlugin,
@@ -10,6 +10,7 @@ import {
   getTalkModePlugin,
 } from "../../bridge/native-plugins";
 import type { WalkthroughMemoryStore } from "./permission-walkthrough";
+
 export {
   adoptWalkthroughProgress,
   locationAccess,

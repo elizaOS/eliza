@@ -7,8 +7,8 @@ import type { PermissionId } from "@elizaos/core/protocol";
 import {
   AudioLines,
   Bell,
-  Camera,
   Calendar,
+  Camera,
   Images,
   type LucideIcon,
   MapPin,

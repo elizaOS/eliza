@@ -4,14 +4,14 @@
  */
 import * as React from "react";
 import { useIsAuthenticated } from "../../hooks/useAuthStatus";
+import { getFrontendPlatform } from "../../platform/platform-guards";
 import { useAppSelector } from "../../state/app-store";
 import { useTutorial } from "../../tutorial/tutorial-service";
-import { PermissionPrimingModal } from "./PermissionPrimingModal";
 import {
   supportedNativePrimingPermissions,
   useNativePermissionHost,
 } from "./native-permission-host";
-import { getFrontendPlatform } from "../../platform/platform-guards";
+import { PermissionPrimingModal } from "./PermissionPrimingModal";
 import {
   hasPrimedPermissions,
   markPermissionsPrimed,

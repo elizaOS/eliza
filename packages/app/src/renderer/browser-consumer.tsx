@@ -7,31 +7,31 @@ import { ShellModalityProvider, ShellRoleProvider } from "@elizaos/ui";
 import { AppProvider } from "@elizaos/ui/app/AppProvider";
 import type { NativeCloudSessionPort } from "@elizaos/ui/app/native-cloud-session";
 import type { ReactElement, ReactNode } from "react";
-import { useApp } from "../../../ui/src/state/useApp.js";
 import {
-  useAppRuntimeSession,
-  type AppRuntimeSessionState,
-} from "../../../ui/src/app/runtime-session.js";
-import { createBrowserStartupHost } from "../../../ui/src/startup/browser-host.js";
-import type { StartupHostPorts } from "../../../ui/src/startup/startup-host-ports.js";
-import type { BrandingConfig } from "../../../ui/src/config/branding-base.js";
-import {
-  getBootConfig,
-  setBootConfig,
-} from "../../../ui/src/config/boot-config-store.js";
+  type AndroidLocalAgentBootState,
+  getAndroidLocalAgentBootStateForUrl,
+  requestAndroidLocalAgentStartForUrl,
+} from "../../../ui/src/api/android-native-agent-transport.js";
 import {
   configureHostAgentCapabilities,
   configureHostTransport,
   type HostAgentCapabilities,
   type HostTransportSelector,
 } from "../../../ui/src/api/host-transport.js";
+import {
+  type AppRuntimeSessionState,
+  useAppRuntimeSession,
+} from "../../../ui/src/app/runtime-session.js";
 import { initializeCapacitorBridge } from "../../../ui/src/bridge/capacitor-bridge.js";
 import { initializeStorageBridge } from "../../../ui/src/bridge/storage-bridge.js";
 import {
-  getAndroidLocalAgentBootStateForUrl,
-  requestAndroidLocalAgentStartForUrl,
-  type AndroidLocalAgentBootState,
-} from "../../../ui/src/api/android-native-agent-transport.js";
+  getBootConfig,
+  setBootConfig,
+} from "../../../ui/src/config/boot-config-store.js";
+import type { BrandingConfig } from "../../../ui/src/config/branding-base.js";
+import { createBrowserStartupHost } from "../../../ui/src/startup/browser-host.js";
+import type { StartupHostPorts } from "../../../ui/src/startup/startup-host-ports.js";
+import { useApp } from "../../../ui/src/state/useApp.js";
 import {
   appendIosBootTrace,
   isIosInProcessLocalAgentBase,
@@ -39,11 +39,13 @@ import {
   isTerminalIosNativeAgentBootErrorMessage,
 } from "./transports/ios-local-agent-transport";
 import "../../../ui/src/styles/styles.css";
-import { App } from "./App";
 import {
   NativePermissionHostProvider,
   type PermissionPrimingHost,
 } from "../../../ui/src/components/permissions/native-permission-host";
+import { App } from "./App";
+
+export * from "../../../ui/src/app/browser-consumer.js";
 export type { PermissionPrimingHost } from "../../../ui/src/components/permissions/native-permission-host";
 export {
   adoptWalkthroughProgress,
@@ -53,7 +55,6 @@ export {
   walkthroughMemory,
   walkthroughProgress,
 } from "../../../ui/src/components/permissions/native-permission-host";
-export * from "../../../ui/src/app/browser-consumer.js";
 
 export interface BrowserConsumerHostOptions {
   branding?: Partial<BrandingConfig>;

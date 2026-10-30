@@ -15,7 +15,10 @@
  */
 
 import { Capacitor } from "@capacitor/core";
-import { NativeCloudSignInError, nativeCloudSignInFailureMessage } from "@elizaos/auth/auth/native-cloud-sign-in";
+import {
+  NativeCloudSignInError,
+  nativeCloudSignInFailureMessage,
+} from "@elizaos/auth/auth/native-cloud-sign-in";
 import { isElizaCloudControlPlaneHostname } from "@elizaos/plugin-elizacloud/cloud-config/domain-contract";
 import {
   clearStoredStewardToken,
@@ -618,7 +621,10 @@ export function useCloudState({
   ): Promise<boolean> {
     const nativePort = nativeSessionOwner.current.port;
     const nativeRevision = nativeSessionOwner.current.revision;
-    const nativeReadIsCurrent = () => !nativePort || (nativeSessionOwner.current.port === nativePort && nativeSessionOwner.current.revision === nativeRevision);
+    const nativeReadIsCurrent = () =>
+      !nativePort ||
+      (nativeSessionOwner.current.port === nativePort &&
+        nativeSessionOwner.current.revision === nativeRevision);
     const buildPinnedRemoteApiBase = getBuildConfiguredRemoteApiBaseUrl();
     if (intent === "ambient" && !nativePort && !canPollCloudStatus()) {
       if (elizaCloudPollInterval.current) {
@@ -905,7 +911,12 @@ export function useCloudState({
         await pollCloudCredits("session-verification");
       } catch (error) {
         if (lifetime.signal.aborted) return;
-        setElizaCloudLoginError(nativeCloudSignInFailureMessage(NativeCloudSignInError.from(error).code, port.copy));
+        setElizaCloudLoginError(
+          nativeCloudSignInFailureMessage(
+            NativeCloudSignInError.from(error).code,
+            port.copy,
+          ),
+        );
       }
     };
     void refresh();
@@ -1101,14 +1112,25 @@ export function useCloudState({
                 throw new Error(
                   "Could not verify your Cloud session. Please sign in again.",
                 );
-              try { await loadWalletConfig(); }
-              catch (error) { logger.warn({ error }, "[useCloudState] wallet unavailable after native account verification"); }
+              try {
+                await loadWalletConfig();
+              } catch (error) {
+                logger.warn(
+                  { error },
+                  "[useCloudState] wallet unavailable after native account verification",
+                );
+              }
             },
             { port: nativePort.signIn, copy: nativePort.copy },
           );
         } catch (error) {
           if (nativeSessionOwner.current.port === nativePort)
-            setElizaCloudLoginError(nativeCloudSignInFailureMessage(NativeCloudSignInError.from(error).code, nativePort.copy));
+            setElizaCloudLoginError(
+              nativeCloudSignInFailureMessage(
+                NativeCloudSignInError.from(error).code,
+                nativePort.copy,
+              ),
+            );
           if (options.requireClientAuth) throw error;
         } finally {
           elizaCloudLoginBusyRef.current = false;

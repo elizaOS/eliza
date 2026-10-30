@@ -174,7 +174,8 @@ export function requestAndroidNativeCloudSignIn(
   host?: { port: ElizaNativeCloudSignInPort; copy: NativeCloudSignInCopy },
 ): Promise<NativeCloudSignInAuthenticated<ElizaCloudEnvironment>> {
   if (pending) {
-    return pending.request.environment === environment && pending.request.port === host?.port
+    return pending.request.environment === environment &&
+      pending.request.port === host?.port
       ? pending.promise
       : Promise.reject(new NativeCloudSignInError("login-active"));
   }
@@ -337,8 +338,10 @@ export async function listenForAndroidNativeCloudSignInCompleted(
     }
     // A live request owns this return and its activation errors. Keep it until
     // its view subscribes; a startup listener must not race the interactive owner.
-    if (pending?.request.environment === environment &&
-        (pending.request.port ?? androidNativeCloudSignInPort()) === port) {
+    if (
+      pending?.request.environment === environment &&
+      (pending.request.port ?? androidNativeCloudSignInPort()) === port
+    ) {
       if (pending.onReturn) pending.onReturn(parsed);
       else pending.returned = parsed;
     } else handler(parsed);

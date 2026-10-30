@@ -46,7 +46,9 @@ export async function fetchWithCsrf(
   }
   const capturedContext = {
     ...context,
-    ownerId: Object.hasOwn(context, "ownerId") ? context.ownerId : hostRequestOwnerId(url),
+    ownerId: Object.hasOwn(context, "ownerId")
+      ? context.ownerId
+      : hostRequestOwnerId(url),
   };
   const method = (init.method ?? "GET").toUpperCase();
   const headers = new Headers(init.headers);
@@ -93,7 +95,9 @@ export async function requestViaAgentTransport(
   init: RequestInit = {},
   context: AgentRequestContext = {},
 ): Promise<Response> {
-  const ownerId = Object.hasOwn(context, "ownerId") ? context.ownerId : hostRequestOwnerId(url);
+  const ownerId = Object.hasOwn(context, "ownerId")
+    ? context.ownerId
+    : hostRequestOwnerId(url);
   const transport =
     (await getHostRequestTransport(url, "csrf", init)) ?? fetchAgentTransport;
   return transport.request(url, init, {

@@ -1,17 +1,17 @@
 // @vitest-environment jsdom
 import type { PermissionId } from "@elizaos/core/protocol";
 import { act, renderHook, waitFor } from "@testing-library/react";
+import type { ReactNode } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  walkthroughMemory,
-  type WalkthroughMemoryStore,
-} from "./permission-walkthrough";
 import {
   NativePermissionHostProvider,
   type PermissionPrimingHost,
 } from "./native-permission-host";
 import { resolvePrimingSet } from "./permission-priming";
-import type { ReactNode } from "react";
+import {
+  type WalkthroughMemoryStore,
+  walkthroughMemory,
+} from "./permission-walkthrough";
 
 const registry = {
   check: vi.fn(),
