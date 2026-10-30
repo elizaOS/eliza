@@ -42,17 +42,42 @@ async function setup(prepared = false, bounded = false, selfAdmission = false) {
     hold = false,
     transportClosed = 0,
     sttCancelled = 0,
-    sseBody: string | undefined;
+    sseBody: string | undefined,
+    sseDelayMs = 0;
   const server = await listenLoopbackHttp(async (request) => {
     requests.push({
       url: request.url,
       headers: request.headers,
       body: await request.json(),
     });
-    if (sseBody)
-      return new Response(sseBody, {
-        headers: { "content-type": "text/event-stream" },
-      });
+    if (sseBody) {
+      const body = sseBody;
+      const boundary = body.lastIndexOf("data: ");
+      return new Response(
+        sseDelayMs
+          ? new ReadableStream({
+              start(controller) {
+                controller.enqueue(
+                  new TextEncoder().encode(body.slice(0, boundary)),
+                );
+                const started = Date.now();
+                const release = () => {
+                  if (phrases.length < 2 && Date.now() - started < sseDelayMs) {
+                    setTimeout(release, 10);
+                    return;
+                  }
+                  controller.enqueue(
+                    new TextEncoder().encode(body.slice(boundary)),
+                  );
+                  controller.close();
+                };
+                setTimeout(release, 10);
+              },
+            })
+          : body,
+        { headers: { "content-type": "text/event-stream" } },
+      );
+    }
     return new Response(
       "event: done\ndata: " +
         JSON.stringify({
@@ -204,8 +229,9 @@ async function setup(prepared = false, bounded = false, selfAdmission = false) {
     hold() {
       hold = true;
     },
-    respond(body: string) {
+    respond(body: string, delayMs = 0) {
       sseBody = body;
+      sseDelayMs = delayMs;
     },
     emit(value: CartesiaInkRealtimeEvent) {
       event(value);
@@ -290,6 +316,42 @@ test("a final reply that repeats the spoken progress cue is not spoken twice; ne
     f.session.bye();
   }
 });
+test("two spoken progress cues are removed only from the leading reply, with terminal speech closure", async () => {
+  const cue = "Opening Calendar for you.";
+  const nextCue = "Still working on that.";
+  for (const detail of ["New content.", "New content. ".repeat(24), ""]) {
+    const f = await setup();
+    const reply = `${cue} ${nextCue} ${detail}`;
+    f.respond(
+      [
+        { type: "status", kind: "thinking", label: cue },
+        { type: "token", text: "On it.", provisional: true },
+        { type: "done", text: reply },
+      ]
+        .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+        .join(""),
+      8000,
+    );
+    f.session.start();
+    f.emit({ type: "connected", raw: {} });
+    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+    f.emit({ type: "end-of-turn", transcript: "open calendar", raw: {} });
+    for (
+      let i = 0;
+      i < 900 && !f.control.some((frame) => frame.t === "usage");
+      i++
+    )
+      await sleep(10);
+    await until(() => f.control.some((frame) => frame.t === "usage"));
+    expect(f.phrases.slice(0, 2)).toEqual([cue, nextCue]);
+    expect(f.phrases.slice(2).join(" ").replace(/\s+/g, " ").trim()).toBe(
+      detail.trim(),
+    );
+    expect(f.control.some((frame) => frame.t === "reply_complete")).toBe(true);
+    expect(f.control.some((frame) => frame.t === "error")).toBe(false);
+    f.session.bye();
+  }
+}, 25000);
 test("actual playback drain reopens uplink immediately, while stale completion cannot release it", async () => {
   const f = await setup();
   f.config.halfDuplexPlaybackSettleMs = 60_000;

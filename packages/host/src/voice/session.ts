@@ -2281,7 +2281,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           if (
             initialReplyBuffer.length <
             VOICE_TTS_STREAMING_START_CHARS +
-              Math.max(0, ...spokenProgressCues.map((cue) => cue.length))
+              spokenProgressCues.reduce(
+                (length, cue) => length + cue.length + 1,
+                0,
+              )
           ) {
             return;
           }
@@ -2753,18 +2756,23 @@ function withoutRepeatedProgressCue(
 ): string {
   if (spokenCues.length === 0) return reply;
   const cues = new Set(spokenCues.map(normalizeProgressCueWords));
-  let repeatedEnd = 0;
-  for (const end of [
-    ...Array.from(
-      reply.matchAll(SENTENCE_END_RE),
-      (m) => m.index + m[0].length,
-    ),
-    reply.length,
-  ]) {
-    const lead = normalizeProgressCueWords(reply.slice(0, end));
-    if (lead && cues.has(lead)) repeatedEnd = end;
+  let remaining = reply;
+  while (remaining) {
+    let repeatedEnd = 0;
+    for (const end of [
+      ...Array.from(
+        remaining.matchAll(SENTENCE_END_RE),
+        (m) => m.index + m[0].length,
+      ),
+      remaining.length,
+    ]) {
+      const lead = normalizeProgressCueWords(remaining.slice(0, end));
+      if (lead && cues.has(lead)) repeatedEnd = end;
+    }
+    if (repeatedEnd === 0) break;
+    remaining = remaining.slice(repeatedEnd).trimStart();
   }
-  return repeatedEnd === 0 ? reply : reply.slice(repeatedEnd).trimStart();
+  return remaining;
 }
 
 /** Conservative residual-echo filter: never reject one- or two-word speech. */
