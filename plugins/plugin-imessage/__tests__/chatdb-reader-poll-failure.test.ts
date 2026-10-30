@@ -20,7 +20,10 @@ type FixtureDatabase = { run(sql: string): unknown; close(): void };
 async function getDatabase(): Promise<((path: string) => FixtureDatabase) | null> {
   type Ctor = new (path: string) => { exec(sql: string): unknown; close(): void };
   try {
-    const mod = (await import("node:sqlite")) as { DatabaseSync?: Ctor; default?: { DatabaseSync?: Ctor } };
+    const mod = (await import("node:sqlite")) as {
+      DatabaseSync?: Ctor;
+      default?: { DatabaseSync?: Ctor };
+    };
     const DatabaseSync = mod.DatabaseSync ?? mod.default?.DatabaseSync;
     if (DatabaseSync) {
       return (path) => {
@@ -32,7 +35,9 @@ async function getDatabase(): Promise<((path: string) => FixtureDatabase) | null
     // Fall through to Bun's SQLite runtime.
   }
   try {
-    type BunCtor = new (path: string) => { run?: (sql: string) => unknown; exec?: (sql: string) => unknown; close(): void };
+    type BunCtor = new (
+      path: string
+    ) => { run?: (sql: string) => unknown; exec?: (sql: string) => unknown; close(): void };
     const mod = runtimeRequire("bun:sqlite") as { Database?: BunCtor; default?: BunCtor };
     const Database = mod.Database ?? mod.default;
     if (!Database) return null;
@@ -57,7 +62,9 @@ const SCHEMA = [
 ];
 
 describe("chat.db poll query failures", { timeout: 60_000 }, () => {
-  it("rejects instead of reporting an empty inbox when the poll query cannot run", async ({ skip }) => {
+  it("rejects instead of reporting an empty inbox when the poll query cannot run", async ({
+    skip,
+  }) => {
     const openDatabase = await getDatabase();
     if (!openDatabase) {
       skip("No supported SQLite runtime is available for iMessage fixture tests");
@@ -95,7 +102,9 @@ describe("chat.db poll query failures", { timeout: 60_000 }, () => {
         // Before the fix this branch is taken: the failed query was reported
         // as an empty batch, so the poll tick returned as if the inbox were
         // idle and no caller could tell a broken read from "no new messages".
-        throw new Error(`fetchNewMessages resolved with ${JSON.stringify(resolved)} instead of rejecting`);
+        throw new Error(
+          `fetchNewMessages resolved with ${JSON.stringify(resolved)} instead of rejecting`
+        );
       }
 
       expect(rejection).toBeInstanceOf(ElizaError);
