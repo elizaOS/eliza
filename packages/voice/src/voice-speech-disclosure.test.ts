@@ -58,6 +58,15 @@ describe("speech disclosure table", () => {
       TypeError,
     );
     expect(() => speechDisclosures({ deviceNoun: " " })).toThrow(TypeError);
+    expect(() =>
+      speechDisclosures({ serviceName: "x".repeat(60) }),
+    ).not.toThrow();
+    expect(() =>
+      speechDisclosures({ serviceName: "x".repeat(61) }),
+    ).toThrow(TypeError);
+    expect(() =>
+      speechDisclosures({ deviceNoun: "x".repeat(61) }),
+    ).toThrow(TypeError);
     expect(Object.isFrozen(SPEECH_DISCLOSURES)).toBe(true);
     expect(Object.isFrozen(SPEECH_DISCLOSURES[1])).toBe(true);
     expect(Object.isFrozen(SPEECH_DISCLOSURES[1]?.sends)).toBe(true);
