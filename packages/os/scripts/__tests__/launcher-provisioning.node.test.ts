@@ -154,3 +154,23 @@ test("provisioning requires each selected component to be explicitly exported", 
     /explicitly exported/,
   );
 });
+
+
+test("explicitly deferred assistant leaves HOME and Autofill provisioning unchanged", () => {
+  const withDisabled = tree({ assistantExported: "(type 0x12)0x0" });
+  const withoutAssistant = withDisabled.replace(/    E: activity \(line=1\)\n      A: android:name[^\n]*AlphaAssistActivity[^\n]*\n[\s\S]*?(?=    E: service)/, "");
+  for (const manifest of [withDisabled, withoutAssistant]) {
+    const selected = provisioningComponents(manifest, PKG, { assistantRequired: false });
+    assert.equal(selected.assistant, null);
+    assert.equal(selected.home, `${PKG}.MainActivity`);
+    assert.equal(selected.autofill, "ai.eliza.plugins.passwords.ElizaPasswordAutofillService");
+    const files = renderProvisioningOverlay(PKG, selected);
+    assert.doesNotMatch(files["provisioning/overlay/frameworks/base/core/res/res/values/config.xml"], /config_defaultAssistant/);
+    assert.doesNotMatch(files["provisioning/README.md"], /Assistant role:/);
+    assert.match(files["provisioning/overlay/frameworks/base/core/res/res/values/config.xml"], /config_defaultAutofillService/);
+    assert.match(files["provisioning/preferred-apps/launcher-home.xml"], /MainActivity/);
+  }
+  assert.throws(() => provisioningComponents(withDisabled, PKG), /explicitly exported/);
+  assert.throws(() => provisioningComponents(withoutAssistant, PKG), /ACTION_ASSIST/);
+  assert.throws(() => renderProvisioningOverlay(PKG, { home: `${PKG}.MainActivity`, autofill: null }), /Invalid fully qualified/);
+});
