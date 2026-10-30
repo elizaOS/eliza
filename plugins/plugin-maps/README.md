@@ -35,6 +35,11 @@ updates and idle after resize, so a selected place stays visible when panels
 move. Layout changes preserve the current zoom and marker, and do not take the
 camera from a route or active position following.
 
+`visibleMapPadding` (`./client/map-layout`) measures the canonical React screen's
+overlapping controls and keeps a usable camera area in short windows. Pass a
+callback to `selectionPadding`; numeric getters in `routePadding` can call the
+same helper when a route is fitted. Controls outside the map reserve no space.
+
 ## Phone Maps screen
 
 `MapsScreenController` (`./client/maps-screen`) is the phone Maps screen without

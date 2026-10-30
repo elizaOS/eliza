@@ -4,6 +4,7 @@ import fs from "node:fs";
 import { stripTypeScriptTypes } from "node:module";
 import test from "node:test";
 import vm from "node:vm";
+import { visibleMapPadding } from "../src/client/map-layout.ts";
 
 function fixture(basemap, effects = {}) {
   const maps = [],
@@ -54,7 +55,8 @@ function fixture(basemap, effects = {}) {
     easeTo(value) {
       this.center = value;
       this.easeCalls = (this.easeCalls ?? 0) + 1;
-      this.options.zoom = value.zoom ?? this.options.zoom;
+      if (!effects.deferAnimations || value.duration === 0)
+        this.options.zoom = value.zoom ?? this.options.zoom;
     }
     setPadding(value) {
       this.padding = value;
@@ -440,6 +442,112 @@ test("global selection follows changed host layout without resetting zoom, repla
   regionalMap.plane.update(point);
   assert.equal("zoom" in regionalMap.map.center, false);
   assert.equal("padding" in regionalMap.map.center, false);
+});
+
+test("a sheet reflow cannot cancel the initial global selection zoom", () => {
+  let padding = { top: 80, bottom: 430, left: 30, right: 30 };
+  const f = fixture(global, {
+    deferAnimations: true,
+    selectionPadding: () => padding,
+  });
+  const point = { longitude: -122.42, latitude: 37.77 };
+  f.plane.update(point);
+  padding = { top: 80, bottom: 250, left: 30, right: 30 };
+  f.plane.update(point);
+  assert.equal(f.map.getZoom(), 14);
+  f.map.options.zoom = 12;
+  padding = { top: 80, bottom: 250, left: 30, right: 340 };
+  f.plane.update(point);
+  assert.equal(f.map.getZoom(), 12, "later reflow preserves the user's zoom");
+});
+
+test("canonical overlays leave camera space in landscape and keyboard viewports", () => {
+  const rect = (left, top, width, height) => ({
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+  });
+  let bounds = rect(100, 50, 600, 300);
+  const boxes = {
+    "[data-maps-search]": rect(112, 62, 324, 54),
+    "[data-maps-sheet]": rect(460, 62, 228, 276),
+  };
+  const container = {
+    getBoundingClientRect: () => bounds,
+    parentElement: {
+      querySelector: (selector) =>
+        boxes[selector] && {
+          getBoundingClientRect: () => boxes[selector],
+        },
+    },
+  };
+  const padding = () => visibleMapPadding(container);
+  assert.deepEqual(padding(), { top: 82, bottom: 24, left: 24, right: 264 });
+  const routePadding = Object.fromEntries(
+    ["top", "bottom", "left", "right"].map((edge) => [edge, 0]),
+  );
+  for (const edge of Object.keys(routePadding))
+    Object.defineProperty(routePadding, edge, { get: () => padding()[edge] });
+  const f = fixture(global, { selectionPadding: padding });
+  const routed = f.create({ routePadding });
+  const point = { longitude: -122.42, latitude: 37.77 };
+  routed.update(point, {
+    id: "landscape",
+    geometry: [point, { ...point, latitude: 37.78 }],
+  });
+  assert.equal(f.maps[1].fit.options.padding.right, 264);
+  bounds = rect(100, 50, 600, 180);
+  boxes["[data-maps-credits]"] = rect(112, 200, 200, 18);
+  routed.update(point, {
+    id: "keyboard",
+    geometry: [point, { ...point, latitude: 37.78 }],
+  });
+  const fitted = f.maps[1].fit.options.padding;
+  assert.equal(fitted.top + fitted.bottom, 100);
+  assert.ok(fitted.left + fitted.right <= 520);
+  assert.ok(
+    Object.values(padding()).every(
+      (value) => Number.isFinite(value) && value >= 0,
+    ),
+  );
+});
+
+test("flow controls outside the map do not move the selected pin", () => {
+  const bounds = {
+    left: 0,
+    top: 100,
+    right: 400,
+    bottom: 300,
+    width: 400,
+    height: 200,
+  };
+  const outside = {
+    "[data-maps-search]": { left: 0, top: 0, right: 400, bottom: 100 },
+    "[data-maps-credits]": { left: 0, top: 300, right: 400, bottom: 330 },
+    "[data-maps-sheet]": { left: 0, top: 350, right: 400, bottom: 900 },
+  };
+  const container = {
+    getBoundingClientRect: () => bounds,
+    parentElement: {
+      querySelector: (selector) => ({
+        getBoundingClientRect: () => outside[selector],
+      }),
+    },
+  };
+  const f = fixture(global, {
+    selectionPadding: () => visibleMapPadding(container),
+  });
+  f.plane.update({ longitude: -122.42, latitude: 37.77 });
+  assert.deepEqual(Array.from(f.map.center.offset), [0, 0]);
+  assert.deepEqual(visibleMapPadding(container), {
+    top: 24,
+    bottom: 24,
+    left: 24,
+    right: 24,
+  });
 });
 
 test("canonical overlay pins and following survive the global rendering port", () => {
