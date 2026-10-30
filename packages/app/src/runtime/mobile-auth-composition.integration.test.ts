@@ -19,6 +19,25 @@ test("mobile host composes revocable owner sessions through buffered and streami
     process.env.ELIZA_REQUIRE_LOCAL_AUTH = "1";
     process.env.ELIZA_DISABLE_VAULT_PROFILE_RESOLVER = "1";
     process.env.ELIZA_AGENT_ORCHESTRATOR = "0";
+    // The same preparation used by both boot entries must permit the local
+    // runtime when an optional product module fails resource admission.
+    const { prepareNativeRuntimeForBoot } = await import(
+      "./native-runtime-boot.ts"
+    );
+    const warnings: string[] = [];
+    await prepareNativeRuntimeForBoot(
+      {
+        ...process.env,
+        ELIZA_PLATFORM: "android",
+        ELIZAOS_CLOUD_USE_INFERENCE: "0",
+        ELIZA_NATIVE_GOOGLE_BINDING_JSON: undefined,
+        ELIZA_SMTHRS_RUNTIME_DIR: temp,
+        ELIZA_NATIVE_GOOGLE_HOST_MODULE: path.join(temp, "missing.mjs"),
+      },
+      (message) => warnings.push(message),
+    );
+    assert.equal(warnings.length, 1);
+    assert.match(warnings[0], /NATIVE_RUNTIME_MODULE_UNAVAILABLE/);
     const { installMobileAuthHostBridge } = await import(
       path.join(
         root,

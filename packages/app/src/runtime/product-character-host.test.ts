@@ -10,6 +10,7 @@ import {
 } from "@elizaos/agent/runtime/host-bridge";
 import { afterEach, expect, test } from "vitest";
 import { installProductCharacterHost } from "./install-product-character-host.js";
+import { prepareNativeRuntimeForBoot } from "./native-runtime-boot.js";
 import { parseNativeCloudRuntimeDeclaration } from "./native-runtime-profile.js";
 
 const roots: string[] = [];
@@ -76,6 +77,67 @@ test("missing module retains the upstream default", async () => {
   expect(getAgentHostBridge().productCharacter).toBeUndefined();
 });
 
+test("an admitted Google-only module need not declare product presentation", async () => {
+  const f = fixture();
+  const body = "export const startNativeGoogleAgentHost = () => {};";
+  fs.writeFileSync(f.entry, body);
+  fs.writeFileSync(
+    path.join(f.root, "manifest.json"),
+    JSON.stringify({
+      version: 1,
+      files: { "host.mjs": createHash("sha256").update(body).digest("hex") },
+    }),
+  );
+  await installProductCharacterHost(f.env);
+  expect(getAgentHostBridge().productCharacter).toBeUndefined();
+});
+
+test("optional product admission cannot prevent signed-out resident preparation", async () => {
+  const f = fixture();
+  fs.appendFileSync(f.entry, "\nthrow Error('private module output');");
+  const warnings: string[] = [];
+  await expect(
+    prepareNativeRuntimeForBoot(
+      { ...f.env, ELIZA_PLATFORM: "android" },
+      (message) => warnings.push(message),
+    ),
+  ).resolves.toBeUndefined();
+  expect(getAgentHostBridge().productCharacter).toBeUndefined();
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("NATIVE_RUNTIME_MODULE_UNAVAILABLE");
+  expect(warnings[0]).not.toContain("private module output");
+  expect(warnings[0]).not.toContain(f.root);
+});
+
+test("required Cloud routing still refuses invalid native resources at boot", async () => {
+  const f = fixture();
+  fs.appendFileSync(f.entry, "\nthrow Error('private module output');");
+  await expect(
+    prepareNativeRuntimeForBoot(
+      {
+        ...f.env,
+        ELIZA_PLATFORM: "android",
+        ELIZAOS_CLOUD_USE_INFERENCE: "1",
+        ELIZAOS_CLOUD_API_KEY: "synthetic-only",
+        ELIZA_API_TOKEN: "Z_-q".repeat(16),
+      },
+      () => {},
+    ),
+  ).rejects.toMatchObject({ code: "NATIVE_CLOUD_ROUTING_UNAVAILABLE" });
+});
+
+test("an admitted invalid product declaration cannot stop optional local boot", async () => {
+  const f = fixture({ name: "Alpha", settings: { identityName: "other" } });
+  const warnings: string[] = [];
+  await expect(
+    prepareNativeRuntimeForBoot(f.env, (message) => warnings.push(message)),
+  ).resolves.toBeUndefined();
+  expect(getAgentHostBridge().productCharacter).toBeUndefined();
+  expect(warnings).toHaveLength(1);
+  expect(warnings[0]).toContain("NATIVE_PRODUCT_CHARACTER_UNAVAILABLE");
+  expect(warnings[0]).not.toContain("other");
+});
+
 test("rejects tampering and escaped resources before host installation", async () => {
   const f = fixture();
   fs.appendFileSync(f.entry, "\nthrow Error('must not execute');");
@@ -117,16 +179,16 @@ test("legacy declarations remain compatible", () => {
 test("normal Cloud and native entry chains install product before runtime startup", () => {
   const here = path.dirname(fileURLToPath(import.meta.url));
   const dev = fs.readFileSync(path.join(here, "dev-server.ts"), "utf8");
-  expect(dev).toContain("await installProductCharacterHost();");
-  expect(dev.indexOf("await installProductCharacterHost();")).toBeLessThan(
+  expect(dev).toContain("await prepareNativeRuntimeForBoot(");
+  expect(dev.indexOf("await prepareNativeRuntimeForBoot(")).toBeLessThan(
     dev.indexOf('scheduleRuntimeBootstrap(0, "startup")'),
   );
   const native = fs.readFileSync(
     path.join(here, "../mobile-agent-entry.ts"),
     "utf8",
   );
-  expect(native).toContain("await installProductCharacterHost();");
-  expect(native.indexOf("await installProductCharacterHost();")).toBeLessThan(
+  expect(native).toContain("await prepareNativeRuntimeForBoot();");
+  expect(native.indexOf("await prepareNativeRuntimeForBoot();")).toBeLessThan(
     native.indexOf('await import("@elizaos/agent/bin")'),
   );
   const agent = fs.readFileSync(
