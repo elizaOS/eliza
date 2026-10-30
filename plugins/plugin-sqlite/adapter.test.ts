@@ -1942,6 +1942,27 @@ describe("durable SQLite agent adapter", () => {
     // plugin-sql scopes the same query with `agent_id = this.agentId`.
     expect(hits.map((hit) => hit.memory.id).sort()).toEqual([ownId]);
   });
+
+  it("folds searchMessages letters the way plugin-sql's eliza_search_fold does", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const sorenId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("Søren shared the roadmap"), id: sorenId },
+        tableName: "messages",
+      },
+    ]);
+
+    // Postgres folds ø to o, so "soren" finds this row on plugin-sql.
+    const hits = await adapter.searchMessages({
+      roomIds: [roomId],
+      query: "soren",
+      tableName: "messages",
+      limit: 50,
+    });
+    expect(hits.map((hit) => hit.memory.id)).toEqual([sorenId]);
+  });
 });
 
 it("rejects a different lifecycle agent scope before invoking the callback", async () => {
