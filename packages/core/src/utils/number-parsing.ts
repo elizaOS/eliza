@@ -36,6 +36,15 @@ function normalizeFallback(fallback: number | undefined): number | undefined {
 	return Number.isFinite(fallback) ? fallback : undefined;
 }
 
+// Decimal float text only: an optional sign, digits with an optional fraction,
+// or a leading-dot fraction, with an optional decimal exponent. This rejects
+// the hex ("0x10"), binary ("0b101"), and octal ("0o17") forms that
+// Number() would otherwise accept, matching the integer parsers below,
+// which already reject non-decimal input with a ^\d+$ check.
+function isDecimalFloatText(raw: string): boolean {
+	return /^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(raw);
+}
+
 export function parsePositiveInteger(
 	value: string | null | undefined,
 	fallback: number,
@@ -124,7 +133,8 @@ export function parsePositiveFloat(
 	options?: ParsePositiveNumberOptions,
 ): number | undefined {
 	const raw = sanitizeNumericText(value);
-	if (!raw) return normalizeFallback(options?.fallback);
+	if (!raw || !isDecimalFloatText(raw))
+		return normalizeFallback(options?.fallback);
 
 	const parsed = Number(raw);
 	if (!Number.isFinite(parsed) || parsed <= 0) {
@@ -148,7 +158,8 @@ export function parseClampedFloat(
 	options: ParseClampedNumberOptions = {},
 ): number | undefined {
 	const raw = sanitizeNumericText(value);
-	if (!raw) return normalizeFallback(options.fallback);
+	if (!raw || !isDecimalFloatText(raw))
+		return normalizeFallback(options.fallback);
 
 	const parsed = Number(raw);
 	if (!Number.isFinite(parsed)) return normalizeFallback(options.fallback);
