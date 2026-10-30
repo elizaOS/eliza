@@ -7,8 +7,13 @@ import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import {
+  _resetDeferredBootStatusForTest,
+  markDeferredBootPhase,
+} from "@elizaos/agent/runtime/deferred-boot-status";
+import {
   AgentRuntime,
   createCharacter,
+  EventType,
   type IAgentRuntime,
   stringToUuid,
 } from "@elizaos/core";
@@ -16,7 +21,7 @@ import {
   CalendarService,
   CalendarServiceError,
 } from "@elizaos/plugin-calendar";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { CalendarLocalTimeError } from "../../../plugin-calendar/src/internal/time.js";
 import {
   handleLifeOpsRoutes,
@@ -54,17 +59,22 @@ class RouteCalendarService extends CalendarService {
   }
 }
 
-function routeContext(args: { runtime: AgentRuntime; pathname: string }): {
+function routeContext(args: {
+  runtime: AgentRuntime;
+  pathname: string;
+  method?: string;
+}): {
   context: LifeOpsRouteContext;
   response: CapturedResponse;
 } {
+  const method = args.method ?? "GET";
   const socket = new Socket();
   Object.defineProperty(socket, "remoteAddress", {
     value: "127.0.0.1",
     configurable: true,
   });
   const request = new IncomingMessage(socket);
-  request.method = "GET";
+  request.method = method;
   const response = new ServerResponse(request);
   const captured: CapturedResponse = { statusCode: 0, body: "" };
   response.statusCode = 0;
@@ -80,7 +90,7 @@ function routeContext(args: { runtime: AgentRuntime; pathname: string }): {
   const context: LifeOpsRouteContext = {
     req: request,
     res: response,
-    method: "GET",
+    method,
     pathname: args.pathname,
     url: new URL(`http://localhost${args.pathname}`),
     state: { runtime: args.runtime, adminEntityId: null },
@@ -177,5 +187,130 @@ describe("LifeOps calendar route ownership", () => {
         possibleInstants: possibleInstants.map((d) => d.toISOString()),
       },
     });
+  });
+});
+
+describe("LifeOps calendar reads during deferred boot", () => {
+  // The calendar plugin registers in the deferred wave after these routes mount.
+  const calendarPlugin = {
+    name: "calendar",
+    description: "Deferred calendar plugin",
+    services: [RouteCalendarService],
+  };
+  let runtime: AgentRuntime;
+
+  beforeEach(async () => {
+    runtime = new AgentRuntime({
+      agentId: stringToUuid(`calendar-deferred-${crypto.randomUUID()}`),
+      character: createCharacter({ name: "Calendar deferred boot" }),
+      enableAutonomy: false,
+      logLevel: "fatal",
+    });
+    await initializeTestRuntime(runtime, { skipMigrations: true });
+    _resetDeferredBootStatusForTest();
+    markDeferredBootPhase("agent-deferred-boot", "pending");
+  });
+
+  afterEach(async () => {
+    vi.useRealTimers();
+    _resetDeferredBootStatusForTest();
+    await runtime.stop();
+  });
+
+  function track(promise: Promise<boolean>): { settled: () => boolean } {
+    let settled = false;
+    void promise.finally(() => {
+      settled = true;
+    });
+    return { settled: () => settled };
+  }
+
+  it("serves a read that arrives before the calendar plugin registers", async () => {
+    const startedHandlers = runtime.getEvent(EventType.SERVICE_STARTED) ?? [];
+    const { context, response } = routeContext({
+      runtime,
+      pathname: "/api/lifeops/calendar/sources",
+    });
+
+    const handled = handleLifeOpsRoutes(context);
+    const request = track(handled);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(request.settled()).toBe(false);
+
+    await runtime.registerPlugin(calendarPlugin);
+
+    await expect(handled).resolves.toBe(true);
+    expect(response).toEqual({ statusCode: 200, body: '{"sources":[]}' });
+    expect(runtime.getEvent(EventType.SERVICE_STARTED) ?? []).toEqual(
+      startedHandlers,
+    );
+  });
+
+  it("keeps the 503 for a calendar service that never registers, after the bound", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const startedHandlers = runtime.getEvent(EventType.SERVICE_STARTED) ?? [];
+    const { context, response } = routeContext({
+      runtime,
+      pathname: "/api/lifeops/calendar/sources",
+    });
+
+    const handled = handleLifeOpsRoutes(context);
+    const request = track(handled);
+    await vi.advanceTimersByTimeAsync(9_999);
+    expect(request.settled()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+
+    await expect(handled).resolves.toBe(true);
+    expect(response).toEqual({
+      statusCode: 503,
+      body: '{"error":"Calendar service failed to load."}',
+    });
+    expect(runtime.getEvent(EventType.SERVICE_STARTED) ?? []).toEqual(
+      startedHandlers,
+    );
+  });
+
+  it("fails an absent calendar service at once after deferred boot settles", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    markDeferredBootPhase("agent-deferred-boot", "complete");
+    const { context, response } = routeContext({
+      runtime,
+      pathname: "/api/lifeops/calendar/sources",
+    });
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(response).toEqual({
+      statusCode: 503,
+      body: '{"error":"Calendar service failed to load."}',
+    });
+  });
+
+  it("does not hold a calendar mutation across deferred registration", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    const { context, response } = routeContext({
+      runtime,
+      method: "POST",
+      pathname: "/api/lifeops/calendar/sources/source-1/sync",
+    });
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(response).toEqual({
+      statusCode: 503,
+      body: '{"error":"Calendar service failed to load."}',
+    });
+  });
+
+  it("serves an already-started calendar service without waiting", async () => {
+    await runtime.registerPlugin(calendarPlugin);
+    await runtime.getServiceLoadPromise(RouteCalendarService.serviceType);
+    const registerEvent = vi.spyOn(runtime, "registerEvent");
+    const { context, response } = routeContext({
+      runtime,
+      pathname: "/api/lifeops/calendar/sources",
+    });
+
+    await expect(handleLifeOpsRoutes(context)).resolves.toBe(true);
+    expect(response).toEqual({ statusCode: 200, body: '{"sources":[]}' });
+    expect(registerEvent).not.toHaveBeenCalled();
   });
 });
