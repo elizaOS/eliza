@@ -347,7 +347,11 @@
       "default": "./dist/first-run/local-agent-token.js"
     },
     "./styles/mobile-workspaces.css": {
-      "eliza-source": "./src/styles/mobile-workspaces.css",
+      "eliza-source": {
+        "types": "./src/styles/mobile-workspaces.css.d.ts",
+        "default": "./src/styles/mobile-workspaces.css"
+      },
+      "types": "./dist/styles/mobile-workspaces.css.d.ts",
       "default": "./dist/styles/mobile-workspaces.css"
     }
   },
