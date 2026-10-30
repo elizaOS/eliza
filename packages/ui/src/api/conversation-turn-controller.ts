@@ -85,8 +85,8 @@ export type ConversationTurnTransport<Input, Reply> = {
   ) => Promise<Reply>;
   stop: (conversation: ConversationRoom) => Promise<unknown>;
   ownershipLost: (error: unknown) => boolean;
-  /** Override for deterministic tests; defaults to a random v4 UUID. */
-  clientMessageId?: () => string;
+  /** Keep a host's existing request identity, or default to a random v4 UUID. */
+  clientMessageId?: (input: Input) => string;
 };
 /** A dispatched turn the owner stopped, retained for later reply matching. */
 export type StoppedConversationTurn<Input> = Readonly<{
@@ -218,7 +218,7 @@ export class ConversationTurnController<Input, Reply> {
       room: null,
       dispatched: false,
       generation: this.generationValue,
-      clientMessageId: (this.transport.clientMessageId ?? randomTurnId)(),
+      clientMessageId: (this.transport.clientMessageId ?? randomTurnId)(input),
       input,
       sentAt: Date.now(),
       abort: new AbortController(),

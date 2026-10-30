@@ -84,6 +84,34 @@ function harness() {
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 describe("ConversationTurnController", () => {
+  it("retains a resident caller's request identity through send and Stop", async () => {
+    const pending = deferred<string>();
+    const requests: ConversationTurnContext[] = [];
+    const controller = new ConversationTurnController<
+      { requestId: string; text: string },
+      string
+    >({
+      create: async () => ({ id: "conversation", roomId: "room" }),
+      clientMessageId: (input) => input.requestId,
+      send: async (_room, _input, turn) => {
+        requests.push(turn);
+        return pending.promise;
+      },
+      stop: async () => {},
+      ownershipLost: () => false,
+    });
+    const sent = controller.send(
+      { requestId: "voice-turn-from-resident", text: "hello" },
+      { reply: () => {}, error: () => {}, settled: () => {} },
+    );
+    await tick();
+    expect(requests[0].clientMessageId).toBe("voice-turn-from-resident");
+    await controller.interrupt();
+    expect(controller.stopped?.clientMessageId).toBe("voice-turn-from-resident");
+    pending.resolve("late reply");
+    expect(await sent).toBe(false);
+  });
+
   it("sends one turn with a clientMessageId and publishes its reply", async () => {
     const h = harness();
     const sent = h.controller.send("hello", h.observer);
