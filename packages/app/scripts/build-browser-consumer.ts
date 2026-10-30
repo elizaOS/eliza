@@ -136,6 +136,27 @@ if (config.build?.rollupOptions) config.build.rollupOptions.input = entry;
 if (config.build?.rolldownOptions) config.build.rolldownOptions.input = entry;
 await build(config);
 
+const runtimeSourceFiles = Object.fromEntries(
+  [...inputs]
+    .filter(
+      ([filename]) =>
+        /\.[cm]?[jt]sx?$/.test(filename) && !/\.d\.[cm]?ts$/.test(filename),
+    )
+    .map(([filename, sha256]) => [
+      path.relative(repository, filename).split(path.sep).join("/"),
+      sha256,
+    ]),
+);
+// This entry imports UI source directly. A compiled UI copy creates separate
+// contexts and transport state even when React itself is a shared peer.
+const compiledUiRuntime = Object.keys(runtimeSourceFiles).filter((filename) =>
+  filename.startsWith("packages/ui/dist/"),
+);
+if (compiledUiRuntime.length)
+  throw Error(
+    `Consumer runtime mixes UI source with compiled UI modules: ${compiledUiRuntime.join(", ")}`,
+  );
+
 // The application has root-relative icons and other static resources. Preserve
 // their canonical layout for the consuming host to stage at its web root.
 const staticAssets: string[] = [];
@@ -548,6 +569,7 @@ fs.writeFileSync(
         a.specifier.localeCompare(b.specifier),
       ),
       stylesEntry: "styles.js",
+      runtimeSourceFiles,
       staticAssets: staticAssets.sort(),
       styles: stylesheetFiles.sort(),
       sourceFiles: Object.fromEntries(

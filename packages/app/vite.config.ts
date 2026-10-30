@@ -2615,6 +2615,9 @@ export const INVALID_TRACER_PROVIDER = {};
         path.resolve(elizaRoot, "packages/cloud/shared"),
       ]),
       ...createWorkspacePackageExportAliases([
+        // The root UI alias already uses source. Public leaves must share its
+        // context, transport and storage modules in production builds too.
+        path.resolve(elizaRoot, "packages/ui"),
         path.resolve(elizaRoot, "plugins/plugin-relationships"),
         path.resolve(elizaRoot, "plugins/plugin-calendar"),
         path.resolve(elizaRoot, "plugins/plugin-notes"),
