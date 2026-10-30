@@ -20,10 +20,10 @@ import {
   type IAgentRuntime,
   type Logger,
   ModelType,
+  parseJsonObject,
   type Service,
 } from "@elizaos/core";
 import { readConfigEnvKey } from "./config-env.js";
-import { parseJsonObjectResponse } from "./json-model-output.js";
 import { withTrajectoryContext } from "./trajectory-context.js";
 
 const LOG_PREFIX = "[SkillRecommender]";
@@ -365,7 +365,7 @@ function parseLlmScores(raw: string): LlmScoreEntry[] {
   const trimmed = raw.trim();
   if (!trimmed) return [];
 
-  const parsedJson = parseJsonObjectResponse<Record<string, unknown>>(trimmed);
+  const parsedJson = parseJsonObject<Record<string, unknown>>(trimmed);
   const jsonScores = Array.isArray(parsedJson?.scores)
     ? parsedJson.scores
         .map(normalizeLlmScoreEntry)

@@ -20,10 +20,10 @@
 import {
   type IAgentRuntime,
   ModelType,
+  parseJsonObject,
   textIncludesKeywordTerm,
   toWellFormedUnicode,
 } from "@elizaos/core";
-import { parseJsonObjectResponse } from "./json-model-output.js";
 
 export type InterruptionAction = "deliver" | "queue" | "interrupt" | "ignore";
 
@@ -220,9 +220,7 @@ function buildInterruptionClassifierPrompt(input: InterruptionInput): string {
 }
 
 function parseInterruptionVerdict(raw: string): InterruptionDecision | null {
-  const obj = parseJsonObjectResponse<{ action?: unknown; reason?: unknown }>(
-    raw,
-  );
+  const obj = parseJsonObject<{ action?: unknown; reason?: unknown }>(raw);
   if (!obj) return null;
   const action =
     typeof obj.action === "string" ? obj.action.trim().toLowerCase() : "";
