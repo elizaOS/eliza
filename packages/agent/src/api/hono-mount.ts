@@ -63,6 +63,31 @@ interface ReadNodeBodyResult {
   body: ArrayBuffer | null;
   tooLarge: boolean;
 }
+/**
+ * Discard the rest of an oversized body without retaining it, and settle only
+ * when the peer has sent all of it (or the request closed). The 413 closes the
+ * connection; if it is sent while the peer is still writing, the socket closes
+ * with unread bytes and the peer gets a reset (ECONNRESET on Windows) instead
+ * of the 413.
+ */
+function discardRemainingBody(
+  req: IncomingMessage,
+): Promise<ReadNodeBodyResult> {
+  const tooLarge: ReadNodeBodyResult = { body: null, tooLarge: true };
+  if (req.complete) return Promise.resolve(tooLarge);
+  return new Promise<ReadNodeBodyResult>((resolve) => {
+    const settle = () => {
+      req.off("end", settle);
+      req.off("close", settle);
+      req.off("error", settle);
+      resolve(tooLarge);
+    };
+    req.once("end", settle);
+    req.once("close", settle);
+    req.once("error", settle);
+    req.resume();
+  });
+}
 async function readNodeBody(
   req: IncomingMessage,
   maxBodyBytes: number,
@@ -76,8 +101,7 @@ async function readNodeBody(
     // Drain without retaining bytes so the peer can finish its write and read
     // the 413 response. Pausing or destroying here turns a valid HTTP rejection
     // into EPIPE/ECONNRESET for clients that are still sending the declared body.
-    req.resume();
-    return { body: null, tooLarge: true };
+    return discardRemainingBody(req);
   }
   return new Promise<ReadNodeBodyResult>((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -111,8 +135,7 @@ async function readNodeBody(
         cleanup();
         // Stop retaining bytes but keep draining the request. This preserves the
         // memory cap while allowing a real client to receive the promised 413.
-        req.resume();
-        resolve({ body: null, tooLarge: true });
+        void discardRemainingBody(req).then(resolve);
         return;
       }
       chunks.push(buf);
@@ -239,8 +262,8 @@ export async function tryHandleHonoRuntimeRoute(options: {
       matchedRoute.maxBodyBytes ?? DEFAULT_MAX_HONO_BODY_BYTES;
     const { body: bodyBytes, tooLarge } = await readNodeBody(req, maxBodyBytes);
     if (tooLarge) {
-      // The request body exceeded this route's cap. Respond 413 without
-      // dispatching to Hono. Remaining bytes are discarded without retention.
+      // The request body exceeded this route's cap, and the peer has finished
+      // sending it or has gone. Respond 413 without dispatching to Hono.
       res.statusCode = 413;
       res.setHeader("content-type", "application/json");
       res.setHeader("connection", "close");
