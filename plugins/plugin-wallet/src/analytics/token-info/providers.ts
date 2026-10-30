@@ -404,10 +404,14 @@ async function executeBirdeye(
           ),
         );
       }
+      // Without an explicit kind, searchBirdeyeTokens detects EVM, Sui and
+      // Solana addresses itself.
       const mode =
-        params.kind === "token-address" || /^0x[a-fA-F0-9]{40}$/.test(query)
+        params.kind === "token-address"
           ? "address"
-          : "symbol";
+          : params.kind === "token-symbol"
+            ? "symbol"
+            : "auto";
       const result = await searchBirdeyeTokens(context.runtime, {
         query,
         mode,
