@@ -84,7 +84,9 @@ Document titles, revisions and paragraphs render as plain text.
 ## Native mobile sign-in
 
 `@elizaos/ui/android-cloud/NativeCloudSignInView` renders the common email,
-SMS, Google and MFA surface. Its `NativeCloudSignInController` comes from the
+SMS, Google and MFA surface. Its styles ship in `@elizaos/ui/styles`; a host that
+does not load that sheet imports `@elizaos/ui/styles/native-cloud-sign-in.css`.
+The module itself imports no stylesheet, so Node can load the package root. Its `NativeCloudSignInController` comes from the
 adjacent `native-cloud-sign-in-controller` entry. The app owns that controller's
 lifetime: call `start()` after mounting the owner and `dispose()` when retiring
 it. A view may unmount without retiring an application-owned attempt.
