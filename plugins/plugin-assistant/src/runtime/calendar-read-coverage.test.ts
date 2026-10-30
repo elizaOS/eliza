@@ -766,6 +766,58 @@ describe("committed Calendar mutations behind a read binding", () => {
     expect(result.effectReceiptIds).toEqual(f.live.effectReceiptIds);
     expect(useModel).toHaveBeenCalledTimes(1);
   });
+  it("follows a cited delete to the search that found its unchanged target", async () => {
+    const f = liveMoveFixture();
+    const [search, , update] = f.trajectory.steps;
+    const target = (update.result.data as { targetEvent: { id: string } })
+      .targetEvent;
+    const receiptId = "calendar-event-mutation-receipt-v1:delete";
+    f.trajectory.outcomeIntents = ["delete the coffee with Sam"];
+    f.trajectory.steps = [
+      search,
+      {
+        iteration: 2,
+        toolCall: { id: "delete", name: "CALENDAR_DELETE_EVENT", params: {} },
+        result: {
+          ...update.result,
+          effectReceipts: update.result.effectReceipts?.map((receipt) => ({
+            ...receipt,
+            receiptId,
+            operation: "calendar.event.delete",
+            resource: { ...receipt.resource, version: 'deleted:"eliza-1"' },
+          })),
+          data: { deleted: true, targetEvent: target },
+        },
+      },
+    ];
+    const output = {
+      ...f.live,
+      outcomeCoverage: [
+        {
+          intentId: "intent:1",
+          status: "completed" as const,
+          evidenceStepIds: ["step:2"],
+        },
+      ],
+      messageToUser: "Deleted “coffee with Sam” from your calendar.",
+      effectReceiptIds: [receiptId],
+    };
+    const evaluate = () =>
+      runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+    const result = await evaluate();
+    expect(result.messageToUser).toBe(output.messageToUser);
+    expect(result.success).toBe(true);
+    // A search that saw another version of the event is not the delete's target read.
+    const read = search.result.data as { events: object[] };
+    read.events = [{ ...target, metadata: { etag: '"eliza-0"' } }];
+    expect((await evaluate()).messageToUser).toContain(
+      "I couldn't confirm that Calendar request.",
+    );
+  });
 });
 
 describe("Calendar proposal and availability outcome evidence", () => {

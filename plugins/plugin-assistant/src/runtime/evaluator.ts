@@ -2385,11 +2385,11 @@ export function validatedOutcomeCoverage(params: {
 }
 
 /** A requested operation needs a fresh, source-bound producer receipt, not another read's success. */
-/** A cited update may depend on an earlier exact target search. Keep the
- * required read guard, but follow current result provenance rather than require
- * the model to repeat that prerequisite's step ID in its final coverage list.
- * Only the same unchanged target snapshot and an active applied commit qualify;
- * unrelated/archived reads, other operations and uncertain effects do not. */
+/** A cited update or delete may depend on an earlier exact target search. Keep
+ * the required read guard, but follow current result provenance rather than
+ * require the model to repeat that prerequisite's step ID in its final coverage
+ * list. Only the same unchanged target snapshot and an active applied commit
+ * qualify; unrelated/archived reads, other operations and uncertain effects do not. */
 function calendarMutationTargetReadEvidence(
   binding: CalendarReadBinding,
   cited: readonly string[],
@@ -2402,35 +2402,36 @@ function calendarMutationTargetReadEvidence(
     const mutation = evidence.get(id),
       result = mutation?.result;
     const index = mutation ? trajectory.steps.indexOf(mutation) : -1;
+    const call = mutation?.toolCall;
+    const subaction = call?.params?.subaction ?? call?.params?.action;
+    const operation =
+      call?.name === "CALENDAR_UPDATE_EVENT" ||
+      (call?.name === "CALENDAR" && subaction === "update_event")
+        ? "update"
+        : call?.name === "CALENDAR_DELETE_EVENT" ||
+            (call?.name === "CALENDAR" && subaction === "delete_event")
+          ? "delete"
+          : undefined;
     if (
       index < 0 ||
-      !mutation?.toolCall ||
-      mutation.terminalOnly ||
+      !operation ||
+      mutation?.terminalOnly ||
       result?.success !== true ||
       result.error != null ||
       result.failureProvenance ||
-      result.replyFailure ||
-      !(
-        mutation.toolCall.name === "CALENDAR_UPDATE_EVENT" ||
-        (mutation.toolCall.name === "CALENDAR" &&
-          (mutation.toolCall.params?.subaction ??
-            mutation.toolCall.params?.action) === "update_event")
-      )
+      result.replyFailure
     )
       continue;
     const data = result.data;
-    if (
-      !isObjectRecord(data) ||
-      !isObjectRecord(data.targetEvent) ||
-      !isObjectRecord(data.event)
-    )
-      continue;
-    const target = data.targetEvent,
-      event = data.event;
+    if (!isObjectRecord(data) || !isObjectRecord(data.targetEvent)) continue;
+    const target = data.targetEvent;
     if (
       typeof target.id !== "string" ||
       !target.id ||
-      event.id !== target.id ||
+      // An update returns the changed event; a delete only marks the target.
+      (operation === "update"
+        ? !isObjectRecord(data.event) || data.event.id !== target.id
+        : data.deleted !== true) ||
       !isObjectRecord(target.metadata) ||
       typeof target.metadata.etag !== "string" ||
       !target.metadata.etag
@@ -2448,7 +2449,7 @@ function calendarMutationTargetReadEvidence(
           result.effectReceipts?.some(
             (own) => own.receiptId === receipt.receiptId,
           ) &&
-          receipt.operation === "calendar.event.update" &&
+          receipt.operation === `calendar.event.${operation}` &&
           receipt.outcome === "applied" &&
           receipt.resource?.id === target.id,
       );
