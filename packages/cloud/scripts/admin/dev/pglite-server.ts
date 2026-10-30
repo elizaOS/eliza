@@ -25,12 +25,26 @@ import {
 import { createRequire } from "node:module";
 import path from "node:path";
 
-const PORT = Number.parseInt(process.env.PGLITE_PORT ?? "5432", 10);
+function positiveIntegerSetting(
+  name: "PGLITE_PORT" | "PGLITE_MAX_CONNECTIONS",
+  fallback: number,
+  max: number,
+): number {
+  const raw = process.env[name];
+  if (raw === undefined) return fallback;
+  if (!/^[1-9]\d*$/.test(raw)) {
+    throw new Error(`${name} must be a positive decimal integer`);
+  }
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value > max) {
+    throw new Error(`${name} must be between 1 and ${max}`);
+  }
+  return value;
+}
+
+const PORT = positiveIntegerSetting("PGLITE_PORT", 5432, 65535);
 const HOST = process.env.PGLITE_HOST ?? "127.0.0.1";
-const MAX_CONNECTIONS = Number.parseInt(
-  process.env.PGLITE_MAX_CONNECTIONS ?? "16",
-  10,
-);
+const MAX_CONNECTIONS = positiveIntegerSetting("PGLITE_MAX_CONNECTIONS", 16, 2147483647);
 const DATA_DIR =
   process.env.PGLITE_IN_MEMORY === "1"
     ? undefined
