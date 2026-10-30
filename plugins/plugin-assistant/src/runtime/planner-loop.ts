@@ -3322,10 +3322,21 @@ async function runPlannerLoopIterations(
         ),
       };
     }
-    const pendingCompletionCorrection = correctPendingSuccessfulFinish(
-      evaluator,
-      iteration,
-    );
+    // The originating renderer applies a prepared app-view handoff only after
+    // it receives this turn's reply, so no later step can wait on it. When the
+    // planner declared more work and the evaluator chose CONTINUE, replan that
+    // work instead of ending the turn (live tj-6941f5b0efa216 dropped the
+    // requested create). Durable device requests and completion claims still
+    // end the turn as a partial result below.
+    const replanAfterPreparedNavigation =
+      lastPlannerExplicitCompleted === false &&
+      evaluator.decision === "CONTINUE" &&
+      isPreparedViewNavigationStep(
+        trajectory.steps[trajectory.steps.length - 1],
+      );
+    const pendingCompletionCorrection = replanAfterPreparedNavigation
+      ? null
+      : correctPendingSuccessfulFinish(evaluator, iteration);
     evaluator = pendingCompletionCorrection ?? evaluator;
     trajectory.evaluatorOutputs.push(
       projectToolDiagnosticValue(
@@ -3339,7 +3350,8 @@ async function runPlannerLoopIterations(
       iteration,
       redactDiagnosticText,
     );
-    if (awaitingDeviceExecution) return finishWithEvaluator(evaluator);
+    if (awaitingDeviceExecution && !replanAfterPreparedNavigation)
+      return finishWithEvaluator(evaluator);
 
     // A malformed evaluator reply cannot complete explicitly pending work.
     // A retryable boundary failure also permits replanning from the complete
@@ -9110,20 +9122,10 @@ async function ensureToolTurnFinalMessage(
         !step.terminalOnly || step.toolCall != null || step.result != null,
     );
     const step = steps.length === 1 ? steps[0] : undefined;
-    const handoff =
-      step?.result &&
-      findViewActionHandoff([
-        {
-          success: step.result.success,
-          actionName: step.toolCall?.name,
-          values: step.result.data?.values,
-        },
-      ]);
     if (
       step?.result?.transcriptVisibility === "internal" &&
       step.result.modelReplyRequired === true &&
-      hasAwaitingDeviceExecutionMarker(step.result) &&
-      handoff?.navigationPrepared === true
+      isPreparedViewNavigationStep(step)
     )
       return {
         ...result,
@@ -9773,6 +9775,22 @@ function hasAwaitingDeviceExecutionMarker(
     result?.data?.awaitingDeviceExecution === true ||
     (result !== undefined &&
       plannerResultValues(result)?.awaitingDeviceExecution === true)
+  );
+}
+
+/** A renderer-prepared app-view handoff, applied only after the turn's reply. */
+function isPreparedViewNavigationStep(step: PlannerStep | undefined): boolean {
+  const result = step?.result;
+  return (
+    result !== undefined &&
+    hasAwaitingDeviceExecutionMarker(result) &&
+    findViewActionHandoff([
+      {
+        success: result.success,
+        actionName: step?.toolCall?.name,
+        values: result.data?.values,
+      },
+    ])?.navigationPrepared === true
   );
 }
 
