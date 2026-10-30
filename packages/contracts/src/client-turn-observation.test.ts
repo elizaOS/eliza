@@ -7,8 +7,8 @@ import {
   parseClientCalendarDayObservation,
   parseClientTurnObservation,
   readClientTurnObservation,
-  readClientTurnObservationSupport,
   readClientTurnObservationPeerSupport,
+  readClientTurnObservationSupport,
 } from "./client-turn-observation.ts";
 
 const reminder = {
@@ -307,13 +307,52 @@ test("optional observation fields require an exact read-only peer schema declara
 test("format admission is bound to the known API process, not a clock or installation id", () => {
   const instance = "11111111-2222-4333-8444-555555555555";
   const other = "11111111-2222-4333-8444-666666666666";
-  const status = { serverInstanceId: instance, clientTurnObservationSupport: CLIENT_TURN_OBSERVATION_SUPPORT, canRespond: false };
-  assert.deepEqual(readClientTurnObservationPeerSupport(status, instance), CLIENT_TURN_OBSERVATION_SUPPORT);
-  assert.deepEqual(readClientTurnObservationPeerSupport(status, instance.toUpperCase()), CLIENT_TURN_OBSERVATION_SUPPORT);
-  for (const peer of [null, [], {}, {clientTurnObservationSupport:CLIENT_TURN_OBSERVATION_SUPPORT}, {...status,serverInstanceId:other}, {...status,serverInstanceId:Date.now()}, {...status,serverInstanceId:undefined,runtimeInstanceId:instance}, {...status,clientTurnObservationSupport:{version:1,optionalFields:["calendarDay"],permission:true}}]) {
-    assert.equal(readClientTurnObservationPeerSupport(peer, instance), undefined);
+  const status = {
+    serverInstanceId: instance,
+    clientTurnObservationSupport: CLIENT_TURN_OBSERVATION_SUPPORT,
+    canRespond: false,
+  };
+  assert.deepEqual(
+    readClientTurnObservationPeerSupport(status, instance),
+    CLIENT_TURN_OBSERVATION_SUPPORT,
+  );
+  assert.deepEqual(
+    readClientTurnObservationPeerSupport(status, instance.toUpperCase()),
+    CLIENT_TURN_OBSERVATION_SUPPORT,
+  );
+  for (const peer of [
+    null,
+    [],
+    {},
+    { clientTurnObservationSupport: CLIENT_TURN_OBSERVATION_SUPPORT },
+    { ...status, serverInstanceId: other },
+    { ...status, serverInstanceId: Date.now() },
+    { ...status, serverInstanceId: undefined, runtimeInstanceId: instance },
+    {
+      ...status,
+      clientTurnObservationSupport: {
+        version: 1,
+        optionalFields: ["calendarDay"],
+        permission: true,
+      },
+    },
+  ]) {
+    assert.equal(
+      readClientTurnObservationPeerSupport(peer, instance),
+      undefined,
+    );
   }
-  for (const expected of [undefined, null, "", "not-an-instance", Date.now(), other]) {
-    assert.equal(readClientTurnObservationPeerSupport(status, expected), undefined);
+  for (const expected of [
+    undefined,
+    null,
+    "",
+    "not-an-instance",
+    Date.now(),
+    other,
+  ]) {
+    assert.equal(
+      readClientTurnObservationPeerSupport(status, expected),
+      undefined,
+    );
   }
 });

@@ -170,13 +170,20 @@ export function readClientTurnObservationPeerSupport(
   status: unknown,
   expectedServerInstanceId: unknown,
 ): ClientTurnObservationSupport | undefined {
-  const expected = normalizeRemoteAgentPairingInstanceId(expectedServerInstanceId);
+  const expected = normalizeRemoteAgentPairingInstanceId(
+    expectedServerInstanceId,
+  );
   if (!expected) return;
   try {
     const input = plainRecord(status, "Peer status");
-    if (normalizeRemoteAgentPairingInstanceId(input.serverInstanceId) !== expected) return;
+    if (
+      normalizeRemoteAgentPairingInstanceId(input.serverInstanceId) !== expected
+    )
+      return;
     return readClientTurnObservationSupport(input.clientTurnObservationSupport);
-  } catch { return; }
+  } catch {
+    return;
+  }
 }
 
 /** Browser-safe validation shared by the renderer and current-turn reader. */

@@ -2,8 +2,8 @@ import { IncomingMessage, ServerResponse } from "node:http";
 import { Socket } from "node:net";
 import {
   CLIENT_TURN_OBSERVATION_SUPPORT,
-  readClientTurnObservationSupport,
   readClientTurnObservationPeerSupport,
+  readClientTurnObservationSupport,
 } from "@elizaos/contracts/client-turn-observation";
 import { expect, it } from "vitest";
 import {
@@ -50,7 +50,9 @@ it("publishes format support through the existing status route without declaring
       readClientTurnObservationSupport(payload.clientTurnObservationSupport),
     ).toEqual(CLIENT_TURN_OBSERVATION_SUPPORT);
     expect(payload.serverInstanceId).toBe(getPairingInstanceId());
-    expect(readClientTurnObservationPeerSupport(payload, getPairingInstanceId())).toEqual(CLIENT_TURN_OBSERVATION_SUPPORT);
+    expect(
+      readClientTurnObservationPeerSupport(payload, getPairingInstanceId()),
+    ).toEqual(CLIENT_TURN_OBSERVATION_SUPPORT);
     expect(payload.deviceActionRegistration).toBe("runtime_unavailable");
     expect(payload.canRespond).toBe(false);
     expect(payload).not.toHaveProperty("calendarPermission");
