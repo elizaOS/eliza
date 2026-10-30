@@ -242,9 +242,13 @@ runtime selection during APK merging. The default still packages both runtime
 libraries for standalone consumers such as Sense. The build fails if a generated
 file differs from `native/build-record.json`.
 
-Store the model uncompressed in the APK (`androidResources { noCompress 'gguf', 'lex' }`).
-A host made by `scripts/mobile/android/consumer-host.mjs` sets this in its profile:
-`"androidResources": { "noCompress": ["gguf", "lex"] }`.
+The APK may compress the voice models and lexicon. `VoiceBundleAssets` streams them
+to private storage and checks their hashes before native code memory-maps the
+extracted files. A host that needs uncompressed APK entries can still set
+`"androidResources": { "noCompress": ["gguf", "lex"] }` in its consumer profile.
+The canonical app also copies BGE through `ElizaAgentService` before the encoder
+verifies its pinned hash. `CopiedModelAssetsInstrumentedTest` checks both actual
+APK extraction paths, model hashes and repeated file reuse on a cleared installation.
 
 ## Licenses
 
