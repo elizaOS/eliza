@@ -409,3 +409,114 @@ test("chat-only Android requests a native stop and keeps contradictory receipts 
   await expect(notice).toHaveCount(0);
   await page.screenshot({ path: info.outputPath("stop-confirmed.png") });
 });
+
+test("Android Calendar uses the shared workspace and existing editor", async ({
+  page,
+}, info) => {
+  await fixture(page);
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (
+      request.url().includes("/api/lifeops/calendar/") &&
+      request.method() !== "GET"
+    )
+      writes.push(request.method());
+  });
+  await page.route("**/api/lifeops/calendar/calendars**", async (route) => {
+    await route.fulfill({
+      json: {
+        calendars: [
+          {
+            provider: "eliza",
+            side: "owner",
+            grantId: "u6-calendar",
+            calendarId: "primary",
+            connectorAccountId: null,
+            accountEmail: null,
+            summary: "Calendar fixture",
+            description: null,
+            primary: true,
+            accessRole: "owner",
+            backgroundColor: null,
+            foregroundColor: null,
+            timeZone: "UTC",
+            selected: true,
+            includeInFeed: true,
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/lifeops/calendar/feed**", async (route) => {
+    const url = new URL(route.request().url());
+    const start = new Date();
+    start.setHours(10, 0, 0, 0);
+    await route.fulfill({
+      json: {
+        events: Array.from({ length: 5 }, (_, index) => ({
+          id: `u6-event-${index}`,
+          externalId: `u6-event-${index}`,
+          agentId: "smoke-agent",
+          provider: "eliza",
+          side: "owner",
+          grantId: "u6-calendar",
+          calendarId: "primary",
+          title: `U6 planning ${index + 1}`,
+          description: "Existing editor owns this event",
+          location: "",
+          status: "confirmed",
+          startAt: start.toISOString(),
+          endAt: new Date(start.getTime() + 3600000).toISOString(),
+          isAllDay: false,
+          timezone: null,
+          htmlLink: null,
+          conferenceLink: null,
+          organizer: null,
+          attendees: [],
+          metadata: { etag: "u6-v1" },
+          syncedAt: start.toISOString(),
+          updatedAt: start.toISOString(),
+        })),
+        source: "cache",
+        state: "complete",
+        sources: [],
+        timeMin: url.searchParams.get("timeMin"),
+        timeMax: url.searchParams.get("timeMax"),
+        syncedAt: start.toISOString(),
+      },
+    });
+  });
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEditable();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "All apps", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "All apps", exact: true })
+    .getByRole("button", { name: /^Open Calendar(?: \(.*\))?$/ })
+    .click();
+  await expect(page.getByTestId("lifeops-calendar-section")).toBeVisible();
+  await expect(page.locator("[data-mobile-application]")).toHaveCount(1);
+  if (!process.env.U6_BASELINE)
+    await expect(page.locator("[data-shared-workspace]")).toHaveCount(1);
+  await page.getByRole("button", { name: "Month", exact: true }).click();
+  await page.getByRole("button", { name: "+2 more", exact: true }).click();
+  const overflow = page.getByTestId("lifeops-calendar-day-overflow");
+  await expect(overflow).toBeVisible();
+  await expect(overflow).toHaveCSS("width", "256px");
+  await page.screenshot({
+    path: info.outputPath("canonical-calendar-month.png"),
+  });
+  await overflow.getByRole("button", { name: /U6 planning 4/ }).click();
+  await expect(
+    page.getByRole("textbox", { name: "Event title", exact: true }),
+  ).toHaveValue("U6 planning 4");
+  await page.getByRole("button", { name: "Close", exact: true }).click();
+  await page.getByTestId("lifeops-calendar-new-event").click();
+  await page
+    .getByRole("textbox", { name: "Event title", exact: true })
+    .fill("Keep the existing Calendar editor");
+  await page.screenshot({
+    path: info.outputPath("canonical-calendar-editor.png"),
+  });
+  expect(writes).toEqual([]);
+});

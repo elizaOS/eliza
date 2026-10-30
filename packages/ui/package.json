@@ -248,6 +248,10 @@
       "types": "./dist/api/client-observation.d.ts",
       "import": "./dist/api/client-observation.js",
       "default": "./dist/api/client-observation.js"
+    },
+    "./styles/mobile-workspaces.css": {
+      "eliza-source": "./src/styles/mobile-workspaces.css",
+      "default": "./dist/styles/mobile-workspaces.css"
     }
   },
   "peerDependencies": {
