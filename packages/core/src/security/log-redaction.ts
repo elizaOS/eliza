@@ -63,22 +63,28 @@ const SENSITIVE_KEY_EXACT: ReadonlySet<string> = new Set([
 ]);
 
 /**
- * Telemetry/schema keys whose names contain "token" but whose values are
- * counts, budgets, or correlation ids rather than credentials. Closed list,
- * shared by log sinks and model-output redaction.
+ * Keys whose names contain "token" or end in "Key" but whose values are
+ * counts, budgets, or opaque request-correlation ids rather than credentials.
+ * Closed list, shared by log sinks and model-output redaction. Model-bound
+ * tool history must show request ids exactly: a masked id is copied back into
+ * tool arguments (the planner saw its own operationKey as "[REDACTED]").
  */
-const NON_SECRET_TOKEN_METADATA_KEYS: ReadonlySet<string> = new Set([
+const NON_SECRET_KEY_METADATA_KEYS: ReadonlySet<string> = new Set([
 	"budgettokens",
 	"cachecreationinputtokens",
 	"cachereadinputtokens",
 	"completiontokens",
 	"compactionthresholdtokens",
 	"contextwindowtokens",
+	"dedupekey",
 	"estimatedinputtokens",
 	"finalprompttokens",
+	"groupkey",
+	"idempotencykey",
 	"inputtokens",
 	"maxtokens",
 	"maxtokensomitted",
+	"operationkey",
 	"originalprompttokens",
 	"outputreservetokens",
 	"outputtokens",
@@ -98,7 +104,7 @@ const NON_SECRET_TOKEN_METADATA_KEYS: ReadonlySet<string> = new Set([
  */
 export function isSensitiveLogKey(key: string): boolean {
 	const normalized = key.toLowerCase().replace(/[_\-. ]/g, "");
-	if (NON_SECRET_TOKEN_METADATA_KEYS.has(normalized)) return false;
+	if (NON_SECRET_KEY_METADATA_KEYS.has(normalized)) return false;
 	if (SENSITIVE_KEY_EXACT.has(normalized)) return true;
 	if (SENSITIVE_KEY_SUBSTRINGS.some((needle) => normalized.includes(needle))) {
 		return true;
