@@ -153,12 +153,14 @@ function redactMatch(match: string, groups: string[]): string {
 		const head = truncateWellFormed(toWellFormedUnicode(match), tailIndex);
 		return `${head}${masked}`;
 	}
-	// Use a replacer function so `masked` is inserted literally. `masked` keeps
-	// the token's first/last characters verbatim, and String.replace treats a
-	// replacement STRING's `$&` / `$'` / "$`" / `$$` as special patterns — a
-	// secret starting with `ab$&…` would re-expand `$&` to the whole matched
-	// token, leaking the full secret back into the "redacted" output.
-	return match.replace(token, () => masked);
+	// A closing quote may follow the secret, so it is not at the tail, and a
+	// first-occurrence replace would mask the same bytes inside the key
+	// instead (`"admin_password":"admin"` -> `"***_password":"admin"`). The
+	// secret is the last capture and only a quote can follow it, so splice its
+	// last occurrence. Splicing also inserts `masked` literally: a replacement
+	// string would re-expand `$&` / `$$` sequences from the secret itself.
+	const tokenIndex = match.lastIndexOf(token);
+	return `${match.slice(0, tokenIndex)}${masked}${match.slice(tokenIndex + token.length)}`;
 }
 
 function redactText(text: string, patterns: readonly RegExp[]): string {

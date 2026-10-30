@@ -141,6 +141,13 @@ const HTTP_AUTH_PARAM_PATTERN = `${HTTP_TOKEN_PATTERN}${HTTP_BWS_PATTERN}=${HTTP
 const HTTP_AUTH_PARAM_LIST_PATTERN = `(?:,${HTTP_BWS_PATTERN})*${HTTP_AUTH_PARAM_PATTERN}(?:(?:${HTTP_BWS_PATTERN},)+${HTTP_BWS_PATTERN}${HTTP_AUTH_PARAM_PATTERN})*(?:${HTTP_BWS_PATTERN},)*`;
 const HTTP_TOKEN68_PATTERN = String.raw`[A-Za-z0-9._~+/\-]+={0,}`;
 
+// A quoted credential value runs to its own closing quote: spaces, the other
+// quote character and backslash escapes belong to it (the grammar secret-swap
+// uses for quoted credentials). A line break ends it, so an unterminated quote
+// cannot swallow the rest of a log. Escape and plain branches are disjoint.
+const DOUBLE_QUOTED_VALUE_PATTERN = String.raw`"((?:\\[^\r\n]|[^"\\\r\n])+)"`;
+const QUOTED_VALUE_PATTERN = String.raw`${DOUBLE_QUOTED_VALUE_PATTERN}|'((?:\\[^\r\n]|[^'\\\r\n])+)'`;
+
 /**
  * Credential-shaped value patterns, shared by model-output and log redaction. Applied to every
  * string that reaches the log sinks (object values, trailing args, headline
@@ -154,9 +161,9 @@ export const SENSITIVE_ASSIGNMENT_PATTERNS: readonly string[] = [
 	// A `_`/`-`-joined prefix (db_password, openai_api_key, github_token) names the same credential,
 	// as the uppercase ENV-style row already allows; `turnkey` has no separator and stays unmatched.
 	// Match only the start of the whole assignment key.
-	String.raw`/(?<![A-Za-z0-9_-])(?:[a-z0-9]+[_-])*(?:password|passwd|passphrase|mnemonic|seed|credential|secret|token|api[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|bot[_-]?token|session[_-]?key|private[_-]?key|client[_-]?secret|seed[_-]?phrase)\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/gi`,
+	String.raw`/(?<![A-Za-z0-9_-])(?:[a-z0-9]+[_-])*(?:password|passwd|passphrase|mnemonic|seed|credential|secret|token|api[_-]?key|access[_-]?key|access[_-]?token|refresh[_-]?token|auth[_-]?token|bot[_-]?token|session[_-]?key|private[_-]?key|client[_-]?secret|seed[_-]?phrase)\b\s*[=:]\s*(?:${QUOTED_VALUE_PATTERN}|([^\s"'\\]+))/gi`,
 	// ENV-style assignments (incl. seed/mnemonic/passphrase/credential names).
-	String.raw`/\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)|(?:api_key|access_token|refresh_token|auth_token|bot_token|session_key|private_key|client_secret|seed_phrase|connection_string|webhook_url))\b\s*[=:]\s*(["']?)([^\s"'\\]+)\1/g`,
+	String.raw`/\b(?:[A-Z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL)|(?:api_key|access_token|refresh_token|auth_token|bot_token|session_key|private_key|client_secret|seed_phrase|connection_string|webhook_url))\b\s*[=:]\s*(?:${QUOTED_VALUE_PATTERN}|([^\s"'\\]+))/g`,
 ];
 
 export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
@@ -185,13 +192,13 @@ export const SENSITIVE_TEXT_PATTERNS: readonly string[] = [
 	String.raw`\bBearer\s+([A-Za-z0-9._\-+=]{18,})\b`,
 	...SENSITIVE_ASSIGNMENT_PATTERNS,
 	// JSON fields.
-	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*"([^"]+)"`,
+	String.raw`"(?:apiKey|token|secret|password|passwd|accessToken|access_token|refreshToken|refresh_token|mnemonic|seedPhrase|passphrase|privateKey|credential|clientSecret|client_secret|sessionKey|session_key|authToken|auth_token|botToken|bot_token|connectionString|connection_string|webhookUrl|webhook_url)"\s*:\s*${DOUBLE_QUOTED_VALUE_PATTERN}`,
 	// Quoted credential keys with arbitrary naming — a closing quote sits where
 	// the ENV-style row expects `=`/`:`, so `{"api_key": "…"}` matched nothing.
 	// See core for the full rationale.
-	String.raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(["'])([^"'\\]+)\2`,
+	String.raw`(["'])(?:[A-Za-z0-9]+[_.\-]){0,8}(?:api[_.\-]?key|access[_.\-]?token|refresh[_.\-]?token|auth[_.\-]?token|bot[_.\-]?token|session[_.\-]?key|private[_.\-]?key|client[_.\-]?secret|seed[_.\-]?phrase|passphrase|password|passwd|mnemonic|credential|secret|token|key)\1\s*[:=]\s*(?:${QUOTED_VALUE_PATTERN})`,
 	// CLI flags (space-separated and --flag=value forms).
-	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(["']?)([^\s"']+)\1`,
+	String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:\s+|=)(?:${QUOTED_VALUE_PATTERN}|([^\s"']+))`,
 	// URI userinfo (database URLs, curl arguments, remotes carrying passwords).
 	String.raw`\b[a-z][a-z0-9+.-]*:\/\/([^\s/@]+)@`,
 	// Common token prefixes.
@@ -280,9 +287,11 @@ function redactSensitiveLogMatch(match: string, groups: string[]): string {
 	if (tailIndex > 0 && match.startsWith(token, tailIndex)) {
 		return `${match.slice(0, tailIndex)}${masked}`;
 	}
-	// Replacer function: `masked` keeps token affixes verbatim, and a string
-	// replacement would re-expand `$&`/`$$` sequences from the secret itself.
-	return match.replace(token, () => masked);
+	// A closing quote may follow the secret, and the same bytes may occur
+	// earlier in the key (`"admin_password":"admin"`); splice the last
+	// occurrence, which is the captured value (mirrors core's redactMatch).
+	const tokenIndex = match.lastIndexOf(token);
+	return `${match.slice(0, tokenIndex)}${masked}${match.slice(tokenIndex + token.length)}`;
 }
 
 /**
