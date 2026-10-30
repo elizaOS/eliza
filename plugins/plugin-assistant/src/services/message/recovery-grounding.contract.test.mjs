@@ -1,5 +1,5 @@
 // Source-owning controlled output contracts; no provider calls.
-// SDK root: node --test plugins/plugin-assistant/src/services/message/recovery-grounding.contract.test.mjs
+// SDK root: node --import=tsx --conditions=eliza-source --test plugins/plugin-assistant/src/services/message/recovery-grounding.contract.test.mjs
 import assert from "node:assert/strict";
 import test from "node:test";
 import { runWithStreamingContext } from "@elizaos/core";
