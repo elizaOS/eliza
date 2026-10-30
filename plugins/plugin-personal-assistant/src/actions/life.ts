@@ -3814,7 +3814,11 @@ function lifeEffectRequestId(message: Memory): string {
 const lifeEffectObservedAtFallbacks = new WeakMap<object, string>();
 
 function lifeEffectObservedAt(message: Memory): string {
-  if (message.createdAt !== undefined) {
+  if (
+    typeof message.createdAt === "number" &&
+    Number.isFinite(message.createdAt) &&
+    Number.isFinite(new Date(message.createdAt).getTime())
+  ) {
     return new Date(message.createdAt).toISOString();
   }
   const existing = lifeEffectObservedAtFallbacks.get(message);
@@ -5132,9 +5136,17 @@ async function runLifeOperationHandlerInner(
                   deferredDefinitionDraft?.request.timezone ??
                   windowPolicy?.timezone,
               ) ?? ownerFactTimeZone;
+            const relativeReminder =
+              ownerSurfaceActionName === "OWNER_REMINDERS" &&
+              llmPlan.cadenceKind === "once" &&
+              typeof llmPlan.dueInMinutes === "number" &&
+              llmPlan.dueInMinutes > 0;
             const llmCadence = buildCadenceFromLlmParams(llmPlan, {
               allowUnscheduled: ownerSurfaceActionName === "OWNER_TODOS",
               intent: currentText,
+              ...(relativeReminder
+                ? { now: new Date(lifeEffectObservedAt(message)) }
+                : {}),
               timeZone: llmCadenceTimeZone ?? undefined,
             });
             if (
@@ -5144,6 +5156,23 @@ async function runLifeOperationHandlerInner(
                 plannerCadence: llmCadence.cadence,
               })
             ) {
+              // Do not move an elapsed relative deadline forward or create an
+              // immediately due reminder when processing outlasts the request.
+              if (
+                relativeReminder &&
+                llmCadence.cadence.kind === "once" &&
+                Date.parse(llmCadence.cadence.dueAt) <= Date.now()
+              ) {
+                return {
+                  success: false as const,
+                  text: "That reminder time has already passed. When should I remind you?",
+                  data: {
+                    actionName: ownerSurfaceActionName,
+                    error: "REMINDER_TIME_PASSED",
+                    awaitingUserInput: true,
+                  },
+                };
+              }
               cadence = llmCadence.cadence;
               windowPolicy = llmCadence.windowPolicy ?? windowPolicy;
             }
@@ -7277,6 +7306,9 @@ export async function runLifeOperationHandler(
   options: HandlerOptions | undefined,
   callback?: HandlerCallback,
 ): Promise<ActionResult> {
+  // Capture the existing receipt clock before extraction or other awaits.
+  // Legacy messages without a valid timestamp keep this instant on retries.
+  lifeEffectObservedAt(message);
   const result = settleLifeActionReply(
     await runLifeOperationHandlerInner(runtime, message, state, options),
   );

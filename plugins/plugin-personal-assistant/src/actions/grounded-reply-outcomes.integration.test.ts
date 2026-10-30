@@ -156,6 +156,188 @@ describe("grounded reply outcomes — real PGlite", () => {
     },
   );
 
+  it.each([
+    { name: "delayed request", ageMs: 33_087 },
+    { name: "current request", ageMs: 0 },
+    { name: "missing timestamp", timestamp: undefined },
+    { name: "invalid timestamp", timestamp: Number.NaN },
+    { name: "out-of-range timestamp", timestamp: 8_640_000_000_000_001 },
+  ])("anchors a relative reminder to the $name", async (scenario) => {
+    vi.spyOn(assistant, "renderGroundedActionReply").mockResolvedValue({
+      kind: "deferred",
+      grounding: "Saved reminder facts",
+    });
+    const title = `Relative anchor ${scenario.name}`;
+    const before = Date.now();
+    const request = message(`Remind me in three minutes to ${title}`);
+    request.createdAt =
+      "ageMs" in scenario ? before - scenario.ageMs! : scenario.timestamp;
+    const options = {
+      parameters: {
+        action: "create",
+        kind: "definition",
+        ownerSurface: "OWNER_REMINDERS",
+        confirmed: true,
+        intent: request.content.text,
+        createPlan: {
+          mode: "create",
+          requestKind: "reminder",
+          nativeProjection: "in_app_only",
+          notificationMode: "default",
+          title,
+          description: null,
+          cadenceKind: "once",
+          dueInMinutes: 3,
+          timeZone: "UTC",
+          multiStep: false,
+        },
+      },
+    };
+    const result = await runLifeOperationHandler(
+      runtime,
+      request,
+      undefined,
+      options,
+    );
+    expect(result.success).toBe(true);
+    const id = result.effectReceipts?.[0]?.resource.id;
+    if (!id) throw new Error("Missing saved reminder receipt");
+    const saved = await service.getDefinition(id);
+    expect(saved.definition.cadence.kind).toBe("once");
+    if (saved.definition.cadence.kind !== "once")
+      throw new Error("Expected once cadence");
+    const due = Date.parse(saved.definition.cadence.dueAt);
+    if ("ageMs" in scenario)
+      expect(due).toBe(before - scenario.ageMs! + 180_000);
+    else {
+      expect(due).toBeGreaterThanOrEqual(before + 180_000);
+      expect(due).toBeLessThanOrEqual(Date.now() + 180_000);
+    }
+    expect(
+      (await service.listDefinitions()).filter(
+        (row) => row.definition.title === title,
+      ),
+    ).toHaveLength(1);
+    const retried = await runLifeOperationHandler(
+      runtime,
+      request,
+      undefined,
+      options,
+    );
+    expect(retried.success).toBe(true);
+    expect(
+      (await service.listDefinitions()).filter(
+        (row) => row.definition.title === title,
+      ),
+    ).toHaveLength(1);
+    expect(retried.effectReceipts?.[0]?.resource.id).toBe(id);
+  });
+
+  it("does not save or move forward an already elapsed relative reminder", async () => {
+    const title = "Elapsed relative anchor";
+    const request = message(`Remind me in three minutes to ${title}`);
+    request.createdAt = Date.now() - 181_000;
+    const result = await runLifeOperationHandler(runtime, request, undefined, {
+      parameters: {
+        action: "create",
+        kind: "definition",
+        ownerSurface: "OWNER_REMINDERS",
+        confirmed: true,
+        intent: request.content.text,
+        createPlan: {
+          mode: "create",
+          requestKind: "reminder",
+          nativeProjection: "in_app_only",
+          notificationMode: "default",
+          title,
+          description: null,
+          cadenceKind: "once",
+          dueInMinutes: 3,
+          timeZone: "UTC",
+          multiStep: false,
+        },
+      },
+    });
+    expect(result.success).toBe(false);
+    expect(result.data?.error).toBe("REMINDER_TIME_PASSED");
+    expect(
+      result.effectReceipts?.some((receipt) => receipt.outcome === "applied"),
+    ).not.toBe(true);
+    expect(
+      (await service.listDefinitions()).filter(
+        (row) => row.definition.title === title,
+      ),
+    ).toHaveLength(0);
+  });
+
+  it.each([
+    {
+      title: "Absolute clock unaffected",
+      text: "Remind me on January 1 2099 at noon",
+      cadenceKind: "once",
+      dueDate: "2099-01-01",
+    },
+    {
+      title: "Recurring clock unaffected",
+      text: "Remind me every day at noon",
+      cadenceKind: "daily",
+      dueDate: null,
+    },
+  ])(
+    "keeps $title independent of an old message timestamp",
+    async (scenario) => {
+      vi.spyOn(assistant, "renderGroundedActionReply").mockResolvedValue({
+        kind: "deferred",
+        grounding: "Saved reminder facts",
+      });
+      const request = message(scenario.text);
+      request.createdAt = Date.now() - 86_400_000;
+      const result = await runLifeOperationHandler(
+        runtime,
+        request,
+        undefined,
+        {
+          parameters: {
+            action: "create",
+            kind: "definition",
+            ownerSurface: "OWNER_REMINDERS",
+            confirmed: true,
+            intent: request.content.text,
+            createPlan: {
+              mode: "create",
+              requestKind: "reminder",
+              nativeProjection: "in_app_only",
+              notificationMode: "default",
+              title: scenario.title,
+              description: null,
+              cadenceKind: scenario.cadenceKind,
+              dueDate: scenario.dueDate,
+              dueInMinutes: null,
+              timeOfDay: "12:00",
+              timeZone: "UTC",
+              multiStep: false,
+            },
+          },
+        },
+      );
+      expect(result.success).toBe(true);
+      const id = result.effectReceipts?.[0]?.resource.id;
+      if (!id) throw new Error("Missing saved reminder receipt");
+      const saved = await service.getDefinition(id);
+      if (scenario.cadenceKind === "once") {
+        expect(saved.definition.cadence).toMatchObject({
+          kind: "once",
+          dueAt: "2099-01-01T12:00:00.000Z",
+        });
+      } else {
+        expect(saved.definition.cadence).toMatchObject({
+          kind: "times_per_day",
+          slots: [{ minuteOfDay: 720 }],
+        });
+      }
+    },
+  );
+
   it("grounds reminder confirmation in the persisted timezone, channel and absent native projection", async () => {
     const renderReply = vi
       .spyOn(assistant, "renderGroundedActionReply")
