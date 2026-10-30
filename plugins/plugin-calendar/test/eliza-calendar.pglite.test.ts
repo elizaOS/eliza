@@ -24,6 +24,7 @@ import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
   afterAll,
+  afterEach,
   beforeAll,
   beforeEach,
   describe,
@@ -2351,5 +2352,165 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
         metadata: { version: 1, etag: '"eliza-1"' },
       },
     );
+  });
+});
+
+// Live QA 2026-10-29 (trajectory tj-4eb0d496f71caa): at 10:35 PM PDT the owner
+// asked to fix the title of "drink coffeee", created for 9 AM that same day.
+// Model-bound read results mask every `key` field (CalendarFeed sources[].key
+// included) with the runtime's TOOL_DIAGNOSTIC_MASK, and the planner copied
+// that mask back as grantId/calendarId. The junk grant was dropped, but the
+// "[REDACTED]" calendarId survived, matched no listed calendar and redirected
+// the read to the unsupported Apple placeholder, so the earlier-today event
+// was never searched.
+describe("redacted source placeholders (real PGlite)", {
+  timeout: 30_000,
+}, () => {
+  const NOW = "2026-10-30T05:35:53.092Z"; // Thu Oct 29, 10:35 PM PDT
+  const TIME_ZONE = "America/Los_Angeles";
+  const REQUEST = "New edit the drink coffee event to remove the extra E.";
+
+  async function seedEarlierTodayCoffee() {
+    const created = await service.createCalendarEventMutation(INTERNAL_URL, {
+      title: "drink coffeee",
+      startAt: "2026-10-29T16:00:00.000Z",
+      endAt: "2026-10-29T17:00:00.000Z",
+      timeZone: TIME_ZONE,
+      idempotencyKey: "earlier-today-coffee",
+    });
+    if (!created.event) throw new Error("Expected a persisted seed event");
+    return created.event;
+  }
+
+  function coffeeRequest(id: string): Memory {
+    return {
+      id,
+      entityId: "00000000-0000-0000-0000-000000000102",
+      roomId: "00000000-0000-0000-0000-000000000103",
+      createdAt: Date.parse(NOW),
+      content: { text: REQUEST },
+    } as Memory;
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(NOW));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it.each([
+    [
+      "the runtime mask copied as source ids",
+      { grantId: "[REDACTED]", calendarId: "[REDACTED]" },
+    ],
+    ["omitted source ids", {}],
+  ])(
+    "a dateless title search finds an event that ended earlier today with %s",
+    async (_label, sourceIds) => {
+      const seeded = await seedEarlierTodayCoffee();
+      const model = vi.fn(async () => {
+        throw new Error("A typed title search must not call a model");
+      });
+      const action = createCalendarActionRunner({
+        runTextModel: model,
+        runJsonModel: model,
+        recentConversationTexts: vi.fn(async () => []),
+      });
+      // The second CALENDAR_SEARCH_EVENTS call from the trajectory, verbatim.
+      const result = await action.handler(
+        runtime,
+        coffeeRequest("00000000-0000-0000-0000-000000000901"),
+        undefined,
+        {
+          parameters: {
+            subaction: "search_events",
+            intent:
+              "Locate the existing coffee event so its title can be corrected.",
+            query: "coffee",
+            queries: ["drink coffee"],
+            details: {
+              timeZone: TIME_ZONE,
+              timezone: TIME_ZONE,
+              time_zone: TIME_ZONE,
+              includeHiddenCalendars: true,
+              oldTitle: "coffee",
+              query: "coffee",
+              queries: ["coffee", "drink coffee"],
+            },
+            ...sourceIds,
+          },
+        },
+      );
+      expect(result).toMatchObject({
+        success: true,
+        data: {
+          state: "complete",
+          // The default search window starts at local midnight today.
+          timeMin: "2026-10-29T07:00:00.000Z",
+          events: [{ id: seeded.id, title: "drink coffeee" }],
+          replyContext: {
+            context: { sourceScope: { grantId: null, calendarId: null } },
+          },
+        },
+        effectReceipts: [{ operation: "calendar.event.search" }],
+      });
+      expect(result?.data?.sources).toEqual([
+        expect.objectContaining({ status: "fresh", summary: "Eliza Calendar" }),
+      ]);
+      expect(model).not.toHaveBeenCalled();
+    },
+  );
+
+  it("updates the searched earlier-today event when the planner copies the mask as source ids", async () => {
+    const seeded = await seedEarlierTodayCoffee();
+    const extract = vi.fn(async ({ actionType }: { actionType: string }) => {
+      if (actionType !== "lifeops.calendar.extract_update_event") return null;
+      const parsed = { requiresInput: false, title: "drink coffee" };
+      return { rawResponse: JSON.stringify(parsed), parsed };
+    });
+    const action = createCalendarActionRunner({
+      runTextModel: vi.fn(async () => null),
+      runJsonModel: extract,
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const update = (id: string, target: string) =>
+      action.handler(runtime, coffeeRequest(id), undefined, {
+        parameters: {
+          subaction: "update_event",
+          intent: "Rename drink coffeee to drink coffee.",
+          targetKind: "query",
+          target,
+          grantId: "[REDACTED]",
+          calendarId: "[REDACTED]",
+          details: { timeZone: TIME_ZONE },
+        },
+      });
+
+    // Mutation targets keep exact phrase identity: the corrected spelling is
+    // not the stored title, so it must not select the event by itself.
+    const unmatched = await update(
+      "00000000-0000-0000-0000-000000000902",
+      "drink coffee",
+    );
+    expect(unmatched).toMatchObject({
+      success: false,
+      data: { requiresInput: true, missing: ["event target"] },
+    });
+    expect(extract).not.toHaveBeenCalled();
+
+    // The stored title returned by the search above identifies it exactly.
+    const renamed = await update(
+      "00000000-0000-0000-0000-000000000903",
+      "drink coffeee",
+    );
+    expect(renamed?.success).toBe(true);
+    expect(await service.getCalendarEventById(seeded.id)).toMatchObject({
+      title: "drink coffee",
+      startAt: "2026-10-29T16:00:00.000Z",
+      endAt: "2026-10-29T17:00:00.000Z",
+    });
   });
 });
