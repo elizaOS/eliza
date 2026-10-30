@@ -20,17 +20,18 @@ import {
 import { describe, expect, it } from "vitest";
 import { calendarPlugin } from "../../../../plugin-calendar/src/plugin.ts";
 import { ownerRemindersAction } from "../../../../plugin-personal-assistant/src/actions/owner-surfaces";
+import { personalAssistantPlugin } from "../../../../plugin-personal-assistant/src/plugin.js";
+import { retrieveContextualPlannerActions } from "./action-surface.js";
 import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "./stage1-evaluators.ts";
 
 const agentId = "agent";
 const roomId = "room";
 const entityId = "owner";
 const scope = `${agentId}:${roomId}:${entityId}`;
-const actions: Action[] = [
+const leanActions: Action[] = [
   ...(calendarPlugin.actions ?? []),
   ownerRemindersAction,
 ];
-const runtime = { agentId, actions } as unknown as IAgentRuntime;
 
 const evaluator = BUILTIN_RESPONSE_HANDLER_EVALUATORS.find(
   (candidate) => candidate.name === "core.simple_completed_side_effect_claim",
@@ -89,7 +90,20 @@ function priorRequest(
   } as Memory;
 }
 
-async function reroute(recentMessages: Memory[]) {
+const currentMessage = {
+  id: "current",
+  agentId,
+  roomId,
+  entityId,
+  createdAt: 10,
+  content: {
+    text: "move it to 4pm",
+    source: "client_chat",
+    channelType: ChannelType.DM,
+  },
+} as Memory;
+
+async function reroute(recentMessages: Memory[], actions = leanActions) {
   const messageHandler: MessageHandlerResult = {
     processMessage: "RESPOND",
     thought: "",
@@ -101,19 +115,8 @@ async function reroute(recentMessages: Memory[]) {
     },
   };
   const context = {
-    runtime,
-    message: {
-      id: "current",
-      agentId,
-      roomId,
-      entityId,
-      createdAt: 10,
-      content: {
-        text: "move it to 4pm",
-        source: "client_chat",
-        channelType: ChannelType.DM,
-      },
-    } as Memory,
+    runtime: { agentId, actions } as unknown as IAgentRuntime,
+    message: currentMessage,
     state: {
       values: {},
       data: { providers: { RECENT_MESSAGES: { data: { recentMessages } } } },
@@ -124,6 +127,31 @@ async function reroute(recentMessages: Memory[]) {
   };
   expect(await evaluator?.shouldRun(context)).toBe(true);
   return evaluator?.evaluate(context);
+}
+
+function reminderRequest(
+  clientMessageId: string,
+  createdAt: number,
+  outcome: "applied" | "preview",
+) {
+  return priorRequest(
+    clientMessageId,
+    createdAt,
+    "remind me to stretch in 20 minutes",
+    [
+      {
+        actionName: "OWNER_REMINDERS",
+        success: true,
+        effectReceipts: [
+          receipt(
+            `${clientMessageId}-receipt`,
+            "lifeops.owner.create",
+            outcome,
+          ),
+        ],
+      },
+    ],
+  );
 }
 
 const calendarCreate = priorRequest(
@@ -142,12 +170,17 @@ const calendarCreate = priorRequest(
 );
 
 describe("simple applied-claim reroute without candidates", () => {
-  it("plans in the calendar domain after a committed calendar create", async () => {
-    const patch = await reroute([calendarCreate]);
+  it("plans only in the calendar domain the newest committed create owns", async () => {
+    const patch = await reroute([
+      reminderRequest("older-reminder", 1, "applied"),
+      calendarCreate,
+      // A later preview commits nothing and cannot become the referent.
+      reminderRequest("later-preview", 4, "preview"),
+    ]);
     expect(patch?.requiresTool).toBe(true);
     expect(patch?.addCandidateActions).toBeUndefined();
-    expect(patch?.addContexts).toContain("calendar");
-    expect(patch?.addContexts).not.toContain("general");
+    // Not its incidental contacts/tasks contexts, and not the older reminder.
+    expect(patch?.addContexts).toEqual(["calendar"]);
   });
 
   it("keeps the general fallback when no committed effect is recorded", async () => {
@@ -166,35 +199,27 @@ describe("simple applied-claim reroute without candidates", () => {
     expect(patch?.addContexts).toEqual(["general"]);
   });
 
-  it("follows the newest committed reminder effect, not an older calendar one", async () => {
+  it("follows the newest committed reminder effect into its task contexts", async () => {
     const patch = await reroute([
       calendarCreate,
-      priorRequest("reminder", 3, "remind me to stretch in 20 minutes", [
-        {
-          actionName: "OWNER_REMINDERS",
-          success: true,
-          effectReceipts: [
-            receipt("reminder-create", "lifeops.owner.create", "applied"),
-          ],
-        },
-      ]),
-      // A later preview commits nothing and cannot become the referent.
-      priorRequest("later-preview", 4, "draft lunch with Ana", [
-        {
-          actionName: "CALENDAR_CREATE_EVENT",
-          success: true,
-          effectReceipts: [
-            receipt(
-              "calendar-later-preview",
-              "calendar.event.create",
-              "preview",
-            ),
-          ],
-        },
-      ]),
+      reminderRequest("reminder", 3, "applied"),
     ]);
     expect(patch?.addContexts).toContain("tasks");
-    // Only the older calendar create declares contacts.
-    expect(patch?.addContexts).not.toContain("contacts");
+  });
+
+  it("starts the LifeOps planner on the calendar family, not every task family", async () => {
+    const actions = personalAssistantPlugin.actions ?? [];
+    const patch = await reroute([calendarCreate], actions);
+    expect(patch?.addContexts).toEqual(["calendar"]);
+    const initial = retrieveContextualPlannerActions({
+      actions,
+      deferUnscopedBootstrap: true,
+      query: "move it to 4pm",
+      message: currentMessage,
+      intents: [],
+      contexts: ["simple", ...(patch?.addContexts ?? [])],
+    }).actions.map((action) => action.name);
+    expect(initial).toContain("CALENDAR");
+    expect(initial).not.toContain("OWNER_REMINDERS");
   });
 });

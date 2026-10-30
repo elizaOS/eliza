@@ -18,6 +18,7 @@ import {
   getCandidateActionBackstopRules,
   getDirectActionRoutingRules,
   getUserMessageText,
+  normalizeContextId,
 } from "@elizaos/core";
 import { preferredOperationNames } from "../../runtime/action-retrieval.ts";
 import { SIMPLE_CONTEXT_ID } from "../../runtime/message-handler";
@@ -227,6 +228,27 @@ function latestCommittedEffectActions(
   return (runtime.actions ?? []).filter((action) =>
     actionNames.has(action.name),
   );
+}
+
+/**
+ * The discovery contexts an effect's action owns through its own domain or
+ * resource tags, else all of them. A calendar write also declares tasks and
+ * contacts; with LifeOps those pull every reminder, alarm and routine family
+ * into the first planner surface.
+ */
+function effectOwnerContexts(action: Action): AgentContext[] {
+  const contexts = actionDiscoveryContexts(action);
+  const owned = new Set(
+    (action.tags ?? []).flatMap((tag) =>
+      tag.startsWith("domain:") || tag.startsWith("resource:")
+        ? [normalizeContextId(tag.slice(tag.indexOf(":") + 1))]
+        : [],
+    ),
+  );
+  const primary = contexts.filter((context) =>
+    owned.has(normalizeContextId(context)),
+  );
+  return primary.length > 0 ? primary : contexts;
 }
 
 export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvaluator[] =
@@ -643,7 +665,7 @@ export const BUILTIN_RESPONSE_HANDLER_EVALUATORS: readonly ResponseHandlerEvalua
             : filterSelectedContextsForRole(
                 mergeAgentContexts(
                   ...latestCommittedEffectActions(runtime, message, state).map(
-                    (action) => actionDiscoveryContexts(action),
+                    effectOwnerContexts,
                   ),
                 ),
                 availableContexts,
