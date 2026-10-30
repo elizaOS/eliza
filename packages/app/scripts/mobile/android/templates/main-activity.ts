@@ -161,6 +161,8 @@ ${launcherConstants}
         registerPlugin(ElizaSecureCredentialsPlugin.class);
         // Native Eliza Cloud sign-in (email code, SMS code, native Google).
         registerPlugin(ElizaCloudSignInPlugin.class);
+        // Appended after generated plugin discovery, preserving the credential intent boundary.
+        initialPlugins.add(ElizaSecureStorePlugin.class);
         registerPlugin(ElizaPlayExportPlugin.class);
         registerPlugin(ElizaPlayVoicePlugin.class);
         registerPlugin(ElizaPlaySettingsPlugin.class);

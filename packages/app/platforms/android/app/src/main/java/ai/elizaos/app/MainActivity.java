@@ -107,6 +107,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ResourceProbePlugin.class);
         registerPlugin(CredentialManagerPlugin.class);
         registerPlugin(ElizaCloudSignInPlugin.class);
+        // BridgeActivity appends this list after generated plugins, so the resident-aware
+        // secure-store binding cannot be replaced by the generic auto-discovered plugin.
+        initialPlugins.add(ElizaSecureStorePlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
         registerPlugin(SlotClockPlugin.class);
@@ -153,7 +156,12 @@ public class MainActivity extends BridgeActivity {
         // the cold-boot path; this is the fast path when the user opens the
         // app.
         if (ElizaAgentService.shouldAutoStart(this)) {
-            ElizaAgentService.start(this);
+            try {
+                ElizaAgentService.start(this);
+            } catch (ai.eliza.plugins.agent.runtime.CredentialShutdownLease.Pending pending) {
+                // The credential writer or its delayed stop ACK still owns runtime startup.
+                Log.i(TAG, "Agent auto-start deferred until credential retirement completes");
+            }
             // Ask for notification consent only once the user (or the device
             // image) has actually committed to running the on-device agent —
             // keep first paint free of a cold permission ask and let

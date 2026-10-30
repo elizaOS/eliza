@@ -19,6 +19,13 @@ packages. They share payload extraction, installation identity, request deadline
 update journaling, qualified-clock projection and cancellable job ownership.
 Hosts supply the inventory format, durability/clock adapters and release policy;
 these APIs neither authorize an installation nor expose renderer capabilities.
+`ResidentCredentialStore` shares provider admission, conditional removal and
+credential ownership over the host's protected slots. It composes the generic
+mutation conductor in `plugin-native-secure-store`. `CredentialShutdownLease`
+retains the service start fence after exact stop acknowledgement until its owner
+releases it after commit or proven pre-commit cancellation. Failed stop or uncertain
+commit stays fenced, and stale release cannot clear a newer request. The retained
+`CredentialIntentFence` name delegates to the same secure-store implementation.
 File-based primitives require Android API 26 or newer. Run their portable JVM
 crash/recovery tests with JDK 21 and `bun run --cwd plugins/plugin-native-agent test:native-host`.
 
@@ -356,6 +363,17 @@ The compatibility host keeps its storage slot and subclass name; records do not
 move or change shape. The later native profile overrides Cloud embeddings with
 the admitted local BGE route; this extraction preserves the existing generic
 provider behavior.
+
+`CredentialMutationConductor` shares the resident credential commit boundary. It
+reserves a stop request before dispatch, waits without holding the vault lock,
+and commits only after that exact request has confirmed process absence.
+`CredentialShutdownLease` keeps startup fenced between acknowledgement and the
+credential commit. Pre-commit cancellation or timeout records abandonment and
+releases only after the eventual stop acknowledgement; uncertain writes stay
+fenced. Superseded owners can retire only their own request and cannot clear a
+newer mutation's lifecycle state. The native sign-in outcome carries request and
+credential identity when the renderer supplies a request ID, while preserving
+the existing response shape for older renderers.
 
 ### First-party connection transport and resident lifecycle
 

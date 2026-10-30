@@ -12,12 +12,62 @@ import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
 import com.getcapacitor.annotation.CapacitorPlugin
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 
 @CapacitorPlugin(name = "ElizaSecureStore")
-class SecureStorePlugin : Plugin() {
+open class SecureStorePlugin : Plugin() {
     private val store: NativeSecureStore
         get() = NativeSecureStore(context)
     private val maximumValueBytes = NativeSecureStore.MAXIMUM_VALUE_BYTES
+    private val mutationWorker = Executors.newSingleThreadExecutor()
+    @Volatile private var closed = false
+
+    /** Hosts reserve their existing credential intent before work enters the queue. */
+    protected open fun reserveCredentialMutation(key: String): Runnable = Runnable { }
+
+    /** Only a host-bound resident credential needs asynchronous service retirement. */
+    protected open fun useCredentialWorker(key: String): Boolean = false
+
+    /** Called before NativeSecureStore acquires its own lock. Never call a host from inside it. */
+    @Throws(Exception::class)
+    protected open fun <T> mutateCredential(
+        key: String, value: String?, guard: Runnable, effect: NativeSecureStore.Effect<T>,
+    ): T {
+        guard.run()
+        return effect.run()
+    }
+
+    private fun enqueueMutation(call: PluginCall, key: String, action: (Runnable) -> Unit) {
+        try {
+            if (closed) throw IllegalStateException("Secure-store bridge closed")
+            val owner = reserveCredentialMutation(key)
+            val guard = Runnable {
+                if (closed) throw IllegalStateException("Secure-store bridge closed")
+                owner.run()
+            }
+            val mutation = Runnable {
+                try { guard.run(); action(guard) }
+                catch (_: Exception) {
+                    // error-policy:J1 Lifecycle/admission errors carry no credential details.
+                    call.resolve(errorResult("native_error", "Android Keystore operation failed."))
+                }
+            }
+            if (useCredentialWorker(key)) mutationWorker.execute(mutation) else mutation.run()
+        } catch (_: RejectedExecutionException) {
+            // error-policy:J1 Closed native bridges never accept another queued write.
+            call.resolve(errorResult("native_error", "Android Keystore operation failed."))
+        } catch (_: Exception) {
+            // error-policy:J1 Host admission may reject before any store operation.
+            call.resolve(errorResult("native_error", "Android Keystore operation failed."))
+        }
+    }
+
+    override fun handleOnDestroy() {
+        closed = true
+        mutationWorker.shutdown()
+        super.handleOnDestroy()
+    }
 
     @PluginMethod
     fun get(call: PluginCall) {
@@ -47,27 +97,24 @@ class SecureStorePlugin : Plugin() {
             call.resolve(errorResult("invalid_input", "Secure value must be non-empty and at most $maximumValueBytes UTF-8 bytes."))
             return
         }
-        try {
-            store.set(key, value)
+        enqueueMutation(call, key) { guard ->
+            mutateCredential(key, value, guard, NativeSecureStore.Effect {
+                store.set(key, value)
+                true
+            })
             call.resolve(JSObject().apply { put("ok", true) })
-        } catch (_: Exception) {
-            // error-policy:J1 native write errors cross the bridge without secret-bearing details.
-            call.resolve(errorResult("native_error", "Android Keystore operation failed."))
         }
     }
 
     @PluginMethod
     fun remove(call: PluginCall) {
         val key = validatedKey(call) ?: return
-        try {
-            val deleted = store.remove(key)
+        enqueueMutation(call, key) { guard ->
+            val deleted = mutateCredential(key, null, guard, NativeSecureStore.Effect { store.remove(key) })
             call.resolve(JSObject().apply {
                 put("ok", true)
                 put("deleted", deleted)
             })
-        } catch (_: Exception) {
-            // error-policy:J1 failed deletion is reported explicitly without exposing stored values.
-            call.resolve(errorResult("native_error", "Android Keystore operation failed."))
         }
     }
 
