@@ -49,6 +49,7 @@ import {
   describeCronSchedule,
   describeIntervalMs,
   describeOnceAt,
+  zonedIsoTimestamp,
 } from "../triggers/humanize.ts";
 import {
   executeTriggerTask,
@@ -1030,7 +1031,11 @@ async function opCreate(
       kind: triggerConfig.kind,
       workflowId,
       workflowName,
-      scheduledAtIso: triggerConfig.scheduledAtIso,
+      // Read by the reply model, so in the sender's zone; the stored config
+      // and the trigger API keep their own form.
+      scheduledAtIso:
+        triggerConfig.scheduledAtIso &&
+        zonedIsoTimestamp(triggerConfig.scheduledAtIso, messageTimeZone),
       cronExpression: triggerConfig.cronExpression,
       intervalMs: triggerConfig.intervalMs,
       timezone: triggerConfig.timezone,
@@ -1281,7 +1286,9 @@ async function opUpdate(
       taskId: String(task.id),
       triggerId: next.triggerId,
       triggerType: next.triggerType,
-      scheduledAtIso: next.scheduledAtIso,
+      scheduledAtIso:
+        next.scheduledAtIso &&
+        zonedIsoTimestamp(next.scheduledAtIso, messageTimeZone),
       cronExpression: next.cronExpression,
       intervalMs: next.intervalMs,
       timezone: next.timezone,
