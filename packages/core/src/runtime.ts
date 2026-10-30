@@ -4569,21 +4569,24 @@ export class AgentRuntime implements IAgentRuntime {
 	}
 
 	/**
-	 * Get the secrets to redact from character settings.
-	 * Returns an empty object if no secrets are configured.
+	 * Get the secrets to redact from character.settings.secrets and
+	 * character.secrets. initialize() shares one object between the two maps only
+	 * when secrets exist at boot; setSetting on a secretless agent, Cloud login
+	 * and config reload leave them distinct, so read both like the secret-swap
+	 * session does. Returns an empty object if no secrets are configured.
 	 */
 	private getSecretsForRedaction(): Record<string, string> {
-		const secrets = this.character.settings?.secrets;
-		if (!secrets || typeof secrets !== "object") {
-			return {};
-		}
+		const sources = [this.character.settings?.secrets, this.character.secrets];
 		// Preserve declared non-credential configuration in model context.
 		// Other secret strings retain literal redaction and the pattern sweep.
 		const result: Record<string, string> = {};
-		for (const [key, value] of Object.entries(secrets)) {
-			if (NON_CREDENTIAL_SECRET_KEYS.has(key.trim().toUpperCase())) continue;
-			if (typeof value === "string" && value.length > 0) {
-				result[key] = value;
+		for (const secrets of sources) {
+			if (!secrets || typeof secrets !== "object") continue;
+			for (const [key, value] of Object.entries(secrets)) {
+				if (NON_CREDENTIAL_SECRET_KEYS.has(key.trim().toUpperCase())) continue;
+				if (typeof value === "string" && value.length > 0) {
+					result[key] = value;
+				}
 			}
 		}
 		return result;
