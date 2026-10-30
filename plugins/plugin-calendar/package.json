@@ -78,6 +78,12 @@
       "types": "./dist/mutations/managed.d.ts",
       "import": "./dist/mutations/managed.js",
       "default": "./dist/mutations/managed.js"
+    },
+    "./client/day-observation": {
+      "eliza-source": "./src/client/day-observation.ts",
+      "types": "./dist/client/day-observation.d.ts",
+      "import": "./dist/client/day-observation.js",
+      "default": "./dist/client/day-observation.js"
     }
   },
   "scripts": {

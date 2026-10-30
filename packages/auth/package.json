@@ -339,6 +339,12 @@
       "types": "./dist/accounts/index.d.ts",
       "import": "./dist/accounts/index.js",
       "default": "./dist/accounts/index.js"
+    },
+    "./app-return": {
+      "eliza-source": "./src/sdk/app-return.ts",
+      "types": "./dist/sdk/app-return.d.ts",
+      "import": "./dist/sdk/app-return.js",
+      "default": "./dist/sdk/app-return.js"
     }
   },
   "scripts": {

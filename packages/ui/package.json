@@ -242,6 +242,12 @@
       "types": "./dist/mobile-shell/core.d.ts",
       "import": "./dist/mobile-shell/core.js",
       "default": "./dist/mobile-shell/core.js"
+    },
+    "./api/client-observation": {
+      "eliza-source": "./src/api/client-observation.ts",
+      "types": "./dist/api/client-observation.d.ts",
+      "import": "./dist/api/client-observation.js",
+      "default": "./dist/api/client-observation.js"
     }
   },
   "peerDependencies": {
