@@ -524,6 +524,8 @@ test("Android Calendar uses the shared workspace and existing editor", async ({
 test("Home Calendar ranks the current visible feed and retires held old-owner reads", async ({
   page,
 }, info) => {
+  let clock = new Date("2026-10-02T12:00:00Z");
+  await page.clock.setFixedTime(clock);
   await fixture(page);
   await page.route("**/api/plugins", (route) =>
     route.fulfill({
@@ -572,11 +574,16 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
     foregroundColor: null,
     accountEmail: null,
   };
+  let eventOverrides:
+    | { title: string; startAt: string; endAt: string }[]
+    | undefined;
+  let feedBegin: string | undefined;
+  const windows: { timeMin: string | null; timeMax: string | null }[] = [];
   const payload = (url: URL, label: string) => {
-    const start = new Date();
+    const start = new Date(clock);
     if (futureMinutes === null) start.setHours(0, 0, 0, 0);
-    else start.setTime(Date.now() + futureMinutes * 60000);
-    return {
+    else start.setTime(clock.getTime() + futureMinutes * 60000);
+    const result = {
       state: feedState,
       source: "cache",
       sources: [],
@@ -606,6 +613,15 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
         },
       ],
     };
+    if (eventOverrides)
+      result.events = eventOverrides.map((event, index) => ({
+        ...result.events[0],
+        ...event,
+        id: `period-${index}`,
+        externalId: `period-${index}`,
+      }));
+    if (feedBegin) result.timeMin = feedBegin;
+    return result;
   };
   await page.route("**/api/lifeops/calendar/calendars**", (route) => {
     sourceReads++;
@@ -613,6 +629,11 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   });
   await page.route("**/api/lifeops/calendar/feed**", async (route) => {
     feedReads++;
+    const url = new URL(route.request().url());
+    windows.push({
+      timeMin: url.searchParams.get("timeMin"),
+      timeMax: url.searchParams.get("timeMax"),
+    });
     if (hold) {
       hold = false;
       held = route;
@@ -647,6 +668,84 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   await page.keyboard.press("Escape");
   await page.screenshot({ path: info.outputPath("home-shared-feed.png") });
   expect({ feed: feedReads, sources: sourceReads }).toEqual(initial);
+  expect(windows[0]).toEqual({
+    timeMin: "2026-09-28T00:00:00.000Z",
+    timeMax: "2026-11-01T00:00:00.000Z",
+  });
+  const refresh = async () => {
+    for (const visibilityState of ["hidden", "visible"])
+      await page.evaluate((value) => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          value,
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      }, visibilityState);
+  };
+  const item = (title: string, date: string, hour = 9) => ({
+    title,
+    startAt: `${date}T${String(hour).padStart(2, "0")}:00:00Z`,
+    endAt: `${date}T${String(hour + 1).padStart(2, "0")}:00:00Z`,
+  });
+  clock = new Date("2026-10-30T12:00:00Z");
+  await page.clock.setFixedTime(clock);
+  for (const scenario of [
+    {
+      name: "past-week",
+      events: [item("Past week", "2026-10-29")],
+      expected: "Past week",
+    },
+    {
+      name: "past-month",
+      events: [item("Past month", "2026-10-10")],
+      expected: "Past month",
+    },
+    {
+      name: "upcoming-today",
+      events: [
+        item("Past today", "2026-10-30", 8),
+        item("Upcoming today", "2026-10-30", 13),
+      ],
+      expected: "Upcoming today",
+    },
+    {
+      name: "recent-past",
+      events: [
+        item("Earlier today", "2026-10-30", 7),
+        item("Recent past today", "2026-10-30", 9),
+      ],
+      expected: "Recent past today",
+    },
+  ]) {
+    eventOverrides = scenario.events;
+    await refresh();
+    await expect(card).toContainText(scenario.expected);
+    await page.screenshot({
+      path: info.outputPath(`home-${scenario.name}.png`),
+    });
+  }
+  feedBegin = "2026-10-30T00:00:00Z";
+  eventOverrides = [item("Incomplete priority", "2026-10-30", 13)];
+  await refresh();
+  await expect(card).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("home-incomplete-priority.png"),
+  });
+  clock = new Date("2026-10-02T12:00:00Z");
+  await page.clock.setFixedTime(clock);
+  feedBegin = "2026-10-01T00:00:00Z";
+  eventOverrides = [];
+  await refresh();
+  await expect(card).toHaveCount(0);
+  feedBegin = undefined;
+  eventOverrides = [item("Hidden source", "2026-10-02", 13)];
+  source.includeInFeed = false;
+  await refresh();
+  await expect(card).toHaveCount(0);
+  source.includeInFeed = true;
+  eventOverrides = undefined;
+  await refresh();
+  await expect(card).toContainText("First today");
   hold = true;
   await page.evaluate(() => {
     Object.defineProperty(document, "visibilityState", {
@@ -728,6 +827,7 @@ test("Home Calendar ranks the current visible feed and retires held old-owner re
   await info.attach("request-counts", {
     body: JSON.stringify({
       initial,
+      windows,
       total: { feed: feedReads, sources: sourceReads },
     }),
     contentType: "application/json",

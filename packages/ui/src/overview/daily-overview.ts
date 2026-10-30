@@ -1222,8 +1222,9 @@ export interface OverviewCalendarSnapshot<
   } | null;
   calendars: readonly S[];
 }
-/** Select from the complete current owner's visible month, with this week crossing months.
- * A partial query cannot establish priority or an empty month. No data is read here. */
+/** Select today, then the full week, then the full month from the current owner's
+ * visible feed. Each period prefers unended events, then the most recent past event.
+ * A partial query cannot establish priority or emptiness. No data is read here. */
 export function selectHomeCalendar<
   E extends OverviewCalendarEvent,
   S extends OverviewCalendarSource,
@@ -1279,8 +1280,9 @@ export function selectHomeCalendar<
     today = Date.UTC(p.year, p.month - 1, p.day),
     monthStart = Date.UTC(p.year, p.month - 1, 1),
     monthEnd = Date.UTC(p.year, p.month, 1);
-  const weekEnd =
-    today + (7 - ((new Date(today).getUTCDay() + 6) % 7)) * 86400000;
+  const weekStart = today - ((new Date(today).getUTCDay() + 6) % 7) * 86400000;
+  const weekEnd = weekStart + 7 * 86400000;
+  const firstRequiredDay = Math.min(monthStart, weekStart);
   const day = (value: string, allDay = false) => {
     const instant = new Date(value);
     if (!Number.isFinite(instant.getTime())) return NaN;
@@ -1294,13 +1296,18 @@ export function selectHomeCalendar<
     !Number.isFinite(begin) ||
     !Number.isFinite(end) ||
     begin > now.getTime() ||
-    firstDay > monthStart ||
+    firstDay > firstRequiredDay ||
     day(snapshot.feed.timeMax) < Math.max(monthEnd, weekEnd)
   )
     return quiet;
-  if (firstDay === monthStart) {
+  if (firstDay === firstRequiredDay) {
     const first = parts(new Date(begin));
-    if (first.hour !== 0 || first.minute !== 0 || first.second !== 0)
+    if (
+      first.hour !== 0 ||
+      first.minute !== 0 ||
+      first.second !== 0 ||
+      new Date(begin).getUTCMilliseconds() !== 0
+    )
       return quiet;
   }
   const visible = snapshot.feed.events.filter(
@@ -1319,16 +1326,33 @@ export function selectHomeCalendar<
           !hiddenSource(source),
       ),
   );
-  const candidates = visible.filter((event) => {
-    const start = day(event.startAt, event.isAllDay),
-      end = day(event.endAt, event.isAllDay);
-    if (start >= today && start < Math.max(monthEnd, weekEnd)) return true;
-    if (start >= today) return false;
-    if (end > today) return true;
-    if (event.isAllDay || end !== today) return false;
-    const last = parts(new Date(event.endAt));
-    return last.hour > 0 || last.minute > 0 || last.second > 0;
-  });
+  const periods = [
+    [today, today + 86400000],
+    [weekStart, weekEnd],
+    [monthStart, monthEnd],
+  ];
+  const rank = (event: E) => {
+    const start = day(event.startAt, event.isAllDay);
+    const endInstant = new Date(event.endAt);
+    if (!Number.isFinite(endInstant.getTime())) return -1;
+    const endParts = parts(endInstant, event.isAllDay ? "UTC" : timeZone);
+    // Timed ends retain their local time; all-day ends are exclusive civil dates.
+    const end =
+      day(event.endAt, event.isAllDay) +
+      (event.isAllDay
+        ? 0
+        : (endParts.hour * 3600 + endParts.minute * 60 + endParts.second) *
+            1000 +
+          endInstant.getUTCMilliseconds());
+    return periods.findIndex(
+      ([begin, finish]) => start < finish && end > begin,
+    );
+  };
+  const upcoming = (event: E) =>
+    event.isAllDay
+      ? day(event.endAt, true) > today
+      : Date.parse(event.endAt) > now.getTime();
+  const candidates = visible.filter((event) => rank(event) >= 0);
   const key = (event: E) =>
     JSON.stringify([
       event.provider,
@@ -1340,13 +1364,14 @@ export function selectHomeCalendar<
       event.id,
     ]);
   candidates.sort((a, b) => {
-    const rank = (event: E) => {
-      const start = day(event.startAt, event.isAllDay);
-      return start <= today ? 0 : start < weekEnd ? 1 : 2;
-    };
+    const aUpcoming = upcoming(a),
+      bUpcoming = upcoming(b);
     return (
       rank(a) - rank(b) ||
-      Date.parse(a.startAt) - Date.parse(b.startAt) ||
+      Number(bUpcoming) - Number(aUpcoming) ||
+      (aUpcoming
+        ? Date.parse(a.startAt) - Date.parse(b.startAt)
+        : Date.parse(b.startAt) - Date.parse(a.startAt)) ||
       key(a).localeCompare(key(b))
     );
   });
@@ -1356,6 +1381,6 @@ export function selectHomeCalendar<
         event: null,
         candidates,
         verified: true,
-        emptyLabel: "No events this month",
+        emptyLabel: "Nothing planned",
       };
 }
