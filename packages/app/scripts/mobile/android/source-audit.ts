@@ -18,6 +18,7 @@ import {
 } from "../context.ts";
 import { escapeRegExp } from "../escape.ts";
 import {
+  ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES,
   ANDROID_CLOUD_SPLASH_MARK_RESOURCE,
   ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
@@ -272,6 +273,15 @@ export function auditAndroidCloudSource(
       );
     }
   });
+  // Cloud sign-in is native in every Cloud variant: the shared client's host
+  // and its storage policy must survive the strip.
+  for (const required of ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES) {
+    let found = false;
+    walkFiles(javaRoot, (filePath) => {
+      if (path.basename(filePath) === required) found = true;
+    });
+    if (!found) failures.push(`app/src/main/java is missing ${required}`);
+  }
 
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
   for (const directory of ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES) {
@@ -409,16 +419,16 @@ export function auditAndroidLauncherSource(phase, options = {}) {
   const mainActivity = fs.existsSync(mainActivityPath)
     ? fs.readFileSync(mainActivityPath, "utf8")
     : "";
+  // Cloud sign-in is native: the launcher registers the shared sign-in host
+  // and never navigates its WebView to a hosted login page or reloads it on
+  // an auth callback.
   if (
-    !mainActivity.includes("isCloudAuthCallback(Intent intent)") ||
-    !mainActivity.includes('"elizaos".equalsIgnoreCase(data.getScheme())') ||
-    !mainActivity.includes('"auth".equalsIgnoreCase(data.getHost())') ||
-    !mainActivity.includes('"/callback".equals(data.getPath())') ||
-    !mainActivity.includes("getBridge().getLocalUrl()") ||
-    !mainActivity.includes("webView.loadUrl(localUrl)")
+    !mainActivity.includes("registerPlugin(ElizaCloudSignInPlugin.class);") ||
+    mainActivity.includes("isCloudAuthCallback(") ||
+    mainActivity.includes("webView.loadUrl(")
   ) {
     throw new Error(
-      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity does not restore the bundled renderer after the exact in-app auth callback.`,
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity must register the native Cloud sign-in host and must not reload the WebView on an auth callback.`,
     );
   }
   console.log(`[mobile-build] android-launcher ${phase} audit passed.`);

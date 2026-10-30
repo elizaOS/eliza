@@ -14,7 +14,6 @@ import {
 } from "../../lib/android-cloud-artifact-audit.ts";
 import {
   ANDROID_CLOUD_SPLASH_MARK_RESOURCE,
-  ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS,
   ANDROID_LP3_COLOR_POLICY_COMPONENTS,
   ANDROID_LP3_COLOR_POLICY_JAVA_FILES,
   ANDROID_LP3_COLOR_POLICY_REQUIRED_PERMISSIONS,
@@ -641,12 +640,11 @@ export function auditAndroidLauncherArtifact({
       },
     );
   }
-  if (
-    JSON.stringify(runtimeConfig.server?.allowNavigation) !==
-    JSON.stringify(ANDROID_LAUNCHER_IN_APP_AUTH_HOSTS)
-  ) {
+  // Sign-in is native, so the launcher WebView never navigates to a hosted
+  // page: any packaged navigation allowance is a regression.
+  if (runtimeConfig.server?.allowNavigation !== undefined) {
     throw mobileBuildError(
-      "[mobile-build] android-launcher must keep WebView navigation pinned to the canonical Eliza hosted-auth origins.",
+      "[mobile-build] android-launcher must not allow WebView navigation away from the bundled renderer; Cloud sign-in is native.",
       {
         code: "ANDROID_LAUNCHER_AUTH_NAVIGATION_INVALID",
         context: {

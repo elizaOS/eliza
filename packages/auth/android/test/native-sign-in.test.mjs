@@ -513,3 +513,223 @@ test("the Gradle library declares what its plugin compiles against", () => {
     "the library declares no component, permission or link; hosts do",
   );
 });
+
+// ── Eliza's Android host (packages/app/platforms/android, ai.elizaos.app) ─────────────────────
+// Eliza's app hosts this client as ElizaCloudSignInPlugin. Its registration and storage policy are
+// pure and run here on a plain JVM with synthetic stores; the Android wiring is read from source.
+const elizaAndroid = resolve(root, "../../app/platforms/android");
+const elizaJava = join(elizaAndroid, "app/src/main/java/ai/elizaos/app");
+const elizaHost = read(join(elizaJava, "ElizaCloudSignInPlugin.java"));
+
+test("Eliza's host registration and storage policy (plain JVM)", () => {
+  const directory = mkdtempSync(join(tmpdir(), "eliza-host-contract-"));
+  const file = join(directory, "ElizaHostContractTest.java");
+  writeFileSync(
+    file,
+    `package ai.elizaos.app;
+import ai.eliza.auth.cloud.*;
+import java.util.*;
+import org.json.JSONObject;
+public class ElizaHostContractTest {
+ static int checks;
+ static void check(boolean ok, String what) { if (!ok) throw new AssertionError(what); checks++; }
+ static void refused(Runnable action, String what) { try { action.run(); } catch (RuntimeException expected) { checks++; return; } throw new AssertionError(what); }
+ interface Unsafe { void run() throws Exception; }
+ static Runnable unsafe(Unsafe action) { return () -> { try { action.run(); } catch (RuntimeException e) { throw e; } catch (Exception e) { throw new IllegalStateException(e); } }; }
+ static final class Tokens implements ElizaCloudCredentialSlots.TokenStore {
+  String value; int writes, removals;
+  public String read() { return value; }
+  public void write(String token) { value = token; writes++; }
+  public void remove() { value = null; removals++; }
+ }
+ static final class Slots implements ElizaCloudCredentialSlots.NativeSlots {
+  final Map<String, String> values = new HashMap<>();
+  public String read(String slot) { return values.get(slot); }
+  public void write(String slot, String value) { values.put(slot, value); }
+  public void remove(String slot) { values.remove(slot); }
+ }
+ static String credential(String token, String serverId) {
+  return new JSONObject().put("credentialId", UUID.randomUUID().toString()).put("token", token).put("expiresAt", 4102444800000L).put("serverCredentialId", serverId).toString();
+ }
+ public static void main(String[] args) throws Exception {
+  CloudSignInConfig product = ElizaCloudSignInRegistration.registration(false);
+  CloudSignInConfig development = ElizaCloudSignInRegistration.registration(true);
+  // Registration: Cloud's first-party mobile client and its registered return, both deployments.
+  check(product.clientId.equals("ai.elizaos.app"), "client id");
+  check(product.productName.equals("Eliza") && product.deviceName.equals("Android"), "names");
+  check(product.googleClientId.equals("eliza-app"), "Steward app client");
+  check(product.environments().size() == 1 && product.defaultEnvironment().name.equals("production"), "a product build admits production only");
+  refused(() -> product.environment("staging"), "staging refused by a product build");
+  check(development.environments().size() == 2 && development.defaultEnvironment().name.equals("production"), "development adds staging after production");
+  CloudSignInEnvironment production = development.environment("production"), staging = development.environment("staging");
+  check(production.api().equals("https://cloud.eliza.app") && staging.api().equals("https://cloud-staging.eliza.app"), "API hosts");
+  check(production.callback().equals("https://eliza.app/auth/callback") && staging.callback().equals("https://eliza.app/auth/callback"), "registered return");
+  check(production.tenant.equals("elizacloud") && staging.tenant.equals("elizacloud-staging"), "Steward tenants");
+  check(production.serviceName.equals("Eliza Cloud"), "service name");
+  check(CloudSignInRoutes.origin(development, "https", "cloud.eliza.app", -1) && CloudSignInRoutes.origin(development, "https", "cloud-staging.eliza.app", 443), "admitted origins");
+  check(!CloudSignInRoutes.origin(product, "https", "cloud-staging.eliza.app", -1) && !CloudSignInRoutes.origin(development, "https", "api.example.test", -1), "no other origin");
+  // Installed names are compatibility identifiers.
+  check(product.readinessPreferences.equals("eliza-cloud-signin-readiness") && product.pendingSlot.equals("cloud-signin:v1:pending"), "installed names");
+  check(product.credentialSlot(production).equals("cloud:production") && product.receiptSlot(production).equals("cloud-signin:v1:ack:production"), "slot names");
+
+  // Storage: the key is the renderer's session token; an owner record says which deployment minted it.
+  int[] guards = {0};
+  Tokens tokens = new Tokens(); Slots slots = new Slots();
+  ElizaCloudCredentialSlots store = new ElizaCloudCredentialSlots(development, () -> guards[0]++, tokens, slots);
+  check(store.read("cloud:production") == null && store.read("cloud:staging") == null, "nothing saved");
+  // A session saved before this host (no owner record) is kept and never claimed by a deployment.
+  tokens.value = "eliza_mobile_legacy";
+  check(store.read("cloud:production") == null && store.read("cloud:staging") == null, "a legacy session is not attributed");
+  store.write("cloud:production", credential("eliza_mobile_one", "11111111-1111-4111-8111-111111111111"));
+  check("eliza_mobile_one".equals(tokens.value), "the key is the renderer's session token");
+  String owner = slots.values.get(ElizaCloudSignInRegistration.TOKEN_OWNER_SLOT);
+  check(owner != null, "owner record written");
+  JSONObject ownerRecord = new JSONObject(owner);
+  check(ownerRecord.opt("token") == null && ElizaCloudCredentialSlots.sha256("eliza_mobile_one").equals(ownerRecord.optString("tokenSha256", null)), "the owner record holds a digest, never the key");
+  JSONObject saved = new JSONObject(store.read("cloud:production"));
+  check("eliza_mobile_one".equals(saved.getString("token")) && "11111111-1111-4111-8111-111111111111".equals(saved.getString("serverCredentialId")) && saved.getLong("expiresAt") == 4102444800000L, "the saved credential reads back for its deployment");
+  check(store.read("cloud:staging") == null, "another deployment never sees it");
+  check(guards[0] == 2, "guard before each underlying write");
+  // The renderer replaced the session (another sign-in or sign-out): no deployment claims it.
+  tokens.value = "eliza_mobile_renderer";
+  check(store.read("cloud:production") == null, "a replaced session is not presented, revoked or resumed");
+  store.remove("cloud:production");
+  check("eliza_mobile_renderer".equals(tokens.value) && !slots.values.containsKey(ElizaCloudSignInRegistration.TOKEN_OWNER_SLOT), "removal keeps a session it did not mint");
+  // Staging takes the slot over; production no longer reads it.
+  store.write("cloud:staging", credential("eliza_mobile_two", "22222222-2222-4222-8222-222222222222"));
+  check(store.read("cloud:production") == null && store.read("cloud:staging") != null, "owner follows the last sign-in");
+  store.remove("cloud:production");
+  check("eliza_mobile_two".equals(tokens.value), "another deployment's removal changes nothing");
+  store.remove("cloud:staging");
+  check(tokens.value == null && tokens.removals == 1 && store.read("cloud:staging") == null, "the owning deployment removes its key");
+  // Receipts and the pending record stay native-only and pass through unchanged.
+  store.write("cloud-signin:v1:ack:production", "receipt");
+  store.write("cloud-signin:v1:pending", "pending");
+  check("receipt".equals(store.read("cloud-signin:v1:ack:production")) && "pending".equals(slots.values.get("cloud-signin:v1:pending")), "native slots");
+  check(tokens.writes == 2, "native slots never touch the session token");
+  store.remove("cloud-signin:v1:pending");
+  check(store.read("cloud-signin:v1:pending") == null, "pending removed");
+  refused(unsafe(() -> store.write("cloud:other", credential("x", "y"))), "unknown deployment slot");
+  refused(unsafe(() -> store.read("session.steward_token")), "no arbitrary slot");
+  refused(unsafe(() -> new ElizaCloudCredentialSlots(product, () -> {}, tokens, slots).write("cloud:staging", credential("x", "y"))), "a product build has no staging slot");
+  // A closed or superseded sign-in commits nothing.
+  ElizaCloudCredentialSlots closed = new ElizaCloudCredentialSlots(development, () -> { throw new IllegalStateException("Sign-in closed"); }, tokens, slots);
+  refused(unsafe(() -> closed.write("cloud:production", credential("eliza_mobile_late", "33333333-3333-4333-8333-333333333333"))), "guard refuses");
+  check(tokens.value == null && !slots.values.containsKey(ElizaCloudSignInRegistration.TOKEN_OWNER_SLOT), "nothing written after a refusal");
+  // A malformed owner record is treated as no owner.
+  tokens.value = "eliza_mobile_one";
+  slots.values.put(ElizaCloudSignInRegistration.TOKEN_OWNER_SLOT, new JSONObject().put("version", 2).put("environment", "production").put("tokenSha256", ElizaCloudCredentialSlots.sha256("eliza_mobile_one")).toString());
+  check(store.read("cloud:production") == null, "unknown owner version");
+  System.out.println("PASS Eliza host contract (" + checks + " checks)");
+ }
+}`,
+  );
+  try {
+    assert.match(
+      runJvm(
+        [
+          ...pure,
+          ...support,
+          join(elizaJava, "ElizaCloudSignInRegistration.java"),
+          join(elizaJava, "ElizaCloudCredentialSlots.java"),
+          file,
+        ],
+        "ai.elizaos.app.ElizaHostContractTest",
+      ),
+      /^PASS Eliza host contract \(\d+ checks\)/,
+    );
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+test("Eliza's Android app wires the host, its build and its renderer port", () => {
+  // The host: its own Capacitor name, the shared client, Eliza's registration and storage.
+  assert.match(
+    elizaHost,
+    /@CapacitorPlugin\(name = "ElizaCloudSignIn"\)\npublic final class ElizaCloudSignInPlugin extends CloudSignInPlugin \{/,
+  );
+  assert.match(
+    elizaHost,
+    /ElizaCloudSignInRegistration\.registration\(\s*BuildConfig\.DEBUG \|\| BuildConfig\.ELIZA_CLOUD_SIGN_IN_STAGING\)/,
+    "staging only in development builds",
+  );
+  assert.match(elizaHost, /"session\.steward_token"/);
+  assert.match(elizaHost, /getNoBackupFilesDir\(\)/);
+  assert.doesNotMatch(
+    elizaHost,
+    /reserveCredentialCommit|@PluginMethod|android\.util\.Log/,
+    "no extra method, fence or log beside the shared client",
+  );
+  const sources = [
+    elizaHost,
+    read(join(elizaJava, "ElizaCloudSignInRegistration.java")),
+    read(join(elizaJava, "ElizaCloudCredentialSlots.java")),
+  ].join("\n");
+  assert.doesNotMatch(
+    sources,
+    /eliza_mobile_[A-Za-z0-9]|AIza[0-9A-Za-z_-]{20}|apps\.googleusercontent\.com|BEGIN [A-Z ]*PRIVATE KEY/,
+    "no credential value in source",
+  );
+  // Registered on the full build and on every Cloud build's generated activity.
+  assert.match(
+    read(join(elizaJava, "MainActivity.java")),
+    /registerPlugin\(ElizaCloudSignInPlugin\.class\);/,
+  );
+  const cloudActivity = read(
+    resolve(
+      root,
+      "../../app/scripts/mobile/android/templates/main-activity.ts",
+    ),
+  );
+  assert.match(
+    cloudActivity,
+    /registerPlugin\(ElizaCloudSignInPlugin\.class\);/,
+  );
+  assert.doesNotMatch(
+    cloudActivity,
+    /isCloudAuthCallback|loadUrl\(/,
+    "no hosted sign-in navigation or callback reload",
+  );
+  // Gradle: this library is a module of Eliza's Android build, at a minimum SDK the app accepts.
+  assert.match(
+    read(join(elizaAndroid, "settings.gradle")),
+    /include ':eliza-auth-cloud'\nproject\(':eliza-auth-cloud'\)\.projectDir = new File\(settingsDir, '\.\.\/\.\.\/\.\.\/auth\/android'\)/,
+  );
+  const appGradle = read(join(elizaAndroid, "app/build.gradle"));
+  assert.match(appGradle, /implementation project\(':eliza-auth-cloud'\)/);
+  assert.match(
+    appGradle,
+    /buildConfigField "boolean", "ELIZA_CLOUD_SIGN_IN_STAGING"/,
+  );
+  assert.match(
+    read(join(elizaAndroid, "app/proguard-rules.pro")),
+    /-keep class ai\.eliza\.auth\.cloud\.\*\* \{ \*; \}/,
+  );
+  const appMinSdk = Number(
+    /minSdkVersion = (\d+)/.exec(
+      read(join(elizaAndroid, "variables.gradle")),
+    )[1],
+  );
+  const libraryMinSdk = Number(
+    /minSdk (\d+)/.exec(read(join(root, "build.gradle")))[1],
+  );
+  assert.ok(
+    libraryMinSdk <= appMinSdk,
+    `library minSdk ${libraryMinSdk} <= app ${appMinSdk}`,
+  );
+  // Email, SMS and native Google open no browser: the app claims no https return link, so the
+  // eliza.app callback page keeps opening in the browser for web sign-in.
+  const manifest = read(join(elizaAndroid, "app/src/main/AndroidManifest.xml"));
+  assert.doesNotMatch(manifest, /android:autoVerify="true"/);
+  assert.doesNotMatch(manifest, /android:host="eliza\.app"/);
+  // The renderer reaches the same Capacitor name through the shared port contract.
+  const renderer = read(
+    resolve(root, "../../ui/src/android-cloud/native-cloud-sign-in.ts"),
+  );
+  assert.match(
+    renderer,
+    /ELIZA_NATIVE_CLOUD_SIGN_IN_PLUGIN = "ElizaCloudSignIn"/,
+  );
+  assert.match(renderer, /from "@elizaos\/auth\/auth\/native-cloud-sign-in"/);
+});

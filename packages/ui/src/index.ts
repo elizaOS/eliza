@@ -5,8 +5,15 @@ export { AgentSurfaceProvider } from "./agent-surface/AgentSurfaceContext.js";
 export { AgentButton } from "./agent-surface/components.js";
 export { getViewRegistry } from "./agent-surface/registry.js";
 export { useAgentElement } from "./agent-surface/useAgentElement.js";
-export { completeAndroidCloudSignIn } from "./android-cloud/android-cloud-auth.js";
-export { shouldAcknowledgeAndroidCloudCallback } from "./android-cloud/android-cloud-client.js";
+export {
+  AndroidNativeCloudSignInHost,
+  AndroidNativeCloudSignInView,
+} from "./android-cloud/AndroidNativeCloudSignInView.js";
+export {
+  type AndroidNativeCloudSignInRequest,
+  type ElizaCloudEnvironment,
+  requestAndroidNativeCloudSignIn,
+} from "./android-cloud/native-cloud-sign-in.js";
 export {
   abortableResponse,
   runAbortableRequest,

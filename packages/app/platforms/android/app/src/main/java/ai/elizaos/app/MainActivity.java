@@ -106,6 +106,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ElizaBgePlugin.class);
         registerPlugin(ResourceProbePlugin.class);
         registerPlugin(CredentialManagerPlugin.class);
+        registerPlugin(ElizaCloudSignInPlugin.class);
         registerPlugin(GlassBridgePlugin.class);
         registerPlugin(NativeTranscriptPlugin.class);
         registerPlugin(SlotClockPlugin.class);

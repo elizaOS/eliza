@@ -42,6 +42,8 @@
 # ClassNotFoundException. Keep the whole native-plugin namespace.
 -keep class ai.elizaos.plugins.** { *; }
 -keep class ai.eliza.plugins.** { *; }
+# Capacitor reflects over the inherited @PluginMethod methods of ElizaCloudSignInPlugin.
+-keep class ai.eliza.auth.cloud.** { *; }
 -keep class app.eliza.** { *; }
 
 # WebView JavaScript interface
