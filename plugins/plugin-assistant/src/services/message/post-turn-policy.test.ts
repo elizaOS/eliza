@@ -88,6 +88,43 @@ describe("hasPostTurnSemanticSignal", () => {
     ).toBe(false);
   });
 
+  it("reads the user's words, not the help-document augmentation envelope", () => {
+    // Shape packages/agent/src/api/chat-augmentation.ts writes into
+    // content.text: "open" alone reaches the 0.5 term coverage, so short
+    // navigation commands carry help fragments ("show my tasks"). Live
+    // 2026-10-30 :5325, "open notes" / "open camera" / "go back" each still
+    // queued a post-turn memory review.
+    const augmented = (request: string) =>
+      [
+        "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+        "If the answer appears verbatim in the contextual documents, repeat it exactly.",
+        "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
+        "",
+        "<contextual_documents>",
+        '<source title="source-1" similarity="1.000">',
+        'Q: How do I switch screens or views?\nA: Two ways: tap a tile on the launcher screen, or just ask the chat — type or say things like "open settings", "go home", or "show my tasks" and Eliza navigates there for you.',
+        "</source>",
+        "</contextual_documents>",
+        "",
+        "<user_request>",
+        request,
+        "</user_request>",
+      ].join("\n");
+    expect(
+      signal(augmented("open notes"), [navigation("VIEWS", "notes", "Notes")]),
+    ).toBe(false);
+    expect(
+      signal(augmented("open camera"), [
+        navigation("VIEWS", "camera", "Camera"),
+      ]),
+    ).toBe(false);
+    expect(
+      signal(augmented("open notes, I prefer week view"), [
+        navigation("VIEWS", "notes", "Notes"),
+      ]),
+    ).toBe(true);
+  });
+
   it("still schedules navigation turns that carry a recognized user signal", () => {
     const nav = [navigation("VIEWS_SHOW", "calendar", "Calendar")];
     expect(signal("Open the calendar, I prefer week view", nav)).toBe(true);
