@@ -60,9 +60,18 @@ function createRuntime(settings: Record<string, string> = {}): {
   return { runtime: runtime as unknown as IAgentRuntime, cache };
 }
 
-function message(text: string, flagged = false): Memory {
+// A confirmation turn is a later user message, so it must carry a different
+// id than the request: core treats a reply with the request's id as still
+// waiting, not as a reply.
+const CONFIRMATION_MESSAGE_ID = "00000000-0000-0000-0000-000000000005";
+
+function message(
+  text: string,
+  flagged = false,
+  id = "00000000-0000-0000-0000-000000000001",
+): Memory {
   return {
-    id: "00000000-0000-0000-0000-000000000001",
+    id,
     entityId: "00000000-0000-0000-0000-000000000002",
     agentId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000004",
@@ -195,7 +204,7 @@ describe("LIQUIDITY write gates", () => {
 
     const second = await liquidityAction.handler(
       runtime,
-      message("yes"),
+      message("yes", false, CONFIRMATION_MESSAGE_ID),
       undefined,
       params,
       callback,
