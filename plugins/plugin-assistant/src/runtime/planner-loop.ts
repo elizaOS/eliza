@@ -7127,6 +7127,12 @@ function resolveRejectedCallsSupersededBy(
                 .map(([, value]) => value)
             : [],
     );
+    // Identity rename (body → content): clear only when the refused field is
+    // absent on the success and the same value is retained under another target
+    // field. Optional leading context lines are allowed only as an exact suffix
+    // after a newline. Word-coverage matching is intentionally not used here
+    // (see closed PR #38176).
+    const spentCompletedIndexes = new Set<number>();
     if (
       targets.some((target) => {
         let current: unknown = call.params;
@@ -7135,15 +7141,27 @@ function resolveRejectedCallsSupersededBy(
             isObjectRecord(current) && Object.hasOwn(current, field)
               ? current[field]
               : undefined;
-        return (
-          !correlationValuesEqual(target.value, current) &&
-          !(
-            target.mayMove &&
-            completedTargets.some((value) =>
-              correlationValuesEqual(target.value, value),
-            )
+        if (correlationValuesEqual(target.value, current)) return false;
+        if (!isSuppliedParameterValue(current)) {
+          const renamedIndex = completedTargets.findIndex(
+            (value, index) =>
+              !spentCompletedIndexes.has(index) &&
+              identityRetainedAcrossTargetRename(target.value, value),
+          );
+          if (renamedIndex >= 0) {
+            spentCompletedIndexes.add(renamedIndex);
+            return false;
+          }
+        }
+        if (
+          target.mayMove &&
+          completedTargets.some((value) =>
+            correlationValuesEqual(target.value, value),
           )
-        );
+        ) {
+          return false;
+        }
+        return true;
       })
     )
       continue;
@@ -7507,6 +7525,23 @@ function stableCorrelationJson(value: unknown): string {
     return JSON.stringify(normalizeCorrelationText(value));
   }
   return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * A related retry keeps the refused target value when it only renames the
+ * field (for example body → content). Optional context may precede the value
+ * as whole lines; the refused string must remain an exact suffix after "\n".
+ * Substring / term coverage is not identity and must not clear a refusal.
+ */
+function identityRetainedAcrossTargetRename(
+  refused: unknown,
+  completed: unknown,
+): boolean {
+  if (correlationValuesEqual(refused, completed)) return true;
+  if (typeof refused !== "string" || typeof completed !== "string")
+    return false;
+  if (!refused) return false;
+  return completed.endsWith(`\n${refused}`);
 }
 
 function correlationValuesEqual(left: unknown, right: unknown): boolean {

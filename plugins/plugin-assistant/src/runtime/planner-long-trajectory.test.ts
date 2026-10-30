@@ -2767,6 +2767,251 @@ describe("canonical nonretryable receipt repair", () => {
       expect(attempts).toBe(2);
       expect(result.finalMessage).not.toBe(added);
     });
+    it.each([
+      {
+        label: "exact body→content rename",
+        body: "Buy milk",
+        content: "Buy milk",
+        expectCleared: true,
+      },
+      {
+        label: "body retained under content with leading context lines",
+        body: "Bring the blue notebook and charger; no water.",
+        content:
+          "Conversation context QA\nBring the blue notebook and charger; no water.",
+        expectCleared: true,
+      },
+      {
+        label: "coverage-style longer note must not clear",
+        body: "Buy milk",
+        content: "Buy milk chocolate for the party",
+        expectCleared: false,
+      },
+      {
+        label: "unrelated note must not clear",
+        body: "Bring the blue notebook and charger; no water.",
+        content: "Dentist appointment\nTuesday afternoon.",
+        expectCleared: false,
+      },
+    ])(
+      "clears NOTES_CREATE refusal only on identity rename: $label",
+      async ({ body, content, expectCleared }) => {
+        let plans = 0,
+          attempts = 0;
+        const saved = "Saved the requested note.";
+        const applied = {
+          ...receipt,
+          receiptId: "notes-create-identity",
+          operation: "notes.note.create",
+          resource: {
+            kind: "notes.note",
+            id: "note-identity",
+            version: "1",
+          },
+        };
+        const refusedCreate = {
+          success: false as const,
+          text: "Tell me what the note should say.",
+          error: "NOTES_MISSING_TEXT",
+          data: {
+            actionName: "NOTES",
+            acceptance: "rejected",
+            executionStatus: "not_started",
+            parameterErrors: ["Missing required argument 'content'"],
+          },
+          failureProvenance: {
+            kind: "handler_error" as const,
+            boundary: "handler" as const,
+            code: "ACTION_ARGUMENTS_INVALID",
+            retryable: true,
+          },
+        };
+        const result = await runPlannerLoop({
+          context: {
+            id: "notes-create-identity-rename",
+            events: [
+              {
+                id: "stage1-declared-intents",
+                type: "instruction",
+                content: "- Save the requested note",
+              },
+            ],
+          },
+          codingMode: false,
+          runtime: {
+            useModel: async () =>
+              ++plans <= 2
+                ? {
+                    text: "",
+                    toolCalls: [
+                      {
+                        id: plans === 1 ? "missing-content" : "retry",
+                        name: "NOTES_CREATE",
+                        arguments:
+                          plans === 1
+                            ? { action: "create", body }
+                            : { action: "create", content },
+                      },
+                    ],
+                  }
+                : {
+                    text: "",
+                    toolCalls: [
+                      {
+                        id: "give-up-reply",
+                        name: "REPLY",
+                        arguments: {
+                          text: saved,
+                          eliza_turn_scope: "final",
+                        },
+                      },
+                    ],
+                  },
+          },
+          executeToolCall: async () =>
+            ++attempts === 1
+              ? refusedCreate
+              : {
+                  success: true,
+                  turnComplete: false,
+                  modelReplyRequired: true,
+                  transcriptVisibility: "internal",
+                  effectReceipts: [applied],
+                },
+          evaluate: async () => ({
+            decision: "FINISH",
+            success: true,
+            thought: "Fixture identity-rename completion.",
+            messageToUser: saved,
+            replyEffectStatus: "applied",
+            effectReceiptIds: [applied.receiptId],
+            requestFullyCovered: true,
+            outcomeCoverage: [
+              {
+                intentId: "intent:1",
+                status: "completed",
+                evidenceStepIds: ["step:2"],
+              },
+            ],
+          }),
+        });
+        expect(attempts).toBe(2);
+        if (expectCleared) {
+          expect(result.finalMessage).toBe(saved);
+          expect(plans).toBe(2);
+        } else {
+          expect(result.finalMessage).not.toBe(saved);
+        }
+      },
+    );
+    it("does not clear a NOTES_CREATE refusal when body stays with a different value", async () => {
+      let plans = 0,
+        attempts = 0;
+      const saved = "Saved the requested note.";
+      const applied = {
+        ...receipt,
+        receiptId: "notes-create-changed-body",
+        operation: "notes.note.create",
+        resource: {
+          kind: "notes.note",
+          id: "note-changed",
+          version: "1",
+        },
+      };
+      const refusedCreate = {
+        success: false as const,
+        text: "Tell me what the note should say.",
+        error: "NOTES_MISSING_TEXT",
+        data: {
+          actionName: "NOTES",
+          acceptance: "rejected",
+          executionStatus: "not_started",
+          parameterErrors: ["Missing required argument 'content'"],
+        },
+        failureProvenance: {
+          kind: "handler_error" as const,
+          boundary: "handler" as const,
+          code: "ACTION_ARGUMENTS_INVALID",
+          retryable: true,
+        },
+      };
+      const result = await runPlannerLoop({
+        context: {
+          id: "notes-create-changed-body",
+          events: [
+            {
+              id: "stage1-declared-intents",
+              type: "instruction",
+              content: "- Save the requested note",
+            },
+          ],
+        },
+        codingMode: false,
+        runtime: {
+          useModel: async () =>
+            ++plans <= 2
+              ? {
+                  text: "",
+                  toolCalls: [
+                    {
+                      id: plans === 1 ? "missing-content" : "retry",
+                      name: "NOTES_CREATE",
+                      arguments:
+                        plans === 1
+                          ? { action: "create", body: "Title A" }
+                          : {
+                              action: "create",
+                              body: "Title B",
+                              content: "Title A",
+                            },
+                    },
+                  ],
+                }
+              : {
+                  text: "",
+                  toolCalls: [
+                    {
+                      id: "give-up-reply",
+                      name: "REPLY",
+                      arguments: {
+                        text: saved,
+                        eliza_turn_scope: "final",
+                      },
+                    },
+                  ],
+                },
+        },
+        executeToolCall: async () =>
+          ++attempts === 1
+            ? refusedCreate
+            : {
+                success: true,
+                turnComplete: false,
+                modelReplyRequired: true,
+                transcriptVisibility: "internal",
+                effectReceipts: [applied],
+              },
+        evaluate: async () => ({
+          decision: "FINISH",
+          success: true,
+          thought: "Fixture changed-body adversarial verdict.",
+          messageToUser: saved,
+          replyEffectStatus: "applied",
+          effectReceiptIds: [applied.receiptId],
+          requestFullyCovered: true,
+          outcomeCoverage: [
+            {
+              intentId: "intent:1",
+              status: "completed",
+              evidenceStepIds: ["step:2"],
+            },
+          ],
+        }),
+      });
+      expect(attempts).toBe(2);
+      expect(result.finalMessage).not.toBe(saved);
+    });
+
     it("marks malformed plain-object envelopes as rejected before invoking a handler", async () => {
       const handler = vi.fn(async () => ({ success: true }));
       const action = {
