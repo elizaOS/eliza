@@ -5,8 +5,13 @@ export function visibleMapPadding(container: HTMLElement) {
   const map = container.getBoundingClientRect();
   const root =
     container.closest?.("[data-maps-root]") ?? container.parentElement;
-  const horizontal = Math.min(24, map.width / 4);
-  const vertical = Math.min(24, map.height / 4);
+  // DOM rectangles include a host transform; MapLibre and CSS insets use layout pixels.
+  const scaleX =
+    map.width > 0 ? (container.clientWidth || map.width) / map.width : 1;
+  const scaleY =
+    map.height > 0 ? (container.clientHeight || map.height) / map.height : 1;
+  const horizontal = Math.min(24 / scaleX, map.width / 4);
+  const vertical = Math.min(24 / scaleY, map.height / 4);
   const frame = {
     left: map.left + horizontal,
     right: map.right - horizontal,
@@ -35,10 +40,10 @@ export function visibleMapPadding(container: HTMLElement) {
     )
       return [];
     const clipped = {
-      left: Math.max(frame.left, box.left - gap),
-      right: Math.min(frame.right, box.right + gap),
-      top: Math.max(frame.top, box.top - gap),
-      bottom: Math.min(frame.bottom, box.bottom + gap),
+      left: Math.max(frame.left, box.left - gap / scaleX),
+      right: Math.min(frame.right, box.right + gap / scaleX),
+      top: Math.max(frame.top, box.top - gap / scaleY),
+      bottom: Math.min(frame.bottom, box.bottom + gap / scaleY),
     };
     return clipped.right > clipped.left && clipped.bottom > clipped.top
       ? [clipped]
@@ -90,9 +95,9 @@ export function visibleMapPadding(container: HTMLElement) {
         }
     }
   return {
-    top: best.top - map.top,
-    bottom: map.bottom - best.bottom,
-    left: best.left - map.left,
-    right: map.right - best.right,
+    top: (best.top - map.top) * scaleY,
+    bottom: (map.bottom - best.bottom) * scaleY,
+    left: (best.left - map.left) * scaleX,
+    right: (map.right - best.right) * scaleX,
   };
 }

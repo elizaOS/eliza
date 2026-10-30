@@ -53,7 +53,7 @@ voice, screen-off session, share sheet, website opening and agent context.
 `createMapsScreen` adds a change subscription, and the `./screen` entry exports
 `MapsScreen`, a React rendering of the same controller. Hosts theme it with
 `--maps-*` custom properties (`--maps-bg`, `--maps-fg`, `--maps-accent`,
-`--maps-font`, …) and their own icon paths, and supply the map plane. The screen
+`--maps-font`, `--maps-link`, …) and their own icon paths, and supply the map plane. The screen
 uses `--maps-inset-top`, `--maps-inset-right`, `--maps-inset-bottom` and
 `--maps-inset-left` (safe-area insets by default), plus `--maps-bottom-clearance`
 (zero by default) for host controls such as a composer. Sheets scroll within that

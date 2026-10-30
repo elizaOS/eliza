@@ -91,6 +91,7 @@ const color = {
   accent: "var(--maps-accent, var(--accent, #ff5800))",
   accentText: "var(--maps-accent-text, #fff)",
   accentStrong: "var(--maps-accent-strong, var(--maps-accent, #d94b00))",
+  link: "var(--maps-link, var(--maps-fg, var(--text, #141414)))",
   shadow: "var(--maps-shadow, rgba(0, 0, 0, 0.16))",
   guidance: "var(--maps-guidance, var(--maps-accent, #ff5800))",
   guidanceThen: "var(--maps-guidance-then, rgba(0, 0, 0, 0.35))",
@@ -283,22 +284,27 @@ export function MapsScreen({
       scrollElement.current.scrollTop = 0;
     const measure = () => {
       const bounds = element.getBoundingClientRect();
+      const width = element.clientWidth || bounds.width;
+      const height = element.clientHeight || bounds.height;
+      const layoutScale = bounds.height > 0 ? height / bounds.height : 1;
       const sheetHeight =
-        sheetElement.current?.getBoundingClientRect().height ?? 0;
+        (sheetElement.current?.getBoundingClientRect().height ?? 0) *
+        layoutScale;
       const primaryHeight =
-        primaryElement.current?.getBoundingClientRect().height ?? 0;
+        (primaryElement.current?.getBoundingClientRect().height ?? 0) *
+        layoutScale;
       const textScale =
         Number.parseFloat(getComputedStyle(element).fontSize) / 16 || 1;
       setSize((previous) =>
-        previous.width === bounds.width &&
-        previous.height === bounds.height &&
+        previous.width === width &&
+        previous.height === height &&
         previous.sheetHeight === sheetHeight &&
         previous.primaryHeight === primaryHeight &&
         previous.textScale === textScale
           ? previous
           : {
-              width: bounds.width,
-              height: bounds.height,
+              width,
+              height,
               sheetHeight,
               primaryHeight,
               textScale,
@@ -471,6 +477,13 @@ export function MapsScreen({
               : sideBySide
                 ? `calc(100% - ${inset.top} - ${inset.bottom} - 24px)`
                 : compactHeight,
+            maxWidth: flowLayout
+              ? undefined
+              : sideBySide
+                ? "min(440px, calc(50% - 24px))"
+                : size.width >= 720
+                  ? 560
+                  : undefined,
             display: "flex",
             flexDirection: "column",
             gap: 8,
@@ -746,7 +759,7 @@ export function MapsScreen({
                       padding: 0,
                       fontSize: textSize(12),
                       textAlign: "left",
-                      color: color.accentStrong,
+                      color: color.link,
                       cursor: "pointer",
                       font: "inherit",
                     }}

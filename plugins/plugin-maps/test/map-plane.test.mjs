@@ -630,3 +630,35 @@ test("route fitting clears the whole primary panel and sibling navigation contro
     right: 24,
   });
 });
+
+test("scaled screen overlays return MapLibre layout-pixel insets", () => {
+  const rect = (left, top, width, height) => ({
+    left,
+    top,
+    width,
+    height,
+    right: left + width,
+    bottom: top + height,
+  });
+  const boxes = {
+    "[data-maps-primary]": rect(6, 6, 200, 90),
+    "[data-maps-sheet]": rect(270, 6, 124, 188),
+    "[data-maps-credits]": rect(6, 185, 240, 9),
+  };
+  const root = {
+    querySelector: (selector) =>
+      boxes[selector] && { getBoundingClientRect: () => boxes[selector] },
+  };
+  const container = {
+    clientWidth: 800,
+    clientHeight: 400,
+    getBoundingClientRect: () => rect(0, 0, 400, 200),
+    closest: () => root,
+  };
+  assert.deepEqual(visibleMapPadding(container), {
+    top: 208,
+    bottom: 46,
+    left: 24,
+    right: 284,
+  });
+});

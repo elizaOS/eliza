@@ -181,6 +181,34 @@ async function plan(handle: ReturnType<typeof setup>) {
 }
 
 describe("MapsScreen view", () => {
+  it("measures scaled hosts in layout pixels so sheets keep their clearance", async () => {
+    const handle = setup();
+    const { container } = render(
+      <MapsScreen screen={handle} attribution="credits" />,
+    );
+    await plan(handle);
+    const root = container.querySelector<HTMLElement>("[data-maps-root]");
+    const sheet = container.querySelector<HTMLElement>(
+      '[data-maps-sheet="directions"]',
+    );
+    if (!root || !sheet) throw Error("Maps layout is missing");
+    vi.spyOn(root, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(0, 0, 450, 250),
+    );
+    vi.spyOn(root, "clientWidth", "get").mockReturnValue(900);
+    vi.spyOn(root, "clientHeight", "get").mockReturnValue(500);
+    vi.spyOn(sheet, "getBoundingClientRect").mockReturnValue(
+      new DOMRect(300, 100, 150, 100),
+    );
+    act(() => {
+      for (const resize of resizeObservers) resize();
+    });
+    expect(root.style.display).not.toBe("flex");
+    expect(sheet.style.left).toBe("auto");
+    expect(
+      container.querySelector<HTMLElement>("[data-maps-credits]")?.style.bottom,
+    ).toContain("212px");
+  });
   it("searches, opens a place, plans directions and starts guidance", async () => {
     const handle = setup();
     const { container } = render(
