@@ -1979,6 +1979,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.phrase = phrase;
     let initialReplyBuffer = "";
     let streamingReplyStarted = false;
+    // The bridge stops progress once reply text is authorized, so every cue
+    // spoken this turn precedes the first reply delta.
+    const spokenProgressCues: string[] = [];
 
     let tts: RealtimeTtsStream | null = null;
     // Cartesia requires a non-empty terminal request carrying continue:false.
@@ -2114,7 +2117,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       ttsReplyFinalized = true;
 
       if (!streamingReplyStarted) {
-        const completeShortReply = initialReplyBuffer.trim();
+        const completeShortReply = withoutRepeatedProgressCue(
+          initialReplyBuffer.trim(),
+          spokenProgressCues,
+        );
         initialReplyBuffer = "";
         if (SPOKEN_TRANSCRIPT_RE.test(completeShortReply)) {
           sendTtsPhrase(ensureTts(), {
@@ -2150,6 +2156,11 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           continueContext: false,
         });
         pendingPhrase = null;
+      } else if (spokenProgressCues.length > 0) {
+        // Only progress was spoken: the reply repeated it or had no speech.
+        // The context already carries the cue text, so an empty continue:false
+        // request just closes it, like the Sonic adapter's finish().
+        sendTtsPhrase(ensureTts(), { text: "", continueContext: false });
       }
     };
 
@@ -2235,6 +2246,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             pendingPhrase = null;
           }
           sendTtsPhrase(stream, { text, continueContext: true });
+          spokenProgressCues.push(text);
           logger.info(
             {
               traceId,
@@ -2264,11 +2276,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         // runtime's later terminal metadata.
         if (!streamingReplyStarted) {
           initialReplyBuffer += delta;
-          if (initialReplyBuffer.length < VOICE_TTS_STREAMING_START_CHARS) {
+          // Hold a cue's length longer so a repeated cue is complete before
+          // its sentence boundary is inspected.
+          if (
+            initialReplyBuffer.length <
+            VOICE_TTS_STREAMING_START_CHARS +
+              Math.max(0, ...spokenProgressCues.map((cue) => cue.length))
+          ) {
             return;
           }
           streamingReplyStarted = true;
-          const buffered = initialReplyBuffer;
+          const buffered = withoutRepeatedProgressCue(
+            initialReplyBuffer,
+            spokenProgressCues,
+          );
           initialReplyBuffer = "";
           queueStreamingPhrases(phrase.push(buffered));
           return;
@@ -2708,6 +2729,42 @@ function normalizeVoiceWords(value: string): string[] {
     .replace(/[^a-z0-9' ]+/g, " ")
     .split(/\s+/)
     .filter(Boolean);
+}
+
+const SENTENCE_END_RE = /[.!?…]+["'”’)\]]*(?=\s|$)/gu;
+
+/** Compare cue and reply wording, ignoring case, punctuation and a "for you"/"now" tail. */
+function normalizeProgressCueWords(value: string): string {
+  return value
+    .toLocaleLowerCase("en-US")
+    .replace(/['’]/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim()
+    .replace(/(?: (?:for you|now)){1,2}$/u, "");
+}
+
+/**
+ * Drop the leading reply sentences that only repeat a progress cue already
+ * spoken this turn ("Opening Calendar for you." twice), keeping any new part.
+ */
+function withoutRepeatedProgressCue(
+  reply: string,
+  spokenCues: readonly string[],
+): string {
+  if (spokenCues.length === 0) return reply;
+  const cues = new Set(spokenCues.map(normalizeProgressCueWords));
+  let repeatedEnd = 0;
+  for (const end of [
+    ...Array.from(
+      reply.matchAll(SENTENCE_END_RE),
+      (m) => m.index + m[0].length,
+    ),
+    reply.length,
+  ]) {
+    const lead = normalizeProgressCueWords(reply.slice(0, end));
+    if (lead && cues.has(lead)) repeatedEnd = end;
+  }
+  return repeatedEnd === 0 ? reply : reply.slice(repeatedEnd).trimStart();
 }
 
 /** Conservative residual-echo filter: never reject one- or two-word speech. */
