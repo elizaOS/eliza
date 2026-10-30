@@ -3,7 +3,7 @@ import {
   type AccountReturnBinding,
   createWorkspaceAppReturn,
   watchForegroundAccountReturn,
-} from "../src/sdk/app-return.ts";
+} from "../src/sdk/app-return.js";
 
 const config = {
   callbackUrl: "https://app.example/workspace/callback",
