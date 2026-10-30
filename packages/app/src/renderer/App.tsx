@@ -371,7 +371,7 @@ function TrayPopoverShell() {
       className="fixed inset-0 flex flex-col gap-3 overflow-y-auto bg-transparent p-3"
     >
       <TrayLauncher />
-      <WidgetHost slot="home" layout="stack" />
+      <WidgetHost slot="home" layout="stack" surface="tray" />
     </div>
   );
 }

@@ -23,6 +23,9 @@ import {
   presentOverviewInboxStatus,
   presentOverviewWorkflowFreshness,
   selectOverviewAgenda,
+  selectHomeCalendar,
+  type OverviewCalendarEvent,
+  type OverviewCalendarSnapshot,
 } from "../daily-overview";
 
 // The suite runs with TZ=UTC; local constructors keep the fixtures readable.
@@ -490,5 +493,39 @@ describe("workflow freshness", () => {
       visible: "Loaded 3:04 PM",
       description: "Reminders on this phone, loaded 3:04 PM",
     });
+  });
+});
+
+
+describe("shared Home Calendar selection", () => {
+  const clock = new Date("2026-10-29T22:00:00Z");
+  const source = {provider:"eliza",side:"owner",grantId:"grant",connectorAccountId:"account",calendarId:"primary",includeInFeed:true,accessRole:"owner"};
+  const event = (id:string,day:string):OverviewCalendarEvent => ({...source,id,externalId:id,title:id,status:"confirmed",startAt:day+"T16:00:00Z",endAt:day+"T17:00:00Z",isAllDay:false});
+  const snapshot = (events:OverviewCalendarEvent[]):OverviewCalendarSnapshot<OverviewCalendarEvent> => ({current:true,ready:true,mutating:false,calendars:[source],feed:{state:"complete",events,timeMin:"2026-10-01T00:00:00Z",timeMax:"2026-12-01T00:00:00Z"}});
+  it("keeps past today before future week and month candidates", () => {
+    expect(selectHomeCalendar(snapshot([event("week","2026-10-30"),event("today","2026-10-29")]),"UTC",undefined,clock).event?.id).toBe("today");
+    expect(selectHomeCalendar(snapshot([event("month","2026-10-20")]),"UTC",undefined,new Date("2026-10-05T22:00:00Z")).event?.id).toBe("month");
+  });
+  it("rejects retired owners, pending mutation, failed reads and partial data", () => {
+    const model=snapshot([]);
+    for(const patch of [{current:false},{ready:false},{mutating:true},{feed:{...model.feed!,state:"partial"}},{feed:null}])expect(selectHomeCalendar({...model,...patch},"UTC",undefined,clock).verified).toBe(false);
+  });
+  it("admits only visible exact sources with readable access", () => {
+    const model=snapshot([event("today","2026-10-29")]);
+    for(const patch of [{includeInFeed:false},{accessRole:"none"},{grantId:"other"},{connectorAccountId:"other"}])expect(selectHomeCalendar({...model,calendars:[{...source,...patch}]},"UTC",undefined,clock).event).toBeNull();
+    expect(selectHomeCalendar(model,"UTC",()=>true,clock).event).toBeNull();
+  });
+  it("requires complete month/week query coverage for selection as well as emptiness", () => {
+    const model=snapshot([event("afternoon","2026-10-29")]);
+    expect(selectHomeCalendar({...model,feed:{...model.feed!,timeMin:"2026-10-29T14:00:00Z"}},"UTC",undefined,clock).verified).toBe(false);
+    expect(selectHomeCalendar({...model,feed:{...model.feed!,timeMax:"2026-10-30T00:00:00Z"}},"UTC",undefined,clock).verified).toBe(false);
+    expect(selectHomeCalendar(snapshot([]),"UTC",undefined,clock).emptyLabel).toBe("No events this month");
+  });
+  it("keeps all-day civil dates and end-exclusive midnight across month boundaries", () => {
+    const model=snapshot([{...event("yesterday","2026-10-28"),endAt:"2026-10-29T00:00:00Z"}]);
+    expect(selectHomeCalendar(model,"UTC",undefined,clock).event).toBeNull();
+    model.feed!.events=[{...event("all day","2026-10-29"),isAllDay:true,endAt:"2026-10-30T00:00:00Z"}];
+    expect(selectHomeCalendar(model,"America/Los_Angeles",undefined,clock).event?.id).toBe("all day");
+    expect(selectHomeCalendar(snapshot([event("Sunday","2026-11-01")]),"UTC",undefined,new Date("2026-10-31T23:00:00Z")).event?.id).toBe("Sunday");
   });
 });
