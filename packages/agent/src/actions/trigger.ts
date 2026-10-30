@@ -1557,10 +1557,11 @@ export const triggerAction: Action = {
   // Each promoted TRIGGER_<OP> carries only the fields its operation reads.
   // Schedule descriptions stay shorter than the planner's cross-tool
   // "Use the identical full description ... on tool TRIGGER" pointer, so
-  // TRIGGER_CREATE keeps them when TRIGGER is exposed beside it: live
-  // tj-78e69a9e3ae00d sent only displayName, instructions and wakeMode, the
-  // fields still described on TRIGGER_CREATE itself, beside taskId and
-  // enabled, which create never reads.
+  // TRIGGER_CREATE keeps them when TRIGGER is exposed beside it.
+  // The schedule fields come last: every live TRIGGER_CREATE call wrote its
+  // fields in schema order, and none that opened with displayName or
+  // instructions sent the delay listed before them (live tj-7471737298abb6
+  // and tj-6eff78bef6be90 errored that way with full descriptions shown).
   parameters: [
     {
       name: "action",
@@ -1580,24 +1581,6 @@ export const triggerAction: Action = {
       subactions: ["update", "delete", "run", "toggle"],
       aliases: ["triggerId", "id"],
       schema: { type: "string" as const },
-    },
-    {
-      name: "delaySeconds",
-      description:
-        "Schedule: fire once this many seconds from now ('in 90 seconds').",
-      required: false,
-      subactions: TRIGGER_SCHEDULE_OPS,
-      aliases: ["inSeconds", "seconds"],
-      schema: { type: "number" as const, minimum: 0 },
-    },
-    {
-      name: "delayMinutes",
-      description:
-        "Schedule: fire once this many minutes from now ('in 20 minutes').",
-      required: false,
-      subactions: TRIGGER_SCHEDULE_OPS,
-      aliases: ["inMinutes", "minutes"],
-      schema: { type: "number" as const, minimum: 0 },
     },
     {
       name: "triggerType",
@@ -1639,6 +1622,31 @@ export const triggerAction: Action = {
       },
     },
     {
+      name: "maxRuns",
+      description: "Optional max runs for a trigger.",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      schema: { type: "number" as const, minimum: 1 },
+    },
+    {
+      name: "delaySeconds",
+      description:
+        "Schedule: fire once this many seconds from now ('in 90 seconds').",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      aliases: ["inSeconds", "seconds"],
+      schema: { type: "number" as const, minimum: 0 },
+    },
+    {
+      name: "delayMinutes",
+      description:
+        "Schedule: fire once this many minutes from now ('in 20 minutes').",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      aliases: ["inMinutes", "minutes"],
+      schema: { type: "number" as const, minimum: 0 },
+    },
+    {
       name: "intervalMs",
       description: "Schedule: repeat period in milliseconds.",
       required: false,
@@ -1662,13 +1670,6 @@ export const triggerAction: Action = {
       subactions: TRIGGER_SCHEDULE_OPS,
       aliases: ["schedule", "cron", "recurrence"],
       schema: { type: "string" as const },
-    },
-    {
-      name: "maxRuns",
-      description: "Optional max runs for a trigger.",
-      required: false,
-      subactions: TRIGGER_SCHEDULE_OPS,
-      schema: { type: "number" as const, minimum: 1 },
     },
     {
       name: "enabled",

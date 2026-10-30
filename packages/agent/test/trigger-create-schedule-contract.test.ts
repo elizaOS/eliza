@@ -67,6 +67,23 @@ it("TRIGGER_CREATE carries its own schedule fields and no fields create ignores"
   }
 });
 
+// Live: all 30 reminder create calls in the QA trajectories wrote their fields
+// in schema order. The 17 that missed the schedule opened with displayName,
+// instructions or nothing, past the delay fields listed before them; no call
+// sent a delay after those fields (tj-7471737298abb6 and tj-6eff78bef6be90
+// errored that way with TRIGGER_CREATE alone and full descriptions shown).
+it("TRIGGER_CREATE lists its schedule fields after every other field", async () => {
+  const create = (await plannerWireTools()).find(
+    (tool) => tool.name === "TRIGGER_CREATE",
+  );
+  const fields = Object.keys(create?.parameters?.properties ?? {}).filter(
+    (field) => !field.startsWith("eliza_"),
+  );
+  expect(fields.slice(-SCHEDULE_FIELDS.length).sort()).toEqual(
+    [...SCHEDULE_FIELDS].sort(),
+  );
+});
+
 it("TRIGGER_LIST carries no create or reference fields", () => {
   const list = promoteSubactionsToActions(triggerAction).find(
     (action) => action.name === "TRIGGER_LIST",
