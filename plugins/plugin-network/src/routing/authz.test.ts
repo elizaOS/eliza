@@ -189,6 +189,34 @@ describe("Network two-ended range", () => {
   });
 });
 
+describe("Network end-of-month statement", () => {
+  it("ends a stay on the last day of the month the member states", () => {
+    const now = new Date("2026-10-14T15:00:00Z"); // Wednesday
+    for (const [text, until] of [
+      ["I'm in Lisbon until the end of November", "2026-11-30"],
+      ["I'm in Lisbon until end of November.", "2026-11-30"],
+      ["I'm in Lisbon through the end of the month", "2026-10-31"],
+      // A month already past is the next occurrence, like any other stated month.
+      ["I'm in Lisbon until the end of February", "2027-02-28"],
+    ] as const) {
+      assert.deepEqual(
+        authorizeSetState(
+          { state: "traveling", until: "2026-11-05", evidence: text },
+          text,
+          now,
+        ),
+        {
+          allowed: true,
+          state: "traveling",
+          from: null,
+          until: `${until}T00:00:00.000Z`,
+        },
+        text,
+      );
+    }
+  });
+});
+
 describe("Network stated duration", () => {
   it("counts a stated duration from the start the member gave", () => {
     const now = new Date("2026-10-14T15:00:00Z");
