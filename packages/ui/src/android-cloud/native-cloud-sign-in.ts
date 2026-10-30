@@ -266,6 +266,8 @@ export function abandonAndroidNativeCloudSignIn(
  */
 export async function activateAndroidNativeCloudSession(
   signal?: AbortSignal,
+  outcome?: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>,
+  port: ElizaNativeCloudSignInPort = androidNativeCloudSignInPort(),
 ): Promise<void> {
   signal?.throwIfAborted();
   let token: string | null;
@@ -277,6 +279,30 @@ export async function activateAndroidNativeCloudSession(
   }
   if (!token?.trim()) throw new NativeCloudSignInError("storage");
   signal?.throwIfAborted();
+  if (outcome?.credentialId) {
+    if (!port.credentialIdentity)
+      throw new NativeCloudSignInError("unavailable");
+    let value: unknown;
+    try {
+      value = await port.credentialIdentity({
+        environment: outcome.environment,
+      });
+    } catch {
+      throw new NativeCloudSignInError("storage");
+    }
+    signal?.throwIfAborted();
+    if (!value || typeof value !== "object" || Array.isArray(value))
+      throw new NativeCloudSignInError("state-mismatch");
+    const current = value as Record<string, unknown>;
+    if (
+      Object.keys(current).some(
+        (key) => key !== "environment" && key !== "credentialId",
+      ) ||
+      current.environment !== outcome.environment ||
+      current.credentialId !== outcome.credentialId
+    )
+      throw new NativeCloudSignInError("state-mismatch");
+  }
   dispatchStewardSessionChange("present");
 }
 

@@ -111,6 +111,8 @@ export interface NativeCloudSignInReadiness {
 /** The plugin methods of `CloudSignInPlugin`, as a renderer port. Answers are untrusted until parsed. */
 export interface NativeCloudSignInPort<E extends string = string> {
   serviceInfo?(input: { environment: E }): Promise<unknown>;
+  /** Current installed identity only; available on hosts that emit credentialId. */
+  credentialIdentity?(input: { environment: E }): Promise<unknown>;
   /** Opens Android's native Google account picker; answers only authenticated or MFA metadata. */
   startGoogle(input: { environment: E; requestId?: string }): Promise<unknown>;
   startEmail(input: {

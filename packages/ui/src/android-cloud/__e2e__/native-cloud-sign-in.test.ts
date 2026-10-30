@@ -169,6 +169,49 @@ describe("request broker", () => {
 });
 
 describe("session activation", () => {
+  const credentialId = "00000000-0000-4000-8000-000000000001";
+  const correlated = {
+    status: "authenticated" as const,
+    environment: "production" as const,
+    credentialId,
+    attemptId: "00000000-0000-4000-8000-000000000002",
+    accountCreated: false,
+    expiresAt: Date.now() + 60_000,
+  };
+  const identityPort = (read: () => Promise<unknown>) => ({
+    credentialIdentity: vi.fn(read),
+  }) as unknown as ElizaNativeCloudSignInPort;
+
+  it("confirms the exact installed credential before announcing a correlated completion", async () => {
+    storage.getStorageValue.mockResolvedValue("eliza_mobile_saved");
+    const port = identityPort(async () => ({ environment: "production", credentialId }));
+    await activateAndroidNativeCloudSession(undefined, correlated, port);
+    expect(port.credentialIdentity).toHaveBeenCalledWith({ environment: "production" });
+    expect(session.dispatchStewardSessionChange).toHaveBeenCalledOnce();
+  });
+
+  it.each([
+    { environment: "production", credentialId: "00000000-0000-4000-8000-000000000003" },
+    { environment: "staging", credentialId },
+    { environment: "production", credentialId: null },
+    { environment: "production", credentialId, token: "unexpected" },
+  ])("does not announce a stale or untrusted installed identity", async value => {
+    storage.getStorageValue.mockResolvedValue("eliza_mobile_successor");
+    await expect(activateAndroidNativeCloudSession(undefined, correlated, identityPort(async () => value)))
+      .rejects.toMatchObject({ code: "state-mismatch" });
+    expect(session.dispatchStewardSessionChange).not.toHaveBeenCalled();
+  });
+
+  it("does not announce after cancellation while identity readback is pending", async () => {
+    storage.getStorageValue.mockResolvedValue("eliza_mobile_saved");
+    const owner = new AbortController();
+    await expect(activateAndroidNativeCloudSession(owner.signal, correlated, identityPort(async () => {
+      owner.abort();
+      return { environment: "production", credentialId };
+    }))).rejects.toMatchObject({ name: "AbortError" });
+    expect(session.dispatchStewardSessionChange).not.toHaveBeenCalled();
+  });
+
   it("re-reads the protected session the native host wrote and announces it", async () => {
     storage.getStorageValue.mockResolvedValue("eliza_mobile_saved");
     await activateAndroidNativeCloudSession();
