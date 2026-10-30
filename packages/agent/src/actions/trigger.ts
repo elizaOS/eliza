@@ -49,6 +49,7 @@ import {
   describeCronSchedule,
   describeIntervalMs,
   describeOnceAt,
+  zonedIsoTimestamp,
 } from "../triggers/humanize.ts";
 import {
   executeTriggerTask,
@@ -87,6 +88,14 @@ const TRIGGER_OPS = [
   "list",
 ] as const;
 type TriggerOp = (typeof TRIGGER_OPS)[number];
+const TRIGGER_SCHEDULE_OPS: readonly TriggerOp[] = ["create", "update"];
+const TRIGGER_NAMED_OPS: readonly TriggerOp[] = [
+  "create",
+  "update",
+  "delete",
+  "run",
+  "toggle",
+];
 
 const TRIGGER_ACTION = "TRIGGER";
 const MAX_TRIGGERS_PER_CREATOR = 100;
@@ -676,8 +685,12 @@ async function opCreate(
   // explicit one-shot/interval `triggerType` — a typed statement, not a
   // sprayed number — outranks a provided cronExpression.
   const explicitType = params.triggerType?.trim().toLowerCase();
+  // A triggerType alone names a kind, not a time. The rejection names the
+  // field for each phrasing: "Provide an explicit schedule" named none, and
+  // the planner resent the same unscheduled call four times (live
+  // tj-7471737298abb6). interval keeps its own intervalMs rejection below.
   if (
-    !["once", "interval", "cron"].includes(explicitType ?? "") &&
+    explicitType !== "interval" &&
     params.delaySeconds === undefined &&
     params.delayMinutes === undefined &&
     params.intervalMs === undefined &&
@@ -685,7 +698,7 @@ async function opCreate(
     !readString(params.cronExpression)
   ) {
     return missingSchedule(
-      "Provide an explicit schedule before creating a trigger.",
+      "No schedule was sent, so nothing was created. Send delayMinutes or delaySeconds as a number for a relative delay, scheduledAtIso for a clock time, or cronExpression for a repeat.",
     );
   }
 
@@ -1018,7 +1031,11 @@ async function opCreate(
       kind: triggerConfig.kind,
       workflowId,
       workflowName,
-      scheduledAtIso: triggerConfig.scheduledAtIso,
+      // Read by the reply model, so in the sender's zone; the stored config
+      // and the trigger API keep their own form.
+      scheduledAtIso:
+        triggerConfig.scheduledAtIso &&
+        zonedIsoTimestamp(triggerConfig.scheduledAtIso, messageTimeZone),
       cronExpression: triggerConfig.cronExpression,
       intervalMs: triggerConfig.intervalMs,
       timezone: triggerConfig.timezone,
@@ -1269,7 +1286,9 @@ async function opUpdate(
       taskId: String(task.id),
       triggerId: next.triggerId,
       triggerType: next.triggerType,
-      scheduledAtIso: next.scheduledAtIso,
+      scheduledAtIso:
+        next.scheduledAtIso &&
+        zonedIsoTimestamp(next.scheduledAtIso, messageTimeZone),
       cronExpression: next.cronExpression,
       intervalMs: next.intervalMs,
       timezone: next.timezone,
@@ -1469,12 +1488,15 @@ export const triggerAction: Action = {
     "ENABLE_REMINDER",
     "STOP_REMINDER",
   ],
+  // Routing only; what each operation needs lives once in the description.
+  // Both render beside every exposed TRIGGER tool, and the schedule rules
+  // used to be stated in both, plus again in four parameter descriptions.
   routingHint:
-    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; this is the core fallback when OWNER_REMINDERS is unavailable. When OWNER_REMINDERS is exposed, explicit owner-reminder creation belongs to OWNER_REMINDERS instead. For a one-off relative delay pass delaySeconds or delayMinutes only. For a RECURRING request ('every morning/day/week at …') pass cronExpression ALONE — no delaySeconds/delayMinutes/scheduledAtIso, those express a single fire. PAUSE/RESUME: 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle (enabled:false to pause, enabled:true to resume) — pausing is NOT delete, the trigger is kept and can be resumed. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
+    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle, which keeps the trigger (not delete). This is the core fallback when OWNER_REMINDERS is unavailable; when OWNER_REMINDERS is exposed, explicit owner-reminder creation belongs to it, and a reminder it created (its id is in an OWNER_REMINDERS receipt, never a TRIGGER taskId) is updated, toggled or deleted through OWNER_REMINDERS, not TRIGGER. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
   description:
-    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle / list). Use toggle to PAUSE or RESUME a reminder ('pause the X reminder', 'resume X', 'turn X back on', 'stop reminding me about X') — pausing keeps the trigger and is not a delete. Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt; every create needs its schedule (delayMinutes/delaySeconds, scheduledAtIso, cronExpression or intervalMs) or nothing is created. Use update to change an existing reminder's time, name or text in place ('actually make it 30 minutes', 'move it to 5pm'), not by deleting it and creating it again; only a switch between one-off and recurring needs a new trigger. Use list for 'what reminders do I have' / 'when does my next reminder fire' — reminders are NOT calendar events and never appear in the calendar feed. Supports relative delay (delaySeconds/delayMinutes — one-off, on create or update), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
+    "User reminders and scheduled prompts: create, update, delete, run, toggle, list. Every create needs one schedule field or nothing is created: delayMinutes or delaySeconds for 'in N minutes', scheduledAtIso for a clock time, cronExpression for a repeat ('every …'), intervalMs for a fixed period. A repeat takes cronExpression alone, never a delay. Use update to change an existing reminder's time, name or text in place ('actually make it 30 minutes', 'move it to 5pm'), not by deleting it and creating it again; only a switch between one-off and recurring needs a new trigger. update, delete, run and toggle act only on triggers this action created or listed; a reminder saved through OWNER_REMINDERS is changed with OWNER_REMINDERS. toggle pauses (enabled:false) or resumes (enabled:true) a reminder and keeps it. Use list for 'what reminders do I have' / 'when does my next reminder fire'; reminders are not calendar events and never appear in the calendar feed.",
   descriptionCompressed:
-    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update (change time/name in place: 'make it 30 minutes') delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
+    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update (change a trigger's time/name in place: 'make it 30 minutes'; an OWNER_REMINDERS reminder updates there) delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
   suppressPostActionContinuation: true,
 
   validate: async (
@@ -1532,6 +1554,14 @@ export const triggerAction: Action = {
     }
   },
 
+  // Each promoted TRIGGER_<OP> carries only the fields its operation reads.
+  // Schedule descriptions stay shorter than the planner's cross-tool
+  // "Use the identical full description ... on tool TRIGGER" pointer, so
+  // TRIGGER_CREATE keeps them when TRIGGER is exposed beside it.
+  // The schedule fields come last: every live TRIGGER_CREATE call wrote its
+  // fields in schema order, and none that opened with displayName or
+  // instructions sent the delay listed before them (live tj-7471737298abb6
+  // and tj-6eff78bef6be90 errored that way with full descriptions shown).
   parameters: [
     {
       name: "action",
@@ -1542,36 +1572,22 @@ export const triggerAction: Action = {
     {
       name: "taskId",
       description:
-        "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted; update needs the id, which action=list returns for each trigger in its result data (entries[].taskId).",
+        "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted; update needs the id, which action=list returns for each trigger in its result data (entries[].taskId). An OWNER_REMINDERS reminder id is not a taskId.",
       required: false,
       // opUpdate rejects a call without it (MISSING_TASK_ID). Optional on
       // TRIGGER_UPDATE, the planner sent it bare three times before a fourth
       // round supplied the id (live 2026-10-30, tj-6e8277ba0331ca).
       requiredForSubactions: ["update"],
+      subactions: ["update", "delete", "run", "toggle"],
       aliases: ["triggerId", "id"],
       schema: { type: "string" as const },
-    },
-    {
-      name: "delaySeconds",
-      description:
-        "Fire once after this many seconds from now — THE param for 'remind me in N seconds/minutes' (converted to a one-off schedule; use this or delayMinutes for relative delays). On update it moves a one-off trigger to this many seconds from now. One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
-      required: false,
-      aliases: ["inSeconds", "seconds"],
-      schema: { type: "number" as const, minimum: 0 },
-    },
-    {
-      name: "delayMinutes",
-      description:
-        "Fire once after this many minutes from now ('remind me in 5 minutes'). Converted to a one-off schedule. On update it moves a one-off trigger to this many minutes from now ('actually make it 30 minutes'). One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
-      required: false,
-      aliases: ["inMinutes", "minutes"],
-      schema: { type: "number" as const, minimum: 0 },
     },
     {
       name: "triggerType",
       description:
         "Trigger schedule type for create — usually inferred: cronExpression -> cron (recurring), delay/scheduledAtIso -> once. Set it explicitly only to resolve a conflict; an explicit 'once' or 'interval' outranks a provided cronExpression.",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       schema: {
         type: "string" as const,
         enum: ["interval", "once", "cron"],
@@ -1582,6 +1598,7 @@ export const triggerAction: Action = {
       description:
         "Trigger display name (create / update). For delete / run / toggle, a name fragment that identifies the trigger.",
       required: false,
+      subactions: TRIGGER_NAMED_OPS,
       aliases: ["name", "title", "query"],
       schema: { type: "string" as const },
     },
@@ -1589,6 +1606,8 @@ export const triggerAction: Action = {
       name: "instructions",
       description: "Trigger instructions (create / update).",
       required: false,
+      // delete/run/toggle fall back to it as a name fragment.
+      subactions: TRIGGER_NAMED_OPS,
       aliases: ["description", "message", "prompt", "body"],
       schema: { type: "string" as const },
     },
@@ -1596,44 +1615,67 @@ export const triggerAction: Action = {
       name: "wakeMode",
       description: "How the trigger wakes the agent.",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       schema: {
         type: "string" as const,
         enum: ["inject_now", "next_autonomy_cycle"],
       },
     },
     {
-      name: "intervalMs",
-      description:
-        "Interval frequency in ms. Required when the trigger is an interval trigger; there is no default period.",
+      name: "maxRuns",
+      description: "Optional max runs for a trigger.",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      schema: { type: "number" as const, minimum: 1 },
+    },
+    {
+      name: "delaySeconds",
+      description:
+        "Schedule: fire once this many seconds from now ('in 90 seconds').",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      aliases: ["inSeconds", "seconds"],
+      schema: { type: "number" as const, minimum: 0 },
+    },
+    {
+      name: "delayMinutes",
+      description:
+        "Schedule: fire once this many minutes from now ('in 20 minutes').",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
+      aliases: ["inMinutes", "minutes"],
+      schema: { type: "number" as const, minimum: 0 },
+    },
+    {
+      name: "intervalMs",
+      description: "Schedule: repeat period in milliseconds.",
+      required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       schema: { type: "number" as const, minimum: 0 },
     },
     {
       name: "scheduledAtIso",
       description:
-        "ISO timestamp for once-triggers. A value with no Z or UTC offset (2026-10-13T09:00:00) is read as the user's local time; a value with one is used as given.",
+        "Schedule: one-off ISO time; with no Z or offset it is the user's local time.",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       aliases: ["scheduledFor", "when", "at", "datetime"],
       schema: { type: "string" as const },
     },
     {
       name: "cronExpression",
       description:
-        "Five-field cron expression — THE param for RECURRING schedules ('every morning at 9' -> '0 9 * * *'). Pass it ALONE: do not also send delaySeconds/delayMinutes/scheduledAtIso (those describe a single fire and are ignored when a cron is present). Never for a one-off relative delay; use delaySeconds/delayMinutes for 'in N seconds/minutes'.",
+        "Schedule: five-field cron for a repeat ('every day at 9' is '0 9 * * *').",
       required: false,
+      subactions: TRIGGER_SCHEDULE_OPS,
       aliases: ["schedule", "cron", "recurrence"],
       schema: { type: "string" as const },
-    },
-    {
-      name: "maxRuns",
-      description: "Optional max runs for a trigger.",
-      required: false,
-      schema: { type: "number" as const, minimum: 1 },
     },
     {
       name: "enabled",
       description: "Enable or disable a trigger (toggle).",
       required: false,
+      subactions: ["toggle"],
       schema: { type: "boolean" as const },
     },
   ],

@@ -4,10 +4,12 @@ import type {
 } from "@elizaos/core/permissions";
 import { createContext, type ReactNode, useContext } from "react";
 import {
+  getCameraPlugin,
   getLocationPlugin,
   getMobileSignalsPlugin,
   getPushNotificationsPlugin,
   getTalkModePlugin,
+  hasCameraPermissionMethods,
 } from "../../bridge/native-plugins";
 import type { WalkthroughMemoryStore } from "./permission-walkthrough";
 
@@ -55,6 +57,7 @@ export const useNativePermissionHost = () =>
 /** A package dependency is not evidence that its native methods were installed. */
 export function supportedNativePrimingPermissions(): PermissionId[] {
   const voice = getTalkModePlugin();
+  const camera = getCameraPlugin();
   const location = getLocationPlugin();
   const push = getPushNotificationsPlugin();
   const mobile = getMobileSignalsPlugin();
@@ -69,9 +72,9 @@ export function supportedNativePrimingPermissions(): PermissionId[] {
       ? ["notifications" as const]
       : []),
     ...(checkAndRequest(voice) ? ["microphone" as const] : []),
+    ...(hasCameraPermissionMethods(camera) ? ["camera" as const] : []),
     ...(checkAndRequest(location) ? ["location" as const] : []),
-    // Camera's current generic request includes microphone and storage, and its
-    // photos answer is not a library grant. Android Calendar also needs its own
+    // The camera's photos answer is not a library grant. Android Calendar also needs its own
     // requestAccess adapter. These entries require explicit scoped host ports.
   ];
 }

@@ -436,9 +436,12 @@ reportable when they finish afterward. Synthetic page events do not end the
 interval, and a new helper action starts a new interval. This observation rule
 does not grant permission to execute payment or sign-in controls.
 
-The protection builder accepts optional `advisory: {referenceDomains, copy}`.
-It renders a nonblocking yellow in-page bar for unavailable lists and local
-lookalike signals. The default is disabled. The engine exposes
+The protection builder accepts optional
+`advisory: {referenceDomains, copy, unscanned}`. It renders a nonblocking yellow
+in-page bar for unavailable lists and local lookalike signals. The default is
+disabled. `unscanned: false` keeps the lookalike bar and draws nothing when the
+lists are unavailable, for a consumer that warns only on a blacklist hit or a
+lookalike; it defaults to `true`. The engine exposes
 `advisory.setOwner(opaqueOwnerOrNull)` only to trusted worker composition. An
 owner is required before an acknowledgement can be saved. Hosts must set or
 retire that context on every account transition and transport loss. This is

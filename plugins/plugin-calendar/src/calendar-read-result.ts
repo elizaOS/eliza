@@ -4,37 +4,30 @@ export function calendarReadPromptProjection(
   data: ActionResult["data"],
 ): Pick<ActionResult, "promptData" | "promptDataMode"> {
   if (!data || !Array.isArray(data.events) || data.events.length < 2) return {};
-  const events = data.events;
-  const first = events[0];
-  if (!first || typeof first !== "object" || Array.isArray(first)) return {};
-  const keys = Object.keys(first),
-    rows: unknown[][] = [];
-  const shared: Record<string, unknown> = {};
-  for (const event of events) {
-    if (
-      !event ||
-      typeof event !== "object" ||
-      Array.isArray(event) ||
-      ![Object.prototype, null].includes(Object.getPrototypeOf(event))
-    )
-      return {};
-    const descriptors = Object.getOwnPropertyDescriptors(event);
-    if (
-      Reflect.ownKeys(descriptors).length !== keys.length ||
-      Object.keys(descriptors).some((key, index) => key !== keys[index]) ||
-      keys.some(
-        (key) =>
-          !("value" in descriptors[key]) ||
-          !descriptors[key].enumerable ||
-          descriptors[key].value === undefined,
-      )
-    )
-      return {};
-  }
   try {
+    // Encode the JSON the model wire and recordings carry. An own property
+    // holding undefined (the feed's accountEmail for a source without one) is
+    // absent there; on the live object it disabled this encoding for every
+    // aggregated feed.
+    const wire = JSON.parse(JSON.stringify(data)) as typeof data;
+    const events = wire.events as Record<string, unknown>[];
+    const first = events[0];
+    if (!first || typeof first !== "object" || Array.isArray(first)) return {};
+    const keys = Object.keys(first),
+      rows: unknown[][] = [];
+    const shared: Record<string, unknown> = {};
+    for (const event of events) {
+      if (
+        !event ||
+        typeof event !== "object" ||
+        Array.isArray(event) ||
+        Object.keys(event).length !== keys.length ||
+        Object.keys(event).some((key, index) => key !== keys[index])
+      )
+        return {};
+    }
     for (const key of keys) {
       const encoded = JSON.stringify(first[key]);
-      if (encoded === undefined) return {};
       if (events.every((event) => JSON.stringify(event[key]) === encoded))
         shared[key] = first[key];
     }
@@ -66,10 +59,10 @@ export function calendarReadPromptProjection(
         ),
       );
     const replyContext =
-      data.replyContext &&
-      typeof data.replyContext === "object" &&
-      !Array.isArray(data.replyContext)
-        ? (data.replyContext as Record<string, unknown>)
+      wire.replyContext &&
+      typeof wire.replyContext === "object" &&
+      !Array.isArray(wire.replyContext)
+        ? (wire.replyContext as Record<string, unknown>)
         : undefined;
     const projectedReplyContext =
       replyContext &&
@@ -81,7 +74,7 @@ export function calendarReadPromptProjection(
           }
         : replyContext;
     const promptData = {
-      ...data,
+      ...wire,
       ...(projectedReplyContext ? { replyContext: projectedReplyContext } : {}),
       events: {
         format: "shared-fields-and-rows-v1",
@@ -110,7 +103,7 @@ export function calendarReadPromptProjection(
     if (
       JSON.stringify(restored) !== JSON.stringify(events) ||
       Buffer.byteLength(JSON.stringify(promptData)) >=
-        Buffer.byteLength(JSON.stringify(data))
+        Buffer.byteLength(JSON.stringify(wire))
     )
       return {};
     return { promptData, promptDataMode: "replace-data" };

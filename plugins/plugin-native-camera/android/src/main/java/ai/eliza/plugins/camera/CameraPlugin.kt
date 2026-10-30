@@ -88,6 +88,18 @@ class CameraPlugin : Plugin() {
     private var completedRecording: JSObject? = null
     private var completedRecordingError: Exception? = null
     private val recordingPermissionCalls = mutableSetOf<PluginCall>()
+    private val cameraPermissionRequests = CameraPermissionRequests<PluginCall>(object : CameraPermissionRequests.Host<PluginCall> {
+        override fun request(alias: String, call: PluginCall) {
+            requestPermissionForAlias(alias, call, "handleScopedCameraPermissionResult")
+        }
+        override fun resolve(call: PluginCall) { resolveCameraPermission(call) }
+        override fun rejectClosed(call: PluginCall) {
+            call.reject("Camera plugin was destroyed", "CAMERA_DESTROYED")
+        }
+        override fun rejectFailure(call: PluginCall, error: RuntimeException) {
+            call.reject("Camera permission request failed", "CAMERA_PERMISSION_FAILED", error)
+        }
+    })
     private var destroyed = false
     private var pendingPreviewCall: PluginCall? = null
     private var currentCameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
@@ -1647,6 +1659,41 @@ class CameraPlugin : Plugin() {
     // ---- Permissions ----
 
     @PluginMethod
+    fun checkCameraPermission(call: PluginCall) {
+        activity.runOnUiThread {
+            if (destroyed) call.reject("Camera plugin was destroyed", "CAMERA_DESTROYED")
+            else resolveCameraPermission(call)
+        }
+    }
+
+    @PluginMethod
+    fun requestCameraPermission(call: PluginCall) {
+        activity.runOnUiThread {
+            if (destroyed) {
+                call.reject("Camera plugin was destroyed", "CAMERA_DESTROYED")
+            } else if (getPermissionState("camera") == com.getcapacitor.PermissionState.GRANTED) {
+                resolveCameraPermission(call)
+            } else {
+                cameraPermissionRequests.request(call)
+            }
+        }
+    }
+
+    @PermissionCallback
+    private fun handleScopedCameraPermissionResult(call: PluginCall) {
+        activity.runOnUiThread {
+            // Destroy already rejected and retired its exact pending calls.
+            cameraPermissionRequests.complete(call)
+        }
+    }
+
+    private fun resolveCameraPermission(call: PluginCall) {
+        call.resolve(JSObject().apply {
+            put("camera", permissionString(getPermissionState("camera")))
+        })
+    }
+
+    @PluginMethod
     override fun checkPermissions(call: PluginCall) {
         val cameraStatus = getPermissionState("camera")
         val micStatus = getPermissionState("microphone")
@@ -1688,6 +1735,7 @@ class CameraPlugin : Plugin() {
     override fun handleOnDestroy() {
         activity.runOnUiThread {
             destroyed = true
+            cameraPermissionRequests.close()
             for (call in recordingPermissionCalls) call.reject("Camera plugin was destroyed", "CAMERA_DESTROYED")
             recordingPermissionCalls.clear()
             recordingSession?.let { session ->

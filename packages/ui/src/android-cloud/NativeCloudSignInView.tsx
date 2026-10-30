@@ -13,9 +13,6 @@ import {
   useState,
   useSyncExternalStore,
 } from "react";
-// Styles live in the renderer-only `@elizaos/ui/styles` entry, not here: this
-// component is reachable from the UI barrel, and Node-side barrel consumers
-// (Node refuses ".css" extensions) must not evaluate a CSS module.
 import {
   type CloudServiceInfo,
   parseCloudServiceInfo,

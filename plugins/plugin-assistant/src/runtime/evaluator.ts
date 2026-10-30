@@ -373,6 +373,66 @@ function evaluatorProtocolDiagnostic(parsed: EvaluatorOutput) {
   };
 }
 
+/**
+ * Plain copy for each requested Calendar read the evidence check could not
+ * confirm. `unread` stands alone; `partial` follows Calendar results already
+ * shown, so it never denies that those were read.
+ */
+const UNCONFIRMED_CALENDAR_READ_COPY = {
+  feed: {
+    unread: "I couldn't read your calendar for those dates just now.",
+    partial: "I couldn't confirm your whole calendar for those dates.",
+  },
+  next_event: {
+    unread: "I couldn't check your next calendar event just now.",
+    partial: "I couldn't confirm your next event.",
+  },
+  search_events: {
+    unread: "I couldn't look up that event in your calendar just now.",
+    partial: "I couldn't confirm that event.",
+  },
+  check_availability: {
+    unread: "I couldn't check whether that time is free just now.",
+    partial: "I couldn't confirm whether that time is free.",
+  },
+  propose_times: {
+    unread: "I couldn't check your calendar for open times just now.",
+    partial: "I couldn't confirm which times are open.",
+  },
+} satisfies Record<
+  CalendarReadBinding["operation"],
+  { unread: string; partial: string }
+>;
+
+function unconfirmedCalendarReadCopy(
+  unverifiedIntentIds: readonly string[],
+  original: ContextObject,
+  calendarResultsShown: boolean,
+): string {
+  const variant = calendarResultsShown ? "partial" : "unread";
+  const bindings = original.metadata?.calendarReadBindings;
+  const copy = new Set(
+    (Array.isArray(bindings) ? bindings : []).flatMap((binding) =>
+      isObjectRecord(binding) &&
+      typeof binding.intentId === "string" &&
+      unverifiedIntentIds.includes(binding.intentId) &&
+      typeof binding.operation === "string" &&
+      Object.hasOwn(UNCONFIRMED_CALENDAR_READ_COPY, binding.operation)
+        ? [
+            UNCONFIRMED_CALENDAR_READ_COPY[
+              binding.operation as CalendarReadBinding["operation"]
+            ][variant],
+          ]
+        : [],
+    ),
+  );
+  // Malformed bindings name no operation; the copy then stays general.
+  if (copy.size > 0) return [...copy].join(" ");
+  return calendarResultsShown
+    ? "I couldn't confirm the rest of your calendar."
+    : "I couldn't check your calendar just now.";
+}
+
 function finalizeEvaluatorOutput(
   parsed: EvaluatorOutput,
   raw: EvaluatorModelResult,
@@ -410,7 +470,11 @@ function finalizeEvaluatorOutput(
     const messageToUser = redactDiagnosticText(
       [
         ...scoped.facts,
-        "I couldn't confirm that Calendar request.",
+        unconfirmedCalendarReadCopy(
+          calendarCoverage.unverifiedIntentIds,
+          trajectory.modelBaseContext ?? context,
+          scoped.calendarScopeReported,
+        ),
         ...(scoped.calendarScopeReported
           ? [
               "Those Calendar results cover only the connected sources and dates checked.",
@@ -931,6 +995,19 @@ async function runEvaluatorWithSelectedModel(
   ) {
     responseSchema.properties.replyEffectStatus.enum = ["none", "non_applied"];
   }
+  // Coverage guards match exact intent IDs. Unconstrained, the model often
+  // cited intent text instead (tj-6eb9a245fd912d), which voided a committed
+  // move. The set is fixed for the turn, so its evaluator calls share a schema.
+  const coverageItem = responseSchema.properties?.outcomeCoverage?.items;
+  if (
+    decisionState.intents.length > 0 &&
+    coverageItem &&
+    !Array.isArray(coverageItem) &&
+    coverageItem.properties?.intentId
+  )
+    coverageItem.properties.intentId.enum = decisionState.intents.map(
+      (intent) => intent.id,
+    );
   const initialBudgetOptions = budgetResolution.contextWindowTokens
     ? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
     : {};
@@ -2372,11 +2449,11 @@ export function validatedOutcomeCoverage(params: {
 }
 
 /** A requested operation needs a fresh, source-bound producer receipt, not another read's success. */
-/** A cited update may depend on an earlier exact target search. Keep the
- * required read guard, but follow current result provenance rather than require
- * the model to repeat that prerequisite's step ID in its final coverage list.
- * Only the same unchanged target snapshot and an active applied commit qualify;
- * unrelated/archived reads, other operations and uncertain effects do not. */
+/** A cited update or delete may depend on an earlier exact target search. Keep
+ * the required read guard, but follow current result provenance rather than
+ * require the model to repeat that prerequisite's step ID in its final coverage
+ * list. Only the same unchanged target snapshot and an active applied commit
+ * qualify; unrelated/archived reads, other operations and uncertain effects do not. */
 function calendarMutationTargetReadEvidence(
   binding: CalendarReadBinding,
   cited: readonly string[],
@@ -2389,35 +2466,36 @@ function calendarMutationTargetReadEvidence(
     const mutation = evidence.get(id),
       result = mutation?.result;
     const index = mutation ? trajectory.steps.indexOf(mutation) : -1;
+    const call = mutation?.toolCall;
+    const subaction = call?.params?.subaction ?? call?.params?.action;
+    const operation =
+      call?.name === "CALENDAR_UPDATE_EVENT" ||
+      (call?.name === "CALENDAR" && subaction === "update_event")
+        ? "update"
+        : call?.name === "CALENDAR_DELETE_EVENT" ||
+            (call?.name === "CALENDAR" && subaction === "delete_event")
+          ? "delete"
+          : undefined;
     if (
       index < 0 ||
-      !mutation?.toolCall ||
-      mutation.terminalOnly ||
+      !operation ||
+      mutation?.terminalOnly ||
       result?.success !== true ||
       result.error != null ||
       result.failureProvenance ||
-      result.replyFailure ||
-      !(
-        mutation.toolCall.name === "CALENDAR_UPDATE_EVENT" ||
-        (mutation.toolCall.name === "CALENDAR" &&
-          (mutation.toolCall.params?.subaction ??
-            mutation.toolCall.params?.action) === "update_event")
-      )
+      result.replyFailure
     )
       continue;
     const data = result.data;
-    if (
-      !isObjectRecord(data) ||
-      !isObjectRecord(data.targetEvent) ||
-      !isObjectRecord(data.event)
-    )
-      continue;
-    const target = data.targetEvent,
-      event = data.event;
+    if (!isObjectRecord(data) || !isObjectRecord(data.targetEvent)) continue;
+    const target = data.targetEvent;
     if (
       typeof target.id !== "string" ||
       !target.id ||
-      event.id !== target.id ||
+      // An update returns the changed event; a delete only marks the target.
+      (operation === "update"
+        ? !isObjectRecord(data.event) || data.event.id !== target.id
+        : data.deleted !== true) ||
       !isObjectRecord(target.metadata) ||
       typeof target.metadata.etag !== "string" ||
       !target.metadata.etag
@@ -2435,7 +2513,7 @@ function calendarMutationTargetReadEvidence(
           result.effectReceipts?.some(
             (own) => own.receiptId === receipt.receiptId,
           ) &&
-          receipt.operation === "calendar.event.update" &&
+          receipt.operation === `calendar.event.${operation}` &&
           receipt.outcome === "applied" &&
           receipt.resource?.id === target.id,
       );

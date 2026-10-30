@@ -149,6 +149,31 @@ describe("lossless Notes append", () => {
     expect(inline.value.title).toBe("Packing");
     expect(inline.value.body).toBe("\nBring water!");
   });
+  it.each([
+    [
+      "packing\ncharger, passport, socks",
+      "packing\ncharger, passport, socks, eggs",
+    ],
+    ["shop\n牛奶、鸡蛋", "shop\n牛奶、鸡蛋、eggs"],
+    ["groceries\n- milk\n- bread\n", "groceries\n- milk\n- bread\n- eggs"],
+    ["todo\n1. milk\n2. bread", "todo\n1. milk\n2. bread\n3. eggs"],
+    ["todo\n- [x] milk", "todo\n- [x] milk\n- [ ] eggs"],
+    ["ideas\nmilk\nbread, butter", "ideas\nmilk\nbread, butter\neggs"],
+    ["Packing\nPack a jacket.", "Packing\nPack a jacket.\neggs"],
+    ["Packing", "Packing\neggs"],
+  ])(
+    "adds one item in the plain list form of %j",
+    async (content, expected) => {
+      const service = await setup();
+      const created = await service.createNoteWithCommit({ content });
+      const changed = await service.updateNoteWithCommit(
+        created.value.id,
+        { textEdit: { action: "append", field: "item", text: "eggs" } },
+        created.snapshot.revision,
+      );
+      expect(changed.value.title + changed.value.body).toBe(expected);
+    },
+  );
   it("keeps checklist append on its authored path without modifying existing items", async () => {
     const service = await setup();
     const created = await service.createNoteWithCommit({
@@ -186,6 +211,18 @@ describe("lossless Notes append", () => {
       ],
       custom: { untouched: true },
     });
+    // The item form of a text append reaches the same checklist operation.
+    const item = await service.updateNoteWithCommit(
+      created.value.id,
+      { textEdit: { action: "append", field: "item", text: "Socks" } },
+      changed.snapshot.revision,
+    );
+    expect(item.value.format?.data?.items).toEqual([
+      { t: "Pack a jacket.", done: true, custom: "keep" },
+      { t: "Bring water", done: false },
+      { t: "Socks", done: false },
+    ]);
+    expect(item.value.body).toBe(created.value.body);
   });
   it("keeps an empty checklist on the authored append route", async () => {
     const service = await setup();

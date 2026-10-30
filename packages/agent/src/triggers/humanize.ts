@@ -206,6 +206,40 @@ export function describeOnceAt(
 }
 
 /**
+ * The instant as ISO 8601 in the sender timezone with its UTC offset
+ * ("2026-10-30T05:57:29.656-07:00"), for model-bound result data. The reply
+ * to "remind me in 2 hours" at 3:57am read the hour of the UTC form
+ * "2026-10-30T12:57:29.656Z" and said "12:57pm" (live tj-751d37123e42ae).
+ * The instant is unchanged, so Date.parse reads the same moment. An
+ * unparseable value is returned as given; a zone Intl cannot express as a
+ * whole-minute offset keeps the UTC form.
+ */
+export function zonedIsoTimestamp(iso: string, timeZone: string): string {
+  const date = new Date(Date.parse(iso));
+  if (Number.isNaN(date.getTime())) return iso;
+  const parts = Object.fromEntries(
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hourCycle: "h23",
+      timeZoneName: "longOffset",
+    })
+      .formatToParts(date)
+      .map((part) => [part.type, part.value]),
+  );
+  const offset =
+    parts.timeZoneName === "GMT" ? "+00:00" : parts.timeZoneName?.slice(3);
+  if (!offset || !/^[+-]\d{2}:\d{2}$/.test(offset)) return date.toISOString();
+  const ms = String(date.getUTCMilliseconds()).padStart(3, "0");
+  return `${parts.year}-${parts.month}-${parts.day}T${parts.hour}:${parts.minute}:${parts.second}.${ms}${offset}`;
+}
+
+/**
  * Describe a repeat interval ("every 12 hours", "every 90 minutes"). Picks
  * the largest unit that divides evenly; sub-second remainders round to
  * seconds so raw millisecond counts never surface.

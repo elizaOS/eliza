@@ -108,13 +108,20 @@ const defaultCopy = {
 };
 
 /** The owner comes only from trusted host composition, never a website message.
- * Changing or retiring it clears all in-memory acknowledgements before any await. */
+ * Changing or retiring it clears all in-memory acknowledgements before any await.
+ * `unscanned: false` draws no bar when the lists are unavailable; a lookalike still warns. */
 export function createProtectionAdvisory(
   api,
-  { referenceDomains = [], copy = {}, warningPage = "warning.html" } = {},
+  {
+    referenceDomains = [],
+    copy = {},
+    warningPage = "warning.html",
+    unscanned = true,
+  } = {},
 ) {
   const labels = { ...defaultCopy, ...copy };
   if (
+    typeof unscanned !== "boolean" ||
     Object.keys(copy).some((key) => !(key in defaultCopy)) ||
     Object.values(labels).some(
       (value) =>
@@ -181,7 +188,7 @@ export function createProtectionAdvisory(
     if (revision !== epoch) return again();
     const nonce = crypto.randomUUID();
     const state =
-      current && !similar
+      !similar && (current || !unscanned)
         ? null
         : {
             nonce,

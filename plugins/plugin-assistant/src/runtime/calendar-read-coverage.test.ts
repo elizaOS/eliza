@@ -10,6 +10,7 @@ import {
   type ContextObject,
   type EvaluatorOutput,
   executePlannedToolCall,
+  type JSONSchema,
   type Memory,
   type PlannerTrajectory,
   promoteSubactionsToActions,
@@ -364,7 +365,10 @@ describe("request-bound Calendar read coverage", () => {
       "Your next event is Design review on October 5 at 10:00.",
     );
     expect(result.messageToUser).toContain("Family");
-    expect(result.messageToUser).toContain("couldn't confirm");
+    // The copy after a shown event never says the event was not read.
+    expect(result.messageToUser).toContain(
+      "Not up to date: Family. I couldn't confirm your next event.",
+    );
     expect(result.messageToUser).not.toContain(
       "No upcoming events on any calendar.",
     );
@@ -478,7 +482,9 @@ describe("request-bound Calendar read coverage", () => {
     expect(result.messageToUser).not.toContain(
       "No upcoming events on any calendar.",
     );
-    expect(result.messageToUser).toContain("couldn't confirm");
+    expect(result.messageToUser).toBe(
+      "I couldn't check your next calendar event just now.",
+    );
     expect(calls).toBe(1);
   });
   it("leaves unrelated legacy requests without bindings unchanged", () => {
@@ -533,7 +539,7 @@ describe("request-bound Calendar read coverage", () => {
       expect(result.success).toBe(false);
       expect(result.requestFullyCovered).toBe(false);
       expect(result.messageToUser).toBe(
-        `Only the checked Calendar window was read. ${title}${body} I couldn't confirm that Calendar request. Those Calendar results cover only the connected sources and dates checked.`,
+        `Only the checked Calendar window was read. ${title}${body} I couldn't confirm your next event. Those Calendar results cover only the connected sources and dates checked.`,
       );
       expect(result.outcomeCoverage?.[0].status).toBe("blocked");
       expect(result.outcomeCoverage?.[1].status).toBe("completed");
@@ -632,6 +638,190 @@ describe("request-bound Calendar read coverage", () => {
     });
     expect(stale.messageToUser).not.toContain("STALE SAME-DAY FACT");
     expect(stale.messageToUser).toContain("Notes view is open.");
+  });
+});
+
+/** tj-6eb9a245fd912d: "move the coffee with Sam to 2pm", search then a committed update. */
+function liveMoveFixture() {
+  const f = fixture();
+  const bindings = f.context.metadata
+    ?.calendarReadBindings as CalendarReadBinding[];
+  bindings[0].operation = "search_events";
+  const id = "agent:eliza:owner:grant:eliza-calendar:calendar:primary:event-1";
+  const before = {
+    id,
+    provider: "eliza",
+    grantId: "eliza-calendar",
+    calendarId: "primary",
+    title: "coffee with Sam",
+    startAt: "2026-10-31T17:00:00.000Z",
+    endAt: "2026-10-31T18:00:00.000Z",
+    metadata: { etag: '"eliza-1"' },
+  };
+  const after = {
+    ...before,
+    startAt: "2026-10-31T21:00:00.000Z",
+    endAt: "2026-10-31T22:00:00.000Z",
+    metadata: { etag: '"eliza-2"' },
+  };
+  const committedAt = "2026-10-30T10:50:33.794Z";
+  f.trajectory.outcomeIntents = [
+    "find the coffee-with-Sam event",
+    "reschedule it to 2pm",
+  ];
+  f.trajectory.steps = [
+    {
+      iteration: 1,
+      toolCall: { id: "search", name: "CALENDAR_SEARCH_EVENTS", params: {} },
+      result: {
+        success: true,
+        data: {
+          events: [before],
+          replyContext: { domain: "calendar", scenario: "search_results" },
+        },
+      },
+    },
+    {
+      iteration: 2,
+      toolCall: { id: "discover", name: "DISCOVER_ACTIONS", params: {} },
+      result: {
+        success: true,
+        data: { loadedTools: ["CALENDAR_UPDATE_EVENT"] },
+      },
+    },
+    {
+      iteration: 3,
+      toolCall: { id: "move", name: "CALENDAR_UPDATE_EVENT", params: {} },
+      result: {
+        success: true,
+        transcriptVisibility: "internal",
+        modelReplyRequired: true,
+        effectReceipts: [
+          {
+            receiptId: "calendar-event-mutation-receipt-v1:move",
+            operation: "calendar.event.update",
+            resource: { kind: "calendar.event", id, version: '"eliza-2"' },
+            artifacts: [],
+            idempotency: { key: "move-key", replayed: false },
+            observedAt: committedAt,
+            outcome: "applied",
+            commit: { kind: "durable", id, committedAt },
+          },
+        ],
+        data: { event: after, targetEvent: before },
+      },
+    },
+  ];
+  // The live model's verdict, with the intent text it cited as intent IDs.
+  const live: EvaluatorOutput = {
+    thought: "Locate and time change succeeded.",
+    success: true,
+    decision: "FINISH",
+    requestFullyCovered: true,
+    outcomeCoverage: [
+      {
+        intentId: "find the coffee-with-Sam event",
+        status: "completed",
+        evidenceStepIds: ["step:1"],
+      },
+      {
+        intentId: "reschedule it to 2pm",
+        status: "completed",
+        evidenceStepIds: ["step:3"],
+      },
+    ],
+    messageToUser: 'Moved "coffee with Sam" to 2pm on Saturday, Oct 31 PDT.',
+    replyEffectStatus: "applied",
+    effectReceiptIds: ["calendar-event-mutation-receipt-v1:move"],
+  };
+  return { ...f, live };
+}
+
+describe("committed Calendar mutations behind a read binding", () => {
+  it("restricts coverage to the turn's intent IDs so a committed move keeps its reply", async () => {
+    const f = liveMoveFixture();
+    let intentIds: unknown;
+    // Strict structured decoding can emit only values the schema allows.
+    const useModel = vi.fn(
+      async (_type: unknown, request: { responseSchema: JSONSchema }) => {
+        const coverage = request.responseSchema.properties?.outcomeCoverage;
+        const item = Array.isArray(coverage?.items)
+          ? undefined
+          : coverage?.items;
+        intentIds = item?.properties?.intentId?.enum;
+        return JSON.stringify({
+          ...f.live,
+          outcomeCoverage: f.live.outcomeCoverage?.map((entry, index) =>
+            Array.isArray(intentIds)
+              ? { ...entry, intentId: intentIds[index] }
+              : entry,
+          ),
+        });
+      },
+    );
+    const result = await runEvaluator({
+      runtime: { useModel },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.messageToUser).toBe(f.live.messageToUser);
+    expect(intentIds).toEqual(["intent:1", "intent:2"]);
+    expect(result.success).toBe(true);
+    expect(result.decision).toBe("FINISH");
+    expect(result.effectReceiptIds).toEqual(f.live.effectReceiptIds);
+    expect(useModel).toHaveBeenCalledTimes(1);
+  });
+  it("follows a cited delete to the search that found its unchanged target", async () => {
+    const f = liveMoveFixture();
+    const [search, , update] = f.trajectory.steps;
+    const target = (update.result.data as { targetEvent: { id: string } })
+      .targetEvent;
+    const receiptId = "calendar-event-mutation-receipt-v1:delete";
+    f.trajectory.outcomeIntents = ["delete the coffee with Sam"];
+    f.trajectory.steps = [
+      search,
+      {
+        iteration: 2,
+        toolCall: { id: "delete", name: "CALENDAR_DELETE_EVENT", params: {} },
+        result: {
+          ...update.result,
+          effectReceipts: update.result.effectReceipts?.map((receipt) => ({
+            ...receipt,
+            receiptId,
+            operation: "calendar.event.delete",
+            resource: { ...receipt.resource, version: 'deleted:"eliza-1"' },
+          })),
+          data: { deleted: true, targetEvent: target },
+        },
+      },
+    ];
+    const output = {
+      ...f.live,
+      outcomeCoverage: [
+        {
+          intentId: "intent:1",
+          status: "completed" as const,
+          evidenceStepIds: ["step:2"],
+        },
+      ],
+      messageToUser: "Deleted “coffee with Sam” from your calendar.",
+      effectReceiptIds: [receiptId],
+    };
+    const evaluate = () =>
+      runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+    const result = await evaluate();
+    expect(result.messageToUser).toBe(output.messageToUser);
+    expect(result.success).toBe(true);
+    // A search that saw another version of the event is not the delete's target read.
+    const read = search.result.data as { events: object[] };
+    read.events = [{ ...target, metadata: { etag: '"eliza-0"' } }];
+    expect((await evaluate()).messageToUser).toContain(
+      "I couldn't look up that event in your calendar just now.",
+    );
   });
 });
 
@@ -762,16 +952,18 @@ describe("Calendar proposal and availability outcome evidence", () => {
         context: f.context,
         trajectory: f.trajectory,
       });
+      const copy =
+        fault === "availability"
+          ? "I couldn't check whether that time is free just now."
+          : "I couldn't check your calendar for open times just now.";
       expect(result.success).toBe(false);
       expect(result.replyFailure).toEqual({
         kind: "reply_generation_error",
         transient: false,
         code,
-        message: "I couldn't confirm that Calendar request.",
+        message: copy,
       });
-      expect(result.messageToUser).toContain(
-        "I couldn't confirm that Calendar request.",
-      );
+      expect(result.messageToUser).toContain(copy);
       expect(JSON.stringify(result.replyFailure)).not.toMatch(
         /private-|selected-calendar|request-now|owner-room/,
       );
@@ -835,6 +1027,35 @@ describe("Calendar proposal and availability outcome evidence", () => {
     expect(result.outcomeCoverage?.[0].status).toBe("blocked");
     expect(model).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    [
+      "propose_times",
+      "I couldn't check your calendar for open times just now.",
+    ],
+    ["malformed", "I couldn't check your calendar just now."],
+  ])(
+    "tells the owner plainly which %s read it could not confirm",
+    async (kind, copy) => {
+      // The :5325 slot run cited CONFLICT_DETECT for a propose_times binding,
+      // and the owner got "I couldn't confirm that Calendar request."
+      const f = proposalFixture();
+      f.call.name = "CONFLICT_DETECT";
+      f.result.data = { conflicts: [], checked: true };
+      if (kind === "malformed" && f.context.metadata)
+        f.context.metadata.calendarReadBindings = { intentId: "intent:1" };
+      const result = await runEvaluator({
+        runtime: { useModel: vi.fn(async () => JSON.stringify(f.output)) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.messageToUser).toBe(copy);
+      expect(result.replyFailure?.message).toBe(copy);
+      expect(result.messageToUser).not.toMatch(
+        /planner|scope|intent|tool|receipt|request|—/i,
+      );
+    },
+  );
   it.each([
     "missing-slots",
     "wide-slot",

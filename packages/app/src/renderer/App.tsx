@@ -204,7 +204,6 @@ import {
 } from "@elizaos/ui";
 import { X } from "lucide-react";
 import {
-  type ComponentType,
   lazy,
   type ReactNode,
   Suspense,
@@ -372,7 +371,7 @@ function TrayPopoverShell() {
       className="fixed inset-0 flex flex-col gap-3 overflow-y-auto bg-transparent p-3"
     >
       <TrayLauncher />
-      <WidgetHost slot="home" layout="stack" />
+      <WidgetHost slot="home" layout="stack" surface="tray" />
     </div>
   );
 }
@@ -1374,20 +1373,6 @@ function ViewUnavailableFallback({ viewId }: { viewId: string }): ReactNode {
     </AppWorkspaceContent>
   );
 }
-function renderPhoneSurface(
-  enabled: boolean,
-  Component: ComponentType,
-  pageLayout: PageLayoutManifest,
-  viewId: string,
-): ReactNode {
-  return enabled ? (
-    <AppWorkspaceContent pageLayout={pageLayout}>
-      <Component />
-    </AppWorkspaceContent>
-  ) : (
-    <ViewUnavailableFallback viewId={viewId} />
-  );
-}
 function renderAppsSurface(
   navigationPath: string,
   pageLayout: PageLayoutManifest,
@@ -1503,16 +1488,12 @@ function buildStaticTabRenderers(): Record<
       </AppWorkspaceContent>
     ),
     vault: wrapOverlayAware(<LazyVaultPageView />),
-    // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
-    // marker as the home tile, so a deep-link off the fork falls back to
-    // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
-    camera: ({ pageLayout }) =>
-      renderPhoneSurface(
-        isAospShellEnabled(),
-        LazyCameraPageView,
-        pageLayout,
-        "camera",
-      ),
+    // The shared camera bridge keeps permission and secure-capture authority.
+    camera: ({ pageLayout }) => (
+      <AppWorkspaceContent pageLayout={pageLayout}>
+        <LazyCameraPageView />
+      </AppWorkspaceContent>
+    ),
     phone: () => <ViewUnavailableFallback viewId="phone" />,
     messages: () => <ViewUnavailableFallback viewId="messages" />,
     contacts: () => <ViewUnavailableFallback viewId="contacts" />,
