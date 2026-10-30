@@ -80,6 +80,8 @@ export function isExplicitScheduleDecline(text: string): boolean {
 export type DeferredLifeDefinitionDraft = {
   intent: string;
   operation: "create_definition";
+  /** An original relative deadline; confirmation must not create it after it elapsed. */
+  relativeDeadline?: string;
   /**
    * Set when the draft was parked by a clarify turn that is still waiting on
    * one required field. `cadence` may be absent only while this is set — the
@@ -285,7 +287,18 @@ export function coerceDeferredLifeDraft(
     if (!kind || (!cadence && awaitingField !== "schedule")) {
       return null;
     }
+    const relativeDeadline = record.relativeDeadline;
+    if (
+      relativeDeadline !== undefined &&
+      (typeof relativeDeadline !== "string" ||
+        !Number.isFinite(Date.parse(relativeDeadline)) ||
+        new Date(relativeDeadline).toISOString() !== relativeDeadline ||
+        cadence?.kind !== "once" ||
+        relativeDeadline !== cadence.dueAt)
+    )
+      return null;
     return {
+      ...(relativeDeadline !== undefined ? { relativeDeadline } : {}),
       awaitingField,
       createdAt,
       intent,
