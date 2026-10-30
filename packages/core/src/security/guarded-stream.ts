@@ -20,6 +20,17 @@ export interface GuardedStreamScannerOptions {
 const NOTHING: GuardedStreamOutput = { safe: "", visible: "" };
 
 /**
+ * A credential value still arriving. A quoted value can contain whitespace, so
+ * the hold persists past its closing quote — through any trailing
+ * non-whitespace (`"}`, `",`) — and releases only once whitespace follows. That
+ * guarantees the whitespace-snapped cut lands after the whole assignment (so the
+ * buffer detectors, which read a quoted value to its closing quote, match the
+ * emitted piece) rather than inside a multi-word value. Escapes and plain
+ * characters are disjoint, so the scan stays linear.
+ */
+const VALUE_TAIL = String.raw`(?:"(?:\\[\s\S]|[^"\\])*(?:"\S*)?|'(?:\\[\s\S]|[^'\\])*(?:'\S*)?|[^\s"'\\]*)`;
+
+/**
  * Openers that indicate an in-progress secret whose value has not fully arrived.
  * Each is anchored at end-of-input (`$`) and matched against the trailing window;
  * a match holds the cut back to the opener's start so the assignment/header and
@@ -28,17 +39,22 @@ const NOTHING: GuardedStreamOutput = { safe: "", visible: "" };
  */
 const OPENER_PATTERNS: readonly RegExp[] = [
 	// ENV-style assignment (NAME=… / NAME: …), value still arriving.
-	/[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL|SEED[_-]?PHRASE)\s*(?:[=:]\s*(?:["']?[^\s"'\\]*)?)?$/i,
-	// JSON credential field, still open: name seen, optionally `: `, optionally a
-	// string value. Unlike the other openers the value can contain whitespace, so
-	// the hold must persist past the closing quote — through any trailing
-	// non-whitespace (`"}`, `",`) — and release only once whitespace follows. That
-	// guarantees the whitespace-snapped cut lands after the whole `"key":"value"`
-	// (so the buffer detector `"key"\s*:\s*"([^"]+)"` matches the emitted piece)
-	// rather than inside a multi-word value.
-	/"(?:apiKey|token|secret|password|passwd|accessToken|refreshToken|mnemonic|seedPhrase|passphrase|privateKey|credential)"\s*(?::\s*(?:"[^"]*(?:"[^\s]*)?)?)?$/i,
+	new RegExp(
+		String.raw`[A-Za-z0-9_]*(?:KEY|TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|MNEMONIC|SEED|CREDENTIAL|COOKIE|SEED[_-]?PHRASE|CONNECTION[_-]?STRING|WEBHOOK[_-]?URL)\s*(?:[=:]\s*${VALUE_TAIL})?$`,
+		"i",
+	),
+	// Quoted credential field (`"apiKey"`, `'client_secret'`, `"Authorization"`):
+	// name seen, optionally `:`/`=`, optionally a value. Covers every key
+	// secret-swap reads as a credential field and the redact rows' prefixed names.
+	new RegExp(
+		String.raw`(["'])[A-Za-z0-9_.\- ]*(?:key|token|secret|passw(?:or)?d|(?:pass|seed)[_.\- ]?phrase|mnemonic|seed|credential|authorization|cookie|connection[_.\- ]?string|webhook[_.\- ]?url)\1\s*(?:[:=]\s*${VALUE_TAIL})?$`,
+		"i",
+	),
 	// CLI credential flag, value still arriving.
-	/--(?:api[-_]?key|token|secret|password|passwd)(?:[=\s]+(?:["']?[^\s"']*)?)?$/i,
+	new RegExp(
+		String.raw`--(?:api[-_]?key|token|secret|password|passwd)(?:[=\s]+${VALUE_TAIL})?$`,
+		"i",
+	),
 ];
 
 // A partial line cannot distinguish token68 padding from RFC auth-param BWS.

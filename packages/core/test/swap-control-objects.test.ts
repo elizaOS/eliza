@@ -8,10 +8,11 @@
  * registered model handler that records exactly what a provider would receive.
  */
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { RegexEntityRecognizer } from "../src/security/entity-recognizer.ts";
 import { PseudonymSession } from "../src/security/pii-pseudonymizer.ts";
 import { SecretSwapSession } from "../src/security/secret-swap.ts";
+import { isSecretKey } from "../src/security/secrets.ts";
 import type { Character } from "../src/types/agent.ts";
 import { ModelType } from "../src/types/model.ts";
 
@@ -73,6 +74,7 @@ describe("model dispatch with swaps enabled", () => {
 		pii: process.env.ELIZA_PII_SWAP_ENABLED,
 	};
 	afterEach(() => {
+		vi.unstubAllEnvs();
 		for (const [key, value] of [
 			["ELIZA_SECRET_SWAP_ENABLED", saved.secret],
 			["ELIZA_PII_SWAP_ENABLED", saved.pii],
@@ -164,6 +166,65 @@ describe("model dispatch with swaps enabled", () => {
 		for (const iban of ibans) {
 			expect(wire).not.toContain(iban);
 		}
+	});
+
+	it("streams quoted credential values swapped like the buffered result", async () => {
+		// Host secrets would widen the hold window past this short reply; seed none.
+		for (const key of Object.keys(process.env)) {
+			if (isSecretKey(key)) vi.stubEnv(key, undefined);
+		}
+		const runtime = createSQLiteTestRuntime({
+			character: {
+				name: "SwapStream",
+				bio: ["test"],
+				settings: { ELIZA_SECRET_SWAP_ENABLED: "true" },
+			} as Character,
+			logLevel: "fatal",
+		});
+		const reply =
+			'Send {"authorization": "Bearer a8f3k2m9q7w1z5x4c6v0b2n8"} upstream, ' +
+			'log in with password: "correct horse battery staple" and keep ' +
+			'{"clientSecret": "red green blue yellow"} private.';
+		runtime.registerModel(
+			ModelType.TEXT_LARGE,
+			async (_runtime, params) => {
+				const { onStreamChunk } = params as {
+					onStreamChunk?: (chunk: string) => Promise<void>;
+				};
+				// The provider streams one word per chunk.
+				for (const word of reply.match(/\S+\s*/g) ?? []) {
+					await onStreamChunk?.(word);
+				}
+				return reply;
+			},
+			"swap-stream-provider",
+			undefined,
+			{ streamable: true },
+		);
+		const chunks: string[] = [];
+		const result = await runtime.useModel(ModelType.TEXT_LARGE, {
+			prompt: "Show the request.",
+			onStreamChunk: async (chunk: string) => {
+				chunks.push(chunk);
+			},
+		} as never);
+		const streamed = chunks.join("");
+		expect(chunks.length).toBeGreaterThan(1);
+		for (const value of [
+			"a8f3k2m9q7w1z5x4c6v0b2n8",
+			"horse battery staple",
+			"green blue yellow",
+		]) {
+			expect(result).not.toContain(value);
+			expect(streamed).not.toContain(value);
+		}
+		// The user sees each credential placeholder as a redaction marker.
+		expect(streamed).toBe(
+			String(result).replace(
+				/__ELIZA_SECRET_[0-9a-f]+_\d+__/g,
+				"[redacted credential]",
+			),
+		);
 	});
 
 	it("enables both swaps from the host environment when no setting is present", async () => {
