@@ -42,6 +42,8 @@ test("connection and resident lifecycle JVM contracts pass", () => {
   try {
     const shared = [
       "connection/OwnerRoutePolicy",
+      "connection/NativeAppReadPolicy",
+      "connection/NativeOwnerTransport",
       "connection/CloudConnectionPolicy",
       "connection/ConnectionTransport",
       "connection/DelegationCallback",
@@ -79,6 +81,7 @@ test("connection and resident lifecycle JVM contracts pass", () => {
     );
     for (const [name, pass] of [
       ["OwnerRoutePolicyTest", /^PASS owner route policy/],
+      ["NativeOwnerTransportTest", /^PASS native owner transport/],
       ["CloudConnectionPolicyTest", /^PASS cloud connection policy/],
       ["ConnectionTransportTest", /^PASS connection transport/],
       ["ResidentLifecycleTest", /^PASS resident lifecycle/],
