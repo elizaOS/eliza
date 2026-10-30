@@ -21,8 +21,10 @@ import type {
 import {
   type ContextObject,
   type IAgentRuntime,
+  InferenceTurnTimer,
   type Memory,
   projectDeferredProviders,
+  runWithInferenceTiming,
   type State,
 } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -532,7 +534,13 @@ describe("lifeops provider read fan-out", () => {
     reads.getGmailTriage.mockResolvedValue({ summary: fixture.gmailSummary });
     const runtime = createRuntime();
 
-    const pending = lifeOpsProvider.get(runtime, message, state);
+    const timer = new InferenceTurnTimer({
+      turnId: "fixture",
+      label: "lifeops-test",
+    });
+    const pending = runWithInferenceTiming(timer, () =>
+      lifeOpsProvider.get(runtime, message, state),
+    );
     await flush();
 
     // All seven independent reads are in flight while none has resolved. The
@@ -574,6 +582,7 @@ describe("lifeops provider read fan-out", () => {
     expect(concurrent).toEqual(serial);
     expect(dynamicLines(concurrent.text)).toEqual(EXPECTED_DYNAMIC_LINES);
     expect(runtime.reportError).not.toHaveBeenCalled();
+    expectSafeBranchSpans(timer, 9);
   });
 
   it("keeps the connector-account read fatal: a rejection renders the unavailable block", async () => {
@@ -692,5 +701,143 @@ describe("lifeops provider read fan-out", () => {
     expect(reads.listConnectorAccountPrivacy).not.toHaveBeenCalled();
     expect(reads.getGoogleConnectorAccounts).not.toHaveBeenCalled();
     expect(reads.connectorStatus).not.toHaveBeenCalled();
+  });
+});
+
+// Uses the actual core ALS recorder; the existing @elizaos/core partial mock
+// spreads the real exports and does not replace either timer API.
+const TIMING_LABELS = [
+  "owner-profile",
+  "owner-facts",
+  "overview-completed",
+  "connector-inventory",
+  "account-privacy",
+  "google-accounts",
+  "connector-health",
+  "calendar-next",
+  "gmail-triage",
+].map((name) => `provider:lifeops:${name}`);
+function expectSafeBranchSpans(timer: InferenceTurnTimer, expected?: number) {
+  const spans = timer.summary().spans;
+  expect(spans.length).toBeLessThanOrEqual(10);
+  if (expected !== undefined) expect(spans).toHaveLength(expected);
+  for (const span of spans) {
+    expect(TIMING_LABELS).toContain(span.name);
+    expect(Object.keys(span).sort()).toEqual([
+      "durationMs",
+      "endMs",
+      "name",
+      "startMs",
+    ]);
+    expect(span.endMs).toBeGreaterThanOrEqual(span.startMs);
+  }
+  const counts = spans.reduce<Record<string, number>>((result, span) => {
+    result[span.name] = (result[span.name] ?? 0) + 1;
+    return result;
+  }, {});
+  for (const [name, count] of Object.entries(counts))
+    expect(count).toBeLessThanOrEqual(
+      name === "provider:lifeops:calendar-next" ? 2 : 1,
+    );
+}
+describe("LifeOps bounded branch timing with the real recorder", () => {
+  for (const failure of [
+    "none",
+    "inventory",
+    "google",
+    "privacy",
+    "overview",
+    "status",
+  ] as const) {
+    it(`retains exact output and failure reports for ${failure}`, async () => {
+      const wire = () => {
+        wireImmediate();
+        const fail = () => Promise.reject(new Error("same fixture error"));
+        if (failure === "inventory")
+          reads.listAccounts.mockImplementation(fail);
+        if (failure === "google")
+          reads.getGoogleConnectorAccounts.mockImplementation(fail);
+        if (failure === "privacy")
+          reads.listConnectorAccountPrivacy.mockImplementation(fail);
+        if (failure === "overview") reads.getOverview.mockImplementation(fail);
+        if (failure === "status")
+          reads.connectorStatus.mockImplementation(fail);
+      };
+      wire();
+      const untimedRuntime = createRuntime();
+      const baseline = await lifeOpsProvider.get(
+        untimedRuntime,
+        message,
+        state,
+      );
+      await flush();
+      const baselineScopes = reportedScopes(untimedRuntime);
+      resetReads();
+      wire();
+      const runtime = createRuntime();
+      const timer = new InferenceTurnTimer({
+        turnId: "fixture",
+        label: "lifeops-test",
+      });
+      const actual = await runWithInferenceTiming(timer, () =>
+        lifeOpsProvider.get(runtime, message, state),
+      );
+      await flush();
+      expect(actual).toEqual(baseline);
+      expect(reportedScopes(runtime)).toEqual(baselineScopes);
+      expectSafeBranchSpans(
+        timer,
+        failure === "none" || failure === "privacy" || failure === "status"
+          ? 9
+          : 7,
+      );
+    });
+  }
+  it("records nothing and reads nothing on owner denial", async () => {
+    wireImmediate();
+    reads.hasLifeOpsAccess.mockResolvedValue(false);
+    const timer = new InferenceTurnTimer({
+      turnId: "fixture",
+      label: "lifeops-test",
+    });
+    expect(
+      await runWithInferenceTiming(timer, () =>
+        lifeOpsProvider.get(createRuntime(), message, state),
+      ),
+    ).toEqual({ text: "", values: {}, data: {} });
+    expectSafeBranchSpans(timer, 0);
+    expect(reads.listAccounts).not.toHaveBeenCalled();
+    expect(reads.getGoogleConnectorAccounts).not.toHaveBeenCalled();
+  });
+  it("records both empty-calendar reads with Gmail between and closes ten spans", async () => {
+    wireImmediate();
+    const order: string[] = [];
+    reads.getNextCalendarEventContext.mockImplementation(async () => {
+      order.push("calendar");
+      return { ...fixture.nextEvent, event: null };
+    });
+    reads.getGmailTriage.mockImplementation(async () => {
+      order.push("gmail");
+      return { summary: fixture.gmailSummary };
+    });
+    const runtime = createRuntime();
+    const timer = new InferenceTurnTimer({
+      turnId: "fixture",
+      label: "lifeops-test",
+    });
+    const result = await runWithInferenceTiming(timer, () =>
+      lifeOpsProvider.get(runtime, message, state),
+    );
+    expect(order).toEqual(["calendar", "gmail", "calendar"]);
+    expect(reads.getNextCalendarEventContext).toHaveBeenCalledTimes(2);
+    expect(reads.getGmailTriage).toHaveBeenCalledTimes(1);
+    expect(result.data?.nextEventContext?.event).toBeNull();
+    expect(runtime.reportError).not.toHaveBeenCalled();
+    expectSafeBranchSpans(timer, 10);
+    expect(
+      timer
+        .summary()
+        .spans.filter((span) => span.name === "provider:lifeops:calendar-next"),
+    ).toHaveLength(2);
   });
 });
