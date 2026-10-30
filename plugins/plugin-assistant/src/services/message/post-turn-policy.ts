@@ -7,8 +7,13 @@ import type {
   MessageHandlerExtract,
   State,
 } from "@elizaos/core";
+import { isDiscoveryActionName } from "@elizaos/core";
 import { isReplyActionIdentifier } from "./action-identifiers.js";
-import { structuredEffectFromToolResult } from "./structured-tool-effect.ts";
+import { escapeRegex } from "./addressing.ts";
+import {
+  type StructuredToolEffect,
+  structuredEffectFromToolResult,
+} from "./structured-tool-effect.ts";
 
 export function isSimpleReplyResponse(
   responseContent: Pick<Content, "actions"> | null | undefined,
@@ -22,11 +27,12 @@ export function isSimpleReplyResponse(
 }
 
 /** A view switch records where the UI went, never anything about the user. */
-function isViewNavigationReceipt(result: ActionResult): boolean {
-  return (
-    !result.effectReceipts?.length &&
-    structuredEffectFromToolResult(result)?.effect === "view_navigation"
-  );
+function viewNavigationEffect(
+  result: ActionResult,
+): StructuredToolEffect | undefined {
+  if (result.effectReceipts?.length) return undefined;
+  const effect = structuredEffectFromToolResult(result);
+  return effect?.effect === "view_navigation" ? effect : undefined;
 }
 
 export const POST_TURN_SEMANTIC_SIGNAL =
@@ -42,14 +48,33 @@ export function hasPostTurnSemanticSignal(
   // suppress its durable review; the background worker still validates sources.
   if (extract?.facts?.length || extract?.relationships?.length) return true;
   if (!isSimpleReplyResponse(responseContent)) return true;
-  // Navigation-only turns fall through to the message-text check below.
-  const actionResults = state?.data?.actionResults;
+  // Navigation-only turns fall through to the message-text check below. The
+  // discovery that loaded the view action does no domain work of its own.
+  const stateResults = state?.data?.actionResults;
+  const actionResults = Array.isArray(stateResults) ? stateResults : [];
+  const navigations = actionResults.map(viewNavigationEffect);
+  const navigated = navigations.some(Boolean);
   if (
-    Array.isArray(actionResults) &&
-    actionResults.some((result) => !isViewNavigationReceipt(result))
+    actionResults.some(
+      (result, index) =>
+        !navigations[index] &&
+        !(
+          navigated &&
+          typeof result.data?.actionName === "string" &&
+          isDiscoveryActionName(result.data.actionName)
+        ),
+    )
   )
     return true;
-  const text = message.content.text?.trim() ?? "";
+  let text = message.content.text?.trim() ?? "";
+  // "Open my calendar" names the receipt's destination, not a user fact.
+  for (const effect of navigations)
+    for (const name of [effect?.label, effect?.viewId, effect?.resolvedAlias])
+      if (name)
+        text = text.replace(
+          new RegExp(`\\b(?:my|our)\\s+${escapeRegex(name)}\\b`, "gi"),
+          " ",
+        );
   return POST_TURN_SEMANTIC_SIGNAL.test(text);
 }
 

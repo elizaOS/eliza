@@ -1,5 +1,6 @@
 import type { ActionResult, Memory, State } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
+import { collectPreviousActionResults } from "./planned-tool.ts";
 import { hasPostTurnSemanticSignal } from "./post-turn-policy.ts";
 
 // Receipts as views.ts emits them and collectPreviousActionResults keeps them
@@ -30,6 +31,13 @@ const calendarCreate: ActionResult = {
   text: "Created event “qa lunch” today at 12:00 PM.",
   data: { actionName: "CALENDAR_CREATE_EVENT" },
 };
+// DISCOVER_ACTIONS load receipt (QA trajectory tj-a06f2e6bbb6688).
+const discovery: ActionResult = {
+  success: true,
+  text: "Named tools enabled for execution with complete schemas in the current tool surface. No domain work or data mutation ran. Use those tools to continue the requested work.",
+  transcriptVisibility: "internal",
+  data: { actionName: "DISCOVER_ACTIONS", readOnlyOperation: true },
+};
 
 const signal = (
   text: string,
@@ -51,11 +59,39 @@ describe("hasPostTurnSemanticSignal", () => {
     expect(signal("open notes", [navigation("VIEWS", "notes", "Notes")])).toBe(
       false,
     );
+    // QA prompts: tj-785da77d4fc4b2, tj-a3ba2d1faf8f95.
+    expect(
+      signal("Open my calendar, please.", [
+        navigation("VIEWS_SHOW", "calendar", "Calendar"),
+      ]),
+    ).toBe(false);
+    expect(
+      signal("show me my files", [navigation("VIEWS_SHOW", "files", "Files")]),
+    ).toBe(false);
+    // The planner may load the view action before it navigates.
+    const steps = [
+      { toolCall: { name: "DISCOVER_ACTIONS" }, result: discovery },
+      {
+        toolCall: { name: "VIEWS_SHOW" },
+        result: navigation("VIEWS_SHOW", "notes", "Notes"),
+      },
+    ];
+    expect(
+      signal(
+        "open notes",
+        collectPreviousActionResults({
+          archivedSteps: [],
+          steps,
+          context: { events: [] },
+        } as never),
+      ),
+    ).toBe(false);
   });
 
   it("still schedules navigation turns that carry a recognized user signal", () => {
     const nav = [navigation("VIEWS_SHOW", "calendar", "Calendar")];
     expect(signal("Open the calendar, I prefer week view", nav)).toBe(true);
+    expect(signal("Open my calendar, my wife starts Monday", nav)).toBe(true);
     expect(signal("Open calendar", nav, { facts: ["prefers week view"] })).toBe(
       true,
     );
@@ -67,6 +103,17 @@ describe("hasPostTurnSemanticSignal", () => {
       signal("open calendar and add lunch", [
         navigation("VIEWS_SHOW", "calendar", "Calendar"),
         calendarCreate,
+      ]),
+    ).toBe(true);
+    expect(signal("what can you do?", [discovery])).toBe(true);
+    // A failed switch (views.ts fail()) carries no receipt text.
+    expect(
+      signal("open spotify", [
+        {
+          success: false,
+          text: "No unique registered view matches. Use VIEWS action=list to inspect available views.",
+          data: { actionName: "VIEWS" },
+        },
       ]),
     ).toBe(true);
     expect(
