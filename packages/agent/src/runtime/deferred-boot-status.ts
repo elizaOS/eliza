@@ -32,12 +32,21 @@ export interface DeferredBootStatus {
 }
 
 const phases = new Map<string, DeferredBootPhaseStatus>();
+const listeners = new Set<() => void>();
+
+/** Observe the existing boot registry; callers own and dispose their status subscription. */
+export function subscribeDeferredBootStatus(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => { listeners.delete(listener); };
+}
 
 export function markDeferredBootPhase(
   phase: string,
   status: DeferredBootPhaseStatus,
 ): void {
+  if (phases.get(phase) === status) return;
   phases.set(phase, status);
+  for (const listener of listeners) listener();
 }
 
 export function getDeferredBootStatus(): DeferredBootStatus {

@@ -151,6 +151,11 @@ export interface AgentStatus {
    * with older agents/transports that don't report it.
    */
   canRespond?: boolean;
+  /** Deferred feature registration; a settled failed phase remains an error, not ready. */
+  deferredBoot?: {
+    phases: Readonly<Record<string, "pending" | "complete" | "failed">>;
+    settled: boolean;
+  };
   /**
    * Cloud catalog readiness of the configured TEXT_SMALL/TEXT_LARGE model ids
    * (#30228). `model_not_available` is an invalid model setting, distinct from

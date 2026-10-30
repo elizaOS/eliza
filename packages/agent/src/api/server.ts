@@ -192,6 +192,7 @@ import {
   type ApiStatusComposer,
   responseReadinessFields,
 } from "./health-routes.ts";
+import { subscribeDeferredBootStatus } from "../runtime/deferred-boot-status.ts";
 import { resolveHostSessionAccessContext } from "./host-session-access-context.ts";
 import { resolveHttpAccessContext } from "./http-access-context.ts";
 import { listenHttpServer } from "./http-listener.ts";
@@ -5050,6 +5051,13 @@ export async function startApiServer(opts?: {
   };
   // Make broadcastStatus accessible to route handlers via state
   state.broadcastStatus = broadcastStatus;
+  // Deferred feature services become available after chat readiness. Reuse the
+  // authenticated status lane immediately when that existing registry changes.
+  const unsubscribeDeferredBootStatus = subscribeDeferredBootStatus(() => {
+    void broadcastStatus().catch((error) => {
+      logger.warn({ error, src: "eliza-api" }, "Deferred boot status unavailable");
+    });
+  });
   // Flip the WS status lane the moment a model handler registers instead of
   // waiting for the next 5s statusInterval tick: `canRespond` turns true when a
   // late-registering provider (deferred wave, first-run configure, runtime
@@ -5341,6 +5349,10 @@ export async function startApiServer(opts?: {
     {
       name: "session revocation listener",
       dispose: () => unsubscribeSessionRevocations?.(),
+    },
+    {
+      name: "deferred boot status listener",
+      dispose: unsubscribeDeferredBootStatus,
     },
     {
       name: "status interval",

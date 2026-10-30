@@ -599,6 +599,7 @@ export async function responseReadinessFields(
     canRespond: computeCanRespond(runtime, agentState, localModelReadiness),
     ...cloudModelReadinessField(runtime),
     localModelReadiness,
+    deferredBoot: getDeferredBootStatus(),
   };
 }
 
