@@ -12,3 +12,7 @@ import "./styles/brand-gold.css";
 import "@rainbow-me/rainbowkit/styles.css";
 import "@solana/wallet-adapter-react-ui/styles.css";
 import "./styles/login.css";
+// Native cloud sign-in sheet styles. They live here, not in the view
+// component: the view is reachable from the UI barrel, and barrel consumers
+// under Node must not evaluate a CSS module.
+import "./styles/native-cloud-sign-in.css";
