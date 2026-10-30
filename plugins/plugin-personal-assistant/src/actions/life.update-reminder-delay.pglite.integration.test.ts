@@ -28,6 +28,10 @@ import {
 } from "vitest";
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { LifeOpsService } from "../lifeops/service.js";
+import {
+  clearRecentLifeSaveCache,
+  writeRecentLifeSaveCache,
+} from "./lib/lifeops-deferred-draft.js";
 import { ownerRemindersAction } from "./owner-surfaces.js";
 
 // The trajectory's clock: 5:01 AM in Los Angeles, the message sent at
@@ -402,3 +406,87 @@ it.each([
     await service.deleteDefinition(entry.definition.id);
   }
 });
+
+// Live tj-82a28eec7f2481 (demo rehearsal): "actually make that 10 minutes"
+// after "remind me in 5 minutes to grab the deck" asked "Multiple items match"
+// because an earlier "Grab the deck" had already fired.
+const REHEARSAL_UPDATE_ARGS = {
+  intent:
+    "Change the grab-the-deck reminder to fire in 10 minutes from now instead of 5.",
+  target: "grab the deck",
+  details: { delayMinutes: 10 },
+  delayMinutes: 10,
+};
+
+it("moves the live reminder past a fired and a cancelled namesake", async () => {
+  const fired = await seed("Grab the deck", {
+    ...STRETCH_CADENCE,
+    dueAt: "2026-10-30T11:36:00.000Z",
+  });
+  const cancelled = await service.updateDefinition(
+    (await seed("Grab the deck", STRETCH_CADENCE)).definition.id,
+    { status: "archived" },
+  );
+  const live = await seed("Grab the deck", STRETCH_CADENCE);
+  const result = await updateReminder(
+    REHEARSAL_UPDATE_ARGS,
+    "actually make that 10 minutes",
+  );
+  expect(result.success, JSON.stringify(result)).toBe(true);
+  expect(
+    (await service.getDefinition(live.definition.id)).definition.cadence,
+  ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" });
+  for (const entry of [fired, cancelled]) {
+    expect(
+      (await service.getDefinition(entry.definition.id)).definition,
+    ).toEqual(entry.definition);
+  }
+  for (const entry of [fired, cancelled, live])
+    await service.deleteDefinition(entry.definition.id);
+});
+
+it.each([
+  { says: "actually make that 10 minutes", saved: "due", moved: "recent" },
+  { says: "actually make that 10 minutes", saved: "fired", moved: "recent" },
+  {
+    says: "move the 5:40am grab the deck to 10 minutes from now",
+    saved: "due",
+    moved: "earlier",
+  },
+] as const)(
+  "after a $saved save in this conversation, '$says' moves the $moved namesake",
+  async ({ says, saved, moved }) => {
+    const earlier = await seed("Grab the deck", {
+      ...STRETCH_CADENCE,
+      dueAt: "2026-10-30T12:40:00.000Z",
+    });
+    const recent = await seed(
+      "Grab the deck",
+      saved === "due"
+        ? STRETCH_CADENCE
+        : { ...STRETCH_CADENCE, dueAt: "2026-10-30T12:00:00.000Z" },
+    );
+    const conversation = {
+      roomId,
+      entityId: service.ownerEntityId() as UUID,
+    } as Memory;
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: recent.definition.id,
+      title: recent.definition.title,
+      createdAt: Date.now(),
+    });
+    const result = await updateReminder(REHEARSAL_UPDATE_ARGS, says);
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    const [target, other] =
+      moved === "recent" ? [recent, earlier] : [earlier, recent];
+    expect(
+      (await service.getDefinition(target.definition.id)).definition.cadence,
+    ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" });
+    expect(
+      (await service.getDefinition(other.definition.id)).definition,
+    ).toEqual(other.definition);
+    for (const entry of [earlier, recent])
+      await service.deleteDefinition(entry.definition.id);
+  },
+);

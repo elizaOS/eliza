@@ -1184,6 +1184,49 @@ async function resolveEnumeratedDeleteTargets(
   return targets.length > 1 ? targets : [];
 }
 
+/** Drops namesakes an edit by name should not ask about. The active item this
+ * conversation just saved outranks its namesakes, unless the owner's words
+ * pick one by its clock time. Otherwise a reminder that can no longer fire
+ * (inactive, or a one-off whose time has passed) yields to a live namesake.
+ * Live tj-82a28eec7f2481: "actually make that 10 minutes" asked which "Grab
+ * the deck" because a rehearsal copy had fired 25 minutes earlier. */
+function withoutSupersededNamesakes(
+  defs: LifeOpsDefinitionRecord[],
+  ownerText: string,
+  recentSaveId: string | undefined,
+): LifeOpsDefinitionRecord[] {
+  const now = Date.now();
+  const spent = ({ definition }: LifeOpsDefinitionRecord) =>
+    resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS" &&
+    (definition.status !== "active" ||
+      (definition.cadence.kind === "once" &&
+        Date.parse(definition.cadence.dueAt) <= now));
+  const byTitle = new Map<string, LifeOpsDefinitionRecord[]>();
+  for (const entry of defs) {
+    const key = normalizeTitle(entry.definition.title);
+    if (key) byTitle.set(key, [...(byTitle.get(key) ?? []), entry]);
+  }
+  const setAside = new Set<LifeOpsDefinitionRecord>();
+  for (const namesakes of byTitle.values()) {
+    if (namesakes.length < 2) continue;
+    const recent = namesakes.find(
+      (namesake) =>
+        namesake.definition.id === recentSaveId &&
+        namesake.definition.status === "active",
+    );
+    const live = namesakes.filter((namesake) => !spent(namesake));
+    const chosen =
+      recent && !resolveDuplicateByTimeHint(namesakes, ownerText)
+        ? [recent]
+        : live.length > 0
+          ? live
+          : namesakes;
+    for (const namesake of namesakes)
+      if (!chosen.includes(namesake)) setAside.add(namesake);
+  }
+  return defs.filter((entry) => !setAside.has(entry));
+}
+
 async function resolveDefinitionForMutation(
   service: LifeOpsService,
   target: string | undefined,
@@ -1191,8 +1234,15 @@ async function resolveDefinitionForMutation(
   domain?: LifeOpsDomain,
   destructive = false,
   title?: string,
+  recentSaveId?: string,
 ): Promise<DefinitionResult> {
-  const allDefinitions = await listCallerDefinitions(service, domain);
+  const callerDefinitions = await listCallerDefinitions(service, domain);
+  // Only an edit by name sets namesakes aside: an explicit id still binds its
+  // record, and a delete still asks between every match.
+  const allDefinitions =
+    destructive || validateUuid(target)
+      ? callerDefinitions
+      : withoutSupersededNamesakes(callerDefinitions, ownerText, recentSaveId);
   const normalizedOwnerText = normalizeTitle(ownerText);
   // Exclusions apply to every matching path, including exact IDs and fuzzy
   // fallbacks. A later heuristic must not reintroduce a protected item.
@@ -6318,6 +6368,7 @@ async function runLifeOperationHandlerInner(
           domain,
           false,
           targetTitle,
+          (await readRecentLifeSaveCache(runtime, message))?.definitionId,
         );
       if (!target)
         return {

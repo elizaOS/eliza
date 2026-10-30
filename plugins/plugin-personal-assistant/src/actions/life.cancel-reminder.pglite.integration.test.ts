@@ -1053,3 +1053,29 @@ it.each([
     ).toBe(mode === "stale" ? "expired" : "pending");
   },
 );
+
+// Live tj-88d81a113942ad: "cancel the call mom reminder" listed two identical
+// "Call mom" lines because one of them was already cancelled.
+it("cancels the live reminder its title names, not a cancelled namesake", async () => {
+  const cancelled = await service.updateDefinition(
+    (await seed("Call mom")).definition.id,
+    { status: "archived" },
+  );
+  const live = await seed("Call mom");
+  const result = await invoke(
+    {
+      action: "cancel",
+      title: "Call mom",
+      kind: "definition",
+      intent: "cancel the call mom reminder",
+    },
+    "cancel the call mom reminder",
+  );
+  expect(result.success, JSON.stringify(result)).toBe(true);
+  expect(
+    (await service.getDefinition(live.definition.id)).definition.status,
+  ).toBe("archived");
+  expect(
+    (await service.getDefinition(cancelled.definition.id)).definition,
+  ).toEqual(cancelled.definition);
+});
