@@ -411,6 +411,16 @@ describe("promoted Notes execution", () => {
     expect(JSON.stringify(appendSchema?.properties?.textEdit)).toContain(
       '"append"',
     );
+    // Checklist notes reject a body append; their new item stays on UPDATE.
+    const checklistOperation = /action=(\w+) [^;]*NEW checklist item/.exec(
+      surface,
+    )?.[1];
+    expect(
+      JSON.stringify(
+        wire[`NOTES_${checklistOperation?.toUpperCase()}`]?.inputSchema
+          .jsonSchema.properties?.authoredEdit,
+      ),
+    ).toContain('"checklist"');
     expect(
       planned.find((tool) => tool.name === "NOTES_UPDATE")?.description,
     ).toMatch(/append text to a plain note use NOTES_PATCH/);
