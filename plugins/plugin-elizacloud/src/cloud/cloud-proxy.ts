@@ -69,6 +69,15 @@ export class CloudRuntimeProxy {
             yield next;
           }
         }
+      } else if (event.type === "error") {
+        // Cloud ends a turn it cannot finish with a terminal error frame. Text
+        // already shown is then a cut-off reply, not a complete one.
+        const { message } = event.data;
+        throw new CloudBridgeError(
+          typeof message === "string" && message.trim().length > 0
+            ? message
+            : "Cloud stream failed",
+        );
       }
     }
     if (shown.length === 0) {
