@@ -1066,11 +1066,6 @@ async function opUpdate(
   // update patches the stored schedule in place. A field it cannot apply used
   // to be dropped, and the unchanged trigger came back with an applied receipt.
   const unusable: string[] = [];
-  if (params.delaySeconds !== undefined || params.delayMinutes !== undefined) {
-    unusable.push(
-      "delaySeconds/delayMinutes are for create; pass scheduledAtIso to move a once trigger",
-    );
-  }
   const requestedType = readString(params.triggerType)?.toLowerCase();
   if (requestedType !== undefined && requestedType !== trigger.triggerType) {
     unusable.push(
@@ -1085,14 +1080,16 @@ async function opUpdate(
   }
   const scheduleFields = [
     ["intervalMs", "interval"],
+    ["delaySeconds", "once"],
+    ["delayMinutes", "once"],
     ["scheduledAtIso", "once"],
     ["cronExpression", "cron"],
   ] as const;
   for (const [field, type] of scheduleFields) {
     const supplied =
-      field === "intervalMs"
-        ? params.intervalMs !== undefined
-        : readString(params[field]) !== undefined;
+      field === "scheduledAtIso" || field === "cronExpression"
+        ? readString(params[field]) !== undefined
+        : params[field] !== undefined;
     if (supplied && trigger.triggerType !== type) {
       unusable.push(
         `${field} applies to a ${type} trigger; this trigger is ${trigger.triggerType}`,
@@ -1104,6 +1101,29 @@ async function opUpdate(
     parsePositiveInt(params.intervalMs) === undefined
   ) {
     unusable.push("intervalMs must be a positive integer");
+  }
+  // A relative delay moves a once trigger to that long from now, read as on
+  // create: delaySeconds wins over delayMinutes and an explicit scheduledAtIso
+  // wins over both. Refused here, "actually make it 30 minutes" cost a planner
+  // round (live tj-9f09a0f51d65aa: INVALID_UPDATE on delayMinutes, then the
+  // same move again as scheduledAtIso).
+  const rawScheduledAtIso = readString(params.scheduledAtIso);
+  const delayMs =
+    rawScheduledAtIso === undefined ? readRelativeDelayMs(params) : undefined;
+  if (
+    trigger.triggerType === "once" &&
+    rawScheduledAtIso === undefined &&
+    (params.delaySeconds !== undefined || params.delayMinutes !== undefined)
+  ) {
+    if (delayMs === undefined) {
+      unusable.push(
+        "delaySeconds/delayMinutes must be a positive whole number",
+      );
+    } else if (delayMs > MAX_RELATIVE_DELAY_MS) {
+      unusable.push(
+        "relative delay too large; use scheduledAtIso for far-future triggers",
+      );
+    }
   }
   if (unusable.length > 0) {
     return failed(
@@ -1118,12 +1138,13 @@ async function opUpdate(
   const displayName = readString(params.displayName);
   const instructions = readString(params.instructions);
   const intervalMs = parsePositiveInt(params.intervalMs);
-  const rawScheduledAtIso = readString(params.scheduledAtIso);
   // Same rule as create: no offset means the user's wall clock.
   const scheduledAtIso =
-    rawScheduledAtIso === undefined
-      ? undefined
-      : resolveScheduledAtIsoInTimeZone(rawScheduledAtIso, messageTimeZone);
+    rawScheduledAtIso !== undefined
+      ? resolveScheduledAtIsoInTimeZone(rawScheduledAtIso, messageTimeZone)
+      : delayMs !== undefined
+        ? new Date(Date.now() + delayMs).toISOString()
+        : undefined;
   const cronExpression = readString(params.cronExpression);
   const maxRuns = parsePositiveInt(params.maxRuns);
   const wakeModeRaw = params.wakeMode?.trim().toLowerCase();
@@ -1173,9 +1194,11 @@ async function opUpdate(
     }
     dedupeIdentityChanged =
       dedupeIdentityChanged || scheduledAtIso !== trigger.scheduledAtIso;
-    // An explicit move replaces the original relative schedule identity.
-    // Replaying the existing time must keep the original retry identity.
-    if (scheduledAtIso !== trigger.scheduledAtIso) delete next.delayMs;
+    // A relative move keeps create's relative dedupe identity. An explicit
+    // move replaces the original relative schedule identity; replaying the
+    // existing time must keep the original retry identity.
+    if (delayMs !== undefined) next.delayMs = delayMs;
+    else if (scheduledAtIso !== trigger.scheduledAtIso) delete next.delayMs;
     next.scheduledAtIso = scheduledAtIso;
   }
   if (cronExpression !== undefined && next.triggerType === "cron") {
@@ -1445,9 +1468,9 @@ export const triggerAction: Action = {
   routingHint:
     "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; this is the core fallback when OWNER_REMINDERS is unavailable. When OWNER_REMINDERS is exposed, explicit owner-reminder creation belongs to OWNER_REMINDERS instead. For a one-off relative delay pass delaySeconds or delayMinutes only. For a RECURRING request ('every morning/day/week at …') pass cronExpression ALONE — no delaySeconds/delayMinutes/scheduledAtIso, those express a single fire. PAUSE/RESUME: 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle (enabled:false to pause, enabled:true to resume) — pausing is NOT delete, the trigger is kept and can be resumed. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
   description:
-    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle / list). Use toggle to PAUSE or RESUME a reminder ('pause the X reminder', 'resume X', 'turn X back on', 'stop reminding me about X') — pausing keeps the trigger and is not a delete. Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt. Use list for 'what reminders do I have' / 'when does my next reminder fire' — reminders are NOT calendar events and never appear in the calendar feed. Supports relative delay (delaySeconds — one-off), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
+    "Recurring/scheduled trigger lifecycle AND user reminders. Action-based dispatch (create / update / delete / run / toggle / list). Use toggle to PAUSE or RESUME a reminder ('pause the X reminder', 'resume X', 'turn X back on', 'stop reminding me about X') — pausing keeps the trigger and is not a delete. Use create for 'remind me in N minutes/at TIME to …' and any scheduled prompt; every create needs its schedule (delayMinutes/delaySeconds, scheduledAtIso, cronExpression or intervalMs) or nothing is created. Use update to change an existing reminder's time, name or text in place ('actually make it 30 minutes', 'move it to 5pm'); never delete it and create it again. Use list for 'what reminders do I have' / 'when does my next reminder fire' — reminders are NOT calendar events and never appear in the calendar feed. Supports relative delay (delaySeconds/delayMinutes — one-off, on create or update), a one-off time (scheduledAtIso), interval, and cron (recurring 'every …' schedules).",
   descriptionCompressed:
-    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
+    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update (change time/name in place: 'make it 30 minutes') delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
   suppressPostActionContinuation: true,
 
   validate: async (
@@ -1527,7 +1550,7 @@ export const triggerAction: Action = {
     {
       name: "delaySeconds",
       description:
-        "Fire once after this many seconds from now — THE param for 'remind me in N seconds/minutes' (converted to a one-off schedule; use this or delayMinutes for relative delays). One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
+        "Fire once after this many seconds from now — THE param for 'remind me in N seconds/minutes' (converted to a one-off schedule; use this or delayMinutes for relative delays). On update it moves a one-off trigger to this many seconds from now. One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
       required: false,
       aliases: ["inSeconds", "seconds"],
       schema: { type: "number" as const, minimum: 0 },
@@ -1535,7 +1558,7 @@ export const triggerAction: Action = {
     {
       name: "delayMinutes",
       description:
-        "Fire once after this many minutes from now ('remind me in 5 minutes'). Converted to a one-off schedule. One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
+        "Fire once after this many minutes from now ('remind me in 5 minutes'). Converted to a one-off schedule. On update it moves a one-off trigger to this many minutes from now ('actually make it 30 minutes'). One-off only — a recurring 'every …' request takes cronExpression instead, never a delay.",
       required: false,
       aliases: ["inMinutes", "minutes"],
       schema: { type: "number" as const, minimum: 0 },
