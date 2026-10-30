@@ -40,6 +40,19 @@ import {
 } from "./transports/ios-local-agent-transport";
 import "../../../ui/src/styles/styles.css";
 import { App } from "./App";
+import {
+  NativePermissionHostProvider,
+  type PermissionPrimingHost,
+} from "../../../ui/src/components/permissions/native-permission-host";
+export type { PermissionPrimingHost } from "../../../ui/src/components/permissions/native-permission-host";
+export {
+  adoptWalkthroughProgress,
+  locationAccess,
+  permissionStateAccess,
+  photoLibraryAccess,
+  walkthroughMemory,
+  walkthroughProgress,
+} from "../../../ui/src/components/permissions/native-permission-host";
 export * from "../../../ui/src/app/browser-consumer.js";
 
 export interface BrowserConsumerHostOptions {
@@ -49,6 +62,7 @@ export interface BrowserConsumerHostOptions {
   nativeCloudSession?: NativeCloudSessionPort;
   transport?: HostTransportSelector;
   agentCapabilities?: HostAgentCapabilities;
+  permissions?: PermissionPrimingHost;
   prepareNativeRuntimeForUrl?: (
     base: string,
     signal: AbortSignal,
@@ -120,12 +134,14 @@ export class BrowserConsumerHost {
         nativeCloudSession={this.#options.nativeCloudSession}
         branding={this.#options.branding}
       >
-        <ShellModalityProvider modality="gui">
-          <ShellRoleProvider>
-            <App />
-            {children}
-          </ShellRoleProvider>
-        </ShellModalityProvider>
+        <NativePermissionHostProvider host={this.#options.permissions}>
+          <ShellModalityProvider modality="gui">
+            <ShellRoleProvider>
+              <App />
+              {children}
+            </ShellRoleProvider>
+          </ShellModalityProvider>
+        </NativePermissionHostProvider>
       </AppProvider>
     );
   }
