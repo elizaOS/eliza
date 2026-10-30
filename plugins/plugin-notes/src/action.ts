@@ -758,58 +758,6 @@ export const notesAction: Action = {
   },
   parameters: [
     {
-      name: "authoredEdit",
-      description:
-        "Append a NEW checklist item with {field:checklist,action:append,text:exact new item}; it starts unchecked and needs current expectedRevision. Indexed field/index/expectedText edits REPLACE existing text or done state only; never use an out-of-range index, empty expectedText or newline merge to append. Identify existing note with noteId OR content, never both. New item text belongs only in authoredEdit.text.",
-      subactions: ["update"],
-      required: false,
-      schema: {
-        oneOf: [
-          {
-            type: "object",
-            properties: {
-              field: { type: "string", enum: ["checklist"] },
-              action: { type: "string", enum: ["append"] },
-              text: { type: "string", minLength: 1, maxLength: 20001 },
-            },
-            required: ["field", "action", "text"],
-            additionalProperties: false,
-          },
-          {
-            type: "object",
-            properties: {
-              field: {
-                type: "string",
-                enum: [
-                  "checklist",
-                  "voice-line",
-                  "voice-summary",
-                  "voice-action",
-                  "link-clip",
-                ],
-              },
-              action: { type: "string", enum: ["replace"] },
-              index: { type: "integer", minimum: 0 },
-              expectedText: { type: "string" },
-              text: { type: "string" },
-              done: { type: "boolean" },
-            },
-            required: ["field", "index", "expectedText"],
-            additionalProperties: false,
-          },
-        ],
-      },
-    },
-    {
-      name: "expectedRevision",
-      description:
-        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
-      subactions: ["update", "patch"],
-      required: false,
-      requiredForSubactions: ["patch"],
-      schema: { type: "integer", minimum: 0 },
-    },
-    {
       name: "latestBy",
       description:
         "For a latest-note request, select the greatest createdAt (newest written) or updatedAt (most recently edited) instant after any text/date filters. Returns every tie with complete content. Resolve the basis from the user's wording/context; bare latest has no automatic default. State the selected basis in the answer. Omit to return every matching note.",
@@ -963,6 +911,62 @@ export const notesAction: Action = {
       subactions: ["update", "patch"],
       required: false,
       schema: noteTextEditSchema,
+    },
+    // Strict tool grammars (Cerebras) emit properties only in declaration
+    // order, so an optional key declared before one the model writes first
+    // becomes unreachable. The edit payload and its revision token follow the
+    // action, target and text fields so they stay writable after them.
+    {
+      name: "authoredEdit",
+      description:
+        "Append a NEW checklist item with {field:checklist,action:append,text:exact new item}; it starts unchecked and needs current expectedRevision. Indexed field/index/expectedText edits REPLACE existing text or done state only; never use an out-of-range index, empty expectedText or newline merge to append. Identify existing note with noteId OR content, never both. New item text belongs only in authoredEdit.text.",
+      subactions: ["update"],
+      required: false,
+      schema: {
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              field: { type: "string", enum: ["checklist"] },
+              action: { type: "string", enum: ["append"] },
+              text: { type: "string", minLength: 1, maxLength: 20001 },
+            },
+            required: ["field", "action", "text"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              field: {
+                type: "string",
+                enum: [
+                  "checklist",
+                  "voice-line",
+                  "voice-summary",
+                  "voice-action",
+                  "link-clip",
+                ],
+              },
+              action: { type: "string", enum: ["replace"] },
+              index: { type: "integer", minimum: 0 },
+              expectedText: { type: "string" },
+              text: { type: "string" },
+              done: { type: "boolean" },
+            },
+            required: ["field", "index", "expectedText"],
+            additionalProperties: false,
+          },
+        ],
+      },
+    },
+    {
+      name: "expectedRevision",
+      description:
+        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
+      subactions: ["update", "patch"],
+      required: false,
+      requiredForSubactions: ["patch"],
+      schema: { type: "integer", minimum: 0 },
     },
   ],
   examples: [],
