@@ -53,17 +53,30 @@ async function setup(prepared = false, bounded = false, selfAdmission = false) {
     if (sseBody) {
       const body = sseBody;
       const boundary = body.lastIndexOf("data: ");
-      return new Response(sseDelayMs ? new ReadableStream({
-        start(controller) {
-          controller.enqueue(new TextEncoder().encode(body.slice(0, boundary)));
-          const started = Date.now();
-          const release = () => {
-            if (phrases.length < 2 && Date.now() - started < sseDelayMs) { setTimeout(release, 10); return; }
-            controller.enqueue(new TextEncoder().encode(body.slice(boundary))); controller.close();
-          };
-          setTimeout(release, 10);
-        },
-      }) : body, { headers: { "content-type": "text/event-stream" } });
+      return new Response(
+        sseDelayMs
+          ? new ReadableStream({
+              start(controller) {
+                controller.enqueue(
+                  new TextEncoder().encode(body.slice(0, boundary)),
+                );
+                const started = Date.now();
+                const release = () => {
+                  if (phrases.length < 2 && Date.now() - started < sseDelayMs) {
+                    setTimeout(release, 10);
+                    return;
+                  }
+                  controller.enqueue(
+                    new TextEncoder().encode(body.slice(boundary)),
+                  );
+                  controller.close();
+                };
+                setTimeout(release, 10);
+              },
+            })
+          : body,
+        { headers: { "content-type": "text/event-stream" } },
+      );
     }
     return new Response(
       "event: done\ndata: " +
@@ -309,14 +322,33 @@ test("two spoken progress cues are removed only from the leading reply, with ter
   for (const detail of ["New content.", "New content. ".repeat(24), ""]) {
     const f = await setup();
     const reply = `${cue} ${nextCue} ${detail}`;
-    f.respond([{type:"status",kind:"thinking",label:cue},{type:"token",text:"On it.",provisional:true},{type:"done",text:reply}].map(frame=>`data: ${JSON.stringify(frame)}\n\n`).join(""), 8000);
-    f.session.start();f.emit({type:"connected",raw:{}});f.emit({type:"start-of-turn",transcript:"",raw:{}});f.emit({type:"end-of-turn",transcript:"open calendar",raw:{}});
-    for(let i=0;i<900&&!f.control.some(frame=>frame.t==="usage");i++)await sleep(10);
-    await until(()=>f.control.some(frame=>frame.t==="usage"));
-    expect(f.phrases.slice(0,2)).toEqual([cue,nextCue]);
-    expect(f.phrases.slice(2).join(" ").replace(/\s+/g," ").trim()).toBe(detail.trim());
-    expect(f.control.some(frame=>frame.t==="reply_complete")).toBe(true);
-    expect(f.control.some(frame=>frame.t==="error")).toBe(false);
+    f.respond(
+      [
+        { type: "status", kind: "thinking", label: cue },
+        { type: "token", text: "On it.", provisional: true },
+        { type: "done", text: reply },
+      ]
+        .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+        .join(""),
+      8000,
+    );
+    f.session.start();
+    f.emit({ type: "connected", raw: {} });
+    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+    f.emit({ type: "end-of-turn", transcript: "open calendar", raw: {} });
+    for (
+      let i = 0;
+      i < 900 && !f.control.some((frame) => frame.t === "usage");
+      i++
+    )
+      await sleep(10);
+    await until(() => f.control.some((frame) => frame.t === "usage"));
+    expect(f.phrases.slice(0, 2)).toEqual([cue, nextCue]);
+    expect(f.phrases.slice(2).join(" ").replace(/\s+/g, " ").trim()).toBe(
+      detail.trim(),
+    );
+    expect(f.control.some((frame) => frame.t === "reply_complete")).toBe(true);
+    expect(f.control.some((frame) => frame.t === "error")).toBe(false);
     f.session.bye();
   }
 }, 25000);

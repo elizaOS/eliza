@@ -2281,7 +2281,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           if (
             initialReplyBuffer.length <
             VOICE_TTS_STREAMING_START_CHARS +
-              spokenProgressCues.reduce((length, cue) => length + cue.length + 1, 0)
+              spokenProgressCues.reduce(
+                (length, cue) => length + cue.length + 1,
+                0,
+              )
           ) {
             return;
           }
@@ -2757,7 +2760,10 @@ function withoutRepeatedProgressCue(
   while (remaining) {
     let repeatedEnd = 0;
     for (const end of [
-      ...Array.from(remaining.matchAll(SENTENCE_END_RE), (m) => m.index + m[0].length),
+      ...Array.from(
+        remaining.matchAll(SENTENCE_END_RE),
+        (m) => m.index + m[0].length,
+      ),
       remaining.length,
     ]) {
       const lead = normalizeProgressCueWords(remaining.slice(0, end));
