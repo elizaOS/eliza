@@ -200,6 +200,30 @@ returned strings as text; never inject them as HTML. Remote images and HTML are
 not projected, and no mailbox cache or write operations are provided. Consumers
 must separately authorize and implement their native/renderer read bridge; this
 factory does not enable an HTTP route or change task-read authority.
+Each message detail also carries `state`: Gmail's `historyId` for the message
+and whether it is unread, in the inbox or in the trash (no other labels).
+
+By default the owner's Gmail grant must be exactly read-only (`gmail.readonly`
+plus sign-in identity). A host that sets `hostPolicy.gmailOwnerWrites: true`
+asks Google for `gmail.modify` and `gmail.send` as well, and lets the owner's
+mailbox (`/gmail/list`, `/gmail/read`, `mailboxForAccount`) hold that grant;
+`/gmail/status` then also reports `canChangeMessages` and `canSendMessages`.
+Agent task reads (`googleForAccount`) stay held to the exactly read-only grant
+and refuse a wider one with `insufficient_scope`. Compose, full mail access or
+any other scope is still refused.
+
+`mailboxWriterForAccount({actorId, accountId})` exists only with that opt-in. It
+is host-only: it enables no HTTP route and never reaches agent tasks. It relays
+the owner's reviewed changes (`send`, `archive`, `unarchive`, `trash`,
+`untrash`, `mark-read`, `mark-unread`; no drafts) to Cloud's inbox-v1
+operations: `prepare({requestId, proposal})` returns Cloud's `review` and a
+`prepared` receipt to show the owner, `dispatch({requestId, reviewDigest,
+proposal})` performs exactly that review once, and `observe({requestId})` reads
+the canonical receipt. Before each call it checks the signed-in owner, the
+Cloud sign-in and that `accountId` is still the connected grant holding the
+scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
+Writes are never retried: a dispatch without an answer fails with
+`outcome_unknown`, and the host observes the receipt before offering another.
 
 `createCloudRoutes({ verifiedAccountStore, pendingCredentialStore })` optionally
 uses one native-owned credential/owner snapshot with `read()` and

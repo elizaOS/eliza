@@ -186,6 +186,8 @@ const googleScopes = (value) =>
       )
     : [];
 const GMAIL_READ_ONLY_SCOPE = "https://www.googleapis.com/auth/gmail.readonly";
+const GMAIL_MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
+const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 const GOOGLE_IDENTITY_SCOPES = new Set([
   "openid",
   "email",
@@ -193,18 +195,56 @@ const GOOGLE_IDENTITY_SCOPES = new Set([
   "https://www.googleapis.com/auth/userinfo.email",
   "https://www.googleapis.com/auth/userinfo.profile",
 ]);
-// This host asks Google for read-only Gmail (`google.gmail.triage`, which
-// Cloud maps to gmail.readonly plus sign-in identity). Mail is read only
+// By default this host asks Google for read-only Gmail (`google.gmail.triage`,
+// which Cloud maps to gmail.readonly plus sign-in identity). Mail is read only
 // through a grant that is exactly that. A wider grant (gmail.modify,
 // gmail.send, gmail.compose, https://mail.google.com/ or another product's
 // scope) can change, send or delete mail, so it is refused rather than used.
 // Checked on the raw list: an unrecognized entry also makes the grant wider.
+// Agent task reads (`googleForAccount`) are always held to this grant.
 const gmailReadOnlyGrant = (scopes) =>
   Array.isArray(scopes) &&
   scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
   scopes.every(
     (scope) =>
       scope === GMAIL_READ_ONLY_SCOPE || GOOGLE_IDENTITY_SCOPES.has(scope),
+  );
+// A host that opts in (`hostPolicy.gmailOwnerWrites: true`) lets the owner's
+// own mailbox also hold gmail.modify and gmail.send, for the owner's reviewed
+// mail changes (`mailboxWriterForAccount`). Nothing else widens it: compose,
+// full mail access or another product's scope is still refused.
+const gmailOwnerWriteGrant = (scopes) =>
+  Array.isArray(scopes) &&
+  scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
+  scopes.every(
+    (scope) =>
+      scope === GMAIL_READ_ONLY_SCOPE ||
+      scope === GMAIL_MODIFY_SCOPE ||
+      scope === GMAIL_SEND_SCOPE ||
+      GOOGLE_IDENTITY_SCOPES.has(scope),
+  );
+// The owner's reviewed mail effects this host relays to Cloud's inbox-v1
+// operations. Drafts are not offered here.
+const OWNER_MAIL_EFFECTS = new Set([
+  "send",
+  "archive",
+  "unarchive",
+  "trash",
+  "untrash",
+  "mark-read",
+  "mark-unread",
+]);
+const MAIL_RECEIPT_STATES = new Set([
+  "prepared",
+  "dispatched",
+  "succeeded",
+  "rejected",
+  "outcome-unknown",
+]);
+const operationId = (value) =>
+  typeof value === "string" &&
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value,
   );
 /**
  * Typed task-read failure. `code` is one fixed reason; no provider text.
@@ -496,6 +536,12 @@ export function createCloudRoutes({
     requireNonSensitiveText,
     pickMessage,
   } = hostPolicy;
+  // Off unless the host opts in: the owner's mailbox may then hold
+  // gmail.modify and gmail.send. Agent task reads stay read-only.
+  const ownerWrites = hostPolicy.gmailOwnerWrites === true;
+  const ownerGmailGrant = ownerWrites
+    ? gmailOwnerWriteGrant
+    : gmailReadOnlyGrant;
   const message = (key) =>
     hostPolicy.messages?.[key] ?? `Cloud service request failed (${key})`;
   const site = browserSignIn ? origin(cloudSiteBase) : null,
@@ -1868,9 +1914,23 @@ export function createCloudRoutes({
               ? ["google.gmail.triage"]
               : [],
           // A metadata-only grant still reports triage. Messages are read
-          // only through an exactly read-only grant (gmailReadOnlyGrant).
+          // only through an exactly read-only grant (gmailReadOnlyGrant), or
+          // the owner write grant when the host opts in.
           grantedScopes: connected ? googleScopes(value.grantedScopes) : [],
-          canReadMessages: connected && gmailReadOnlyGrant(value.grantedScopes),
+          canReadMessages: connected && ownerGmailGrant(value.grantedScopes),
+          // Reported only by a host that opts in to owner mail writes.
+          ...(ownerWrites
+            ? {
+                canChangeMessages:
+                  connected &&
+                  gmailOwnerWriteGrant(value.grantedScopes) &&
+                  value.grantedScopes.includes(GMAIL_MODIFY_SCOPE),
+                canSendMessages:
+                  connected &&
+                  gmailOwnerWriteGrant(value.grantedScopes) &&
+                  value.grantedScopes.includes(GMAIL_SEND_SCOPE),
+              }
+            : {}),
         });
         return true;
       }
@@ -1961,7 +2021,18 @@ export function createCloudRoutes({
         const value = await parse(
           await request("/api/v1/eliza/google/connect/initiate", {
             method: "POST",
-            json: { side: "owner", capabilities: ["google.gmail.triage"] },
+            json: {
+              side: "owner",
+              // gmail.readonly, plus gmail.modify and gmail.send when the
+              // host opts in to the owner's mail writes.
+              capabilities: ownerWrites
+                ? [
+                    "google.gmail.triage",
+                    "google.gmail.mailbox",
+                    "google.gmail.send",
+                  ]
+                : ["google.gmail.triage"],
+            },
             key,
             signal,
             authorityGeneration: credentialEpoch,
@@ -1979,8 +2050,9 @@ export function createCloudRoutes({
         send(res, 200, { browserUrl: auth.href });
         return true;
       }
-      // The renderer's list and read are held to the same read-only grant as
-      // task reads. A connection that is not connected is left to Cloud's
+      // The renderer's list and read are held to the owner's grant: the same
+      // read-only grant as task reads, or the owner write grant when the host
+      // opts in. A connection that is not connected is left to Cloud's
       // own answer, as before. The grant checked is the grant Cloud is then
       // asked to use: a named connection is checked by name, and must be the
       // one Cloud reports.
@@ -1998,7 +2070,7 @@ export function createCloudRoutes({
           status.connectionId !== requestInput.grantId
         )
           throw fail(message("invalidGoogleConnection"), 409);
-        if (!gmailReadOnlyGrant(status.grantedScopes))
+        if (!ownerGmailGrant(status.grantedScopes))
           throw fail(message("gmailReadOnlyRequired"), 403);
       };
       if (method === "GET" && path === "/cloud/gmail/messages") {
@@ -2073,6 +2145,7 @@ export function createCloudRoutes({
   const googleReadPort = (
     { actorId, accountId, timeoutMs = 20000, retryDelaysMs = [250, 1000] },
     createPort,
+    grantAllowed = gmailReadOnlyGrant,
   ) => {
     if (typeof credentialGate !== "function" || typeof actorId !== "string")
       throw fail(message("taskAccountBindingUnavailable"), 503);
@@ -2162,7 +2235,7 @@ export function createCloudRoutes({
         );
       if (!googleGrantId(status.connectionId))
         throw googleReadFailure("unavailable");
-      if (!gmailReadOnlyGrant(status.grantedScopes))
+      if (!grantAllowed(status.grantedScopes))
         throw googleReadFailure("insufficient_scope");
       const email = status.identity?.email;
       return {
@@ -2209,8 +2282,224 @@ export function createCloudRoutes({
     googleReadPort(options, createManagedGoogleReadPort);
   // A separate read-only inbox projection. Hosts must explicitly authorize its
   // renderer/native bridge; existing task routes do not gain inbox authority.
+  // It reads the owner's grant (the owner write grant when the host opts in).
   handleCloudRoute.mailboxForAccount = (options) =>
-    googleReadPort(options, createMailboxReadPort);
+    googleReadPort(options, createMailboxReadPort, ownerGmailGrant);
+  // The owner's reviewed mail changes (send, archive, trash, read state),
+  // only for a host that opts in (`hostPolicy.gmailOwnerWrites`). Host-only:
+  // it is never a renderer route and never reaches agent tasks. Each effect is
+  // Cloud's inbox-v1 two-step operation: `prepare` returns Cloud's review and
+  // receipt for the owner to confirm, and `dispatch` performs exactly that
+  // review once. Writes are never retried; after a failed or unknown dispatch
+  // the host reads the receipt with `observe` before offering another.
+  handleCloudRoute.mailboxWriterForAccount = ({
+    actorId,
+    accountId,
+    timeoutMs = 20000,
+  } = {}) => {
+    if (!ownerWrites) throw fail(message("gmailOwnerWritesDisabled"), 403);
+    if (typeof credentialGate !== "function" || typeof actorId !== "string")
+      throw fail(message("taskAccountBindingUnavailable"), 503);
+    if (!operationId(accountId)) throw fail(message("invalidGoogleConnection"));
+    const epoch = generation;
+    const owner = async () => {
+      await ready;
+      current(epoch);
+      await credentialWrites;
+      current(epoch);
+      if ((await credentialGate()) !== actorId)
+        throw fail(message("taskAccountChanged"), 409);
+      current(epoch);
+    };
+    const writeFailure = (code, status) =>
+      new NativeCloudServiceError(`Gmail change failed (${code})`, {
+        status,
+        code,
+      });
+    // The owner, the Cloud sign-in and the selected grant (still current, and
+    // holding the scope the effect needs) are checked before each call.
+    const authority = async (scope) => {
+      await owner();
+      const key = await usableCredential();
+      await owner();
+      if (!key) throw writeFailure("cloud_sign_in_required", 401);
+      const status = await parse(
+        await request(
+          `/api/v1/eliza/google/status?side=owner&grantId=${encodeURIComponent(accountId)}`,
+          {
+            key,
+            authorityGeneration: epoch,
+            signal: AbortSignal.timeout(timeoutMs),
+          },
+        ),
+      );
+      await owner();
+      if (status?.connected !== true || status.connectionId !== accountId)
+        throw writeFailure("account_changed", 409);
+      if (
+        !gmailOwnerWriteGrant(status.grantedScopes) ||
+        (scope && !status.grantedScopes.includes(scope))
+      )
+        throw writeFailure("insufficient_scope", 403);
+      return key;
+    };
+    const call = async (path, json, scope, dispatching) => {
+      const googleEpoch = googleGeneration;
+      const key = await authority(scope);
+      if (googleEpoch !== googleGeneration)
+        throw writeFailure("account_changed", 409);
+      let response;
+      try {
+        response = await request(path, {
+          key,
+          method: json ? "POST" : "GET",
+          ...(json ? { json } : {}),
+          authorityGeneration: epoch,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (error) {
+        if (error?.status) throw error;
+        // A dispatch that left without an answer may have happened.
+        throw writeFailure(
+          dispatching ? "outcome_unknown" : "unavailable",
+          503,
+        );
+      }
+      if (!response.ok) {
+        void response.body?.cancel().catch(() => {});
+        const status = response.status;
+        throw status === 401
+          ? writeFailure("cloud_sign_in_required", 401)
+          : status === 403
+            ? writeFailure("insufficient_scope", 403)
+            : status === 404
+              ? writeFailure("account_changed", 404)
+              : status === 409
+                ? writeFailure("review_changed", 409)
+                : status === 400 || status === 413
+                  ? writeFailure("refused", status)
+                  : writeFailure(
+                      dispatching ? "outcome_unknown" : "unavailable",
+                      503,
+                    );
+      }
+      const value = await parse(response);
+      await owner();
+      return value;
+    };
+    const receipt = (value, requestId) => {
+      if (
+        value?.requestId !== requestId ||
+        !OWNER_MAIL_EFFECTS.has(value.kind) ||
+        typeof value.reviewDigest !== "string" ||
+        !/^[a-f0-9]{64}$/.test(value.reviewDigest) ||
+        !MAIL_RECEIPT_STATES.has(value.state)
+      )
+        throw fail(message("invalidCloudResponse"), 502);
+      const providerResult =
+        value.providerResult &&
+        typeof value.providerResult === "object" &&
+        !Array.isArray(value.providerResult)
+          ? value.providerResult
+          : null;
+      return {
+        requestId,
+        kind: value.kind,
+        reviewDigest: value.reviewDigest,
+        state: value.state,
+        providerResult,
+        rejectionCode:
+          typeof value.rejectionCode === "string" ? value.rejectionCode : null,
+      };
+    };
+    const proposal = (value) => {
+      if (
+        !value ||
+        typeof value !== "object" ||
+        Array.isArray(value) ||
+        !OWNER_MAIL_EFFECTS.has(value.kind)
+      )
+        throw writeFailure("refused", 400);
+      // Cloud checks every field of the proposal against the mailbox.
+      return value;
+    };
+    const scopeOf = (kind) =>
+      kind === "send" ? GMAIL_SEND_SCOPE : GMAIL_MODIFY_SCOPE;
+    const requestIdOf = (value) => {
+      if (!operationId(value)) throw writeFailure("refused", 400);
+      return value;
+    };
+    const base = "/api/v1/eliza/google/gmail/inbox-v1/operations";
+    return {
+      version: 1,
+      accountId,
+      /** Cloud's review of one proposed effect, and its prepared receipt. */
+      async prepare(input) {
+        const requestId = requestIdOf(input?.requestId),
+          effect = proposal(input?.proposal);
+        const value = await call(
+          base,
+          { grantId: accountId, requestId, proposal: effect },
+          scopeOf(effect.kind),
+          false,
+        );
+        const prepared = receipt(value?.receipt, requestId);
+        if (
+          prepared.kind !== effect.kind ||
+          !value.review ||
+          typeof value.review !== "object" ||
+          Array.isArray(value.review)
+        )
+          throw fail(message("invalidCloudResponse"), 502);
+        return {
+          version: 1,
+          accountId,
+          receipt: prepared,
+          review: value.review,
+        };
+      },
+      /** Performs the reviewed effect once; a repeat returns the same receipt. */
+      async dispatch(input) {
+        const requestId = requestIdOf(input?.requestId),
+          effect = proposal(input?.proposal);
+        if (
+          typeof input?.reviewDigest !== "string" ||
+          !/^[a-f0-9]{64}$/.test(input.reviewDigest)
+        )
+          throw writeFailure("refused", 400);
+        const value = await call(
+          `${base}/${requestId}/dispatch`,
+          {
+            grantId: accountId,
+            reviewDigest: input.reviewDigest,
+            proposal: effect,
+          },
+          scopeOf(effect.kind),
+          true,
+        );
+        return {
+          version: 1,
+          accountId,
+          receipt: receipt(value?.receipt, requestId),
+        };
+      },
+      /** The canonical receipt of an earlier prepare or dispatch. */
+      async observe(input) {
+        const requestId = requestIdOf(input?.requestId);
+        const value = await call(
+          `${base}/${requestId}?grantId=${encodeURIComponent(accountId)}`,
+          undefined,
+          undefined,
+          false,
+        );
+        return {
+          version: 1,
+          accountId,
+          receipt: receipt(value?.receipt, requestId),
+        };
+      },
+    };
+  };
   handleCloudRoute.documentImagesForAccount = ({
     actorId,
     model,
