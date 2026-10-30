@@ -145,6 +145,8 @@ describe("iOS bridge — installed-model registry storage", () => {
     const result = await postDownload("eliza-1-2b");
 
     expect(result.status).toBe(200);
-    expect((result.json.job as Record<string, unknown>).state).toBe("completed");
+    expect((result.json.job as Record<string, unknown>).state).toBe(
+      "completed",
+    );
   });
 });
