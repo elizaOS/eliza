@@ -5,8 +5,10 @@
  * asks the agent to open its Cloud connection before the first model call.
  * The agent sends ONE unauthenticated `OPTIONS` to the same
  * `<apiBaseUrl>/chat/completions` URL its text handlers use, on the process's
- * global fetch pool, so DNS/TCP/TLS and the edge worker are warm and the first
- * real `POST` reuses the socket. No credential, no body, no model prompt.
+ * global fetch pool, so DNS/TCP/TLS are done and the first real `POST` reuses
+ * the socket. No credential, no body, no model prompt. Cloud spreads requests
+ * over a pool of workers, so this does not reliably absorb a worker's cold
+ * start, and without a credential it cannot warm the gateway's auth cache.
  *
  * At most one warm per inference URL per {@link CLOUD_WARM_INTERVAL_MS}; a
  * debounced or skipped call answers immediately. The route always answers 200
