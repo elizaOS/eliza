@@ -344,3 +344,24 @@ test("Android Notes keeps one inert editor across Home with an in-flight failed 
   expect(writes).toBe(1);
   await page.screenshot({ path: info.outputPath("retained-note-failure.png") });
 });
+
+test("routed Experience content remains clickable outside the mobile launcher catalog", async ({
+  page,
+}, info) => {
+  await fixture(page);
+  await openAppPath(page, "/character/experience");
+  const filter = page.locator('[data-agent-id="experience-filter-review"]');
+  await expect(filter).toBeVisible();
+  await filter.click({ timeout: 5000 });
+  await page
+    .getByRole("menuitemradio", { name: "Needs review", exact: true })
+    .click();
+  await expect(filter).toContainText("Needs review");
+  await expect(page.locator("[data-mobile-application-view]")).toHaveCount(0);
+  await expect(
+    page.getByText("This app is unavailable.", { exact: true }),
+  ).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("routed-experience-interaction.png"),
+  });
+});

@@ -133,13 +133,13 @@ export function MobileApplication({
     catalog.product.icons.allApps,
   );
   const view =
-    navigation.view === null
-      ? null
-      : page
-        ? renderView(page)
-        : (renderUnavailable?.(navigation.view) ?? (
-            <p role="status">This app is unavailable.</p>
-          ));
+    navigation.view === null ? null : page ? (
+      renderView(page)
+    ) : renderUnavailable ? (
+      renderUnavailable(navigation.view)
+    ) : (
+      <p role="status">This app is unavailable.</p>
+    );
   const tiles = shell.homeEntries().map((entry) =>
     entry.kind === "view"
       ? {
@@ -184,7 +184,7 @@ export function MobileApplication({
         }}
       />
       {retainedViews}
-      {view !== null ? (
+      {view != null ? (
         <div
           data-mobile-application-view=""
           style={{ position: "absolute", inset: 0 }}

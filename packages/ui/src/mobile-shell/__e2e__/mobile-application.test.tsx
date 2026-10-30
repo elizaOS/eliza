@@ -47,3 +47,21 @@ it('keeps current and previously migrated Wallet favorites as in-app routes', as
  expect(both.find('wallet')?.path).toBe('/wallet');
  expect(both.find('inventory')?.path).toBe('/inventory');
 });
+
+it('respects the host null fallback for routed content outside the launcher catalog', () => {
+ const catalog=createMobileApplicationCatalog(ELIZA_MOBILE_PRODUCT,()=>pages);
+ const clicked=vi.fn(), unavailable=vi.fn(()=>null);
+ const bridge:LauncherBridge={list:vi.fn(async()=>({apps:[]})),launch:vi.fn(async()=>{})};
+ render(<MobileApplication catalog={catalog} navigation={{...MOBILE_SHELL_HOME,view:'experience'}} navigate={()=>{}} bridge={bridge} appearance="light" favorites={{read:()=>[],write:()=>{}}} retainedViews={<button onClick={clicked}>Review experience</button>} renderView={()=>null} renderUnavailable={unavailable} assistant={null}/>);
+ expect(unavailable).toHaveBeenCalledWith('experience');
+ expect(screen.queryByText('This app is unavailable.')).toBeNull();
+ expect(document.querySelector('[data-mobile-application-view]')).toBeNull();
+ fireEvent.click(screen.getByRole('button',{name:'Review experience'}));expect(clicked).toHaveBeenCalledOnce();
+});
+
+it('keeps the default unavailable notice when no host fallback is provided', () => {
+ const catalog=createMobileApplicationCatalog(ELIZA_MOBILE_PRODUCT,()=>pages);
+ const bridge:LauncherBridge={list:vi.fn(async()=>({apps:[]})),launch:vi.fn(async()=>{})};
+ render(<MobileApplication catalog={catalog} navigation={{...MOBILE_SHELL_HOME,view:'missing'}} navigate={()=>{}} bridge={bridge} appearance="light" favorites={{read:()=>[],write:()=>{}}} renderView={()=>null} assistant={null}/>);
+ expect(screen.getByRole('status').textContent).toBe('This app is unavailable.');
+});
