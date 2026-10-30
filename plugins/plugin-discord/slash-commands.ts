@@ -29,7 +29,7 @@ import { checkDiscordDmAccess } from "./dm-access";
 import { getDiscordSettings } from "./environment";
 import { buildDiscordReplyPayload } from "./interactions";
 import { chunkDiscordText } from "./messaging";
-import type { DiscordSlashCommand } from "./types";
+import type { DiscordSettings, DiscordSlashCommand } from "./types";
 import { buildDiscordComponents, getMessageService } from "./utils";
 import type { VoiceManager } from "./voice";
 
@@ -61,6 +61,8 @@ export interface SlashCommandContext {
 	entityId: string;
 	roomId: string;
 	accountId?: string;
+	/** Settings of the account that received the interaction. */
+	settings?: DiscordSettings;
 }
 
 async function replyEphemeral(
@@ -728,9 +730,11 @@ const askCommand: SlashCommand = {
 			return;
 		}
 		if (!interaction.inGuild()) {
+			// Gate with the settings of the account that received the
+			// interaction, as the message path does for a DM.
 			const access = await checkDiscordDmAccess(
 				runtime,
-				getDiscordSettings(runtime),
+				context?.settings ?? getDiscordSettings(runtime),
 				interaction.user,
 			);
 			if (!access.allowed) {
