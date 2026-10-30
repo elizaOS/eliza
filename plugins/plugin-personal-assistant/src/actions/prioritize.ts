@@ -28,6 +28,7 @@ import {
   ElizaError,
   logger,
   ModelType,
+  parseJsonObject,
   runWithTrajectoryPurpose,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
@@ -546,22 +547,9 @@ interface RawRankingEntry {
 
 function parseRanking(raw: unknown): readonly RawRankingEntry[] {
   if (typeof raw !== "string") return [];
-  const trimmed = raw.trim();
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  if (start === -1 || end === -1 || end <= start) return [];
-  const slice = trimmed.slice(start, end + 1);
-  const parsed: unknown = (() => {
-    try {
-      return JSON.parse(slice);
-    } catch {
-      // error-policy:J3 parse of untrusted model output; unparseable ranking
-      // text is an explicit null (→ empty ranking), never a fabricated ranking.
-      return null;
-    }
-  })();
-  if (!parsed || typeof parsed !== "object") return [];
-  const rankedRaw = (parsed as { ranked?: unknown }).ranked;
+  const parsed = parseJsonObject<{ ranked?: unknown }>(raw);
+  if (!parsed) return [];
+  const rankedRaw = parsed.ranked;
   if (!Array.isArray(rankedRaw)) return [];
   const entries: RawRankingEntry[] = [];
   for (const entry of rankedRaw) {
