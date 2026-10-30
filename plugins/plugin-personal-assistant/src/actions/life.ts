@@ -1184,10 +1184,11 @@ async function resolveEnumeratedDeleteTargets(
   return targets.length > 1 ? targets : [];
 }
 
-/** Drops namesakes an edit by name should not ask about. The active item this
- * conversation just saved outranks its namesakes, unless the owner's words
- * pick one by its clock time. Otherwise a reminder that can no longer fire
- * (inactive, or a one-off whose time has passed) yields to a live namesake.
+/** Drops namesakes an edit by name should not ask about. A namesake the
+ * owner's words pick by its clock time wins outright. Otherwise the active
+ * item this conversation just saved outranks its namesakes, and a reminder
+ * that can no longer fire (cancelled, completed, or a one-off whose time has
+ * passed) yields to a live namesake. A paused one can resume, so it stays.
  * Live tj-82a28eec7f2481: "actually make that 10 minutes" asked which "Grab
  * the deck" because a rehearsal copy had fired 25 minutes earlier. */
 function withoutSupersededNamesakes(
@@ -1198,6 +1199,7 @@ function withoutSupersededNamesakes(
   const now = Date.now();
   const spent = ({ definition }: LifeOpsDefinitionRecord) =>
     resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS" &&
+    definition.status !== "paused" &&
     (definition.status !== "active" ||
       (definition.cadence.kind === "once" &&
         Date.parse(definition.cadence.dueAt) <= now));
@@ -1209,14 +1211,16 @@ function withoutSupersededNamesakes(
   const setAside = new Set<LifeOpsDefinitionRecord>();
   for (const namesakes of byTitle.values()) {
     if (namesakes.length < 2) continue;
+    const named = resolveDuplicateByTimeHint(namesakes, ownerText);
     const recent = namesakes.find(
       (namesake) =>
         namesake.definition.id === recentSaveId &&
         namesake.definition.status === "active",
     );
     const live = namesakes.filter((namesake) => !spent(namesake));
-    const chosen =
-      recent && !resolveDuplicateByTimeHint(namesakes, ownerText)
+    const chosen = named
+      ? [named]
+      : recent
         ? [recent]
         : live.length > 0
           ? live
@@ -6368,7 +6372,11 @@ async function runLifeOperationHandlerInner(
           domain,
           false,
           targetTitle,
-          (await readRecentLifeSaveCache(runtime, message))?.definitionId,
+          // Only an edit follows the item just saved: a cancel by name still
+          // asks between live namesakes.
+          archiveOnlyReminder
+            ? undefined
+            : (await readRecentLifeSaveCache(runtime, message))?.definitionId,
         );
       if (!target)
         return {

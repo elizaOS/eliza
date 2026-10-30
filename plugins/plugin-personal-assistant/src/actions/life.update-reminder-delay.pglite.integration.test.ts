@@ -428,22 +428,111 @@ it("moves the live reminder past a fired and a cancelled namesake", async () => 
     { status: "archived" },
   );
   const live = await seed("Grab the deck", STRETCH_CADENCE);
-  const result = await updateReminder(
-    REHEARSAL_UPDATE_ARGS,
-    "actually make that 10 minutes",
-  );
-  expect(result.success, JSON.stringify(result)).toBe(true);
-  expect(
-    (await service.getDefinition(live.definition.id)).definition.cadence,
-  ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" });
-  for (const entry of [fired, cancelled]) {
+  try {
+    const result = await updateReminder(
+      REHEARSAL_UPDATE_ARGS,
+      "actually make that 10 minutes",
+    );
+    expect(result.success, JSON.stringify(result)).toBe(true);
     expect(
-      (await service.getDefinition(entry.definition.id)).definition,
-    ).toEqual(entry.definition);
+      (await service.getDefinition(live.definition.id)).definition.cadence,
+    ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" });
+    for (const entry of [fired, cancelled]) {
+      expect(
+        (await service.getDefinition(entry.definition.id)).definition,
+      ).toEqual(entry.definition);
+    }
+  } finally {
+    for (const entry of [fired, cancelled, live])
+      await service.deleteDefinition(entry.definition.id);
   }
-  for (const entry of [fired, cancelled, live])
-    await service.deleteDefinition(entry.definition.id);
 });
+
+it("asks rather than pass over a paused namesake", async () => {
+  const paused = await service.updateDefinition(
+    (
+      await seed("Grab the deck", {
+        ...STRETCH_CADENCE,
+        dueAt: "2026-10-30T12:40:00.000Z",
+      })
+    ).definition.id,
+    { status: "paused" },
+  );
+  const live = await seed("Grab the deck", STRETCH_CADENCE);
+  try {
+    const result = await updateReminder(
+      REHEARSAL_UPDATE_ARGS,
+      "actually make that 10 minutes",
+    );
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("Multiple items match");
+    for (const entry of [paused, live]) {
+      expect(
+        (await service.getDefinition(entry.definition.id)).definition,
+      ).toEqual(entry.definition);
+    }
+  } finally {
+    for (const entry of [paused, live])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
+// The reminder list shows fired reminders, so the owner can name one by its
+// clock time. That namesake is the one to change, not the live one.
+it.each([
+  {
+    says: "move the 4:36am grab the deck to 10 minutes from now",
+    tool: "OWNER_REMINDERS_UPDATE",
+    params: REHEARSAL_UPDATE_ARGS,
+    change: {
+      cadence: { ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" },
+    },
+  },
+  {
+    says: "cancel the 4:36am grab the deck reminder",
+    tool: "OWNER_REMINDERS",
+    params: {
+      action: "cancel",
+      title: "Grab the deck",
+      kind: "definition",
+      intent: "cancel the 4:36am grab the deck reminder",
+    },
+    change: { status: "archived" },
+  },
+  {
+    says: "cancel the 4:36am one",
+    tool: "OWNER_REMINDERS",
+    params: {
+      action: "cancel",
+      title: "Grab the deck",
+      kind: "definition",
+      intent: "cancel the 4:36am one",
+    },
+    change: { status: "archived" },
+  },
+])(
+  "'$says' changes the fired namesake it names, not the live one",
+  async ({ says, tool, params, change }) => {
+    const fired = await seed("Grab the deck", {
+      ...STRETCH_CADENCE,
+      dueAt: "2026-10-30T11:36:00.000Z",
+    });
+    const live = await seed("Grab the deck", STRETCH_CADENCE);
+    try {
+      const result = await updateReminder(params, says, tool);
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      expect(
+        (await service.getDefinition(fired.definition.id)).definition,
+      ).toEqual(expect.objectContaining(change));
+      expect(
+        (await service.getDefinition(live.definition.id)).definition,
+      ).toEqual(live.definition);
+    } finally {
+      for (const entry of [fired, live])
+        await service.deleteDefinition(entry.definition.id);
+    }
+  },
+);
 
 it.each([
   { says: "actually make that 10 minutes", saved: "due", moved: "recent" },
@@ -452,6 +541,11 @@ it.each([
     says: "move the 5:40am grab the deck to 10 minutes from now",
     saved: "due",
     moved: "earlier",
+  },
+  {
+    says: "move the 5:00am grab the deck to 10 minutes from now",
+    saved: "fired",
+    moved: "recent",
   },
 ] as const)(
   "after a $saved save in this conversation, '$says' moves the $moved namesake",
@@ -470,23 +564,26 @@ it.each([
       roomId,
       entityId: service.ownerEntityId() as UUID,
     } as Memory;
-    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
-      definitionId: recent.definition.id,
-      title: recent.definition.title,
-      createdAt: Date.now(),
-    });
-    const result = await updateReminder(REHEARSAL_UPDATE_ARGS, says);
-    await clearRecentLifeSaveCache(fixture.runtime, conversation);
-    expect(result.success, JSON.stringify(result)).toBe(true);
-    const [target, other] =
-      moved === "recent" ? [recent, earlier] : [earlier, recent];
-    expect(
-      (await service.getDefinition(target.definition.id)).definition.cadence,
-    ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" });
-    expect(
-      (await service.getDefinition(other.definition.id)).definition,
-    ).toEqual(other.definition);
-    for (const entry of [earlier, recent])
-      await service.deleteDefinition(entry.definition.id);
+    try {
+      await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+        definitionId: recent.definition.id,
+        title: recent.definition.title,
+        createdAt: Date.now(),
+      });
+      const result = await updateReminder(REHEARSAL_UPDATE_ARGS, says);
+      expect(result.success, JSON.stringify(result)).toBe(true);
+      const [target, other] =
+        moved === "recent" ? [recent, earlier] : [earlier, recent];
+      expect(
+        (await service.getDefinition(target.definition.id)).definition.cadence,
+      ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" });
+      expect(
+        (await service.getDefinition(other.definition.id)).definition,
+      ).toEqual(other.definition);
+    } finally {
+      await clearRecentLifeSaveCache(fixture.runtime, conversation);
+      for (const entry of [earlier, recent])
+        await service.deleteDefinition(entry.definition.id);
+    }
   },
 );
