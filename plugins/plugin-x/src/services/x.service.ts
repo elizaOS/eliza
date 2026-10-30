@@ -1642,9 +1642,9 @@ export class XService extends Service {
           // The paginator adds each fetched page's includes to
           // iterator.includes, so read it here and not before the loop.
           senderUsername: event.sender_id
-            ? (iterator.includes?.users?.find(
+            ? iterator.includes?.users?.find(
                 (user) => user.id === event.sender_id,
-              )?.username || null)
+              )?.username || null
             : null,
           text: event.text ?? "",
           createdAt: event.created_at ?? null,
