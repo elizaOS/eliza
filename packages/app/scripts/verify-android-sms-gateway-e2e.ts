@@ -4,7 +4,10 @@
  *
  * This command installs/prepares the SMS gateway app, clears logcat, then
  * waits for the real runtime milestones produced by an inbound SMS:
- * receiver -> gateway work queued -> cloud accepted -> SMS reply sent.
+ * receiver -> gateway work queued -> cloud accepted -> reply proposed for
+ * review -> owner reviewed send finished. A Cloud reply is never sent without
+ * the owner's Send press in the review screen, so the last milestone needs the
+ * tester to open the review notice and press Send on the phone.
  */
 import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
@@ -39,14 +42,15 @@ const milestones = [
     pattern: /ElizaSmsGateway.*Cloud gateway accepted SMS/,
   },
   {
-    key: "sending",
-    label: "reply SMS send attempted",
-    pattern: /ElizaSmsGateway.*Sending SMS gateway reply/,
+    key: "proposed",
+    label: "reply proposed for owner review (nothing sent yet)",
+    pattern: /ElizaSmsGateway.*Proposed SMS gateway reply for review/,
   },
   {
-    key: "persisted",
-    label: "reply SMS persisted",
-    pattern: /ElizaSmsGateway.*SMS gateway reply sent and persisted/,
+    key: "reviewed",
+    label: "owner-reviewed reply sent",
+    pattern:
+      /ElizaSmsGateway.*Reviewed SMS gateway reply finished with status (?:sent|delivered)/,
   },
 ];
 

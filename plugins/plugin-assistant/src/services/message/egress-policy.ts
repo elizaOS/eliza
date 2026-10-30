@@ -67,6 +67,7 @@ import {
   sourceReplyAssertionText,
 } from "./source-reply.ts";
 import {
+  calendarMutationTimeIsUngrounded,
   groundedCurrentTimeReply,
   requestAsksCurrentTime,
   statedTimeIsUngrounded,
@@ -77,6 +78,7 @@ export type PlannedReplyClaimKind =
   | "financial_completion"
   | "financial_holding"
   | "stated_time"
+  | "calendar_time"
   | "view_navigation"
   | "empty_tracked_state";
 
@@ -718,6 +720,15 @@ export function evaluatePlannedReplyEgress(args: {
   if (financialHoldingIsUngrounded(args)) {
     return { verdict: "reject", kind: "financial_holding" };
   }
+  if (
+    !requestAsksCurrentTime(args.request) &&
+    calendarMutationTimeIsUngrounded({
+      reply,
+      actionResults: args.actionResults,
+      agentId: args.currentScope?.agentId,
+    })
+  )
+    return { verdict: "reject", kind: "calendar_time" };
   if (
     statedTimeIsUngrounded({
       reply,

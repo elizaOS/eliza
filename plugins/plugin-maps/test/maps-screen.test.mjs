@@ -4,6 +4,8 @@
 // GPS, local speech or physical navigation.
 import assert from "node:assert/strict";
 import test from "node:test";
+import { BackgroundNavigation } from "../src/client/background-navigation.ts";
+import { MapsFailure } from "../src/client/contracts.ts";
 import { MapsScreenController } from "../src/client/maps-screen.ts";
 import { SavedPlaces } from "../src/client/saved-places.ts";
 import { MapsController } from "../src/client/state.ts";
@@ -511,6 +513,147 @@ test("Start guides from fresh fixes; arrival and End release the watch", async (
   await settle();
   assert.equal(f.screen.view().mode, "directions");
   assert.ok(f.stops() >= 1);
+});
+
+test("a retired location callback cannot guide a later Start", async () => {
+  const f = fixture({ background: true });
+  const watches = [];
+  const start = f.host.navigationLocation.start;
+  f.host.navigationLocation.start = (...args) => {
+    watches.push(args[1]);
+    return start(...args);
+  };
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    f.screen.end();
+    f.screen.start();
+    await settle();
+    const surface = f.screen.surface(async () => true);
+    const effects = f.calls.voice.length;
+    watches[0](f.fix());
+    assert.equal(surface.guidance().fix, undefined);
+    assert.equal(f.calls.voice.length, effects);
+    watches[1](f.fix());
+    assert.deepEqual(surface.guidance().fix, f.fix());
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("arrival ignores later fixes until End", async () => {
+  const f = fixture({ background: true });
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    f.emit(f.fix({ coordinate: END }));
+    const effects = f.calls.voice.length;
+    f.emit(f.fix({ coordinate: { latitude: 43.732, longitude: 7.42 } }));
+    assert.equal(f.screen.view().navigation.arrived, true);
+    assert.equal(f.screen.view().status.text, "Destination reached.");
+    assert.equal(f.calls.voice.length, effects);
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("a completed old background Start cannot stop its replacement", async () => {
+  const f = fixture();
+  const pending = Promise.withResolvers();
+  const entered = Promise.withResolvers();
+  const started = [],
+    active = new Set();
+  f.host.background = new BackgroundNavigation(
+    {
+      async navigationAvailability() {
+        return { background: true };
+      },
+      async addListener() {
+        return { remove: async () => {} };
+      },
+      async startNavigation({ sessionId }) {
+        started.push(sessionId);
+        if (started.length === 1) {
+          entered.resolve();
+          await pending.promise;
+        }
+        active.add(sessionId);
+      },
+      async stopNavigation({ sessionId }) {
+        active.delete(sessionId);
+        return { stopped: true };
+      },
+      async updateNavigation({ sessionId }) {
+        return { active: active.has(sessionId) };
+      },
+    },
+    () => true,
+  );
+  try {
+    await planned(f);
+    f.screen.start();
+    await entered.promise;
+    pending.resolve();
+    // Let the helper finish, then replace the screen session before its completion callback.
+    queueMicrotask(() =>
+      queueMicrotask(() => {
+        f.screen.end();
+        f.screen.start();
+      }),
+    );
+    await settle();
+    assert.equal(f.screen.isNavigating(), true);
+    assert.equal(f.host.background.active(), true);
+    assert.equal(f.screen.view().navigation.background, true);
+    assert.equal(started.length, 2);
+    assert.deepEqual([...active], [started[1]]);
+  } finally {
+    f.screen.dispose();
+  }
+});
+
+test("a rejected navigation watch ends guidance and reports the failure", async () => {
+  const f = fixture({ background: true });
+  const start = f.host.navigationLocation.start;
+  f.host.navigationLocation.start = async () => {
+    throw new MapsFailure(
+      "unavailable",
+      "Native location is unavailable in this build.",
+    );
+  };
+  try {
+    await planned(f);
+    f.screen.start();
+    await settle();
+    assert.equal(f.screen.isNavigating(), false);
+    assert.equal(f.host.background.active(), false);
+    assert.equal(
+      f.screen.view().status.text,
+      "Native location is unavailable in this build.",
+    );
+    const pending = Promise.withResolvers();
+    f.host.navigationLocation.start = () => pending.promise;
+    f.screen.start();
+    f.screen.end();
+    f.host.navigationLocation.start = start;
+    f.screen.start();
+    await settle();
+    const effects = f.calls.voice.length;
+    pending.reject(new MapsFailure("unavailable", "Retired watch failed."));
+    await settle();
+    assert.equal(f.screen.isNavigating(), true);
+    assert.equal(f.host.background.active(), true);
+    assert.equal(f.calls.voice.length, effects);
+    f.emit(f.fix());
+    assert.deepEqual(
+      f.screen.surface(async () => true).guidance().fix,
+      f.fix(),
+    );
+  } finally {
+    f.screen.dispose();
+  }
 });
 
 test("a notification Stop ends navigation once; a refused service stays foreground-only", async () => {

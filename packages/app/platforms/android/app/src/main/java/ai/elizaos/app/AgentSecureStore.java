@@ -24,7 +24,9 @@ import org.json.JSONObject;
 
 /** Same-UID agent bridge. Only ciphertext is persisted; keys never leave Android Keystore. */
 final class AgentSecureStore implements AutoCloseable {
-    private static final String KEY_ALIAS = "ai.elizaos.app.remote-target.v1";
+    /** Installed Keystore alias and no-backup directory; {@link ElizaDataResetStores} lists both. */
+    static final String KEY_ALIAS = "ai.elizaos.app.remote-target.v1";
+    static final String DIRECTORY_NAME = "remote-target-secrets";
     private static final int MAX_FRAME = 4 * 1024 * 1024;
     private final File directory;
     private final LocalServerSocket server;
@@ -32,7 +34,7 @@ final class AgentSecureStore implements AutoCloseable {
     private volatile LocalSocket active;
 
     AgentSecureStore(Context context) throws IOException {
-        directory = new File(context.getNoBackupFilesDir(), "remote-target-secrets");
+        directory = new File(context.getNoBackupFilesDir(), DIRECTORY_NAME);
         if (!directory.isDirectory() && !directory.mkdirs()) throw new IOException("Cannot create secure storage");
         server = new LocalServerSocket("ai.elizaos.app.secure-store");
         Thread worker = new Thread(this::serve, "ElizaSecureStore");

@@ -12,6 +12,7 @@ export default defineConfig({
     include: [
       "test/completed-navigation-schema.test.ts",
       "test/device-actions.e2e.test.ts",
+      "test/browser-request-grounding.pglite.test.ts",
       "test/gmail-request-policy.e2e.test.ts",
       "test/maps-navigation.integration.test.ts",
       "test/device-read-completion.test.ts",

@@ -85,16 +85,19 @@ test("the upcoming maneuver stays fixed until the device has come near it", asyn
 
 function bridge() {
   const calls = [],
-    listeners = [];
+    listeners = [],
+    active = new Set();
   return {
     calls,
     listeners,
+    active,
     available: true,
     async navigationAvailability() {
       return { background: this.available };
     },
     async startNavigation(input) {
       calls.push(["start", input.sessionId]);
+      active.add(input.sessionId);
     },
     async updateNavigation(input) {
       calls.push(["update", input.title]);
@@ -102,6 +105,7 @@ function bridge() {
     },
     async stopNavigation(input) {
       calls.push(["stop", input.sessionId]);
+      active.delete(input.sessionId);
       return { stopped: true };
     },
     async addListener(name, listener) {
@@ -187,6 +191,54 @@ test("screen-off navigation session stops exactly once from the app or the notif
   );
   assert.equal(app.listeners.length, 0, "the stop listener is released");
   assert.deepEqual(heard, []);
+});
+
+test("Stop cancels a background Start before it acquires native ownership", async () => {
+  const { BackgroundNavigation } = await import(
+    "../src/client/background-navigation.ts"
+  );
+  const native = bridge(),
+    session = new BackgroundNavigation(native, () => true),
+    starting = session.start("Route", "Waiting", () => {});
+  await session.stop();
+  assert.equal(await starting, false);
+  assert.equal(session.active(), false);
+  assert.deepEqual(native.calls, []);
+  assert.deepEqual(native.listeners, []);
+});
+
+test("a retired native Start is stopped after acknowledgement without stopping its replacement", async () => {
+  const { BackgroundNavigation } = await import(
+    "../src/client/background-navigation.ts"
+  );
+  const native = bridge(),
+    session = new BackgroundNavigation(native, () => true),
+    pending = Promise.withResolvers(),
+    entered = Promise.withResolvers();
+  native.startNavigation = async (input) => {
+    native.calls.push(["start", input.sessionId]);
+    if (input.title === "Old") {
+      entered.resolve(input.sessionId);
+      await pending.promise;
+    }
+    native.active.add(input.sessionId);
+  };
+  const oldStart = session.start("Old", "Waiting", () => {});
+  const oldId = await entered.promise;
+  await session.stop();
+  assert.equal(await session.start("New", "Waiting", () => {}), true);
+  const newId = native.calls.filter(([kind]) => kind === "start").at(-1)[1];
+  pending.resolve();
+  assert.equal(await oldStart, false);
+  assert.equal(native.active.has(oldId), false);
+  assert.equal(native.active.has(newId), true);
+  assert.equal(session.active(), true);
+  assert.equal(
+    native.calls.filter(([kind, id]) => kind === "stop" && id === newId).length,
+    0,
+  );
+  assert.equal(native.listeners.length, 1);
+  await session.stop();
 });
 
 test("a failed update from an old route cannot retire its replacement", async () => {

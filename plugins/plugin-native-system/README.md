@@ -364,7 +364,8 @@ operation's days in any order, sorts and de-duplicates them, and reads an empty
 list as a one-time alarm. `explicit` keeps a reviewed request's order.
 `clock.ClockProfile` names what a host advertises: `HANDOFF_ONLY`
 (`clock.handoff.v1,clock.handoff.v2`, Android Clock owns alarms) or
-`OWNED_ALARMS` (`clock.alarms.v1`, the Eliza app's `ElizaAlarms`). A host that
+`OWNED_ALARMS` (`clock.alarms.v1`, a host-owned alarm store). A host that
 leaves `OWNED_ALARMS` must also choose a `SavedAlarms` path for alarms it
-already saved. `test/clock.test.mjs` runs on a host JVM; real Clock apps need
+already saved. The Eliza app is `HANDOFF_ONLY` and takes `HAND_OFF_TO_CLOCK`
+for the alarms it saved earlier. `test/clock.test.mjs` runs on a host JVM; real Clock apps need
 an instrumented run.

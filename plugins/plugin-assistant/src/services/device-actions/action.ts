@@ -6,6 +6,7 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
+import { DeviceBrowserNotRequestedError } from "./browser-request-grounding.ts";
 import {
   isCalendarOperation,
   validateCalendarResult,
@@ -883,14 +884,29 @@ export const proposeDeviceAction: Action = {
     const operationKey = /^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(rawOperationKey)
       ? rawOperationKey
       : "opaque_" + createHash("sha256").update(rawOperationKey).digest("hex");
-    const outcome = await new DeviceActionService(runtime).proposeWithOutcome(
-      context.credential,
-      resolveReminderCreateInput(p.operation, context.startedAt),
-      operationKey,
-      p.reason as string,
-      deviceObservation,
-      p.afterRead,
-    );
+    let outcome: Awaited<ReturnType<DeviceActionService["proposeWithOutcome"]>>;
+    try {
+      outcome = await new DeviceActionService(runtime).proposeWithOutcome(
+        context.credential,
+        resolveReminderCreateInput(p.operation, context.startedAt),
+        operationKey,
+        p.reason as string,
+        deviceObservation,
+        p.afterRead,
+      );
+    } catch (error) {
+      if (!(error instanceof DeviceBrowserNotRequestedError)) throw error;
+      return {
+        success: false,
+        text: error.message,
+        data: {
+          code: error.code,
+          proposalCreated: false,
+          executed: false,
+          retryable: false,
+        },
+      };
+    }
     const request = outcome.request;
     const payload = validateDevicePayload(request.payload);
     let phoneTimeZone: string | undefined;

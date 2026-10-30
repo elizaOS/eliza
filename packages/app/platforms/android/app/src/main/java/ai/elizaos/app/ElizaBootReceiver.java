@@ -22,6 +22,14 @@ public class ElizaBootReceiver extends BroadcastReceiver {
         if (!shouldHandleAction(action)) {
             return;
         }
+        // Alarms saved before Eliza became handoff-only keep ringing until the owner confirms
+        // each one is saved in Clock. Their store is device-protected, so this also runs during
+        // Direct Boot: start the migration journal once and re-arm the alarms still waiting.
+        try {
+            ElizaAlarmMigration.restore(context);
+        } catch (RuntimeException error) {
+            Log.e(TAG, "Saved Eliza alarms could not be restored", error);
+        }
         // Credential-encrypted agent state and WorkManager are unavailable
         // during Direct Boot. BOOT_COMPLETED is delivered after user unlock.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {

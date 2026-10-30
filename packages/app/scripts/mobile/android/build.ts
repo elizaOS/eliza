@@ -74,7 +74,7 @@ export function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
         "on-device agent runtime and requests Play-rejected permissions " +
         "(MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). Use " +
         "`build:android:cloud` (Play-Store-compliant thin client) or " +
-        "`build:android:system` (AOSP privileged platform-signed APK).",
+        "`build:android:system` (AOSP image launcher APK).",
     );
     process.exit(2);
   }
@@ -85,7 +85,7 @@ export function enforceAndroidSideloadBuildPolicy({ env = process.env } = {}) {
       "system-only permissions (MANAGE_APP_OPS_MODES, PACKAGE_USAGE_STATS). " +
       "It is SIDELOAD-ONLY and will be rejected by the Play Store. Use " +
       "`build:android:cloud` for a Play-Store-compliant thin client, or " +
-      "`build:android:system` for the AOSP privileged platform-signed APK.",
+      "`build:android:system` for the AOSP image launcher APK.",
   );
 }
 

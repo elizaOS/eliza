@@ -81,6 +81,17 @@
                 <action android:name="org.chromium.chrome.browser.extensions.messaging.action.NATIVE_MESSAGING" />
             </intent-filter>
         </service>
+        <!-- ElizaDataResetRecoveryActivity: an unfinished "Reset app data". Own process: none of the
+             app's providers or startup initializers run there; ElizaApplication lets it start. -->
+        <activity
+            android:name=".ElizaDataResetRecoveryActivity"
+            android:exported="false"
+            android:process=":reset_recovery"
+            android:taskAffinity="${applicationId}.reset"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:label="Reset app data"
+            android:theme="@style/ElizaDataResetRecoveryTheme" />
         <activity
             android:name=".PasswordsActivity"
             android:exported="false"
@@ -396,6 +407,14 @@
                 <data android:scheme="mmsto" />
             </intent-filter>
         </service>
+
+        <!-- Owner review of a Cloud-drafted SMS reply; opened only from this app's own notice. -->
+        <activity
+            android:name="ai.elizaos.app.ElizaSmsReplyReviewActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTop"
+            android:theme="@style/AppTheme.NoActionBar" />
 
         <activity
             android:name="ai.elizaos.app.ElizaSmsComposeActivity"

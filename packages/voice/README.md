@@ -82,6 +82,36 @@ late or refused is never a yes. The Clef stage is built only when the host passe
 keep; resumed speech aborts the chain between stages. Vitest covers the chain with stub stages
 and a fake clock; it is not Clef, scorer or latency evidence.
 
+`@elizaos/voice/cloud-clef` binds Eliza Cloud's Clef `turn` decision (`POST /api/v1/decisions`)
+into that `clef` slot: `createCloudClefEndpointStage({ enabled, client, isOnline, hasCredential,
+entitlement, recentTurns })`. With the switch off or no client the stage has a null client and the
+chain leaves it out. Otherwise the stage asks its ports on every turn before anything is sent:
+offline answers `clef-unavailable`; no Cloud credential, or a plan gate (`planAdmission(view)` from
+`@elizaos/cloud-sdk/subscription-entitlement`) of `needs-plan` or no plan state, answers
+`clef-disabled`. A blocked turn sends nothing, the timing record still names the `clef` path, and
+the long gap submits; the local scorer is asked first either way. An `unknown` plan state (still
+checking, billing outage) admits, because Cloud authorizes each Clef call itself and its
+`unavailable` answer is never a yes. The gate reads cached plan state only and never adds a billing
+request to a turn. `cloudClefStatus(options)` gives Settings the same answer with a specific
+`block` (`disabled`, `no-client`, `offline`, `no-credential`, `no-plan`). Recent turns are reduced
+to `{ speaker, text }` and capped at `CLEF_RECENT_TURNS_MAX` (6); audio is never part of a Clef
+request. Vitest drives the real `createClefDecisionsClient` over a mock fetch; nothing reaches
+Eliza Cloud, and it is not Clef, network or latency evidence.
+
+`@elizaos/voice/speech-disclosure` is the one table of what leaves the device per speech route,
+which products render instead of writing their own copy (`SPEECH_DISCLOSURES`,
+`speechDisclosures({ serviceName, deviceNoun })`, `speechDisclosure(route)`):
+
+| Route | Leaves the device |
+| --- | --- |
+| `local-turn`, `local-stt`, `local-tts` | nothing |
+| `clef-turn` | the current transcript text and at most 6 recent text turns; never audio |
+| `cloud-stt` | the recorded audio |
+| `cloud-tts` | the reply text |
+
+Only the service name and the device noun can be substituted. The table covers speech routes;
+conversation text sent to a language model is the model setting's disclosure.
+
 ## Voice turn latency records
 
 `@elizaos/voice/turn-timing` keeps per-turn latency records on the device:

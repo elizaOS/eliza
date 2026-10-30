@@ -3,12 +3,17 @@
  * build-aosp.ts — Brand-aware orchestrator for the AOSP/Cuttlefish build.
  *
  * Pipeline (each step optional via flags):
- *   1. Rebuild the privileged APK with brand AOSP env (rebuildPrivilegedApk)
- *   2. Sync the brand vendor tree into the AOSP checkout (syncToAosp)
- *   3. Validate the synced product layer (validate)
- *   4. m -j<jobs> with the brand lunch target (skipBuild)
- *   5. cvd start --daemon (launch)
- *   6. boot-validate.ts (bootValidate)
+ *   1. Rebuild the unsigned image APK with brand AOSP env (rebuildLauncherApk)
+ *   2. Stage the signed APK as the nonprivileged launcher (--launcher-apk,
+ *      image-launcher.ts); otherwise the previously staged launcher is used
+ *   3. Sync the brand vendor tree into the AOSP checkout (syncToAosp)
+ *   4. Validate the synced product layer (validate)
+ *   5. m -j<jobs> with the brand lunch target (skipBuild)
+ *   6. cvd start --daemon (launch)
+ *   7. boot-validate.ts (bootValidate)
+ *
+ * The orchestrator never signs: the release signer (or, for development
+ * images, a developer key) signs the image APK between steps 1 and 2.
  *
  * Brand resolution: --brand-config <PATH> | $DISTRO_ANDROID_BRAND_CONFIG | brand.eliza.json
  */
@@ -28,6 +33,7 @@ import {
   verifyProprietaryArchive,
 } from "./bootstrap-aosp.ts";
 import { loadBrandFromArgv } from "./brand-config.ts";
+import { LAUNCHER_DIRECTORY, stageImageLauncher } from "./image-launcher.ts";
 import { provisionCuttlefishE1 } from "./provision-cuttlefish-e1.ts";
 import { withSisoCompatibility } from "./siso-env.ts";
 import {
@@ -345,10 +351,18 @@ export function parseSubArgs(argv) {
     launch: false,
     bootValidate: false,
     // When set, also re-run `<brand.buildAndroidSystemCmd>` with AOSP env
-    // flags so the privileged APK staged into vendor/<brand> is rebuilt
-    // with libllama.so + BuildConfig.AOSP_BUILD=true.
-    rebuildPrivilegedApk: false,
+    // flags so the unsigned image APK under vendor/<brand>/apps is rebuilt
+    // with BuildConfig.AOSP_BUILD=true. It must be signed before staging.
+    rebuildLauncherApk: false,
     allowDevelopmentBrowser: false,
+    // Signed launcher APK to stage, with its reviewed descriptor or explicit
+    // development staging (a descriptor pinned from the APK's own signer).
+    launcherApk: null,
+    launcherDescriptor: null,
+    developmentLauncher: false,
+    sourceCommit: null,
+    aapt: "aapt",
+    apksigner: "apksigner",
   };
 
   const readFlagValue = (flag, index) => {
@@ -385,11 +399,28 @@ export function parseSubArgs(argv) {
       args.bootValidate = true;
     } else if (arg === "--allow-development-browser") {
       args.allowDevelopmentBrowser = true;
-    } else if (arg === "--rebuild-privileged-apk") {
-      args.rebuildPrivilegedApk = true;
+    } else if (arg === "--rebuild-launcher-apk") {
+      args.rebuildLauncherApk = true;
+    } else if (arg === "--launcher-apk") {
+      args.launcherApk = path.resolve(readFlagValue(arg, i));
+      i += 1;
+    } else if (arg === "--launcher-descriptor") {
+      args.launcherDescriptor = path.resolve(readFlagValue(arg, i));
+      i += 1;
+    } else if (arg === "--development-launcher") {
+      args.developmentLauncher = true;
+    } else if (arg === "--source-commit") {
+      args.sourceCommit = readFlagValue(arg, i);
+      i += 1;
+    } else if (arg === "--aapt") {
+      args.aapt = path.resolve(readFlagValue(arg, i));
+      i += 1;
+    } else if (arg === "--apksigner") {
+      args.apksigner = path.resolve(readFlagValue(arg, i));
+      i += 1;
     } else if (arg === "-h" || arg === "--help") {
       console.log(
-        "Usage: node scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-privileged-apk] [--launch] [--boot-validate]",
+        "Usage: node scripts/android/build-aosp.ts [--brand-config <PATH>] --aosp-root <AOSP_ROOT> [--source-vendor <VENDOR_DIR>] [--vendor-archive <FACTORY_ARCHIVE>] [--jobs <N>] [--skip-build] [--allow-development-browser] [--rebuild-launcher-apk] [--launcher-apk <SIGNED_APK> (--launcher-descriptor <REVIEWED_JSON> | --development-launcher) [--source-commit <COMMIT>] [--aapt <PATH>] [--apksigner <PATH>]] [--launch] [--boot-validate]",
       );
       process.exit(0);
     } else if (arg.startsWith("-")) {
@@ -406,6 +437,25 @@ export function parseSubArgs(argv) {
   }
   if (!Number.isSafeInteger(args.jobs) || args.jobs < 1 || args.jobs > 256) {
     throw new Error("--jobs must be an integer from 1 through 256");
+  }
+  if (
+    !args.launcherApk &&
+    (args.launcherDescriptor || args.developmentLauncher || args.sourceCommit)
+  ) {
+    throw new Error(
+      "--launcher-descriptor, --development-launcher and --source-commit stage --launcher-apk",
+    );
+  }
+  if (
+    args.launcherApk &&
+    Boolean(args.launcherDescriptor) === args.developmentLauncher
+  ) {
+    throw new Error(
+      "--launcher-apk needs exactly one of --launcher-descriptor or --development-launcher",
+    );
+  }
+  if (args.sourceCommit !== null && !/^[a-f0-9]{40}$/.test(args.sourceCommit)) {
+    throw new Error("--source-commit must be a full commit SHA");
   }
   return args;
 }
@@ -544,11 +594,13 @@ function launchCuttlefish(aospRoot, brand) {
 }
 
 /**
- * Re-build the privileged APK with brand AOSP env flags so the staged
- * APK picks up BuildConfig.AOSP_BUILD=true and the agent bundle is
- * produced with <BRAND>_AOSP_BUILD=1.
+ * Re-build the image APK with brand AOSP env flags so it picks up
+ * BuildConfig.AOSP_BUILD=true and the agent bundle is produced with
+ * <BRAND>_AOSP_BUILD=1. The output under vendor/<brand>/apps is unsigned:
+ * sign it, then stage it with stageLauncherApk (image-launcher.ts). It is
+ * installed as a nonprivileged product launcher, never a priv-app.
  */
-export function rebuildPrivilegedApk(brand, browserPin) {
+export function rebuildLauncherApk(brand, browserPin) {
   const elizaRoot = resolveElizaSourceRoot();
 
   const env = {
@@ -562,6 +614,62 @@ export function rebuildPrivilegedApk(brand, browserPin) {
   };
   const [cmd, ...rest] = brand.buildAndroidSystemCmd;
   run(cmd, rest, { cwd: elizaRoot, env });
+}
+
+/**
+ * Replace `<vendorDir>/launcher` with a freshly staged launcher. Staging happens
+ * beside it, so a refused APK or descriptor leaves the previous launcher intact.
+ */
+export function stageLauncherApk({
+  brand,
+  vendorDir,
+  apk,
+  descriptor = null,
+  development = false,
+  sourceCommit = null,
+  aapt = "aapt",
+  apksigner = "apksigner",
+  stage = stageImageLauncher,
+}) {
+  const target = path.join(vendorDir, LAUNCHER_DIRECTORY);
+  const next = path.join(
+    vendorDir,
+    `.${LAUNCHER_DIRECTORY}-next-${process.pid}-${Date.now()}`,
+  );
+  let commit = sourceCommit;
+  if (!commit && development) {
+    const head = spawnSync(
+      "git",
+      ["-C", resolveElizaSourceRoot(), "rev-parse", "HEAD"],
+      { encoding: "utf8" },
+    );
+    commit = head.status === 0 ? head.stdout.trim() : null;
+  }
+  try {
+    const evidence = stage({
+      brand,
+      apk,
+      descriptor,
+      development,
+      output: next,
+      aapt,
+      apksigner,
+      sourceCommit: commit,
+    });
+    const previous = `${next}-previous`;
+    const hadPrevious = fs.existsSync(target);
+    if (hadPrevious) fs.renameSync(target, previous);
+    try {
+      fs.renameSync(next, target);
+    } catch (error) {
+      if (hadPrevious) fs.renameSync(previous, target);
+      throw error;
+    }
+    fs.rmSync(previous, { recursive: true, force: true });
+    return evidence;
+  } finally {
+    fs.rmSync(next, { recursive: true, force: true });
+  }
 }
 
 /** Run source admission before the orchestrator writes to an AOSP checkout. */
@@ -632,7 +740,7 @@ export async function main(argv = process.argv.slice(2)) {
 
   // AOSP inference is served bionic-side, not via a per-ABI musl libllama.so.
   // When the fused libelizainference.so + libggml-vulkan.so are staged in the
-  // privileged APK, ElizaAgentService delegates inference over the abstract UDS
+  // image APK, ElizaAgentService delegates inference over the abstract UDS
   // to ElizaBionicInferenceServer, so the OS-image bun process never dlopens
   // its own libllama.so.
 
@@ -641,8 +749,23 @@ export async function main(argv = process.argv.slice(2)) {
     brand,
     { allowDevelopmentBrowser: args.allowDevelopmentBrowser },
   );
-  if (args.rebuildPrivilegedApk) {
-    rebuildPrivilegedApk(brand, browserAdmission?.chromium);
+  if (args.rebuildLauncherApk) {
+    rebuildLauncherApk(brand, browserAdmission?.chromium);
+  }
+  if (args.launcherApk) {
+    const staged = stageLauncherApk({
+      brand,
+      vendorDir: args.sourceVendor ?? path.resolve(repoRoot, brand.vendorDir),
+      apk: args.launcherApk,
+      descriptor: args.launcherDescriptor,
+      development: args.developmentLauncher,
+      sourceCommit: args.sourceCommit,
+      aapt: args.aapt,
+      apksigner: args.apksigner,
+    });
+    console.log(
+      `[distro-android] Staged nonprivileged launcher ${staged.installPath} (resident runtime ${staged.residentAgentIncluded ? "included" : "not included"}).`,
+    );
   }
 
   const syncArgs = [...brandConfigArgs];

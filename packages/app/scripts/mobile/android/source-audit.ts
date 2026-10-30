@@ -18,6 +18,7 @@ import {
 } from "../context.ts";
 import { escapeRegExp } from "../escape.ts";
 import {
+  ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES,
   ANDROID_CLOUD_SPLASH_MARK_RESOURCE,
   ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES,
   ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
@@ -30,6 +31,7 @@ import {
   ANDROID_SMS_GATEWAY_COMPONENTS,
   ANDROID_SMS_GATEWAY_PERMISSIONS,
   ANDROID_SMS_GATEWAY_STRIPPED_COMPONENTS,
+  ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
   assertAndroidLauncherManifest,
   isAndroidLp3ColorPolicyEnabled,
   isCloudBannedAsset,
@@ -271,6 +273,15 @@ export function auditAndroidCloudSource(
       );
     }
   });
+  // Cloud sign-in is native in every Cloud variant: the shared client's host
+  // and its storage policy must survive the strip.
+  for (const required of ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES) {
+    let found = false;
+    walkFiles(javaRoot, (filePath) => {
+      if (path.basename(filePath) === required) found = true;
+    });
+    if (!found) failures.push(`app/src/main/java is missing ${required}`);
+  }
 
   const assetsRoot = path.join(androidDir, "app", "src", "main", "assets");
   for (const directory of ANDROID_CLOUD_STRIPPED_ASSET_DIRECTORIES) {
@@ -408,16 +419,16 @@ export function auditAndroidLauncherSource(phase, options = {}) {
   const mainActivity = fs.existsSync(mainActivityPath)
     ? fs.readFileSync(mainActivityPath, "utf8")
     : "";
+  // Cloud sign-in is native: the launcher registers the shared sign-in host
+  // and never navigates its WebView to a hosted login page or reloads it on
+  // an auth callback.
   if (
-    !mainActivity.includes("isCloudAuthCallback(Intent intent)") ||
-    !mainActivity.includes('"elizaos".equalsIgnoreCase(data.getScheme())') ||
-    !mainActivity.includes('"auth".equalsIgnoreCase(data.getHost())') ||
-    !mainActivity.includes('"/callback".equals(data.getPath())') ||
-    !mainActivity.includes("getBridge().getLocalUrl()") ||
-    !mainActivity.includes("webView.loadUrl(localUrl)")
+    !mainActivity.includes("registerPlugin(ElizaCloudSignInPlugin.class);") ||
+    mainActivity.includes("isCloudAuthCallback(") ||
+    mainActivity.includes("webView.loadUrl(")
   ) {
     throw new Error(
-      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity does not restore the bundled renderer after the exact in-app auth callback.`,
+      `[mobile-build] android-launcher ${phase} source audit failed: MainActivity must register the native Cloud sign-in host and must not reload the WebView on an auth callback.`,
     );
   }
   console.log(`[mobile-build] android-launcher ${phase} audit passed.`);
@@ -434,7 +445,11 @@ export function auditAndroidSmsGatewaySource(phase) {
   );
   failures.push(...auditAndroidSmsGatewayManifest(manifestPath));
   failures.push(...missingAndroidSmsGatewayJavaFiles());
-  failures.push(...androidCloudNativePluginReferenceFailures());
+  failures.push(
+    ...androidCloudNativePluginReferenceFailures(
+      ANDROID_SMS_GATEWAY_STRIPPED_NATIVE_PLUGINS,
+    ),
+  );
 
   if (failures.length > 0) {
     throw new Error(
@@ -487,7 +502,9 @@ export function missingAndroidSmsGatewayJavaFiles() {
   return missing;
 }
 
-export function androidCloudNativePluginReferenceFailures() {
+export function androidCloudNativePluginReferenceFailures(
+  strippedPlugins = ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS,
+) {
   const failures = [];
   for (const relPath of [
     "capacitor.settings.gradle",
@@ -497,7 +514,7 @@ export function androidCloudNativePluginReferenceFailures() {
     const filePath = path.join(androidDir, relPath);
     if (!fs.existsSync(filePath)) continue;
     const source = fs.readFileSync(filePath, "utf8");
-    for (const [pkg, gradleProject] of ANDROID_CLOUD_STRIPPED_NATIVE_PLUGINS) {
+    for (const [pkg, gradleProject] of strippedPlugins) {
       if (source.includes(pkg) || source.includes(gradleProject)) {
         failures.push(`${relPath} still references ${pkg}/${gradleProject}`);
       }

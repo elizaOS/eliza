@@ -9,6 +9,7 @@ import {
   actionGateFailure,
   activeCommittedEffectReceipts,
   ChannelType,
+  conversationClientUserMemoryId,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
@@ -83,6 +84,8 @@ import {
   DeviceActionService,
   deviceProposalDigest,
   setDeviceActionRequestMessage,
+  setDeviceReadReplyContext,
+  setDeviceReadReplyConversation,
 } from "../src/services/device-actions/service.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 import {
@@ -630,11 +633,55 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       "view-1",
       "Fixture",
     );
-    const browser = await service.propose(
-      credentials,
-      { type: "browser_navigate", url: "https://example.com/" },
-      "browser-1",
-      "Fixture",
+    // Browser proposals now require a real current authored request. The old
+    // fixture called the service with no Memory, then replayed from a Note request.
+    async function withBrowserRequest<T>(fn: (original: Memory) => Promise<T>) {
+      const runtime = runtimeState.runtime;
+      return withOwnerDeviceActionTurn(runtime, credentials, async () => {
+        const roomId = randomUUID() as UUID;
+        const nonce = randomUUID();
+        const scope = JSON.stringify([runtime.agentId, roomId, ownerA]);
+        const original: Memory = {
+          id: conversationClientUserMemoryId(scope, nonce),
+          agentId: runtime.agentId,
+          entityId: ownerA as UUID,
+          roomId,
+          createdAt: Date.now(),
+          content: {
+            text: "Open https://example.com/",
+            source: "client_chat",
+            role: "user",
+            chatIdempotency: {
+              version: 1,
+              scope,
+              clientMessageId: nonce,
+              fingerprint: "e".repeat(64),
+            },
+          },
+        };
+        if (!(await runtime.getEntityById(ownerA as UUID)))
+          await runtime.createEntity({
+            id: ownerA as UUID,
+            names: ["Synthetic browser owner"],
+            metadata: {},
+          });
+        await registerOwnerRoom(runtime, original);
+        await runtime.createMemory(original, "messages");
+        setDeviceReadReplyConversation(runtime, randomUUID(), roomId);
+        setDeviceReadReplyContext(runtime, original, {
+          id: original.id!,
+          events: [],
+        });
+        return fn(original);
+      });
+    }
+    const browser = await withBrowserRequest(() =>
+      service.propose(
+        credentials,
+        { type: "browser_navigate", url: "https://example.com/" },
+        "browser-1",
+        "Fixture",
+      ),
     );
     const pending = (await request("/proposals")).body.proposals;
     const reminderDigest = pending.find(
@@ -721,20 +768,17 @@ test("device approval REST lifecycle survives restart and never duplicates claim
       receipt: { outcome: "unknown", code: "claim_response_lost" },
     });
     expect(uncertain.body.proposal.state).toBe("reconciliation_required");
-    const unknownOutcome = await withOwnerDeviceActionTurn(
-      runtimeState.runtime,
-      credentials,
-      () =>
-        proposeDeviceAction.handler(runtimeState.runtime, memory, undefined, {
-          parameters: {
-            operation: {
-              type: "browser_navigate",
-              url: "https://example.com/",
-            },
-            operationKey: "browser-1",
-            reason: "Fixture",
+    const unknownOutcome = await withBrowserRequest((original) =>
+      proposeDeviceAction.handler(runtimeState.runtime, original, undefined, {
+        parameters: {
+          operation: {
+            type: "browser_navigate",
+            url: "https://example.com/",
           },
-        }),
+          operationKey: "browser-1",
+          reason: "Fixture",
+        },
+      }),
     );
     if (!unknownOutcome) throw new Error("Missing uncertain result");
     expect(unknownOutcome.effectReceipts).toMatchObject([

@@ -42,6 +42,47 @@ describe("GET /.well-known/assetlinks.json", () => {
     ]);
   });
 
+  test("covers Eliza's Android app (ai.elizaos.app) beside another app", async () => {
+    const { response, body } = await fetchDocument(
+      JSON.stringify([
+        {
+          package_name: "ai.elizaresearch.alphaphone",
+          sha256_cert_fingerprints: [RELEASE],
+        },
+        {
+          package_name: "ai.elizaos.app",
+          sha256_cert_fingerprints: [DEBUG],
+          relations: [
+            "delegate_permission/common.handle_all_urls",
+            "delegate_permission/common.get_login_creds",
+          ],
+        },
+      ]),
+    );
+    expect(response.status).toBe(200);
+    expect(body).toEqual([
+      {
+        relation: ["delegate_permission/common.handle_all_urls"],
+        target: {
+          namespace: "android_app",
+          package_name: "ai.elizaresearch.alphaphone",
+          sha256_cert_fingerprints: [RELEASE],
+        },
+      },
+      {
+        relation: [
+          "delegate_permission/common.handle_all_urls",
+          "delegate_permission/common.get_login_creds",
+        ],
+        target: {
+          namespace: "android_app",
+          package_name: "ai.elizaos.app",
+          sha256_cert_fingerprints: [DEBUG],
+        },
+      },
+    ]);
+  });
+
   test("an unconfigured environment publishes an empty list", async () => {
     const { response, body } = await fetchDocument(undefined);
     expect(response.status).toBe(200);

@@ -6,11 +6,18 @@ export function renderProtectionAdvisory(state) {
   const key = "__elizaProtectionAdvisory";
   if (state && location.origin !== state.origin) return;
   const previous = globalThis[key];
-  previous?.remove();
   if (!state) {
+    previous?.remove();
     delete globalThis[key];
     return;
   }
+  // A refresh keeps the drawn bar and changes only text that differs. Recreating it made a
+  // screen reader announce the same status again on every refresh and moved focus away from it.
+  if (typeof previous?.update === "function") {
+    previous.update(state);
+    return;
+  }
+  previous?.remove();
   const host = document.createElement("div");
   const root = host.attachShadow({ mode: "closed" });
   const sheet = new CSSStyleSheet();
@@ -28,45 +35,69 @@ export function renderProtectionAdvisory(state) {
   `);
   root.adoptedStyleSheets = [sheet];
   const section = document.createElement("section");
-  section.setAttribute("aria-label", state.copy.region);
   const words = document.createElement("div");
   words.className = "words";
   words.setAttribute("role", "status");
   const title = document.createElement("strong");
-  title.textContent = state.marked ? state.copy.marked : state.title;
   const detail = document.createElement("p");
-  detail.textContent = `${location.host} · ${state.marked ? state.copy.notScanned : state.detail}`;
   words.append(title, detail);
   const button = document.createElement("button");
   button.type = "button";
-  button.textContent = state.marked ? state.copy.undo : state.copy.mark;
-  button.disabled = !state.canMark;
+  let current = state;
+  let advice = "";
+  let failed = false;
+  let pending = false;
+  const write = (node, text) => {
+    // Rewriting equal text still mutates the live region, which some screen readers announce.
+    if (node.textContent !== text) node.textContent = text;
+  };
+  const update = (next) => {
+    current = next;
+    const heading = next.marked ? next.copy.marked : next.title;
+    const body = `${location.host} · ${next.marked ? next.copy.notScanned : next.detail}`;
+    // A failed choice stays explained until the advice itself changes.
+    if (`${heading}\n${body}` !== advice) failed = false;
+    advice = `${heading}\n${body}`;
+    if (section.getAttribute("aria-label") !== next.copy.region)
+      section.setAttribute("aria-label", next.copy.region);
+    write(title, heading);
+    write(detail, failed ? next.copy.failed : body);
+    write(button, next.marked ? next.copy.undo : next.copy.mark);
+    button.disabled = pending || !next.canMark;
+    // A page that removed the bar gets it back; one still in place is not moved.
+    if (!host.isConnected) document.documentElement.prepend(host);
+  };
   button.addEventListener("click", async (event) => {
     if (!event.isTrusted || button.disabled) return;
+    const chosen = current;
+    pending = true;
     button.disabled = true;
     try {
       const result = await globalThis.chrome.runtime.sendMessage({
         type: "protection-acknowledge",
-        nonce: state.nonce,
-        marked: !state.marked,
+        nonce: chosen.nonce,
+        marked: !chosen.marked,
       });
       if (!result?.accepted) throw Error("Acknowledgement unavailable");
     } catch {
       // The website stays usable. A failed acknowledgement is never reported as saved.
-      detail.textContent = state.copy.failed;
-      button.disabled = !state.canMark;
+      failed = true;
+      write(detail, current.copy.failed);
+    } finally {
+      pending = false;
+      button.disabled = !current.canMark;
     }
   });
   section.append(words, button);
   root.append(section);
-  document.documentElement.prepend(host);
-  globalThis[key] = { remove: () => host.remove(), shadow: root };
+  update(state);
+  globalThis[key] = { remove: () => host.remove(), shadow: root, update };
 }
 
 const defaultCopy = {
   region: "Website warning",
   unavailable: "This website wasn’t scanned",
-  unavailableDetail: "Protection lists are unavailable or out of date.",
+  unavailableDetail: "Protection lists are unavailable.",
   lookalike: "This address may be pretending to be another website.",
   lookalikeDetail: "Similar spelling is a warning, not proof of fraud.",
   marked: "Marked as not suspicious",
@@ -269,12 +300,13 @@ export function createProtectionAdvisory(
       (typeof value !== "string" || !/^[A-Za-z0-9_.:@-]{1,256}$/.test(value))
     )
       throw Error("Invalid advisory owner");
-    if (value !== owner) {
-      owner = value;
-      epoch++;
-      acknowledgements.clear();
-      displays.clear();
-    }
+    // The same owner again (a repeated registration, or a retire while already retired) changes
+    // no page: redrawing every tab only made screen readers repeat the advice.
+    if (value === owner) return { updated: 0, unavailable: 0 };
+    owner = value;
+    epoch++;
+    acknowledgements.clear();
+    displays.clear();
     return refreshAll();
   }
   return { refreshAll, setOwner };

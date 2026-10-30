@@ -21,6 +21,10 @@
  * journal store, executors and recovery readers, and a small profile with the
  * owner-facing product name, record copy and view admission policy.
  */
+import {
+  authoredBrowserDestination,
+  browserDestinationMatches,
+} from "@elizaos/contracts/browser-request-grounding";
 import { createDeviceActionExecution } from "@elizaos/contracts/device-action-execution";
 import {
   isNativeNotesQuery,
@@ -35,6 +39,15 @@ import {
   validateNativeNotesReadReplyHint,
   validateNativeNotesReadReplyOrigin,
 } from "@elizaos/contracts/native-notes-query";
+import {
+  isPhoneDial,
+  type PhoneDialOperation,
+  type PhoneDialResult,
+  phoneDialCapabilityAvailable,
+  phoneDialReceiptOutcome,
+  validatePhoneDial,
+  validatePhoneDialResult,
+} from "@elizaos/contracts/phone-dial";
 import {
   isSmsSend,
   SMS_SEND_CAPABILITY,
@@ -204,6 +217,7 @@ export type LegacyDeviceOperation =
 export type DeviceOperation =
   | CameraCaptureOperation
   | SmsSendOperation
+  | PhoneDialOperation
   | ReminderCreateOperation
   | WorkflowPresentationOperation
   | ClockHandoffOperation
@@ -303,6 +317,7 @@ export interface DeviceExecutionResult {
   photoLibraryResult?: LibraryAgentResult;
   cameraResult?: CameraCaptureResult;
   smsResult?: SmsSendResult;
+  dialResult?: PhoneDialResult;
   /** Local Browser presentation only; never persisted or uploaded. */
   presentBrowser?: () => void;
 }
@@ -344,6 +359,7 @@ export type DeviceRecovery = (
   status: string;
   reminderResult?: ReminderResult | ReminderCreateResult;
   smsResult?: SmsSendResult;
+  dialResult?: PhoneDialResult;
 }>;
 
 // ── Product profile ─────────────────────────────────────────────────────────
@@ -460,6 +476,12 @@ export function smsDeviceStatus(
       ? "failed"
       : "unknown";
 }
+/** A dial receipt proves only that the dial screen opened, never a placed call. */
+export function dialDeviceStatus(
+  result: PhoneDialResult,
+): "succeeded" | "failed" {
+  return phoneDialReceiptOutcome(result) === "applied" ? "succeeded" : "failed";
+}
 export function validateDeviceOperation(
   value: unknown,
   policy: DeviceOperationPolicy,
@@ -467,6 +489,7 @@ export function validateDeviceOperation(
   const p = object(value);
   if (isCameraCapture(p)) return validateCameraCapture(p);
   if (isSmsSend(p)) return validateSmsSend(p);
+  if (isPhoneDial(p)) return validatePhoneDial(p);
   if (isReminderCreate(p)) return validateReminderCreate(p);
   if (isClockHandoffOperation(p)) return validateClockHandoffDispatch(p);
   if (isMapsOperation(p)) return validateMapsOperation(p);
@@ -475,7 +498,11 @@ export function validateDeviceOperation(
   if (isNotesOperation(p)) return validateNotesOperation(p);
   if (isCalendarOperation(p)) return validateCalendarOperation(p);
   if (p.type === "notes_query") return validateNativeNotesQuery(p);
-  if (p.type === "read_selected_notes" || p.type === "read_calendar_range")
+  if (
+    p.type === "read_selected_notes" ||
+    p.type === "read_calendar_range" ||
+    p.type === "read_selected_reminders"
+  )
     return policy.parseWorkflowRead(p);
   if (p.type === "post_notification") {
     if (Object.keys(p).some((k) => !["type", "title", "body"].includes(k)))
@@ -729,6 +756,10 @@ export function assertProposalContext<C extends DeviceContextEnvelope>(
     throw new ContextNotice(CAMERA_CONTEXT_NOTICE);
   if (isForegroundReviewOperation(operation))
     assertForegroundContext(operation, context, ports);
+  if (isPhoneDial(operation) && (context.sensitive || ports.foregroundHidden()))
+    throw new ContextNotice(
+      "Unlock the phone and keep it open to review this number.",
+    );
   if (
     isSmsSend(operation) &&
     (context.sensitive ||
@@ -932,7 +963,24 @@ export function publishCommittedDeviceChanges(
 
 // ── Coordinator ─────────────────────────────────────────────────────────────
 
+export interface CurrentDeviceActionRequest {
+  readonly messageId: string;
+  readonly text: string;
+  readonly current: () => void;
+}
+
+/** Remove renderer-only day observations from durable native records. */
+export function deviceJournalContext<C extends DeviceContextEnvelope>(
+  context: C,
+): Omit<C, "calendarDay"> {
+  const { calendarDay: _day, ...record } = context as C & {
+    calendarDay?: unknown;
+  };
+  return record;
+}
+
 export interface PendingReviewItem {
+  proposalId?: string;
   /** Reviewable from the current screen; null when only a notice can be shown. */
   proposal: DeviceActionProposalCard | null;
   /** Why a pending proposal cannot be reviewed here, for example "Open the selected note". */
@@ -992,7 +1040,13 @@ export class DeviceActionCoordinator<
   readonly scope: string;
   private proposals = new Map<
     string,
-    { proposal: DeviceProposal; context: C; workflowReview?: R }
+    {
+      proposal: DeviceProposal;
+      context: C;
+      workflowReview?: R;
+      requestKey?: string;
+      currentRequest?: CurrentDeviceActionRequest;
+    }
   >();
   private readReplies = new Map<
     string,
@@ -1005,11 +1059,70 @@ export class DeviceActionCoordinator<
   >();
   private busy = false;
   private readonly ports: DeviceActionCoordinatorPorts<C, R>;
-  constructor(ports: DeviceActionCoordinatorPorts<C, R>) {
+  private browserAttempts = new Map<string, CurrentDeviceActionRequest>();
+  private browserPolicy = new Map<string, { key: string; allowed: boolean }>();
+  constructor(
+    ports: DeviceActionCoordinatorPorts<C, R>,
+    private readonly options: { currentRequestBrowserPolicy?: boolean } = {},
+  ) {
     this.ports = ports;
     this.session = ports.session;
     this.credential = ports.credential;
     this.scope = ports.scope;
+  }
+  private requestKey(messageId: string): string {
+    return JSON.stringify([
+      this.scope,
+      this.session.ownerId,
+      this.session.agentId,
+      this.session.sessionId,
+      this.session.origin,
+      this.credential.installationId,
+      this.credential.enrollmentId,
+      messageId,
+    ]);
+  }
+  private browserAllowed(
+    proposal: DeviceProposal,
+    proof?: CurrentDeviceActionRequest,
+  ): boolean {
+    if (
+      !this.options.currentRequestBrowserPolicy ||
+      proposal.operation.type !== "browser_navigate"
+    )
+      return true;
+    if (!proof || proof.messageId !== proposal.requestMessageId) return false;
+    proof.current();
+    const key = JSON.stringify([
+      this.requestKey(proof.messageId),
+      proposal.digest,
+      proposal.operation,
+      proof.text,
+    ]);
+    const cached = this.browserPolicy.get(proposal.id);
+    if (cached?.key === key) return cached.allowed;
+    const allowed = browserDestinationMatches(
+      proposal.operation,
+      authoredBrowserDestination(proof.text),
+    );
+    if (this.browserPolicy.has(proposal.id) || this.browserPolicy.size < 128)
+      this.browserPolicy.set(proposal.id, { key, allowed });
+    return allowed;
+  }
+  private consumeBrowserRequest(proof: CurrentDeviceActionRequest): boolean {
+    for (const [key, previous] of this.browserAttempts) {
+      try {
+        previous.current();
+      } catch {
+        this.browserAttempts.delete(key);
+      }
+    }
+    const key = this.requestKey(proof.messageId);
+    if (this.browserAttempts.has(key) || this.browserAttempts.size >= 128)
+      return false;
+    proof.current();
+    this.browserAttempts.set(key, proof);
+    return true;
   }
   get supportsCalendarAgenda(): boolean {
     return this.capability(CALENDAR_AGENDA_CAPABILITY);
@@ -1098,6 +1211,11 @@ export class DeviceActionCoordinator<
       );
     if (isCameraCapture(op) && !this.capability(CAMERA_CAPTURE_CAPABILITY))
       throw Error("Camera capture was not negotiated with this agent");
+    if (
+      isPhoneDial(op) &&
+      !phoneDialCapabilityAvailable(op, this.credential.capabilities)
+    )
+      throw Error("Dialing was not negotiated with this phone");
     if (isSmsSend(op) && !this.capability(SMS_SEND_CAPABILITY))
       throw Error("Native SMS was not negotiated with this phone");
     if (
@@ -1153,6 +1271,7 @@ export class DeviceActionCoordinator<
       [
         "read_selected_notes",
         "read_calendar_range",
+        "read_selected_reminders",
         "post_notification",
         "speak_text",
       ].includes(op.type) &&
@@ -1266,6 +1385,12 @@ export class DeviceActionCoordinator<
           readReply),
       };
     }
+    if (isPhoneDial(op))
+      return {
+        ...base,
+        title: "Open dial screen",
+        description: `${op.target.kind === "number" ? `Number: ${op.target.number}` : `Contact: ${op.target.query}`}\n\n${this.profile.appName} opens your phone app with this number. You place the call there; ${this.profile.appName} does not know whether it connects.`,
+      };
     if (isSmsSend(op))
       return {
         ...base,
@@ -1336,10 +1461,23 @@ export class DeviceActionCoordinator<
   private async review(
     context: C,
     signal: AbortSignal,
+    proof?: CurrentDeviceActionRequest,
   ): Promise<{ items: PendingReviewItem[]; failures: Error[] }> {
+    const browserRequestKey = proof
+      ? this.requestKey(proof.messageId)
+      : undefined;
+    if (this.options.currentRequestBrowserPolicy) proof?.current();
     const { valid, invalid } = await this.listing(signal);
     signal.throwIfAborted();
+    if (this.options.currentRequestBrowserPolicy && proof) {
+      proof.current();
+      if (browserRequestKey !== this.requestKey(proof.messageId))
+        throw Error("The current device action request changed");
+    }
     this.proposals.clear();
+    const pendingIds = new Set(valid.map((proposal) => proposal.id));
+    for (const id of this.browserPolicy.keys())
+      if (!pendingIds.has(id)) this.browserPolicy.delete(id);
     const items: PendingReviewItem[] = [];
     for (const proposal of valid) {
       if (
@@ -1348,6 +1486,20 @@ export class DeviceActionCoordinator<
         proposal.expiresAt <= Date.now()
       )
         continue;
+      if (
+        this.options.currentRequestBrowserPolicy &&
+        proof &&
+        proposal.requestMessageId === proof.messageId &&
+        !this.browserAllowed(proposal, proof)
+      ) {
+        items.push({
+          proposalId: proposal.id,
+          proposal: null,
+          notice:
+            "Browser action blocked: a matching current user request is required.",
+        });
+        continue;
+      }
       const card = this.card(proposal, context),
         notice =
           (isNativeNotesQuery(proposal.operation) && !context.sensitive) ||
@@ -1356,19 +1508,24 @@ export class DeviceActionCoordinator<
             ? undefined
             : this.notice(proposal.operation, context);
       if (notice) {
-        items.push({ proposal: null, notice: `${card.title}: ${notice}` });
+        items.push({
+          proposalId: proposal.id,
+          proposal: null,
+          notice: `${card.title}: ${notice}`,
+        });
         continue;
       }
       this.proposals.set(proposal.id, {
         proposal,
         context: structuredClone(context),
+        requestKey: browserRequestKey,
       });
       if (proposal.readReplyOrigin && !this.readReplies.has(proposal.id))
         this.readReplies.set(proposal.id, {
           digest: proposal.digest,
           origin: proposal.readReplyOrigin,
         });
-      items.push({ proposal: card });
+      items.push({ proposalId: proposal.id, proposal: card });
     }
     const failures = invalid
       .filter((item) => item.pending)
@@ -1384,8 +1541,9 @@ export class DeviceActionCoordinator<
   async pendingReview(
     context: C,
     signal: AbortSignal,
+    proof?: CurrentDeviceActionRequest,
   ): Promise<PendingReviewItem[]> {
-    return (await this.review(context, signal)).items;
+    return (await this.review(context, signal, proof)).items;
   }
   /** Reviewable proposals only. An invalid proposal fails the call only when nothing else is reviewable. */
   async pending(
@@ -1409,6 +1567,7 @@ export class DeviceActionCoordinator<
     signal: AbortSignal,
     allowed: () => Promise<boolean>,
     operationType?: ReviewableDeviceOperation["type"],
+    proof?: CurrentDeviceActionRequest,
   ): Promise<DeviceOperationReceipt[]> {
     const directTypes: readonly ReviewableDeviceOperation["type"][] = [
       "create_note",
@@ -1430,8 +1589,37 @@ export class DeviceActionCoordinator<
         continue;
       // A navigation-only card is not an executable read/write, even in direct-request mode.
       if (this.card(entry.proposal, context).reviewDestination) continue;
+      const browser =
+        this.options.currentRequestBrowserPolicy &&
+        entry.proposal.operation.type === "browser_navigate";
+      const requestKey = this.requestKey(messageId);
+      if (
+        browser &&
+        proof?.messageId === messageId &&
+        entry.requestKey === requestKey
+      )
+        signal.throwIfAborted();
+      if (
+        browser &&
+        (!proof ||
+          entry.requestKey !== requestKey ||
+          proof.messageId !== messageId ||
+          !this.browserAllowed(entry.proposal, proof))
+      )
+        continue;
       if (!(await allowed())) break;
       signal.throwIfAborted();
+      if (browser) {
+        if (
+          this.proposals.get(proposalId) !== entry ||
+          requestKey !== this.requestKey(messageId) ||
+          !this.browserAllowed(entry.proposal, proof) ||
+          !proof ||
+          !this.consumeBrowserRequest(proof)
+        )
+          continue;
+        entry.currentRequest = proof;
+      }
       const result = await this.approve(proposalId, context, signal);
       results.push(result);
       if (result.status !== "succeeded" || signal.aborted) break;
@@ -1497,17 +1685,19 @@ export class DeviceActionCoordinator<
       const op = p.operation;
       const w = p.workflow as WorkflowDeviceBinding;
       const scope =
-        op.type === "read_selected_notes"
-          ? `Read only ${op.notes.length} selected Notes at the recorded revisions. Text and titles will be sent to this agent.\nSelected IDs: ${op.notes.map((n: { id: string }) => n.id).join(", ")}`
-          : op.type === "read_calendar_range"
-            ? `Read calendars ${op.calendarIds.join(", ")} from ${op.start} up to (excluding) ${op.end}, shown in ${op.timeZone}. At most ${op.maximumEvents} events; overflow fails. Event titles, times and IDs will be sent; descriptions, locations and attendees are excluded.`
-            : op.type === "create_note"
-              ? `Save one note “${op.title}” on this phone:\n${op.body}`
-              : op.type === "post_notification"
-                ? `Post this notification on this device: ${op.title}\n${op.body}`
-                : op.type === "speak_text"
-                  ? `Read this exact text aloud on this device:\n${op.text}`
-                  : "Unsupported phone step";
+        op.type === "read_selected_reminders"
+          ? `Read reminders open by the end of ${op.day} (overdue included) and reminders completed that day, in ${op.timeZone}. At most ${op.maximumItems} reminders; overflow fails. Titles, due times and completion times will be sent; reminder notes and alarms are excluded.`
+          : op.type === "read_selected_notes"
+            ? `Read only ${op.notes.length} selected Notes at the recorded revisions. Text and titles will be sent to this agent.\nSelected IDs: ${op.notes.map((n: { id: string }) => n.id).join(", ")}`
+            : op.type === "read_calendar_range"
+              ? `Read calendars ${op.calendarIds.join(", ")} from ${op.start} up to (excluding) ${op.end}, shown in ${op.timeZone}. At most ${op.maximumEvents} events; overflow fails. Event titles, times and IDs will be sent; descriptions, locations and attendees are excluded.`
+              : op.type === "create_note"
+                ? `Save one note “${op.title}” on this phone:\n${op.body}`
+                : op.type === "post_notification"
+                  ? `Post this notification on this device: ${op.title}\n${op.body}`
+                  : op.type === "speak_text"
+                    ? `Read this exact text aloud on this device:\n${op.text}`
+                    : "Unsupported phone step";
       const identity = `Owner: ${this.session.ownerId}\nWorkflow: ${w.workflowId}\nRun: ${w.runId}\nVersion: ${w.versionId}\nStep: ${w.stepId}\nSpec: ${w.specDigest}`;
       return {
         id: p.id,
@@ -1555,6 +1745,16 @@ export class DeviceActionCoordinator<
     context: C,
   ) {
     const op = p.operation;
+    let dialResult: PhoneDialResult | undefined;
+    if (isPhoneDial(op)) {
+      if (result.dialResult !== undefined) {
+        dialResult = validatePhoneDialResult(op, result.dialResult);
+        if (dialDeviceStatus(dialResult) !== result.status)
+          throw Error("Dial outcome mismatch");
+      } else if (result.status !== "unknown")
+        throw Error("Missing dial result");
+    } else if (result.dialResult !== undefined)
+      throw Error("Unexpected dial result");
     let smsResult: SmsSendResult | undefined;
     if (isSmsSend(op)) {
       if (result.smsResult !== undefined) {
@@ -1669,7 +1869,8 @@ export class DeviceActionCoordinator<
     let readResult: WorkflowReadResult | undefined;
     if (
       op.type === "read_selected_notes" ||
-      op.type === "read_calendar_range"
+      op.type === "read_calendar_range" ||
+      op.type === "read_selected_reminders"
     ) {
       if (result.status === "succeeded")
         readResult = await this.profile.workflow.validateResult(
@@ -1683,6 +1884,7 @@ export class DeviceActionCoordinator<
     // Journal field order is part of the stored record shape; keep it stable.
     return {
       smsResult,
+      dialResult,
       clockResult,
       mapsResult,
       photoLibraryResult,
@@ -1720,10 +1922,21 @@ export class DeviceActionCoordinator<
     this.proposals.delete(proposalId);
     let execution: ReturnType<typeof createDeviceActionExecution> | undefined;
     try {
+      const assertCurrent = () => {
+        assertProposalContext(p.operation, context, this.profile);
+        if (reviewed.currentRequest) {
+          reviewed.currentRequest.current();
+          if (
+            reviewed.requestKey !==
+            this.requestKey(reviewed.currentRequest.messageId)
+          )
+            throw Error("The current device action request changed");
+        }
+      };
       execution = createDeviceActionExecution(
         { scope: this.scope, proposalId, operationId },
         signal,
-        () => assertProposalContext(p.operation, context, this.profile),
+        assertCurrent,
       );
       if (p.workflow) {
         if (!reviewed.workflowReview)
@@ -1739,7 +1952,7 @@ export class DeviceActionCoordinator<
         record: {
           digest: p.digest,
           operation: p.operation,
-          context,
+          context: deviceJournalContext(context),
           expiresAt: p.expiresAt,
           installationId: this.credential.installationId,
           enrollmentId: this.credential.enrollmentId,
@@ -1760,6 +1973,7 @@ export class DeviceActionCoordinator<
       execution.assertIdentity(reserved.entry);
       execution.assertPrepared();
       await this.mutation(p, "decision", { decision: "approve" }, signal);
+      execution.assertPrepared();
       const claimed = await this.mutation(p, "claim", {}, signal);
       if (
         isSmsSend(p.operation) &&
@@ -1874,6 +2088,7 @@ export class DeviceActionCoordinator<
           result.status === "succeeded"
         ) {
           try {
+            if (reviewed.currentRequest) assertCurrent();
             result.presentBrowser?.();
           } catch {
             /* A retired foreground must not replace a journaled outcome. */
@@ -2360,6 +2575,7 @@ export class DeviceActionCoordinator<
   private async savedResults(p: DeviceProposal, entry: DeviceJournalEntry) {
     return {
       smsResult: await this.savedSmsResult(p, entry),
+      dialResult: await this.savedDialResult(p, entry),
       clockResult: await this.savedClockResult(p, entry),
       mapsResult: await this.savedMapsResult(p, entry),
       cameraResult: await this.savedCameraResult(p, entry),
@@ -2468,6 +2684,29 @@ export class DeviceActionCoordinator<
     );
     if (read.status !== smsDeviceStatus(result))
       throw Error("Reconciled SMS outcome mismatch");
+    return result;
+  }
+  private async savedDialResult(
+    p: DeviceProposal,
+    summary: DeviceJournalEntry,
+  ): Promise<PhoneDialResult | undefined> {
+    if (!isPhoneDial(p.operation)) return undefined;
+    const entry = await this.savedEntry(
+      p,
+      summary,
+      "No exact saved dial receipt; the handoff will not be repeated",
+      { device: true },
+    );
+    if (entry.result?.dialResult === undefined) {
+      if (entry.status !== "unknown") throw Error("Missing saved dial receipt");
+      return undefined;
+    }
+    const result = validatePhoneDialResult(
+      p.operation,
+      entry.result.dialResult,
+    );
+    if (entry.status !== dialDeviceStatus(result))
+      throw Error("Saved dial outcome mismatch");
     return result;
   }
   private async savedClockResult(
@@ -2632,7 +2871,11 @@ export class DeviceActionCoordinator<
     summary: DeviceJournalEntry,
   ): Promise<WorkflowReadResult | undefined> {
     const op = p.operation;
-    if (op.type !== "read_selected_notes" && op.type !== "read_calendar_range")
+    if (
+      op.type !== "read_selected_notes" &&
+      op.type !== "read_calendar_range" &&
+      op.type !== "read_selected_reminders"
+    )
       return undefined;
     if (summary.status !== "succeeded") return undefined;
     const refusal =
@@ -2676,6 +2919,13 @@ export class DeviceActionCoordinator<
       throw Error(
         "SMS reconciliation requires exact saved evidence; unknown or partial sends cannot be called not sent",
       );
+    const dialResult = entry ? await this.savedDialResult(p, entry) : undefined;
+    if (
+      isPhoneDial(op) &&
+      (!dialResult ||
+        applied !== (dialDeviceStatus(dialResult) === "succeeded"))
+    )
+      throw Error("Dial reconciliation requires exact saved handoff evidence");
     const clockResult = entry
       ? await this.savedClockResult(p, entry)
       : undefined;
@@ -2736,7 +2986,8 @@ export class DeviceActionCoordinator<
     if (
       applied &&
       (op.type === "read_selected_notes" ||
-        op.type === "read_calendar_range") &&
+        op.type === "read_calendar_range" ||
+        op.type === "read_selected_reminders") &&
       !readResult
     )
       throw new Error("Applied read requires its exact saved result");
@@ -2748,11 +2999,16 @@ export class DeviceActionCoordinator<
         resolution: {
           confirmed: true,
           outcome,
-          ...((applied || isClockHandoffOperation(op) || isSmsSend(op)) && entry
+          ...((applied ||
+            isClockHandoffOperation(op) ||
+            isSmsSend(op) ||
+            isPhoneDial(op)) &&
+          entry
             ? { operationId: entry.operationId }
             : {}),
           ...receiptResult({
             smsResult,
+            dialResult,
             foregroundResult,
             clockResult,
             mapsResult,
@@ -2772,6 +3028,7 @@ export class DeviceActionCoordinator<
 
 type TypedResults = {
   smsResult?: SmsSendResult;
+  dialResult?: PhoneDialResult;
   clockResult?: ClockHandoffResult;
   mapsResult?: MapsResult;
   cameraResult?: CameraCaptureResult;
@@ -2795,6 +3052,7 @@ function receiptOutcome(
 function receiptResult(results: TypedResults): CommittedReceiptResult {
   const value =
     results.smsResult ??
+    results.dialResult ??
     results.foregroundResult ??
     results.clockResult ??
     results.mapsResult ??

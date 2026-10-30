@@ -127,8 +127,10 @@ node packages/app/scripts/verify-android-sms-gateway-e2e.ts
 ```
 
 This command only passes after logcat shows an actual inbound SMS delivery,
-gateway work being queued, the cloud webhook accepting the message, and an
-outbound reply being sent and persisted.
+gateway work being queued, the cloud webhook accepting the message, the reply
+being proposed for review, and the owner's reviewed send finishing as sent.
+Open the "Review reply" notice on the phone and press Send to reach the last
+milestone; nothing is sent until then.
 
 Strict queued-reply verification for the BlueBubbles path:
 
@@ -165,7 +167,29 @@ Successful logs should show:
 - `ElizaSmsReceiver` receives and persists the inbound message.
 - `ElizaSmsGateway` queues gateway work.
 - `ElizaSmsGateway` receives HTTP success from the cloud gateway.
-- `ElizaSmsGateway` sends and persists the reply SMS.
+- `ElizaSmsGateway` proposes the reply for review. Nothing is sent yet.
+- After you press Send in the review screen, `ElizaSmsGateway` logs the
+  reviewed send's status (`sent` once every part's receipt arrived).
+
+## Reviewed replies
+
+The gateway never sends a reply by itself. Each reply Cloud drafts becomes a
+pending `sms.send.v1` proposal (`ElizaSmsReplyProposals`, stored encrypted)
+with a "Review reply" notice. The review screen (`ElizaSmsReplyReviewActivity`)
+shows the exact recipient, SIM and text. Send sends it through the shared
+reviewed send in `plugin-native-messages` (`ReviewedSmsSend`). Edit moves the
+draft to the Messages composer, and Discard drops it. The send is journaled
+before the radio call. "Sent" comes only from sent receipts, a missing receipt
+reads unknown and is never retried, and the operation ID derived from the
+incoming message keeps a retried gateway worker or a second Send press from
+sending twice. Neither the gateway nor the quick-reply service writes sent-box
+rows; the reviewed send owns them.
+
+The incoming-call quick reply (`RESPOND_VIA_MESSAGE`, `ElizaRespondViaMessageService`)
+goes through the same journaled send without a second review dialog. Only the
+system call screen can start it (`SEND_RESPOND_VIA_MESSAGE`), and the owner
+picked or typed the text and the caller there, so that choice is the review.
+A failed or unknown outcome is shown as a notice, never as a resend prompt.
 
 Emulators can exercise the receiver path, but they do not prove the production
 phone number or carrier send path:

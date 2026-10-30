@@ -4,6 +4,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -21,7 +22,8 @@ import {
   AospCommandError,
   cuttlefishLaunchCommand,
   parseSubArgs,
-  rebuildPrivilegedApk,
+  rebuildLauncherApk,
+  stageLauncherApk,
 } from "../android/build-aosp.ts";
 import { resolveElizaSourceRoot } from "../eliza-source.ts";
 
@@ -84,7 +86,7 @@ test("APK build uses retained source selection, AOSP environment and exact argv 
       ...args,
     ],
   });
-  rebuildPrivilegedApk(loadBrandConfig(config));
+  rebuildLauncherApk(loadBrandConfig(config));
   assert.deepEqual(JSON.parse(readFileSync(output, "utf8")), {
     args,
     cwd: resolveElizaSourceRoot(),
@@ -98,7 +100,7 @@ test("APK build uses retained source selection, AOSP environment and exact argv 
     buildAndroidSystemCmd: [process.execPath, "-e", "process.exit(23)"],
   });
   assert.throws(
-    () => rebuildPrivilegedApk(loadBrandConfig(config)),
+    () => rebuildLauncherApk(loadBrandConfig(config)),
     /exited with code 23/,
   );
 });
@@ -133,11 +135,11 @@ test("CI brand resolution treats paths as data and refuses multiline action outp
   assert.notEqual(run().status, 0);
   assert.equal(existsSync(output), false);
   const build = steps.find((step) =>
-    step.name?.startsWith("Build privileged APK"),
+    step.name?.startsWith("Build image APK"),
   );
   assert.match(
     build.run,
-    /rebuildPrivilegedApk\(loadBrandConfig\(process.env.BRAND_CONFIG\)\)/,
+    /rebuildLauncherApk\(loadBrandConfig\(process.env.BRAND_CONFIG\)\)/,
   );
   for (const step of steps)
     assert.doesNotMatch(step.run ?? "", /\$\{\{ inputs\./);
@@ -148,7 +150,7 @@ test("APK subprocess errors retain spawn errors, exit codes, and termination sig
   const missing = join(directory, "missing-builder");
   save({ ...original, buildAndroidSystemCmd: [missing] });
   assert.throws(
-    () => rebuildPrivilegedApk(loadBrandConfig(config)),
+    () => rebuildLauncherApk(loadBrandConfig(config)),
     (error) => {
       assert.ok(error instanceof AospCommandError);
       assert.equal(error.code, "ELIZAOS_AOSP_COMMAND_ERROR");
@@ -166,7 +168,7 @@ test("APK subprocess errors retain spawn errors, exit codes, and termination sig
       buildAndroidSystemCmd: [process.execPath, "-e", program],
     });
     assert.throws(
-      () => rebuildPrivilegedApk(loadBrandConfig(config)),
+      () => rebuildLauncherApk(loadBrandConfig(config)),
       (error) => {
         assert.ok(error instanceof AospCommandError);
         assert.equal(error.exitCode, exitCode);
@@ -191,6 +193,105 @@ test("AOSP parser refuses flags used as path values and unknown short options", 
     );
   }
   assert.equal(parseSubArgs(["/build", "-j", "2"]).jobs, 2);
+});
+
+test("AOSP parser stages a signed launcher only with a review choice", () => {
+  assert.throws(
+    () => parseSubArgs(["/build", "--rebuild-privileged-apk"]),
+    /Unknown argument/,
+  );
+  assert.equal(
+    parseSubArgs(["/build", "--rebuild-launcher-apk"]).rebuildLauncherApk,
+    true,
+  );
+  for (const args of [
+    ["/build", "--launcher-apk", "/signed.apk"],
+    [
+      "/build",
+      "--launcher-apk",
+      "/signed.apk",
+      "--launcher-descriptor",
+      "/d.json",
+      "--development-launcher",
+    ],
+  ])
+    assert.throws(() => parseSubArgs(args), /exactly one of/);
+  assert.throws(
+    () => parseSubArgs(["/build", "--development-launcher"]),
+    /stage --launcher-apk/,
+  );
+  assert.throws(
+    () =>
+      parseSubArgs([
+        "/build",
+        "--launcher-apk",
+        "/signed.apk",
+        "--development-launcher",
+        "--source-commit",
+        "HEAD",
+      ]),
+    /full commit SHA/,
+  );
+  const parsed = parseSubArgs([
+    "/build",
+    "--launcher-apk",
+    "/signed.apk",
+    "--launcher-descriptor",
+    "/reviewed.json",
+  ]);
+  assert.equal(parsed.launcherApk, "/signed.apk");
+  assert.equal(parsed.launcherDescriptor, "/reviewed.json");
+  assert.equal(parsed.developmentLauncher, false);
+});
+
+test("a refused launcher restage keeps the previously staged launcher", (t) => {
+  const { directory } = fixture(t);
+  const previous = join(directory, "launcher");
+  mkdirSync(previous);
+  writeFileSync(join(previous, "image-launcher.json"), "previous");
+  const options = {
+    brand: original,
+    vendorDir: directory,
+    apk: "/signed.apk",
+    descriptor: "/reviewed.json",
+    sourceCommit: "a".repeat(40),
+  };
+  assert.throws(
+    () =>
+      stageLauncherApk({
+        ...options,
+        stage: () => {
+          throw new Error("descriptor refused");
+        },
+      }),
+    /descriptor refused/,
+  );
+  assert.equal(
+    readFileSync(join(previous, "image-launcher.json"), "utf8"),
+    "previous",
+  );
+  let received;
+  const evidence = stageLauncherApk({
+    ...options,
+    stage: (input) => {
+      received = input;
+      mkdirSync(input.output);
+      writeFileSync(join(input.output, "image-launcher.json"), "next");
+      return { installPath: "/product/app/Eliza/Eliza.apk" };
+    },
+  });
+  assert.equal(evidence.installPath, "/product/app/Eliza/Eliza.apk");
+  assert.equal(received.descriptor, "/reviewed.json");
+  assert.equal(received.development, false);
+  assert.equal(received.sourceCommit, "a".repeat(40));
+  assert.equal(
+    readFileSync(join(previous, "image-launcher.json"), "utf8"),
+    "next",
+  );
+  assert.deepEqual(
+    readdirSync(directory).filter((name) => name.startsWith(".launcher")),
+    [],
+  );
 });
 
 test("Cuttlefish lunch target remains one literal shell argument", (t) => {

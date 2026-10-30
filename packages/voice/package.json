@@ -58,6 +58,18 @@
       "import": "./dist/voice-endpoint-chain.js",
       "default": "./dist/voice-endpoint-chain.js"
     },
+    "./cloud-clef": {
+      "eliza-source": "./src/voice-cloud-clef.ts",
+      "types": "./dist/voice-cloud-clef.d.ts",
+      "import": "./dist/voice-cloud-clef.js",
+      "default": "./dist/voice-cloud-clef.js"
+    },
+    "./speech-disclosure": {
+      "eliza-source": "./src/voice-speech-disclosure.ts",
+      "types": "./dist/voice-speech-disclosure.d.ts",
+      "import": "./dist/voice-speech-disclosure.js",
+      "default": "./dist/voice-speech-disclosure.js"
+    },
     "./turn-timing": {
       "eliza-source": "./src/voice-turn-timing.ts",
       "types": "./dist/voice-turn-timing.d.ts",
@@ -84,6 +96,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
+    "@elizaos/cloud-sdk": "workspace:*",
     "@types/node": "^25.0.3",
     "@typescript/native": "npm:typescript@^7.0.2",
     "typescript": "^6.0.3",

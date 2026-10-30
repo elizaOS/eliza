@@ -168,6 +168,7 @@ test("Cloud routing failures stop boot instead of falling back to another provid
   for (const variant of [
     { declaration: "undefined" },
     { declaration: '{ apiBaseUrl: "http://cloud.example.com/api/v1" }' },
+    { declaration: `{ apiBaseUrl: ${JSON.stringify(API_BASE)}, extra: true }` },
     { baseUrl: "https://other.example.com/api/v1" },
     { profile: "hosted" },
     { storeFailure: new Error("private-provider-detail") },

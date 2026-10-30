@@ -84,8 +84,30 @@ newest shown message); its receipt labels never claim more than a result proves.
   "sent" is the carrier's send confirmation (M-Send.conf Ok); MMS delivery is
   never claimed. `status().mmsSend` reports whether the path is available.
 
-`android/src/test` holds JVM tests for the journal (SMS and MMS records), cursor
-and provider mapping.
+## Host-native reviewed send (`ReviewedSmsSend`)
+
+A host's own native components (a review screen for a drafted reply, a
+call-screen quick reply) send one `sms.send.v1` operation with
+`ReviewedSmsSend.send(context, host, operationId, recipients, body,
+subscriptionId, callback)`. It reviews nothing itself: the caller is the
+review and calls it only after the owner's decision. It uses the same journal
+rules as the telephony profile. The send is recorded before the first
+SmsManager call and bound to the exact recipients, text and SIM. A repeated
+operation ID only reads its record, so a second Send press, a retried worker or
+a redelivered intent never sends twice. Sent receipts are package-private
+one-shot PendingIntents held in process (`SmsSendRequest`). "sent" needs every
+part's RESULT_OK receipt, and a receipt missing after
+`RECEIPT_TIMEOUT_MS`, or lost with the process, reads "unknown" and is never
+retried. Delivery is not requested. While the host is the default SMS app it
+stores each recipient's outbox row before the platform call and the receipts
+settle it; hosts never write sent-box rows themselves. `ReviewedSmsSend.Host`
+names the host's encrypted journal slot and retired-ID namespace; keep them once
+shipped, and do not share the slot with a `SmsTelephonyConfiguration`. No AOSP
+admission or manifest receiver is needed.
+
+`android/src/test` holds JVM tests for the journal (SMS and MMS records), cursor,
+provider mapping and the host-native reviewed send (`ReviewedSmsSendCoreTest`,
+with a fake radio).
 Real SIMs, carrier delivery reports and role grants need device qualification.
 
 ## Default SMS app (SMS role)

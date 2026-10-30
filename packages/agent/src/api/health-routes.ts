@@ -16,6 +16,7 @@
  * by `/api/status`, `/api/health`, and the WS `status` broadcast.
  */
 import type http from "node:http";
+import { CLIENT_TURN_OBSERVATION_SUPPORT } from "@elizaos/contracts/client-turn-observation";
 import {
   type AgentRuntime,
   getSwarmCoordinatorService,
@@ -37,7 +38,10 @@ import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
-import { isTrustedLocalRequest } from "./server-helpers-auth.ts";
+import {
+  getPairingInstanceId,
+  isTrustedLocalRequest,
+} from "./server-helpers-auth.ts";
 
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
@@ -778,6 +782,10 @@ export async function handleHealthRoutes(
       hasApiKey: hasCloudApiKey,
     };
     const payload = {
+      // Schema support only; action admission and permissions are unchanged.
+      clientTurnObservationSupport: CLIENT_TURN_OBSERVATION_SUPPORT,
+      // Existing API-process format lifetime; not runtime identity or access.
+      serverInstanceId: getPairingInstanceId(),
       state: state.agentState,
       agentName: state.agentName,
       model,

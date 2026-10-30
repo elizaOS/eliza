@@ -241,6 +241,11 @@ describe("Calendar operation bindings", () => {
       operation: "check_availability",
       action: "CALENDAR_CHECK_AVAILABILITY",
     },
+    {
+      text: "What time is the event called Meet with Shaw?",
+      operation: "search_events",
+      action: "CALENDAR_SEARCH_EVENTS",
+    },
   ] as const)(
     "preserves the declared $operation rather than a feed heuristic for $text",
     async ({ text, operation, action }) => {
@@ -314,6 +319,45 @@ describe("Calendar operation bindings", () => {
       ]);
       expect(handler.plan.intents).toEqual([text]);
       expect(handler.plan.contexts).toContain("calendar");
+      expect(handler.plan.requiresTool).toBe(true);
+    },
+  );
+  it.each(["What did you say earlier about the meeting?", "Hello"])(
+    "does not force a Calendar lookup for an unbound request: %s",
+    async (text) => {
+      const runtime = new AgentRuntime({
+        character: { name: "Unbound read", bio: [] },
+        logLevel: "fatal",
+      });
+      const message: Memory = {
+        id: stringToUuid("unbound-request"),
+        agentId: runtime.agentId,
+        entityId: stringToUuid("owner"),
+        roomId: stringToUuid("room"),
+        createdAt: 1000,
+        content: { text },
+      };
+      const handler: MessageHandlerResult = {
+        processMessage: "RESPOND",
+        thought: "",
+        plan: {
+          contexts: ["simple"],
+          intents: [text],
+          calendarReadBindings: [],
+        },
+      };
+      await runResponseHandlerEvaluators({
+        runtime,
+        message,
+        state: { values: {}, data: {}, text: "" },
+        messageHandler: handler,
+        availableContexts: [],
+        userRoles: ["OWNER"],
+        evaluators: [calendarReadBindingEvaluator],
+      });
+      expect(handler.plan.contexts).toEqual(["simple"]);
+      expect(handler.plan.requiresTool).not.toBe(true);
+      expect(handler.plan.candidateActions ?? []).toEqual([]);
     },
   );
   it("rejects caller-provided provenance and duplicate operation rows", () => {

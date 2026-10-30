@@ -195,7 +195,7 @@
   "scripts": {
     "build": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/host",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "test": "node ../scripts/run-vitest.ts run && bun run test:native-host",
+    "test": "node ../scripts/run-vitest.ts run && node --test src/voice/*.test.mjs && bun run test:native-host",
     "lint:check": "bunx @biomejs/biome check src *.ts native-host",
     "lint": "bunx @biomejs/biome check --write src *.ts native-host",
     "prepublishOnly": "bun run build",
