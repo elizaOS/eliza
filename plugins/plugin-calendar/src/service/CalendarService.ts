@@ -3988,19 +3988,27 @@ export class CalendarService extends Service {
     }
     const preferences = await ensureCalendarFeedIncludes(
       this.runtime,
-      summaries.map((summary) => ({
-        provider: summary.provider,
-        side: summary.side,
-        grantId: summary.grantId,
-        connectorAccountId: summary.connectorAccountId,
-        calendarId: summary.calendarId,
-        // The built-in calendar is the zero-config product surface. External
-        // accounts remain discoverable but enter the aggregate feed only after
-        // the owner explicitly enables them in Calendar Sources.
-        initialIncluded:
-          summary.provider === ELIZA_CALENDAR_PROVIDER ||
-          (summary.provider === "ics" && summary.includeInFeed),
-      })),
+      summaries.map((summary) => {
+        // A managed host lists the owner's own calendars and declares which
+        // ones its product shows by default; that default holds until the
+        // owner chooses otherwise for the source.
+        const managed = this.managedCalendar?.owns(summary) === true;
+        return {
+          provider: summary.provider,
+          side: summary.side,
+          grantId: summary.grantId,
+          connectorAccountId: summary.connectorAccountId,
+          calendarId: summary.calendarId,
+          // The built-in calendar is the zero-config product surface. Other
+          // external accounts remain discoverable but enter the aggregate feed
+          // only after the owner explicitly enables them in Calendar Sources.
+          initialIncluded:
+            summary.provider === ELIZA_CALENDAR_PROVIDER ||
+            ((summary.provider === "ics" || managed) &&
+              summary.includeInFeed === true),
+          ...(managed ? { followInitialUntilChosen: true } : {}),
+        };
+      }),
     );
     return {
       calendars: summaries.map((summary) => {
