@@ -634,6 +634,42 @@ test("runtime selection rejects empty, unknown, and duplicate ABI inputs", () =>
   }
 });
 
+test("ABI restaging removes only unselected owned runtime directories", () => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "eliza-runtime-restage-"));
+  const assetsAgentDir = path.join(tmp, "assets", "agent");
+  const stage = (selection) => {
+    const targets = selectAndroidRuntimeTargets(selection);
+    __testables.pruneUnselectedRuntimeAbis({ assetsAgentDir, targets });
+    for (const { androidAbi } of targets) {
+      const directory = path.join(assetsAgentDir, androidAbi);
+      fs.mkdirSync(directory, { recursive: true });
+      fs.writeFileSync(path.join(directory, "runtime"), androidAbi);
+    }
+    assert.deepEqual(
+      fs
+        .readdirSync(assetsAgentDir)
+        .filter((name) => name !== "unrelated")
+        .sort(),
+      targets.map(({ androidAbi }) => androidAbi).sort(),
+    );
+    assert.equal(
+      fs.readFileSync(path.join(assetsAgentDir, "unrelated"), "utf8"),
+      "keep",
+    );
+  };
+  try {
+    fs.mkdirSync(assetsAgentDir, { recursive: true });
+    fs.writeFileSync(path.join(assetsAgentDir, "unrelated"), "keep");
+    stage(undefined);
+    stage("arm64-v8a");
+    stage("x86_64");
+    stage("arm64-v8a,x86_64");
+    stage(undefined);
+  } finally {
+    removePathRecursive(tmp);
+  }
+});
+
 test("native asset provenance binds configured and retained bytes without admitting unknown files", () => {
   const tmp = fs.mkdtempSync(
     path.join(os.tmpdir(), "eliza-native-provenance-"),
