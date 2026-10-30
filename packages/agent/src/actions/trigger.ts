@@ -1517,6 +1517,10 @@ export const triggerAction: Action = {
       description:
         "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted; update needs the id, which action=list returns for each trigger in its result data (entries[].taskId).",
       required: false,
+      // opUpdate rejects a call without it (MISSING_TASK_ID). Optional on
+      // TRIGGER_UPDATE, the planner sent it bare three times before a fourth
+      // round supplied the id (live 2026-10-30, tj-6e8277ba0331ca).
+      requiredForSubactions: ["update"],
       aliases: ["triggerId", "id"],
       schema: { type: "string" as const },
     },
