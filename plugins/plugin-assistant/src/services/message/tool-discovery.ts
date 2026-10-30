@@ -156,9 +156,9 @@ export function createPlannerToolDiscoveryAction(
     "Find authorized operations that are not already exposed, or inspect definitions when explicitly requested. Exposed tools already have complete schemas: call a fitting one directly instead of discovering or loading it again. " +
     "Find authorized operations by query and/or contexts, or load exact names (parents load their families). Exact names plus query must match both; names cannot be combined with contexts. " +
     "mode=load enables complete schemas in the next tool surface; use loaded tools to perform work. " +
-    "Empty load selectors search the current task. mode=describe reads complete descriptions and schemas for exact names or matching queries without enabling tools. With no selectors, mode=describe,names=[] returns the complete authorized catalog with all descriptions and parameter schemas. " +
+    "Empty load selectors search the current task. mode=describe reads complete descriptions and schemas for exact names or matching queries without enabling tools. With no selectors, mode=describe,names=[] returns the complete authorized catalog with every family's full description and parameter schema, which is large; it is not a name index. " +
     (catalogIndex
-      ? "Without task context, names=[] returns a routing index. "
+      ? "Without task context, names=[] also returns that complete catalog. "
       : "") +
     "Discovery refreshes permissions and never executes domain work. A search miss does not prove a capability is unavailable.";
   const inlineDescription = `${discoveryDescription}\n${renderDiscoveryNameIndex(catalog.parents)}`;
@@ -180,8 +180,8 @@ export function createPlannerToolDiscoveryAction(
       {
         name: "names",
         description: catalogIndex
-          ? "Exact authorized names. If query is also supplied, every name must match that query and fresh authorization; never combine names with contexts. [] searches the current task (routing index only when task context is absent). Use mode=describe,names=[] for the full name index; choose exact names for full definitions."
-          : "Exact authorized parent or child names. If query is also supplied, every name must match that query and fresh authorization; never combine names with contexts. Empty load selectors search the current task; mode=describe,names=[] reads the compact complete name index without loading tools.",
+          ? "Exact authorized names. If query is also supplied, every name must match that query and fresh authorization; never combine names with contexts. [] searches the current task (the complete catalog only when task context is absent). mode=describe,names=[] returns every family's full definition; choose exact names to read only the definitions you need."
+          : "Exact authorized parent or child names. If query is also supplied, every name must match that query and fresh authorization; never combine names with contexts. Empty load selectors search the current task; mode=describe,names=[] reads every family's full definition without loading tools.",
         required: false,
         schema: { type: "array", items: { type: "string" } },
       },
@@ -227,7 +227,7 @@ export function createPlannerToolDiscoveryAction(
           return {
             success: false,
             error:
-              "Supply an intent query or exact names to load tools; use mode=describe,names=[] to read the complete authorized name index. No tools were loaded.",
+              "Supply an intent query or exact names to load tools; use mode=describe,names=[] to read the complete authorized catalog. No tools were loaded.",
             data: { readOnlyOperation: true, coachingFailure: true },
           };
         }
@@ -400,10 +400,10 @@ export function createPlannerToolDiscoveryAction(
           modelReplyRequired: true,
           text:
             selected.length === 0
-              ? "No matching operations. Rephrase the query or select from availableContexts to retry a scoped search. Explicit mode=describe,names=[] remains available for the complete authorized name index. No tools were loaded or executed."
+              ? "No matching operations. Rephrase the query or select from availableContexts to retry a scoped search. Explicit mode=describe,names=[] remains available for the complete authorized catalog. No tools were loaded or executed."
               : mode === "describe"
                 ? "Complete descriptions and schemas for the selected matching operations. Deferred matches remain discoverable. No tools were enabled or executed."
-                : "Selected matching tools enabled. Deferred matches remain available through exact names, a narrower search or mode=describe,names=[] for the complete name index; no domain work was executed.",
+                : "Selected matching tools enabled. Deferred matches remain available through exact names, a narrower search or mode=describe,names=[] for the complete catalog; no domain work was executed.",
           data: {
             readOnlyOperation: true,
             ...(inferredContexts.length > 0 ? { inferredContexts } : {}),

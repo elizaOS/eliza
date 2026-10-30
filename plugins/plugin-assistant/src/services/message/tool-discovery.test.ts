@@ -521,6 +521,23 @@ describe("planner tool discovery", () => {
       await call(discovery, { names: ["REVOKED"], mode: "describe" }),
     ).toMatchObject({ success: false });
     expect(loads).toEqual([]);
+    // The read above carries every full definition. Copy that sold it as a
+    // compact name index sent a planner with NOTES_LIST already exposed into a
+    // 407,397-char catalog read (live 2026-10-30, tj-7138d70800aff4).
+    const copy = [discovery, legacy].flatMap((action) => [
+      action.description,
+      ...(action.parameters ?? []).map((parameter) => parameter.description),
+    ]);
+    for (const parameters of [{}, { query: "zzqx" }, { query: "custom" }]) {
+      const result = await call(legacy, parameters);
+      copy.push(result?.text ?? "", String(result?.error ?? ""));
+    }
+    const describeAllClaims = copy
+      .flatMap((text) => text.split(/(?<=[.;])\s+/))
+      .filter((sentence) => sentence.includes("names=[]"));
+    expect(describeAllClaims.length).toBeGreaterThan(0);
+    for (const sentence of describeAllClaims)
+      expect(sentence).not.toMatch(/(?<!not a )\b(name|routing) index\b/i);
   });
 
   it("keeps inline callers unchanged while the reference preserves native parameters", () => {
