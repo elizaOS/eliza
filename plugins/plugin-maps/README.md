@@ -49,7 +49,15 @@ voice, screen-off session, share sheet, website opening and agent context.
 `MapsScreen`, a React rendering of the same controller. Hosts theme it with
 `--maps-*` custom properties (`--maps-bg`, `--maps-fg`, `--maps-accent`,
 `--maps-font`, …) and their own icon paths, and supply the map plane. The screen
-never invents a place, route, arrival time or location.
+uses `--maps-inset-top`, `--maps-inset-right`, `--maps-inset-bottom` and
+`--maps-inset-left` (safe-area insets by default), plus `--maps-bottom-clearance`
+(zero by default) for host controls such as a composer. Sheets scroll within that
+space and use side-by-side panels in wide, short windows. `--maps-text-scale`
+(one by default) scales text; enlarged text uses one reading column with sticky
+navigation actions, while ordinary text keeps map overlays. Primary
+controls precede the map and sheets in reading order. Map Retry recreates only
+the map plane; the selected place, route and navigation remain in the controller.
+The screen never invents a place, route, arrival time or location.
 
 ## Eliza Cloud Maps
 
