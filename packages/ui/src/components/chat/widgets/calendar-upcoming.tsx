@@ -168,8 +168,12 @@ export function CalendarUpcomingWidget({
     const today = new Date(),
       start = new Date(today.getFullYear(), today.getMonth(), 1),
       end = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    const weekEnd = new Date(today);
-    weekEnd.setDate(weekEnd.getDate() + 7 - ((weekEnd.getDay() + 6) % 7));
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7));
+    weekStart.setHours(0, 0, 0, 0);
+    if (weekStart < start) start.setTime(weekStart.getTime());
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
     weekEnd.setHours(0, 0, 0, 0);
     if (weekEnd > end) end.setTime(weekEnd.getTime());
     const params = new URLSearchParams({

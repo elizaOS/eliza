@@ -238,9 +238,11 @@ determine availability; product ordering is presentation only. The
 `styles/mobile-workspaces.css` export compiles scoped domain utilities with the
 host's Tailwind integration and semantic theme. It does not import the app reset.
 
-`selectHomeCalendar` in `overview/daily-overview` ranks today, this week and this
-month from a complete current-owner feed and readable included sources. An
-incomplete query or retired owner cannot establish an item or empty month. Hosts
+`selectHomeCalendar` in `overview/daily-overview` ranks the full local today, week
+and month from a complete current-owner feed and readable included sources. Each
+period prefers unended events, then the most recent past event. Coverage must
+include the full week and month before any item or empty answer is established;
+an incomplete query or retired owner stays unverified. Hosts
 retain their existing reads and mutation owners. The compact tray passes its
 explicit surface to keep its near-future glance window; product identity never
 selects the Calendar policy. Run `test:mobile-workspaces-style` to check scoped
