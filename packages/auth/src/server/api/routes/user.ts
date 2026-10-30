@@ -1706,12 +1706,14 @@ export async function userSessionAuth(
 
   const token = authHeader.slice(7);
 
-  let payload: UserSessionPayload;
-  try {
-    const verified = await verifySessionToken(token);
-    if (!verified) throw new Error("invalid session token");
-    payload = verified as unknown as UserSessionPayload;
-  } catch {
+  // A session-authority lookup failure is not a credential verdict: only a
+  // null result is answered as "Invalid or expired session token", so a
+  // database or revocation-store outage propagates instead of logging the
+  // caller out.
+  const payload = (await verifySessionToken(
+    token,
+  )) as unknown as UserSessionPayload | null;
+  if (!payload) {
     return c.json<ApiResponse>(
       { ok: false, error: "Invalid or expired session token" },
       401,
