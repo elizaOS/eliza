@@ -202,18 +202,31 @@ export function createPlannerToolDiscoveryAction(
     ],
     validate: async () => true,
     handler: async (runtime, message, _state, callOptions) => {
-      const mode = isObjectRecord(callOptions?.parameters)
-        ? callOptions.parameters.mode
-        : undefined;
-      let names = isObjectRecord(callOptions?.parameters)
-        ? callOptions.parameters.names
-        : undefined;
-      let query = isObjectRecord(callOptions?.parameters)
-        ? callOptions.parameters.query
-        : undefined;
-      const contexts = isObjectRecord(callOptions?.parameters)
-        ? callOptions.parameters.contexts
-        : undefined;
+      const parameters = isObjectRecord(callOptions?.parameters)
+        ? callOptions.parameters
+        : {};
+      const mode = parameters.mode;
+      // An empty list or blank query selects nothing, so it counts as omitted
+      // instead of colliding with the selector actually sent: describe with
+      // names=[] beside a query was rejected as "not both" and cost a planner
+      // round (live 2026-10-30, tj-786ca91739ceaa). A lone names=[] keeps its
+      // complete-catalog meaning, and describe with no selector reads it too.
+      let query =
+        typeof parameters.query === "string" && !parameters.query.trim()
+          ? undefined
+          : parameters.query;
+      const contexts =
+        Array.isArray(parameters.contexts) && parameters.contexts.length === 0
+          ? undefined
+          : parameters.contexts;
+      const searchSelector = query !== undefined || contexts !== undefined;
+      let names =
+        Array.isArray(parameters.names) &&
+        parameters.names.length === 0 &&
+        searchSelector
+          ? undefined
+          : (parameters.names ??
+            (mode === "describe" && !searchSelector ? [] : undefined));
       const emptyLoad =
         mode !== "describe" &&
         query === undefined &&
@@ -307,11 +320,9 @@ export function createPlannerToolDiscoveryAction(
         if (
           names !== undefined ||
           (mode !== undefined && mode !== "load" && mode !== "describe") ||
-          (query !== undefined &&
-            (typeof query !== "string" || !query.trim())) ||
+          (query !== undefined && typeof query !== "string") ||
           (contexts !== undefined &&
             (!Array.isArray(contexts) ||
-              contexts.length === 0 ||
               !contexts.every(
                 (context): context is string =>
                   typeof context === "string" && context.trim().length > 0,
