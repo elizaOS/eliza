@@ -196,6 +196,15 @@ function serializeInvocation<T>(run: () => Promise<T>): Promise<T> {
   return result;
 }
 
+/** Voice entry is an application policy, never permission to capture. */
+export interface SenseVoiceEntryPolicy {
+  readonly externalInvocation: boolean;
+}
+export const CONVERSATION_ONLY_VOICE_ENTRY: SenseVoiceEntryPolicy =
+  Object.freeze({ externalInvocation: false });
+export const ASSISTANT_INVOCATION_VOICE_ENTRY: SenseVoiceEntryPolicy =
+  Object.freeze({ externalInvocation: true });
+
 /** Bind before consuming. Cold-start, changed-owner and stale async results cannot open the mic. */
 export function createSenseInvocationController(
   native: Pick<
@@ -207,7 +216,11 @@ export function createSenseInvocationController(
     | "discardProtectedPowerLaunch"
   >,
   host: SenseInvocationHost,
+  policy: SenseVoiceEntryPolicy = ASSISTANT_INVOCATION_VOICE_ENTRY,
 ) {
+  // In chat-only mode an external event must not bind, consume, or start voice.
+  // Stopping a previously enabled wake listener is a separate native host action.
+  if (!policy.externalInvocation) return { check() {}, dispose() {} };
   const bindingId = crypto.randomUUID();
   const generation = ++nextInvocationGeneration;
   activeInvocationBinding = bindingId;

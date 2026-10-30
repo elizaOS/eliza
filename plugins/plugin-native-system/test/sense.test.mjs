@@ -634,3 +634,40 @@ test("cold protected launch waits only for initial restore and rechecks account 
     globalThis.document = oldDocument;
   }
 });
+
+test("conversation-only entry does not register, bind or consume an external invocation", async () => {
+  const { createSenseInvocationController, CONVERSATION_ONLY_VOICE_ENTRY } =
+    await import("../src/sense.ts");
+  let nativeCalls = 0,
+    hostCalls = 0;
+  const native = new Proxy(
+    {},
+    {
+      get() {
+        return async () => {
+          nativeCalls++;
+        };
+      },
+    },
+  );
+  const host = new Proxy(
+    {},
+    {
+      get() {
+        return () => {
+          hostCalls++;
+        };
+      },
+    },
+  );
+  const controller = createSenseInvocationController(
+    native,
+    host,
+    CONVERSATION_ONLY_VOICE_ENTRY,
+  );
+  controller.check();
+  controller.dispose();
+  await Promise.resolve();
+  assert.equal(nativeCalls, 0);
+  assert.equal(hostCalls, 0);
+});
