@@ -5676,6 +5676,26 @@ async function runLifeOperationHandlerInner(
         };
       }
 
+      // Lookup and draft preparation may outlast a short relative deadline.
+      // Recheck after those awaits, immediately before entering the write path.
+      if (
+        ownerSurfaceActionName === "OWNER_REMINDERS" &&
+        llmPlan?.cadenceKind === "once" &&
+        typeof llmPlan.dueInMinutes === "number" &&
+        llmPlan.dueInMinutes > 0 &&
+        leadShaped.cadence.kind === "once" &&
+        Date.parse(leadShaped.cadence.dueAt) <= Date.now()
+      ) {
+        return {
+          success: false as const,
+          text: "That reminder time has already passed. When should I remind you?",
+          data: {
+            actionName: ownerSurfaceActionName,
+            error: "REMINDER_TIME_PASSED",
+            awaitingUserInput: true,
+          },
+        };
+      }
       const created = await service.createDefinition(
         {
           idempotencyKey: definitionDraft.request.idempotencyKey,
