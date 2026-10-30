@@ -332,6 +332,43 @@ it.each([
   },
 );
 
+it("fires an omitted-instructions reminder with the request, not the help envelope", async () => {
+  // content.text as chat augmentation rewrites it for a short request.
+  const request = `stretch reminder ${randomUUID()}`;
+  const text = [
+    "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+    "If the answer appears verbatim in the contextual documents, repeat it exactly.",
+    "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
+    "",
+    "<contextual_documents>",
+    '<source title="source-1" similarity="1.000">',
+    "Q: What can Eliza actually do?\nA: Beyond chatting, Eliza can manage tasks and reminders.",
+    "</source>",
+    "</contextual_documents>",
+    "",
+    "<user_request>",
+    request,
+    "</user_request>",
+  ].join("\n");
+  const result = await triggerAction.handler(
+    fixture.runtime,
+    {
+      entityId: fixture.runtime.agentId,
+      agentId: fixture.runtime.agentId,
+      roomId: randomUUID() as UUID,
+      content: { text },
+    } as Memory,
+    undefined,
+    { parameters: { action: "create", delayMinutes: 5 } },
+  );
+  expect(result).toMatchObject({ success: true });
+  const tasks = await fixture.runtime.getTasks({ tags: ["trigger"] });
+  const task = tasks.find((task) =>
+    task.metadata?.trigger?.instructions?.includes(request),
+  );
+  expect(task && readTriggerConfig(task)?.instructions).toBe(request);
+});
+
 it.each<{ label: string; schedule: JsonObject }>([
   {
     label: "triggerType=interval alone when intervalMs is absent",
