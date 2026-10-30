@@ -41,13 +41,18 @@ async function setup(prepared = false, bounded = false, selfAdmission = false) {
     resolveClosed!: () => void,
     hold = false,
     transportClosed = 0,
-    sttCancelled = 0;
+    sttCancelled = 0,
+    sseBody: string | undefined;
   const server = await listenLoopbackHttp(async (request) => {
     requests.push({
       url: request.url,
       headers: request.headers,
       body: await request.json(),
     });
+    if (sseBody)
+      return new Response(sseBody, {
+        headers: { "content-type": "text/event-stream" },
+      });
     return new Response(
       "event: done\ndata: " +
         JSON.stringify({
@@ -199,6 +204,9 @@ async function setup(prepared = false, bounded = false, selfAdmission = false) {
     hold() {
       hold = true;
     },
+    respond(body: string) {
+      sseBody = body;
+    },
     emit(value: CartesiaInkRealtimeEvent) {
       event(value);
     },
@@ -244,6 +252,43 @@ test("injected Ink/Sonic ports retain partial/final/audio/navigation through the
   f.session.bye();
   expect(f.transportClosed).toBe(1);
   expect(f.sttCancelled).toBe(1);
+});
+test("a final reply that repeats the spoken progress cue is not spoken twice; new or different text still is", async () => {
+  const cue = "Opening Calendar for you.";
+  const detail =
+    "Your drink coffee event is at nine on Thursday, and nothing else is on the calendar after it today.";
+  for (const [reply, newSpeech] of [
+    [cue, ""],
+    ["opening calendar now! Your coffee is at 9.", "Your coffee is at 9."],
+    ["Calendar's open.", "Calendar's open."],
+    [`${cue} ${detail}`, detail],
+    [`Not ${cue}`, `Not ${cue}`],
+  ]) {
+    const f = await setup();
+    f.respond(
+      [
+        { type: "status", kind: "thinking", label: cue },
+        { type: "done", text: reply },
+      ]
+        .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+        .join(""),
+    );
+    f.session.start();
+    f.emit({ type: "connected", raw: {} });
+    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+    f.emit({ type: "end-of-turn", transcript: "open calendar", raw: {} });
+    // The turn only finishes once a continue:false request closes the context.
+    await until(() => f.control.some((frame) => frame.t === "usage"));
+    expect(f.control).toContainEqual(
+      expect.objectContaining({ t: "progress", text: cue }),
+    );
+    expect(f.control.some((frame) => frame.t === "reply_complete")).toBe(true);
+    expect(f.phrases[0]).toBe(cue);
+    expect(f.phrases.slice(1).join(" ").replace(/\s+/g, " ").trim()).toBe(
+      newSpeech,
+    );
+    f.session.bye();
+  }
 });
 test("actual playback drain reopens uplink immediately, while stale completion cannot release it", async () => {
   const f = await setup();
