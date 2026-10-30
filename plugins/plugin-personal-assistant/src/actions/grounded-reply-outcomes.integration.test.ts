@@ -38,9 +38,9 @@ import {
 import { readLifeOpsMeetingPreferences } from "../lifeops/owner-profile.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import { entityAction } from "./entity.js";
+import { coerceDeferredLifeDraft } from "./lib/lifeops-deferred-draft.js";
 import { runUpdateMeetingPreferencesHandler } from "./lib/scheduling-handler.js";
 import { runLifeOperationHandler } from "./life.js";
-import { coerceDeferredLifeDraft } from "./lib/lifeops-deferred-draft.js";
 
 const failure = {
   kind: "rate_limited" as const,

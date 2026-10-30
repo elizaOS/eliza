@@ -38,7 +38,10 @@ import { detectRuntimeModel } from "./agent-model.ts";
 import type { ConnectorHealthMonitor } from "./connector-health.ts";
 import { probeRuntimeDatabaseLiveness } from "./database-liveness.ts";
 import { loadLocalInferenceRouteApi } from "./local-inference-server-api.ts";
-import { getPairingInstanceId, isTrustedLocalRequest } from "./server-helpers-auth.ts";
+import {
+  getPairingInstanceId,
+  isTrustedLocalRequest,
+} from "./server-helpers-auth.ts";
 
 // Pure env detector lives in shared so status can report managed hosting mode
 // without loading the full cloud plugin graph (which may fail in lean test
