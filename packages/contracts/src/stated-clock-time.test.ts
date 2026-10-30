@@ -28,6 +28,7 @@ test("a bare range start that would pass the end takes the other meridiem", () =
     range([9, 30], [21, 0]),
   );
   assert.deepEqual(parseStatedClockTimes("11 to 12am"), range([23, 0], [0, 0]));
+  assert.deepEqual(parseStatedClockTimes("9 to 9pm"), range([9, 0], [21, 0]));
 });
 
 test("an explicit start meridiem is never changed", () => {

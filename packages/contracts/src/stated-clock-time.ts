@@ -52,11 +52,11 @@ export function parseStatedClockTimes(text: string): StatedClockTimes {
       range[3] ?? range[6],
     );
     // A bare start borrows the end's meridiem ("10 to 11pm"), unless that puts
-    // it after the end: "9 to 5pm" means 9am, not 9pm.
+    // it at or after the end: "9 to 5pm" and "9 to 9pm" start at 9am.
     if (range[3] === undefined && rangeStart && rangeEnd) {
       const minutes = (clock: StatedClockTime) =>
         clock.hour * 60 + clock.minute;
-      if (minutes(rangeStart) > minutes(rangeEnd)) {
+      if (minutes(rangeStart) >= minutes(rangeEnd)) {
         rangeStart = {
           hour: (rangeStart.hour + 12) % 24,
           minute: rangeStart.minute,
