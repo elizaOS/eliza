@@ -400,8 +400,9 @@ describe("planner-loop death after a completed tool", () => {
         throw new Error("Missing dossier reply");
       const text = outcome.result.responseContent?.text;
       if (explicitCalendar) {
-        expect(text).toContain("couldn't confirm");
-        expect(text).not.toContain("calendar is clear");
+        expect(text).toBe(
+          "I couldn't read your calendar for those dates just now.",
+        );
       } else {
         expect(text).toBe(dossierText);
         expect(text).not.toMatch(/Gmail|inbox|not connected/);

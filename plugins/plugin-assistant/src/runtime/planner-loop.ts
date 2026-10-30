@@ -187,6 +187,7 @@ import { computeCallCostUsd } from "./model-pricing";
 import {
   cacheProviderOptions,
   compactCanonicalToolMessagesForModel,
+  TURN_SCOPE_ARG,
   trajectoryStepsToMessages,
 } from "./planner-rendering.ts";
 
@@ -197,6 +198,7 @@ export {
 } from "@elizaos/core";
 export {
   cacheProviderOptions,
+  TURN_SCOPE_ARG,
   trajectoryStepsToMessages,
 } from "./planner-rendering.ts";
 
@@ -1612,6 +1614,9 @@ async function runPlannerLoopIterations(
             },
           },
         );
+        // A rejected batch is not a model-authored completion decision.
+        // Preserve only each call's actual recognized declaration; the model
+        // must choose the whole-batch scope for missing or invalid tokens.
         appendPlannerModelFeedbackEvent(trajectory, {
           id: `missing-native-scope:${iteration}`,
           type: "instruction",
@@ -1621,8 +1626,21 @@ async function runPlannerLoopIterations(
           content: JSON.stringify({
             code: scopeError.code,
             instruction:
-              "This complete batch was rejected before execution because at least one native call omitted or invalidated eliza_turn_scope while earlier work is explicitly pending. Resubmit the intended calls with final or more_work_pending on every call. Use final when this batch covers the remaining requested operations; their results still require evaluation. Do not repeat settled operations. No call in the rejected batch ran.",
-            rejectedModelOutput: plannerOutput.raw,
+              "This complete batch was rejected before execution because at least one native call omitted or invalidated eliza_turn_scope while earlier work is explicitly pending. No call in it ran. The calls below preserve only actual model-declared recognized scope tokens; any absent token is unknown, not final. Decide from the original request, settled outcomes and remaining work, then resubmit the intended calls with the same explicit eliza_turn_scope on every call: final only when this batch covers the remaining requested operations (their results still require evaluation), more_work_pending when a later operation must be chosen from these results. Do not repeat settled operations.",
+            expectedCalls: plannerOutput.toolCalls.map((call) => ({
+              name: call.name,
+              arguments: {
+                ...projectCompleteToolArgsForModel(
+                  call.params ?? {},
+                  redactDiagnosticText,
+                ),
+                ...("declaredTurnScope" in call &&
+                (call.declaredTurnScope === TURN_SCOPE_FINAL ||
+                  call.declaredTurnScope === TURN_SCOPE_MORE_WORK_PENDING)
+                  ? { [TURN_SCOPE_ARG]: call.declaredTurnScope }
+                  : {}),
+              },
+            })),
           }),
         });
         consecutiveScopeProtocolRejections++;
@@ -1631,8 +1649,12 @@ async function runPlannerLoopIterations(
             kind: "provider_issue" as const,
             code: scopeError.code,
             transient: false,
-            message:
-              "The planner stopped after repeated invalid scope declarations. Earlier action outcomes are preserved; the rejected batch did not run.",
+            // Shown when no failure summary is usable. "Nothing was changed"
+            // needs proof from every executed call, as in the pipeline's
+            // interrupted-turn notice; the rejected batches never ran.
+            message: turnChangedNothing(trajectory)
+              ? "I couldn't finish that, and nothing was changed."
+              : "I couldn't finish that, and part of it may already be done.",
           };
           try {
             const summary = await finishWithForcedSynthesis({
@@ -4065,23 +4087,8 @@ function collectExposedTools(context: ContextObject): ContextObjectTool[] {
   return tools;
 }
 
-/**
- * Reserved native tool argument carrying the planner's turn-scope declaration
- * (#17034). Native function-calling envelopes have no side channel for the
- * planner schema's top-level `completed` boolean, which left the
- * `tryGateEvaluator` "planner said the turn is incomplete" veto structurally
- * inert on exactly the lane the action-owned `turnComplete` gate targets — a
- * sequential multi-op request could be truncated after its first terminal
- * action result. Every exposed tool schema therefore requires this enum
- * (`withTurnScopeToolArg`), the planner sets it per call, and
- * `parsePlannerOutput` lifts it into the parse result's `completed` field
- * while stripping the argument so no action handler ever sees it. An initially
- * unspecified declaration preserves compatibility. Once the planner explicitly
- * leaves work pending, a later native batch with missing or invalid scope must
- * repair its declaration before execution; it cannot erase that pending scope.
- * JSON callers retain their top-level `completed` contract.
- */
-export const TURN_SCOPE_ARG = "eliza_turn_scope";
+// The turn-scope protocol (#17034) is documented with TURN_SCOPE_ARG beside
+// history rendering, which replays each call's declared scope.
 export const ACTION_CONTEXT_ARG = "eliza_completion_context";
 export const TURN_SCOPE_FINAL = "final";
 export const TURN_SCOPE_MORE_WORK_PENDING = "more_work_pending";
@@ -4232,14 +4239,14 @@ export function withTurnScopeToolArg(
 ): ToolDefinition[] | undefined {
   if (!tools) return tools;
   // Keep the complete protocol once in the trusted system instructions rather
-  // than repeating it in every tool. Standalone/custom-template callers retain
-  // the full schema description unless that exact instruction is present.
-  const scopeSchema = sharedSystemPrompt?.includes(plannerBatchScopeDescription)
-    ? {
-        ...TURN_SCOPE_ARG_SCHEMA,
-        description:
-          'Required on every native call, with the same value throughout the batch. "final": this batch covers the remaining operations; evaluation still follows. "more_work_pending": results must ground a later operation. Stripped before execution.',
-      }
+  // than repeating it in every tool: a per-tool summary still cost about 6.5k
+  // tokens per demo (token audit F5). The enum and `required` stay on every
+  // tool. Standalone/custom-template callers retain the full schema
+  // description unless that exact instruction is present.
+  const scopeSchema: JSONSchema = sharedSystemPrompt?.includes(
+    plannerBatchScopeDescription,
+  )
+    ? { type: TURN_SCOPE_ARG_SCHEMA.type, enum: TURN_SCOPE_ARG_SCHEMA.enum }
     : TURN_SCOPE_ARG_SCHEMA;
   return tools.map((tool) => {
     const parameters = tool.parameters;
@@ -4336,6 +4343,12 @@ function extractTurnScopeSignal(calls: PlannerToolCall[]): {
     return {
       ...call,
       params,
+      // Handlers never see the scope, but model history replays a valid
+      // declaration: retries copied stripped history calls and kept omitting
+      // the required argument (tj-97b3ddd147b529).
+      ...(value === TURN_SCOPE_FINAL || value === TURN_SCOPE_MORE_WORK_PENDING
+        ? { declaredTurnScope: value }
+        : {}),
       ...(selection !== undefined
         ? {
             completionContext:
@@ -8441,6 +8454,34 @@ function toolCallIdentity(toolCall: PlannerToolCall): string {
     ? DISCOVER_ACTIONS_NAME
     : toolCall.name;
   return `${name} ${canonicalParamsString(toolCall.params ?? {})}`;
+}
+
+/**
+ * True only when every executed call proves it changed nothing: refused before
+ * dispatch, a declared read-only result, or receipts that are all fresh no-ops,
+ * previews or rejected failures. A replayed no-op or a call without proof may
+ * have done the requested work, so it never counts as unchanged.
+ */
+function turnChangedNothing(trajectory: PlannerTrajectory): boolean {
+  return [...trajectory.archivedSteps, ...trajectory.steps].every(
+    ({ toolCall, result }) => {
+      if (!toolCall || isTerminalToolCall(toolCall)) return true;
+      // An unsettled/resumed nonterminal call is not proof of no effect.
+      if (!result) return false;
+      return result.effectReceipts?.length
+        ? result.effectReceipts.every(
+            (receipt) =>
+              (receipt.outcome === "noop" && !receipt.idempotency.replayed) ||
+              receipt.outcome === "preview" ||
+              (receipt.outcome === "failed" &&
+                receipt.failure.acceptance === "rejected"),
+          )
+        : result.data?.readOnlyOperation === true ||
+            (result.success === false &&
+              result.data?.acceptance === "rejected" &&
+              result.data?.executionStatus === "not_started");
+    },
+  );
 }
 
 /** Observations may change; applied effects and committed replays stay settled. */
