@@ -548,12 +548,7 @@ export async function initWalletProvider(runtime: IAgentRuntime): Promise<Wallet
       );
     }
 
-    const provider = new LazyTeeWalletProvider(
-      runtime,
-      walletSecretSaltRaw,
-      chains,
-      rpcConfigs
-    );
+    const provider = new LazyTeeWalletProvider(runtime, walletSecretSaltRaw, chains, rpcConfigs);
     await provider.initialize();
     return provider;
   }
