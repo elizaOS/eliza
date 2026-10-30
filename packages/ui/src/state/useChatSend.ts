@@ -78,6 +78,7 @@ import {
 import { isConversationRecord } from "./chat-conversation-guards";
 import {
   buildSendFailureNotice,
+  countSentUserTurns,
   getSendValidationFailureMessage,
   resolveAbortRoomId,
   sentUserTurnPresent,
@@ -1445,13 +1446,17 @@ export function useChatSend(deps: UseChatSendDeps) {
         assistantMsgId: string;
         text: string;
         timestamp: number;
+        priorMatches: number;
         attachments?: ConversationMessage["attachments"];
       },
     ) => {
       const sentText = turn.text.trim();
       if (!sentText) return;
       setConversationMessagesForConversation(conversationId, (prev) => {
-        if (sentUserTurnPresent(prev, sentText, turn.timestamp)) return prev;
+        if (
+          sentUserTurnPresent(prev, sentText, turn.timestamp, turn.priorMatches)
+        )
+          return prev;
         return [
           ...prev,
           {
@@ -1768,6 +1773,18 @@ export function useChatSend(deps: UseChatSendDeps) {
       }
       const optimisticTurn = turn.optimisticTurn;
       const { userMsgId, assistantMsgId, timestamp: now } = optimisticTurn;
+      // An identical earlier turn is not this one ("yes" twice in a minute).
+      const priorMatches = isConversationCommitActive(
+        optimisticOwnerConversationId,
+      )
+        ? countSentUserTurns(
+            conversationMessagesRef.current.filter(
+              (message) => message.id !== userMsgId,
+            ),
+            text,
+            now,
+          )
+        : 0;
       const optimisticUserMessage = createOptimisticUserMessage({
         ...turn,
         rawInput: text,
@@ -1892,6 +1909,7 @@ export function useChatSend(deps: UseChatSendDeps) {
         clientMessageId,
         text,
         sentAt: now,
+        priorMatches,
       });
       if (activeConversationIdRef.current === convId) {
         client.sendWsMessage({
@@ -2111,6 +2129,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               assistantMsgId,
               text,
               timestamp: now,
+              priorMatches,
               ...(optimisticAttachments
                 ? { attachments: optimisticAttachments }
                 : {}),
@@ -2522,6 +2541,7 @@ export function useChatSend(deps: UseChatSendDeps) {
                 assistantMsgId,
                 text,
                 timestamp: now,
+                priorMatches,
                 ...(optimisticAttachments
                   ? { attachments: optimisticAttachments }
                   : {}),
@@ -3036,6 +3056,9 @@ export function useChatSend(deps: UseChatSendDeps) {
         }
         const now = Date.now();
         const userMsgId = `temp-action-${now}`;
+        const priorMatches = isConversationCommitActive(convId)
+          ? countSentUserTurns(conversationMessagesRef.current, trimmed, now)
+          : 0;
         const assistantMsgId = `temp-action-resp-${now}`;
         if (activeConversationIdRef.current === convId) {
           setCompanionMessageCutoffTs(now);
@@ -3173,6 +3196,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               assistantMsgId,
               text: trimmed,
               timestamp: now,
+              priorMatches,
             });
           }
           void loadConversations();
@@ -3221,6 +3245,7 @@ export function useChatSend(deps: UseChatSendDeps) {
               assistantMsgId,
               text: trimmed,
               timestamp: now,
+              priorMatches,
             });
           }
         } finally {
