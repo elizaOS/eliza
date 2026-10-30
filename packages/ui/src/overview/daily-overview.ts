@@ -274,6 +274,8 @@ export interface OverviewInboxCardInput {
 /** Everything a Home mail card renders (see `OverviewAttentionCard`). */
 export interface OverviewInboxCardModel {
   state: OverviewInboxCardState;
+  /** Destination named by the card label; independent of its read state. */
+  action: "inbox" | "connections";
   /** "2 unread", "3+ unread", or empty. */
   count: string;
   /** At most two unread messages of the loaded page. */
@@ -308,6 +310,7 @@ export function presentOverviewInboxCard(
   if (stale)
     return {
       state: "stale",
+      action: stale.action,
       count: "",
       rows: [],
       title: "Inbox",
@@ -332,8 +335,10 @@ export function presentOverviewInboxCard(
   const count = unread.length
     ? `${unread.length}${loaded?.more ? "+" : ""} unread`
     : "";
+  const action = !count && input.disconnected ? "connections" : "inbox";
   const text = (value: unknown) => (typeof value === "string" ? value : "");
   return {
+    action,
     state: failure
       ? "error"
       : pending
@@ -364,7 +369,7 @@ export function presentOverviewInboxCard(
     status,
     label: count
       ? `Open Inbox: ${count} email${unread.length === 1 ? "" : "s"}`
-      : input.disconnected
+      : action === "connections"
         ? "Connect email"
         : "Open Inbox",
     description: status,
