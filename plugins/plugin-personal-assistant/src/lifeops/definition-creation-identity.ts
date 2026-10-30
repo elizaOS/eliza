@@ -8,6 +8,8 @@ export const DEFINITION_CREATION_OPERATION = "lifeops.definition.create";
 /** Full wrapper messages remain provenance; explicit intent remains an operative argument. */
 export interface DefinitionCreationContext {
   originalIntentSource: "argument" | "message";
+  /** Runs only for a new record, after the canonical idempotency claim. */
+  assertNewCreation?: () => void;
 }
 
 export function definitionCreationIdentity(args: {

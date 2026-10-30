@@ -431,6 +431,7 @@ export class DefinitionsDomain {
           },
           reminderPlan: reminderPlanDraft,
         }),
+        context?.assertNewCreation,
       );
       if (claim.replayed)
         return {
@@ -439,6 +440,7 @@ export class DefinitionsDomain {
         };
       definition = claim.definition;
     } else {
+      context?.assertNewCreation?.();
       await this.ctx.repository.createDefinition(definition);
     }
     const reminderPlan = await this.deps.syncReminderPlan(

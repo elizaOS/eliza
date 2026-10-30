@@ -270,6 +270,105 @@ describe("grounded reply outcomes — real PGlite", () => {
     ).toHaveLength(0);
   });
 
+  it.each([undefined, "exact-relative-retry"])(
+    "reads back a committed reminder after its deadline (key: %s)",
+    async (idempotencyKey) => {
+      vi.spyOn(assistant, "renderGroundedActionReply").mockResolvedValue({
+        kind: "deferred",
+        grounding: "Saved reminder facts",
+      });
+      const now = Date.now();
+      const title = `Committed late retry ${idempotencyKey ?? "unkeyed"}`;
+      const request = message(`Remind me in three minutes to ${title}`);
+      request.createdAt = now;
+      const options = {
+        parameters: {
+          action: "create",
+          kind: "definition",
+          ownerSurface: "OWNER_REMINDERS",
+          confirmed: true,
+          ...(idempotencyKey ? { idempotencyKey } : {}),
+          intent: request.content.text,
+          createPlan: {
+            mode: "create",
+            requestKind: "reminder",
+            nativeProjection: "in_app_only",
+            notificationMode: "default",
+            title,
+            description: null,
+            cadenceKind: "once",
+            dueInMinutes: 3,
+            timeZone: "UTC",
+            multiStep: false,
+          },
+        },
+      };
+      const first = await runLifeOperationHandler(
+        runtime,
+        request,
+        undefined,
+        options,
+      );
+      expect(first.success).toBe(true);
+      const id = first.effectReceipts?.[0]?.resource.id;
+      if (!id) throw new Error("Missing saved reminder receipt");
+      vi.spyOn(Date, "now").mockReturnValue(now + 181_000);
+      const replay = await runLifeOperationHandler(
+        runtime,
+        request,
+        undefined,
+        options,
+      );
+      expect(replay.success).toBe(true);
+      expect(replay.effectReceipts?.[0]?.resource.id).toBe(id);
+      const rows = (await service.listDefinitions()).filter(
+        (row) => row.definition.title === title,
+      );
+      expect(rows).toHaveLength(1);
+      expect(rows[0].definition.cadence).toMatchObject({
+        kind: "once",
+        dueAt: new Date(now + 180_000).toISOString(),
+      });
+    },
+  );
+
+  it("rolls back a new keyed claim rejected at its insert boundary", async () => {
+    const title = "Expired keyed claim";
+    const input = {
+      kind: "habit" as const,
+      title,
+      timezone: "UTC",
+      cadence: {
+        kind: "once" as const,
+        dueAt: new Date(Date.now() + 180_000).toISOString(),
+      },
+      idempotencyKey: "rejected-expiry-key",
+      metadata: { ownerSurface: "OWNER_REMINDERS" },
+    };
+    await expect(
+      service.createDefinition(input, {
+        originalIntentSource: "message",
+        assertNewCreation: () => {
+          throw new Error("deadline passed");
+        },
+      }),
+    ).rejects.toThrow("deadline passed");
+    expect(
+      (await service.listDefinitions()).filter(
+        (row) => row.definition.title === title,
+      ),
+    ).toHaveLength(0);
+    const created = await service.createDefinition(input, {
+      originalIntentSource: "message",
+    });
+    expect(created.idempotency.replayed).toBe(false);
+    expect(
+      (await service.listDefinitions()).filter(
+        (row) => row.definition.title === title,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("refuses a relative reminder that expires during the final lookup", async () => {
     const now = Date.now();
     const clock = vi.spyOn(Date, "now").mockReturnValue(now);
