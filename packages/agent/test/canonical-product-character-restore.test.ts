@@ -1,6 +1,7 @@
 /** Real canonical builder, init, SQLite and persisted-room restore. No model or live profile. */
 import { randomUUID } from "node:crypto";
 import { mkdir, mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import {
   AgentRuntime,
@@ -86,7 +87,7 @@ it.each([
   "keeps real retained identity, owner rooms and all200 messages through canonical product rename (%s)",
   async (mode) => {
     const dir = await mkdtemp(
-      path.join(process.env.TMPDIR!, "canonical-brand-"),
+      path.join(tmpdir(), "canonical-brand-"),
     );
     const filename = path.join(dir, "state.sqlite");
     vi.stubEnv("ELIZA_STATE_DIR", dir);
@@ -380,7 +381,7 @@ it.each([
 
 it("uses the same canonical implicit identity on a fresh Alpha first boot", async () => {
   const dir = await mkdtemp(
-    path.join(process.env.TMPDIR!, "fresh-canonical-brand-"),
+    path.join(tmpdir(), "fresh-canonical-brand-"),
   );
   vi.stubEnv("ELIZA_STATE_DIR", dir);
   vi.stubEnv("ELIZA_CONFIG_PATH", path.join(dir, "eliza.json"));
