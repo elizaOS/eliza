@@ -217,7 +217,10 @@ public class NativeProviderAdmission {
   return new JSONArray().put("cloud").put("production").put(identity.getString("userId")).put(identity.opt("organizationId")).toString();
  }
  private static JSONArray cloudIdentity(String saved,String expectedId)throws Exception {
-  String token=cloudProviderToken(saved,expectedId,System.currentTimeMillis());
+  return cloudIdentity(saved,expectedId,System.currentTimeMillis());
+ }
+ private static JSONArray cloudIdentity(String saved,String expectedId,long now)throws Exception {
+  String token=cloudProviderToken(saved,expectedId,now);
   JSONObject credential=new JSONObject(saved);
   return new JSONArray().put("production").put(expectedId).put(credential.opt("userId")).put(credential.opt("organizationId")).put(token);
  }
@@ -227,6 +230,20 @@ public class NativeProviderAdmission {
    String id=new JSONObject(before).getString("credentialId");
    return cloudIdentity(before,id).toString().equals(cloudIdentity(after,id).toString());
   }catch(Exception unavailable){return false;}
+ }
+ /** Credential authority digest for native journals; ignores expiry and unrelated metadata.
+  * The caller supplies its current clock. Invalid, expired or removed credentials are refused. */
+ public static String cloudCredentialFingerprint(String saved,long now)throws Exception {
+  String id=new JSONObject(saved).getString("credentialId");
+  return hashIdentity(cloudIdentity(saved,id,now));
+ }
+ private static String hashIdentity(JSONArray identity)throws Exception {
+  byte[] bytes=identity.toString().getBytes(StandardCharsets.UTF_8);
+  try{
+   byte[] digest=MessageDigest.getInstance("SHA-256").digest(bytes);StringBuilder hex=new StringBuilder();
+   for(byte value:digest)hex.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
+   return hex.toString();
+  }finally{java.util.Arrays.fill(bytes,(byte)0);}
  }
  private static String fingerprint(JSONObject selected,String cloud)throws Exception {
   String kind=selected.optString("provider","cerebras"),model=selected.getString("model");
@@ -246,12 +263,7 @@ public class NativeProviderAdmission {
    if(!"production".equals(environment))throw new IllegalArgumentException();
    identity.put(environment).put(key);
   }else throw new IllegalArgumentException();
-  byte[] bytes=identity.toString().getBytes(StandardCharsets.UTF_8);
-  try{
-   byte[] digest=MessageDigest.getInstance("SHA-256").digest(bytes);StringBuilder hex=new StringBuilder();
-   for(byte value:digest)hex.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
-   return hex.toString();
-  }finally{java.util.Arrays.fill(bytes,(byte)0);}
+  return hashIdentity(identity);
  }
  /** Invoked only by explicit native configuration inside the existing credential mutation lock. */
  public static String admit(String previous,String selection,String cloud,JSONObject verifiedIdentity)throws Exception {

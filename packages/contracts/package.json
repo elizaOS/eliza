@@ -141,6 +141,12 @@
       "types": "./dist/stated-clock-time.d.ts",
       "import": "./dist/stated-clock-time.js",
       "default": "./dist/stated-clock-time.js"
+    },
+    "./remote-agent-pairing": {
+      "eliza-source": "./src/contracts/remote-agent-pairing.ts",
+      "types": "./dist/contracts/remote-agent-pairing.d.ts",
+      "import": "./dist/contracts/remote-agent-pairing.js",
+      "default": "./dist/contracts/remote-agent-pairing.js"
     }
   },
   "scripts": {

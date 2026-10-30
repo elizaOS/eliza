@@ -209,3 +209,12 @@ provider timing/voice quality, mobile WebView or physical speakers.
 `BatchVoiceConversation` shares the foreground capture, turn, reply and playback loop through injected ports. Hosts own credentials, microphone access, Cloud transcription, `VOICE_DM` submission and matching playback completion. Stop retires late replies and drains owned capture before replacement. It never edits a text draft, selects a provider or resumes itself after retirement. `createVoiceTurnAggregator` and `createVoiceActivityDetector` also serve the existing shell; native peak-only activity does not invent RMS measurements.
 
 A durable owner-input reply can pause `BatchVoiceConversation` with `awaitingUserInput`. The host keeps its existing Review controls visible; the coordinator opens no microphone and starts no speech while paused. After the host authenticates and completes that same original request, `resume({pause, reply})` admits its exact new assistant reply once. The pause carries request, conversation, user-message, assistant-message and proposal correlations only. It never approves an action, sends a new user message or restores a retired voice session.
+
+### Optional client observations
+
+`@elizaos/ui/api/client-observation` owns optional observation negotiation. Supply the
+current authenticated origin/owner/agent/session and connection epoch, a currentness
+predicate, and an authenticated status reader. The session learns one API-process nonce,
+then compares fresh status before including Calendar day context. A replaced or unreadable
+process omits the optional field until a new verified session is created. This format
+handshake grants no Calendar access and does not replace the host's visibility checks.

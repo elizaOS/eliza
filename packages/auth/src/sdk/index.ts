@@ -1,4 +1,6 @@
 /** Exposes the browser-safe login client, authentication flows and public contracts. */
+
+export * from "./app-return.ts";
 export { isLoginPasskeyAlreadyRegisteredError, LoginAuth } from "./auth.ts";
 export type * from "./auth-types.ts";
 export type * from "./client.ts";

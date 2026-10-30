@@ -383,3 +383,10 @@ profile bound to Eliza Cloud keeps on-device BGE embeddings.
 resident, including the no-provider generation. Products supply hosts, slot
 namespaces, the plugin name and the packaged route table; `test:native-host`
 runs the host-JVM contracts in `test/connection`.
+
+`connection/WorkspaceAppReturn` and `WorkspaceAppReturnFlow` share exact HTTPS
+callback parsing and the single-use, ten-minute native return journal. Hosts
+supply their callback, protected pending slot, credential readback and atomic
+compare-and-exchange. The journal uses `NativeProviderAdmission` credential
+identity, including its UUID and expiry validation, without saving the token.
+Hosts retain account verification, lifecycle locks and Android App Link admission.
