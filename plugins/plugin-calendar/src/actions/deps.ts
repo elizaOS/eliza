@@ -36,6 +36,8 @@ export interface CalendarModelCallArgs {
   purpose?: string;
   temperature?: number;
   responseSchema?: GenerateTextParams["responseSchema"];
+  /** Forwarded as `providerOptions.eliza.thinking` for latency-sensitive extractors. */
+  thinking?: "off";
 }
 
 export interface CalendarJsonModelResult<

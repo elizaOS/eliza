@@ -588,7 +588,17 @@ function renderEvaluatorInput(
     promptSegments,
     // Automatic cloud prefix reuse needs ordered text, not an account-gated
     // routing hint. Keep canonical local metadata without enabling new hints.
-    providerOptions: { eliza: plan.providerOptions.eliza },
+    // Post-turn evaluation is a schema-bound extraction whose prompt forbids
+    // hidden reasoning; suppress provider reasoning like the runtime evaluator
+    // and failure-reply paths (live qwen-3.8-27b: 89% of completion tokens).
+    providerOptions: {
+      eliza: {
+        ...((plan.providerOptions.eliza as
+          | Record<string, unknown>
+          | undefined) ?? {}),
+        thinking: "off",
+      },
+    },
   };
 }
 // Schema-SPECIFIC rejection tokens: a HIGH-CONFIDENCE signal that the provider

@@ -509,6 +509,81 @@ it("reads a once time with no offset in the user's zone on create and update", a
     await fixture.runtime.deleteTask(taskId);
   }
 });
+// Live tj-9f09a0f51d65aa, "actually make it 30 minutes": the planner sent
+// TRIGGER_UPDATE delayMinutes:30 and got INVALID_UPDATE, then a second round
+// re-sent the same move as scheduledAtIso.
+it("moves a one-off trigger by a relative delay on update, as create reads it", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Set a reminder for 20 minutes from now to stretch." },
+  } as Memory;
+  const instructions = `Remind the user to stretch ${randomUUID()}`;
+  const created = await triggerAction.handler(
+    fixture.runtime,
+    message,
+    undefined,
+    { parameters: { action: "create", instructions, delayMinutes: 20 } },
+  );
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId } = created.data as { taskId: UUID };
+  try {
+    const update = (parameters: Record<string, unknown>) =>
+      triggerAction.handler(fixture.runtime, message, undefined, {
+        parameters: { action: "update", taskId, ...parameters },
+      });
+    for (const delayMinutes of [0, -5, 366 * 24 * 60 + 1]) {
+      const refused = await update({ delayMinutes });
+      expect(refused, String(delayMinutes)).toMatchObject({
+        success: false,
+        error: "INVALID_UPDATE",
+      });
+      expect(refused?.effectReceipts).toBeUndefined();
+    }
+    const before = Date.now();
+    const moved = await update({ delayMinutes: 30 });
+    const after = Date.now();
+    expect(moved, moved?.text).toMatchObject({
+      success: true,
+      effectReceipts: [{ operation: "trigger.update", outcome: "applied" }],
+    });
+    const stored = await fixture.runtime.getTask(taskId);
+    const config = stored && readTriggerConfig(stored);
+    const firesAt = Date.parse(config?.scheduledAtIso ?? "");
+    expect(firesAt).toBeGreaterThanOrEqual(before + 30 * 60_000);
+    expect(firesAt).toBeLessThanOrEqual(after + 30 * 60_000);
+    expect(config).toMatchObject({
+      triggerType: "once",
+      delayMs: 30 * 60_000,
+      nextRunAtMs: firesAt,
+    });
+    // The moved trigger carries create's relative identity: an immediate
+    // "in 30 minutes" create for it replays instead of adding a duplicate.
+    const retried = await triggerAction.handler(
+      fixture.runtime,
+      message,
+      undefined,
+      { parameters: { action: "create", instructions, delayMinutes: 30 } },
+    );
+    expect(retried?.effectReceipts?.[0]).toMatchObject({ outcome: "noop" });
+    // An explicit scheduledAtIso still wins over a delay sent beside it.
+    const pinned = await update({
+      scheduledAtIso: "2099-01-01T17:00:00Z",
+      delayMinutes: 45,
+    });
+    expect(pinned, pinned?.text).toMatchObject({ success: true });
+    const afterPinned = await fixture.runtime.getTask(taskId);
+    expect(afterPinned && readTriggerConfig(afterPinned)).toMatchObject({
+      scheduledAtIso: "2099-01-01T17:00:00Z",
+    });
+    expect(
+      afterPinned && readTriggerConfig(afterPinned)?.delayMs,
+    ).toBeUndefined();
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
 it("sets a second relative reminder asked later, and replays only an immediate retry", async () => {
   const message = {
     entityId: fixture.runtime.agentId,

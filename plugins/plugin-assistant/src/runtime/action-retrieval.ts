@@ -857,11 +857,30 @@ export function preferredOperationNames(
     }
     if (operation === "open") wanted.add("show");
   }
-  return new Set(
-    names.filter((name) =>
-      tokenizeActionSearchText(name).some((term) => wanted.has(term)),
-    ),
+  const preferred = names.filter((name) =>
+    tokenizeActionSearchText(name).some((term) => wanted.has(term)),
   );
+  // Deleting a record and setting it again is an edit. Stage 1 split "actually
+  // make it 30 minutes" into "delete pending 20 minute stretch reminder" + "set
+  // stretch reminder for 30 minutes from now" (live tj-d24d0ef3e2f2ed); offered
+  // only TRIGGER_DELETE, the planner deleted the reminder and could not set it
+  // again. A delete that comes with a new value keeps its own update sibling
+  // (TRIGGER_DELETE -> TRIGGER_UPDATE), not every update in the family.
+  if (
+    wanted.has("delete") &&
+    (wanted.has("create") ||
+      ["set", "make", "schedule"].some((term) => words.has(term)))
+  ) {
+    const key = (name: string) => tokenizeActionSearchText(name).join(" ");
+    const byKey = new Map(names.map((name) => [key(name), name]));
+    for (const name of [...preferred]) {
+      const update = byKey.get(
+        key(name).replace(/(^| )delete(?= |$)/u, "$1update"),
+      );
+      if (update) preferred.push(update);
+    }
+  }
+  return new Set(preferred);
 }
 
 function scoreExactHints(

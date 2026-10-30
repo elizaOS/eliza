@@ -308,6 +308,166 @@ describe("promoted Notes execution", () => {
     );
   });
 
+  it("keeps the revision token writable after the target and edit on the strict wire", async () => {
+    // Cerebras strict grammars emit keys only in declaration order. The live
+    // planner wrote action, noteId, replacementContent and could never add
+    // expectedRevision, failing NOTES_EDIT_REVISION_REQUIRED until the limit.
+    const wireProperties = (name: string) => {
+      const action = notesPlugin.actions?.find((entry) => entry.name === name);
+      if (!action)
+        throw new Error(`The promoted ${name} action is unavailable`);
+      const tools = __INTERNAL_normalizeNativeToolsForCall(
+        [
+          {
+            name,
+            description: action.description,
+            strict: true,
+            parameters: actionToJsonSchema(action),
+          },
+        ],
+        { cerebrasMode: true },
+      ).tools as Record<string, { inputSchema: { jsonSchema: JsonSchema } }>;
+      return Object.keys(tools[name].inputSchema.jsonSchema.properties ?? {});
+    };
+    const writableInOrder = (properties: string[], keys: string[]) =>
+      keys.every(
+        (key, index) =>
+          properties.includes(key) &&
+          (index === 0 ||
+            properties.indexOf(key) > properties.indexOf(keys[index - 1])),
+      );
+    const update = wireProperties("NOTES_UPDATE");
+    for (const edit of ["replacementContent", "textEdit", "authoredEdit"]) {
+      expect(
+        writableInOrder(update, ["action", "noteId", edit, "expectedRevision"]),
+      ).toBe(true);
+      expect(
+        writableInOrder(update, [
+          "action",
+          "content",
+          edit,
+          "expectedRevision",
+        ]),
+      ).toBe(true);
+    }
+    expect(
+      writableInOrder(wireProperties("NOTES_PATCH"), [
+        "target",
+        "changes",
+        "action",
+        "textEdit",
+        "expectedRevision",
+      ]),
+    ).toBe(true);
+
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const created = await service.createNoteWithCommit({
+      content: "Groceries\n- Eggs\n- Oat milk\n- Spinach",
+    });
+    const result = await execute(runtime, {
+      name: "NOTES_UPDATE",
+      params: {
+        action: "update",
+        noteId: created.value.id,
+        textEdit: { action: "append", field: "body", text: "\n- Bread" },
+        expectedRevision: created.snapshot.revision,
+      },
+    });
+    expect(result.success).toBe(true);
+    expect(reconstructNoteContent(service.getNote(created.value.id))).toBe(
+      "Groceries\n- Eggs\n- Oat milk\n- Spinach\n- Bread",
+    );
+  });
+
+  it("routes a plain append to the operation whose strict wire requires its target and revision", async () => {
+    // Live tj-9fbee52dd6eab4 ("add bread to that note"): the family text sent
+    // append to NOTES_UPDATE, whose strict wire requires no target, edit or
+    // revision. The planner wrote {} and then a literal textEdit with empty
+    // oldText/newText, the form documented as needing no revision, until the
+    // turn errored. Exposed as in that turn, the text must name an operation
+    // whose grammar cannot omit the append's target or revision.
+    const exposed = ["NOTES_CREATE", "NOTES_PATCH", "NOTES_UPDATE"].map(
+      (name) => {
+        const action = notesPlugin.actions?.find(
+          (entry) => entry.name === name,
+        );
+        if (!action)
+          throw new Error(`The promoted ${name} action is unavailable`);
+        return action;
+      },
+    );
+    const planned = buildPlannerToolsFromActions(exposed);
+    const wire = __INTERNAL_normalizeNativeToolsForCall(planned, {
+      cerebrasMode: true,
+    }).tools as Record<string, { inputSchema: { jsonSchema: JsonSchema } }>;
+    const surface = planned.map((tool) => tool.description).join("\n");
+    const appendOperation = /action=(\w+) appends text/.exec(surface)?.[1];
+    const appendSchema =
+      wire[`NOTES_${appendOperation?.toUpperCase()}`]?.inputSchema.jsonSchema;
+    expect(appendSchema?.required).toEqual(
+      expect.arrayContaining(["target", "changes", "expectedRevision"]),
+    );
+    expect(JSON.stringify(appendSchema?.properties?.textEdit)).toContain(
+      '"append"',
+    );
+    // Checklist notes reject a body append; their new item stays on UPDATE.
+    const checklistOperation = /action=(\w+) [^;]*NEW checklist item/.exec(
+      surface,
+    )?.[1];
+    expect(
+      JSON.stringify(
+        wire[`NOTES_${checklistOperation?.toUpperCase()}`]?.inputSchema
+          .jsonSchema.properties?.authoredEdit,
+      ),
+    ).toContain('"checklist"');
+    expect(
+      planned.find((tool) => tool.name === "NOTES_UPDATE")?.description,
+    ).toMatch(/append text to a plain note use NOTES_PATCH/);
+
+    const runtime = await executorHarness();
+    const service = getNotesService(runtime);
+    const other = await service.createNoteWithCommit({
+      content: "Groceries\n- Eggs",
+    });
+    const created = await service.createNoteWithCommit({
+      content: "groceries\n- eggs\n- oat milk\n- spinach",
+    });
+    const append: PlannerToolCall = {
+      name: "NOTES_PATCH",
+      params: {
+        target: { kind: "id", value: created.value.id },
+        changes: [],
+        textEdit: { action: "append", field: "body", text: "\n- bread" },
+        expectedRevision: created.snapshot.revision,
+      },
+    };
+    const expected = "groceries\n- eggs\n- oat milk\n- spinach\n- bread";
+    const first = await execute(
+      runtime,
+      append,
+      ["OWNER"],
+      "add bread to that note",
+    );
+    expect(first.success).toBe(true);
+    expect(reconstructNoteContent(service.getNote(created.value.id))).toBe(
+      expected,
+    );
+    // The revision still stops a repeated append from adding a second copy.
+    const repeated = await execute(
+      runtime,
+      append,
+      ["OWNER"],
+      "add bread to that note",
+    );
+    expect(repeated.success).toBe(false);
+    expect(JSON.stringify(repeated)).toContain("NOTES_EDIT_CONFLICT");
+    expect(reconstructNoteContent(service.getNote(created.value.id))).toBe(
+      expected,
+    );
+    expect(service.getNote(other.value.id)).toEqual(other.value);
+  });
+
   it.each([undefined, "", "  ", 7, ["Existing"], { title: "Existing" }])(
     "rejects invalid legacy update selector %j without writes",
     async (selector) => {

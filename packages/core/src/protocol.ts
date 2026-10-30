@@ -483,7 +483,9 @@ export {
 export * from "./types/trigger.js";
 export * from "./types/workspace-delta.js";
 export {
+	ACTION_RESULT_OVERSIZE_WARNING_TOKENS,
 	collectActionResultSizeWarnings,
+	estimateActionResultTokens,
 	getActionResultActionName,
 	trimActionResultForPromptState,
 } from "./utils/action-results.ts";

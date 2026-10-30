@@ -905,6 +905,198 @@ describe("planner-loop death after a completed tool", () => {
     },
   );
 
+  // Live tj-a2dfaa98a8bc03: "open maps to the nearest coffee shop". Stage 1
+  // judged navigation plus a follow-up lookup, the planner opened Maps with
+  // final scope, and the evaluator asked to CONTINUE. The turn ended on the
+  // prepared navigation, the lookup never ran, and reply recovery failed.
+  it("runs the follow-up left after a final-scope view in a Stage 1 navigation plan", async () => {
+    const h = await createHarness({ actionResult: { success: true } });
+    h.runtime.actions.length = 0;
+    const executed: string[] = [];
+    const handoffId = "1f87d925-9222-4c28-83f1-5bb8f7a335ab";
+    const navigation = {
+      effect: "view_navigation",
+      status: "prepared",
+      viewId: "maps",
+      path: "/maps",
+      label: "Maps",
+      handoffId,
+    };
+    h.runtime.registerAction({
+      name: "VIEWS_SHOW",
+      description: "Open a registered app view",
+      parameters: [
+        {
+          name: "view",
+          description: "Registered destination",
+          required: true,
+          schema: { type: "string" },
+        },
+        {
+          name: "navigationStepId",
+          description: "Runtime-owned navigation correlation",
+          required: false,
+          schema: { type: "string" },
+        },
+      ],
+      contexts: ["general"],
+      validate: async () => true,
+      handler: async () => {
+        executed.push("VIEWS_SHOW");
+        return {
+          success: true,
+          text: JSON.stringify(navigation),
+          transcriptVisibility: "internal",
+          modelReplyRequired: true,
+          data: {
+            awaitingDeviceExecution: true,
+            actionName: "VIEWS_SHOW",
+            navigation,
+            values: {
+              mode: "show",
+              viewId: "maps",
+              viewPath: "/maps",
+              label: "Maps",
+              completedActionDelivered: false,
+              completedActionHandoffId: handoffId,
+              navigationPrepared: true,
+              navigationBinding: {
+                requestId: handoffId,
+                clientId: "client-1",
+                viewId: "maps",
+                viewType: "gui",
+                installationId: "install-1",
+              },
+            },
+          },
+        } as ActionResult;
+      },
+    });
+    h.runtime.registerAction({
+      name: "MAPS_PLACE",
+      description: "Look up places by name or category",
+      parameters: [
+        {
+          name: "query",
+          description: "Place name or category",
+          required: true,
+          schema: { type: "string" },
+        },
+      ],
+      contexts: ["general"],
+      validate: async () => true,
+      handler: async () => {
+        executed.push("MAPS_PLACE");
+        return {
+          success: true,
+          text: "Nearest coffee shop: Blue Bottle Coffee, 0.2 miles.",
+          data: { readOnlyOperation: true },
+        };
+      },
+    });
+    h.runtime.registerResponseHandlerFieldEvaluator({
+      name: "visualContinuation",
+      description: "Navigation judgment for the complete request.",
+      schema: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          disposition: { type: "string" },
+          viewId: { type: "string" },
+          reason: { type: "string" },
+        },
+        required: ["disposition", "viewId", "reason"],
+      },
+    });
+    const reply =
+      "Blue Bottle Coffee is the nearest coffee shop, 0.2 miles away.";
+    let handlerCalls = 0;
+    h.runtime.registerModel(
+      ModelType.RESPONSE_HANDLER,
+      async () => {
+        if (++handlerCalls === 1) {
+          const stageOne = stageOneToolTurn("pending");
+          Object.assign(stageOne.toolCalls[0].arguments, {
+            intents: ["Open the Maps view"],
+            candidateActionNames: ["VIEWS_SHOW"],
+            replyText: "Opening Maps.",
+            visualContinuation: {
+              disposition: "planning",
+              viewId: "maps",
+              reason: "Navigation plus a nearest-coffee-shop lookup.",
+            },
+          });
+          return stageOne;
+        }
+        return JSON.stringify(
+          handlerCalls === 2
+            ? {
+                success: false,
+                decision: "CONTINUE",
+                thought:
+                  "Maps is prepared; the coffee-shop lookup has not run.",
+                requestFullyCovered: false,
+                messageToUser: "",
+                replyEffectStatus: "none",
+              }
+            : {
+                success: true,
+                decision: "FINISH",
+                thought: "The lookup returned the nearest coffee shop.",
+                requestFullyCovered: true,
+                messageToUser: reply,
+                replyEffectStatus: "none",
+              },
+        );
+      },
+      "navigation-follow-up-test",
+      300,
+    );
+    const plannerCalls = [
+      {
+        id: "open-maps",
+        name: "VIEWS_SHOW",
+        arguments: { view: "maps", eliza_turn_scope: "final" },
+      },
+      {
+        id: "discover-maps",
+        name: "DISCOVER_ACTIONS",
+        arguments: {
+          names: ["MAPS_PLACE"],
+          eliza_turn_scope: "more_work_pending",
+        },
+      },
+      {
+        id: "find-coffee",
+        name: "MAPS_PLACE",
+        arguments: { query: "coffee shop", eliza_turn_scope: "final" },
+      },
+    ];
+    h.runtime.registerModel(
+      ModelType.ACTION_PLANNER,
+      async () => {
+        const call = plannerCalls.shift();
+        if (!call) throw new Error("Unexpected planner call");
+        return { text: "", toolCalls: [call] };
+      },
+      "navigation-follow-up-test",
+      300,
+    );
+    const outcome = await runV5MessageRuntimeStage1({
+      runtime: h.runtime,
+      message: makeMessage(h.runtime, "open maps to the nearest coffee shop"),
+      state: { values: {}, data: {}, text: "" },
+      responseId: "00000000-0000-0000-0000-000000000083" as UUID,
+      callback: h.callback,
+    });
+    expect(executed).toEqual(["VIEWS_SHOW", "MAPS_PLACE"]);
+    expect(plannerCalls).toEqual([]);
+    expect(outcome.kind).toBe("planned_reply");
+    if (outcome.kind !== "planned_reply")
+      throw new Error("Missing planned reply");
+    expect(outcome.result.responseContent?.text).toBe(reply);
+  });
+
   it.each([false, true])(
     "starts ambiguous read work with discovery and refreshes role (revoked=%s)",
     async (revoked) => {

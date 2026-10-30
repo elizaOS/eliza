@@ -86,6 +86,8 @@ import {
   hasReasoningResidue,
   inflectionTermKeys,
   isDiscoveryActionName,
+  isLocalProvider,
+  isModelOutputLimitFinishReason,
   isModelProviderError,
   isObjectRecord,
   isPlainObject,
@@ -94,8 +96,10 @@ import {
   isRateLimitError,
   type JSONSchema,
   MODEL_CANONICAL_CONTEXT,
+  type ModelAttemptContext,
   ModelType,
   mergeChainingLoopConfig,
+  modelOutputIncompleteEvidence,
   modelProviderErrorDetail,
   normalizeEffectReceipts,
   normalizePromptSegments,
@@ -281,10 +285,12 @@ export function resolvePositivePlannerInt(
 }
 
 /**
- * Resolve an explicitly configured planner output ceiling. Unset settings do
- * not impose a core-owned cap: the selected provider owns its real output
- * boundary and must reject an unsupported explicit override before dispatch.
- * A set-but-malformed override throws rather than silently defaulting.
+ * Resolve an explicitly configured planner output ceiling. A set override is
+ * sent to every provider; a set-but-malformed one throws rather than silently
+ * defaulting. Unset returns undefined: non-coding planning rounds then take
+ * the per-attempt default from {@link plannerDefaultMaxTokens}, and coding
+ * planners and reply-only synthesis rounds stay uncapped (the provider owns
+ * its real output boundary).
  */
 function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
   const envVarName = codingMode
@@ -293,6 +299,50 @@ function resolvePlannerMaxTokens(codingMode: boolean): number | undefined {
   const rawValue = process.env[envVarName];
   if (rawValue === undefined || rawValue === "") return undefined;
   return resolvePositivePlannerInt(envVarName, rawValue, 1);
+}
+
+const PLANNER_DEFAULT_MAX_TOKENS = 8192;
+
+/**
+ * Default output cap for one resolved non-coding planner attempt, or
+ * undefined to send that attempt uncapped exactly as before the default
+ * existed. The default bounds runaway generations on remote API providers:
+ * live 2026-10-30, an uncapped calendar create streamed 40,960 tokens in 29s
+ * on Cerebras before failing, and a sibling call carried 5,786 empty attendee
+ * objects. 8192 still fits a complete tool call or REPLY and stops a runaway
+ * in about 6s; the dispatch retries a capped generation once.
+ *
+ * The default never reduces availability elsewhere:
+ * - Local and on-device registrations (declared `metadata.local`, else the
+ *   core provider-name heuristic) and eliza-router, which can front them, get
+ *   no default. Their adapters treat an explicit cap unlike an omitted one:
+ *   AOSP rejects a cap above the remaining context (4096-token default), the
+ *   older capacitor bridge rejects any cap above 256, and the iOS bridge
+ *   forwards it past its context window.
+ * - A registered `maxOutputTokens` below 8192 lowers the default to it.
+ * - Anthropic gets no default. Adaptive thinking spends max_tokens, so it
+ *   would share the 8192 with the answer, and it is not the planner's to
+ *   predict: an effort setting turns it on, claude-opus-5-5 and claude-fable-5
+ *   always think adaptively and turn an `ANTHROPIC_COT_BUDGET` into adaptive
+ *   thinking, and the model id is resolved inside plugin-anthropic. An
+ *   `ANTHROPIC_MAX_OUTPUT_TOKENS` below 8192 would also make the plugin reject
+ *   the explicit cap before dispatch.
+ */
+function plannerDefaultMaxTokens(
+  attempt: ModelAttemptContext,
+): number | undefined {
+  if (
+    attempt.provider === "eliza-router" ||
+    attempt.provider === "anthropic" ||
+    (attempt.metadata?.local ?? isLocalProvider(attempt.provider))
+  )
+    return undefined;
+  const registered = attempt.metadata?.maxOutputTokens;
+  return typeof registered === "number" &&
+    Number.isFinite(registered) &&
+    registered >= 1
+    ? Math.min(PLANNER_DEFAULT_MAX_TOKENS, Math.floor(registered))
+    : PLANNER_DEFAULT_MAX_TOKENS;
 }
 
 /**
@@ -3322,10 +3372,33 @@ async function runPlannerLoopIterations(
         ),
       };
     }
-    const pendingCompletionCorrection = correctPendingSuccessfulFinish(
-      evaluator,
-      iteration,
-    );
+    // The originating renderer applies a prepared app-view handoff only after
+    // it receives this turn's reply, so no later step can wait on it. When the
+    // planner declared more work and the evaluator chose CONTINUE, replan that
+    // work instead of ending the turn (live tj-6941f5b0efa216 dropped the
+    // requested create). Durable device requests and completion claims still
+    // end the turn as a partial result below. Replan once per turn: the
+    // renderer applies only the latest handoff, and a re-emitted VIEWS_SHOW
+    // never matches the settled call (fresh navigationStepId), so the
+    // redundant-call breaker cannot stop a repeat loop. A final-scope
+    // navigation also replans when Stage 1 judged the request larger than the
+    // view and the evaluator itself found it uncovered (live tj-a2dfaa98a8bc03
+    // opened Maps with final scope and dropped the coffee-shop lookup).
+    // Navigation-only turns keep the partial finish and held reply.
+    const replanAfterPreparedNavigation =
+      (lastPlannerExplicitCompleted === false ||
+        (params.navigationWithFollowUp === true &&
+          evaluator.requestFullyCovered === false)) &&
+      evaluator.decision === "CONTINUE" &&
+      isPreparedViewNavigationStep(
+        trajectory.steps[trajectory.steps.length - 1],
+      ) &&
+      [...trajectory.archivedSteps, ...trajectory.steps].filter((step) =>
+        isPreparedViewNavigationStep(step),
+      ).length === 1;
+    const pendingCompletionCorrection = replanAfterPreparedNavigation
+      ? null
+      : correctPendingSuccessfulFinish(evaluator, iteration);
     evaluator = pendingCompletionCorrection ?? evaluator;
     trajectory.evaluatorOutputs.push(
       projectToolDiagnosticValue(
@@ -3339,7 +3412,8 @@ async function runPlannerLoopIterations(
       iteration,
       redactDiagnosticText,
     );
-    if (awaitingDeviceExecution) return finishWithEvaluator(evaluator);
+    if (awaitingDeviceExecution && !replanAfterPreparedNavigation)
+      return finishWithEvaluator(evaluator);
 
     // A malformed evaluator reply cannot complete explicitly pending work.
     // A retryable boundary failure also permits replanning from the complete
@@ -4567,6 +4641,10 @@ async function dispatchPlannerModelCall(params: {
     grammar?: string;
     spanSamplerPlan?: SpanSamplerPlan;
     maxTokens?: number;
+    prepareModelAttempt?: (
+      attempt: ModelAttemptContext,
+      request: { maxTokens?: number },
+    ) => void;
     stream?: boolean;
     signal?: AbortSignal;
   } = {
@@ -4591,6 +4669,25 @@ async function dispatchPlannerModelCall(params: {
   );
   if (configuredMaxTokens !== undefined) {
     modelParams.maxTokens = configuredMaxTokens;
+  }
+  // The planner-owned cap carried by the latest dispatched attempt; only a
+  // generation stopped at this cap is retried.
+  let attemptMaxTokens = configuredMaxTokens;
+  if (
+    configuredMaxTokens === undefined &&
+    params.trajectory.codingMode !== true &&
+    params.allowReplyContextProjection !== true
+  ) {
+    // The runtime prepares a fresh request for every resolved registration,
+    // including failover, so each attempt gets the default its provider can
+    // honor. A cap already merged from model settings is left untouched.
+    modelParams.prepareModelAttempt = (attempt, request) => {
+      attemptMaxTokens =
+        request.maxTokens === undefined
+          ? plannerDefaultMaxTokens(attempt)
+          : undefined;
+      if (attemptMaxTokens !== undefined) request.maxTokens = attemptMaxTokens;
+    };
   }
   modelParams.providerOptions = {
     ...modelParams.providerOptions,
@@ -4869,7 +4966,7 @@ async function dispatchPlannerModelCall(params: {
       : plannerSchema;
   }
 
-  const startedAt = Date.now();
+  let startedAt = Date.now();
   const modelType = params.modelType ?? ModelType.ACTION_PLANNER;
   // Measure the exact request shape after tool augmentation and structured
   // decode metadata are final. No flag or fallback may rewrite this request to
@@ -4893,6 +4990,7 @@ async function dispatchPlannerModelCall(params: {
     // runtime otherwise fills this from the streaming context; setting it
     // here is a no-op for adapters that ignore it.
     if (signal) modelParams.signal = signal;
+    attemptMaxTokens = configuredMaxTokens;
     return runWithStreamingContext(
       streamingContext
         ? {
@@ -4908,39 +5006,66 @@ async function dispatchPlannerModelCall(params: {
   // (live: 63s, only the messageHandler stage recorded). Bound that single
   // call; non-coding turns keep their exact prior behavior.
   let raw: string | GenerateTextResult;
-  try {
-    raw =
-      params.trajectory.codingMode === true
-        ? await dispatchWithCodingCallTimeout({
-            dispatch: invokeUseModel,
-            ambientSignal: streamingContext?.abortSignal,
-            timeoutMs: resolveCodingPlannerCallTimeoutMs(),
-            iteration: params.iteration,
-            logger: params.runtime.logger,
-          })
-        : await invokeUseModel();
-  } catch (error) {
-    // error-policy:J2 record the attempted input before propagating the
-    // provider failure. A rejected request has no generated response, but
-    // losing its messages/tools makes context-overflow diagnosis impossible.
-    await recordPlannerStage({
-      runtime: params.runtime,
-      recorder: params.recorder,
-      trajectoryId: params.trajectoryId,
-      parentStageId: params.parentStageId,
-      iteration: params.iteration ?? 1,
-      modelType,
-      provider: params.provider,
-      modelParams,
-      raw: "",
-      startedAt,
-      endedAt: Date.now(),
-      segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
-      prefixHash,
-      logger: params.runtime.logger,
-      providerAttributionState: params.providerAttributionState,
-    });
-    throw error;
+  let retryIdx: number | undefined;
+  for (;;) {
+    try {
+      raw =
+        params.trajectory.codingMode === true
+          ? await dispatchWithCodingCallTimeout({
+              dispatch: invokeUseModel,
+              ambientSignal: streamingContext?.abortSignal,
+              timeoutMs: resolveCodingPlannerCallTimeoutMs(),
+              iteration: params.iteration,
+              logger: params.runtime.logger,
+            })
+          : await invokeUseModel();
+      break;
+    } catch (error) {
+      // error-policy:J2 record the attempted input before propagating the
+      // provider failure. A rejected request has no generated response, but
+      // losing its messages/tools makes context-overflow diagnosis impossible.
+      await recordPlannerStage({
+        runtime: params.runtime,
+        recorder: params.recorder,
+        trajectoryId: params.trajectoryId,
+        parentStageId: params.parentStageId,
+        iteration: params.iteration ?? 1,
+        retryIdx,
+        modelType,
+        provider: params.provider,
+        modelParams,
+        raw: "",
+        startedAt,
+        endedAt: Date.now(),
+        segmentHashes: prefixHashes.map((entry) => entry.segmentHash),
+        prefixHash,
+        logger: params.runtime.logger,
+        providerAttributionState: params.providerAttributionState,
+      });
+      // A non-coding generation that reached its output cap is usually
+      // degenerate, not long. Sample the identical request once more; a
+      // second cap or any other failure keeps the existing failure path.
+      if (
+        retryIdx !== undefined ||
+        params.trajectory.codingMode === true ||
+        attemptMaxTokens === undefined ||
+        !isModelOutputLimitFinishReason(
+          modelOutputIncompleteEvidence(error)?.finishReason,
+        )
+      )
+        throw error;
+      streamingContext?.abortSignal?.throwIfAborted();
+      params.runtime.logger?.warn?.(
+        {
+          src: "planner-loop",
+          iteration: params.iteration,
+          maxTokens: attemptMaxTokens,
+        },
+        "[planner-loop] planner output reached its token cap; retrying the generation once",
+      );
+      retryIdx = 1;
+      startedAt = Date.now();
+    }
   }
   const endedAt = Date.now();
 
@@ -5092,6 +5217,7 @@ async function dispatchPlannerModelCall(params: {
     trajectoryId: params.trajectoryId,
     parentStageId: params.parentStageId,
     iteration: params.iteration ?? 1,
+    retryIdx,
     modelType,
     provider: params.provider,
     modelParams,
@@ -5369,6 +5495,8 @@ async function recordPlannerStage(args: {
   trajectoryId?: string;
   parentStageId?: string;
   iteration: number;
+  /** Set on the single fresh attempt after a capped planner generation. */
+  retryIdx?: number;
   modelType: TextGenerationModelType;
   provider?: string;
   modelParams: {
@@ -5412,9 +5540,12 @@ async function recordPlannerStage(args: {
       prompt: flattenTrajectoryMessages(args.modelParams.messages),
     });
     const stage: RecordedStage = {
-      stageId: `stage-planner-iter-${args.iteration}-${args.startedAt}`,
+      stageId: `stage-planner-iter-${args.iteration}-${args.startedAt}${
+        args.retryIdx === undefined ? "" : `-retry-${args.retryIdx}`
+      }`,
       kind: "planner",
       iteration: args.iteration,
+      ...(args.retryIdx === undefined ? {} : { retryIdx: args.retryIdx }),
       parentStageId: args.parentStageId,
       startedAt: args.startedAt,
       endedAt: args.endedAt,
@@ -9110,20 +9241,10 @@ async function ensureToolTurnFinalMessage(
         !step.terminalOnly || step.toolCall != null || step.result != null,
     );
     const step = steps.length === 1 ? steps[0] : undefined;
-    const handoff =
-      step?.result &&
-      findViewActionHandoff([
-        {
-          success: step.result.success,
-          actionName: step.toolCall?.name,
-          values: step.result.data?.values,
-        },
-      ]);
     if (
       step?.result?.transcriptVisibility === "internal" &&
       step.result.modelReplyRequired === true &&
-      hasAwaitingDeviceExecutionMarker(step.result) &&
-      handoff?.navigationPrepared === true
+      isPreparedViewNavigationStep(step)
     )
       return {
         ...result,
@@ -9773,6 +9894,22 @@ function hasAwaitingDeviceExecutionMarker(
     result?.data?.awaitingDeviceExecution === true ||
     (result !== undefined &&
       plannerResultValues(result)?.awaitingDeviceExecution === true)
+  );
+}
+
+/** A renderer-prepared app-view handoff, applied only after the turn's reply. */
+function isPreparedViewNavigationStep(step: PlannerStep | undefined): boolean {
+  const result = step?.result;
+  return (
+    result !== undefined &&
+    hasAwaitingDeviceExecutionMarker(result) &&
+    findViewActionHandoff([
+      {
+        success: result.success,
+        actionName: step?.toolCall?.name,
+        values: result.data?.values,
+      },
+    ])?.navigationPrepared === true
   );
 }
 
