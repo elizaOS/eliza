@@ -36,7 +36,11 @@ function escapeSlackLinkUrl(url: string): string {
 }
 
 /**
- * Checks if an angle-bracket token is an allowed Slack format
+ * Checks if an angle-bracket token is an allowed Slack format.
+ * Tokens starting with `!` are deliberately excluded: `<!channel>`,
+ * `<!everyone>`, `<!here>`, `<!subteam^…>`, and `<!date^…>` are control
+ * sequences, not user mentions, so user text containing them must be
+ * escaped instead of passed through to Slack.
  */
 function isAllowedSlackAngleToken(token: string): boolean {
   if (!token.startsWith("<") || !token.endsWith(">")) {
@@ -46,7 +50,6 @@ function isAllowedSlackAngleToken(token: string): boolean {
   return (
     inner.startsWith("@") ||
     inner.startsWith("#") ||
-    inner.startsWith("!") ||
     inner.startsWith("mailto:") ||
     inner.startsWith("tel:") ||
     inner.startsWith("http://") ||

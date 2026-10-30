@@ -37,6 +37,15 @@ describe("markdownToSlackMrkdwn bare URLs", () => {
   });
 });
 
+describe("markdownToSlackMrkdwn control tokens", () => {
+  it("escapes ! control tokens instead of passing them through", () => {
+    expect(markdownToSlackMrkdwn("hi <!channel>")).toBe("hi &lt;!channel&gt;");
+    expect(markdownToSlackMrkdwn("hi <!everyone>")).toBe(
+      "hi &lt;!everyone&gt;",
+    );
+  });
+});
+
 describe("markdown links in inline code", () => {
   it("keeps examples literal while converting links outside code", () => {
     expect(
