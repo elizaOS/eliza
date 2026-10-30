@@ -70,6 +70,29 @@ Public Terms and Privacy read `/api/public/service` from that deployment. Config
 shows an unavailable state with Retry, never another provider's legal policy.
 Document titles, revisions and paragraphs render as plain text.
 
+## Native mobile sign-in
+
+`@elizaos/ui/android-cloud/NativeCloudSignInView` renders the common email,
+SMS, Google and MFA surface. Its `NativeCloudSignInController` comes from the
+adjacent `native-cloud-sign-in-controller` entry. The app owns that controller's
+lifetime: call `start()` after mounting the owner and `dispose()` when retiring
+it. A view may unmount without retiring an application-owned attempt.
+
+The controller accepts the shared auth native port and an immutable owner guard.
+`runOperation` can join the host's existing session-operation lock; it must reject
+busy or retired work instead of skipping an action. `activate` verifies the stored
+session and account before completion. A failed activation remains a retry of
+that authenticated outcome, without requesting another code. Native storage,
+credential replacement and provider retirement remain with their existing owners.
+The controller neither stores a token nor treats authentication as entitlement,
+resident startup or AI readiness.
+
+The common view accepts product copy, branding, theme tokens and a public
+`serviceInfo` loader. Terms and privacy use the strict plain-text contract in
+`native-cloud-service-info`. Canonical Android requests use the same controller
+and view; the existing request broker routes retained native completions to the
+interactive owner and waits for its account verification before closing it.
+
 ## Development
 
 Install dependencies with `bun install` at the repository root. Run from that root:

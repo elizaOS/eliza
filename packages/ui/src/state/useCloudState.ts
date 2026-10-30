@@ -983,16 +983,18 @@ export function useCloudState({
           if (isAndroidCloudAccountSwitchPending()) {
             await clearAndroidNativeCloudCredentialState();
           }
-          await requestAndroidNativeCloudSignIn(environment);
-          await activateAndroidNativeCloudSession();
-          const connected = await reconcileAndroidCloudSession(
-            androidNativeCloudApiBase(environment),
-          );
-          if (!connected) {
-            throw new Error(
-              "Could not verify your Eliza Cloud session. Please sign in again.",
+          await requestAndroidNativeCloudSignIn(environment, async (signal) => {
+            await activateAndroidNativeCloudSession(signal);
+            const connected = await reconcileAndroidCloudSession(
+              androidNativeCloudApiBase(environment),
             );
-          }
+            signal.throwIfAborted();
+            if (!connected) {
+              throw new Error(
+                "Could not verify your Eliza Cloud session. Please sign in again.",
+              );
+            }
+          });
           try {
             clearAndroidCloudAccountSwitchPending();
           } catch (error) {

@@ -125,6 +125,11 @@ interface PendingRequest {
     outcome: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>,
   ) => void;
   reject: (error: NativeCloudSignInError) => void;
+  activate?: (signal: AbortSignal) => Promise<void>;
+  returned?: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>;
+  onReturn?: (
+    outcome: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>,
+  ) => void;
 }
 
 let nextRequestId = 1;
@@ -157,6 +162,7 @@ export function getAndroidNativeCloudSignInRequest(): AndroidNativeCloudSignInRe
  */
 export function requestAndroidNativeCloudSignIn(
   environment: ElizaCloudEnvironment,
+  activate?: (signal: AbortSignal) => Promise<void>,
 ): Promise<NativeCloudSignInAuthenticated<ElizaCloudEnvironment>> {
   if (pending) {
     return pending.request.environment === environment
@@ -176,9 +182,48 @@ export function requestAndroidNativeCloudSignIn(
     promise,
     resolve,
     reject,
+    activate,
   };
   publishRequest();
   return promise;
+}
+
+/** The request's existing account owner verifies activation before the view closes. */
+export async function activateAndroidNativeCloudSignIn(
+  id: number,
+  outcome: unknown,
+  signal: AbortSignal,
+): Promise<void> {
+  const current = pending;
+  if (!current || current.request.id !== id) return;
+  signal.throwIfAborted();
+  const parsed = nativeSignInAuthenticated(
+    outcome,
+    current.request.environment,
+  );
+  await current.activate?.(signal);
+  signal.throwIfAborted();
+  if (pending !== current)
+    throw new DOMException("Sign-in owner changed", "AbortError");
+  completeAndroidNativeCloudSignIn(id, parsed);
+}
+
+/** A retained completion can arrive before React mounts this request's view. */
+export function subscribeAndroidNativeCloudSignInReturn(
+  id: number,
+  receive: (
+    outcome: NativeCloudSignInAuthenticated<ElizaCloudEnvironment>,
+  ) => void,
+): () => void {
+  const current = pending;
+  if (!current || current.request.id !== id) return () => {};
+  current.onReturn = receive;
+  const returned = current.returned;
+  current.returned = undefined;
+  if (returned) receive(returned);
+  return () => {
+    if (current.onReturn === receive) current.onReturn = undefined;
+  };
 }
 
 /** The view's answer: a parsed sign-in for exactly the requested deployment. */
@@ -219,7 +264,10 @@ export function abandonAndroidNativeCloudSignIn(
  * storage bridge re-reads the protected slot and the session change is
  * announced. A sign-in that left no key there is a storage failure.
  */
-export async function activateAndroidNativeCloudSession(): Promise<void> {
+export async function activateAndroidNativeCloudSession(
+  signal?: AbortSignal,
+): Promise<void> {
+  signal?.throwIfAborted();
   let token: string | null;
   try {
     token = await getStorageValue(STEWARD_TOKEN_KEY);
@@ -228,6 +276,7 @@ export async function activateAndroidNativeCloudSession(): Promise<void> {
     throw new NativeCloudSignInError("storage");
   }
   if (!token?.trim()) throw new NativeCloudSignInError("storage");
+  signal?.throwIfAborted();
   dispatchStewardSessionChange("present");
 }
 
@@ -251,7 +300,12 @@ export async function listenForAndroidNativeCloudSignInCompleted(
       // error-policy:J3 an answer for another deployment or with extra keys is ignored.
       return;
     }
-    handler(parsed);
+    // A live request owns this return and its activation errors. Keep it until
+    // its view subscribes; a startup listener must not race the interactive owner.
+    if (pending?.request.environment === environment) {
+      if (pending.onReturn) pending.onReturn(parsed);
+      else pending.returned = parsed;
+    } else handler(parsed);
   });
   return () => {
     void removeListenerHandle(handle);

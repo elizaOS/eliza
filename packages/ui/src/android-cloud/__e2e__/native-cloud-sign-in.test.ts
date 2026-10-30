@@ -23,6 +23,7 @@ vi.mock("@elizaos/plugin-elizacloud/steward-session-client", () => ({
 import {
   abandonAndroidNativeCloudSignIn,
   activateAndroidNativeCloudSession,
+  activateAndroidNativeCloudSignIn,
   androidNativeCloudApiBase,
   androidNativeCloudEnvironment,
   androidNativeCloudLoginErrorMessage,
@@ -35,6 +36,7 @@ import {
   requestAndroidNativeCloudSignIn,
   resetAndroidNativeCloudSignInForTesting,
   subscribeAndroidNativeCloudSignInRequest,
+  subscribeAndroidNativeCloudSignInReturn,
 } from "../native-cloud-sign-in";
 
 const authenticated = (environment = "production", extra = {}) => ({
@@ -142,6 +144,17 @@ describe("request broker", () => {
     await expect(extraKey).rejects.toMatchObject({ code: "unavailable" });
   });
 
+  it("retains a request after failed account activation and resolves only its successful retry", async () => {
+    const activate = vi.fn().mockRejectedValueOnce(new Error("account offline")).mockResolvedValueOnce(undefined);
+    const result = requestAndroidNativeCloudSignIn("production", activate);
+    const signal = new AbortController().signal;
+    await expect(activateAndroidNativeCloudSignIn(1, authenticated(), signal)).rejects.toThrow("account offline");
+    expect(getAndroidNativeCloudSignInRequest()?.id).toBe(1);
+    await activateAndroidNativeCloudSignIn(1, authenticated(), signal);
+    await expect(result).resolves.toMatchObject({ status: "authenticated" });
+    expect(activate).toHaveBeenCalledTimes(2);
+  });
+
   it("abandons with the native failure code and frees the slot", async () => {
     const left = requestAndroidNativeCloudSignIn("staging");
     abandonAndroidNativeCloudSignIn(1, new NativeCloudSignInError("cancelled"));
@@ -211,6 +224,19 @@ describe("native announcements", () => {
     };
     return port as never;
   }
+
+  it("queues a completion for the open request before its view mounts, without also activating the cold owner", async () => {
+    const port = mockPort(), cold = vi.fn(), receive = vi.fn();
+    const remove = await listenForAndroidNativeCloudSignInCompleted("production", cold, port);
+    const result = requestAndroidNativeCloudSignIn("production");
+    port.emit("signInCompleted", authenticated());
+    expect(cold).not.toHaveBeenCalled();
+    const unsubscribe = subscribeAndroidNativeCloudSignInReturn(1, receive);
+    expect(receive).toHaveBeenCalledOnce();
+    completeAndroidNativeCloudSignIn(1, receive.mock.calls[0][0]);
+    await result;
+    unsubscribe(); remove();
+  });
 
   it("passes on only a parsed restart completion for this deployment", async () => {
     const port = mockPort();
