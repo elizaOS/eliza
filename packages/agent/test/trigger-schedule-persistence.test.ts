@@ -533,7 +533,7 @@ it("moves a one-off trigger by a relative delay on update, as create reads it", 
       triggerAction.handler(fixture.runtime, message, undefined, {
         parameters: { action: "update", taskId, ...parameters },
       });
-    for (const delayMinutes of [0, 366 * 24 * 60 + 1]) {
+    for (const delayMinutes of [0, -5, 366 * 24 * 60 + 1]) {
       const refused = await update({ delayMinutes });
       expect(refused, String(delayMinutes)).toMatchObject({
         success: false,
