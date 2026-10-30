@@ -86,9 +86,7 @@ it.each([
 ] as const)(
   "keeps real retained identity, owner rooms and all200 messages through canonical product rename (%s)",
   async (mode) => {
-    const dir = await mkdtemp(
-      path.join(tmpdir(), "canonical-brand-"),
-    );
+    const dir = await mkdtemp(path.join(tmpdir(), "canonical-brand-"));
     const filename = path.join(dir, "state.sqlite");
     vi.stubEnv("ELIZA_STATE_DIR", dir);
     vi.stubEnv("ELIZA_CONFIG_PATH", path.join(dir, "eliza.json"));
@@ -380,9 +378,7 @@ it.each([
 );
 
 it("uses the same canonical implicit identity on a fresh Alpha first boot", async () => {
-  const dir = await mkdtemp(
-    path.join(tmpdir(), "fresh-canonical-brand-"),
-  );
+  const dir = await mkdtemp(path.join(tmpdir(), "fresh-canonical-brand-"));
   vi.stubEnv("ELIZA_STATE_DIR", dir);
   vi.stubEnv("ELIZA_CONFIG_PATH", path.join(dir, "eliza.json"));
   vi.stubEnv("ELIZA_PERSIST_CONFIG_PATH", path.join(dir, "eliza.json"));
