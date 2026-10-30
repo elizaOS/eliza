@@ -73,10 +73,14 @@ const PROSE_CITY_ALIASES = new Set([
 ]);
 
 const CLOCK_TIME_TOKEN_PATTERN =
-  /^(?:\d{1,2}(?::\d{2}|(?::\d{2})?(?:am|pm))|am|pm|noon|midday|midnight|o['’]?clock)$/;
+  /^(?:\d{1,2}(?::\d{2}|(?::\d{2})?(?:am|pm))|noon|midday|midnight|o['’]?clock)$/;
 // A bare number is a clock time only after a time preposition ("at 5
 // central"); elsewhere it is usually a count ("2 Central Park tickets").
 const BARE_HOUR_TOKEN_PATTERN = /^\d{1,2}$/;
+// "am" or "pm" written apart is a clock time only after an hour ("10 am
+// PT"); elsewhere it is usually a word ("I am central to the launch").
+const MERIDIEM_TOKEN_PATTERN = /^(?:am|pm)$/;
+const HOUR_TOKEN_PATTERN = /^\d{1,2}(?::\d{2})?$/;
 const TIME_PREPOSITIONS = new Set([
   "at",
   "by",
@@ -153,12 +157,14 @@ function isClockTimeToken(tokens: readonly string[], index: number): boolean {
   if (CLOCK_TIME_TOKEN_PATTERN.test(token)) {
     return true;
   }
-  const preposition = tokens[index - 1];
-  return (
-    BARE_HOUR_TOKEN_PATTERN.test(token) &&
-    preposition !== undefined &&
-    TIME_PREPOSITIONS.has(preposition)
-  );
+  const previous = tokens[index - 1];
+  if (previous === undefined) {
+    return false;
+  }
+  if (MERIDIEM_TOKEN_PATTERN.test(token)) {
+    return HOUR_TOKEN_PATTERN.test(previous);
+  }
+  return BARE_HOUR_TOKEN_PATTERN.test(token) && TIME_PREPOSITIONS.has(previous);
 }
 
 /**

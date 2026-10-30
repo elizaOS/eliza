@@ -68,6 +68,9 @@ describe("free-text time-zone scan ignores ordinary words", () => {
     "remind me to buy 2 Central Park Zoo tickets tomorrow at 10am",
     "find 2 pacific coast trail hikes next week",
     "order 3 Berlin guidebooks next week",
+    // "am" and "pm" mark a clock time only after an hour.
+    "I am central to the launch next week",
+    "I am central to the project and need to call Casey tomorrow",
   ])("infers no zone from %j", (sentence) => {
     expect(extractExplicitTimeZoneFromText(sentence)).toBeNull();
     expect(inferTimeZoneFromLocationText(sentence)).toBeNull();
@@ -92,6 +95,8 @@ describe("free-text time-zone scan reads a zone where the text names one", () =>
     ["call at noon Pacific", "America/Los_Angeles"],
     ["lunch at noon eastern", "America/New_York"],
     ["call at 10am, PT", "America/Los_Angeles"],
+    ["call mom at 10 am PT", "America/Los_Angeles"],
+    ["standup at 3:30 pm central", "America/Chicago"],
   ])("reads %j as %s", (sentence, timeZone) => {
     expect(extractExplicitTimeZoneFromText(sentence)).toBe(timeZone);
   });
