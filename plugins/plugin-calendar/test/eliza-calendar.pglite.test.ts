@@ -203,10 +203,11 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     const action = createCalendarActionRunner({
       runTextModel: vi.fn(async () => null),
       runJsonModel: vi.fn(
-        async ({ actionType, temperature, responseSchema }) => {
+        async ({ actionType, temperature, responseSchema, thinking }) => {
           if (actionType !== "lifeops.calendar.extract_update_event")
             return null;
           expect(temperature).toBe(0);
+          expect(thinking).toBe("off");
           expect(responseSchema).toMatchObject({
             required: expect.arrayContaining([
               "requiresInput",
@@ -566,7 +567,9 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     const created = await action.handler(runtime, message, undefined, {
       parameters,
     });
-    expect(extract).toHaveBeenCalledTimes(1);
+    expect(extract).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({ thinking: "off" }),
+    );
     expect(created?.success, JSON.stringify(created)).toBe(true);
     expect(created?.data?.event).toMatchObject({ attendees: [] });
     expect(
@@ -2463,6 +2466,56 @@ describe("redacted source placeholders (real PGlite)", {
       expect(model).not.toHaveBeenCalled();
     },
   );
+
+  it("grounds a weak search match with provider reasoning off", async () => {
+    // Location-only matches score below the direct-title threshold, so the
+    // search asks the model to decide which candidates are real matches.
+    const [seeded] = await Promise.all(
+      ["Team standup", "Design sync"].map(async (title, index) => {
+        const created = await service.createCalendarEventMutation(
+          INTERNAL_URL,
+          {
+            title,
+            location: "Blue Bottle Coffee",
+            startAt: `2026-10-29T1${6 + index}:00:00.000Z`,
+            endAt: `2026-10-29T1${6 + index}:30:00.000Z`,
+            timeZone: TIME_ZONE,
+            idempotencyKey: `weak-coffee-match-${index}`,
+          },
+        );
+        if (!created.event) throw new Error("Expected a persisted seed event");
+        return created.event;
+      }),
+    );
+    const ground = vi.fn(async () => JSON.stringify({ matchIds: [seeded.id] }));
+    const action = createCalendarActionRunner({
+      runTextModel: ground,
+      runJsonModel: vi.fn(async () => null),
+      recentConversationTexts: vi.fn(async () => []),
+    });
+    const result = await action.handler(
+      runtime,
+      coffeeRequest("00000000-0000-0000-0000-000000000902"),
+      undefined,
+      {
+        parameters: {
+          subaction: "search_events",
+          query: "coffee",
+          queries: ["coffee"],
+          details: { timeZone: TIME_ZONE },
+        },
+      },
+    );
+    expect(ground).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        actionType: "lifeops.calendar.ground_search_matches",
+        thinking: "off",
+      }),
+    );
+    expect(result?.data?.events).toEqual([
+      expect.objectContaining({ id: seeded.id }),
+    ]);
+  });
 
   it("updates the searched earlier-today event when the planner copies the mask as source ids", async () => {
     const seeded = await seedEarlierTodayCoffee();

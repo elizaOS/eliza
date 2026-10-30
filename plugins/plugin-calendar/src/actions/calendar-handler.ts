@@ -4217,6 +4217,9 @@ async function inferCreateEventDetails(
       actionType: "lifeops.calendar.extract_create_event",
       temperature: 0,
       responseSchema: createExtractionSchema,
+      // Schema-bound extraction on the reply's critical path; default provider
+      // reasoning was ~80% of its completion tokens on qwen-3.8-27b.
+      thinking: "off",
       failureMessage: "Calendar create-event extraction model call failed",
       source: "action:calendar",
     },
@@ -4386,6 +4389,7 @@ async function inferUpdateEventDetails(
       actionType: "lifeops.calendar.extract_update_event",
       responseSchema: updateExtractionSchema,
       temperature: 0,
+      thinking: "off",
       failureMessage: "Calendar update-event extraction model call failed",
       source: "action:calendar",
     },
@@ -4615,6 +4619,7 @@ async function groundCalendarSearchMatchesWithLlm(
       runtime,
       prompt,
       actionType: "lifeops.calendar.ground_search_matches",
+      thinking: "off",
       failureMessage: "Calendar search grounding model call failed",
       source: "action:calendar",
     },
