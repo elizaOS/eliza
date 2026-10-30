@@ -2383,8 +2383,28 @@ export function createCloudRoutes({
                       503,
                     );
       }
-      const value = await parse(response);
-      await owner();
+      let value;
+      try {
+        value = await parse(response);
+      } catch (error) {
+        await owner();
+        if (googleEpoch !== googleGeneration)
+          throw writeFailure("account_changed", 409);
+        if (dispatching) throw writeFailure("outcome_unknown", 503);
+        throw error;
+      }
+      try {
+        await authority(scope);
+      } catch (error) {
+        await owner();
+        if (googleEpoch !== googleGeneration)
+          throw writeFailure("account_changed", 409);
+        if (dispatching && ![401, 403, 404, 409].includes(error?.status))
+          throw writeFailure("outcome_unknown", 503);
+        throw error;
+      }
+      if (googleEpoch !== googleGeneration)
+        throw writeFailure("account_changed", 409);
       return value;
     };
     const receipt = (value, requestId) => {
@@ -2420,8 +2440,13 @@ export function createCloudRoutes({
         !OWNER_MAIL_EFFECTS.has(value.kind)
       )
         throw writeFailure("refused", 400);
+      // Capture the reviewed input before any credential or network await.
       // Cloud checks every field of the proposal against the mailbox.
-      return value;
+      try {
+        return structuredClone(value);
+      } catch {
+        throw writeFailure("refused", 400);
+      }
     };
     const scopeOf = (kind) =>
       kind === "send" ? GMAIL_SEND_SCOPE : GMAIL_MODIFY_SCOPE;
@@ -2467,21 +2492,29 @@ export function createCloudRoutes({
           !/^[a-f0-9]{64}$/.test(input.reviewDigest)
         )
           throw writeFailure("refused", 400);
+        const reviewDigest = input.reviewDigest;
         const value = await call(
           `${base}/${requestId}/dispatch`,
           {
             grantId: accountId,
-            reviewDigest: input.reviewDigest,
+            reviewDigest,
             proposal: effect,
           },
           scopeOf(effect.kind),
           true,
         );
-        return {
-          version: 1,
-          accountId,
-          receipt: receipt(value?.receipt, requestId),
-        };
+        let confirmed;
+        try {
+          confirmed = receipt(value?.receipt, requestId);
+          if (
+            confirmed.kind !== effect.kind ||
+            confirmed.reviewDigest !== reviewDigest
+          )
+            throw writeFailure("outcome_unknown", 503);
+        } catch {
+          throw writeFailure("outcome_unknown", 503);
+        }
+        return { version: 1, accountId, receipt: confirmed };
       },
       /** The canonical receipt of an earlier prepare or dispatch. */
       async observe(input) {
