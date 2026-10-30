@@ -145,3 +145,26 @@ describe("shared native sign-in owner", () => {
     controller.dispose();
   });
 });
+
+describe("canonical broker completion teardown", () => {
+  it("does not cancel the authenticated native attempt when broker publication unmounts the view", async () => {
+    const { requestAndroidNativeCloudSignIn, getAndroidNativeCloudSignInRequest, activateAndroidNativeCloudSignIn, subscribeAndroidNativeCloudSignInRequest, resetAndroidNativeCloudSignInForTesting } = await import("../native-cloud-sign-in");
+    resetAndroidNativeCloudSignInForTesting();
+    const signedIn = requestAndroidNativeCloudSignIn("production", async () => {});
+    const request = getAndroidNativeCloudSignInRequest()!;
+    const f = fixture();
+    const controller = new NativeCloudSignInController(f.port, {
+      environment: "production", current: () => true, abandoned: f.abandoned,
+      activate: (outcome, signal) => activateAndroidNativeCloudSignIn(request.id, outcome, signal),
+    });
+    const unsubscribe = subscribeAndroidNativeCloudSignInRequest(() => {
+      if (!getAndroidNativeCloudSignInRequest()) controller.dispose();
+    });
+    try {
+      await controller.startGoogle();
+      await signedIn;
+      expect(f.port.cancel).not.toHaveBeenCalled();
+      expect(f.abandoned).not.toHaveBeenCalled();
+    } finally { unsubscribe(); controller.dispose(); resetAndroidNativeCloudSignInForTesting(); }
+  });
+});

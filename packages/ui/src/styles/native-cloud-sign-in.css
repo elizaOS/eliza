@@ -3,6 +3,15 @@
   font-family: var(--font-body, inherit);
   min-width: 0;
 }
+[data-native-sign-in-overlay] {
+  background: var(--bg, #fff);
+  align-items: flex-start;
+  padding: 16px;
+}
+[data-native-sign-in-overlay] > [data-native-sign-in-body] {
+  /* Center a short form, but keep the top reachable when text zoom makes it tall. */
+  margin-block: auto;
+}
 [data-native-sign-in-body] {
   width: 100%;
   min-width: 0;
@@ -12,17 +21,29 @@
   width: 100%;
   max-width: 35rem;
   margin-inline: auto;
-  padding: 1.5rem;
+  padding: 24px;
   background: var(--bg, #fff);
   border: 1px solid var(--border, var(--line, #d4d4d8));
   border-radius: 1rem;
   overflow-wrap: anywhere;
 }
 [data-native-sign-in-panel] header {
-  margin-bottom: 1.25rem;
+  margin-bottom: 20px;
+  padding-block: 0;
+}
+[data-native-sign-in-panel] header > div {
+  gap: 16px;
+}
+[data-native-sign-in-panel] header [role="img"] {
+  width: 36px;
+  height: 36px;
+}
+[data-native-sign-in-panel] header svg {
+  width: 24px;
+  height: 24px;
 }
 [data-native-sign-in-panel] h1 {
-  margin: 0.75rem 0;
+  margin: 12px 0;
   font-size: 1.5rem;
   line-height: 1.25;
 }
@@ -70,6 +91,9 @@
   opacity: 0.6;
   cursor: default;
 }
+[data-native-sign-in-panel] [data-native-sign-in-secondary] {
+  background: transparent;
+}
 [data-native-sign-in-panel] :is(button, input):focus-visible {
   outline: 3px solid var(--accent, var(--acct, #2563eb));
   outline-offset: 2px;
@@ -83,6 +107,6 @@
 }
 @media (max-width: 35rem) {
   [data-native-sign-in-panel] {
-    padding: 1rem;
+    padding: 16px;
   }
 }

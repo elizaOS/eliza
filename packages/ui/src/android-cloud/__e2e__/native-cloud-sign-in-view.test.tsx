@@ -13,7 +13,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createTranslator } from "../../i18n/index";
+import { seedAppValue } from "../../state/app-store";
+import type { AppContextValue } from "../../state/types";
 import {
   AndroidNativeCloudSignInHost,
   AndroidNativeCloudSignInView,
@@ -92,6 +95,9 @@ function renderView(port: MockPort, environment = "production" as const) {
   return { onAuthenticated, onAbandon };
 }
 
+beforeEach(() => {
+  seedAppValue({ t: createTranslator("en") } as AppContextValue);
+});
 afterEach(() => {
   cleanup();
   resetAndroidNativeCloudSignInForTesting();

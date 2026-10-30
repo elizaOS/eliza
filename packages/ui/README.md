@@ -90,7 +90,10 @@ resident startup or AI readiness.
 Explicit `leave()` waits for native cancellation acknowledgement before releasing
 the owner. A failed cancellation keeps the current view available for retry and
 blocks retained outcomes and new method dispatch until retirement succeeds.
-`dispose()` is forced teardown, not an acknowledged sign-out. Native authenticated
+`dispose()` is forced teardown, not an acknowledged sign-out. Once native sign-in
+has authenticated, disposal retires renderer work without cancelling the committed
+native attempt, including when account publication itself removes the view.
+Native authenticated
 events currently lack an attempt identity; hosts must not treat them as proof of
 credential retirement or correlation across a destroyed application owner.
 
@@ -99,6 +102,10 @@ The common view accepts product copy, branding, theme tokens and a public
 `native-cloud-service-info`. Canonical Android requests use the same controller
 and view; the existing request broker routes retained native completions to the
 interactive owner and waits for its account verification before closing it.
+The full-screen surface has an opaque backdrop and scrolls when enlarged text
+exceeds the viewport; `embedded` leaves the surrounding host surface visible.
+Run `bun packages/ui/src/android-cloud/__e2e__/run-native-cloud-sign-in-e2e.mjs`
+for the controlled native overlay, keyboard, MFA and activation-retry browser fixture.
 
 ## Development
 

@@ -48,7 +48,7 @@ export function NativeCloudSignInView<E extends string>({
   extra,
   serviceLoader,
   brand,
-  activationMessage = () => "Account verification did not complete. Try again.",
+  activationMessage,
 }: NativeCloudSignInViewProps<E>) {
   const snapshot = useSyncExternalStore(
     controller.subscribe,
@@ -64,6 +64,8 @@ export function NativeCloudSignInView<E extends string>({
   const emailInput = useRef<HTMLInputElement>(null);
   const phoneInput = useRef<HTMLInputElement>(null);
   const codeInput = useRef<HTMLInputElement>(null);
+  const heading = useRef<HTMLHeadingElement>(null);
+  const initialFocusSet = useRef(false);
   const [service, setService] = useState<CloudServiceInfo | null>(null);
   const [serviceError, setServiceError] = useState(false);
   const [serviceRevision, setServiceRevision] = useState(0);
@@ -150,7 +152,10 @@ export function NativeCloudSignInView<E extends string>({
     offers !== null && !offers.email && !offers.phone && !offers.google;
   useEffect(() => {
     if (busy || stage !== "choosing") return;
-    if (step.kind !== "methods") codeInput.current?.focus();
+    if (!embedded && !initialFocusSet.current && readiness !== "loading") {
+      initialFocusSet.current = true;
+      heading.current?.focus();
+    } else if (step.kind !== "methods") codeInput.current?.focus();
     else
       (showGoogle
         ? googleButton
@@ -158,7 +163,7 @@ export function NativeCloudSignInView<E extends string>({
           ? emailInput
           : phoneInput
       ).current?.focus();
-  }, [busy, stage, step.kind, showGoogle, showEmail]);
+  }, [busy, stage, step.kind, showGoogle, showEmail, embedded, readiness]);
 
   let body: ReactNode;
   const Body = embedded ? "div" : "main";
@@ -188,7 +193,9 @@ export function NativeCloudSignInView<E extends string>({
         ) : null}
         {showEmail ? (
           <form
-            aria-label="Sign in with email"
+            aria-label={t("nativecloudsignin.EmailForm", {
+              defaultValue: "Sign in with email",
+            })}
             className="flex flex-col gap-2"
             onSubmit={startEmail}
           >
@@ -219,7 +226,9 @@ export function NativeCloudSignInView<E extends string>({
         ) : null}
         {showPhone ? (
           <form
-            aria-label="Sign in with phone"
+            aria-label={t("nativecloudsignin.PhoneForm", {
+              defaultValue: "Sign in with phone",
+            })}
             className="flex flex-col gap-2"
             onSubmit={startPhone}
           >
@@ -290,10 +299,16 @@ export function NativeCloudSignInView<E extends string>({
       <form
         aria-label={
           step.kind === "mfa"
-            ? "Enter your verification code"
+            ? t("nativecloudsignin.VerificationForm", {
+                defaultValue: "Enter your verification code",
+              })
             : step.channel === "email"
-              ? "Enter your email code"
-              : "Enter your phone code"
+              ? t("nativecloudsignin.EmailCodeForm", {
+                  defaultValue: "Enter your email code",
+                })
+              : t("nativecloudsignin.PhoneCodeForm", {
+                  defaultValue: "Enter your phone code",
+                })
         }
         className="flex flex-col gap-3"
         onSubmit={verify}
@@ -332,7 +347,9 @@ export function NativeCloudSignInView<E extends string>({
           data-testid="native-cloud-sign-in-verify"
         >
           {busy
-            ? "Checking code…"
+            ? t("nativecloudsignin.CheckingCode", {
+                defaultValue: "Checking code…",
+              })
             : t("nativecloudsignin.Verify", { defaultValue: "Verify" })}
         </button>
         {step.kind === "code" ? (
@@ -364,6 +381,7 @@ export function NativeCloudSignInView<E extends string>({
   return (
     <div
       data-native-cloud-sign-in
+      data-native-sign-in-overlay={embedded ? undefined : "true"}
       className={
         embedded
           ? "w-full min-w-0 font-body text-txt"
@@ -392,20 +410,32 @@ export function NativeCloudSignInView<E extends string>({
               )}
               <h1
                 id={headingId}
+                ref={heading}
+                tabIndex={-1}
                 className="text-xl font-semibold leading-tight text-txt"
               >
-                {title ?? `Sign in to ${copy.serviceName}`}
+                {title ??
+                  t("cloudsigninrecovery.Title", {
+                    defaultValue: "Sign in to {{serviceName}}",
+                    serviceName: copy.serviceName,
+                  })}
               </h1>
             </div>
           </header>
           <div className="flex flex-col gap-4 pt-5">
             <div hidden={legal !== null}>
               <p>
-                Use your {service?.name ?? copy.serviceName} account to sign in.
+                {t("nativecloudsignin.AccountPrompt", {
+                  defaultValue: "Use your {{serviceName}} account to sign in.",
+                  serviceName: service?.name ?? copy.serviceName,
+                })}
               </p>
               <p role="note">
-                Sign in to verify your account. You’ll review access before
-                authorizing {copy.productName}.
+                {t("nativecloudsignin.AccessNotice", {
+                  defaultValue:
+                    "Sign in to verify your account. You’ll review access before authorizing {{productName}}.",
+                  productName: copy.productName,
+                })}
               </p>
               {error ? (
                 <p
@@ -420,8 +450,15 @@ export function NativeCloudSignInView<E extends string>({
                 <div role={activationError ? "alert" : "status"}>
                   <p>
                     {activationError
-                      ? activationMessage(activationError)
-                      : "Verifying your account and connecting your agent…"}
+                      ? (activationMessage?.(activationError) ??
+                        t("nativecloudsignin.ActivationFailed", {
+                          defaultValue:
+                            "Account verification did not complete. Try again.",
+                        }))
+                      : t("nativecloudsignin.VerifyingAccount", {
+                          defaultValue:
+                            "Verifying your account and connecting your agent…",
+                        })}
                   </p>
                   {activationError ? (
                     <button
@@ -429,16 +466,25 @@ export function NativeCloudSignInView<E extends string>({
                       disabled={busy}
                       onClick={() => void controller.retryActivation()}
                     >
-                      Retry connection
+                      {t("nativecloudsignin.RetryConnection", {
+                        defaultValue: "Retry connection",
+                      })}
                     </button>
                   ) : null}
                 </div>
               ) : stage === "complete" ? (
-                <p role="status">Signed in.</p>
+                <p role="status">
+                  {t("nativecloudsignin.SignedIn", {
+                    defaultValue: "Signed in.",
+                  })}
+                </p>
               ) : busy && operation === "google" ? (
                 <p role="status">
-                  Choose your Google account in the Android sign-in sheet.{" "}
-                  {copy.productName} will finish signing you in.
+                  {t("nativecloudsignin.GooglePrompt", {
+                    defaultValue:
+                      "Choose your Google account in the Android sign-in sheet. {{productName}} will finish signing you in.",
+                    productName: copy.productName,
+                  })}
                 </p>
               ) : (
                 body
@@ -452,6 +498,7 @@ export function NativeCloudSignInView<E extends string>({
                   type="button"
                   onClick={cancel}
                   data-testid="native-cloud-sign-in-cancel"
+                  data-native-sign-in-secondary
                 >
                   {t("nativecloudsignin.Cancel", {
                     defaultValue:
@@ -473,9 +520,11 @@ export function NativeCloudSignInView<E extends string>({
                       setLegal("terms");
                     }}
                   >
-                    Terms of Service
+                    {t("nativecloudsignin.TermsOfService", {
+                      defaultValue: "Terms of Service",
+                    })}
                   </button>{" "}
-                  and{" "}
+                  {t("nativecloudsignin.LegalAnd", { defaultValue: "and" })}{" "}
                   <button
                     type="button"
                     disabled={busy}
@@ -484,20 +533,26 @@ export function NativeCloudSignInView<E extends string>({
                       setLegal("privacy");
                     }}
                   >
-                    Privacy Policy
+                    {t("nativecloudsignin.PrivacyPolicy", {
+                      defaultValue: "Privacy Policy",
+                    })}
                   </button>
                   .
                 </p>
               )}
               {serviceError && (
                 <p role="status">
-                  Service information is unavailable.{" "}
+                  {t("nativecloudsignin.ServiceUnavailable", {
+                    defaultValue: "Service information is unavailable.",
+                  })}{" "}
                   <button
                     type="button"
                     disabled={busy}
                     onClick={() => setServiceRevision((value) => value + 1)}
                   >
-                    Retry service information
+                    {t("nativecloudsignin.RetryServiceInfo", {
+                      defaultValue: "Retry service information",
+                    })}
                   </button>
                 </p>
               )}
@@ -505,7 +560,9 @@ export function NativeCloudSignInView<E extends string>({
             {legal && service && (
               <section aria-labelledby="native-cloud-legal-title">
                 <button type="button" onClick={() => setLegal(null)}>
-                  Back to sign-in
+                  {t("nativecloudsignin.BackToSignIn", {
+                    defaultValue: "Back to sign-in",
+                  })}
                 </button>
                 <h2
                   id="native-cloud-legal-title"
@@ -515,7 +572,11 @@ export function NativeCloudSignInView<E extends string>({
                   {service[legal].title}
                 </h2>
                 <p>
-                  {service.name} · Revision {service[legal].revision}
+                  {t("nativecloudsignin.ServiceRevision", {
+                    defaultValue: "{{serviceName}} · Revision {{revision}}",
+                    serviceName: service.name,
+                    revision: service[legal].revision,
+                  })}
                 </p>
                 {service[legal].sections.map((section, index) => (
                   // biome-ignore lint/suspicious/noArrayIndexKey: public document sections have fixed order and no local state.
@@ -536,7 +597,9 @@ export function NativeCloudSignInView<E extends string>({
                   </section>
                 ))}
                 <button type="button" onClick={() => setLegal(null)}>
-                  Return to sign-in
+                  {t("nativecloudsignin.ReturnToSignIn", {
+                    defaultValue: "Return to sign-in",
+                  })}
                 </button>
               </section>
             )}

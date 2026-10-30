@@ -304,7 +304,11 @@ export class NativeCloudSignInController<E extends string> {
         work,
         new Promise<never>((_resolve, reject) => {
           aborted = () => {
-            void this.cancelNative();
+            // Account activation can publish the new session and unmount its
+            // sign-in view before the owner's promise unwinds. The key is
+            // already committed; retiring renderer work must not cancel native
+            // sign-in after that authenticated boundary.
+            if (!this.authenticated) void this.cancelNative();
             reject(signal.reason);
           };
           signal.addEventListener("abort", aborted, { once: true });
