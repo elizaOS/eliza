@@ -1182,3 +1182,180 @@ export function presentOverviewWorkflowFreshness(
     description: `${source}, loaded ${when}`,
   };
 }
+
+/** The Calendar facts a Home projection may use. The host proves current ownership. */
+export interface OverviewCalendarEvent {
+  id: string;
+  externalId: string;
+  provider: string;
+  side: string;
+  grantId?: string;
+  connectorAccountId?: string;
+  calendarId: string;
+  title: string;
+  status: string;
+  startAt: string;
+  endAt: string;
+  isAllDay: boolean;
+}
+export interface OverviewCalendarSource {
+  provider: string;
+  side: string;
+  grantId: string;
+  connectorAccountId: string | null;
+  calendarId: string;
+  includeInFeed: boolean;
+  accessRole: string;
+}
+export interface OverviewCalendarSnapshot<
+  E extends OverviewCalendarEvent,
+  S extends OverviewCalendarSource = OverviewCalendarSource,
+> {
+  current: boolean;
+  ready: boolean;
+  mutating: boolean;
+  feed: {
+    state: string;
+    timeMin: string;
+    timeMax: string;
+    events: readonly E[];
+  } | null;
+  calendars: readonly S[];
+}
+/** Select from the complete current owner's visible month, with this week crossing months.
+ * A partial query cannot establish priority or an empty month. No data is read here. */
+export function selectHomeCalendar<
+  E extends OverviewCalendarEvent,
+  S extends OverviewCalendarSource,
+>(
+  snapshot: OverviewCalendarSnapshot<E, S> | undefined,
+  timeZone: string,
+  hiddenSource: (source: S) => boolean = () => false,
+  now = new Date(),
+): {
+  event: E | null;
+  candidates: readonly E[];
+  verified: boolean;
+  emptyLabel: string;
+} {
+  const quiet = {
+    event: null,
+    candidates: [],
+    verified: false,
+    emptyLabel: "Calendar",
+  };
+  if (
+    !snapshot?.current ||
+    !snapshot.ready ||
+    snapshot.mutating ||
+    snapshot.feed?.state !== "complete"
+  )
+    return quiet;
+  const parts = (value: Date, zone = timeZone) => {
+    const values = Object.fromEntries(
+      new Intl.DateTimeFormat("en-US", {
+        timeZone: zone,
+        year: "numeric",
+        month: "numeric",
+        day: "numeric",
+        hour: "numeric",
+        minute: "numeric",
+        second: "numeric",
+        hourCycle: "h23",
+      })
+        .formatToParts(value)
+        .map((part) => [part.type, part.value]),
+    );
+    return {
+      year: Number(values.year),
+      month: Number(values.month),
+      day: Number(values.day),
+      hour: Number(values.hour),
+      minute: Number(values.minute),
+      second: Number(values.second),
+    };
+  };
+  const p = parts(now),
+    today = Date.UTC(p.year, p.month - 1, p.day),
+    monthStart = Date.UTC(p.year, p.month - 1, 1),
+    monthEnd = Date.UTC(p.year, p.month, 1);
+  const weekEnd =
+    today + (7 - ((new Date(today).getUTCDay() + 6) % 7)) * 86400000;
+  const day = (value: string, allDay = false) => {
+    const instant = new Date(value);
+    if (!Number.isFinite(instant.getTime())) return NaN;
+    const p = parts(instant, allDay ? "UTC" : timeZone);
+    return Date.UTC(p.year, p.month - 1, p.day);
+  };
+  const begin = Date.parse(snapshot.feed.timeMin),
+    end = Date.parse(snapshot.feed.timeMax),
+    firstDay = day(snapshot.feed.timeMin);
+  if (
+    !Number.isFinite(begin) ||
+    !Number.isFinite(end) ||
+    begin > now.getTime() ||
+    firstDay > monthStart ||
+    day(snapshot.feed.timeMax) < Math.max(monthEnd, weekEnd)
+  )
+    return quiet;
+  if (firstDay === monthStart) {
+    const first = parts(new Date(begin));
+    if (first.hour !== 0 || first.minute !== 0 || first.second !== 0)
+      return quiet;
+  }
+  const visible = snapshot.feed.events.filter(
+    (event) =>
+      event.status !== "cancelled" &&
+      snapshot.calendars.some(
+        (source) =>
+          source.includeInFeed === true &&
+          ["owner", "writer", "reader"].includes(source.accessRole) &&
+          source.provider === event.provider &&
+          source.side === event.side &&
+          source.grantId === event.grantId &&
+          source.calendarId === event.calendarId &&
+          (!event.connectorAccountId ||
+            source.connectorAccountId === event.connectorAccountId) &&
+          !hiddenSource(source),
+      ),
+  );
+  const candidates = visible.filter((event) => {
+    const start = day(event.startAt, event.isAllDay),
+      end = day(event.endAt, event.isAllDay);
+    if (start >= today && start < Math.max(monthEnd, weekEnd)) return true;
+    if (start >= today) return false;
+    if (end > today) return true;
+    if (event.isAllDay || end !== today) return false;
+    const last = parts(new Date(event.endAt));
+    return last.hour > 0 || last.minute > 0 || last.second > 0;
+  });
+  const key = (event: E) =>
+    JSON.stringify([
+      event.provider,
+      event.side,
+      event.grantId ?? "",
+      event.connectorAccountId ?? "",
+      event.calendarId,
+      event.externalId,
+      event.id,
+    ]);
+  candidates.sort((a, b) => {
+    const rank = (event: E) => {
+      const start = day(event.startAt, event.isAllDay);
+      return start <= today ? 0 : start < weekEnd ? 1 : 2;
+    };
+    return (
+      rank(a) - rank(b) ||
+      Date.parse(a.startAt) - Date.parse(b.startAt) ||
+      key(a).localeCompare(key(b))
+    );
+  });
+  return candidates.length
+    ? { event: candidates[0], candidates, verified: true, emptyLabel: "" }
+    : {
+        event: null,
+        candidates,
+        verified: true,
+        emptyLabel: "No events this month",
+      };
+}

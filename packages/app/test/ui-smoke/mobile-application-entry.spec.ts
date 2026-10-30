@@ -520,3 +520,216 @@ test("Android Calendar uses the shared workspace and existing editor", async ({
   });
   expect(writes).toEqual([]);
 });
+
+test("Home Calendar ranks the current visible feed and retires held old-owner reads", async ({
+  page,
+}, info) => {
+  await fixture(page);
+  await page.route("**/api/plugins", (route) =>
+    route.fulfill({
+      json: {
+        plugins: [
+          {
+            id: "calendar",
+            name: "Calendar",
+            enabled: true,
+            isActive: true,
+            configured: true,
+            description: "Calendar fixture",
+            envKey: null,
+            category: "feature",
+            source: "bundled",
+            parameters: [],
+            validationErrors: [],
+            validationWarnings: [],
+          },
+        ],
+      },
+    }),
+  );
+  let futureMinutes: number | null = null;
+  let owner = "First",
+    feedState = "complete",
+    feedReads = 0,
+    sourceReads = 0,
+    hold = false;
+  let held: import("@playwright/test").Route | undefined;
+  const source = {
+    provider: "eliza",
+    side: "owner",
+    grantId: "home-grant",
+    connectorAccountId: "home-account",
+    calendarId: "primary",
+    includeInFeed: true,
+    accessRole: "owner",
+    summary: "Calendar",
+    description: null,
+    primary: true,
+    timeZone: "UTC",
+    selected: true,
+    selectionVersion: 0,
+    backgroundColor: null,
+    foregroundColor: null,
+    accountEmail: null,
+  };
+  const payload = (url: URL, label: string) => {
+    const start = new Date();
+    if (futureMinutes === null) start.setHours(0, 0, 0, 0);
+    else start.setTime(Date.now() + futureMinutes * 60000);
+    return {
+      state: feedState,
+      source: "cache",
+      sources: [],
+      timeMin: url.searchParams.get("timeMin"),
+      timeMax: url.searchParams.get("timeMax"),
+      syncedAt: new Date().toISOString(),
+      events: [
+        {
+          ...source,
+          id: "home-event",
+          externalId: "home-event",
+          agentId: "smoke-agent",
+          title: `${label} today`,
+          description: "",
+          location: "",
+          status: "confirmed",
+          startAt: start.toISOString(),
+          endAt: new Date(start.getTime() + 3600000).toISOString(),
+          isAllDay: false,
+          timezone: null,
+          htmlLink: null,
+          conferenceLink: null,
+          organizer: null,
+          attendees: [],
+          metadata: { etag: "v1" },
+          updatedAt: start.toISOString(),
+        },
+      ],
+    };
+  };
+  await page.route("**/api/lifeops/calendar/calendars**", (route) => {
+    sourceReads++;
+    return route.fulfill({ json: { calendars: [source] } });
+  });
+  await page.route("**/api/lifeops/calendar/feed**", async (route) => {
+    feedReads++;
+    if (hold) {
+      hold = false;
+      held = route;
+      return;
+    }
+    await route.fulfill({
+      json: payload(new URL(route.request().url()), owner),
+    });
+  });
+  await page.route("**/api/connectors/google/accounts", (route) =>
+    route.fulfill({
+      json: { accounts: [{ id: "test", status: "connected" }] },
+    }),
+  );
+  await openAppPath(page, "/chat");
+  await expect(page.getByTestId("chat-composer-textarea")).toBeEditable();
+  const card = page.getByTestId("chat-widget-calendar-upcoming");
+  if (process.env.U6_HOME_BASELINE) {
+    await expect.poll(() => feedReads).toBeGreaterThan(0);
+    await expect(card).toHaveCount(0);
+    await page.screenshot({ path: info.outputPath("home-before.png") });
+    return;
+  }
+  await expect(card).toContainText("First today");
+  const clientPath = new URL("../../../ui/src/api/client.ts", import.meta.url)
+    .pathname;
+  const originalToken = await page.evaluate(async (path) => {
+    const { client } = await import(path);
+    return client.getRestAuthToken();
+  }, `/@fs${clientPath}`);
+  const initial = { feed: feedReads, sources: sourceReads };
+  await page.keyboard.press("Escape");
+  await page.screenshot({ path: info.outputPath("home-shared-feed.png") });
+  expect({ feed: feedReads, sources: sourceReads }).toEqual(initial);
+  hold = true;
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect.poll(() => !!held).toBe(true);
+  owner = "Second";
+  await page.evaluate(async (path) => {
+    const { client } = await import(path);
+    client.setToken("synthetic-owner-two-fixture");
+  }, `/@fs${clientPath}`);
+  await expect(card).toContainText("Second today");
+  const retired = held;
+  if (!retired) throw new Error("Held Calendar read was not captured");
+  await retired
+    .fulfill({ json: payload(new URL(retired.request().url()), "Retired") })
+    .catch(() => {});
+  await expect(card).toContainText("Second today");
+  await expect(card).not.toContainText("Retired");
+  feedState = "partial";
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(card).toHaveCount(0);
+  await page.screenshot({
+    path: info.outputPath("home-partial-unconfirmed.png"),
+  });
+  feedState = "complete";
+  await page.evaluate(
+    async ({ path, token }) => {
+      const { client } = await import(path);
+      client.setToken(token);
+    },
+    { path: `/@fs${clientPath}`, token: originalToken },
+  );
+  await page.goto("/chat?shellMode=tray-popover", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByTestId("tray-popover-shell")).toBeVisible();
+  await expect(card).toHaveCount(0);
+  futureMinutes = 45;
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "hidden",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await page.evaluate(() => {
+    Object.defineProperty(document, "visibilityState", {
+      configurable: true,
+      value: "visible",
+    });
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  await expect(card).toContainText("Second today");
+  await page.screenshot({ path: info.outputPath("tray-near-event.png") });
+  await info.attach("request-counts", {
+    body: JSON.stringify({
+      initial,
+      total: { feed: feedReads, sources: sourceReads },
+    }),
+    contentType: "application/json",
+  });
+});
