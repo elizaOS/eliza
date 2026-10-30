@@ -12,6 +12,7 @@ import type {
 	ChatMessageRole,
 	PromptSegment,
 } from "../types/model";
+import { isPlainObject } from "../utils/type-guards";
 import type {
 	ContextEvent,
 	ContextInstructionEvent,
@@ -435,6 +436,50 @@ function isSegmentEvent(event: ContextEvent): event is ContextSegmentEvent {
 	return event.type === "segment" && "segment" in event;
 }
 
+function isEmptyValue(value: unknown): boolean {
+	return value === "" || (Array.isArray(value) && value.length === 0);
+}
+
+/** Stage-1 routing and loop verdicts from their known producers. Event id,
+ * creation time, producer name and response-handler patch diagnostics stay in
+ * the source event for structured readers and trajectories; the model reads the
+ * routing evidence (slices, intents, candidates, undelivered draft) and the
+ * verdict. Empty plan fields say nothing an absent field does not. Other events
+ * keep their complete JSON. */
+function renderRuntimeEventContent(event: ContextEvent): string {
+	const known =
+		(event.type === "message_handler" && event.source === "message-service") ||
+		(event.type === "evaluation" && event.source === "planner-loop");
+	if (!known || !isPlainObject(event.metadata)) return textFromUnknown(event);
+	const {
+		id: _id,
+		type: _type,
+		source: _source,
+		createdAt: _createdAt,
+		metadata,
+		...rest
+	} = event;
+	if (event.type === "evaluation") {
+		return textFromUnknown({ ...rest, metadata });
+	}
+	const { plan, thought, ...routing } = metadata;
+	return textFromUnknown({
+		...rest,
+		metadata: {
+			...routing,
+			plan: isPlainObject(plan)
+				? Object.fromEntries(
+						Object.entries(plan).filter(
+							([key, value]) =>
+								key !== "responseHandlerPatches" && !isEmptyValue(value),
+						),
+					)
+				: plan,
+			...(isEmptyValue(thought) ? {} : { thought }),
+		},
+	});
+}
+
 function renderEvent(
 	rendered: RenderedContextObject,
 	event: ContextEvent,
@@ -530,7 +575,7 @@ function renderEvent(
 	appendSyntheticSegment(rendered, {
 		id: event.id,
 		label: `event:${event.type}`,
-		content: `${event.type}: ${textFromUnknown(event)}`,
+		content: `${event.type}: ${renderRuntimeEventContent(event)}`,
 		stable: false,
 	});
 }
