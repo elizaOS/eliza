@@ -3084,13 +3084,16 @@ async function runPlannerLoopIterations(
       // Otherwise the owner must supply the next event. Do not spend another
       // evaluator or planner call, manufacture a new operation key, or dispatch
       // the queue. Preserve pending scope, remaining calls and settled outcomes.
+      // A handoff reply names the request the tool recorded ("Opening <host>."):
+      // Stage 1 may have asked a question the routed request already answered.
       const startedAt = Date.now();
       const captured = sanitizePlannerMessage(params.stageOneReplyText);
       const message =
+        !requestedHandoff &&
         captured &&
         !isUnsafeUserVisibleText(captured) &&
         !replyClaimsCompletedSideEffect(captured) &&
-        (requestedHandoff || !replyClaimsInProgressWork(captured))
+        !replyClaimsInProgressWork(captured)
           ? captured
           : (latestResult?.userFacingText ?? DEVICE_APPROVAL_REVIEW_TEXT);
       const paused: EvaluatorOutput = requestedHandoff
