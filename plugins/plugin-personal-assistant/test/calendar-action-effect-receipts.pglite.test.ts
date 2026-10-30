@@ -1109,6 +1109,7 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
       const evidence = [{ sourceId: `current:${id}`, quote: original }];
       const useModel = runtime.useModel.bind(runtime);
       let extractionCalls = 0;
+      let extractionParams: unknown;
       vi.spyOn(runtime, "useModel").mockImplementation((async (
         type,
         params,
@@ -1120,9 +1121,9 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
           )
         ) {
           extractionCalls += 1;
+          extractionParams = params;
           expect(params).toMatchObject({
             temperature: 0,
-            providerOptions: { eliza: { thinking: "off" } },
             responseSchema: {
               type: "object",
               additionalProperties: false,
@@ -1187,6 +1188,12 @@ describe("registered CALENDAR strict settlement — real PGlite", () => {
         "planner",
       );
       expect(extractionCalls, JSON.stringify(result)).toBe(1);
+      // Asserted outside the stub, as in the update case below: the runner
+      // turns a thrown stub expectation into an empty extraction, which the
+      // missing-authority case would also reject.
+      expect(extractionParams).toMatchObject({
+        providerOptions: { eliza: { thinking: "off" } },
+      });
       expect(result.data?.awaitingUserInput, JSON.stringify(result)).toBe(true);
       if (missingAuthority)
         expect(result.effectReceipts?.[0]).toMatchObject({
