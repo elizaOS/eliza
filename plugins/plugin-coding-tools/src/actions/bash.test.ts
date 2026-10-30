@@ -60,6 +60,7 @@ import {
   boundedDiskAndMemoryInspectionCommand,
   boundedDiskInspectionCommand,
   type CommandPlatform,
+  isWindowsReadOnlyProbeCommand,
   localHealthCommand,
   localMemoryCommand,
   localResourceUserFacingText,
@@ -4401,6 +4402,104 @@ describe("destructive-bulk confirm gate", () => {
     expect((result.data as Record<string, unknown>).command).toBe(
       expected.command,
     );
+  });
+
+  describe("on a PowerShell host", () => {
+    const platform = Object.getOwnPropertyDescriptor(process, "platform");
+    beforeEach(() => {
+      Object.defineProperty(process, "platform", { value: "win32" });
+    });
+    afterEach(() => {
+      if (platform) Object.defineProperty(process, "platform", platform);
+    });
+
+    it.each([
+      [
+        "disk",
+        "du -sh /* 2>/dev/null | sort -hr | head -n 5",
+        "check disk space and name the biggest safe cleanup candidate",
+      ],
+      [
+        "disk and memory",
+        "df -h; free -m",
+        "check disk space and how much RAM is free",
+      ],
+      ["memory", "free -m", "how much RAM is free?"],
+      [
+        "health",
+        "curl -sS http://127.0.0.1:2138/api/health",
+        "check the local bot health endpoint",
+      ],
+    ])(
+      "runs the read-only %s probe without a confirmation challenge",
+      async (_kind, rawCommand, prompt) => {
+        expect(resolveCommandPlatform()).toBe("windows");
+        const calls: string[] = [];
+        const router = makeShellRouter(async (params) => {
+          calls.push(params.command);
+          return { output: "probe", exitCode: 0, timedOut: false };
+        });
+        const { runtime } = await makeRuntime({ capabilityRouter: router });
+        const result = requireActionResult(
+          await shellAction.handler?.(
+            runtime,
+            makeMessage(undefined, prompt),
+            undefined,
+            { command: rawCommand },
+          ),
+        );
+        const command = (result.data as Record<string, unknown>).command;
+        expect(command).toMatch(/^\$/);
+        expect(isWindowsReadOnlyProbeCommand(command as string)).toBe(true);
+        expect(result.success, result.text).toBe(true);
+        expect(calls).toEqual([command]);
+      },
+    );
+
+    it("still asks to confirm a destructive command that contains a probe", async () => {
+      const probe = boundedDiskInspectionCommand("windows");
+      const command = `${probe}\nRemove-Item -Recurse -Force C:\\Users\\example\\project`;
+      const calls: string[] = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params.command);
+        return { output: "ran", exitCode: 0, timedOut: false };
+      });
+      const { runtime } = await makeRuntime({ capabilityRouter: router });
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "clean up the project folder"),
+          undefined,
+          { command },
+        ),
+      );
+      expect(result.success).toBe(false);
+      expect(result.data).toMatchObject({ command });
+      expect(
+        (result.data as Record<string, unknown>).confirmation_challenge,
+      ).toEqual(expect.any(String));
+      expect(calls).toEqual([]);
+    });
+
+    it("runs a planner command that is exactly a probe without a rewrite", async () => {
+      const probe = localMemoryCommand("windows");
+      const calls: string[] = [];
+      const router = makeShellRouter(async (params) => {
+        calls.push(params.command);
+        return { output: "Mem: 1 1 1 0 0 1", exitCode: 0, timedOut: false };
+      });
+      const { runtime } = await makeRuntime({ capabilityRouter: router });
+      const result = requireActionResult(
+        await shellAction.handler?.(
+          runtime,
+          makeMessage(undefined, "run this script"),
+          undefined,
+          { command: probe },
+        ),
+      );
+      expect(result.success, result.text).toBe(true);
+      expect(calls).toEqual([probe]);
+    });
   });
 
   it("blocks an unconfirmed recursive delete with needs_confirmation", async () => {
