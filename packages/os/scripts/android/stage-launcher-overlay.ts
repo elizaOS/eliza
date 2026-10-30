@@ -3,7 +3,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 /** Validate a downstream HOME APK and stage an additive AOSP product overlay.
  * An optional reviewed list of runtime permissions is granted on first boot.
- * With a native ABI, the launcher's stored lib/<abi> libraries are installed beside it.
+ * With a native ABI, the launcher's stored lib/<abi> libraries are installed beside it,
+ * through Android.mk or, for a Soong-only product, the reviewed soong-app-native rule.
  * This does not claim agent payload, privileged permissions, default HOME policy,
  * image boot, or release qualification. The caller owns those separate gates.
  * Companion APKs (for example an update supervisor) are staged beside it only when
@@ -15,6 +16,7 @@ import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { crc32 } from "node:zlib";
+import { soongAppNativePatch } from "./soong-app-native.mjs";
 
 /** A second presigned package of the same product, pinned by hash. Its signer pin is
  * the launcher's certificateSha256, so a companion cannot carry another signer. */
@@ -318,6 +320,16 @@ export const NATIVE_TARGETS = {
   x86_64: { arch: "x86_64", machine: 0x3e, musl: "x86_64" },
 } as const;
 export type NativeAbi = keyof typeof NATIVE_TARGETS;
+/**
+ * How the image installs the bundled JNI. `make`: Android.mk's `LOCAL_PREBUILT_JNI_LIBS`,
+ * which a product that still reads Android.mk honours. `soong`: one `prebuilt_app_native`
+ * module per library, `required` by the `android_app_import`, for products that ignore
+ * Android.mk (`PRODUCT_SOONG_ONLY`, as Android 17 Cuttlefish sets through
+ * `RELEASE_SOONG_ONLY_CUTTLEFISH`). That module type is the reviewed build/soong patch
+ * `patches/soong-app-native`, which the consumer applies in its AOSP checkout.
+ */
+export const NATIVE_INSTALLS = ["make", "soong"] as const;
+export type NativeInstall = (typeof NATIVE_INSTALLS)[number];
 const JNI_NAME = /^lib[A-Za-z0-9_.+-]+\.so$/;
 const MAX_JNI_BYTES = 1024 ** 3;
 
@@ -411,18 +423,23 @@ export function readNativeLibraries(bytes: Buffer, abi: NativeAbi) {
  * AOSP's supported prebuilt app rule (`LOCAL_PREBUILT_JNI_LIBS` with `BUILD_PREBUILT`)
  * installs the libraries in `<partition>/app/<module>/lib/<arch>` and keeps the presigned
  * APK unchanged; Soong's `android_app_import` installs none. The rest of the overlay
- * (grants, companions) stays in Soong. `config.fs` gives the shared Eliza runtime's
- * loader and Bun their executable mode (the table in stage-android-native.py); every
- * other library is 0644 as for any app.
+ * (grants, companions) stays in Soong. With `install: "soong"` the launcher stays an
+ * `android_app_import` that `required`s one `prebuilt_app_native` per library, installed
+ * at the same path (the rules stage-android-native.py's `finalize_soong` writes).
+ * `config.fs` gives the shared Eliza runtime's loader and Bun their executable mode
+ * (the table in stage-android-native.py); every other library is 0644 as for any app.
  */
 export function renderNativeOverlay(
   d: LauncherDescriptor,
   abi: NativeAbi,
   libraries: { name: string; sha256: string }[],
+  install: NativeInstall = "make",
 ) {
   validateDescriptor(d);
   if (!Object.hasOwn(NATIVE_TARGETS, abi))
     throw new Error("Unsupported native ABI");
+  if (!NATIVE_INSTALLS.includes(install))
+    throw new Error("Unsupported native install rule");
   const target = NATIVE_TARGETS[abi];
   if (!libraries.length || libraries.some((l) => !JNI_NAME.test(l.name)))
     throw new Error("Invalid native library list");
@@ -445,10 +462,38 @@ export function renderNativeOverlay(
     mode: executables.has(library.name) ? "0755" : "0644",
     sha256: library.sha256,
   }));
+  const rest = full.blueprint.slice(main.length);
+  // Module names with "_" cannot collide: launcher and companion names are [A-Za-z0-9].
+  const nativeModules = records.map((_, i) => `${d.moduleName}_native_${i}`);
+  const partitionProperty =
+    partition === "product" ? "    product_specific: true,\n" : "";
+  const patch = install === "soong" ? soongAppNativePatch() : null;
+  const soongBlueprint = () => {
+    const launcher = main.replace(
+      "    dex_preopt:",
+      `    required: [${nativeModules.map((m) => `"${m}"`).join(", ")}],\n    dex_preopt:`,
+    );
+    if (launcher === main) throw new Error("Cannot extend the launcher module");
+    return `${launcher.replace(
+      "// Generated from a hash- and signer-verified downstream launcher.\n",
+      `// Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\n// prebuilt_app_native is the reviewed build/soong patch soong-app-native; apply it first.\n`,
+    )}${records
+      .map(
+        (r, i) =>
+          `\nprebuilt_app_native {\n    name: "${nativeModules[i]}",\n    src: "${r.path}",\n    filename: "${libraries[i]?.name}",\n    relative_install_path: "${d.moduleName}/lib/${target.arch}",\n${partitionProperty}}\n`,
+      )
+      .join("")}${rest}`;
+  };
   return {
     directory,
-    blueprint: `// The launcher ${d.moduleName} is in Android.mk, which installs its bundled JNI.\n${full.blueprint.slice(main.length)}`,
-    makefile: `# Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\nLOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := ${d.moduleName}\nLOCAL_MODULE_CLASS := APPS\nLOCAL_MODULE_SUFFIX := .apk\nLOCAL_SRC_FILES := Launcher.apk\nLOCAL_CERTIFICATE := PRESIGNED\nLOCAL_SDK_VERSION := 36\n${partition === "product" ? "LOCAL_PRODUCT_MODULE := true\n" : ""}LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := ${target.arch}\nLOCAL_DEX_PREOPT := false\nLOCAL_PREBUILT_JNI_LIBS := ${records.map((r) => r.path).join(" ")}\ninclude $(BUILD_PREBUILT)\n`,
+    blueprint:
+      install === "soong"
+        ? soongBlueprint()
+        : `// The launcher ${d.moduleName} is in Android.mk, which installs its bundled JNI.\n${rest}`,
+    makefile:
+      install === "soong"
+        ? null
+        : `# Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\nLOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := ${d.moduleName}\nLOCAL_MODULE_CLASS := APPS\nLOCAL_MODULE_SUFFIX := .apk\nLOCAL_SRC_FILES := Launcher.apk\nLOCAL_CERTIFICATE := PRESIGNED\nLOCAL_SDK_VERSION := 36\n${partition === "product" ? "LOCAL_PRODUCT_MODULE := true\n" : ""}LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := ${target.arch}\nLOCAL_DEX_PREOPT := false\nLOCAL_PREBUILT_JNI_LIBS := ${records.map((r) => r.path).join(" ")}\ninclude $(BUILD_PREBUILT)\n`,
     product: `${full.product}\n# Exact modes for the launcher's bundled JNI.\nlauncher_native_dir := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))\nTARGET_FS_CONFIG_GEN += $(launcher_native_dir)/config.fs\n`,
     config: records
       .map(
@@ -461,6 +506,19 @@ export function renderNativeOverlay(
       apkSha256: d.apkSha256,
       abi,
       moduleName: d.moduleName,
+      installRule: install === "soong" ? "soong-app-native" : "android-mk",
+      ...(patch
+        ? {
+            // The consumer's build/soong must carry exactly this reviewed patch.
+            soongPatch: {
+              name: patch.name,
+              manifestSha256: patch.manifestSha256,
+              project: patch.manifest.project,
+              revision: patch.manifest.revision,
+              files: patch.manifest.files,
+            },
+          }
+        : {}),
       libraries: records,
       // The bytes are the pinned APK's; the runtime they hold is not admitted here.
       runtimeAdmitted: false,
@@ -481,12 +539,20 @@ export function stageLauncher(options: {
   development: boolean;
   /** Install the launcher's stored lib/<abi> libraries beside it in the image. */
   nativeAbi?: NativeAbi;
+  /** With nativeAbi: Android.mk (default) or the Soong-only soong-app-native rule. */
+  nativeInstall?: NativeInstall;
 }) {
   if (
     options.nativeAbi !== undefined &&
     !Object.hasOwn(NATIVE_TARGETS, options.nativeAbi)
   )
     throw new Error("Unsupported native ABI");
+  if (options.nativeInstall !== undefined) {
+    if (!NATIVE_INSTALLS.includes(options.nativeInstall))
+      throw new Error("Unsupported native install rule");
+    if (options.nativeAbi === undefined)
+      throw new Error("A native install rule requires a native ABI");
+  }
   const d = validateDescriptor(
     JSON.parse(fs.readFileSync(options.descriptor, "utf8")),
   );
@@ -547,7 +613,12 @@ export function stageLauncher(options: {
         fs.readFileSync(apk),
         options.nativeAbi,
       );
-      const native = renderNativeOverlay(d, options.nativeAbi, libraries);
+      const native = renderNativeOverlay(
+        d,
+        options.nativeAbi,
+        libraries,
+        options.nativeInstall ?? "make",
+      );
       fs.mkdirSync(path.join(temporary, native.directory));
       for (const library of libraries)
         fs.writeFileSync(
@@ -555,7 +626,8 @@ export function stageLauncher(options: {
           library.data,
         );
       fs.writeFileSync(path.join(temporary, "Android.bp"), native.blueprint);
-      fs.writeFileSync(path.join(temporary, "Android.mk"), native.makefile);
+      if (native.makefile !== null)
+        fs.writeFileSync(path.join(temporary, "Android.mk"), native.makefile);
       fs.writeFileSync(path.join(temporary, "product.mk"), native.product);
       fs.writeFileSync(path.join(temporary, "config.fs"), native.config);
       fs.writeFileSync(
@@ -604,6 +676,7 @@ export function main(argv = process.argv.slice(2)) {
         "--aapt",
         "--apksigner",
         "--native-abi",
+        "--native-install",
       ].includes(flag) ||
       !value ||
       value.startsWith("--") ||
@@ -611,7 +684,7 @@ export function main(argv = process.argv.slice(2)) {
         (!companion?.[1] || !companion[2] || companion[1] in companions))
     )
       throw new Error(
-        "Expected --descriptor PATH --apk PATH [--companion MODULE=PATH ...] --output NEW_DIR [--native-abi arm64-v8a|x86_64] [--aapt PATH] [--apksigner PATH] [--development]",
+        "Expected --descriptor PATH --apk PATH [--companion MODULE=PATH ...] --output NEW_DIR [--native-abi arm64-v8a|x86_64 [--native-install make|soong]] [--aapt PATH] [--apksigner PATH] [--development]",
       );
     if (companion?.[1] && companion[2]) companions[companion[1]] = companion[2];
     else args[flag.slice(2)] = value;
@@ -629,6 +702,9 @@ export function main(argv = process.argv.slice(2)) {
       development,
       ...(args["native-abi"]
         ? { nativeAbi: args["native-abi"] as NativeAbi }
+        : {}),
+      ...(args["native-install"]
+        ? { nativeInstall: args["native-install"] as NativeInstall }
         : {}),
     }),
   );
