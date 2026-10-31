@@ -342,6 +342,10 @@ jobs:
         run: >-
           node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
           src/runtime/planner-finish-grounding.test.ts
+          src/runtime/__tests__/planner-native-scope-repair.test.ts
+          src/runtime/__tests__/planner-scope-failure-copy.test.ts
+          src/runtime/__tests__/planner-scope-history-replay.test.ts
+          src/runtime/__tests__/planner-tool-scoped-policy.test.ts
           src/services/message/notes-request-issuer.test.ts
           src/services/message/stage1-notes-producer.test.ts
           src/services/message/contextual-discovery.test.ts

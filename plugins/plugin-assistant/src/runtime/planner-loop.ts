@@ -1,6 +1,19 @@
-import { copyBoundOperationDenial, bindRequestOperationResult, getBoundOperationDenialAttempt, getBoundOperationDenialOperation, isVerifiedOutsideRequestDenial } from "@elizaos/core";
+import {
+  bindRequestOperationProjection,
+  bindRequestOperationResult,
+  copyBoundOperationDenial,
+  copyRequestOperationResult,
+  getBoundOperationDenialAttempt,
+  getBoundOperationDenialOperation,
+  isMatchingNotesMutationCompletion,
+  isVerifiedOutsideRequestDenial,
+  readNotesMutationCompletion,
+} from "@elizaos/core";
 import { findViewActionHandoff } from "@elizaos/core/protocol";
-import { completedSideEffectClaimIsUngrounded, evaluatePlannedReplyEgress } from "../services/message/egress-policy.ts";
+import {
+  completedSideEffectClaimIsUngrounded,
+  evaluatePlannedReplyEgress,
+} from "../services/message/egress-policy.ts";
 import { projectBackgroundHistory } from "../services/message/history-discovery.ts";
 import {
   replyNamesStructuredEffectDestination,
@@ -175,8 +188,8 @@ import {
   getSourceReplyBinding,
   resolveSuppliedSourceReply,
   SOURCE_REPLY_SCHEMA,
-  sourceReplyAssertionText,
   type SourceReplyRendering,
+  sourceReplyAssertionText,
   transformSourceReplyProse,
 } from "../services/message/source-reply.ts";
 import {
@@ -409,45 +422,201 @@ interface RawPlannerOutput {
  * completed change. Keep every step for audit and validate current receipts
  * independently of the requested-failure ledger, including custom evaluators.
  */
+// Non-enumerable carrier on this existing trajectory; never a model field or
+// reconstructed serialized authority. The pipeline supplies its actual issuer.
+const plannerRequestIssuer = Symbol("planner-request-operation-issuer");
+function trajectoryRequestIssuer(
+  trajectory: PlannerTrajectory,
+): PlannerLoopParams["requestOperationIssuer"] {
+  return Object.getOwnPropertyDescriptor(trajectory, plannerRequestIssuer)
+    ?.value;
+}
+function unsafeUnresolvedNotesContinuation(
+  trajectory: PlannerTrajectory,
+): PlannerStep | undefined {
+  return latestUnresolvedFailedNonTerminalToolStep(trajectory, (step) => {
+    const result = step.result;
+    if (!result) return false;
+    const values = plannerResultValues(result);
+    const topUnknown: unknown = Object.getOwnPropertyDescriptor(
+      result,
+      "outcomeUnknown",
+    )?.value;
+    const topReconciliation: unknown = Object.getOwnPropertyDescriptor(
+      result,
+      "reconciliationRequired",
+    )?.value;
+    return (
+      [
+        topUnknown,
+        topReconciliation,
+        result.data?.outcomeUnknown,
+        result.data?.reconciliationRequired,
+        values?.outcomeUnknown,
+        values?.reconciliationRequired,
+      ].some((value) => value !== undefined && value !== false) ||
+      [result.data, values].some(
+        (row) =>
+          row?.executionStatus === "not_started" &&
+          row.executed !== undefined &&
+          row.executed !== false,
+      ) ||
+      (result.effectReceipts?.some(
+        (receipt) =>
+          receipt.outcome === "failed" || receipt.outcome === "rolled_back",
+      ) ??
+        false)
+    );
+  });
+}
+function unrequestedNotesEffect(
+  trajectory: PlannerTrajectory,
+): PlannerStep | undefined {
+  return allTrajectorySteps(trajectory).find((step) => {
+    const result = step.result;
+    const proof =
+      result &&
+      readNotesMutationCompletion(result, trajectoryRequestIssuer(trajectory));
+    return (
+      proof?.requested === false &&
+      !proof.outsideRequestRejection &&
+      (result?.effectReceipts?.some((receipt) => receipt.outcome !== "noop") ??
+        false)
+    );
+  });
+}
+function matchingNotesMutationCompleted(
+  failed: object,
+  success: PlannerToolResult,
+  trajectory: PlannerTrajectory,
+): boolean {
+  if (
+    !isMatchingNotesMutationCompletion(
+      failed,
+      success,
+      trajectoryRequestIssuer(trajectory),
+    )
+  )
+    return false;
+  try {
+    const applied = (success.effectReceipts ?? []).filter(
+      (receipt) => receipt.outcome === "applied",
+    );
+    if (applied.length === 0) return true; // The actual owner may report a legitimate duplicate-create noop.
+    const active = new Set(
+      activeCommittedEffectReceipts(
+        allTrajectorySteps(trajectory).flatMap(
+          (step) => step.result?.effectReceipts ?? [],
+        ),
+      ).map((receipt) => receipt.receiptId),
+    );
+    return applied.every((receipt) => active.has(receipt.receiptId));
+  } catch {
+    return false;
+  }
+}
+function canonicalNotesRetryCall(
+  step: PlannerStep,
+  trajectory: PlannerTrajectory,
+): PlannerToolCall | undefined {
+  const call = step.toolCall;
+  const dispatch =
+    step.result &&
+    readNotesMutationCompletion(
+      step.result,
+      trajectoryRequestIssuer(trajectory),
+    )?.dispatch;
+  if (!call || !dispatch) return rejectedRetryCall(step);
+  const params = { ...call.params };
+  // Notes owns these supported operation selectors; the private registered
+  // dispatch, not any selector's raw text, establishes comparison identity.
+  for (const key of ["action", "subaction", "op"]) delete params[key];
+  params[dispatch.discriminator] = dispatch.value;
+  return { ...call, name: dispatch.child, params };
+}
+
 function plannerActionResults(trajectory: PlannerTrajectory): ActionResult[] {
   // Only actual current trajectory results. Provider text and prior stored
   // records cannot turn an old create into a receipt for this turn's claim.
-  return allTrajectorySteps(trajectory).flatMap(step => step.toolCall && step.result ? [{
-    success: step.result.success === true,
-    text: step.result.text,
-    userFacingText: step.result.userFacingText,
-    verifiedUserFacing: step.result.verifiedUserFacing,
-    userFacingEffectReceiptIds: step.result.userFacingEffectReceiptIds,
-    effectReceipts: step.result.effectReceipts,
-    data: step.result.data as ActionResult["data"],
-  }] : []);
+  return allTrajectorySteps(trajectory).flatMap((step) =>
+    step.toolCall && step.result
+      ? [
+          {
+            success: step.result.success === true,
+            text: step.result.text,
+            userFacingText: step.result.userFacingText,
+            verifiedUserFacing: step.result.verifiedUserFacing,
+            userFacingEffectReceiptIds: step.result.userFacingEffectReceiptIds,
+            effectReceipts: step.result.effectReceipts,
+            data: step.result.data as ActionResult["data"],
+          },
+        ]
+      : [],
+  );
 }
 
 function enforcePlannerFinishClaimGrounding(
-  params: PlannerLoopParams, result: PlannerLoopResult,
+  params: PlannerLoopParams,
+  result: PlannerLoopResult,
 ): PlannerLoopResult {
   // Keep the existing message-egress coding-mode policy separate.
-  if (params.codingMode === true || result.status !== "finished" || !result.finalMessage) return result;
+  if (
+    params.codingMode === true ||
+    result.status !== "finished" ||
+    !result.finalMessage
+  )
+    return result;
   const metadata = params.context.metadata;
-  const scope = params.postToolReplySeed?.sourceReply?.scope ??
-    (typeof metadata?.agentId === "string" && typeof metadata?.roomId === "string" && typeof metadata?.messageId === "string"
-      ? { agentId: metadata.agentId, roomId: metadata.roomId, messageId: metadata.messageId } : undefined);
-  const source = result.finalContent && scope && getSourceReplyBinding(result.finalContent, scope);
+  const scope =
+    params.postToolReplySeed?.sourceReply?.scope ??
+    (typeof metadata?.agentId === "string" &&
+    typeof metadata?.roomId === "string" &&
+    typeof metadata?.messageId === "string"
+      ? {
+          agentId: metadata.agentId,
+          roomId: metadata.roomId,
+          messageId: metadata.messageId,
+        }
+      : undefined);
+  const source =
+    result.finalContent &&
+    scope &&
+    getSourceReplyBinding(result.finalContent, scope);
   if (source && sourceReplyAssertionText(source) === "") return result;
-  if (!completedSideEffectClaimIsUngrounded({
-    reply: result.finalMessage, actionResults: plannerActionResults(result.trajectory), evaluator: result.evaluator,
-  })) return result;
+  if (
+    !completedSideEffectClaimIsUngrounded({
+      reply: result.finalMessage,
+      actionResults: plannerActionResults(result.trajectory),
+      evaluator: result.evaluator,
+    })
+  )
+    return result;
   const message = "I couldn’t verify that change from the recorded results.";
-  const failure = { kind: "reply_generation_error" as const, code: "REPLY_GROUNDING_FAILED", transient: false as const, message };
+  const failure = {
+    kind: "reply_generation_error" as const,
+    code: "REPLY_GROUNDING_FAILED",
+    transient: false as const,
+    message,
+  };
   return {
-    ...result, finalMessage: message, finalContent: undefined,
+    ...result,
+    finalMessage: message,
+    finalContent: undefined,
     terminalFailure: result.terminalFailure ?? failure,
     evaluator: {
-      ...result.evaluator, decision: "FINISH", success: false, requestFullyCovered: false,
-      thought: result.evaluator?.thought ?? "The final change claim lacked a current committed receipt binding.",
-      messageToUser: message, replyEffectStatus: "non_applied",
-      effectReceiptIds: undefined, outcomeCoverage: undefined,
-      plannerReply: undefined, copyToClipboard: undefined,
+      ...result.evaluator,
+      decision: "FINISH",
+      success: false,
+      requestFullyCovered: false,
+      thought:
+        result.evaluator?.thought ??
+        "The final change claim lacked a current committed receipt binding.",
+      messageToUser: message,
+      replyEffectStatus: "non_applied",
+      effectReceiptIds: undefined,
+      outcomeCoverage: undefined,
+      plannerReply: undefined,
+      copyToClipboard: undefined,
       replyFailure: result.evaluator?.replyFailure ?? failure,
     },
   };
@@ -597,11 +766,13 @@ export async function runPlannerLoop(
         modelUsage: usage,
       };
       const settled = enforcePlannerFinishClaimGrounding(params, candidate);
-      if (receipt && settled === candidate)
-        params.onTypedReadEgress?.(receipt);
+      if (receipt && settled === candidate) params.onTypedReadEgress?.(receipt);
       return settled;
     }
-    return enforcePlannerFinishClaimGrounding(params, { ...final, modelUsage: usage });
+    return enforcePlannerFinishClaimGrounding(params, {
+      ...final,
+      modelUsage: usage,
+    });
   } catch (error) {
     // error-policy:J4 Preserve settled effects and pending work at a resource boundary.
     getStreamingContext()?.abortSignal?.throwIfAborted();
@@ -845,6 +1016,9 @@ async function runPlannerLoopIterations(
       codingMode,
     };
   }
+  Object.defineProperty(trajectory, plannerRequestIssuer, {
+    value: params.requestOperationIssuer,
+  });
   onTrajectory(trajectory);
   trajectory.modelHistory ??= trajectoryStepsToMessages(
     [...trajectory.archivedSteps, ...trajectory.steps],
@@ -1123,6 +1297,114 @@ async function runPlannerLoopIterations(
           partialReply ?? getNonEmptyString(latestResult?.userFacingText),
       };
     }
+    if (evaluator.decision === "FINISH" && evaluator.success === true) {
+      const issuer = trajectoryRequestIssuer(trajectory);
+      const hostNotesSteps = allTrajectorySteps(trajectory).filter(
+        (step) =>
+          !!step.result &&
+          readNotesMutationCompletion(step.result, issuer) !== undefined,
+      );
+      const invalid = hostNotesSteps.some(
+        (step) =>
+          !!step.result &&
+          readNotesMutationCompletion(step.result, issuer)?.status !==
+            "current",
+      );
+      if (
+        invalid ||
+        (hostNotesSteps.length > 0 &&
+          unsafeUnresolvedNotesContinuation(trajectory)) ||
+        unrequestedNotesEffect(trajectory)
+      )
+        return {
+          ...evaluator,
+          success: false,
+          decision: "FINISH",
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          messageToUser: "I couldn’t confirm that Notes change was completed.",
+          thought:
+            "An invalid or unrequested effect outcome must remain accounted for; it is not safe completion or replay evidence.",
+        };
+      const ambiguous = latestUnresolvedFailedNonTerminalToolStep(
+        trajectory,
+        (step) =>
+          !!step.result &&
+          readNotesMutationCompletion(step.result, issuer)
+            ?.ambiguousRejection === true,
+      );
+      if (ambiguous)
+        return {
+          ...evaluator,
+          success: false,
+          decision: "FINISH",
+          requestFullyCovered: false,
+          replyEffectStatus: "non_applied",
+          messageToUser: "I couldn’t confirm that Notes change was completed.",
+          thought:
+            "The operation interpretation is unavailable; no required mutation can be inferred from an attempt.",
+        };
+      const pending = latestUnresolvedFailedNonTerminalToolStep(
+        trajectory,
+        (step) =>
+          !!step.result &&
+          readNotesMutationCompletion(step.result, issuer)?.rejected === true,
+      );
+      if (pending?.result) {
+        if (latestResult && hasExecutionPrerequisite(latestResult))
+          return {
+            ...evaluator,
+            success: false,
+            requestFullyCovered: false,
+          };
+        const blocked = unsafeUnresolvedNotesContinuation(trajectory);
+        if (blocked)
+          return {
+            ...evaluator,
+            success: false,
+            decision: "FINISH",
+            requestFullyCovered: false,
+            replyEffectStatus: "non_applied",
+            messageToUser:
+              "I couldn’t confirm that Notes change was completed.",
+            thought:
+              "An unresolved effect outcome must be reconciled instead of replayed.",
+          };
+        const proof = readNotesMutationCompletion(pending.result, issuer);
+        if (proof?.status !== "current")
+          return {
+            ...evaluator,
+            success: false,
+            decision: "FINISH",
+            requestFullyCovered: false,
+            replyEffectStatus: "non_applied",
+            messageToUser:
+              "I couldn’t confirm that Notes change was completed.",
+            thought:
+              "The original rejected operation is preserved, but its host proof is no longer current.",
+          };
+        appendPlannerModelFeedbackEvent(trajectory, {
+          id: `unresolved-request-operation:${iteration}`,
+          type: "instruction",
+          source: "planner-loop",
+          createdAt: Date.now(),
+          metadata: { code: "UNRESOLVED_REQUEST_OPERATION" },
+          content:
+            "A current requested Notes mutation was rejected before execution and is still unresolved. " +
+            "A different successful read or final scope flag does not complete it. Choose a corrected matching operation " +
+            "from the recorded validation result, or report a genuine blocker with success=false. Do not replay settled operations.",
+        });
+        return {
+          ...evaluator,
+          success: false,
+          decision: "CONTINUE",
+          requestFullyCovered: false,
+          messageToUser: undefined,
+          thought:
+            "The host-bound rejected Notes mutation still requires correction or a truthful stopped outcome.",
+        };
+      }
+    }
     if (
       lastPlannerExplicitCompleted !== false ||
       evaluator.decision !== "FINISH" ||
@@ -1131,9 +1413,19 @@ async function runPlannerLoopIterations(
       return null;
     // A failed operation or a user-owned prerequisite may legitimately stop
     // the chain. Do not turn confirmation/input pauses into automatic retries.
+    const latestNotesProof =
+      latestResult &&
+      readNotesMutationCompletion(
+        latestResult,
+        trajectoryRequestIssuer(trajectory),
+      );
+    const harmlessUnrequestedRefusal =
+      latestNotesProof?.outsideRequestRejection === true &&
+      latestNotesProof.status === "current";
     if (
       latestResult &&
-      (latestResult.success === false || hasExecutionPrerequisite(latestResult))
+      ((latestResult.success === false && !harmlessUnrequestedRefusal) ||
+        hasExecutionPrerequisite(latestResult))
     ) {
       return { ...evaluator, success: false };
     }
@@ -1473,6 +1765,87 @@ async function runPlannerLoopIterations(
       ...trajectory.steps.map((step) => step.iteration),
     ) + 1;
   for (let iteration = firstIteration; ; iteration++) {
+    const invalidNotesOperation = allTrajectorySteps(trajectory).find(
+      (step) => {
+        const proof =
+          step.result &&
+          readNotesMutationCompletion(
+            step.result,
+            trajectoryRequestIssuer(trajectory),
+          );
+        return proof !== undefined && proof.status !== "current";
+      },
+    );
+    const hostNotesSteps = allTrajectorySteps(trajectory).filter(
+      (step) =>
+        !!step.result &&
+        readNotesMutationCompletion(
+          step.result,
+          trajectoryRequestIssuer(trajectory),
+        ) !== undefined,
+    );
+    if (
+      (hostNotesSteps.length > 0 &&
+        unsafeUnresolvedNotesContinuation(trajectory)) ||
+      unrequestedNotesEffect(trajectory)
+    )
+      return finishWithEvaluator({
+        success: false,
+        decision: "FINISH",
+        requestFullyCovered: false,
+        replyEffectStatus: "non_applied",
+        thought:
+          "The effect outcome must be reconciled or accounted for before any further Notes recovery.",
+        messageToUser: "I couldn’t confirm that Notes change was completed.",
+      });
+    const ambiguousNotesOperation = latestUnresolvedFailedNonTerminalToolStep(
+      trajectory,
+      (step) =>
+        !!step.result &&
+        readNotesMutationCompletion(
+          step.result,
+          trajectoryRequestIssuer(trajectory),
+        )?.ambiguousRejection === true,
+    );
+    if (ambiguousNotesOperation)
+      return finishWithEvaluator({
+        success: false,
+        decision: "FINISH",
+        requestFullyCovered: false,
+        replyEffectStatus: "non_applied",
+        thought:
+          "The operation interpretation is unavailable; do not invent a required mutation.",
+        messageToUser: "I couldn’t confirm that Notes change was completed.",
+      });
+    const pendingNotesOperation = latestUnresolvedFailedNonTerminalToolStep(
+      trajectory,
+      (step) =>
+        !!step.result &&
+        readNotesMutationCompletion(
+          step.result,
+          trajectoryRequestIssuer(trajectory),
+        )?.rejected === true,
+    );
+    if (pendingNotesOperation && unsafeUnresolvedNotesContinuation(trajectory))
+      return finishWithEvaluator({
+        success: false,
+        decision: "FINISH",
+        requestFullyCovered: false,
+        replyEffectStatus: "non_applied",
+        thought:
+          "The unresolved effect outcome must be reconciled; the recorded rejection is not replay authority.",
+        messageToUser: "I couldn’t confirm that Notes change was completed.",
+      });
+    if (invalidNotesOperation)
+      return finishWithEvaluator({
+        success: false,
+        decision: "FINISH",
+        requestFullyCovered: false,
+        replyEffectStatus: "non_applied",
+        thought:
+          "The original rejected operation remains unresolved after its host proof changed or retired.",
+        messageToUser: "I couldn’t confirm that Notes change was completed.",
+      });
     getStreamingContext()?.abortSignal?.throwIfAborted();
     if (trajectory.plannedQueue.length === 0) {
       const contextBeforePlanner = trajectory.context;
@@ -1690,7 +2063,7 @@ async function runPlannerLoopIterations(
                 ),
                 ...("declaredTurnScope" in call &&
                 (call.declaredTurnScope === TURN_SCOPE_FINAL ||
-                call.declaredTurnScope === TURN_SCOPE_MORE_WORK_PENDING)
+                  call.declaredTurnScope === TURN_SCOPE_MORE_WORK_PENDING)
                   ? { [TURN_SCOPE_ARG]: call.declaredTurnScope }
                   : {}),
               },
@@ -5858,8 +6231,12 @@ async function evaluateTrajectory(
     trajectory,
     // Non-coding planner delivery waits for the same completed-effect guard
     // as the final result. Standalone runEvaluator behavior stays unchanged.
-    effects: params.codingMode === true ? params.evaluatorEffects
-      : params.evaluatorEffects?.copyToClipboard === false ? { copyToClipboard: false } : undefined,
+    effects:
+      params.codingMode === true
+        ? params.evaluatorEffects
+        : params.evaluatorEffects?.copyToClipboard === false
+          ? { copyToClipboard: false }
+          : undefined,
     recorder: params.recorder,
     trajectoryId: params.trajectoryId,
     cacheConversationId: params.cacheConversationId,
@@ -5868,14 +6245,25 @@ async function evaluateTrajectory(
     onUsage: params.onModelUsage,
   });
   if (params.codingMode === true) return output;
-  const guarded = output.decision === "FINISH"
-    ? enforcePlannerFinishClaimGrounding(params, {
-        status: "finished", trajectory, evaluator: output, finalMessage: output.messageToUser,
-      }).evaluator ?? output
-    : output;
-  const effects = output.decision !== "FINISH" && output.messageToUser && completedSideEffectClaimIsUngrounded({
-    reply: output.messageToUser, actionResults: plannerActionResults(trajectory), evaluator: output,
-  }) ? { ...params.evaluatorEffects, messageToUser: undefined } : params.evaluatorEffects;
+  const guarded =
+    output.decision === "FINISH"
+      ? (enforcePlannerFinishClaimGrounding(params, {
+          status: "finished",
+          trajectory,
+          evaluator: output,
+          finalMessage: output.messageToUser,
+        }).evaluator ?? output)
+      : output;
+  const effects =
+    output.decision !== "FINISH" &&
+    output.messageToUser &&
+    completedSideEffectClaimIsUngrounded({
+      reply: output.messageToUser,
+      actionResults: plannerActionResults(trajectory),
+      evaluator: output,
+    })
+      ? { ...params.evaluatorEffects, messageToUser: undefined }
+      : params.evaluatorEffects;
   // A CONTINUE message is still an assistant assertion. Withhold only its
   // unsupported message; clipboard text is not interpreted as assistant prose.
   await applyEvaluatorEffects(guarded, effects);
@@ -7192,8 +7580,10 @@ function hasExecutedNonTerminalTool(trajectory: PlannerTrajectory): boolean {
 
 function latestUnresolvedFailedNonTerminalToolStep(
   trajectory: PlannerTrajectory,
+  select?: (step: PlannerStep) => boolean,
 ): PlannerStep | undefined {
   const unresolvedByOperation = new Map<string, PlannerStep>();
+  let protectedCollision = 0;
   for (const step of [...trajectory.archivedSteps, ...trajectory.steps]) {
     if (
       step.toolCall === undefined ||
@@ -7205,17 +7595,49 @@ function latestUnresolvedFailedNonTerminalToolStep(
     const metadata = trajectory.context.metadata;
     const deniedAttempt = getBoundOperationDenialAttempt(step.result);
     const deniedOperation = getBoundOperationDenialOperation(step.result);
-    if (deniedAttempt && deniedOperation && step.result.success === false &&
+    if (
+      deniedAttempt &&
+      deniedOperation &&
+      step.result.success === false &&
       typeof metadata?.messageId === "string" &&
       typeof metadata?.roomId === "string" &&
       isVerifiedOutsideRequestDenial(step.result, {
-        messageId: metadata.messageId, roomId: metadata.roomId,
-        attempt: deniedAttempt, operation: deniedOperation,
-        ...(typeof metadata.entityId === "string" ? { entityId: metadata.entityId } : {}),
-      })) {
+        messageId: metadata.messageId,
+        roomId: metadata.roomId,
+        attempt: deniedAttempt,
+        operation: deniedOperation,
+        ...(typeof metadata.entityId === "string"
+          ? { entityId: metadata.entityId }
+          : {}),
+      })
+    ) {
       // This exact host-issued not-started attempt violated the current
       // read-only constraint. It creates no NEW requested-write obligation.
       // Original task coverage, ordinary failures and effects remain intact.
+      continue;
+    }
+    const completion = readNotesMutationCompletion(
+      step.result,
+      trajectoryRequestIssuer(trajectory),
+    );
+    if (
+      completion?.outsideRequestRejection &&
+      completion.status === "current"
+    ) {
+      // The same handled interpretation excludes this operation, and the
+      // actual owner proves it never started. Its failed step stays in history.
+      continue;
+    }
+    if (
+      (completion?.rejected || completion?.ambiguousRejection) &&
+      completion.status !== "current"
+    ) {
+      // A changed public result or retired registration cannot erase the
+      // originally issued failure or turn it into a successful completion.
+      unresolvedByOperation.set(
+        plannerToolOperationKey(step.toolCall, step.result),
+        step,
+      );
       continue;
     }
     // Input/confirmation pauses are deliberate partial completions, not failed
@@ -7249,10 +7671,38 @@ function latestUnresolvedFailedNonTerminalToolStep(
     // The absence of an effect is not proof that the user request completed.
     const operationKey = plannerToolOperationKey(step.toolCall, step.result);
     if (step.result.success === false || step.result.error != null) {
+      const previous = unresolvedByOperation.get(operationKey);
+      const previousProof =
+        previous?.result &&
+        readNotesMutationCompletion(
+          previous.result,
+          trajectoryRequestIssuer(trajectory),
+        );
+      if (
+        previous &&
+        (previousProof?.rejected || previousProof?.ambiguousRejection)
+      ) {
+        let protectedKey: string;
+        do {
+          protectedKey = `bound-request-rejection:${protectedCollision++}`;
+        } while (unresolvedByOperation.has(protectedKey));
+        unresolvedByOperation.set(protectedKey, previous);
+      }
       unresolvedByOperation.delete(operationKey);
       unresolvedByOperation.set(operationKey, step);
     } else if (step.result.success === true) {
       // Identical arguments do not prove every failed effect succeeded.
+      const protectedOperations = [...unresolvedByOperation.entries()].filter(
+        ([, failed]) => {
+          const proof =
+            failed.result &&
+            readNotesMutationCompletion(
+              failed.result,
+              trajectoryRequestIssuer(trajectory),
+            );
+          return proof?.rejected === true || proof?.ambiguousRejection === true;
+        },
+      );
       const previous = unresolvedByOperation.get(operationKey);
       if (
         !isRetryablePreExecutionRejection(previous?.result) &&
@@ -7262,17 +7712,34 @@ function latestUnresolvedFailedNonTerminalToolStep(
       ) {
         unresolvedByOperation.delete(operationKey);
       }
-      resolveRejectedCallsSupersededBy(
+      const strictlyResolved = resolveRejectedCallsSupersededBy(
         step,
         unresolvedByOperation,
         trajectory.outcomeIntents?.length ?? 0,
+        trajectory,
       );
       resolveShellFailuresSubsumedBy(step, unresolvedByOperation);
       resolveMalformedCallsSupersededBy(step, unresolvedByOperation);
       resolveFailedEffectsSupersededBy(step, unresolvedByOperation);
+      for (const [key, failed] of protectedOperations) {
+        if (
+          !unresolvedByOperation.has(key) &&
+          failed.result &&
+          (!strictlyResolved.has(key) ||
+            !matchingNotesMutationCompleted(
+              failed.result,
+              step.result,
+              trajectory,
+            ))
+        ) {
+          unresolvedByOperation.set(key, failed);
+        }
+      }
     }
   }
-  return [...unresolvedByOperation.values()].at(-1);
+  return [...unresolvedByOperation.values()]
+    .reverse()
+    .find((step) => !select || select(step));
 }
 
 /** A schema/validation refusal with explicit proof that dispatch did not start. */
@@ -7307,9 +7774,11 @@ function resolveRejectedCallsSupersededBy(
   step: PlannerStep,
   unresolvedByOperation: Map<string, PlannerStep>,
   declaredIntentCount: number,
-): void {
+  trajectory: PlannerTrajectory,
+): Set<string> {
+  const resolved = new Set<string>();
   const result = step.result,
-    call = rejectedRetryCall(step);
+    call = canonicalNotesRetryCall(step, trajectory);
   if (
     !call ||
     !result ||
@@ -7319,10 +7788,22 @@ function resolveRejectedCallsSupersededBy(
     result.data?.requiresInput === true ||
     result.effectReceipts?.some((receipt) => receipt.outcome === "failed")
   )
-    return;
+    return resolved;
   for (const [key, rejected] of unresolvedByOperation) {
     if (!isRetryablePreExecutionRejection(rejected.result)) continue;
-    const failedCall = rejectedRetryCall(rejected);
+    const proof =
+      rejected.result &&
+      readNotesMutationCompletion(
+        rejected.result,
+        trajectoryRequestIssuer(trajectory),
+      );
+    if (
+      (proof?.rejected || proof?.ambiguousRejection) &&
+      (!rejected.result ||
+        !matchingNotesMutationCompleted(rejected.result, result, trajectory))
+    )
+      continue;
+    const failedCall = canonicalNotesRetryCall(rejected, trajectory);
     if (
       !failedCall ||
       failedCall.name.toUpperCase() !== call.name.toUpperCase() ||
@@ -7430,9 +7911,12 @@ function resolveRejectedCallsSupersededBy(
         rejected.result,
         call,
       )
-    )
+    ) {
       unresolvedByOperation.delete(key);
+      resolved.add(key);
+    }
   }
+  return resolved;
 }
 
 /** Canonicalizes the calendar wrapper's explicitly supported operation aliases. */
@@ -8563,9 +9047,9 @@ function turnChangedNothing(trajectory: PlannerTrajectory): boolean {
                 receipt.failure.acceptance === "rejected"),
           )
         : result.data?.readOnlyOperation === true ||
-          (result.success === false &&
-            result.data?.acceptance === "rejected" &&
-            result.data?.executionStatus === "not_started");
+            (result.success === false &&
+              result.data?.acceptance === "rejected" &&
+              result.data?.executionStatus === "not_started");
     },
   );
 }
@@ -11929,7 +12413,10 @@ function ensureToolCallId(
  */
 export function actionResultToPlannerToolResult(
   result: ActionResult,
-  options: { summary?: string } = {},
+  options: {
+    summary?: string;
+    requestOperationIssuer?: PlannerLoopParams["requestOperationIssuer"];
+  } = {},
 ): PlannerToolResult {
   const data: Record<string, unknown> = {};
   if (result.data) {
@@ -11968,8 +12455,17 @@ export function actionResultToPlannerToolResult(
   if (options.summary) {
     plannerResult.summary = options.summary;
   }
+  if (options.requestOperationIssuer) {
+    bindRequestOperationProjection(
+      result,
+      plannerResult,
+      options.requestOperationIssuer,
+    );
+    copyRequestOperationResult(result, plannerResult);
+  }
   const projectionAttempt = getBoundOperationDenialAttempt(result);
-  if (projectionAttempt) bindRequestOperationResult(plannerResult, projectionAttempt);
+  if (projectionAttempt)
+    bindRequestOperationResult(plannerResult, projectionAttempt);
   copyBoundOperationDenial(result, plannerResult, projectionAttempt);
   return plannerResult;
 }

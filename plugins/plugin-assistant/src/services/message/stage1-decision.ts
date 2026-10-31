@@ -1,5 +1,8 @@
-import { beginStage1NotesRequestIssuer, resolveNotesRequestHostRestriction } from "./notes-request-issuer";
 import { commitNotesRequestRestriction } from "@elizaos/core";
+import {
+  beginStage1NotesRequestIssuer,
+  resolveNotesRequestHostRestriction,
+} from "./notes-request-issuer";
 /** Builds the complete Stage 1 request, performs bounded empty-output retries, and validates the response decision. Registers diagnostic persistence with the outer turn before handing control to routing and planning. */
 
 import type {
@@ -208,7 +211,10 @@ export async function generateStage1Decision(
     ownedStreamingContext?.abortSignal ?? new AbortController().signal;
 
   // Host issuer is private and never placed into model or State JSON.
-  const notesRequestIssuer = beginStage1NotesRequestIssuer(args.runtime, args.message);
+  const notesRequestIssuer = beginStage1NotesRequestIssuer(
+    args.runtime,
+    args.message,
+  );
   let notesClassificationInput: object | undefined;
 
   const responseHandlerFieldContext: ResponseHandlerFieldContext = {
@@ -691,7 +697,8 @@ export async function generateStage1Decision(
       // Snapshot the actual input of this call, including context-read loops.
       // The final handled response is committed against its own last input.
       const classificationInput = structuredClone({
-        messages: params.messages, tools: params.tools,
+        messages: params.messages,
+        tools: params.tools,
         toolChoice: params.toolChoice,
       });
       const raw = (await args.runtime.useModel(
@@ -1677,12 +1684,26 @@ export async function generateStage1Decision(
   if (notesRequestIssuer && notesClassificationInput) {
     // Keep the parsed model field intact. Existing current-request ownership
     // can only lower its host-effective restriction, never grant a write.
-    messageHandler.plan.notesRequestHostRestriction = resolveNotesRequestHostRestriction(
-      args.runtime, args.message, messageHandler.plan.notesRequestEffect ?? "unresolved",
-    );
-    const classifiedSource = notesClassificationInput;
+    messageHandler.plan.notesRequestHostRestriction =
+      resolveNotesRequestHostRestriction(
+        args.runtime,
+        args.message,
+        messageHandler.plan.notesRequestEffect ?? "unresolved",
+        messageHandler.plan.notesRequestInterpretation,
+      );
+    const classifiedSource = structuredClone({
+      input: notesClassificationInput,
+      interpretation: messageHandler.plan.notesRequestInterpretation,
+      hostRestriction: messageHandler.plan.notesRequestHostRestriction,
+    });
     commitNotesRequestRestriction(notesRequestIssuer, {
-      classification: messageHandler.plan.notesRequestHostRestriction?.classification ?? messageHandler.plan.notesRequestEffect ?? "unresolved",
+      classification:
+        messageHandler.plan.notesRequestHostRestriction?.classification ??
+        messageHandler.plan.notesRequestEffect ??
+        "unresolved",
+      interpretation: messageHandler.plan.notesRequestHostRestriction
+        ? { status: "contradictory", operations: [] }
+        : messageHandler.plan.notesRequestInterpretation,
       source: classifiedSource,
       currentSource: () => classifiedSource,
     });

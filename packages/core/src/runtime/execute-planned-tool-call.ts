@@ -1,5 +1,10 @@
+import {
+	beginRequestOperationAttempt,
+	bindRequestOperationResult,
+	getBoundOperationDenialAttempt,
+	getBoundOperationDenialOperation,
+} from "../actions/task-extraction-context";
 import { copyBoundOperationDenial } from "./operation-restriction-projection";
-import { getBoundOperationDenialAttempt, getBoundOperationDenialOperation, beginRequestOperationAttempt, bindRequestOperationResult } from "../actions/task-extraction-context";
 /**
  * Executes one planner-selected tool call against its Action: resolves the
  * action, applies role and connector-account gates, validates
@@ -357,9 +362,13 @@ export function projectActionResultForClipboard(
 			: undefined;
 	const safeActionName = actionName ?? resultActionName;
 	const safeControlData = {
-		...(getBoundOperationDenialAttempt(result) ? {
-			code: result.data?.code, executionStatus: "not_started", executed: false,
-		} : {}),
+		...(getBoundOperationDenialAttempt(result)
+			? {
+					code: result.data?.code,
+					executionStatus: "not_started",
+					executed: false,
+				}
+			: {}),
 		...(safeActionName ? { actionName: safeActionName } : {}),
 		...(result.data?.outcomeUnknown === true ? { outcomeUnknown: true } : {}),
 		...(result.data?.retryable === false ? { retryable: false } : {}),
@@ -416,7 +425,8 @@ export function projectActionResultForClipboard(
 			: {}),
 	};
 	const projectionAttempt = getBoundOperationDenialAttempt(result);
-	if (projectionAttempt) bindRequestOperationResult(projected, projectionAttempt);
+	if (projectionAttempt)
+		bindRequestOperationResult(projected, projectionAttempt);
 	copyBoundOperationDenial(result, projected, projectionAttempt);
 	return projected;
 }
@@ -695,37 +705,75 @@ export async function executePlannedToolCall(
 	// Mint the host attempt before schema rejection: an out-of-request operation
 	// remains outside the task even when the planner supplies malformed args.
 	const requestOperationAttempt = executorCtx.state
-		? beginRequestOperationAttempt({ runtime, state: executorCtx.state, message: executorCtx.message })
+		? beginRequestOperationAttempt({
+				runtime,
+				state: executorCtx.state,
+				message: executorCtx.message,
+				action,
+			})
 		: undefined;
 	if (action.restrictRequestOperation) {
-		const restriction: unknown = runWithActionRoutingContext({
-			actionName: action.name,
-			modelClass: action.modelClass,
-			messageId: executorCtx.message.id,
-			requestMessage: executorCtx.message,
-			requestState: executorCtx.state,
-			requestRuntime: runtime,
-			hostAttemptId: ownerExecutionId,
-			requestOperationAttempt,
-		}, () => action.restrictRequestOperation?.({
-			runtime, message: executorCtx.message, state: executorCtx.state,
-			action, params: toolCall.params,
-		}));
+		const restriction: unknown = runWithActionRoutingContext(
+			{
+				actionName: action.name,
+				modelClass: action.modelClass,
+				messageId: executorCtx.message.id,
+				requestMessage: executorCtx.message,
+				requestState: executorCtx.state,
+				requestRuntime: runtime,
+				hostAttemptId: ownerExecutionId,
+				requestOperationAttempt,
+			},
+			() =>
+				action.restrictRequestOperation?.({
+					runtime,
+					message: executorCtx.message,
+					state: executorCtx.state,
+					action,
+					params: toolCall.params,
+				}),
+		);
 		if (restriction !== undefined) {
 			// A callback cannot grant execution or manufacture outside-task proof.
 			// Invalid/async/lookalike output is a failed admission, never a pass.
-			if (!isContentRecord(restriction) ||
-				restriction.success !== false || !getBoundOperationDenialOperation(restriction) ||
+			if (
+				!isContentRecord(restriction) ||
+				restriction.success !== false ||
+				!getBoundOperationDenialOperation(restriction) ||
 				!requestOperationAttempt ||
-				getBoundOperationDenialAttempt(restriction) !== requestOperationAttempt) {
-				return emitToolResult(toolCall, redactDiagnosticText, failureResult(
-					action.name, "Invalid request-operation restriction result",
-					{ code: "ACTION_REQUEST_RESTRICTION_INVALID", acceptance: "rejected", executionStatus: "not_started", executed: false, retryable: false },
-					{ kind: "handler_error", boundary: "handler", code: "ACTION_REQUEST_RESTRICTION_INVALID", retryable: false },
-				));
+				getBoundOperationDenialAttempt(restriction) !== requestOperationAttempt
+			) {
+				return emitToolResult(
+					toolCall,
+					redactDiagnosticText,
+					failureResult(
+						action.name,
+						"Invalid request-operation restriction result",
+						{
+							code: "ACTION_REQUEST_RESTRICTION_INVALID",
+							acceptance: "rejected",
+							executionStatus: "not_started",
+							executed: false,
+							retryable: false,
+						},
+						{
+							kind: "handler_error",
+							boundary: "handler",
+							code: "ACTION_REQUEST_RESTRICTION_INVALID",
+							retryable: false,
+						},
+					),
+				);
 			}
-			return emitToolResult(toolCall, redactDiagnosticText,
-				normalizeActionResult(action.name, restriction, requestOperationAttempt));
+			return emitToolResult(
+				toolCall,
+				redactDiagnosticText,
+				normalizeActionResult(
+					action.name,
+					restriction,
+					requestOperationAttempt,
+				),
+			);
 		}
 	}
 
@@ -739,16 +787,20 @@ export async function executePlannedToolCall(
 		return emitToolResult(
 			toolCall,
 			redactDiagnosticText,
-			failureResult(
+			normalizeActionResult(
 				action.name,
-				"Tool arguments must be a plain object in params",
-				{ acceptance: "rejected", executionStatus: "not_started" },
-				{
-					kind: "handler_error",
-					boundary: "handler",
-					code: "ACTION_ARGUMENTS_INVALID",
-					retryable: true,
-				},
+				failureResult(
+					action.name,
+					"Tool arguments must be a plain object in params",
+					{ acceptance: "rejected", executionStatus: "not_started" },
+					{
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_ARGUMENTS_INVALID",
+						retryable: true,
+					},
+				),
+				requestOperationAttempt,
 			),
 			{
 				ownerCapture: runtime.ownerToolExecutionObserver
@@ -828,24 +880,28 @@ export async function executePlannedToolCall(
 		return emitToolResult(
 			toolCall,
 			redactDiagnosticText,
-			failureResult(
+			normalizeActionResult(
 				action.name,
-				validation.errors.join("; ") ||
-					`Invalid arguments for action ${action.name}`,
-				{
-					acceptance: "rejected",
-					executionStatus: "not_started",
-					parameterErrors: validation.errors,
-					...(invalidParameterNames.length > 0
-						? { invalidParameterNames }
-						: {}),
-				},
-				{
-					kind: "handler_error",
-					boundary: "handler",
-					code: "ACTION_ARGUMENTS_INVALID",
-					retryable: true,
-				},
+				failureResult(
+					action.name,
+					validation.errors.join("; ") ||
+						`Invalid arguments for action ${action.name}`,
+					{
+						acceptance: "rejected",
+						executionStatus: "not_started",
+						parameterErrors: validation.errors,
+						...(invalidParameterNames.length > 0
+							? { invalidParameterNames }
+							: {}),
+					},
+					{
+						kind: "handler_error",
+						boundary: "handler",
+						code: "ACTION_ARGUMENTS_INVALID",
+						retryable: true,
+					},
+				),
+				requestOperationAttempt,
 			),
 			{
 				ownerCapture: runtime.ownerToolExecutionObserver

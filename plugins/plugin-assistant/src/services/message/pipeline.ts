@@ -27,6 +27,7 @@ import {
   getContextRoutingFromState,
   getDirectActionRoutingRules,
   getLocalizedExamplesProvider,
+  getRequestOperationIssuer,
   getStreamingContext,
   getTrajectoryContext,
   getUserMessageText,
@@ -1641,8 +1642,17 @@ export async function runV5MessageRuntimeStage1(
           ...(messageHandler.plan.notesRequestEffect !== undefined
             ? { notesRequestEffect: messageHandler.plan.notesRequestEffect }
             : {}),
+          ...(messageHandler.plan.notesRequestInterpretation !== undefined
+            ? {
+                notesRequestInterpretation:
+                  messageHandler.plan.notesRequestInterpretation,
+              }
+            : {}),
           ...(messageHandler.plan.notesRequestHostRestriction !== undefined
-            ? { notesRequestHostRestriction: messageHandler.plan.notesRequestHostRestriction }
+            ? {
+                notesRequestHostRestriction:
+                  messageHandler.plan.notesRequestHostRestriction,
+              }
             : {}),
           ...(messageHandler.plan.replyEffectStatus !== undefined
             ? { replyEffectStatus: messageHandler.plan.replyEffectStatus }
@@ -2183,6 +2193,10 @@ export async function runV5MessageRuntimeStage1(
             };
           }
           return runPlannerLoop({
+            requestOperationIssuer: getRequestOperationIssuer(
+              args.runtime,
+              args.message,
+            ),
             ...(args.resolveTypedReadReply
               ? {
                   resolveTypedReadReply: args.resolveTypedReadReply,
@@ -2259,6 +2273,10 @@ export async function runV5MessageRuntimeStage1(
     ) =>
       timeInferenceSpan("message:planner", () =>
         runPlannerLoop({
+          requestOperationIssuer: getRequestOperationIssuer(
+            args.runtime,
+            args.message,
+          ),
           ...(args.resolveTypedReadReply
             ? {
                 resolveTypedReadReply: args.resolveTypedReadReply,

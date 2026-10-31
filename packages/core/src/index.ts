@@ -3,11 +3,36 @@
 export * from "./access-context";
 export * from "./access-control/provenance-envelope";
 export * from "./actions";
+// Request-bound negative operation constraints; never positive permission.
 export {
+	type BoundRequestOperationAttempt,
+	BoundRequestOperationError,
+	beginRequestOperationAttempt,
+	beginRequestOperationIssuer,
+	bindRequestOperationProjection,
+	bindRequestOperationResult,
 	bindTaskExtractionContext,
+	checkBoundNotesOperation,
+	commitNotesRequestRestriction,
+	copyRequestOperationResult,
+	getBoundOperationDenialAttempt,
+	getBoundOperationDenialOperation,
+	getRequestOperationIssuer,
+	isMatchingNotesMutationCompletion,
+	isVerifiedOutsideRequestDenial,
+	NOTES_REQUEST_OPERATIONS,
+	type NotesMutationCompletion,
+	type NotesRequestInterpretation,
+	type NotesRequestOperation,
+	normalizeNotesRequestInterpretation,
+	type RequestOperationClassification,
+	type RequestOperationIssuer,
+	readNotesMutationCompletion,
 	readTaskExtractionContext,
+	readTaskExtractionNotesRestriction,
 	readTaskExtractionRequestIntents,
 	readTaskExtractionUserSources,
+	transferBoundOperationDenial,
 } from "./actions/task-extraction-context";
 export {
 	actionToTool,
@@ -139,7 +164,6 @@ export {
 	recentLogs,
 	removeLogListener,
 } from "./logger.js";
-
 // Shared media boundary: fetching, attachment decoding, MIME detection, and cache.
 export * from "./media/attachments.js";
 export * from "./media/fetch.js";
@@ -200,7 +224,10 @@ export {
 	resolveActionRolePolicyRole,
 	warnOnUnmatchedActionRolePolicyKeys,
 } from "./runtime/action-role-policy";
-export { getActionRoutingContext, runWithActionRoutingContext } from "./runtime/action-routing-context.ts";
+export {
+	getActionRoutingContext,
+	runWithActionRoutingContext,
+} from "./runtime/action-routing-context.ts";
 export {
 	COMPLETION_CONTEXT_SCHEMA,
 	COMPLETION_CONTEXT_SELECTION_INSTRUCTIONS,
@@ -223,6 +250,7 @@ export {
 export * from "./runtime/execute-planned-tool-call";
 export * from "./runtime/message-content-segments";
 export * from "./runtime/message-content-storage";
+export { copyBoundOperationDenial } from "./runtime/operation-restriction-projection";
 export { createPreparedModelRequestGuard } from "./runtime/prepared-model-request";
 export {
 	projectDeferredProviders,
@@ -567,25 +595,4 @@ export {
 	ttsDebugTextPreview,
 } from "./utils/tts-debug.js";
 export { validateUuid } from "./utils/uuid.js";
-
-// Request-bound negative operation constraints; never positive permission.
-export {
-  beginRequestOperationIssuer,
-  getRequestOperationIssuer,
-  commitNotesRequestRestriction,
-  beginRequestOperationAttempt,
-  BoundRequestOperationError,
-  checkBoundNotesOperation,
-  readTaskExtractionNotesRestriction,
-  bindRequestOperationResult,
-  transferBoundOperationDenial,
-  getBoundOperationDenialAttempt,
-  getBoundOperationDenialOperation,
-  isVerifiedOutsideRequestDenial,
-  type BoundRequestOperationAttempt,
-  type RequestOperationClassification,
-  type NotesRequestOperation,
-} from "./actions/task-extraction-context";
-
-export { copyBoundOperationDenial } from "./runtime/operation-restriction-projection";
 export { READ_ONLY_VIEW_CAPABILITY_IDS } from "./views/view-interact-protocol";

@@ -1,3 +1,4 @@
+import type { NotesRequestInterpretation } from "../actions/task-extraction-context";
 /**
  * Plugin-component contracts — the things a plugin registers into the runtime:
  * `Action` (validate + handler), `Provider` (context injected into the prompt),
@@ -156,6 +157,8 @@ export type CompletionContextSelection = {
 export interface MessageHandlerPlan {
 	/** Same-call model-classified negative Notes restriction; never permission. */
 	notesRequestEffect?: "read_only" | "mutation_requested" | "unresolved";
+	/** Owned same-call semantic interpretation; not permission or execution proof. */
+	notesRequestInterpretation?: NotesRequestInterpretation;
 	/** Host-only contradiction evidence; never a model field or write grant. */
 	notesRequestHostRestriction?: {
 		classification: "unresolved";

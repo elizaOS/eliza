@@ -1,4 +1,11 @@
-import { copyBoundOperationDenial, bindRequestOperationResult, getBoundOperationDenialAttempt, getRequestOperationIssuer } from "@elizaos/core";
+import {
+  bindRequestOperationProjection,
+  bindRequestOperationResult,
+  copyBoundOperationDenial,
+  copyRequestOperationResult,
+  getBoundOperationDenialAttempt,
+  getRequestOperationIssuer,
+} from "@elizaos/core";
 import { projectBackgroundHistory } from "./history-discovery.ts";
 /** Adapts planner tool calls to the existing action executor and settles stream events and evidence-sensitive provider caches. */
 
@@ -397,12 +404,25 @@ export async function executeV5PlannedToolCall(
     args.executorCtx.message,
     rawActionResult,
   );
+  const requestOperationIssuer = getRequestOperationIssuer(
+    args.runtime,
+    args.executorCtx.message,
+  );
   const actionResult = projectActionResultForClipboard(
     action,
     rawActionResult,
     dispatchCall.name,
   );
+  if (actionResult !== rawActionResult && requestOperationIssuer) {
+    bindRequestOperationProjection(
+      rawActionResult,
+      actionResult,
+      requestOperationIssuer,
+    );
+    copyRequestOperationResult(rawActionResult, actionResult);
+  }
   const plannerResult = actionResultToPlannerToolResult(actionResult, {
+    requestOperationIssuer,
     summary: summarizeActionResultForPlanner(
       action,
       actionResult,
@@ -425,9 +445,22 @@ export async function executeV5PlannedToolCall(
     : pinned
       ? { ...plannerResult, registeredSubaction: pinned }
       : plannerResult;
+  if (finalPlannerResult !== plannerResult && requestOperationIssuer) {
+    bindRequestOperationProjection(
+      plannerResult,
+      finalPlannerResult,
+      requestOperationIssuer,
+    );
+    copyRequestOperationResult(plannerResult, finalPlannerResult);
+  }
   const projectionAttempt = getBoundOperationDenialAttempt(plannerResult);
-  if (projectionAttempt) bindRequestOperationResult(finalPlannerResult, projectionAttempt);
-  copyBoundOperationDenial(plannerResult, finalPlannerResult, projectionAttempt);
+  if (projectionAttempt)
+    bindRequestOperationResult(finalPlannerResult, projectionAttempt);
+  copyBoundOperationDenial(
+    plannerResult,
+    finalPlannerResult,
+    projectionAttempt,
+  );
   return finalPlannerResult;
 }
 

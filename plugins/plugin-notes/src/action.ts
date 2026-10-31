@@ -1,3 +1,4 @@
+import { NOTES_REQUEST_OPERATIONS } from "@elizaos/core";
 import { restrictNotesAction } from "./request-effect-gate.js";
 /**
  * NOTES — the chat door onto the durable notes store.
@@ -42,14 +43,7 @@ import {
 } from "./types.js";
 import { parseNoteDateRange, parseNoteFieldPatch } from "./validation.js";
 
-const NOTES_OPS = [
-  "create",
-  "list",
-  "get",
-  "update",
-  "patch",
-  "delete",
-] as const;
+const NOTES_OPS = NOTES_REQUEST_OPERATIONS;
 type NotesOp = (typeof NOTES_OPS)[number];
 
 function readParams(options?: HandlerOptions): Record<string, unknown> {
@@ -136,6 +130,32 @@ function failure(
             ],
           }
         : {}),
+    },
+  };
+}
+
+/** Owner validation before any store mutation; not an execution grant. */
+function parameterFailure(
+  text: string,
+  code: string,
+  parameter: "content" | "replacementContent" | "noteId",
+): ActionResult {
+  const result = failure(text, code, parameter);
+  return {
+    ...result,
+    failureProvenance: {
+      kind: "handler_error",
+      boundary: "handler",
+      code,
+      retryable: true,
+    },
+    data: {
+      ...result.data,
+      code,
+      acceptance: "rejected",
+      executionStatus: "not_started",
+      executed: false,
+      retryable: true,
     },
   };
 }
@@ -356,9 +376,13 @@ export const notesAction: Action = {
     // The fixed operation is owned by actual promotion metadata, never by
     // splitting an arbitrary action name or accepting a caller origin flag.
     const promoted = promotedSubactionDescription(action);
-    const parsed = readOp(promoted?.parent === notesAction.name
-      ? { action: promoted.subaction }
-      : isObjectRecord(params) ? params : {});
+    const parsed = readOp(
+      promoted?.parent === notesAction.name
+        ? { action: promoted.subaction }
+        : isObjectRecord(params)
+          ? params
+          : {},
+    );
     if (parsed && !parsed.recognized) return undefined;
     return restrictNotesAction(runtime, message, state, parsed?.op ?? "list");
   },
@@ -650,7 +674,7 @@ export const notesAction: Action = {
       params.noteId !== undefined &&
       !noteId
     ) {
-      return failure(
+      return parameterFailure(
         "Supply a nonempty exact note ID.",
         "NOTES_INVALID_ID",
         "noteId",
@@ -664,7 +688,7 @@ export const notesAction: Action = {
     }
     const target = noteId ?? content;
     if (!target) {
-      return failure(
+      return parameterFailure(
         "Tell me what the note should say.",
         "NOTES_MISSING_TEXT",
         "content",
@@ -740,7 +764,7 @@ export const notesAction: Action = {
       );
     }
     if (!hasAuthoredEdit && !hasTextEdit && !replacement) {
-      return failure(
+      return parameterFailure(
         "Pass textEdit for an append or exact substitution, or replacementContent for the complete updated note.",
         "NOTES_MISSING_PATCH",
         "replacementContent",
