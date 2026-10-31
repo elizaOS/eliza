@@ -3333,9 +3333,15 @@ export function readRelativeUpdateDelay(
   // Reject a supplied fractional winning value instead of silently flooring it
   // or falling back to a lower-priority unit. Valid seconds still outrank minutes.
   if (
-    (typeof rawSeconds === "number" && Number.isFinite(rawSeconds) && !Number.isInteger(rawSeconds)) ||
-    (seconds === undefined && typeof rawMinutes === "number" && Number.isFinite(rawMinutes) && !Number.isInteger(rawMinutes))
-  ) return { ms: null };
+    (typeof rawSeconds === "number" &&
+      Number.isFinite(rawSeconds) &&
+      !Number.isInteger(rawSeconds)) ||
+    (seconds === undefined &&
+      typeof rawMinutes === "number" &&
+      Number.isFinite(rawMinutes) &&
+      !Number.isInteger(rawMinutes))
+  )
+    return { ms: null };
   const ms =
     seconds !== undefined
       ? seconds * 1000
