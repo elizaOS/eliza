@@ -33,6 +33,7 @@ import {
   createUniqueUuid,
   deterministicOwnerEntityId,
   ElizaError,
+  extractUserText,
   getActiveRoutingContextsForTurn,
   getConnectorAccountManager,
   getVerifiedRelatedEntityIds,
@@ -55,6 +56,7 @@ import {
   selectBestRankedRecallItems,
   stringToUuid,
   toWellFormedUnicode,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import { findEntityByName } from "../../../entities.ts";
 import { deviceGmailRequestConsent } from "../../../services/device-actions/service.ts";
@@ -1246,11 +1248,19 @@ function normalizeSendParams(
   state: State | undefined,
   connectors: ConnectorWithHooks[],
 ): NormalizedSendParams {
+  // Target and source inference must read the user's own words, not the
+  // wrapped text. The security envelope and the document-augmentation
+  // envelope both sit in content.text, and the first match in that wrapped
+  // text can come from a document or a warning, not from the user. This is
+  // the same composition the notes-delete intent uses. An empty result sends
+  // inference to the recent-conversation fallback or the ask path, which is
+  // the safe result for mangled envelope material.
+  const inferenceText = extractUserText(unwrapUserMessageText(message));
   let target =
     textParam(raw.target) ??
     textParam(raw.recipient) ??
     textParam(message.content.target) ??
-    inferTargetFromText(message.content.text) ??
+    inferTargetFromText(inferenceText) ??
     inferTargetFromRecentConversation(state);
   let source = sourceFromParams(raw, message);
   const accountId = accountIdFromParams(raw, message);
@@ -1264,7 +1274,7 @@ function normalizeSendParams(
   if (fromTarget.target) target = fromTarget.target;
 
   if (!source) {
-    source = inferSourceFromText(message.content.text, connectors);
+    source = inferSourceFromText(inferenceText, connectors);
     if (source) sourceResolution = "inferred";
   }
 
