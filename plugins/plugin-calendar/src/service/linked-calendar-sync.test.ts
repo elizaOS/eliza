@@ -1674,18 +1674,31 @@ describe("managed Calendar source connection references", () => {
       summary: "Same calendar",
       accountEmail: "same@example.invalid",
       accessRole: "reader",
-      ...(reference === undefined ? {} : { managedGoogleConnectionId: reference }),
+      ...(reference === undefined
+        ? {}
+        : { managedGoogleConnectionId: reference }),
     };
   }
   it("preserves two exact references despite identical labels and calendar IDs without granting writes", async () => {
     const result = await sources([calendar("a", first), calendar("b", second)]);
-    expect(result.map((c) => c.managedGoogleConnectionId)).toEqual([first, second]);
+    expect(result.map((c) => c.managedGoogleConnectionId)).toEqual([
+      first,
+      second,
+    ]);
     expect(result[0].connectorAccountId).not.toBe(result[1].connectorAccountId);
     expect(result.every((c) => c.accessRole === "reader")).toBe(true);
     expect(result.every((c) => !("write" in c))).toBe(true);
   });
   it("keeps legacy and malformed association sources readable but unmapped", async () => {
-    const values = [undefined, null, "", 42, {}, "not-a-uuid", "a".repeat(4096)];
+    const values = [
+      undefined,
+      null,
+      "",
+      42,
+      {},
+      "not-a-uuid",
+      "a".repeat(4096),
+    ];
     const result = await sources(values.map((value) => calendar("a", value)));
     expect(result).toHaveLength(values.length);
     for (const source of result)
@@ -1698,8 +1711,12 @@ describe("managed Calendar source connection references", () => {
       { grantId: first },
       { connectorAccountId: first },
     ]) {
-      await expect(sources([{ ...calendar("a", first), ...patch }])).rejects.toThrow();
+      await expect(
+        sources([{ ...calendar("a", first), ...patch }]),
+      ).rejects.toThrow();
     }
-    expect(managedCalendarPlaceholder()).not.toHaveProperty("managedGoogleConnectionId");
+    expect(managedCalendarPlaceholder()).not.toHaveProperty(
+      "managedGoogleConnectionId",
+    );
   });
 });
