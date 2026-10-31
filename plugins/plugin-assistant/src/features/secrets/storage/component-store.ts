@@ -8,7 +8,7 @@
  */
 
 import type { Component, IAgentRuntime, UUID } from "@elizaos/core";
-import { createUniqueUuid, logger } from "@elizaos/core";
+import { createUniqueUuid, ElizaError, logger } from "@elizaos/core";
 import { isEncryptedSecret, type KeyManager } from "../crypto/encryption.ts";
 import type {
   EncryptedSecret,
@@ -192,6 +192,8 @@ export class ComponentSecretStorage extends BaseSecretStorage {
         `[ComponentSecretStorage] Updated secret: ${key} for user: ${context.userId}`,
       );
     } else {
+      await this.ensureSelfWorld();
+
       // Create new component
       const newComponent: Component = {
         id: createUniqueUuid(this.runtime, `${context.userId}-secret-${key}`),
@@ -311,6 +313,27 @@ export class ComponentSecretStorage extends BaseSecretStorage {
     });
 
     return true;
+  }
+
+  /**
+   * User secrets live in the agent's self room, which the runtime creates with
+   * worldId = agentId but without that world; the SQL adapter's
+   * components.world_id foreign key needs it. Insert only, like the remote
+   * browser's secure store: an existing world is never rewritten.
+   */
+  private async ensureSelfWorld(): Promise<void> {
+    const agentId = this.runtime.agentId;
+    if (await this.runtime.getWorld(agentId)) return;
+    try {
+      await this.runtime.createWorld({ id: agentId, agentId });
+    } catch (error) {
+      if (
+        !(error instanceof ElizaError) ||
+        error.code !== "WORLD_ALREADY_EXISTS"
+      )
+        throw error;
+      // error-policy:J2 a concurrent creator won; the world exists now.
+    }
   }
 
   /**
