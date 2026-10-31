@@ -6,6 +6,7 @@ import {
   ContentType,
   type HandlerCallback,
   type IAgentRuntime,
+  extractUserText,
   logger,
   type MediaGenerationMediaType,
   type Memory,
@@ -113,13 +114,18 @@ function readPrompt(message: Memory, params: Record<string, unknown>): string | 
     return prompt.trim();
   }
 
-  const text = message.content.text;
+  const text = extractUserText(message.content.text ?? "");
   return typeof text === "string" && text.trim() ? text.trim() : undefined;
 }
 
 function hasImageKeyword(message: Memory, state?: State): boolean {
+  // Match the keyword test against the user's own words, not the
+  // document-augmentation envelope: a retrieved help document that mentions
+  // image generation must not expose this action for a request that never
+  // asks for media (same class as the ACTIONS provider fix). Conversation
+  // logs are history, not the current envelope, so they stay as they are.
   const text = [
-    message.content.text,
+    extractUserText(message.content.text ?? ""),
     state?.values?.conversationLog,
     state?.values?.recentMessages,
     state?.data?.conversationLog,
