@@ -42,6 +42,17 @@ test("returns no ids when the map is readable but this client is not bound", () 
   expect(googleNativeClientIds("app_client")).toEqual([]);
 });
 
+test("returns no ids for a client id that names an inherited object property", () => {
+  // "constructor" is a valid app client id for normalizeAppClientId, so the
+  // lookup must read own keys only; Object.prototype.constructor is a function
+  // and would otherwise be reported as a corrupt entry for a valid config.
+  process.env[ENV_KEY] = JSON.stringify({
+    other_client: ["123-abc.apps.googleusercontent.com"],
+  });
+
+  expect(googleNativeClientIds("constructor")).toEqual([]);
+});
+
 test("reports an unparseable mapping instead of looking unconfigured", () => {
   process.env[ENV_KEY] =
     '{"app_client": ["123-abc.apps.googleusercontent.com",]}';

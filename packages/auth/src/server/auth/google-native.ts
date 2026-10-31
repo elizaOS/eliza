@@ -51,7 +51,12 @@ export function googleNativeClientIds(clientId: string): string[] {
       "expected a JSON object keyed by app client id",
     );
 
-  const ids = (configured as Record<string, unknown>)[clientId];
+  // Own keys only: a client id like "constructor" is a valid app client id, but
+  // reading it off the object would find Object.prototype.constructor and
+  // report a corrupt entry for a perfectly readable configuration.
+  const ids = Object.hasOwn(configured, clientId)
+    ? (configured as Record<string, unknown>)[clientId]
+    : undefined;
   // Client id absent from a readable map: this app simply has no Android
   // client, which is the same legitimate empty state as an unset variable.
   if (ids === undefined) return [];
