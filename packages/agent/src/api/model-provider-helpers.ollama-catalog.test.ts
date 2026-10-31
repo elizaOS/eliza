@@ -23,9 +23,9 @@ describe("fetchOllamaModels catalog status", () => {
     const fetchMock = vi.fn(async () => new Response("boom", { status: 503 }));
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(fetchOllamaModels("http://gpu-box:11434")).rejects.toBeInstanceOf(
-      ModelCatalogFetchError,
-    );
+    await expect(
+      fetchOllamaModels("http://gpu-box:11434"),
+    ).rejects.toBeInstanceOf(ModelCatalogFetchError);
   });
 
   it("keeps an unreachable localhost probe as an explicit empty catalog", async () => {
@@ -34,6 +34,8 @@ describe("fetchOllamaModels catalog status", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await expect(fetchOllamaModels("http://localhost:11434")).resolves.toEqual([]);
+    await expect(fetchOllamaModels("http://localhost:11434")).resolves.toEqual(
+      [],
+    );
   });
 });
