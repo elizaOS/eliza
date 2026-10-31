@@ -242,6 +242,51 @@ test("Android connects to an address only through a navigation the protection ru
     assert.equal(linux.files[filename], undefined);
 });
 
+test("Android pages follow a font size change while the browser stays open", async () => {
+  const tracker =
+    "chrome/android/java/src/org/chromium/chrome/browser/ChromeActivitySessionTracker.java";
+  const android = await generateComponentOverlay(request());
+  const source = android.files[tracker];
+  // Chromium sets the factor once per profile when a foreground session starts; that stays.
+  assert.match(
+    source,
+    /handlePerProfileForegroundSessionStart\(Profile profile\) \{[\s\S]*?FontSizePrefs\.getInstance\(profile\)\.setFontScaleFactor\(\);/,
+  );
+  // The application's configuration callback sets it again when the font scale changes.
+  const initialize = source.slice(
+    source.indexOf("public void initializeWithNative() {"),
+    source.indexOf("private void onFontScaleChanged() {"),
+  );
+  assert.match(
+    initialize,
+    /ApplicationStatus\.registerApplicationStateListener\(createApplicationStateListener\(\)\);[\s\S]*ContextUtils\.getApplicationContext\(\)\s*\.registerComponentCallbacks\(/,
+  );
+  assert.match(
+    initialize,
+    /public void onConfigurationChanged\(Configuration configuration\) \{\s*if \(configuration\.fontScale == mFontScale\) return;\s*mFontScale = configuration\.fontScale;\s*onFontScaleChanged\(\);/,
+  );
+  // Only during a session, and for each profile the session started.
+  assert.match(
+    source,
+    /private void onFontScaleChanged\(\) \{\s*ThreadUtils\.assertOnUiThread\(\);\s*if \(!mIsStarted\) return;\s*for \(Profile profile : mStartupProfileTasksCompleted\.getTrackedProfiles\(\)\) \{\s*FontSizePrefs\.getInstance\(profile\)\.setFontScaleFactor\(\);/,
+  );
+  for (const name of [
+    "android.content.ComponentCallbacks",
+    "android.content.res.Configuration",
+    "org.chromium.base.ContextUtils",
+  ])
+    assert.equal(source.split(`import ${name};`).length, 2);
+  assert.equal(android.report.outputs[tracker], sha256(source));
+  // Desktop builds keep Chromium's file unchanged.
+  const input = request();
+  input.platform = "linux";
+  input.assets["runtime-config.mjs"] = Buffer.from(
+    'export const nativeHost = "ai.elizaos.browser";\n',
+  );
+  const linux = await generateComponentOverlay(input);
+  assert.equal(linux.files[tracker], undefined);
+});
+
 test("source mutations, unsupported revisions, identity changes, and unexpected resources fail before output", async () => {
   await assert.rejects(
     generateComponentOverlay({ ...request(), revision: "0".repeat(40) }),

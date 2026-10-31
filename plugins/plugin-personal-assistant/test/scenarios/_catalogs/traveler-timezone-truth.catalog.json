@@ -83,7 +83,7 @@
       "tier": "T4",
       "surface": "scenario-runner",
       "status": "verified",
-      "notes": "pr-deterministic (keyless). Real scheduler tick across the 2026-11-01 US fall-back: a daily 08:00 America/New_York cron keeps 08:00 local on both sides (12:00Z EDT then 13:00Z EST) — no missed/duplicate/hour-early fire. Passes keyless under TZ=UTC + --conditions eliza-source."
+      "notes": "pr-deterministic (keyless). Real scheduler tick across the next US fall-back: a daily 08:00 America/New_York cron keeps 08:00 local on both sides (12:00Z EDT then 13:00Z EST) — no missed/duplicate/hour-early fire. Passes keyless under TZ=UTC + --conditions eliza-source."
     },
     {
       "id": "traveler-disruption-recovery-missed-connection",
