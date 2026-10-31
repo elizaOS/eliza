@@ -1,28 +1,51 @@
-/** Eliza Cloud 429s reach the runtime as one typed, bounded rate-limit error. */
+/**
+ * Eliza Cloud 429s reach the runtime as one typed, bounded rate-limit error.
+ * A connection reset before any response is retried in place, a few times.
+ */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import {
+  AgentRuntime,
   type IAgentRuntime,
   isInsufficientCreditsError,
+  isModelProviderFallbackError,
+  isModelProviderRetryBudgetExhaustedError,
   isRateLimitError,
   MAX_PROVIDER_RATE_LIMIT_RETRY_AFTER_MS,
+  ModelType,
   providerRateLimitRetryAt,
   readProviderRateLimit,
   type TextStreamResult,
 } from "@elizaos/core";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { handleResponseHandler, handleTextSmall } from "../src/models/text";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  ElizaCloudConnectionResetExhaustedError,
+  handleResponseHandler,
+  handleTextLarge,
+  handleTextSmall,
+  nextConnectionResetRetry,
+} from "../src/models/text";
 
 import {
   getCloudInferenceFailure,
   recordCloudInferenceFailure,
 } from "../src/utils/inference-diagnostics";
 
+/** `reset` drops the socket before the response, or after its headers and first bytes. */
+type Reply = {
+  status?: number;
+  headers: Record<string, string>;
+  body: string;
+  reset?: "before-response" | "after-headers";
+};
+
 let server: Server;
 let baseUrl: string;
 let requests: string[] = [];
 let onRequest: (() => void) | undefined;
-let reply: { status?: number; headers: Record<string, string>; body: string };
+let reply: Reply;
+/** Answers for the next requests, in order, before `reply`. */
+let replies: Reply[] = [];
 
 beforeAll(async () => {
   server = createServer((req, res) => {
@@ -30,8 +53,18 @@ beforeAll(async () => {
     onRequest?.();
     req.resume();
     req.on("end", () => {
-      res.writeHead(reply.status ?? 429, { "content-type": "application/json", ...reply.headers });
-      res.end(reply.body);
+      const next = replies.shift() ?? reply;
+      if (next.reset === "before-response") {
+        req.socket.destroy();
+        return;
+      }
+      res.writeHead(next.status ?? 429, { "content-type": "application/json", ...next.headers });
+      if (next.reset === "after-headers") {
+        res.write(next.body);
+        setTimeout(() => req.socket.destroy(), 20);
+        return;
+      }
+      res.end(next.body);
     });
   });
   await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
@@ -44,6 +77,7 @@ afterAll(async () => {
 
 beforeEach(() => {
   requests = [];
+  replies = [];
   onRequest = undefined;
 });
 
@@ -315,6 +349,182 @@ describe("Eliza Cloud text 429", () => {
       retryAfterMs: MAX_PROVIDER_RATE_LIMIT_RETRY_AFTER_MS,
     });
   });
+});
+
+describe("Eliza Cloud connection reset before any response", () => {
+  type Route = keyof typeof routes;
+  const allRoutes = Object.keys(routes) as Route[];
+  const chatOk = JSON.stringify({
+    choices: [
+      { index: 0, message: { role: "assistant", content: "Hi there" }, finish_reason: "stop" },
+    ],
+  });
+  // The stream route takes the gateway's buffered JSON answer as one chunk.
+  const ok: Record<Route, Reply> = {
+    "/responses": {
+      status: 200,
+      headers: {},
+      body: JSON.stringify({
+        status: "completed",
+        output: [{ type: "message", content: [{ type: "output_text", text: "Hi there" }] }],
+      }),
+    },
+    "/chat/completions": { status: 200, headers: {}, body: chatOk },
+    "/chat/completions (stream)": { status: 200, headers: {}, body: chatOk },
+  };
+  const resetBeforeResponse: Reply = { headers: {}, body: "", reset: "before-response" };
+  /** The error Bun's fetch rejects with when the socket closes before a response. */
+  const bunSocketClosed = (): Error =>
+    Object.assign(
+      new Error(
+        "The socket connection was closed unexpectedly. For more information, pass `verbose: true` in the second argument to fetch()"
+      ),
+      { code: "ECONNRESET", path: baseUrl, errno: 0 }
+    );
+
+  async function replyText(route: Route): Promise<string> {
+    const result = await routes[route]();
+    if (typeof result === "string") return result;
+    if (result && typeof result === "object" && "textStream" in result) {
+      let text = "";
+      for await (const chunk of (result as TextStreamResult).textStream) text += chunk;
+      return text;
+    }
+    return (result as { text: string }).text;
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each(allRoutes)("%s retries a Node socket reset before the headers", async (route) => {
+    replies = [resetBeforeResponse];
+    reply = ok[route];
+    expect(await replyText(route)).toBe("Hi there");
+    expect(requests).toHaveLength(2);
+  });
+
+  it.each(allRoutes)("%s retries Bun's top-level ECONNRESET", async (route) => {
+    const realFetch = globalThis.fetch;
+    const fetchSpy = vi
+      .fn((input: RequestInfo | URL, init?: RequestInit) => realFetch(input, init))
+      .mockRejectedValueOnce(bunSocketClosed());
+    vi.stubGlobal("fetch", fetchSpy);
+    reply = ok[route];
+    expect(await replyText(route)).toBe("Hi there");
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(requests).toHaveLength(1);
+  });
+
+  it.each(allRoutes)(
+    "%s stops after two retries with the typed provider budget exhaustion",
+    async (route) => {
+      reply = resetBeforeResponse;
+      const error = await failure(routes[route]);
+      expect(requests).toHaveLength(3);
+      expect(error).toBeInstanceOf(ElizaCloudConnectionResetExhaustedError);
+      // useModel reads these: skip this provider's sibling registrations,
+      // still fail over to a distinct provider.
+      expect(isModelProviderRetryBudgetExhaustedError(error)).toBe(true);
+      expect(isModelProviderFallbackError(error, "TEXT_SMALL")).toBe(true);
+      expect((error as Error).cause).toMatchObject({
+        message: "fetch failed",
+        cause: { code: "UND_ERR_SOCKET" },
+      });
+    }
+  );
+
+  it("spends one budget per useModel call, then skips this provider's siblings", async () => {
+    reply = resetBeforeResponse;
+    const agent = new AgentRuntime({
+      character: {
+        name: "Reset dispatch test",
+        bio: [],
+        settings: {
+          secrets: { ELIZAOS_CLOUD_API_KEY: "synthetic-test-key" },
+          ELIZAOS_CLOUD_BASE_URL: baseUrl,
+        },
+      },
+      logLevel: "fatal",
+      adapter: { createLogs: async () => undefined },
+    } as never);
+    agent.registerModel(ModelType.TEXT_SMALL, handleTextSmall as never, "elizaOSCloud", 10);
+    agent.registerModel(ModelType.TEXT_LARGE, handleTextLarge as never, "elizaOSCloud", 10);
+    const distinct = vi.fn(async () => "Hi from another provider");
+    agent.registerModel(ModelType.TEXT_LARGE, distinct, "other", 0);
+    expect(await agent.useModel(ModelType.TEXT_SMALL, { prompt: "Say hi" })).toBe(
+      "Hi from another provider"
+    );
+    // The TEXT_LARGE Cloud registration adds no attempts of its own.
+    expect(requests).toHaveLength(3);
+    expect(distinct).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(allRoutes)("%s never resends after the headers arrived", async (route) => {
+    reply = { status: 200, headers: {}, body: '{"choices":', reset: "after-headers" };
+    const error = await failure(routes[route]);
+    expect(requests).toHaveLength(1);
+    expect(isModelProviderRetryBudgetExhaustedError(error)).toBe(false);
+  });
+
+  it.each(allRoutes)("%s never retries a 429", async (route) => {
+    reply = {
+      headers: {},
+      body: JSON.stringify({ error: { message: "Too Many Requests", type: "rate_limit_error" } }),
+    };
+    const error = await failure(routes[route]);
+    expect(requests).toHaveLength(1);
+    expect(isRateLimitError(error)).toBe(true);
+    expect((error as { status?: number }).status).toBe(429);
+  });
+
+  it("keeps the added wait under 2 s", () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.999_999);
+    const state = { attempt: 0 };
+    const reset = bunSocketClosed();
+    const waits = [
+      nextConnectionResetRetry(state, reset, "responses"),
+      nextConnectionResetRetry(state, reset, "responses"),
+    ].map((retry) => ("delayMs" in retry ? retry.delayMs : Number.NaN));
+    expect(waits).toEqual([499, 1_499]);
+    expect(waits[0] + waits[1]).toBeLessThanOrEqual(2_000);
+    expect(nextConnectionResetRetry(state, reset, "responses")).toEqual({
+      error: expect.any(ElizaCloudConnectionResetExhaustedError),
+    });
+    // Other transport failures and cancelled calls are thrown unchanged.
+    const refused = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
+    expect(nextConnectionResetRetry({ attempt: 0 }, refused, "responses")).toEqual({
+      error: refused,
+    });
+    expect(
+      nextConnectionResetRetry({ attempt: 0 }, reset, "responses", AbortSignal.abort())
+    ).toEqual({ error: reset });
+  });
+
+  it.each(["/chat/completions", "/chat/completions (stream)"] as const)(
+    "%s ends the backoff when the caller cancels",
+    async (route) => {
+      const controller = new AbortController();
+      const reason = new DOMException("Synthetic user Stop", "AbortError");
+      replies = [resetBeforeResponse];
+      reply = ok[route];
+      onRequest = () => setTimeout(() => controller.abort(reason), 100);
+      await expect(
+        handleResponseHandler(runtime(), {
+          prompt: "Say hi",
+          messages: [{ role: "user", content: "Say hi" }],
+          signal: controller.signal,
+          ...(route === "/chat/completions (stream)"
+            ? { stream: true, streamStructured: true }
+            : {}),
+        } as never)
+      ).rejects.toBe(reason);
+      // Past the longest first wait (499 ms): the call was not sent again.
+      await new Promise((resolve) => setTimeout(resolve, 1_000));
+      expect(requests).toHaveLength(1);
+    }
+  );
 });
 
 describe("content-free support diagnostics", () => {

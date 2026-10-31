@@ -717,35 +717,115 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
 }
 
 /**
+ * Bounded retry for a Cloud connection that resets before any response.
+ *
+ * A socket reset before the response headers (Bun: an Error with code
+ * `ECONNRESET`; Node: `fetch failed` with a `UND_ERR_SOCKET` or `ECONNRESET`
+ * cause) leaves no HTTP status, and it failed the whole turn. The same request
+ * is sent again in place, at most CONNECTION_RESET_RETRY_DELAYS_MS.length
+ * times. Each wait is its scheduled delay plus up to the same again of jitter,
+ * so the added wait stays under 2 s. A reset while a body is read comes after
+ * the headers, when the server has answered and may have billed the call, so
+ * it is never retried. Every HTTP status, a 429 included, keeps its normal
+ * path. A spent budget throws the typed exhaustion, so the runtime skips the
+ * sibling registrations backed by this same provider, as it does for warming.
+ */
+const CONNECTION_RESET_RETRY_DELAYS_MS: readonly number[] = [250, 750];
+const CONNECTION_RESET_CODES = new Set(["ECONNRESET", "UND_ERR_SOCKET"]);
+
+/** A Cloud connection that kept resetting before any response, after its bounded retries. */
+export class ElizaCloudConnectionResetExhaustedError extends ElizaError {
+  override readonly name = "ElizaCloudConnectionResetExhaustedError";
+
+  constructor(label: string, attempts: number, cause: unknown) {
+    super("elizaOS Cloud connection reset before any response after retries", {
+      code: MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED,
+      context: { attempts, provider: "elizaOSCloud", route: label },
+      severity: "ephemeral",
+      cause,
+    });
+  }
+}
+
+/** True when the transport error, or one of its causes, is a dropped connection. */
+function isConnectionResetError(error: unknown): boolean {
+  let node = error;
+  for (let depth = 0; depth < 4 && typeof node === "object" && node !== null; depth++) {
+    const { code, cause } = node as { code?: unknown; cause?: unknown };
+    if (typeof code === "string" && CONNECTION_RESET_CODES.has(code)) return true;
+    node = cause;
+  }
+  return false;
+}
+
+/**
+ * Next step for a request that failed before any response: the jittered wait
+ * before it is sent again, or the error to throw. That error is the original
+ * one when it is not a connection reset or the call was cancelled, and the
+ * typed exhaustion once the retries are spent.
+ */
+export function nextConnectionResetRetry(
+  state: { attempt: number },
+  error: unknown,
+  label: string,
+  signal?: AbortSignal
+): { delayMs: number } | { error: unknown } {
+  if (signal?.aborted || !isConnectionResetError(error)) return { error };
+  if (state.attempt >= CONNECTION_RESET_RETRY_DELAYS_MS.length) {
+    return { error: new ElizaCloudConnectionResetExhaustedError(label, state.attempt + 1, error) };
+  }
+  const scheduled = CONNECTION_RESET_RETRY_DELAYS_MS[state.attempt];
+  state.attempt += 1;
+  const delayMs = scheduled + Math.floor(Math.random() * scheduled);
+  logger.warn(
+    `[ELIZAOS_CLOUD] cloud connection reset before any response on ${label}; retrying in ${delayMs}ms (attempt ${state.attempt}/${CONNECTION_RESET_RETRY_DELAYS_MS.length})`
+  );
+  return { delayMs };
+}
+
+/**
  * Run a buffered cloud text round-trip under the shared concurrency cap,
- * retrying in place while the gateway reports the structural warming 503.
+ * retrying in place while the gateway reports the structural warming 503 and
+ * within its own budget when the connection resets before any response.
  * The permit is held only across each network attempt — body reads and
  * backoff sleeps run unguarded. Returns the final response with its body
- * already read so callers never double-consume it. Non-warming failures return
- * immediately for the caller's normal error path; persistent structural
- * warming throws the typed exhaustion signal after this one complete budget.
+ * already read so callers never double-consume it. Other failures return
+ * immediately for the caller's normal error path; a persistent structural
+ * warming or connection reset throws the typed exhaustion signal after its
+ * one complete budget.
  */
 export async function requestNativeWithWarmingRetry(
   doRequest: () => Promise<Response>,
   label: string,
-  /** The caller's cancellation signal; it also ends a warming backoff sleep. */
+  /** The caller's cancellation signal; it also ends a retry backoff sleep. */
   signal?: AbortSignal,
   ownedTraceId?: string,
 ): Promise<{ response: Response; bodyText: string }> {
   const state: WarmingRetryState = { attempt: 0 };
+  const resetRetryState = { attempt: 0 };
   const timing = createModelHttpTiming(label, ownedTraceId);
   for (;;) {
     const queuedAt = performance.now();
-    const observed = await withNativeChatLimit(
-      () => timing.request(doRequest, performance.now() - queuedAt),
-      label,
-    );
+    let observed: Awaited<ReturnType<typeof timing.request>>;
+    try {
+      observed = await withNativeChatLimit(
+        () => timing.request(doRequest, performance.now() - queuedAt),
+        label,
+      );
+    } catch (error) {
+      // No response headers arrived, so the server has not answered.
+      const retry = nextConnectionResetRetry(resetRetryState, error, label, signal);
+      if ("error" in retry) throw retry.error;
+      await sleepMs(retry.delayMs, signal);
+      continue;
+    }
     const response = observed.response;
     let bodyText: string;
     try {
       bodyText = await response.text();
       observed.bodyDone("completed");
     } catch (error) {
+      // After the headers the server has answered: never sent again.
       observed.bodyDone(signal?.aborted ? "aborted" : "failed");
       throw error;
     }
@@ -2236,11 +2316,13 @@ export async function streamNativeChatCompletion(
   };
 
   // Per-attempt permit: acquired before each round-trip, released across
-  // warming-retry sleeps so a cold gateway never starves concurrent calls.
+  // retry sleeps so a cold gateway never starves concurrent calls.
   // A warming 503's body is consumed for classification, so its terminal
   // throw happens here; every other non-ok status leaves the body unread for
-  // the error path below.
+  // the error path below. A connection reset is retried only here, before
+  // any response, so nothing has streamed yet.
   const warmingRetryState: WarmingRetryState = { attempt: 0 };
+  const resetRetryState = { attempt: 0 };
   let response: Response;
   const modelHttpTiming = createModelHttpTiming("chat/completions:stream", headers["X-Eliza-Trace-Id"]);
   let bodyDone: ((outcome: "completed" | "failed" | "aborted") => void) | undefined;
@@ -2263,8 +2345,13 @@ export async function streamNativeChatCompletion(
       bodyDone = observed.bodyDone;
     } catch (err) {
       releasePermit();
-      if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, err);
-      throw err;
+      const retry = nextConnectionResetRetry(resetRetryState, err, "chat/completions:stream", signal);
+      if ("error" in retry) {
+        if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, retry.error);
+        throw retry.error;
+      }
+      await sleepMs(retry.delayMs, signal);
+      continue;
     }
     if (response.status !== 503) break;
     let warmingBodyText: string;
