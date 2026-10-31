@@ -82,6 +82,13 @@ const SPAN_HEAD = new RegExp(
 const SPAN_WORDS = /^((?:\s+[\p{L}\p{N}'’]+)+)(\s+|\s*,\s*)$/u;
 const PREPOSITION =
   /^(?:under|for|at|in|on|by|with|without|from|after|before|until|during|regardless)$/i;
+// The rest of the message after an address refuses it: "youtube.com, don't
+// open it", "youtube.com: do not visit", "youtube.com? Never."
+const NEGATION_HERE = new RegExp(`^(?:${NEGATION.source})`, "i");
+const TAIL_LEAD =
+  /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|please|but|and|so|just)[\s,]+)*/i;
+const TAIL_END =
+  /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s.!?)"'”’]*$/i;
 
 /** The address of a strict open command that is the whole current message:
  * "(please) open|visit|go to|navigate to <address>", with an optional
@@ -243,7 +250,9 @@ function typedAddresses(
           /^(?:https:\/\/|www\.)/i.test(token) ||
           SITE_BEFORE.test(before.slice(-40)) ||
           SITE_AFTER.test(after),
-        negated: negatesOpen(text, word.index),
+        negated:
+          negatesOpen(text, word.index) ||
+          negatedAfter(plain(after.slice(0, 200))),
       });
     }
   }
@@ -254,12 +263,7 @@ function typedAddresses(
 // verbs nearest before it. Refuses when unsure: a false refusal opens
 // nothing, and the strict command still opens without the model.
 function negatesOpen(text: string, at: number): boolean {
-  // One spelling of apostrophes, letters and ellipses; no invisible characters.
-  const before = text
-    .slice(Math.max(0, at - 500), at)
-    .replace(/[\u00ad\u200b-\u200f\u2060\ufeff]/g, "")
-    .replace(/[‘ʼ´`]/g, "'")
-    .normalize("NFKC");
+  const before = plain(text.slice(Math.max(0, at - 500), at));
   const targets = [before.length];
   const verbs = [...before.matchAll(OPEN_VERB)];
   let first = verbs.length - 1;
@@ -292,6 +296,37 @@ function negatesOpen(text: string, at: number): boolean {
   return false;
 }
 
+// The words after an address refuse it: a negated open verb with only "it",
+// "that" or a like word after it, or a bare "don't" or "never".
+function negatedAfter(after: string): boolean {
+  const tail = after.slice(TAIL_LEAD.exec(after)?.[0].length ?? 0);
+  const negation = NEGATION_HERE.exec(tail);
+  if (!negation) return false;
+  const rest = tail.slice(negation[0].length);
+  if (negation[1] && /^[\s.!?]*$/.test(rest)) return true;
+  const verb = new RegExp(OPEN_VERB.source, "i").exec(rest);
+  return (
+    !!verb &&
+    governs(rest.slice(0, verb.index), Boolean(negation[1])) &&
+    (!negation[2] ||
+      /ing\b/i.test(rest.slice(0, verb.index + verb[0].length))) &&
+    TAIL_END.test(rest.slice(verb.index + verb[0].length))
+  );
+}
+
+// One spelling of apostrophes, letters and ellipses. Emphasis marks and emoji
+// read as spaces, and invisible characters are dropped.
+function plain(text: string): string {
+  return text
+    .replace(/[\u00ad\u200b-\u200f\u2060\ufeff]/g, "")
+    .replace(/[‘ʼ´`]/g, "'")
+    .normalize("NFKC")
+    .replace(
+      /[*_~[\]{}<>|^]|\p{Extended_Pictographic}|\p{Emoji_Modifier}|\ufe0f|\u20e3/gu,
+      " ",
+    );
+}
+
 // "why don't you open", "why not open", "can't you open" and "won't you open"
 // ask for an open; they do not forbid one.
 function politeQuestion(text: string, start: number, end: number): boolean {
@@ -310,10 +345,12 @@ function politeQuestion(text: string, start: number, end: number): boolean {
 
 // Whether the text between a negation and its verb or address keeps them in
 // one clause.
-function governs(span: string, standalone: boolean): boolean {
+function governs(text: string, standalone: boolean): boolean {
+  // "Do not. Open." and "Don't! Ever! Open": a stop after "do not", "don't" or
+  // "never" reads as a comma.
+  const span = standalone ? text.replace(/[.!]+/g, ",") : text;
   const rest = span.slice(SPAN_HEAD.exec(span)?.[0].length ?? 0);
   if (/^(?:[\s,\u2014\u2013"'“”’-]|\.{2,})*$/.test(rest)) return true;
-  if (standalone && /^[\s,.!\u2014\u2013-]*$/.test(rest)) return true;
   const phrase = SPAN_WORDS.exec(rest);
   if (!phrase) return false;
   const words = phrase[1].trim().split(/\s+/);

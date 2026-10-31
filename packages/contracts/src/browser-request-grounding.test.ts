@@ -206,6 +206,15 @@ const NEGATED = [
   'don\'t "open" youtube.com',
   "Do not. Open. youtube.com",
   "Do. Not. Open. youtube.com",
+  "Don't. Ever. Open youtube.com",
+  "Don't. Under any circumstances. Open youtube.com",
+  // Emphasis marks and emoji.
+  "do **not** open youtube.com",
+  "*don't* open youtube.com",
+  "_never_ open youtube.com",
+  "don't ~~ever~~ open youtube.com",
+  "don't [open] youtube.com",
+  "don't \u{1F645}\u{1F3FD} open youtube.com",
   // Negations other than "not".
   "under no circumstances open youtube.com",
   "under no circumstances should you open youtube.com",
@@ -246,6 +255,15 @@ const NEGATED = [
   "don't open google.com nor youtube.com",
   "don't click youtube.com",
   "Don't use youtube.com",
+  // A negation after the address that refuses it.
+  "youtube.com, don't open it",
+  "youtube.com - do not open",
+  "youtube.com (do not visit)",
+  "youtube.com: never visit it",
+  "youtube.com? Don't.",
+  "youtube.com? no, don't open it",
+  "youtube.com, please don't go there",
+  "youtube.com: stop opening it",
 ];
 
 // The guard reads these as requests, not as negations of the open.
@@ -271,6 +289,13 @@ const NOT_NEGATED = [
   "Not google.com, open youtube.com",
   "Don't open google.com and visit youtube.com instead",
   "don't open google.com or bing.com, open youtube.com",
+  "Don't worry. Open youtube.com",
+  "Do not disturb. Open youtube.com",
+  "open youtube.com, don't open google.com",
+  "Open youtube.com but don't open it in Chrome",
+  "open youtube.com and don't open anything else",
+  "**Open** youtube.com \u{1F64F}",
+  "open youtube.com, no?",
 ];
 
 // [the user's current message, the model's proposed URL, what opens]
