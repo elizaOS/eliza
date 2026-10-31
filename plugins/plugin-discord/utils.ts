@@ -649,9 +649,11 @@ export async function sendMessageInChunks(
 					content: message,
 					// Same restriction as the client default, explicit here so
 					// the main reply funnel is safe even if the client
-					// default changes. Mass/role/user mentions in agent text
-					// render as text and do not ping.
-					allowedMentions: { parse: [] },
+					// default changes. Mass and role mentions in agent text
+					// do not ping; user mentions and reply-to-author pings
+					// still do (repliedUser must be set, or Discord
+					// defaults it to false once allowed_mentions is present).
+					allowedMentions: { parse: ["users"], repliedUser: true },
 				};
 				if (fence) {
 					options.nonce = fence.nonceForChunk(i);

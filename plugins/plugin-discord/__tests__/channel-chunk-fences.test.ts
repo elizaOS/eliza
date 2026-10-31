@@ -25,6 +25,28 @@ describe("sendMessageInChunks", () => {
 			expect(chunk.match(/```/g)?.length).toBe(2);
 		}
 	});
+
+	it("keeps user and reply pings while blocking mass and role pings", async () => {
+		const sent: Array<{ allowedMentions?: unknown }> = [];
+		const channel = {
+			send: async (options: { allowedMentions?: unknown }) => {
+				sent.push(options);
+				return { id: "1" };
+			},
+		};
+
+		await sendMessageInChunks(
+			channel as never,
+			"hi @everyone and <@&123> and <@456>",
+			"789",
+			[],
+		);
+
+		expect(sent[0]?.allowedMentions).toEqual({
+			parse: ["users"],
+			repliedUser: true,
+		});
+	});
 });
 
 describe("chunkDiscordText CommonMark fence rules", () => {
