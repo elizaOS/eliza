@@ -3272,7 +3272,6 @@ export class SlackService extends Service implements ISlackService {
     const targets: MessageConnectorTarget[] = [];
     const accountIds = this.getCandidateAccountIds(context, context.target);
     let lastError: unknown;
-    let anyQuerySucceeded = false;
 
     for (const accountId of accountIds) {
       const client = this.getClientForAccount(accountId);
@@ -3287,7 +3286,6 @@ export class SlackService extends Service implements ISlackService {
           },
           accountId,
         );
-        anyQuerySucceeded = true;
         for (const channel of channels) {
           const score = scoreSlackConnectorMatch(normalizedQuery, channel.id, [
             channel.name,
@@ -3321,7 +3319,6 @@ export class SlackService extends Service implements ISlackService {
 
       try {
         const members = await this.listAllConnectorUsers(accountId);
-        anyQuerySucceeded = true;
         for (const member of members) {
           const user: SlackUser = {
             id: member.id ?? "",
@@ -3410,7 +3407,7 @@ export class SlackService extends Service implements ISlackService {
       }
     }
 
-    if (targets.length === 0 && !anyQuerySucceeded && lastError) {
+    if (targets.length === 0 && lastError) {
       throw lastError;
     }
 

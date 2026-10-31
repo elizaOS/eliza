@@ -148,4 +148,44 @@ describe("Slack connector target lookup", () => {
     expect(targets.length).toBeGreaterThan(0);
     expect(targets[0].target.channelId).toBe("C123456");
   });
+
+  it("propagates user query failure when channel query succeeds with zero matches", async () => {
+    const scopeError = Object.assign(new Error("missing_scope: users:read"), {
+      code: "slack_webapi_platform_error",
+      data: { error: "missing_scope" },
+    });
+    const { service } = createService({
+      listChannels: vi.fn(async () => []),
+      listAllConnectorUsers: vi.fn(async () => {
+        throw scopeError;
+      }),
+    });
+
+    await expect(
+      service.resolveConnectorTargets(
+        "alice",
+        {} as MessageConnectorQueryContext,
+      ),
+    ).rejects.toBe(scopeError);
+  });
+
+  it("propagates channel query failure when user query succeeds with zero matches", async () => {
+    const channelError = Object.assign(new Error("ratelimited: conversations.list"), {
+      code: "slack_webapi_platform_error",
+      data: { error: "ratelimited" },
+    });
+    const { service } = createService({
+      listChannels: vi.fn(async () => {
+        throw channelError;
+      }),
+      listAllConnectorUsers: vi.fn(async () => []),
+    });
+
+    await expect(
+      service.resolveConnectorTargets(
+        "general",
+        {} as MessageConnectorQueryContext,
+      ),
+    ).rejects.toBe(channelError);
+  });
 });
