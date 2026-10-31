@@ -2740,10 +2740,15 @@ function isCalendarReadCall(
 /** Whether a feed result read the whole window its call asked for: whole
  * local days (details.date through details.endDate in details.timeZone) or
  * timestamp bounds with an explicit offset, the forms the feed action takes.
- * A call without them, or with bounds that do not resolve, proves no window. */
+ * A call that names no zone asks for local days in the owner's Calendar zone,
+ * which the producer states as the read's timeZone. Live 2026-10-31, an
+ * Eliza-only "this week" read with no zone in its call became the partial
+ * caveat (tj-413f7f38d569e7). A call without bounds, or with bounds that do
+ * not resolve, proves no window. */
 function feedReadCoversRequestedWindow(
   params: PlannerToolCall["params"],
   data: Record<string, unknown>,
+  readTimeZone: unknown,
 ): boolean {
   let details = params?.details;
   if (typeof details === "string") {
@@ -2766,7 +2771,7 @@ function feedReadCoversRequestedWindow(
         : Number.NaN,
     );
   } else {
-    const { date, endDate = date, timeZone } = details;
+    const { date, endDate = date, timeZone = readTimeZone } = details;
     const lastDay =
       typeof endDate === "string"
         ? parseUnambiguousZonedDateTime(`${endDate}T00:00`, "UTC")
@@ -2838,7 +2843,11 @@ function feedReadAnswersRequest(
         receipt.outcome === "noop" &&
         receipt.idempotency.replayed === false,
     ) ||
-    !feedReadCoversRequestedWindow(step.toolCall?.params, data) ||
+    !feedReadCoversRequestedWindow(
+      step.toolCall?.params,
+      data,
+      read.timeZone,
+    ) ||
     // calendar-handler.ts sets this in a device-owned Calendar turn, where a
     // connected-provider read must not stand in for the unread app Calendar.
     scope.appDeviceCalendarRead === false

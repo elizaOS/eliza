@@ -1,9 +1,10 @@
 /** Verifies operation substitution, source provenance and future-window proof through real evaluation. */
 
-import type {
-  CalendarReadBinding,
-  LifeOpsCalendarEvent,
-  LifeOpsCalendarFeed,
+import {
+  type CalendarReadBinding,
+  type LifeOpsCalendarEvent,
+  type LifeOpsCalendarFeed,
+  registerCalendarTimeZoneResolver,
 } from "@elizaos/contracts";
 import {
   AgentRuntime,
@@ -669,6 +670,20 @@ const LIVE_FEED_TURNS = {
     timeMax: "2026-11-03T08:00:00.000Z",
     reply: "No, nothing's scheduled for Monday, November 2.",
   },
+  // "Is there anything on it for this week?" on the Eliza-only direct stage;
+  // the call named no zone, so the producer read in the owner's zone.
+  "tj-413f7f38d569e7": {
+    citation: "step:1",
+    requestedAt: Date.parse("2026-10-31T23:17:46.440Z"),
+    intent:
+      "List this week's calendar events, October 26 through November 1, 2026, for the user.",
+    details: '{"date": "2026-10-26", "endDate": "2026-11-01"}',
+    sourceScope: { grantId: null, calendarId: null },
+    asOf: "2026-10-31T23:17:48.173Z",
+    timeMin: "2026-10-26T07:00:00.000Z",
+    timeMax: "2026-11-02T08:00:00.000Z",
+    reply: "Nothing's on the calendar for this week.",
+  },
 } as const;
 type LiveFeedTurn = keyof typeof LIVE_FEED_TURNS;
 
@@ -719,6 +734,7 @@ function liveFeedFixture(id: LiveFeedTurn = "tj-8dfdee5735fb18") {
   const readContext: Record<string, unknown> = {
     sourceScope: { ...turn.sourceScope },
     asOf: turn.asOf,
+    timeZone: "America/Los_Angeles",
     selection: "bounded_agenda",
     nextEventLookupPerformed: false,
   };
@@ -1792,6 +1808,189 @@ describe("Calendar agenda with and without Google", () => {
       expect(result.messageToUser).not.toContain(GOOGLE_UNREACHED);
     },
   );
+});
+
+/** The live b722 week read (tj-413f7f38d569e7): its call named no zone. */
+const ZONELESS_WEEK = "tj-413f7f38d569e7";
+/** The producer's facts for that read, spliced into failure copy. */
+const ZONELESS_WEEK_FACTS =
+  "No events from Monday, October 26, 2026 through Sunday, November 1, 2026, inclusive (America/Los_Angeles).";
+const PARTIAL_WEEK_COPY = `${ZONELESS_WEEK_FACTS} I couldn't confirm your whole calendar for those dates. Those Calendar results cover only the connected sources and dates checked.`;
+
+describe("Calendar agenda whose call names no zone", () => {
+  it("answers an Eliza-only empty week from the real producer without a caveat", async () => {
+    const f = liveFeedFixture(ZONELESS_WEEK);
+    const { replyContext: _reply, ...feed } = f.data;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(f.readContext.asOf as string));
+    try {
+      const runtime = new AgentRuntime({
+        character: { name: "Real feed", bio: [] },
+        logLevel: "fatal",
+      });
+      registerCalendarTimeZoneResolver(
+        runtime,
+        async () => "America/Los_Angeles",
+      );
+      const service = new CalendarService(runtime);
+      vi.spyOn(service, "getCalendarFeed").mockResolvedValue(
+        feed as unknown as LifeOpsCalendarFeed,
+      );
+      runtime.services.set(CalendarService.serviceType, [service]);
+      const noModel = async () => {
+        throw new Error("Unexpected producer model call");
+      };
+      const outcome = await createCalendarActionRunner({
+        runTextModel: noModel,
+        runJsonModel: noModel,
+        recentConversationTexts: async () => [],
+      }).handler(
+        runtime,
+        {
+          id: "00000000-0000-0000-0000-000000000291",
+          entityId: "00000000-0000-0000-0000-000000000292",
+          roomId: "00000000-0000-0000-0000-000000000293",
+          agentId: runtime.agentId,
+          createdAt: f.bindings[0].requestedAt,
+          content: { text: "Is there anything on it for this week?" },
+        },
+        undefined,
+        {
+          // As the live planner sent it: an object, with no timeZone.
+          parameters: {
+            subaction: "feed",
+            details: { date: "2026-10-26", endDate: "2026-11-01" },
+          },
+        },
+      );
+      if (!outcome || typeof outcome !== "object")
+        throw new Error("Missing real producer result");
+      f.trajectory.steps = [
+        {
+          ...f.read,
+          toolCall: {
+            ...f.read.toolCall,
+            params: {
+              intent: f.read.toolCall.params.intent,
+              details: { date: "2026-10-26", endDate: "2026-11-01" },
+            },
+          },
+          result: outcome,
+        },
+      ];
+    } finally {
+      vi.useRealTimers();
+    }
+    const read = f.trajectory.steps[0].result?.data as Record<string, unknown>;
+    expect(read.replyContext).toMatchObject({
+      userFacingFacts: ZONELESS_WEEK_FACTS,
+      context: { timeZone: "America/Los_Angeles" },
+    });
+    expect(calendarReadCoverage(f.output, f.context, f.trajectory)).toEqual({
+      verified: true,
+      unverifiedIntentIds: [],
+    });
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(true);
+    expect(result.requestFullyCovered).toBe(true);
+    expect(result.replyFailure).toBeUndefined();
+    expect(result.messageToUser).toBe(LIVE_FEED_TURNS[ZONELESS_WEEK].reply);
+  });
+  it.each<[string, (f: LiveFeed) => void]>([
+    [
+      "the producer states no zone",
+      (f) => {
+        delete f.readContext.timeZone;
+      },
+    ],
+    [
+      "the producer states another zone than its read",
+      (f) => {
+        f.readContext.timeZone = "Asia/Tokyo";
+      },
+    ],
+    [
+      "the call names another zone than the read",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"date": "2026-10-26", "endDate": "2026-11-01", "timeZone": "Asia/Tokyo"}';
+      },
+    ],
+    [
+      "it read part of the week",
+      (f) => {
+        f.data.timeMax = "2026-11-01T07:00:00.000Z";
+      },
+    ],
+  ])("still rejects the zoneless week when %s", (_, mutate) => {
+    const f = liveFeedFixture(ZONELESS_WEEK);
+    mutate(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory),
+    ).toMatchObject({
+      verified: false,
+      failureCode: "CALENDAR_READ_COVERAGE_INCOMPLETE",
+    });
+  });
+  it.each<[string, (f: LiveFeed) => void]>([
+    [
+      "the phone Calendar is stale beside a failed Google",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [
+          {
+            ...ELIZA_CALENDAR_SOURCE,
+            status: "stale",
+            syncedAt: EARLIER_REQUEST_AS_OF,
+          },
+          MANAGED_GOOGLE_UNAVAILABLE,
+        ];
+      },
+    ],
+    [
+      "a device Calendar failed beside the phone Calendar",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [
+          { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+          APPLE_CALENDAR_UNAVAILABLE,
+        ];
+      },
+    ],
+  ])(
+    "keeps the partial caveat on the zoneless week when %s",
+    async (_, mutate) => {
+      const f = liveFeedFixture(ZONELESS_WEEK);
+      (f.data.replyContext as Record<string, unknown>).userFacingFacts =
+        ZONELESS_WEEK_FACTS;
+      mutate(f);
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.requestFullyCovered).toBe(false);
+      expect(result.messageToUser).toBe(PARTIAL_WEEK_COPY);
+    },
+  );
+  it("says Google was not reached on the zoneless week when only Google failed", async () => {
+    const f = liveFeedFixture(ZONELESS_WEEK);
+    readPhoneWithoutGoogle(f);
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(true);
+    expect(result.messageToUser).toBe(
+      `${LIVE_FEED_TURNS[ZONELESS_WEEK].reply}\n\n${GOOGLE_UNREACHED}`,
+    );
+  });
 });
 
 /** tj-6eb9a245fd912d: "move the coffee with Sam to 2pm", search then a committed update. */
