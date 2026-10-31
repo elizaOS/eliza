@@ -459,7 +459,12 @@ export function impliedTriggerQuery(
   message: Memory | undefined,
 ): string | undefined {
   if (!message) return undefined;
-  const text = unwrapUserMessageText(message)
+  // The user's words, not chat augmentation's help-document envelope: the
+  // envelope's preamble does not start with a trigger verb, so without this
+  // unwrap a planner-sent delete with no target resolves to nothing. This
+  // mirrors the calendar messageText fix and the opCreate fix in this file;
+  // the external-content envelope stays handled by unwrapUserMessageText.
+  const text = extractUserText(unwrapUserMessageText(message))
     .replace(MENTION_MARKER_PATTERN, " ")
     .replace(/\s+/g, " ")
     .trim();
