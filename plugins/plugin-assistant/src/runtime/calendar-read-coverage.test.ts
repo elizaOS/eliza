@@ -796,6 +796,67 @@ function failCurrentRead(f: LiveFeed) {
 /** 6 minutes before the bound request: another request's read. */
 const EARLIER_REQUEST_AS_OF = "2026-10-30T15:58:02.000Z";
 
+/** A device-owned Calendar turn (plugin-calendar calendar-handler.ts) that
+ * read the connected Google grant instead: the producer marks the app/device
+ * Calendar unread, and an empty Google result says nothing about it. */
+function readGoogleInsteadOfAppCalendar(f: LiveFeed) {
+  delete f.output.outcomeCoverage;
+  f.read.toolCall.params.details =
+    '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "grantId": "alpha-google:broker", "calendarId": "primary"}';
+  f.readContext.sourceScope = {
+    grantId: "alpha-google:broker",
+    calendarId: "primary",
+    appDeviceCalendarRead: false,
+  };
+  f.data.sources = [
+    {
+      ...MANAGED_GOOGLE_UNAVAILABLE,
+      key: { ...MANAGED_GOOGLE_UNAVAILABLE.key, calendarId: "primary" },
+      status: "fresh",
+      syncedAt: f.readContext.asOf,
+      error: null,
+    },
+  ];
+}
+/** The pending app Calendar range request that device turn recorded first
+ * (device-actions service.ts): a success that carries no event data. */
+function requestAppCalendarFirst(f: LiveFeed) {
+  f.trajectory.steps.unshift({
+    iteration: 1,
+    toolCall: {
+      ...f.read.toolCall,
+      id: "device-agenda",
+      params: { ...f.read.toolCall.params },
+    },
+    result: {
+      success: true,
+      transcriptVisibility: "internal",
+      turnComplete: false,
+      modelReplyRequired: true,
+      effectReceipts: [
+        {
+          receiptId: "device-approval-1",
+          operation: "device.read_calendar_range",
+          resource: { kind: "device.approval", id: "device-approval-1" },
+          artifacts: [],
+          idempotency: { key: "agenda_device-approval-1", replayed: false },
+          observedAt: "2026-10-30T16:04:17.000Z",
+          outcome: "preview",
+        },
+      ],
+      data: {
+        replyContext: { domain: "calendar", scenario: "device_agenda_request" },
+        proposalId: "device-approval-1",
+        state: "pending",
+        executed: false,
+        approvalRequired: true,
+        localCalendarRead: false,
+      },
+    },
+  });
+  f.read.iteration = 2;
+}
+
 describe("required Calendar read without a usable coverage citation", () => {
   it.each(Object.keys(LIVE_FEED_TURNS) as LiveFeedTurn[])(
     "keeps the one request-bound read of live turn %s",
@@ -962,6 +1023,46 @@ describe("required Calendar read without a usable coverage citation", () => {
       (f) => {
         f.data.state = "partial";
         f.data.sources = [ELIZA_CALENDAR_SOURCE, MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "a partial primary-calendar read",
+      "tj-605ca329c8a78d",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [
+          ELIZA_CALENDAR_SOURCE,
+          {
+            ...MANAGED_GOOGLE_UNAVAILABLE,
+            key: {
+              ...MANAGED_GOOGLE_UNAVAILABLE.key,
+              calendarId: "family@group.calendar.google.com",
+            },
+          },
+        ];
+      },
+    ],
+    [
+      "a Google read standing in for the unread app Calendar",
+      "tj-8dfdee5735fb18",
+      readGoogleInsteadOfAppCalendar,
+    ],
+    [
+      "a cited Google read standing in for the unread app Calendar",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        readGoogleInsteadOfAppCalendar(f);
+        f.output.outcomeCoverage = [
+          { ...f.coverage, evidenceStepIds: ["1:success=true"] },
+        ];
+      },
+    ],
+    [
+      "a Google read after a pending app Calendar request",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        requestAppCalendarFirst(f);
+        readGoogleInsteadOfAppCalendar(f);
       },
     ],
   ])("does not ground an empty agenda on %s", async (_, id, mutate) => {

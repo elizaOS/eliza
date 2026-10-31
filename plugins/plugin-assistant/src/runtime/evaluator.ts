@@ -2778,9 +2778,13 @@ function feedReadCoversRequestedWindow(
  *   agent's own calendar;
  * - window: its read window covers the window its call asked for;
  * - completeness, relative to the source scope the call asked for: every
- *   in-scope source is fresh. An unscoped read must also be complete overall,
- *   so a partial or unavailable source never grounds a global agenda, while a
- *   grant- or calendar-scoped read is not judged on unrelated sources.
+ *   in-scope source is fresh. A read that names no grant must also be
+ *   complete overall, so a partial or unavailable source never grounds a
+ *   global agenda, while a grant-scoped read (such as the local Eliza
+ *   Calendar) is not judged on an unrelated Google source. A read the
+ *   producer marks as not reading the app/device Calendar never counts,
+ *   whatever grant it names: the evaluator cannot tell that the owner asked
+ *   for that other source.
  * Compaction does not change any of these, so an archived read of this
  * request stays valid. Otherwise the base outcome holds: no coverage without
  * a valid citation. */
@@ -2849,11 +2853,10 @@ function requestBoundFeedRead(
           isObjectRecord(source.key) &&
           source.key.side === "owner",
       ) &&
-      (grantId !== undefined ||
-        calendarId !== undefined ||
-        data.state === "complete") &&
-      // A named grant excludes the app/device Calendar; otherwise it is required.
-      (grantId !== undefined || scope.appDeviceCalendarRead !== false)
+      (grantId !== undefined || data.state === "complete") &&
+      // calendar-handler.ts sets this in a device-owned Calendar turn, where a
+      // connected-provider read must not stand in for the unread app Calendar.
+      scope.appDeviceCalendarRead !== false
     );
   });
   return bound.length === 1 && bound[0] === calls.at(-1)
