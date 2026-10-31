@@ -31,6 +31,7 @@ import {
 	type Message as DiscordMessage,
 	type MessageActionRowComponentBuilder,
 	type MessageCreateOptions,
+	type MessageMentionOptions,
 	PermissionsBitField,
 	type TextChannel,
 	ThreadChannel,
@@ -482,6 +483,7 @@ function safeStringify(obj: unknown): string {
  */
 interface MessageSendOptions {
 	content: string;
+	allowedMentions?: MessageMentionOptions;
 	// Mirrors discord.js `MessageCreateOptions.nonce`/`enforceNonce`: the
 	// coordination fence stamps a per-chunk nonce so Discord itself rejects a
 	// duplicate send if a retry races the lease, rather than posting twice.
@@ -645,6 +647,11 @@ export async function sendMessageInChunks(
 				}
 				const options: MessageSendOptions = {
 					content: message,
+					// Same restriction as the client default, explicit here so
+					// the main reply funnel is safe even if the client
+					// default changes. Mass/role/user mentions in agent text
+					// render as text and do not ping.
+					allowedMentions: { parse: [] },
 				};
 				if (fence) {
 					options.nonce = fence.nonceForChunk(i);
