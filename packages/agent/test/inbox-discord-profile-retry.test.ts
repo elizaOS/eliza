@@ -82,7 +82,11 @@ it("retries a failed Discord profile lookup instead of caching the absence", asy
     });
     await runtime.createEntities([
       { id: ownerId, agentId: runtime.agentId, names: ["Owner"] },
-      { id: runtime.agentId, agentId: runtime.agentId, names: ["InboxProfile"] },
+      {
+        id: runtime.agentId,
+        agentId: runtime.agentId,
+        names: ["InboxProfile"],
+      },
     ]);
     await runtime.createRooms([
       {
