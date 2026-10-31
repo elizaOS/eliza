@@ -4,7 +4,8 @@
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
 # exceptions, alongside a path-scoped native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
-# excluded.
+# excluded. A path-scoped Core/assistant/Notes owning-regression subset also
+# qualifies changes to that flow through the unchanged package test configs.
 name: PR Validation
 
 on:
@@ -305,6 +306,7 @@ jobs:
           retention-days: 3
 
       - name: Build selected workspace closure
+        id: notes_owning_build
         if: steps.affected.outputs.source == 'true'
         env:
           RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
@@ -360,6 +362,83 @@ jobs:
             src/runtime/calendar-read-coverage.test.ts \
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
+
+      - name: Select Core, assistant and Notes owning regressions
+        id: notes_owning_scope
+        if: steps.affected.outputs.source == 'true'
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          diff_status=0
+          git diff --quiet "$BASE_SHA"..."$HEAD_SHA" -- \
+            packages/core packages/agent plugins/plugin-assistant plugins/plugin-notes || diff_status=$?
+          if [ "$diff_status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$diff_status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$diff_status"
+          fi
+
+      - name: Verify Notes request effects through the owning config
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-notes
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/__tests__/request-effect.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify assistant Notes planning and discovery
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/runtime/planner-finish-grounding.test.ts
+          src/runtime/__tests__/planner-native-scope-repair.test.ts
+          src/runtime/__tests__/planner-scope-failure-copy.test.ts
+          src/runtime/__tests__/planner-scope-history-replay.test.ts
+          src/runtime/__tests__/planner-tool-scoped-policy.test.ts
+          src/services/message/notes-request-issuer.test.ts
+          src/services/message/stage1-notes-producer.test.ts
+          src/services/message/contextual-discovery.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify Core context and action authority
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: packages/core
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../scripts/run-vitest.ts run --config vitest.config.ts
+          test/async-context.node-esm.test.ts
+          test/context-renderer-runtime-events.test.ts
+          test/mode-action-authority.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
 
       - name: Verify gateway routing and release preparation
         if: steps.affected.outputs.cloud == 'true'
