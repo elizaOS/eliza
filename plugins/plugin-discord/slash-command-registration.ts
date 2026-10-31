@@ -147,6 +147,13 @@ export async function registerDiscordSlashCommands(
 			try {
 				await clientApp.commands.set(transformedGlobalCommands);
 			} catch (err) {
+				host.runtime.reportError(
+					"DiscordService.commandSync",
+					err instanceof Error ? err : new Error(String(err)),
+					{
+						accountId: state.accountId,
+					},
+				);
 				host.runtime.logger.error(
 					{
 						src: "plugin:discord",
@@ -229,6 +236,15 @@ export async function registerDiscordSlashCommands(
 									await fullGuild.commands.create(transformedCmd);
 								}
 							} catch (error) {
+								host.runtime.reportError(
+									"DiscordService.commandSync",
+									error instanceof Error ? error : new Error(String(error)),
+									{
+										accountId: state.accountId,
+										guildId,
+										commandName: cmd.name,
+									},
+								);
 								host.runtime.logger.error(
 									{
 										src: "plugin:discord",
