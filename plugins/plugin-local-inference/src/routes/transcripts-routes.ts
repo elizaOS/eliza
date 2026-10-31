@@ -448,10 +448,21 @@ const updateRoute: Route = {
 		return { status: 200, body: { transcript: updated } };
 	},
 };
+/**
+ * Body budget for transcript creation. The shell posts a recorded session WAV
+ * as base64 in the JSON body, and the handler persists audio of any size, but
+ * the agent server's Hono mount answers 413 over its 1 MiB default before the
+ * handler runs — a session WAV over about 768 KiB never lands. Declare the
+ * same audio-derived JSON budget as the cloud STT route (25 MiB of audio,
+ * base64-inflated) so the host gate matches the audio the route accepts.
+ */
+const TRANSCRIPT_CREATE_MAX_BODY_BYTES =
+	Math.ceil((25 * 1024 * 1024) / 3) * 4 + 1024;
 const createRoute: Route = {
 	type: "POST",
 	path: "/api/transcripts",
 	rawPath: true,
+	maxBodyBytes: TRANSCRIPT_CREATE_MAX_BODY_BYTES,
 	routeHandler: async (ctx): Promise<RouteHandlerResult> => {
 		const body = ctx.body as CreateTranscriptRequest | undefined;
 		if (!body || !Array.isArray(body.segments) || body.segments.length === 0) {
