@@ -1,5 +1,6 @@
 import { authoredNoteText } from "./note-authored.js";
 import { applyNotePatch } from "./note-patch.js";
+import { assertNotesServiceMutation } from "./request-effect-gate.js";
 import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate
@@ -380,6 +381,7 @@ export class NotesService extends Service {
     snapshot: NotesSnapshot;
     replayed: boolean;
   }> {
+    assertNotesServiceMutation(this.runtime, "create");
     const input = parseCreateNoteInput(inputValue);
     const now = this.now().toISOString();
     const id = parseEntityId(this.createId());
@@ -449,6 +451,7 @@ export class NotesService extends Service {
     snapshot: NotesSnapshot;
     consolidatedIds: string[];
   }> {
+    assertNotesServiceMutation(this.runtime, "update");
     const id = parseEntityId(idValue);
     const patch = parseUpdateNoteInput(patchValue);
     const revision = parseNoteEditRevision(
@@ -501,6 +504,7 @@ export class NotesService extends Service {
     consolidatedCount: number;
     consolidatedIds: string[];
   }> {
+    assertNotesServiceMutation(this.runtime, "update");
     const patch = parseUpdateNoteInput(patchValue);
     const revision = parseNoteEditRevision(
       expectedRevision,
@@ -560,6 +564,7 @@ export class NotesService extends Service {
     snapshot: NotesSnapshot;
     removedIds: string[];
   }> {
+    assertNotesServiceMutation(this.runtime, "delete");
     const id = parseEntityId(idValue);
     let removedIds: string[] = [];
     const transaction = await this.store.transact((draft) => {
@@ -599,6 +604,7 @@ export class NotesService extends Service {
     idValue: unknown,
     expectedRevision: unknown,
   ): Promise<{ value: StickyNote; snapshot: NotesSnapshot }> {
+    assertNotesServiceMutation(this.runtime, "update");
     const id = parseEntityId(idValue);
     const revision = parseNoteEditRevision(expectedRevision, true);
     const transaction = await this.store.transact((draft) => {
@@ -631,6 +637,7 @@ export class NotesService extends Service {
     removedIds: string[];
   }> {
     let removedIds: string[] = [];
+    assertNotesServiceMutation(this.runtime, "delete");
     const transaction = await this.store.transact((draft) => {
       const index = resolveNoteIndex(draft.notes, selector, value);
       const existing = draft.notes[index];
@@ -694,6 +701,7 @@ export class NotesService extends Service {
     value: number;
     snapshot: NotesSnapshot;
   }> {
+    assertNotesServiceMutation(this.runtime, "delete");
     const transaction = await this.store.transact((draft) => {
       if (
         expectedRevision !== undefined &&

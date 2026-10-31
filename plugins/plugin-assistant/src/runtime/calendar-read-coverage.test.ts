@@ -641,6 +641,1159 @@ describe("request-bound Calendar read coverage", () => {
   });
 });
 
+/** The live agenda turns as recorded: request time, the planner's one feed
+ * call and the producer's receipt, window, source scope and keyed sources. */
+const LIVE_FEED_TURNS = {
+  // "what's on my calendar today?"; the evaluator omitted coverage.
+  "tj-605ca329c8a78d": {
+    citation: "omitted",
+    requestedAt: Date.parse("2026-10-30T15:14:25.059Z"),
+    intent: "Read today's Calendar agenda",
+    details:
+      '{"date": "2026-10-30", "timeZone": "America/Los_Angeles", "calendarId": "primary", "side": "owner"}',
+    sourceScope: { grantId: null, calendarId: "primary" },
+    asOf: "2026-10-30T15:14:30.402Z",
+    timeMin: "2026-10-30T07:00:00.000Z",
+    timeMax: "2026-10-31T07:00:00.000Z",
+    reply: "Nothing's on your calendar today.",
+  },
+  // "do I have anything on Monday?"; the evaluator cited "1:success=true".
+  "tj-8dfdee5735fb18": {
+    citation: "1:success=true",
+    requestedAt: Date.parse("2026-10-30T16:04:15.470Z"),
+    intent: "Check Monday's calendar events",
+    details: '{"timeZone": "America/Los_Angeles", "date": "2026-11-02"}',
+    sourceScope: { grantId: null, calendarId: null },
+    asOf: "2026-10-30T16:04:20.460Z",
+    timeMin: "2026-11-02T08:00:00.000Z",
+    timeMax: "2026-11-03T08:00:00.000Z",
+    reply: "No, nothing's scheduled for Monday, November 2.",
+  },
+} as const;
+type LiveFeedTurn = keyof typeof LIVE_FEED_TURNS;
+
+const ELIZA_CALENDAR_SOURCE = {
+  key: {
+    provider: "eliza",
+    side: "owner",
+    grantId: "eliza-calendar",
+    connectorAccountId: "eliza-calendar",
+    calendarId: "primary",
+  },
+  summary: "Eliza Calendar",
+  accessRole: "owner",
+  visibility: "details",
+  status: "fresh",
+  syncedAt: "2026-10-30T15:14:30.401Z",
+  error: null,
+};
+/** The v26 Pixel smoke: managed Google discovery failed (#743 6538581622). */
+const MANAGED_GOOGLE_UNAVAILABLE = {
+  key: {
+    provider: "google",
+    side: "owner",
+    grantId: "alpha-google:broker",
+    connectorAccountId: "alpha-google:broker",
+    calendarId: "all",
+  },
+  summary: "Managed Google Calendar",
+  accessRole: "reader",
+  visibility: "details",
+  status: "error",
+  syncedAt: null,
+  error: {
+    code: "MANAGED_CALENDAR_READ_UNAVAILABLE",
+    message: "The managed owner Calendar connection could not be verified.",
+    retryable: true,
+  },
+};
+
+function liveFeedFixture(id: LiveFeedTurn = "tj-8dfdee5735fb18") {
+  const turn = LIVE_FEED_TURNS[id];
+  const f = fixture();
+  const bindings = f.context.metadata
+    ?.calendarReadBindings as CalendarReadBinding[];
+  bindings[0].operation = "feed";
+  bindings[0].requestedAt = turn.requestedAt;
+  f.trajectory.outcomeIntents = [turn.intent];
+  const readContext: Record<string, unknown> = {
+    sourceScope: { ...turn.sourceScope },
+    asOf: turn.asOf,
+    selection: "bounded_agenda",
+    nextEventLookupPerformed: false,
+  };
+  const data: Record<string, unknown> = {
+    calendarId: "primary",
+    events: [],
+    source: "synced",
+    state: "complete",
+    sources: [{ ...ELIZA_CALENDAR_SOURCE, syncedAt: turn.asOf }],
+    timeMin: turn.timeMin,
+    timeMax: turn.timeMax,
+    syncedAt: turn.asOf,
+    replyContext: {
+      domain: "calendar",
+      scenario: "feed_results",
+      context: readContext,
+    },
+  };
+  const receipt = {
+    receiptId: `calendar-feed-read-receipt-v1:${id}`,
+    operation: "calendar.feed.read",
+    resource: {
+      kind: "calendar.feed",
+      id: `calendar-feed-resource-v1:${id}`,
+      version: `calendar-feed-version-v1:${id}`,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: turn.asOf,
+    outcome: "noop" as const,
+    reason:
+      "The operation read an authoritative calendar snapshot without changing it.",
+  };
+  const read = {
+    iteration: 1,
+    toolCall: {
+      id,
+      name: "CALENDAR_FEED",
+      params: { intent: turn.intent, details: turn.details },
+    },
+    result: {
+      success: true,
+      transcriptVisibility: "internal" as const,
+      effectReceipts: [receipt],
+      data,
+    },
+  };
+  f.trajectory.steps = [read];
+  f.output.messageToUser = turn.reply;
+  const coverage = f.output.outcomeCoverage?.[0];
+  if (!coverage) throw new Error("Missing coverage fixture");
+  if (turn.citation === "omitted") delete f.output.outcomeCoverage;
+  else coverage.evidenceStepIds = [turn.citation];
+  return { ...f, bindings, coverage, read, data, readContext, receipt };
+}
+type LiveFeed = ReturnType<typeof liveFeedFixture>;
+
+/** Moves the read to compaction's archive, as a long turn would. */
+function archiveRead(f: LiveFeed) {
+  f.trajectory.archivedSteps = [f.read];
+  f.trajectory.steps = [];
+}
+/** A later feed call of this same request that failed. */
+function failCurrentRead(f: LiveFeed) {
+  f.trajectory.steps.push({
+    iteration: 2,
+    toolCall: { ...f.read.toolCall, id: "retry" },
+    result: {
+      success: false,
+      error: "MANAGED_CALENDAR_READ_UNAVAILABLE",
+      data: { actionName: "CALENDAR_FEED" },
+    },
+  });
+}
+/** 6 minutes before the bound request: another request's read. */
+const EARLIER_REQUEST_AS_OF = "2026-10-30T15:58:02.000Z";
+
+/** A device-owned Calendar turn (plugin-calendar calendar-handler.ts) that
+ * read the connected Google grant instead: the producer marks the app/device
+ * Calendar unread, and an empty Google result says nothing about it. */
+function readGoogleInsteadOfAppCalendar(f: LiveFeed) {
+  delete f.output.outcomeCoverage;
+  f.read.toolCall.params.details =
+    '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "grantId": "alpha-google:broker", "calendarId": "primary"}';
+  f.readContext.sourceScope = {
+    grantId: "alpha-google:broker",
+    calendarId: "primary",
+    appDeviceCalendarRead: false,
+  };
+  f.data.sources = [
+    {
+      ...MANAGED_GOOGLE_UNAVAILABLE,
+      key: { ...MANAGED_GOOGLE_UNAVAILABLE.key, calendarId: "primary" },
+      status: "fresh",
+      syncedAt: f.readContext.asOf,
+      error: null,
+    },
+  ];
+}
+/** The pending app Calendar range request that device turn recorded first
+ * (device-actions service.ts): a success that carries no event data. */
+function requestAppCalendarFirst(f: LiveFeed) {
+  f.trajectory.steps.unshift({
+    iteration: 1,
+    toolCall: {
+      ...f.read.toolCall,
+      id: "device-agenda",
+      params: { ...f.read.toolCall.params },
+    },
+    result: {
+      success: true,
+      transcriptVisibility: "internal",
+      turnComplete: false,
+      modelReplyRequired: true,
+      effectReceipts: [
+        {
+          receiptId: "device-approval-1",
+          operation: "device.read_calendar_range",
+          resource: { kind: "device.approval", id: "device-approval-1" },
+          artifacts: [],
+          idempotency: { key: "agenda_device-approval-1", replayed: false },
+          observedAt: "2026-10-30T16:04:17.000Z",
+          outcome: "preview",
+        },
+      ],
+      data: {
+        replyContext: { domain: "calendar", scenario: "device_agenda_request" },
+        proposalId: "device-approval-1",
+        state: "pending",
+        executed: false,
+        approvalRequired: true,
+        localCalendarRead: false,
+      },
+    },
+  });
+  f.read.iteration = 2;
+}
+
+describe("required Calendar read without a usable coverage citation", () => {
+  it.each(Object.keys(LIVE_FEED_TURNS) as LiveFeedTurn[])(
+    "keeps the one request-bound read of live turn %s",
+    async (id) => {
+      const f = liveFeedFixture(id);
+      expect(
+        calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+      ).toBe(true);
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(true);
+      expect(result.messageToUser).toBe(LIVE_FEED_TURNS[id].reply);
+    },
+  );
+  it("keeps a read of this request that compaction archived", () => {
+    const f = liveFeedFixture();
+    archiveRead(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it("keeps a partial-day read that covers its call's explicit bounds", () => {
+    const f = liveFeedFixture();
+    f.read.toolCall.params.details =
+      '{"timeMin": "2026-11-02T09:00:00-08:00", "timeMax": "2026-11-02T17:00:00-08:00"}';
+    f.data.timeMin = "2026-11-02T17:00:00.000Z";
+    f.data.timeMax = "2026-11-03T01:00:00.000Z";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it("judges a local-scoped read on its own source while Google is unavailable", () => {
+    const f = liveFeedFixture("tj-605ca329c8a78d");
+    f.read.toolCall.params.details =
+      '{"date": "2026-10-30", "timeZone": "America/Los_Angeles", "grantId": "eliza-calendar"}';
+    f.readContext.sourceScope = { grantId: "eliza-calendar", calendarId: null };
+    f.data.state = "partial";
+    f.data.sources = [
+      { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+      MANAGED_GOOGLE_UNAVAILABLE,
+    ];
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it.each<[string, (f: LiveFeed) => void]>([
+    [
+      "is another request's read",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+      },
+    ],
+    [
+      "is another request's archived read",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+        archiveRead(f);
+      },
+    ],
+    [
+      "replays an earlier read receipt",
+      (f) => {
+        f.receipt.idempotency.replayed = true;
+      },
+    ],
+    [
+      "is another request's archived read before a failed current read",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+        archiveRead(f);
+        failCurrentRead(f);
+      },
+    ],
+    [
+      "is followed by a failed current read",
+      (f) => {
+        archiveRead(f);
+        failCurrentRead(f);
+      },
+    ],
+    [
+      "read another date window",
+      (f) => {
+        f.data.timeMin = "2026-11-03T08:00:00.000Z";
+        f.data.timeMax = "2026-11-04T08:00:00.000Z";
+      },
+    ],
+    [
+      "read part of the requested dates",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "endDate": "2026-11-03"}';
+      },
+    ],
+    [
+      "states no requested window",
+      (f) => {
+        f.read.toolCall.params.details = '{"timeZone": "America/Los_Angeles"}';
+      },
+    ],
+    [
+      "read a source other than the one requested",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "grantId": "alpha-google:broker"}';
+        f.readContext.sourceScope = {
+          grantId: "alpha-google:broker",
+          calendarId: null,
+        };
+      },
+    ],
+    [
+      "read another actor's calendar",
+      (f) => {
+        f.data.sources = [
+          {
+            ...ELIZA_CALENDAR_SOURCE,
+            key: { ...ELIZA_CALENDAR_SOURCE.key, side: "agent" },
+          },
+        ];
+      },
+    ],
+  ])("rejects an uncited read that %s", (_, mutate) => {
+    const f = liveFeedFixture();
+    mutate(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
+  it.each<[string, LiveFeedTurn, (f: LiveFeed) => void]>([
+    [
+      "a partial feed",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        // Its Eliza source was synced before this request (tj-605's read).
+        f.data.state = "partial";
+        f.data.sources = [ELIZA_CALENDAR_SOURCE, MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "an unavailable feed",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.state = "unavailable";
+        f.data.sources = [MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "an unread app Calendar",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.sourceScope = {
+          grantId: null,
+          calendarId: null,
+          appDeviceCalendarRead: false,
+        };
+      },
+    ],
+    [
+      "a partial primary-calendar read",
+      "tj-605ca329c8a78d",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [
+          ELIZA_CALENDAR_SOURCE,
+          {
+            ...MANAGED_GOOGLE_UNAVAILABLE,
+            key: {
+              ...MANAGED_GOOGLE_UNAVAILABLE.key,
+              calendarId: "family@group.calendar.google.com",
+            },
+          },
+        ];
+      },
+    ],
+    [
+      "a Google read standing in for the unread app Calendar",
+      "tj-8dfdee5735fb18",
+      readGoogleInsteadOfAppCalendar,
+    ],
+    [
+      "a cited Google read standing in for the unread app Calendar",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        readGoogleInsteadOfAppCalendar(f);
+        f.output.outcomeCoverage = [
+          { ...f.coverage, evidenceStepIds: ["1:success=true"] },
+        ];
+      },
+    ],
+    [
+      "a Google read after a pending app Calendar request",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        requestAppCalendarFirst(f);
+        readGoogleInsteadOfAppCalendar(f);
+      },
+    ],
+  ])("does not ground an empty agenda on %s", async (_, id, mutate) => {
+    const f = liveFeedFixture(id);
+    mutate(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(false);
+    expect(result.messageToUser).not.toContain(LIVE_FEED_TURNS[id].reply);
+  });
+  it.each([
+    "blocked status",
+    "second read",
+    "other operation",
+    "failed read",
+    "conditional binding",
+    "second binding",
+  ])("still rejects an uncited read with a %s", (fault) => {
+    const f = liveFeedFixture();
+    const read = f.trajectory.steps[0];
+    if (!read.result) throw new Error("Missing feed fixture");
+    f.coverage.evidenceStepIds = ["1:success=true"];
+    if (fault === "blocked status") f.coverage.status = "blocked";
+    else delete f.output.outcomeCoverage;
+    if (fault === "second read") f.trajectory.steps.push(structuredClone(read));
+    if (fault === "other operation") read.toolCall.name = "CALENDAR_NEXT_EVENT";
+    if (fault === "failed read") read.result.success = false;
+    if (fault === "conditional binding")
+      f.bindings[0].execution = "conditional";
+    if (fault === "second binding") {
+      f.bindings.push({ ...f.bindings[0], intentId: "intent:2" });
+      f.trajectory.outcomeIntents?.push("Check Tuesday's calendar");
+    }
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
+});
+
+/** Cites the read by its real evaluator step ID (Codex #743 6539319805). */
+function citeRead(f: LiveFeed, id = "step:1") {
+  f.output.outcomeCoverage = [{ ...f.coverage, evidenceStepIds: [id] }];
+}
+
+describe("required Calendar read cited by a real step ID", () => {
+  it.each(Object.keys(LIVE_FEED_TURNS) as LiveFeedTurn[])(
+    "keeps the cited request-bound read of live turn %s",
+    async (id) => {
+      const f = liveFeedFixture(id);
+      citeRead(f);
+      expect(
+        calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+      ).toBe(true);
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(true);
+      expect(result.messageToUser).toBe(LIVE_FEED_TURNS[id].reply);
+    },
+  );
+  it.each<[string, LiveFeedTurn, (f: LiveFeed) => void]>([
+    [
+      "a read of this request that compaction archived",
+      "tj-8dfdee5735fb18",
+      archiveRead,
+    ],
+    [
+      "a partial-day read that covers its call's explicit bounds",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeMin": "2026-11-02T09:00:00-08:00", "timeMax": "2026-11-02T17:00:00-08:00"}';
+        f.data.timeMin = "2026-11-02T17:00:00.000Z";
+        f.data.timeMax = "2026-11-03T01:00:00.000Z";
+      },
+    ],
+    [
+      "a local-scoped read judged on its own source while Google is unavailable",
+      "tj-605ca329c8a78d",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"date": "2026-10-30", "timeZone": "America/Los_Angeles", "grantId": "eliza-calendar"}';
+        f.readContext.sourceScope = {
+          grantId: "eliza-calendar",
+          calendarId: null,
+        };
+        f.data.state = "partial";
+        f.data.sources = [
+          { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+          MANAGED_GOOGLE_UNAVAILABLE,
+        ];
+      },
+    ],
+    [
+      "one of two reads of this request, without the fallback's uniqueness rule",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.trajectory.steps.push(structuredClone(f.read));
+      },
+    ],
+  ])("keeps %s", async (_, id, mutate) => {
+    const f = liveFeedFixture(id);
+    mutate(f);
+    citeRead(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(true);
+    expect(result.messageToUser).toBe(LIVE_FEED_TURNS[id].reply);
+  });
+  it.each<[string, LiveFeedTurn, (f: LiveFeed) => void, string?]>([
+    [
+      "the Codex #743 repro, a partial feed while Google is unavailable,",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        // Its Eliza source was synced before this request (tj-605's read).
+        f.data.state = "partial";
+        f.data.sources = [ELIZA_CALENDAR_SOURCE, MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "an unavailable feed",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.state = "unavailable";
+        f.data.sources = [MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "a read that leaves the app Calendar unread",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.sourceScope = {
+          grantId: null,
+          calendarId: null,
+          appDeviceCalendarRead: false,
+        };
+      },
+    ],
+    [
+      "a Google read standing in for the unread app Calendar",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        readGoogleInsteadOfAppCalendar(f);
+      },
+    ],
+    [
+      "a Google read after a pending app Calendar request",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        requestAppCalendarFirst(f);
+        readGoogleInsteadOfAppCalendar(f);
+      },
+      "step:2",
+    ],
+    [
+      "a partial primary-calendar read",
+      "tj-605ca329c8a78d",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [
+          ELIZA_CALENDAR_SOURCE,
+          {
+            ...MANAGED_GOOGLE_UNAVAILABLE,
+            key: {
+              ...MANAGED_GOOGLE_UNAVAILABLE.key,
+              calendarId: "family@group.calendar.google.com",
+            },
+          },
+        ];
+      },
+    ],
+    [
+      "another request's read",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+      },
+    ],
+    [
+      "another request's archived read",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+        archiveRead(f);
+      },
+    ],
+    [
+      "another request's archived read before a failed current read",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+        archiveRead(f);
+        failCurrentRead(f);
+      },
+    ],
+    [
+      "a read whose receipt is a replay",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        // Core rejects a keyless replay, so this replay names its key.
+        const [read] = f.trajectory.steps;
+        if (read.result)
+          read.result.effectReceipts = [
+            {
+              ...f.receipt,
+              idempotency: {
+                key: "calendar-feed-read:earlier",
+                replayed: true,
+              },
+            },
+          ];
+      },
+    ],
+    [
+      "a read of another date window",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.timeMin = "2026-11-03T08:00:00.000Z";
+        f.data.timeMax = "2026-11-04T08:00:00.000Z";
+      },
+    ],
+    [
+      "a read of part of the requested dates",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "endDate": "2026-11-03"}';
+      },
+    ],
+    [
+      "a read that states no requested window",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.read.toolCall.params.details = '{"timeZone": "America/Los_Angeles"}';
+      },
+    ],
+    [
+      "a read of a source other than the one requested",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "grantId": "alpha-google:broker"}';
+        f.readContext.sourceScope = {
+          grantId: "alpha-google:broker",
+          calendarId: null,
+        };
+      },
+    ],
+    [
+      "a read of another actor's calendar",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.sources = [
+          {
+            ...ELIZA_CALENDAR_SOURCE,
+            key: { ...ELIZA_CALENDAR_SOURCE.key, side: "agent" },
+          },
+        ];
+      },
+    ],
+  ])(
+    "does not ground an empty agenda on %s cited by its step ID",
+    async (_, id, mutate, cited) => {
+      const f = liveFeedFixture(id);
+      mutate(f);
+      citeRead(f, cited);
+      const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
+      expect(coverage).toMatchObject({
+        verified: false,
+        unverifiedIntentIds: ["intent:1"],
+        failureCode: "CALENDAR_READ_COVERAGE_INCOMPLETE",
+      });
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.requestFullyCovered).toBe(false);
+      expect(result.messageToUser).not.toContain(LIVE_FEED_TURNS[id].reply);
+    },
+  );
+});
+
+/** Owner rule: Calendar answers alike with and without Google. A read whose
+ * only gap is Google failing outright answers from the phone Calendar and
+ * says once that Google was not reached. */
+const GOOGLE_UNREACHED =
+  "I couldn't reach Google Calendar just now, so this only shows the calendar on this phone.";
+/** Google Calendar connected and read beside the phone Calendar. */
+const GOOGLE_CALENDAR_SOURCE = {
+  ...MANAGED_GOOGLE_UNAVAILABLE,
+  key: { ...MANAGED_GOOGLE_UNAVAILABLE.key, calendarId: "primary" },
+  summary: "Google Calendar",
+  accessRole: "owner",
+  status: "fresh",
+  error: null,
+};
+/** A device Calendar that failed beside the phone Calendar. */
+const APPLE_CALENDAR_UNAVAILABLE = {
+  key: {
+    provider: "apple_calendar",
+    side: "owner",
+    grantId: "apple-calendar",
+    connectorAccountId: "apple-calendar",
+    calendarId: "all",
+  },
+  summary: "Apple Calendar",
+  accessRole: "owner",
+  visibility: "details",
+  status: "error",
+  syncedAt: null,
+  error: {
+    code: "CALENDAR_SOURCE_ERROR",
+    message: "Apple Calendar could not be read.",
+    retryable: true,
+  },
+};
+
+/** Case (c): the phone Calendar read for this request while Google failed
+ * (the v26 Pixel smoke, MANAGED_CALENDAR_READ_UNAVAILABLE). */
+function readPhoneWithoutGoogle(f: LiveFeed) {
+  f.data.state = "partial";
+  f.data.sources = [
+    { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+    MANAGED_GOOGLE_UNAVAILABLE,
+  ];
+}
+
+const GOOGLE_CASES: [string, (f: LiveFeed) => void, boolean][] = [
+  ["(a) no Google connected", () => {}, false],
+  [
+    "(b) Google connected and read",
+    (f) => {
+      f.data.sources = [
+        { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+        { ...GOOGLE_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+      ];
+    },
+    false,
+  ],
+  ["(c) Google connected but unreachable", readPhoneWithoutGoogle, true],
+];
+const CITATIONS: [string, (f: LiveFeed) => void][] = [
+  [
+    "coverage omitted",
+    (f) => {
+      delete f.output.outcomeCoverage;
+    },
+  ],
+  [
+    'coverage cited "1:success=true"',
+    (f) => {
+      f.output.outcomeCoverage = [
+        { ...f.coverage, evidenceStepIds: ["1:success=true"] },
+      ];
+    },
+  ],
+  ["coverage cited by its real step ID", (f) => citeRead(f)],
+];
+const UNCITED_AND_CITED = [CITATIONS[0], CITATIONS[2]];
+
+describe("Calendar agenda with and without Google", () => {
+  it.each(
+    (Object.keys(LIVE_FEED_TURNS) as LiveFeedTurn[]).flatMap((id) =>
+      GOOGLE_CASES.flatMap(([name, mutate, caveat]) =>
+        CITATIONS.map(([citation, cite]) => ({
+          id,
+          name,
+          mutate,
+          caveat,
+          citation,
+          cite,
+        })),
+      ),
+    ),
+  )(
+    "$id, $name, $citation: keeps the reply",
+    async ({ id, mutate, caveat, cite }) => {
+      const f = liveFeedFixture(id);
+      mutate(f);
+      cite(f);
+      expect(calendarReadCoverage(f.output, f.context, f.trajectory)).toEqual({
+        verified: true,
+        unverifiedIntentIds: [],
+        ...(caveat ? { googleUnavailable: true } : {}),
+      });
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(true);
+      expect(result.requestFullyCovered).toBe(true);
+      expect(result.replyFailure).toBeUndefined();
+      expect(result.messageToUser).toBe(
+        caveat
+          ? `${LIVE_FEED_TURNS[id].reply}\n\n${GOOGLE_UNREACHED}`
+          : LIVE_FEED_TURNS[id].reply,
+      );
+    },
+  );
+  it.each(GOOGLE_CASES)(
+    "keeps the real feed producer's agenda, %s",
+    async (_, mutate, caveat) => {
+      const f = liveFeedFixture();
+      mutate(f);
+      const { replyContext: _reply, ...feed } = f.data;
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(new Date(f.readContext.asOf as string));
+      try {
+        const runtime = new AgentRuntime({
+          character: { name: "Real feed", bio: [] },
+          logLevel: "fatal",
+        });
+        const service = new CalendarService(runtime);
+        vi.spyOn(service, "getCalendarFeed").mockResolvedValue(
+          feed as unknown as LifeOpsCalendarFeed,
+        );
+        runtime.services.set(CalendarService.serviceType, [service]);
+        const noModel = async () => {
+          throw new Error("Unexpected producer model call");
+        };
+        const outcome = await createCalendarActionRunner({
+          runTextModel: noModel,
+          runJsonModel: noModel,
+          recentConversationTexts: async () => [],
+        }).handler(
+          runtime,
+          {
+            id: "00000000-0000-0000-0000-000000000191",
+            entityId: "00000000-0000-0000-0000-000000000192",
+            roomId: "00000000-0000-0000-0000-000000000193",
+            agentId: runtime.agentId,
+            createdAt: f.bindings[0].requestedAt,
+            content: { text: "do I have anything on Monday?" },
+          },
+          undefined,
+          {
+            parameters: {
+              subaction: "feed",
+              details: { timeZone: "America/Los_Angeles", date: "2026-11-02" },
+            },
+          },
+        );
+        if (!outcome || typeof outcome !== "object")
+          throw new Error("Missing real producer result");
+        f.trajectory.steps = [{ ...f.read, result: outcome }];
+      } finally {
+        vi.useRealTimers();
+      }
+      expect(calendarReadCoverage(f.output, f.context, f.trajectory)).toEqual({
+        verified: true,
+        unverifiedIntentIds: [],
+        ...(caveat ? { googleUnavailable: true } : {}),
+      });
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(true);
+      expect(result.messageToUser).toBe(
+        caveat
+          ? `${LIVE_FEED_TURNS["tj-8dfdee5735fb18"].reply}\n\n${GOOGLE_UNREACHED}`
+          : LIVE_FEED_TURNS["tj-8dfdee5735fb18"].reply,
+      );
+    },
+  );
+  it.each(UNCITED_AND_CITED)(
+    "says once that Google was not reached beside a phone event, %s",
+    async (_, cite) => {
+      const f = liveFeedFixture();
+      readPhoneWithoutGoogle(f);
+      f.data.events = [
+        {
+          id: "agent:eliza:owner:grant:eliza-calendar:calendar:primary:dentist",
+          provider: "eliza",
+          grantId: "eliza-calendar",
+          calendarId: "primary",
+          title: "Dentist",
+          startAt: "2026-11-02T23:00:00.000Z",
+          endAt: "2026-11-03T00:00:00.000Z",
+        },
+      ];
+      f.output.messageToUser = `You have Dentist at 3 PM on Monday. ${GOOGLE_UNREACHED}`;
+      cite(f);
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(true);
+      expect(result.messageToUser).toBe(f.output.messageToUser);
+      expect(result.messageToUser?.split(GOOGLE_UNREACHED)).toHaveLength(2);
+    },
+  );
+  it("keeps a phone-only read of this request that compaction archived", () => {
+    const f = liveFeedFixture();
+    readPhoneWithoutGoogle(f);
+    archiveRead(f);
+    expect(calendarReadCoverage(f.output, f.context, f.trajectory)).toEqual({
+      verified: true,
+      unverifiedIntentIds: [],
+      googleUnavailable: true,
+    });
+  });
+  it("answers from a later complete read once Google is back, without the caveat", async () => {
+    const f = liveFeedFixture();
+    const first = structuredClone(f.read);
+    first.result.data.state = "partial";
+    first.result.data.sources = [
+      { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+      MANAGED_GOOGLE_UNAVAILABLE,
+    ];
+    f.read.iteration = 2;
+    f.trajectory.steps.unshift(first);
+    expect(calendarReadCoverage(f.output, f.context, f.trajectory)).toEqual({
+      verified: true,
+      unverifiedIntentIds: [],
+    });
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.messageToUser).toBe(
+      LIVE_FEED_TURNS["tj-8dfdee5735fb18"].reply,
+    );
+  });
+  it("never lets a later phone-only read displace a complete read of this request", () => {
+    const f = liveFeedFixture();
+    const later = structuredClone(f.read);
+    later.iteration = 2;
+    later.result.data.state = "partial";
+    later.result.data.sources = [
+      { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+      MANAGED_GOOGLE_UNAVAILABLE,
+    ];
+    f.trajectory.steps.push(later);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
+  it.each<[string, string, (f: LiveFeed) => void]>([
+    ["coverage omitted", "CALENDAR_READ_COVERAGE_MISSING", CITATIONS[0][1]],
+    [
+      "coverage cited by its real step ID",
+      "CALENDAR_READ_COVERAGE_INCOMPLETE",
+      CITATIONS[2][1],
+    ],
+  ])(
+    "still rejects a phone-only read behind an applied reply, %s",
+    (_, failureCode, cite) => {
+      const f = liveFeedFixture();
+      readPhoneWithoutGoogle(f);
+      f.output.replyEffectStatus = "applied";
+      cite(f);
+      expect(
+        calendarReadCoverage(f.output, f.context, f.trajectory),
+      ).toMatchObject({ verified: false, failureCode });
+    },
+  );
+  it.each(
+    (
+      [
+        [
+          "the phone Calendar source is stale",
+          (f) => {
+            f.data.sources = [
+              {
+                ...ELIZA_CALENDAR_SOURCE,
+                status: "stale",
+                syncedAt: EARLIER_REQUEST_AS_OF,
+              },
+              MANAGED_GOOGLE_UNAVAILABLE,
+            ];
+          },
+        ],
+        [
+          "the phone Calendar was synced before this request",
+          (f) => {
+            f.data.sources = [
+              { ...ELIZA_CALENDAR_SOURCE, syncedAt: EARLIER_REQUEST_AS_OF },
+              MANAGED_GOOGLE_UNAVAILABLE,
+            ];
+          },
+        ],
+        [
+          "the read marks the app Calendar unread",
+          (f) => {
+            f.readContext.sourceScope = {
+              grantId: null,
+              calendarId: null,
+              appDeviceCalendarRead: false,
+            };
+          },
+        ],
+        [
+          "Google failed and the phone Calendar is missing",
+          (f) => {
+            f.data.sources = [MANAGED_GOOGLE_UNAVAILABLE];
+          },
+        ],
+        [
+          "the local side is also partial (the Codex #743 repro beside a failed device Calendar)",
+          (f) => {
+            f.data.sources = [
+              { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+              MANAGED_GOOGLE_UNAVAILABLE,
+              APPLE_CALENDAR_UNAVAILABLE,
+            ];
+          },
+        ],
+        [
+          "Google returned stale cached events",
+          (f) => {
+            f.data.sources = [
+              { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+              {
+                ...MANAGED_GOOGLE_UNAVAILABLE,
+                status: "stale",
+                syncedAt: EARLIER_REQUEST_AS_OF,
+              },
+            ];
+          },
+        ],
+        [
+          "one Google calendar was read and another failed",
+          (f) => {
+            f.data.sources = [
+              { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+              { ...GOOGLE_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+              MANAGED_GOOGLE_UNAVAILABLE,
+            ];
+          },
+        ],
+        [
+          "the phone Calendar read is the agent's",
+          (f) => {
+            f.data.sources = [
+              {
+                ...ELIZA_CALENDAR_SOURCE,
+                key: { ...ELIZA_CALENDAR_SOURCE.key, side: "agent" },
+                syncedAt: f.readContext.asOf,
+              },
+              MANAGED_GOOGLE_UNAVAILABLE,
+            ];
+          },
+        ],
+        [
+          "it is another request's read",
+          (f) => {
+            f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+          },
+        ],
+        [
+          "it read another date window",
+          (f) => {
+            f.data.timeMin = "2026-11-03T08:00:00.000Z";
+            f.data.timeMax = "2026-11-04T08:00:00.000Z";
+          },
+        ],
+        [
+          "its receipt is a replay",
+          (f) => {
+            // Core rejects a keyless replay, so this replay names its key.
+            const [read] = f.trajectory.steps;
+            if (read.result)
+              read.result.effectReceipts = [
+                {
+                  ...f.receipt,
+                  idempotency: {
+                    key: "calendar-feed-read:earlier",
+                    replayed: true,
+                  },
+                },
+              ];
+          },
+        ],
+        [
+          "it is scoped to the Google grant",
+          (f) => {
+            f.read.toolCall.params.details =
+              '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "grantId": "alpha-google:broker"}';
+            f.readContext.sourceScope = {
+              grantId: "alpha-google:broker",
+              calendarId: null,
+            };
+          },
+        ],
+      ] as [string, (f: LiveFeed) => void][]
+    ).flatMap(([name, mutate]) =>
+      UNCITED_AND_CITED.map(([citation, cite]) => ({
+        name,
+        mutate,
+        citation,
+        cite,
+      })),
+    ),
+  )(
+    "does not answer from the phone Calendar when $name, $citation",
+    async ({ mutate, cite }) => {
+      const f = liveFeedFixture();
+      readPhoneWithoutGoogle(f);
+      mutate(f);
+      cite(f);
+      const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
+      expect(coverage.verified).toBe(false);
+      expect(coverage.googleUnavailable).toBeUndefined();
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.messageToUser).not.toContain(
+        LIVE_FEED_TURNS["tj-8dfdee5735fb18"].reply,
+      );
+      expect(result.messageToUser).not.toContain(GOOGLE_UNREACHED);
+    },
+  );
+});
+
 /** tj-6eb9a245fd912d: "move the coffee with Sam to 2pm", search then a committed update. */
 function liveMoveFixture() {
   const f = fixture();
