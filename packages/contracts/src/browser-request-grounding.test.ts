@@ -208,6 +208,8 @@ const NEGATED = [
   "Do. Not. Open. youtube.com",
   "Don't. Ever. Open youtube.com",
   "Don't. Under any circumstances. Open youtube.com",
+  "Hey Eliza. Do not. Open. youtube.com",
+  "Listen. Don't. Ever. Open youtube.com",
   // Emphasis marks and emoji.
   "do **not** open youtube.com",
   "*don't* open youtube.com",
@@ -264,6 +266,15 @@ const NEGATED = [
   "youtube.com? no, don't open it",
   "youtube.com, please don't go there",
   "youtube.com: stop opening it",
+  "youtube.com, don't. Open nytimes.com",
+  "youtube.com, don't open it. youtube.com, don't open it.",
+  "open youtube.com. Actually, don't open it",
+  // A message that ends in a bare "don't" or "never".
+  "open youtube.com, don't",
+  "Open youtube.com. Just kidding, don't.",
+  "Why don't you open youtube.com? Actually don't.",
+  // A polite question only at the start of a sentence.
+  "that's why don't open youtube.com",
 ];
 
 // The guard reads these as requests, not as negations of the open.
@@ -296,6 +307,12 @@ const NOT_NEGATED = [
   "open youtube.com and don't open anything else",
   "**Open** youtube.com \u{1F64F}",
   "open youtube.com, no?",
+  "No, don't. Open youtube.com instead",
+  "Don't check, open youtube.com",
+  "don't show me, just open youtube.com",
+  "Eliza, why don't you open youtube.com",
+  "Eliza, can't you open youtube.com?",
+  "Open youtube.com for me, I hope you don't mind",
 ];
 
 // [the user's current message, the model's proposed URL, what opens]
@@ -310,6 +327,12 @@ const GROUNDING: [string, string, string | undefined][] = [
     "https://www.youtube.com/",
     "https://youtube.com/",
   ]),
+  // A negation refuses only the address it governs.
+  [
+    "youtube.com, don't open it. Open nytimes.com",
+    "https://nytimes.com",
+    "https://nytimes.com/",
+  ],
   // Typed and proposed hosts agree; the user's spelling always opens.
   ["open youtube.com", "https://youtube.com", "https://youtube.com/"],
   ["open youtube.com", "https://www.youtube.com/", "https://youtube.com/"],

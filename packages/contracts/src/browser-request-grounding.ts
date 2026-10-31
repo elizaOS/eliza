@@ -43,17 +43,18 @@ const SITE_AFTER = /^\s+(?:web\s?)?site\b/i;
 // opening") or the address itself ("not youtube.com").
 const OPEN_VERB =
   /\b(?:open(?:s|ed|ing)?|visit(?:s|ed|ing)?|go(?:es|ing)?|went|head(?:s|ed|ing)?|navigat(?:e|es|ed|ing)|tak(?:e|es|en|ing)|took|pull(?:s|ed|ing)?|bring(?:s|ing)?|brought|show(?:s|n|ed|ing)?|load(?:s|ed|ing)?|launch(?:es|ed|ing)?|brows(?:e|es|ed|ing)|access(?:es|ed|ing)?|check(?:s|ed|ing)?)\b/gi;
-// Open verbs joined by "or", "and", "nor", "/" or a list comma, with their
-// particles ("go to", "pull up"), are one group, and a negation before its
-// first verb governs them all ("don't open or visit x.com", "do not open,
-// visit or load x.com"). "or" and "nor" also join across one object ("don't
-// open google.com or visit x.com").
+// Open verbs joined by "or", "and", "nor", "/" or "&", with their particles
+// ("go to", "pull up"), are one group, and a negation before its first verb
+// governs them all ("don't open or visit x.com"). A list comma joins only
+// before such a word ("do not open, visit or load x.com"). "or" and "nor" also
+// join across one object ("don't open google.com or visit x.com").
 const PARTICLES = String.raw`(?:\s+(?:to|up|on|over|into|onto|out|me|us|back|at|in))*`;
-const LINKED = String.raw`(?:(?:even|also|ever|just|then)\s+)?$`;
+const LINKED = String.raw`(?:(?:even|also|ever)\s+)?$`;
 const VERB_JOIN = new RegExp(
-  String.raw`^${PARTICLES}\s*(?:[,/&]|,?\s+(?:or|and|nor|and/or))\s*${LINKED}`,
+  String.raw`^${PARTICLES}\s*(?:[/&]|,?\s+(?:or|and|nor|and/or))\s*${LINKED}`,
   "i",
 );
+const LIST_JOIN = new RegExp(String.raw`^${PARTICLES}\s*,\s*$`, "i");
 const OBJECT_JOIN = new RegExp(
   String.raw`^${PARTICLES}\s+\S+?,?\s+(?:or|nor)\s+${LINKED}`,
   "i",
@@ -83,12 +84,23 @@ const SPAN_WORDS = /^((?:\s+[\p{L}\p{N}'’]+)+)(\s+|\s*,\s*)$/u;
 const PREPOSITION =
   /^(?:under|for|at|in|on|by|with|without|from|after|before|until|during|regardless)$/i;
 // The rest of the message after an address refuses it: "youtube.com, don't
-// open it", "youtube.com: do not visit", "youtube.com? Never."
+// open it", "youtube.com: do not visit", "youtube.com? Never.", or a message
+// that ends in a bare "don't" ("open youtube.com. Just kidding, don't").
 const NEGATION_HERE = new RegExp(`^(?:${NEGATION.source})`, "i");
 const TAIL_LEAD =
-  /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|please|but|and|so|just)[\s,]+)*/i;
+  /^[\s,:;.!?()"'”’\u2014\u2013-]*(?:(?:no|nope|nah|please|but|and|so|just|actually|wait|oh|hmm)[\s,.!]+)*/i;
 const TAIL_END =
-  /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s.!?)"'”’]*$/i;
+  /^(?:\s+(?:to|up|on|over|into|it|that|this|them|one|there|yet|now|again|please|ever|today|anymore|either|the\s+(?:link|site|website|page|url|address)))*[\s)"'”’]*(?:[.!?;,]|$)/i;
+const SENTENCE_START =
+  /(?:^|[.!?:])\s*(?:(?:hey|hi|ok|okay|eliza|please)[\s,.!]*)*$/i;
+// The start of a question, after any greeting: "Eliza, can't you open".
+const QUESTION_OPENER = String.raw`(?:^|[.!?:,])\s*(?:(?:hey|hi|ok|okay|eliza|please|so|well|then|but|and|oh|hmm)[\s,.!]*)*`;
+const QUESTION_START = new RegExp(`${QUESTION_OPENER}$`, "i");
+const QUESTION_START_WHY = new RegExp(
+  String.raw`${QUESTION_OPENER}why\s+(?:do|does|did)?$`,
+  "i",
+);
+const BARE_END = /(?:^|[\s.!?,;:(])(?:don['’]?t|do\s+not|never)[\s.!?)]*$/i;
 
 /** The address of a strict open command that is the whole current message:
  * "(please) open|visit|go to|navigate to <address>", with an optional
@@ -232,6 +244,7 @@ function typedAddresses(
   text: string,
 ): { url: URL; webSignal: boolean; negated: boolean }[] {
   const found: { url: URL; webSignal: boolean; negated: boolean }[] = [];
+  const endsInNegation = BARE_END.test(plain(text.slice(-200)));
   for (const word of text.matchAll(/\S+/g)) {
     const lead = word[0].replace(/^[("'“‘«<\[]+/u, "");
     const tokens = new Set([
@@ -251,6 +264,7 @@ function typedAddresses(
           SITE_BEFORE.test(before.slice(-40)) ||
           SITE_AFTER.test(after),
         negated:
+          endsInNegation ||
           negatesOpen(text, word.index) ||
           negatedAfter(plain(after.slice(0, 200))),
       });
@@ -267,13 +281,15 @@ function negatesOpen(text: string, at: number): boolean {
   const targets = [before.length];
   const verbs = [...before.matchAll(OPEN_VERB)];
   let first = verbs.length - 1;
+  let listed = false;
   while (first > 0) {
     const prev = verbs[first - 1];
     const between = before.slice(
       prev.index + prev[0].length,
       verbs[first].index,
     );
-    if (!VERB_JOIN.test(between) && !OBJECT_JOIN.test(between)) break;
+    if (VERB_JOIN.test(between) || OBJECT_JOIN.test(between)) listed = true;
+    else if (!listed || !LIST_JOIN.test(between)) break;
     first--;
   }
   // A verb group longer than the window may hide its negation: refuse.
@@ -286,7 +302,14 @@ function negatesOpen(text: string, at: number): boolean {
     for (const target of targets) {
       if (target < end || target - end > 160) continue;
       const span = before.slice(end, target);
-      if (governs(span, Boolean(negation[1]))) {
+      // "Do not. Open. x.com" only where the negation starts a sentence:
+      // "No, don't. Open x.com" asks for x.com.
+      const standalone =
+        Boolean(negation[1]) &&
+        SENTENCE_START.test(
+          before.slice(Math.max(0, negation.index - 40), negation.index),
+        );
+      if (governs(span, standalone)) {
         // "stop", "quit", "avoid" and "refrain from" negate an -ing verb only.
         if (!negation[2] || /ing\b/i.test(before.slice(end, target + 12)))
           return true;
@@ -303,11 +326,11 @@ function negatedAfter(after: string): boolean {
   const negation = NEGATION_HERE.exec(tail);
   if (!negation) return false;
   const rest = tail.slice(negation[0].length);
-  if (negation[1] && /^[\s.!?]*$/.test(rest)) return true;
+  if (negation[1] && /^[\s)]*(?:[.!?;]|$)/.test(rest)) return true;
   const verb = new RegExp(OPEN_VERB.source, "i").exec(rest);
   return (
     !!verb &&
-    governs(rest.slice(0, verb.index), Boolean(negation[1])) &&
+    governs(rest.slice(0, verb.index), false) &&
     (!negation[2] ||
       /ing\b/i.test(rest.slice(0, verb.index + verb[0].length))) &&
     TAIL_END.test(rest.slice(verb.index + verb[0].length))
@@ -328,26 +351,24 @@ function plain(text: string): string {
 }
 
 // "why don't you open", "why not open", "can't you open" and "won't you open"
-// ask for an open; they do not forbid one.
+// at the start of a sentence ask for an open; they do not forbid one.
 function politeQuestion(text: string, start: number, end: number): boolean {
-  if (
-    /\bwhy\s+(?:do|does|did)?$/i.test(
-      text.slice(Math.max(0, start - 12), start),
-    )
-  )
-    return true;
-  const word = /[\p{L}'’]+$/u.exec(text.slice(0, end))?.[0] ?? "";
+  const lead = text.slice(Math.max(0, start - 60), start);
+  if (QUESTION_START_WHY.test(lead)) return true;
+  const word = /[\p{L}'’]+$/u.exec(text.slice(0, end));
   return (
-    /^(?:ca|could|wo|would|should)n['’]?t$/i.test(word) &&
-    /^\s+(?:you|u)\b/i.test(text.slice(end))
+    !!word &&
+    /^(?:ca|could|wo|would|should)n['’]?t$/i.test(word[0]) &&
+    /^\s+(?:you|u)\b/i.test(text.slice(end)) &&
+    QUESTION_START.test(text.slice(Math.max(0, word.index - 60), word.index))
   );
 }
 
 // Whether the text between a negation and its verb or address keeps them in
 // one clause.
 function governs(text: string, standalone: boolean): boolean {
-  // "Do not. Open." and "Don't! Ever! Open": a stop after "do not", "don't" or
-  // "never" reads as a comma.
+  // "Do not. Open." and "Don't! Ever! Open": a stop after a sentence-initial
+  // "do not", "don't" or "never" reads as a comma.
   const span = standalone ? text.replace(/[.!]+/g, ",") : text;
   const rest = span.slice(SPAN_HEAD.exec(span)?.[0].length ?? 0);
   if (/^(?:[\s,\u2014\u2013"'“”’-]|\.{2,})*$/.test(rest)) return true;
