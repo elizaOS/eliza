@@ -98,6 +98,9 @@ export function CalendarSection({
           setDrawerEvent(null);
           onSelectEvent(null);
         }}
+        onDataChanged={() => {
+          void calendar.refresh();
+        }}
       />
       <EventEditorDrawer
         open={createOpen}
