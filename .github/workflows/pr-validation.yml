@@ -348,7 +348,9 @@ jobs:
 
       - name: Select Core, assistant and Notes owning regressions
         id: notes_owning_scope
-        if: steps.affected.outputs.source == 'true'
+        if: >-
+          !cancelled() &&
+          steps.affected.outputs.source == 'true'
         shell: bash
         env:
           BASE_SHA: ${{ steps.diff.outputs.merge_base }}
@@ -420,6 +422,99 @@ jobs:
           test/async-context.node-esm.test.ts
           test/context-renderer-runtime-events.test.ts
           test/mode-action-authority.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Select website open owning regressions
+        id: website_owning_scope
+        if: >-
+          !cancelled() &&
+          steps.affected.outputs.source == 'true'
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          diff_status=0
+          git diff --quiet "$BASE_SHA"..."$HEAD_SHA" -- \
+            packages/contracts/src/browser-request-grounding.ts \
+            packages/contracts/src/browser-request-grounding.test.ts \
+            packages/contracts/src/iana-tlds.ts \
+            plugins/plugin-assistant/src/services/device-actions \
+            plugins/plugin-assistant/test/browser-request-grounding.pglite.test.ts \
+            plugins/plugin-assistant/test/device-actions.e2e.test.ts \
+            plugins/plugin-browser/src/actions || diff_status=$?
+          if [ "$diff_status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$diff_status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$diff_status"
+          fi
+
+      - name: Verify website open grounding contract
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.website_owning_scope.outcome == 'success' &&
+          steps.website_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node packages/scripts/run-vitest.ts run --config vitest.config.ts
+          packages/contracts/src/browser-request-grounding.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify assistant website open routing and phone recheck
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.website_owning_scope.outcome == 'success' &&
+          steps.website_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/services/device-actions/browser-open-routing.test.ts
+          src/services/device-actions/client-coordinator.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify assistant website open service boundaries
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.website_owning_scope.outcome == 'success' &&
+          steps.website_owning_scope.outputs.run == 'true'
+        timeout-minutes: 5
+        working-directory: plugins/plugin-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts
+          test/browser-request-grounding.pglite.test.ts
+          test/device-actions.e2e.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify browser open reply
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.website_owning_scope.outcome == 'success' &&
+          steps.website_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-browser
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/actions/browser-availability.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
 
