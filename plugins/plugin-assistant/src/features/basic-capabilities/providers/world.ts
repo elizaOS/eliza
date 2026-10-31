@@ -199,11 +199,16 @@ export const worldProvider: Provider = {
         });
       }
     }
-    // Create formatted text for display
+    // Create formatted text for display. A DM is about its own participants;
+    // the census of the world's other rooms stays in data and values.
     const worldInfoText = [
       `World: ${world.name}`,
       `current channel: ${currentRoom.name} (${currentRoom.type}), participants=${participants.length}`,
-      `channels: total=${worldRooms.length}, text=${channelsByType.text.length}, voice=${channelsByType.voice.length}, DM=${channelsByType.dm.length}, feed=${channelsByType.feed.length}, thread=${channelsByType.thread.length}, other=${channelsByType.other.length}`,
+      ...(currentRoom.type === ChannelType.DM
+        ? []
+        : [
+            `channels: total=${worldRooms.length}, text=${channelsByType.text.length}, voice=${channelsByType.voice.length}, DM=${channelsByType.dm.length}, feed=${channelsByType.feed.length}, thread=${channelsByType.thread.length}, other=${channelsByType.other.length}`,
+          ]),
     ].join("; ");
 
     // Build the world information object with formatted data

@@ -1044,6 +1044,27 @@ async function opCreate(
   );
 }
 
+/**
+ * A disabled trigger has no next fire by definition — `resolveTriggerTiming`
+ * returns null for `enabled === false`, so `buildTriggerMetadata` can never
+ * schedule one. Park it on the far-future disabled interval instead, the same
+ * shape event triggers already use, so the row persists as paused and a later
+ * resume recomputes a real schedule.
+ */
+function pausedTriggerMetadata(
+  task: Task,
+  trigger: TriggerConfig,
+  nowMs: number,
+): TriggerTaskMetadata {
+  return {
+    ...((task.metadata as TriggerTaskMetadata | undefined) ?? {}),
+    blocking: true,
+    updatedAt: nowMs,
+    updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
+    trigger: { ...trigger, nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS },
+  };
+}
+
 async function opUpdate(
   runtime: IAgentRuntime,
   message: Memory,
@@ -1257,11 +1278,15 @@ async function opUpdate(
     });
   }
 
-  const metadata = buildTriggerMetadata({
-    trigger: next,
-    nowMs: Date.now(),
-    existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
-  });
+  // An edit keeps a paused trigger paused, like the PUT route; resume
+  // recomputes the edited schedule.
+  const metadata = next.enabled
+    ? buildTriggerMetadata({
+        trigger: next,
+        nowMs: Date.now(),
+        existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
+      })
+    : pausedTriggerMetadata(task, next, Date.now());
   if (!metadata) {
     return failed(
       "update",
@@ -1279,8 +1304,9 @@ async function opUpdate(
       next,
       messageTimeZone,
       Date.now(),
-      metadata.trigger?.nextRunAtMs,
-    )}.`,
+      // A paused row holds the far-future parked time, not a real fire time.
+      next.enabled ? metadata.trigger?.nextRunAtMs : undefined,
+    )}${next.enabled ? "" : " (paused)"}.`,
     triggerReceipt("update", String(task.id), { key: null }),
     {
       taskId: String(task.id),
@@ -1432,26 +1458,16 @@ async function opToggle(
       );
     }
   }
-  // A disabled trigger has no next fire by definition — `resolveTriggerTiming`
-  // returns null for `enabled === false`, so recomputing timing for the
-  // about-to-be-paused config ALWAYS failed and pausing was structurally
-  // impossible ("Failed to recompute trigger schedule." on every pause; live
-  // capture). Park it on the far-future disabled interval instead, the same
-  // shape event triggers already use, so the row persists as paused and a
-  // later resume recomputes a real schedule.
+  // Recomputing timing for the about-to-be-paused config always failed, so
+  // pausing was structurally impossible ("Failed to recompute trigger
+  // schedule." on every pause; live capture). See pausedTriggerMetadata.
   const metadata = enabled
     ? buildTriggerMetadata({
         trigger: next,
         nowMs,
         existingMetadata: task.metadata as TriggerTaskMetadata | undefined,
       })
-    : {
-        ...((task.metadata as TriggerTaskMetadata | undefined) ?? {}),
-        blocking: true,
-        updatedAt: nowMs,
-        updateInterval: DISABLED_TRIGGER_INTERVAL_MS,
-        trigger: { ...next, nextRunAtMs: nowMs + DISABLED_TRIGGER_INTERVAL_MS },
-      };
+    : pausedTriggerMetadata(task, next, nowMs);
   if (!metadata) {
     return failed(
       "toggle",
@@ -1492,11 +1508,11 @@ export const triggerAction: Action = {
   // Both render beside every exposed TRIGGER tool, and the schedule rules
   // used to be stated in both, plus again in four parameter descriptions.
   routingHint:
-    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle, which keeps the trigger (not delete). This is the core fallback when OWNER_REMINDERS is unavailable; when OWNER_REMINDERS is exposed, explicit owner-reminder creation belongs to it. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
+    "reminders, alarms, timers, and one-off or recurring scheduled prompts ('remind me in N minutes / at TIME to …', 'every morning …') -> TRIGGER_CREATE; 'pause the X reminder', 'stop reminding me about X', 'turn X back on' -> toggle, which keeps the trigger (not delete). This is the core fallback when OWNER_REMINDERS is unavailable; when OWNER_REMINDERS is exposed, explicit owner-reminder creation belongs to it, and a reminder it created (its id is in an OWNER_REMINDERS receipt, never a TRIGGER taskId) is updated, toggled or deleted through OWNER_REMINDERS, not TRIGGER. Do NOT use TASKS_* (those spawn coding sub-agents) and do NOT declare reminders unavailable because OWNER_REMINDERS is absent.",
   description:
-    "User reminders and scheduled prompts: create, update, delete, run, toggle, list. Every create needs one schedule field or nothing is created: delayMinutes or delaySeconds for 'in N minutes', scheduledAtIso for a clock time, cronExpression for a repeat ('every …'), intervalMs for a fixed period. A repeat takes cronExpression alone, never a delay. Use update to change an existing reminder's time, name or text in place ('actually make it 30 minutes', 'move it to 5pm'), not by deleting it and creating it again; only a switch between one-off and recurring needs a new trigger. toggle pauses (enabled:false) or resumes (enabled:true) a reminder and keeps it. Use list for 'what reminders do I have' / 'when does my next reminder fire'; reminders are not calendar events and never appear in the calendar feed.",
+    "User reminders and scheduled prompts: create, update, delete, run, toggle, list. Every create needs one schedule field or nothing is created: delayMinutes or delaySeconds for 'in N minutes', scheduledAtIso for a clock time, cronExpression for a repeat ('every …'), intervalMs for a fixed period. A repeat takes cronExpression alone, never a delay. Use update to change an existing reminder's time, name or text in place ('actually make it 30 minutes', 'move it to 5pm'), not by deleting it and creating it again; only a switch between one-off and recurring needs a new trigger. update, delete, run and toggle act only on triggers this action created or listed; a reminder saved through OWNER_REMINDERS is changed with OWNER_REMINDERS. toggle pauses (enabled:false) or resumes (enabled:true) a reminder and keeps it. Use list for 'what reminders do I have' / 'when does my next reminder fire'; reminders are not calendar events and never appear in the calendar feed.",
   descriptionCompressed:
-    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update (change time/name in place: 'make it 30 minutes') delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
+    "reminders + scheduled prompts: create (remind me in N / at TIME; every X -> cron) update (change a trigger's time/name in place: 'make it 30 minutes'; an OWNER_REMINDERS reminder updates there) delete run toggle (pause/resume a reminder) list ('what reminders do i have' / 'when's my next reminder' -> list)",
   suppressPostActionContinuation: true,
 
   validate: async (
@@ -1572,7 +1588,7 @@ export const triggerAction: Action = {
     {
       name: "taskId",
       description:
-        "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted; update needs the id, which action=list returns for each trigger in its result data (entries[].taskId).",
+        "Trigger task UUID (or triggerId) for update / delete / run / toggle. delete/run/toggle also resolve by displayName fragment when omitted; update needs the id, which action=list returns for each trigger in its result data (entries[].taskId). An OWNER_REMINDERS reminder id is not a taskId.",
       required: false,
       // opUpdate rejects a call without it (MISSING_TASK_ID). Optional on
       // TRIGGER_UPDATE, the planner sent it bare three times before a fourth

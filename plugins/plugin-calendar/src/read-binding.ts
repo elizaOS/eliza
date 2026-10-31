@@ -49,25 +49,33 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     if (value === undefined || value === null) return [];
     if (!Array.isArray(value)) return null;
     const seen = new Set<string>();
+    const reads: RequestedRead[] = [];
     for (const item of value) {
+      // The free-form ID may arrive as its bare one-based number ("1", as
+      // in tj-97b3ddd147b529); it names the same intent as "intent:1".
+      const index =
+        isObjectRecord(item) && typeof item.intentId === "string"
+          ? /^(?:intent:)?([1-9][0-9]*)$/.exec(item.intentId)?.[1]
+          : undefined;
       if (
         !isObjectRecord(item) ||
         Object.keys(item).some(
           (key) =>
             key !== "intentId" && key !== "operation" && key !== "execution",
         ) ||
-        typeof item.intentId !== "string" ||
-        !/^intent:[1-9][0-9]*$/.test(item.intentId) ||
+        !index ||
         typeof item.operation !== "string" ||
         !Object.hasOwn(CALENDAR_READ_ACTIONS, item.operation) ||
         (item.execution !== "required" && item.execution !== "conditional")
       )
         return null;
-      const key = `${item.intentId}:${item.operation}`;
+      const intentId = `intent:${index}`;
+      const key = `${intentId}:${item.operation}`;
       if (seen.has(key)) return null;
       seen.add(key);
+      reads.push({ ...(item as RequestedRead), intentId });
     }
-    return value as RequestedRead[];
+    return reads;
   },
   handle({ value, parsed, message, turnSignal }) {
     turnSignal.throwIfAborted();

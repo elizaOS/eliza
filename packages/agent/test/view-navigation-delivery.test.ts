@@ -2190,12 +2190,19 @@ describe("inferred visual scope invalidation", () => {
     await post("/api/views/notes/navigate", { source: "user" });
     await post("/api/views/notes/elements", {
       installationId: getView(runtime, "notes")?.installationId,
+      // A source is deferred only when its body is longer than the notice.
       elements: [
         {
           id: "lifetime-control",
           role: "textbox",
           label: "Source control",
           value: "HTTP-published Ω value",
+        },
+        {
+          id: "agenda-summary",
+          role: "status",
+          label: "Agenda summary for the selected day",
+          value: "No events",
         },
       ],
     });
@@ -2239,12 +2246,19 @@ describe("inferred visual scope invalidation", () => {
       const installationId = getView(x.f.runtime, "notes")?.installationId;
       await post("elements", {
         installationId,
+        // A source is deferred only when its body is longer than the notice.
         elements: [
           {
             id: "literal-control",
             role: "textbox",
             label: "Exact Ω label",
             value: "  original  value  ",
+          },
+          {
+            id: "agenda-summary",
+            role: "status",
+            label: "Agenda summary for the selected day",
+            value: "No events",
           },
         ],
       });

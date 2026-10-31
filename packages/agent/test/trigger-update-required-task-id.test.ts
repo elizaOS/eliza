@@ -62,3 +62,24 @@ it("TRIGGER_DELETE routes a change to an existing reminder to update", () => {
     "Use update to change an existing reminder's time",
   );
 });
+
+// Live tj-b020ae0157c06c: with OWNER_REMINDERS exposed beside TRIGGER,
+// "actually make that 30 minutes" after an OWNER_REMINDERS create went to
+// TRIGGER_UPDATE with the owner reminder's id and failed TRIGGER_NOT_FOUND.
+it("TRIGGER sends a reminder OWNER_REMINDERS saved back to OWNER_REMINDERS", () => {
+  expect(plannerDescription("TRIGGER_UPDATE")).toContain(
+    "a reminder saved through OWNER_REMINDERS is changed with OWNER_REMINDERS",
+  );
+  const taskId = actionToTool(promoted("TRIGGER_UPDATE")).function.parameters
+    .properties?.taskId;
+  expect(taskId?.description).toContain(
+    "An OWNER_REMINDERS reminder id is not a taskId",
+  );
+  expect(triggerAction.routingHint).toContain(
+    "is updated, toggled or deleted through OWNER_REMINDERS, not TRIGGER",
+  );
+  // Without LifeOps, TRIGGER stays the reminder surface.
+  expect(triggerAction.routingHint).toContain(
+    "core fallback when OWNER_REMINDERS is unavailable",
+  );
+});

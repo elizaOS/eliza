@@ -16,6 +16,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 import { androidNativeHost } from "./android-host.mjs";
 import { applyAutofillFullOrigin } from "./chromium/autofill-full-origin.mjs";
+import { applyFontScaleOnChange } from "./chromium/font-scale-on-change.mjs";
 import { applyIndexedDBLockOrder } from "./chromium/indexeddb-lock-order.mjs";
 import { applyNoEarlyConnection } from "./chromium/no-early-connection.mjs";
 import { applyStandaloneCredMan } from "./chromium/standalone-credman.mjs";
@@ -386,6 +387,7 @@ export async function generateComponentOverlay({
   if (platform === "android") {
     applyAutofillFullOrigin(edit, replaceOnce);
     applyNoEarlyConnection(edit, replaceOnce);
+    applyFontScaleOnChange(edit, replaceOnce);
     applyStandaloneCredMan(edit, replaceOnce);
     applyStandaloneCredManTests(edit, replaceOnce);
     if (embedHost) {

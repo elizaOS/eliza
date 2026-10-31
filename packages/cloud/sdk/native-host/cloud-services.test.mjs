@@ -984,6 +984,11 @@ function googleHost(t, google, extraPolicy = {}) {
       if (path === "/api/v1/voice/stt")
         return Response.json({ text: google.transcript ?? "hello" });
       if (path === "/api/v1/eliza/google/status") {
+        if (
+          google.afterDispatchStatus &&
+          calls.some((call) => call.url.endsWith("/dispatch"))
+        )
+          return google.afterDispatchStatus();
         // Cloud answers for a named connection when grantId is given.
         const named = new URL(url).searchParams.get("grantId");
         if (named && google.connections)
@@ -1026,6 +1031,7 @@ function googleHost(t, google, extraPolicy = {}) {
           authUrl: "https://accounts.google.com/o/oauth2/v2/auth?state=x",
         });
       if (path.startsWith("/api/v1/eliza/google/gmail/inbox-v1/operations")) {
+        if (google.operationResponse) return google.operationResponse(path);
         if (google.operationStatus)
           return new Response(null, { status: google.operationStatus });
         const body = init.body ? JSON.parse(init.body) : null;
@@ -1757,6 +1763,139 @@ test("verified CAS preserves replacement on stale clear and refuses retired admi
 const MODIFY_SCOPE = "https://www.googleapis.com/auth/gmail.modify";
 const SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 const OPERATION = "33333333-3333-4333-8333-333333333333";
+
+const archiveProposal = () => ({
+  kind: "archive",
+  messageId: "m1",
+  expectedHistoryId: "4242",
+});
+
+test("owner mail dispatch retains unknown outcomes for unreadable and mismatched receipts", async (t) => {
+  const google = { connectionId: GRANT_A, scopes: [READ_SCOPE, MODIFY_SCOPE] };
+  const { routes, calls } = googleHost(t, google, { gmailOwnerWrites: true });
+  const writer = routes.mailboxWriterForAccount({
+    actorId: "owner",
+    accountId: GRANT_A,
+  });
+  const receipt = {
+    requestId: OPERATION,
+    kind: "archive",
+    reviewDigest: "a".repeat(64),
+    state: "succeeded",
+  };
+  for (const response of [
+    () => new Response("{"),
+    () => Response.json({ receipt: { ...receipt, kind: "trash" } }),
+    () =>
+      Response.json({ receipt: { ...receipt, reviewDigest: "b".repeat(64) } }),
+  ]) {
+    google.operationResponse = response;
+    const before = calls.filter((call) =>
+      call.url.endsWith("/dispatch"),
+    ).length;
+    await assert.rejects(
+      writer.dispatch({
+        requestId: OPERATION,
+        reviewDigest: receipt.reviewDigest,
+        proposal: archiveProposal(),
+      }),
+      { code: "outcome_unknown" },
+    );
+    assert.equal(
+      calls.filter((call) => call.url.endsWith("/dispatch")).length,
+      before + 1,
+    );
+  }
+});
+
+test("owner mail reply is withheld when its Google grant changes in flight", async (t) => {
+  const google = { connectionId: GRANT_A, scopes: [READ_SCOPE, MODIFY_SCOPE] };
+  const { routes } = googleHost(t, google, { gmailOwnerWrites: true });
+  const writer = routes.mailboxWriterForAccount({
+    actorId: "owner",
+    accountId: GRANT_A,
+  });
+  google.operationResponse = () => {
+    google.connectionId = GRANT_B;
+    return Response.json({
+      receipt: {
+        requestId: OPERATION,
+        kind: "archive",
+        reviewDigest: "a".repeat(64),
+        state: "succeeded",
+      },
+    });
+  };
+  await assert.rejects(
+    writer.dispatch({
+      requestId: OPERATION,
+      reviewDigest: "a".repeat(64),
+      proposal: archiveProposal(),
+    }),
+    { code: "account_changed" },
+  );
+});
+
+test("owner mail dispatch keeps an unknown outcome when final authority cannot be read", async (t) => {
+  for (const afterDispatchStatus of [
+    () => new Response(null, { status: 503 }),
+    () => new Response("{"),
+    () => {
+      throw new DOMException("Timed out", "TimeoutError");
+    },
+  ]) {
+    const google = {
+      connectionId: GRANT_A,
+      scopes: [READ_SCOPE, MODIFY_SCOPE],
+      afterDispatchStatus,
+    };
+    const { routes, calls } = googleHost(t, google, { gmailOwnerWrites: true });
+    const writer = routes.mailboxWriterForAccount({
+      actorId: "owner",
+      accountId: GRANT_A,
+    });
+    await assert.rejects(
+      writer.dispatch({
+        requestId: OPERATION,
+        reviewDigest: "a".repeat(64),
+        proposal: archiveProposal(),
+      }),
+      { code: "outcome_unknown" },
+    );
+    assert.equal(
+      calls.filter((call) => call.url.endsWith("/dispatch")).length,
+      1,
+    );
+  }
+});
+
+test("owner mail dispatch captures reviewed fields before credential awaits", async (t) => {
+  const google = { connectionId: GRANT_A, scopes: [READ_SCOPE, MODIFY_SCOPE] };
+  const { routes, calls } = googleHost(t, google, { gmailOwnerWrites: true });
+  const writer = routes.mailboxWriterForAccount({
+    actorId: "owner",
+    accountId: GRANT_A,
+  });
+  const input = {
+    requestId: OPERATION,
+    reviewDigest: "a".repeat(64),
+    proposal: archiveProposal(),
+  };
+  const pending = writer.dispatch(input);
+  input.reviewDigest = "b".repeat(64);
+  input.proposal.kind = "trash";
+  input.proposal.messageId = "m2";
+  const result = await pending;
+  assert.equal(result.receipt.kind, "archive");
+  assert.deepEqual(
+    JSON.parse(calls.find((call) => call.url.endsWith("/dispatch")).init.body),
+    {
+      grantId: GRANT_A,
+      reviewDigest: "a".repeat(64),
+      proposal: archiveProposal(),
+    },
+  );
+});
 
 test("without the host opt-in, the owner's mailbox stays read-only and no writer exists", async (t) => {
   const google = { connectionId: GRANT_A };
