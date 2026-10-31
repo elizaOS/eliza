@@ -587,10 +587,18 @@ export function retrieveContextualPlannerActions(args: {
   const retainedNames = new Set(matches.map((action) => action.name));
   if (args.query.trim()) {
     for (const domain of domains) {
-      const strongest = Math.max(0, ...args.actions.map((action) => plannerDomainOwnership(action, domain)));
+      const strongest = Math.max(
+        0,
+        ...args.actions.map((action) => plannerDomainOwnership(action, domain)),
+      );
       if (strongest === 0) continue;
-      const owned = args.actions.filter((action) => plannerDomainOwnership(action, domain) === strongest);
-      const operations = preferredOperationNames(operationQuery, owned.map((action) => action.name));
+      const owned = args.actions.filter(
+        (action) => plannerDomainOwnership(action, domain) === strongest,
+      );
+      const operations = preferredOperationNames(
+        operationQuery,
+        owned.map((action) => action.name),
+      );
       for (const action of owned) {
         if (operations.has(action.name) && !retainedNames.has(action.name)) {
           matches.push(action);

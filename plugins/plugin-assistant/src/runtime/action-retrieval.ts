@@ -830,7 +830,9 @@ export function preferredOperationNames(
   // operations alongside lexical matches. This is only retrieval: it grants
   // no write authority and never removes a compound request's mutation tools.
   if (
-    /\bdid\s+(?:i|we|you|they|he|she)\s+(?:(?:ever|already|previously)\s+)?(?:create|add|write|save|update|edit|change|modify|replace|rename|append|prepend|delete|remove|erase|send)\b/iu.test(query)
+    /\bdid\s+(?:i|we|you|they|he|she)\s+(?:(?:ever|already|previously)\s+)?(?:create|add|write|save|update|edit|change|modify|replace|rename|append|prepend|delete|remove|erase|send)\b/iu.test(
+      query,
+    )
   ) {
     wanted.add("get");
     wanted.add("read");

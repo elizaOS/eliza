@@ -4,8 +4,8 @@ import type { BoundRequestOperationAttempt } from "../actions/task-extraction-co
 import { getAmbientSingleton, setAmbientSingleton } from "../ambient-context";
 import type { ActionModelClass } from "../types/components";
 import type { Memory } from "../types/memory";
-import type { State } from "../types/state";
 import type { IAgentRuntime } from "../types/runtime";
+import type { State } from "../types/state";
 import { AsyncContextManager } from "../utils/async-context-manager";
 
 export interface ActionRoutingContext {

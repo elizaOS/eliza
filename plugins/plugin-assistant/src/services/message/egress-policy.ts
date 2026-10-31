@@ -708,13 +708,20 @@ export function completedSideEffectClaimIsUngrounded(args: {
       (args.evaluator.success === true && args.evaluator.decision === "FINISH"))
       ? withoutObservedTimestampLabels(reply, args.actionResults)
       : reply;
-  return replyClaimsCompletedSideEffect(assertionText, { pendingWork: args.pendingWork }) &&
+  return (
+    replyClaimsCompletedSideEffect(assertionText, {
+      pendingWork: args.pendingWork,
+    }) &&
     !plannedReplyHasClaimGroundingReceipt({
-      kind: "completed_side_effect", reply, results: args.actionResults,
+      kind: "completed_side_effect",
+      reply,
+      results: args.actionResults,
       // This claim kind uses exact text and active committed receipts, not
       // action-name/tag hints. Other egress kinds retain their action surface.
-      actions: [], evaluator: args.evaluator,
-    });
+      actions: [],
+      evaluator: args.evaluator,
+    })
+  );
 }
 
 export function evaluatePlannedReplyEgress(args: {

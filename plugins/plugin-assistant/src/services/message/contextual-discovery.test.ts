@@ -1674,29 +1674,66 @@ describe("contextual native discovery", () => {
   );
 
   it.each([
-    { query: "what did I write about ideas?", intents: ["Query the note called ideas for its content"] },
+    {
+      query: "what did I write about ideas?",
+      intents: ["Query the note called ideas for its content"],
+    },
     { query: "what did I write about ideas?", intents: [] },
     { query: "which note did I save about a launch?", intents: [] },
     { query: "what did I write about delete and send?", intents: [] },
     { query: "read my note about how to write and delete", intents: [] },
-    { query: "what did I write about ideas? Then add a new item to it.", intents: ["Read the ideas note", "Append a new item to the note"] },
-  ])("keeps actual Notes reads discoverable for retrospective/current query $query", ({ query, intents }) => {
-    const actions = notesPlugin.actions ?? [];
-    const found = retrieveContextualPlannerActions({ actions, query, intents, contexts: ["notes"] }).actions;
-    expect(found.map(action => action.name)).toEqual(expect.arrayContaining(["NOTES_GET", "NOTES_LIST"]));
-    for (const action of found) expect(actions).toContain(action);
-  });
+    {
+      query: "what did I write about ideas? Then add a new item to it.",
+      intents: ["Read the ideas note", "Append a new item to the note"],
+    },
+  ])(
+    "keeps actual Notes reads discoverable for retrospective/current query $query",
+    ({ query, intents }) => {
+      const actions = notesPlugin.actions ?? [];
+      const found = retrieveContextualPlannerActions({
+        actions,
+        query,
+        intents,
+        contexts: ["notes"],
+      }).actions;
+      expect(found.map((action) => action.name)).toEqual(
+        expect.arrayContaining(["NOTES_GET", "NOTES_LIST"]),
+      );
+      for (const action of found) expect(actions).toContain(action);
+    },
+  );
 
   it.each([
-    { query: "write a note called ideas", expected: ["NOTES_CREATE", "NOTES_PATCH", "NOTES_UPDATE"] },
-    { query: "add eggs to my packing note", expected: ["NOTES_PATCH", "NOTES_UPDATE"] },
-    { query: "read ideas then write a new note", expected: ["NOTES_GET", "NOTES_LIST", "NOTES_CREATE"] },
-    { query: 'write a note whose body is "what did I delete yesterday?"', expected: ["NOTES_CREATE"] },
+    {
+      query: "write a note called ideas",
+      expected: ["NOTES_CREATE", "NOTES_PATCH", "NOTES_UPDATE"],
+    },
+    {
+      query: "add eggs to my packing note",
+      expected: ["NOTES_PATCH", "NOTES_UPDATE"],
+    },
+    {
+      query: "read ideas then write a new note",
+      expected: ["NOTES_GET", "NOTES_LIST", "NOTES_CREATE"],
+    },
+    {
+      query: 'write a note whose body is "what did I delete yesterday?"',
+      expected: ["NOTES_CREATE"],
+    },
     { query: "delete the ideas note", expected: ["NOTES_DELETE"] },
-  ])("preserves actual current Notes mutations for $query", ({ query, expected }) => {
-    const found = retrieveContextualPlannerActions({ actions: notesPlugin.actions ?? [], query, contexts: ["notes"] }).actions;
-    expect(found.map(action => action.name)).toEqual(expect.arrayContaining(expected));
-  });
+  ])(
+    "preserves actual current Notes mutations for $query",
+    ({ query, expected }) => {
+      const found = retrieveContextualPlannerActions({
+        actions: notesPlugin.actions ?? [],
+        query,
+        contexts: ["notes"],
+      }).actions;
+      expect(found.map((action) => action.name)).toEqual(
+        expect.arrayContaining(expected),
+      );
+    },
+  );
 
   it.each([
     ["list notes", ["NOTES_LIST"]],

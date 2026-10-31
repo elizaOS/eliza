@@ -160,7 +160,9 @@ export interface MessageHandlerPlan {
 	/** Owned same-call semantic interpretation; not permission or execution proof. */
 	notesRequestInterpretation?: {
 		readonly status: NotesRequestInterpretation["status"];
-		readonly operations: Array<NotesRequestInterpretation["operations"][number]>;
+		readonly operations: Array<
+			NotesRequestInterpretation["operations"][number]
+		>;
 	};
 	/** Host-only contradiction evidence; never a model field or write grant. */
 	notesRequestHostRestriction?: {
