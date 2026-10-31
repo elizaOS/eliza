@@ -11,7 +11,7 @@ import type { IAgentRuntime, MessageConnectorQueryContext, UUID } from "@elizaos
 import { describe, expect, it, vi } from "vitest";
 import { normalizeAccountId } from "./accounts.ts";
 import { SlackService } from "./service.ts";
-import type { SlackChannel, SlackUser } from "./types.ts";
+import type { SlackChannel } from "./types.ts";
 
 const ACCOUNT_ID = "acct-1";
 
@@ -20,7 +20,7 @@ function createService(overrides?: {
     options?: { types?: string; limit?: number },
     accountId?: string | null,
   ) => Promise<SlackChannel[]>;
-  listAllConnectorUsers?: (accountId: string) => Promise<any[]>;
+  listAllConnectorUsers?: (accountId: string) => Promise<unknown[]>;
 }) {
   const runtime = {
     agentId: "11111111-1111-4111-8111-111111111111" as UUID,
@@ -42,11 +42,21 @@ function createService(overrides?: {
             teamId: "TA",
             botUserId: "B0AGENT",
             client: {},
+            policy: {
+              isChannelAllowed: vi.fn(() => true),
+              isUserAllowed: vi.fn(() => true),
+            },
           },
         ],
       ]),
       getClientForAccount: vi.fn(() => ({})),
       getCandidateAccountIds: vi.fn(() => [ACCOUNT_ID]),
+      getPolicyForAccount: vi.fn(() => ({
+        isChannelAllowed: () => true,
+        isUserAllowed: () => true,
+      })),
+      isChannelAllowed: vi.fn(() => true),
+      isUserAllowed: vi.fn(() => true),
       listChannels: overrides?.listChannels ?? vi.fn(async () => []),
       listAllConnectorUsers:
         overrides?.listAllConnectorUsers ?? vi.fn(async () => []),
