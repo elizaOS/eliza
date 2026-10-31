@@ -24,11 +24,11 @@ import {
   isGoogleCalendarWebhookEnabled,
 } from "../google-watch/index.js";
 import { CalendarServiceError } from "../internal/errors.js";
-import { ownerCalendarFeedWithReadDiagnostics } from "../service/managed-calendar-read.js";
 import {
   CalendarLocalTimeError,
   calendarLocalTimeClarification,
 } from "../internal/time.js";
+import { ownerCalendarFeedWithReadDiagnostics } from "../service/managed-calendar-read.js";
 import {
   type CalendarRouteRateLimitKey,
   type CalendarRouteService,
@@ -752,10 +752,12 @@ export const calendarHttpRoutes: Route[] = [
       "The calendar feed is owned by the active runtime in every supported topology",
     routeHandler: (context) =>
       readOwnerCalendar(context, async (service, url) =>
-        ownerCalendarFeedWithReadDiagnostics(await service.getCalendarFeed(
-          url,
-          parseCalendarFeedQuery(url.searchParams, queryParsers),
-        )),
+        ownerCalendarFeedWithReadDiagnostics(
+          await service.getCalendarFeed(
+            url,
+            parseCalendarFeedQuery(url.searchParams, queryParsers),
+          ),
+        ),
       ),
   },
   {

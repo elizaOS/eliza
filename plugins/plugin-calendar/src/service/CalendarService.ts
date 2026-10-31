@@ -238,8 +238,8 @@ import {
   type LinkedCalendarSemanticEvent,
 } from "./linked-calendar-sync.js";
 import {
-  createManagedCalendarRead,
   attachManagedCalendarReadDiagnostic,
+  createManagedCalendarRead,
   managedCalendarPlaceholder,
 } from "./managed-calendar-read.js";
 import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
@@ -564,11 +564,14 @@ function calendarSourceError(error: unknown): LifeOpsCalendarSourceError {
     };
   }
   if (error instanceof ElizaError) {
-    return attachManagedCalendarReadDiagnostic({
-      code: error.code,
-      message: error.message,
-      retryable: error.severity === "ephemeral",
-    }, error);
+    return attachManagedCalendarReadDiagnostic(
+      {
+        code: error.code,
+        message: error.message,
+        retryable: error.severity === "ephemeral",
+      },
+      error,
+    );
   }
   return {
     code: "CALENDAR_SOURCE_ERROR",

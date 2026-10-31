@@ -1,9 +1,9 @@
 /** Explicit private host calendar reads. No provider credentials or mutation route. */
 import type {
-  LifeOpsCalendarFeed,
-  LifeOpsCalendarSummary,
-  LifeOpsCalendarSourceError,
   CalendarReadBrokerDiagnostic,
+  LifeOpsCalendarFeed,
+  LifeOpsCalendarSourceError,
+  LifeOpsCalendarSummary,
 } from "@elizaos/contracts";
 import { calendarReadBrokerDiagnosticHeader } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
@@ -35,11 +35,17 @@ const fail = (attempt?: ReadAttempt, code?: ReadDiagnostic["code"]) => {
     "The managed owner Calendar connection could not be verified.",
     { code: "MANAGED_CALENDAR_READ_UNAVAILABLE" },
   );
-  if (attempt && code) Object.defineProperty(error, diagnosticKey, { value: Object.freeze({
-    version: 1, operation: attempt.operation, stage: diagnosticStages[code],
-    httpStatus: attempt.httpStatus, code,
-    ...(attempt.broker ? { broker: attempt.broker } : {}),
-  }) });
+  if (attempt && code)
+    Object.defineProperty(error, diagnosticKey, {
+      value: Object.freeze({
+        version: 1,
+        operation: attempt.operation,
+        stage: diagnosticStages[code],
+        httpStatus: attempt.httpStatus,
+        code,
+        ...(attempt.broker ? { broker: attempt.broker } : {}),
+      }),
+    });
   return error;
 };
 const record = (v: unknown): v is Record<string, unknown> =>
@@ -54,13 +60,22 @@ function diagnosticCode(value: unknown): value is ReadDiagnostic["code"] {
 }
 
 /** Snapshot own data descriptors once; optional metadata never invokes getters. */
-export function managedCalendarReadDiagnostic(error: unknown): ReadDiagnostic | undefined {
+export function managedCalendarReadDiagnostic(
+  error: unknown,
+): ReadDiagnostic | undefined {
   try {
     if (!record(error)) return;
     const errorCode = Object.getOwnPropertyDescriptor(error, "code");
     const marker = Object.getOwnPropertyDescriptor(error, diagnosticKey);
-    if (!errorCode || !("value" in errorCode) || errorCode.value !== "MANAGED_CALENDAR_READ_UNAVAILABLE" ||
-      !marker || !("value" in marker) || marker.enumerable !== false) return;
+    if (
+      !errorCode ||
+      !("value" in errorCode) ||
+      errorCode.value !== "MANAGED_CALENDAR_READ_UNAVAILABLE" ||
+      !marker ||
+      !("value" in marker) ||
+      marker.enumerable !== false
+    )
+      return;
     const value: unknown = marker.value;
     if (!record(value)) return;
     const prototype = Object.getPrototypeOf(value);
@@ -68,12 +83,25 @@ export function managedCalendarReadDiagnostic(error: unknown): ReadDiagnostic | 
     const descriptors = Object.getOwnPropertyDescriptors(value);
     const keys = Reflect.ownKeys(descriptors);
     const required = ["version", "operation", "stage", "httpStatus", "code"];
-    if (keys.length < 5 || keys.length > 6 || keys.some(key =>
-      typeof key !== "string" || (!required.includes(key) && key !== "broker"))) return;
-    if (required.some(key => !Object.hasOwn(descriptors, key))) return;
+    if (
+      keys.length < 5 ||
+      keys.length > 6 ||
+      keys.some(
+        (key) =>
+          typeof key !== "string" ||
+          (!required.includes(key) && key !== "broker"),
+      )
+    )
+      return;
+    if (required.some((key) => !Object.hasOwn(descriptors, key))) return;
     for (const key of keys) {
       const descriptor = descriptors[key as string];
-      if (!descriptor || !("value" in descriptor) || descriptor.enumerable !== true) return;
+      if (
+        !descriptor ||
+        !("value" in descriptor) ||
+        descriptor.enumerable !== true
+      )
+        return;
     }
     const version: unknown = descriptors.version?.value;
     const operation: unknown = descriptors.operation?.value;
@@ -81,21 +109,38 @@ export function managedCalendarReadDiagnostic(error: unknown): ReadDiagnostic | 
     const httpStatus: unknown = descriptors.httpStatus?.value;
     const code: unknown = descriptors.code?.value;
     const brokerValue: unknown = descriptors.broker?.value;
-    if (version !== 1 || (operation !== "sources" && operation !== "feed") ||
-      !diagnosticCode(code) || stage !== diagnosticStages[code] ||
-      !(httpStatus === null || (typeof httpStatus === "number" &&
-        Number.isInteger(httpStatus) && httpStatus >= 100 && httpStatus <= 599))) return;
+    if (
+      version !== 1 ||
+      (operation !== "sources" && operation !== "feed") ||
+      !diagnosticCode(code) ||
+      stage !== diagnosticStages[code] ||
+      !(
+        httpStatus === null ||
+        (typeof httpStatus === "number" &&
+          Number.isInteger(httpStatus) &&
+          httpStatus >= 100 &&
+          httpStatus <= 599)
+      )
+    )
+      return;
     let broker: CalendarReadBrokerDiagnostic | undefined;
     if (Object.hasOwn(descriptors, "broker")) {
       // Only the authenticated classified read-409 transport branch can attach it.
-      if (code !== "HTTP_STATUS" || stage !== "http" || httpStatus !== 409) return;
+      if (code !== "HTTP_STATUS" || stage !== "http" || httpStatus !== 409)
+        return;
       const encoded = calendarReadBrokerDiagnosticHeader.encode(brokerValue);
       if (!encoded) return;
       broker = calendarReadBrokerDiagnosticHeader.decode(encoded, operation);
       if (!broker) return;
     }
-    return { version: 1, operation, stage: diagnosticStages[code],
-      httpStatus, code, ...(broker ? { broker } : {}) };
+    return {
+      version: 1,
+      operation,
+      stage: diagnosticStages[code],
+      httpStatus,
+      code,
+      ...(broker ? { broker } : {}),
+    };
   } catch {
     // Invalid optional metadata cannot replace the domain failure.
     return undefined;
@@ -106,12 +151,21 @@ export function managedCalendarReadDiagnostic(error: unknown): ReadDiagnostic | 
  * this object or an ordinary clone. No parallel diagnostic store is created.
  */
 export function attachManagedCalendarReadDiagnostic(
-  target: LifeOpsCalendarSourceError, cause: unknown,
+  target: LifeOpsCalendarSourceError,
+  cause: unknown,
 ): LifeOpsCalendarSourceError {
-  const diagnostic = cause instanceof ElizaError ? managedCalendarReadDiagnostic(cause) : undefined;
+  const diagnostic =
+    cause instanceof ElizaError
+      ? managedCalendarReadDiagnostic(cause)
+      : undefined;
   if (diagnostic) {
-    try { Object.defineProperty(target, diagnosticKey, { value: Object.freeze(diagnostic) }); }
-    catch { /* Optional diagnostics must not change a frozen public error. */ }
+    try {
+      Object.defineProperty(target, diagnosticKey, {
+        value: Object.freeze(diagnostic),
+      });
+    } catch {
+      /* Optional diagnostics must not change a frozen public error. */
+    }
   }
   return target;
 }
@@ -142,7 +196,10 @@ export function ownerCalendarFeedWithReadDiagnostics(feed: unknown): unknown {
       // A hostile optional error object cannot break the owner feed response.
     }
     const error = diagnostic ? { ...publicError, diagnostic } : publicError;
-    if (diagnostic) Object.defineProperty(error, diagnosticKey, { value: Object.freeze(diagnostic) });
+    if (diagnostic)
+      Object.defineProperty(error, diagnosticKey, {
+        value: Object.freeze(diagnostic),
+      });
     changed = true;
     return { ...source, error };
   });
@@ -196,7 +253,10 @@ export function createManagedCalendarRead(
     !/^[A-Za-z0-9_-]{64}$/.test(token)
   )
     throw fail();
-  async function call(calendar: object, attempt?: ReadAttempt): Promise<Record<string, unknown>> {
+  async function call(
+    calendar: object,
+    attempt?: ReadAttempt,
+  ): Promise<Record<string, unknown>> {
     const r = await request(url, {
       method: "POST",
       redirect: "error",
@@ -207,12 +267,17 @@ export function createManagedCalendarRead(
       },
       body: JSON.stringify({ calendar }),
     });
-    if (attempt) attempt.httpStatus = Number.isInteger(r.status) && r.status >= 100 && r.status <= 599 ? r.status : null;
+    if (attempt)
+      attempt.httpStatus =
+        Number.isInteger(r.status) && r.status >= 100 && r.status <= 599
+          ? r.status
+          : null;
     if (!r.ok || !r.body) {
       if (attempt && !r.ok && r.status === 409) {
         try {
           const broker = calendarReadBrokerDiagnosticHeader.decode(
-            r.headers.get(calendarReadBrokerDiagnosticHeader.name), attempt.operation,
+            r.headers.get(calendarReadBrokerDiagnosticHeader.name),
+            attempt.operation,
           );
           if (broker) attempt.broker = broker;
         } catch {
@@ -295,15 +360,19 @@ export function createManagedCalendarRead(
       agentId: string,
     ): Promise<LifeOpsCalendarFeed> {
       const attempt: ReadAttempt = { operation: "feed", httpStatus: null };
-      if (!scoped(calendar.grantId)) throw fail(attempt, "REQUEST_SOURCE_INVALID");
-      const { feed } = await call({
-        operation: "feed",
-        grantId: calendar.grantId,
-        calendarId: calendar.calendarId,
-        timeMin,
-        timeMax,
-        timeZone,
-      }, attempt);
+      if (!scoped(calendar.grantId))
+        throw fail(attempt, "REQUEST_SOURCE_INVALID");
+      const { feed } = await call(
+        {
+          operation: "feed",
+          grantId: calendar.grantId,
+          calendarId: calendar.calendarId,
+          timeMin,
+          timeMax,
+          timeZone,
+        },
+        attempt,
+      );
       if (
         !record(feed) ||
         feed.calendarId !== calendar.calendarId ||

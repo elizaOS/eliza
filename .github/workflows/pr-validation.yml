@@ -154,6 +154,26 @@ jobs:
         if: steps.affected.outputs.source == 'true'
         run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
+
+      - name: Lint changed owning Calendar source before builds
+        if: steps.affected.outputs.source == 'true'
+        timeout-minutes: 3
+        shell: bash
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            plugins/plugin-calendar packages/contracts/src/calendar.ts || status=$?
+          case "$status" in
+            0) echo "No owning Calendar source changed."; exit 0 ;;
+            1) ;;
+            *) echo "::error::Calendar change detection failed with exit $status."; exit "$status" ;;
+          esac
+          bun run --cwd plugins/plugin-calendar lint:check --max-diagnostics=none
+
       - name: Upload Bun runtime resolution inventory
         if: steps.affected.outputs.source == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
