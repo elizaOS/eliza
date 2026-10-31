@@ -5384,7 +5384,24 @@ export class OrchestratorTaskService extends Service {
           lastInputSentAt: Date.now(),
         });
         try {
-          await acp.sendToSession(session.sessionId, followUp);
+          const delivery = await acp.sendToSession(session.sessionId, followUp);
+          // A resolved send is not proof of delivery: sendToSession
+          // reports a cancelled, stopped, or errored turn as a
+          // PromptResult receipt instead of throwing, so read the
+          // receipt the way undeliveredReason does for follow-up
+          // prompts in api/agent-routes.ts. An abnormal settle means
+          // the relay turn never ran — collect it through the same
+          // failedTo/send_failed path a thrown send takes.
+          if (
+            delivery.error ||
+            delivery.stopReason === "cancelled" ||
+            delivery.stopReason === "stopped" ||
+            delivery.stopReason === "error"
+          ) {
+            throw new Error(
+              delivery.error ?? `turn settled ${delivery.stopReason}`,
+            );
+          }
           forwardedTo.push(session.sessionId);
         } catch (err) {
           // error-policy:J1 per-session relay failure is collected into the
