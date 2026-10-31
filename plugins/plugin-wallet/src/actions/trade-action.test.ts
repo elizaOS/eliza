@@ -73,9 +73,17 @@ function createRuntime(fetchMock: typeof fetch): {
   return { runtime, service, cache };
 }
 
-function message(text: string): Memory {
+// A confirmation turn is a later user message, so it must carry a different
+// id than the request: core treats a reply with the request's id as still
+// waiting, not as a reply.
+const CONFIRMATION_MESSAGE_ID = "00000000-0000-0000-0000-000000000005";
+
+function message(
+  text: string,
+  id = "00000000-0000-0000-0000-000000000001",
+): Memory {
   return {
-    id: "00000000-0000-0000-0000-000000000001",
+    id,
     entityId: "00000000-0000-0000-0000-000000000002",
     agentId: "00000000-0000-0000-0000-000000000003",
     roomId: "00000000-0000-0000-0000-000000000004",
@@ -88,10 +96,16 @@ async function run(
   runtime: IAgentRuntime,
   text: string,
   parameters: Record<string, unknown>,
+  id?: string,
 ) {
-  return tradeRouterAction.handler(runtime, message(text), undefined, {
-    parameters,
-  } as HandlerOptions);
+  return tradeRouterAction.handler(
+    runtime,
+    id === undefined ? message(text) : message(text, id),
+    undefined,
+    {
+      parameters,
+    } as HandlerOptions,
+  );
 }
 
 const hyperliquidOrder = {
@@ -256,7 +270,12 @@ describe("tradeRouterAction", () => {
     const persistedKey = pendingRecord?.metadata?.idempotencyKey;
     expect(persistedKey).toEqual(expect.any(String));
 
-    const confirmed = await run(runtime, "yes, confirm", hyperliquidOrder);
+    const confirmed = await run(
+      runtime,
+      "yes, confirm",
+      hyperliquidOrder,
+      CONFIRMATION_MESSAGE_ID,
+    );
     expect(confirmed?.success).toBe(true);
     expect(confirmed?.data?.idempotencyKey).toBe(persistedKey);
     expect(fetchMock).toHaveBeenCalledTimes(5);
@@ -283,7 +302,7 @@ describe("tradeRouterAction", () => {
     });
     const second = await requireTradeOrderConfirmation({
       runtime,
-      message: message("yes"),
+      message: message("yes", CONFIRMATION_MESSAGE_ID),
       order: hyperliquidOrder,
       prompt: "Confirm?",
       keyFactory,
@@ -379,7 +398,12 @@ describe("tradeRouterAction", () => {
     const { runtime } = createRuntime(fetchMock as unknown as typeof fetch);
 
     await run(runtime, "buy btc", hyperliquidOrder);
-    const result = await run(runtime, "yes", hyperliquidOrder);
+    const result = await run(
+      runtime,
+      "yes",
+      hyperliquidOrder,
+      CONFIRMATION_MESSAGE_ID,
+    );
 
     expect(result?.success).toBe(false);
     expect(result?.data).toMatchObject({
