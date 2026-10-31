@@ -425,30 +425,94 @@ jobs:
           exit "$status"
 
 
-      - name: Run changed Calendar owning suite
-        if: steps.affected.outputs.source == 'true'
-        timeout-minutes: 10
+
+  calendar-owning:
+    name: Calendar owning tests and types
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      RUN_TURBO_CONCURRENCY: "1"
+      TEST_LANE: pr
+      ELIZA_LIVE_TEST: "0"
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Select changed Calendar sources and contracts
+        id: calendar-diff
         env:
-          BASE_SHA: ${{ steps.diff.outputs.merge_base }}
-          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
-          TEST_LANE: pr
-          ELIZA_LIVE_TEST: "0"
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
         run: |
           set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
           status=0
-          git diff --quiet "$BASE_SHA"..."$HEAD_SHA" -- \
+          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
             plugins/plugin-calendar \
             packages/contracts/src/calendar.ts \
             packages/contracts/src/calendar-linked-sync.ts || status=$?
           if [ "$status" -eq 0 ]; then
-            echo "Calendar sources and contracts are unchanged."
-            exit 0
-          fi
-          if [ "$status" -ne 1 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
             echo "::error::Calendar change selection failed with exit $status."
             exit "$status"
           fi
-          bun run --cwd plugins/plugin-calendar test
+      - if: steps.calendar-diff.outputs.run == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Apply required dependency compatibility patches
+        if: steps.calendar-diff.outputs.run == 'true'
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+      - name: Build core contract
+        if: steps.calendar-diff.outputs.run == 'true'
+        run: bun run build:core
+      - name: Build real Calendar and external Agent dependency closure
+        if: steps.calendar-diff.outputs.run == 'true'
+        run: >-
+          node packages/scripts/run-turbo.ts run build
+          --filter=@elizaos/plugin-calendar...
+          --filter=@elizaos/agent...
+          --concurrency=4 --output-logs=errors-only
+      - name: Run full normal Calendar owning suite
+        if: steps.calendar-diff.outputs.run == 'true'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-calendar test 2>&1 | tee "$RUNNER_TEMP/calendar-owning-tests.log"
+      - name: Check Calendar types
+        if: steps.calendar-diff.outputs.run == 'true'
+        run: bun run --cwd plugins/plugin-calendar typecheck
+      - name: Check Calendar lint
+        if: steps.calendar-diff.outputs.run == 'true'
+        run: bun run --cwd plugins/plugin-calendar lint:check
+      - name: Preserve Calendar owning test output
+        if: always() && steps.calendar-diff.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: calendar-owning-tests
+          path: ${{ runner.temp }}/calendar-owning-tests.log
+          if-no-files-found: warn
+          retention-days: 7
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
@@ -793,6 +857,7 @@ jobs:
     needs:
       - secret-scan
       - source-checks
+      - calendar-owning
       - billing-payment-replay-e2e
       - subscription-authority-postgres
       - paradee-stream-contract
@@ -803,6 +868,7 @@ jobs:
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
+            calendar-owning=${{ needs.calendar-owning.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
             paradee-stream-contract=${{ needs.paradee-stream-contract.result }}
