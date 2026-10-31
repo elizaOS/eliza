@@ -247,30 +247,60 @@ it.each([
   { details: { delaySeconds: 1.9 } },
   { delaySeconds: 1.9, delayMinutes: 30 },
   { details: { delaySeconds: 1.9, delayMinutes: 30 } },
-])("rejects fractional numeric relative updates without changing the saved definition: %j", async (params) => {
-  const seeded = await seed("Fraction refusal", STRETCH_CADENCE);
-  const result = await updateReminder({ target: seeded.definition.id, ...params });
-  expect(result.success).toBe(false);
-  expect(result.data).toEqual(expect.objectContaining({ reason: "relative_delay_unusable" }));
-  expect((await service.getDefinition(seeded.definition.id)).definition).toEqual(seeded.definition);
-  expect((result.effectReceipts ?? []).some(receipt => receipt.outcome === "applied")).toBe(false);
-  await service.deleteDefinition(seeded.definition.id);
-});
+])(
+  "rejects fractional numeric relative updates without changing the saved definition: %j",
+  async (params) => {
+    const seeded = await seed("Fraction refusal", STRETCH_CADENCE);
+    const result = await updateReminder({
+      target: seeded.definition.id,
+      ...params,
+    });
+    expect(result.success).toBe(false);
+    expect(result.data).toEqual(
+      expect.objectContaining({ reason: "relative_delay_unusable" }),
+    );
+    expect(
+      (await service.getDefinition(seeded.definition.id)).definition,
+    ).toEqual(seeded.definition);
+    expect(
+      (result.effectReceipts ?? []).some(
+        (receipt) => receipt.outcome === "applied",
+      ),
+    ).toBe(false);
+    await service.deleteDefinition(seeded.definition.id);
+  },
+);
 
 it("keeps valid whole seconds ahead of fractional lower-priority minutes and request fields ahead of details", async () => {
   const seeded = await seed("Whole seconds", STRETCH_CADENCE);
-  const result = await updateReminder({ target: seeded.definition.id, delaySeconds: 90, delayMinutes: 1.5, details: { delaySeconds: 1.9 } });
+  const result = await updateReminder({
+    target: seeded.definition.id,
+    delaySeconds: 90,
+    delayMinutes: 1.5,
+    details: { delaySeconds: 1.9 },
+  });
   expect(result.success, JSON.stringify(result)).toBe(true);
-  expect((await service.getDefinition(seeded.definition.id)).definition.cadence).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:03:25.162Z" });
+  expect(
+    (await service.getDefinition(seeded.definition.id)).definition.cadence,
+  ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:03:25.162Z" });
   await service.deleteDefinition(seeded.definition.id);
 });
 
 it("keeps explicit cadence ahead of fractional delay inputs", async () => {
   const seeded = await seed("Explicit cadence", STRETCH_CADENCE);
-  const cadence: LifeOpsCadence = { kind: "once", dueAt: "2026-10-30T13:00:00.000Z" };
-  const result = await updateReminder({ target: seeded.definition.id, delayMinutes: 1.5, details: { cadence } });
+  const cadence: LifeOpsCadence = {
+    kind: "once",
+    dueAt: "2026-10-30T13:00:00.000Z",
+  };
+  const result = await updateReminder({
+    target: seeded.definition.id,
+    delayMinutes: 1.5,
+    details: { cadence },
+  });
   expect(result.success, JSON.stringify(result)).toBe(true);
-  expect((await service.getDefinition(seeded.definition.id)).definition.cadence).toEqual(cadence);
+  expect(
+    (await service.getDefinition(seeded.definition.id)).definition.cadence,
+  ).toEqual(cadence);
   await service.deleteDefinition(seeded.definition.id);
 });
 
