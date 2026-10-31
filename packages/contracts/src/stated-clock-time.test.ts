@@ -26,6 +26,14 @@ test("a seconds form reads its clock, not the inner minutes and seconds", () => 
   assert.deepEqual(parseStatedClockTimes("17:00:30"), one(17, 0));
 });
 
+test("colon patterns that are not times state no clock", () => {
+  assert.deepEqual(parseStatedClockTimes("9:99"), { kind: "none" });
+  assert.deepEqual(parseStatedClockTimes("9:60"), { kind: "none" });
+  assert.deepEqual(parseStatedClockTimes("24:00"), { kind: "none" });
+  assert.deepEqual(parseStatedClockTimes("9:5"), { kind: "none" });
+  assert.deepEqual(parseStatedClockTimes("3:1"), { kind: "none" });
+});
+
 test("controls that must not change", () => {
   assert.deepEqual(parseStatedClockTimes("17:00"), one(17, 0));
   assert.deepEqual(parseStatedClockTimes("19:15"), one(19, 15));
