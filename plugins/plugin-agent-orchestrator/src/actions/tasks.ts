@@ -2405,7 +2405,23 @@ async function runSend(
       ? buildSubAgentCompletionFollowUp(routedCompletion, plannerInput)
       : plannerInput;
     if (textInput) {
-      await service.sendToSession(target.session.id, textInput);
+      const delivery = await service.sendToSession(target.session.id, textInput);
+      // sendToSession reports a cancelled/stopped/errored turn as a result
+      // instead of throwing (see undeliveredReason in api/agent-routes.ts);
+      // claiming the assignment succeeded would tell the planner work was
+      // handed off when no turn ran.
+      if (
+        delivery.error ||
+        delivery.stopReason === "cancelled" ||
+        delivery.stopReason === "stopped" ||
+        delivery.stopReason === "error"
+      ) {
+        return errorResult(
+          "SEND_NOT_DELIVERED",
+          delivery.error ??
+            `The agent turn settled ${delivery.stopReason}; the input was not applied.`,
+        );
+      }
       const text = task ? "Assigned new task to agent" : "Sent input to agent";
       return {
         success: true,
@@ -3793,7 +3809,27 @@ async function runControl(
   } else {
     const nextInstruction =
       instruction?.trim() || "Continue with the current task.";
-    await service.sendToSession(target.session.id, nextInstruction);
+    const delivery = await service.sendToSession(
+      target.session.id,
+      nextInstruction,
+    );
+    // Same receipt contract as the send action: a turn that settled
+    // cancelled/stopped/error did not apply the follow-up, so the verified
+    // user-facing success below must not be claimed for it.
+    if (
+      delivery.error ||
+      delivery.stopReason === "cancelled" ||
+      delivery.stopReason === "stopped" ||
+      delivery.stopReason === "error"
+    ) {
+      return failureResult(
+        "TASKS:control",
+        "SEND_NOT_DELIVERED",
+        delivery.error ??
+          `The agent turn settled ${delivery.stopReason}; the follow-up instructions were not applied.`,
+        { reason: "send_not_delivered", action },
+      );
+    }
     responseText = "Passed your follow-up instructions to the coding agent.";
     data = { ...data, instruction: nextInstruction };
   }
