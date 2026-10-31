@@ -2767,10 +2767,9 @@ function feedReadCoversRequestedWindow(
   return asked[0] < asked[1] && read[0] <= asked[0] && asked[1] <= read[1];
 }
 
-/** Fallback coverage for a required agenda read whose evaluator coverage is
- * omitted or cites no real step. Being in the trajectory is not proof: an
- * archived step can come from an earlier request. A feed read counts only when
- * it is the last feed call and the only one that answers THIS request:
+/** Whether one feed step is a read proven to answer THIS request. Being in
+ * the trajectory is not proof: an archived step can come from an earlier
+ * request. The read counts only when it passes each of these:
  * - request: the producer read at or after the bound request time, and its
  *   read receipt is not a replay;
  * - actor: each source it read in scope is an owner source (read bindings
@@ -2786,8 +2785,78 @@ function feedReadCoversRequestedWindow(
  *   whatever grant it names: the evaluator cannot tell that the owner asked
  *   for that other source.
  * Compaction does not change any of these, so an archived read of this
- * request stays valid. Otherwise the base outcome holds: no coverage without
- * a valid citation. */
+ * request stays valid. A cited read and the uncited fallback are judged
+ * alike: a citation names the read, it does not prove it answers the request. */
+function feedReadAnswersRequest(
+  binding: CalendarReadBinding,
+  step: PlannerTrajectory["steps"][number],
+): boolean {
+  const result = step.result,
+    data = result?.data,
+    reply = isObjectRecord(data) ? data.replyContext : undefined,
+    read = isObjectRecord(reply) ? reply.context : undefined,
+    scope = isObjectRecord(read) ? read.sourceScope : undefined;
+  if (
+    result?.success !== true ||
+    result.error != null ||
+    result.failureProvenance ||
+    result.replyFailure ||
+    !isObjectRecord(data) ||
+    !isObjectRecord(read) ||
+    !isObjectRecord(scope) ||
+    typeof read.asOf !== "string" ||
+    !(Date.parse(read.asOf) >= binding.requestedAt) ||
+    !result.effectReceipts?.some(
+      (receipt) =>
+        receipt.operation === "calendar.feed.read" &&
+        receipt.outcome === "noop" &&
+        receipt.idempotency.replayed === false,
+    ) ||
+    !feedReadCoversRequestedWindow(step.toolCall?.params, data)
+  )
+    return false;
+  const grantId =
+    typeof scope.grantId === "string" && scope.grantId
+      ? scope.grantId
+      : undefined;
+  const calendarId =
+    typeof scope.calendarId === "string" && scope.calendarId
+      ? scope.calendarId
+      : undefined;
+  // A source without a key cannot be shown to be out of scope.
+  const required = (Array.isArray(data.sources) ? data.sources : []).filter(
+    (source) => {
+      const key = isObjectRecord(source) ? source.key : undefined;
+      return (
+        !isObjectRecord(key) ||
+        ((grantId === undefined || key.grantId === grantId) &&
+          (calendarId === undefined ||
+            key.calendarId === calendarId ||
+            key.calendarId === "all"))
+      );
+    },
+  );
+  return (
+    required.length > 0 &&
+    required.every(
+      (source) =>
+        isObjectRecord(source) &&
+        source.status === "fresh" &&
+        isObjectRecord(source.key) &&
+        source.key.side === "owner",
+    ) &&
+    (grantId !== undefined || data.state === "complete") &&
+    // calendar-handler.ts sets this in a device-owned Calendar turn, where a
+    // connected-provider read must not stand in for the unread app Calendar.
+    scope.appDeviceCalendarRead !== false
+  );
+}
+
+/** Fallback coverage for a required agenda read whose evaluator coverage is
+ * omitted or cites no real step. A feed read counts only when it is the last
+ * feed call and the only one that answers THIS request
+ * (feedReadAnswersRequest). Otherwise the base outcome holds: no coverage
+ * without a valid citation. */
 function requestBoundFeedRead(
   binding: CalendarReadBinding,
   evidence: ReadonlyMap<string, PlannerTrajectory["steps"][number]>,
@@ -2798,67 +2867,9 @@ function requestBoundFeedRead(
       !step.terminalOnly &&
       isCalendarReadCall(step.toolCall, "feed"),
   );
-  const bound = calls.filter(([, step]) => {
-    const result = step.result,
-      data = result?.data,
-      reply = isObjectRecord(data) ? data.replyContext : undefined,
-      read = isObjectRecord(reply) ? reply.context : undefined,
-      scope = isObjectRecord(read) ? read.sourceScope : undefined;
-    if (
-      result?.success !== true ||
-      result.error != null ||
-      result.failureProvenance ||
-      result.replyFailure ||
-      !isObjectRecord(data) ||
-      !isObjectRecord(read) ||
-      !isObjectRecord(scope) ||
-      typeof read.asOf !== "string" ||
-      !(Date.parse(read.asOf) >= binding.requestedAt) ||
-      !result.effectReceipts?.some(
-        (receipt) =>
-          receipt.operation === "calendar.feed.read" &&
-          receipt.outcome === "noop" &&
-          receipt.idempotency.replayed === false,
-      ) ||
-      !feedReadCoversRequestedWindow(step.toolCall?.params, data)
-    )
-      return false;
-    const grantId =
-      typeof scope.grantId === "string" && scope.grantId
-        ? scope.grantId
-        : undefined;
-    const calendarId =
-      typeof scope.calendarId === "string" && scope.calendarId
-        ? scope.calendarId
-        : undefined;
-    // A source without a key cannot be shown to be out of scope.
-    const required = (Array.isArray(data.sources) ? data.sources : []).filter(
-      (source) => {
-        const key = isObjectRecord(source) ? source.key : undefined;
-        return (
-          !isObjectRecord(key) ||
-          ((grantId === undefined || key.grantId === grantId) &&
-            (calendarId === undefined ||
-              key.calendarId === calendarId ||
-              key.calendarId === "all"))
-        );
-      },
-    );
-    return (
-      required.length > 0 &&
-      required.every(
-        (source) =>
-          isObjectRecord(source) &&
-          source.status === "fresh" &&
-          isObjectRecord(source.key) &&
-          source.key.side === "owner",
-      ) &&
-      (grantId !== undefined || data.state === "complete") &&
-      // calendar-handler.ts sets this in a device-owned Calendar turn, where a
-      // connected-provider read must not stand in for the unread app Calendar.
-      scope.appDeviceCalendarRead !== false
-    );
-  });
+  const bound = calls.filter(([, step]) =>
+    feedReadAnswersRequest(binding, step),
+  );
   return bound.length === 1 && bound[0] === calls.at(-1)
     ? bound[0][0]
     : undefined;
@@ -2996,9 +3007,18 @@ export function calendarReadCoverage(
       if (!isObjectRecord(reply) || reply.domain !== "calendar") return false;
       if (binding.operation === "feed") {
         const scope = reply.context;
+        if (
+          reply.scenario !== "feed_results" ||
+          !isObjectRecord(scope) ||
+          scope.selection !== "bounded_agenda"
+        )
+          return false;
+        // Codex #743: a real step ID only names the read. A cited partial,
+        // stale or other-request read must not ground "nothing scheduled"
+        // where the same read, uncited, would not.
         return (
-          reply.scenario === "feed_results" &&
-          Boolean(isObjectRecord(scope) && scope.selection === "bounded_agenda")
+          feedReadAnswersRequest(binding, step) ||
+          rejectEvidence("CALENDAR_READ_COVERAGE_INCOMPLETE")
         );
       }
       if (binding.operation === "search_events")

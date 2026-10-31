@@ -1108,6 +1108,266 @@ describe("required Calendar read without a usable coverage citation", () => {
   });
 });
 
+/** Cites the read by its real evaluator step ID (Codex #743 6539319805). */
+function citeRead(f: LiveFeed, id = "step:1") {
+  f.output.outcomeCoverage = [{ ...f.coverage, evidenceStepIds: [id] }];
+}
+
+describe("required Calendar read cited by a real step ID", () => {
+  it.each(Object.keys(LIVE_FEED_TURNS) as LiveFeedTurn[])(
+    "keeps the cited request-bound read of live turn %s",
+    async (id) => {
+      const f = liveFeedFixture(id);
+      citeRead(f);
+      expect(
+        calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+      ).toBe(true);
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(true);
+      expect(result.messageToUser).toBe(LIVE_FEED_TURNS[id].reply);
+    },
+  );
+  it.each<[string, LiveFeedTurn, (f: LiveFeed) => void]>([
+    [
+      "a read of this request that compaction archived",
+      "tj-8dfdee5735fb18",
+      archiveRead,
+    ],
+    [
+      "a partial-day read that covers its call's explicit bounds",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeMin": "2026-11-02T09:00:00-08:00", "timeMax": "2026-11-02T17:00:00-08:00"}';
+        f.data.timeMin = "2026-11-02T17:00:00.000Z";
+        f.data.timeMax = "2026-11-03T01:00:00.000Z";
+      },
+    ],
+    [
+      "a local-scoped read judged on its own source while Google is unavailable",
+      "tj-605ca329c8a78d",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"date": "2026-10-30", "timeZone": "America/Los_Angeles", "grantId": "eliza-calendar"}';
+        f.readContext.sourceScope = {
+          grantId: "eliza-calendar",
+          calendarId: null,
+        };
+        f.data.state = "partial";
+        f.data.sources = [
+          { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+          MANAGED_GOOGLE_UNAVAILABLE,
+        ];
+      },
+    ],
+    [
+      "one of two reads of this request, without the fallback's uniqueness rule",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.trajectory.steps.push(structuredClone(f.read));
+      },
+    ],
+  ])("keeps %s", async (_, id, mutate) => {
+    const f = liveFeedFixture(id);
+    mutate(f);
+    citeRead(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(true);
+    expect(result.messageToUser).toBe(LIVE_FEED_TURNS[id].reply);
+  });
+  it.each<[string, LiveFeedTurn, (f: LiveFeed) => void, string?]>([
+    [
+      "the Codex #743 repro, a partial feed while Google is unavailable,",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [ELIZA_CALENDAR_SOURCE, MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "an unavailable feed",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.state = "unavailable";
+        f.data.sources = [MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "a read that leaves the app Calendar unread",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.sourceScope = {
+          grantId: null,
+          calendarId: null,
+          appDeviceCalendarRead: false,
+        };
+      },
+    ],
+    [
+      "a Google read standing in for the unread app Calendar",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        readGoogleInsteadOfAppCalendar(f);
+      },
+    ],
+    [
+      "a Google read after a pending app Calendar request",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        requestAppCalendarFirst(f);
+        readGoogleInsteadOfAppCalendar(f);
+      },
+      "step:2",
+    ],
+    [
+      "a primary-calendar read whose Google discovery failed",
+      "tj-605ca329c8a78d",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [ELIZA_CALENDAR_SOURCE, MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "a partial primary-calendar read",
+      "tj-605ca329c8a78d",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [
+          ELIZA_CALENDAR_SOURCE,
+          {
+            ...MANAGED_GOOGLE_UNAVAILABLE,
+            key: {
+              ...MANAGED_GOOGLE_UNAVAILABLE.key,
+              calendarId: "family@group.calendar.google.com",
+            },
+          },
+        ];
+      },
+    ],
+    [
+      "another request's read",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+      },
+    ],
+    [
+      "another request's archived read",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+        archiveRead(f);
+      },
+    ],
+    [
+      "another request's archived read before a failed current read",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+        archiveRead(f);
+        failCurrentRead(f);
+      },
+    ],
+    [
+      "a read whose receipt is a replay",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        // Core rejects a keyless replay, so this replay names its key.
+        const [read] = f.trajectory.steps;
+        if (read.result)
+          read.result.effectReceipts = [
+            {
+              ...f.receipt,
+              idempotency: {
+                key: "calendar-feed-read:earlier",
+                replayed: true,
+              },
+            },
+          ];
+      },
+    ],
+    [
+      "a read of another date window",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.timeMin = "2026-11-03T08:00:00.000Z";
+        f.data.timeMax = "2026-11-04T08:00:00.000Z";
+      },
+    ],
+    [
+      "a read of part of the requested dates",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "endDate": "2026-11-03"}';
+      },
+    ],
+    [
+      "a read that states no requested window",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.read.toolCall.params.details = '{"timeZone": "America/Los_Angeles"}';
+      },
+    ],
+    [
+      "a read of a source other than the one requested",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "grantId": "alpha-google:broker"}';
+        f.readContext.sourceScope = {
+          grantId: "alpha-google:broker",
+          calendarId: null,
+        };
+      },
+    ],
+    [
+      "a read of another actor's calendar",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.sources = [
+          {
+            ...ELIZA_CALENDAR_SOURCE,
+            key: { ...ELIZA_CALENDAR_SOURCE.key, side: "agent" },
+          },
+        ];
+      },
+    ],
+  ])(
+    "does not ground an empty agenda on %s cited by its step ID",
+    async (_, id, mutate, cited) => {
+      const f = liveFeedFixture(id);
+      mutate(f);
+      citeRead(f, cited);
+      const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
+      expect(coverage).toMatchObject({
+        verified: false,
+        unverifiedIntentIds: ["intent:1"],
+        failureCode: "CALENDAR_READ_COVERAGE_INCOMPLETE",
+      });
+      const result = await runEvaluator({
+        runtime: { useModel: async () => JSON.stringify(f.output) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.requestFullyCovered).toBe(false);
+      expect(result.messageToUser).not.toContain(LIVE_FEED_TURNS[id].reply);
+    },
+  );
+});
+
 /** tj-6eb9a245fd912d: "move the coffee with Sam to 2pm", search then a committed update. */
 function liveMoveFixture() {
   const f = fixture();
