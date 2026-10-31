@@ -6,7 +6,10 @@
  * free-text extraction, and rejected the update.
  */
 
-import type { LifeOpsCadence } from "@elizaos/contracts";
+import type {
+  LifeOpsCadence,
+  LifeOpsDefinitionRecord,
+} from "@elizaos/contracts";
 import {
   actionToTool,
   attestDeliveryAudienceFromCanonicalRoom,
@@ -418,122 +421,6 @@ const REHEARSAL_UPDATE_ARGS = {
   delayMinutes: 10,
 };
 
-it("moves the live reminder past a fired and a cancelled namesake", async () => {
-  const fired = await seed("Grab the deck", {
-    ...STRETCH_CADENCE,
-    dueAt: "2026-10-30T11:36:00.000Z",
-  });
-  const cancelled = await service.updateDefinition(
-    (await seed("Grab the deck", STRETCH_CADENCE)).definition.id,
-    { status: "archived" },
-  );
-  const live = await seed("Grab the deck", STRETCH_CADENCE);
-  try {
-    const result = await updateReminder(
-      REHEARSAL_UPDATE_ARGS,
-      "actually make that 10 minutes",
-    );
-    expect(result.success, JSON.stringify(result)).toBe(true);
-    expect(
-      (await service.getDefinition(live.definition.id)).definition.cadence,
-    ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" });
-    for (const entry of [fired, cancelled]) {
-      expect(
-        (await service.getDefinition(entry.definition.id)).definition,
-      ).toEqual(entry.definition);
-    }
-  } finally {
-    for (const entry of [fired, cancelled, live])
-      await service.deleteDefinition(entry.definition.id);
-  }
-});
-
-it("asks rather than pass over a paused namesake", async () => {
-  const paused = await service.updateDefinition(
-    (
-      await seed("Grab the deck", {
-        ...STRETCH_CADENCE,
-        dueAt: "2026-10-30T12:40:00.000Z",
-      })
-    ).definition.id,
-    { status: "paused" },
-  );
-  const live = await seed("Grab the deck", STRETCH_CADENCE);
-  try {
-    const result = await updateReminder(
-      REHEARSAL_UPDATE_ARGS,
-      "actually make that 10 minutes",
-    );
-    expect(result.success).toBe(false);
-    expect(result.text).toContain("Multiple items match");
-    for (const entry of [paused, live]) {
-      expect(
-        (await service.getDefinition(entry.definition.id)).definition,
-      ).toEqual(entry.definition);
-    }
-  } finally {
-    for (const entry of [paused, live])
-      await service.deleteDefinition(entry.definition.id);
-  }
-});
-
-// The reminder list shows fired reminders, so the owner can name one by its
-// clock time. That namesake is the one to change, not the live one.
-it.each([
-  {
-    says: "move the 4:36am grab the deck to 10 minutes from now",
-    tool: "OWNER_REMINDERS_UPDATE",
-    params: REHEARSAL_UPDATE_ARGS,
-    change: {
-      cadence: { ...STRETCH_CADENCE, dueAt: "2026-10-30T12:11:55.162Z" },
-    },
-  },
-  {
-    says: "cancel the 4:36am grab the deck reminder",
-    tool: "OWNER_REMINDERS",
-    params: {
-      action: "cancel",
-      title: "Grab the deck",
-      kind: "definition",
-      intent: "cancel the 4:36am grab the deck reminder",
-    },
-    change: { status: "archived" },
-  },
-  {
-    says: "cancel the 4:36am one",
-    tool: "OWNER_REMINDERS",
-    params: {
-      action: "cancel",
-      title: "Grab the deck",
-      kind: "definition",
-      intent: "cancel the 4:36am one",
-    },
-    change: { status: "archived" },
-  },
-])(
-  "'$says' changes the fired namesake it names, not the live one",
-  async ({ says, tool, params, change }) => {
-    const fired = await seed("Grab the deck", {
-      ...STRETCH_CADENCE,
-      dueAt: "2026-10-30T11:36:00.000Z",
-    });
-    const live = await seed("Grab the deck", STRETCH_CADENCE);
-    try {
-      const result = await updateReminder(params, says, tool);
-      expect(result.success, JSON.stringify(result)).toBe(true);
-      expect(
-        (await service.getDefinition(fired.definition.id)).definition,
-      ).toEqual(expect.objectContaining(change));
-      expect(
-        (await service.getDefinition(live.definition.id)).definition,
-      ).toEqual(live.definition);
-    } finally {
-      for (const entry of [fired, live])
-        await service.deleteDefinition(entry.definition.id);
-    }
-  },
-);
-
 it.each([
   { says: "actually make that 10 minutes", saved: "due", moved: "recent" },
   { says: "actually make that 10 minutes", saved: "fired", moved: "recent" },
@@ -583,6 +470,484 @@ it.each([
     } finally {
       await clearRecentLifeSaveCache(fixture.runtime, conversation);
       for (const entry of [earlier, recent])
+        await service.deleteDefinition(entry.definition.id);
+    }
+  },
+);
+
+// Each namesake case the reviews probed, at the trajectory's 5:01 AM PDT clock.
+// A row names the one definition that may change. A row without one (except
+// the snooze) must ask "Multiple items match" and change nothing, as the base
+// resolution does. An edit or cancel by name skips a cancelled namesake. An
+// edit that calls the reminder this conversation just saved only "that" or
+// "it" follows that reminder. A word or number that could pick another copy
+// keeps the base resolution, and the new time an edit asks for picks no copy.
+const DUE = {
+  fired436: "2026-10-30T11:36:00.000Z",
+  fired500: "2026-10-30T12:00:00.000Z",
+  live521: STRETCH_CADENCE.dueAt,
+  live540: "2026-10-30T12:40:00.000Z",
+  yesterday530pm: "2026-10-30T00:30:00.000Z",
+  yesterday540am: "2026-10-29T12:40:00.000Z",
+  today6pm: "2026-10-31T01:00:00.000Z",
+  tomorrow436: "2026-10-31T11:36:00.000Z",
+};
+const MOVED_10 = "2026-10-30T12:11:55.162Z";
+const MAKE_10 = "actually make that 10 minutes";
+const cancel = (intent: string) => ({
+  action: "cancel",
+  title: "Grab the deck",
+  kind: "definition",
+  intent,
+});
+const retime = (intent: string, dueAt: string) => ({
+  intent,
+  target: "grab the deck",
+  details: { cadence: { ...STRETCH_CADENCE, dueAt } },
+});
+type NamesakeSeed = {
+  key: string;
+  dueAt: string;
+  title?: string;
+  status?: "archived" | "paused";
+};
+const FIRED_LIVE: NamesakeSeed[] = [
+  { key: "fired436", dueAt: DUE.fired436 },
+  { key: "live521", dueAt: DUE.live521 },
+];
+const THREE: NamesakeSeed[] = [
+  ...FIRED_LIVE,
+  { key: "live540", dueAt: DUE.live540 },
+];
+const OLDER_RECENT: NamesakeSeed[] = [
+  { key: "older540", dueAt: DUE.live540 },
+  { key: "recent521", dueAt: DUE.live521 },
+];
+const FIRED_RECENT: NamesakeSeed[] = [
+  { key: "fired436", dueAt: DUE.fired436 },
+  { key: "recent521", dueAt: DUE.live521 },
+];
+
+it.each<{
+  id: string;
+  says: string;
+  params: Record<string, unknown>;
+  seeds: NamesakeSeed[];
+  recent?: string;
+  changes?: { key: string; dueAt?: string; status?: string };
+  snoozes?: true;
+}>([
+  // A cancelled namesake is not a candidate. A fired or paused one still is.
+  {
+    id: "cancelled",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "cancelled540", dueAt: DUE.live540, status: "archived" },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+    changes: { key: "live521", dueAt: MOVED_10 },
+  },
+  {
+    id: "fired and cancelled",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      ...FIRED_LIVE,
+      { key: "cancelled540", dueAt: DUE.live540, status: "archived" },
+    ],
+  },
+  {
+    id: "fired and cancelled, live one just saved",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      ...FIRED_LIVE,
+      { key: "cancelled540", dueAt: DUE.live540, status: "archived" },
+    ],
+    recent: "live521",
+    changes: { key: "live521", dueAt: MOVED_10 },
+  },
+  {
+    id: "paused",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "paused540", dueAt: DUE.live540, status: "paused" },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+  },
+  {
+    id: "cancelled one named by its time",
+    says: "cancel the 4:36am grab the deck reminder",
+    params: cancel("cancel the 4:36am grab the deck reminder"),
+    seeds: [
+      { key: "cancelled436", dueAt: DUE.fired436, status: "archived" },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+    changes: { key: "cancelled436", status: "archived" },
+  },
+  // The first review's probes A-D.
+  {
+    id: "A",
+    says: "move the 4:36am grab the deck to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_LIVE,
+    changes: { key: "fired436", dueAt: MOVED_10 },
+  },
+  {
+    id: "B",
+    says: "cancel the 4:36am grab the deck reminder",
+    params: cancel("cancel the 4:36am grab the deck reminder"),
+    seeds: FIRED_LIVE,
+    changes: { key: "fired436", status: "archived" },
+  },
+  {
+    id: "C",
+    says: "move the 5:00am grab the deck to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "live540", dueAt: DUE.live540 },
+      { key: "recent500", dueAt: DUE.fired500 },
+    ],
+    recent: "recent500",
+    changes: { key: "recent500", dueAt: MOVED_10 },
+  },
+  {
+    id: "D",
+    says: "cancel the 4:36am one",
+    params: cancel("cancel the 4:36am one"),
+    seeds: FIRED_LIVE,
+    changes: { key: "fired436", status: "archived" },
+  },
+  // The second review's probes N01-N26.
+  {
+    id: "N01",
+    says: "cancel the 4:36 one",
+    params: cancel("cancel the 4:36 one"),
+    seeds: FIRED_LIVE,
+  },
+  {
+    id: "N02",
+    says: "cancel the 4.36am one",
+    params: cancel("cancel the 4.36am one"),
+    seeds: FIRED_LIVE,
+    changes: { key: "fired436", status: "archived" },
+  },
+  {
+    id: "N03",
+    says: "cancel the 436 one",
+    params: cancel("cancel the 436 one"),
+    seeds: FIRED_LIVE,
+  },
+  {
+    id: "N04",
+    says: "cancel the 4:36 a.m. one",
+    params: cancel("cancel the 4:36 a.m. one"),
+    seeds: FIRED_LIVE,
+  },
+  {
+    id: "N05",
+    says: "move the 4:36 one to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_LIVE,
+  },
+  {
+    id: "N06",
+    says: "cancel the earlier one",
+    params: cancel("cancel the earlier one"),
+    seeds: FIRED_LIVE,
+  },
+  {
+    id: "N07",
+    says: "cancel the one from yesterday",
+    params: cancel("cancel the one from yesterday"),
+    seeds: [
+      { key: "yesterday530pm", dueAt: DUE.yesterday530pm },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+  },
+  {
+    id: "N08",
+    says: "cancel the one from this morning",
+    params: cancel("cancel the one from this morning"),
+    seeds: [
+      { key: "fired436", dueAt: DUE.fired436 },
+      { key: "today6pm", dueAt: DUE.today6pm },
+    ],
+  },
+  { id: "N09", says: MAKE_10, params: REHEARSAL_UPDATE_ARGS, seeds: THREE },
+  {
+    id: "N10",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: THREE,
+    recent: "live521",
+    changes: { key: "live521", dueAt: MOVED_10 },
+  },
+  {
+    id: "N11",
+    says: "cancel the 5:40am grab the deck reminder",
+    params: cancel("cancel the 5:40am grab the deck reminder"),
+    seeds: THREE,
+    changes: { key: "live540", status: "archived" },
+  },
+  {
+    id: "N12",
+    says: "cancel the grab the deck reminder",
+    params: cancel("cancel the grab the deck reminder"),
+    seeds: THREE,
+  },
+  // The requested new time names no copy.
+  {
+    id: "N13",
+    says: "actually make that 5:40am",
+    params: retime("actually make that 5:40am", DUE.live540),
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: DUE.live540 },
+  },
+  {
+    id: "N14",
+    says: "actually make that 5:40am",
+    params: retime("actually make that 5:40am", DUE.live540),
+    seeds: [
+      { key: "yesterday540am", dueAt: DUE.yesterday540am },
+      { key: "recent521", dueAt: DUE.live521 },
+    ],
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: DUE.live540 },
+  },
+  {
+    id: "N15",
+    says: "move the 5:40am one to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+    changes: { key: "older540", dueAt: MOVED_10 },
+  },
+  {
+    id: "N16",
+    says: "cancel the 5:40am grab the deck",
+    params: cancel("cancel the 5:40am grab the deck"),
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+    changes: { key: "older540", status: "archived" },
+  },
+  {
+    id: "N17",
+    says: "move the 4:36 one to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  // Pre-existing, as at the base commit: titles that differ only in case are
+  // namesakes, but titles that differ in punctuation are not. Target "grab the
+  // deck" then names only the fired copy, which moves.
+  {
+    id: "N18",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "fired436", dueAt: DUE.fired436 },
+      { key: "live521", dueAt: DUE.live521, title: "grab the Deck" },
+    ],
+  },
+  {
+    id: "N19",
+    says: "cancel the 4:36am Grab The Deck",
+    params: cancel("cancel the 4:36am Grab The Deck"),
+    seeds: [
+      { key: "fired436", dueAt: DUE.fired436 },
+      { key: "live521", dueAt: DUE.live521, title: "grab the Deck" },
+    ],
+    changes: { key: "fired436", status: "archived" },
+  },
+  {
+    id: "N20",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "fired436", dueAt: DUE.fired436 },
+      { key: "live521", dueAt: DUE.live521, title: "Grab the deck." },
+    ],
+    changes: { key: "fired436", dueAt: MOVED_10 },
+  },
+  {
+    id: "N21",
+    says: "snooze the 4:36 one",
+    params: {
+      action: "snooze",
+      title: "Grab the deck",
+      kind: "definition",
+      intent: "snooze the 4:36 one",
+      details: { minutes: 10 },
+    },
+    seeds: FIRED_LIVE,
+    snoozes: true,
+  },
+  {
+    id: "N22",
+    says: "cancel the grab the deck reminder",
+    params: cancel("cancel the grab the deck reminder"),
+    seeds: FIRED_LIVE,
+  },
+  {
+    id: "N23",
+    says: "cancel the grab the deck reminder",
+    params: cancel("cancel the grab the deck reminder"),
+    seeds: [
+      { key: "paused540", dueAt: DUE.live540, status: "paused" },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+  },
+  {
+    id: "N24",
+    says: "move it to 4:36am tomorrow",
+    params: retime("move grab the deck to 4:36am tomorrow", DUE.tomorrow436),
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: DUE.tomorrow436 },
+  },
+  {
+    id: "N25",
+    says: "push the 4:36am grab the deck to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    changes: { key: "fired436", dueAt: MOVED_10 },
+  },
+  {
+    id: "N26",
+    says: "cancel the 4:36 one",
+    params: cancel("cancel the 4:36 one"),
+    seeds: THREE,
+  },
+  // Following the reminder just saved needs "that" or "it" and no selector.
+  {
+    id: "other one",
+    says: "actually make the other one 10 minutes",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "title named",
+    says: "actually make grab the deck 10 minutes",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "saved one since cancelled",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "older540", dueAt: DUE.live540 },
+      { key: "recent521", dueAt: DUE.live521, status: "archived" },
+    ],
+    recent: "recent521",
+  },
+  {
+    id: "the reminder, just saved",
+    says: "move the reminder to 4:36am tomorrow",
+    params: retime("move the reminder to 4:36am tomorrow", DUE.tomorrow436),
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: DUE.tomorrow436 },
+  },
+  // The new time is never a time hint, even where the base resolution reads
+  // one, so it cannot pick the copy that already has that time.
+  {
+    id: "new time, no save",
+    says: "actually make that 5:40am",
+    params: retime("actually make that 5:40am", DUE.live540),
+    seeds: [
+      { key: "older540", dueAt: DUE.live540 },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+  },
+  {
+    id: "new time, title named",
+    says: "move grab the deck to 4:36am tomorrow",
+    params: retime("move grab the deck to 4:36am tomorrow", DUE.tomorrow436),
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "new time, cancelled copy",
+    says: "actually make that 5:40am",
+    params: retime("actually make that 5:40am", DUE.live540),
+    seeds: [
+      { key: "cancelled540", dueAt: DUE.live540, status: "archived" },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+    changes: { key: "live521", dueAt: DUE.live540 },
+  },
+])(
+  "$id: '$says' changes only the namesake it names, or asks",
+  async ({ says, params, seeds, recent, changes, snoozes }) => {
+    const seeded = new Map<string, LifeOpsDefinitionRecord>();
+    const conversation = {
+      roomId,
+      entityId: service.ownerEntityId() as UUID,
+    } as Memory;
+    try {
+      for (const { key, dueAt, title, status } of seeds) {
+        const created = await seed(title ?? "Grab the deck", {
+          ...STRETCH_CADENCE,
+          dueAt,
+        });
+        seeded.set(
+          key,
+          status
+            ? await service.updateDefinition(created.definition.id, { status })
+            : created,
+        );
+      }
+      const saved = recent ? seeded.get(recent) : undefined;
+      if (saved)
+        await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+          definitionId: saved.definition.id,
+          title: saved.definition.title,
+          createdAt: Date.now(),
+        });
+      const result = await updateReminder(
+        params,
+        says,
+        "action" in params ? "OWNER_REMINDERS" : "OWNER_REMINDERS_UPDATE",
+      );
+      expect(result.success, JSON.stringify(result)).toBe(
+        Boolean(changes || snoozes),
+      );
+      if (!changes && !snoozes)
+        expect(result.text).toContain("Multiple items match");
+      for (const [key, entry] of seeded) {
+        const stored = (await service.getDefinition(entry.definition.id))
+          .definition;
+        if (key !== changes?.key) {
+          expect(stored, key).toEqual(entry.definition);
+          continue;
+        }
+        expect(stored.status).toBe(changes.status ?? entry.definition.status);
+        expect(stored.cadence).toMatchObject({
+          kind: "once",
+          dueAt: changes.dueAt ?? seeds.find((s) => s.key === key)?.dueAt,
+        });
+      }
+      const others = [...seeded]
+        .filter(([key]) => key !== changes?.key)
+        .map(([, entry]) => entry.definition.id);
+      expect(
+        (result.effectReceipts ?? []).filter(
+          (receipt) =>
+            receipt.outcome === "applied" &&
+            others.includes(receipt.resource.id),
+        ),
+      ).toEqual([]);
+    } finally {
+      await clearRecentLifeSaveCache(fixture.runtime, conversation);
+      for (const entry of seeded.values())
         await service.deleteDefinition(entry.definition.id);
     }
   },
