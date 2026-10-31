@@ -264,9 +264,11 @@ async function createLifeOpsTestRuntime() {
 
 type WakeProducer = "scheduler_ensure" | "definition_create" | "definition_update" |
   "definition_snooze" | "owner_profile" | "task_consume" | "unknown";
+type EnsureCaller = "startup_retry" | "owner_profile" | "fixture_manual" | "unknown" | "not_ensure";
 type WakeTrace = {
   callIndex: number;
   producer: WakeProducer;
+  ensureCaller: EnsureCaller;
   timestamp: number;
   requestAt: number | null;
   consumeRevision: number | null;
@@ -281,18 +283,26 @@ function observeWakeProducers(runtime: IAgentRuntime) {
   let omitted = 0, callIndex = 0;
   const patches = vi.spyOn(runtime, "patchTaskMetadata").mockImplementation((id, patch) => {
     const index = callIndex++;
-    const producer: WakeProducer = (() => {
+    const classification: { producer: WakeProducer; ensureCaller: EnsureCaller } = (() => {
     const stack = new Error().stack ?? "";
-    return patch.wake?.consumeRevision !== undefined ? "task_consume"
+    const producer: WakeProducer = patch.wake?.consumeRevision !== undefined ? "task_consume"
       : /ensureLifeOpsSchedulerTask/.test(stack) ? "scheduler_ensure"
       : /owner-profile\.(?:ts|js)/.test(stack) ? "owner_profile"
       : /snoozeOccurrence/.test(stack) ? "definition_snooze"
       : /updateDefinition/.test(stack) ? "definition_update"
       : /createDefinition/.test(stack) ? "definition_create" : "unknown";
+    // These are finite source-callsite heuristics, never raw stack telemetry.
+    // Startup retry has priority over a test frame retained by an async stack.
+    const ensureCaller: EnsureCaller = producer !== "scheduler_ensure" ? "not_ensure"
+      : /ensureTaskWithRetries/.test(stack) ? "startup_retry"
+      : /owner-profile\.(?:ts|js)/.test(stack) ? "owner_profile"
+      : /reminder-wake\.pglite\.integration\.test\.(?:ts|js)/.test(stack) ? "fixture_manual"
+      : "unknown";
+    return { producer, ensureCaller };
     })();
     const safe = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) ? value : null;
     const row: WakeTrace | undefined = patch.wake ? {
-      callIndex: index, producer, timestamp: Date.now(), requestAt: safe(patch.wake.requestAt),
+      callIndex: index, ...classification, timestamp: Date.now(), requestAt: safe(patch.wake.requestAt),
       consumeRevision: safe(patch.wake.consumeRevision),
       // The existing patch result is an enum, not a row/revision snapshot.
       // Do not add database reads or invent a before/after revision.
