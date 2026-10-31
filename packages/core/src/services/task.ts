@@ -981,9 +981,11 @@ export class TaskService extends Service {
 						// to prevent) and a later success "restores" updateInterval to the
 						// inflated backoff value permanently instead of the original cadence.
 						newMeta.baseInterval = baseInterval;
-						newMeta.updateInterval = Math.min(
-							baseInterval * 2 ** failureCount,
-							300_000,
+						// The 5-minute cap bounds growth for short cadences; it must never
+						// make a failing hourly or daily task retry sooner than its cadence.
+						newMeta.updateInterval = Math.max(
+							baseInterval,
+							Math.min(baseInterval * 2 ** failureCount, 300_000),
 						);
 						if (
 							error instanceof ElizaError &&
