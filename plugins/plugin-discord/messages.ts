@@ -16,7 +16,6 @@ import {
 	EventType,
 	type HandlerCallback,
 	type IAgentRuntime,
-	isInAllowlist,
 	type Media,
 	type Memory,
 	MemoryType,
@@ -1660,20 +1659,6 @@ export class MessageManager {
 
 		// DM policy check - applies access control policies for direct messages
 		if (message.channel.type === DiscordChannelType.DM) {
-			const userId = message.author.id;
-			if (this.discordSettings.shouldIgnoreDirectMessages) {
-				const staticallyAllowed =
-					this.discordSettings.allowFrom?.includes(userId) === true;
-				const dynamicallyAllowed = await isInAllowlist(
-					this.runtime,
-					"discord",
-					userId,
-				);
-				if (!staticallyAllowed && !dynamicallyAllowed) {
-					return;
-				}
-			}
-
 			const accessCheck = await this.checkDmAccess(message);
 			if (!accessCheck.allowed) {
 				// If a reply message was generated (new pairing request), send it
