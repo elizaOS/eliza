@@ -133,8 +133,9 @@ export function authoredBrowserDestination(text: string): string | undefined {
 /** The destination to open for a model-proposed browser URL, built from the
  * address the user typed in this message, never from the model's spelling.
  * The user must have typed a web address on the proposed host (a leading
- * "www." and letter case aside) and, when they typed a path, that path. An
- * address whose open verb is negated ("don't open x.com") never qualifies. */
+ * "www." and letter case aside) and, when they typed a path, that path. When
+ * the guard refuses any occurrence of the host ("don't open x.com"), the host
+ * never opens, whatever its other occurrences ask. */
 export function groundBrowserDestination(
   userText: string,
   proposedUrl: string,
@@ -146,14 +147,20 @@ export function groundBrowserDestination(
   if (parsed.kind !== "url") return;
   const proposed = new URL(parsed.href);
   if (proposed.protocol !== "https:") return;
+  const typed = typedAddresses(userText).filter(
+    ({ url }) =>
+      url.hostname.replace(/^www\./, "") ===
+      proposed.hostname.replace(/^www\./, ""),
+  );
+  // "Open x.com. Actually, don't open x.com": one negated occurrence of the
+  // host, on any port or path, refuses it, so a later correction is never
+  // outvoted. An earlier negation also wins over a later request.
+  if (typed.some(({ negated }) => negated)) return;
   const strict = authoredBrowserDestination(userText);
   const strictHost = strict && new URL(strict).host;
-  const candidates = typedAddresses(userText).filter(
-    ({ url, webSignal, negated }) =>
-      !negated &&
+  const candidates = typed.filter(
+    ({ url, webSignal }) =>
       url.port === proposed.port &&
-      url.hostname.replace(/^www\./, "") ===
-        proposed.hostname.replace(/^www\./, "") &&
       (webSignal ||
         url.host === strictHost ||
         !FILE_TYPE_TLDS.has(

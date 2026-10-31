@@ -400,6 +400,12 @@ it.each([
     true,
   ],
   ["open nytimes.com, not youtube.com", "https://youtube.com/", true],
+  // A later correction of the same address is never outvoted.
+  [
+    "Open youtube.com. Actually, don't open youtube.com.",
+    "https://youtube.com/",
+    true,
+  ],
   // A multiline message is never grounded, but its address was typed.
   ["Hey Eliza\nopen youtube.com", "https://youtube.com/", true],
   ["take me to L.A.", "https://l.a/", false],

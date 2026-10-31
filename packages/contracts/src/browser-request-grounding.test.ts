@@ -318,6 +318,48 @@ const NOT_NEGATED = [
   "Open youtube.com for me, I hope you don't mind",
 ];
 
+// The same host typed more than once with one occurrence negated. One negated
+// occurrence refuses the host, whatever the others ask (fail closed).
+const CORRECTED = [
+  "Open youtube.com. Actually don't open youtube.com",
+  "Open youtube.com. Actually, don't open youtube.com.",
+  "open youtube.com... no wait, don't open youtube.com",
+  "Go to youtube.com. No, do not go to youtube.com.",
+  "Open www.youtube.com. Actually, don't open youtube.com.",
+  "Open youtube.com, no, never open youtube.com",
+  "open youtube.com - scratch that, do not open youtube.com",
+  "Hey Eliza, open youtube.com. Wait. Don't open youtube.com!",
+  "Visit youtube.com. On second thought, don't visit youtube.com.",
+  "I said open youtube.com but now I'm saying don't open youtube.com",
+  "open youtube.com then don't open youtube.com",
+  // Other open verbs.
+  "Pull up youtube.com. Actually, don't pull up youtube.com.",
+  "Show me youtube.com. Wait, don't show me youtube.com.",
+  "Load youtube.com. Never load youtube.com.",
+  "Navigate to youtube.com. Hmm, do not navigate to youtube.com.",
+  "Take me to youtube.com. No, don't take me to youtube.com.",
+  // www., letter case, https:// and quotes on either occurrence.
+  "Open youtube.com. Actually, don't open www.youtube.com.",
+  "Open www.youtube.com. No, never open www.youtube.com.",
+  "Open YouTube.com. Actually, don't open YOUTUBE.COM.",
+  "Open https://youtube.com. Actually, don't open youtube.com.",
+  "Open youtube.com. Actually, don't open https://www.youtube.com/.",
+  'Open "youtube.com". Actually, don\'t open "youtube.com".',
+  // A negation after the later occurrence.
+  "Open youtube.com. youtube.com, don't open it.",
+  // Three occurrences.
+  "Open youtube.com. Open youtube.com. Actually, don't open youtube.com.",
+  "Open youtube.com, then go to youtube.com again. Wait, don't go to youtube.com.",
+  "Don't open youtube.com. Open youtube.com. Open youtube.com.",
+  // The negation first, then a request: also refused.
+  "Don't open youtube.com. Actually, open youtube.com.",
+  "Never visit youtube.com. Okay fine, visit youtube.com.",
+  "Do not go to youtube.com. Never mind, go to youtube.com.",
+  "Not youtube.com. Open youtube.com.",
+  // "www." is ignored, so this refuses youtube.com too.
+  "Open youtube.com, not www.youtube.com",
+];
+
 // [the user's current message, the model's proposed URL, what opens]
 const GROUNDING: [string, string, string | undefined][] = [
   ...NEGATED.map((text): [string, string, undefined] => [
@@ -330,6 +372,52 @@ const GROUNDING: [string, string, string | undefined][] = [
     "https://www.youtube.com/",
     "https://youtube.com/",
   ]),
+  ...CORRECTED.flatMap((text): [string, string, undefined][] => [
+    [text, "https://youtube.com", undefined],
+    [text, "https://www.youtube.com/", undefined],
+  ]),
+  // A negated occurrence refuses its host on any path or port.
+  [
+    "Open youtube.com/watch?v=abc. Actually, don't open youtube.com/watch?v=abc.",
+    "https://youtube.com/watch?v=abc",
+    undefined,
+  ],
+  [
+    "Open youtube.com/watch?v=abc. Actually, don't open youtube.com.",
+    "https://www.youtube.com/watch?v=abc",
+    undefined,
+  ],
+  [
+    "Open example.com/dashboard. No, don't open example.com/dashboard.",
+    "https://example.com/dashboard",
+    undefined,
+  ],
+  [
+    "Open example.com/a. Actually, don't open example.com/b.",
+    "https://example.com/a",
+    undefined,
+  ],
+  [
+    "Visit example.com:8443/admin. Actually, don't visit example.com.",
+    "https://example.com:8443/admin",
+    undefined,
+  ],
+  [
+    "Open www.lib.rs. Actually, don't open lib.rs.",
+    "https://www.lib.rs/",
+    undefined,
+  ],
+  // It refuses only that host.
+  [
+    "Open youtube.com and nytimes.com. Actually, don't open youtube.com.",
+    "https://nytimes.com",
+    "https://nytimes.com/",
+  ],
+  [
+    "Open youtube.com. Actually, don't open nytimes.com.",
+    "https://youtube.com",
+    "https://youtube.com/",
+  ],
   // A negation refuses only the address it governs.
   [
     "youtube.com, don't open it. Open nytimes.com",

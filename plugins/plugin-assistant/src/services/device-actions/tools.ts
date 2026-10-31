@@ -245,7 +245,7 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
     ...(type === "browser_navigate"
       ? {
           routingHint:
-            'the user asks to open, visit or go to a web address they typed, now -> DEVICE_BROWSER_OPEN with that address as typed; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address',
+            'the user asks to open, visit or go to a web address they typed, now -> DEVICE_BROWSER_OPEN with that address as typed; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address, or one the user says not to open',
         }
       : {}),
     selectionIdentity:
