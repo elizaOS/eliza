@@ -12,8 +12,8 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { useState } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { useEffect, useState } from "react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { EventEditorDrawer } from "./EventEditorDrawer";
 
 // The drawer's completion-callback logic is the unit under test. The
@@ -292,5 +292,182 @@ describe("EventEditorDrawer stale save completion", () => {
     });
     expect(screen.getByDisplayValue("Event B edited")).toBeTruthy();
     expect(refresh).toHaveBeenCalled();
+  });
+});
+
+const createRefresh = vi.fn(() => {});
+
+// CalendarSection keeps createDefaultDate in state, so the defaults are
+// one stable value per create launch; the harness uses one stable object
+// to model that (a fresh inline object per render would retrigger the
+// drawer's seed effect on every harness render, which is not the wiring
+// under test).
+const createDefaults = { date: new Date(2026, 9, 30, 9), side: "owner" };
+
+/**
+ * Mirrors CalendarSection's full wiring: a separate create drawer whose
+ * onCreated refreshes the feed, closes the create drawer, and selects the
+ * created event — and the selection effect then opens that event in the
+ * edit drawer. The refresh below adds the created event to the feed, as
+ * the real feed does once the provider write lands.
+ */
+function CreateHarness() {
+  const [events, setEvents] = useState<LifeOpsCalendarEvent[]>([eventB]);
+  const [drawerEvent, setDrawerEvent] = useState<LifeOpsCalendarEvent | null>(
+    null,
+  );
+  const [createOpen, setCreateOpen] = useState(false);
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
+  const harnessRefresh = () => {
+    createRefresh();
+    setEvents((prev) =>
+      prev.some((event) => event.id === eventA.id) ? prev : [...prev, eventA],
+    );
+  };
+  useEffect(() => {
+    if (!selectedEventId) {
+      if (drawerEvent !== null) setDrawerEvent(null);
+      return;
+    }
+    if (drawerEvent?.id === selectedEventId) return;
+    const event = events.find((item) => item.id === selectedEventId) ?? null;
+    if (event) setDrawerEvent(event);
+  }, [selectedEventId, events, drawerEvent]);
+  return (
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          setSelectedEventId(eventB.id);
+          setDrawerEvent(eventB);
+        }}
+      >
+        open-b
+      </button>
+      <button type="button" onClick={() => setCreateOpen(true)}>
+        new-event
+      </button>
+      <EventEditorDrawer
+        open={drawerEvent !== null}
+        mode="edit"
+        event={drawerEvent}
+        onClose={() => {
+          setDrawerEvent(null);
+          setSelectedEventId(null);
+        }}
+        onSaved={(event) => {
+          harnessRefresh();
+          setDrawerEvent(event);
+        }}
+        onDeleted={() => {
+          harnessRefresh();
+          setDrawerEvent(null);
+          setSelectedEventId(null);
+        }}
+        onDataChanged={() => {
+          harnessRefresh();
+        }}
+      />
+      <EventEditorDrawer
+        open={createOpen}
+        mode="create"
+        event={null}
+        createDefaults={createDefaults}
+        onClose={() => setCreateOpen(false)}
+        onCreated={(event) => {
+          harnessRefresh();
+          setCreateOpen(false);
+          setSelectedEventId(event.id);
+        }}
+        onDataChanged={() => {
+          harnessRefresh();
+        }}
+      />
+    </>
+  );
+}
+
+describe("EventEditorDrawer stale create completion", () => {
+  let resolveCreate: (value: unknown) => void = () => {};
+  const createEvent = vi.fn(
+    () =>
+      new Promise((resolve) => {
+        resolveCreate = resolve;
+      }),
+  );
+
+  beforeEach(() => {
+    createEvent.mockClear();
+    createRefresh.mockClear();
+  });
+
+  async function startCreate(title: string) {
+    fireEvent.click(screen.getByText("new-event"));
+    const titleInput = await screen.findByPlaceholderText("Event title");
+    fireEvent.change(titleInput, { target: { value: title } });
+    const createButton = screen.getByRole("button", { name: "Create" });
+    await waitFor(() =>
+      expect((createButton as HTMLButtonElement).disabled).toBe(false),
+    );
+    fireEvent.click(createButton);
+    expect(createEvent).toHaveBeenCalledOnce();
+  }
+
+  it("keeps the current editing session when an earlier create lands late", async () => {
+    const calendarClient = client as unknown as Record<string, unknown>;
+    calendarClient.getLifeOpsCalendars = vi.fn(async () => ({
+      calendars: [calendarSummary],
+    }));
+    calendarClient.createLifeOpsCalendarEvent = createEvent;
+
+    render(<CreateHarness />);
+
+    // Start creating event A; the provider write stays in flight.
+    await startCreate("Event A");
+
+    // Close the create drawer mid-create through the header close button,
+    // then open event B in the edit drawer and start editing it.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByText("open-b"));
+    const titleB = await screen.findByDisplayValue("Event B");
+    fireEvent.change(titleB, { target: { value: "Event B edited" } });
+    expect(screen.getByDisplayValue("Event B edited")).toBeTruthy();
+
+    // A's create finally resolves. The list may refresh, but the late
+    // completion must not select A over B's editing session or rewrite it.
+    await act(async () => {
+      resolveCreate({ outcome: "created", event: eventA });
+    });
+    expect(screen.getByDisplayValue("Event B edited")).toBeTruthy();
+    expect(createRefresh).toHaveBeenCalled();
+  });
+
+  it("keeps a newer create session when an earlier create lands late", async () => {
+    const calendarClient = client as unknown as Record<string, unknown>;
+    calendarClient.getLifeOpsCalendars = vi.fn(async () => ({
+      calendars: [calendarSummary],
+    }));
+    calendarClient.createLifeOpsCalendarEvent = createEvent;
+
+    render(<CreateHarness />);
+
+    // Start creating event A; the provider write stays in flight.
+    await startCreate("Event A");
+
+    // Close the create drawer mid-create, then start a different create
+    // and type into its form.
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    fireEvent.click(screen.getByText("new-event"));
+    const titleC = await screen.findByPlaceholderText("Event title");
+    fireEvent.change(titleC, { target: { value: "Event C draft" } });
+    expect(screen.getByDisplayValue("Event C draft")).toBeTruthy();
+
+    // A's create finally resolves. The late completion must not close or
+    // blank the newer create session.
+    await act(async () => {
+      resolveCreate({ outcome: "created", event: eventA });
+    });
+    expect(screen.getByDisplayValue("Event C draft")).toBeTruthy();
+    expect(createRefresh).toHaveBeenCalled();
   });
 });

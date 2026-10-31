@@ -113,6 +113,9 @@ export function CalendarSection({
           setCreateOpen(false);
           onSelectEvent(event.id);
         }}
+        onDataChanged={() => {
+          void calendar.refresh();
+        }}
       />
     </>
   );
