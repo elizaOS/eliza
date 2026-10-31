@@ -93,6 +93,34 @@ async function diagnosedPlanner(
       console.error(
         JSON.stringify({
           fixture: "notes-request-effect",
+          errorClass:
+            error instanceof TypeError
+              ? "TypeError"
+              : error instanceof SyntaxError
+                ? "SyntaxError"
+                : error instanceof RangeError
+                  ? "RangeError"
+                  : error instanceof ReferenceError
+                    ? "ReferenceError"
+                    : error instanceof Error
+                      ? "Error"
+                      : "non-error",
+          errorCode: (() => {
+            const value =
+              error !== null && typeof error === "object"
+                ? Object.getOwnPropertyDescriptor(error, "code")?.value
+                : undefined;
+            return [
+              "PLANNER_RESUME_INVALID",
+              "PLANNER_SCOPE_DECLARATION_REQUIRED",
+              "SOURCE_REPLY_SCOPE_MISMATCH",
+              "UNRESOLVED_REQUEST_OPERATION",
+              "PLANNER_CONTEXT_RESTORE_INVALID",
+              "PLANNER_SOURCE_PARAMETER_CONFLICT",
+            ].includes(value)
+              ? value
+              : "unclassified";
+          })(),
           diagnostics: fixture.diagnostics(),
           terminalLimit: limit.kind === "terminal_only_continuations",
           maximum:
@@ -518,6 +546,7 @@ describe("request-bound Notes negative constraints", () => {
               toolCalls: [
                 {
                   name: "NOTES_CREATE",
+                  id: "same-key-create",
                   arguments: {
                     eliza_turn_scope:
                       requests === 1 ? "more_work_pending" : "final",
@@ -601,6 +630,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_PATCH",
+                    id: "patch-invalid",
                     arguments: {
                       target,
                       changes: [],
@@ -615,6 +645,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_GET",
+                    id: "patch-unrelated-read",
                     arguments: {
                       noteId: f.historical.value.id,
                       eliza_turn_scope: "final",
@@ -628,6 +659,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_PATCH",
+                    id: "patch-corrected",
                     arguments: {
                       target,
                       changes: [{ field: "body", value: "Updated body" }],
@@ -727,6 +759,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_PATCH",
+                    id: "target-a-invalid",
                     arguments: {
                       target: targetA,
                       changes: [{ field: "body", value: "A updated" }],
@@ -742,6 +775,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_PATCH",
+                    id: "target-b-success",
                     arguments: {
                       target: targetB,
                       changes: [{ field: "body", value: "B updated" }],
@@ -757,6 +791,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_GET",
+                    id: "target-a-read",
                     arguments: {
                       noteId: f.historical.value.id,
                       eliza_turn_scope: "final",
@@ -770,6 +805,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_PATCH",
+                    id: "target-a-corrected",
                     arguments: {
                       target: targetA,
                       changes: [{ field: "body", value: "A updated" }],
@@ -849,6 +885,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_DELETE",
+                    id: "unrequested-delete",
                     arguments: { eliza_turn_scope: "more_work_pending" },
                   },
                 ],
@@ -859,6 +896,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_CREATE",
+                    id: "requested-create",
                     arguments: { content: "Launch", eliza_turn_scope: "final" },
                   },
                 ],
@@ -1135,6 +1173,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_CREATE",
+                    id: "integrity-create",
                     arguments: { eliza_turn_scope: "more_work_pending" },
                   },
                 ],
@@ -1222,6 +1261,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "OPTIONAL_CONTEXT_READ",
+                    id: "optional-read",
                     arguments: { eliza_turn_scope: "final" },
                   },
                 ],
@@ -1379,6 +1419,7 @@ describe("request-bound Notes negative constraints", () => {
                 toolCalls: [
                   {
                     name: "NOTES_CREATE",
+                    id: "stopped-create",
                     arguments: { content: "Launch", eliza_turn_scope: "final" },
                   },
                 ],
@@ -2548,7 +2589,33 @@ describe("request-bound Notes negative constraints", () => {
       );
       let requests = 0;
       const executed: string[] = [];
+      const variant =
+        writeAction === "NOTES_CREATE"
+          ? "canonical"
+          : "action" in writeArgs
+            ? "action-alias"
+            : "op-alias";
+      const phase = (
+        value:
+          | "planner-enter"
+          | "planner-return"
+          | "cleanup-enter"
+          | "cleanup-return",
+      ) => {
+        try {
+          console.error(
+            JSON.stringify({
+              fixture: "notes-malformed-create-phase",
+              variant,
+              phase: value,
+            }),
+          );
+        } catch {
+          /* Diagnostics cannot replace the original result or error. */
+        }
+      };
       try {
+        phase("planner-enter");
         const result = await diagnosedPlanner(f, {
           context: f.context,
           tools: [
@@ -2650,6 +2717,7 @@ describe("request-bound Notes negative constraints", () => {
             messageToUser: "The ideas note is read.",
           }),
         });
+        phase("planner-return");
         expect(executed, JSON.stringify(f.diagnostics())).toEqual([
           writeAction,
           "NOTES_GET",
@@ -2661,7 +2729,9 @@ describe("request-bound Notes negative constraints", () => {
           f.before.notes.length + 1,
         );
       } finally {
+        phase("cleanup-enter");
         await f.service.stop();
+        phase("cleanup-return");
       }
     },
   );
