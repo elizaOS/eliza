@@ -84,6 +84,7 @@ import {
 } from "./action-identifiers.js";
 import { actionNameTokenKey, mergeAgentContexts } from "./action-surface.js";
 import { normalizeActionIdentifier } from "./direct-action-heuristics";
+import { appliedEffectReceiptIdsForReply } from "./egress-policy.ts";
 import { uiViewActionPriority } from "./provider-state.ts";
 
 export interface ExecuteV5PlannedToolCallParams {
@@ -650,6 +651,48 @@ export function subPlannerResultToPlannerToolResult(
     Array.isArray(terminalUserFacingEffectReceiptIds) &&
     terminalUserFacingEffectReceiptIds.length > 0 &&
     resolveUserFacingEffectReceipts(terminalResult, effectReceipts) !== null;
+  // The effective child evaluator may own the final wording even when the
+  // last action exposes only internal diagnostics. Reuse its exact-text proof
+  // against actual tool results; a raw success verdict or available receipt
+  // alone is not authority, and historical evaluator outputs are not used.
+  const evaluatorUserFacingEffectReceiptIds =
+    subResult.status === "finished" &&
+    success === true &&
+    !subResult.terminalFailure &&
+    !internalTerminalPayload &&
+    evaluator?.decision === "FINISH" &&
+    evaluator.success === true &&
+    evaluator.protocolFailure !== true &&
+    !evaluator.replyFailure &&
+    evaluator.requestFullyCovered !== false &&
+    evaluator.replyEffectStatus !== "non_applied" &&
+    typeof userFacingText === "string"
+      ? appliedEffectReceiptIdsForReply(
+          userFacingText,
+          allSteps.flatMap((step) =>
+            step.toolCall && step.result
+              ? [
+                  {
+                    success: step.result.success === true,
+                    userFacingText: step.result.userFacingText,
+                    verifiedUserFacing: step.result.verifiedUserFacing,
+                    userFacingEffectReceiptIds:
+                      step.result.userFacingEffectReceiptIds,
+                    effectReceipts: step.result.effectReceipts,
+                  },
+                ]
+              : [],
+          ),
+          evaluator,
+        )
+      : [];
+  const userFacingEffectReceiptIds =
+    evaluatorUserFacingEffectReceiptIds.length > 0
+      ? evaluatorUserFacingEffectReceiptIds
+      : terminalUserFacingEffectReceiptIds;
+  const verifiedUserFacing =
+    terminalVerifiedUserFacing ||
+    evaluatorUserFacingEffectReceiptIds.length > 0;
   const data =
     terminalData || subSteps.length > 0
       ? {
@@ -675,12 +718,8 @@ export function subPlannerResultToPlannerToolResult(
     ...(terminalResult?.replyFailure
       ? { replyFailure: terminalResult.replyFailure }
       : {}),
-    ...(terminalUserFacingEffectReceiptIds
-      ? {
-          userFacingEffectReceiptIds: terminalUserFacingEffectReceiptIds,
-        }
-      : {}),
-    ...(terminalVerifiedUserFacing ? { verifiedUserFacing: true } : {}),
+    ...(userFacingEffectReceiptIds ? { userFacingEffectReceiptIds } : {}),
+    ...(verifiedUserFacing ? { verifiedUserFacing: true } : {}),
     ...(evaluator?.decision === "FINISH" && evaluator.protocolFailure !== true
       ? {
           subPlannerEvaluation: {
