@@ -903,6 +903,9 @@ it("native owner creation and a current body edit deliver exact UTF text once th
             multiStep: false,
             requestKind: "reminder",
             nativeProjection: "in_app_only",
+            notificationMode: "default",
+            timeOfDay: null,
+            timeZone: null,
             title,
             description: originalBody,
             cadenceKind: "once",
@@ -915,9 +918,16 @@ it("native owner creation and a current body edit deliver exact UTF text once th
       },
     );
     expect(created.success, JSON.stringify(created)).toBe(true);
-    const id = created.effectReceipts?.find(
+    const applied = created.effectReceipts?.find(
       (receipt) => receipt.operation === "lifeops.definition.create",
-    )?.resource.id;
+    );
+    expect(applied).toMatchObject({
+      outcome: "applied",
+      operation: "lifeops.definition.create",
+      resource: { kind: "lifeops.definition", id: expect.any(String) },
+      commit: { kind: "durable", id: expect.any(String) },
+    });
+    const id = applied?.resource.id;
     if (!id) throw Error("Missing durable create receipt");
     const saved = await service.getDefinitionRecord(id);
     expect(saved.definition.description).toBe(originalBody);
