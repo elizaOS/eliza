@@ -44,6 +44,13 @@ describe("markdownToSlackMrkdwn control tokens", () => {
       "hi &lt;!everyone&gt;",
     );
   });
+  it("keeps !date tokens, which ping nobody", () => {
+    expect(
+      markdownToSlackMrkdwn(
+        "Meeting <!date^1798000000^{date_short}|Dec 22> today",
+      ),
+    ).toBe("Meeting <!date^1798000000^{date_short}|Dec 22> today");
+  });
 });
 
 describe("markdown links in inline code", () => {
