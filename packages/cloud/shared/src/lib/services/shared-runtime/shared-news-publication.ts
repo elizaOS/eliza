@@ -202,7 +202,10 @@ export function publisherArticlePublication(
       const first = canonical.match(/^([A-Za-z]+)\.?\s+(\d{1,2}),?\s+(\d{4})(.*)$/u);
       const second = canonical.match(/^(\d{1,2})\s+([A-Za-z]+)\.?\s+(\d{4})(.*)$/u);
       if (!first && !second) return undefined;
-      const name = (first?.[1] ?? second?.[2] ?? "").toLowerCase();
+      const rawName = (first?.[1] ?? second?.[2] ?? "").toLowerCase();
+      // "Sept" is the standard four-letter abbreviation for September; the
+      // repo's own calendar handling (plugin-form calendar-date) accepts it.
+      const name = rawName === "sept" ? "sep" : rawName;
       const fullMonths = [
         "january",
         "february",
