@@ -58,6 +58,9 @@ test("a yes reply is the whole message, not a prefix", () => {
 	const rejected = [
 		"yes, but don't",
 		"yes, don't send yet",
+		"Yes, delete it",
+		"Yes, delete it.",
+		"yes 👍",
 		"yes?",
 		"go ahead and delete the rest",
 		"do it now",
@@ -113,6 +116,49 @@ test("a qualified reply cancels the pending destructive action", async () => {
 		message: reply("yes", "later"),
 	});
 	expect(laterYes.status).toBe("pending");
+});
+
+test("a qualified delete reply and a yes with an emoji cancel with no helper hint", async () => {
+	for (const text of ["Yes, delete it", "Yes, delete it.", "yes 👍"]) {
+		const runtime = cacheRuntime();
+		const prompts: string[] = [];
+		const callback: HandlerCallback = async (content) => {
+			prompts.push(content.text ?? "");
+			return [];
+		};
+		const args = {
+			runtime,
+			actionName: "DELETE_RECORD",
+			pendingKey: "delete:1",
+			prompt: "Delete this record?",
+			callback,
+		};
+		expect(
+			(
+				await requireConfirmation({
+					...args,
+					message: reply("delete it", "request"),
+				})
+			).status,
+		).toBe("pending");
+		const cancelled = await requireConfirmation({
+			...args,
+			message: reply(text, "reply"),
+		});
+		expect(cancelled.status, text).toBe("cancelled");
+		expect(cancelled, text).not.toHaveProperty("text");
+		expect(prompts, text).toEqual(["Delete this record?"]);
+
+		const laterYes = await requireConfirmation({
+			...args,
+			message: reply("yes", "later"),
+		});
+		expect(laterYes.status, text).toBe("pending");
+		expect(prompts, text).toEqual([
+			"Delete this record?",
+			"Delete this record?",
+		]);
+	}
 });
 
 test("a later reply that is only yes confirms the pending action", async () => {

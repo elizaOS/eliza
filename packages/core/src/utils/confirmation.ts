@@ -14,6 +14,15 @@
  * follows the same UX, the same TTL behavior, and the same cancel
  * semantics.
  *
+ * A cancel has no sentence for the user. `requireConfirmation` returns
+ * `{ status: "cancelled" }` and does not call `callback`. The caller owns
+ * the words the user sees. Callers in this repository use their own text,
+ * such as "Cancelled.", "Wallet operation cancelled.", or "Unsubscribe
+ * cancelled." None of those sentences tell the user to reply with just
+ * "yes". A caller that wants that hint must put it in its own cancel
+ * sentence. A later message that is only "yes" does not run the cleared
+ * action. The next call returns pending and shows the prompt again.
+ *
  * Usage:
  * const decision = await requireConfirmation({
  * runtime,
@@ -27,6 +36,7 @@
  * return { success: true, data: { awaitingUserInput: true } };
  * }
  * if (decision.status === "cancelled") {
+ * // The helper returns no sentence. The caller chooses the text.
  * return { success: true, text: "Cancelled." };
  * }
  * // status === "confirmed" — proceed with the destructive op
@@ -45,6 +55,8 @@ const DEFAULT_TTL_MS = 5 * 60_000;
  * delete the rest" ran the operation. The reply must be only the yes word.
  * One optional "please", one opening quote or bracket, and trailing punctuation
  * other than a question mark are still a yes. Anything else cancels.
+ * "Yes, delete it" and "yes 👍" cancel. The extra words stay in the reply.
+ * The emoji is a symbol, so it is not stripped with the punctuation.
  * Consumers can pass a custom `confirmRegex` for a different contract.
  */
 const AFFIRMATIVE_REPLY =
@@ -176,8 +188,11 @@ export function isAffirmativeConfirmationReply(
  * Caller should perform the destructive op.
  *
  * - `{ status: "cancelled", metadata }` on the SECOND invocation when the user
- * replied with a no-shaped message OR anything not matching yes. The pending
- * record has been cleared. Caller should not perform the op.
+ * replied with a no-shaped message OR anything not matching yes, including
+ * "Yes, delete it" and "yes 👍". The pending record has been cleared. The
+ * return value has no text, and `callback` is not called. The caller owns
+ * the cancel sentence. Caller should not perform the op. A later reply that
+ * is only "yes" starts a new preview. It does not run this cleared action.
  *
  * Expired pending records (older than ttlMs) are treated as fresh first calls.
  */
