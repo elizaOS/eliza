@@ -162,15 +162,24 @@ async function fixture(
   const events = vi.fn(
     async (..._args: Parameters<IAgentRuntime["emitEvent"]>) => undefined,
   );
+  const testLogger: IAgentRuntime["logger"] = {
+    level: "silent",
+    trace: vi.fn(),
+    debug: vi.fn(),
+    info: vi.fn(),
+    warn: vi.fn(),
+    error: vi.fn(),
+    fatal: vi.fn(),
+    success: vi.fn(),
+    progress: vi.fn(),
+    log: vi.fn(),
+    clear: vi.fn(),
+    child: () => testLogger,
+  };
   const runtime = createMockRuntime({
     agentId,
     actions: [...(notesPlugin.actions ?? [])],
-    logger: {
-      debug: vi.fn(),
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    } as IAgentRuntime["logger"],
+    logger: testLogger,
     contexts: new ContextRegistry([]),
     getRoom: async () => ({
       id: roomId,
@@ -1120,15 +1129,18 @@ describe("request-bound Notes negative constraints", () => {
       const action = f.runtime.actions.find(
         (candidate) => candidate.name === "NOTES_CREATE",
       );
-      const validate = action?.validate;
+      if (!action) {
+        await f.service.stop();
+        throw new Error("Expected registered NOTES_CREATE action");
+      }
+      const validate = action.validate;
       try {
         const rejected = await f.execute("NOTES_CREATE", {});
         expect(readNotesMutationCompletion(rejected, f.issuer)?.status).toBe(
           "current",
         );
         if (kind === "issuer") f.retire();
-        else if (kind === "validate" && action)
-          action.validate = async () => true;
+        else if (kind === "validate") action.validate = async () => true;
         else
           f.runtime.actions = f.runtime.actions.map((candidate) =>
             candidate.name === "NOTES_CREATE" ? { ...candidate } : candidate,
@@ -1137,7 +1149,7 @@ describe("request-bound Notes negative constraints", () => {
           rejected: true,
           status: "stale",
         });
-        if (kind === "validate" && action) {
+        if (kind === "validate") {
           action.validate = validate;
           expect(readNotesMutationCompletion(rejected, f.issuer)?.status).toBe(
             "stale",
@@ -1156,7 +1168,7 @@ describe("request-bound Notes negative constraints", () => {
           ).toBe(false);
         }
       } finally {
-        if (action) action.validate = validate;
+        action.validate = validate;
         await f.service.stop();
       }
     },

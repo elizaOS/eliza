@@ -1,6 +1,6 @@
-import { assertNotesServiceMutation } from "./request-effect-gate.js";
 import { authoredNoteText } from "./note-authored.js";
 import { applyNotePatch } from "./note-patch.js";
+import { assertNotesServiceMutation } from "./request-effect-gate.js";
 import { reconstructNoteContent } from "./types.js";
 /**
  * Server-owned Notes domain service. It is the only layer allowed to mutate

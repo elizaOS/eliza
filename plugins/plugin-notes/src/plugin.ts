@@ -1,5 +1,5 @@
-import { assertNotesAgentViewOperation } from "./request-effect-gate.js";
 import { notesRequestEffectField } from "./request-effect.js";
+import { assertNotesAgentViewOperation } from "./request-effect-gate.js";
 /**
  * Runtime declaration for the managed Cloud Notes view: one agent-drivable
  * view backed by a durable per-agent service, delegating navigation and
