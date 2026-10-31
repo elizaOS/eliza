@@ -53,6 +53,7 @@ import { notesPlugin } from "../plugin.js";
 import { notesRequestEffectField } from "../request-effect.js";
 import { assertNotesAgentViewOperation } from "../request-effect-gate.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "../service.js";
+import { projectNoteForModel } from "../types.js";
 
 // Finite fixture diagnostics: no note contents, IDs, arguments, raw errors,
 // model text, credentials or serialized host state enter CI output.
@@ -689,9 +690,13 @@ describe("request-bound Notes negative constraints", () => {
       });
       expect(executed).toEqual(["NOTES_PATCH", "NOTES_GET", "NOTES_PATCH"]);
       expect(result.terminalFailure).toBeUndefined();
-      expect(f.service.getNote(f.historical.value.id).body).toBe(
-        "Updated body",
-      );
+      const updated = f.service.getNote(f.historical.value.id);
+      expect(updated.body).toBe("\nUpdated body");
+      expect(projectNoteForModel(updated)).toMatchObject({
+        title: f.historical.value.title,
+        bodySeparator: "\n",
+        body: "Updated body",
+      });
       expect(f.writes).toHaveBeenCalledTimes(1);
       const rejected = result.trajectory.steps[0].result;
       const corrected = result.trajectory.steps[2].result;
@@ -838,8 +843,20 @@ describe("request-bound Notes negative constraints", () => {
         "NOTES_GET",
         "NOTES_PATCH",
       ]);
-      expect(f.service.getNote(f.historical.value.id).body).toBe("A updated");
-      expect(f.service.getNote(other.value.id).body).toBe("B updated");
+      const updatedA = f.service.getNote(f.historical.value.id);
+      const updatedB = f.service.getNote(other.value.id);
+      expect(updatedA.body).toBe("\nA updated");
+      expect(updatedB.body).toBe("\nB updated");
+      expect(projectNoteForModel(updatedA)).toMatchObject({
+        title: f.historical.value.title,
+        bodySeparator: "\n",
+        body: "A updated",
+      });
+      expect(projectNoteForModel(updatedB)).toMatchObject({
+        title: other.value.title,
+        bodySeparator: "\n",
+        body: "B updated",
+      });
       expect(result.trajectory.steps[1].result?.success).toBe(true);
       expect(result.trajectory.steps[1].result?.data?.notesRevision).not.toBe(
         result.trajectory.steps[3].result?.data?.notesRevision,
@@ -942,7 +959,7 @@ describe("request-bound Notes negative constraints", () => {
   it("uses registered original-request routes only to veto a contradictory interpretation", async () => {
     const f = await fixture(
       { classification: "mutation_requested", operations: ["delete"] },
-      "create a new launch note",
+      "create a note: launch",
     );
     try {
       expect(f.rawNotesEffect).toBe("mutation_requested");
@@ -951,6 +968,7 @@ describe("request-bound Notes negative constraints", () => {
         reason: "registered-current-mutation-route",
         operations: ["create"],
       });
+      expect(f.hostRestriction?.routeIds).toContain("notes.create");
       const result = await f.execute("NOTES_DELETE", {});
       expect(result.data?.code).toBe("REQUEST_OPERATION_UNRESOLVED");
       expect(
