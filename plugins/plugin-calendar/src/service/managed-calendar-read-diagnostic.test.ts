@@ -1,6 +1,5 @@
 /** Prepared owning diagnostics: real transport decoder, CalendarService/store
  * and owner route; all HTTP responses are scripted, with no provider/model call.
- * Not executed or type-qualified by preparing this file.
  */
 
 import {
