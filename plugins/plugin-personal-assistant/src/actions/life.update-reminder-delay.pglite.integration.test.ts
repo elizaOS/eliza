@@ -402,3 +402,84 @@ it.each([
     await service.deleteDefinition(entry.definition.id);
   }
 });
+
+// "actually make that 30 minutes" shares "make" with "Make dinner". The owner
+// tokens used to outrank the target, so the move and the title "Stretch" were
+// written onto "Make dinner" while the reply said "Moved Stretch".
+it.each([
+  { name: "the target is its exact title", target: "Stretch" },
+  { name: "an invented target", target: "stretch-20min-2026-10-30T13-01z" },
+])(
+  "moves the reminder its title names over an owner-token match when $name",
+  async ({ target }) => {
+    const stretch = await seed("Stretch", STRETCH_CADENCE);
+    const dinner = await seed("Make dinner", {
+      kind: "once",
+      dueAt: "2026-10-30T15:00:00.000Z",
+      visibilityLeadMinutes: 0,
+    });
+    const result = await updateReminder({
+      title: "Stretch",
+      target,
+      details: { delayMinutes: 30 },
+    });
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(
+      (await service.getDefinition(stretch.definition.id)).definition.cadence,
+    ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:31:55.162Z" });
+    expect(
+      (await service.getDefinition(dinner.definition.id)).definition,
+    ).toEqual(dinner.definition);
+    await service.deleteDefinition(stretch.definition.id);
+    await service.deleteDefinition(dinner.definition.id);
+  },
+);
+
+// On a rename the planner's title can be the new name. It must not pick the
+// other stored item the new name equals ("rename stretch to make dinner").
+it("does not move the item a rename's new title equals", async () => {
+  const stretch = await seed("Stretch", STRETCH_CADENCE);
+  const dinner = await seed("Make dinner", {
+    kind: "once",
+    dueAt: "2026-10-30T15:00:00.000Z",
+    visibilityLeadMinutes: 0,
+  });
+  await updateReminder(
+    {
+      title: "Make dinner",
+      target: "stretch-rename-1",
+      details: { delayMinutes: 30 },
+    },
+    "rename stretch to make dinner and push it 30 minutes",
+  );
+  expect(
+    (await service.getDefinition(dinner.definition.id)).definition,
+  ).toEqual(dinner.definition);
+  await service.deleteDefinition(stretch.definition.id);
+  await service.deleteDefinition(dinner.definition.id);
+});
+
+// A title that is only a substring of a stored title is no deletion warrant.
+it.each([
+  {
+    title: "Rent",
+    stored: "Parent-teacher conference",
+    text: "delete the rent reminder",
+  },
+  { title: "Run", stored: "Brunch with mom", text: "delete my run reminder" },
+])(
+  "refuses to delete $stored by the substring title $title",
+  async ({ title, stored, text }) => {
+    const seeded = await seed(stored, STRETCH_CADENCE);
+    const result = await updateReminder(
+      { action: "delete", title, target: `${title.toLowerCase()}-reminder-1` },
+      text,
+      "OWNER_REMINDERS_DELETE",
+    );
+    expect(result.success, JSON.stringify(result)).toBe(false);
+    expect(
+      (await service.getDefinition(seeded.definition.id)).definition,
+    ).toEqual(seeded.definition);
+    await service.deleteDefinition(seeded.definition.id);
+  },
+);

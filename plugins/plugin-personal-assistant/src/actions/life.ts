@@ -1273,9 +1273,18 @@ async function resolveDefinitionForMutation(
         normalizeTitle(entry.definition.title) === normalizeTitle(title) &&
         !defs.includes(entry),
     );
+    // A delete never acts on a raw substring of the title: "Rent" must not
+    // delete "Parent-teacher conference". Only exact or whole-phrase hits.
     const byTitle = keptTitle
       ? []
-      : matchByTitle(defs, title, (entry) => entry.definition.title);
+      : matchByTitle(defs, title, (entry) => entry.definition.title).filter(
+          (entry) =>
+            !destructive ||
+            containsInvariantPhrase(
+              normalizeTitle(entry.definition.title),
+              normalizeTitle(title),
+            ),
+        );
     if (
       byTitle.length === 1 &&
       explicitlyNamed.length > 0 &&
@@ -1293,6 +1302,31 @@ async function resolveDefinitionForMutation(
   // a different title elsewhere in the request. Retain the existing narrow
   // target alias/substring contract, including its refusal to guess by tokens.
   if (destructive && target?.trim()) return resolveTarget(target);
+  // A target or title that is exactly one stored title names that item. It
+  // outranks the owner-token scoring below, which let "actually make that 30
+  // minutes" move and rename "Make dinner" instead of the target "Stretch".
+  // As with a UUID, an item the owner's words name otherwise refuses. The
+  // title may be the new name of a rename ("rename stretch to make dinner"),
+  // so it only names the item when the owner's words name at most one.
+  if (!destructive) {
+    const exactNamed = [target, explicitlyNamed.length <= 1 ? title : undefined]
+      .map((handle) =>
+        handle?.trim()
+          ? defs.filter(
+              (entry) =>
+                normalizeTitle(entry.definition.title) ===
+                normalizeTitle(handle),
+            )
+          : [],
+      )
+      .find((matches) => matches.length === 1)
+      ?.at(0);
+    if (exactNamed) {
+      return explicitlyNamed.length > 0 && !explicitlyNamed.includes(exactNamed)
+        ? { match: null, ambiguousCandidates: [] }
+        : { match: exactNamed, ambiguousCandidates: [] };
+    }
+  }
   if (explicitlyNamed.length === 1) {
     return {
       match: explicitlyNamed.at(0) ?? null,
