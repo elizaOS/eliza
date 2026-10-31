@@ -104,10 +104,14 @@ const PHONE_CAPABILITY_HANDLERS: Record<
     };
   },
   "place-call": async (params) => {
-    const number = normalizeNumber(
-      typeof params?.number === "string" ? params.number : "",
-    );
-    if (!number) throw new Error("number is required");
+    const requested = typeof params?.number === "string" ? params.number : "";
+    const number = normalizeNumber(requested);
+    if (!number)
+      throw new Error(
+        requested.trim()
+          ? "number is not a dialable phone number"
+          : "number is required",
+      );
     const outcome = await callFromPhone(number);
     if (outcome.path === "direct") return { placed: true, number };
     // Behind the telephony profile the person places the call on the dial
