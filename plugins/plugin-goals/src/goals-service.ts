@@ -99,6 +99,15 @@ const CJK_SCRIPT_CHAR =
 
 const GOAL_NUMBER_PATTERN = /[\p{Nd}]+(?:[.,][\p{Nd}]+)*/gu;
 
+// A comma is a thousand separator only in thousand-group position —
+// followed by exactly three digits, then another group, a decimal point or
+// the end ("1,000", "1,000,000", "1,000.5"). Any other comma is a decimal
+// separator: "1,5" is 1.5, not 15, so stripping every comma would inflate
+// decimal-comma amounts tenfold and merge goals with different targets.
+function normalizeGoalNumberSeparators(ascii: string): string {
+  return ascii.replace(/,(\d{3})(?=,|\.|$)/g, "$1").replace(/,/g, ".");
+}
+
 // Ordered numeric values named in a title, normalized so "1,000", "1000"
 // and full-width digits compare equal. Numbers shorter than the tokenizer's
 // length floor never reach the token sets, so the similarity score alone
@@ -110,7 +119,7 @@ function extractGoalNumbers(text: string | null | undefined): string[] {
     const ascii = match.replace(/[０-９]/g, (ch) =>
       String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
     );
-    const value = Number(ascii.replace(/,/g, ""));
+    const value = Number(normalizeGoalNumberSeparators(ascii));
     return Number.isNaN(value) ? ascii : String(value);
   });
 }
