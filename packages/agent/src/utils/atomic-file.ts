@@ -1,7 +1,24 @@
 /** Private host file replacement with file and directory durability. */
 import { randomUUID } from "node:crypto";
 import fs from "node:fs";
+import fsPromises from "node:fs/promises";
 import path from "node:path";
+
+/**
+ * Directory fsync is unsupported on Windows (it fails with EPERM) and on a
+ * small set of filesystems. Real I/O failures must remain observable to the
+ * caller.
+ */
+function isUnsupportedDirectorySync(error: unknown): boolean {
+  if (process.platform === "win32") return true;
+  const code = (error as NodeJS.ErrnoException).code;
+  return (
+    code === "EINVAL" ||
+    code === "ENOTSUP" ||
+    code === "EOPNOTSUPP" ||
+    code === "EISDIR"
+  );
+}
 
 function syncDirectory(dir: string): void {
   let fd: number | undefined;
@@ -9,20 +26,28 @@ function syncDirectory(dir: string): void {
     fd = fs.openSync(dir, "r");
     fs.fsyncSync(fd);
   } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    // Directory fsync is unsupported on Windows and on a small set of
-    // filesystems. Real I/O failures must remain observable to the caller.
-    if (
-      process.platform !== "win32" &&
-      code !== "EINVAL" &&
-      code !== "ENOTSUP" &&
-      code !== "EOPNOTSUPP" &&
-      code !== "EISDIR"
-    ) {
-      throw error;
-    }
+    if (!isUnsupportedDirectorySync(error)) throw error;
   } finally {
     if (fd !== undefined) fs.closeSync(fd);
+  }
+}
+
+/**
+ * Persist the entries of `dir` (a create, rename or unlink in it). A directory
+ * that cannot be opened is an error; a platform that cannot fsync a directory
+ * is not.
+ */
+export async function syncDirectoryAsync(
+  dir: string,
+  flags: number = fs.constants.O_RDONLY,
+): Promise<void> {
+  const handle = await fsPromises.open(dir, flags);
+  try {
+    await handle.sync();
+  } catch (error) {
+    if (!isUnsupportedDirectorySync(error)) throw error;
+  } finally {
+    await handle.close();
   }
 }
 

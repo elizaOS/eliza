@@ -9,6 +9,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { ElizaError } from "@elizaos/core";
 import { z } from "zod";
+import { syncDirectoryAsync as syncDirectory } from "../utils/atomic-file.ts";
 
 export const AGENT_BACKUP_AUTHORITY_DIRECTORY = ".backup-authority";
 export const INITIAL_AGENT_BACKUP_GENERATION = "initial";
@@ -23,15 +24,6 @@ type GenerationRecord = z.infer<typeof generationRecord>;
 export function isBackupAuthorityPath(relativePath: string): boolean {
   const normalized = relativePath.replaceAll("\\", "/");
   return normalized.split("/").includes(AGENT_BACKUP_AUTHORITY_DIRECTORY);
-}
-
-async function syncDirectory(directory: string): Promise<void> {
-  const handle = await fs.open(directory, constants.O_RDONLY);
-  try {
-    await handle.sync();
-  } finally {
-    await handle.close();
-  }
 }
 
 export interface AgentBackupAuthority {
