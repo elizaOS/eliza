@@ -34,6 +34,7 @@ import {
   ServiceType,
   toWellFormedUnicode,
   truncateWellFormed,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import { v4 } from "uuid";
 
@@ -134,7 +135,16 @@ function readPrompt(
   const params = readParams(options);
   const prompt = params.prompt ?? message.content.prompt;
   if (typeof prompt === "string" && prompt.trim()) return prompt.trim();
-  const text = messageText(message);
+  // The user's words, not the security armor: on hardened connectors
+  // content.text is the external-content envelope (warning, markers, and
+  // Source/From/Subject lines). Sending that envelope to a media provider
+  // would make the provider read armor and sender metadata as the creative
+  // prompt. unwrapUserMessageText returns the payload, and returns "" when
+  // the text still reads as envelope material, which fails closed below.
+  const text =
+    typeof message.content === "string"
+      ? message.content
+      : unwrapUserMessageText(message);
   return text.trim() ? text.trim() : undefined;
 }
 
