@@ -9,6 +9,7 @@ import {
   ChannelType,
   ElizaError,
   executePlannedToolCall,
+  type IAgentRuntime,
   type Memory,
   SEND_HANDLER_NOT_FOUND,
   TaskService,
@@ -261,6 +262,47 @@ async function createLifeOpsTestRuntime() {
   return fixture;
 }
 
+/** Failure diagnostics expose only bounded scheduler timestamps and wake outcomes. */
+async function wakeDiagnostics(
+  now: number,
+  task: Awaited<ReturnType<IAgentRuntime["getTask"]>>,
+  calls: Parameters<IAgentRuntime["patchTaskMetadata"]>[],
+  results: { type: string; value?: unknown }[],
+): Promise<string> {
+  const number = (value: unknown) =>
+    typeof value === "number" && Number.isFinite(value) ? value : null;
+  const indexes = calls.flatMap(([id, patch], index) =>
+    id === task?.id && patch.wake ? [index] : [],
+  );
+  const wakeCalls = await Promise.all(indexes.slice(-16).map(async (index) => {
+    const patch = calls[index]?.[1];
+    const result = results[index];
+    let outcome = result?.type === "throw" ? "threw" : "incomplete";
+    if (result?.type === "return") {
+      try {
+        const value = await result.value;
+        outcome = value === "patched" || value === "missing" || value === "unsupported"
+          ? value : "unknown";
+      } catch { outcome = "rejected"; }
+    }
+    return {
+      requestAt: number(patch?.wake?.requestAt),
+      consumeRevision: number(patch?.wake?.consumeRevision),
+      updatedAt: number(patch?.set?.updatedAt),
+      outcome,
+    };
+  }));
+  return JSON.stringify({
+    clockNow: now,
+    dateNow: Date.now(),
+    updatedAt: number(task?.metadata?.updatedAt),
+    wakeAt: number(task?.metadata?.wakeAt),
+    wakeRevision: number(task?.metadata?.wakeRevision),
+    omittedWakeCalls: Math.max(0, indexes.length - 16),
+    wakeCalls,
+  });
+}
+
 it("committed create and snooze reconcile the same task, then deliver once at its due tick without idle full polling", async () => {
   const f = await createLifeOpsTestRuntime();
   const runtime = f.runtime;
@@ -326,6 +368,7 @@ it("committed create and snooze reconcile the same task, then deliver once at it
     };
     let scheduler = new TaskService(runtime, clock);
     const tick = async () => {
+      vi.setSystemTime(now);
       ticks++;
       const row = await runtime.getTask(taskId);
       if (row) await scheduler.runTick([row]);
@@ -351,7 +394,11 @@ it("committed create and snooze reconcile the same task, then deliver once at it
     now = Math.max(now, Date.now() + 1);
     await tick();
     expect(passes).toBe(2);
-    expect((await runtime.getTask(taskId))?.metadata?.wakeAt).toBe(newDue);
+    const reconciled = await runtime.getTask(taskId);
+    expect(
+      reconciled?.metadata?.wakeAt,
+      await wakeDiagnostics(now, reconciled, patches.mock.calls, patches.mock.results),
+    ).toBe(newDue);
     scheduler = new TaskService(runtime, clock);
     for (now += 1000; now < newDue; now += 1000) await tick();
     expect(getRecordedTestNotifications(runtime)).toHaveLength(0);
@@ -480,6 +527,7 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
   const model = vi
     .spyOn(f.runtime, "useModel")
     .mockRejectedValue(Error("No inference"));
+  const patches = vi.spyOn(f.runtime, "patchTaskMetadata");
   let now = Date.now(),
     passes = 0;
   try {
@@ -530,6 +578,7 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
       clearInterval: () => {},
     });
     const tick = async () => {
+      vi.setSystemTime(now);
       const row = await f.runtime.getTask(taskId);
       if (row) await scheduler.runTick([row]);
     };
@@ -546,9 +595,14 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
       now += 1000;
       await tick();
     }
-    expect(passes).toBe(1);
+    const settled = await f.runtime.getTask(taskId);
+    expect(
+      passes,
+      await wakeDiagnostics(now, settled, patches.mock.calls, patches.mock.results),
+    ).toBe(1);
     expect(model).not.toHaveBeenCalled();
   } finally {
+    patches.mockRestore();
     model.mockRestore();
     await f.cleanup();
   }
