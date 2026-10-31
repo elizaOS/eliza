@@ -526,6 +526,24 @@ const FIRED_RECENT: NamesakeSeed[] = [
   { key: "fired436", dueAt: DUE.fired436 },
   { key: "recent521", dueAt: DUE.live521 },
 ];
+/** Another title's cancelled copy and its live one. */
+const cancelledAndLive = (title: string): NamesakeSeed[] => [
+  {
+    key: "otherCancelled",
+    title,
+    dueAt: DUE.yesterday530pm,
+    status: "archived",
+  },
+  { key: "otherLive", title, dueAt: DUE.today6pm },
+];
+const MAKE_30 = "actually make that 30 minutes";
+/** The QA case's words about the deck, with the planner's 30-minute delay. */
+const QA_UPDATE_ARGS = {
+  intent: MAKE_30,
+  target: "grab the deck",
+  details: { delayMinutes: 30 },
+  delayMinutes: 30,
+};
 
 it.each<{
   id: string;
@@ -1363,6 +1381,67 @@ it.each<{
     seeds: FIRED_RECENT,
     recent: "recent521",
     extracts: extraction({ dueInMinutes: 10 }),
+  },
+  // The fifth review's probes, numbered as there. The planner names "Grab the
+  // deck", but the owner's word "make", "move" or "cancel" matches another
+  // title that has a cancelled copy and a live one. Only the named group may
+  // narrow to one copy, so the other group stays whole and asks as at base.
+  {
+    id: "V01",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [...FIRED_RECENT, ...cancelledAndLive("Make dinner")],
+    recent: "recent521",
+  },
+  {
+    id: "V04",
+    says: "cancel that",
+    params: cancel("cancel that"),
+    seeds: [
+      { key: "recent521", dueAt: DUE.live521 },
+      ...cancelledAndLive("Cancel the dentist"),
+    ],
+    recent: "recent521",
+  },
+  {
+    id: "V05",
+    says: "actually move it to 6am",
+    params: retime("actually move it to 6am", DUE.tomorrow6am),
+    seeds: [...FIRED_RECENT, ...cancelledAndLive("Move the car")],
+    recent: "recent521",
+  },
+  {
+    id: "V06",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "live521", dueAt: DUE.live521 },
+      ...cancelledAndLive("Make dinner"),
+    ],
+  },
+  {
+    id: "V07",
+    says: MAKE_30,
+    params: QA_UPDATE_ARGS,
+    seeds: [...FIRED_RECENT, ...cancelledAndLive("Make dinner")],
+    recent: "recent521",
+  },
+  {
+    id: "V49",
+    says: "cancel it",
+    params: cancel("cancel it"),
+    seeds: [
+      { key: "recent521", dueAt: DUE.live521 },
+      ...cancelledAndLive("Cancel Netflix"),
+    ],
+    recent: "recent521",
+  },
+  {
+    id: "V50",
+    says: MAKE_30,
+    params: QA_UPDATE_ARGS,
+    seeds: [...FIRED_RECENT, ...cancelledAndLive("Make the bed")],
+    recent: "recent521",
   },
 ])(
   "$id: '$says' changes only the namesake it names, or asks",
