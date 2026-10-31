@@ -239,7 +239,14 @@ export async function handleReaction(
 			accountId,
 			callback,
 		};
-		service.runtime.emitEvent(events, reactionPayload);
+		try {
+			await service.runtime.emitEvent(events, reactionPayload);
+		} catch (error) {
+			service.runtime.reportError("discord:emit-event", error, {
+				accountId,
+				events: events.join(","),
+			});
+		}
 	} catch (error) {
 		service.runtime.logger.error(
 			{
