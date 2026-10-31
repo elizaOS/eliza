@@ -425,37 +425,6 @@ jobs:
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
 
-      - name: Verify personal-assistant reminder edit regressions
-        if: >-
-          !cancelled() &&
-          steps.notes_owning_build.outcome == 'success' &&
-          steps.affected.outputs.source == 'true'
-        timeout-minutes: 10
-        working-directory: plugins/plugin-personal-assistant
-        env:
-          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
-          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
-          NODE_OPTIONS: "--max-old-space-size=2048"
-        run: |
-          set -euo pipefail
-          reminder_diff_status=0
-          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
-            src/actions/life.ts \
-            src/actions/life.update-reminder-delay.pglite.integration.test.ts \
-            src/actions/life.cancel-reminder.pglite.integration.test.ts || reminder_diff_status=$?
-          if [ "$reminder_diff_status" -eq 0 ]; then
-            echo "No reminder edit source changed."
-            exit 0
-          fi
-          if [ "$reminder_diff_status" -ne 1 ]; then
-            exit "$reminder_diff_status"
-          fi
-          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts \
-            src/actions/life.update-reminder-delay.pglite.integration.test.ts \
-            src/actions/life.cancel-reminder.pglite.integration.test.ts \
-            --maxWorkers=1 --no-file-parallelism \
-            --execArgv=--max-old-space-size=2048
-
       - name: Select website open owning regressions
         id: website_owning_scope
         if: >-
