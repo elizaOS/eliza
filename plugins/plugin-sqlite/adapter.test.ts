@@ -1996,6 +1996,49 @@ describe("durable SQLite agent adapter", () => {
     expect(await search("istanbul")).toEqual([istanbulId]);
     expect(await search("izmir")).toEqual([]);
   });
+
+  it("NFC-normalizes decomposed input before folding", async () => {
+    const decomposed = "cafe\u0301";
+    expect(foldForSearch(decomposed)).toBe("cafe");
+    expect(foldForSearch(decomposed)).toBe(foldForSearch("café"));
+    expect(foldForSearch("CAFE\u0301")).toBe("cafe");
+    // Negative control: an unrelated word does not fold to the same text.
+    expect(foldForSearch("cafa\u0301")).not.toBe(foldForSearch("café"));
+
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const composedId = id();
+    const decomposedId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("Meet at the café at noon"), id: composedId },
+        tableName: "messages",
+      },
+      {
+        memory: {
+          ...memory("The cafe\u0301 on the corner is open"),
+          id: decomposedId,
+        },
+        tableName: "messages",
+      },
+    ]);
+    const search = async (query: string) =>
+      (
+        await adapter.searchMessages({
+          roomIds: [roomId],
+          query,
+          tableName: "messages",
+          limit: 50,
+        })
+      )
+        .map((hit) => hit.memory.id)
+        .sort();
+    const both = [composedId, decomposedId].sort();
+    expect(await search(decomposed)).toEqual(both);
+    expect(await search("café")).toEqual(both);
+    expect(await search("cafe")).toEqual(both);
+    expect(await search("bistro")).toEqual([]);
+  });
 });
 
 it("rejects a different lifecycle agent scope before invoking the callback", async () => {

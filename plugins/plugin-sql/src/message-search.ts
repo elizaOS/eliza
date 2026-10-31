@@ -83,13 +83,13 @@ export async function applyMessageSearchObjects(
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION eliza_search_fold(t text)
     RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT AS $fold$
-      SELECT translate(lower(t), '${sql.raw(FOLD_FROM_LITERAL)}', '${sql.raw(ACCENT_TO)}')
+      SELECT translate(lower(normalize(t, NFC)), '${sql.raw(FOLD_FROM_LITERAL)}', '${sql.raw(ACCENT_TO)}')
     $fold$;
   `);
 
   // The searchable document: message body plus attachment titles/URLs, folded.
-  // The `translate(lower(...))` fold is inlined here rather than calling
-  // `eliza_search_fold` because a nested user-function call cannot be resolved
+  // The `translate(lower(normalize(..., NFC)))` fold is inlined here rather
+  // than calling `eliza_search_fold` because a nested user-function call cannot be resolved
   // when Postgres inlines this function into an expression index (it re-parses
   // the body with a restricted search_path). The map is kept identical to
   // `eliza_search_fold` by sourcing both from the same constants.
@@ -98,7 +98,7 @@ export async function applyMessageSearchObjects(
   await db.execute(sql`
     CREATE OR REPLACE FUNCTION eliza_message_search_document(content jsonb)
     RETURNS text LANGUAGE sql IMMUTABLE PARALLEL SAFE AS $doc$
-      SELECT translate(lower(
+      SELECT translate(lower(normalize(
         coalesce(content->>'text', '')
         || ' ' ||
         coalesce((
@@ -108,7 +108,7 @@ export async function applyMessageSearchObjects(
                  THEN content->'attachments' ELSE '[]'::jsonb END
           ) AS a
         ), '')
-      ), '${sql.raw(FOLD_FROM_LITERAL)}', '${sql.raw(ACCENT_TO)}')
+      , NFC)), '${sql.raw(FOLD_FROM_LITERAL)}', '${sql.raw(ACCENT_TO)}')
     $doc$;
   `);
 

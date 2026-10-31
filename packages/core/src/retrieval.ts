@@ -1862,16 +1862,20 @@ const SEARCH_FOLD_MAP: ReadonlyMap<string, string> = new Map(
 
 /**
  * Normalize text for keyword matching exactly as Postgres
- * `eliza_search_fold` does: `translate(lower(t), FROM || STRIP, TO)`.
- * Lowercase, map each folded accented letter to its ASCII base (café → cafe,
- * Søren → soren), and drop apostrophes/backticks (don't → dont). Letters
+ * `eliza_search_fold` does:
+ * `translate(lower(normalize(t, NFC)), FROM || STRIP, TO)`.
+ * NFC-normalize (so decomposed "cafe" + U+0301 matches "café"), lowercase,
+ * map each folded accented letter to its ASCII base (café → cafe, Søren → soren), and drop apostrophes/backticks (don't → dont). Letters
  * outside the map, CJK, and other scripts pass through unchanged, so the
  * in-memory and SQLite adapters match the same rows as the SQL adapter.
  */
 export function foldForSearch(text: string): string {
 	let folded = "";
 	// Postgres lower() maps İ (U+0130) to "i"; JS toLowerCase() gives "i" + U+0307.
-	for (const ch of text.replaceAll("\u0130", "i").toLowerCase()) {
+	for (const ch of text
+		.normalize("NFC")
+		.replaceAll("\u0130", "i")
+		.toLowerCase()) {
 		if (SEARCH_FOLD_STRIP.includes(ch)) continue;
 		folded += SEARCH_FOLD_MAP.get(ch) ?? ch;
 	}
