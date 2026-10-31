@@ -1266,7 +1266,7 @@ async function runPlannerLoopIterations(
   const correctPendingSuccessfulFinish = (
     evaluator: EvaluatorOutput,
     iteration: number,
-    source: "evaluator" | "terminal" = "evaluator",
+    source: "evaluator" | "terminal" | "terminal-evaluator" = "evaluator",
   ): EvaluatorOutput | null => {
     const latestResult = [...trajectory.archivedSteps, ...trajectory.steps]
       .reverse()
@@ -1383,6 +1383,15 @@ async function runPlannerLoopIterations(
             thought:
               "The original rejected operation is preserved, but its host proof is no longer current.",
           };
+        if (source !== "evaluator") {
+          // No new tool evidence was produced by this terminal-only round.
+          // Rejecting a false FINISH must still consume the existing budget.
+          assertTrajectoryLimit({
+            kind: "terminal_only_continuations",
+            max: config.maxTerminalOnlyContinuations,
+            observed: ++terminalOnlyContinuations,
+          });
+        }
         appendPlannerModelFeedbackEvent(trajectory, {
           id: `unresolved-request-operation:${iteration}`,
           type: "instruction",
@@ -1430,7 +1439,7 @@ async function runPlannerLoopIterations(
       return { ...evaluator, success: false };
     }
     if (
-      source === "evaluator" &&
+      source !== "terminal" &&
       evaluator.messageToUser?.trim() &&
       validatedOutcomeCoverage({
         output: evaluator,
@@ -2378,6 +2387,7 @@ async function runPlannerLoopIterations(
           const pendingCompletionCorrection = correctPendingSuccessfulFinish(
             evaluator,
             iteration,
+            "terminal-evaluator",
           );
           evaluator = pendingCompletionCorrection ?? evaluator;
           trajectory.evaluatorOutputs.push(
@@ -2758,6 +2768,7 @@ async function runPlannerLoopIterations(
           const pendingCompletionCorrection = correctPendingSuccessfulFinish(
             evaluator,
             iteration,
+            "terminal-evaluator",
           );
           evaluator = pendingCompletionCorrection ?? evaluator;
           trajectory.evaluatorOutputs.push(

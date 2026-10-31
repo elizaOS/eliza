@@ -1232,8 +1232,8 @@ describe("request-bound Notes negative constraints", () => {
           failureProvenance: {
             kind: "handler_error",
             boundary: "handler",
-            code: "ACTION_ARGUMENTS_INVALID",
-            retryable: true,
+            code: "OPTIONAL_CONTEXT_UNAVAILABLE",
+            retryable: false,
           },
           data: {
             [flag]: true,
@@ -2677,7 +2677,9 @@ describe("request-bound Notes negative constraints", () => {
                       name: writeAction,
                       id: "requested-valid",
                       arguments: {
-                        ...writeArgs,
+                        ...(writeAction === "NOTES"
+                          ? { action: "create" }
+                          : writeArgs),
                         content: "Launch\nDraft invitation",
                         eliza_turn_scope: "final",
                       },
@@ -2735,4 +2737,89 @@ describe("request-bound Notes negative constraints", () => {
       }
     },
   );
+
+  it("bounds false terminal completions while an unsupported op draft remains rejected", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["create"] },
+      "create a new launch note",
+    );
+    let requests = 0;
+    const executed: string[] = [];
+    try {
+      await expect(
+        diagnosedPlanner(f, {
+          context: f.context,
+          tools: [
+            {
+              name: "NOTES",
+              parameters: {
+                type: "object",
+                properties: {
+                  op: { type: "string" },
+                  content: { type: "string" },
+                },
+              },
+            },
+          ],
+          runtime: {
+            useModel: async () => {
+              requests++;
+              if (requests === 1)
+                return {
+                  text: "",
+                  toolCalls: [
+                    {
+                      id: "unsupported-op-draft",
+                      name: "NOTES",
+                      arguments: {
+                        op: "create",
+                        eliza_turn_scope: "more_work_pending",
+                      },
+                    },
+                  ],
+                };
+              return JSON.stringify({
+                completed: true,
+                toolCalls: [],
+                messageToUser: "Saved the launch note.",
+              });
+            },
+          },
+          executeToolCall: async (call, current) => {
+            bindTaskExtractionContext(
+              f.state,
+              f.message,
+              current.trajectory.context,
+              current.trajectory.context,
+              f.runtime,
+              getRequestOperationIssuer(f.runtime, f.message),
+            );
+            executed.push(call.name);
+            return actionResultToPlannerToolResult(
+              await f.execute(call.name, call.params ?? {}),
+              { requestOperationIssuer: f.issuer },
+            );
+          },
+          evaluate: async () => ({
+            success: true,
+            decision: "FINISH" as const,
+            thought:
+              "Controlled false completion over the unresolved rejection.",
+            messageToUser: "Saved the launch note.",
+          }),
+          config: { maxTerminalOnlyContinuations: 2 },
+        }),
+      ).rejects.toMatchObject({
+        kind: "terminal_only_continuations",
+        max: 2,
+        observed: 3,
+      });
+      expect(requests).toBe(4);
+      expect(executed).toEqual(["NOTES"]);
+      expect(f.writes).not.toHaveBeenCalled();
+      expect(f.service.snapshot()).toEqual(f.before);
+    } finally {
+      await f.service.stop();
+    }
+  });
 });
