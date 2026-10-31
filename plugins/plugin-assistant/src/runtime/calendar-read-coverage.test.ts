@@ -365,7 +365,10 @@ describe("request-bound Calendar read coverage", () => {
       "Your next event is Design review on October 5 at 10:00.",
     );
     expect(result.messageToUser).toContain("Family");
-    expect(result.messageToUser).toContain("couldn't confirm");
+    // The copy after a shown event never says the event was not read.
+    expect(result.messageToUser).toContain(
+      "Not up to date: Family. I couldn't confirm your next event.",
+    );
     expect(result.messageToUser).not.toContain(
       "No upcoming events on any calendar.",
     );
@@ -479,7 +482,9 @@ describe("request-bound Calendar read coverage", () => {
     expect(result.messageToUser).not.toContain(
       "No upcoming events on any calendar.",
     );
-    expect(result.messageToUser).toContain("couldn't confirm");
+    expect(result.messageToUser).toBe(
+      "I couldn't check your next calendar event just now.",
+    );
     expect(calls).toBe(1);
   });
   it("leaves unrelated legacy requests without bindings unchanged", () => {
@@ -534,7 +539,7 @@ describe("request-bound Calendar read coverage", () => {
       expect(result.success).toBe(false);
       expect(result.requestFullyCovered).toBe(false);
       expect(result.messageToUser).toBe(
-        `Only the checked Calendar window was read. ${title}${body} I couldn't confirm that Calendar request. Those Calendar results cover only the connected sources and dates checked.`,
+        `Only the checked Calendar window was read. ${title}${body} I couldn't confirm your next event. Those Calendar results cover only the connected sources and dates checked.`,
       );
       expect(result.outcomeCoverage?.[0].status).toBe("blocked");
       expect(result.outcomeCoverage?.[1].status).toBe("completed");
@@ -815,7 +820,7 @@ describe("committed Calendar mutations behind a read binding", () => {
     const read = search.result.data as { events: object[] };
     read.events = [{ ...target, metadata: { etag: '"eliza-0"' } }];
     expect((await evaluate()).messageToUser).toContain(
-      "I couldn't confirm that Calendar request.",
+      "I couldn't look up that event in your calendar just now.",
     );
   });
 });
@@ -947,16 +952,18 @@ describe("Calendar proposal and availability outcome evidence", () => {
         context: f.context,
         trajectory: f.trajectory,
       });
+      const copy =
+        fault === "availability"
+          ? "I couldn't check whether that time is free just now."
+          : "I couldn't check your calendar for open times just now.";
       expect(result.success).toBe(false);
       expect(result.replyFailure).toEqual({
         kind: "reply_generation_error",
         transient: false,
         code,
-        message: "I couldn't confirm that Calendar request.",
+        message: copy,
       });
-      expect(result.messageToUser).toContain(
-        "I couldn't confirm that Calendar request.",
-      );
+      expect(result.messageToUser).toContain(copy);
       expect(JSON.stringify(result.replyFailure)).not.toMatch(
         /private-|selected-calendar|request-now|owner-room/,
       );
@@ -1020,6 +1027,35 @@ describe("Calendar proposal and availability outcome evidence", () => {
     expect(result.outcomeCoverage?.[0].status).toBe("blocked");
     expect(model).toHaveBeenCalledTimes(1);
   });
+  it.each([
+    [
+      "propose_times",
+      "I couldn't check your calendar for open times just now.",
+    ],
+    ["malformed", "I couldn't check your calendar just now."],
+  ])(
+    "tells the owner plainly which %s read it could not confirm",
+    async (kind, copy) => {
+      // The :5325 slot run cited CONFLICT_DETECT for a propose_times binding,
+      // and the owner got "I couldn't confirm that Calendar request."
+      const f = proposalFixture();
+      f.call.name = "CONFLICT_DETECT";
+      f.result.data = { conflicts: [], checked: true };
+      if (kind === "malformed" && f.context.metadata)
+        f.context.metadata.calendarReadBindings = { intentId: "intent:1" };
+      const result = await runEvaluator({
+        runtime: { useModel: vi.fn(async () => JSON.stringify(f.output)) },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(result.success).toBe(false);
+      expect(result.messageToUser).toBe(copy);
+      expect(result.replyFailure?.message).toBe(copy);
+      expect(result.messageToUser).not.toMatch(
+        /planner|scope|intent|tool|receipt|request|—/i,
+      );
+    },
+  );
   it.each([
     "missing-slots",
     "wide-slot",

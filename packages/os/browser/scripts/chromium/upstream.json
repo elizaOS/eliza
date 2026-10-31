@@ -27,6 +27,7 @@
     "components/android_autofill/browser/form_data_android_bridge_impl.cc": "abf731611d77fee4a7191913814498d66da0b885ab787531e812c53d08a29d55",
     "chrome/android/java/src/org/chromium/chrome/browser/WarmupManager.java": "9e5cae9569ee9e548b07bbfb4588602804411cc50b8881019fa73d838922c7e8",
     "chrome/android/java/src/org/chromium/chrome/browser/customtabs/CustomTabsConnection.java": "46dacf73ff7d903f003cc4a9d4c7bc5c7d867e18156ce158c2962f3f04bc0fde",
-    "chrome/browser/preloading/preloading_prefs.cc": "a0582ae62ef2ff7d64bf9f5406f5fe3884eb76784964c220a980732e3753f9c5"
+    "chrome/browser/preloading/preloading_prefs.cc": "a0582ae62ef2ff7d64bf9f5406f5fe3884eb76784964c220a980732e3753f9c5",
+    "chrome/android/java/src/org/chromium/chrome/browser/ChromeActivitySessionTracker.java": "438dbfa8de1790ad64be63c2e8bc4549b2fc85405060af2fa33b05f65d16c644"
   }
 }

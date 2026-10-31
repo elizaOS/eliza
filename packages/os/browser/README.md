@@ -348,6 +348,11 @@ The Android overlay includes full-origin Autofill transport (including ports and
 per-field origins). The original patch provenance is in `scripts/chromium/autofill`.
 The Java regression requires JDK 21. Consumers must not apply a second Autofill patch.
 
+The Android overlay also sets the profile's font scale factor when Android's font size
+changes while the browser is open (`scripts/chromium/font-scale-on-change.mjs`). Chromium
+otherwise sets it only when a foreground session starts, so a Custom Tab beside another app
+could keep the old text size until the browser was closed.
+
 Products may add the complete reviewed protection resource set exposed by
 `protectionAssetNames`. This opts the component into `declarativeNetRequest` and
 exposes only `warning.html`; partial inventories, extra permissions and other

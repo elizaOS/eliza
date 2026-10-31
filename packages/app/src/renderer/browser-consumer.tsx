@@ -38,7 +38,7 @@ import {
   isIosNativeAgentBootInProgress,
   isTerminalIosNativeAgentBootErrorMessage,
 } from "./transports/ios-local-agent-transport";
-import "../../../ui/src/styles/styles.css";
+import "@elizaos/ui/styles";
 import {
   NativePermissionHostProvider,
   type PermissionPrimingHost,

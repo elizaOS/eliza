@@ -19,6 +19,7 @@ import { getRuntimeRouteHostContext } from "@elizaos/host/protocol";
 import { handleCloudBillingRoute } from "./routes/cloud-billing-routes";
 import { handleCloudRoute } from "./routes/cloud-routes";
 import { handleCloudStatusRoutes } from "./routes/cloud-status-routes";
+import { handleCloudWarmRoute } from "./routes/cloud-warm-route";
 import { ELIZA_CLOUD_STT_MAX_JSON_BODY_BYTES } from "./lib/server-cloud-tts";
 import { handleCloudSttRoute } from "./lib/server-cloud-tts";
 import { handleCloudTtsPreviewRoute } from "./lib/server-cloud-tts";
@@ -145,6 +146,13 @@ const cloudRoutes: Route[] = [
         path: "/api/cloud/credits",
         rawPath: true,
         handler: cloudStatusHandler,
+    },
+    // Pre-warm: one no-credential OPTIONS to the Cloud chat/completions URL.
+    {
+        type: "POST",
+        path: "/api/cloud/warm",
+        rawPath: true,
+        handler: handleCloudWarmRoute,
     },
     {
         type: "GET",

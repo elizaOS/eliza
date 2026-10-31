@@ -373,6 +373,66 @@ function evaluatorProtocolDiagnostic(parsed: EvaluatorOutput) {
   };
 }
 
+/**
+ * Plain copy for each requested Calendar read the evidence check could not
+ * confirm. `unread` stands alone; `partial` follows Calendar results already
+ * shown, so it never denies that those were read.
+ */
+const UNCONFIRMED_CALENDAR_READ_COPY = {
+  feed: {
+    unread: "I couldn't read your calendar for those dates just now.",
+    partial: "I couldn't confirm your whole calendar for those dates.",
+  },
+  next_event: {
+    unread: "I couldn't check your next calendar event just now.",
+    partial: "I couldn't confirm your next event.",
+  },
+  search_events: {
+    unread: "I couldn't look up that event in your calendar just now.",
+    partial: "I couldn't confirm that event.",
+  },
+  check_availability: {
+    unread: "I couldn't check whether that time is free just now.",
+    partial: "I couldn't confirm whether that time is free.",
+  },
+  propose_times: {
+    unread: "I couldn't check your calendar for open times just now.",
+    partial: "I couldn't confirm which times are open.",
+  },
+} satisfies Record<
+  CalendarReadBinding["operation"],
+  { unread: string; partial: string }
+>;
+
+function unconfirmedCalendarReadCopy(
+  unverifiedIntentIds: readonly string[],
+  original: ContextObject,
+  calendarResultsShown: boolean,
+): string {
+  const variant = calendarResultsShown ? "partial" : "unread";
+  const bindings = original.metadata?.calendarReadBindings;
+  const copy = new Set(
+    (Array.isArray(bindings) ? bindings : []).flatMap((binding) =>
+      isObjectRecord(binding) &&
+      typeof binding.intentId === "string" &&
+      unverifiedIntentIds.includes(binding.intentId) &&
+      typeof binding.operation === "string" &&
+      Object.hasOwn(UNCONFIRMED_CALENDAR_READ_COPY, binding.operation)
+        ? [
+            UNCONFIRMED_CALENDAR_READ_COPY[
+              binding.operation as CalendarReadBinding["operation"]
+            ][variant],
+          ]
+        : [],
+    ),
+  );
+  // Malformed bindings name no operation; the copy then stays general.
+  if (copy.size > 0) return [...copy].join(" ");
+  return calendarResultsShown
+    ? "I couldn't confirm the rest of your calendar."
+    : "I couldn't check your calendar just now.";
+}
+
 function finalizeEvaluatorOutput(
   parsed: EvaluatorOutput,
   raw: EvaluatorModelResult,
@@ -410,7 +470,11 @@ function finalizeEvaluatorOutput(
     const messageToUser = redactDiagnosticText(
       [
         ...scoped.facts,
-        "I couldn't confirm that Calendar request.",
+        unconfirmedCalendarReadCopy(
+          calendarCoverage.unverifiedIntentIds,
+          trajectory.modelBaseContext ?? context,
+          scoped.calendarScopeReported,
+        ),
         ...(scoped.calendarScopeReported
           ? [
               "Those Calendar results cover only the connected sources and dates checked.",
