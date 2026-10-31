@@ -61,9 +61,10 @@ const OBJECT_JOIN = new RegExp(
 );
 // A negation. Group 1 ("do not", "don't", "never") may stand alone before the
 // verb ("Do not. Open. x.com"); group 2 governs only a gerund ("stop opening",
-// "avoid visiting", "no going to").
+// "avoid visiting", "no going to"). "never mind open x.com" asks for x.com;
+// "never mind opening x.com" does not.
 const NEGATION =
-  /\b(do(?:n['’]?t|['’]nt|not|[.!]?\s+not)|never)\b|\b(stop|quit|avoid|refrain\s+from|no(?=\s+[a-z]+ing\b))\b|\b(?:not|nor|cannot|no\s+need|under\s+no|at\s+no\s+(?:point|time)|by\s+no\s+means|in\s+no\s+(?:case|way|event)|on\s+no\s+account)\b|n['’]t\b|\b(?:does|did|wo|ca|should|would|could|must|is|are|was|were|have|has|had|need)nt\b/gi;
+  /\b(do(?:n['’]?t|['’]nt|not|[.!]?\s+not)|never(?!\s+mind\s+(?:just\s+)?(?:open|visit|go|pull|show|take|bring|load|launch|navigate|head|check|browse|access)\b))\b|\b(stop|quit|avoid|refrain\s+from|no(?=\s+[a-z]+ing\b))\b|\b(?:not|nor|cannot|no\s+need|under\s+no|at\s+no\s+(?:point|time)|by\s+no\s+means|in\s+no\s+(?:case|way|event)|on\s+no\s+account)\b|n['’]t\b|\b(?:does|did|wo|ca|should|would|could|must|is|are|was|were|have|has|had|need)nt\b/gi;
 // Words a negation reaches across to its verb ("don't you dare open", "I don't
 // want to go to").
 const FILLER =
