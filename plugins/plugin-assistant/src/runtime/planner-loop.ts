@@ -3610,6 +3610,16 @@ async function runPlannerLoopIterations(
     const pendingPrerequisite = hasExecutionPrerequisite(latestResult);
     const awaitingDeviceExecution =
       hasAwaitingDeviceExecutionMarker(latestResult);
+    // Calls batched after a prepared app-view navigation are dropped here, but
+    // they are still requested work: they let the single post-navigation
+    // replan below run (live tj-2539a35cc967f5 batched VIEWS_SHOW with
+    // CALENDAR_FEED under final scope and the feed read never ran).
+    const preparedNavigationDroppedQueuedWork =
+      awaitingDeviceExecution &&
+      trajectory.plannedQueue.length > 0 &&
+      isPreparedViewNavigationStep(
+        trajectory.steps[trajectory.steps.length - 1],
+      );
     if (awaitingDeviceExecution) trajectory.plannedQueue.length = 0;
     if (codingDrainQueue && !pendingPrerequisite) {
       if (latestResult?.success !== true) {
@@ -3865,11 +3875,14 @@ async function runPlannerLoopIterations(
     // redundant-call breaker cannot stop a repeat loop. A final-scope
     // navigation also replans when Stage 1 judged the request larger than the
     // view and the evaluator itself found it uncovered (live tj-a2dfaa98a8bc03
-    // opened Maps with final scope and dropped the coffee-shop lookup).
+    // opened Maps with final scope and dropped the coffee-shop lookup). The
+    // same holds when the planner batched the follow-up after the navigation
+    // and the prepared handoff dropped it unexecuted.
     // Navigation-only turns keep the partial finish and held reply.
     const replanAfterPreparedNavigation =
       (lastPlannerExplicitCompleted === false ||
-        (params.navigationWithFollowUp === true &&
+        ((params.navigationWithFollowUp === true ||
+          preparedNavigationDroppedQueuedWork) &&
           evaluator.requestFullyCovered === false)) &&
       evaluator.decision === "CONTINUE" &&
       isPreparedViewNavigationStep(
