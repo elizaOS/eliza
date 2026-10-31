@@ -30,6 +30,12 @@ const PHONE_CAPABILITY_HANDLERS: Record<
   PhoneCapabilityHandler
 > = {
   "phone-state": async (params) => {
+    // A number that is not dialable is refused, never dropped from the read,
+    // which would answer with every number's calls.
+    const requested = typeof params?.number === "string" ? params.number : "";
+    const number = normalizeNumber(requested);
+    if (requested.trim() && !number)
+      throw new Error("number is not a dialable phone number");
     const profile = telephonyProfile();
     if (profile) {
       // Behind the telephony profile only the host's newest bounded page is
@@ -37,10 +43,6 @@ const PHONE_CAPABILITY_HANDLERS: Record<
       // filters by number in its query, so the page holds only that number's
       // calls. A full page may hide older calls, so it is refused, never
       // returned partial.
-      const number =
-        typeof params?.number === "string"
-          ? normalizeNumber(params.number)
-          : "";
       const recents = await loadProfileRecents(
         profile,
         number ? { number } : {},

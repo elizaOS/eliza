@@ -6,20 +6,47 @@ import * as telephony from "../../../packages/contracts/src/native-telephony.ts"
 mock.module("@elizaos/contracts/native-telephony", () => telephony);
 const placeCall = mock(async (_: { number: string }) => {});
 const openDialer = mock(async (_?: { number: string }) => {});
+const getStatus = mock(async () => ({}));
+const listRecentCalls = mock(async (_: { limit: number; number?: string }) => ({
+  calls: [],
+}));
 mock.module("@elizaos/plugin-native-phone/bridge", () => ({
-  Phone: { placeCall, openDialer },
+  Phone: { placeCall, openDialer, getStatus, listRecentCalls },
 }));
 
 const { registerTelephonyProfile } = await import("../src/telephony-profile");
 const { interact } = await import("../src/components/phone-interact");
-const { normalizeNumber } = await import(
+const { COMPLETE_CALL_LOG_READ_LIMIT, normalizeNumber } = await import(
   "../src/components/phone-view-helpers"
 );
+
+const grantedCallLogStatus = {
+  version: 2,
+  voiceCapable: true,
+  smsCapable: true,
+  permissions: {
+    contacts: "granted",
+    phoneState: "denied",
+    sms: "denied",
+    sendSms: "denied",
+    callLog: "granted",
+  },
+  sendMode: "handoff",
+  roles: {
+    dialer: { available: true, held: false, eligible: true },
+    sms: { available: true, held: false, eligible: true },
+  },
+  defaultDialer: "com.android.dialer",
+  defaultSms: null,
+  subscriptions: null,
+  defaultSmsSubscriptionId: null,
+};
 
 describe("Phone number entry", () => {
   beforeEach(() => {
     placeCall.mockClear();
     openDialer.mockClear();
+    listRecentCalls.mockClear();
     registerTelephonyProfile(null);
   });
 
@@ -99,5 +126,45 @@ describe("Phone number entry", () => {
     expect(dial).toHaveBeenCalledTimes(1);
     expect(dial).toHaveBeenCalledWith({ number: "+15551234567" });
     expect(placeCall).not.toHaveBeenCalled();
+  });
+
+  test("reads one number's calls, never every call for a refused number", async () => {
+    await expect(
+      interact("phone-state", { number: "555-123-4567 ext 89" }),
+    ).rejects.toThrow("number is not a dialable phone number");
+    expect(listRecentCalls).not.toHaveBeenCalled();
+    await interact("phone-state", { number: "+1 (555) 123-4567" });
+    expect(listRecentCalls).toHaveBeenCalledWith({
+      limit: COMPLETE_CALL_LOG_READ_LIMIT,
+      number: "+15551234567",
+    });
+  });
+
+  test("behind the profile a refused number is not read as every call", async () => {
+    const recentCalls = mock(async (_: { limit: number; number?: string }) => ({
+      calls: [],
+    }));
+    const clear = registerTelephonyProfile(
+      telephony.createTelephonyClient(
+        {
+          status: async () => grantedCallLogStatus,
+          listRecentCalls: recentCalls,
+        } as never,
+        true,
+      ),
+    );
+    try {
+      await expect(
+        interact("phone-state", { number: "tel:+1-555-123-4567" }),
+      ).rejects.toThrow("number is not a dialable phone number");
+      expect(recentCalls).not.toHaveBeenCalled();
+      await interact("phone-state", { number: "+1 (555) 123-4567" });
+    } finally {
+      clear();
+    }
+    expect(recentCalls).toHaveBeenCalledWith({
+      limit: telephony.TELEPHONY_CALL_LOG_MAX,
+      number: "+15551234567",
+    });
   });
 });
