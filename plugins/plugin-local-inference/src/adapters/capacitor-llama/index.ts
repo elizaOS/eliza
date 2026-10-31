@@ -258,13 +258,18 @@ function estimateEmbeddingUsage(text: string): NormalizedUsage {
 		estimated: true,
 	};
 }
-function stripThinkTags(text: string): string {
+export function stripThinkTags(text: string): string {
 	// Match the streaming filter (text-streaming.ts): case-insensitive
 	// open/close markers, an unclosed block dropped to end of text, and the
-	// newline after </think> preserved (the stream filter emits it).
+	// newline after </think> preserved (the stream filter emits it). The
+	// open marker needs the stream filter's boundary — "<think" followed by
+	// whitespace or ">" — so tags that merely start with "<think"
+	// (<thinking>, <thinkpad>, <think-foo>) stay visible text, and a
+	// trailing bare "<think" with no boundary character is kept, as the
+	// filter emits it at flush.
 	return text
-		.replace(/<think[^>]*>[\s\S]*?(<\/think>|$)/gi, "")
-		.replace(/<think[^>]*$/gi, "");
+		.replace(/<think(?=[\s>])[^>]*>[\s\S]*?(<\/think>|$)/gi, "")
+		.replace(/<think(?=[\s>])[^>]*$/gi, "");
 }
 function wantsNativeShape(params: GenerateTextParams): boolean {
 	if (params.tools && params.tools.length > 0) return true;
