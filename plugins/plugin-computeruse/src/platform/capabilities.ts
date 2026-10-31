@@ -196,7 +196,12 @@ export function detectPlatformCapabilities(
 
   caps.terminal =
     options.osName === "win32"
-      ? { available: true, tool: "powershell.exe" }
+      ? // Terminal sessions spawn powershell.exe on Windows
+        // (resolveShell in ./terminal.ts). Check the shell that will
+        // really run, not the OS default.
+        options.commandExists("powershell.exe")
+        ? { available: true, tool: "powershell.exe" }
+        : { available: false, tool: "none (no shell found: powershell.exe)" }
       : (() => {
           // Terminal sessions always spawn /bin/bash on POSIX
           // (resolveShell in ./terminal.ts); $SHELL is not used there.
