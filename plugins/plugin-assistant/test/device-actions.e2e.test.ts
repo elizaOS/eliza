@@ -10,9 +10,9 @@ import {
   activeCommittedEffectReceipts,
   beginRequestOperationIssuer,
   bindTaskExtractionContext,
-  commitNotesRequestRestriction,
-  type ContextObject,
   ChannelType,
+  type ContextObject,
+  commitNotesRequestRestriction,
   conversationClientUserMemoryId,
   executePlannedToolCall,
   type IAgentRuntime,
@@ -100,8 +100,8 @@ import {
   projectDiscoverableContext,
   readContextRequests,
 } from "../src/services/message/context-discovery.ts";
-import { messageHandlerFromFieldResult } from "../src/services/message/stage1-output.ts";
 import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
+import { messageHandlerFromFieldResult } from "../src/services/message/stage1-output.ts";
 import { collectDiscoveryCatalogActions } from "../src/services/message/tool-discovery.ts";
 import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
 import { withOwnerDeviceActionTurn } from "./device-owner-turn.ts";
@@ -4548,12 +4548,22 @@ test("selected native Notes authority blocks backend writes without affecting ca
     fields.register(notesRequestEffectField);
     const fieldRun = await fields.dispatch({
       rawParsed: {
-        shouldRespond: "RESPOND", contexts: ["notes"],
-        intents: [requestMessage.content.text], requiresTool: true,
-        replyEffectStatus: "pending", replyText: "", candidateActionNames: [],
-        facts: [], relationships: [], addressedTo: [], notesRequestEffect: modelField,
+        shouldRespond: "RESPOND",
+        contexts: ["notes"],
+        intents: [requestMessage.content.text],
+        requiresTool: true,
+        replyEffectStatus: "pending",
+        replyText: "",
+        candidateActionNames: [],
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+        notesRequestEffect: modelField,
       },
-      runtime, message: requestMessage, state, senderRole: "OWNER",
+      runtime,
+      message: requestMessage,
+      state,
+      senderRole: "OWNER",
       turnSignal: lifetime.signal,
     });
     const handler = messageHandlerFromFieldResult(fieldRun.parsed, fieldRun, {
@@ -4565,20 +4575,43 @@ test("selected native Notes authority blocks backend writes without affecting ca
       modelField,
       interpretation: handler.plan.notesRequestInterpretation,
     };
-    if (!commitNotesRequestRestriction(issuer, {
-      classification: handler.plan.notesRequestEffect ?? "unresolved",
-      interpretation: handler.plan.notesRequestInterpretation,
-      source, currentSource: () => source,
-    })) throw new Error("Expected handled Notes interpretation commitment");
+    if (
+      !commitNotesRequestRestriction(issuer, {
+        classification: handler.plan.notesRequestEffect ?? "unresolved",
+        interpretation: handler.plan.notesRequestInterpretation,
+        source,
+        currentSource: () => source,
+      })
+    )
+      throw new Error("Expected handled Notes interpretation commitment");
     const original: ContextObject = {
       id: `counter-request:${requestMessage.id}`,
-      metadata: { agentId: runtime.agentId, messageId: requestMessage.id,
-        roomId: requestMessage.roomId, entityId: requestMessage.entityId },
-      events: [{ id: String(requestMessage.id), type: "message",
-        message: { id: String(requestMessage.id), role: "user",
-          content: requestMessage.content.text ?? "" } }],
+      metadata: {
+        agentId: runtime.agentId,
+        messageId: requestMessage.id,
+        roomId: requestMessage.roomId,
+        entityId: requestMessage.entityId,
+      },
+      events: [
+        {
+          id: String(requestMessage.id),
+          type: "message",
+          message: {
+            id: String(requestMessage.id),
+            role: "user",
+            content: requestMessage.content.text ?? "",
+          },
+        },
+      ],
     };
-    bindTaskExtractionContext(state, requestMessage, original, original, runtime, issuer);
+    bindTaskExtractionContext(
+      state,
+      requestMessage,
+      original,
+      original,
+      runtime,
+      issuer,
+    );
     requestStates.set(requestMessage, state);
   };
   const execute = (content: string, actionMessage: Memory = message) =>
@@ -4667,7 +4700,9 @@ test("selected native Notes authority blocks backend writes without affecting ca
     });
     // Forged metadata grants no authority. Malformed identity and unissued or
     // serialized-looking state stay denied even outside a native device turn.
-    const ordinary = canonicalCounterRequest("Create a note: Ordinary backend note");
+    const ordinary = canonicalCounterRequest(
+      "Create a note: Ordinary backend note",
+    );
     await prepareRequest(ordinary);
     const issuedState = requestStates.get(ordinary);
     if (!issuedState) throw new Error("Expected bound ordinary request state");
@@ -4676,36 +4711,71 @@ test("selected native Notes authority blocks backend writes without affecting ca
       { ...ordinary, agentId: randomUUID() },
       { ...ordinary },
     ]) {
-      expect(await executePlannedToolCall(runtime, {
-        message: malformed, state: issuedState,
-        activeContexts: ["notes"], userRoles: ["OWNER"],
-      }, { name: "NOTES_CREATE", params: { content: "Must not steal issued request state" } }))
-        .toMatchObject({ success: false });
+      expect(
+        await executePlannedToolCall(
+          runtime,
+          {
+            message: malformed,
+            state: issuedState,
+            activeContexts: ["notes"],
+            userRoles: ["OWNER"],
+          },
+          {
+            name: "NOTES_CREATE",
+            params: { content: "Must not steal issued request state" },
+          },
+        ),
+      ).toMatchObject({ success: false });
     }
-    expect(await executePlannedToolCall(runtime, {
-      message: ordinary, activeContexts: ["notes"], userRoles: ["OWNER"],
-    }, { name: "NOTES_CREATE", params: { content: "Missing state must not write" } }))
-      .toMatchObject({ success: false });
-    expect(await executePlannedToolCall(runtime, {
-      message: ordinary,
-      state: { values: { notesRequestEffect: "mutation_requested" }, data: {}, text: "" },
-      activeContexts: ["notes"], userRoles: ["OWNER"],
-    }, { name: "NOTES_CREATE", params: { content: "Forged state must not write" } }))
-      .toMatchObject({ success: false });
+    expect(
+      await executePlannedToolCall(
+        runtime,
+        {
+          message: ordinary,
+          activeContexts: ["notes"],
+          userRoles: ["OWNER"],
+        },
+        {
+          name: "NOTES_CREATE",
+          params: { content: "Missing state must not write" },
+        },
+      ),
+    ).toMatchObject({ success: false });
+    expect(
+      await executePlannedToolCall(
+        runtime,
+        {
+          message: ordinary,
+          state: {
+            values: { notesRequestEffect: "mutation_requested" },
+            data: {},
+            text: "",
+          },
+          activeContexts: ["notes"],
+          userRoles: ["OWNER"],
+        },
+        {
+          name: "NOTES_CREATE",
+          params: { content: "Forged state must not write" },
+        },
+      ),
+    ).toMatchObject({ success: false });
     expect(notes.listNotes()).toHaveLength(0);
     // The same forged clientDevice data cannot block a genuinely current,
     // canonical non-native request from writing the backend store.
     const ordinaryResult = await execute("Ordinary backend note", ordinary);
     expect(ordinaryResult).toMatchObject({ success: true });
-    expect(ordinaryResult.effectReceipts).toEqual(expect.arrayContaining([
-      expect.objectContaining({ outcome: "applied" }),
-    ]));
+    expect(ordinaryResult.effectReceipts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ outcome: "applied" })]),
+    );
     expect(notes.listNotes()).toHaveLength(1);
     const metadata = message.content.metadata as {
       clientDevice: { context: { selectedObject: { kind: string } } };
     };
     metadata.clientDevice.context.selectedObject.kind = "canonical-note-source";
-    const clockOnly = canonicalCounterRequest("Create a note: Clock-only caller backend note");
+    const clockOnly = canonicalCounterRequest(
+      "Create a note: Clock-only caller backend note",
+    );
     await prepareRequest(clockOnly);
     await withOwnerDeviceActionTurn(
       runtime,
@@ -4715,14 +4785,18 @@ test("selected native Notes authority blocks backend writes without affecting ca
         expect(discover(clockOnly)).toContain("NOTES_CREATE");
         expect(discover(clockOnly)).toContain("CALENDAR");
         expect(discover(clockOnly)).toContain("OWNER_REMINDERS");
-        expect(await execute("Clock-only caller backend note", clockOnly)).toMatchObject({
+        expect(
+          await execute("Clock-only caller backend note", clockOnly),
+        ).toMatchObject({
           success: true,
         });
       },
     );
     metadata.clientDevice.context.selectedObject.kind = "note-source";
     const heldRequest = canonicalCounterRequest("Create my phone note");
-    const concurrent = canonicalCounterRequest("Create a note: Concurrent non-phone note");
+    const concurrent = canonicalCounterRequest(
+      "Create a note: Concurrent non-phone note",
+    );
     await prepareRequest(heldRequest);
     await prepareRequest(concurrent);
     let release!: () => void;
@@ -4736,7 +4810,9 @@ test("selected native Notes authority blocks backend writes without affecting ca
     while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
     try {
       expect(discover(concurrent)).toContain("NOTES_CREATE");
-      expect(await execute("Concurrent non-phone note", concurrent)).toMatchObject({
+      expect(
+        await execute("Concurrent non-phone note", concurrent),
+      ).toMatchObject({
         success: true,
       });
     } finally {
@@ -4752,9 +4828,18 @@ test("selected native Notes authority blocks backend writes without affecting ca
       ),
     ).rejects.toThrow();
     expect(notes.listNotes()).toHaveLength(3);
-    expect(notes.listNotes().map((note) => note.title).sort()).toEqual([
-      "Ordinary backend note", "Clock-only caller backend note", "Concurrent non-phone note",
-    ].sort());
+    expect(
+      notes
+        .listNotes()
+        .map((note) => note.title)
+        .sort(),
+    ).toEqual(
+      [
+        "Ordinary backend note",
+        "Clock-only caller backend note",
+        "Concurrent non-phone note",
+      ].sort(),
+    );
   } finally {
     for (const lifetime of lifetimes) lifetime.abort();
     serviceLookup.mockRestore();
