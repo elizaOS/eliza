@@ -489,8 +489,10 @@ jobs:
         if: >-
           !cancelled() &&
           steps.notes_owning_build.outcome == 'success' &&
-          steps.website_owning_scope.outcome == 'success' &&
-          steps.website_owning_scope.outputs.run == 'true'
+          ((steps.website_owning_scope.outcome == 'success' &&
+            steps.website_owning_scope.outputs.run == 'true') ||
+           (steps.notes_owning_scope.outcome == 'success' &&
+            steps.notes_owning_scope.outputs.run == 'true'))
         timeout-minutes: 5
         working-directory: plugins/plugin-assistant
         env:
