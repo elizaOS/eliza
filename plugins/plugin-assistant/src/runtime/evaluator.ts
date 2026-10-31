@@ -25,6 +25,7 @@ import {
   CALENDAR_READ_ACTIONS,
   type CalendarReadBinding,
   type CalendarReadFailureCode,
+  parseUnambiguousZonedDateTime,
 } from "@elizaos/contracts";
 import type {
   ContextEvent,
@@ -2718,6 +2719,148 @@ function isCalendarReadCall(
   );
 }
 
+/** Whether a feed result read the whole window its call asked for: whole
+ * local days (details.date through details.endDate in details.timeZone) or
+ * timestamp bounds with an explicit offset, the forms the feed action takes.
+ * A call without them, or with bounds that do not resolve, proves no window. */
+function feedReadCoversRequestedWindow(
+  params: PlannerToolCall["params"],
+  data: Record<string, unknown>,
+): boolean {
+  let details = params?.details;
+  if (typeof details === "string") {
+    try {
+      details = JSON.parse(details);
+    } catch {
+      // error-policy:J3 untrusted model arguments; unparseable bounds prove nothing
+      return false;
+    }
+  }
+  if (!isObjectRecord(details)) return false;
+  const read = [data.timeMin, data.timeMax].map((bound) =>
+    typeof bound === "string" ? Date.parse(bound) : Number.NaN,
+  );
+  let asked: number[];
+  if (details.timeMin !== undefined || details.timeMax !== undefined) {
+    asked = [details.timeMin, details.timeMax].map((bound) =>
+      typeof bound === "string" && /(?:Z|[+-]\d{2}:?\d{2})$/i.test(bound)
+        ? Date.parse(bound)
+        : Number.NaN,
+    );
+  } else {
+    const { date, endDate = date, timeZone } = details;
+    const lastDay =
+      typeof endDate === "string"
+        ? parseUnambiguousZonedDateTime(`${endDate}T00:00`, "UTC")
+        : null;
+    asked = [
+      parseUnambiguousZonedDateTime(`${date}T00:00`, timeZone),
+      lastDay === null
+        ? null
+        : parseUnambiguousZonedDateTime(
+            `${new Date(lastDay + 86_400_000).toISOString().slice(0, 10)}T00:00`,
+            timeZone,
+          ),
+    ].map((bound) => bound ?? Number.NaN);
+  }
+  // NaN fails every comparison, so an unresolved bound proves no coverage.
+  return asked[0] < asked[1] && read[0] <= asked[0] && asked[1] <= read[1];
+}
+
+/** Fallback coverage for a required agenda read whose evaluator coverage is
+ * omitted or cites no real step. Being in the trajectory is not proof: an
+ * archived step can come from an earlier request. A feed read counts only when
+ * it is the last feed call and the only one that answers THIS request:
+ * - request: the producer read at or after the bound request time, and its
+ *   read receipt is not a replay;
+ * - actor: each source it read in scope is an owner source (read bindings
+ *   exist only for the owner, see plugin-calendar read-binding.ts), not the
+ *   agent's own calendar;
+ * - window: its read window covers the window its call asked for;
+ * - completeness, relative to the source scope the call asked for: every
+ *   in-scope source is fresh. An unscoped read must also be complete overall,
+ *   so a partial or unavailable source never grounds a global agenda, while a
+ *   grant- or calendar-scoped read is not judged on unrelated sources.
+ * Compaction does not change any of these, so an archived read of this
+ * request stays valid. Otherwise the base outcome holds: no coverage without
+ * a valid citation. */
+function requestBoundFeedRead(
+  binding: CalendarReadBinding,
+  evidence: ReadonlyMap<string, PlannerTrajectory["steps"][number]>,
+): string | undefined {
+  const calls = [...evidence].filter(
+    ([, step]) =>
+      step.toolCall &&
+      !step.terminalOnly &&
+      isCalendarReadCall(step.toolCall, "feed"),
+  );
+  const bound = calls.filter(([, step]) => {
+    const result = step.result,
+      data = result?.data,
+      reply = isObjectRecord(data) ? data.replyContext : undefined,
+      read = isObjectRecord(reply) ? reply.context : undefined,
+      scope = isObjectRecord(read) ? read.sourceScope : undefined;
+    if (
+      result?.success !== true ||
+      result.error != null ||
+      result.failureProvenance ||
+      result.replyFailure ||
+      !isObjectRecord(data) ||
+      !isObjectRecord(read) ||
+      !isObjectRecord(scope) ||
+      typeof read.asOf !== "string" ||
+      !(Date.parse(read.asOf) >= binding.requestedAt) ||
+      !result.effectReceipts?.some(
+        (receipt) =>
+          receipt.operation === "calendar.feed.read" &&
+          receipt.outcome === "noop" &&
+          receipt.idempotency.replayed === false,
+      ) ||
+      !feedReadCoversRequestedWindow(step.toolCall?.params, data)
+    )
+      return false;
+    const grantId =
+      typeof scope.grantId === "string" && scope.grantId
+        ? scope.grantId
+        : undefined;
+    const calendarId =
+      typeof scope.calendarId === "string" && scope.calendarId
+        ? scope.calendarId
+        : undefined;
+    // A source without a key cannot be shown to be out of scope.
+    const required = (Array.isArray(data.sources) ? data.sources : []).filter(
+      (source) => {
+        const key = isObjectRecord(source) ? source.key : undefined;
+        return (
+          !isObjectRecord(key) ||
+          ((grantId === undefined || key.grantId === grantId) &&
+            (calendarId === undefined ||
+              key.calendarId === calendarId ||
+              key.calendarId === "all"))
+        );
+      },
+    );
+    return (
+      required.length > 0 &&
+      required.every(
+        (source) =>
+          isObjectRecord(source) &&
+          source.status === "fresh" &&
+          isObjectRecord(source.key) &&
+          source.key.side === "owner",
+      ) &&
+      (grantId !== undefined ||
+        calendarId !== undefined ||
+        data.state === "complete") &&
+      // A named grant excludes the app/device Calendar; otherwise it is required.
+      (grantId !== undefined || scope.appDeviceCalendarRead !== false)
+    );
+  });
+  return bound.length === 1 && bound[0] === calls.at(-1)
+    ? bound[0][0]
+    : undefined;
+}
+
 export function calendarReadCoverage(
   output: EvaluatorOutput,
   context: ContextObject,
@@ -2773,13 +2916,15 @@ export function calendarReadCoverage(
       (entry) => entry.intentId === binding.intentId,
     );
     // The schema lets the model omit coverage it has not checked, and step
-    // citations are free text. Live 2026-10-30, correct reads became failure
-    // copy when coverage was omitted (tj-605ca329c8a78d) or cited
-    // "1:success=true" (tj-8dfdee5735fb18). Such a required read binds to the
-    // only successful current step of its operation, which must still pass
-    // every evidence check below. A stated status or a valid citation governs.
-    const reads =
+    // citations are free text. Live 2026-10-30, correct agenda reads became
+    // failure copy when coverage was omitted (tj-605ca329c8a78d) or cited
+    // "1:success=true" (tj-8dfdee5735fb18). Such a required feed binding takes
+    // the one read proven to answer this request (requestBoundFeedRead), which
+    // must still pass every evidence check below. A stated status or a valid
+    // citation governs; other operations still need a valid citation.
+    const fallback =
       binding.execution === "required" &&
+      binding.operation === "feed" &&
       (output.outcomeCoverage === undefined ||
         (covered?.length === 1 &&
           !covered[0].evidenceStepIds.some((id) => evidence.has(id)))) &&
@@ -2787,23 +2932,16 @@ export function calendarReadCoverage(
         (other) =>
           isObjectRecord(other) && other.operation === binding.operation,
       ).length === 1
-        ? [...evidence].filter(
-            ([, step]) =>
-              step.toolCall &&
-              !step.terminalOnly &&
-              step.result?.success === true &&
-              isCalendarReadCall(step.toolCall, binding.operation),
-          )
-        : [];
-    const coverage =
-      reads.length === 1
-        ? {
-            status: covered?.[0]?.status ?? "completed",
-            evidenceStepIds: [reads[0][0]],
-          }
-        : covered?.length === 1
-          ? covered[0]
-          : undefined;
+        ? requestBoundFeedRead(binding, evidence)
+        : undefined;
+    const coverage = fallback
+      ? {
+          status: covered?.[0]?.status ?? "completed",
+          evidenceStepIds: [fallback],
+        }
+      : covered?.length === 1
+        ? covered[0]
+        : undefined;
     if (!coverage) return reject("CALENDAR_READ_COVERAGE_MISSING");
     if (
       coverage.status !== "completed" ||

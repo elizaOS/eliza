@@ -641,38 +641,166 @@ describe("request-bound Calendar read coverage", () => {
   });
 });
 
-/** tj-8dfdee5735fb18 "do I have anything on Monday?": one correct agenda read. */
-function liveFeedFixture() {
+/** The live agenda turns as recorded: request time, the planner's one feed
+ * call and the producer's receipt, window, source scope and keyed sources. */
+const LIVE_FEED_TURNS = {
+  // "what's on my calendar today?"; the evaluator omitted coverage.
+  "tj-605ca329c8a78d": {
+    citation: "omitted",
+    requestedAt: Date.parse("2026-10-30T15:14:25.059Z"),
+    intent: "Read today's Calendar agenda",
+    details:
+      '{"date": "2026-10-30", "timeZone": "America/Los_Angeles", "calendarId": "primary", "side": "owner"}',
+    sourceScope: { grantId: null, calendarId: "primary" },
+    asOf: "2026-10-30T15:14:30.402Z",
+    timeMin: "2026-10-30T07:00:00.000Z",
+    timeMax: "2026-10-31T07:00:00.000Z",
+    reply: "Nothing's on your calendar today.",
+  },
+  // "do I have anything on Monday?"; the evaluator cited "1:success=true".
+  "tj-8dfdee5735fb18": {
+    citation: "1:success=true",
+    requestedAt: Date.parse("2026-10-30T16:04:15.470Z"),
+    intent: "Check Monday's calendar events",
+    details: '{"timeZone": "America/Los_Angeles", "date": "2026-11-02"}',
+    sourceScope: { grantId: null, calendarId: null },
+    asOf: "2026-10-30T16:04:20.460Z",
+    timeMin: "2026-11-02T08:00:00.000Z",
+    timeMax: "2026-11-03T08:00:00.000Z",
+    reply: "No, nothing's scheduled for Monday, November 2.",
+  },
+} as const;
+type LiveFeedTurn = keyof typeof LIVE_FEED_TURNS;
+
+const ELIZA_CALENDAR_SOURCE = {
+  key: {
+    provider: "eliza",
+    side: "owner",
+    grantId: "eliza-calendar",
+    connectorAccountId: "eliza-calendar",
+    calendarId: "primary",
+  },
+  summary: "Eliza Calendar",
+  accessRole: "owner",
+  visibility: "details",
+  status: "fresh",
+  syncedAt: "2026-10-30T15:14:30.401Z",
+  error: null,
+};
+/** The v26 Pixel smoke: managed Google discovery failed (#743 6538581622). */
+const MANAGED_GOOGLE_UNAVAILABLE = {
+  key: {
+    provider: "google",
+    side: "owner",
+    grantId: "alpha-google:broker",
+    connectorAccountId: "alpha-google:broker",
+    calendarId: "all",
+  },
+  summary: "Managed Google Calendar",
+  accessRole: "reader",
+  visibility: "details",
+  status: "error",
+  syncedAt: null,
+  error: {
+    code: "MANAGED_CALENDAR_READ_UNAVAILABLE",
+    message: "The managed owner Calendar connection could not be verified.",
+    retryable: true,
+  },
+};
+
+function liveFeedFixture(id: LiveFeedTurn = "tj-8dfdee5735fb18") {
+  const turn = LIVE_FEED_TURNS[id];
   const f = fixture();
   const bindings = f.context.metadata
     ?.calendarReadBindings as CalendarReadBinding[];
   bindings[0].operation = "feed";
-  f.trajectory.outcomeIntents = ["Check Monday's calendar"];
-  f.trajectory.steps[0] = {
-    iteration: 1,
-    toolCall: { id: "monday", name: "CALENDAR_FEED", params: {} },
-    result: {
-      success: true,
-      data: {
-        replyContext: {
-          domain: "calendar",
-          scenario: "feed_results",
-          context: { selection: "bounded_agenda" },
-        },
-      },
+  bindings[0].requestedAt = turn.requestedAt;
+  f.trajectory.outcomeIntents = [turn.intent];
+  const readContext: Record<string, unknown> = {
+    sourceScope: { ...turn.sourceScope },
+    asOf: turn.asOf,
+    selection: "bounded_agenda",
+    nextEventLookupPerformed: false,
+  };
+  const data: Record<string, unknown> = {
+    calendarId: "primary",
+    events: [],
+    source: "synced",
+    state: "complete",
+    sources: [{ ...ELIZA_CALENDAR_SOURCE, syncedAt: turn.asOf }],
+    timeMin: turn.timeMin,
+    timeMax: turn.timeMax,
+    syncedAt: turn.asOf,
+    replyContext: {
+      domain: "calendar",
+      scenario: "feed_results",
+      context: readContext,
     },
   };
-  f.output.messageToUser = "No, nothing's scheduled for Monday, November 2.";
-  return { ...f, bindings, coverage: f.output.outcomeCoverage?.[0] };
+  const receipt = {
+    receiptId: `calendar-feed-read-receipt-v1:${id}`,
+    operation: "calendar.feed.read",
+    resource: {
+      kind: "calendar.feed",
+      id: `calendar-feed-resource-v1:${id}`,
+      version: `calendar-feed-version-v1:${id}`,
+    },
+    artifacts: [],
+    idempotency: { key: null, replayed: false },
+    observedAt: turn.asOf,
+    outcome: "noop" as const,
+    reason:
+      "The operation read an authoritative calendar snapshot without changing it.",
+  };
+  const read = {
+    iteration: 1,
+    toolCall: {
+      id,
+      name: "CALENDAR_FEED",
+      params: { intent: turn.intent, details: turn.details },
+    },
+    result: {
+      success: true,
+      transcriptVisibility: "internal" as const,
+      effectReceipts: [receipt],
+      data,
+    },
+  };
+  f.trajectory.steps = [read];
+  f.output.messageToUser = turn.reply;
+  const coverage = f.output.outcomeCoverage?.[0];
+  if (!coverage) throw new Error("Missing coverage fixture");
+  if (turn.citation === "omitted") delete f.output.outcomeCoverage;
+  else coverage.evidenceStepIds = [turn.citation];
+  return { ...f, bindings, coverage, read, data, readContext, receipt };
 }
+type LiveFeed = ReturnType<typeof liveFeedFixture>;
+
+/** Moves the read to compaction's archive, as a long turn would. */
+function archiveRead(f: LiveFeed) {
+  f.trajectory.archivedSteps = [f.read];
+  f.trajectory.steps = [];
+}
+/** A later feed call of this same request that failed. */
+function failCurrentRead(f: LiveFeed) {
+  f.trajectory.steps.push({
+    iteration: 2,
+    toolCall: { ...f.read.toolCall, id: "retry" },
+    result: {
+      success: false,
+      error: "MANAGED_CALENDAR_READ_UNAVAILABLE",
+      data: { actionName: "CALENDAR_FEED" },
+    },
+  });
+}
+/** 6 minutes before the bound request: another request's read. */
+const EARLIER_REQUEST_AS_OF = "2026-10-30T15:58:02.000Z";
 
 describe("required Calendar read without a usable coverage citation", () => {
-  it.each(["omitted", "1:success=true"])(
-    "keeps the one verified read when its coverage is %s",
-    async (citation) => {
-      const f = liveFeedFixture();
-      if (citation === "omitted") delete f.output.outcomeCoverage;
-      else if (f.coverage) f.coverage.evidenceStepIds = [citation];
+  it.each(Object.keys(LIVE_FEED_TURNS) as LiveFeedTurn[])(
+    "keeps the one request-bound read of live turn %s",
+    async (id) => {
+      const f = liveFeedFixture(id);
       expect(
         calendarReadCoverage(f.output, f.context, f.trajectory).verified,
       ).toBe(true);
@@ -682,11 +810,174 @@ describe("required Calendar read without a usable coverage citation", () => {
         trajectory: f.trajectory,
       });
       expect(result.success).toBe(true);
-      expect(result.messageToUser).toBe(
-        "No, nothing's scheduled for Monday, November 2.",
-      );
+      expect(result.messageToUser).toBe(LIVE_FEED_TURNS[id].reply);
     },
   );
+  it("keeps a read of this request that compaction archived", () => {
+    const f = liveFeedFixture();
+    archiveRead(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it("keeps a partial-day read that covers its call's explicit bounds", () => {
+    const f = liveFeedFixture();
+    f.read.toolCall.params.details =
+      '{"timeMin": "2026-11-02T09:00:00-08:00", "timeMax": "2026-11-02T17:00:00-08:00"}';
+    f.data.timeMin = "2026-11-02T17:00:00.000Z";
+    f.data.timeMax = "2026-11-03T01:00:00.000Z";
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it("judges a local-scoped read on its own source while Google is unavailable", () => {
+    const f = liveFeedFixture("tj-605ca329c8a78d");
+    f.read.toolCall.params.details =
+      '{"date": "2026-10-30", "timeZone": "America/Los_Angeles", "grantId": "eliza-calendar"}';
+    f.readContext.sourceScope = { grantId: "eliza-calendar", calendarId: null };
+    f.data.state = "partial";
+    f.data.sources = [
+      { ...ELIZA_CALENDAR_SOURCE, syncedAt: f.readContext.asOf },
+      MANAGED_GOOGLE_UNAVAILABLE,
+    ];
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(true);
+  });
+  it.each<[string, (f: LiveFeed) => void]>([
+    [
+      "is another request's read",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+      },
+    ],
+    [
+      "is another request's archived read",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+        archiveRead(f);
+      },
+    ],
+    [
+      "replays an earlier read receipt",
+      (f) => {
+        f.receipt.idempotency.replayed = true;
+      },
+    ],
+    [
+      "is another request's archived read before a failed current read",
+      (f) => {
+        f.readContext.asOf = EARLIER_REQUEST_AS_OF;
+        archiveRead(f);
+        failCurrentRead(f);
+      },
+    ],
+    [
+      "is followed by a failed current read",
+      (f) => {
+        archiveRead(f);
+        failCurrentRead(f);
+      },
+    ],
+    [
+      "read another date window",
+      (f) => {
+        f.data.timeMin = "2026-11-03T08:00:00.000Z";
+        f.data.timeMax = "2026-11-04T08:00:00.000Z";
+      },
+    ],
+    [
+      "read part of the requested dates",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "endDate": "2026-11-03"}';
+      },
+    ],
+    [
+      "states no requested window",
+      (f) => {
+        f.read.toolCall.params.details = '{"timeZone": "America/Los_Angeles"}';
+      },
+    ],
+    [
+      "read a source other than the one requested",
+      (f) => {
+        f.read.toolCall.params.details =
+          '{"timeZone": "America/Los_Angeles", "date": "2026-11-02", "grantId": "alpha-google:broker"}';
+        f.readContext.sourceScope = {
+          grantId: "alpha-google:broker",
+          calendarId: null,
+        };
+      },
+    ],
+    [
+      "read another actor's calendar",
+      (f) => {
+        f.data.sources = [
+          {
+            ...ELIZA_CALENDAR_SOURCE,
+            key: { ...ELIZA_CALENDAR_SOURCE.key, side: "agent" },
+          },
+        ];
+      },
+    ],
+  ])("rejects an uncited read that %s", (_, mutate) => {
+    const f = liveFeedFixture();
+    mutate(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+  });
+  it.each<[string, LiveFeedTurn, (f: LiveFeed) => void]>([
+    [
+      "a partial feed",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [ELIZA_CALENDAR_SOURCE, MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "an unavailable feed",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.data.state = "unavailable";
+        f.data.sources = [MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+    [
+      "an unread app Calendar",
+      "tj-8dfdee5735fb18",
+      (f) => {
+        f.readContext.sourceScope = {
+          grantId: null,
+          calendarId: null,
+          appDeviceCalendarRead: false,
+        };
+      },
+    ],
+    [
+      "a primary-calendar read whose Google discovery failed",
+      "tj-605ca329c8a78d",
+      (f) => {
+        f.data.state = "partial";
+        f.data.sources = [ELIZA_CALENDAR_SOURCE, MANAGED_GOOGLE_UNAVAILABLE];
+      },
+    ],
+  ])("does not ground an empty agenda on %s", async (_, id, mutate) => {
+    const f = liveFeedFixture(id);
+    mutate(f);
+    expect(
+      calendarReadCoverage(f.output, f.context, f.trajectory).verified,
+    ).toBe(false);
+    const result = await runEvaluator({
+      runtime: { useModel: async () => JSON.stringify(f.output) },
+      context: f.context,
+      trajectory: f.trajectory,
+    });
+    expect(result.success).toBe(false);
+    expect(result.messageToUser).not.toContain(LIVE_FEED_TURNS[id].reply);
+  });
   it.each([
     "blocked status",
     "second read",
@@ -697,7 +988,7 @@ describe("required Calendar read without a usable coverage citation", () => {
   ])("still rejects an uncited read with a %s", (fault) => {
     const f = liveFeedFixture();
     const read = f.trajectory.steps[0];
-    if (!f.coverage || !read.result) throw new Error("Missing feed fixture");
+    if (!read.result) throw new Error("Missing feed fixture");
     f.coverage.evidenceStepIds = ["1:success=true"];
     if (fault === "blocked status") f.coverage.status = "blocked";
     else delete f.output.outcomeCoverage;
