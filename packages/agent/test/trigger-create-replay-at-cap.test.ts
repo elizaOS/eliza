@@ -57,7 +57,6 @@ async function createTrigger(parameters: Record<string, unknown>) {
 async function triggerTaskCount() {
   const tasks = await harness.runtime.getTasks({
     tags: [...TRIGGER_TASK_TAGS],
-    agentIds: [harness.runtime.agentId],
   });
   return tasks.length;
 }
