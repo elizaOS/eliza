@@ -25,6 +25,14 @@ function canonical(value: unknown): string | undefined {
   return JSON.stringify(value);
 }
 
+// Model history replays the planner's valid turn-scope declaration in each
+// tool call's input; it is not an action argument, so compare without it.
+function withoutDeclaredTurnScope(input: unknown): unknown {
+  if (!record(input)) return input;
+  const { eliza_turn_scope: scope, ...args } = input;
+  return scope === "final" || scope === "more_work_pending" ? args : input;
+}
+
 export function postToolEvaluatorFixture(spec: {
   actionName: string;
   discoverBeforeExecution?: boolean;
@@ -84,7 +92,8 @@ export function postToolEvaluatorFixture(spec: {
         toolCall.type !== "tool-call" ||
         toolCall.toolName !== spec.actionName ||
         typeof toolCall.toolCallId !== "string" ||
-        canonical(toolCall.input) !== canonical(modelArgs)
+        canonical(withoutDeclaredTurnScope(toolCall.input)) !==
+          canonical(modelArgs)
       )
         return false;
       const results = messages
@@ -102,7 +111,7 @@ export function postToolEvaluatorFixture(spec: {
           receipt.type !== "tool-result" ||
           typeof discovery.toolCallId !== "string" ||
           discovery.toolName !== "DISCOVER_ACTIONS" ||
-          canonical(discovery.input) !==
+          canonical(withoutDeclaredTurnScope(discovery.input)) !==
             canonical({
               names: [spec.actionName],
             }) ||
