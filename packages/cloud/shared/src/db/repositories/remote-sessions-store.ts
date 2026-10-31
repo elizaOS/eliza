@@ -216,7 +216,13 @@ export class RemoteSessionsRepository {
     });
   }
 
-  /** Creates a target-initiated challenge under authenticated host authority. */
+  /**
+   * Creates a target-initiated challenge under authenticated host authority.
+   *
+   * `undefined` means only that no active host matched the presented token. A
+   * token that cannot be digested (malformed credential, WebCrypto failure) is
+   * a failed authentication check, not an absent host, so it propagates.
+   */
   async createPendingForAuthenticatedHost(input: {
     id: string;
     hostId: string;
@@ -228,12 +234,8 @@ export class RemoteSessionsRepository {
     expiresAt: Date;
     grantExpiresAt: Date;
   }): Promise<RemoteSession | undefined> {
-    let tokenHash: string;
-    try {
-      tokenHash = await hashRemoteHostToken(input.hostToken);
-    } catch {
-      return undefined;
-    }
+    const tokenHash = await hashRemoteHostToken(input.hostToken);
+
     return this.database.transaction(async (tx) => {
       const [host] = await tx
         .select()
