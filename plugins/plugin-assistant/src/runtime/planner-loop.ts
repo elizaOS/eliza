@@ -7265,14 +7265,6 @@ function resolveRejectedCallsSupersededBy(
         if (Object.keys(targets).length) params[name] = targets;
         else delete params[name];
       }
-    // Each moved field, targets included, is bound by equality in the missing
-    // argument; the arguments left in place keep their own correlation.
-    const moved = argumentsMovedIntoMissingArgument(
-      failedCall,
-      rejected.result,
-      call,
-    );
-    for (const name of moved) delete params[name];
     const targets = Object.entries(params).flatMap(([name, value]) => {
       if (
         TARGET_PARAMETER_KEY_PATTERN.test(name) &&
@@ -7342,15 +7334,7 @@ function resolveRejectedCallsSupersededBy(
       })
     )
       continue;
-    const hasTarget =
-      targets.length > 0 ||
-      moved.some((name) =>
-        Object.entries(failedCall.params?.[name] ?? {}).some(
-          ([field, value]) =>
-            TARGET_PARAMETER_KEY_PATTERN.test(field) &&
-            isSuppliedParameterValue(value),
-        ),
-      );
+    const hasTarget = targets.length > 0;
     // A malformed envelope with no machine-stable target cannot discharge
     // several declared outcomes merely because another call used the same tool.
     if (!hasTarget && declaredIntentCount > 1) continue;
@@ -7363,54 +7347,6 @@ function resolveRejectedCallsSupersededBy(
     )
       unresolvedByOperation.delete(key);
   }
-}
-
-/**
- * Object arguments a validator-rejected call supplied in place of a top-level
- * argument it reported missing. No handler ran, so the corrected call may move
- * that payload into the missing argument (live 2026-10-30: a reminder plan
- * drafted in `details` was resent as `createPlan`, the reminder was saved, and
- * the reply said the runtime step failed). Every supplied field must reappear
- * unchanged there, decoded as the validator decodes object transport text.
- * Target-named arguments never move.
- */
-function argumentsMovedIntoMissingArgument(
-  failedCall: PlannerToolCall,
-  result: PlannerToolResult | undefined,
-  call: PlannerToolCall,
-): string[] {
-  const errors = result?.data?.parameterErrors;
-  if (!Array.isArray(errors)) return [];
-  const failedParams = failedCall.params ?? {};
-  return errors.flatMap((error) => {
-    const missing =
-      typeof error === "string"
-        ? /^Missing required argument '([^'.]+)'$/.exec(error)?.[1]
-        : undefined;
-    if (!missing || Object.hasOwn(failedParams, missing)) return [];
-    let supplied = call.params?.[missing];
-    if (typeof supplied === "string") {
-      try {
-        supplied = JSON.parse(supplied);
-      } catch {
-        // error-policy:J3 Undecodable text cannot prove the payload moved.
-        return [];
-      }
-    }
-    if (!isObjectRecord(supplied)) return [];
-    return Object.entries(failedParams).flatMap(([name, value]) =>
-      !TARGET_PARAMETER_KEY_PATTERN.test(name) &&
-      isObjectRecord(value) &&
-      Object.values(value).some(isSuppliedParameterValue) &&
-      Object.entries(value).every(
-        ([field, entry]) =>
-          !isSuppliedParameterValue(entry) ||
-          correlationValuesEqual(entry, supplied[field]),
-      )
-        ? [name]
-        : [],
-    );
-  });
 }
 
 /** Canonicalizes the calendar wrapper's explicitly supported operation aliases. */

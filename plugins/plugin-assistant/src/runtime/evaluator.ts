@@ -2704,20 +2704,6 @@ function calendarSchedulingOutcomeCovered(
   });
 }
 
-/** The bound read operation, called directly or through the Calendar dispatcher. */
-function isCalendarReadCall(
-  call: PlannerToolCall,
-  operation: CalendarReadBinding["operation"],
-): boolean {
-  const expected = CALENDAR_READ_ACTIONS[operation];
-  return Boolean(
-    expected &&
-      (call.name === expected ||
-        (call.name === "CALENDAR" &&
-          (call.params?.action ?? call.params?.subaction) === operation)),
-  );
-}
-
 export function calendarReadCoverage(
   output: EvaluatorOutput,
   context: ContextObject,
@@ -2772,41 +2758,10 @@ export function calendarReadCoverage(
     const covered = output.outcomeCoverage?.filter(
       (entry) => entry.intentId === binding.intentId,
     );
-    // The schema lets the model omit coverage it has not checked, and step
-    // citations are free text. Live 2026-10-30, correct reads became failure
-    // copy when coverage was omitted (tj-605ca329c8a78d) or cited
-    // "1:success=true" (tj-8dfdee5735fb18). Such a required read binds to the
-    // only successful current step of its operation, which must still pass
-    // every evidence check below. A stated status or a valid citation governs.
-    const reads =
-      binding.execution === "required" &&
-      (output.outcomeCoverage === undefined ||
-        (covered?.length === 1 &&
-          !covered[0].evidenceStepIds.some((id) => evidence.has(id)))) &&
-      bindings.filter(
-        (other) =>
-          isObjectRecord(other) && other.operation === binding.operation,
-      ).length === 1
-        ? [...evidence].filter(
-            ([, step]) =>
-              step.toolCall &&
-              !step.terminalOnly &&
-              step.result?.success === true &&
-              isCalendarReadCall(step.toolCall, binding.operation),
-          )
-        : [];
-    const coverage =
-      reads.length === 1
-        ? {
-            status: covered?.[0]?.status ?? "completed",
-            evidenceStepIds: [reads[0][0]],
-          }
-        : covered?.length === 1
-          ? covered[0]
-          : undefined;
-    if (!coverage) return reject("CALENDAR_READ_COVERAGE_MISSING");
+    if (covered?.length !== 1) return reject("CALENDAR_READ_COVERAGE_MISSING");
+    const coverage = covered[0];
     if (
-      coverage.status !== "completed" ||
+      coverage?.status !== "completed" ||
       coverage.evidenceStepIds.length === 0
     )
       return reject("CALENDAR_READ_COVERAGE_INCOMPLETE");
@@ -2840,7 +2795,16 @@ export function calendarReadCoverage(
       const data = step.result.data;
       if (!isObjectRecord(data))
         return rejectEvidence("CALENDAR_READ_RESULT_INVALID");
-      if (!isCalendarReadCall(step.toolCall, binding.operation))
+      const expected = CALENDAR_READ_ACTIONS[binding.operation];
+      if (
+        !expected ||
+        (step.toolCall.name !== expected &&
+          !(
+            step.toolCall.name === "CALENDAR" &&
+            (step.toolCall.params?.action ??
+              step.toolCall.params?.subaction) === binding.operation
+          ))
+      )
         return rejectEvidence("CALENDAR_READ_OPERATION_MISMATCH");
       if (
         binding.operation === "propose_times" ||
