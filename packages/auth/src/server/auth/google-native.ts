@@ -8,28 +8,62 @@ function nonemptyClaim(value: unknown): string | undefined {
 // Public OAuth client IDs, keyed by the existing tenant app-client ID. This
 // binds Google's signed azp to an approved Android package/signing certificate.
 // The tenant_app_clients registry remains authoritative for app access.
-export function googleNativeClientIds(clientId: string): string[] {
-  try {
-    const raw = process.env.STEWARD_GOOGLE_NATIVE_CLIENT_IDS;
-    if (!raw) return [];
-    const configured: unknown = JSON.parse(raw);
-    if (
-      !configured ||
-      typeof configured !== "object" ||
-      Array.isArray(configured)
-    )
-      return [];
-    const ids = (configured as Record<string, unknown>)[clientId];
-    return Array.isArray(ids)
-      ? ids.filter(
-          (id): id is string =>
-            typeof id === "string" &&
-            /^[a-zA-Z0-9-]+\.apps\.googleusercontent\.com$/.test(id),
-        )
-      : [];
-  } catch {
-    return [];
+const GOOGLE_NATIVE_CLIENT_IDS_ENV = "STEWARD_GOOGLE_NATIVE_CLIENT_IDS";
+
+/**
+ * Raised when {@link GOOGLE_NATIVE_CLIENT_IDS_ENV} is set but unusable.
+ *
+ * The mapping is operator configuration, so "absent" and "corrupt" are
+ * different states: absent means this deployment has no Android Google client
+ * bound (a supported state), corrupt means the deployment intends to accept
+ * Android Google sign-ins but the value cannot be read. Collapsing both to
+ * `[]` made a misconfigured deployment look like an unsupported one —
+ * `/providers` reported `googleNative: false` and the native route answered
+ * `503 "Native Google sign-in is not configured for this app"`, so the real
+ * cause (a typo in the JSON) never surfaced anywhere.
+ */
+export class GoogleNativeClientConfigError extends Error {
+  constructor(detail: string) {
+    super(`${GOOGLE_NATIVE_CLIENT_IDS_ENV} is not usable: ${detail}`);
+    this.name = "GoogleNativeClientConfigError";
   }
+}
+
+export function googleNativeClientIds(clientId: string): string[] {
+  const raw = process.env[GOOGLE_NATIVE_CLIENT_IDS_ENV];
+  // Unset/blank is a legitimate "no Android Google client bound".
+  if (!raw?.trim()) return [];
+
+  let configured: unknown;
+  try {
+    configured = JSON.parse(raw);
+  } catch (error) {
+    throw new GoogleNativeClientConfigError(
+      `expected JSON, got ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  if (
+    !configured ||
+    typeof configured !== "object" ||
+    Array.isArray(configured)
+  )
+    throw new GoogleNativeClientConfigError(
+      "expected a JSON object keyed by app client id",
+    );
+
+  const ids = (configured as Record<string, unknown>)[clientId];
+  // Client id absent from a readable map: this app simply has no Android
+  // client, which is the same legitimate empty state as an unset variable.
+  if (ids === undefined) return [];
+  if (!Array.isArray(ids))
+    throw new GoogleNativeClientConfigError(
+      `entry for client ${JSON.stringify(clientId)} must be an array of client ids`,
+    );
+  return ids.filter(
+    (id): id is string =>
+      typeof id === "string" &&
+      /^[a-zA-Z0-9-]+\.apps\.googleusercontent\.com$/.test(id),
+  );
 }
 
 /** Verify an Android Google identity against server-owned OAuth clients. */
