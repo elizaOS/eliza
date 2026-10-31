@@ -1,7 +1,7 @@
 /** ACTIONS Provider - Provides available actions with parameter schemas to the LLM. */
 
 import type { Action, IAgentRuntime, Memory, Provider, State } from "@elizaos/core";
-import { addHeader, logger } from "@elizaos/core";
+import { addHeader, extractUserText, logger } from "@elizaos/core";
 import { filterActionsByRouting, getContextRoutingFromMessage } from "../utils/context-routing";
 
 const HIDDEN_NATIVE_PLANNER_ACTIONS = new Set(["FINISH", "REPLY", "NONE"]);
@@ -136,8 +136,16 @@ function lastGoodFor(runtime: IAgentRuntime): Map<string, LastGoodValidation> {
 
 function getMessageText(message: Memory): string {
   const content = message.content;
-  if (typeof content === "string") return content;
-  return typeof content?.text === "string" ? content.text : "";
+  const raw =
+    typeof content === "string"
+      ? content
+      : typeof content?.text === "string"
+        ? content.text
+        : "";
+  // Match against the user's own words, not the document-augmentation
+  // envelope: retrieved help text wrapped around <user_request> must not
+  // trigger intent narrowing for a request the user never made.
+  return extractUserText(raw);
 }
 
 function isImageGenerationRequest(message: Memory): boolean {
