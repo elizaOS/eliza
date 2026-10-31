@@ -47,7 +47,7 @@ describe("exact ingress persistence", () => {
       await runtime.adapter.close();
     }
   });
-  it("reuses complete segmented Unicode and attachments, while ordinary create remains strict", async () => {
+  it("reuses exact segmented Unicode and attachments while rejecting conflicting ordinary create", async () => {
     const { runtime, memory } = harness();
     memory.content.text = "🙂 Hebrew עברית complete\n".repeat(10000);
     memory.content.attachments = [
@@ -65,9 +65,14 @@ describe("exact ingress persistence", () => {
       await expect(persistIncomingMessageMemory(runtime, memory)).resolves.toBe(
         memory.id,
       );
-      await expect(runtime.createMessageMemory(memory)).rejects.toMatchObject({
-        code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT",
-      });
+      // Core permits exact publication replay, including every immutable segment.
+      await expect(runtime.createMessageMemory(memory)).resolves.toBe(memory.id);
+      await expect(
+        runtime.createMessageMemory({
+          ...memory,
+          content: { ...memory.content, text: `${memory.content.text}different` },
+        }),
+      ).rejects.toMatchObject({ code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT" });
       const stored = await runtime.getMemoryById(memory.id);
       expect(stored?.content.messageTextSource).toBeDefined();
       await expect(
