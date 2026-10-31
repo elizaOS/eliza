@@ -10,7 +10,7 @@ name: PR Validation
 
 on:
   pull_request:
-    branches: [develop, staging, main]
+    branches: [develop, staging, main, codex/pa-ui-root-alias-20261031]
     types: [opened, synchronize, reopened, ready_for_review]
   merge_group:
     types: [checks_requested]
@@ -424,6 +424,97 @@ jobs:
           test/mode-action-authority.test.ts
           --maxWorkers=1 --no-file-parallelism
           --execArgv=--max-old-space-size=2048
+
+      - name: Verify reminder create contract fixtures
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.affected.outputs.source == 'true'
+        timeout-minutes: 5
+        working-directory: plugins/plugin-personal-assistant
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          NODE_OPTIONS: "--max-old-space-size=2048"
+          DEBUG: "vite:resolve*"
+        run: |
+          set -euo pipefail
+          fixture_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            src/actions/lib/reminder-create-contract.test.ts \
+            src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts \
+            src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts \
+            src/lifeops/reminder-wake.pglite.integration.test.ts \
+            test/life-action-effect-receipts.integration.test.ts \
+            vitest.config.ts \
+            vitest.src-integration.config.ts \
+            test/setup.ts \
+            src/actions/lib/task-create-plan-parameter.ts \
+            src/actions/life.ts \
+            ../../packages/scripts/run-vitest.ts \
+            ../../packages/scripts/vitest \
+            ../../packages/ui/package.json \
+            ../../packages/ui/src/styles/mobile-workspaces.css \
+            ../../packages/ui/src/view-primitives.ts \
+            ../../.github/workflows/pr-validation.yml || fixture_diff_status=$?
+          if [ "$fixture_diff_status" -eq 0 ]; then
+            echo "No reminder fixture or owning-resolution inputs changed."
+            exit 0
+          fi
+          if [ "$fixture_diff_status" -ne 1 ]; then
+            exit "$fixture_diff_status"
+          fi
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts \
+            src/actions/lib/reminder-create-contract.test.ts \
+            --maxWorkers=1 --no-file-parallelism \
+            --execArgv=--max-old-space-size=2048
+
+      - name: Verify reminder lifecycle fixtures through the owning config
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.affected.outputs.source == 'true'
+        timeout-minutes: 10
+        working-directory: plugins/plugin-personal-assistant
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          NODE_OPTIONS: "--max-old-space-size=2048"
+          DEBUG: "vite:resolve*"
+        run: |
+          set -euo pipefail
+          fixture_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            src/actions/lib/reminder-create-contract.test.ts \
+            src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts \
+            src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts \
+            src/lifeops/reminder-wake.pglite.integration.test.ts \
+            test/life-action-effect-receipts.integration.test.ts \
+            vitest.config.ts \
+            vitest.src-integration.config.ts \
+            test/setup.ts \
+            src/actions/lib/task-create-plan-parameter.ts \
+            src/actions/life.ts \
+            ../../packages/scripts/run-vitest.ts \
+            ../../packages/scripts/vitest \
+            ../../packages/ui/package.json \
+            ../../packages/ui/src/styles/mobile-workspaces.css \
+            ../../packages/ui/src/view-primitives.ts \
+            ../../.github/workflows/pr-validation.yml || fixture_diff_status=$?
+          if [ "$fixture_diff_status" -eq 0 ]; then
+            echo "No reminder fixture or owning-resolution inputs changed."
+            exit 0
+          fi
+          if [ "$fixture_diff_status" -ne 1 ]; then
+            exit "$fixture_diff_status"
+          fi
+          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts \
+            src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts \
+            src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts \
+            src/lifeops/reminder-wake.pglite.integration.test.ts \
+            test/life-action-effect-receipts.integration.test.ts \
+            --maxWorkers=1 --no-file-parallelism \
+            --execArgv=--max-old-space-size=2048
 
       - name: Select website open owning regressions
         id: website_owning_scope
