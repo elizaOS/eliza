@@ -251,6 +251,23 @@ function isValidTimezone(tz: string): boolean {
   }
 }
 
+/**
+ * A weather provider answered with an HTTP failure. This is a provider fault,
+ * not "no such place": the geocoder throttling us or being down says nothing
+ * about whether the place exists.
+ */
+class McpUpstreamHttpError extends Error {
+  constructor(
+    readonly provider: string,
+    readonly status: number,
+    statusText?: string,
+  ) {
+    const detail = statusText ? ` ${statusText}` : "";
+    super(`${provider} request failed with HTTP ${status}${detail}`);
+    this.name = "McpUpstreamHttpError";
+  }
+}
+
 async function geocode(query: string): Promise<GeocodeItem | null> {
   const url = new URL("https://geocoding-api.open-meteo.com/v1/search");
   url.searchParams.set("name", query);
@@ -260,7 +277,15 @@ async function geocode(query: string): Promise<GeocodeItem | null> {
     headers: { Accept: "application/json" },
     signal: AbortSignal.timeout(MCP_PROVIDER_REQUEST_TIMEOUT_MS),
   });
-  if (!res.ok) return null;
+  // Only "the provider answered, with no match" is a null result below; a
+  // throttled or broken geocoder propagates so the tool reports a failure.
+  if (!res.ok) {
+    throw new McpUpstreamHttpError(
+      "Open-Meteo geocoding",
+      res.status,
+      res.statusText,
+    );
+  }
   const data = (await res.json()) as GeocodeResponse;
   return data.results?.[0] ?? null;
 }
