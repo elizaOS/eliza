@@ -188,7 +188,31 @@ interface AcpServiceLike {
       metadata?: Record<string, unknown>;
     }>
   >;
-  sendToSession(sessionId: string, input: string): Promise<unknown>;
+  sendToSession(
+    sessionId: string,
+    input: string,
+  ): Promise<{ stopReason?: string; error?: string } | undefined>;
+}
+
+/**
+ * Why a prod send did not deliver, or null when it did. Mirrors
+ * `undeliveredReason` in api/agent-routes.ts: `sendPrompt` throws only for
+ * a missing or busy session and reports a cancelled, stopped, or errored
+ * turn as a resolved receipt, so a resolve alone is not proof the prod ran.
+ */
+function undeliveredProdReason(
+  delivery: { stopReason?: string; error?: string } | undefined,
+): string | null {
+  if (!delivery) return null;
+  if (delivery.error) return delivery.error;
+  if (
+    delivery.stopReason === "cancelled" ||
+    delivery.stopReason === "stopped" ||
+    delivery.stopReason === "error"
+  ) {
+    return `turn settled ${delivery.stopReason}`;
+  }
+  return null;
 }
 
 /** Read-only round-trip accounting exposed by the SubAgentRouter. */
@@ -293,7 +317,18 @@ export class TaskWatchdogService extends Service {
       if (this.prodded.has(s.id)) continue; // already prodded this stall
       this.prodded.add(s.id);
       try {
-        await acp.sendToSession(s.id, STALL_GRILL_PROMPT);
+        const delivery = await acp.sendToSession(s.id, STALL_GRILL_PROMPT);
+        const undelivered = undeliveredProdReason(delivery);
+        if (undelivered) {
+          // The send resolved but no turn ran, so the prod never landed:
+          // un-mark like the throw path so the next tick retries instead of
+          // spending this stall's one prod on a message nobody received.
+          this.prodded.delete(s.id);
+          logger.warn(
+            `[TaskWatchdogService] prod of stalled session ${s.id} was not delivered: ${undelivered}`,
+          );
+          continue;
+        }
         logger.info(
           `[TaskWatchdogService] stalled session ${s.id} (idle ${Math.round(
             s.idleMs / 1000,
