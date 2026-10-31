@@ -181,6 +181,7 @@ export interface LocalInferenceChatMetadata {
 		| "idle"
 		| "ready"
 		| "cancelled"
+		| "no_download"
 		| "routing";
 	modelId?: string | null;
 	activeModelId?: string | null;
@@ -758,6 +759,11 @@ function pickStatusLine(status: LocalInferenceChatMetadata["status"]): string {
 			"The local download has been stopped.",
 			"Local model download cancelled.",
 		],
+		no_download: [
+			"No local model download was in progress.",
+			"There is no local model download to cancel.",
+			"No download is running to cancel.",
+		],
 		routing: [
 			"I updated the inference routing.",
 			"The model routing preference is updated.",
@@ -953,6 +959,14 @@ export async function handleLocalInferenceChatCommand(
 	if (intent === "cancel") {
 		const requested = resolveRequestedCatalogModel(prompt);
 		const cancelled = await cancelDownloads(requested?.id ?? null);
+		if (cancelled.length === 0) {
+			return buildLocalInferenceChatResult({
+				intent,
+				status: "no_download",
+				modelId: requested?.id ?? null,
+				activeModelId: activeModelState.modelId,
+			});
+		}
 		return buildLocalInferenceChatResult({
 			intent,
 			status: "cancelled",
