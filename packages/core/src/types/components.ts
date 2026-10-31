@@ -158,7 +158,10 @@ export interface MessageHandlerPlan {
 	/** Same-call model-classified negative Notes restriction; never permission. */
 	notesRequestEffect?: "read_only" | "mutation_requested" | "unresolved";
 	/** Owned same-call semantic interpretation; not permission or execution proof. */
-	notesRequestInterpretation?: NotesRequestInterpretation;
+	notesRequestInterpretation?: {
+		readonly status: NotesRequestInterpretation["status"];
+		readonly operations: Array<NotesRequestInterpretation["operations"][number]>;
+	};
 	/** Host-only contradiction evidence; never a model field or write grant. */
 	notesRequestHostRestriction?: {
 		classification: "unresolved";

@@ -789,8 +789,14 @@ export function messageHandlerFromFieldResult(
               `notes-request-interpretation:${interpretation.status}`,
             ),
         )
-      )
-        plan.notesRequestInterpretation = interpretation;
+      ) {
+        const planInterpretation = {
+          status: interpretation.status,
+          operations: [...interpretation.operations],
+        };
+        Object.freeze(planInterpretation.operations);
+        plan.notesRequestInterpretation = Object.freeze(planInterpretation);
+      }
     }
   }
   if (
