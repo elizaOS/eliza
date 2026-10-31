@@ -70,6 +70,8 @@ const SERVER_TIMING_PROVIDERS = [
 ] as const;
 const ACTION_PROGRESS_TEXT =
   /^(?:on it\b|checking\b|fetching\b|gathering\b|looking\s+(?:up|into)\b|running\b|working\s+on\b|one\s+moment\b)/iu;
+/** Spoken once when a turn enters tool work without a model-drafted acknowledgement. */
+const TOOL_WORK_PROGRESS_TEXT = "On it.";
 
 export type ElizaServerTimingMetric = (typeof SERVER_TIMING_METRICS)[number];
 export type ElizaServerTimingProvider =
@@ -577,6 +579,20 @@ export async function streamElizaConversation(
           ) {
             planningAcknowledgmentSeen = true;
             await emitProgress(status.label);
+          } else if (
+            status.kind === "running_tool" ||
+            status.kind === "running_action"
+          ) {
+            // Stage 1 drafted no acknowledgement (its replyText is optional),
+            // but the turn has entered tool work. One fixed cue keeps the
+            // caller from hearing silence until the final reply; it is the
+            // same non-authoritative progress speech as the label above.
+            planningAcknowledgmentSeen = true;
+            await emitProgress(
+              typeof status.label === "string" && status.label.trim()
+                ? status.label
+                : TOOL_WORK_PROGRESS_TEXT,
+            );
           }
           continue;
         }
