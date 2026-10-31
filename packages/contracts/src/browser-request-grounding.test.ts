@@ -138,8 +138,153 @@ describe("strict whole-message open command (fast path)", () => {
   );
 });
 
+// Each of these directly negates the open verb or the address: the hard guard
+// refuses youtube.com whatever the model proposes.
+const NEGATED = [
+  // Open verbs joined by or, and, nor, "/" or a list comma are one group.
+  "Don't open or visit youtube.com",
+  "Do not visit or open youtube.com",
+  "never open or go to youtube.com",
+  "don't open nor visit youtube.com",
+  "don't open or even visit youtube.com",
+  "Please don't open or load youtube.com",
+  "do not open, visit or load youtube.com",
+  "do not open, visit, or load youtube.com",
+  "don't go to or open youtube.com",
+  "don't navigate to or open youtube.com",
+  "never head over to or open youtube.com",
+  "don't bring up or show me youtube.com",
+  "don't open/visit youtube.com",
+  "don't open/visit/load youtube.com",
+  "don't open and/or visit youtube.com",
+  "don't open & visit youtube.com",
+  "do not open and visit youtube.com",
+  "don't go and open youtube.com",
+  "don't click or open youtube.com",
+  "don't open or go to or visit youtube.com",
+  "do not open and do not visit youtube.com",
+  // "or" and "nor" also join across one object.
+  "don't open google.com or visit youtube.com",
+  "don't open google.com, or visit youtube.com",
+  "don't open it or go to youtube.com",
+  "don't open the app or visit youtube.com",
+  // Up to four words, or eight after a preposition, with no punctuation.
+  "do not under any circumstances open youtube.com",
+  "do not under any circumstances go to youtube.com",
+  "never under any circumstances visit youtube.com",
+  "don't for any reason open youtube.com",
+  "do not for any reason open youtube.com",
+  "don't at any point open youtube.com",
+  "do not ever under any circumstances open youtube.com",
+  "Don't you ever under any circumstances open youtube.com",
+  "do not under any circumstances at all open youtube.com",
+  "don't for any reason at all open youtube.com",
+  "do not at any point in time open youtube.com",
+  "please do not at all open youtube.com",
+  "don't right now open youtube.com",
+  "don't today open youtube.com",
+  "don't in any case open youtube.com",
+  "never in a million years go to youtube.com",
+  "dont even think about opening youtube.com",
+  "dont even think about it open youtube.com",
+  "I really don't think you should open youtube.com",
+  // A preposition phrase may end in a comma; asides may use commas, dashes or
+  // parentheses.
+  "don't under any circumstances, open youtube.com",
+  "don't for any reason, open youtube.com",
+  "Do not, ever, open youtube.com",
+  "do not ever, under any circumstances, open youtube.com",
+  "never, under any circumstances, visit youtube.com",
+  "do not \u2014 under any circumstances \u2014 open youtube.com",
+  "do not (ever) open youtube.com",
+  "do not, I repeat, do not open youtube.com",
+  // Punctuation alone between the negation and the verb.
+  "don't , open youtube.com",
+  "don't... open youtube.com",
+  "don't… open youtube.com",
+  "don't\u2014open youtube.com",
+  'don\'t "open" youtube.com',
+  "Do not. Open. youtube.com",
+  "Do. Not. Open. youtube.com",
+  // Negations other than "not".
+  "under no circumstances open youtube.com",
+  "under no circumstances should you open youtube.com",
+  "at no point visit youtube.com",
+  "by no means open youtube.com",
+  "avoid opening youtube.com",
+  "refrain from visiting youtube.com",
+  "stop trying to open youtube.com",
+  "quit visiting youtube.com",
+  "No opening youtube.com!",
+  "no going to youtube.com",
+  "there is no need for you to open youtube.com",
+  "Not a chance you open youtube.com",
+  "let's not open youtube.com",
+  "I'd rather you didn't open youtube.com",
+  "Don't bother opening youtube.com",
+  "you can't open youtube.com",
+  "Can't you just not open youtube.com",
+  "Why don't you never open youtube.com",
+  "Don't forget not to open youtube.com",
+  "don't forget, don't open youtube.com",
+  // Spellings of "don't".
+  "DONT OPEN YOUTUBE.COM",
+  "do'nt open youtube.com",
+  "donot open youtube.com",
+  "don‘t open youtube.com",
+  "donʼt open youtube.com",
+  "don`t open youtube.com",
+  "ｄｏｎ＇ｔ ｏｐｅｎ youtube.com",
+  "do\u200bn't open youtube.com",
+  "don't\u00a0open youtube.com",
+  // A negation of the address itself.
+  "not youtube.com",
+  "never youtube.com",
+  "open google.com, not youtube.com",
+  "open google.com not youtube.com",
+  "neither google.com nor youtube.com",
+  "don't open google.com nor youtube.com",
+  "don't click youtube.com",
+  "Don't use youtube.com",
+];
+
+// The guard reads these as requests, not as negations of the open.
+const NOT_NEGATED = [
+  "why don't you open youtube.com",
+  "why not open youtube.com",
+  "can't you open youtube.com?",
+  "won't you open youtube.com?",
+  "couldn't you open youtube.com",
+  "Don't forget to open youtube.com",
+  "don't hesitate to open youtube.com",
+  "Never mind, open youtube.com",
+  "nevermind open youtube.com",
+  "I can't wait, open youtube.com",
+  "Don't worry, open youtube.com",
+  "Absolutely not. Open youtube.com instead",
+  "It's not working, open youtube.com",
+  "Stop! Open youtube.com",
+  "Stop what you're doing and open youtube.com",
+  "Don't stop, just go to youtube.com",
+  "Don't open it, go to youtube.com instead",
+  "Never open attachments. Go to youtube.com",
+  "Not google.com, open youtube.com",
+  "Don't open google.com and visit youtube.com instead",
+  "don't open google.com or bing.com, open youtube.com",
+];
+
 // [the user's current message, the model's proposed URL, what opens]
 const GROUNDING: [string, string, string | undefined][] = [
+  ...NEGATED.map((text): [string, string, undefined] => [
+    text,
+    "https://youtube.com",
+    undefined,
+  ]),
+  ...NOT_NEGATED.map((text): [string, string, string] => [
+    text,
+    "https://www.youtube.com/",
+    "https://youtube.com/",
+  ]),
   // Typed and proposed hosts agree; the user's spelling always opens.
   ["open youtube.com", "https://youtube.com", "https://youtube.com/"],
   ["open youtube.com", "https://www.youtube.com/", "https://youtube.com/"],
@@ -428,6 +573,20 @@ const GROUNDING: [string, string, string | undefined][] = [
   ["can you open lib.rs", "https://lib.rs", undefined],
   ["can you open www.lib.rs", "https://lib.rs", "https://www.lib.rs/"],
   ["can you visit amazon.in", "https://amazon.in", undefined],
+  ["can you open configure.ac", "https://configure.ac", undefined],
+  ["can you open activity.fit", "https://activity.fit", undefined],
+  ["can you open player.gd", "https://player.gd", undefined],
+  ["can you open build.ninja", "https://build.ninja", undefined],
+  ["can you open app.js.map", "https://app.js.map", undefined],
+  ["can you open top.sv", "https://top.sv", undefined],
+  [
+    "can you open the site build.ninja",
+    "https://build.ninja",
+    "https://build.ninja/",
+  ],
+  // Real sites on these top-level domains stay open without a signal.
+  ["can you open claude.ai", "https://claude.ai", "https://claude.ai/"],
+  ["can you open bit.ly/abc", "https://bit.ly/abc", "https://bit.ly/abc"],
   [
     "can you visit https://amazon.in",
     "https://www.amazon.in/",
@@ -452,7 +611,6 @@ const GROUNDING: [string, string, string | undefined][] = [
   ["you shouldnt open youtube.com", "https://youtube.com", undefined],
   ["Hey Eliza, don't open youtube.com", "https://youtube.com", undefined],
   ["can you not open youtube.com", "https://youtube.com", undefined],
-  ["won't you open youtube.com?", "https://youtube.com", undefined],
   [
     "Do not, under any circumstances, open youtube.com",
     "https://youtube.com",
@@ -540,6 +698,14 @@ describe("grounding a model browser proposal in the typed address", () => {
     expect(containsWebAddress("make another one for breakfast")).toBe(false);
     expect(containsWebAddress("don't open youtube.com")).toBe(true);
     expect(containsWebAddress("can you open main.py")).toBe(true);
+    // A multiline message is never grounded, but its address was typed.
+    expect(containsWebAddress("Hey Eliza\nopen youtube.com")).toBe(true);
+    expect(
+      groundBrowserDestination(
+        "Hey Eliza\nopen youtube.com",
+        "https://youtube.com",
+      ),
+    ).toBeUndefined();
   });
 
   it("stays linear on long adversarial input", () => {

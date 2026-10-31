@@ -393,6 +393,15 @@ it.each([
   ["open YouTube", "https://youtube.com/", false],
   ["can you open main.py", "https://main.py/", true],
   ["don't open youtube.com", "https://youtube.com/", true],
+  ["Don't open or visit youtube.com", "https://youtube.com/", true],
+  [
+    "do not under any circumstances open youtube.com",
+    "https://youtube.com/",
+    true,
+  ],
+  ["open nytimes.com, not youtube.com", "https://youtube.com/", true],
+  // A multiline message is never grounded, but its address was typed.
+  ["Hey Eliza\nopen youtube.com", "https://youtube.com/", true],
   ["take me to L.A.", "https://l.a/", false],
   ["make another one for breakfast at 11 am", "https://example.com/", false],
 ] as const)(

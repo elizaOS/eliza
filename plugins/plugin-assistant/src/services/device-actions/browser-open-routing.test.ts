@@ -256,6 +256,8 @@ it.each([
   "we arent going to open youtube.com",
   "probably open youtube.com",
   "hey eliza, never open youtube.com",
+  "Don't open or visit youtube.com",
+  "do not under any circumstances open youtube.com",
   "won't you open youtube.com?",
   "Open youtube.com. Tomorrow.",
   "open youtube.com, if you can",
