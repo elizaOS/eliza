@@ -602,6 +602,9 @@ function enforcePlannerFinishClaimGrounding(
     ...result,
     finalMessage: message,
     finalContent: undefined,
+    // The current message pipeline may repair prose from this same trajectory.
+    // Direct planner callers still receive the fail-closed status above.
+    replyRecoveryRequired: true,
     terminalFailure: result.terminalFailure ?? failure,
     evaluator: {
       ...result.evaluator,

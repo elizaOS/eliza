@@ -2861,7 +2861,13 @@ export async function runV5MessageRuntimeStage1(
         contexts: selectedContexts,
         runtime: args.runtime,
         message: args.message,
-        reply: plannerResult.finalMessage ?? "",
+        // A planner claim rejection has no deliverable draft. An empty reply
+        // enters the existing reply-only recovery and its grounding review.
+        reply:
+          plannerResult.replyRecoveryRequired === true &&
+          plannerResult.terminalFailure?.code === "REPLY_GROUNDING_FAILED"
+            ? ""
+            : (plannerResult.finalMessage ?? ""),
         actionResults: egressActionResults,
         evaluator: plannerResult.evaluator,
         recovery: capturePlannerReplyRecovery(
@@ -2874,6 +2880,12 @@ export async function runV5MessageRuntimeStage1(
         ...plannerResult,
         finalMessage: recoveredReply.text,
         replyRecoveryRequired: undefined,
+        // Successful checked prose repairs only this presentation failure.
+        // Tool/provider/pending outcomes and evaluator coverage stay intact.
+        ...(plannerResult.terminalFailure?.kind === "reply_generation_error" &&
+        plannerResult.terminalFailure.code === "REPLY_GROUNDING_FAILED"
+          ? { terminalFailure: undefined }
+          : {}),
       };
       replyRecovered = true;
     }

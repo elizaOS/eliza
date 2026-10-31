@@ -1626,6 +1626,10 @@ describe("planner-loop death after a completed tool", () => {
       JSON.stringify({ groundingProbe, errorScopes: h.reportedScopes }),
     ).toBe(1);
     expect(result.responseContent?.text).toBe(answer);
+    expect(result.didRespond).toBe(true);
+    expect(visibleTexts(h.callbacks).join("\n")).not.toContain(
+      "Cancelled the note edit.",
+    );
   });
 
   beforeEach(() => {
