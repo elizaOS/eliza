@@ -3,7 +3,7 @@
 # statically validates the selected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
-# exceptions, alongside a path-scoped native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
+# exceptions, alongside path-scoped SDK owning suites and a native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
 # excluded. A path-scoped Core/assistant/Notes owning-regression subset also
 # qualifies changes to that flow through the unchanged package test configs.
 name: PR Validation
@@ -691,6 +691,138 @@ jobs:
           wait "$types_pid" || status=$?
           exit "$status"
 
+  sdk-owning:
+    name: SDK owning (${{ matrix.lane }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        lane: [core-notes, assistant, calendar-voice]
+    env:
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      RUN_TURBO_CONCURRENCY: "1"
+      TEST_LANE: pr
+      ELIZA_LIVE_TEST: "0"
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Select changed SDK owning sources
+        id: owning-diff
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          status=0
+          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
+            packages/core packages/contracts packages/host \
+            plugins/plugin-notes plugins/plugin-assistant plugins/plugin-calendar || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::SDK owning change selection failed with exit $status."
+            exit "$status"
+          fi
+      - if: steps.owning-diff.outputs.run == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Apply required dependency compatibility patches
+        if: steps.owning-diff.outputs.run == 'true'
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+      - name: Build core contract
+        if: steps.owning-diff.outputs.run == 'true'
+        run: bun run build:core
+      - name: Build real owning dependency closure
+        if: steps.owning-diff.outputs.run == 'true'
+        run: >-
+          node packages/scripts/run-turbo.ts run build
+          --filter=@elizaos/plugin-calendar... --filter=@elizaos/agent...
+          --filter=@elizaos/plugin-assistant... --filter=@elizaos/host...
+          --filter=@elizaos/core... --filter=@elizaos/plugin-notes...
+          --concurrency=4 --output-logs=errors-only
+      - name: Run full Core owning suite
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'core-notes'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/core test 2>&1 | tee "$RUNNER_TEMP/core-owning.log"
+      - name: Run full Notes client and request-effect suites
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'core-notes'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-notes test 2>&1 | tee "$RUNNER_TEMP/notes-owning.log"
+      - name: Run full Assistant owning suites
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'assistant'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-assistant test 2>&1 | tee "$RUNNER_TEMP/assistant-owning.log"
+      - name: Run full Calendar owning suite
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'calendar-voice'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-calendar test 2>&1 | tee "$RUNNER_TEMP/calendar-owning.log"
+      - name: Run full host voice TypeScript suite
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'calendar-voice'
+        timeout-minutes: 10
+        working-directory: packages/host
+        run: |
+          set -euo pipefail
+          node ../scripts/run-vitest.ts run --config vitest.config.ts src/voice 2>&1 | tee "$RUNNER_TEMP/host-voice-typescript-owning.log"
+      - name: Run full host voice JavaScript suite
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'calendar-voice'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          node --test packages/host/src/voice/*.test.mjs 2>&1 | tee "$RUNNER_TEMP/host-voice-javascript-owning.log"
+      - name: Check normal owning types and lint
+        if: steps.owning-diff.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          case '${{ matrix.lane }}' in
+            core-notes) packages=(packages/core plugins/plugin-notes) ;;
+            assistant) packages=(plugins/plugin-assistant) ;;
+            calendar-voice) packages=(plugins/plugin-calendar packages/host) ;;
+            *) exit 1 ;;
+          esac
+          for package in "${packages[@]}"; do
+            bun run --cwd "$package" typecheck
+            bun run --cwd "$package" lint:check
+          done
+      - name: Preserve normal owning test output
+        if: always() && steps.owning-diff.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sdk-owning-${{ matrix.lane }}
+          path: ${{ runner.temp }}/*-owning.log
+          if-no-files-found: warn
+          retention-days: 7
+
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
     runs-on: ubuntu-24.04
@@ -1034,6 +1166,7 @@ jobs:
     needs:
       - secret-scan
       - source-checks
+      - sdk-owning
       - billing-payment-replay-e2e
       - subscription-authority-postgres
       - paradee-stream-contract
@@ -1044,6 +1177,7 @@ jobs:
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
+            sdk-owning=${{ needs.sdk-owning.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
             paradee-stream-contract=${{ needs.paradee-stream-contract.result }}
