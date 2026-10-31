@@ -8,6 +8,10 @@ import {
   type ActionResult,
   actionGateFailure,
   activeCommittedEffectReceipts,
+  beginRequestOperationIssuer,
+  bindTaskExtractionContext,
+  commitNotesRequestRestriction,
+  type ContextObject,
   ChannelType,
   conversationClientUserMemoryId,
   executePlannedToolCall,
@@ -15,8 +19,10 @@ import {
   type Memory,
   ModelType,
   projectDeferredProviders,
+  ResponseHandlerFieldRegistry,
   resolveActionGateFailure,
   resolveOwnerEntityIdOrDefault,
+  type State,
   type UUID,
   validateToolArgs,
 } from "@elizaos/core";
@@ -57,6 +63,7 @@ import {
 } from "../../plugin-calendar/src/service/linked-calendar-sync.ts";
 import type { GoogleCalendarEvent } from "../../plugin-google-workspace/src/types.ts";
 import { notesPlugin } from "../../plugin-notes/src/plugin.ts";
+import { notesRequestEffectField } from "../../plugin-notes/src/request-effect.ts";
 import {
   NOTES_SERVICE_TYPE,
   NotesService,
@@ -93,6 +100,7 @@ import {
   projectDiscoverableContext,
   readContextRequests,
 } from "../src/services/message/context-discovery.ts";
+import { messageHandlerFromFieldResult } from "../src/services/message/stage1-output.ts";
 import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
 import { collectDiscoveryCatalogActions } from "../src/services/message/tool-discovery.ts";
 import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
@@ -4435,6 +4443,7 @@ test.each([
 test("selected native Notes authority blocks backend writes without affecting canonical counter-requests", async () => {
   const fixture = await createRealTestRuntime({
     characterName: "NativeRecordAuthority",
+    withLLM: false,
   });
   const runtime = fixture.runtime;
   const directory = await mkdtemp(join(tmpdir(), "native-note-authority-"));
@@ -4502,18 +4511,82 @@ test("selected native Notes authority blocks backend writes without affecting ca
     proposeDeviceAction,
     ...unrelatedActions,
   ];
-  const discover = () =>
+  const discover = (requestMessage: Memory = message) =>
     collectDiscoveryCatalogActions({
       actions,
-      message,
+      message: requestMessage,
       selectedContexts: ["general"],
       userRoles: ["OWNER"],
     }).map((action) => action.name);
+  const requestStates = new WeakMap<Memory, State>();
+  const lifetimes: AbortController[] = [];
+  const canonicalCounterRequest = (text: string): Memory => ({
+    ...structuredClone(message),
+    id: randomUUID() as UUID,
+    agentId: runtime.agentId,
+    createdAt: Date.now(),
+    content: { ...structuredClone(message.content), text },
+  });
+  // A supplied model interpretation is controlled here, but the real field
+  // dispatcher/normalizer and current host issuer own its request binding.
+  // OWNER roles and forged clientDevice metadata alone cannot mint that proof.
+  const prepareRequest = async (requestMessage: Memory) => {
+    const state: State = { values: {}, data: {}, text: "" };
+    const lifetime = new AbortController();
+    lifetimes.push(lifetime);
+    const issuer = beginRequestOperationIssuer({
+      runtime,
+      message: requestMessage,
+      current: () => !lifetime.signal.aborted,
+    });
+    if (!issuer) throw new Error("Expected current canonical Notes request");
+    const modelField = {
+      classification: "mutation_requested",
+      operations: ["create"],
+    };
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(notesRequestEffectField);
+    const fieldRun = await fields.dispatch({
+      rawParsed: {
+        shouldRespond: "RESPOND", contexts: ["notes"],
+        intents: [requestMessage.content.text], requiresTool: true,
+        replyEffectStatus: "pending", replyText: "", candidateActionNames: [],
+        facts: [], relationships: [], addressedTo: [], notesRequestEffect: modelField,
+      },
+      runtime, message: requestMessage, state, senderRole: "OWNER",
+      turnSignal: lifetime.signal,
+    });
+    const handler = messageHandlerFromFieldResult(fieldRun.parsed, fieldRun, {
+      actions: runtime.actions,
+      messageText: requestMessage.content.text ?? "",
+    });
+    const source = {
+      currentText: requestMessage.content.text,
+      modelField,
+      interpretation: handler.plan.notesRequestInterpretation,
+    };
+    if (!commitNotesRequestRestriction(issuer, {
+      classification: handler.plan.notesRequestEffect ?? "unresolved",
+      interpretation: handler.plan.notesRequestInterpretation,
+      source, currentSource: () => source,
+    })) throw new Error("Expected handled Notes interpretation commitment");
+    const original: ContextObject = {
+      id: `counter-request:${requestMessage.id}`,
+      metadata: { agentId: runtime.agentId, messageId: requestMessage.id,
+        roomId: requestMessage.roomId, entityId: requestMessage.entityId },
+      events: [{ id: String(requestMessage.id), type: "message",
+        message: { id: String(requestMessage.id), role: "user",
+          content: requestMessage.content.text ?? "" } }],
+    };
+    bindTaskExtractionContext(state, requestMessage, original, original, runtime, issuer);
+    requestStates.set(requestMessage, state);
+  };
   const execute = (content: string, actionMessage: Memory = message) =>
     executePlannedToolCall(
       runtime,
       {
         message: actionMessage,
+        state: requestStates.get(actionMessage),
         activeContexts: ["notes"],
         userRoles: ["OWNER"],
       },
@@ -4523,6 +4596,7 @@ test("selected native Notes authority blocks backend writes without affecting ca
     await registerOwnerRoom(runtime, message);
     await service.register(credential, "Native record owner");
     for (const action of actions) runtime.registerAction(action);
+    await prepareRequest(message);
     const outside = discover();
     expect(outside).toContain("NOTES_CREATE");
     expect(outside).toContain("CALENDAR");
@@ -4591,47 +4665,84 @@ test("selected native Notes authority blocks backend writes without affecting ca
       ).toMatchObject({ success: false });
       expect(notes.listNotes()).toHaveLength(0);
     });
-    // Forged clientDevice metadata is not authority; an ordinary counter-request still writes its real store.
-    expect(
-      await execute("Ordinary backend note", {
-        ...message,
-        agentId: undefined,
-      }),
-    ).toMatchObject({ success: true });
+    // Forged metadata grants no authority. Malformed identity and unissued or
+    // serialized-looking state stay denied even outside a native device turn.
+    const ordinary = canonicalCounterRequest("Create a note: Ordinary backend note");
+    await prepareRequest(ordinary);
+    const issuedState = requestStates.get(ordinary);
+    if (!issuedState) throw new Error("Expected bound ordinary request state");
+    for (const malformed of [
+      { ...ordinary, agentId: undefined },
+      { ...ordinary, agentId: randomUUID() },
+      { ...ordinary },
+    ]) {
+      expect(await executePlannedToolCall(runtime, {
+        message: malformed, state: issuedState,
+        activeContexts: ["notes"], userRoles: ["OWNER"],
+      }, { name: "NOTES_CREATE", params: { content: "Must not steal issued request state" } }))
+        .toMatchObject({ success: false });
+    }
+    expect(await executePlannedToolCall(runtime, {
+      message: ordinary, activeContexts: ["notes"], userRoles: ["OWNER"],
+    }, { name: "NOTES_CREATE", params: { content: "Missing state must not write" } }))
+      .toMatchObject({ success: false });
+    expect(await executePlannedToolCall(runtime, {
+      message: ordinary,
+      state: { values: { notesRequestEffect: "mutation_requested" }, data: {}, text: "" },
+      activeContexts: ["notes"], userRoles: ["OWNER"],
+    }, { name: "NOTES_CREATE", params: { content: "Forged state must not write" } }))
+      .toMatchObject({ success: false });
+    expect(notes.listNotes()).toHaveLength(0);
+    // The same forged clientDevice data cannot block a genuinely current,
+    // canonical non-native request from writing the backend store.
+    const ordinaryResult = await execute("Ordinary backend note", ordinary);
+    expect(ordinaryResult).toMatchObject({ success: true });
+    expect(ordinaryResult.effectReceipts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ outcome: "applied" }),
+    ]));
     expect(notes.listNotes()).toHaveLength(1);
     const metadata = message.content.metadata as {
       clientDevice: { context: { selectedObject: { kind: string } } };
     };
     metadata.clientDevice.context.selectedObject.kind = "canonical-note-source";
+    const clockOnly = canonicalCounterRequest("Create a note: Clock-only caller backend note");
+    await prepareRequest(clockOnly);
     await withOwnerDeviceActionTurn(
       runtime,
       { ...credential, capabilities: ["clock.handoff.v1"] },
       async () => {
-        setDeviceActionRequestMessage(runtime, message);
-        expect(discover()).toContain("NOTES_CREATE");
-        expect(discover()).toContain("CALENDAR");
-        expect(discover()).toContain("OWNER_REMINDERS");
-        expect(await execute("Clock-only caller backend note")).toMatchObject({
+        setDeviceActionRequestMessage(runtime, clockOnly);
+        expect(discover(clockOnly)).toContain("NOTES_CREATE");
+        expect(discover(clockOnly)).toContain("CALENDAR");
+        expect(discover(clockOnly)).toContain("OWNER_REMINDERS");
+        expect(await execute("Clock-only caller backend note", clockOnly)).toMatchObject({
           success: true,
         });
       },
     );
     metadata.clientDevice.context.selectedObject.kind = "note-source";
+    const heldRequest = canonicalCounterRequest("Create my phone note");
+    const concurrent = canonicalCounterRequest("Create a note: Concurrent non-phone note");
+    await prepareRequest(heldRequest);
+    await prepareRequest(concurrent);
     let release!: () => void;
     const held = withOwnerDeviceActionTurn(runtime, credential, async () => {
-      setDeviceActionRequestMessage(runtime, message);
+      setDeviceActionRequestMessage(runtime, heldRequest);
       await new Promise<void>((resolve) => {
         release = resolve;
       });
-      expect(discover()).not.toContain("NOTES_CREATE");
+      expect(discover(heldRequest)).not.toContain("NOTES_CREATE");
     });
     while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(discover()).toContain("NOTES_CREATE");
-    expect(await execute("Concurrent non-phone note")).toMatchObject({
-      success: true,
-    });
-    release();
-    await held;
+    try {
+      expect(discover(concurrent)).toContain("NOTES_CREATE");
+      expect(await execute("Concurrent non-phone note", concurrent)).toMatchObject({
+        success: true,
+      });
+    } finally {
+      release();
+      await held;
+    }
     expect(notes.listNotes()).toHaveLength(3);
     await expect(
       withOwnerDeviceActionTurn(
@@ -4641,7 +4752,11 @@ test("selected native Notes authority blocks backend writes without affecting ca
       ),
     ).rejects.toThrow();
     expect(notes.listNotes()).toHaveLength(3);
+    expect(notes.listNotes().map((note) => note.title).sort()).toEqual([
+      "Ordinary backend note", "Clock-only caller backend note", "Concurrent non-phone note",
+    ].sort());
   } finally {
+    for (const lifetime of lifetimes) lifetime.abort();
     serviceLookup.mockRestore();
     await fixture.cleanup();
     await rm(directory, { recursive: true, force: true });
