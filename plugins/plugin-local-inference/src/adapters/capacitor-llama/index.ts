@@ -259,9 +259,12 @@ function estimateEmbeddingUsage(text: string): NormalizedUsage {
 	};
 }
 function stripThinkTags(text: string): string {
-	return text.includes("<think>")
-		? text.replace(/<think>[\s\S]*?<\/think>\n?/g, "")
-		: text;
+	// Match the streaming filter (text-streaming.ts): case-insensitive
+	// open/close markers, an unclosed block dropped to end of text, and the
+	// newline after </think> preserved (the stream filter emits it).
+	return text
+		.replace(/<think[^>]*>[\s\S]*?(<\/think>|$)/gi, "")
+		.replace(/<think[^>]*$/gi, "");
 }
 function wantsNativeShape(params: GenerateTextParams): boolean {
 	if (params.tools && params.tools.length > 0) return true;
