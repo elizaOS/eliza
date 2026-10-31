@@ -453,6 +453,26 @@ const GROUNDING: [string, string, string | undefined][] = [
   ["Hey Eliza, don't open youtube.com", "https://youtube.com", undefined],
   ["can you not open youtube.com", "https://youtube.com", undefined],
   ["won't you open youtube.com?", "https://youtube.com", undefined],
+  [
+    "Do not, under any circumstances, open youtube.com",
+    "https://youtube.com",
+    undefined,
+  ],
+  [
+    "please don't, for any reason, go to youtube.com",
+    "https://youtube.com",
+    undefined,
+  ],
+  [
+    "I don't know, honestly, open youtube.com",
+    "https://youtube.com",
+    "https://youtube.com/",
+  ],
+  [
+    "Not sure, but open youtube.com",
+    "https://youtube.com",
+    "https://youtube.com/",
+  ],
   ["don't show me nytimes.com", "https://nytimes.com", undefined],
   ["Don't open youtube.com or nytimes.com", "https://nytimes.com", undefined],
   [

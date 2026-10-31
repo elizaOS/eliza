@@ -38,12 +38,13 @@ const SUFFIX =
 const SITE_BEFORE = /\b(?:web\s?)?site[:,]?\s+(?:(?:at|called|named)\s+)?$/i;
 const SITE_AFTER = /^\s+(?:web\s?)?site\b/i;
 // An open verb, and a negation that directly governs it ("don't open", "do not
-// go to", "never visit", "stop opening"). This is the only word list: whether
-// a request is for now is the model's call.
+// go to", "never visit", "stop opening", "do not, under any circumstances,
+// open"). This is the only word list: whether a request is for now is the
+// model's call.
 const OPEN_VERB =
   /\b(?:open(?:s|ed|ing)?|visit(?:s|ed|ing)?|go(?:es|ing)?|went|head(?:s|ed|ing)?|navigat(?:e|es|ed|ing)|tak(?:e|es|en|ing)|took|pull(?:s|ed|ing)?|bring(?:s|ing)?|brought|show(?:s|n|ed|ing)?|load(?:s|ed|ing)?|launch(?:es|ed|ing)?|brows(?:e|es|ed|ing)|access(?:es|ed|ing)?|check(?:s|ed|ing)?)\b/gi;
 const NEGATED =
-  /(?:\b(?:not|never|cannot|stop|quit|no\s+need)|n['’]t|\b(?:do|does|did|wo|ca|should|would|could|must|is|are|was|were|have|has|had|need)nt)(?:,?\s+(?:ever|even|really|just|actually|you|u|dare|yet|again|please|try|trying|to|want|wanna|need|have|gotta|go|going|gonna|bother|let|me|us))*,?\s+$/i;
+  /(?:\b(?:not|never|cannot|stop|quit|no\s+need)|n['’]t|\b(?:do|does|did|wo|ca|should|would|could|must|is|are|was|were|have|has|had|need)nt)(?:,[^,.!?;]{1,60},)?(?:,?\s+(?:ever|even|really|just|actually|you|u|dare|yet|again|please|try|trying|to|want|wanna|need|have|gotta|go|going|gonna|bother|let|me|us))*,?\s+$/i;
 
 /** The address of a strict open command that is the whole current message:
  * "(please) open|visit|go to|navigate to <address>", with an optional
