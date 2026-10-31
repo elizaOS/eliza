@@ -14,6 +14,7 @@ import {
   type Action,
   type ActionExample,
   type ActionResult,
+  extractUserText,
   findKeywordTermMatch,
   getCatalogValidationKeywordTerms as getValidationKeywordTerms,
   type HandlerCallback,
@@ -24,6 +25,7 @@ import {
   ModelType,
   parseBooleanFromText,
   type State,
+  unwrapUserMessageText,
   type UUID,
 } from "@elizaos/core";
 import {
@@ -198,8 +200,13 @@ function normalizeDurationMinutes(value: unknown): number | undefined | null {
   return parsed;
 }
 function getMessageText(message: Memory): string {
-  if (typeof message.content === "string") return message.content;
-  return message.content.text ?? "";
+  // The user's words, not the chat augmentation envelope or the
+  // external-content security envelope: inferOpFromText checks unmute
+  // before mute, so a document fragment that mentions "unmute" would
+  // otherwise resolve an augmented "Mute ..." turn to unmute.
+  if (typeof message.content === "string")
+    return extractUserText(message.content);
+  return extractUserText(unwrapUserMessageText(message));
 }
 function inferOpFromText(text: string): RoomOp | null {
   if (findKeywordTermMatch(text, UNMUTE_TERMS) !== undefined) return "unmute";
