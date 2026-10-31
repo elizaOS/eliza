@@ -25,6 +25,20 @@ function canonical(value: unknown): string | undefined {
   return JSON.stringify(value);
 }
 
+/**
+ * The planner's turn-scope argument (`TURN_SCOPE_ARG` in plugin-assistant's
+ * planner-rendering). Execution never sees it, but model history replays a
+ * call's declared scope in the tool-call input. Compare the executed arguments
+ * only.
+ */
+const TURN_SCOPE_ARG = "eliza_turn_scope";
+
+function executedInput(input: unknown): unknown {
+  if (!record(input) || !(TURN_SCOPE_ARG in input)) return input;
+  const { [TURN_SCOPE_ARG]: _declaredScope, ...executed } = input;
+  return executed;
+}
+
 export function postToolEvaluatorFixture(spec: {
   actionName: string;
   discoverBeforeExecution?: boolean;
@@ -84,7 +98,7 @@ export function postToolEvaluatorFixture(spec: {
         toolCall.type !== "tool-call" ||
         toolCall.toolName !== spec.actionName ||
         typeof toolCall.toolCallId !== "string" ||
-        canonical(toolCall.input) !== canonical(modelArgs)
+        canonical(executedInput(toolCall.input)) !== canonical(modelArgs)
       )
         return false;
       const results = messages
@@ -102,7 +116,7 @@ export function postToolEvaluatorFixture(spec: {
           receipt.type !== "tool-result" ||
           typeof discovery.toolCallId !== "string" ||
           discovery.toolName !== "DISCOVER_ACTIONS" ||
-          canonical(discovery.input) !==
+          canonical(executedInput(discovery.input)) !==
             canonical({
               names: [spec.actionName],
             }) ||
