@@ -2,8 +2,8 @@
 # It checks mergeability and workflow syntax, then builds and
 # statically validates the selected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
-# and the bounded synthetic-world transaction suite are the affected-path test
-# exceptions, alongside a path-scoped native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
+# the bounded synthetic-world transaction suite, and the Calendar owning suite
+# are the affected-path test exceptions, alongside a path-scoped native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
 # excluded.
 name: PR Validation
 
@@ -423,6 +423,32 @@ jobs:
           wait "$lint_pid" || status=$?
           wait "$types_pid" || status=$?
           exit "$status"
+
+
+      - name: Run changed Calendar owning suite
+        if: steps.affected.outputs.source == 'true'
+        timeout-minutes: 10
+        env:
+          BASE_SHA: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          TEST_LANE: pr
+          ELIZA_LIVE_TEST: "0"
+        run: |
+          set -euo pipefail
+          status=0
+          git diff --quiet "$BASE_SHA"..."$HEAD_SHA" -- \
+            plugins/plugin-calendar \
+            packages/contracts/src/calendar.ts \
+            packages/contracts/src/calendar-linked-sync.ts || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "Calendar sources and contracts are unchanged."
+            exit 0
+          fi
+          if [ "$status" -ne 1 ]; then
+            echo "::error::Calendar change selection failed with exit $status."
+            exit "$status"
+          fi
+          bun run --cwd plugins/plugin-calendar test
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
