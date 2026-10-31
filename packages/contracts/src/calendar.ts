@@ -502,6 +502,9 @@ export interface LifeOpsCalendarSummary {
   side: LifeOpsConnectorSide;
   grantId: string;
   connectorAccountId: string;
+  /** Verified host Google OAuth connection UUID. Association only, never write authority.
+   * Absent for ordinary providers, unavailable mappings, and older hosts. */
+  managedGoogleConnectionId?: string;
   accountEmail: string | null;
   calendarId: string;
   summary: string;
