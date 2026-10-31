@@ -196,10 +196,21 @@ export function detectPlatformCapabilities(
 
   caps.terminal =
     options.osName === "win32"
-      ? { available: true, tool: "powershell.exe" }
-      : options.commandExists(options.shell ?? "/bin/bash")
-        ? { available: true, tool: options.shell ?? "/bin/bash" }
-        : { available: true, tool: options.shell ?? "/bin/sh" };
+      ? // Terminal sessions spawn powershell.exe on Windows
+        // (resolveShell in ./terminal.ts). Check the shell that will
+        // really run, not the OS default.
+        options.commandExists("powershell.exe")
+        ? { available: true, tool: "powershell.exe" }
+        : { available: false, tool: "none (no shell found: powershell.exe)" }
+      : (() => {
+          // Terminal sessions always spawn /bin/bash on POSIX
+          // (resolveShell in ./terminal.ts); $SHELL is not used there.
+          // Check the shell that will really run, not $SHELL.
+          const shell = "/bin/bash";
+          return options.commandExists(shell)
+            ? { available: true, tool: shell }
+            : { available: false, tool: `none (no shell found: ${shell})` };
+        })();
 
   return caps;
 }
