@@ -1243,7 +1243,10 @@ import {
   type ManagedCalendarHostApi,
 } from "./managed-calendar-host.js";
 // The real private transport and shared host adapter surround the existing reconciler.
-import { createManagedCalendarRead } from "./managed-calendar-read.js";
+import {
+  createManagedCalendarRead,
+  managedCalendarPlaceholder,
+} from "./managed-calendar-read.js";
 import { ManagedLinkedCalendarProviderPort } from "./managed-linked-calendar.js";
 
 function managedFixture() {
@@ -1643,5 +1646,60 @@ describe("managed owner linked Calendar provider", () => {
       code: "CALENDAR_SYNC_DELETE_UNAVAILABLE",
     });
     expect(f.commands.some((command) => command.kind === "delete")).toBe(false);
+  });
+});
+
+describe("managed Calendar source connection references", () => {
+  const first = "33333333-3333-4333-8333-333333333333";
+  const second = "55555555-5555-4555-8555-555555555555";
+  function sources(calendars: unknown[]) {
+    const transport = createManagedCalendarRead(
+      {
+        ELIZA_MANAGED_CALENDAR_READ_BROKER:
+          "http://127.0.0.1:1/__alpha-owner-gmail",
+        ELIZA_API_TOKEN: "a".repeat(64),
+      },
+      (async () => Response.json({ calendars })) as typeof fetch,
+    );
+    if (!transport) throw Error("Missing managed transport");
+    return transport.sources();
+  }
+  function calendar(scope: string, reference?: unknown) {
+    return {
+      provider: "google",
+      side: "owner",
+      grantId: `alpha-google:${scope.repeat(64)}`,
+      connectorAccountId: `alpha-google:${scope.repeat(64)}`,
+      calendarId: "primary",
+      summary: "Same calendar",
+      accountEmail: "same@example.invalid",
+      accessRole: "reader",
+      ...(reference === undefined ? {} : { managedGoogleConnectionId: reference }),
+    };
+  }
+  it("preserves two exact references despite identical labels and calendar IDs without granting writes", async () => {
+    const result = await sources([calendar("a", first), calendar("b", second)]);
+    expect(result.map((c) => c.managedGoogleConnectionId)).toEqual([first, second]);
+    expect(result[0].connectorAccountId).not.toBe(result[1].connectorAccountId);
+    expect(result.every((c) => c.accessRole === "reader")).toBe(true);
+    expect(result.every((c) => !("write" in c))).toBe(true);
+  });
+  it("keeps legacy and malformed association sources readable but unmapped", async () => {
+    const values = [undefined, null, "", 42, {}, "not-a-uuid", "a".repeat(4096)];
+    const result = await sources(values.map((value) => calendar("a", value)));
+    expect(result).toHaveLength(values.length);
+    for (const source of result)
+      expect(source).not.toHaveProperty("managedGoogleConnectionId");
+  });
+  it("never accepts a reference instead of the existing private owner source identity", async () => {
+    for (const patch of [
+      { provider: "microsoft" },
+      { side: "agent" },
+      { grantId: first },
+      { connectorAccountId: first },
+    ]) {
+      await expect(sources([{ ...calendar("a", first), ...patch }])).rejects.toThrow();
+    }
+    expect(managedCalendarPlaceholder()).not.toHaveProperty("managedGoogleConnectionId");
   });
 });

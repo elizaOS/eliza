@@ -4,6 +4,9 @@ import type {
   LifeOpsCalendarSummary,
 } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
+import { z } from "zod";
+
+const managedGoogleConnectionId = z.uuid();
 
 const fail = () =>
   new ElizaError(
@@ -141,7 +144,14 @@ export function createManagedCalendarRead(
         )
       )
         throw fail();
-      return calendars as LifeOpsCalendarSummary[];
+      // An unavailable association must not hide an otherwise readable source.
+      // Only this verified private host response may supply the reference.
+      return calendars.map((calendar) => {
+        const { managedGoogleConnectionId: reference, ...summary } = calendar;
+        return managedGoogleConnectionId.safeParse(reference).success
+          ? { ...summary, managedGoogleConnectionId: reference }
+          : summary;
+      }) as LifeOpsCalendarSummary[];
     },
     async feed(
       calendar: LifeOpsCalendarSummary,
