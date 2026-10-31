@@ -358,6 +358,27 @@ const CORRECTED = [
   "Not youtube.com. Open youtube.com.",
   // "www." is ignored, so this refuses youtube.com too.
   "Open youtube.com, not www.youtube.com",
+  // The correction in a form no address is read from: markup, another scheme,
+  // attached punctuation or emoji, or a dot a URL also reads. Such a word never
+  // opens the host, but it refuses it.
+  "Open youtube.com. Actually, don't open **youtube.com**.",
+  "Open youtube.com. Actually, don't open `youtube.com`.",
+  "Open youtube.com. Actually, don't open http://youtube.com.",
+  "Open youtube.com. Actually, don't open youtube.com\u2026",
+  "Open youtube.com. Actually, don't open [youtube.com](https://youtube.com).",
+  "Open youtube.com. Actually, don't open *youtube.com*.",
+  "Open youtube.com. Actually, don't open _youtube.com_.",
+  "Open youtube.com. Actually, don't open ~~youtube.com~~.",
+  "Open youtube.com. Actually, don't open {youtube.com}.",
+  "Open youtube.com. Actually, don't open youtube.com\u2014seriously.",
+  "Open youtube.com. Actually, don't open youtube.com\u{1F64F}",
+  "Open youtube.com. Actually, don't open youtube.com,thanks",
+  "Open youtube.com. Actually, don't open youtube.com./",
+  "Open youtube.com. Actually, don't open youtube.com-",
+  "Open youtube.com. Actually, don't open YOUTUBE\uFF0ECOM.",
+  "Open youtube.com. Actually, don't open youtube\u3002com.",
+  "Open youtube.com. Actually, don't open youtube\uFF61com.",
+  "Open youtube.com. Actually, don't open youtube\u2024com.",
 ];
 
 // [the user's current message, the model's proposed URL, what opens]
@@ -417,6 +438,34 @@ const GROUNDING: [string, string, string | undefined][] = [
     "Open youtube.com. Actually, don't open nytimes.com.",
     "https://youtube.com",
     "https://youtube.com/",
+  ],
+  // A word names the host only with a label boundary on each side.
+  [
+    "Open youtube.com. Actually, don't open **m.youtube.com**.",
+    "https://youtube.com",
+    "https://youtube.com/",
+  ],
+  [
+    "Open youtube.com, not youtube.com.au",
+    "https://youtube.com",
+    "https://youtube.com/",
+  ],
+  [
+    "Open youtube.com, not my-youtube.com",
+    "https://youtube.com",
+    "https://youtube.com/",
+  ],
+  // A word that names the host refuses it only when the guard refuses it.
+  [
+    "Open youtube.com. I love **youtube.com**!",
+    "https://youtube.com",
+    "https://youtube.com/",
+  ],
+  // An internationalized host is named as a URL reads it.
+  [
+    "Open münchen.de. Actually, don't open **MÜNCHEN.DE**.",
+    "https://xn--mnchen-3ya.de/",
+    undefined,
   ],
   // A negation refuses only the address it governs.
   [

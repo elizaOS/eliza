@@ -102,6 +102,16 @@ const QUESTION_START_WHY = new RegExp(
   "i",
 );
 const BARE_END = /(?:^|[\s.!?,;:(])(?:don['’]?t|do\s+not|never)[\s.!?)]*$/i;
+// The dots a URL also reads as a label separator ("youtube。com").
+const DOTS = /[\uff0e\u3002\uff61\u2024]/g;
+// Host labels joined by dots, read as a URL reads an internationalized host.
+const HOST_RUN =
+  /[\p{L}\p{N}\p{M}][\p{L}\p{N}\p{M}-]*(?:\.[\p{L}\p{N}\p{M}-]+)*/gu;
+// A letter or digit joined to a host by hyphens or one dot makes it a longer
+// label or host: "my-x.com", "m.x.com", "x.com-tv" and "x.com.au" are other
+// hosts. "x.com-", "x.com..." and "-.x.com" are x.com.
+const LABEL_BEFORE = /[a-z\d](?:-*|\.)$/;
+const LABEL_AFTER = /^(?:-*|\.)[a-z\d]/;
 
 /** The address of a strict open command that is the whole current message:
  * "(please) open|visit|go to|navigate to <address>", with an optional
@@ -134,8 +144,8 @@ export function authoredBrowserDestination(text: string): string | undefined {
  * address the user typed in this message, never from the model's spelling.
  * The user must have typed a web address on the proposed host (a leading
  * "www." and letter case aside) and, when they typed a path, that path. When
- * the guard refuses any occurrence of the host ("don't open x.com"), the host
- * never opens, whatever its other occurrences ask. */
+ * the guard refuses any word that names the host ("don't open x.com", "don't
+ * open **x.com**"), the host never opens, whatever its other words ask. */
 export function groundBrowserDestination(
   userText: string,
   proposedUrl: string,
@@ -147,15 +157,20 @@ export function groundBrowserDestination(
   if (parsed.kind !== "url") return;
   const proposed = new URL(parsed.href);
   if (proposed.protocol !== "https:") return;
+  const host = proposed.hostname.replace(/^www\./, "");
   const typed = typedAddresses(userText).filter(
-    ({ url }) =>
-      url.hostname.replace(/^www\./, "") ===
-      proposed.hostname.replace(/^www\./, ""),
+    ({ url }) => url.hostname.replace(/^www\./, "") === host,
   );
   // "Open x.com. Actually, don't open x.com": one negated occurrence of the
   // host, on any port or path, refuses it, so a later correction is never
-  // outvoted. An earlier negation also wins over a later request.
-  if (typed.some(({ negated }) => negated)) return;
+  // outvoted. An earlier negation also wins over a later request. A word that
+  // names the host in a form no address is read from ("**x.com**",
+  // "http://x.com", "x.com…") never opens it, but it refuses it.
+  if (
+    typed.some(({ negated }) => negated) ||
+    hostWords(userText, host).some((word) => refused(userText, word))
+  )
+    return;
   const strict = authoredBrowserDestination(userText);
   const strictHost = strict && new URL(strict).host;
   const candidates = typed.filter(
@@ -252,7 +267,6 @@ function typedAddresses(
   text: string,
 ): { url: URL; webSignal: boolean; negated: boolean }[] {
   const found: { url: URL; webSignal: boolean; negated: boolean }[] = [];
-  const endsInNegation = BARE_END.test(plain(text.slice(-200)));
   for (const word of text.matchAll(/\S+/g)) {
     const lead = word[0].replace(/^[("'“‘«<\[]+/u, "");
     const tokens = new Set([
@@ -271,14 +285,65 @@ function typedAddresses(
           /^(?:https:\/\/|www\.)/i.test(token) ||
           SITE_BEFORE.test(before.slice(-40)) ||
           SITE_AFTER.test(after),
-        negated:
-          endsInNegation ||
-          negatesOpen(text, word.index) ||
-          negatedAfter(plain(after.slice(0, 200))),
+        negated: refused(text, word),
       });
     }
   }
   return found;
+}
+
+// Every word of the message that names the host, read as an address or not:
+// "**x.com**", "http://x.com", "x.com…", "X．COM" and "www.x.com" all name
+// x.com. A "www." label before the host is not part of another host.
+function hostWords(text: string, host: string): RegExpExecArray[] {
+  // "https://www./" names no host.
+  if (!host) return [];
+  const names = (form: string) => {
+    for (
+      let at = form.indexOf(host);
+      at >= 0;
+      at = form.indexOf(host, at + 1)
+    ) {
+      const before = form.slice(Math.max(0, at - 64), at);
+      if (
+        (!LABEL_BEFORE.test(before) ||
+          (before.endsWith("www.") &&
+            !LABEL_BEFORE.test(before.slice(0, -4)))) &&
+        !LABEL_AFTER.test(form.slice(at + host.length, at + host.length + 64))
+      )
+        return true;
+    }
+    return false;
+  };
+  return [...text.matchAll(/\S+/g)].filter((word) => {
+    const read = plain(word[0].replace(DOTS, "."));
+    return (
+      names(read.toLowerCase()) ||
+      (/[^\p{ASCII}]/u.test(read) &&
+        names(read.replace(HOST_RUN, asciiHost).toLowerCase()))
+    );
+  });
+}
+
+// A host as a URL reads it, so "münchen.de" names xn--mnchen-3ya.de.
+function asciiHost(run: string): string {
+  try {
+    return new URL(`https://${run}`).hostname;
+  } catch {
+    return run;
+  }
+}
+
+// Whether the guard refuses one word of the message: a negation governs the
+// word or its open verb, the words after it refuse it, or the message ends in
+// a bare "don't" or "never".
+function refused(text: string, word: RegExpExecArray): boolean {
+  const end = word.index + word[0].length;
+  return (
+    BARE_END.test(plain(text.slice(-200))) ||
+    negatesOpen(text, word.index) ||
+    negatedAfter(plain(text.slice(end, end + 200)))
+  );
 }
 
 // True when a negation directly governs the address or the group of open
