@@ -8,6 +8,7 @@ import { join } from "node:path";
 import {
   ChannelType,
   compareMemoryIds,
+  foldForSearch,
   type Log,
   type Memory,
   MemoryType,
@@ -1941,6 +1942,102 @@ describe("durable SQLite agent adapter", () => {
     });
     // plugin-sql scopes the same query with `agent_id = this.agentId`.
     expect(hits.map((hit) => hit.memory.id).sort()).toEqual([ownId]);
+  });
+
+  it("folds searchMessages letters the way plugin-sql's eliza_search_fold does", async () => {
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const sorenId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("Søren shared the roadmap"), id: sorenId },
+        tableName: "messages",
+      },
+    ]);
+
+    // Postgres folds ø to o, so "soren" finds this row on plugin-sql.
+    const hits = await adapter.searchMessages({
+      roomIds: [roomId],
+      query: "soren",
+      tableName: "messages",
+      limit: 50,
+    });
+    expect(hits.map((hit) => hit.memory.id)).toEqual([sorenId]);
+  });
+
+  it("folds dotted capital İ to i the way Postgres lower() does", async () => {
+    // JS "İ".toLowerCase() is "i" + U+0307; Postgres lower() gives "i".
+    expect(foldForSearch("İstanbul")).toBe("istanbul");
+    expect(foldForSearch("İSTANBUL")).toBe(foldForSearch("istanbul"));
+    expect(foldForSearch("İstanbul")).not.toContain("\u0307");
+    // Negative controls: other letters are unchanged and unrelated words differ.
+    expect(foldForSearch("Izmir")).toBe("izmir");
+    expect(foldForSearch("ılık")).toBe("ılık");
+    expect(foldForSearch("Ankara")).not.toBe(foldForSearch("İstanbul"));
+
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const istanbulId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("İstanbul office opens Monday"), id: istanbulId },
+        tableName: "messages",
+      },
+    ]);
+    const search = async (query: string) =>
+      (
+        await adapter.searchMessages({
+          roomIds: [roomId],
+          query,
+          tableName: "messages",
+          limit: 50,
+        })
+      ).map((hit) => hit.memory.id);
+    expect(await search("istanbul")).toEqual([istanbulId]);
+    expect(await search("izmir")).toEqual([]);
+  });
+
+  it("NFC-normalizes decomposed input before folding", async () => {
+    const decomposed = "cafe\u0301";
+    expect(foldForSearch(decomposed)).toBe("cafe");
+    expect(foldForSearch(decomposed)).toBe(foldForSearch("café"));
+    expect(foldForSearch("CAFE\u0301")).toBe("cafe");
+    // Negative control: an unrelated word does not fold to the same text.
+    expect(foldForSearch("cafa\u0301")).not.toBe(foldForSearch("café"));
+
+    const adapter = await open();
+    await adapter.ensureEmbeddingDimension(3);
+    const composedId = id();
+    const decomposedId = id();
+    await adapter.createMemories([
+      {
+        memory: { ...memory("Meet at the café at noon"), id: composedId },
+        tableName: "messages",
+      },
+      {
+        memory: {
+          ...memory("The cafe\u0301 on the corner is open"),
+          id: decomposedId,
+        },
+        tableName: "messages",
+      },
+    ]);
+    const search = async (query: string) =>
+      (
+        await adapter.searchMessages({
+          roomIds: [roomId],
+          query,
+          tableName: "messages",
+          limit: 50,
+        })
+      )
+        .map((hit) => hit.memory.id)
+        .sort();
+    const both = [composedId, decomposedId].sort();
+    expect(await search(decomposed)).toEqual(both);
+    expect(await search("café")).toEqual(both);
+    expect(await search("cafe")).toEqual(both);
+    expect(await search("bistro")).toEqual([]);
   });
 });
 

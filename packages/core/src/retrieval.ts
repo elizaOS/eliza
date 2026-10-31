@@ -1843,20 +1843,43 @@ export function mergeHybridResults(params: {
 }
 
 /**
- * Normalize text for keyword matching: NFC-normalize, lowercase, strip
- * combining accents (café → cafe), and drop in-word apostrophes/backticks
- * (don't → dont). The SQL message-search path folds identically in Postgres via
- * an immutable `eliza_search_fold` function; this JS twin keeps the in-memory
- * adapters' `searchMessages` behaviorally aligned with the DB so both surfaces
- * agree on what a query matches. CJK and other scripts pass through unchanged.
+ * The accent fold shared by every message-search store. Each `from` letter maps
+ * to the `to` letter at the same index; the trailing apostrophe/backtick
+ * characters in `SEARCH_FOLD_STRIP` are deleted so "don't" folds to "dont".
+ * plugin-sql builds the Postgres `eliza_search_fold` function and the
+ * index-backed search document from these same constants, so they are the
+ * single definition of what a search query matches.
+ */
+export const SEARCH_FOLD_FROM =
+	"àáâãäåāăąèéêëēĕėęěìíîïĩīĭįòóôõöøōŏőùúûüũūŭůűñçćčšžýÿ";
+export const SEARCH_FOLD_TO =
+	"aaaaaaaaaeeeeeeeeeiiiiiiiiooooooooouuuuuuuuuncccszyy";
+export const SEARCH_FOLD_STRIP = "'\u2019`";
+
+const SEARCH_FOLD_MAP: ReadonlyMap<string, string> = new Map(
+	[...SEARCH_FOLD_FROM].map((ch, i) => [ch, SEARCH_FOLD_TO[i] as string]),
+);
+
+/**
+ * Normalize text for keyword matching exactly as Postgres
+ * `eliza_search_fold` does:
+ * `translate(lower(normalize(t, NFC)), FROM || STRIP, TO)`.
+ * NFC-normalize (so decomposed "cafe" + U+0301 matches "café"), lowercase,
+ * map each folded accented letter to its ASCII base (café → cafe, Søren → soren), and drop apostrophes/backticks (don't → dont). Letters
+ * outside the map, CJK, and other scripts pass through unchanged, so the
+ * in-memory and SQLite adapters match the same rows as the SQL adapter.
  */
 export function foldForSearch(text: string): string {
-	return text
-		.normalize("NFKD")
-		.replace(/[\u0300-\u036f]/g, "")
-		.replace(/['\u2019`]/g, "")
+	let folded = "";
+	// Postgres lower() maps İ (U+0130) to "i"; JS toLowerCase() gives "i" + U+0307.
+	for (const ch of text
 		.normalize("NFC")
-		.toLowerCase();
+		.replaceAll("\u0130", "i")
+		.toLowerCase()) {
+		if (SEARCH_FOLD_STRIP.includes(ch)) continue;
+		folded += SEARCH_FOLD_MAP.get(ch) ?? ch;
+	}
+	return folded;
 }
 
 /**
