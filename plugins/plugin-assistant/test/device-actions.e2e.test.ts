@@ -3776,6 +3776,9 @@ test("device approval REST lifecycle survives restart and never duplicates claim
 // opens the page itself. The turn now ends with its own reply and no extra call.
 // Live tj-5503e82f445bf2: Stage 1 asked "Which page are you after?" while the
 // routed planner opened the page; the reply must name the actual request.
+// QA 2026-10-30: the model rewrote a typed "youtube.com" as www.youtube.com
+// and the exact-match check refused it. A request the router does not claim
+// reaches the planner, and the typed spelling opens.
 test.each([
   {
     stage1: "pending browser acknowledgement",
@@ -3784,6 +3787,9 @@ test.each([
     candidateActionNames: ["DEVICE_BROWSER_OPEN"],
     replyText: "Opening example.com in the browser.",
     replyEffectStatus: "pending",
+    request: "open example.com",
+    modelUrl: "https://example.com",
+    opened: "https://example.com/",
   },
   {
     stage1: "simple clarifying question",
@@ -3792,6 +3798,20 @@ test.each([
     candidateActionNames: [],
     replyText: "Which page are you after?",
     replyEffectStatus: "none",
+    request: "open example.com",
+    modelUrl: "https://example.com",
+    opened: "https://example.com/",
+  },
+  {
+    stage1: "model-judged request with a rewritten address",
+    contexts: ["browser"],
+    intents: ["Open youtube.com"],
+    candidateActionNames: ["DEVICE_BROWSER_OPEN"],
+    replyText: "Opening YouTube.",
+    replyEffectStatus: "pending",
+    request: "Hey Eliza, can you pull up youtube.com for me?",
+    modelUrl: "https://www.youtube.com",
+    opened: "https://youtube.com/",
   },
 ])(
   "direct-request URL open ends the turn with one reply and no owner review ($stage1)",
@@ -3801,6 +3821,9 @@ test.each([
     candidateActionNames,
     replyText,
     replyEffectStatus,
+    request,
+    modelUrl,
+    opened: openedUrl,
   }) => {
     const fixture = await createRealTestRuntime({
       characterName: "DirectBrowserOpenFixture",
@@ -3838,10 +3861,10 @@ test.each([
               arguments: {
                 operation: {
                   type: "browser_navigate",
-                  url: "https://example.com",
+                  url: modelUrl,
                 },
                 operationKey: "browser-open-example",
-                reason: "User asked to open example.com.",
+                reason: "User asked to open a site.",
                 eliza_turn_scope: "final",
               },
             },
@@ -3863,7 +3886,7 @@ test.each([
         entityId: owner as UUID,
         roomId,
         content: {
-          text: "open example.com",
+          text: request,
           source: "client_chat",
           role: "user",
           channelType: ChannelType.DM,
@@ -3924,14 +3947,14 @@ test.each([
         expect(
           opened.result.responseContent?.text,
           JSON.stringify(opened.result.actionResults),
-        ).toBe("Opening example.com.");
+        ).toBe(`Opening ${new URL(openedUrl).host}.`);
       const proposals = await service.list(credential);
       expect(proposals).toHaveLength(1);
       expect(proposals[0]).toMatchObject({
         state: "pending",
         payload: {
           requestMessageId: message.id,
-          operation: { type: "browser_navigate", url: "https://example.com/" },
+          operation: { type: "browser_navigate", url: openedUrl },
         },
       });
       useModel.mockRestore();

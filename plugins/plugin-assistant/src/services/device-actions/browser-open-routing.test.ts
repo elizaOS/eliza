@@ -183,6 +183,41 @@ it.each([
   },
 );
 it.each([
+  "open youtube.com",
+  "Open youtube.com.",
+  "open youtube.com!",
+  "open youtube.com, please",
+  "please open youtube.com",
+  "open youtube.com, would you?",
+  "open youtube.com, thank you.",
+  "visit nytimes.com",
+  "navigate to nytimes.com",
+  "Hey Eliza, open youtube.com.",
+  "Hey Eliza. Open youtube.com.",
+  "hey eliza open youtube.com",
+  "Eliza, go to nytimes.com",
+  "ok open youtube.com",
+  "okay eliza, open youtube.com",
+])("claims only the strict whole-message command: %s", async (request) => {
+  const f = await fixture(request);
+  await withDeviceActionTurn(
+    f.runtime,
+    f.credential,
+    async () => {
+      setDeviceActionRequestMessage(f.runtime, f.message);
+      expect(f.rule.matches(request, f.message)).toBe(true);
+      expect(f.rule.wholeRequest?.matches(request, f.message)).toBe(true);
+    },
+    {
+      requestCaller: {
+        subjectUserId: f.credential.subjectUserId,
+        entityId: owner,
+        role: "OWNER",
+      },
+    },
+  );
+});
+it.each([
   "Open Notes",
   "Open example..com",
   "Open https://",
@@ -192,8 +227,55 @@ it.each([
   "If my note exists, open example.com",
   'Explain "open example.com"',
   "Open https://person:secret@example.com",
+  // Not the strict form: the planner judges these, never the router.
+  "youtube.com",
+  "can you open youtube.com for me?",
+  "pull up nytimes.com",
+  "open youtube.com now",
+  "open youtube.com in a new tab",
+  "Hey Luna, open youtube.com",
+  // Earlier review rounds' false opens: none is claimed.
+  "Tomorrow, open youtube.com",
+  "Later, pull up nytimes.com",
+  "Maybe, open youtube.com",
+  "Hypothetically, open youtube.com",
+  "Eliza later open youtube.com",
+  "ok maybe open youtube.com",
+  "at 5pm open youtube.com",
+  "In five minutes, open youtube.com",
+  "on Monday open youtube.com",
+  "every morning open youtube.com",
+  "is there a way to open youtube.com",
+  "do I need to go to irs.gov?",
+  "were you able to open youtube.com?",
+  "I used to visit myspace.com",
+  "yesterday you could open youtube.com",
+  "my mom wants me to open youtube.com",
+  "my boss keeps telling me to go to linkedin.com",
+  "Step 3: go to example.com",
+  "we arent going to open youtube.com",
+  "probably open youtube.com",
+  "hey eliza, never open youtube.com",
+  "won't you open youtube.com?",
+  "Open youtube.com. Tomorrow.",
+  "open youtube.com, if you can",
+  "take me to L.A.",
+  "Hey Eliza, navigate to L.A.",
+  "open L.A.",
+  "Hey Eliza, take me to St.Louis",
+  "can you open IMG_1234.heic",
+  "open IMG_1234.heic",
+  "Hey Eliza, open Recording.m4a",
+  "show me 10.5",
+  "open 3.14",
+  "can you open Makefile.am",
+  "can you open main.py",
+  "open up main.py",
+  "launch Spotify.app",
+  "can you open script.pl",
+  "open localhost:3000",
 ])(
-  "does not claim ownership of unsupported or compound work: %s",
+  "does not claim ownership of unsupported, compound or non-strict work: %s",
   async (request) => {
     const f = await fixture(request);
     await withDeviceActionTurn(

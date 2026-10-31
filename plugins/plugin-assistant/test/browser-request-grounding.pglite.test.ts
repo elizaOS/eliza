@@ -1,6 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import {
+  browserDestinationMatches,
+  groundBrowserDestination,
+} from "@elizaos/contracts/browser-request-grounding";
+import {
   AgentRuntime,
   conversationClientUserMemoryId,
   type IDatabaseAdapter,
@@ -333,6 +337,95 @@ it.each([false, true])(
       expect(f.decide).not.toHaveBeenCalled();
     } finally {
       await f.pg.close();
+    }
+  },
+);
+it.each([false, true])(
+  "opens a model proposal grounded in the typed address directly, in the user's spelling, for specialized=%s",
+  async (specialized) => {
+    const f = await fixture();
+    try {
+      const request = "Hey Eliza, can you open youtube.com for me?";
+      // The model rewrote the address; the user's typed spelling opens.
+      const result = await f.run(
+        request,
+        specialized,
+        true,
+        "https://www.youtube.com/",
+      );
+      expect(result).toMatchObject({
+        success: true,
+        userFacingText: "Opening youtube.com.",
+        data: {
+          state: "pending",
+          directRequest: true,
+          approvalRequired: false,
+          awaitingDeviceExecution: true,
+        },
+      });
+      expect(result.data).not.toHaveProperty("awaitingUserInput");
+      expect(f.decide).not.toHaveBeenCalled();
+      const rows = (
+        await f.pg.query<{
+          payload: { operation: { type: string; url: string } };
+        }>("SELECT payload FROM approval_requests")
+      ).rows;
+      expect(rows.map((row) => row.payload.operation)).toEqual([
+        { type: "browser_navigate", url: "https://youtube.com/" },
+      ]);
+      // The phone's recheck (client-coordinator) accepts exactly this stored
+      // destination, and would refuse the model's spelling.
+      const phoneAllows = (url: string) =>
+        browserDestinationMatches(
+          { type: "browser_navigate", url },
+          groundBrowserDestination(request, url),
+        );
+      expect(phoneAllows(rows[0].payload.operation.url)).toBe(true);
+      expect(phoneAllows("https://www.youtube.com/")).toBe(false);
+    } finally {
+      await f.pg.close();
+    }
+  },
+);
+it.each([
+  ["can you open youtube.com for me?", "https://evil.com/", true],
+  ["can you open youtube.com for me?", "https://youtube.com.evil.com/", true],
+  ["open YouTube", "https://youtube.com/", false],
+  ["can you open main.py", "https://main.py/", true],
+  ["don't open youtube.com", "https://youtube.com/", true],
+  ["take me to L.A.", "https://l.a/", false],
+  ["make another one for breakfast at 11 am", "https://example.com/", false],
+] as const)(
+  "refuses %s with model URL %s before persistence, with plain copy",
+  async (request, destination, typed) => {
+    for (const specialized of [false, true]) {
+      const f = await fixture();
+      try {
+        const result = await f.run(request, specialized, true, destination);
+        expect(result).toMatchObject({
+          success: false,
+          verifiedUserFacing: true,
+          userFacingText: typed
+            ? "I didn't open that address."
+            : 'I can open a website when you tell me its address, like "open nytimes.com". Nothing was opened.',
+          data: {
+            code: "DEVICE_BROWSER_NOT_REQUESTED",
+            proposalCreated: false,
+            executed: false,
+          },
+        });
+        expect(f.enqueue).not.toHaveBeenCalled();
+        expect(f.decide).not.toHaveBeenCalled();
+        expect(
+          (
+            await f.pg.query(
+              "SELECT count(*)::int AS count FROM approval_requests",
+            )
+          ).rows,
+        ).toEqual([{ count: 0 }]);
+      } finally {
+        await f.pg.close();
+      }
     }
   },
 );

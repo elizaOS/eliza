@@ -4,12 +4,9 @@ import type {
   ActionParameterSchema,
   HandlerOptions,
 } from "@elizaos/core";
-import {
-  ElizaError,
-  parseWebResourceAddress,
-  registerDirectActionRoutingRule,
-} from "@elizaos/core";
+import { ElizaError, registerDirectActionRoutingRule } from "@elizaos/core";
 import { proposeDeviceAction } from "./action.ts";
+import { authoredBrowserDestination } from "./browser-request-grounding.ts";
 import {
   CALENDAR_CAPABILITY,
   CALENDAR_CREATE_CAPABILITY,
@@ -117,7 +114,7 @@ const declarations = [
   [
     "DEVICE_BROWSER_OPEN",
     "browser_navigate",
-    "Open an explicitly requested HTTPS address in this requesting app Browser. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.",
+    "Open a web address the user typed in this message in this requesting app Browser, only when they ask to open, visit or go to it now. Pass the address exactly as typed. Use this app-owned operation instead of the server Browser workspace when the user asks to open a site in this app. Navigation only; do not claim page content or successful loading.",
   ],
   [
     "DEVICE_NOTE_UPDATE",
@@ -245,6 +242,12 @@ export const deviceActionTools: readonly Action[] = Object.freeze(
     ...proposeDeviceAction,
     name,
     description,
+    ...(type === "browser_navigate"
+      ? {
+          routingHint:
+            'the user asks to open, visit or go to a web address they typed, now -> DEVICE_BROWSER_OPEN with that address as typed; NOT for a deferred ("at 5pm", "in five minutes", "tomorrow"), hypothetical, question-about ("is there a way to open...", "do I need to go to..."), past ("I used to visit") or reported ("my mom wants me to") mention, nor for a site name with no address',
+        }
+      : {}),
     selectionIdentity:
       type === "notes_update" || type === "notes_read_selected"
         ? (selection: unknown) => {
@@ -544,13 +547,10 @@ export function registerDeviceBrowserOpenRouting(
       )
     )
       return false;
-    const command =
-      /^(?:please\s+)?(?:open|visit|navigate\s+to|go\s+to)\s+([^\s]+)[.!]?$/iu.exec(
-        text.trim(),
-      );
-    if (!command) return false;
-    const address = parseWebResourceAddress(command[1].replace(/[.!]$/u, ""));
-    return address?.protocol === "https:";
+    // Only the strict whole-message command skips the model's judgment.
+    // Every other phrasing goes to the planner, whose browser proposal the
+    // service grounds in the address the user typed.
+    return authoredBrowserDestination(text) !== undefined;
   };
   registerDirectActionRoutingRule(runtime, {
     id: "device.browser-open",

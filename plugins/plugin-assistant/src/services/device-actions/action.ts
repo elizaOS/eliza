@@ -6,7 +6,11 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { DeviceBrowserNotRequestedError } from "./browser-request-grounding.ts";
+import { extractUserText, unwrapUserMessageText } from "@elizaos/core";
+import {
+  containsWebAddress,
+  DeviceBrowserNotRequestedError,
+} from "./browser-request-grounding.ts";
 import {
   isCalendarOperation,
   validateCalendarResult,
@@ -896,9 +900,18 @@ export const proposeDeviceAction: Action = {
       );
     } catch (error) {
       if (!(error instanceof DeviceBrowserNotRequestedError)) throw error;
+      // Plain copy that is true either way: with no address in the user's
+      // words, say how to ask; with one, only that it was not opened.
+      const reply = containsWebAddress(
+        extractUserText(unwrapUserMessageText(_message)),
+      )
+        ? "I didn't open that address."
+        : 'I can open a website when you tell me its address, like "open nytimes.com". Nothing was opened.';
       return {
         success: false,
         text: error.message,
+        userFacingText: reply,
+        verifiedUserFacing: true,
         data: {
           code: error.code,
           proposalCreated: false,

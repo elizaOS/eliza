@@ -22,8 +22,8 @@
  * owner-facing product name, record copy and view admission policy.
  */
 import {
-  authoredBrowserDestination,
   browserDestinationMatches,
+  groundBrowserDestination,
 } from "@elizaos/contracts/browser-request-grounding";
 import { createDeviceActionExecution } from "@elizaos/contracts/device-action-execution";
 import {
@@ -1101,9 +1101,10 @@ export class DeviceActionCoordinator<
     ]);
     const cached = this.browserPolicy.get(proposal.id);
     if (cached?.key === key) return cached.allowed;
+    // The same grounding the server stored: only the user's typed address.
     const allowed = browserDestinationMatches(
       proposal.operation,
-      authoredBrowserDestination(proof.text),
+      groundBrowserDestination(proof.text, proposal.operation.url),
     );
     if (this.browserPolicy.has(proposal.id) || this.browserPolicy.size < 128)
       this.browserPolicy.set(proposal.id, { key, allowed });
