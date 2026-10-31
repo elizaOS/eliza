@@ -454,8 +454,10 @@ it.each([
 // the snooze) must ask "Multiple items match" and change nothing, as the base
 // resolution does. An edit or cancel of the title, "that" or "it" skips a
 // cancelled namesake. An edit that says only its new time of "that" or "it"
-// follows the reminder this conversation just saved. Any other word or number
-// keeps the base resolution, and the new time an edit asks for picks no copy.
+// follows the reminder this conversation just saved. Its clock or number must
+// equal the new value the planner sent, or it may pick a copy. Any other word
+// or number keeps the base resolution, and the new time an edit asks for picks
+// no copy.
 const DUE = {
   fired436: "2026-10-30T11:36:00.000Z",
   fired500: "2026-10-30T12:00:00.000Z",
@@ -467,6 +469,7 @@ const DUE = {
   today9pm: "2026-10-31T04:00:00.000Z",
   tomorrow436: "2026-10-31T11:36:00.000Z",
   tomorrow540: "2026-10-31T12:40:00.000Z",
+  tomorrow6am: "2026-10-31T13:00:00.000Z",
   plus2h: "2026-10-30T14:01:55.162Z",
 };
 const MOVED_10 = "2026-10-30T12:11:55.162Z";
@@ -1195,8 +1198,134 @@ it.each<{
     recent: "recent521",
     changes: { key: "recent521", dueAt: DUE.today9pm },
   },
+  // The fourth review's probes. A clock that is not the new value the planner
+  // sent picks a copy, as a reply to "which one?" does, so P01-P09, Q1 and Q2
+  // ask as at base.
+  {
+    id: "P01",
+    says: "4:36am",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "P02",
+    says: "4:36",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "P03",
+    says: "no, 4:36am",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "P04",
+    says: "at 4:36am",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "P05",
+    says: "4:36am",
+    params: {
+      ...REHEARSAL_UPDATE_ARGS,
+      intent: "Move the 4:36 AM Grab the deck reminder to 10 minutes from now",
+      // The ask's own label line.
+      target: "Grab the deck \u2014 once on Oct 30, 4:36 AM",
+    },
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "P07",
+    says: "5:40am",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "P08",
+    says: "yes 4:36am",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "P09",
+    says: "4:36am",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "cancelled436", dueAt: DUE.fired436, status: "archived" },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+  },
+  // A reply to the ask "move grab the deck to 6am" raised, the planner
+  // carrying the 6am time.
+  {
+    id: "Q1",
+    says: "4:36",
+    params: retime("4:36", DUE.tomorrow6am),
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "Q2",
+    says: "5:40am please",
+    params: retime("5:40am please", DUE.tomorrow6am),
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  // The new time the planner sent picks no copy in any phrasing.
+  {
+    id: "P10",
+    says: "make grab the deck 5:40am",
+    params: retime("make grab the deck 5:40am", DUE.live540),
+    seeds: OLDER_RECENT,
+  },
+  {
+    id: "P11",
+    says: "set grab the deck for 5:40am",
+    params: retime("set grab the deck for 5:40am", DUE.live540),
+    seeds: OLDER_RECENT,
+  },
+  {
+    id: "P12",
+    says: "reschedule grab the deck for 5:40am",
+    params: retime("reschedule grab the deck for 5:40am", DUE.live540),
+    seeds: OLDER_RECENT,
+  },
+  {
+    id: "P13",
+    says: "grab the deck at 5:40am instead",
+    params: retime("grab the deck at 5:40am instead", DUE.live540),
+    seeds: OLDER_RECENT,
+  },
+  {
+    id: "P14",
+    says: "make grab the deck 5:40am",
+    params: retime("make grab the deck 5:40am", DUE.live540),
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  // A cancelled reminder steps aside for a live reminder only, never for a
+  // plain definition of the same title.
+  {
+    id: "P25",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "cancelled436", dueAt: DUE.fired436, status: "archived" },
+      { key: "plainLive521", dueAt: DUE.live521, plain: true },
+    ],
+  },
   // The planner sent no new value, so the free-text extractor reads it once
-  // the target resolves. Its new time picks no copy here either.
+  // the target resolves. Its new time picks no copy here either, and with no
+  // value to check the owner's clock against, nothing follows the save.
   {
     id: "L1",
     says: "move grab the deck to 4:36am tomorrow",
@@ -1223,7 +1352,6 @@ it.each<{
     seeds: OLDER_RECENT,
     recent: "recent521",
     extracts: extraction({ timeOfDay: "05:40" }),
-    changes: { key: "recent521", dueAt: DUE.live540 },
   },
   {
     id: "L4",
