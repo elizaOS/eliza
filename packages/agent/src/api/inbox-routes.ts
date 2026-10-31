@@ -1241,6 +1241,17 @@ function getDiscordClient(runtime: AgentRuntime): DiscordClientLike | null {
     | undefined;
   return service?.client ?? null;
 }
+/**
+ * True when Discord answered "there is no such user/message" (404, Unknown
+ * User 10013, Unknown Message 10008). Only that answer means an absence is a
+ * fact worth memoizing; a 429, a 5xx, or an expired token says nothing about
+ * the sender and must not be remembered as "no profile".
+ */
+function isDiscordLookupAbsent(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const { status, code } = error as { status?: unknown; code?: unknown };
+  return status === 404 || code === 10013 || code === 10008;
+}
 function firstCollectionValue(collection: unknown): unknown {
   if (!collection || typeof collection !== "object") {
     return null;
@@ -1462,8 +1473,14 @@ async function resolveDiscordMessageAuthorProfile(
     };
     writeCachedValue(discordMessageAuthorProfileCache, cacheKey, profile);
     return profile;
-  } catch {
-    writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+  } catch (error) {
+    // A failed fetch of this message is not "this author has no profile".
+    // Memoizing the failure made one 429/5xx hide the author for the whole
+    // cache TTL, so only Discord's "unknown message" answer is recorded here
+    // and anything else leaves the key unset for the next read to retry.
+    if (isDiscordLookupAbsent(error)) {
+      writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+    }
     return null;
   }
 }
@@ -1498,8 +1515,15 @@ async function resolveDiscordUserProfile(
     };
     writeCachedValue(discordUserProfileCache, userId, profile);
     return profile;
-  } catch {
-    writeCachedValue(discordUserProfileCache, userId, null);
+  } catch (error) {
+    // Discord refusing/failing the lookup (429, 5xx, revoked token, network)
+    // is not evidence that this user has no profile. Caching `null` here made
+    // the inbox render every later message from the sender nameless until the
+    // TTL expired; leaving the key unset lets the next read retry while an
+    // "unknown user" answer is still memoized as a real absence.
+    if (isDiscordLookupAbsent(error)) {
+      writeCachedValue(discordUserProfileCache, userId, null);
+    }
     return null;
   }
 }
