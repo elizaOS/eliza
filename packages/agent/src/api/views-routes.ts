@@ -22,7 +22,6 @@ import { promises as fs } from "node:fs";
 import type http from "node:http";
 import {
   AGENT_SURFACE_CAPABILITY_IDS,
-  READ_ONLY_VIEW_CAPABILITY_IDS,
   createShellNavigateViewWsFrame,
   ElizaError,
   EventType,
@@ -30,6 +29,7 @@ import {
   logger,
   normalizeCompletedActionHandoffId,
   parseClampedInteger,
+  READ_ONLY_VIEW_CAPABILITY_IDS,
   type RoleGateRole,
   type ShellNavigateViewPayload,
   STANDARD_CAPABILITIES,
@@ -1526,7 +1526,9 @@ export async function dispatchViewInteract(
   // Run the owner's agent-operation restriction before either delivery path.
   // Typed direct UI retains the existing broker authority; the owner callback
   // consumes host execution provenance, never a caller's origin flag.
-  entry.beforeAgentInteract?.(capability, params, { runtime: transport.runtime });
+  entry.beforeAgentInteract?.(capability, params, {
+    runtime: transport.runtime,
+  });
   const hasServerInteract = typeof entry.serverInteract === "function";
   const preferFrontend =
     !hasServerInteract || isSurfaceBrokeredCapability(capability);
