@@ -1349,15 +1349,18 @@ export class XService extends Service {
         this.buildUserTarget(profile.id, profile.username, 0.95, accountId),
       ];
     } catch (error) {
-      logger.debug(
-        {
-          src: "plugin:x",
-          query,
-          error: error instanceof Error ? error.message : String(error),
-        },
-        "X connector profile resolution failed",
-      );
-      return [];
+      // Only a handle X says does not exist is a real no-match. A rate limit,
+      // a rejected credential or a provider outage is not, and returning []
+      // for those makes the DM caller tell the user "no such recipient" while
+      // the actual cause never leaves a debug line.
+      if (error instanceof ElizaError && error.code === "X_PROFILE_NOT_FOUND") {
+        logger.debug(
+          { src: "plugin:x", query },
+          "X connector profile not found",
+        );
+        return [];
+      }
+      throw error;
     }
   }
 
