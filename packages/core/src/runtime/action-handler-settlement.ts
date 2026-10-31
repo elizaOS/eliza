@@ -45,6 +45,7 @@ import {
 	PROVIDER_CONTEXT_OVERFLOW,
 } from "../utils/model-errors";
 import { bindEffectDelivery } from "./effect-delivery";
+import { TurnAbortedError } from "./turn-aborted-error";
 
 type BufferedActionCallback = {
 	response: Content;
@@ -405,6 +406,9 @@ export async function settleActionHandler(
 		if (options.handlerError === "rethrow") {
 			throw error;
 		}
+		// A cancelled turn is not a handler failure: stop here and let the
+		// turn end as cancelled instead of recording a retryable failure.
+		if (error instanceof TurnAbortedError) throw error;
 		const contextOverflow = isProviderContextOverflowFailure(error);
 		// A processing-policy denial raised by a model call inside the handler is
 		// as terminal as a denied admission: a replan must not retry it.
