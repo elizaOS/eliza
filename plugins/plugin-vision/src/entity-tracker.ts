@@ -44,6 +44,7 @@ export class EntityTracker {
         person,
         faceProfiles?.get(person.id),
         currentTime,
+        seenEntityIds,
       );
       frameEntities.push(entity);
       seenEntityIds.add(entity.id);
@@ -52,7 +53,7 @@ export class EntityTracker {
     // Process detected objects
     for (const obj of detectedObjects) {
       if (obj.type !== "person" && obj.type !== "person-candidate") {
-        const entity = await this.trackObject(obj, currentTime);
+        const entity = await this.trackObject(obj, currentTime, seenEntityIds);
         frameEntities.push(entity);
         seenEntityIds.add(entity.id);
       }
@@ -73,12 +74,14 @@ export class EntityTracker {
     person: PersonInfo,
     faceProfileId: string | undefined,
     timestamp: number,
+    alreadyAssignedThisFrame: ReadonlySet<string> = new Set(),
   ): Promise<TrackedEntity> {
     // Try to match with existing entities
     const matchedEntity = this.findMatchingEntity(
       person.boundingBox,
       "person",
       faceProfileId,
+      alreadyAssignedThisFrame,
     );
 
     if (matchedEntity) {
@@ -134,9 +137,15 @@ export class EntityTracker {
   private async trackObject(
     obj: DetectedObject,
     timestamp: number,
+    alreadyAssignedThisFrame: ReadonlySet<string> = new Set(),
   ): Promise<TrackedEntity> {
     // Try to match with existing entities
-    const matchedEntity = this.findMatchingEntity(obj.boundingBox, "object");
+    const matchedEntity = this.findMatchingEntity(
+      obj.boundingBox,
+      "object",
+      undefined,
+      alreadyAssignedThisFrame,
+    );
 
     if (matchedEntity) {
       // Update existing entity
@@ -189,6 +198,7 @@ export class EntityTracker {
     boundingBox: BoundingBox,
     entityType: "person" | "object",
     faceProfileId?: string,
+    alreadyAssignedThisFrame: ReadonlySet<string> = new Set(),
   ): TrackedEntity | null {
     const currentTime = Date.now();
     let bestMatch: TrackedEntity | null = null;
@@ -197,6 +207,14 @@ export class EntityTracker {
     for (const entity of this.worldState.entities.values()) {
       // Skip if wrong type
       if (entity.entityType !== entityType) {
+        continue;
+      }
+
+      // An entity already assigned to another detection in this same frame
+      // is one distinct object, not a match candidate for this detection:
+      // without this guard the first detection's newly created entity is
+      // immediately re-matched, collapsing two detections into one entity.
+      if (alreadyAssignedThisFrame.has(entity.id)) {
         continue;
       }
 
