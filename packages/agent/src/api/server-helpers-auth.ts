@@ -519,6 +519,9 @@ export function rateLimitPairing(ip: string | null): boolean {
   current.count += 1;
   return true;
 }
+export function getPairingCode(): string | null {
+  return pairingCode;
+}
 export function getPairingExpiresAt(): number {
   return pairingExpiresAt;
 }
