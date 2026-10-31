@@ -1636,7 +1636,7 @@ async function runPlannerLoopIterations(
                 ),
                 ...("declaredTurnScope" in call &&
                 (call.declaredTurnScope === TURN_SCOPE_FINAL ||
-                call.declaredTurnScope === TURN_SCOPE_MORE_WORK_PENDING)
+                  call.declaredTurnScope === TURN_SCOPE_MORE_WORK_PENDING)
                   ? { [TURN_SCOPE_ARG]: call.declaredTurnScope }
                   : {}),
               },
@@ -8541,9 +8541,9 @@ function turnChangedNothing(trajectory: PlannerTrajectory): boolean {
                 receipt.failure.acceptance === "rejected"),
           )
         : result.data?.readOnlyOperation === true ||
-          (result.success === false &&
-            result.data?.acceptance === "rejected" &&
-            result.data?.executionStatus === "not_started");
+            (result.success === false &&
+              result.data?.acceptance === "rejected" &&
+              result.data?.executionStatus === "not_started");
     },
   );
 }
