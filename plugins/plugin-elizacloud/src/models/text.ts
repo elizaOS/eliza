@@ -729,8 +729,27 @@ function sleepMs(ms: number, signal?: AbortSignal): Promise<void> {
  * it is never retried. Every HTTP status, a 429 included, keeps its normal
  * path. A spent budget throws the typed exhaustion, so the runtime skips the
  * sibling registrations backed by this same provider, as it does for warming.
+ *
+ * Missing headers do not prove that the server never ran the request: the
+ * buffered routes send their headers only after the whole generation, so a
+ * reset before the headers can follow a finished and billed generation. Only a
+ * reset within CONNECTION_RESET_RETRY_WINDOW_MS of its attempt's send is
+ * retried; a later one is thrown unchanged, as before this retry existed.
  */
 const CONNECTION_RESET_RETRY_DELAYS_MS: readonly number[] = [250, 750];
+/**
+ * A connection that was already dead (a pooled keep-alive socket the far end
+ * closed, or a dropped handshake) fails within a few network round trips of
+ * the send. QA's observed reset came 156 ms after the send, and a gateway round
+ * trip with no generation takes about 125 ms (the warming note above
+ * WARMING_RETRY_DELAYS_MS: four 503 round trips in ~500 ms). 1 s covers a few
+ * such round trips, with room for slow links. It is a bound, not a proof: a
+ * generation that finished in under 1 s and then lost its connection before
+ * the headers would still be sent again. A reset that is not retried only
+ * keeps the old behavior, and a wrong retry can bill twice, so the window is
+ * kept short.
+ */
+const CONNECTION_RESET_RETRY_WINDOW_MS = 1_000;
 const CONNECTION_RESET_CODES = new Set(["ECONNRESET", "UND_ERR_SOCKET"]);
 
 /** A Cloud connection that kept resetting before any response, after its bounded retries. */
@@ -761,16 +780,24 @@ function isConnectionResetError(error: unknown): boolean {
 /**
  * Next step for a request that failed before any response: the jittered wait
  * before it is sent again, or the error to throw. That error is the original
- * one when it is not a connection reset or the call was cancelled, and the
- * typed exhaustion once the retries are spent.
+ * one when it is not a connection reset, the reset came more than
+ * CONNECTION_RESET_RETRY_WINDOW_MS after the send (`elapsedMs`), or the call
+ * was cancelled, and the typed exhaustion once the retries are spent.
  */
 export function nextConnectionResetRetry(
   state: { attempt: number },
   error: unknown,
+  elapsedMs: number,
   label: string,
   signal?: AbortSignal
 ): { delayMs: number } | { error: unknown } {
-  if (signal?.aborted || !isConnectionResetError(error)) return { error };
+  if (
+    signal?.aborted ||
+    elapsedMs > CONNECTION_RESET_RETRY_WINDOW_MS ||
+    !isConnectionResetError(error)
+  ) {
+    return { error };
+  }
   if (state.attempt >= CONNECTION_RESET_RETRY_DELAYS_MS.length) {
     return { error: new ElizaCloudConnectionResetExhaustedError(label, state.attempt + 1, error) };
   }
@@ -806,15 +833,24 @@ export async function requestNativeWithWarmingRetry(
   const timing = createModelHttpTiming(label, ownedTraceId);
   for (;;) {
     const queuedAt = performance.now();
+    let sentAt = queuedAt;
     let observed: Awaited<ReturnType<typeof timing.request>>;
     try {
-      observed = await withNativeChatLimit(
-        () => timing.request(doRequest, performance.now() - queuedAt),
-        label,
-      );
+      observed = await withNativeChatLimit(() => {
+        sentAt = performance.now();
+        return timing.request(doRequest, sentAt - queuedAt);
+      }, label);
     } catch (error) {
-      // No response headers arrived, so the server has not answered.
-      const retry = nextConnectionResetRetry(resetRetryState, error, label, signal);
+      // No response headers arrived. That does not prove the server never ran
+      // the request: these routes send headers only after the whole
+      // generation. So only a reset soon after the send is sent again.
+      const retry = nextConnectionResetRetry(
+        resetRetryState,
+        error,
+        performance.now() - sentAt,
+        label,
+        signal,
+      );
       if ("error" in retry) throw retry.error;
       await sleepMs(retry.delayMs, signal);
       continue;
@@ -2320,7 +2356,8 @@ export async function streamNativeChatCompletion(
   // A warming 503's body is consumed for classification, so its terminal
   // throw happens here; every other non-ok status leaves the body unread for
   // the error path below. A connection reset is retried only here, before
-  // any response, so nothing has streamed yet.
+  // any response (so nothing has streamed yet), and only soon after its send
+  // (see nextConnectionResetRetry).
   const warmingRetryState: WarmingRetryState = { attempt: 0 };
   const resetRetryState = { attempt: 0 };
   let response: Response;
@@ -2334,23 +2371,36 @@ export async function streamNativeChatCompletion(
     recordInferenceSpan("cloud.semaphore-wait", Date.now() - waitStartedAt, {
       route: "chat/completions:stream",
     });
+    const sentAt = performance.now();
     try {
       preparedRequest.assertBeforeAttempt();
       const observed = await modelHttpTiming.request(() => createCloudApiClient(runtime).requestRaw("POST", "/chat/completions", {
         headers,
         json: requestBody,
         ...(signal ? { signal } : {}),
-      }), performance.now() - queuedAt);
+      }), sentAt - queuedAt);
       response = observed.response;
       bodyDone = observed.bodyDone;
     } catch (err) {
       releasePermit();
-      const retry = nextConnectionResetRetry(resetRetryState, err, "chat/completions:stream", signal);
+      const retry = nextConnectionResetRetry(
+        resetRetryState,
+        err,
+        performance.now() - sentAt,
+        "chat/completions:stream",
+        signal
+      );
       if ("error" in retry) {
         if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, retry.error);
         throw retry.error;
       }
-      await sleepMs(retry.delayMs, signal);
+      // The stream timeout can end the call during this wait: the reset stays
+      // its recorded failure, as when it was not retried. A caller's Stop
+      // records nothing, as everywhere here.
+      await sleepMs(retry.delayMs, signal).catch((stop) => {
+        if (!abortSignal?.aborted) recordCloudInferenceFailure(runtime, modelType, requestBody, err);
+        throw stop;
+      });
       continue;
     }
     if (response.status !== 503) break;

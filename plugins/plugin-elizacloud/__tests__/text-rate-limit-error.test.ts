@@ -1,6 +1,7 @@
 /**
  * Eliza Cloud 429s reach the runtime as one typed, bounded rate-limit error.
- * A connection reset before any response is retried in place, a few times.
+ * A connection reset soon after the send, before any response, is retried in
+ * place, a few times.
  */
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -126,14 +127,14 @@ async function failure(run: () => Promise<unknown>): Promise<unknown> {
 }
 
 const routes = {
-  "/responses": () => handleTextSmall(runtime(), { prompt: "Say hi" } as never),
-  "/chat/completions": () =>
-    handleResponseHandler(runtime(), {
+  "/responses": (agent = runtime()) => handleTextSmall(agent, { prompt: "Say hi" } as never),
+  "/chat/completions": (agent = runtime()) =>
+    handleResponseHandler(agent, {
       prompt: "Say hi",
       messages: [{ role: "user", content: "Say hi" }],
     } as never),
-  "/chat/completions (stream)": () =>
-    handleResponseHandler(runtime(), {
+  "/chat/completions (stream)": (agent = runtime()) =>
+    handleResponseHandler(agent, {
       prompt: "Say hi",
       messages: [{ role: "user", content: "Say hi" }],
       stream: true,
@@ -396,6 +397,7 @@ describe("Eliza Cloud connection reset before any response", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
   });
 
   it.each(allRoutes)("%s retries a Node socket reset before the headers", async (route) => {
@@ -434,6 +436,44 @@ describe("Eliza Cloud connection reset before any response", () => {
       });
     }
   );
+
+  it.each(allRoutes)(
+    "%s records a spent budget of Bun resets as transport, as one raw Bun reset was",
+    async (route) => {
+      vi.spyOn(Math, "random").mockReturnValue(0);
+      const fetchSpy = vi.fn(async () => {
+        throw bunSocketClosed();
+      });
+      vi.stubGlobal("fetch", fetchSpy);
+      const agent = runtime();
+      const error = await failure(() => routes[route](agent));
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+      expect(error).toBeInstanceOf(ElizaCloudConnectionResetExhaustedError);
+      // Support reads this reason in /api/status.
+      const diagnostic = getCloudInferenceFailure(agent);
+      expect(diagnostic?.reason).toBe("transport");
+      expect(diagnostic).not.toHaveProperty("status");
+    }
+  );
+
+  it.each(allRoutes)("%s sends a fast reset again but never a late one", async (route) => {
+    vi.spyOn(Math, "random").mockReturnValue(0);
+    // Past the 1 s window: a buffered generation may have finished and billed.
+    const late = bunSocketClosed();
+    const fetchSpy = vi
+      .fn<typeof fetch>()
+      .mockRejectedValueOnce(bunSocketClosed())
+      .mockImplementationOnce(
+        () => new Promise((_resolve, reject) => setTimeout(() => reject(late), 1_200))
+      );
+    vi.stubGlobal("fetch", fetchSpy);
+    const agent = runtime();
+    const error = await failure(() => routes[route](agent));
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    // Thrown unchanged, as before this retry existed.
+    expect(error).toBe(late);
+    expect(getCloudInferenceFailure(agent)?.reason).toBe("transport");
+  });
 
   it("spends one budget per useModel call, then skips this provider's siblings", async () => {
     reply = resetBeforeResponse;
@@ -484,21 +524,24 @@ describe("Eliza Cloud connection reset before any response", () => {
     const state = { attempt: 0 };
     const reset = bunSocketClosed();
     const waits = [
-      nextConnectionResetRetry(state, reset, "responses"),
-      nextConnectionResetRetry(state, reset, "responses"),
+      nextConnectionResetRetry(state, reset, 0, "responses"),
+      nextConnectionResetRetry(state, reset, 1_000, "responses"),
     ].map((retry) => ("delayMs" in retry ? retry.delayMs : Number.NaN));
     expect(waits).toEqual([499, 1_499]);
     expect(waits[0] + waits[1]).toBeLessThanOrEqual(2_000);
-    expect(nextConnectionResetRetry(state, reset, "responses")).toEqual({
+    expect(nextConnectionResetRetry(state, reset, 0, "responses")).toEqual({
       error: expect.any(ElizaCloudConnectionResetExhaustedError),
     });
-    // Other transport failures and cancelled calls are thrown unchanged.
+    // Late resets, other transport failures and cancelled calls are thrown unchanged.
+    expect(nextConnectionResetRetry({ attempt: 0 }, reset, 1_001, "responses")).toEqual({
+      error: reset,
+    });
     const refused = Object.assign(new Error("connect ECONNREFUSED"), { code: "ECONNREFUSED" });
-    expect(nextConnectionResetRetry({ attempt: 0 }, refused, "responses")).toEqual({
+    expect(nextConnectionResetRetry({ attempt: 0 }, refused, 0, "responses")).toEqual({
       error: refused,
     });
     expect(
-      nextConnectionResetRetry({ attempt: 0 }, reset, "responses", AbortSignal.abort())
+      nextConnectionResetRetry({ attempt: 0 }, reset, 0, "responses", AbortSignal.abort())
     ).toEqual({ error: reset });
   });
 
@@ -525,6 +568,19 @@ describe("Eliza Cloud connection reset before any response", () => {
       expect(requests).toHaveLength(1);
     }
   );
+
+  it("records the reset when the stream timeout ends the backoff", async () => {
+    vi.spyOn(Math, "random").mockReturnValue(0.999_999);
+    vi.stubEnv("ELIZAOS_CLOUD_TEXT_TIMEOUT_MS", "150");
+    const fetchSpy = vi.fn<typeof fetch>().mockRejectedValueOnce(bunSocketClosed());
+    vi.stubGlobal("fetch", fetchSpy);
+    const agent = runtime();
+    // The first wait is 499 ms, so the 150 ms timeout fires inside it.
+    const error = await failure(() => routes["/chat/completions (stream)"](agent));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(error).toMatchObject({ name: "TimeoutError" });
+    expect(getCloudInferenceFailure(agent)?.reason).toBe("transport");
+  });
 });
 
 describe("content-free support diagnostics", () => {

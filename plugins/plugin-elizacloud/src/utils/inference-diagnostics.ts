@@ -1,4 +1,5 @@
 /** Content-free last-failure facts. Never retain a request, error, or response. */
+import { MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED } from "@elizaos/core";
 /** Schema features for diagnosis; support varies by provider/model. */
 export const INFERENCE_SCHEMA_KEYWORDS = [
   "pattern",
@@ -139,12 +140,19 @@ export function recordCloudInferenceFailure(
     )
       reason = "unavailable-model";
     else if (parameter && (status === 400 || status === 422)) reason = "invalid-parameter";
-    else if (
-      (typeof failure.code === "string" &&
-        ["ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT"].includes(failure.code)) ||
-      failure.name === "TimeoutError"
-    )
-      reason = "transport";
+    else {
+      // A spent connection-reset budget keeps the last raw reset as its cause.
+      // The transport check reads that cause as it reads a raw reset. The
+      // warming exhaustion has no cause, so its result does not change.
+      const transport =
+        failure.code === MODEL_PROVIDER_RETRY_BUDGET_EXHAUSTED ? record(failure.cause) : failure;
+      if (
+        (typeof transport.code === "string" &&
+          ["ECONNRESET", "ECONNREFUSED", "ENOTFOUND", "ETIMEDOUT"].includes(transport.code)) ||
+        transport.name === "TimeoutError"
+      )
+        reason = "transport";
+    }
     const strictTools = new Set<CloudInferenceFailure["strictTools"][number]>(),
       keywords = new Set<CloudInferenceFailure["schemaKeywords"][number]>();
     let remaining = 2048,
