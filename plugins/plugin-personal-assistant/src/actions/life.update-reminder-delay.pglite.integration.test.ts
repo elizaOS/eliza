@@ -96,7 +96,14 @@ afterAll(async () => {
 });
 
 /** The definition OWNER_REMINDERS_CREATE saved for "stretch in 20 minutes". */
-function seed(title: string, cadence: LifeOpsCadence) {
+function seed(
+  title: string,
+  cadence: LifeOpsCadence,
+  metadata: Record<string, unknown> = {
+    ownerSurface: "OWNER_REMINDERS",
+    nativeProjection: "in_app_only",
+  },
+) {
   return service.createDefinition({
     title,
     description: "",
@@ -104,10 +111,7 @@ function seed(title: string, cadence: LifeOpsCadence) {
     timezone: "America/Los_Angeles",
     priority: 3,
     cadence,
-    metadata: {
-      ownerSurface: "OWNER_REMINDERS",
-      nativeProjection: "in_app_only",
-    },
+    metadata,
     reminderPlan: {
       steps: [
         { channel: "in_app", offsetMinutes: 0, label: `${title} reminder` },
@@ -254,60 +258,30 @@ it.each([
   { details: { delaySeconds: 1.9 } },
   { delaySeconds: 1.9, delayMinutes: 30 },
   { details: { delaySeconds: 1.9, delayMinutes: 30 } },
-])(
-  "rejects fractional numeric relative updates without changing the saved definition: %j",
-  async (params) => {
-    const seeded = await seed("Fraction refusal", STRETCH_CADENCE);
-    const result = await updateReminder({
-      target: seeded.definition.id,
-      ...params,
-    });
-    expect(result.success).toBe(false);
-    expect(result.data).toEqual(
-      expect.objectContaining({ reason: "relative_delay_unusable" }),
-    );
-    expect(
-      (await service.getDefinition(seeded.definition.id)).definition,
-    ).toEqual(seeded.definition);
-    expect(
-      (result.effectReceipts ?? []).some(
-        (receipt) => receipt.outcome === "applied",
-      ),
-    ).toBe(false);
-    await service.deleteDefinition(seeded.definition.id);
-  },
-);
+])("rejects fractional numeric relative updates without changing the saved definition: %j", async (params) => {
+  const seeded = await seed("Fraction refusal", STRETCH_CADENCE);
+  const result = await updateReminder({ target: seeded.definition.id, ...params });
+  expect(result.success).toBe(false);
+  expect(result.data).toEqual(expect.objectContaining({ reason: "relative_delay_unusable" }));
+  expect((await service.getDefinition(seeded.definition.id)).definition).toEqual(seeded.definition);
+  expect((result.effectReceipts ?? []).some(receipt => receipt.outcome === "applied")).toBe(false);
+  await service.deleteDefinition(seeded.definition.id);
+});
 
 it("keeps valid whole seconds ahead of fractional lower-priority minutes and request fields ahead of details", async () => {
   const seeded = await seed("Whole seconds", STRETCH_CADENCE);
-  const result = await updateReminder({
-    target: seeded.definition.id,
-    delaySeconds: 90,
-    delayMinutes: 1.5,
-    details: { delaySeconds: 1.9 },
-  });
+  const result = await updateReminder({ target: seeded.definition.id, delaySeconds: 90, delayMinutes: 1.5, details: { delaySeconds: 1.9 } });
   expect(result.success, JSON.stringify(result)).toBe(true);
-  expect(
-    (await service.getDefinition(seeded.definition.id)).definition.cadence,
-  ).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:03:25.162Z" });
+  expect((await service.getDefinition(seeded.definition.id)).definition.cadence).toEqual({ ...STRETCH_CADENCE, dueAt: "2026-10-30T12:03:25.162Z" });
   await service.deleteDefinition(seeded.definition.id);
 });
 
 it("keeps explicit cadence ahead of fractional delay inputs", async () => {
   const seeded = await seed("Explicit cadence", STRETCH_CADENCE);
-  const cadence: LifeOpsCadence = {
-    kind: "once",
-    dueAt: "2026-10-30T13:00:00.000Z",
-  };
-  const result = await updateReminder({
-    target: seeded.definition.id,
-    delayMinutes: 1.5,
-    details: { cadence },
-  });
+  const cadence: LifeOpsCadence = { kind: "once", dueAt: "2026-10-30T13:00:00.000Z" };
+  const result = await updateReminder({ target: seeded.definition.id, delayMinutes: 1.5, details: { cadence } });
   expect(result.success, JSON.stringify(result)).toBe(true);
-  expect(
-    (await service.getDefinition(seeded.definition.id)).definition.cadence,
-  ).toEqual(cadence);
+  expect((await service.getDefinition(seeded.definition.id)).definition.cadence).toEqual(cadence);
   await service.deleteDefinition(seeded.definition.id);
 });
 
@@ -478,9 +452,9 @@ it.each([
 // Each namesake case the reviews probed, at the trajectory's 5:01 AM PDT clock.
 // A row names the one definition that may change. A row without one (except
 // the snooze) must ask "Multiple items match" and change nothing, as the base
-// resolution does. An edit or cancel by name skips a cancelled namesake. An
-// edit that calls the reminder this conversation just saved only "that" or
-// "it" follows that reminder. A word or number that could pick another copy
+// resolution does. An edit or cancel of the title, "that" or "it" skips a
+// cancelled namesake. An edit that says only its new time of "that" or "it"
+// follows the reminder this conversation just saved. Any other word or number
 // keeps the base resolution, and the new time an edit asks for picks no copy.
 const DUE = {
   fired436: "2026-10-30T11:36:00.000Z",
@@ -490,7 +464,10 @@ const DUE = {
   yesterday530pm: "2026-10-30T00:30:00.000Z",
   yesterday540am: "2026-10-29T12:40:00.000Z",
   today6pm: "2026-10-31T01:00:00.000Z",
+  today9pm: "2026-10-31T04:00:00.000Z",
   tomorrow436: "2026-10-31T11:36:00.000Z",
+  tomorrow540: "2026-10-31T12:40:00.000Z",
+  plus2h: "2026-10-30T14:01:55.162Z",
 };
 const MOVED_10 = "2026-10-30T12:11:55.162Z";
 const MAKE_10 = "actually make that 10 minutes";
@@ -505,11 +482,30 @@ const retime = (intent: string, dueAt: string) => ({
   target: "grab the deck",
   details: { cadence: { ...STRETCH_CADENCE, dueAt } },
 });
+/** The free-text update extractor's reply with only these fields set. */
+const extraction = (fields: Record<string, unknown>) =>
+  JSON.stringify({
+    title: null,
+    cadenceKind: null,
+    windows: null,
+    weekdays: null,
+    timeOfDay: null,
+    everyMinutes: null,
+    priority: null,
+    description: null,
+    dueDate: null,
+    dueInDays: null,
+    dueWeekday: null,
+    dueInMinutes: null,
+    ...fields,
+  });
 type NamesakeSeed = {
   key: string;
   dueAt: string;
   title?: string;
   status?: "archived" | "paused";
+  /** A plain definition, not an owner reminder. */
+  plain?: true;
 };
 const FIRED_LIVE: NamesakeSeed[] = [
   { key: "fired436", dueAt: DUE.fired436 },
@@ -534,6 +530,12 @@ it.each<{
   params: Record<string, unknown>;
   seeds: NamesakeSeed[];
   recent?: string;
+  /** How long ago the recent save was, when not just now. */
+  savedAgoMs?: number;
+  /** The seed whose id the planner sends as the target. */
+  targetKey?: string;
+  /** The free-text extractor's reply, when the planner sent no new value. */
+  extracts?: string;
   changes?: { key: string; dueAt?: string; status?: string };
   snoozes?: true;
 }>([
@@ -854,7 +856,6 @@ it.each<{
     params: retime("move the reminder to 4:36am tomorrow", DUE.tomorrow436),
     seeds: FIRED_RECENT,
     recent: "recent521",
-    changes: { key: "recent521", dueAt: DUE.tomorrow436 },
   },
   // The new time is never a time hint, even where the base resolution reads
   // one, so it cannot pick the copy that already has that time.
@@ -884,20 +885,382 @@ it.each<{
     ],
     changes: { key: "live521", dueAt: DUE.live540 },
   },
+  // The third review's probes S01-S35. A description of a copy, a partial
+  // title or another number is no "that" or "it", so S01-S10 ask as at base.
+  {
+    id: "S01",
+    says: "push the reminder that already fired to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S02",
+    says: "make the deck reminder that went off 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S03",
+    says: "move the rehearsal reminder to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S04",
+    says: "move the morning deck reminder to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "fired436", dueAt: DUE.fired436 },
+      { key: "recent6pm", dueAt: DUE.today6pm },
+    ],
+    recent: "recent6pm",
+  },
+  {
+    id: "S05",
+    says: "move tomorrow's deck reminder to 9pm",
+    params: retime("move tomorrow's deck reminder to 9pm", DUE.today9pm),
+    seeds: [
+      { key: "tomorrow436", dueAt: DUE.tomorrow436 },
+      { key: "recent521", dueAt: DUE.live521 },
+    ],
+    recent: "recent521",
+  },
+  {
+    id: "S06",
+    says: "make the second reminder 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S07",
+    says: "move the reminder i set 30 minutes ago to 5:40am",
+    params: retime(
+      "move the reminder i set 30 minutes ago to 5:40am",
+      DUE.live540,
+    ),
+    seeds: [
+      { key: "older6pm", dueAt: DUE.today6pm },
+      { key: "recent521", dueAt: DUE.live521 },
+    ],
+    recent: "recent521",
+  },
+  {
+    id: "S08",
+    says: "move the reminder for the 31st to 5:40am",
+    params: retime("move the reminder for the 31st to 5:40am", DUE.tomorrow540),
+    seeds: [
+      { key: "tomorrow436", dueAt: DUE.tomorrow436 },
+      { key: "recent521", dueAt: DUE.live521 },
+    ],
+    recent: "recent521",
+  },
+  {
+    id: "S09",
+    says: "push the deck reminder from 10 minutes ago to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S10",
+    says: "move the deck to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  // Two clock hits ask, as at base, though one of them is the new time.
+  {
+    id: "S11",
+    says: "move the 4:36am grab the deck to 5:40am",
+    params: retime("move the 4:36am grab the deck to 5:40am", DUE.live540),
+    seeds: [
+      { key: "fired436", dueAt: DUE.fired436 },
+      { key: "live540", dueAt: DUE.live540 },
+    ],
+  },
+  {
+    id: "S12",
+    says: "move the 5:40 one to 5:40pm",
+    params: retime("move the 5:40 one to 5:40pm", "2026-10-31T00:40:00.000Z"),
+    seeds: [
+      { key: "live540", dueAt: DUE.live540 },
+      { key: "recent521", dueAt: DUE.live521 },
+    ],
+    recent: "recent521",
+  },
+  {
+    id: "S13",
+    says: "make this one 10 minutes",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: MOVED_10 },
+  },
+  {
+    id: "S14",
+    says: "Actually make THAT 10 minutes!",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: MOVED_10 },
+  },
+  {
+    id: "S15",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    savedAgoMs: 6 * 60_000,
+  },
+  {
+    id: "S16",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      ...FIRED_LIVE,
+      { key: "callMom", dueAt: DUE.live540, title: "Call mom" },
+    ],
+    recent: "callMom",
+  },
+  {
+    id: "S17",
+    says: "make that 2 hours",
+    params: {
+      ...REHEARSAL_UPDATE_ARGS,
+      details: { delayMinutes: 120 },
+      delayMinutes: 120,
+    },
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: DUE.plus2h },
+  },
+  {
+    id: "S18",
+    says: "make it 10 minutes later than the other",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S19",
+    says: "make that 10 minutes, not the 4:36 one",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S20",
+    says: "cancel that",
+    params: cancel("cancel that"),
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S21",
+    says: "cancel it",
+    params: cancel("cancel it"),
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S22",
+    says: "cancel the grab the deck reminder",
+    params: cancel("cancel the grab the deck reminder"),
+    seeds: [
+      { key: "cancelled436", dueAt: DUE.fired436, status: "archived" },
+      { key: "cancelled500", dueAt: DUE.fired500, status: "archived" },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+    changes: { key: "live521", status: "archived" },
+  },
+  {
+    id: "S23",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "cancelled436", dueAt: DUE.fired436, status: "archived" },
+      { key: "fired500", dueAt: DUE.fired500 },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+  },
+  {
+    id: "S24",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "pastDue436", dueAt: DUE.fired436 },
+      { key: "paused540", dueAt: DUE.live540, status: "paused" },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+  },
+  {
+    id: "S25",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      {
+        key: "plainCancelled",
+        dueAt: DUE.live540,
+        status: "archived",
+        plain: true,
+      },
+      { key: "plainLive", dueAt: DUE.live521, plain: true },
+    ],
+  },
+  {
+    id: "S26",
+    says: "move call mom to 10 minutes from now",
+    params: { ...REHEARSAL_UPDATE_ARGS, target: "call mom" },
+    seeds: [
+      ...FIRED_RECENT,
+      { key: "callMom", dueAt: DUE.live540, title: "Call mom" },
+    ],
+    recent: "recent521",
+    changes: { key: "callMom", dueAt: MOVED_10 },
+  },
+  {
+    id: "S27",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: [
+      { key: "fired436", dueAt: DUE.fired436 },
+      { key: "recent521", dueAt: DUE.live521, status: "archived" },
+    ],
+    recent: "recent521",
+  },
+  {
+    id: "S28",
+    says: "move the 5:21am grab the deck to 5:40am",
+    params: retime("move the 5:21am grab the deck to 5:40am", DUE.live540),
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: DUE.live540 },
+  },
+  {
+    id: "S29",
+    says: "actually make that 9pm tonight",
+    params: retime("actually make that 9pm tonight", DUE.today9pm),
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S30",
+    says: MAKE_10,
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    targetKey: "fired436",
+    changes: { key: "fired436", dueAt: MOVED_10 },
+  },
+  {
+    id: "S31",
+    says: "make the newer one 10 minutes",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S32",
+    says: "push the reminder that fired at 4:36 to 10 minutes from now",
+    params: REHEARSAL_UPDATE_ARGS,
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S33",
+    says: "cancel the grab the deck reminder",
+    params: cancel("cancel the grab the deck reminder"),
+    seeds: [
+      { key: "cancelled436", dueAt: DUE.fired436, status: "archived" },
+      { key: "fired500", dueAt: DUE.fired500 },
+      { key: "live521", dueAt: DUE.live521 },
+    ],
+  },
+  {
+    id: "S34",
+    says: "move the earlier deck reminder to 5:40am",
+    params: retime("move the earlier deck reminder to 5:40am", DUE.live540),
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+  },
+  {
+    id: "S35",
+    says: "change it to 9pm",
+    params: retime("change it to 9pm", DUE.today9pm),
+    seeds: [{ key: "fired436", dueAt: DUE.fired436 }, ...OLDER_RECENT],
+    recent: "recent521",
+    changes: { key: "recent521", dueAt: DUE.today9pm },
+  },
+  // The planner sent no new value, so the free-text extractor reads it once
+  // the target resolves. Its new time picks no copy here either.
+  {
+    id: "L1",
+    says: "move grab the deck to 4:36am tomorrow",
+    params: {
+      intent: "move grab the deck to 4:36am tomorrow",
+      target: "grab the deck",
+    },
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    extracts: extraction({ timeOfDay: "04:36", dueInDays: 1 }),
+  },
+  {
+    id: "L2",
+    says: "move grab the deck to 5:40am",
+    params: { intent: "move grab the deck to 5:40am", target: "grab the deck" },
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+    extracts: extraction({ timeOfDay: "05:40" }),
+  },
+  {
+    id: "L3",
+    says: "actually make that 5:40am",
+    params: { intent: "actually make that 5:40am", target: "grab the deck" },
+    seeds: OLDER_RECENT,
+    recent: "recent521",
+    extracts: extraction({ timeOfDay: "05:40" }),
+    changes: { key: "recent521", dueAt: DUE.live540 },
+  },
+  {
+    id: "L4",
+    says: "actually push that back 10 minutes",
+    params: {
+      intent: "actually push that back 10 minutes",
+      target: "grab the deck",
+    },
+    seeds: FIRED_RECENT,
+    recent: "recent521",
+    extracts: extraction({ dueInMinutes: 10 }),
+  },
 ])(
   "$id: '$says' changes only the namesake it names, or asks",
-  async ({ says, params, seeds, recent, changes, snoozes }) => {
+  async ({
+    says,
+    params,
+    seeds,
+    recent,
+    savedAgoMs,
+    targetKey,
+    extracts,
+    changes,
+    snoozes,
+  }) => {
     const seeded = new Map<string, LifeOpsDefinitionRecord>();
     const conversation = {
       roomId,
       entityId: service.ownerEntityId() as UUID,
     } as Memory;
     try {
-      for (const { key, dueAt, title, status } of seeds) {
-        const created = await seed(title ?? "Grab the deck", {
-          ...STRETCH_CADENCE,
-          dueAt,
-        });
+      for (const { key, dueAt, title, status, plain } of seeds) {
+        const created = await seed(
+          title ?? "Grab the deck",
+          { ...STRETCH_CADENCE, dueAt },
+          plain ? {} : undefined,
+        );
         seeded.set(
           key,
           status
@@ -910,13 +1273,21 @@ it.each<{
         await writeRecentLifeSaveCache(fixture.runtime, conversation, {
           definitionId: saved.definition.id,
           title: saved.definition.title,
-          createdAt: Date.now(),
+          createdAt: Date.now() - (savedAgoMs ?? 0),
         });
+      if (extracts)
+        vi.mocked(fixture.runtime.useModel).mockResolvedValue(
+          extracts as never,
+        );
       const result = await updateReminder(
-        params,
+        targetKey
+          ? { ...params, target: seeded.get(targetKey)?.definition.id }
+          : params,
         says,
         "action" in params ? "OWNER_REMINDERS" : "OWNER_REMINDERS_UPDATE",
       );
+      // Only the free-text extractor may call the model.
+      if (extracts) vi.mocked(fixture.runtime.useModel).mockClear();
       expect(result.success, JSON.stringify(result)).toBe(
         Boolean(changes || snoozes),
       );

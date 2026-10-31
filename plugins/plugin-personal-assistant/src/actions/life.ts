@@ -1184,76 +1184,54 @@ async function resolveEnumeratedDeleteTargets(
   return targets.length > 1 ? targets : [];
 }
 
-/** An edit or cancel of one definition by name (update_definition). */
-type NamesakeEdit = {
-  /** The item this conversation just saved. Unset for a cancel. */
-  recentSaveId?: string;
-  /** The new value an edit asks for (an explicit one-off time, or a delay).
-   * Its numbers in the owner's words name that value, never one copy. */
-  dueAt?: string;
-  delayMs?: number;
-};
+/** How update_definition names one definition: a cancel, or an edit that may
+ * follow the item this conversation just saved. */
+type NamesakeOp = { cancel: boolean; recentSaveId?: string };
 
-/** Words that pick one copy of a title over its namesakes: "the 4:36 one",
- * "the earlier one", "the one from yesterday". "That one" and "this one" point
- * at the item under discussion instead. */
-const NAMESAKE_SELECTOR_RE =
-  /\b(?:earlier|earliest|first|last|old|older|oldest|original|existing|other|previous|prior|both|yesterday|tonight|this morning)\b|\bthe\s+(?:\S+\s+){0,2}one\b/;
+const RETIME_VERB =
+  "(?:make|change|move|push|set|switch|bump|shift|reschedule|put)";
+const DEICTIC_REF = String.raw`(?:(?:that|this)(?:\s+one)?|it)`;
+const FOLLOW_UP_LEAD = String.raw`^(?:(?:actually|ok|okay|oh|no|nah|wait|hmm|sorry|so|um|uh|yeah|yes|and|then|hey|oops)[,.!]?\s+)*(?:please\s+)?`;
+const NUMBER_WORD =
+  "a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|fifteen|twenty|thirty|forty|forty five|forty-five|sixty|ninety|half an?";
+const NEW_DELAY = String.raw`(?:in\s+)?(?:\d+(?:\.\d+)?\s*(?:s|m|h|secs?|seconds?|mins?|minutes?|hrs?|hours?)|(?:${NUMBER_WORD})\s+(?:secs?|seconds?|mins?|minutes?|hrs?|hours?))(?:\s+(?:from now|later))?`;
+const NEW_CLOCK = String.raw`(?:(?:today|tomorrow)\s+(?:at\s+)?)?(?:\d{1,2}[:.]\d{2}(?:\s*[ap]\.?m\.?)?|\d{1,4}\s*[ap]\.?m\.?|noon|midnight)(?:\s+(?:today|tomorrow))?`;
 
-/** The owner's words without the new value an edit asks for, which never picks
- * a copy: its delay in seconds, minutes or hours ("10"), and its new clock time
- * and day in any of `timeZones` ("5:40am", "540", "17:40", "31"). A clock with
- * am or pm must be the new time exactly; one without may be either half of the
- * day. Every other number stays. */
-function withoutRequestedValues(
-  text: string,
-  edit: NamesakeEdit,
-  timeZones: Iterable<string>,
-): string {
-  const counts = new Set<string>();
-  const clocks = new Set<string>();
-  if (edit.delayMs !== undefined)
-    for (const unit of [1000, 60_000, 3_600_000])
-      if (edit.delayMs % unit === 0) counts.add(String(edit.delayMs / unit));
-  const due = edit.dueAt ? new Date(edit.dueAt) : null;
-  if (due && !Number.isNaN(due.getTime()))
-    for (const timeZone of timeZones) {
-      const local = getZonedDateParts(due, timeZone);
-      clocks.add(`${local.hour % 24}:${String(local.minute).padStart(2, "0")}`);
-      counts.add(String(local.day));
-    }
-  return text.replace(/\d+(?:[:.]\d+)?(?:\s*[ap]\.?m\b\.?)?/gi, (token) => {
-    const [, digits = "", minutes, half] =
-      token.toLowerCase().match(/^(\d+)(?:[:.](\d+))?(?:\s*([ap]))?/) ?? [];
-    if (minutes === undefined && !half && counts.has(String(Number(digits))))
-      return " ";
-    const bare = minutes === undefined && digits.length > 2;
-    const hour = Number(bare ? digits.slice(0, -2) : digits);
-    const minute = minutes ?? (bare ? digits.slice(-2) : "00");
-    const hours = half
-      ? [(hour % 12) + (half === "p" ? 12 : 0)]
-      : hour > 12 || hour === 0
-        ? [hour]
-        : [hour % 12, (hour % 12) + 12];
-    return hours.some((h) => clocks.has(`${h}:${minute}`)) ? " " : token;
-  });
-}
+/** An edit that says only its new time or delay, of "that", "it", "this one"
+ * or nothing named: "actually make that 7 minutes", "make it 10 minutes",
+ * "change it to 9pm", "move it to 4:36am tomorrow". Any other word, or any
+ * other number, may pick a copy ("the one that fired", "the 4:36 one"). */
+const FOLLOW_UP_RETIME_RE = new RegExp(
+  String.raw`${FOLLOW_UP_LEAD}(?:${RETIME_VERB}(?:\s+${DEICTIC_REF})?\s+)?(?:(?:to|for|at|until)\s+)?(?:${NEW_DELAY}|${NEW_CLOCK})(?:\s+(?:instead|please))*$`,
+);
 
-/** Sets namesakes aside only where the owner's words cannot pick a copy and
- * exactly one target remains. A cancelled (archived) or completed reminder is
- * not a candidate; a fired, snoozed or paused one still is. An edit, never a
- * cancel, that refers to the reminder this conversation just saved only as
- * "that" or "it" targets it. Any other group stays whole for the base
- * resolution and its "Multiple items match" ask. Live tj-82a28eec7f2481:
- * "actually make that 10 minutes" asked which "Grab the deck" because a
- * rehearsal copy had fired 25 minutes earlier. */
+/** A cancel of "that" or "it", or of the title alone ("cancel the call mom
+ * reminder" reads "cancel it"). */
+const PLAIN_CANCEL_RE = new RegExp(
+  String.raw`${FOLLOW_UP_LEAD}(?:cancel|stop|remove|delete|disable|turn off|clear)\s+${DEICTIC_REF}(?:\s+please)?$`,
+);
+
+/** The clock an edit asks for, after "to" or after "make that": "move it to
+ * 4:36am tomorrow", "make that 5:40am". */
+const REQUESTED_CLOCK_RE = new RegExp(
+  String.raw`(?:\b(?:to|until|till)|\b${RETIME_VERB}\s+${DEICTIC_REF}(?:\s+(?:to|for|at))?)\s+(?:(?:today|tomorrow|tonight)\s+(?:at\s+)?)?\d{1,2}(?:[:. ]?\d{2})?\s*[ap]m\b`,
+  "g",
+);
+
+/** Sets namesakes aside only where the owner's words cannot pick a copy.
+ * A cancelled (archived) or completed reminder is no candidate for an edit or
+ * cancel that names the title or says "that" or "it", so the one candidate
+ * left is the target. An edit, never a cancel, that says only its new time of
+ * "that" or "it" targets the reminder this conversation just saved. Any other
+ * group stays whole for the base resolution and its "Multiple items match"
+ * ask. Live tj-82a28eec7f2481: "actually make that 10 minutes" asked which
+ * "Grab the deck" because a rehearsal copy had fired 25 minutes earlier. */
 function withoutSupersededNamesakes(
   defs: LifeOpsDefinitionRecord[],
   ownerText: string,
-  edit: NamesakeEdit,
+  op: NamesakeOp,
 ): LifeOpsDefinitionRecord[] {
-  const text = normalizeTitle(ownerText);
-  if (NAMESAKE_SELECTOR_RE.test(text)) return defs;
+  const text = normalizeTitle(ownerText).replace(/[.!?]+$/, "");
   const isReminder = ({ definition }: LifeOpsDefinitionRecord) =>
     resolveOwnerDefinitionSurface(definition) === "OWNER_REMINDERS";
   const byTitle = new Map<string, LifeOpsDefinitionRecord[]>();
@@ -1264,31 +1242,39 @@ function withoutSupersededNamesakes(
   const setAside = new Set<LifeOpsDefinitionRecord>();
   for (const [title, namesakes] of byTitle) {
     if (namesakes.length < 2) continue;
-    // Any other number may be a copy's time ("the 436 one").
-    const zones = namesakes.map((entry) => entry.definition.timezone);
-    if (/\d/.test(withoutRequestedValues(text, edit, zones))) continue;
     const candidates = namesakes.filter(
       (entry) =>
         !isReminder(entry) ||
         (entry.definition.status !== "archived" &&
           entry.definition.status !== "completed"),
     );
-    // After a save, "that" or "it" means the saved reminder, or nothing here
-    // when it is no candidate. Naming the title is neither word.
-    const followsSave =
-      !text.includes(title) &&
-      namesakes.some((entry) => entry.definition.id === edit.recentSaveId);
-    const chosen = followsSave
-      ? candidates.find(
-          (entry) =>
-            entry.definition.id === edit.recentSaveId && isReminder(entry),
-        )
-      : candidates.length === 1
-        ? candidates.at(0)
-        : undefined;
-    if (chosen)
-      for (const namesake of namesakes)
-        if (namesake !== chosen) setAside.add(namesake);
+    const saved = op.cancel
+      ? undefined
+      : namesakes.find((entry) => entry.definition.id === op.recentSaveId);
+    let chosen: LifeOpsDefinitionRecord | undefined;
+    if (saved && FOLLOW_UP_RETIME_RE.test(text)) {
+      // "That" is the saved reminder, so when it is no candidate the group
+      // stays whole and asks.
+      if (!isReminder(saved) || !candidates.includes(saved)) continue;
+      chosen = saved;
+    } else {
+      // The title names every copy, so it reads as "it".
+      const plain = text
+        .split(title)
+        .join(" it ")
+        .replace(/\s+/g, " ")
+        .replace(/\b(?:the|my)\s+it\b/g, "it")
+        .replace(/\bit\s+(?:reminder|alarm)s?\b/g, "it")
+        .trim();
+      if (
+        candidates.length !== 1 ||
+        !(op.cancel ? PLAIN_CANCEL_RE : FOLLOW_UP_RETIME_RE).test(plain)
+      )
+        continue;
+      chosen = candidates[0];
+    }
+    for (const namesake of namesakes)
+      if (namesake !== chosen) setAside.add(namesake);
   }
   return defs.filter((entry) => !setAside.has(entry));
 }
@@ -1300,23 +1286,31 @@ async function resolveDefinitionForMutation(
   domain?: LifeOpsDomain,
   destructive = false,
   title?: string,
-  namesakeEdit?: NamesakeEdit,
+  namesakeOp?: NamesakeOp,
 ): Promise<DefinitionResult> {
   const callerDefinitions = await listCallerDefinitions(service, domain);
   // Only an edit or cancel by name sets namesakes aside: an explicit id still
   // binds its record, and a delete still asks between every match.
   const allDefinitions =
-    namesakeEdit && !validateUuid(target)
-      ? withoutSupersededNamesakes(callerDefinitions, ownerText, namesakeEdit)
+    namesakeOp && !validateUuid(target)
+      ? withoutSupersededNamesakes(callerDefinitions, ownerText, namesakeOp)
       : callerDefinitions;
-  // The new time an edit asks for ("move it to 4:36am") never picks a copy.
-  const timeHintText = namesakeEdit
-    ? withoutRequestedValues(
-        ownerText,
-        namesakeEdit,
-        new Set(callerDefinitions.map((entry) => entry.definition.timezone)),
-      )
-    : ownerText;
+  // The new time an edit asks for never picks a copy: a time hint stands only
+  // if it still picks that copy without it, and otherwise asks.
+  const selectorText =
+    namesakeOp && !namesakeOp.cancel
+      ? ownerText
+          .toLowerCase()
+          .replace(/\s+/g, " ")
+          .replace(REQUESTED_CLOCK_RE, " ")
+      : ownerText;
+  const pickByTimeHint = (candidates: LifeOpsDefinitionRecord[]) => {
+    const match = resolveDuplicateByTimeHint(candidates, ownerText);
+    return match &&
+      resolveDuplicateByTimeHint(candidates, selectorText) === match
+      ? match
+      : null;
+  };
   const normalizedOwnerText = normalizeTitle(ownerText);
   // Exclusions apply to every matching path, including exact IDs and fuzzy
   // fallbacks. A later heuristic must not reintroduce a protected item.
@@ -1424,10 +1418,7 @@ async function resolveDefinitionForMutation(
     };
   }
   if (explicitlyNamed.length > 1) {
-    const byTimeHint = resolveDuplicateByTimeHint(
-      explicitlyNamed,
-      timeHintText,
-    );
+    const byTimeHint = pickByTimeHint(explicitlyNamed);
     if (byTimeHint) {
       return { match: byTimeHint, ambiguousCandidates: [] };
     }
@@ -1461,7 +1452,7 @@ async function resolveDefinitionForMutation(
     };
   }
   if (bestMatches.length >= 1) {
-    const byTimeHint = resolveDuplicateByTimeHint(bestMatches, timeHintText);
+    const byTimeHint = pickByTimeHint(bestMatches);
     if (byTimeHint) {
       return { match: byTimeHint, ambiguousCandidates: [] };
     }
@@ -3460,15 +3451,9 @@ export function readRelativeUpdateDelay(
   // Reject a supplied fractional winning value instead of silently flooring it
   // or falling back to a lower-priority unit. Valid seconds still outrank minutes.
   if (
-    (typeof rawSeconds === "number" &&
-      Number.isFinite(rawSeconds) &&
-      !Number.isInteger(rawSeconds)) ||
-    (seconds === undefined &&
-      typeof rawMinutes === "number" &&
-      Number.isFinite(rawMinutes) &&
-      !Number.isInteger(rawMinutes))
-  )
-    return { ms: null };
+    (typeof rawSeconds === "number" && Number.isFinite(rawSeconds) && !Number.isInteger(rawSeconds)) ||
+    (seconds === undefined && typeof rawMinutes === "number" && Number.isFinite(rawMinutes) && !Number.isInteger(rawMinutes))
+  ) return { ms: null };
   const ms =
     seconds !== undefined
       ? seconds * 1000
@@ -6437,18 +6422,6 @@ async function runLifeOperationHandlerInner(
       const requestedTimeZone = normalizeLifeTimeZoneToken(
         detailString(details, "timezone"),
       );
-      const explicitCadence = normalizeCadenceDetail(
-        detailObject(details, "cadence"),
-      );
-      // A relative delay moves a one-off to that long after the request, the
-      // way create anchors "in N minutes". Ignored before this, "actually make
-      // that 30 minutes" fell through to the free-text extractor, which spent
-      // 11 s reasoning over the bare message and then changed nothing (live
-      // tj-b020ae0157c06c). An explicit cadence outranks it, as scheduledAtIso
-      // outranks a delay on TRIGGER_UPDATE.
-      const relativeDelay = explicitCadence
-        ? null
-        : readRelativeUpdateDelay(params, details);
       const { match: target, ambiguousCandidates } =
         await resolveDefinitionForMutation(
           service,
@@ -6458,17 +6431,13 @@ async function runLifeOperationHandlerInner(
           false,
           targetTitle,
           // Only an edit follows the item just saved: a cancel by name still
-          // asks between live namesakes, and has no new value.
+          // asks between live namesakes.
           archiveOnlyReminder
-            ? {}
+            ? { cancel: true }
             : {
+                cancel: false,
                 recentSaveId: (await readRecentLifeSaveCache(runtime, message))
                   ?.definitionId,
-                dueAt:
-                  explicitCadence?.kind === "once"
-                    ? explicitCadence.dueAt
-                    : undefined,
-                delayMs: relativeDelay?.ms ?? undefined,
               },
         );
       if (!target)
@@ -6513,6 +6482,18 @@ async function runLifeOperationHandlerInner(
           text: `Which timezone should I use for ${requestedTime} on "${target.definition.title}"?`,
         };
       }
+      const explicitCadence = normalizeCadenceDetail(
+        detailObject(details, "cadence"),
+      );
+      // A relative delay moves a one-off to that long after the request, the
+      // way create anchors "in N minutes". Ignored before this, "actually make
+      // that 30 minutes" fell through to the free-text extractor, which spent
+      // 11 s reasoning over the bare message and then changed nothing (live
+      // tj-b020ae0157c06c). An explicit cadence outranks it, as scheduledAtIso
+      // outranks a delay on TRIGGER_UPDATE.
+      const relativeDelay = explicitCadence
+        ? null
+        : readRelativeUpdateDelay(params, details);
       let delayedCadence: LifeOpsCadence | undefined;
       if (relativeDelay) {
         const currentCadence = target.definition.cadence;
