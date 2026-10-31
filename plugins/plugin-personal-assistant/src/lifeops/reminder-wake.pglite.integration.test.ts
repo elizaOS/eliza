@@ -262,12 +262,71 @@ async function createLifeOpsTestRuntime() {
   return fixture;
 }
 
+type WakeProducer = "scheduler_ensure" | "definition_create" | "definition_update" |
+  "definition_snooze" | "owner_profile" | "task_consume" | "unknown";
+type WakeTrace = {
+  callIndex: number;
+  producer: WakeProducer;
+  timestamp: number;
+  requestAt: number | null;
+  consumeRevision: number | null;
+  revisionBefore: null;
+  revisionAfter: null;
+  outcome: "pending" | "patched" | "missing" | "unsupported" | "unknown" | "rejected";
+};
+/** Raw stacks are inspected synchronously, then discarded; only fixed enums escape. */
+function observeWakeProducers(runtime: IAgentRuntime) {
+  const original = runtime.patchTaskMetadata.bind(runtime);
+  const trace: WakeTrace[] = [];
+  let omitted = 0, callIndex = 0;
+  const patches = vi.spyOn(runtime, "patchTaskMetadata").mockImplementation((id, patch) => {
+    const index = callIndex++;
+    const producer: WakeProducer = (() => {
+    const stack = new Error().stack ?? "";
+    return patch.wake?.consumeRevision !== undefined ? "task_consume"
+      : /ensureLifeOpsSchedulerTask/.test(stack) ? "scheduler_ensure"
+      : /owner-profile\.(?:ts|js)/.test(stack) ? "owner_profile"
+      : /snoozeOccurrence/.test(stack) ? "definition_snooze"
+      : /updateDefinition/.test(stack) ? "definition_update"
+      : /createDefinition/.test(stack) ? "definition_create" : "unknown";
+    })();
+    const safe = (value: unknown) => typeof value === "number" && Number.isSafeInteger(value) ? value : null;
+    const row: WakeTrace | undefined = patch.wake ? {
+      callIndex: index, producer, timestamp: Date.now(), requestAt: safe(patch.wake.requestAt),
+      consumeRevision: safe(patch.wake.consumeRevision),
+      // The existing patch result is an enum, not a row/revision snapshot.
+      // Do not add database reads or invent a before/after revision.
+      revisionBefore: null, revisionAfter: null, outcome: "pending",
+    } : undefined;
+    if (row) {
+      if (trace.length === 32) { trace.shift(); omitted++; }
+      trace.push(row);
+    }
+    try {
+      const result = original(id, patch);
+      // Observe settlement without changing the promise returned to the caller.
+      void result.then(
+        value => {
+          if (row) row.outcome = value === "patched" || value === "missing" || value === "unsupported" ? value : "unknown";
+        },
+        () => { if (row) row.outcome = "rejected"; },
+      );
+      return result;
+    } catch (error) {
+      if (row) row.outcome = "rejected";
+      throw error;
+    }
+  });
+  return { patches, trace, omitted: () => omitted };
+}
+
 /** Failure diagnostics expose only bounded scheduler timestamps and wake outcomes. */
 async function wakeDiagnostics(
   now: number,
   task: Awaited<ReturnType<IAgentRuntime["getTask"]>>,
   calls: Parameters<IAgentRuntime["patchTaskMetadata"]>[],
   results: { type: string; value?: unknown }[],
+  producers: { trace: WakeTrace[]; omitted(): number },
 ): Promise<string> {
   const number = (value: unknown) =>
     typeof value === "number" && Number.isFinite(value) ? value : null;
@@ -299,6 +358,10 @@ async function wakeDiagnostics(
     wakeAt: number(task?.metadata?.wakeAt),
     wakeRevision: number(task?.metadata?.wakeRevision),
     omittedWakeCalls: Math.max(0, indexes.length - 16),
+    producerCalls: producers.trace
+      .filter(row => indexes.includes(row.callIndex)).slice(-16)
+      .map(({ callIndex: _index, ...row }) => row),
+    omittedProducerCalls: indexes.length - producers.trace.filter(row => indexes.includes(row.callIndex)).slice(-16).length,
     wakeCalls,
   });
 }
@@ -313,7 +376,8 @@ it("committed create and snooze reconcile the same task, then deliver once at it
   const base = resolveLifeOpsTaskIntervalMs(runtime.agentId);
   let passes = 0,
     ticks = 0;
-  const patches = vi.spyOn(runtime, "patchTaskMetadata");
+  const producers = observeWakeProducers(runtime);
+  const { patches } = producers;
   const passTimes: number[] = [];
   try {
     const service = new LifeOpsService(runtime);
@@ -397,7 +461,7 @@ it("committed create and snooze reconcile the same task, then deliver once at it
     const reconciled = await runtime.getTask(taskId);
     expect(
       reconciled?.metadata?.wakeAt,
-      await wakeDiagnostics(now, reconciled, patches.mock.calls, patches.mock.results),
+      await wakeDiagnostics(now, reconciled, patches.mock.calls, patches.mock.results, producers),
     ).toBe(newDue);
     scheduler = new TaskService(runtime, clock);
     for (now += 1000; now < newDue; now += 1000) await tick();
@@ -527,7 +591,8 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
   const model = vi
     .spyOn(f.runtime, "useModel")
     .mockRejectedValue(Error("No inference"));
-  const patches = vi.spyOn(f.runtime, "patchTaskMetadata");
+  const producers = observeWakeProducers(f.runtime);
+  const { patches } = producers;
   let now = Date.now(),
     passes = 0;
   try {
@@ -598,7 +663,7 @@ it("quiet-blocked due work consumes its wake without a one-second retry loop", a
     const settled = await f.runtime.getTask(taskId);
     expect(
       passes,
-      await wakeDiagnostics(now, settled, patches.mock.calls, patches.mock.results),
+      await wakeDiagnostics(now, settled, patches.mock.calls, patches.mock.results, producers),
     ).toBe(1);
     expect(model).not.toHaveBeenCalled();
   } finally {
