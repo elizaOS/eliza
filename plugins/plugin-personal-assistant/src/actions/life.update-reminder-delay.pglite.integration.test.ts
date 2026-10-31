@@ -435,6 +435,30 @@ it.each([
   },
 );
 
+// On a rename the planner's title can be the new name. It must not pick the
+// other stored item the new name equals ("rename stretch to make dinner").
+it("does not move the item a rename's new title equals", async () => {
+  const stretch = await seed("Stretch", STRETCH_CADENCE);
+  const dinner = await seed("Make dinner", {
+    kind: "once",
+    dueAt: "2026-10-30T15:00:00.000Z",
+    visibilityLeadMinutes: 0,
+  });
+  await updateReminder(
+    {
+      title: "Make dinner",
+      target: "stretch-rename-1",
+      details: { delayMinutes: 30 },
+    },
+    "rename stretch to make dinner and push it 30 minutes",
+  );
+  expect(
+    (await service.getDefinition(dinner.definition.id)).definition,
+  ).toEqual(dinner.definition);
+  await service.deleteDefinition(stretch.definition.id);
+  await service.deleteDefinition(dinner.definition.id);
+});
+
 // A title that is only a substring of a stored title is no deletion warrant.
 it.each([
   {

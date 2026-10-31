@@ -1305,9 +1305,11 @@ async function resolveDefinitionForMutation(
   // A target or title that is exactly one stored title names that item. It
   // outranks the owner-token scoring below, which let "actually make that 30
   // minutes" move and rename "Make dinner" instead of the target "Stretch".
-  // As with a UUID, an item the owner's words name otherwise refuses.
+  // As with a UUID, an item the owner's words name otherwise refuses. The
+  // title may be the new name of a rename ("rename stretch to make dinner"),
+  // so it only names the item when the owner's words name at most one.
   if (!destructive) {
-    const exactNamed = [target, title]
+    const exactNamed = [target, explicitlyNamed.length <= 1 ? title : undefined]
       .map((handle) =>
         handle?.trim()
           ? defs.filter(
