@@ -2,7 +2,8 @@
  * `POST /api/v1/voice/tts` replays a credit reservation for a retried
  * `Idempotency-Key` (#16425). The key names one utterance: a second utterance
  * sent under the same key is a new paid request, while a retry of the same
- * utterance still replays. Real credits service on PGlite; auth, pricing,
+ * utterance still replays. An ElevenLabs rejection releases the reservation.
+ * Real credits service on PGlite; auth, pricing,
  * content safety, the ElevenLabs client, the first-line cache and usage
  * records are replaced.
  */
@@ -15,6 +16,7 @@ import {
   test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { ElevenLabs, ElevenLabsTimeoutError } from "@elevenlabs/elevenlabs-js";
 import * as aiPricing from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import * as elevenlabs from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import * as firstLineCache from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
@@ -30,6 +32,7 @@ setDefaultTimeout(60_000);
 const orgId = randomUUID();
 const userId = randomUUID();
 const providerCalls: string[] = [];
+const providerFailures = new Map<string, Error>();
 const COST_PER_CHAR = 0.001;
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
@@ -61,6 +64,8 @@ mock.module("@elizaos/cloud-shared/lib/services/elevenlabs", () => ({
   getElevenLabsService: () => ({
     textToSpeech: async ({ text }: { text: string }) => {
       providerCalls.push(text);
+      const failure = providerFailures.get(text);
+      if (failure) throw failure;
       return new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(new Uint8Array([0xff, 0xfb, 0x90, 0x00]));
@@ -170,6 +175,7 @@ async function speak(
   text: string,
   idempotencyKey: string,
   identity: { voiceId?: string; modelId?: string } = {},
+  expectedStatus = 200,
 ) {
   const response = await app.request(
     "/api/v1/voice/tts",
@@ -183,9 +189,11 @@ async function speak(
     },
     { NODE_ENV: "test" },
   );
-  if (response.status !== 200)
+  if (response.status !== expectedStatus)
     throw new Error(`tts ${response.status}: ${await response.text()}`);
   await response.arrayBuffer();
+  // A failed request settles before it responds.
+  if (expectedStatus !== 200) return;
   // Settlement runs after the audio response; wait for every reservation to settle.
   for (let i = 0; i < 200; i++) {
     const { rows } = await pg().query<{ open: string }>(
@@ -247,4 +255,21 @@ test("one Idempotency-Key pays for one utterance: a different text is charged, t
   });
   expect(providerCalls).toHaveLength(5);
   expect(await balance()).toBeCloseTo(afterDirect, 6);
+});
+
+test("an ElevenLabs rejection releases the reservation; a failure without a status stays charged", async () => {
+  const rejected = "Please confirm the table for two.";
+  providerFailures.set(rejected, new ElevenLabs.UnprocessableEntityError({}));
+  const beforeRejection = await balance();
+  await speak(rejected, `rejected-${randomUUID()}`, {}, 500);
+  expect(await balance()).toBeCloseTo(beforeRejection, 6);
+
+  const timedOut = "Your order is on its way.";
+  providerFailures.set(timedOut, new ElevenLabsTimeoutError("timed out"));
+  await speak(timedOut, `timeout-${randomUUID()}`, {}, 500);
+  expect(await balance()).toBeCloseTo(
+    beforeRejection - timedOut.length * COST_PER_CHAR,
+    6,
+  );
+  expect(providerCalls.slice(-2)).toEqual([rejected, timedOut]);
 });
