@@ -60,7 +60,8 @@ export interface VoiceSessionMachineState {
   /**
    * The submitted caller turn the agent is still busy with: set by a nonempty
    * `stt_final`, kept through local playback drain until that turn's `usage`
-   * or `interrupted`, a new server session or an explicit barge-in.
+   * or `interrupted`, an empty `stt_final` that replaces it, a new server
+   * session or an explicit barge-in.
    */
   callerTurnTraceId: string | null;
 }
@@ -196,7 +197,9 @@ export function applyServerEvent(
       // Treat it as terminal-of-turn; the caller loops back to listening.
       // trim() matches the server's own LLM-dispatch gate (session.ts
       // commitTurn): the wire text is the raw provider transcript, so a
-      // whitespace-only final is equally leg-less and must not park.
+      // whitespace-only final is equally leg-less and must not park. The
+      // server also commits it as a new turn that replaces a turn still in
+      // flight without that turn's usage, so it ends a held caller turn too.
       if (event.text.trim() === "") {
         return {
           ...state,
@@ -204,6 +207,7 @@ export function applyServerEvent(
           traceId: event.traceId,
           finalTranscript: "",
           interimTranscript: "",
+          callerTurnTraceId: null,
         };
       }
       return {

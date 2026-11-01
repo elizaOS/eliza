@@ -900,6 +900,36 @@ test("only the held turn's own usage or interruption, or an explicit barge-in, r
   expect(h.errors).toHaveLength(0);
 });
 
+test("an empty final while held reopens the microphone, because the server replaced the held turn and never settles it", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  socket.frame({ t: "llm_first_text", traceId: "turn-1" });
+  expect(h.tracks[0].enabled).toBe(false);
+  // Noise that reached the server before the hold ends as an empty turn. The
+  // server commits it as a new turn and drops turn-1 without its usage.
+  socket.frame({ t: "stt_final", text: "", traceId: "turn-2" });
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.client.microphoneHeld).toBe(false);
+  expect(h.tracks[0].enabled).toBe(true);
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 0, traceId: "turn-2" });
+  const count = socket.sent.length;
+  h.pumpAudio();
+  const spoken = audio({ sent: socket.sent.slice(count) });
+  expect(spoken.length).toBeGreaterThan(0);
+  expect(spoken.some(silent)).toBe(false);
+  // The idle rotation proceeds, so the token sever never ends voice.
+  await h.advance(55000);
+  expect(h.mints).toBe(2);
+  expect(socket.sent).toContainEqual({ t: "bye" });
+  expect(h.captures).toBe(1);
+  expect(h.errors).toHaveLength(0);
+  h.sockets[1].frame({ t: "stt_final", text: "and mail", traceId: "turn-3" });
+  expect(h.tracks[0].enabled).toBe(false);
+});
+
 test("manual mute stays independent of the hold in both directions", async () => {
   const h = harness();
   await h.client.start();
@@ -1111,6 +1141,18 @@ test("old usage and old interruption cannot release a newer accepted turn", () =
       { t: "usage", traceId: "second" },
     ]),
   ).toEqual([true, true, true, true, false]);
+});
+
+test("an empty final ends a held turn, since the server commits it as a new turn that replaces the held one", () => {
+  expect(
+    heldAfter([
+      { t: "stt_final", text: "check notes", traceId: "turn" },
+      { t: "llm_first_text", traceId: "turn" },
+      { t: "stt_final", text: " ", traceId: "noise" },
+      { t: "usage", traceId: "noise" },
+      { t: "stt_final", text: "and mail", traceId: "next" },
+    ]),
+  ).toEqual([true, true, false, false, true]);
 });
 
 test("a silent turn releases at its own usage or interruption; an error never releases a turn", () => {
