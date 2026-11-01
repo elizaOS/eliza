@@ -134,6 +134,76 @@ describe("Calendar operation bindings", () => {
         ),
       ).toBeNull();
   });
+  it.each([
+    { intentId: "intent:1", execution: "required", bound: true },
+    { intentId: "intent:1", execution: "conditional", bound: true },
+    { intentId: "intent:2", execution: "required", bound: false },
+    { intentId: "intent:2", execution: "conditional", bound: false },
+  ] as const)(
+    "binds $intentId ($execution) to a message whose Stage 1 lists no intents",
+    async ({ intentId, execution, bound }) => {
+      // Live tj-6a95e9c522dc6a: intents [] with a required intent:1 next_event
+      // read. The binding was dropped and the reply copied from earlier chat
+      // ("Coffee's today") shipped, but Coffee was the day before.
+      const runtime = new AgentRuntime({
+        character: { name: "No listed intents", bio: [] },
+        logLevel: "fatal",
+      });
+      const text = "Um, when am I supposed to have coffee?";
+      const reply = "Coffee's today, 9 to 10 AM.";
+      const message: Memory = {
+        id: stringToUuid("no-listed-intents"),
+        agentId: runtime.agentId,
+        entityId: stringToUuid("owner"),
+        roomId: stringToUuid("room"),
+        createdAt: 1000,
+        content: { text },
+      };
+      const context = {
+        runtime,
+        message,
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER" as const,
+        turnSignal: new AbortController().signal,
+      };
+      const value = calendarReadBindingField.parse?.(
+        [{ intentId, operation: "next_event", execution }],
+        context,
+      );
+      if (!value) throw new Error("Canonical ID rejected");
+      const parsed = {
+        intents: [] as string[],
+        replyText: reply,
+        calendarReadBindings: value,
+      };
+      const effect = await calendarReadBindingField.handle?.({
+        ...context,
+        parsed,
+        value,
+      });
+      effect?.mutateResult?.(parsed);
+      expect(parsed.calendarReadBindings).toEqual(
+        bound
+          ? [
+              {
+                intentId,
+                operation: "next_event",
+                execution,
+                sourceMessageId: message.id,
+                roomId: message.roomId,
+                actorId: message.entityId,
+                requestedAt: 1000,
+              },
+            ]
+          : [],
+      );
+      expect(parsed.intents).toEqual(bound ? [text] : []);
+      // An unbound required read cannot verify the Stage-1 reply.
+      expect(parsed.replyText).toBe(
+        !bound && execution === "required" ? "" : reply,
+      );
+    },
+  );
   it("activates for an owner Notes request when Calendar reads are registered", async () => {
     const runtime = new AgentRuntime({
       character: { name: "Notes request", bio: [] },
