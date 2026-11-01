@@ -112,9 +112,13 @@ callback. App IDs in Cloud and client IDs in Steward belong to different stores
 and must not be assumed interchangeable. No product repository is imported by
 these shared mechanisms.
 
-Before enabling a client, provision its own active, approved app with an active
-owner/organization, an exact allowed callback, and no live generated application
-API key. Use separate registrations in staging and production. Validate the public
+Before enabling a client, an active organization owner or administrator must
+provision its own active, approved app with an exact allowed callback and no live
+generated application API key. The organization owns the app. Its creator is an
+optional audit reference: deleting that user does not delete the app, its billing
+registration, or other customers' grants. Each customer's consent and credential
+remain bound to that customer's user and organization. Use separate registrations
+in staging and production. Validate the public
 `/api/v1/app-auth/mobile/config` response for that client/environment/return URL
 before shipping. The admin preflight allows an `app_url` homepage path on the
 registered HTTPS origin, while `allowed_origins` must contain the sole exact
@@ -138,7 +142,9 @@ Set `ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID` to select the same client for the
 standalone verifier. With the protected environment variables present, run
 `node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
 --skip-database --verify-live` to check its public metadata without a database read.
-Omitting the selector keeps the primary-client release check.
+Omitting the selector checks the primary client. Release gates use `--all-clients`
+to check the primary client and every enabled additional client, both in the
+database before deployment and through public metadata after deployment.
 
 ### App-owned managed Google returns
 

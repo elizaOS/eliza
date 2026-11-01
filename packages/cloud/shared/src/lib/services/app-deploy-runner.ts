@@ -25,6 +25,7 @@
  * per-tenant DSN, never the shared agent URL — is asserted directly.
  */
 
+import { ElizaError } from "@elizaos/core";
 import { appDatabasesRepository } from "../../db/repositories/app-databases";
 import { containersRepository } from "../../db/repositories/containers";
 import { containersEnv } from "../config/containers-env";
@@ -216,6 +217,12 @@ export class DefaultAppDeployRunner implements AppDeployRunner {
     }
 
     try {
+      if (!app.created_by_user_id) {
+        throw new ElizaError("The app's deployment principal is no longer available", {
+          code: "APP_DEPLOY_PRINCIPAL_UNAVAILABLE",
+          severity: "ephemeral",
+        });
+      }
       const appMetadata = (app.metadata as Record<string, unknown>) ?? {};
       const deployMetadata = {
         ...appMetadata,

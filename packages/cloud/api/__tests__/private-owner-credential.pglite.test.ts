@@ -2,12 +2,13 @@
  * Authentication proof and Cloudflare namespace are synthetic; no provider/network calls.
  */
 import { afterAll, beforeAll, beforeEach, expect, mock, test } from "bun:test";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { PGlite } from "@electric-sql/pglite";
 import * as realAuth from "@elizaos/cloud-shared/auth";
 import * as realDb from "@elizaos/cloud-shared/db/client";
 import { apiKeys } from "@elizaos/cloud-shared/db/schemas/api-keys";
 import { apps } from "@elizaos/cloud-shared/db/schemas/apps";
+import { managedDomains } from "@elizaos/cloud-shared/db/schemas/managed-domains";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
@@ -32,14 +33,19 @@ const originalDb = { ...realDb },
   originalAuth = { ...realAuth };
 let authMethod: AppEnv["Variables"]["authMethod"] = "api_key";
 let historyConsumers = 0,
-  namespaceCalls = 0;
+  namespaceCalls = 0,
+  authenticationCalls = 0;
+let publicMetadataRead = false;
 const savedFetch = globalThis.fetch;
 mock.module("@elizaos/cloud-shared/db/client", () => ({
   ...originalDb,
   dbWrite: database,
   dbRead: new Proxy(database, {
-    get() {
-      throw new Error("AUTHORIZATION_REPLICA_FORBIDDEN");
+    get(target, property, receiver) {
+      if (!publicMetadataRead)
+        throw new Error("AUTHORIZATION_REPLICA_FORBIDDEN");
+      const value = Reflect.get(target, property, receiver);
+      return typeof value === "function" ? value.bind(target) : value;
     },
   }),
 }));
@@ -48,6 +54,7 @@ mock.module("@elizaos/cloud-shared/auth", () => ({
   requireUserOrApiKeyWithOrg: async (
     c: Parameters<typeof realAuth.requireUserOrApiKeyWithOrg>[0],
   ) => {
+    authenticationCalls += 1;
     c.set("authMethod", authMethod);
     if (authMethod === "api_key") c.set("apiKeyId", KEY);
     return { id: OWNER, organization_id: ORG, created_at: new Date(0) };
@@ -65,6 +72,21 @@ const { default: statusRoute } = await import(
 const { default: captureRoute } = await import(
   "../admin/shared-runtime-capture/route"
 );
+const { default: mobileConfigRoute } = await import(
+  "../v1/app-auth/mobile/config/route"
+);
+const {
+  deriveMobileAppAuthS256Challenge,
+  issueMobileAppAuthCode,
+  resolveMobileAppAuthRegistration,
+  sha256Hex,
+} = await import("@elizaos/cloud-shared/lib/services/mobile-app-auth");
+const { mobileAppAuthGrantsRepository } = await import(
+  "../../shared/src/db/repositories/mobile-app-auth-grants"
+);
+const { buildMobileAppAuthCredentialProvenance } = await import(
+  "../../shared/src/db/mobile-app-auth-credential-policy"
+);
 const app = new Hono<AppEnv>();
 app.onError((error, c) => failureResponse(c, error));
 app.get("/admit/:agentId", async (c) => {
@@ -76,6 +98,7 @@ app.get("/admit/:agentId", async (c) => {
 app.route("/history/:agentId/:conversationId", historyRoute);
 app.route("/google", statusRoute);
 app.route("/capture", captureRoute);
+app.route("/mobile/config", mobileConfigRoute);
 const quote = (value: string) => `"${value.replaceAll('"', '""')}"`;
 beforeAll(async () => {
   globalThis.fetch = Object.assign(
@@ -94,6 +117,7 @@ beforeAll(async () => {
     users,
     apiKeys,
     apps,
+    managedDomains,
     mobileAppAuthGrants,
   ]) {
     const config = getTableConfig(table);
@@ -114,11 +138,18 @@ beforeAll(async () => {
       `CREATE TABLE ${quote(config.name)} (${config.columns.map((c) => `${quote(c.name)} ${c.getSQLType()}`).join(",")})`,
     );
   }
+  await pg.exec(`
+    ALTER TABLE mobile_app_auth_grants ALTER COLUMN id SET DEFAULT gen_random_uuid();
+    ALTER TABLE mobile_app_auth_grants ALTER COLUMN created_at SET DEFAULT now();
+    ALTER TABLE mobile_app_auth_grants ALTER COLUMN updated_at SET DEFAULT now();
+  `);
 });
 beforeEach(async () => {
   authMethod = "api_key";
   historyConsumers = 0;
   namespaceCalls = 0;
+  authenticationCalls = 0;
+  publicMetadataRead = false;
   await pg.exec(
     "TRUNCATE mobile_app_auth_grants, apps, api_keys, users, organizations",
   );
@@ -273,4 +304,140 @@ test("stale cached auth cannot bypass fresh key revocation/hash or owner lifecyc
   await pg.exec("UPDATE users SET is_active=false");
   expect((await request(`/admit/${AGENT}`)).status).toBe(403);
   expect(historyConsumers).toBe(0);
+});
+
+test("organization-owned public mobile config needs no user and two customer grants retain their own credentials", async () => {
+  const publisherOrg = randomUUID();
+  const otherOrg = randomUUID();
+  const otherUser = randomUUID();
+  await pg.query(
+    "INSERT INTO organizations(id,is_active) VALUES($1,true),($2,true)",
+    [publisherOrg, otherOrg],
+  );
+  await pg.query(
+    "INSERT INTO users(id,organization_id,is_active) VALUES($1,$2,true)",
+    [otherUser, otherOrg],
+  );
+  // The publisher has no creator account. Customers belong to other organizations.
+  await pg.query(
+    "INSERT INTO apps(id,organization_id,created_by_user_id,name,app_url,allowed_origins,is_active,is_approved) VALUES($1,$2,NULL,'Reader','https://eliza.app',$3,true,true)",
+    [APP, publisherOrg, JSON.stringify(["https://eliza.app/auth/callback"])],
+  );
+  const runtime = {
+    ...env(),
+    NODE_ENV: "test",
+    RATE_LIMIT_DISABLED: "true",
+  } as AppEnv["Bindings"];
+  publicMetadataRead = true;
+  const metadata = await app.request(
+    "/mobile/config?clientId=ai.elizaos.app&environment=production&redirectUri=https%3A%2F%2Feliza.app%2Fauth%2Fcallback",
+    // No cookie, Authorization, API-key header, or authenticated context.
+    {},
+    runtime,
+  );
+  publicMetadataRead = false;
+  expect(metadata.status).toBe(200);
+  expect(authenticationCalls).toBe(0);
+  const payload = (await metadata.json()) as Record<string, unknown>;
+  expect(payload).toEqual({
+    success: true,
+    clientId: "ai.elizaos.app",
+    environment: "production",
+    redirectUri: "https://eliza.app/auth/callback",
+    codeChallengeMethod: "S256",
+    scopes: ["cloud:user"],
+    app: { name: "Reader", description: null, logoUrl: null, websiteUrl: null },
+  });
+
+  const registration = resolveMobileAppAuthRegistration(runtime);
+  const now = new Date();
+  const credentials = [];
+  for (const [userId, organizationId] of [
+    [OWNER, ORG],
+    [otherUser, otherOrg],
+  ]) {
+    const binding = {
+      clientId: registration.clientId,
+      environment: registration.environment,
+      redirectUri: registration.redirectUri,
+      state: randomUUID().replaceAll("-", "").repeat(2),
+      codeChallenge: deriveMobileAppAuthS256Challenge("v".repeat(64)),
+      codeChallengeMethod: "S256",
+    };
+    const issued = await issueMobileAppAuthCode({
+      registration,
+      userId,
+      organizationId,
+      binding,
+      now,
+    });
+    const grantBinding = {
+      ...binding,
+      appId: APP,
+      stateHash: sha256Hex(binding.state),
+      codeHash: sha256Hex(issued.code),
+    };
+    const pending = await mobileAppAuthGrantsRepository.findActiveState(
+      grantBinding,
+      now,
+    );
+    expect(pending?.grant.user_id).toBe(userId);
+    expect(pending?.grant.organization_id).toBe(organizationId);
+    expect(pending?.grant.app_id).toBe(APP);
+    if (!pending) throw new Error("Expected issued grant");
+    const provenance = buildMobileAppAuthCredentialProvenance({
+      grantId: pending.grant.id,
+      environment: pending.grant.environment,
+      deviceName: pending.grant.device_name,
+      clientId: pending.grant.client_id,
+      scopes: pending.grant.scopes,
+    });
+    const credentialId = randomUUID();
+    const credentialHash = sha256Hex(randomUUID());
+    const exchanged = await mobileAppAuthGrantsRepository.exchange(
+      grantBinding,
+      {
+        id: credentialId,
+        ...provenance,
+        user_id: userId,
+        organization_id: organizationId,
+        source_app_id: APP,
+        key_hash: credentialHash,
+        key_prefix: "synthetic",
+        is_active: false,
+        expires_at: new Date(now.getTime() + 86_400_000),
+      },
+      now,
+    );
+    expect(exchanged.kind).toBe("created");
+    const acknowledged = await mobileAppAuthGrantsRepository.acknowledge({
+      binding: grantBinding,
+      credentialId,
+      credentialHash,
+      now,
+    });
+    expect(acknowledged?.credential?.user_id).toBe(userId);
+    expect(acknowledged?.credential?.organization_id).toBe(organizationId);
+    expect(acknowledged?.credential?.source_app_id).toBe(APP);
+    expect(acknowledged?.credential?.is_active).toBe(true);
+    credentials.push({ credentialId, grantBinding, userId, organizationId });
+  }
+  expect(credentials[0].credentialId).not.toBe(credentials[1].credentialId);
+  const first = credentials[0];
+  for (const [column, foreignValue] of [
+    ["user_id", otherUser],
+    ["organization_id", otherOrg],
+  ]) {
+    await pg.query(`UPDATE api_keys SET ${column}=$1 WHERE id=$2`, [
+      foreignValue,
+      first.credentialId,
+    ]);
+    await expect(
+      mobileAppAuthGrantsRepository.findActiveState(first.grantBinding, now),
+    ).rejects.toThrow("credential ownership mismatch");
+    await pg.query(`UPDATE api_keys SET ${column}=$1 WHERE id=$2`, [
+      column === "user_id" ? first.userId : first.organizationId,
+      first.credentialId,
+    ]);
+  }
 });

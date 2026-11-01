@@ -10,6 +10,7 @@ import {
   expect,
   test,
 } from "bun:test";
+import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import {
   MOBILE_APP_AUTH_CONFIG_MAX_BYTES,
@@ -20,10 +21,12 @@ import {
   requireMobileAppAuthAppId,
   requireMobileAppAuthEnabled,
   requireMobileAppAuthEnvironment,
+  resolveMobileAppAuthReleaseRegistrations,
   validateDisabledMobileAppAuthConfigPayload,
   validateMobileAppAuthConfigPayload,
   validateMobileAppAuthRegistrationRow,
   verifyLiveMobileAppAuthConfig,
+  verifyMobileAppAuthReleaseRegistrations,
 } from "./verify-mobile-app-auth-registration";
 
 const APP_ID = "11111111-1111-4111-8111-111111111111";
@@ -134,6 +137,125 @@ function disabledConfig() {
   };
 }
 
+const ADDITIONAL_CLIENT = {
+  clientId: "org.example.reader",
+  appId: OTHER_APP_ID,
+  redirectUri: "https://apps.example.org/reader/return",
+  enabled: true,
+};
+const RELEASE_REGISTRY = JSON.stringify([
+  ADDITIONAL_CLIENT,
+  {
+    clientId: "org.example.disabled",
+    appId: THIRD_APP_ID,
+    redirectUri: "https://apps.example.org/disabled/return",
+    enabled: false,
+  },
+]);
+
+describe("all-client mobile App Auth release gate", () => {
+  test("the declared primary and enabled clients must all answer their exact public config", async () => {
+    const called: string[] = [];
+    const fetchConfig = async (input: RequestInfo | URL) => {
+      const url = new URL(String(input));
+      const clientId = url.searchParams.get("clientId") ?? "";
+      called.push(clientId);
+      const body = {
+        ...publicConfig("staging"),
+        clientId,
+        redirectUri: url.searchParams.get("redirectUri"),
+      };
+      return liveResponse("staging", body, {}, url.href);
+    };
+    const release = {
+      primaryAppId: APP_ID,
+      registry: RELEASE_REGISTRY,
+      environment: "staging",
+      verifyLive: true,
+    };
+    await verifyMobileAppAuthReleaseRegistrations(release, {
+      fetch: fetchConfig,
+    });
+    expect(called).toEqual(["ai.elizaos.app", ADDITIONAL_CLIENT.clientId]);
+
+    called.length = 0;
+    await expect(
+      verifyMobileAppAuthReleaseRegistrations(release, {
+        fetch: async (input) => {
+          const url = new URL(String(input));
+          if (url.searchParams.get("clientId") === ADDITIONAL_CLIENT.clientId) {
+            called.push(ADDITIONAL_CLIENT.clientId);
+            return liveResponse(
+              "staging",
+              { success: false, error: "invalid_client" },
+              { status: 401 },
+              url.href,
+            );
+          }
+          return fetchConfig(input);
+        },
+      }),
+    ).rejects.toThrow();
+    expect(called).toEqual(["ai.elizaos.app", ADDITIONAL_CLIENT.clientId]);
+  });
+
+  test("invalid registry fails before any client is accepted; optional empty source keeps only primary", async () => {
+    for (const registry of [
+      "{",
+      "{}",
+      JSON.stringify([ADDITIONAL_CLIENT, { ...ADDITIONAL_CLIENT }]),
+      JSON.stringify([{ ...ADDITIONAL_CLIENT, appId: APP_ID }]),
+    ]) {
+      let calls = 0;
+      await expect(
+        verifyMobileAppAuthReleaseRegistrations(
+          {
+            primaryAppId: APP_ID,
+            registry,
+            environment: "staging",
+            verifyLive: true,
+          },
+          {
+            fetch: async () => {
+              calls++;
+              return liveResponse("staging");
+            },
+          },
+        ),
+      ).rejects.toThrow(/Invalid server mobile client registry/);
+      expect(calls).toBe(0);
+    }
+    for (const registry of [undefined, "", "[]"])
+      expect(
+        resolveMobileAppAuthReleaseRegistrations(APP_ID, registry, "staging"),
+      ).toHaveLength(1);
+  });
+
+  test("release workflow supplies the protected registry to both all-client gates", () => {
+    const workflow = readFileSync(
+      new URL(
+        "../../../../.github/workflows/cloud-cf-release.yml",
+        import.meta.url,
+      ),
+      "utf8",
+    );
+    for (const name of [
+      "Validate protected mobile App Auth registration",
+      "Verify deployed mobile App Auth metadata",
+    ]) {
+      const step = workflow
+        .split(`      - name: ${name}\n`)[1]
+        ?.split("\n      - name:")[0];
+      expect(step).toMatch(
+        /ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: \$\{\{ secrets\.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON \}\}/,
+      );
+      expect(step).toContain(
+        "verify-mobile-app-auth-registration.ts --all-clients",
+      );
+    }
+  });
+});
+
 describe("mobile App Auth deployment preflight", () => {
   test("accepts the dedicated active and approved first-party registration", () => {
     expect(() =>
@@ -200,53 +322,31 @@ describe("mobile App Auth deployment preflight", () => {
     }
   });
 
-  test("requires an active organization and active privileged creator in that organization", () => {
-    expect(() =>
-      validateMobileAppAuthRegistrationRow(
-        registration({ creator_role: "admin" }),
-        APP_ID,
-      ),
-    ).not.toThrow();
-
-    const cases: Array<{
-      row: MobileAppAuthRegistrationRow;
-      expected: RegExp;
-    }> = [
+  test("requires the owning organization, while creator metadata does not gate a product", () => {
+    for (const creator of [
       {
-        row: registration({ organization_exists: false }),
-        expected: /organization must exist and be active/,
+        creator_exists: false,
+        creator_is_active: false,
+        creator_matches_organization: false,
+        creator_role: null,
       },
-      {
-        row: registration({ organization_is_active: false }),
-        expected: /organization must exist and be active/,
-      },
-      {
-        row: registration({ creator_exists: false }),
-        expected: /creator must exist and be active/,
-      },
-      {
-        row: registration({ creator_is_active: false }),
-        expected: /creator must exist and be active/,
-      },
-      {
-        row: registration({ creator_matches_organization: false }),
-        expected: /belong to its organization/,
-      },
-      {
-        row: registration({ creator_role: "member" }),
-        expected: /owner or admin/,
-      },
-      {
-        row: registration({ creator_role: null }),
-        expected: /owner or admin/,
-      },
-    ];
-
-    for (const { expected, row } of cases) {
-      expect(() => validateMobileAppAuthRegistrationRow(row, APP_ID)).toThrow(
-        expected,
-      );
-    }
+      { creator_is_active: false },
+      { creator_matches_organization: false },
+      { creator_role: "member" },
+    ])
+      expect(() =>
+        validateMobileAppAuthRegistrationRow(registration(creator), APP_ID),
+      ).not.toThrow();
+    for (const organization of [
+      { organization_exists: false },
+      { organization_is_active: false },
+    ])
+      expect(() =>
+        validateMobileAppAuthRegistrationRow(
+          registration(organization),
+          APP_ID,
+        ),
+      ).toThrow(/organization must exist and be active/);
   });
 
   test("requires the generated key reference to be absent or durably revoked", () => {
@@ -515,7 +615,7 @@ describe("mobile App Auth registration database snapshot", () => {
   async function insertApp(input: {
     id: string;
     organizationId: string;
-    creatorId: string;
+    creatorId: string | null;
     appUrl?: string;
     allowedOrigins?: unknown;
     isActive?: boolean;
@@ -591,7 +691,7 @@ describe("mobile App Auth registration database snapshot", () => {
       CREATE TABLE apps (
         id uuid PRIMARY KEY,
         organization_id uuid NOT NULL,
-        created_by_user_id uuid NOT NULL,
+        created_by_user_id uuid,
         app_url text NOT NULL,
         allowed_origins jsonb NOT NULL,
         is_active boolean NOT NULL,
@@ -632,6 +732,49 @@ describe("mobile App Auth registration database snapshot", () => {
 
   test("returns no fabricated state when the configured app is missing", async () => {
     await expect(readRegistration()).resolves.toBeUndefined();
+  });
+
+  test("all-client database gate rejects a missing enabled app even when primary is valid", async () => {
+    await seedSelectedRegistration();
+    const checked: string[] = [];
+    const databasePort = async (
+      _url: string,
+      appId: string,
+      target: Parameters<typeof queryMobileAppAuthRegistration>[2],
+    ) => {
+      checked.push(appId);
+      const row = await queryMobileAppAuthRegistration(
+        async (text, values) =>
+          database.query<MobileAppAuthRegistrationRow>(text, values),
+        appId,
+        target,
+      );
+      validateMobileAppAuthRegistrationRow(row, appId, target);
+    };
+    const release = {
+      primaryAppId: APP_ID,
+      registry: RELEASE_REGISTRY,
+      environment: "staging",
+      databaseUrl: "controlled-pglite",
+    };
+    await expect(
+      verifyMobileAppAuthReleaseRegistrations(release, {
+        database: databasePort,
+      }),
+    ).rejects.toThrow(/does not resolve/);
+    expect(checked).toEqual([APP_ID, OTHER_APP_ID]);
+    await insertApp({
+      id: OTHER_APP_ID,
+      organizationId: ORGANIZATION_ID,
+      creatorId: CREATOR_ID,
+      appUrl: "https://apps.example.org",
+      allowedOrigins: [ADDITIONAL_CLIENT.redirectUri],
+    });
+    checked.length = 0;
+    await verifyMobileAppAuthReleaseRegistrations(release, {
+      database: databasePort,
+    });
+    expect(checked).toEqual([APP_ID, OTHER_APP_ID]);
   });
 
   test("caps duplicate discovery and ignores inactive or unapproved callback rows", async () => {
@@ -682,7 +825,7 @@ describe("mobile App Auth registration database snapshot", () => {
     ).toThrow(/Exactly one active and approved app/);
   });
 
-  test("distinguishes an active key from a same-owner durable revocation", async () => {
+  test("distinguishes an active key from a same-organization durable revocation", async () => {
     await seedSelectedRegistration();
     await database.query(
       `INSERT INTO api_keys
@@ -718,16 +861,47 @@ describe("mobile App Auth registration database snapshot", () => {
     ).not.toThrow();
 
     await database.query(
+      "UPDATE api_keys SET user_id = $2::uuid WHERE id = $1::uuid",
+      [GENERATED_KEY_ID, OTHER_CREATOR_ID],
+    );
+    const formerCreatorKey = await readRegistration();
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(formerCreatorKey, APP_ID),
+    ).not.toThrow();
+
+    await database.query(
       "UPDATE api_keys SET organization_id = $2::uuid WHERE id = $1::uuid",
       [GENERATED_KEY_ID, OTHER_ORGANIZATION_ID],
     );
     const wrongOwnerKey = await readRegistration();
     expect(() =>
       validateMobileAppAuthRegistrationRow(wrongOwnerKey, APP_ID),
-    ).toThrow(/same owner/);
+    ).toThrow(/same organization/);
   });
 
-  test("derives organization and creator authority from joined primary state", async () => {
+  test("an active organization keeps its registration after its creator leaves or is deleted", async () => {
+    await seedSelectedRegistration();
+    await database.query(
+      "UPDATE users SET organization_id = $2::uuid, is_active = FALSE, deleted_at = now() WHERE id = $1::uuid",
+      [CREATOR_ID, OTHER_ORGANIZATION_ID],
+    );
+    const departed = await readRegistration();
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(departed, APP_ID),
+    ).not.toThrow();
+    await database.query(
+      "UPDATE apps SET created_by_user_id = NULL WHERE id = $1::uuid",
+      [APP_ID],
+    );
+    await database.query("DELETE FROM users WHERE id = $1::uuid", [CREATOR_ID]);
+    const deleted = await readRegistration();
+    expect(deleted?.creator_exists).toBe(false);
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(deleted, APP_ID),
+    ).not.toThrow();
+  });
+
+  test("derives active organization authority from joined primary state", async () => {
     await seedSelectedRegistration();
     await database.query(
       "UPDATE organizations SET is_active = FALSE WHERE id = $1::uuid",
