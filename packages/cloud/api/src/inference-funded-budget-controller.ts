@@ -1,7 +1,6 @@
 /** Coordinates local delegated admission with durable primary effect receipts. */
 
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
-import type { InferenceBudgetPolicy } from "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission";
 import type { InferenceFundingBudgetConsumption } from "@elizaos/cloud-shared/lib/services/inference-funding-budget-protocol";
 import {
   budgetConsumptionPayload,
@@ -9,6 +8,7 @@ import {
   signBudgetEffect,
   verifyBudgetEffect,
 } from "@elizaos/cloud-shared/lib/services/inference-funding-budget-protocol";
+import type { InferenceBudgetPolicy } from "@elizaos/cloud-shared/lib/services/inference-policy-contract";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import {
   InferenceAdmissionBudget,
@@ -22,6 +22,16 @@ export interface FundedBudgetCallbacks {
   withAuthority<T>(operation: () => Promise<T>): Promise<T>;
   checkCredential(credential: unknown): Promise<Response | null>;
   consumeRate(request: unknown): Promise<Response>;
+  consumeRatePolicy(request: {
+    organizationId: string;
+    endpointType: string;
+    maxRequests: number;
+    /** Present only when the key cap binds below the plan's combined tier. */
+    apiKey?: { id: string; maxRequests: number };
+    operationId: string;
+    operationDeadlineAt: number;
+    windowStartedAt: number;
+  }): Promise<Response>;
 }
 interface PolicyState {
   organizationId: string;
@@ -79,6 +89,12 @@ const record = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 const id = (value: unknown): value is string =>
   typeof value === "string" && value.length > 0 && value.trim() === value;
+const RATE_POLICY_ENDPOINTS = new Set([
+  "completions",
+  "embeddings",
+  "standard",
+  "strict",
+]);
 const credentialIdentity = (c: Credential) =>
   JSON.stringify([
     c.kind,
@@ -191,15 +207,16 @@ export class InferenceFundedBudgetController {
   }
   private async authorized(
     input: Admission,
+    rateOnly = false,
   ): Promise<InferenceBudgetPolicy | Response> {
     const state = await this.state(input.organizationId);
     const policy = state.policy;
-    if (state.cutoverAt > Date.now())
+    if (!rateOnly && state.cutoverAt > Date.now())
       return error("Rate counter cutover is pending");
     if (
       state.pendingMutationIds.length !== 0 ||
       !policy ||
-      policy.enabled !== true ||
+      (rateOnly ? policy.rateEnabled !== true : policy.enabled !== true) ||
       policy.organizationId !== input.organizationId ||
       policy.validUntil <= Date.now()
     )
@@ -226,6 +243,103 @@ export class InferenceFundedBudgetController {
         organizationId: input.organizationId,
       })) ?? policy
     );
+  }
+
+  /**
+   * Rate-only admission. The Worker proves a cached (epoch, generation, key
+   * cap) triple read in one primary snapshot; this object accepts it only while
+   * no policy mutation is pending and its own published epoch is identical.
+   * The decision consumes the same `rate-limit:v2` counters as the primary
+   * path, so either path may serve any request without resetting a window.
+   * Warm calls perform no primary I/O; only a missing or expired policy
+   * hydrates, and a hydration failure refuses so the Worker uses the primary.
+   */
+  private async ratePolicy(
+    organizationId: string,
+    body: Record<string, unknown>,
+  ): Promise<Response> {
+    const credential = body.credential;
+    if (
+      !id(body.operationId) ||
+      String(body.operationId).length > 128 ||
+      !id(body.policyEpoch) ||
+      !id(body.policyGeneration) ||
+      !RATE_POLICY_ENDPOINTS.has(String(body.endpointType)) ||
+      !Number.isSafeInteger(body.operationDeadlineAt) ||
+      Number(body.operationDeadlineAt) <= Date.now() ||
+      !Number.isSafeInteger(body.windowStartedAt) ||
+      !record(credential) ||
+      credential.kind !== "api_key" ||
+      !id(credential.credentialId) ||
+      !id(credential.userId) ||
+      !Number.isSafeInteger(credential.rateLimit) ||
+      Number(credential.rateLimit) <= 0 ||
+      !(
+        credential.expiresAt === null ||
+        Number.isSafeInteger(credential.expiresAt)
+      ) ||
+      (credential.organizationId !== undefined &&
+        credential.organizationId !== organizationId)
+    )
+      return error("Invalid rate policy proof", 400);
+    const input = { ...body, organizationId } as unknown as Admission;
+    const decide = () =>
+      this.callbacks.withAuthority(() => this.authorized(input, true));
+    let policy = await decide();
+    if (policy instanceof Response) {
+      const state = await this.callbacks.withAuthority(() =>
+        this.state(organizationId),
+      );
+      // Only a cold or expired projection hydrates; a stale proof never does.
+      if (
+        state.pendingMutationIds.length !== 0 ||
+        (state.policy && state.policy.validUntil > Date.now())
+      )
+        return policy;
+      await this.policy(organizationId);
+      policy = await decide();
+      if (policy instanceof Response) return policy;
+    }
+    const tiers = policy.rateLimits;
+    const keyLimit = Number(credential.rateLimit);
+    const planCeiling =
+      tiers.completionsRpm +
+      tiers.embeddingsRpm +
+      tiers.standardRpm +
+      tiers.strictRpm;
+    const response = await this.callbacks.consumeRatePolicy({
+      organizationId,
+      endpointType: input.endpointType,
+      maxRequests: tiers[`${input.endpointType}Rpm` as keyof typeof tiers],
+      // Same binding rule as the primary path's readApiKeyRateLimit.
+      ...(keyLimit < planCeiling
+        ? {
+            apiKey: {
+              id: String(credential.credentialId),
+              maxRequests: keyLimit,
+            },
+          }
+        : {}),
+      operationId: String(body.operationId),
+      operationDeadlineAt: Number(body.operationDeadlineAt),
+      windowStartedAt: Number(body.windowStartedAt),
+    });
+    // A denial is always safe to return; any other non-allow is not a decision.
+    if (response.status === 429) return response;
+    if (response.status !== 200)
+      return error("Inference rate counter is unavailable");
+    // The counter call ran outside the authority queue so it never blocks
+    // revocation or mutation fences. An allow stands only if the same epoch is
+    // still current, nothing began a mutation, and the credential is unrevoked;
+    // otherwise the Worker re-decides on the primary path.
+    const confirmed = await decide();
+    if (confirmed instanceof Response) return confirmed;
+    if (
+      confirmed.epoch !== policy.epoch ||
+      confirmed.policyGeneration !== policy.policyGeneration
+    )
+      return error("Credential policy proof is stale");
+    return response;
   }
   private async rate(
     input: Admission,
@@ -746,6 +860,8 @@ export class InferenceFundedBudgetController {
       );
     await this.callbacks.withAuthority(async () => {
       const state = await this.state(organizationId);
+      if (!state.policy?.enabled && policy.enabled)
+        state.cutoverAt = (Math.floor(Date.now() / 60000) + 1) * 60000;
       if (!state.policy || BigInt(policy.epoch) >= BigInt(state.policy.epoch))
         state.policy = policy;
       state.pendingMutationIds = state.pendingMutationIds.filter(
@@ -762,6 +878,8 @@ export class InferenceFundedBudgetController {
       return error("Invalid budget organization", 400);
     const organizationId = body.organizationId;
     try {
+      if (path === "/rate-policy/rate")
+        return await this.ratePolicy(organizationId, body);
       if (path === "/policy-mutation/begin" && id(body.mutationId))
         return this.begin(
           organizationId,
@@ -912,6 +1030,8 @@ export class InferenceFundedBudgetController {
           await this.resolve(state.organizationId, mutationId);
         else if (mutation) await this.schedule(mutation.validUntil);
       }
+      // Rate-only enrollment has no grants, settlement work, or budget alarms.
+      if (this.env.INFERENCE_FUNDED_BUDGET_ADMISSION !== "true") return;
       const budget = new InferenceAdmissionBudget(
         this.storage,
         state.organizationId,

@@ -688,6 +688,8 @@ export interface Bindings {
   INFERENCE_STRONG_REVOCATION_ENABLED?: string;
   /** Delegated, primary-backed inference budgets; enroll organizations only after validation. */
   INFERENCE_FUNDED_BUDGET_ADMISSION?: string;
+  /** Fenced rate-only admission; separate from funded escrow and default off. */
+  INFERENCE_RATE_POLICY_ADMISSION?: string;
   INFERENCE_FUNDING_BUDGET_SEAL_SECRET?: string;
   /**
    * "true" serves warm Worker admission from the published admission snapshot:

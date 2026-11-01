@@ -172,11 +172,16 @@ export function parseNativeCloudRoutingDeclaration(
   } catch {
     throw new Error("Native Cloud runtime declaration is invalid");
   }
+  // Local Cloud servers use unprivileged HTTPS ports, including Android's
+  // emulator-to-host alias. Published Cloud endpoints keep their default port.
   if (
     url.protocol !== "https:" ||
     url.username ||
     url.password ||
-    url.port ||
+    (url.port &&
+      !["localhost", "127.0.0.1", "[::1]", "10.0.2.2"].includes(
+        url.hostname,
+      )) ||
     url.search ||
     url.hash ||
     url.pathname !== "/api/v1" ||

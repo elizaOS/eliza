@@ -25,6 +25,8 @@ import {
   validateTraceKeysResponse,
 } from "./cloudflare-inference-trace-evidence.ts";
 
+const STAGING_WORKER = "eliza-cloud-api-staging";
+const PRODUCTION_WORKER = "eliza-cloud-api-prod";
 const SHA = "a".repeat(40);
 const TRACE_A = "1".repeat(32);
 const TRACE_B = "2".repeat(32);
@@ -313,11 +315,11 @@ test("request builders use only official ad-hoc telemetry query fields", () => {
     keyNeedle: { value: "$metadata.", isRegex: false, matchCase: true },
     limit: 1_000,
   });
-  const roots = buildRootTraceQuery(timeframe, references);
+  const roots = buildRootTraceQuery(timeframe, references, STAGING_WORKER);
   assert.equal(roots.view, "traces");
   assert.equal(roots.dry, true);
   assert.equal(roots.parameters.filters[1].filters.length, 22);
-  const events = buildTraceEventsQuery(timeframe, TRACE_A);
+  const events = buildTraceEventsQuery(timeframe, TRACE_A, STAGING_WORKER);
   assert.equal(events.view, "events");
   assert.deepEqual(events.parameters.filters[1], {
     kind: "filter",
@@ -376,13 +378,19 @@ test("key discovery validates every filter and sanitizer field before querying",
 
 test("query parsers distinguish incomplete runs, zero samples, and multiple samples", () => {
   assert.deepEqual(
-    parseRootTraceResponse(queryEnvelope("traces", [], "STARTED")),
+    parseRootTraceResponse(
+      queryEnvelope("traces", [], "STARTED"),
+      STAGING_WORKER,
+    ),
     { completed: false, traceIds: [] },
   );
-  assert.deepEqual(parseRootTraceResponse(queryEnvelope("traces", [])), {
-    completed: true,
-    traceIds: [],
-  });
+  assert.deepEqual(
+    parseRootTraceResponse(queryEnvelope("traces", []), STAGING_WORKER),
+    {
+      completed: true,
+      traceIds: [],
+    },
+  );
   assert.deepEqual(
     parseRootTraceResponse(
       queryEnvelope(
@@ -398,6 +406,7 @@ test("query parsers distinguish incomplete runs, zero samples, and multiple samp
           traceId,
         })),
       ),
+      STAGING_WORKER,
     ),
     { completed: true, traceIds: [TRACE_A, TRACE_B] },
   );
@@ -424,6 +433,7 @@ test("sanitizer emits only phase, coarse colo, rounded duration, and coverage in
   const sample = sanitizeTraceEvents(
     completeTraceEvents({ privateValue }),
     references,
+    STAGING_WORKER,
   );
   assert.deepEqual(sample, {
     sample: 1,
@@ -475,7 +485,7 @@ test("unknown admission paths fail closed while missing sampled spans remain inc
     (value) => value.$metadata.id === "rate-subrequest",
   ).$metadata.url = "https://inference-admission.internal/unreviewed-operation";
   assert.throws(
-    () => sanitizeTraceEvents(unknown, references),
+    () => sanitizeTraceEvents(unknown, references, STAGING_WORKER),
     /unknown phase/,
   );
   assert.equal(
@@ -484,13 +494,17 @@ test("unknown admission paths fail closed while missing sampled spans remain inc
         (value) => value.$metadata.id !== "billing-root",
       ),
       references,
+      STAGING_WORKER,
     ),
     null,
   );
   const missingUrl = completeTraceEvents();
   delete missingUrl.find((value) => value.$metadata.id === "rate-subrequest")
     .$metadata.url;
-  assert.equal(sanitizeTraceEvents(missingUrl, references), null);
+  assert.equal(
+    sanitizeTraceEvents(missingUrl, references, STAGING_WORKER),
+    null,
+  );
 });
 
 test("collector reports zero sampled traces explicitly and removes no privacy fields", async () => {
@@ -498,6 +512,7 @@ test("collector reports zero sampled traces explicitly and removes no privacy fi
   const calls = [];
   try {
     const evidence = await collectInferenceTraceEvidence({
+      worker: STAGING_WORKER,
       pairedRecords: pairedRecords(),
       deploySha: SHA,
       accountId: "private-account-id",
@@ -550,9 +565,7 @@ test("collector reports zero sampled traces explicitly and removes no privacy fi
 for (const environment of ["staging", "production"]) {
   test(`collector sanitizes ${environment} sampled traces and polls STARTED runs`, async () => {
     const worker =
-      environment === "production"
-        ? "eliza-cloud-api"
-        : "eliza-cloud-api-staging";
+      environment === "production" ? PRODUCTION_WORKER : STAGING_WORKER;
     const targetFixture = (value) =>
       JSON.parse(
         JSON.stringify(value).replaceAll("eliza-cloud-api-staging", worker),
@@ -564,6 +577,7 @@ for (const environment of ["staging", "production"]) {
     try {
       const evidence = await collectInferenceTraceEvidence({
         environment,
+        worker,
         pairedRecords: pairedRecords(),
         deploySha: SHA,
         accountId: "private-account-id",
@@ -670,6 +684,7 @@ test("collector reports a sampled trace with an unclassifiable URL as inconclusi
   let eventCalls = 0;
   try {
     const evidence = await collectInferenceTraceEvidence({
+      worker: STAGING_WORKER,
       pairedRecords: pairedRecords(),
       deploySha: SHA,
       accountId: "private-account-id",
@@ -711,6 +726,7 @@ test("API failures never copy private response content into errors", async () =>
   const directory = await mkdtemp(join(tmpdir(), "eliza-trace-boundary-"));
   try {
     const error = await collectInferenceTraceEvidence({
+      worker: STAGING_WORKER,
       pairedRecords: pairedRecords(),
       deploySha: SHA,
       accountId: "private-account-id",
@@ -835,6 +851,7 @@ test("collector preserves sanitized keys and query denials without accepting pri
       try {
         await assert.rejects(
           collectInferenceTraceEvidence({
+            worker: STAGING_WORKER,
             pairedRecords: pairedRecords(),
             deploySha: SHA,
             accountId: "private-account-id",
@@ -900,11 +917,11 @@ test("trace placement uses the Worker span rather than the ingress Ray colo", ()
   const { references } = pairedGatewayTraceWindow(pairedRecords());
   const events = completeTraceEvents();
   events[0].$metadata.region = "SJC";
-  const sample = sanitizeTraceEvents(events, references);
+  const sample = sanitizeTraceEvents(events, references, STAGING_WORKER);
   assert.equal(sample.ingressColo, "ORD");
   assert.equal(sample.workerColo, "SJC");
   delete events[0].$metadata.region;
-  assert.equal(sanitizeTraceEvents(events, references), null);
+  assert.equal(sanitizeTraceEvents(events, references, STAGING_WORKER), null);
 });
 
 test("collector follows event cursors and rejects incomplete, repeated, or conflicting pages", async () => {
@@ -928,6 +945,7 @@ test("collector follows event cursors and rejects incomplete, repeated, or confl
     let targetEventPage = 0;
     try {
       const capture = collectInferenceTraceEvidence({
+        worker: STAGING_WORKER,
         pairedRecords: pairedRecords(),
         deploySha: SHA,
         accountId: "private-account",
@@ -995,18 +1013,19 @@ test("collector follows event cursors and rejects incomplete, repeated, or confl
 test("trace sanitization rejects evidence from the other environment", () => {
   const { references } = pairedGatewayTraceWindow(pairedRecords());
   assert.throws(
-    () => sanitizeTraceEvents(completeTraceEvents(), references, "production"),
+    () =>
+      sanitizeTraceEvents(completeTraceEvents(), references, PRODUCTION_WORKER),
     /metadata schema/,
   );
   const production = JSON.parse(
     JSON.stringify(completeTraceEvents()).replaceAll(
       "eliza-cloud-api-staging",
-      "eliza-cloud-api",
+      PRODUCTION_WORKER,
     ),
   );
   assert.throws(
-    () => sanitizeTraceEvents(production, references),
+    () => sanitizeTraceEvents(production, references, STAGING_WORKER),
     /metadata schema/,
   );
-  assert.ok(sanitizeTraceEvents(production, references, "production"));
+  assert.ok(sanitizeTraceEvents(production, references, PRODUCTION_WORKER));
 });

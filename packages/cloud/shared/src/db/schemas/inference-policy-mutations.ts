@@ -1,4 +1,4 @@
-/** Durable policy publication receipts for enrolled inference escrow authorities. */
+/** Durable policy publication receipts for enrolled inference authorities. */
 import { sql } from "drizzle-orm";
 import {
   bigint,
@@ -19,6 +19,7 @@ export const inferencePolicyAuthorities = pgTable(
       .primaryKey()
       .references(() => organizations.id, { onDelete: "restrict" }),
     enabled: boolean("enabled").notNull().default(false),
+    rate_enabled: boolean("rate_enabled").notNull().default(false),
     epoch: bigint("epoch", { mode: "bigint" }).notNull().default(0n),
     updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   },
