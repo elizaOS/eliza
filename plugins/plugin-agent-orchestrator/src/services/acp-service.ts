@@ -133,7 +133,9 @@ import {
   forwardableSubAgentEnv as applySubAgentEnvPolicy,
   canonicalForwardedEnvKey,
   isCloudKeyForwardingOptIn,
+  isDeniedSpawnEnvKey,
   isDeniedSubAgentEnvKey,
+  isForwardedCloudCredentialKey,
   SUB_AGENT_SYSTEM_ENV_KEYS,
 } from "./sub-agent-env-policy.js";
 import { writeWorkspaceIdentity } from "./sub-agent-identity.js";
@@ -5438,14 +5440,14 @@ export class AcpService extends Service {
     // which the broker-first path exists to avoid.
     if (
       isCloudKeyForwardingEnabled() &&
-      Object.keys(env).some((key) => key.startsWith("ELIZAOS_CLOUD"))
+      Object.keys(env).some(isForwardedCloudCredentialKey)
     ) {
       this.log(
         "warn",
-        "ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS is set: forwarding the owner's raw ELIZAOS_CLOUD* creds into the sub-agent env (broker-first is bypassed). The child now holds the owner Cloud key — prefer the parent-agent broker (apps.create / containers.create) and the credential bridge instead.",
+        "ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS is set: forwarding the owner's raw ELIZAOS_CLOUD* / ELIZA_CLOUD_* creds into the sub-agent env (broker-first is bypassed). The child now holds the owner Cloud key — prefer the parent-agent broker (apps.create / containers.create) and the credential bridge instead.",
         {
-          forwardedCloudKeys: Object.keys(env).filter((key) =>
-            key.startsWith("ELIZAOS_CLOUD"),
+          forwardedCloudKeys: Object.keys(env).filter(
+            isForwardedCloudCredentialKey,
           ),
           childSessionId,
         },
@@ -5467,7 +5469,10 @@ export class AcpService extends Service {
     }
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (typeof value !== "string") continue;
-      if (isDeniedSubAgentEnvKey(key)) {
+      // The spawn env carries the credentials this spawner mints per child
+      // (bridge token, Pi route key); every other host-only credential is
+      // denied here exactly as it is for process.env and customCredentials.
+      if (isDeniedSpawnEnvKey(key)) {
         this.log("warn", "rejecting spawn env matching env deny-list", {
           key,
         });
