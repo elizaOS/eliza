@@ -10,6 +10,7 @@ import { z } from "zod";
 import {
   executeRawSql,
   executeRawSqlTx,
+  type LifeOpsDatabaseContext,
   sqlQuote,
   type TransactionalDb,
   withTransaction,
@@ -31,6 +32,12 @@ const operationTarget = z.discriminatedUnion("kind", [
       kind: z.literal("family-packet-approval"),
       packetId: z.string().min(1),
       draftVersion: z.number().int().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("family-intake-import"),
+      selectionId: z.string().min(1),
     })
     .strict(),
   z
@@ -83,7 +90,7 @@ const schema = [
 ] as const;
 
 export async function ensureFamilyWorkspaceOperationStore(
-  runtime: IAgentRuntime,
+  runtime: LifeOpsDatabaseContext,
   agentId = runtime.agentId,
 ) {
   for (const statement of schema) await executeRawSql(runtime, statement);
@@ -130,7 +137,7 @@ export async function assertFamilyWorkspaceReadable(
 
 /** Inspect state and mutate canonical stores under a shared, ordered lock inventory. */
 export async function withFamilyWorkspaceStateTransaction<T>(
-  runtime: IAgentRuntime,
+  runtime: LifeOpsDatabaseContext,
   tables: readonly string[],
   mutate: (tx: TransactionalDb, state: FamilyWorkspaceState) => Promise<T>,
   options: {
@@ -174,7 +181,7 @@ export async function withFamilyWorkspaceStateTransaction<T>(
  * so the sorted table-lock order matches the reviewed deletion transaction.
  */
 export async function withActiveFamilyWorkspaceTransaction<T>(
-  runtime: IAgentRuntime,
+  runtime: LifeOpsDatabaseContext,
   tables: readonly string[],
   mutate: (tx: TransactionalDb) => Promise<T>,
   agentId = runtime.agentId,

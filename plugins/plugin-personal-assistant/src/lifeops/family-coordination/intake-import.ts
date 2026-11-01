@@ -8,9 +8,14 @@ import {
   ElizaError,
   type IAgentRuntime,
   resolveOwnerEntityIdOrDefault,
+  type UUID,
 } from "@elizaos/core";
 import { DocumentService } from "@elizaos/plugin-assistant";
 import { z } from "zod";
+import {
+  beginFamilyWorkspaceOperation,
+  settleFamilyWorkspaceOperation,
+} from "../family-workflows/workspace-operation-store.js";
 import {
   type FamilyIntakeReview,
   FamilyIntakeReviewStore,
@@ -54,6 +59,25 @@ export async function importFamilyCorrespondence(
     throw new ElizaError("The canonical document service is unavailable", {
       code: "FAMILY_INTAKE_SOURCE_UNAVAILABLE",
     });
+  // The claim refuses a fenced workspace before the document write and keeps a
+  // reviewed deletion from fencing between that write and its selection.
+  const operationId = await beginFamilyWorkspaceOperation(runtime, {
+    kind: "family-intake-import",
+    selectionId: input.id,
+  });
+  try {
+    return await importAdmitted(runtime, documents, owner, input);
+  } finally {
+    await settleFamilyWorkspaceOperation(runtime, operationId);
+  }
+}
+
+async function importAdmitted(
+  runtime: IAgentRuntime,
+  documents: DocumentService,
+  owner: UUID,
+  input: z.infer<typeof familyIntakeImportSchema>,
+): Promise<FamilyIntakeReview> {
   const added = await documents.addDocument({
     agentId: runtime.agentId,
     worldId: runtime.agentId,

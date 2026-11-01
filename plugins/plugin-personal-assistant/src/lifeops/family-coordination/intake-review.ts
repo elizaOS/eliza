@@ -6,9 +6,11 @@
  */
 import { ElizaError, validateUuid } from "@elizaos/core";
 import { z } from "zod";
+import { withActiveFamilyWorkspaceTransaction } from "../family-workflows/workspace-operation-store.js";
 import { normalizeHouseholdIdentifier } from "../household/types.js";
 import {
   executeRawSql,
+  executeRawSqlTx,
   type LifeOpsDatabaseContext,
   parseJsonValue,
   sqlQuote,
@@ -241,8 +243,7 @@ export class FamilyIntakeReviewStore {
       createdAt: now,
       updatedAt: now,
     };
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await this.insert(
       `INSERT INTO app_lifeops.life_family_intake_reviews
        (agent_id,id,period_key,document_id,revision,status,review_json)
        VALUES (${sqlQuote(this.runtime.agentId)},${sqlQuote(selection.id)},${sqlQuote(selection.periodKey)},${sqlQuote(selection.source.documentId)},1,'selected',${sqlQuote(JSON.stringify(review))}::jsonb)
@@ -435,6 +436,15 @@ export class FamilyIntakeReviewStore {
     });
   }
 
+  /** Selections and revisions are family work: a deletion fence refuses them. */
+  private insert(statement: string): Promise<Array<Record<string, unknown>>> {
+    return withActiveFamilyWorkspaceTransaction(
+      this.runtime,
+      ["app_lifeops.life_family_intake_reviews"],
+      (tx) => executeRawSqlTx(tx, statement),
+    );
+  }
+
   private conflict(id: string): never {
     throw new ElizaError(
       "The intake review changed; reload it before continuing",
@@ -469,8 +479,7 @@ export class FamilyIntakeReviewStore {
     // Immutable revisions retain the original proposal and owner decisions. The
     // unique next-revision key arbitrates concurrent inserts, including across
     // PostgreSQL processes; a losing edit cannot append or overwrite history.
-    const rows = await executeRawSql(
-      this.runtime,
+    const rows = await this.insert(
       `INSERT INTO app_lifeops.life_family_intake_reviews
        (agent_id,id,period_key,document_id,revision,status,review_json)
        SELECT ${sqlQuote(this.runtime.agentId)},${sqlQuote(value.id)},${sqlQuote(value.periodKey)},${sqlQuote(value.source.documentId)},${value.revision},${sqlQuote(value.status)},${sqlQuote(JSON.stringify(value))}::jsonb
