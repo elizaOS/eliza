@@ -66,11 +66,16 @@ describe("exact ingress persistence", () => {
         memory.id,
       );
       // Core permits exact publication replay, including every immutable segment.
-      await expect(runtime.createMessageMemory(memory)).resolves.toBe(memory.id);
+      await expect(runtime.createMessageMemory(memory)).resolves.toBe(
+        memory.id,
+      );
       await expect(
         runtime.createMessageMemory({
           ...memory,
-          content: { ...memory.content, text: `${memory.content.text}different` },
+          content: {
+            ...memory.content,
+            text: `${memory.content.text}different`,
+          },
         }),
       ).rejects.toMatchObject({ code: "MESSAGE_CONTENT_PUBLICATION_CONFLICT" });
       const stored = await runtime.getMemoryById(memory.id);

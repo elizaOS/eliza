@@ -21,6 +21,13 @@ const receipt: EffectReceipt = {
   },
 };
 
+function requireStepResult<T>(result: T | null | undefined): T {
+  if (result == null) {
+    throw new Error("child trajectory step is missing its result");
+  }
+  return result;
+}
+
 // Exercise the normal evaluator and planner, with only model/executor ports fake.
 // The action does not stamp verifiedUserFacing or a final-sentence proof.
 async function childResult() {
@@ -309,12 +316,15 @@ describe("sub-planner final reply proof projection", () => {
         };
         child.trajectory.steps = child.trajectory.steps.map((step) => ({
           ...step,
-          result: { ...step.result!, effectReceipts: [preview] },
+          result: {
+            ...requireStepResult(step.result),
+            effectReceipts: [preview],
+          },
         }));
       } else {
         child.trajectory.steps = child.trajectory.steps.map((step) => ({
           ...step,
-          result: { ...step.result!, text: message },
+          result: { ...requireStepResult(step.result), text: message },
         }));
       }
       const projected = subPlannerResultToPlannerToolResult(child);
@@ -349,7 +359,7 @@ describe("sub-planner final reply proof projection", () => {
     child.trajectory.steps = child.trajectory.steps.map((step) => ({
       ...step,
       result: {
-        ...step.result!,
+        ...requireStepResult(step.result),
         transcriptVisibility: undefined,
         userFacingText: message,
         verifiedUserFacing: true,
