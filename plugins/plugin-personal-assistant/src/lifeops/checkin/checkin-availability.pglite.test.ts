@@ -413,15 +413,16 @@ describe("check-in source availability and generation failures", () => {
       }
       await db.exec(`CREATE SCHEMA app_calendar;
       CREATE TABLE app_calendar.life_calendar_events (
-        id text, agent_id text, title text, start_at text, end_at text,
-        status text, html_link text, updated_at text,
+        id text, agent_id text, side text, title text, start_at text,
+        end_at text, status text, html_link text, updated_at text,
         is_all_day boolean NOT NULL DEFAULT false
       );
       INSERT INTO app_calendar.life_calendar_events VALUES
-        ('owner-day', 'checkin-availability', 'Owner-zone meeting',
+        ('owner-day', 'checkin-availability', 'owner', 'Owner-zone meeting',
          '2026-10-03T05:00:00.000Z', '2026-10-03T06:00:00.000Z',
          'confirmed', NULL, '2026-10-02T18:00:00.000Z', false),
-        ('deployment-day', 'checkin-availability', 'Previous owner-day meeting',
+        ('deployment-day', 'checkin-availability', 'owner',
+         'Previous owner-day meeting',
          '2026-10-02T01:00:00.000Z', '2026-10-02T02:00:00.000Z',
          'confirmed', NULL, '2026-10-01T18:00:00.000Z', false);
       CREATE TABLE app_lifeops.life_inbox_messages (
