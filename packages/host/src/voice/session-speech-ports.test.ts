@@ -320,12 +320,12 @@ test("a final reply that repeats the spoken progress cue is not spoken twice; ne
     f.session.bye();
   }
 });
-test("two spoken progress cues are removed only from the leading reply, with terminal speech closure", async () => {
+test("one model acknowledgment is removed from the reply while remaining model text is preserved", async () => {
   const cue = "Opening Calendar for you.";
-  const nextCue = "Still working on that.";
+  const replyPrefix = "Still working on that.";
   for (const detail of ["New content.", "New content. ".repeat(24), ""]) {
     const f = await setup();
-    const reply = `${cue} ${nextCue} ${detail}`;
+    const reply = `${cue} ${replyPrefix} ${detail}`;
     f.respond(
       [
         { type: "status", kind: "thinking", label: cue },
@@ -334,22 +334,21 @@ test("two spoken progress cues are removed only from the leading reply, with ter
       ]
         .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
         .join(""),
-      8000,
+      50,
     );
     f.session.start();
     f.emit({ type: "connected", raw: {} });
     f.emit({ type: "start-of-turn", transcript: "", raw: {} });
     f.emit({ type: "end-of-turn", transcript: "open calendar", raw: {} });
-    for (
-      let i = 0;
-      i < 900 && !f.control.some((frame) => frame.t === "usage");
-      i++
-    )
-      await sleep(10);
     await until(() => f.control.some((frame) => frame.t === "usage"));
-    expect(f.phrases.slice(0, 2)).toEqual([cue, nextCue]);
-    expect(f.phrases.slice(2).join(" ").replace(/\s+/g, " ").trim()).toBe(
-      detail.trim(),
+    // Only the admitted model label is progress. The provisional "On it."
+    // does not create a second cue or become authoritative reply speech.
+    expect(
+      f.control.filter((frame) => frame.t === "progress").map((frame) => frame.text),
+    ).toEqual([cue]);
+    expect(f.phrases[0]).toBe(cue);
+    expect(f.phrases.slice(1).join(" ").replace(/\s+/g, " ").trim()).toBe(
+      `${replyPrefix} ${detail}`.trim(),
     );
     expect(f.control.some((frame) => frame.t === "reply_complete")).toBe(true);
     expect(f.control.some((frame) => frame.t === "error")).toBe(false);
