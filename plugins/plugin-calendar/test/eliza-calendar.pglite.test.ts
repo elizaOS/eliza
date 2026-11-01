@@ -1417,6 +1417,12 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
       "2026-08-09T13:00:00",
       "2026-08-10T01:00:00.000Z",
     ],
+    [
+      "Move my 9pm to 10:30",
+      "2026-08-09T21:00:00.000Z",
+      "2026-08-09T10:30:00",
+      "2026-08-09T22:30:00.000Z",
+    ],
   ])(
     "moves %s to the bare hour nearest the event, not the model's other half of the day",
     async (text, startAt, extractedStartAt, expectedStartAt) => {

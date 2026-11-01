@@ -3107,7 +3107,7 @@ export function observedCalendarDayWindow(
  * compound clauses and conflicting source dates retain ordinary lookup/extraction.
  */
 const WHOLE_CLOCK_MOVE_QUERY = new RegExp(
-  `^(?:please\\s+)?(?:(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?(?:move|reschedule)\\s+(?:(?:my|the|this|that|our)\\s+)?(?<source>(?:${STATED_CLOCK_MENTION_SOURCE}))\\s+to\\s+(?:(?:${STATED_CLOCK_MENTION_SOURCE})|(?<bare>(?:[1-9]|1[0-2])(?::[0-5]\\d)?))\\s*[.!?]?$`,
+  `^(?:please\\s+)?(?:(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?(?:move|reschedule)\\s+(?:(?:my|the|this|that|our)\\s+)?(?<source>(?:${STATED_CLOCK_MENTION_SOURCE}))\\s+to\\s+(?:(?<bare>(?:[1-9]|1[0-2])(?::[0-5]\\d)?)(?=\\s*[.!?]?$)|(?:${STATED_CLOCK_MENTION_SOURCE}))\\s*[.!?]?$`,
   "iu",
 );
 
