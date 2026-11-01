@@ -183,3 +183,68 @@ test("waiting on provisional text never creates a repeating synthetic cue", asyn
   expect(result.completed).toBe(true);
   expect(progress).toEqual([]);
 });
+
+test("activity labels are shown once each, in order, and never spoken", async () => {
+  const progress: string[] = [];
+  const activity: string[] = [];
+  const body = sse(
+    { type: "status", kind: "thinking", label: "Let me have a look." },
+    {
+      type: "status",
+      kind: "running_tool",
+      toolName: "CALENDAR",
+      label: "Using Calendar",
+    },
+    { type: "status", kind: "evaluating", label: "Using Calendar" },
+    {
+      type: "status",
+      kind: "running_tool",
+      toolName: "CALENDAR",
+      label: "Using Calendar",
+    },
+    {
+      type: "status",
+      kind: "running_tool",
+      toolName: "NOTES",
+      label: "Using Notes",
+    },
+    { type: "status", kind: "running_tool", toolName: "LOOKUP" },
+    { type: "token", text: "Two meetings and one note." },
+    {
+      type: "status",
+      kind: "running_tool",
+      toolName: "VIEWS",
+      label: "Using Views",
+    },
+    { type: "done", fullText: "Two meetings and one note." },
+  );
+  const result = await streamElizaConversation(
+    {
+      endpoint: "https://fixture.invalid",
+      authorization: "fixture-only",
+      model: "unused",
+      transcript: "what's on my calendar and do I have any notes",
+      agentId: "agent",
+      conversationId: "conversation",
+      traceId: "a".repeat(32),
+      signal: new AbortController().signal,
+      onProgress: (text) => {
+        progress.push(text);
+      },
+      onActivity: (label) => {
+        activity.push(label);
+      },
+      fetchImpl: Object.assign(
+        async () =>
+          new Response(body, {
+            headers: { "content-type": "text/event-stream" },
+          }),
+        { preconnect() {} },
+      ),
+    },
+    () => {},
+  );
+  expect(result.completed).toBe(true);
+  expect(progress).toEqual(["Let me have a look."]);
+  expect(activity).toEqual(["Using Calendar", "Using Notes"]);
+});

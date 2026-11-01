@@ -322,7 +322,8 @@ test("a final reply that repeats the spoken progress cue is not spoken twice; ne
 });
 test("one model acknowledgment is removed from the reply while remaining model text is preserved", async () => {
   const cue = "Opening Calendar for you.";
-  const replyPrefix = "Still working on that.";
+  // Ordinary model reply text; no runtime-manufactured cue exists any more.
+  const replyPrefix = "Here is your week.";
   for (const detail of ["New content.", "New content. ".repeat(24), ""]) {
     const f = await setup();
     const reply = `${cue} ${replyPrefix} ${detail}`;
@@ -357,6 +358,56 @@ test("one model acknowledgment is removed from the reply while remaining model t
     f.session.bye();
   }
 }, 25000);
+test("activity names are shown in order but never spoken", async () => {
+  const cue = "Let me have a look.";
+  const reply = "Two meetings and one note.";
+  const f = await setup();
+  f.respond(
+    [
+      { type: "status", kind: "thinking", label: cue },
+      {
+        type: "status",
+        kind: "running_tool",
+        toolName: "CALENDAR",
+        label: "Using Calendar",
+      },
+      {
+        type: "status",
+        kind: "running_tool",
+        toolName: "NOTES",
+        label: "Using Notes",
+      },
+      { type: "done", text: reply },
+    ]
+      .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+      .join(""),
+  );
+  f.session.start();
+  f.emit({ type: "connected", raw: {} });
+  f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  f.emit({
+    type: "end-of-turn",
+    transcript: "what's on my calendar and do I have notes",
+    raw: {},
+  });
+  await until(() => f.control.some((frame) => frame.t === "usage"));
+  expect(
+    f.control
+      .filter((frame) => frame.t === "progress" || frame.t === "activity")
+      .map((frame) => [
+        frame.t,
+        frame.t === "progress" ? frame.text : frame.label,
+      ]),
+  ).toEqual([
+    ["progress", cue],
+    ["activity", "Using Calendar"],
+    ["activity", "Using Notes"],
+  ]);
+  expect(f.phrases.join(" ").replace(/\s+/g, " ").trim()).toBe(
+    `${cue} ${reply}`,
+  );
+  f.session.bye();
+});
 test("a reply that arrives after Cartesia closes the idle cue context is still spoken", async () => {
   const cue = "Let me check your calendar.";
   const reply = "Nothing on your calendar today. It's clear.";

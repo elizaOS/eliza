@@ -2556,10 +2556,14 @@ async function generateChatResponseWithTiming(
     // `running_action`, not one per chunk) by tracking the last signature.
     let lastStatusSignature = "";
     let planningAcknowledgment: string | undefined;
+    // The latest transient label (the model acknowledgement, then each
+    // content-free activity) carries through later unlabeled phases.
+    let transientStatusLabel: string | undefined;
     const emitStatus = (status: ChatTurnStatus): void => {
       if (!opts?.onStatus) return;
-      const visibleStatus = planningAcknowledgment
-        ? { ...status, label: planningAcknowledgment }
+      if (status.label) transientStatusLabel = status.label;
+      const visibleStatus = transientStatusLabel
+        ? { ...status, label: transientStatusLabel }
         : status;
       const signature = JSON.stringify(visibleStatus);
       if (signature === lastStatusSignature) return;
@@ -2885,8 +2889,20 @@ async function generateChatResponseWithTiming(
                           // One transient label survives tool phases without entering
                           // response text or durable terminal persistence.
                           planningAcknowledgment = text;
-                          emitStatus({ kind: "thinking" });
+                          emitStatus({ kind: "thinking", label: text });
                           markInference("chat:planning-acknowledgment");
+                        }
+                      : undefined,
+                    // Audience-checked, content-free activity names drive the
+                    // working indicator on every turn, owner-private included.
+                    onActivityStatus: opts?.onStatus
+                      ? ({ actionName, label }) => {
+                          if (generationAbortController.signal.aborted) return;
+                          emitStatus({
+                            kind: "running_tool",
+                            toolName: actionName,
+                            label,
+                          });
                         }
                       : undefined,
                     onSettledActionResult: (actionResult) => {

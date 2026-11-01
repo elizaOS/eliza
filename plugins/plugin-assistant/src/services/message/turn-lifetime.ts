@@ -1,6 +1,7 @@
 /** Owns message-turn admission, preemption, terminal events, and the per-room delivered-reply persistence barrier. Response processing is a typed collaborator and each service instance owns its own pending writes. */
 
 import type {
+  Action,
   HandlerCallback,
   IAgentRuntime,
   Memory,
@@ -41,6 +42,7 @@ import {
   ownerExclusiveDisclosureWasUsed,
   parseBooleanFromText,
   RunTerminalOwner,
+  resolveActionContexts,
   resolveTraceCorrelationFromEnv,
   revalidateOwnerExclusiveDisclosure,
   runWithInferenceTiming,
@@ -53,6 +55,10 @@ import {
 } from "@elizaos/core";
 import { v4 } from "uuid";
 import { parseCodingActionProfile } from "../../runtime/coding-action-profile.ts";
+import {
+  buildRuntimeActionLookup,
+  resolveRuntimeAction,
+} from "./action-identifiers.ts";
 import { resolveStage1SenderRole } from "./addressing.js";
 import type { ResolvedMessageOptions } from "./contracts.js";
 import {
@@ -72,6 +78,28 @@ import {
   detachPostDeliverySideEffect,
   latestResponseIds,
 } from "./turn-session.ts";
+
+/**
+ * Content-free activity label from the action's registered category. Catch-all
+ * and system contexts name no activity. The context's sensitivity says whether
+ * publishing the activity needs an owner-only audience.
+ */
+function activityStatusCategory(
+  runtime: IAgentRuntime,
+  action: Action,
+): { label: string; public: boolean } | undefined {
+  for (const context of resolveActionContexts(action)) {
+    if (context === "general" || context === "simple") continue;
+    const definition = runtime.contexts.get(context);
+    const label = definition?.label?.trim();
+    if (!label || definition?.sensitivity === "system") continue;
+    return {
+      label: `Using ${label}`,
+      public: definition?.sensitivity === "public",
+    };
+  }
+  return undefined;
+}
 
 export interface MessageTurnLifetimeHost {
   processMessage(
@@ -358,6 +386,18 @@ export class MessageTurnLifetime {
 
         // Single ID used for tracking, streaming, and the final message (before opts / chunk wrapper).
         const responseId = asUUID(v4());
+        // Transient egress (acknowledgement, activity status) belongs to this
+        // live response only: not after cancellation, preemption or the final
+        // reply's delivery.
+        const transientEgressIsCurrent = (): boolean =>
+          !(getStreamingContext()?.abortSignal ?? options?.abortSignal)
+            ?.aborted &&
+          !finalReplyDelivered &&
+          (opts.keepExistingResponses ||
+            latestResponseIds
+              .get(runtime.agentId)
+              ?.get(message.roomId)
+              ?.at(-1) === responseId);
 
         // WHY voice detection wraps onStreamChunk here instead of using a
         // separate AsyncLocalStorage streaming context:
@@ -508,17 +548,8 @@ export class MessageTurnLifetime {
             ? async (text) => {
                 // The existing model-authored acknowledgement remains turn-owned:
                 // await audience revalidation before any irreversible speech.
-                const signal =
-                  getStreamingContext()?.abortSignal ?? options.abortSignal;
                 const isCurrent = () =>
-                  !signal?.aborted &&
-                  !finalReplyDelivered &&
-                  !firstSentenceSent &&
-                  (opts.keepExistingResponses ||
-                    latestResponseIds
-                      .get(runtime.agentId)
-                      ?.get(message.roomId)
-                      ?.at(-1) === responseId);
+                  transientEgressIsCurrent() && !firstSentenceSent;
                 if (
                   planningAcknowledgmentAttempted ||
                   !text.trim() ||
@@ -595,6 +626,60 @@ export class MessageTurnLifetime {
           recordDeliveredVisibleText,
           async () => opts.prepareReplyRecovery?.(),
         );
+
+        // One content-free status per activity, in order. Its label is the
+        // action's registered category, never arguments or results. Unless the
+        // category is public and nothing owner-exclusive was used or gated, it
+        // is published only after the audience revalidates (fail closed).
+        let activityStatusTail: Promise<void> = Promise.resolve();
+        let lastActivityLabel: string | undefined;
+        const announceActivity = options?.onActivityStatus
+          ? (toolName: string): Promise<void> => {
+              const announced = activityStatusTail.then(async () => {
+                const action = resolveRuntimeAction(
+                  buildRuntimeActionLookup(runtime),
+                  toolName,
+                );
+                const category = action
+                  ? activityStatusCategory(runtime, action)
+                  : undefined;
+                if (
+                  !action ||
+                  !category ||
+                  category.label === lastActivityLabel ||
+                  !transientEgressIsCurrent()
+                )
+                  return;
+                if (
+                  !category.public ||
+                  action.disclosureGate ||
+                  ownerExclusiveDisclosureWasUsed(message)
+                ) {
+                  const audience = await revalidateOwnerExclusiveDisclosure(
+                    runtime,
+                    message,
+                  );
+                  if (!audience.allowed || !transientEgressIsCurrent()) return;
+                }
+                lastActivityLabel = category.label;
+                await options.onActivityStatus?.({
+                  actionName: action.name,
+                  label: category.label,
+                });
+              });
+              activityStatusTail = announced.catch(() => undefined);
+              return announced;
+            }
+          : undefined;
+        const onToolCall = async (
+          payload: StreamingToolCallPayload,
+        ): Promise<void> => {
+          await announceActivity?.(payload.toolCall.name);
+          await opts.onStreamChunk?.(
+            JSON.stringify({ type: "tool_call", ...payload }),
+            responseId,
+          );
+        };
 
         // A host route may open the timer before calling the message service so
         // augmentation and response normalization share this same timeline.
@@ -719,12 +804,7 @@ export class MessageTurnLifetime {
                   ...(opts.abortSignal
                     ? { abortSignal: opts.abortSignal }
                     : {}),
-                  onToolCall: async (payload: StreamingToolCallPayload) => {
-                    await opts.onStreamChunk?.(
-                      JSON.stringify({ type: "tool_call", ...payload }),
-                      responseId,
-                    );
-                  },
+                  onToolCall,
                   onToolResult: async (payload: StreamingToolResultPayload) => {
                     await opts.onStreamChunk?.(
                       JSON.stringify({ type: "tool_result", ...payload }),
@@ -754,6 +834,7 @@ export class MessageTurnLifetime {
                     messageId: responseId,
                     abortSignal: opts.abortSignal,
                     reportError: runtime.reportError.bind(runtime),
+                    ...(announceActivity ? { onToolCall } : {}),
                   }
                 : undefined;
           const processingPromise = runtime.turnControllers.runWith(
@@ -783,6 +864,7 @@ export class MessageTurnLifetime {
                         modelAttemptTurnId: message.id,
                         abortSignal,
                         reportError: runtime.reportError.bind(runtime),
+                        ...(announceActivity ? { onToolCall } : {}),
                       }
                     : undefined;
               return runWithInferenceTiming(inferenceTimer, () =>
