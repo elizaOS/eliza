@@ -28,11 +28,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import {
-  extractUserText,
-  logger,
-  unwrapUserMessageText,
-} from "@elizaos/core";
+import { extractUserText, logger, unwrapUserMessageText } from "@elizaos/core";
 
 const CONNECT_ACCOUNT = "CONNECT_ACCOUNT";
 
