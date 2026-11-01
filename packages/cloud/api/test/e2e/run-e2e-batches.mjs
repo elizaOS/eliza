@@ -1,4 +1,3 @@
-import { ownedPostgresFixtureAuthority } from "../../../scripts/api/strict-fixture-authority.mjs";
 // Exercises cloud API test e2e run e2e batches behavior with deterministic Worker route fixtures.
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -18,6 +17,7 @@ import {
   stopOwnedChild,
 } from "../../../scripts/admin/integration-harness-lifecycle.ts";
 import { createE2eDatabaseStore } from "../../../scripts/api/e2e-database-store.ts";
+import { ownedPostgresFixtureAuthority } from "../../../scripts/api/strict-fixture-authority.mjs";
 import { waitForWorkerHealth } from "./_helpers/worker-health.ts";
 
 const testDir = dirname(fileURLToPath(import.meta.url));
