@@ -21,6 +21,10 @@
  *   A `secret` target with source "api" and no cloud/tunnel resolves to delivery
  *   mode "dm_or_owner_app_instruction" (sensitive-request-policy.ts), so the
  *   tunnel-auth 403 gate is not hit and create/get succeed keyless.
+ *   Create/get responses redact caller-supplied callback metadata through
+ *   redactSensitiveRequestMetadata, so credential-named keys are checked on
+ *   both the write response and the read-back (camelCase keys included;
+ *   documented non-secret fields stay readable).
  *
  * NOTE (judgment call): the sensitive-request API exposes create (POST) and
  * fetch-by-id (GET /:id) only — there is no list endpoint — so the lifecycle
@@ -155,5 +159,87 @@ describe("permissions + sensitive-request real coverage", () => {
       "/api/sensitive-requests/does-not-exist",
     );
     expect(missing.status).toBe(404);
+  });
+
+  it("redacts credential keys in callback metadata on create and read-back, keeping documented non-secret fields readable", async () => {
+    const create = await req(port(), "POST", "/api/sensitive-requests", {
+      kind: "secret",
+      agentId: "live-test-agent",
+      source: "api",
+      target: { kind: "secret", key: "live_test_secret_key" },
+      callback: {
+        authorizationUrl: "https://consent.example/authorize?client_id=1",
+        credentialScopeId: "vault://secrets/live-test",
+        http: {
+          url: "https://cb.example/hook",
+          headers: {
+            // camelCase credential names the separator-anchored words alone missed
+            accessToken: "live-test-camel-access-token",
+            refreshToken: "live-test-camel-refresh-token",
+            clientSecret: "live-test-camel-client-secret",
+            userPassword: "live-test-camel-password",
+            // forms that were already masked before the shared-policy union
+            refresh_token: "live-test-snake-refresh-token",
+            "x-api-key": "live-test-snake-api-key",
+            // non-secret diagnostics and documented id/url fields stay readable
+            idempotencyKey: "live-test-idempotency-key",
+            tokenCount: "live-test-token-count",
+          },
+        },
+      },
+    });
+    expect(create.status).toBe(201);
+
+    type CallbackRecord = {
+      callback?: {
+        authorizationUrl?: string;
+        credentialScopeId?: string;
+        http?: { headers?: Record<string, string> };
+      };
+    };
+    function assertRedaction(record: CallbackRecord, context: string) {
+      const headers = record.callback?.http?.headers ?? {};
+      expect(`${context} accessToken`, headers.accessToken).toBe("[redacted]");
+      expect(`${context} refreshToken`, headers.refreshToken).toBe(
+        "[redacted]",
+      );
+      expect(`${context} clientSecret`, headers.clientSecret).toBe(
+        "[redacted]",
+      );
+      expect(`${context} userPassword`, headers.userPassword).toBe(
+        "[redacted]",
+      );
+      expect(`${context} refresh_token`, headers.refresh_token).toBe(
+        "[redacted]",
+      );
+      expect(`${context} x-api-key`, headers["x-api-key"]).toBe("[redacted]");
+      expect(`${context} idempotencyKey`, headers.idempotencyKey).toBe(
+        "live-test-idempotency-key",
+      );
+      expect(`${context} tokenCount`, headers.tokenCount).toBe(
+        "live-test-token-count",
+      );
+      expect(
+        `${context} authorizationUrl`,
+        record.callback?.authorizationUrl,
+      ).toBe("https://consent.example/authorize?client_id=1");
+      expect(
+        `${context} credentialScopeId`,
+        record.callback?.credentialScopeId,
+      ).toBe("vault://secrets/live-test");
+    }
+
+    const created = create.data.request as CallbackRecord;
+    assertRedaction(created, "create response");
+
+    const fetched = await req(
+      port(),
+      "GET",
+      `/api/sensitive-requests/${encodeURIComponent(
+        create.data.request.id as string,
+      )}`,
+    );
+    expect(fetched.status).toBe(200);
+    assertRedaction(fetched.data.request as CallbackRecord, "read-back");
   });
 });
