@@ -74,6 +74,30 @@ separate migration work.
 
 ## Development
 
+Speech-only clients can use `/api/v1/voice/speech/consent`, `/session`, `/ws`,
+and `/session/:sessionId/revoke` under that prefix. Enable only after qualifying
+`VOICE_SPEECH_RELAY_ENABLED=true` and the `SPEECH_RELAY_SESSIONS` binding. This
+does not move an agent, its model calls, tools, or history to Cloud. The scoped,
+single-use capability expires 60 seconds after mint. Clients must close/revoke
+it when the account changes and renew it explicitly after expiry.
+
+One Durable Object owns each session. It admits the server-enforced budget at
+bootstrap: 60 seconds of 16 kHz mono PCM16 input and 4096 TTS characters. Audio
+frames and TTS phrases do not query the database or repeat account/credit
+admission. Existing durable inference leases retain uncertain provider costs
+after interruption or a crash. `CARTESIA_STT_USD_PER_CREDIT` supplies the account
+rate; streaming Ink-2 costs three credits per input second and Sonic one credit
+per character. Bootstrap and final accounting can access the primary store.
+Other inference and legacy batch speech routes retain their own admission paths.
+
+The speech-only Ink profile uses responsive thresholds and a 1280 ms final-turn
+timeout. `VOICE_SPEECH_END_TIMEOUT_MS` can select an integer clamped to 640–5000
+ms. Eager-end remains a distinct event; it is never promoted to a final transcript.
+Positive text moderation receipts use a 60-second, exact-input cache bound to
+the tenant, model, policy revision and moderation credential. Skipped, warned,
+degraded, or failed checks never enter that cache. Change
+`CONTENT_SAFETY_POLICY_REVISION` when deployment policy changes.
+
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash

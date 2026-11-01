@@ -156,6 +156,10 @@ name = "AUTHENTICATION_STATE"
 class_name = "AuthenticationState"
 
 [[durable_objects.bindings]]
+name = "SPEECH_RELAY_SESSIONS"
+class_name = "SpeechRelayCoordinator"
+
+[[durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
 class_name = "SharedRuntimeConversation"
 
@@ -190,6 +194,10 @@ class_name = "PersonalTelegramDelivery"
 # Declarative exports preserve the existing namespaces without replaying the
 # Worker's historical migration tags. Do not mix this with `[[migrations]]`.
 [exports.AuthenticationState]
+type = "durable-object"
+storage = "sqlite"
+
+[exports.SpeechRelayCoordinator]
 type = "durable-object"
 storage = "sqlite"
 
@@ -610,6 +618,10 @@ routes = [
 type = "durable-object"
 storage = "sqlite"
 
+[env.staging.exports.SpeechRelayCoordinator]
+type = "durable-object"
+storage = "sqlite"
+
 [env.staging.exports.HfEgressState]
 type = "durable-object"
 storage = "sqlite"
@@ -868,6 +880,9 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 # sync so a redeploy from develop does not silently flip realtime OFF. Production
 # remains explicitly off (flag flip there is a separate, gated decision).
 VOICE_REALTIME_WS_ENABLED = "true"
+# Speech-only streaming is qualified in staging before production promotion.
+VOICE_SPEECH_RELAY_ENABLED = "true"
+VOICE_SPEECH_END_TIMEOUT_MS = "1280"
 VOICE_REALTIME_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
 VOICE_REALTIME_ELIZA_ENDPOINT = "https://api-staging.eliza.app"
 VOICE_REALTIME_ELIZA_MODEL = "qwen-3.8-27b"
@@ -926,6 +941,10 @@ class_name = "HfEgressState"
 [[env.staging.durable_objects.bindings]]
 name = "AUTHENTICATION_STATE"
 class_name = "AuthenticationState"
+
+[[env.staging.durable_objects.bindings]]
+name = "SPEECH_RELAY_SESSIONS"
+class_name = "SpeechRelayCoordinator"
 
 [[env.staging.durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
@@ -1206,6 +1225,9 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 # Production voice powers both authenticated app sessions and signed Twilio
 # media streams. Keep it explicit so a deploy cannot silently hang up calls.
 VOICE_REALTIME_WS_ENABLED = "true"
+# Enable only in the reviewed production promotion after the staging proof.
+VOICE_SPEECH_RELAY_ENABLED = "false"
+VOICE_SPEECH_END_TIMEOUT_MS = "1280"
 ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"
 FORCE_REDIS_EVENTS = "false"
@@ -1258,6 +1280,10 @@ class_name = "HfEgressState"
 [[env.production.durable_objects.bindings]]
 name = "AUTHENTICATION_STATE"
 class_name = "AuthenticationState"
+
+[[env.production.durable_objects.bindings]]
+name = "SPEECH_RELAY_SESSIONS"
+class_name = "SpeechRelayCoordinator"
 
 [[env.production.durable_objects.bindings]]
 name = "SHARED_RUNTIME_CONVERSATIONS"
