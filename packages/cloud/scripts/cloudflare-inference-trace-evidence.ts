@@ -297,8 +297,16 @@ export function validateTraceKeysResponse(text) {
         result.length >= TRACE_KEYS_LIMIT
           ? `; listing filled its ${TRACE_KEYS_LIMIT}-key page`
           : "";
+      // Cloudflare's own $metadata key names are schema, not request data. A
+      // missing key is reviewed against the names that replaced it.
+      const catalog = [...discovered]
+        .filter(([name]) => /^\$metadata\.[A-Za-z0-9_.]{1,64}$/.test(name))
+        .map(([name, types]) => `${name}:${[...types].sort().join("|")}`)
+        .sort()
+        .slice(0, 64)
+        .join(",");
       throw new CloudflareTraceSchemaError(
-        `Cloudflare trace key contract changed for ${key}: expected ${type}, observed ${observed}${page}`,
+        `Cloudflare trace key contract changed for ${key}: expected ${type}, observed ${observed}${page}; catalog ${catalog || "empty"}`,
       );
     }
   }
