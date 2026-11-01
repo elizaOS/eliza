@@ -2,12 +2,16 @@
  * `POST /api/v1/voice/tts` replays a credit reservation for a retried
  * `Idempotency-Key` (#16425). The key names one utterance: a second utterance
  * sent under the same key is a new paid request, while a retry of the same
- * utterance still replays. Real credits service on PGlite; auth, pricing,
- * content safety, the ElevenLabs client, the first-line cache and usage
- * records are replaced.
+ * utterance still replays. The paid lane reads the first-line cache and the
+ * catalog price while moderation runs, and every gate still holds: no cached
+ * audio, credit reservation or synthesis before moderation passes, and no
+ * synthesis without an admitted reservation. Real credits service on PGlite;
+ * auth, pricing, content safety, the ElevenLabs client, the first-line cache
+ * and usage records are replaced.
  */
 import {
   afterAll,
+  afterEach,
   beforeAll,
   expect,
   mock,
@@ -15,7 +19,9 @@ import {
   test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import * as aiPricing from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import { AiPricingCacheWarmingError } from "@elizaos/cloud-shared/lib/services/ai-pricing/cache";
 import * as elevenlabs from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import * as firstLineCache from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
@@ -32,6 +38,36 @@ const userId = randomUUID();
 const providerCalls: string[] = [];
 const COST_PER_CHAR = 0.001;
 
+/** Ordered marks from the replaced pre-synthesis steps of one request. */
+const events: string[] = [];
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const timedStep = (name: string, ms: number) => async () => {
+  events.push(`${name}:start`);
+  await sleep(ms);
+  events.push(`${name}:end`);
+};
+const cachedOpener = {
+  bytes: new Uint8Array([0x49, 0x44, 0x33, 0x04]),
+  contentType: "audio/mpeg",
+  byteSize: 4,
+  hitCount: 1,
+  codec: "mp3",
+  scope: "global",
+};
+const passingGates = () => ({
+  moderation: async (): Promise<unknown> => ({}),
+  cacheRead: async (): Promise<typeof cachedOpener | null> => null,
+  priceRead: async (): Promise<void> => undefined,
+  costPerChar: COST_PER_CHAR,
+});
+let gates = passingGates();
+afterEach(() => {
+  gates = passingGates();
+  events.length = 0;
+});
+
+const admitFlatGenerativeOperation =
+  generativeRouteAuth.admitFlatGenerativeOperation;
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   ...generativeRouteAuth,
   requireGenerativeRouteCaller: async () => ({
@@ -40,9 +76,15 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
     admissionSnapshot: undefined,
     credential: undefined,
   }),
+  admitFlatGenerativeOperation: (
+    params: Parameters<typeof admitFlatGenerativeOperation>[0],
+  ) => {
+    events.push("admission");
+    return admitFlatGenerativeOperation(params);
+  },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/content-safety", () => ({
-  contentSafetyService: { assertSafeForPublicUse: async () => ({}) },
+  contentSafetyService: { assertSafeForPublicUse: () => gates.moderation() },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
   ...aiPricing,
@@ -50,16 +92,20 @@ mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
     characterCount,
   }: {
     characterCount: number;
-  }) => ({
-    totalCost: characterCount * COST_PER_CHAR,
-    baseTotalCost: characterCount * COST_PER_CHAR * 0.8,
-    platformMarkup: characterCount * COST_PER_CHAR * 0.2,
-  }),
+  }) => {
+    await gates.priceRead();
+    return {
+      totalCost: characterCount * gates.costPerChar,
+      baseTotalCost: characterCount * gates.costPerChar * 0.8,
+      platformMarkup: characterCount * gates.costPerChar * 0.2,
+    };
+  },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/elevenlabs", () => ({
   ...elevenlabs,
   getElevenLabsService: () => ({
     textToSpeech: async ({ text }: { text: string }) => {
+      events.push("synthesis");
       providerCalls.push(text);
       return new ReadableStream<Uint8Array>({
         start(controller) {
@@ -73,7 +119,7 @@ mock.module("@elizaos/cloud-shared/lib/services/elevenlabs", () => ({
 mock.module("@elizaos/cloud-shared/lib/services/tts-first-line-cache", () => ({
   ...firstLineCache,
   getCloudFirstLineCacheService: () => ({
-    get: async () => null,
+    get: () => gates.cacheRead(),
     put: async () => undefined,
   }),
 }));
@@ -166,12 +212,12 @@ afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
-async function speak(
+function post(
   text: string,
   idempotencyKey: string,
   identity: { voiceId?: string; modelId?: string } = {},
 ) {
-  const response = await app.request(
+  return app.request(
     "/api/v1/voice/tts",
     {
       method: "POST",
@@ -183,6 +229,14 @@ async function speak(
     },
     { NODE_ENV: "test" },
   );
+}
+
+async function speak(
+  text: string,
+  idempotencyKey: string,
+  identity: { voiceId?: string; modelId?: string } = {},
+) {
+  const response = await post(text, idempotencyKey, identity);
   if (response.status !== 200)
     throw new Error(`tts ${response.status}: ${await response.text()}`);
   await response.arrayBuffer();
@@ -203,6 +257,15 @@ async function balance(): Promise<number> {
     [orgId],
   );
   return Number(rows[0]?.credit_balance);
+}
+
+/** Balance and reservation rows; a request that charges nothing changes neither. */
+async function ledger() {
+  const { rows } = await pg().query<{ rows: string }>(
+    "SELECT count(*)::text AS rows FROM credit_transactions WHERE organization_id=$1",
+    [orgId],
+  );
+  return { balance: await balance(), reservations: Number(rows[0]?.rows) };
 }
 
 test("one Idempotency-Key pays for one utterance: a different text is charged, the same text replays", async () => {
@@ -247,4 +310,98 @@ test("one Idempotency-Key pays for one utterance: a different text is charged, t
   });
   expect(providerCalls).toHaveLength(5);
   expect(await balance()).toBeCloseTo(afterDirect, 6);
+});
+
+test("the cache read and the price read overlap moderation; admission and synthesis wait for it", async () => {
+  gates.moderation = timedStep("moderation", 60);
+  gates.cacheRead = async () => {
+    await timedStep("cache", 20)();
+    return null;
+  };
+  gates.priceRead = timedStep("price", 20);
+
+  await speak("Moderation runs beside the reads.", `overlap-${randomUUID()}`);
+
+  const at = (mark: string) => {
+    expect(events).toContain(mark);
+    return events.indexOf(mark);
+  };
+  // Both reads were in flight before the moderation verdict arrived.
+  expect(at("cache:start")).toBeLessThan(at("moderation:end"));
+  expect(at("price:start")).toBeLessThan(at("moderation:end"));
+  // Paid admission and provider dispatch still wait for that verdict.
+  expect(at("admission")).toBeGreaterThan(at("moderation:end"));
+  expect(at("synthesis")).toBeGreaterThan(at("admission"));
+});
+
+test("a moderation rejection serves no cached audio, reserves no credits and never synthesizes", async () => {
+  const calls = providerCalls.length;
+  const before = await ledger();
+  // A cached opener exists, and the verdict arrives after it can be read.
+  gates.cacheRead = async () => cachedOpener;
+  gates.moderation = async () => {
+    await sleep(40);
+    throw new ApiError(400, "validation_error", "Content failed safety review");
+  };
+
+  const blocked = await post("Got it.", `blocked-${randomUUID()}`);
+  expect(blocked.status).toBe(400);
+  expect(blocked.headers.get("X-TTS-Cache")).toBeNull();
+  expect(await blocked.json()).toMatchObject({
+    error: "Content failed safety review",
+  });
+  expect(events).toEqual([]);
+
+  // A price read that fails while moderation is pending does not replace the
+  // moderation verdict and is not left unhandled.
+  gates.priceRead = async () => {
+    throw new AiPricingCacheWarmingError();
+  };
+  const blockedWhileWarming = await post("Got it.", `blocked-${randomUUID()}`);
+  expect(blockedWhileWarming.status).toBe(400);
+  expect(providerCalls).toHaveLength(calls);
+  expect(await ledger()).toEqual(before);
+
+  // The same opener after moderation passes is served from the cache, free.
+  gates = { ...passingGates(), cacheRead: async () => cachedOpener };
+  const served = await post("Got it.", `served-${randomUUID()}`);
+  expect(served.status).toBe(200);
+  expect(served.headers.get("X-TTS-Cache")).toBe("hit; first-sentence");
+  expect(new Uint8Array(await served.arrayBuffer())).toEqual(
+    cachedOpener.bytes,
+  );
+  expect(events).not.toContain("admission");
+  expect(providerCalls).toHaveLength(calls);
+  expect(await ledger()).toEqual(before);
+});
+
+test("no synthesis without an admitted reservation or a price", async () => {
+  const calls = providerCalls.length;
+  const before = await ledger();
+
+  gates.costPerChar = 1_000;
+  const refused = await post(
+    "This reply costs more than the balance.",
+    `refused-${randomUUID()}`,
+  );
+  expect(refused.status).toBe(402);
+  expect(await refused.json()).toMatchObject({
+    error: "Insufficient credits for text-to-speech",
+  });
+  expect(events).toEqual(["admission"]);
+
+  events.length = 0;
+  gates = passingGates();
+  gates.priceRead = async () => {
+    throw new AiPricingCacheWarmingError();
+  };
+  const warming = await post(
+    "The price is not known yet.",
+    `warming-${randomUUID()}`,
+  );
+  expect(warming.status).toBe(503);
+  expect(events).toEqual([]);
+
+  expect(providerCalls).toHaveLength(calls);
+  expect(await ledger()).toEqual(before);
 });

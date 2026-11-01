@@ -30,6 +30,7 @@ import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
 import {
+  type CloudFirstLineCacheKey,
   fingerprintCloudVoiceSettings,
   getCloudFirstLineCacheService,
   shouldBypassCloudFirstLineCache,
@@ -201,6 +202,26 @@ async function captureExactAudioForCache(
   return merged;
 }
 /**
+ * Reads one first-line cache entry and the time the read took. A failed read
+ * degrades to fresh synthesis, so the returned promise never rejects.
+ */
+async function readFirstLineCache(key: CloudFirstLineCacheKey | null) {
+  if (!key) return null;
+  const lookupStart = Date.now();
+  try {
+    const entry = await getCloudFirstLineCacheService().get(key);
+    return entry ? { entry, lookupMs: Date.now() - lookupStart } : null;
+  } catch (err) {
+    // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
+    // provider request remains the source of truth.
+    logger.warn?.("[Voice TTS API] first-line cache lookup failed", {
+      codec: key.codec,
+      errorType: err instanceof Error ? err.name : "unknown",
+    });
+    return null;
+  }
+}
+/**
  * POST /api/v1/voice/tts
  * Converts text to speech using the voice synthesis service.
  * Supports custom user voices and tracks usage statistics.
@@ -354,6 +375,103 @@ async function __hono_POST(c: AppContext) {
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
     // different codec); billing/usage are identical to the MP3 path.
     const wantWav = body.format === "wav";
+    // Arbitrary ElevenLabs ids are the custom-voice lane. Ownership metadata
+    // is enrichment only and is resolved with usage recording after response.
+    const isCustomVoice =
+      providerSelection.provider === "elevenlabs" &&
+      providerSelection.fallbackReason === "custom-or-elevenlabs-voice";
+    const resolvedVoiceId =
+      providerSelection.provider === "cartesia"
+        ? cartesiaVoiceId
+        : voiceId || "EXAVITQu4vr4xnSDxMaL";
+    const resolvedModelId = modelId || "eleven_flash_v2_5";
+    const snipResult = firstSentenceSnip(text);
+    // Context and rendering controls change audio. Never read or populate a
+    // legacy text-only cache entry for these requests.
+    const cacheBypass =
+      body.withTimestamps === true ||
+      hasTtsSynthesisOptions(body) ||
+      shouldBypassCloudFirstLineCache({
+        modelId: resolvedModelId,
+      });
+    const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
+    // First-line cache: serve the request entirely from the cache when the
+    // whole input is a single short opener (e.g. "Got it.", "No problem!").
+    // Only WHOLE-input hits are served, to avoid mp3 stream alignment hazards
+    // on a concat path. Longer messages fall through to fresh synthesis.
+    const mp3CacheKey =
+      !wantWav &&
+      snipResult &&
+      !cacheBypass &&
+      snipResult.endOffset === text.trimEnd().length
+        ? {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider:
+              providerSelection.provider === "cartesia"
+                ? "cartesia"
+                : "elevenlabs",
+            voiceId: resolvedVoiceId,
+            voiceRevision:
+              providerSelection.provider === "cartesia"
+                ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
+                : resolveElevenLabsVoiceRevision(
+                    resolvedVoiceId,
+                    resolvedModelId,
+                  ),
+            sampleRate: 44100,
+            codec: "mp3" as const,
+            voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
+              outputFormat: DEFAULT_OUTPUT_FORMAT,
+            }),
+            normalizedText: snipResult.normalized,
+            scope: cacheScope,
+          }
+        : null;
+    // WAV/Cartesia first-line cache twin: the MP3 cache above never serves
+    // WAV callers, so codec-less clients paid full synthesis for every short
+    // opener. Same whole-input gate; key is codec/provider/rate-specific so
+    // MP3 and WAV entries can never collide.
+    const cartesiaEligible =
+      providerSelection.provider === "cartesia" && Boolean(cartesiaApiKey);
+    const wavCacheKey =
+      cartesiaEligible &&
+      wantWav &&
+      snipResult &&
+      !cacheBypass &&
+      snipResult.endOffset === text.trimEnd().length
+        ? {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: "cartesia",
+            voiceId: cartesiaVoiceId,
+            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
+            sampleRate: WAV_PCM_SAMPLE_RATE,
+            codec: "wav" as const,
+            voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
+              outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}`,
+            }),
+            normalizedText: snipResult.normalized,
+            scope: "global",
+          }
+        : null;
+    // The paid lane's first-line cache read and catalog price do not depend
+    // on the moderation verdict, so both start here and run while moderation
+    // is in flight. Nothing reads either result until moderation passes. The
+    // free lanes (Workers AI, Kokoro) start neither read.
+    const paidReads = willAdmit
+      ? {
+          cacheHit: readFirstLineCache(mp3CacheKey ?? wavCacheKey),
+          ttsCost: calculateTTSCostFromCatalog({
+            model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
+            characterCount: text.length,
+            ...(getGenerativePricingCacheOptions(c).cacheOnly
+              ? { cache: getGenerativePricingCacheOptions(c) }
+              : {}),
+          }),
+        }
+      : undefined;
+    // A moderation rejection leaves before the price is awaited. This marks
+    // the read as handled; the await below still receives its error.
+    paidReads?.ttsCost.catch(() => undefined);
     await contentSafetyService.assertSafeForPublicUse({
       surface: "media_generation_prompt",
       organizationId: user.organization_id,
@@ -531,151 +649,29 @@ async function __hono_POST(c: AppContext) {
         },
       });
     }
-    // Arbitrary ElevenLabs ids are the custom-voice lane. Ownership metadata
-    // is enrichment only and is resolved with usage recording after response.
-    const isCustomVoice =
-      providerSelection.provider === "elevenlabs" &&
-      providerSelection.fallbackReason === "custom-or-elevenlabs-voice";
-    // ---------------------------------------------------------------------
-    // First-line cache hit path.
-    //
-    // Try to serve the request entirely from the first-line cache when the
-    // whole input is a single short opener (e.g. "Got it.", "No problem!").
-    // For longer messages we currently fall through to fresh synthesis but
-    // still populate the cache in the background — concat-with-remainder is
-    // a follow-up.
-    // ---------------------------------------------------------------------
-    const resolvedVoiceId =
-      providerSelection.provider === "cartesia"
-        ? cartesiaVoiceId
-        : voiceId || "EXAVITQu4vr4xnSDxMaL";
-    const resolvedModelId = modelId || "eleven_flash_v2_5";
-    const snipResult = firstSentenceSnip(text);
-    // Context and rendering controls change audio. Never read or populate a
-    // legacy text-only cache entry for these requests.
-    const cacheBypass =
-      body.withTimestamps === true ||
-      hasTtsSynthesisOptions(body) ||
-      shouldBypassCloudFirstLineCache({
-        modelId: resolvedModelId,
-      });
-    const cacheScope = isCustomVoice ? `org:${user.organization_id}` : "global";
-    const mp3CacheProvider =
-      providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
-    const mp3VoiceRevision =
-      providerSelection.provider === "cartesia"
-        ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
-        : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
-    const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
-      outputFormat: DEFAULT_OUTPUT_FORMAT,
-    });
+    if (!paidReads) {
+      throw new Error("Paid TTS reads were not started");
+    }
     timings.admissionMs = Date.now() - admissionStart;
-    if (
-      !wantWav &&
-      snipResult &&
-      !cacheBypass &&
-      // Cache currently only serves WHOLE-input hits to avoid mp3 stream
-      // alignment hazards on the concat path.
-      snipResult.endOffset === text.trimEnd().length
-    ) {
-      try {
-        const cacheStart = Date.now();
-        const cacheService = getCloudFirstLineCacheService();
-        const cached = await cacheService.get({
-          algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-          provider: mp3CacheProvider,
-          voiceId: resolvedVoiceId,
-          voiceRevision: mp3VoiceRevision,
-          sampleRate: 44100,
-          codec: "mp3",
-          voiceSettingsFingerprint,
-          normalizedText: snipResult.normalized,
-          scope: cacheScope,
-        });
-        if (cached) {
-          timings.synthesisMs = Date.now() - cacheStart;
-          logger.info(
-            `[Voice TTS API] first-line cache HIT (${cacheScope}, ${cached.byteSize}B, hits=${cached.hitCount})`,
-          );
-          return new Response(cached.bytes, {
-            headers: {
-              "Content-Type": cached.contentType,
-              "Cache-Control": "no-cache",
-              ...buildTtsObservabilityHeaders(
-                providerSelection.provider,
-                timings,
-              ),
-              "X-TTS-Cache": "hit; first-sentence",
-            },
-          });
-        }
-      } catch (err) {
-        // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
-        // ElevenLabs request below remains the source of truth.
-        logger.warn?.("[Voice TTS API] first-line cache lookup failed", {
-          errorType: err instanceof Error ? err.name : "unknown",
-        });
-      }
+    const cacheHit = await paidReads.cacheHit;
+    if (cacheHit) {
+      const cached = cacheHit.entry;
+      timings.synthesisMs = cacheHit.lookupMs;
+      logger.info(
+        `[Voice TTS API] first-line cache HIT (${cached.codec}, ${cached.scope}, ${cached.byteSize}B, hits=${cached.hitCount})`,
+      );
+      return new Response(cached.bytes, {
+        headers: {
+          "Content-Type": wantWav ? "audio/wav" : cached.contentType,
+          "Cache-Control": "no-cache",
+          ...buildTtsObservabilityHeaders(providerSelection.provider, timings),
+          "X-TTS-Cache": wantWav
+            ? "hit; first-sentence; wav"
+            : "hit; first-sentence",
+        },
+      });
     }
-    // WAV/Cartesia first-line cache twin: the MP3 cache above never serves
-    // WAV callers, so codec-less clients paid full synthesis for every short
-    // opener. Same whole-input gate; key is codec/provider/rate-specific so
-    // MP3 and WAV entries can never collide.
-    const cartesiaEligible =
-      providerSelection.provider === "cartesia" && Boolean(cartesiaApiKey);
-    const wavCacheKey =
-      cartesiaEligible &&
-      wantWav &&
-      snipResult &&
-      !cacheBypass &&
-      snipResult.endOffset === text.trimEnd().length
-        ? {
-            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-            provider: "cartesia",
-            voiceId: cartesiaVoiceId,
-            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
-            sampleRate: WAV_PCM_SAMPLE_RATE,
-            codec: "wav" as const,
-            voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
-              outputFormat: `pcm_${WAV_PCM_SAMPLE_RATE}`,
-            }),
-            normalizedText: snipResult.normalized,
-            scope: "global",
-          }
-        : null;
-    if (wavCacheKey) {
-      try {
-        const cacheStart = Date.now();
-        const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
-        if (cached) {
-          timings.synthesisMs = Date.now() - cacheStart;
-          logger.info(
-            `[Voice TTS API] WAV first-line cache HIT (${cached.byteSize}B, hits=${cached.hitCount})`,
-          );
-          return new Response(cached.bytes, {
-            headers: {
-              "Content-Type": "audio/wav",
-              "Cache-Control": "no-cache",
-              ...buildTtsObservabilityHeaders("cartesia", timings),
-              "X-TTS-Cache": "hit; first-sentence; wav",
-            },
-          });
-        }
-      } catch (err) {
-        // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
-        // Cartesia request below remains the source of truth.
-        logger.warn?.(
-          `[Voice TTS API] WAV first-line cache lookup failed: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      }
-    }
-    const ttsCost = await calculateTTSCostFromCatalog({
-      model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
-      characterCount: text.length,
-      ...(getGenerativePricingCacheOptions(c).cacheOnly
-        ? { cache: getGenerativePricingCacheOptions(c) }
-        : {}),
-    });
+    const ttsCost = await paidReads.ttsCost;
     const estimatedCost = isCustomVoice
       ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1000000) /
         1000000
@@ -935,29 +931,12 @@ async function __hono_POST(c: AppContext) {
     // already-produced provider stream so cache warming never performs a
     // second, unmetered synthesis. Partial first sentences are deliberately
     // not warmed because MP3 frames cannot be sliced losslessly.
-    if (
-      !wantWav &&
-      audioStream &&
-      snipResult &&
-      !cacheBypass &&
-      snipResult.endOffset === text.trimEnd().length
-    ) {
+    if (mp3CacheKey && audioStream && snipResult) {
       const [responseStream, cacheStream] = audioStream.tee();
       audioStream = responseStream;
       const cacheTask = (async () => {
         try {
           const cacheService = getCloudFirstLineCacheService();
-          const cacheKey = {
-            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-            provider: mp3CacheProvider,
-            voiceId: resolvedVoiceId,
-            voiceRevision: mp3VoiceRevision,
-            sampleRate: 44100,
-            codec: "mp3" as const,
-            voiceSettingsFingerprint,
-            normalizedText: snipResult.normalized,
-            scope: cacheScope,
-          };
           const merged = await captureExactAudioForCache(cacheStream);
           if (!merged) {
             logger.info("[Voice TTS API] first-line cache capture skipped", {
@@ -968,7 +947,7 @@ async function __hono_POST(c: AppContext) {
             return;
           }
           await cacheService.put({
-            ...cacheKey,
+            ...mp3CacheKey,
             bytes: merged,
             rawText: snipResult.raw,
             contentType: "audio/mpeg",
