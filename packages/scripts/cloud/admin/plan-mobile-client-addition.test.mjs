@@ -4,13 +4,16 @@ import { after, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { readDatabaseIdentityReceipt } from "../../../cloud/scripts/admin/database-identity-receipt.ts";
 import {
+  appBindingDigest,
   buildRegistryAddition,
   discoverRegisteredApp,
   publishRegistryBinding,
+  publishValidatedRegistry,
   REGISTRY_SNAPSHOT_SQL,
   registryDigest,
   sealRegistryPlan,
   trustedGithubKey,
+  validatePublishedAppBinding,
   validateRegistryPublication,
   verifyPublishedRegistry,
 } from "./plan-mobile-client-addition.ts";
@@ -21,6 +24,9 @@ const ORG = "33333333-3333-4333-8333-333333333333";
 const OWNER = "44444444-4444-4444-8444-444444444444";
 const OTHER = "55555555-5555-4555-8555-555555555555";
 const KEY = "66666666-6666-4666-8666-666666666666";
+const OTHER_ORG = "88888888-8888-4888-8888-888888888888";
+const OTHER_OWNER = "99999999-9999-4999-8999-999999999999";
+const BINDING = { appId: APP, organizationId: ORG, creatorUserId: OWNER };
 const CALLBACK = "https://apps.example.org/reader/return";
 const clientId = "org.example.reader";
 const retained = {
@@ -98,7 +104,7 @@ after(async () => {
 
 test("missing client is planned from the existing approved callback without changing any row", async () => {
   const snapshot = (await database.query("SELECT * FROM apps")).rows;
-  assert.equal(await discoverRegisteredApp(readOnly, input), APP);
+  assert.deepEqual(await discoverRegisteredApp(readOnly, input), BINDING);
   const plan = buildRegistryAddition(input, APP);
   assert.equal(plan.changed, true);
   const added = JSON.parse(plan.candidate);
@@ -164,6 +170,89 @@ test("foreign ownership, extra callback authority and a live generated key are r
   );
 });
 
+async function useOtherApprovedOwner() {
+  await database.query("INSERT INTO organizations VALUES ($1,true)", [
+    OTHER_ORG,
+  ]);
+  await database.query("INSERT INTO users VALUES ($1,$2,true,NULL,'admin')", [
+    OTHER_OWNER,
+    OTHER_ORG,
+  ]);
+  await database.query(
+    "UPDATE apps SET organization_id=$1,created_by_user_id=$2 WHERE id=$3",
+    [OTHER_ORG, OTHER_OWNER, APP],
+  );
+}
+
+test("a different valid owner requires explicit or canonical app selection", async () => {
+  await useOtherApprovedOwner();
+  await assert.rejects(
+    discoverRegisteredApp(readOnly, input),
+    /callback_owner_mismatch/,
+  );
+  const explicit = { ...input, intendedAppId: APP };
+  const binding = await discoverRegisteredApp(readOnly, explicit);
+  assert.deepEqual(binding, {
+    appId: APP,
+    organizationId: OTHER_ORG,
+    creatorUserId: OTHER_OWNER,
+  });
+  const canonical = {
+    ...input,
+    registry: buildRegistryAddition(input, APP).candidate,
+  };
+  assert.deepEqual(await discoverRegisteredApp(readOnly, canonical), binding);
+  const sealed = await sealRegistryPlan(
+    explicit,
+    binding,
+    "elizaOS/eliza",
+    "a".repeat(40),
+  );
+  assert.equal(sealed.appBindingSha256, appBindingDigest(explicit, binding));
+  assert.notEqual(sealed.appBindingSha256, appBindingDigest(explicit, BINDING));
+  assert.equal(JSON.stringify(sealed).includes(OTHER_ORG), false);
+  assert.equal(JSON.stringify(sealed).includes(OTHER_OWNER), false);
+});
+
+test("explicit selection retains all shared creator and organization checks", async () => {
+  await useOtherApprovedOwner();
+  const explicit = { ...input, intendedAppId: APP };
+  await database.query("UPDATE users SET is_active=false WHERE id=$1", [
+    OTHER_OWNER,
+  ]);
+  await assert.rejects(
+    discoverRegisteredApp(readOnly, explicit),
+    /callback_registration_invalid/,
+  );
+  await database.query(
+    "UPDATE users SET is_active=true,role='member' WHERE id=$1",
+    [OTHER_OWNER],
+  );
+  await assert.rejects(
+    discoverRegisteredApp(readOnly, explicit),
+    /callback_registration_invalid/,
+  );
+  await database.query(
+    "UPDATE users SET role='admin',organization_id=$1 WHERE id=$2",
+    [ORG, OTHER_OWNER],
+  );
+  await assert.rejects(
+    discoverRegisteredApp(readOnly, explicit),
+    /callback_registration_invalid/,
+  );
+  await database.query("UPDATE users SET organization_id=$1 WHERE id=$2", [
+    OTHER_ORG,
+    OTHER_OWNER,
+  ]);
+  await database.query("UPDATE organizations SET is_active=false WHERE id=$1", [
+    OTHER_ORG,
+  ]);
+  await assert.rejects(
+    discoverRegisteredApp(readOnly, explicit),
+    /callback_registration_invalid/,
+  );
+});
+
 test("wrong database identity stops discovery before reading app rows", async () => {
   await assert.rejects(
     discoverRegisteredApp(readOnly, {
@@ -223,7 +312,7 @@ test("already-correct registration canonicalizes whitespace before hashing publi
   assert.equal(plan.candidateSha256, registryDigest(plan.candidate.trim()));
   const sealed = await sealRegistryPlan(
     padded,
-    APP,
+    BINDING,
     "elizaOS/eliza",
     "a".repeat(40),
   );
@@ -236,6 +325,7 @@ test("already-correct registration canonicalizes whitespace before hashing publi
     validateRegistryPublication(readOnly, padded, {
       candidateSha256: registryDigest(padded.registry),
       nonTargetSha256: plan.nonTargetSha256,
+      appBindingSha256: appBindingDigest(input, BINDING),
     }),
     /registry_not_canonical/,
   );
@@ -254,7 +344,7 @@ test("registry validation uses a repeatable read-only PostgreSQL transaction", a
         .transaction_read_only,
       "on",
     );
-    assert.equal(await discoverRegisteredApp(readOnly, input), APP);
+    assert.deepEqual(await discoverRegisteredApp(readOnly, input), BINDING);
     await assert.rejects(
       database.query("UPDATE users SET is_active=false"),
       /read.only/i,
@@ -272,13 +362,14 @@ test("registry validation uses a repeatable read-only PostgreSQL transaction", a
 test("sealed artifact contains only ciphertext for both candidate and byte-exact rollback", async () => {
   const plan = await sealRegistryPlan(
     input,
-    APP,
+    BINDING,
     "elizaOS/eliza",
     "a".repeat(40),
   );
   const plaintext = buildRegistryAddition(input, APP);
   assert.equal(plan.candidateSha256, plaintext.candidateSha256);
   assert.equal(plan.sourceSha256, registryDigest(input.registry));
+  assert.equal(plan.appBindingSha256, appBindingDigest(input, BINDING));
   assert.equal(
     Buffer.from(plan.candidate.encrypted_value, "base64").length,
     Buffer.byteLength(plaintext.candidate) + 48,
@@ -293,16 +384,18 @@ test("sealed artifact contains only ciphertext for both candidate and byte-exact
   );
   const artifact = JSON.stringify(plan);
   assert.equal(artifact.includes(APP), false);
+  assert.equal(artifact.includes(ORG), false);
+  assert.equal(artifact.includes(OWNER), false);
   assert.equal(artifact.includes(retained.clientId), false);
   assert.equal(artifact.includes(retained.redirectUri), false);
   await assert.rejects(
-    sealRegistryPlan(input, APP, "attacker/repository", "a".repeat(40)),
+    sealRegistryPlan(input, BINDING, "attacker/repository", "a".repeat(40)),
     /trusted_github_key_unavailable/,
   );
   await assert.rejects(
     sealRegistryPlan(
       { ...input, environment: "staging" },
-      APP,
+      BINDING,
       "elizaOS/eliza",
       "a".repeat(40),
     ),
@@ -315,6 +408,7 @@ test("publication requires fresh exact bytes, retained entries, and a still-appr
   const expected = {
     candidateSha256: plan.candidateSha256,
     nonTargetSha256: plan.nonTargetSha256,
+    appBindingSha256: appBindingDigest(input, BINDING),
   };
   const fresh = { ...input, registry: plan.candidate };
   await validateRegistryPublication(readOnly, fresh, expected);
@@ -344,6 +438,108 @@ test("publication requires fresh exact bytes, retained entries, and a still-appr
     validateRegistryPublication(readOnly, fresh, expected),
     /callback_registration_invalid/,
   );
+});
+
+test("a changed app identity is refused before publication despite the same callback", async () => {
+  const plan = buildRegistryAddition(input, APP);
+  const expected = {
+    ...plan,
+    appBindingSha256: appBindingDigest(input, BINDING),
+  };
+  const fresh = { ...input, registry: plan.candidate };
+  await assert.rejects(
+    validateRegistryPublication(readOnly, fresh, {
+      ...expected,
+      appBindingSha256: appBindingDigest(input, { ...BINDING, appId: OTHER }),
+    }),
+    /app_binding_mismatch/,
+  );
+  await database.query("UPDATE apps SET id=$1 WHERE id=$2", [OTHER, APP]);
+  await assert.rejects(
+    validateRegistryPublication(readOnly, fresh, expected),
+    /approved_callback_not_found/,
+  );
+});
+
+test("changed app, organization or creator cannot reach the Worker update", async () => {
+  const plan = buildRegistryAddition(input, APP);
+  const expected = {
+    ...plan,
+    appBindingSha256: appBindingDigest(input, BINDING),
+  };
+  const fresh = { ...input, registry: plan.candidate };
+  let requests = 0;
+  const noRequest = async () => {
+    requests++;
+    throw Error("unexpected Worker request");
+  };
+  await useOtherApprovedOwner();
+  await assert.rejects(
+    publishValidatedRegistry(readOnly, fresh, expected, "synthetic", noRequest),
+    /app_binding_mismatch/,
+  );
+  await database.query(
+    "UPDATE apps SET organization_id=$1,created_by_user_id=$2 WHERE id=$3",
+    [ORG, OWNER, APP],
+  );
+  await database.query("UPDATE users SET organization_id=$1 WHERE id=$2", [
+    ORG,
+    OTHER_OWNER,
+  ]);
+  await database.query("UPDATE apps SET created_by_user_id=$1 WHERE id=$2", [
+    OTHER_OWNER,
+    APP,
+  ]);
+  await assert.rejects(
+    publishValidatedRegistry(readOnly, fresh, expected, "synthetic", noRequest),
+    /app_binding_mismatch/,
+  );
+  await database.query("UPDATE apps SET id=$1 WHERE id=$2", [OTHER, APP]);
+  await assert.rejects(
+    publishValidatedRegistry(readOnly, fresh, expected, "synthetic", noRequest),
+    /approved_callback_not_found/,
+  );
+  assert.equal(requests, 0);
+});
+
+test("an explicit or canonical app selector cannot silently choose another callback row", async () => {
+  assert.deepEqual(
+    await discoverRegisteredApp(readOnly, { ...input, intendedAppId: APP }),
+    BINDING,
+  );
+  await assert.rejects(
+    discoverRegisteredApp(readOnly, { ...input, intendedAppId: OTHER }),
+    /approved_callback_not_found/,
+  );
+  const canonical = {
+    ...input,
+    registry: buildRegistryAddition(input, APP).candidate,
+  };
+  assert.deepEqual(await discoverRegisteredApp(readOnly, canonical), BINDING);
+  await assert.rejects(
+    discoverRegisteredApp(readOnly, { ...canonical, intendedAppId: OTHER }),
+    /intended_app_mismatch/,
+  );
+});
+
+test("a new post-publication snapshot detects a changed app binding", async () => {
+  const expected = appBindingDigest(
+    input,
+    await discoverRegisteredApp(readOnly, input),
+  );
+  await database.query(REGISTRY_SNAPSHOT_SQL);
+  await validatePublishedAppBinding(readOnly, input, expected);
+  await database.query("ROLLBACK");
+  await database.query("UPDATE apps SET id=$1 WHERE id=$2", [OTHER, APP]);
+  await database.query(REGISTRY_SNAPSHOT_SQL);
+  try {
+    await assert.rejects(
+      validatePublishedAppBinding(readOnly, input, expected),
+      /app_binding_recheck_failed_after_publication/,
+    );
+  } finally {
+    await database.query("ROLLBACK");
+  }
 });
 
 test("CLI failures hide provider configuration and refuse an unprotected branch", () => {
