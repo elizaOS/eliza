@@ -130,6 +130,19 @@ jobs:
             -config-file .github/actionlint.yaml \
             "${workflows[@]}"
 
+      - name: Reclaim unused hosted SDK space for desktop packaging
+        if: >-
+          steps.affected.outputs.source == 'true' &&
+          runner.os == 'Linux' && runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The source closure packages Electrobun, but does not use .NET or
+          # Haskell. Keep Android and all native build toolchains available.
+          df -h "$GITHUB_WORKSPACE"
+          sudo rm -rf -- /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          df -h "$GITHUB_WORKSPACE"
+
       - if: steps.affected.outputs.source == 'true'
         uses: ./.github/actions/setup-bun-workspace
         with:
