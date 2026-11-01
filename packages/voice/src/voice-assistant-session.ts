@@ -25,10 +25,13 @@
  *
  * Busy hold: submission closes the capture (`close()`, never `cancel()`) and input stays closed
  * while the agent is busy with that turn: the request (and any ack spoken inside `send`), an
- * owner-input pause and the reply until its playback settled. `inputHeld` is published only once
- * the close fulfilled. Then the capture reopens (`reopen` on the listen handlers) unless Mute, Stop
- * or a binding change keeps it closed; a reopen that fails ends the conversation. Manual Mute is
- * independent of the hold. Speech never interrupts a busy turn: `interruptSpeech()` or Stop does.
+ * owner-input pause and the reply until its playback settled. The turn is sent only once the close
+ * fulfilled (then `inputHeld` is published); a close that fails ends the conversation, and one
+ * that never settles leaves the turn unsent until Stop. After the reply the capture reopens
+ * (`reopen` on the listen handlers) unless Mute, Stop or a binding change keeps it closed; a
+ * reopen that fails ends the conversation. A closed capture's `onEnd` still ends a held turn at
+ * once. Manual Mute is independent of the hold. Speech never interrupts a busy turn:
+ * `interruptSpeech()` or Stop does.
  * The tentative and ignored segment paths below (`bargeInConfirmMs`, `fullDuplex`) only act on a
  * capture that is open while a reply is pending or playing, which the hold never leaves.
  *
@@ -927,18 +930,20 @@ export class VoiceAssistantSession {
     this.capture = undefined;
     if (capture) hold.closes.push(this.closeCapture(capture));
     this.publish({ phase: "thinking", transcript: text });
-    void (async () => {
+    // The input-close barrier `respond` waits on before sending: a close that rejects or never
+    // settles keeps `inputHeld` off, and nothing is sent, acknowledged or played.
+    const closed = (async () => {
       await opening?.catch(() => {});
-      // A close that rejects or never settles keeps `inputHeld` off for this turn.
       await Promise.all(hold.closes);
       if (this.hold === hold) {
         hold.closed = true;
         this.republish();
       }
-    })().catch(() => {});
+    })();
+    closed.catch(() => {});
     this.ports.onTurn?.("submitted", response.turnId, { endpoint });
     const previous = this.inflight;
-    const run = this.respond(session, turn, response, text, previous);
+    const run = this.respond(session, turn, response, text, previous, closed);
     this.inflight = run.catch(() => {});
   }
 
@@ -957,6 +962,7 @@ export class VoiceAssistantSession {
     response: Response,
     text: string,
     previous: Promise<unknown>,
+    closed: Promise<void>,
   ) {
     const guard = () => {
       if (!this.owned(session, turn, response)) throw stopped();
@@ -965,6 +971,24 @@ export class VoiceAssistantSession {
     try {
       // One request at a time: an interrupted request settles before the next turn is sent.
       await previous;
+      guard();
+      // Input closes before the request: `send` (with any ack it speaks) and the reply never run
+      // over an open microphone. A close that failed ends the conversation, and nothing reopens.
+      await new Promise<void>((resolve, reject) => {
+        response.controller.signal.addEventListener(
+          "abort",
+          () => reject(stopped()),
+          { once: true },
+        );
+        closed.then(resolve, () =>
+          reject(
+            new VoiceAssistantError(
+              "capture",
+              "The microphone did not confirm it was off.",
+            ),
+          ),
+        );
+      });
       guard();
       let reply = await this.ports.send({
         turnId: response.turnId,

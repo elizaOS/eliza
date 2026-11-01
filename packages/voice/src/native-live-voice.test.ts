@@ -663,7 +663,7 @@ function assistantOver(bridge: ReturnType<typeof fakeBridge>) {
 }
 
 describe("native capture under the assistant's busy hold", () => {
-  it("stops the native capture at submission before the hold is published and starts a new one only after the reply played", async () => {
+  it("stops the native capture at submission, sends the turn only once the stop was answered, and starts a new one only after the reply played", async () => {
     let answerStop!: () => void;
     const bridge = fakeBridge({
       stopDelay: new Promise<void>((resolve) => {
@@ -674,13 +674,14 @@ describe("native capture under the assistant's busy hold", () => {
     await h.session.start();
     const first = bridge.captureId;
     await h.say(first, "what is on today", "t1");
-    expect(h.replies).toHaveLength(1);
+    expect(h.replies).toHaveLength(0);
     expect(bridge.stops).toEqual([
       { captureId: first, discard: false, cutoffMs: expect.any(Number) },
     ]);
     expect(h.session.getSnapshot().inputHeld).toBeUndefined();
     answerStop();
     await flush();
+    expect(h.replies).toHaveLength(1);
     expect(h.session.getSnapshot()).toMatchObject({
       phase: "thinking",
       inputHeld: true,
@@ -699,6 +700,22 @@ describe("native capture under the assistant's busy hold", () => {
     expect(bridge.captureId).not.toBe(first);
     expect(h.session.getSnapshot()).toEqual({ phase: "listening" });
     await h.session.stop();
+  });
+
+  it("ends the conversation without sending when the bridge answers the stop with no confirmed close", async () => {
+    const bridge = fakeBridge({ serverClosed: false });
+    const h = assistantOver(bridge);
+    await h.session.start();
+    await h.say(bridge.captureId, "what is on today", "t1");
+    await flush();
+    expect(bridge.stops).toHaveLength(1);
+    expect(h.replies).toHaveLength(0);
+    expect(h.speeches).toHaveLength(0);
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "error",
+      error: { code: "capture" },
+    });
+    expect(bridge.starts).toHaveLength(1);
   });
 
   it("forwards an automatic reopen to the bridge on both transports, and only then", async () => {

@@ -22,8 +22,9 @@ short gap with a bounded deadline, and always submits after the long gap: an una
 failing or late endpoint decision is never treated as complete. Resumed speech cancels a
 pending submit. A submitted turn closes the capture until its reply has played (the busy hold,
 published as `inputHeld` once the close fulfilled), then reopens it unless Mute, Stop or a binding
-change keeps it closed; `interruptSpeech()` cuts a playing reply, and only fully played sentences
-count as heard. Generation fencing
+change keeps it closed. The turn is sent only after that close fulfilled; a close that fails ends
+the conversation, with nothing reopened. `interruptSpeech()` cuts a playing reply, and only fully
+played sentences count as heard. Generation fencing
 drops late endpoint, reply and playback callbacks, so a submitted turn is never resent. Mute,
 stop, binding changes and owner-input pauses are handled; approvals are never given by voice.
 `ASSISTANT_TIMING_DEFAULTS` are engineering defaults, not measured or accepted values. The module
