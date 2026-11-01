@@ -57,6 +57,12 @@ export interface VoiceSessionMachineState {
   interruptionReason: InterruptionReason | null;
   /** Last error surfaced by the server, if any (cleared on the next turn). */
   lastError: { code: string; retryable: boolean } | null;
+  /**
+   * The submitted caller turn the agent is still busy with: set by a nonempty
+   * `stt_final`, kept through local playback drain until that turn's `usage`
+   * or `interrupted`, a new server session or an explicit barge-in.
+   */
+  callerTurnTraceId: string | null;
 }
 
 export const INITIAL_VOICE_SESSION_STATE: VoiceSessionMachineState = {
@@ -67,7 +73,30 @@ export const INITIAL_VOICE_SESSION_STATE: VoiceSessionMachineState = {
   finalTranscript: "",
   interruptionReason: null,
   lastError: null,
+  callerTurnTraceId: null,
 };
+
+/**
+ * Whether microphone input is closed because the agent is busy: processing a
+ * submitted caller turn, speaking, or still settling that turn after local
+ * playback drained. The one source of truth for the automatic input gate;
+ * manual mute is separate.
+ */
+export function inputHeld(state: VoiceSessionMachineState): boolean {
+  return (
+    state.phase === "thinking" ||
+    state.phase === "speaking" ||
+    state.callerTurnTraceId !== null
+  );
+}
+
+/** A caller turn ends only with its own trace; older receipts keep the newer turn. */
+function remainingCallerTurn(
+  state: VoiceSessionMachineState,
+  traceId: string,
+): string | null {
+  return state.callerTurnTraceId === traceId ? null : state.callerTurnTraceId;
+}
 
 /**
  * Client-owned transitions. These NEVER come from the wire — they're driven by
@@ -96,19 +125,22 @@ export function applyClientAction(
     case "client/local_barge_in":
       // Optimistic local flush: if we're audibly speaking, stop showing speaking
       // immediately and return to listening. The authoritative `interrupted`
-      // event still arrives and reconciles (see applyServerEvent).
+      // event still arrives and reconciles (see applyServerEvent). An explicit
+      // barge-in also ends the server's caller-turn gate.
       if (state.phase === "speaking") {
         return {
           ...state,
           phase: "listening",
           progressText: undefined,
           progressCancelledTraceId: state.traceId,
+          callerTurnTraceId: null,
         };
       }
       return {
         ...state,
         progressText: undefined,
         progressCancelledTraceId: state.traceId,
+        callerTurnTraceId: null,
       };
   }
 }
@@ -134,6 +166,7 @@ export function applyServerEvent(
 ): VoiceSessionMachineState {
   switch (event.t) {
     case "ready":
+      // A new server session has no busy caller turn.
       return {
         ...state,
         phase: "ready",
@@ -141,6 +174,7 @@ export function applyServerEvent(
         sessionId: event.sessionId,
         traceId: event.traceId,
         lastError: null,
+        callerTurnTraceId: null,
       };
     case "stt_partial":
       return {
@@ -183,6 +217,7 @@ export function applyServerEvent(
         finalTranscript: event.text,
         progressText: undefined,
         interimTranscript: "",
+        callerTurnTraceId: event.traceId,
       };
     case "progress":
       return state.traceId === event.traceId &&
@@ -220,21 +255,32 @@ export function applyServerEvent(
         progressText: undefined,
         traceId: event.traceId,
         interruptionReason: event.reason,
+        callerTurnTraceId: remainingCallerTurn(state, event.traceId),
       };
     case "error":
+      // Never ends the caller turn: error frames carry no turn, a retryable
+      // error leaves the turn running, and a fatal one ends in a new session's
+      // `ready` or a client reset.
       return {
         ...state,
         lastError: { code: event.code, retryable: event.retryable },
         progressText: undefined,
       };
-    case "usage":
+    case "usage": {
+      // The caller turn ends with its own receipt, also after local playback
+      // already drained back to listening.
+      const settled = {
+        ...state,
+        callerTurnTraceId: remainingCallerTurn(state, event.traceId),
+      };
       // finishTurn emits usage even when the model deliberately stays silent.
       // There is no speaking_end in that case. Settle only the matching turn;
       // delayed receipts must not complete a newer utterance or cut off audio.
-      if (state.traceId !== event.traceId) return state;
-      return state.phase === "thinking"
-        ? { ...state, phase: "complete", progressText: undefined }
-        : { ...state, progressText: undefined };
+      if (state.traceId !== event.traceId) return settled;
+      return settled.phase === "thinking"
+        ? { ...settled, phase: "complete", progressText: undefined }
+        : { ...settled, progressText: undefined };
+    }
     case "assistant_playing":
     case "human_double_talk":
     case "echo_rejected":

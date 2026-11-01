@@ -20,6 +20,9 @@
  * at the bootstrap token's exp (<=120s), so the client proactively ROTATES the
  * session (clean bye + re-mint) shortly before expiry, but only at an idle
  * `listening` boundary — never mid-turn — making the periodic sever invisible.
+ * A loss while input is held for a busy turn is not recovered: it ends the
+ * session with an error, because a re-mint would open a new paid session and
+ * microphone track while that turn's outcome is unknown.
  *
  * The client wires:
  *   - voice-session-mic-capture (getUserMedia → AudioWorklet/ScriptProcessor →
@@ -83,6 +86,7 @@ import {
   applyServerEvent,
   beginListening,
   INITIAL_VOICE_SESSION_STATE,
+  inputHeld,
   loopToListening,
   toContinuousStatus,
   type VoiceSessionMachineState,
@@ -251,6 +255,11 @@ export interface VoiceSessionClient {
   bargeIn(): void;
   /** Whether uplink audio is currently replaced with silence. */
   readonly microphoneMuted: boolean;
+  /**
+   * Whether the microphone is automatically paused while the agent is busy
+   * with a submitted turn (the automatic counterpart of `microphoneMuted`).
+   */
+  readonly microphoneHeld: boolean;
   /** Mute/unmute uplink audio without tearing down the realtime session. */
   setMicrophoneMuted(muted: boolean): void;
   /** Unlock playback on a user gesture (iOS autoplay). */
@@ -347,7 +356,7 @@ export function createVoiceSessionClient(
   const syncMicrophoneMute = (): void => {
     mic?.setMuted(
       microphoneMuted ||
-        state.phase === "speaking" ||
+        inputHeld(state) ||
         micSocket !== ws ||
         connPhase !== "open",
     );
@@ -558,11 +567,12 @@ export function createVoiceSessionClient(
         }
       }
       // Copy into a standalone ArrayBuffer so a shared/pooled backing store from
-      // the capture path is never observed mutated after send. A muted session
-      // keeps its normal packet cadence but substitutes PCM silence, allowing
-      // server VAD to close a partial utterance without leaking microphone data.
+      // the capture path is never observed mutated after send. A muted or held
+      // session keeps its normal packet cadence but substitutes PCM silence,
+      // allowing server VAD to close a partial utterance without leaking
+      // microphone data.
       const uplink =
-        microphoneMuted || state.phase === "speaking"
+        microphoneMuted || inputHeld(state)
           ? new Uint8Array(bytes.byteLength)
           : bytes.slice();
       ws.send(uplink.buffer);
@@ -918,9 +928,11 @@ export function createVoiceSessionClient(
     }
     const socket = ws;
     if (!socket || connPhase !== "open") return;
-    if (state.phase !== "listening") {
-      // Mid-turn: never cut audible speech or an in-flight transcription.
-      // Re-check until the turn completes or the deadline passes.
+    if (state.phase !== "listening" || inputHeld(state)) {
+      // Mid-turn: never cut audible speech or an in-flight transcription, and
+      // never let a new session's `ready` release a turn that drained locally
+      // but still awaits its `usage`. Re-check until the turn completes or the
+      // deadline passes.
       mark("token_rotation_deferred", state.traceId);
       rotationTimer = setTimeout(() => {
         rotationTimer = null;
@@ -944,6 +956,20 @@ export function createVoiceSessionClient(
     },
   ): void {
     if (!isLifecycleCurrent(generation) || intentionalClose || ws !== socket) {
+      return;
+    }
+    if (inputHeld(state)) {
+      // The agent is still busy with a turn. Recovery would mint a new paid
+      // session and acquire a new microphone track while that turn's outcome
+      // is unknown, so a loss inside the hold ends voice instead; nothing is
+      // replayed and the next turn needs an explicit start.
+      mark(`not_reached(held_turn_lost:${reason})`, state.traceId);
+      emitError(
+        new Error(
+          `voice session lost mid-turn: ${reason}. Its outcome is unknown; start voice again.`,
+        ),
+      );
+      void stop();
       return;
     }
     // Detach first. A fatal server frame commonly causes the same socket to
@@ -1279,6 +1305,9 @@ export function createVoiceSessionClient(
     },
     get microphoneMuted() {
       return microphoneMuted;
+    },
+    get microphoneHeld() {
+      return inputHeld(state);
     },
     setMicrophoneMuted(muted) {
       if (disposed || microphoneMuted === muted) return;

@@ -7,6 +7,15 @@ import {
 import type { MicAudioContextLike } from "./voice-session-mic-capture";
 import * as micCapture from "./voice-session-mic-capture";
 import type { PlaybackAudioContextLike } from "./voice-session-playback";
+import type { ServerControlFrame } from "./voice-session-protocol";
+import {
+  applyClientAction,
+  applyServerEvent,
+  INITIAL_VOICE_SESSION_STATE,
+  inputHeld,
+  loopToListening,
+  type VoiceSessionMachineState,
+} from "./voice-session-state";
 
 const dashboardTransport = vi.hoisted(() => vi.fn());
 vi.mock("./voice-session-fetch", () => ({
@@ -60,6 +69,7 @@ test("the existing app entry retains its lazy dashboard transport", async () => 
 function harness(
   playbackCompletion = false,
   getUiContext?: () => { uiViewPath?: string },
+  maxReconnects?: number,
 ) {
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
@@ -82,7 +92,7 @@ function harness(
             inputBuffer: { getChannelData: () => Float32Array };
           }) => void);
     }> = [],
-    tracks: Array<{ enabled: boolean; stop(): void }> = [];
+    tracks: Array<{ enabled: boolean; writes: boolean[]; stop(): void }> = [];
   const sockets: Socket[] = [],
     bodies: Record<string, unknown>[] = [],
     events: unknown[] = [],
@@ -192,9 +202,18 @@ function harness(
       captures++;
       activeCaptures++;
       maxCaptures = Math.max(maxCaptures, activeCaptures);
-      let stopped = false;
+      let stopped = false,
+        enabled = true;
       const track = {
-        enabled: true,
+        // Every driver write, so a brief re-enable between two states is visible.
+        writes: [] as boolean[],
+        get enabled() {
+          return enabled;
+        },
+        set enabled(value: boolean) {
+          enabled = value;
+          track.writes.push(value);
+        },
         stop() {
           if (!stopped) {
             stopped = true;
@@ -212,6 +231,7 @@ function harness(
     createPlaybackAudioContext: playback,
     now: () => now,
     epochNow: () => 1800000000000 + now,
+    maxReconnects,
     preLiveMaxReconnects: 0,
     preLiveMaxAttempts: 1,
     onMinted: () => {
@@ -340,7 +360,16 @@ test("rotation defers a live finalized turn until listening, then rotates withou
   expect(h.bodies.some((body) => "text" in body)).toBe(false);
   expect(h.maxCaptures).toBe(1);
 });
-test("a busy hard-expiry interruption retires old audio and reconnects without replaying an already finalized turn", async () => {
+const HELD_LOSS = (reason: string) =>
+  `voice session lost mid-turn: ${reason}. Its outcome is unknown; start voice again.`;
+const audio = (socket: { sent: unknown[] }) =>
+  socket.sent.filter(
+    (frame): frame is ArrayBuffer => frame instanceof ArrayBuffer,
+  );
+const silent = (frame: ArrayBuffer) =>
+  new Uint8Array(frame).every((byte) => byte === 0);
+
+test("a busy hard-expiry inside the hold ends voice with an honest error instead of re-minting, and never replays the finalized turn", async () => {
   const h = harness();
   await h.client.start();
   await h.settle();
@@ -351,18 +380,134 @@ test("a busy hard-expiry interruption retires old audio and reconnects without r
   expect(h.mints).toBe(1);
   old.close();
   await h.settle();
-  expect(h.mints).toBe(2);
-  expect(h.maxCaptures).toBe(1);
+  // No paid re-mint and no replacement microphone track.
+  expect(h.mints).toBe(1);
+  expect(h.consents).toBe(1);
+  expect(h.sockets).toHaveLength(1);
+  expect(h.captures).toBe(1);
+  expect(h.activeCaptures).toBe(0);
+  expect(h.client.state.phase).toBe("idle");
+  expect(h.errors.map((error) => error.message)).toEqual([
+    HELD_LOSS("ws_close"),
+  ]);
+  expect(h.marks).toContain("token_rotation_deferred");
+  expect(h.marks).toContain("not_reached(held_turn_lost:ws_close)");
+  // The unfinished response is neither completed nor replayed, and late audio
+  // from the retired socket is never played.
+  const marks = h.marks.length;
+  old.emit("message", { data: new ArrayBuffer(640) });
+  expect(h.marks.slice(marks)).not.toContain("downlink_audio");
   expect(
     h.events.filter((event) => (event as { t: string }).t === "stt_final"),
   ).toHaveLength(1);
   expect(h.bodies.some((body) => "text" in body)).toBe(false);
-  expect(h.marks).toContain("token_rotation_deferred");
-  expect(h.errors).toHaveLength(0);
-  // The provider's unfinished response was interrupted, not falsely completed or replayed.
   expect(
     h.events.some((event) => (event as { t: string }).t === "reply_complete"),
   ).toBe(false);
+  await h.advance(120000);
+  expect(h.mints).toBe(1);
+  expect(h.captures).toBe(1);
+  // Only an explicit start opens the next session and capture.
+  await h.client.start();
+  await h.settle();
+  expect(h.mints).toBe(2);
+  expect(h.captures).toBe(2);
+  expect(h.maxCaptures).toBe(1);
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.errors).toHaveLength(1);
+});
+test("a transport loss after local drain but before the turn's usage ends voice instead of re-minting", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  socket.frame({ t: "speaking_start", traceId: "turn-1" });
+  socket.frame({ t: "speaking_end", traceId: "turn-1" });
+  await h.settle();
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.tracks[0].enabled).toBe(false);
+  socket.close();
+  await h.settle();
+  await h.advance(60000);
+  expect(h.mints).toBe(1);
+  expect(h.captures).toBe(1);
+  expect(h.activeCaptures).toBe(0);
+  expect(h.tracks[0].writes).toEqual([false]);
+  expect(h.client.state.phase).toBe("idle");
+  expect(h.errors.map((error) => error.message)).toEqual([
+    HELD_LOSS("ws_close"),
+  ]);
+});
+test("a fatal server error inside the hold never re-enables the track and ends voice without a re-mint", async () => {
+  for (const window of ["thinking", "drained"] as const) {
+    const h = harness();
+    await h.client.start();
+    await h.settle();
+    const socket = h.sockets[0];
+    socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+    if (window === "drained") {
+      socket.frame({ t: "speaking_start", traceId: "turn-1" });
+      socket.frame({ t: "speaking_end", traceId: "turn-1" });
+      await h.settle();
+    }
+    expect(h.tracks[0].enabled).toBe(false);
+    socket.frame({ t: "error", code: "provider_error", retryable: false });
+    await h.settle();
+    await h.advance(60000);
+    // Disabled once at the hold, then stopped: never enabled in between.
+    expect(h.tracks[0].writes).toEqual([false]);
+    expect(h.activeCaptures).toBe(0);
+    expect(h.captures).toBe(1);
+    expect(h.mints).toBe(1);
+    expect(h.client.state.phase).toBe("idle");
+    expect(h.errors.map((error) => error.message)).toEqual([
+      HELD_LOSS("server_error"),
+    ]);
+  }
+});
+test("Cloud streaming without automatic reconnects ends a held turn's loss the same way", async () => {
+  const h = harness(false, undefined, 0);
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  socket.close();
+  await h.settle();
+  expect(h.mints).toBe(1);
+  expect(h.captures).toBe(1);
+  expect(h.activeCaptures).toBe(0);
+  expect(h.client.state.phase).toBe("idle");
+  expect(h.errors.map((error) => error.message)).toEqual([
+    HELD_LOSS("ws_close"),
+  ]);
+});
+test("the same losses outside the hold keep today's recovery with one replacement capture", async () => {
+  for (const loss of ["close", "fatal"] as const) {
+    const h = harness();
+    await h.client.start();
+    await h.settle();
+    const socket = h.sockets[0];
+    socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+    socket.frame({ t: "speaking_start", traceId: "turn-1" });
+    socket.frame({ t: "speaking_end", traceId: "turn-1" });
+    socket.frame({ t: "usage", sttMs: 0, ttsChars: 5, traceId: "turn-1" });
+    await h.settle();
+    expect(h.tracks[0].enabled).toBe(true);
+    if (loss === "close") socket.close();
+    else socket.frame({ t: "error", code: "provider_error", retryable: false });
+    await h.settle();
+    expect(h.mints).toBe(2);
+    expect(h.captures).toBe(2);
+    expect(h.maxCaptures).toBe(1);
+    expect(h.errors).toHaveLength(0);
+    expect(h.client.state.phase).toBe("listening");
+    // Frames from the retired session cannot hold the new capture.
+    socket.frame({ t: "stt_final", text: "late", traceId: "turn-1" });
+    expect(h.client.state.phase).toBe("listening");
+    expect(h.tracks[1].enabled).toBe(true);
+    await h.client.stop();
+  }
 });
 test("Stop during a budget remint releases capture and fences its late response", async () => {
   const h = harness();
@@ -623,7 +768,7 @@ test("invalid renewal cannot replace the retained capture lease", async () => {
   await h.client.stop();
 });
 
-test("playback drain sends its exact completion before microphone audio resumes", async () => {
+test("playback drain sends its exact completion, and microphone audio resumes only at the turn's usage", async () => {
   for (const supported of [false, true]) {
     const h = harness(supported);
     await h.client.start();
@@ -635,7 +780,11 @@ test("playback drain sends its exact completion before microphone audio resumes"
     socket.frame({ t: "speaking_end", traceId: "turn-1" });
     await h.settle();
     expect(h.client.state.phase).toBe("listening");
-    expect(h.tracks[0].enabled).toBe(true);
+    // The server still holds the caller turn until its usage receipt.
+    expect(h.tracks[0].enabled).toBe(false);
+    h.pumpAudio();
+    expect(audio(socket).length).toBeGreaterThan(0);
+    expect(audio(socket).every(silent)).toBe(true);
     const completion = socket.sent.findIndex(
       (frame) => (frame as { t?: string }).t === "playback_complete",
     );
@@ -644,13 +793,205 @@ test("playback drain sends its exact completion before microphone audio resumes"
         t: "playback_complete",
         traceId: "turn-1",
       });
-      h.pumpAudio();
-      expect(
-        socket.sent.findIndex((frame) => frame instanceof ArrayBuffer),
-      ).toBeGreaterThan(completion);
     } else expect(completion).toBe(-1);
+    socket.frame({ t: "usage", sttMs: 0, ttsChars: 5, traceId: "turn-1" });
+    expect(h.tracks[0].enabled).toBe(true);
+    const resumed = socket.sent.length;
+    h.pumpAudio();
+    expect(audio({ sent: socket.sent.slice(resumed) }).some(silent)).toBe(
+      false,
+    );
+    expect(resumed).toBeGreaterThan(completion);
     await h.client.stop();
   }
+});
+
+test("a submitted turn holds the microphone from stt_final until speech starts", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  h.pumpAudio();
+  expect(audio(socket).some(silent)).toBe(false);
+  const listening = socket.sent.length;
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  expect(h.client.state.phase).toBe("thinking");
+  expect(h.tracks[0].enabled).toBe(false);
+  h.pumpAudio();
+  const held = audio({ sent: socket.sent.slice(listening) });
+  expect(held.length).toBeGreaterThan(0);
+  expect(held.every(silent)).toBe(true);
+  expect(h.client.microphoneHeld).toBe(true);
+  expect(h.client.microphoneMuted).toBe(false);
+  socket.frame({ t: "progress", text: "One moment", traceId: "turn-1" });
+  socket.frame({ t: "speaking_start", traceId: "turn-1" });
+  expect(h.tracks[0].writes).toEqual([false]);
+});
+
+test("held uplink substitutes silence even for capture frames the driver did not mute", async () => {
+  const real = micCapture.startVoiceMicCapture,
+    ports: Array<Parameters<typeof real>[0]> = [];
+  const spy = vi
+    .spyOn(micCapture, "startVoiceMicCapture")
+    .mockImplementation(async (options) => {
+      ports.push(options);
+      return real(options);
+    });
+  try {
+    const h = harness();
+    await h.client.start();
+    await h.settle();
+    const socket = h.sockets[0];
+    socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+    socket.frame({ t: "speaking_start", traceId: "turn-1" });
+    socket.frame({ t: "speaking_end", traceId: "turn-1" });
+    await h.settle();
+    for (const phase of ["listening", "thinking"] as const) {
+      if (phase === "thinking")
+        socket.frame({ t: "stt_final", text: "and mail", traceId: "turn-2" });
+      expect(h.client.state.phase).toBe(phase);
+      const count = socket.sent.length;
+      ports[0].onFrame(new Uint8Array(320).fill(7));
+      const sent = audio({ sent: socket.sent.slice(count) });
+      expect(sent).toHaveLength(1);
+      expect(sent.every(silent)).toBe(true);
+    }
+    socket.frame({ t: "usage", sttMs: 0, ttsChars: 0, traceId: "turn-2" });
+    const count = socket.sent.length;
+    ports[0].onFrame(new Uint8Array(320).fill(7));
+    expect(audio({ sent: socket.sent.slice(count) }).some(silent)).toBe(false);
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("only the held turn's own usage or interruption, or an explicit barge-in, releases the hold", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({ t: "stt_final", text: " ", traceId: "empty" });
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.tracks[0].enabled).toBe(true);
+  socket.frame({ t: "stt_final", text: "remember this", traceId: "silent" });
+  expect(h.tracks[0].enabled).toBe(false);
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 0, traceId: "silent" });
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.tracks[0].enabled).toBe(true);
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-2" });
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 0, traceId: "silent" });
+  socket.frame({ t: "interrupted", reason: "explicit", traceId: "silent" });
+  socket.frame({ t: "error", code: "stt_reconnecting", retryable: true });
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.tracks[0].enabled).toBe(false);
+  expect(h.client.microphoneHeld).toBe(true);
+  socket.frame({ t: "interrupted", reason: "explicit", traceId: "turn-2" });
+  expect(h.tracks[0].enabled).toBe(true);
+  socket.frame({ t: "stt_final", text: "and calendar", traceId: "turn-3" });
+  socket.frame({ t: "speaking_start", traceId: "turn-3" });
+  socket.frame({ t: "speaking_end", traceId: "turn-3" });
+  await h.settle();
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.tracks[0].enabled).toBe(false);
+  h.client.bargeIn();
+  expect(h.tracks[0].enabled).toBe(true);
+  expect(socket.sent).toContainEqual({ t: "barge_in" });
+  expect(h.mints).toBe(1);
+  expect(h.errors).toHaveLength(0);
+});
+
+test("manual mute stays independent of the hold in both directions", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  h.client.setMicrophoneMuted(true);
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 0, traceId: "turn-1" });
+  expect(h.tracks[0].enabled).toBe(false);
+  expect(h.client.microphoneMuted).toBe(true);
+  socket.frame({ t: "stt_final", text: "and mail", traceId: "turn-2" });
+  h.client.setMicrophoneMuted(false);
+  expect(h.tracks[0].enabled).toBe(false);
+  expect(h.client.microphoneMuted).toBe(false);
+  expect(h.client.microphoneHeld).toBe(true);
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 0, traceId: "turn-2" });
+  expect(h.tracks[0].enabled).toBe(true);
+  expect(h.client.microphoneHeld).toBe(false);
+  expect(h.tracks[0].writes).toEqual([false, true]);
+  h.client.setMicrophoneMuted(true);
+  expect(h.client.microphoneMuted).toBe(true);
+  expect(h.client.microphoneHeld).toBe(false);
+});
+
+test("Stop during the hold stops the track without re-enabling it, and late turn frames are inert", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  expect(h.tracks[0].enabled).toBe(false);
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+  socket.frame({ t: "speaking_end", traceId: "turn-1" });
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 0, traceId: "turn-1" });
+  expect(h.client.state.phase).toBe("idle");
+  expect(h.client.microphoneHeld).toBe(false);
+  expect(h.tracks[0].writes).toEqual([false]);
+  expect(h.mints).toBe(1);
+  expect(h.captures).toBe(1);
+});
+
+test("a rotation due while the drained turn awaits its usage waits for that usage", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  socket.frame({ t: "speaking_start", traceId: "turn-1" });
+  socket.frame({ t: "speaking_end", traceId: "turn-1" });
+  await h.settle();
+  expect(h.client.state.phase).toBe("listening");
+  await h.advance(55000);
+  expect(h.mints).toBe(1);
+  expect(socket.sent).not.toContainEqual({ t: "bye" });
+  expect(h.marks).toContain("token_rotation_deferred");
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 5, traceId: "turn-1" });
+  await h.advance(1000);
+  expect(h.mints).toBe(2);
+  expect(socket.sent).toContainEqual({ t: "bye" });
+  expect(h.captures).toBe(1);
+  expect(h.errors).toHaveLength(0);
+});
+
+test("after the held turn's usage the next utterance uplinks real PCM and its final holds again", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  socket.frame({ t: "speaking_start", traceId: "turn-1" });
+  socket.frame({ t: "speaking_end", traceId: "turn-1" });
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 5, traceId: "turn-1" });
+  await h.settle();
+  let count = socket.sent.length;
+  socket.frame({ t: "stt_partial", text: "and", traceId: "turn-2" });
+  expect(h.client.state.phase).toBe("transcribing");
+  expect(h.tracks[0].enabled).toBe(true);
+  h.pumpAudio();
+  const spoken = audio({ sent: socket.sent.slice(count) });
+  expect(spoken.length).toBeGreaterThan(0);
+  expect(spoken.some(silent)).toBe(false);
+  socket.frame({ t: "stt_final", text: "and mail", traceId: "turn-2" });
+  expect(h.tracks[0].enabled).toBe(false);
+  expect(h.client.microphoneHeld).toBe(true);
+  count = socket.sent.length;
+  h.pumpAudio();
+  expect(audio({ sent: socket.sent.slice(count) }).every(silent)).toBe(true);
+  socket.frame({ t: "usage", sttMs: 0, ttsChars: 0, traceId: "turn-2" });
+  expect(h.tracks[0].enabled).toBe(true);
+  expect(h.mints).toBe(1);
+  expect(h.errors).toHaveLength(0);
 });
 
 test("insufficient credits stop capture without minting another session", async () => {
@@ -693,4 +1034,194 @@ test("a retired renderer context stops capture instead of silently discarding up
   ).toHaveLength(0);
   await h.advance(120000);
   expect(h.mints).toBe(1);
+});
+
+/**
+ * Reducer cases ported from Alpha's development-cartesia-conversation
+ * projection. Like the client, generation end is not reduced on arrival; it is
+ * folded in only when local playback drains. Returns `inputHeld` after each step.
+ */
+function heldAfter(
+  steps: Array<ServerControlFrame | { drain: string }>,
+  from: VoiceSessionMachineState = {
+    ...INITIAL_VOICE_SESSION_STATE,
+    phase: "listening",
+  },
+): boolean[] {
+  let state = from;
+  return steps.map((step) => {
+    if ("drain" in step) {
+      if (state.phase === "speaking" && state.traceId === step.drain)
+        state = loopToListening(
+          applyServerEvent(state, { t: "speaking_end", traceId: step.drain }),
+        );
+    } else if (step.t !== "speaking_end") state = applyServerEvent(state, step);
+    return inputHeld(state);
+  });
+}
+
+test("the hold starts only at an accepted nonempty final and lasts through generation end until drain", () => {
+  expect(
+    heldAfter([
+      { t: "stt_partial", text: "partial", traceId: "turn" },
+      { t: "stt_final", text: "check notes", traceId: "turn" },
+      { t: "speaking_start", traceId: "turn" },
+      { t: "speaking_end", traceId: "turn" },
+      { t: "usage", traceId: "old" },
+      { t: "usage", traceId: "turn" },
+      { drain: "turn" },
+    ]),
+  ).toEqual([false, true, true, true, true, true, false]);
+  expect(
+    heldAfter([
+      { t: "stt_final", text: " ", traceId: "empty" },
+      { t: "stt_final", text: "check notes", traceId: "turn" },
+    ]),
+  ).toEqual([false, true]);
+});
+
+test("matching usage does not release playback that has not drained, and drain does not release before usage", () => {
+  expect(
+    heldAfter([
+      { t: "stt_final", text: "check notes", traceId: "turn" },
+      { t: "speaking_start", traceId: "turn" },
+      { t: "usage", traceId: "turn" },
+      { t: "speaking_end", traceId: "turn" },
+      { drain: "turn" },
+    ]),
+  ).toEqual([true, true, true, true, false]);
+  expect(
+    heldAfter([
+      { t: "stt_final", text: "check", traceId: "turn" },
+      { t: "speaking_start", traceId: "turn" },
+      { t: "speaking_end", traceId: "turn" },
+      { drain: "turn" },
+      { t: "usage", traceId: "turn" },
+    ]),
+  ).toEqual([true, true, true, true, false]);
+});
+
+test("old usage and old interruption cannot release a newer accepted turn", () => {
+  expect(
+    heldAfter([
+      { t: "stt_final", text: "first", traceId: "first" },
+      { t: "stt_final", text: "second", traceId: "second" },
+      { t: "usage", traceId: "first" },
+      { t: "interrupted", traceId: "first", reason: "explicit" },
+      { t: "usage", traceId: "second" },
+    ]),
+  ).toEqual([true, true, true, true, false]);
+});
+
+test("a silent turn releases at its own usage or interruption; an error never releases a turn", () => {
+  const request: ServerControlFrame = {
+    t: "stt_final",
+    text: "silent request",
+    traceId: "turn",
+  };
+  expect(heldAfter([request, { t: "usage", traceId: "turn" }])).toEqual([
+    true,
+    false,
+  ]);
+  expect(
+    heldAfter([
+      request,
+      { t: "interrupted", traceId: "turn", reason: "explicit" },
+    ]),
+  ).toEqual([true, false]);
+  // Unlike Alpha's projection, a fatal error keeps the hold, also after the
+  // reply drained: server error frames carry no turn, and the client ends in
+  // a new session or a reset.
+  expect(
+    heldAfter([
+      request,
+      { t: "speaking_start", traceId: "turn" },
+      { drain: "turn" },
+      { t: "error", traceId: "turn", code: "unavailable", retryable: false },
+      { t: "ready", sessionId: "next", traceId: "ready-2" },
+    ]),
+  ).toEqual([true, true, true, true, false]);
+  const held = applyServerEvent(
+    { ...INITIAL_VOICE_SESSION_STATE, phase: "listening" },
+    request,
+  );
+  expect(inputHeld(applyClientAction(held, { type: "client/reset" }))).toBe(
+    false,
+  );
+});
+
+for (const code of ["stt_reconnecting", "transport_error"])
+  test(`retryable unscoped ${code} keeps the hold until the matching usage`, () => {
+    expect(
+      heldAfter([
+        { t: "stt_final", text: "active request", traceId: "active" },
+        { t: "error", code, retryable: true },
+        { t: "usage", traceId: "other" },
+        { t: "usage", traceId: "active" },
+      ]),
+    ).toEqual([true, true, true, false]);
+  });
+
+test("an opening greeting and server fallback speech hold input until local drain", () => {
+  expect(
+    heldAfter([
+      { t: "speaking_start", traceId: "greeting" },
+      { t: "speaking_end", traceId: "greeting" },
+      { t: "usage", traceId: "greeting" },
+      { drain: "greeting" },
+    ]),
+  ).toEqual([true, true, true, false]);
+  expect(
+    heldAfter([
+      { t: "stt_final", text: "request", traceId: "request" },
+      { t: "usage", traceId: "request" },
+      { t: "speaking_start", traceId: "fallback" },
+      { t: "speaking_end", traceId: "fallback" },
+      { drain: "fallback" },
+    ]),
+  ).toEqual([true, false, true, true, false]);
+});
+
+test("old greeting events and drain cannot release a newer accepted request", () => {
+  expect(
+    heldAfter([
+      { t: "speaking_start", traceId: "greeting" },
+      { t: "speaking_end", traceId: "greeting" },
+      { drain: "greeting" },
+      { t: "stt_final", text: "new request", traceId: "new" },
+      { t: "speaking_start", traceId: "greeting" },
+      { t: "speaking_end", traceId: "greeting" },
+      { t: "usage", traceId: "greeting" },
+      { drain: "greeting" },
+      { t: "usage", traceId: "new" },
+    ]),
+  ).toEqual([true, true, false, true, true, true, true, true, false]);
+});
+
+test("a new server session or an explicit barge-in ends the caller turn; thinking waits for the server", () => {
+  const thinking = applyServerEvent(
+    { ...INITIAL_VOICE_SESSION_STATE, phase: "listening" },
+    { t: "stt_final", text: "old request", traceId: "old" },
+  );
+  const speaking = applyServerEvent(thinking, {
+    t: "speaking_start",
+    traceId: "old",
+  });
+  const drained = loopToListening(
+    applyServerEvent(speaking, { t: "speaking_end", traceId: "old" }),
+  );
+  expect(
+    inputHeld(
+      applyServerEvent(speaking, {
+        t: "ready",
+        sessionId: "next",
+        traceId: "ready-2",
+      }),
+    ),
+  ).toBe(false);
+  const bargeIn = { type: "client/local_barge_in" } as const;
+  expect(inputHeld(applyClientAction(drained, bargeIn))).toBe(false);
+  expect(inputHeld(applyClientAction(speaking, bargeIn))).toBe(false);
+  // Thinking is server-authoritative: it ends at the server's `interrupted`.
+  expect(inputHeld(applyClientAction(thinking, bargeIn))).toBe(true);
 });
