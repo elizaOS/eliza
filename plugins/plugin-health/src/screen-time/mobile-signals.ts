@@ -8,7 +8,9 @@ import type { ScreenTimeAggregateRow } from "./builders.js";
 
 export * from "./mobile-signal-setup.js";
 
-const DAY_MS = 24 * 60 * 60_000;
+// Mobile platforms report rolling snapshots, so a reader serves at most one
+// civil day. A DST fall-back day lasts 25 hours.
+const MAX_CIVIL_DAY_MS = 25 * 60 * 60_000;
 
 export interface ScreenTimeMobileSignal {
   platform: string;
@@ -56,7 +58,7 @@ export function androidUsageRowsFromSignals(
   sinceMs: number,
   untilMs: number,
 ): ScreenTimeAggregateRow[] {
-  if (untilMs - sinceMs > DAY_MS) {
+  if (untilMs - sinceMs > MAX_CIVIL_DAY_MS) {
     return [];
   }
 
@@ -122,7 +124,7 @@ export function iosCoarseUsageRowsFromSignals(
   sinceMs: number,
   untilMs: number,
 ): ScreenTimeAggregateRow[] {
-  if (untilMs - sinceMs > DAY_MS) {
+  if (untilMs - sinceMs > MAX_CIVIL_DAY_MS) {
     return [];
   }
 
