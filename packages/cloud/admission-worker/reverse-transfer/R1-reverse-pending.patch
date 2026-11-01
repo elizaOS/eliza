@@ -1,0 +1,20 @@
+diff --git a/packages/cloud/api/wrangler.toml b/packages/cloud/api/wrangler.toml
+index 0665ca6..7c9defa 100644
+--- a/packages/cloud/api/wrangler.toml
++++ b/packages/cloud/api/wrangler.toml
+@@ -1065,10 +1065,13 @@ storage = "sqlite"
+ type = "durable-object"
+ storage = "sqlite"
+ 
++# REVERSE R1: expect the namespace back from the target. The binding keeps
++# reaching it through the target until the target commits (R2).
+ [env.production.exports.InferenceAdmissionGate]
+ type = "durable-object"
+-state = "transferred"
+-transferred_to = "eliza-cloud-admission-prod"
++state = "expecting-transfer"
++storage = "sqlite"
++transfer_from = "eliza-cloud-admission-prod"
+ 
+ [env.production.exports.AnonymousChatGate]
+ type = "durable-object"

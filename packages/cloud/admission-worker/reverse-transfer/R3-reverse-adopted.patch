@@ -1,0 +1,27 @@
+diff --git a/packages/cloud/api/wrangler.toml b/packages/cloud/api/wrangler.toml
+index 7c9defa..f3e2fbc 100644
+--- a/packages/cloud/api/wrangler.toml
++++ b/packages/cloud/api/wrangler.toml
+@@ -1065,13 +1065,10 @@ storage = "sqlite"
+ type = "durable-object"
+ storage = "sqlite"
+ 
+-# REVERSE R1: expect the namespace back from the target. The binding keeps
+-# reaching it through the target until the target commits (R2).
++# REVERSE R3: the API owns the namespace again; the target keeps its tombstone.
+ [env.production.exports.InferenceAdmissionGate]
+ type = "durable-object"
+-state = "expecting-transfer"
+ storage = "sqlite"
+-transfer_from = "eliza-cloud-admission-prod"
+ 
+ [env.production.exports.AnonymousChatGate]
+ type = "durable-object"
+@@ -1359,7 +1356,6 @@ class_name = "SharedRuntimeConversation"
+ [[env.production.durable_objects.bindings]]
+ name = "INFERENCE_ADMISSION_GATES"
+ class_name = "InferenceAdmissionGate"
+-script_name = "eliza-cloud-admission-prod"
+ 
+ [[env.production.durable_objects.bindings]]
+ name = "DOORDASH_CHECKOUT_GATES"

@@ -1,0 +1,25 @@
+diff --git a/packages/cloud/admission-worker/wrangler.toml b/packages/cloud/admission-worker/wrangler.toml
+index b2eff1e..4da82ab 100644
+--- a/packages/cloud/admission-worker/wrangler.toml
++++ b/packages/cloud/admission-worker/wrangler.toml
+@@ -84,14 +84,15 @@ __dirname = "\"/\""
+ __filename = "\"/worker.js\""
+ 
+ # Exports are inherited as one map, so production replaces the staging map.
+-# The namespace is already adopted; do not reintroduce a transfer declaration.
++# REVERSE R2: commit the namespace back to the API. Keep this tombstone and
++# the class code; a tombstone has no binding.
+ [env.production.exports.InferenceAdmissionGate]
+ type = "durable-object"
+-storage = "sqlite"
++state = "transferred"
++transferred_to = "eliza-cloud-api-prod"
+ 
+-[[env.production.durable_objects.bindings]]
+-name = "INFERENCE_ADMISSION_GATES"
+-class_name = "InferenceAdmissionGate"
++[env.production.durable_objects]
++bindings = []
+ 
+ # The accepted staging variable names with the production API values.
+ # Strong revocation and snapshot admission stay off, as in the production API.
