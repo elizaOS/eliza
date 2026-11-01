@@ -1140,6 +1140,71 @@ it("keeps an interval trigger's next run when an edit leaves the interval", asyn
   }
 });
 
+it("keeps an interval trigger's next run when an action edit leaves the interval", async () => {
+  const week = 7 * 24 * 60 * 60 * 1000;
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Every week, remind me to send the report." },
+  } as Memory;
+  const run = (parameters: JsonObject) =>
+    triggerAction.handler(fixture.runtime, message, undefined, { parameters });
+  const created = await run({
+    action: "create",
+    displayName: "Weekly report",
+    instructions: "Remind the user to send the weekly report.",
+    triggerType: "interval",
+    intervalMs: week,
+  });
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId, triggerId } = created.data as {
+    taskId: UUID;
+    triggerId: UUID;
+  };
+  try {
+    const saved = await fixture.runtime.getTask(taskId);
+    if (!saved) throw new Error("Created interval task missing");
+    const nextRunBefore = readTriggerConfig(saved)?.nextRunAtMs;
+    const anchorBefore = (saved.metadata as { updatedAt?: number }).updatedAt;
+    // Six days later the user only renames it, like the PUT route case above.
+    vi.spyOn(Date, "now").mockReturnValue(Date.now() + 6 * 24 * 60 * 60 * 1000);
+    const renamed = await run({
+      action: "update",
+      taskId: triggerId,
+      displayName: "Weekly report (renamed)",
+    });
+    vi.restoreAllMocks();
+    expect(renamed, renamed?.text).toMatchObject({ success: true });
+    const after = await fixture.runtime.getTask(taskId);
+    expect(after && readTriggerConfig(after)).toMatchObject({
+      displayName: "Weekly report (renamed)",
+      nextRunAtMs: nextRunBefore,
+    });
+    expect(
+      (after?.metadata as { updatedAt?: number } | undefined)?.updatedAt,
+    ).toBe(anchorBefore);
+
+    // A new interval starts a new countdown.
+    const moved = await run({
+      action: "update",
+      taskId: triggerId,
+      intervalMs: 2 * week,
+    });
+    expect(moved, moved?.text).toMatchObject({ success: true });
+    const rescheduled = await fixture.runtime.getTask(taskId);
+    expect(rescheduled && readTriggerConfig(rescheduled)?.intervalMs).toBe(
+      2 * week,
+    );
+    expect(rescheduled && readTriggerConfig(rescheduled)?.nextRunAtMs).not.toBe(
+      nextRunBefore,
+    );
+  } finally {
+    vi.restoreAllMocks();
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+
 it("removes a trigger's run limit when an edit clears Stop after", async () => {
   const runtime = fixture.runtime;
   const created = await requestTrigger("POST", "/api/triggers", {

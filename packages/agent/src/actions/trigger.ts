@@ -1294,6 +1294,26 @@ async function opUpdate(
       "SCHEDULE_COMPUTE_FAILED",
     );
   }
+  // An interval counts from its anchor. An edit that keeps an enabled
+  // interval (a rename, new instructions) keeps the anchor and the next run,
+  // as the PUT route does; rebuilding would restart the countdown from now.
+  if (
+    trigger.enabled &&
+    trigger.triggerType === "interval" &&
+    next.triggerType === "interval" &&
+    next.intervalMs === trigger.intervalMs &&
+    typeof trigger.nextRunAtMs === "number" &&
+    metadata.trigger
+  ) {
+    const existing = task.metadata as TriggerTaskMetadata | undefined;
+    metadata.updatedAt = existing?.updatedAt ?? metadata.updatedAt;
+    metadata.updateInterval =
+      existing?.updateInterval ?? metadata.updateInterval;
+    metadata.trigger = {
+      ...metadata.trigger,
+      nextRunAtMs: trigger.nextRunAtMs,
+    };
+  }
   await runtime.updateTask(task.id, {
     description: next.displayName,
     metadata,
