@@ -3,6 +3,7 @@ import { aiPricingRepository } from "../../../db/repositories/ai-pricing";
 import type { PricingDimensions } from "../../../db/schemas/ai-pricing";
 import { expandPersistedPricingProviderKeys } from "../../providers/model-id-translation";
 import { logger } from "../../utils/logger";
+import { withTimeout } from "../../utils/with-timeout";
 import {
   ELEVENLABS_SNAPSHOT_PRICING,
   getSupportedMusicModelDefinition,
@@ -762,10 +763,20 @@ export async function calculateSTTCostFromCatalog(params: {
 }
 
 /**
+ * Longest the voice keep-warm waits for one key (one `ai_pricing` read and one
+ * Worker-cache write). A slower key, or one that joins a read that never
+ * finishes, is counted as failed and the next key still warms, so a stuck read
+ * costs the sweep this much per key. The read itself is not cancelled and
+ * still writes the entry if it finishes.
+ */
+const VOICE_PRICING_KEEPWARM_KEY_DEADLINE_MS = 1_000;
+
+/**
  * Keep-warm for the voice routes. Each ElevenLabs catalog TTS and STT row is
  * priced through the route's own call, which reads the catalog through the
  * route's loader and writes the Worker-cache entry the cache-only route reads.
- * One key at a time; a failed key is logged and the next key still warms.
+ * One key at a time, each within its deadline; a failed key is logged and the
+ * next key still warms.
  */
 export async function warmVoicePricingCache(): Promise<{ warmed: number; failed: number }> {
   const warm = { warmWorkerCache: true };
@@ -774,11 +785,13 @@ export async function warmVoicePricingCache(): Promise<{ warmed: number; failed:
   for (const { modelId, productFamily } of ELEVENLABS_SNAPSHOT_PRICING) {
     if (productFamily !== "tts" && productFamily !== "stt") continue;
     try {
-      if (productFamily === "tts") {
-        await calculateTTSCostFromCatalog({ model: modelId, characterCount: 1, cache: warm });
-      } else {
-        await calculateSTTCostFromCatalog({ model: modelId, durationSeconds: 1, cache: warm });
-      }
+      await withTimeout(
+        productFamily === "tts"
+          ? calculateTTSCostFromCatalog({ model: modelId, characterCount: 1, cache: warm })
+          : calculateSTTCostFromCatalog({ model: modelId, durationSeconds: 1, cache: warm }),
+        VOICE_PRICING_KEEPWARM_KEY_DEADLINE_MS,
+        "voice pricing keep-warm",
+      );
       warmed++;
     } catch (error) {
       failed++;

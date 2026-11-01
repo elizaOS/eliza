@@ -2,13 +2,13 @@
  * The shared keep-warm cron writes the voice routes' catalog prices to the
  * Worker cache with the key and TTL the cache-only routes read. A cold serving
  * isolate then prices its first TTS or STT call from that entry: one Worker
- * cache read, no catalog read and no warming 503. The agent pricing prewarm
- * does the same for its token-rate key.
+ * cache read, no catalog read and no warming 503. The voice step runs after
+ * the other legs with a deadline per key, so a stuck read delays only itself.
  *
  * Real cron route, real pricing cache and catalog lookup over
  * `ai_pricing_entries` rows on PGlite, and the in-memory Worker cache backend.
- * The agent sweep sees an empty activity window; its agent and kernel legs are
- * replaced because they do not price.
+ * The agent sweep sees an empty activity window unless a test fills it; its
+ * agent, room and kernel legs are replaced because they do not price.
  */
 import {
   afterAll,
@@ -21,14 +21,11 @@ import {
   spyOn,
   test,
 } from "bun:test";
+import { randomUUID } from "node:crypto";
+import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { aiPricingRepository } from "@elizaos/cloud-shared/db/repositories/ai-pricing";
 import { sharedRuntimeHistoryRepository } from "@elizaos/cloud-shared/db/repositories/shared-runtime-history";
 import { cache } from "@elizaos/cloud-shared/lib/cache/client";
-import {
-  calculateCost,
-  getProviderFromModel,
-  normalizeModelName,
-} from "@elizaos/cloud-shared/lib/pricing";
 import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/cloud-shared/lib/pricing-constants";
 import {
   calculateSTTCostFromCatalog,
@@ -49,9 +46,6 @@ const CRON_SECRET = "keepwarm-test-secret";
 /** `ai_pricing` rates that differ from the ElevenLabs snapshot (0.00005/char, 0.22/hour). */
 const TTS_USD_PER_CHARACTER = 0.0002;
 const STT_USD_PER_HOUR = 3.6;
-const TEXT_MODEL = "openai/gpt-5-mini";
-const INPUT_USD_PER_TOKEN = 0.000002;
-const OUTPUT_USD_PER_TOKEN = 0.000008;
 /** Every ElevenLabs catalog row the TTS and STT routes can price. */
 const VOICE_KEYS = ELEVENLABS_SNAPSHOT_PRICING.filter(
   (row) => row.productFamily === "tts" || row.productFamily === "stt",
@@ -60,6 +54,8 @@ const WORKER_CACHE_TTL_SECONDS = 15 * 60;
 
 const events: string[] = [];
 let catalogFailure: Error | undefined;
+/** Holds every catalog read for this model until released. */
+let heldModel: { model: string; gate: Promise<void> } | undefined;
 let kernelPrewarms = 0;
 
 const realCatalogRead =
@@ -71,19 +67,31 @@ spyOn(
   "listActiveEntriesForProviderModelPairs",
 ).mockImplementation(async (filters) => {
   events.push(`catalog:${filters.productFamily}`);
+  const held = heldModel;
+  if (held && filters.pairs.some(({ model }) => model.includes(held.model)))
+    await held.gate;
   if (catalogFailure) throw catalogFailure;
   return realCatalogRead(filters);
 });
-spyOn(
+const activeAgents = spyOn(
   sharedRuntimeHistoryRepository,
   "listRecentlyActiveAgentIds",
 ).mockResolvedValue([]);
-spyOn(
+const activeRooms = spyOn(
   sharedRuntimeHistoryRepository,
   "listRecentlyActivePersonalRooms",
 ).mockResolvedValue([]);
+const findAgent = spyOn(agentSandboxesRepository, "findById");
 const cacheReads = spyOn(cache, "getWithOutcome");
-const cacheWrites = spyOn(cache, "setWithOutcome");
+const realCacheWrite = cache.setWithOutcome.bind(cache);
+/** Every key written, kept across `mockClear` so the next test starts cold. */
+const writtenKeys = new Set<string>();
+const cacheWrites = spyOn(cache, "setWithOutcome").mockImplementation(
+  async (...args: Parameters<typeof realCacheWrite>) => {
+    writtenKeys.add(String(args[0]));
+    return realCacheWrite(...args);
+  },
+);
 const keysWith = (prefix: string, calls: unknown[][]) =>
   calls.map(([key]) => String(key)).filter((key) => key.startsWith(prefix));
 const writesWith = (prefix: string) =>
@@ -92,8 +100,12 @@ const writesWith = (prefix: string) =>
 mock.module(
   "@elizaos/cloud-shared/lib/services/shared-runtime/prewarm-shared-agent",
   () => ({
-    prewarmPersonalSharedRoom: async () => undefined,
-    prewarmSharedAgentTurnCaches: async () => undefined,
+    prewarmPersonalSharedRoom: async () => {
+      events.push("prewarm:room");
+    },
+    prewarmSharedAgentTurnCaches: async () => {
+      events.push("prewarm:agent");
+    },
   }),
 );
 mock.module(
@@ -127,25 +139,18 @@ beforeAll(async () => {
   await getPgliteClientForTests().query(
     `INSERT INTO ai_pricing_entries(billing_source,provider,model,product_family,charge_type,unit,unit_price,source_kind,source_url) VALUES
       ('elevenlabs','elevenlabs','elevenlabs/eleven_flash_v2_5','tts','generation','character',$1,'manual_override','https://pricing.test/tts'),
-      ('elevenlabs','elevenlabs','elevenlabs/scribe_v2','stt','generation','hour',$2,'manual_override','https://pricing.test/stt'),
-      ('bitrouter','openai',$3,'language','input','token',$4,'manual_override','https://pricing.test/text'),
-      ('bitrouter','openai',$3,'language','output','token',$5,'manual_override','https://pricing.test/text')`,
-    [
-      String(TTS_USD_PER_CHARACTER),
-      String(STT_USD_PER_HOUR),
-      TEXT_MODEL,
-      String(INPUT_USD_PER_TOKEN),
-      String(OUTPUT_USD_PER_TOKEN),
-    ],
+      ('elevenlabs','elevenlabs','elevenlabs/scribe_v2','stt','generation','hour',$2,'manual_override','https://pricing.test/stt')`,
+    [String(TTS_USD_PER_CHARACTER), String(STT_USD_PER_HOUR)],
   );
 });
 
 afterEach(async () => {
   // Each test starts from a cold isolate (empty L1) and a cold Worker cache.
   catalogFailure = undefined;
+  heldModel = undefined;
   setSystemTime();
-  for (const key of new Set(keysWith("iac:", cacheWrites.mock.calls)))
-    await cache.del(key);
+  for (const key of writtenKeys) await cache.del(key);
+  writtenKeys.clear();
   __clearPersistedPricingCache();
   events.length = 0;
   kernelPrewarms = 0;
@@ -157,11 +162,11 @@ afterAll(async () => {
   await closeDatabaseConnectionsForTests();
 });
 
-async function sweep() {
+async function sweep(env: Record<string, unknown> = {}) {
   const response = await app.request(
     "http://cloud.test/api/v1/cron/shared-agent-keepwarm",
     { method: "POST", headers: { "x-cron-secret": CRON_SECRET } },
-    { CRON_SECRET, NODE_ENV: "test" },
+    { CRON_SECRET, NODE_ENV: "test", ...env },
     {
       waitUntil: () => undefined,
       passThroughOnException: () => undefined,
@@ -169,7 +174,7 @@ async function sweep() {
     },
   );
   const body = (await response.json()) as {
-    data?: { voicePricingWarmed?: number; voicePricingFailed?: number };
+    data?: Record<string, number>;
   };
   return { status: response.status, data: body.data };
 }
@@ -328,44 +333,82 @@ test("a failed keep-warm is counted per key and the sweep still completes", asyn
   );
 });
 
-test("the agent pricing prewarm writes the token-rate key a cold turn reads", async () => {
-  const model = normalizeModelName(TEXT_MODEL);
-  const provider = getProviderFromModel(TEXT_MODEL);
-  // The exact call the shared-agent and voice-session prewarm legs make.
-  await calculateCost(model, provider, 1, 1, "bitrouter", {
-    warmWorkerCache: true,
-  });
-  const written = writesWith("iac:pricing:");
+test("a sweep on an isolate whose entries came from the Worker cache does not rewrite them", async () => {
+  await sweep();
 
-  // A new isolate prices a turn (input and output tokens) from the Worker
-  // cache; a cold key here is the warming 503.
+  // Another isolate serves TTS and STT from the Worker cache; then a cron tick
+  // lands on it within the fresh window.
   __clearPersistedPricingCache();
-  events.length = 0;
   cacheReads.mockClear();
-  const turn = workerRequest();
-  const tokens = 1_000_000;
-  const cost = await calculateCost(
-    model,
-    provider,
-    tokens,
-    tokens,
-    "bitrouter",
-    turn.cache,
-  );
-  expect(events).toEqual([]);
-  expect(cost.inputCost).toBeCloseTo(
-    withMarkup(INPUT_USD_PER_TOKEN * tokens),
-    6,
-  );
-  expect(cost.outputCost).toBeCloseTo(
-    withMarkup(OUTPUT_USD_PER_TOKEN * tokens),
-    6,
-  );
-  expect(turn.pending).toHaveLength(0);
-  // The prewarm wrote that key once, with the TTL reads use.
-  expect(written).toHaveLength(1);
-  expect(written[0][2]).toBe(WORKER_CACHE_TTL_SECONDS);
-  expect(keysWith("iac:pricing:", cacheReads.mock.calls)).toEqual([
-    String(written[0][0]),
+  await priceVoiceRoutes();
+  const served = keysWith("iac:flat-pricing:", cacheReads.mock.calls);
+  expect(served).toHaveLength(2);
+  events.length = 0;
+  cacheWrites.mockClear();
+  const swept = await sweep();
+
+  // Only the keys this isolate has not read are read and written.
+  expect(swept.data).toMatchObject({
+    voicePricingWarmed: VOICE_KEYS,
+    voicePricingFailed: 0,
+  });
+  expect(events).toHaveLength(VOICE_KEYS - 2);
+  const written = writesWith("iac:flat-pricing:").map(([key]) => String(key));
+  expect(written).toHaveLength(VOICE_KEYS - 2);
+  for (const key of served) expect(written).not.toContain(key);
+});
+
+test("a stuck voice pricing read delays only the voice step", async () => {
+  // A cold serving request on the cron's isolate starts a catalog read that
+  // does not finish.
+  let release: (() => void) | undefined;
+  heldModel = {
+    model: "eleven_flash_v2_5",
+    gate: new Promise((resolve) => {
+      release = resolve;
+    }),
+  };
+  const serving = workerRequest();
+  await calculateTTSCostFromCatalog({
+    model: "elevenlabs/eleven_flash_v2_5",
+    characterCount: TEXT.length,
+    cache: serving.cache,
+  }).catch(() => undefined);
+
+  const agentId = randomUUID();
+  activeAgents.mockResolvedValueOnce([agentId]);
+  findAgent.mockResolvedValueOnce({ id: agentId } as never);
+  activeRooms.mockResolvedValueOnce([
+    {
+      agentId: "personal:6f1c2a3b-1d2e-5f3a-8b4c-0123456789ab",
+      channelId: randomUUID(),
+    },
   ]);
+  events.length = 0;
+  const startedAt = performance.now();
+  const swept = await Promise.race([
+    sweep({ SHARED_RUNTIME_CONVERSATIONS: {} }),
+    Bun.sleep(5_000).then(() => undefined),
+  ]);
+  const sweepMs = performance.now() - startedAt;
+  release?.();
+  await Promise.allSettled(serving.pending);
+
+  expect(swept?.status).toBe(200);
+  // Every other leg ran before the first voice catalog read.
+  expect(events.slice(0, 2)).toEqual(["prewarm:agent", "prewarm:room"]);
+  expect(kernelPrewarms).toBe(1);
+  // The stuck key cost the sweep its deadline; the other keys warmed.
+  expect(swept?.data).toMatchObject({
+    warmed: 1,
+    personalRoomsWarmed: 1,
+    voicePricingWarmed: VOICE_KEYS - 1,
+    voicePricingFailed: 1,
+  });
+  expect(sweepMs).toBeLessThan(3_000);
+  // The read was not cancelled: once it finishes, its entry is in the cache.
+  const flashKey = writesWith("iac:flat-pricing:")
+    .map(([key]) => String(key))
+    .find((key) => key.includes("eleven_flash_v2_5"));
+  expect((await cache.getWithOutcome(String(flashKey))).kind).toBe("hit");
 });

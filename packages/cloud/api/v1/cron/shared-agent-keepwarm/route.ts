@@ -41,11 +41,6 @@ async function runKeepwarm(c: AppContext) {
   try {
     requireCronSecret(c);
 
-    // TTS and STT price from the Worker cache only. Keeping their catalog keys
-    // there means an idle period never answers the first paid call with the
-    // warming 503. Failed keys are logged; they never end the sweep.
-    const voicePricing = await warmVoicePricingCache();
-
     const since = new Date(Date.now() - KEEPWARM_WINDOW_MS);
     const agentIds =
       await sharedRuntimeHistoryRepository.listRecentlyActiveAgentIds(
@@ -114,6 +109,13 @@ async function runKeepwarm(c: AppContext) {
     }
 
     await prewarmSharedElizaRuntime();
+
+    // TTS and STT price from the Worker cache only. Keeping their catalog keys
+    // there means an idle period never answers the first paid call with the
+    // warming 503. It runs after the other legs and each key has a deadline,
+    // so a slow or stuck voice key delays only this step. Failed keys are
+    // logged; they never end the sweep.
+    const voicePricing = await warmVoicePricingCache();
 
     logger.info("[SharedKeepwarm Cron] swept recently active shared agents", {
       candidates: agentIds.length,
