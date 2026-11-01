@@ -4,6 +4,7 @@ import type { PricingDimensions } from "../../../db/schemas/ai-pricing";
 import { expandPersistedPricingProviderKeys } from "../../providers/model-id-translation";
 import { logger } from "../../utils/logger";
 import {
+  ELEVENLABS_SNAPSHOT_PRICING,
   getSupportedMusicModelDefinition,
   getSupportedSfxModelDefinition,
   getSupportedVideoModelDefinition,
@@ -758,6 +759,39 @@ export async function calculateSTTCostFromCatalog(params: {
       durationSeconds: params.durationSeconds,
     }),
   );
+}
+
+/**
+ * Keep-warm for the voice routes. Each ElevenLabs catalog TTS and STT row is
+ * priced through the route's own call, which reads the catalog through the
+ * route's loader and writes the Worker-cache entry the cache-only route reads.
+ * One key at a time; a failed key is logged and the next key still warms.
+ */
+export async function warmVoicePricingCache(): Promise<{ warmed: number; failed: number }> {
+  const warm = { warmWorkerCache: true };
+  let warmed = 0;
+  let failed = 0;
+  for (const { modelId, productFamily } of ELEVENLABS_SNAPSHOT_PRICING) {
+    if (productFamily !== "tts" && productFamily !== "stt") continue;
+    try {
+      if (productFamily === "tts") {
+        await calculateTTSCostFromCatalog({ model: modelId, characterCount: 1, cache: warm });
+      } else {
+        await calculateSTTCostFromCatalog({ model: modelId, durationSeconds: 1, cache: warm });
+      }
+      warmed++;
+    } catch (error) {
+      failed++;
+      // error-policy:J7 keep-warm only removes latency; a cold key keeps the
+      // route's retryable warming 503.
+      logger.warn("[AI Pricing] voice pricing keep-warm failed", {
+        model: modelId,
+        productFamily,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return { warmed, failed };
 }
 
 export async function calculateVoiceCloneCostFromCatalog(params: {

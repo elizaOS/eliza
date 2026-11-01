@@ -4,15 +4,17 @@
  * agents so an idle-expired cache never bills a human's next message with the
  * retryable 503 warming wall (measured 10-27s of first-message latency). Runs
  * the SAME best-effort prewarm legs agent-create uses — admission snapshot,
- * pricing, character projection — plus the isolate kernel prewarm; by the
- * prewarm contract this can only remove latency, never change an
- * authorization or billing outcome. Protected by CRON_SECRET.
+ * pricing, character projection — plus the isolate kernel prewarm and the
+ * voice routes' catalog prices in the Worker cache; by the prewarm contract
+ * this can only remove latency, never change an authorization or billing
+ * outcome. Protected by CRON_SECRET.
  */
 
 import { requireCronSecret } from "@elizaos/cloud-shared/auth";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { sharedRuntimeHistoryRepository } from "@elizaos/cloud-shared/db/repositories/shared-runtime-history";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
+import { warmVoicePricingCache } from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   prewarmPersonalSharedRoom,
@@ -38,6 +40,11 @@ const KEEPWARM_MAX_PERSONAL_ROOMS = 50;
 async function runKeepwarm(c: AppContext) {
   try {
     requireCronSecret(c);
+
+    // TTS and STT price from the Worker cache only. Keeping their catalog keys
+    // there means an idle period never answers the first paid call with the
+    // warming 503. Failed keys are logged; they never end the sweep.
+    const voicePricing = await warmVoicePricingCache();
 
     const since = new Date(Date.now() - KEEPWARM_WINDOW_MS);
     const agentIds =
@@ -115,6 +122,8 @@ async function runKeepwarm(c: AppContext) {
       personalRoomsWarmed,
       personalOrganizationsWarmed,
       missing,
+      voicePricingWarmed: voicePricing.warmed,
+      voicePricingFailed: voicePricing.failed,
     });
 
     return c.json({
@@ -126,6 +135,8 @@ async function runKeepwarm(c: AppContext) {
         personalRoomsWarmed,
         personalOrganizationsWarmed,
         missing,
+        voicePricingWarmed: voicePricing.warmed,
+        voicePricingFailed: voicePricing.failed,
       },
     });
   } catch (error) {
