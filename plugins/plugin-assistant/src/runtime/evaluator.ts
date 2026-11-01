@@ -4271,7 +4271,28 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
   // unambiguous for every canonical spelling (think/thinking/reasoning/…):
   // everything before the LAST close is reasoning, never output — strip it
   // before any envelope handling (#20080 generalizes the F18 </think> fix).
-  return parseEvaluatorVisibleText(stripReasoningPrefixes(text));
+  return parseEvaluatorVisibleText(
+    unwrapNativeVerdictEnvelope(stripReasoningPrefixes(text).trim()),
+  );
+}
+
+/**
+ * Qwen-family models can serialize the evaluator verdict in their native
+ * tool-call dialect even though the evaluator offers no tools (live cold
+ * calendar voice turn tj-929faaf3d187f1: `<tool_call><function=functions.<hash>>`
+ * around a complete FINISH verdict). Rejecting it as extra text replanned a
+ * REPLY and paid a second evaluator call (3.6 s + 5.4 s). Unwrap only one
+ * envelope that is the whole response, has no action-shaped function name and
+ * holds exactly one evaluator-shaped JSON object; the body then gets the same
+ * checks as bare evaluator JSON. Every other shape keeps its current path.
+ */
+function unwrapNativeVerdictEnvelope(text: string): string {
+  const match =
+    /^<tool_call>\s*<function=([^>\s]+)>\s*([\s\S]*?)\s*<\/function>\s*<\/tool_call>$/.exec(
+      text,
+    );
+  if (!match || /^[A-Z][A-Z0-9_]{2,}$/.test(match[1])) return text;
+  return isEvaluatorShapedObject(tryParseJson(match[2])) ? match[2] : text;
 }
 
 function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {

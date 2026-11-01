@@ -1140,6 +1140,35 @@ describe("required Calendar read cited by a real step ID", () => {
       expect(result.messageToUser).toBe(LIVE_FEED_TURNS[id].reply);
     },
   );
+  // Live cold voice turn tj-929faaf3d187f1: Qwen wrapped a complete verdict in
+  // its native tool-call dialect; rejecting it cost a REPLY replan and a
+  // second evaluator call. Only the whole-response, non-action envelope opens.
+  it.each([
+    ["functions.3e67d62a$0b85e375", "", true],
+    ["CALENDAR", "", false],
+    ["functions.3e67d62a$0b85e375", "\nDone.", false],
+  ])(
+    "reads a native <function=%s> verdict envelope only when it is the whole non-action response",
+    async (name, trailing, accepted) => {
+      const f = liveFeedFixture();
+      citeRead(f);
+      const useModel = vi.fn(
+        async () =>
+          `<tool_call>\n<function=${name}>\n${JSON.stringify(f.output)}\n</function>\n</tool_call>${trailing}`,
+      );
+      const result = await runEvaluator({
+        runtime: { useModel },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(useModel).toHaveBeenCalledTimes(1);
+      expect(result.success).toBe(accepted);
+      expect(result.decision).toBe(accepted ? "FINISH" : "CONTINUE");
+      expect(result.messageToUser).toBe(
+        accepted ? LIVE_FEED_TURNS["tj-8dfdee5735fb18"].reply : undefined,
+      );
+    },
+  );
   it.each<[string, LiveFeedTurn, (f: LiveFeed) => void]>([
     [
       "a read of this request that compaction archived",
