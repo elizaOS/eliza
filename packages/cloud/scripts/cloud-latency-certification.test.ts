@@ -653,6 +653,7 @@ test("trace API denial survives private cleanup without retaining upstream secre
   const secret = "upstream-private-value";
   const options = {
     deploySha: SHA,
+    worker: "eliza-cloud-api-staging",
     outputDir,
     env: {
       RUNNER_TEMP: privateRoot,

@@ -1,5 +1,5 @@
 /*
- * libelizainference FFI ABI v20.
+ * libelizainference FFI ABI v21.
  *
  * (Banner tracks ELIZA_INFERENCE_ABI_VERSION below; the per-version history is
  * at the end of this header preamble, newest first.)
@@ -134,6 +134,21 @@ extern "C" {
  * load and refuses to bind if they disagree.
  *
  * Changelog:
+ *   v21: a caller-set speed range per Paradee voice slot.
+ *         - `eliza_inference_paradee_set_voice_speed_range(ctx, voice_id,
+ *           min_speed, max_speed, &err)` replaces the range a slot's
+ *           synthesis clamps `speed` to (by default the model's
+ *           paradee.validated_speed; see v20) with [min_speed, max_speed],
+ *           within the architecture's [0.25, 4] and spanning 1.0; 0, 0
+ *           restores the validated range. It is a runtime policy of the
+ *           slot, not of the model: the GGUF, its validated_speed and its
+ *           hash are unchanged. Kept across `mmap_evict("tts")` -> reload
+ *           and across a new `load_voice` into the slot; `unload_voice`
+ *           drops it. Slot "" is the v17 voice.
+ *         - `paradee_voice_info` adds `speed_range` [lo, hi]: the range
+ *           synthesis clamps to now (validated_speed keeps the model's).
+ *       One new symbol; no existing signature changes. A v20 library lacks
+ *       it, so loaders must treat the override as unsupported there.
  *   v20: Paradee voice slots: several Paradee-family voices on one ctx.
  *         - `eliza_inference_paradee_voices_supported/load_voice/
  *           unload_voice/voice_info/phonemize_voice/synthesize_voice_alloc/
@@ -317,9 +332,9 @@ extern "C" {
  *   v7: real Silero VAD (same symbol surface as v6).
  *   v6: fused wake-word, speaker, diarizer.
  */
-#define ELIZA_INFERENCE_ABI_VERSION 20
+#define ELIZA_INFERENCE_ABI_VERSION 21
 
-/* Returns a static, NUL-terminated string of the form "20" matching
+/* Returns a static, NUL-terminated string of the form "21" matching
  * ELIZA_INFERENCE_ABI_VERSION at the time the library was built. The
  * pointer is owned by the library — do NOT free. */
 const char * eliza_inference_abi_version(void);
@@ -353,6 +368,8 @@ const char * eliza_inference_abi_version(void);
  *   Paradee TTS + misaki    eliza_inference_paradee_supported        v17
  *   misaki fallback kind    eliza_inference_paradee_g2p_kind(ctx)    v17
  *   Paradee voice slots     eliza_inference_paradee_voices_supported v20
+ *   slot speed range        eliza_inference_paradee_set_voice_speed_range
+ *                           (the symbol; behind voices_supported)    v21
  *   Silero VAD              eliza_inference_vad_supported            v3/v7
  *   wake word               eliza_inference_wakeword_supported       v5
  *   speaker embedding       eliza_inference_speaker_supported        v6
@@ -768,7 +785,9 @@ int eliza_inference_paradee_unload_voice(
  * the return value is its byte length): voice_id, family ("paradee",
  * "delibes"), language ("en", "es"), phoneme_format, voice (the selected
  * row's name), voices [{name, accent}], sample_rate, g2p_kind
- * (ELIZA_PARADEE_G2P_*), validated_max_ids and validated_speed [lo, hi].
+ * (ELIZA_PARADEE_G2P_*), validated_max_ids, validated_speed [lo, hi] (the
+ * model's) and, since v21, speed_range [lo, hi] (what synthesis clamps to:
+ * the slot's override, else validated_speed).
  * `voice_id` "" describes the v17 slot. */
 int eliza_inference_paradee_voice_info(
     EliInferenceContext * ctx,
@@ -776,10 +795,25 @@ int eliza_inference_paradee_voice_info(
     char ** out_json,
     char ** out_error);
 
+/* Set the range synthesis on slot `voice_id` clamps `speed` to (ABI v21).
+ * Requires PARADEE_MIN_SPEED (0.25) <= min_speed <= 1 <= max_speed <=
+ * PARADEE_MAX_SPEED (4), both finite; min_speed == max_speed == 0 restores
+ * the model's validated range. ELIZA_ERR_INVALID_ARG for any other value or
+ * a slot never loaded. A speed outside the model's validated range was not
+ * validated by its release; the caller who sets this owns that choice.
+ * Does not load or reload the model. See the v21 changelog for its lifetime. */
+int eliza_inference_paradee_set_voice_speed_range(
+    EliInferenceContext * ctx,
+    const char * voice_id,
+    float min_speed,
+    float max_speed,
+    char ** out_error);
+
 /* `paradee_phonemize`, `paradee_synthesize_alloc` and
  * `paradee_synthesize_stream` on slot `voice_id`. Synthesis chunks the
- * phonemes to the model's validated input length and clamps `speed` to its
- * validated range (see the v20 changelog). */
+ * phonemes to the model's validated input length and clamps `speed` to the
+ * slot's speed range: the model's validated range (see the v20 changelog)
+ * unless `paradee_set_voice_speed_range` set another. */
 int eliza_inference_paradee_phonemize_voice(
     EliInferenceContext * ctx,
     const char * voice_id,

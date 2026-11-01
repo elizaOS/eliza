@@ -24,6 +24,8 @@ import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import { createPreflightResponse } from "@elizaos/cloud-shared/lib/middleware/cors-apps";
 import {
   enforceOrgRateLimit,
+  type InferenceRatePolicyProof,
+  inferenceRatePolicyProof,
   OrgRateLimitCacheNotReadyError,
 } from "@elizaos/cloud-shared/lib/middleware/rate-limit";
 import {
@@ -1367,6 +1369,7 @@ export async function handleChatCompletionsPOST(
     let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
+    let ratePolicyProof: InferenceRatePolicyProof | undefined;
     let appScopeId: string | null = null;
     await using credentialGuard = deferredCredentialAdmissionGuard({
       organizationId: () => user?.organization_id,
@@ -1456,6 +1459,11 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
+      // Only an API-key context carries a key cap read with its policy epoch.
+      ratePolicyProof =
+        "keyHash" in resolution.ctx
+          ? inferenceRatePolicyProof(resolution.ctx)
+          : undefined;
       const resolvedCredential = resolution.credential;
       admissionCredential =
         resolvedCredential?.kind === "api_key"
@@ -1540,6 +1548,7 @@ export async function handleChatCompletionsPOST(
             apiKeyId: apiKey?.id,
             userId: user.id,
             fundedBudget,
+            ratePolicy: ratePolicyProof,
           })
         : Promise.resolve(null),
     );

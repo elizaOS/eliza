@@ -37,11 +37,14 @@ test("placement policy is read from the deployed commit and participates in cont
     git("init");
     await mkdir(join(cwd, "packages/cloud/api"), { recursive: true });
     const deploySha = await commit(
-      '[env.staging]\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n',
+      '[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n',
     );
-    const sourceSha = await commit('[env.staging]\nname = "fixture"\n');
+    const sourceSha = await commit(
+      '[env.staging]\nname = "eliza-cloud-api-staging"\n',
+    );
     const policy = await readDeploymentPlacement(deploySha, { cwd });
     assert.equal(policy.mode, "targeted");
+    assert.equal(policy.worker, "eliza-cloud-api-staging");
     assert.equal(policy.region, "gcp:us-west2");
     assert.equal(policy.deploySha, deploySha);
     assert.match(policy.configSha256, /^[a-f0-9]{64}$/);
@@ -57,7 +60,7 @@ test("placement policy is read from the deployed commit and participates in cont
       /require acknowledgement/,
     );
     const productionSha = await commit(
-      'placement = { mode = "targeted", region = "aws:us-east-1" }\n[vars]\nENVIRONMENT = "production"\n[env.staging]\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n',
+      'name = "unselected-root"\nplacement = { mode = "targeted", region = "aws:us-east-1" }\n[env.production]\nname = "eliza-cloud-api-prod"\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "targeted", region = "gcp:us-central1" }\n',
     );
     assert.equal(
       (
@@ -66,20 +69,20 @@ test("placement policy is read from the deployed commit and participates in cont
           environment: "production",
         })
       ).region,
-      "aws:us-east-1",
+      "gcp:us-west2",
     );
     assert.equal(
       (await readDeploymentPlacement(productionSha, { cwd })).region,
-      "gcp:us-west2",
+      "gcp:us-central1",
     );
     await assert.rejects(
       readDeploymentPlacement(sourceSha, { cwd, environment: "production" }),
       /explicit environment/,
     );
     for (const source of [
-      '[env.staging]\nplacement = { mode = "smart" }',
-      '[env.staging]\nplacement = { mode = "targeted" }',
-      '[env.staging]\nplacement = { mode = "targeted", region = "", extra = true }',
+      '[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "smart" }',
+      '[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "targeted" }',
+      '[env.staging]\nname = "eliza-cloud-api-staging"\nplacement = { mode = "targeted", region = "", extra = true }',
       'placement = { mode = "targeted", region = "gcp:us-west2" }\n[env.staging]\nname = "fixture"',
       '[env.production]\nname = "fixture"',
       "not valid TOML",
@@ -87,9 +90,37 @@ test("placement policy is read from the deployed commit and participates in cont
       await assert.rejects(
         readDeploymentPlacement(await commit(source), { cwd }),
       );
+    for (const source of [
+      '[vars]\nENVIRONMENT = "production"\n',
+      '[env.production]\nplacement = { mode = "targeted", region = "gcp:us-west2" }\n',
+      '[env.production]\nname = "invalid/worker"\n',
+      'placement = { mode = "targeted", region = "aws:us-east-1" }\n[env.production]\nname = "eliza-cloud-api-prod"\n',
+    ]) {
+      await assert.rejects(
+        readDeploymentPlacement(await commit(source), {
+          cwd,
+          environment: "production",
+        }),
+      );
+    }
     await assert.rejects(readDeploymentPlacement("HEAD", { cwd }), /identity/);
   } finally {
     await rm(cwd, { recursive: true, force: true });
+  }
+});
+
+test("canonical --env profiles bind placement and telemetry to each deployed Worker", async () => {
+  const deploySha = execFileSync("git", ["rev-parse", "HEAD"], {
+    encoding: "utf8",
+  }).trim();
+  for (const [environment, worker] of [
+    ["staging", "eliza-cloud-api-staging"],
+    ["production", "eliza-cloud-api-prod"],
+  ]) {
+    const policy = await readDeploymentPlacement(deploySha, { environment });
+    assert.equal(policy.worker, worker);
+    assert.equal(policy.mode, "targeted");
+    assert.equal(policy.region, "gcp:us-west2");
   }
 });
 
