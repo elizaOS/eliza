@@ -83,7 +83,9 @@ requireContract(
         Object.entries(target.alias ?? {}).filter(
           ([name]) =>
             name !==
-            "@elizaos/cloud-shared/lib/services/inference-admission-recovery",
+              "@elizaos/cloud-shared/lib/services/inference-admission-recovery" &&
+            name !==
+              "@elizaos/cloud-shared/lib/services/inference-policy-primary",
         ),
       ),
       new URL("./", import.meta.url),
@@ -256,6 +258,12 @@ requireContract(
     "@elizaos/cloud-shared/lib/services/inference-admission-recovery"
   ] === "./src/recovery-service.ts",
   "Recovery must use the private RPC adapter",
+);
+requireContract(
+  target.alias?.[
+    "@elizaos/cloud-shared/lib/services/inference-policy-primary"
+  ] === "./src/policy-service.ts",
+  "Policy hydration must use the private RPC adapter",
 );
 requireContract(
   JSON.stringify(target.services) ===
