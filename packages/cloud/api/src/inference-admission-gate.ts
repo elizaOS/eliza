@@ -16,6 +16,7 @@ import type {
 } from "@elizaos/cloud-shared/lib/services/inference-admission-recovery";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { SpeechRevocationRegistry } from "./speech-revocation-registry";
 
 interface ActiveLeaseTiming {
   estimatedCostUsd: number;
@@ -649,6 +650,9 @@ interface LeaseStorageMutation {
 export class InferenceAdmissionGate {
   private readonly state: DurableObjectState;
   private readonly env: AppEnv["Bindings"];
+  private readonly speechSubscriptions = new SpeechRevocationRegistry(
+    (credential) => this.credentialDenial(credential),
+  );
   private ledger: GateLedger | undefined;
   private rateLimitWindows: RateLimitWindows | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
@@ -706,6 +710,10 @@ export class InferenceAdmissionGate {
     }
     return this.fundedBudgetController;
   }
+
+  // Wall clock when this instance was constructed. A caller that sent its
+  // request before this time paid the object's activation on that request.
+  private readonly activatedAt = Date.now();
 
   constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
     this.state = state;
@@ -1718,6 +1726,12 @@ export class InferenceAdmissionGate {
       revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId),
       true,
     );
+    this.speechSubscriptions.revoke(
+      (identity) =>
+        identity.organizationId === request.organizationId &&
+        identity.credential.kind === "api_key" &&
+        identity.credential.credentialId === request.credentialId,
+    );
     return Response.json({ committed: true });
   }
 
@@ -1735,6 +1749,12 @@ export class InferenceAdmissionGate {
     const key = subjectRevocationStorageKey(request.userId, request.reason);
     if (request.active) await this.state.storage.delete(key);
     else await this.state.storage.put(key, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) =>
+          identity.organizationId === request.organizationId &&
+          identity.credential.userId === request.userId,
+      );
     return Response.json({ committed: true });
   }
 
@@ -1752,6 +1772,13 @@ export class InferenceAdmissionGate {
     const key = revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId);
     const previous = (await this.state.storage.get<number>(key)) ?? 0;
     await this.state.storage.put(key, Math.max(previous, request.issuedAt));
+    this.speechSubscriptions.revoke(
+      (identity) =>
+        identity.organizationId === request.organizationId &&
+        identity.credential.kind === "steward_session" &&
+        identity.credential.userId === request.userId &&
+        identity.credential.issuedAt <= request.issuedAt,
+    );
     return Response.json({ committed: true });
   }
 
@@ -1769,6 +1796,14 @@ export class InferenceAdmissionGate {
     const key = sessionBindingStorageKey(request.userId, request.stewardUserId);
     if (request.active) await this.state.storage.delete(key);
     else await this.state.storage.put(key, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) =>
+          identity.organizationId === request.organizationId &&
+          identity.credential.kind === "steward_session" &&
+          identity.credential.userId === request.userId &&
+          identity.credential.stewardUserId === request.stewardUserId,
+      );
     return Response.json({ committed: true });
   }
 
@@ -1784,6 +1819,10 @@ export class InferenceAdmissionGate {
     if (request.active)
       await this.state.storage.delete(ORGANIZATION_DISABLED_KEY);
     else await this.state.storage.put(ORGANIZATION_DISABLED_KEY, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) => identity.organizationId === request.organizationId,
+      );
     return Response.json({ committed: true });
   }
 
@@ -1793,7 +1832,38 @@ export class InferenceAdmissionGate {
   }
 
   async fetch(request: Request): Promise<Response> {
+    // Workers clocks advance only across I/O, so this is the event's arrival
+    // time. Callers compare it with their send time to separate routing and
+    // activation from handler work and the output gate's storage commit.
+    const enteredAt = Date.now();
     const handlerStartedAt = performance.now();
+    const routed = await this.route(request);
+    if (routed.status === 101) return routed;
+    // A handler may return a Response with immutable headers; copy it once.
+    const response = new Response(routed.body, routed);
+    // Internal binding telemetry only. It includes body parsing and our
+    // queues, but excludes time before handler entry and the platform output
+    // gate that commits storage before delivering the response.
+    response.headers.set(
+      "x-eliza-gate-handler-ms",
+      String(Math.max(0, performance.now() - handlerStartedAt)),
+    );
+    response.headers.set("x-eliza-gate-entered-at", String(enteredAt));
+    response.headers.set("x-eliza-gate-activated-at", String(this.activatedAt));
+    return response;
+  }
+
+  private async route(request: Request): Promise<Response> {
+    if (
+      new URL(request.url).pathname === "/speech/subscribe" &&
+      request.headers.get("Upgrade")?.toLowerCase() === "websocket"
+    ) {
+      if (this.env.VOICE_SPEECH_RELAY_ENABLED !== "true")
+        return new Response("Not found", { status: 404 });
+      return this.serializeRevocation(() =>
+        this.speechSubscriptions.subscribe(request),
+      );
+    }
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }
@@ -1916,20 +1986,11 @@ export class InferenceAdmissionGate {
       );
     }
     if (path === "/rate-limit" || path === "/rate-limit-warm") {
-      const response = await this.serializeRateLimit(() =>
+      return await this.serializeRateLimit(() =>
         path === "/rate-limit"
           ? this.rateLimit(body as RateLimitRequest)
           : this.warmRateLimit(),
       );
-      // Internal binding telemetry only. This includes body parsing and our
-      // queue, but excludes time before handler entry and the platform output
-      // gate that commits storage before delivering the response. Do not label
-      // the difference from caller elapsed time as network time alone.
-      response.headers.set(
-        "x-eliza-gate-handler-ms",
-        String(Math.max(0, performance.now() - handlerStartedAt)),
-      );
-      return response;
     }
     if (path === "/rate-limit-v2-cutover") {
       return await this.serializeRateLimit(() =>

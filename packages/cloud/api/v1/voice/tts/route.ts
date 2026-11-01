@@ -14,7 +14,7 @@ import {
   billFlatUsage,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { calculateTTSCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
-import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import {
   type CreditReservation,
   InsufficientCreditsError,
@@ -34,6 +34,7 @@ import {
   getCloudFirstLineCacheService,
   shouldBypassCloudFirstLineCache,
 } from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
+import { assertSafeTtsText } from "@elizaos/cloud-shared/lib/services/tts-safety-cache";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -60,7 +61,11 @@ import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
-import { selectTtsProvider, type TtsProvider } from "./provider-selection";
+import {
+  resolveCartesiaVoiceId,
+  selectTtsProvider,
+  type TtsProvider,
+} from "./provider-selection";
 
 /**
  * Voice TTS API (v1)
@@ -118,6 +123,8 @@ interface TtsTimings {
   authMs?: number;
   admissionMs?: number;
   synthesisMs?: number;
+  moderationMs?: number;
+  moderation?: "reviewed" | "approved-hit";
 }
 function buildTtsObservabilityHeaders(
   provider: TtsProvider,
@@ -131,9 +138,15 @@ function buildTtsObservabilityHeaders(
     timings.synthesisMs !== undefined
       ? `synthesis;dur=${timings.synthesisMs}`
       : null,
+    timings.moderationMs !== undefined
+      ? `moderation;dur=${timings.moderationMs}`
+      : null,
   ].filter((entry): entry is string => entry !== null);
   return {
     "X-Eliza-TTS-Provider": provider,
+    ...(timings.moderation
+      ? { "X-Eliza-TTS-Moderation": timings.moderation }
+      : {}),
     ...(serverTiming.length > 0
       ? { "Server-Timing": serverTiming.join(", ") }
       : {}),
@@ -142,19 +155,6 @@ function buildTtsObservabilityHeaders(
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24000;
 const MAX_WAV_PCM_BYTES = 16 * 1024 * 1024;
-/**
- * Default Cartesia voice for un-pinned requests ("Skylar — Friendly Guide",
- * verified live). Override per-environment with CARTESIA_VOICE_ID; the legacy
- * CARTESIA_DEFAULT_VOICE_ID remains accepted for older deploy configs.
- */
-const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
-function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
-  return (
-    env.CARTESIA_VOICE_ID?.trim() ||
-    env.CARTESIA_DEFAULT_VOICE_ID?.trim() ||
-    DEFAULT_CARTESIA_VOICE_ID
-  );
-}
 /**
  * PCM byte cap for a Cartesia synthesis. The synthesis buffers frames + a
  * merged copy + the WAV in Worker memory, so the cap must reflect the real
@@ -354,25 +354,35 @@ async function __hono_POST(c: AppContext) {
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
     // different codec); billing/usage are identical to the MP3 path.
     const wantWav = body.format === "wav";
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "media_generation_prompt",
-      organizationId: user.organization_id,
-      userId: user.id,
-      text: [
-        `TTS text: ${text}`,
-        ...(body.previousText !== undefined
-          ? [`Previous context: ${body.previousText}`]
-          : []),
-        ...(body.nextText !== undefined
-          ? [`Next context: ${body.nextText}`]
-          : []),
-      ].join("\n"),
-      metadata: {
-        type: "tts",
-        model: modelId || "eleven_flash_v2_5",
-        voiceId,
+    const moderationStarted = performance.now();
+    const moderation = await assertSafeTtsText(
+      {
+        surface: "media_generation_prompt",
+        organizationId: user.organization_id,
+        userId: user.id,
+        text: [
+          `TTS text: ${text}`,
+          ...(body.previousText !== undefined
+            ? [`Previous context: ${body.previousText}`]
+            : []),
+          ...(body.nextText !== undefined
+            ? [`Next context: ${body.nextText}`]
+            : []),
+        ].join("\n"),
+        metadata: {
+          type: "tts",
+          model: modelId || "eleven_flash_v2_5",
+          voiceId,
+        },
       },
-    });
+      (task) => {
+        const ctx = getGenerativeExecutionContext(c);
+        if (ctx) ctx.waitUntil(task);
+        else void task;
+      },
+    );
+    timings.moderation = moderation;
+    timings.moderationMs = Math.round(performance.now() - moderationStarted);
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
@@ -564,7 +574,7 @@ async function __hono_POST(c: AppContext) {
       providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
     const mp3VoiceRevision =
       providerSelection.provider === "cartesia"
-        ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
+        ? `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:mp3_44100_128`
         : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
@@ -633,7 +643,7 @@ async function __hono_POST(c: AppContext) {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
             provider: "cartesia",
             voiceId: cartesiaVoiceId,
-            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
+            voiceRevision: `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:pcm${WAV_PCM_SAMPLE_RATE}`,
             sampleRate: WAV_PCM_SAMPLE_RATE,
             codec: "wav" as const,
             voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
@@ -868,7 +878,7 @@ async function __hono_POST(c: AppContext) {
             ...billingContext,
             model:
               synthesisEngine === "cartesia"
-                ? "cartesia/sonic-3.5"
+                ? `cartesia/${CARTESIA_SONIC_MODEL_ID}`
                 : billingContext.model,
             provider: synthesisEngine,
           },
@@ -897,7 +907,7 @@ async function __hono_POST(c: AppContext) {
           // ElevenLabs-served one would.
           model:
             synthesisEngine === "cartesia"
-              ? "sonic-3.5"
+              ? CARTESIA_SONIC_MODEL_ID
               : modelId || "eleven_flash_v2_5",
           provider: synthesisEngine,
           input_tokens: Math.ceil(text.length / 4),

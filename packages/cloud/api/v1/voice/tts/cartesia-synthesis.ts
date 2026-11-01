@@ -14,6 +14,7 @@
  * a WAV header. A future streaming variant can forward frames incrementally.
  */
 import {
+  CARTESIA_SONIC_MODEL_ID as CARTESIA_MODEL_ID,
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketFactory,
   type CartesiaWebSocketLike,
@@ -22,7 +23,6 @@ import { pcm16ChunksToWav } from "../../../../shared/src/lib/services/pcm16-wav"
 
 const CARTESIA_BYTES_URL = "https://api.cartesia.ai/tts/bytes";
 const CARTESIA_REST_API_VERSION = "2025-04-16";
-const CARTESIA_MODEL_ID = "sonic-3.5";
 
 export type CartesiaRestErrorClassification =
   | "rate_limit"

@@ -179,6 +179,7 @@ test("real Sonic adapter decodes provider text into PCM over the normalized tran
   const url = await fixture(t, (ws) =>
     ws.once("message", (data) => {
       const request = JSON.parse(String(data));
+      assert.equal(request.model_id, "sonic-3.6");
       ws.send(
         JSON.stringify({
           type: "chunk",
@@ -194,6 +195,7 @@ test("real Sonic adapter decodes provider text into PCM over the normalized tran
     voiceId: "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4",
     websocketFactory: () => adaptVoiceWebSocket(new WebSocket(url)),
   });
+  assert.equal(adapter.metadata.modelId, "sonic-3.6");
   t.after(() => adapter.close());
   const received = [];
   await bounded(

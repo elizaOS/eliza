@@ -1396,8 +1396,9 @@ jobs:
           # Environment-scoped opt-in for prerecorded Deepgram STT. Production
           # remains on its existing provider while this variable is unset.
           VOICE_BATCH_STT_PROVIDER: ${{ vars.VOICE_BATCH_STT_PROVIDER }}
-          # Cartesia batch STT is separately opt-in and billed. The price is
-          # deployment-owned rather than embedded in application code; the
+          # Optional Cartesia account USD/credit. Unset uses the highest
+          # published paid-plan rate (cartesia-pricing.ts); speech is funded
+          # from subscription allowance, so this only sizes reservations. The
           # timeout may be tuned within the route's bounded parser.
           CARTESIA_STT_USD_PER_CREDIT: ${{ vars.CARTESIA_STT_USD_PER_CREDIT }}
           CARTESIA_BATCH_STT_TIMEOUT_MS: ${{ vars.CARTESIA_BATCH_STT_TIMEOUT_MS }}
