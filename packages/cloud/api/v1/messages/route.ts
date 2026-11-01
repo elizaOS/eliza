@@ -62,6 +62,7 @@ import {
   InferenceAppAffiliateUnsupportedError,
 } from "@elizaos/cloud-shared/lib/services/app-inference-admission";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
+import { billingHoldService } from "@elizaos/cloud-shared/lib/services/billing-hold";
 import type {
   CreditReconciliationResult,
   CreditReservation,
@@ -622,6 +623,7 @@ app.post("/", async (c) => {
   let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
   let guardOrganizationId: string | undefined;
+  let appScopeId: string | null = null;
   try {
     await using credentialGuard = deferredCredentialAdmissionGuard({
       organizationId: () => guardOrganizationId,
@@ -678,6 +680,8 @@ app.post("/", async (c) => {
             ? resolution.ctx.apiKeyRateLimit
             : undefined;
         admissionCredential = resolution.credential;
+        appScopeId =
+          "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null;
       } else {
         if (executionCtx) {
           return anthropicError(
@@ -774,6 +778,15 @@ app.post("/", async (c) => {
     }
 
     const requestedAppId = c.req.header("X-App-Id");
+    // An app-scoped key funds inference only for its own app, as on
+    // /v1/chat/completions.
+    if (requestedAppId && appScopeId && appScopeId !== requestedAppId) {
+      return anthropicError(
+        "permission_error",
+        "Access denied to this app",
+        403,
+      );
+    }
     let appId: string | null = null;
     let useAppCredits = false;
     let monetizedApp: NonNullable<
@@ -894,6 +907,9 @@ app.post("/", async (c) => {
           settleUnknownReservation = admission.settleUnknown;
           markProviderDispatched = admission.markProviderDispatched;
         } else {
+          // New paid spend fails closed while a payment-reversal hold is
+          // active (#22930), as on the organization lane.
+          await billingHoldService.assertNoHold(user.organization_id);
           const reservation = await appCreditsService.reserveInferenceCredits({
             appId,
             userId: user.id,

@@ -99,7 +99,10 @@ import {
   appInferenceErrorResponse,
 } from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
-import { BillingHoldActiveError } from "@elizaos/cloud-shared/lib/services/billing-hold";
+import {
+  BillingHoldActiveError,
+  billingHoldService,
+} from "@elizaos/cloud-shared/lib/services/billing-hold";
 import type {
   CreditReconciliationResult,
   CreditReservation,
@@ -2012,6 +2015,9 @@ export async function handleChatCompletionsPOST(
           settleUnknown = admission.settleUnknown;
           markProviderDispatched = admission.markProviderDispatched;
         } else {
+          // New paid spend fails closed while a payment-reversal hold is
+          // active (#22930), as on the organization lane.
+          await billingHoldService.assertNoHold(user.organization_id);
           const reservation = await appCreditsService.reserveInferenceCredits({
             appId,
             userId: user.id,

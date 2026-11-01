@@ -13,6 +13,7 @@ import { logger } from "../utils/logger";
 import { computeInferenceCharge, isAppMonetizationActive } from "./app-credit-math";
 import { appCreditsService } from "./app-credits";
 import { projectAppUsageForDebit } from "./app-usage-projections";
+import { billingHoldService } from "./billing-hold";
 import {
   type CreditReconciliationResult,
   creditsService,
@@ -167,6 +168,9 @@ export async function admitAppInferenceCacheOnly(
   params: AppInferenceAdmissionParams,
 ): Promise<AppInferenceAdmission> {
   assertInferenceAppAffiliateSupported(params.appId, params.affiliateCode);
+  // An underfunding payment reversal holds all new paid inference, as on the
+  // organization lane (#22930). Settlement of admitted work is not gated.
+  await billingHoldService.assertNoHold(params.organizationId);
 
   const reservedBaseCostUsd = Math.max(params.estimatedBaseCostUsd, MIN_RESERVATION);
   const estimatedTotalCostUsd = chargeForBaseCost(params.app, reservedBaseCostUsd);
