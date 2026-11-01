@@ -69,6 +69,27 @@ describe("AgentWeb fallback", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("returns unavailable status without fetching when request has no reachable endpoint", async () => {
+    setWindow({
+      location: { protocol: "file:", origin: "file://" } as Location,
+    });
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(
+      new AgentWeb().request({ path: "/api/status" }),
+    ).resolves.toEqual({
+      status: 503,
+      statusText: "Service Unavailable",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        error: "agent_api_unavailable",
+        message: "Agent web fallback has no reachable Agent API endpoint",
+      }),
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it.each([
     "",
     "api/status",
