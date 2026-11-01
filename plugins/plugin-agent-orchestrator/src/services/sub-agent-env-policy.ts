@@ -83,14 +83,80 @@ const DENY_ENV_PATTERNS = [
 ];
 
 /**
+ * The name suffixes that mark an `ELIZA_*` variable as a credential. The broad
+ * `ELIZA_` forwarding rule in `shouldForwardEnv` exists for a sub-agent's own
+ * configuration (`ELIZA_CLAUDE_EFFORT`, `ELIZA_ACP_*`, registry names); host
+ * step-up secrets share the prefix (wallet export, device pairing, token
+ * encryption, service JWTs), so the prefix alone cannot decide. The host lists
+ * several of them by name in `packages/agent/src/config/blocked-env-keys.ts`;
+ * this rule covers the family so a new secret is denied without a new entry.
+ */
+const ELIZA_CREDENTIAL_SUFFIX =
+  /_(?:TOKEN|SECRET|PASSPHRASE|PASSWORD|PRIVATE_KEY|API_KEY|ENCRYPTION_KEY|ADDRESS_KEY)$/i;
+
+/**
+ * `ELIZA_*` credentials a coding sub-agent legitimately needs from the parent's
+ * process.env. Everything the spawner mints per child (model gateway token,
+ * credential bridge and proxy tokens, Pi route key, warm-claim token) is set
+ * after this filter runs and needs no entry here.
+ */
+export const SUB_AGENT_FORWARDED_ELIZA_CREDENTIAL_KEYS = [
+  // Container-registry push credential for app-image builds; the GHCR_* pair
+  // in SUB_AGENT_PROVIDER_ENV_KEYS is its fallback spelling.
+  "ELIZA_APP_IMAGE_REGISTRY_TOKEN",
+] as const;
+
+const FORWARDED_ELIZA_CREDENTIALS: ReadonlySet<string> = new Set(
+  SUB_AGENT_FORWARDED_ELIZA_CREDENTIAL_KEYS,
+);
+
+/**
+ * An owner Cloud credential under the `ELIZA_CLOUD_` spelling, which
+ * `dev-cloud-env-authority` accepts as an alias of `ELIZAOS_CLOUD_API_KEY`.
+ * Aliases follow the same broker-first opt-in as the canonical spelling (see
+ * `shouldForwardEnv`); non-credential `ELIZA_CLOUD_*` settings (base URLs,
+ * hosts) keep forwarding.
+ */
+export function isElizaCloudCredentialAliasKey(key: string): boolean {
+  const upper = key.toUpperCase();
+  return (
+    upper.startsWith("ELIZA_CLOUD_") && ELIZA_CREDENTIAL_SUFFIX.test(upper)
+  );
+}
+
+/** Any owner Cloud credential a child would hold after forwarding. */
+export function isForwardedCloudCredentialKey(key: string): boolean {
+  return (
+    key.toUpperCase().startsWith("ELIZAOS_CLOUD") ||
+    isElizaCloudCredentialAliasKey(key)
+  );
+}
+
+/**
+ * A host-only `ELIZA_*` credential: a coding sub-agent has no use for it, so it
+ * is denied from both the process.env and the customCredentials path.
+ */
+export function isHostOnlyElizaCredentialKey(key: string): boolean {
+  const upper = key.toUpperCase();
+  return (
+    upper.startsWith("ELIZA_") &&
+    !upper.startsWith("ELIZA_CLOUD_") &&
+    ELIZA_CREDENTIAL_SUFFIX.test(upper) &&
+    !FORWARDED_ELIZA_CREDENTIALS.has(upper)
+  );
+}
+
+/**
  * A key that must never reach a sub-agent, regardless of source — parent
  * process.env forwarding OR caller-supplied customCredentials. Both paths run
  * through this so a spawn request cannot inject a secret (connector bot token,
- * vault passphrase) the deny-list exists to keep out of sub-agents.
+ * vault passphrase, a host step-up token) the deny-list exists to keep out of
+ * sub-agents.
  */
 export function isDeniedSubAgentEnvKey(key: string): boolean {
   return (
     isHostExecutionToolchainEnvKey(key) ||
+    isHostOnlyElizaCredentialKey(key) ||
     DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))
   );
 }
@@ -225,7 +291,11 @@ export function shouldForwardEnv(
   return (
     FORWARDED_SYSTEM_ENV.has(key.toUpperCase()) ||
     key.startsWith("ACPX_AUTH_") ||
-    key.startsWith("ELIZA_") ||
+    // The ELIZA_CLOUD_* credential aliases are owner Cloud creds under another
+    // spelling and follow the ELIZAOS_CLOUD opt-in below; host-only ELIZA_*
+    // credentials are removed by the deny-list before this rule is consulted.
+    (key.startsWith("ELIZA_") &&
+      (forwardCloudKey || !isElizaCloudCredentialAliasKey(key))) ||
     // The live Cloud creds use the ELIZAOS_ prefix (ELIZAOS_CLOUD_API_KEY /
     // ELIZAOS_CLOUD_URL), which the broad ELIZA_ rule above does NOT match.
     // Broker-first (#14118): a child does NOT get the raw owner key by default —
