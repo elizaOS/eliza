@@ -126,20 +126,24 @@ bun $TIP/packages/cloud/scripts/production-admission-phase-audit.ts \
 
 With `--commit source-owned=<commit the API serves>` it also checks that
 commit before phase 1: it must have the phase 1 commit's admission bundle
-sources (the audit's `ADMISSION_BUNDLE_SOURCES`) and the chain base's phase 2
-paths. Otherwise phase 1 would deploy gate code the API does not serve, or
-gate 2 would refuse `M` only after phase 1 is live.
+sources (the audit's `ADMISSION_BUNDLE_SOURCES`), and the chain base's phase 2
+paths and release workflows (`RELEASE_WORKFLOWS`: `cloud-cf-deploy.yml` and
+`cloud-cf-release.yml`). Otherwise phase 1 would deploy gate code the API does
+not serve, gate 2 would refuse `M` only after phase 1 is live, or the phase 2
+and steady releases would run workflows nobody reviewed with this chain.
 
 For gate 2 add `--commit source-owned=<R1 API commit> --commit
 source-commit=<phase 2 commit> --live R1.json`. Then it also requires the
-phase 2 commit's first parent to be the commit R1 names, only the phase 2
-paths in the merge, each with its content at `ac729ff0`, and no change to the
-admission bundle sources from the phase 1 commit. For gate 3 add `--steady
-<steady commit> --tip <reviewed tip SHA>` too: the steady commit's first
-parent must be the phase 2 commit, and its tree must equal a clean merge of
-the reviewed tip onto it (`git merge-tree`). Root runs both on the `staging`
-commits before their promotion to `main` (see "Delivery of `M`"). Any
-`problems` entry stops the transfer.
+phase 2 commit's first parent to be the commit R1 names, `ac729ff0` as its
+ancestor (a merge, not a squash), only the phase 2 paths in the merge, each
+with its content at `ac729ff0`, and no change to the admission bundle sources
+from the phase 1 commit. For gate 3 add `--steady <steady commit> --tip
+<reviewed tip SHA>` too: the steady commit's first parent must be the phase 2
+commit, and its tree must equal a clean merge of the reviewed tip onto it
+(`git merge-tree`). Root runs both on the `staging` commits before their
+promotion to `main` (see "Delivery of `M`"). Each gate entry prints the
+`tree` it checked; the promotion must carry exactly that tree. Any `problems`
+entry stops the transfer.
 
 **Target deploy tool.** Every admission Worker step uses it, never a bare
 Wrangler command. It requires a clean checkout at the step's commit (the

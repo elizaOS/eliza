@@ -8,10 +8,11 @@
  * from the step before only in admission ownership, and its production
  * variables equal Root's effective-variable receipts. Before phase 1 it also
  * proves the commit the API serves has the frozen target's admission bundle
- * sources and the chain base's phase 2 paths. At gate 2 it proves the phase 2
- * main commit is live main plus exactly the frozen phase 2 change, with the
- * frozen target's admission bundle sources; at gate 3, that the steady merge
- * is exactly the reviewed tip merged onto it.
+ * sources and the chain base's phase 2 paths and release workflows. At gate 2
+ * it proves the phase 2 main commit is live main plus exactly the frozen
+ * phase 2 change, merged rather than squashed, with the frozen target's
+ * admission bundle sources; at gate 3, that the steady merge is exactly the
+ * reviewed tip merged onto it. Each gate entry names the tree it audited.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -69,6 +70,12 @@ export const ADMISSION_BUNDLE_SOURCES = [
   "plugins/plugin-native-inference",
   "plugins/plugin-sql",
   "plugins/plugin-todos",
+];
+// The workflows of the phase 2 release (the chain base's) and of every later
+// release (the reviewed tip's, merged onto the phase 2 main commit at gate 3).
+export const RELEASE_WORKFLOWS = [
+  ".github/workflows/cloud-cf-deploy.yml",
+  ".github/workflows/cloud-cf-release.yml",
 ];
 
 export type Files = Record<string, string>;
@@ -335,10 +342,11 @@ export function auditChain(
 /**
  * Before phase 1. `bundlePaths` are the admission bundle sources in which the
  * commit the API serves differs from the phase 1 commit; `phasePaths` are the
- * phase 2 paths in which it differs from the chain base. Either one means
- * phase 1 would deploy gate code the API does not serve, or gate 2 would
- * refuse the phase 2 merge only after phase 1 is live. The chain must then be
- * regenerated on the commit the API serves.
+ * phase 2 paths and release workflows in which it differs from the chain
+ * base. Any one means phase 1 would deploy gate code the API does not serve,
+ * gate 2 would refuse the phase 2 merge only after phase 1 is live, or the
+ * phase 2 and steady releases would run workflows nobody reviewed with the
+ * chain. The chain must then be regenerated on the commit the API serves.
  */
 export function liveSourceProblems(facts: {
   bundlePaths: string[];
@@ -354,13 +362,53 @@ export function liveSourceProblems(facts: {
   ];
 }
 
+const changedPaths = (from: string, to: string, paths: string[] = []) =>
+  git(["diff", "--name-only", from, to, "--", ...paths])
+    .split("\n")
+    .filter(Boolean);
+
+type PhaseRow = ReturnType<typeof runbookPhases>[number];
+
+function rowCommit(rows: PhaseRow[], phase: string) {
+  const commit = rows.find((row) => row.phase === phase)?.commit;
+  if (!commit) throw new Error(`The runbook has no ${phase} row`);
+  return commit;
+}
+
+/** The paths of the frozen phase 2 change: the chain base to phase 2. */
+export const phaseTwoPaths = (rows: PhaseRow[]) =>
+  changedPaths(
+    rowCommit(rows, "source-owned"),
+    rowCommit(rows, "source-commit"),
+  );
+
+/**
+ * The facts of `liveSourceProblems` for `apiCommit` against the runbook's
+ * chain, read from this repository, which must have both.
+ */
+export function liveSourceFacts(rows: PhaseRow[], apiCommit: string) {
+  return {
+    bundlePaths: changedPaths(
+      rowCommit(rows, "target-pending"),
+      apiCommit,
+      ADMISSION_BUNDLE_SOURCES,
+    ),
+    phasePaths: changedPaths(rowCommit(rows, "source-owned"), apiCommit, [
+      ...phaseTwoPaths(rows),
+      ...RELEASE_WORKFLOWS,
+    ]),
+  };
+}
+
 /**
  * Gate 2. The phase 2 commit on `main` must be live `main` plus only the
  * paths of the frozen phase 2 change, each with its frozen content, and build
  * the admission bundle from the same sources as the target that serves the
  * namespace once it commits. `live` is Root's phase 1 receipt (R1), which
  * names the API's served commit. `phaseContentPaths` are the phase paths whose
- * content differs from the frozen phase 2 commit.
+ * content differs from the frozen phase 2 commit. `mergesPhaseCommit` says the
+ * frozen phase 2 commit is an ancestor: a squash has the same tree but makes
+ * the gate 3 merge of the reviewed tip conflict, after phase 3.
  */
 export function mainMergeProblems(facts: {
   firstParent: string;
@@ -370,8 +418,13 @@ export function mainMergeProblems(facts: {
   phasePaths: string[];
   phaseContentPaths: string[];
   bundlePaths: string[];
+  mergesPhaseCommit: boolean;
 }) {
   const problems: string[] = [];
+  if (!facts.mergesPhaseCommit)
+    problems.push(
+      "the frozen phase 2 commit is not an ancestor: land it as a merge, not a squash",
+    );
   if (facts.live.phase !== "target-pending")
     problems.push(
       `live receipt is ${String(facts.live.phase)}, not target-pending`,
@@ -417,11 +470,6 @@ export function steadyMergeProblems(facts: {
     );
   return problems;
 }
-
-const changedPaths = (from: string, to: string, paths: string[] = []) =>
-  git(["diff", "--name-only", from, to, "--", ...paths])
-    .split("\n")
-    .filter(Boolean);
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
@@ -477,59 +525,66 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         values.effective.map((path) => readFileSync(path, "utf8")),
       ).variables,
     );
-    const gates: { gate: string; commit: string; problems: string[] }[] = [];
-    const row = (phase: string) =>
-      rows.find((item) => item.phase === phase)?.commit ?? "";
-    const phasePaths = changedPaths(row("source-owned"), row("source-commit"));
+    const gates: {
+      gate: string;
+      commit: string;
+      tree: string;
+      problems: string[];
+    }[] = [];
+    // Root pins the audited tree; the promotion to `main` must carry it.
+    const gate = (name: string, commit: string, problems: string[]) =>
+      gates.push({
+        gate: name,
+        commit,
+        tree: git(["rev-parse", `${commit}^{tree}`]).trim(),
+        problems,
+      });
     const liveMain = overrides.get("source-owned");
     if (liveMain)
-      gates.push({
-        gate: "before phase 1: the commit the API serves",
-        commit: liveMain,
-        problems: liveSourceProblems({
-          bundlePaths: changedPaths(
-            row("target-pending"),
-            liveMain,
-            ADMISSION_BUNDLE_SOURCES,
-          ),
-          phasePaths: changedPaths(row("source-owned"), liveMain, phasePaths),
-        }),
-      });
+      gate(
+        "before phase 1: the commit the API serves",
+        liveMain,
+        liveSourceProblems(liveSourceFacts(rows, liveMain)),
+      );
     const phaseTwoMain = overrides.get("source-commit");
     if (phaseTwoMain) {
       if (!liveMain || !values.live)
         throw new Error(
           "Gate 2 needs --commit source-owned=<live main SHA> and --live <R1 receipt>",
         );
-      gates.push({
-        gate: "2: phase 2 main merge",
-        commit: phaseTwoMain,
-        problems: mainMergeProblems({
+      const phasePaths = phaseTwoPaths(rows);
+      const frozen = rowCommit(rows, "source-commit");
+      gate(
+        "2: phase 2 main merge",
+        phaseTwoMain,
+        mainMergeProblems({
           firstParent: git(["rev-parse", `${phaseTwoMain}^1`]).trim(),
           liveMain,
           live: JSON.parse(readFileSync(values.live, "utf8")),
           mergePaths: changedPaths(liveMain, phaseTwoMain),
           phasePaths,
-          phaseContentPaths: changedPaths(
-            row("source-commit"),
-            phaseTwoMain,
-            phasePaths,
-          ),
+          phaseContentPaths: changedPaths(frozen, phaseTwoMain, phasePaths),
           bundlePaths: changedPaths(
-            row("target-pending"),
+            rowCommit(rows, "target-pending"),
             phaseTwoMain,
             ADMISSION_BUNDLE_SOURCES,
           ),
+          mergesPhaseCommit:
+            spawnSync(
+              "git",
+              ["merge-base", "--is-ancestor", frozen, phaseTwoMain],
+              { cwd: repoRoot },
+            ).status === 0,
         }),
-      });
+      );
       if (values.steady !== "HEAD") {
         const tip = values.tip ?? "";
         if (!/^[0-9a-f]{40}$/.test(tip))
           throw new Error("Gate 3 needs --tip <reviewed branch tip SHA>");
-        gates.push({
-          gate: "3: steady state main merge",
-          commit: steady,
-          problems: steadyMergeProblems({
+        gate(
+          "3: steady state main merge",
+          steady,
+          steadyMergeProblems({
             firstParent: git(["rev-parse", `${steady}^1`]).trim(),
             phaseTwoMain,
             tree: git(["rev-parse", `${steady}^{tree}`]).trim(),
@@ -538,7 +593,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
               .split("\n")[0]
               .trim(),
           }),
-        });
+        );
       }
     }
     console.log(JSON.stringify([...report, ...gates], null, 2));

@@ -10,8 +10,11 @@ import {
   auditChain,
   configView,
   effectiveDrift,
+  liveSourceFacts,
   liveSourceProblems,
   mainMergeProblems,
+  phaseTwoPaths,
+  RELEASE_WORKFLOWS,
   reverseChain,
   runbookPhases,
   steadyMergeProblems,
@@ -191,41 +194,44 @@ describe("effective variables", () => {
 
 const git = (...args: string[]) =>
   spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" }).stdout;
+const phaseRows = runbookPhases(
+  read("packages/cloud/admission-worker/PRODUCTION-TRANSFER.md"),
+);
 const rows = Object.fromEntries(
-  runbookPhases(
-    read("packages/cloud/admission-worker/PRODUCTION-TRANSFER.md"),
-  ).map((row) => [row.phase, row.commit]),
+  phaseRows.map((row) => [row.phase, row.commit]),
 );
 const changed = (from: string, to: string, paths: string[] = []) =>
   git("diff", "--name-only", from, to, "--", ...paths)
     .split("\n")
     .filter(Boolean);
-const phasePaths = changed(rows["source-owned"], rows["source-commit"]);
+const phasePaths = phaseTwoPaths(phaseRows);
 
 describe("before phase 1: the commit the API serves", () => {
-  // The facts the audit reads with --commit source-owned=<apiCommit>.
-  const facts = (apiCommit: string) => ({
-    bundlePaths: changed(
-      rows["target-pending"],
-      apiCommit,
-      ADMISSION_BUNDLE_SOURCES,
-    ),
-    phasePaths: changed(rows["source-owned"], apiCommit, phasePaths),
+  // What the audit reports with --commit source-owned=<apiCommit>.
+  const problems = (apiCommit: string) =>
+    liveSourceProblems(liveSourceFacts(phaseRows, apiCommit));
+
+  test("the chain base serves the phase 1 gate code, phase 2 paths and release workflows", () => {
+    expect(problems(rows["source-owned"])).toEqual([]);
   });
 
-  test("the chain base serves the phase 1 gate code and phase 2 paths", () => {
-    expect(liveSourceProblems(facts(rows["source-owned"]))).toEqual([]);
-  });
-
-  test("an API on other gate code or other phase 2 paths stops before phase 1", () => {
+  test("an API on other gate code, phase 2 paths or release workflows stops before phase 1", () => {
     // The main commit before the chain base: the base this chain was first
-    // built on. Its gate code differs.
+    // built on. Its gate code and both release workflows differ.
     const earlier = git("rev-parse", `${rows["source-owned"]}^1`).trim();
-    expect(liveSourceProblems(facts(earlier))).toContain(
+    const stale = problems(earlier);
+    expect(stale).toContain(
       "admission bundle source differs from the target: packages/cloud/shared/src/lib/middleware/rate-limit.ts",
     );
+    expect(
+      stale.filter((problem) => !problem.startsWith("admission bundle")),
+    ).toEqual(
+      RELEASE_WORKFLOWS.map(
+        (path) => `${path} differs from the phase chain's base`,
+      ),
+    );
     // A tree with other phase 2 path content (phase 1's own tree).
-    expect(liveSourceProblems(facts(rows["target-pending"]))).toEqual([
+    expect(problems(rows["target-pending"])).toEqual([
       ".github/workflows/cloud-tests.yml differs from the phase chain's base",
       "packages/cloud/admission-worker/verify-staging-contract.ts differs from the phase chain's base",
       "packages/cloud/admission-worker/wrangler.toml differs from the phase chain's base",
@@ -251,6 +257,7 @@ describe("gate 2: the phase 2 main commit", () => {
       rows["source-commit"],
       ADMISSION_BUNDLE_SOURCES,
     ),
+    mergesPhaseCommit: true,
   };
 
   test("the frozen phase 2 change builds the target's admission bundle", () => {
@@ -280,8 +287,10 @@ describe("gate 2: the phase 2 main commit", () => {
         live: { phase: "source-commit", api: { commit: moved } },
         mergePaths: [...phasePaths, "packages/core/src/index.ts"],
         bundlePaths: ["packages/cloud/api/src/inference-admission-gate.ts"],
+        mergesPhaseCommit: false,
       }),
     ).toEqual([
+      "the frozen phase 2 commit is not an ancestor: land it as a merge, not a squash",
       "live receipt is source-commit, not target-pending",
       `the API serves ${moved}, not live main ${live}`,
       `first parent ${moved} is not live main ${live}`,
