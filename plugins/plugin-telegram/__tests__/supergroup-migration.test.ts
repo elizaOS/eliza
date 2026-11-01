@@ -38,6 +38,11 @@ function migratedGroupBot() {
     sendChatAction: async () => true,
     sendMessage: send("sendMessage"),
     sendPhoto: send("sendPhoto"),
+    setMessageReaction: async (chatId: number) => {
+      calls.push(`setMessageReaction ${chatId}`);
+      if (chatId === OLD_CHAT) throw upgraded();
+      return true;
+    },
   };
   return { bot: { telegram } as unknown as Telegraf<Context>, calls };
 }
@@ -77,5 +82,32 @@ describe("Telegram group upgraded to a supergroup", () => {
     expect(calls.filter((call) => call.startsWith("sendMessage")).at(-1)).toBe(
       `sendMessage ${NEW_CHAT}`,
     );
+  });
+
+  it("sets a reaction on the new chat id", async () => {
+    const { bot, calls } = migratedGroupBot();
+    const manager = new MessageManager(bot, runtime);
+    // The first send learns the new id from the 400.
+    await manager.sendMessageWithReceipt(OLD_CHAT, { text: "first" } as never);
+    // A reaction on the old id must follow the group, like the text and media
+    // above: Telegram rejected reactions on the old id as well.
+    await manager.addReaction(OLD_CHAT, 42, "👍");
+    expect(
+      calls.filter((call) => call.startsWith("setMessageReaction")),
+    ).toEqual([`setMessageReaction ${NEW_CHAT}`]);
+  });
+
+  it("retries a reaction on the new chat id when the id is not known yet", async () => {
+    const { bot, calls } = migratedGroupBot();
+    // A fresh process starts with no migrated-id memory, so the first reaction
+    // still uses the old id and Telegram answers with migrate_to_chat_id.
+    const manager = new MessageManager(bot, runtime);
+    await manager.addReaction(OLD_CHAT, 42, "👍");
+    expect(
+      calls.filter((call) => call.startsWith("setMessageReaction")),
+    ).toEqual([
+      `setMessageReaction ${OLD_CHAT}`,
+      `setMessageReaction ${NEW_CHAT}`,
+    ]);
   });
 });
