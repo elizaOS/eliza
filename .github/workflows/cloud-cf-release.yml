@@ -1640,7 +1640,6 @@ jobs:
             # namespace. Publish its canonical class before the API that calls
             # it, including speech revocation subscriptions. This is a code
             # update, never a namespace transfer or a new quota/balance lane.
-            # Production owns this class in the API Worker and updates both together.
             (cd "$CHECKOUT_DIR" && bun packages/cloud/admission-worker/verify-staging-contract.ts)
             recheck_canonical_source
             bunx wrangler deploy \
@@ -1648,8 +1647,27 @@ jobs:
               --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" \
               --tag "$GITHUB_SHA"
             recheck_canonical_source
+          elif [ "$DEPLOY_ENVIRONMENT" = "production" ]; then
+            # Production admission authority lives in the existing namespace
+            # adopted by its dedicated Worker. Republish that adopted state
+            # before the API only after live readback proves the same namespace.
+            # A release never runs a transfer phase; any other committed phase
+            # fails closed here. See admission-worker/PRODUCTION-TRANSFER.md.
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/admission-worker/verify-staging-contract.ts --production --phase adopted)
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage before)
+            recheck_canonical_source
+            bunx wrangler deploy \
+              --config ../admission-worker/wrangler.toml \
+              --env production \
+              --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" \
+              --tag "$GITHUB_SHA"
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage admission --commit "$GITHUB_SHA")
+            recheck_canonical_source
           fi
           bunx wrangler deploy "${args[@]}"
+          if [ "$DEPLOY_ENVIRONMENT" = "production" ]; then
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage api --commit "$GITHUB_SHA")
+          fi
           trap - ERR
 
       - name: Remove atomic Worker secrets file
