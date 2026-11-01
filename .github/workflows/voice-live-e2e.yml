@@ -146,8 +146,7 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Run staging speech-only streaming contract
-        if: ${{ (inputs.cloudflare_environment || 'staging') == 'staging' }}
+      - name: Run speech-only streaming contract
         run: |
           set -euo pipefail
           PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/speech-relay-contract.XXXXXX")
