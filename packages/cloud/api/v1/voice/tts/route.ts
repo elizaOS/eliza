@@ -1,4 +1,3 @@
-import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_TTS_MAX_CHARACTERS,
   CloudflareSpeechError,
@@ -21,11 +20,9 @@ import {
 } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import {
-  getElevenLabsService,
-  hasTtsSynthesisOptions,
-  TtsSynthesisOptions,
-} from "@elizaos/cloud-shared/lib/services/elevenlabs";
-import { isKnownUnacceptedProviderStatus } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
+  elevenLabsSdkErrorStatus,
+  isKnownUnacceptedProviderStatus,
+} from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
 import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
@@ -34,6 +31,10 @@ import {
   getCloudFirstLineCacheService,
   shouldBypassCloudFirstLineCache,
 } from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
+import {
+  hasTtsSynthesisOptions,
+  TtsSynthesisOptions,
+} from "@elizaos/cloud-shared/lib/services/tts-synthesis-options";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -825,6 +826,11 @@ async function __hono_POST(c: AppContext) {
     }
     if (wav === undefined) {
       if (audioStream === undefined) {
+        // Only this lane loads the ElevenLabs SDK, so cold requests on the
+        // other providers do not evaluate its module graph.
+        const { getElevenLabsService } = await import(
+          "@elizaos/cloud-shared/lib/services/elevenlabs"
+        );
         const elevenlabs = getElevenLabsService(env);
         await markPaidTtsProviderDispatch();
         const synthesis = {
@@ -1040,8 +1046,7 @@ async function __hono_POST(c: AppContext) {
     if (reservation) {
       // A clear rejection before any audio proves nothing was synthesized:
       // the Cartesia REST refusal, or an ElevenLabs SDK error with its status.
-      const sdkStatus =
-        error instanceof ElevenLabsError ? error.statusCode : undefined;
+      const sdkStatus = elevenLabsSdkErrorStatus(error);
       const rejected =
         (error instanceof CartesiaRestTtsError &&
           error.beforeAudio &&
