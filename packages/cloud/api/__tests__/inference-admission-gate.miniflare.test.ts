@@ -11,6 +11,7 @@ import {
   markInferenceAdmissionLeaseDispatched,
   wakeInferenceAdmissionGate,
 } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
+import { revokeInferenceApiKey } from "@elizaos/cloud-shared/lib/services/inference-credential-revocation";
 import { Miniflare } from "miniflare";
 
 const ADMISSION_RUNTIME_BOUNDARY_FILTERS = {
@@ -181,6 +182,7 @@ describe("Miniflare Durable Object integration", () => {
         },
       },
       kvNamespaces: ["TEST_AUTH_CACHE"],
+      bindings: { VOICE_SPEECH_RELAY_ENABLED: "true" },
     });
   });
 
@@ -652,6 +654,84 @@ describe("Miniflare Durable Object integration", () => {
     expect((await post("/credential/check", credential)).status).toBe(403);
     expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
       stalePositive,
+    );
+  });
+
+  test("a mobile lifecycle fence closes active speech and denies a retained positive at another location", async () => {
+    const organizationId = "org-miniflare";
+    const credential = {
+      kind: "api_key" as const,
+      credentialId: "00000000-0000-0000-0000-000000000105",
+      userId: "00000000-0000-0000-0000-000000000205",
+    };
+    const staleCache = await miniflare.getKVNamespace("TEST_AUTH_CACHE");
+    const staleCacheKey = "inference-auth:mobile-stale-positive";
+    const positive = JSON.stringify({ organizationId, ...credential });
+    await staleCache.put(staleCacheKey, positive);
+    const subscribed = await miniflare.dispatchFetch(
+      "https://gate.test/speech/subscribe",
+      {
+        headers: {
+          Upgrade: "websocket",
+          "x-test-organization-id": organizationId,
+          "X-Eliza-Speech-Identity": JSON.stringify({
+            organizationId,
+            credential,
+            expiresAt: Date.now() + 60000,
+          }),
+        },
+      },
+    );
+    expect(subscribed.status).toBe(101);
+    const socket = subscribed.webSocket;
+    if (!socket) throw new Error("Speech subscription socket missing");
+    const closed = new Promise<number>((resolve) =>
+      socket.addEventListener("close", (event) => resolve(event.code)),
+    );
+    socket.accept();
+    await runWithCloudBindings(
+      {
+        INFERENCE_STRONG_REVOCATION_ENABLED: "false",
+        VOICE_SPEECH_RELAY_ENABLED: "true",
+        INFERENCE_ADMISSION_GATES: {
+          getByName(gate: string) {
+            expect(gate).toBe(organizationId);
+            return {
+              async fetch(request: Request) {
+                const result = await post(
+                  new URL(request.url).pathname,
+                  (await request.json()) as Record<string, unknown>,
+                );
+                return new Response(await result.text(), {
+                  status: result.status,
+                });
+              },
+            };
+          },
+        },
+      },
+      () => revokeInferenceApiKey(organizationId, credential.credentialId),
+    );
+    expect(
+      await Promise.race([
+        closed,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error("Speech revocation did not close socket")),
+            1000,
+          ),
+        ),
+      ]),
+    ).toBe(1008);
+    expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
+      positive,
+    );
+    expect(
+      (await post("/credential/check", { organizationId, ...credential }))
+        .status,
+    ).toBe(403);
+    expect((await staleCache.get(staleCacheKey)) as string | null).toBe(
+      positive,
     );
   });
 
