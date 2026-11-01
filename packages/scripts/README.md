@@ -81,6 +81,31 @@ and `repair` behavior is unchanged. A present Worker registry is not permission 
 replace it: preserve every existing client and Android certificate when repairing
 configuration. This inventory neither reveals nor changes those values.
 
+For a new platform-owned native client, `plan-provision` accepts a fixed new
+`intended_app_id`, a public `display_name`, and an exact
+`https://cloud.eliza.app/auth/<product>/callback`. It validates the protected
+primary app and database identity, then seals an additional-client candidate and
+the original registry to the reviewed GitHub environment key. The prospective
+plan has `requiresCreation: true`; it does not prove that the new app exists.
+The primary app's validated organization and creator own the new registration.
+Optional protected owner values must match that primary app.
+
+Review the candidate, non-target, app-binding, and creation hashes. Run
+`provision-registry` with those hashes and the same UUID, name, and callback while
+the original source registry is still installed. This operation creates only
+the admitted registration under the repair transaction's shared lock. An exact
+valid retry leaves rows and keys unchanged. It never publishes a Worker binding.
+Only after it verifies the new row may the operator install the sealed candidate
+in the normal GitHub environment secret and run `publish-registry`. Keep source
+secret changes exclusive during this sequence; GitHub secret updates have no
+compare-and-swap check. Never install a prospective candidate before provisioning:
+a concurrent release can publish the normal source registry.
+
+These operations currently require the reviewed production key and `main`.
+Staging remains unavailable until its protected registry, primary app, database
+identity pins, and encryption key are configured and reviewed. Empty or malformed
+source registries fail closed; these operations do not initialize them.
+
 The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
 catalog binding names. It then makes one unauthenticated plans request with a
 random diagnostic header. A temporary Wrangler tail filters that header and GET

@@ -7,12 +7,17 @@ import pg from "pg";
 import { readDatabaseIdentityReceipt } from "../../../cloud/scripts/admin/database-identity-receipt.ts";
 import { parseRegisteredMobileClients } from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
 import {
+  type RegistrationRepairClient,
+  repairRegistrationTransaction,
+} from "./repair-mobile-app-auth-registration.ts";
+import {
   MOBILE_APP_AUTH_CLIENT_ID,
   MOBILE_APP_AUTH_REDIRECT_URI,
   type MobileAppAuthFetch,
   type MobileAppAuthRegistrationRow,
   type MobileAppAuthRegistrationTarget,
   mobileAppAuthDatabaseConnection,
+  PRIMARY_MOBILE_APP_AUTH_TARGET,
   queryMobileAppAuthRegistration,
   resolveMobileAppAuthRegistrationTarget,
   validateMobileAppAuthRegistrationRow,
@@ -59,6 +64,7 @@ export interface AdditionInput {
   ownerUserId: string;
   clusterSha256: string;
   authoritySha256: string;
+  displayName?: string;
 }
 export interface AdditionDatabase {
   query(
@@ -131,12 +137,10 @@ function targetFor(input: AdditionInput): MobileAppAuthRegistrationTarget {
   };
 }
 
-/** Use operator/registry selection first; callback discovery remains owner-bound. */
-export async function discoverRegisteredApp(
+async function validateDatabaseIdentity(
   database: AdditionDatabase,
   input: AdditionInput,
-): Promise<RegisteredAppBinding> {
-  const target = targetFor(input);
+): Promise<void> {
   if (!HASH.test(input.clusterSha256) || !HASH.test(input.authoritySha256))
     fail("identity_pin_required");
   const identity = await readDatabaseIdentityReceipt(
@@ -148,6 +152,35 @@ export async function discoverRegisteredApp(
     identity.authoritySha256 !== input.authoritySha256
   )
     fail("identity_mismatch");
+}
+
+async function validateApp(
+  database: AdditionDatabase,
+  appId: string,
+  target: MobileAppAuthRegistrationTarget,
+): Promise<void> {
+  try {
+    const registration = await queryMobileAppAuthRegistration(
+      async (text, values) => ({
+        rows: (await database.query(text, values))
+          .rows as unknown as MobileAppAuthRegistrationRow[],
+      }),
+      appId,
+      target,
+    );
+    validateMobileAppAuthRegistrationRow(registration, appId, target);
+  } catch {
+    fail("callback_registration_invalid");
+  }
+}
+
+/** Use operator/registry selection first; callback discovery remains owner-bound. */
+export async function discoverRegisteredApp(
+  database: AdditionDatabase,
+  input: AdditionInput,
+): Promise<RegisteredAppBinding> {
+  const target = targetFor(input);
+  await validateDatabaseIdentity(database, input);
   const registry = parseRegisteredMobileClients(input.registry, {
     clientId: MOBILE_APP_AUTH_CLIENT_ID,
     appId: input.primaryAppId,
@@ -203,19 +236,7 @@ export async function discoverRegisteredApp(
     !UUID.test(row.created_by_user_id)
   )
     fail("callback_app_id");
-  try {
-    const registration = await queryMobileAppAuthRegistration(
-      async (text, values) => ({
-        rows: (await database.query(text, values))
-          .rows as unknown as MobileAppAuthRegistrationRow[],
-      }),
-      row.id,
-      target,
-    );
-    validateMobileAppAuthRegistrationRow(registration, row.id, target);
-  } catch {
-    fail("callback_registration_invalid");
-  }
+  await validateApp(database, row.id, target);
   return {
     appId: row.id,
     organizationId: row.organization_id,
@@ -317,9 +338,223 @@ export async function sealRegistryPlan(
     secretName: REGISTRY_NAME,
     ...manifest,
     appBindingSha256: appBindingDigest(input, binding),
+    requiresCreation: false,
     candidate: seal(candidate),
     rollback: seal(input.registry),
   };
+}
+
+export interface ProvisioningExpectation {
+  candidateSha256: string;
+  nonTargetSha256: string;
+  appBindingSha256: string;
+  creationSha256: string;
+}
+
+function provisioningTarget(
+  input: AdditionInput,
+): MobileAppAuthRegistrationTarget {
+  const target = targetFor(input);
+  const origin =
+    input.environment === "production"
+      ? "https://cloud.eliza.app"
+      : "https://cloud-staging.eliza.app";
+  if (
+    target.redirectOrigin !== origin ||
+    !/^\/auth\/[a-z][a-z0-9-]*\/callback$/.test(
+      new URL(input.redirectUri).pathname,
+    )
+  )
+    fail("platform_callback");
+  if (
+    !input.displayName ||
+    input.displayName.length > 120 ||
+    input.displayName.trim() !== input.displayName ||
+    /\p{Cc}/u.test(input.displayName)
+  )
+    fail("display_name");
+  return {
+    ...target,
+    appName: input.displayName,
+    appDescription: "First-party native authentication client",
+  };
+}
+
+/** The protected primary UUID, never a caller-selected owner, anchors new clients. */
+async function platformOwner(database: AdditionDatabase, input: AdditionInput) {
+  await validateDatabaseIdentity(database, input);
+  await validateApp(
+    database,
+    input.primaryAppId,
+    PRIMARY_MOBILE_APP_AUTH_TARGET,
+  );
+  const result = await database.query(
+    "SELECT organization_id::text, created_by_user_id::text FROM apps WHERE id=$1::uuid",
+    [input.primaryAppId],
+  );
+  const row = result.rows[0];
+  if (
+    typeof row?.organization_id !== "string" ||
+    !UUID.test(row.organization_id) ||
+    typeof row.created_by_user_id !== "string" ||
+    !UUID.test(row.created_by_user_id)
+  )
+    fail("primary_owner");
+  if (
+    (input.organizationId &&
+      (!UUID.test(input.organizationId) ||
+        input.organizationId !== row.organization_id)) ||
+    (input.ownerUserId &&
+      (!UUID.test(input.ownerUserId) ||
+        input.ownerUserId !== row.created_by_user_id))
+  )
+    fail("protected_primary_owner_mismatch");
+  return {
+    organizationId: row.organization_id,
+    creatorUserId: row.created_by_user_id,
+  };
+}
+
+async function provisioningState(
+  database: AdditionDatabase,
+  input: AdditionInput,
+  allowExisting: boolean,
+) {
+  const target = provisioningTarget(input);
+  if (!input.intendedAppId || !UUID.test(input.intendedAppId))
+    fail("intended_app_id_required");
+  const owner = await platformOwner(database, input);
+  const binding = { appId: input.intendedAppId.toLowerCase(), ...owner };
+  const plan = buildRegistryAddition(input, binding.appId);
+  if (!plan.added) fail("provision_target_already_registered");
+  // Include inactive and unapproved claimants: provisioning never adopts a row
+  // that a dashboard user created merely because it claims the same callback.
+  const claims = await database.query(
+    "SELECT id::text FROM apps WHERE allowed_origins @> jsonb_build_array($1::text) LIMIT 2",
+    [target.redirectUri],
+  );
+  if (claims.rows.some((row) => row.id !== binding.appId))
+    fail("platform_callback_claimed");
+  const existing = await database.query(
+    "SELECT organization_id::text, created_by_user_id::text, name, description, slug, app_url FROM apps WHERE id=$1::uuid",
+    [binding.appId],
+  );
+  const row = existing.rows[0];
+  if (row) {
+    if (!allowExisting) fail("provision_app_already_exists");
+    if (
+      row.organization_id !== binding.organizationId ||
+      row.created_by_user_id !== binding.creatorUserId ||
+      row.name !== target.appName ||
+      row.description !== target.appDescription ||
+      row.slug !== `${target.slugPrefix}-${binding.appId}` ||
+      row.app_url !== target.redirectOrigin
+    )
+      fail("provision_existing_mismatch");
+    await validateApp(database, binding.appId, target);
+  }
+  const appBindingSha256 = appBindingDigest(input, binding);
+  const creationSha256 = registryDigest(
+    JSON.stringify({
+      version: 1,
+      sourceSha256: plan.sourceSha256,
+      candidateSha256: plan.candidateSha256,
+      nonTargetSha256: plan.nonTargetSha256,
+      appBindingSha256,
+      displayName: target.appName,
+      description: target.appDescription,
+      slug: `${target.slugPrefix}-${binding.appId}`,
+      primaryAppId: input.primaryAppId.toLowerCase(),
+      clusterSha256: input.clusterSha256,
+      authoritySha256: input.authoritySha256,
+    }),
+  );
+  return {
+    binding,
+    target,
+    plan,
+    appBindingSha256,
+    creationSha256,
+    exists: !!row,
+  };
+}
+
+/** Prospective only: this plan cannot claim that its new row is already valid. */
+export async function planRegistryProvisioning(
+  database: AdditionDatabase,
+  input: AdditionInput,
+  repository: string,
+  sourceCommit: string,
+) {
+  const state = await provisioningState(database, input, false);
+  const sealed = await sealRegistryPlan(
+    input,
+    state.binding,
+    repository,
+    sourceCommit,
+  );
+  return {
+    ...sealed,
+    requiresCreation: true,
+    creationSha256: state.creationSha256,
+    displayName: state.target.appName,
+  };
+}
+
+async function validateProvisioning(
+  database: AdditionDatabase,
+  input: AdditionInput,
+  expected: ProvisioningExpectation,
+) {
+  if (
+    Object.values(expected).length !== 4 ||
+    Object.values(expected).some((value) => !HASH.test(value))
+  )
+    fail("expected_hash_required");
+  const state = await provisioningState(database, input, true);
+  if (
+    state.plan.candidateSha256 !== expected.candidateSha256 ||
+    state.plan.nonTargetSha256 !== expected.nonTargetSha256 ||
+    state.appBindingSha256 !== expected.appBindingSha256 ||
+    state.creationSha256 !== expected.creationSha256
+  )
+    fail("provision_plan_mismatch");
+  return state;
+}
+
+/** Create the admitted row only. The old registry stays in GitHub and the Worker. */
+export async function provisionRegistry(
+  database: RegistrationRepairClient,
+  input: AdditionInput,
+  expected: ProvisioningExpectation,
+): Promise<void> {
+  await database.query(REGISTRY_SNAPSHOT_SQL);
+  let state: Awaited<ReturnType<typeof validateProvisioning>>;
+  try {
+    state = await validateProvisioning(database, input, expected);
+  } finally {
+    await database.query("ROLLBACK");
+  }
+  await repairRegistrationTransaction(
+    database,
+    state.binding.appId,
+    state.binding.organizationId,
+    state.binding.creatorUserId,
+    state.target,
+    async (locked) => {
+      // Repeat every admission after BEGIN SERIALIZABLE and the shared lock,
+      // before repair can insert, update, or revoke any generated-key row.
+      const admitted = await validateProvisioning(locked, input, expected);
+      return admitted.exists ? "unchanged" : undefined;
+    },
+  );
+  await database.query(REGISTRY_SNAPSHOT_SQL);
+  try {
+    const verified = await validateProvisioning(database, input, expected);
+    if (!verified.exists) fail("provisioned_registration_missing");
+  } finally {
+    await database.query("ROLLBACK");
+  }
 }
 
 export async function validateRegistryPublication(
@@ -511,12 +746,18 @@ function runtimeInput(env: NodeJS.ProcessEnv): AdditionInput {
     ownerUserId: env.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID ?? "",
     clusterSha256: env.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 ?? "",
     authoritySha256: env.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 ?? "",
+    displayName: env.ELIZA_MOBILE_APP_AUTH_DISPLAY_NAME ?? "",
   };
 }
 
 async function main() {
   const operation = process.argv[2];
-  if (operation !== "plan-addition" && operation !== "publish-registry")
+  if (
+    operation !== "plan-addition" &&
+    operation !== "publish-registry" &&
+    operation !== "plan-provision" &&
+    operation !== "provision-registry"
+  )
     fail("operation");
   const input = runtimeInput(process.env);
   trustedGithubKey(process.env.GITHUB_REPOSITORY ?? "", input.environment);
@@ -529,15 +770,46 @@ async function main() {
   });
   await database.connect();
   try {
-    await database.query(REGISTRY_SNAPSHOT_SQL);
-    if (operation === "plan-addition") {
-      const binding = await discoverRegisteredApp(database, input);
-      const plan = await sealRegistryPlan(
-        input,
-        binding,
-        process.env.GITHUB_REPOSITORY ?? "",
-        process.env.GITHUB_SHA ?? "",
+    if (operation === "provision-registry") {
+      await provisionRegistry(database, input, {
+        candidateSha256:
+          process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_REGISTRY_SHA256 ?? "",
+        nonTargetSha256:
+          process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_NON_TARGET_SHA256 ?? "",
+        appBindingSha256:
+          process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_APP_BINDING_SHA256 ?? "",
+        creationSha256:
+          process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_CREATION_SHA256 ?? "",
+      });
+      console.log(
+        JSON.stringify({
+          operation,
+          environment: input.environment,
+          clientId: input.clientId,
+          registrationVerified: true,
+          registryPublished: false,
+        }),
       );
+      return;
+    }
+    await database.query(REGISTRY_SNAPSHOT_SQL);
+    if (operation === "plan-addition" || operation === "plan-provision") {
+      const repository = process.env.GITHUB_REPOSITORY ?? "";
+      const sourceCommit = process.env.GITHUB_SHA ?? "";
+      const plan =
+        operation === "plan-provision"
+          ? await planRegistryProvisioning(
+              database,
+              input,
+              repository,
+              sourceCommit,
+            )
+          : await sealRegistryPlan(
+              input,
+              await discoverRegisteredApp(database, input),
+              repository,
+              sourceCommit,
+            );
       const outputRoot = process.env.RUNNER_TEMP;
       if (
         !outputRoot ||
@@ -563,6 +835,9 @@ async function main() {
           candidateSha256: plan.candidateSha256,
           nonTargetSha256: plan.nonTargetSha256,
           appBindingSha256: plan.appBindingSha256,
+          creationSha256:
+            "creationSha256" in plan ? plan.creationSha256 : undefined,
+          requiresCreation: plan.requiresCreation,
           changed: plan.changed,
           plaintextExported: false,
         }),
