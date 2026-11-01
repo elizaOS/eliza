@@ -16,7 +16,7 @@
  * The digest input is the address CANONICALIZED by `normalizeWallet`, the same
  * function that feeds `users.wallet_address_blind_index`, so the identity layer
  * and the encryption layer answer "is this the same wallet?" with one rule
- * instead of two that can drift apart. The rule is chain-shaped: a `0x` address
+ * instead of two that can drift apart. The rule is chain-shaped: a `0x` or `0X` address
  * is EVM hex and folds case, anything else is base58 and does not. Both halves
  * are load-bearing. Folding is required because nothing guarantees which of an
  * EVM address's two legal spellings a row holds: `/api/users/me/wallet/attach`
@@ -33,9 +33,9 @@
  * accepts one. It is mutable — a Steward sync rewrites it — and an identity that
  * moves when a background job rewrites a column is not an identity. Passing it
  * would change nothing anyway: for every address this provider can be handed the
- * `0x` test alone decides, because the two writers that record `evm` derive the
- * address from viem's `getAddress`. The gate in `./subject.ts` still reads the
- * column, for admission rather than derivation.
+ * `0x` / `0X` test alone decides, because the two writers that record `evm`
+ * derive the address from viem's `getAddress`. The gate in `./subject.ts`
+ * still reads the column, for admission rather than derivation.
  *
  * The digest is obfuscation, not secrecy. A wallet address is public, so anyone
  * holding a candidate list can confirm which address belongs to which wallet. A

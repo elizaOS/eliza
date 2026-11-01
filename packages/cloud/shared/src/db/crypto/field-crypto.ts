@@ -122,7 +122,7 @@ export function normalizePhone(phone: string): string {
  */
 export function normalizeWallet(address: string, chainType?: string | null): string {
   const trimmed = address.trim();
-  if (chainType === "evm" || trimmed.startsWith("0x")) {
+  if (chainType === "evm" || /^0x/i.test(trimmed)) {
     return trimmed.toLowerCase();
   }
   return trimmed;
