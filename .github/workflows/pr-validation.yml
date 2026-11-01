@@ -737,6 +737,21 @@ jobs:
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
 
+      - name: Verify lazy speech imports and preserved provider behavior
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/cloud/api test voice-elevenlabs-lazy-load
+          bun run --cwd packages/cloud/api test voice-stt-provider-duration
+          bun run --cwd packages/cloud/api test voice-stt-m4a
+          bun run --cwd packages/cloud/api test voice-stt-ogg-opus
+          bun run --cwd packages/cloud/api test voice-cloudflare-selection
+          bun run --cwd packages/cloud/api test voice-tts-idempotency-key.pglite
+          bun run --cwd packages/cloud/api test voice-speech-rate-limit.pglite
+          bun run --cwd packages/cloud/shared test tts-safety-cache
+
       - name: Verify Network Personal room routes
         if: steps.affected.outputs.cloud == 'true'
         timeout-minutes: 3
