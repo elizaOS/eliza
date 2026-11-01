@@ -268,8 +268,12 @@ export class SpeechRelayCoordinator {
                 runWithCloudBindingsAsync(
                   this.env as Record<string, unknown>,
                   async () => {
-                    await this.relay!.control(frame);
-                    if (frame.t === "tts" && !prepared.has(frame.id)) {
+                    const dispatched = await this.relay!.control(frame);
+                    if (
+                      frame.t === "tts" &&
+                      dispatched !== false &&
+                      !prepared.has(frame.id)
+                    ) {
                       prepared.add(frame.id);
                       this.send({ t: "tts_prepared", id: frame.id });
                     }
@@ -365,7 +369,7 @@ export class SpeechRelayCoordinator {
               retireSpeech = revoke;
               return () => this.unsubscribeRevocation?.();
             },
-            assertTtsAllowed: async (text) => {
+            assertTtsAllowed: async (text, signal) => {
               await assertSafeTtsText(
                 {
                   surface: "media_generation_prompt",
@@ -375,6 +379,7 @@ export class SpeechRelayCoordinator {
                   metadata: { type: "tts", model: CARTESIA_SONIC_MODEL_ID },
                 },
                 (task) => this.state.waitUntil(task),
+                signal,
               );
             },
             openStt: (onEvent) =>
