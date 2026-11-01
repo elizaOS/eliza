@@ -38,10 +38,17 @@ const codes = new Set([
   "SPEECH_REVOKE_TIMEOUT",
 ]);
 const timings = [
+  "consentMs",
+  "sessionMs",
+  "wsReadyMs",
   "bootstrapMs",
+  "ttsStartupMs",
   "firstPcmMs",
   "ttsCompleteMs",
   "sttFinalMs",
+  // Final arrival minus end of paced speech replay, before added silence begins.
+  // Omitted when the final arrives before the replayed speech input ends.
+  "sttTailMs",
   "revokeMs",
   "pcmFrames",
   "pcmBytes",

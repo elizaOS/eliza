@@ -93,10 +93,12 @@ maybe(
     const started = performance.now();
     stage("consent");
     const consent = await json("/api/v1/voice/speech/consent", {});
+    const consentAt = performance.now();
     stage("session");
     const minted = await json("/api/v1/voice/speech/session", {
       consentNonce: consent.consentNonce,
     });
+    const sessionAt = performance.now();
     check(
       typeof minted.wsUrl === "string" &&
         typeof minted.token === "string" &&
@@ -110,6 +112,7 @@ maybe(
       "SPEECH_SOCKET_ORIGIN_INVALID",
     );
     stage("websocket");
+    const socketStartedAt = performance.now();
     const socket = new WebSocket(url);
     socket.binaryType = "arraybuffer";
     const ready = deferred<void>(),
@@ -121,6 +124,8 @@ maybe(
       completeAt = 0,
       finalAt = 0,
       readyAt = 0,
+      ttsRequestedAt = 0,
+      speechInputEndedAt = 0,
       frameCount = 0,
       totalBytes = 0,
       revoked = false;
@@ -198,6 +203,7 @@ maybe(
     try {
       await bounded(ready.promise, "SPEECH_READY_TIMEOUT");
       stage("tts");
+      ttsRequestedAt = performance.now();
       socket.send(
         JSON.stringify({
           t: "tts",
@@ -215,7 +221,10 @@ maybe(
       // Feed the generated PCM at microphone speed, then enough silence for Ink's
       // bounded final-turn timer. This proves the two provider streams, not Android playback.
       stage("stt");
-      for (const chunk of [...chunks, new Uint8Array(64_000)]) {
+      for (const [index, chunk] of [
+        ...chunks,
+        new Uint8Array(64_000),
+      ].entries()) {
         for (let offset = 0; offset < chunk.length; offset += 1024) {
           const frame = chunk.slice(offset, offset + 1024);
           socket.send(frame);
@@ -223,6 +232,8 @@ maybe(
             setTimeout(resolve, frame.length / 32),
           );
         }
+        // End of the paced generated-audio replay, before the added silence.
+        if (index === chunks.length - 1) speechInputEndedAt = performance.now();
       }
       await bounded(final.promise, "SPEECH_STT_FINAL_TIMEOUT", 5000);
       stage("revocation");
@@ -234,10 +245,18 @@ maybe(
         JSON.stringify({
           phase: "speech-relay-live",
           status: "passed",
+          consentMs: Math.round(consentAt - started),
+          sessionMs: Math.round(sessionAt - consentAt),
+          wsReadyMs: Math.round(readyAt - socketStartedAt),
           bootstrapMs: Math.round(readyAt - started),
+          ttsStartupMs: Math.round(firstPcmAt - ttsRequestedAt),
           firstPcmMs: Math.round(firstPcmAt - started),
           ttsCompleteMs: Math.round(completeAt - started),
           sttFinalMs: Math.round(finalAt - started),
+          // An early final has no nonnegative tail; do not fabricate zero.
+          ...(finalAt >= speechInputEndedAt
+            ? { sttTailMs: Math.round(finalAt - speechInputEndedAt) }
+            : {}),
           revokeMs: Math.round(performance.now() - revokeAt),
           pcmFrames: frameCount,
           pcmBytes: totalBytes,

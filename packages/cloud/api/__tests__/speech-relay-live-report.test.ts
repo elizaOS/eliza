@@ -131,8 +131,13 @@ describe("protected speech diagnostics", () => {
     const log = JSON.stringify({
       phase: "speech-relay-live",
       status: "passed",
+      consentMs: 20,
+      sessionMs: 60,
+      wsReadyMs: 40,
       bootstrapMs: 120,
+      ttsStartupMs: 120,
       firstPcmMs: 240,
+      sttTailMs: 1280,
       pcmBytes: 1024,
       pcmFrames: true,
       sttFinalMs: -1,
@@ -143,8 +148,13 @@ describe("protected speech diagnostics", () => {
     expect(JSON.parse(publicSpeechRelayReports(log, false))).toEqual({
       phase: "speech-relay-live",
       status: "passed",
+      consentMs: 20,
+      sessionMs: 60,
+      wsReadyMs: 40,
       bootstrapMs: 120,
+      ttsStartupMs: 120,
       firstPcmMs: 240,
+      sttTailMs: 1280,
       pcmBytes: 1024,
     });
     expect(JSON.parse(publicSpeechRelayReports(log, true))).toEqual({
@@ -154,6 +164,21 @@ describe("protected speech diagnostics", () => {
       code: "SPEECH_CONTRACT_FAILED",
     });
     expect(publicSpeechRelayReports("private-token\nnot JSON", false)).toBe("");
+    const invalidTimings = JSON.stringify({
+      phase: "speech-relay-live",
+      status: "passed",
+      consentMs: null,
+      sessionMs: -1,
+      wsReadyMs: "private-token",
+      ttsStartupMs: true,
+      sttTailMs: Number.POSITIVE_INFINITY,
+    });
+    expect(JSON.parse(publicSpeechRelayReports(invalidTimings, false))).toEqual(
+      {
+        phase: "speech-relay-live",
+        status: "passed",
+      },
+    );
   });
 
   test("the workflow CLI prints the safe report rather than the private file", () => {
