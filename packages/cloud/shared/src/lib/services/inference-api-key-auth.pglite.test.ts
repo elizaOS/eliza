@@ -212,47 +212,27 @@ describe("mobile credentials on the Worker inference boundary", () => {
       headers: { Authorization: `Bearer ${key}` },
     });
   }
-  test("active mobile key resolves in Worker cache-only mode without positive cache reads or writes", async () => {
-    process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
-    process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "true";
+  // Mobile lifecycle keys share the combined cache: their revocations
+  // invalidate the same key-hash entry. A Worker request therefore never
+  // resolves them inline from the primary; the authoritative decision is
+  // hydrated under `waitUntil` (covered end to end, with a primary tripwire,
+  // in inference-auth-hot-path.pglite.test.ts).
+  test("active mobile key on a Worker cold miss returns warming instead of an inline primary read", async () => {
     const key = await mobileKey();
-    const deferred: Promise<unknown>[] = [];
     let trace: InferenceAuthTelemetry | undefined;
     const result = await resolveInferenceAuthContext(request(key), {
       cacheOnly: true,
       deferStrongCredentialCheck: true,
-      executionCtx: {
-        waitUntil(task) {
-          deferred.push(task);
-        },
-      },
+      executionCtx: { waitUntil() {} },
       onTelemetry(value) {
         trace = value;
       },
     });
-    expect(result.kind).toBe("authorized");
-    if (result.kind !== "authorized") throw Error("Mobile Worker authorization failed");
-    expect(result.credential).toMatchObject({ kind: "api_key", userId: USER });
-    expect(result.source).toBe("origin");
-    expect(result.ctx.orgId).toBe(ORG);
-    expect(result.ctx.userId).toBe(USER);
-    expect(trace?.cacheRead).toBe("not_run");
-    expect(trace?.cacheWrite).toBe("not_run");
-    await Promise.allSettled(deferred);
-    await getPgliteClientForTests().query(
-      "UPDATE api_keys SET deleted_at=now() WHERE key_hash=$1",
-      [createHash("sha256").update(key).digest("hex")],
-    );
-    await expect(
-      resolveInferenceAuthContext(request(key), {
-        cacheOnly: true,
-        executionCtx: { waitUntil() {} },
-      }),
-    ).rejects.toBeInstanceOf(AuthenticationError);
-    delete process.env.INFERENCE_AUTH_CACHE_ENABLED;
-    delete process.env.INFERENCE_STRONG_REVOCATION_ENABLED;
+    expect(result.kind).toBe("warming");
+    expect(trace?.authoritative).toBe("not_run");
+    expect(trace?.timings.identityLookupMs).toBeNull();
   });
-  test("Worker chat admits mobile identity before validation and still rejects generic callers", async () => {
+  test("Worker chat answers a cold mobile key with the retryable warming shape and still rejects generic callers", async () => {
     const { handleChatCompletionsPOST } = await import("../../../../api/v1/chat/completions/route");
     const key = await mobileKey();
     const send = async (token: string) => {
@@ -275,9 +255,10 @@ describe("mobile credentials on the Worker inference boundary", () => {
       await Promise.allSettled(deferred);
       return response;
     };
-    const admitted = await send(key);
-    expect(admitted.status).toBe(400);
-    expect((await admitted.json()).error.code).toBe("missing_required_parameter");
+    const warming = await send(key);
+    expect(warming.status).toBe(503);
+    expect(warming.headers.get("Retry-After")).toBe("1");
+    expect((await warming.json()).error.code).toBe("auth_cache_warming");
     const refused = await send("unrecognized-credential");
     expect(refused.status).toBe(401);
     expect((await refused.json()).error.code).toBe("authentication_required");
@@ -291,12 +272,14 @@ describe("mobile credentials on the Worker inference boundary", () => {
       { app: null },
     ]) {
       const key = await mobileKey(state);
-      await expect(
-        resolveInferenceAuthContext(request(key), {
-          cacheOnly: true,
-          executionCtx: { waitUntil() {} },
-        }),
-      ).rejects.toBeInstanceOf(Error);
+      // The authoritative decision (what Worker hydration projects) rejects.
+      await expect(resolveInferenceAuthContext(request(key))).rejects.toBeInstanceOf(Error);
+      // A Worker request never authorizes a credential it has not cached.
+      const worker = await resolveInferenceAuthContext(request(key), {
+        cacheOnly: true,
+        executionCtx: { waitUntil() {} },
+      });
+      expect(worker.kind).not.toBe("authorized");
     }
   });
   test("a non-API-key caller retains the generic slow path", async () => {

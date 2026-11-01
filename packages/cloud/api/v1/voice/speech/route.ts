@@ -22,7 +22,6 @@ app.use("*", async (c, next) => {
 app.post("/consent", async (c) => {
   const caller = await requireGenerativeRouteCaller(c, {
     rateLimitEndpoint: "standard",
-    awaitWarmingMs: 1500,
   });
   const consent = await issueConsentNonce(caller.user.id);
   if (!consent) return c.json({ error: "speech_consent_unavailable" }, 503);
@@ -32,7 +31,6 @@ app.post("/session", async (c) => {
   const caller = await requireGenerativeRouteCaller(c, {
     includeVerifiedCredential: true,
     rateLimitEndpoint: "strict",
-    awaitWarmingMs: 1500,
   });
   if (!caller.credential)
     return c.json({ error: "speech_identity_unavailable" }, 403);
@@ -105,7 +103,6 @@ app.post("/session/:sessionId/revoke", async (c) => {
     return c.json({ error: "invalid_speech_session" }, 400);
   const caller = await requireGenerativeRouteCaller(c, {
     rateLimitEndpoint: "standard",
-    awaitWarmingMs: 1500,
   });
   return c.env
     .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
