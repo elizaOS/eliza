@@ -80,25 +80,25 @@ import {
 } from "./turn-session.ts";
 
 /**
- * Content-free activity label from the action's registered category. Catch-all
- * and system contexts name no activity. The context's sensitivity says whether
- * publishing the activity needs an owner-only audience.
+ * Content-free activity label from the action's first labelled registered
+ * category. Catch-all and system contexts name no activity. Publishing without
+ * an owner-only audience check requires every listed category to be public.
  */
 function activityStatusCategory(
   runtime: IAgentRuntime,
   action: Action,
 ): { label: string; public: boolean } | undefined {
+  let label: string | undefined;
+  let isPublic = true;
   for (const context of resolveActionContexts(action)) {
     if (context === "general" || context === "simple") continue;
     const definition = runtime.contexts.get(context);
-    const label = definition?.label?.trim();
-    if (!label || definition?.sensitivity === "system") continue;
-    return {
-      label: `Using ${label}`,
-      public: definition?.sensitivity === "public",
-    };
+    if (definition?.sensitivity !== "public") isPublic = false;
+    const contextLabel = definition?.label?.trim();
+    if (!label && contextLabel && definition?.sensitivity !== "system")
+      label = `Using ${contextLabel}`;
   }
-  return undefined;
+  return label ? { label, public: isPublic } : undefined;
 }
 
 export interface MessageTurnLifetimeHost {

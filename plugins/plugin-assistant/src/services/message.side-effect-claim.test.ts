@@ -41,6 +41,7 @@ import { scheduledTaskAction } from "../../../plugin-personal-assistant/src/acti
 import { createOwnerReminderDirectRoutingRule } from "../../../plugin-personal-assistant/src/lifeops/reminders/direct-routing.ts";
 import { createScheduledTaskCandidateBackstopRule } from "../../../plugin-personal-assistant/src/lifeops/scheduled-task/candidate-backstop";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
+import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   evaluatePlannedReplyEgress,
@@ -2027,6 +2028,82 @@ describe("replyClaimsInProgressWork", () => {
     "",
   ])("passes substantive or interrogative replies: %s", (reply) => {
     expect(replyClaimsInProgressWork(reply)).toBe(false);
+  });
+});
+
+describe("replyIsClaimSafeAcknowledgment", () => {
+  it.each([
+    // The live acceptance acknowledgements and short progress cues.
+    "Let me have a look.",
+    "Checking both.",
+    "Let me check.",
+    "One sec, checking your calendar.",
+    "On it, looking at your notes now.",
+    "Pulling up your calendar.",
+    "I'll check your calendar and notes.",
+    // Interjection plus progress, longer progress, and a title abbreviation.
+    "Sure! Let me check your calendar and notes.",
+    "Got it. Let me check.",
+    "Okay! Checking now.",
+    "Good question! Let me check.",
+    "Let me pull up your calendar and check whether you have any notes.",
+    "Let me check your calendar for today and look through your notes.",
+    "Let me check Dr. Smith's appointment.",
+  ])("admits a forward-looking acknowledgement: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(true);
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        pendingWork: true,
+        actionResults: [],
+        actions: [],
+      }).verdict,
+    ).not.toBe("reject");
+  });
+
+  it.each([
+    // Completed effects.
+    "Sent.",
+    "All set.",
+    "All set!",
+    "You're all set",
+    "Done, your note is saved",
+    "Done, your note is saved.",
+    "Your note is saved.",
+    "Got it, saved.",
+    "Done, and your calendar is free",
+    "Done, your 3pm is moved.",
+    "Your meeting with Bob is cancelled.",
+    "Your 3pm with Dana is confirmed.",
+    "Your 3pm with Dr Lee is moved.",
+    "Your 3pm with Dr. Lee is moved.",
+    "Your reminder for tomorrow is set.",
+    "Email sent.",
+    "I've saved that to your notes.",
+    "Note saved!",
+    "Saved.",
+    "Booked.",
+    "Reminder set.",
+    // Absent or present results.
+    "Nothing on your calendar today.",
+    "Your calendar is clear today.",
+    "Your calendar is clear today",
+    "There are no events today.",
+    "You have no events today.",
+    "No notes found.",
+    "You have no notes this week.",
+    "You have a meeting with Bob at 3.",
+    "You have two meetings and one note.",
+    "Your blood test results are back.",
+    // Progress followed by an answer, across a colon or sentence end.
+    "Let me check: you have 3 meetings today.",
+    "Checking now. Your next saved event is at 10:00 AM.",
+    "Let me check. You have no notes.",
+    // An interjection alone reads as completion.
+    "Got it.",
+    "Sure!",
+  ])("drops a result, effect or absence claim: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 });
 

@@ -248,3 +248,21 @@ test("activity labels are shown once each, in order, and never spoken", async ()
   expect(progress).toEqual(["Let me have a look."]);
   expect(activity).toEqual(["Using Calendar", "Using Notes"]);
 });
+
+test("an activity label never becomes speech through a later thinking frame", async () => {
+  expect(
+    await run(
+      sse(
+        { type: "status", kind: "thinking" },
+        {
+          type: "status",
+          kind: "running_tool",
+          toolName: "CALENDAR",
+          label: "Using Calendar",
+        },
+        { type: "status", kind: "thinking" },
+        { type: "done", fullText: "Two meetings today." },
+      ),
+    ),
+  ).toEqual({ progress: [], reply: "Two meetings today." });
+});

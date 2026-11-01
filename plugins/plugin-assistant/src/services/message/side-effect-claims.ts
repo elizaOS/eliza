@@ -912,27 +912,91 @@ export function replyClaimsInProgressWork(reply: string): boolean {
   return PROGRESS_PROMISE_REPLY_PATTERN.test(text);
 }
 
-// An answer rides after a progress cue ("Checking now. Your next event is…").
-const ACKNOWLEDGMENT_SENTENCE_BOUNDARY = /[.!…]+\s+(?=\S)|\n/u;
+// ── Planning acknowledgement shape ──────────────────────────────────────────
+// Spoken before any tool runs, so it may only look forward. English shapes
+// only; any other wording waits for the final reply.
+const ACKNOWLEDGMENT_MAX_LENGTH = 120;
+// A pre-tool acknowledgement has no data yet: no digits or clock times.
+const ACKNOWLEDGMENT_DATA_TOKEN =
+  /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock)\b/iu;
+// These periods do not end a clause ("Let me check Dr. Smith's appointment").
+const ACKNOWLEDGMENT_ABBREVIATION =
+  /\b(?:dr|mr|mrs|ms|st|vs|etc|e\.g|i\.e)\./giu;
+const ACKNOWLEDGMENT_CLAUSE_BOUNDARY = /[.!?…:;–—\n]+|\s-\s/u;
+const ACKNOWLEDGMENT_INTERJECTION =
+  "(?:sure(?: thing)?|okay|ok|alright|all right|got it|of course|good question|great question|no problem|absolutely|yes|yep)";
+const ACKNOWLEDGMENT_INTERJECTION_CLAUSE = new RegExp(
+  String.raw`^${ACKNOWLEDGMENT_INTERJECTION}(?:\s*,?\s*${ACKNOWLEDGMENT_INTERJECTION})*$`,
+  "iu",
+);
+// Read gerunds plus every activity the bare progress whitelist above admits.
+const ACKNOWLEDGMENT_PROGRESS_GERUND =
+  "(?:checking|looking|pulling|searching|opening|grabbing|reading|getting|fetching|gathering|scanning|reviewing|finding|loading|digging|taking a look|having a look|working|running|using|spawning|starting|saving|creating|updating|deleting|adding|scheduling|setting|booking|making|writing|drafting|sending|moving|changing|rescheduling|canceling|cancelling|removing|adjusting|putting|dropping|popping|throwing|jotting|noting|logging|blocking|penciling|pencilling)";
+// First-person intent or in-progress activity, after optional interjections.
+const ACKNOWLEDGMENT_PROGRESS_CLAUSE = new RegExp(
+  String.raw`^(?:${ACKNOWLEDGMENT_INTERJECTION}\s*,?\s+)*(?:(?:and|so|then|now|first|also)\s+)?(?:` +
+    String.raw`let(?:['’]s| me(?!\s+know\b))|i(?:['’]ll| will)|i(?:['’]m| am)\s+(?:going to|gonna|about to)|` +
+    String.raw`i(?:['’]m| am)\s+(?:(?:now|just|still)\s+)?(?:on it|${ACKNOWLEDGMENT_PROGRESS_GERUND})|` +
+    String.raw`(?:give me|gimme)\s+(?:a|one)\s+(?:sec|second|moment|minute)|(?:one|just a)\s+(?:sec|second|moment|minute)|` +
+    String.raw`hang (?:on|tight)|hold on|on it|will do|right away|${ACKNOWLEDGMENT_PROGRESS_GERUND})\b`,
+  "iu",
+);
+// "check whether you have any notes" asks rather than tells. The asked part
+// runs to the next comma or coordinating conjunction; a comma-led "which is
+// clear" is a statement, not a question.
+const ACKNOWLEDGMENT_EMBEDDED_QUESTION =
+  /(?<!,\s*)\b(?:if|whether|what|when|where|how)\b.*?(?=,|\b(?:and|but|or|so|then)\b|$)/giu;
+// Outside an embedded question a progress clause carries no second person
+// state, state verb, completion or absence word ("set", "clear" and "free"
+// pass only as an intent's verb: "let me clear that").
+const ACKNOWLEDGMENT_STATE_CLAIM = new RegExp(
+  String.raw`\b(?:you(?:['’](?:re|ve|d)|\s+(?:are|have|had|were|got))\b|` +
+    String.raw`(?:it|that|this|there|here|he|she|everything|nothing|something)['’]s\b|` +
+    String.raw`(?:is|are|was|were|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|has|had|been)\b|` +
+    String.raw`(?:all set|done|nothing|none|empty|found|saved|sent|booked|confirmed|cancell?ed|moved)\b|` +
+    String.raw`no\s+(?!problem\b)\p{L}|` +
+    String.raw`(?<!\b(?:me|let['’]s|i['’]ll|will|to|gonna)\s+)(?:set|clear|free)\b)`,
+  "iu",
+);
 
 /**
- * True when a short model-authored reply may precede pending work as its
- * acknowledgement. The wording stays the model's own: instead of requiring a
- * known progress phrasing, reject what an acknowledgement must never carry,
- * namely a completed effect or an absent/empty result. Beyond one sentence,
- * every sentence must itself be progress. Callers still run the planned-reply
- * egress checks (times, navigation, financial state) on it.
+ * True when a short model-authored reply may be shown and spoken before
+ * pending tools as their acknowledgement. The wording stays the model's own;
+ * nothing is substituted. Split on sentence ends, colons, semicolons and
+ * dashes (title and Latin abbreviations do not split), every clause must be an
+ * English forward-looking progress clause ("let me…", "I'll…", "one sec",
+ * "Checking…") or a bare interjection ("Sure!", "Got it."), and at least one
+ * must be progress. Outside an embedded question ("check whether you have any
+ * notes"), a progress clause may not contain second-person state ("you have"),
+ * a state verb ("is", "has") or a completion or absence word ("done", "saved",
+ * "nothing", "no notes"). The whole reply must have no digits, clock times or
+ * question marks, must pass the completed-effect and empty-state detectors,
+ * and is at most 120 characters. Rejection drops the acknowledgement; callers
+ * still run the planned-reply egress checks on an accepted one.
  */
 export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
   const text = reply.trim();
-  if (!text || text.length > PROGRESS_PROMISE_MAX_LENGTH) return false;
-  if (text.includes("?")) return false;
-  if (
-    ACKNOWLEDGMENT_SENTENCE_BOUNDARY.test(text) &&
-    !PROGRESS_PROMISE_REPLY_PATTERN.test(text)
-  )
-    return false;
+  if (!text || text.length > ACKNOWLEDGMENT_MAX_LENGTH) return false;
+  if (text.includes("?") || ACKNOWLEDGMENT_DATA_TOKEN.test(text)) return false;
+  let progress = false;
+  for (const sentence of text
+    .replace(ACKNOWLEDGMENT_ABBREVIATION, (abbreviation) =>
+      abbreviation.replace(/\./gu, ""),
+    )
+    .split(ACKNOWLEDGMENT_CLAUSE_BOUNDARY)) {
+    const clause = sentence.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
+    if (!clause || ACKNOWLEDGMENT_INTERJECTION_CLAUSE.test(clause)) continue;
+    if (
+      !ACKNOWLEDGMENT_PROGRESS_CLAUSE.test(clause) ||
+      ACKNOWLEDGMENT_STATE_CLAIM.test(
+        clause.replace(ACKNOWLEDGMENT_EMBEDDED_QUESTION, " "),
+      )
+    )
+      return false;
+    progress = true;
+  }
   return (
+    progress &&
     !replyClaimsCompletedSideEffect(text, { pendingWork: true }) &&
     !replyClaimsEmptyTrackedWorkState(text)
   );

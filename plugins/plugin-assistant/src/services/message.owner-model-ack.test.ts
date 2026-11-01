@@ -28,10 +28,16 @@ async function ownerModelAcknowledgment(
     acknowledgment = "Let me have a look.",
     toolCategories = [] as string[],
     guestInRoom = false,
+    duringActivityRevalidation = undefined as
+      | "guest-joins"
+      | "lookup-fails"
+      | "abort"
+      | undefined,
   } = {},
 ) {
   const controller = new AbortController();
   let stage1Returned = false;
+  let plannerReturned = false;
   const events: string[] = [];
   const acknowledgments: string[] = [];
   const statuses: Array<{ actionName: string; label: string }> = [];
@@ -65,14 +71,15 @@ async function ownerModelAcknowledgment(
   });
   await runtime.addParticipant(OWNER_ID, ROOM_ID);
   await runtime.addParticipant(runtime.agentId, ROOM_ID);
-  if (guestInRoom) {
+  const addGuest = async () => {
     await runtime.createEntity({
       id: GUEST_ID,
       agentId: runtime.agentId,
       names: ["Guest"],
     });
     await runtime.addParticipant(GUEST_ID, ROOM_ID);
-  }
+  };
+  if (guestInRoom) await addGuest();
   runtime.actions.length = 0;
   runtime.evaluators.length = 0;
   let compositions = 0;
@@ -122,20 +129,28 @@ async function ownerModelAcknowledgment(
     : [lookup("LOOKUP", "tool")];
   for (const tool of tools) runtime.registerAction(tool);
   const readParticipants = runtime.getParticipantsForRoom.bind(runtime);
-  if (changeAudienceBeforeAcknowledgment || abortDuringRevalidation) {
+  if (
+    changeAudienceBeforeAcknowledgment ||
+    abortDuringRevalidation ||
+    duringActivityRevalidation
+  ) {
     vi.spyOn(runtime, "getParticipantsForRoom").mockImplementation(
       async (roomId) => {
         if (stage1Returned) {
           stage1Returned = false;
-          if (changeAudienceBeforeAcknowledgment) {
-            await runtime.createEntity({
-              id: GUEST_ID,
-              agentId: runtime.agentId,
-              names: ["Guest"],
-            });
-            await runtime.addParticipant(GUEST_ID, ROOM_ID);
-          }
+          if (changeAudienceBeforeAcknowledgment) await addGuest();
           if (abortDuringRevalidation) controller.abort();
+        }
+        // The first audience read after planning is the activity revalidation.
+        const disturbance = plannerReturned
+          ? duringActivityRevalidation
+          : undefined;
+        if (disturbance) {
+          duringActivityRevalidation = undefined;
+          if (disturbance === "lookup-fails")
+            throw new Error("participant lookup unavailable");
+          if (disturbance === "guest-joins") await addGuest();
+          if (disturbance === "abort") controller.abort();
         }
         return readParticipants(roomId);
       },
@@ -195,15 +210,18 @@ async function ownerModelAcknowledgment(
   );
   runtime.registerModel(
     ModelType.ACTION_PLANNER,
-    async () => ({
-      text: "",
-      thought: "Look it up.",
-      toolCalls: tools.map((tool, index) => ({
-        id: `lookup-${index + 1}`,
-        name: tool.name,
-        arguments: { query: "private arg" },
-      })),
-    }),
+    async () => {
+      plannerReturned = true;
+      return {
+        text: "",
+        thought: "Look it up.",
+        toolCalls: tools.map((tool, index) => ({
+          id: `lookup-${index + 1}`,
+          name: tool.name,
+          arguments: { query: "private arg" },
+        })),
+      };
+    },
     "owner-tool-phase",
     300,
   );
@@ -279,7 +297,19 @@ describe("awaited owner model acknowledgments", () => {
     expect(result.chunks).toEqual([]);
   });
 
-  it.each(["I've saved that to your notes.", "You have no notes this week."])(
+  it("awaits an interjection-led model acknowledgment in its own words", async () => {
+    const acknowledgment = "Sure! Let me check your calendar and notes.";
+    const result = await ownerModelAcknowledgment(true, { acknowledgment });
+    expect(result.acknowledgments).toEqual([acknowledgment]);
+    expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
+  });
+
+  it.each([
+    "I've saved that to your notes.",
+    "You have no notes this week.",
+    "All set.",
+    "Nothing on your calendar today.",
+  ])(
     "keeps a completion or result claim out of early progress: %s",
     async (acknowledgment) => {
       const result = await ownerModelAcknowledgment(true, { acknowledgment });
@@ -343,4 +373,18 @@ describe("awaited owner model acknowledgments", () => {
     });
     expect(result.acknowledgments).toEqual([]);
   });
+
+  // A public category on an owner-exclusive turn still revalidates, and the
+  // status waits for a live turn after the audience read.
+  it.each(["guest-joins", "lookup-fails", "abort"] as const)(
+    "withholds an owner-turn activity status when its revalidation sees: %s",
+    async (duringActivityRevalidation) => {
+      const result = await ownerModelAcknowledgment(true, {
+        toolCategories: ["web"],
+        duringActivityRevalidation,
+      });
+      expect(result.acknowledgments).toEqual(["Let me have a look."]);
+      expect(result.statuses).toEqual([]);
+    },
+  );
 });

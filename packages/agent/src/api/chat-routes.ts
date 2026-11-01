@@ -2557,14 +2557,21 @@ async function generateChatResponseWithTiming(
     let lastStatusSignature = "";
     let planningAcknowledgment: string | undefined;
     // The latest transient label (the model acknowledgement, then each
-    // content-free activity) carries through later unlabeled phases.
+    // content-free activity) carries through later unlabeled phases. Hosts
+    // speak a labelled thinking status, so it inherits only the model's own
+    // acknowledgement, never an activity name.
     let transientStatusLabel: string | undefined;
     const emitStatus = (status: ChatTurnStatus): void => {
       if (!opts?.onStatus) return;
       if (status.label) transientStatusLabel = status.label;
-      const visibleStatus = transientStatusLabel
-        ? { ...status, label: transientStatusLabel }
-        : status;
+      const inheritedLabel =
+        status.kind === "thinking"
+          ? planningAcknowledgment
+          : transientStatusLabel;
+      const visibleStatus =
+        !status.label && inheritedLabel
+          ? { ...status, label: inheritedLabel }
+          : status;
       const signature = JSON.stringify(visibleStatus);
       if (signature === lastStatusSignature) return;
       lastStatusSignature = signature;

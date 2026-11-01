@@ -169,7 +169,10 @@ import {
   withActionResultsForPrompt,
   withContextRoutingValues,
 } from "./response-state.ts";
-import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
+import {
+  replyClaimsInProgressWork,
+  replyIsClaimSafeAcknowledgment,
+} from "./side-effect-claims.ts";
 import {
   getSourceReplyRendering,
   sourceReplyAssertionText,
@@ -1049,11 +1052,19 @@ export async function runV5MessageRuntimeStage1(
       const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
       earlyReplyText =
         visibleProgress.kind === "text" ? visibleProgress.text : "";
-      // A pending draft is not a read result. Any short model-authored
-      // acknowledgement may precede tools, but completed effects and absent
-      // results wait for the normal grounded final path, as does longer
-      // answer-like text. Never fabricate a substitute.
-      if (!replyIsClaimSafeAcknowledgment(earlyReplyText)) earlyReplyText = "";
+      // A pending draft is not a read result. The transient acknowledgement
+      // keeps the model's forward-looking wording; the durable early reply
+      // stays whole-reply progress. Answer-like text (including progress plus
+      // an answer) waits for the normal grounded final path. Never fabricate a
+      // substitute.
+      if (
+        !(
+          args.onPlanningAcknowledgment
+            ? replyIsClaimSafeAcknowledgment
+            : replyClaimsInProgressWork
+        )(earlyReplyText)
+      )
+        earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
         currentScope: {
           agentId: args.runtime.agentId,
