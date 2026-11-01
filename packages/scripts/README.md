@@ -90,10 +90,18 @@ plan has `requiresCreation: true`; it does not prove that the new app exists.
 The configured protected creation organization and owner are mandatory and own
 the new registration. They must be active, and the owner must be an undeleted
 owner or admin in that organization. The primary app remains a validated namespace
-baseline; its owner does not select or constrain the new registration's owner.
+baseline; its owner does not select or constrain the configured creation owner.
 
-Review the candidate, non-target, app-binding, and creation hashes. Run
-`provision-registry` with those hashes and the same UUID, name, and callback while
+For an operator-authorized product under the primary app's platform authority,
+use the explicit `plan-provision-primary` and `provision-primary` operations.
+These select only the protected primary app's fully validated organization and
+creator, in the same database snapshot. Configured-authority operations never
+fall back to this mode. The sealed plan reports `authorityMode`, and its creation
+hash binds that mode, so plan and provision must use the same authority selection.
+Neither mode aliases the primary app UUID or adopts an existing callback claim.
+
+Review the candidate, non-target, app-binding, and creation hashes. Run the matching
+`provision-registry` or `provision-primary` with those hashes and the same UUID, name, and callback while
 the original source registry is still installed. This operation creates only
 the admitted registration under the repair transaction's shared lock. An exact
 valid retry leaves rows and keys unchanged. It never publishes a Worker binding.
