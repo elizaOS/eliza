@@ -40,13 +40,11 @@ import {
   type AnonymousChatGateLease,
   commitAnonymousChatSlot,
   markAnonymousChatSlotDispatched,
-  refreshAnonymousChatModeration,
   refundAnonymousChatSlot,
   reserveAnonymousChatSlot,
   resolveAnonymousChatContext,
 } from "@elizaos/cloud-shared/lib/services/anonymous-chat-admission";
 import { anonymousSessionsService } from "@elizaos/cloud-shared/lib/services/anonymous-sessions";
-import { contentModerationService } from "@elizaos/cloud-shared/lib/services/content-moderation";
 import { conversationsService } from "@elizaos/cloud-shared/lib/services/conversations";
 import {
   type CreditReconciliationResult,
@@ -136,16 +134,6 @@ function extractTextFromParts(
   parts: Array<{ type: string; text?: string }>,
 ): string {
   return parts.map((part) => (part.type === "text" ? part.text : "")).join("");
-}
-
-function getMessageText(message: UIMessage | { content?: string }): string {
-  if ("parts" in message && Array.isArray(message.parts)) {
-    return extractTextFromParts(message.parts);
-  }
-  if ("content" in message && typeof message.content === "string") {
-    return message.content;
-  }
-  return "";
 }
 
 async function getRequestApiKey(
@@ -273,7 +261,6 @@ app.post("/", async (c) => {
       "id" | "session_token" | "message_count" | "messages_limit"
     > | null = null;
     let anonymousCredential: AnonymousChatGateCredential | null = null;
-    let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
     let guardOrganizationId: string | undefined;
@@ -331,7 +318,6 @@ app.post("/", async (c) => {
         apiKey = authResolution.ctx.apiKeyId
           ? { id: authResolution.ctx.apiKeyId }
           : undefined;
-        moderationAlreadyChecked = true;
         admissionSnapshot = authResolution.ctx.admission;
         admissionCredential = authResolution.credential;
         if (invalidRequestResponse) return invalidRequestResponse;
@@ -377,7 +363,6 @@ app.post("/", async (c) => {
           messages_limit: anonymousCredential.context.messagesLimit,
         };
         isAnonymous = true;
-        moderationAlreadyChecked = true;
       }
     } else {
       const authedUser = await getCurrentUser(c);
@@ -473,7 +458,6 @@ app.post("/", async (c) => {
     const modelConfig = resolveModel(tierOrModel);
     const selectedModel = modelConfig.modelId;
     const provider = modelConfig.provider;
-    const lastMessage = messages[messages.length - 1];
     const lastRawMessage = rawMessages[rawMessages.length - 1];
     const metadata =
       lastRawMessage?.metadata && typeof lastRawMessage.metadata === "object"
@@ -485,57 +469,8 @@ app.post("/", async (c) => {
       return c.json({ error: getAiProviderConfigurationError() }, 503);
     }
 
-    if (!moderationAlreadyChecked) {
-      const blocked = await contentModerationService.shouldBlockUser(user.id);
-      if (blocked) {
-        logger.warn("chat-api", "User blocked due to moderation violations", {
-          userId: user.id,
-        });
-        return c.json(
-          {
-            error:
-              "Your account has been suspended due to policy violations. Please contact support.",
-          },
-          403,
-        );
-      }
-    }
-
-    const lastMessageText = getMessageText(lastMessage);
-    if (lastMessageText) {
-      const moderationTask = contentModerationService.moderateInBackground(
-        lastMessageText,
-        user.id,
-        conversationId,
-        (result) => {
-          logger.warn("chat-api", "Async moderation detected violation", {
-            userId: user.id,
-            categories: result.flaggedCategories,
-            action: result.action,
-          });
-          if (executionCtx && anonymousCredential) {
-            executionCtx.waitUntil(
-              refreshAnonymousChatModeration(anonymousCredential).catch(
-                (error) => {
-                  // error-policy:J7 the violation is durable in Postgres; this
-                  // cache refresh failure is separately observable.
-                  logger.error(
-                    "chat-api",
-                    "Anonymous moderation cache refresh failed",
-                    {
-                      userId: user.id,
-                      error:
-                        error instanceof Error ? error.message : String(error),
-                    },
-                  );
-                },
-              ),
-            );
-          }
-        },
-      );
-      executionCtx?.waitUntil(moderationTask);
-    }
+    // Chat content is not moderated, synchronously or in the background.
+    // Account standing is part of the cached auth decision above.
 
     const requestId = crypto.randomUUID();
     providerLogContext = {
