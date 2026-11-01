@@ -47,17 +47,31 @@ if [ "$DEPLOY_ENVIRONMENT" = "staging" ] && \
   fi
 fi
 
-if [ "${VOICE_BATCH_STT_PROVIDER,,}" = "cartesia" ]; then
-  missing_cartesia_batch_config=()
+# Billing configuration is preserve-only when the protected source is blank.
+# Production uses Cartesia batch STT; verify existing-or-configured names before
+# any toggle deletion. A blank provider variable cannot bypass that invariant.
+if has_nonblank_value "${CARTESIA_STT_USD_PER_CREDIT:-}"; then
+  node -e '
+    const rate = Number(process.env.CARTESIA_STT_USD_PER_CREDIT);
+    if (!Number.isFinite(rate) || rate <= 0) {
+      console.error("::error::CARTESIA_STT_USD_PER_CREDIT must be positive and finite");
+      process.exit(1);
+    }
+  '
+fi
+if [ "$DEPLOY_ENVIRONMENT" = "production" ] || \
+   [ "${VOICE_BATCH_STT_PROVIDER,,}" = "cartesia" ]; then
+  cartesia_batch_candidates=()
   for name in CARTESIA_API_KEY CARTESIA_STT_USD_PER_CREDIT; do
-    if ! has_nonblank_value "${!name:-}"; then
-      missing_cartesia_batch_config+=("$name")
+    if has_nonblank_value "${!name:-}"; then
+      cartesia_batch_candidates+=("$name")
     fi
   done
-  if [ "${#missing_cartesia_batch_config[@]}" -gt 0 ]; then
-    echo "::error::Cartesia batch STT is enabled but required provider/billing config is missing: ${missing_cartesia_batch_config[*]}"
-    exit 1
-  fi
+  cartesia_batch_inventory="$(bunx wrangler@4.116.0 secret list "${wrangler_args[@]}" --format json)"
+  printf '%s' "$cartesia_batch_inventory" | node \
+    "$CHECKOUT_DIR/packages/cloud/scripts/verify-worker-secret-binding-names.ts" \
+    --queued "${cartesia_batch_candidates[@]}" \
+    --required CARTESIA_API_KEY CARTESIA_STT_USD_PER_CREDIT
 fi
 
 # Value-safe validation: exact UUID allowlists, dedicated signing
@@ -446,6 +460,7 @@ for name in \
   VAST_API_KEY \
   VAST_BASE_URL \
   CARTESIA_API_KEY \
+  CARTESIA_STT_USD_PER_CREDIT \
   FISH_AUDIO_API_KEY \
   FISH_AUDIO_REFERENCE_ID \
   VOICE_REALTIME_ELIZA_AUTHORIZATION \
@@ -493,12 +508,10 @@ fi
 # A failed removal must fail the step. Configured toggle values join
 # the exact Worker deploy rather than mutating an earlier version.
 for name in \
-  CARTESIA_API_KEY \
   CARTESIA_VOICE_ID \
   WHISPER_STT_URL \
   WHISPER_STT_MODEL \
   VOICE_BATCH_STT_PROVIDER \
-  CARTESIA_STT_USD_PER_CREDIT \
   CARTESIA_BATCH_STT_TIMEOUT_MS \
   ELIZA_APP_WEBHOOK_GATEWAY_URL
 do
