@@ -140,6 +140,13 @@ export function authoredBrowserDestination(text: string): string | undefined {
   return webAddress(target)?.href;
 }
 
+/** A direct client request must be a whole-message open command or a bare web address.
+ * Merely mentioning a URL grounds a model proposal, but does not authorize automatic navigation. */
+export function directBrowserDestination(text: string): string | undefined {
+  if (unreadable(text)) return;
+  return authoredBrowserDestination(text) ?? webAddress(text.trim())?.href;
+}
+
 /** The destination to open for a model-proposed browser URL, built from the
  * address the user typed in this message, never from the model's spelling.
  * The user must have typed a web address on the proposed host (a leading

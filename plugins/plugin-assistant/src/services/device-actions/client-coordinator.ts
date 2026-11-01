@@ -23,7 +23,7 @@
  */
 import {
   browserDestinationMatches,
-  groundBrowserDestination,
+  directBrowserDestination,
 } from "@elizaos/contracts/browser-request-grounding";
 import { createDeviceActionExecution } from "@elizaos/contracts/device-action-execution";
 import {
@@ -1101,10 +1101,10 @@ export class DeviceActionCoordinator<
     ]);
     const cached = this.browserPolicy.get(proposal.id);
     if (cached?.key === key) return cached.allowed;
-    // The same grounding the server stored: only the user's typed address.
+    // Automatic client effects need direct intent, not merely a URL mentioned in prose.
     const allowed = browserDestinationMatches(
       proposal.operation,
-      groundBrowserDestination(proof.text, proposal.operation.url),
+      directBrowserDestination(proof.text),
     );
     if (this.browserPolicy.has(proposal.id) || this.browserPolicy.size < 128)
       this.browserPolicy.set(proposal.id, { key, allowed });

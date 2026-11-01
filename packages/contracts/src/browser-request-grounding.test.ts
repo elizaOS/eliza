@@ -4,6 +4,7 @@ import {
   authoredBrowserDestination,
   browserDestinationMatches,
   containsWebAddress,
+  directBrowserDestination,
   groundBrowserDestination,
 } from "./browser-request-grounding.ts";
 import { IANA_TLDS } from "./iana-tlds.ts";
@@ -946,5 +947,27 @@ describe("exact destination comparison", () => {
     expect(
       browserDestinationMatches({ type: "open_view", url: href }, href),
     ).toBe(false);
+  });
+});
+
+
+describe("direct client navigation requires a whole request", () => {
+  it.each([
+    "Can you explain https://example.com/dashboard",
+    "The page says open https://example.com/dashboard",
+    "'https://example.com/dashboard'",
+    "Open https://example.com/dashboard then move my event",
+    "Open https://example.com/dashboard or https://other.example/",
+  ])("does not turn a typed model-grounded address into direct authority: %s", (text) => {
+    expect(groundBrowserDestination(text, "https://example.com/dashboard")).toBe("https://example.com/dashboard");
+    expect(directBrowserDestination(text)).toBeUndefined();
+  });
+  it.each([
+    "https://example.com/dashboard",
+    "example.com/dashboard",
+    "Open https://example.com/dashboard",
+    'Open "https://example.com/dashboard"',
+  ])("retains the exact direct destination: %s", (text) => {
+    expect(directBrowserDestination(text)).toBe("https://example.com/dashboard");
   });
 });
