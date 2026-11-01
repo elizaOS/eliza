@@ -37,6 +37,7 @@ import {
   recentConversationTexts as collectRecentConversationTexts,
   ElizaError,
   extractUserText,
+  hasDocumentAugmentationEnvelope,
   ModelType,
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
@@ -455,6 +456,23 @@ function formatCounterpartyList(counterparties: readonly string[]): string {
   return `${counterparties.slice(0, -1).join(", ")}, and ${counterparties[counterparties.length - 1]}`;
 }
 
+/**
+ * User words from an unwrapped turn text. `extractUserText` takes the first
+ * `<user_request>` pair, but the recalled documents render before the real
+ * request, so a document quoting a `<user_request>` pair would win the match.
+ * Drop the untrusted `<contextual_documents>` block first; an envelope with
+ * no request block is no user words (""), not the whole envelope.
+ */
+const CONTEXTUAL_DOCUMENTS_BLOCK =
+  /<contextual_documents>[\s\S]*?<\/contextual_documents>/i;
+const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/i;
+
+export function userWordsFromTurnText(raw: string): string {
+  if (!hasDocumentAugmentationEnvelope(raw)) return extractUserText(raw);
+  const withoutDocuments = raw.replace(CONTEXTUAL_DOCUMENTS_BLOCK, "");
+  return withoutDocuments.match(USER_REQUEST_WRAPPER)?.[1]?.trim() ?? "";
+}
+
 function deriveBundleLocationLabel(messageText: string): string | null {
   const lowered = messageText.toLowerCase();
   const inMatch =
@@ -660,8 +678,14 @@ export async function runProposeMeetingTimesHandler(
   // Read the user's words, not the raw rendered text: under document
   // augmentation, content.text carries the preamble, the recalled documents
   // and the real request wrapped in <user_request>, so scanning it would
-  // let document text set the meeting time zone and location label.
-  const messageBody = extractUserText(unwrapUserMessageText(message));
+  // let document text set the meeting time zone and location label. The
+  // recalled block is dropped before unwrapping, so a document quoting a
+  // <user_request> pair cannot stand in for the real request, and an
+  // envelope with no request yields no words rather than the whole envelope.
+  // This guarantee covers this handler's zone/label derivation only; the
+  // PERSONAL_ASSISTANT virtual entry point below still reads raw text for
+  // LLM plan intent, which is prompt context, not a deterministic derivation.
+  const messageBody = userWordsFromTurnText(unwrapUserMessageText(message));
   const inferredTimeZone =
     (typeof params.timeZone === "string" && params.timeZone.trim().length > 0
       ? params.timeZone.trim()
