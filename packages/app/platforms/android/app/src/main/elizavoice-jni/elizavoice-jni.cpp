@@ -28,8 +28,8 @@
 
 #include "eliza-inference-ffi.h"
 
-#if ELIZA_INFERENCE_ABI_VERSION < 20
-#error "elizavoice-jni needs eliza-inference-ffi.h ABI 20 or newer (Paradee voice slots)"
+#if ELIZA_INFERENCE_ABI_VERSION < 21
+#error "elizavoice-jni needs eliza-inference-ffi.h ABI 21 or newer (Paradee voice slots and their speed range)"
 #endif
 
 #ifndef ELIZA_VOICE_JNI_CLASS
@@ -1902,8 +1902,23 @@ jint nativeParadeeUnloadVoice(JNIEnv* env, jclass, jlong ctxHandle, jstring jVoi
     return rc;
 }
 
+// ABI v21: the range synthesis on the slot clamps speed to. [min, max] within
+// the architecture's [0.25, 4] and spanning 1.0; 0, 0 restores the model's
+// validated range (paradee.validated_speed). The GGUF is unchanged.
+jint nativeParadeeSetVoiceSpeedRange(JNIEnv* env, jclass, jlong ctxHandle, jstring jVoiceId, jfloat minSpeed,
+                                     jfloat maxSpeed) {
+    auto* ctx = voice_context(env, ctxHandle, "paradee_set_voice_speed_range");
+    if (!ctx) return ELIZA_ERR_INVALID_ARG;
+    const std::string voice_id = from_jstring(env, jVoiceId);
+    char* err = nullptr;
+    const int rc = eliza_inference_paradee_set_voice_speed_range(ctx, voice_id.c_str(), minSpeed, maxSpeed, &err);
+    if (rc != ELIZA_OK) throw_voice(env, "paradee_set_voice_speed_range", rc, err);
+    return rc;
+}
+
 // The slot's model as JSON (voice_id, family, language, phoneme_format,
-// voice, voices, sample_rate, g2p_kind, validated_max_ids, validated_speed).
+// voice, voices, sample_rate, g2p_kind, validated_max_ids, validated_speed,
+// speed_range).
 jstring nativeParadeeVoiceInfo(JNIEnv* env, jclass, jlong ctxHandle, jstring jVoiceId) {
     auto* ctx = voice_context(env, ctxHandle, "paradee_voice_info");
     if (!ctx) return nullptr;
@@ -2281,6 +2296,7 @@ const JNINativeMethod kVoiceMethods[] = {
     ELIZA_NATIVE(nativeParadeeLoadVoice,
                  "(JLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)I"),
     ELIZA_NATIVE(nativeParadeeUnloadVoice, "(JLjava/lang/String;)I"),
+    ELIZA_NATIVE(nativeParadeeSetVoiceSpeedRange, "(JLjava/lang/String;FF)I"),
     ELIZA_NATIVE(nativeParadeeVoiceInfo, "(JLjava/lang/String;)Ljava/lang/String;"),
     ELIZA_NATIVE(nativeParadeePhonemizeVoice, "(JLjava/lang/String;[B)Ljava/lang/String;"),
     ELIZA_NATIVE(nativeParadeeSynthesizeVoice, "(JLjava/lang/String;[BF)[F"),

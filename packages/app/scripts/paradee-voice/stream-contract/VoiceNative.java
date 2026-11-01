@@ -4,7 +4,7 @@ final class VoiceNative {
     static volatile int calls, destroyed, created, textClosed;
     static volatile long ttsContext, asrContext;
     static Runnable afterTtsLoad;
-    static String nativeVoiceAbiVersion() { return "20"; }
+    static String nativeVoiceAbiVersion() { return "21"; }
     static int nativeParadeeSupported() { return 1; }
     static int nativeParadeeStreamSupported() { return 1; }
     static long nativeContextCreate(String directory) { return ++created; }
@@ -32,6 +32,12 @@ final class VoiceNative {
         return 0;
     }
     static int nativeParadeeUnloadVoice(long context, String voiceId) { loadedVoice = null; return 0; }
+    static volatile String rangedVoice;
+    static volatile float rangeMin, rangeMax;
+    static int nativeParadeeSetVoiceSpeedRange(long context, String voiceId, float min, float max) {
+        rangedVoice = voiceId; rangeMin = min; rangeMax = max;
+        return 0;
+    }
     static String nativeParadeeVoiceInfo(long context, String voiceId) {
         return "{\"voice_id\":\"" + voiceId + "\",\"family\":\"delibes\",\"language\":\"es\",\"sample_rate\":24000,\"g2p_kind\":2}";
     }

@@ -16,10 +16,12 @@ import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
+import { orgRateLimitOverridesRepository } from "@elizaos/cloud-shared/db/repositories/org-rate-limit-overrides";
 import { usersRepository } from "@elizaos/cloud-shared/db/repositories/users";
 import { organizations } from "@elizaos/cloud-shared/db/schemas/organizations";
 import { users } from "@elizaos/cloud-shared/db/schemas/users";
 import { apiKeysService } from "@elizaos/cloud-shared/lib/services/api-keys";
+import { invalidateOrgTierCache } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
 import { config } from "dotenv";
 import { eq } from "drizzle-orm";
 import { privateKeyToAccount } from "viem/accounts";
@@ -135,6 +137,20 @@ async function ensureTestUser({
     })
     .where(eq(users.id, user.id));
   await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
+
+  // These suites share three fixture organizations across many route cases.
+  // Match the existing test API-key cap at the organization boundary so
+  // payload and authorization cases reach their intended assertions. Dedicated
+  // rate-limit tests retain their own organizations and limits.
+  await orgRateLimitOverridesRepository.upsert(
+    {
+      organization_id: organization.id,
+      strict_rpm: 10_000,
+      note: "Worker e2e shared fixture organization",
+    },
+    user.id,
+  );
+  await invalidateOrgTierCache(organization.id);
 
   if (withSandbox) {
     const sandboxes = await agentSandboxesRepository.listByOrganization(

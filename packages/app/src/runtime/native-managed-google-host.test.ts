@@ -153,24 +153,32 @@ test("boot admission failures leave Google unavailable without stopping the agen
   expect(badToken.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
 });
 
-test("orgless Cloud admission prepares routing without publishing Google brokers", async () => {
-  const f = fixture();
-  f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
-  delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
-  expect(
-    await startNativeManagedGoogleHostForBoot(f.env, undefined, f.stores),
-  ).toBeUndefined();
-  expect(f.state.config).toMatchObject({
-    cloud: { enabled: true, baseUrl: API_BASE },
-    serviceRouting: {
-      embeddings: { backend: "eliza-local-inference", transport: "direct" },
-      llmText: { backend: "elizacloud", transport: "cloud-proxy" },
-    },
-  });
-  expect(f.state.config?.cloud).not.toHaveProperty("apiKey");
-  expect(f.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
-  expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBeUndefined();
-});
+test.each([
+  API_BASE,
+  "https://127.0.0.1:8877/api/v1",
+  "https://10.0.2.2:8877/api/v1",
+])(
+  "orgless Cloud admission prepares routing for %s without publishing Google brokers",
+  async (apiBaseUrl) => {
+    const f = fixture(`{ apiBaseUrl: ${JSON.stringify(apiBaseUrl)} }`);
+    f.env.ELIZAOS_CLOUD_BASE_URL = apiBaseUrl;
+    f.env.ELIZAOS_CLOUD_USE_INFERENCE = "true";
+    delete f.env.ELIZA_NATIVE_GOOGLE_BINDING_JSON;
+    expect(
+      await startNativeManagedGoogleHostForBoot(f.env, undefined, f.stores),
+    ).toBeUndefined();
+    expect(f.state.config).toMatchObject({
+      cloud: { enabled: true, baseUrl: apiBaseUrl },
+      serviceRouting: {
+        embeddings: { backend: "eliza-local-inference", transport: "direct" },
+        llmText: { backend: "elizacloud", transport: "cloud-proxy" },
+      },
+    });
+    expect(f.state.config?.cloud).not.toHaveProperty("apiKey");
+    expect(f.env.ELIZA_MANAGED_GMAIL_READ_BROKER).toBeUndefined();
+    expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBeUndefined();
+  },
+);
 
 test("Cloud routing failures stop boot instead of falling back to another provider", async () => {
   for (const variant of [

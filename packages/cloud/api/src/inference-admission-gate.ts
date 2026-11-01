@@ -14,6 +14,7 @@ import type {
   InferenceAdmissionRecoveryContext,
   InferenceAdmissionRecoveryResult,
 } from "@elizaos/cloud-shared/lib/services/inference-admission-recovery";
+import { INFERENCE_RATE_LIMIT_GATE_PREFIX } from "@elizaos/cloud-shared/lib/services/inference-policy-contract";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { SpeechRevocationRegistry } from "./speech-revocation-registry";
@@ -704,6 +705,26 @@ export class InferenceAdmissionGate {
                   : {}),
               }),
             );
+          },
+          consumeRatePolicy: async (value) => {
+            // The primary path's rate object still owns the durable windows.
+            const namespace = this.env.INFERENCE_ADMISSION_GATES;
+            if (!namespace)
+              return jsonError("Inference rate binding is missing", 503);
+            return namespace
+              .getByName(
+                `${INFERENCE_RATE_LIMIT_GATE_PREFIX}${value.organizationId}`,
+              )
+              .fetch(
+                new Request("https://inference-admission.internal/rate-limit", {
+                  method: "POST",
+                  headers: { "content-type": "application/json" },
+                  body: JSON.stringify({ ...value, windowMs: 60_000 }),
+                  signal: AbortSignal.timeout(
+                    Math.max(1, value.operationDeadlineAt - Date.now()),
+                  ),
+                }),
+              );
           },
         },
       );
@@ -1908,9 +1929,25 @@ export class InferenceAdmissionGate {
     }
     if (!body) return jsonError("Invalid JSON body", 400);
     const path = new URL(request.url).pathname;
-    if (path.startsWith("/budget/") || path.startsWith("/policy-mutation/")) {
-      if (this.env.INFERENCE_FUNDED_BUDGET_ADMISSION !== "true")
-        return jsonError("Funded inference admission is not enabled", 503);
+    if (
+      path.startsWith("/budget/") ||
+      path.startsWith("/policy-mutation/") ||
+      path.startsWith("/rate-policy/")
+    ) {
+      const funded = this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true";
+      // Mutation fences stay served whenever either lane may have enrolled an
+      // organization; rate-only admission additionally needs the revocation
+      // registry that its credential check reads.
+      const ratePolicy = this.env.INFERENCE_RATE_POLICY_ADMISSION === "true";
+      if (
+        path.startsWith("/budget/")
+          ? !funded
+          : path.startsWith("/rate-policy/")
+            ? !ratePolicy ||
+              this.env.INFERENCE_STRONG_REVOCATION_ENABLED !== "true"
+            : !(funded || ratePolicy)
+      )
+        return jsonError("Inference policy admission is not enabled", 503);
       return (await this.fundedBudgets()).handle(path, body);
     }
     if (path === "/lease") {
@@ -2234,7 +2271,10 @@ export class InferenceAdmissionGate {
   }
 
   async alarm(): Promise<void> {
-    if (this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true")
+    if (
+      this.env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true" ||
+      this.env.INFERENCE_RATE_POLICY_ADMISSION === "true"
+    )
       await (await this.fundedBudgets()).alarm();
     const expired = await this.serialize(() => this.claimExpiredLeases());
     if (expired.length === 0) return;
