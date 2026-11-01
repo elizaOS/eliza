@@ -807,9 +807,15 @@ export class ApiKeysService {
       userId,
       organizationId,
     );
-    const existingReceipt = mobileRevocationReceipt(existing);
-    if (existingReceipt) return { receipt: existingReceipt, revokedNow: false };
     if (!existing) return null;
+    // Fence the immutable identity before mutation, including response-loss
+    // retries. A failed primary write leaves the credential denied safely.
+    await revokeInferenceApiKey(existing.organization_id, existing.id);
+    const existingReceipt = mobileRevocationReceipt(existing);
+    if (existingReceipt) {
+      await this.invalidateCache(existing.key_hash);
+      return { receipt: existingReceipt, revokedNow: false };
+    }
 
     const receipt = await withMutationAudit(
       async (tx) =>
@@ -830,12 +836,18 @@ export class ApiKeysService {
       undefined,
       [organizationId],
     );
-    if (receipt) return { receipt, revokedNow: true };
+    if (receipt) {
+      await this.invalidateCache(existing.key_hash);
+      return { receipt, revokedNow: true };
+    }
 
     const concurrent = mobileRevocationReceipt(
       await apiKeysRepository.findMobileByOwnerConsistent(credentialId, userId, organizationId),
     );
-    if (concurrent) return { receipt: concurrent, revokedNow: false };
+    if (concurrent) {
+      await this.invalidateCache(existing.key_hash);
+      return { receipt: concurrent, revokedNow: false };
+    }
     throw new ElizaError("Account-owned mobile credential could not be tombstoned", {
       code: "MOBILE_API_KEY_ACCOUNT_REVOCATION_MISMATCH",
       context: { credentialId },
@@ -845,8 +857,8 @@ export class ApiKeysService {
 
   /**
    * Revokes a mobile row proven by its secret, including expired/inactive retries.
-   * Mobile secrets are excluded from both auth caches, so a cache brownout must
-   * never delay or veto the primary tombstone.
+   * Fence the immutable identity before the primary tombstone, then confirm
+   * auth-cache eviction before reporting success. Retries repair both fences.
    */
   async revokePresentedMobileCredential(
     secret: string,
@@ -855,9 +867,13 @@ export class ApiKeysService {
     if (!isMobileApiKeySecret(secret)) return null;
     const keyHash = crypto.createHash("sha256").update(secret).digest("hex");
     const existing = await apiKeysRepository.findByHashConsistent(keyHash);
-    const existingResult = mobileSelfRevocationResult(existing, false);
-    if (existingResult) return existingResult;
     if (!existing || !isUuid(existing.source_app_id)) return null;
+    await revokeInferenceApiKey(existing.organization_id, existing.id);
+    const existingResult = mobileSelfRevocationResult(existing, false);
+    if (existingResult) {
+      await this.invalidateCache(keyHash);
+      return existingResult;
+    }
 
     const tombstone = await withMutationAudit(
       (tx) =>
@@ -876,7 +892,10 @@ export class ApiKeysService {
         await apiKeysRepository.findByHashConsistent(keyHash),
         false,
       );
-      if (concurrentResult) return concurrentResult;
+      if (concurrentResult) {
+        await this.invalidateCache(keyHash);
+        return concurrentResult;
+      }
       throw new ElizaError("Presented mobile credential could not be tombstoned", {
         code: "MOBILE_API_KEY_EXACT_REVOCATION_MISMATCH",
         context: { credentialId: existing.id },
@@ -891,6 +910,7 @@ export class ApiKeysService {
         severity: "fatal",
       });
     }
+    await this.invalidateCache(keyHash);
     return persistedResult;
   }
 
