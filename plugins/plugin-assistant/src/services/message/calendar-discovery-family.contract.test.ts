@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import React from "react";
-import { test } from "vitest";
+import { test, vi } from "vitest";
 
 Object.assign(globalThis, { React });
 const { calendarPlugin } = await import(
@@ -11,9 +11,11 @@ const { calendarPlugin } = await import(
 const { calendarAction, calendarActionPromotionOptions } = await import(
   "../../../../plugin-personal-assistant/src/actions/calendar.ts"
 );
-const { promoteSubactionsToActions, AgentRuntime } = await import(
+const { promoteSubactionsToActions, AgentRuntime, logger } = await import(
   "@elizaos/core"
 );
+const { buildActionCatalog } = await import("../../runtime/action-catalog.ts");
+const { retrieveActions } = await import("../../runtime/action-retrieval.ts");
 const { retrieveContextualPlannerActions } = await import(
   "./action-surface.ts"
 );
@@ -116,6 +118,44 @@ for (const [query, wanted] of [
     assert.ok(result.actions.some((a) => a.name === wanted));
     assert.ok(!result.actions.some((a) => a.name === "CALENDAR"));
   });
+// Live direct stage: children without their umbrella all claimed CALENDAR,
+// so retrieval dropped it as ambiguous. Their own similes must still route.
+test("Calendar children without their umbrella share no simile", () => {
+  const warn = vi.spyOn(logger, "warn");
+  try {
+    for (const actions of [
+      calendarPlugin.actions,
+      promoteSubactionsToActions(
+        calendarAction,
+        calendarActionPromotionOptions,
+      ),
+    ]) {
+      const catalog = buildActionCatalog(
+        actions.filter((a) => a.name !== "CALENDAR"),
+      );
+      for (const [text, simile, wanted] of [
+        ["Delete my calendar event", "DELETE_EVENT", "CALENDAR_DELETE_EVENT"],
+        ["Create a calendar event", "CREATE_EVENT", "CALENDAR_CREATE_EVENT"],
+      ]) {
+        const { results, query } = retrieveActions({
+          catalog,
+          messageText: text,
+          candidateActions: ["CALENDAR", simile],
+        });
+        assert.ok(query.parentActionHints.includes(wanted));
+        assert.equal(results[0]?.name, wanted);
+      }
+    }
+    assert.deepEqual(
+      warn.mock.calls.filter(([, text]) =>
+        String(text).includes("claimed by multiple parents"),
+      ),
+      [],
+    );
+  } finally {
+    warn.mockRestore();
+  }
+});
 test("standalone Calendar also keeps complete agenda contract for generic plural event wording", () => {
   const result = retrieveContextualPlannerActions({
     actions: calendarPlugin.actions,

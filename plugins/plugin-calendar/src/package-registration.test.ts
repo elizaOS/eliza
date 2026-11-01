@@ -4,6 +4,7 @@
  */
 
 import type { IAgentRuntime, Memory } from "@elizaos/core";
+import { normalizeActionName } from "@elizaos/plugin-assistant";
 import { describe, expect, it } from "vitest";
 import {
   CalendarPage,
@@ -59,5 +60,20 @@ describe("@elizaos/plugin-calendar root registration", () => {
       content: { text: "List my calendar sources.", source: "test" },
     } as Memory;
     expect(await validate(runtime, message)).toBe(true);
+  });
+
+  // Retrieval drops a simile that two catalog entries claim (live: CALENDAR
+  // on every promoted child once the umbrella was not in the catalog).
+  it("gives every simile exactly one owning action", () => {
+    const actions = calendarPlugin.actions ?? [];
+    const owners = new Map<string, string[]>();
+    for (const action of actions)
+      for (const simile of new Set(action.similes?.map(normalizeActionName)))
+        owners.set(simile, [...(owners.get(simile) ?? []), action.name]);
+    expect([...owners].filter(([, names]) => names.length > 1)).toEqual([]);
+    const similesOf = (name: string) =>
+      actions.find((action) => action.name === name)?.similes;
+    expect(similesOf("CALENDAR_CREATE_EVENT")).toEqual(["CREATE_EVENT"]);
+    expect(similesOf("CALENDAR_DELETE_EVENT")).toEqual(["DELETE_EVENT"]);
   });
 });

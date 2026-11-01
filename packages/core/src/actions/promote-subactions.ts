@@ -478,23 +478,17 @@ export function promoteSubactionsToActions(
 		const description = operationDescription
 			? `${parent.name} operation "${subKey}": ${operationDescription}`
 			: `${parent.name} operation "${subKey}".`;
+		// Neither the parent's name nor its simile ARRAY is inherited: retrieval
+		// drops any simile claimed by more than one catalog parent as
+		// ambiguous, so with two or more promoted virtuals every inherited
+		// alias is claimed by every sibling and dropped (live 2026-08-10: all
+		// TASKS similes dead and "any new issues?" fell back to web search;
+		// live 2026-11-01: CALENDAR on every child of a surface without the
+		// umbrella). The umbrella stays registered and remains the single
+		// owner of its name and similes; the virtual's name carries the
+		// parent prefix, and `promotedSubactionParent` names the umbrella.
 		const similes = Array.from(
-			new Set([
-				// Parent's name is first so simile-based search/routing can still
-				// find promoted actions through the parent surface.
-				//
-				// The parent's own simile ARRAY is deliberately NOT inherited:
-				// retrieval drops any simile claimed by more than one catalog
-				// parent as ambiguous, so with two or more promoted
-				// virtuals, inheritance guarantees every family simile is claimed
-				// by every sibling and dropped — killing simile routing for the
-				// whole umbrella (live 2026-08-10: all TASKS similes dead and
-				// "any new issues?" fell back to web search). The umbrella stays
-				// registered and remains those similes' single owner.
-				toUpperSnake(parent.name),
-				...(override.similes ?? []),
-				toUpperSnake(sub),
-			]),
+			new Set([...(override.similes ?? []), toUpperSnake(sub)]),
 		);
 		const examples =
 			override.examples ??
