@@ -27,6 +27,9 @@ const codes = new Set([
   "SPEECH_AUDIO_BOUND_EXCEEDED",
   "SPEECH_FRAME_INVALID",
   "SPEECH_PROVIDER_REFUSED",
+  "SPEECH_REFUSED_UNAVAILABLE",
+  "SPEECH_REFUSED_UNAUTHORIZED",
+  "SPEECH_REFUSED_INSUFFICIENT_CREDITS",
   "SPEECH_PROVIDER_CONTRACT_INVALID",
   "SPEECH_READY_TIMEOUT",
   "SPEECH_TTS_TIMEOUT",
@@ -43,6 +46,16 @@ const timings = [
   "pcmFrames",
   "pcmBytes",
 ] as const;
+
+/** The relay exposes only these refusal enums, never provider error text. */
+export function speechRelayRefusal(code: unknown, reason?: unknown): string {
+  if (code === "unauthorized") return "SPEECH_REFUSED_UNAUTHORIZED";
+  if (code === "unavailable")
+    return reason === "insufficient_credits"
+      ? "SPEECH_REFUSED_INSUFFICIENT_CREDITS"
+      : "SPEECH_REFUSED_UNAVAILABLE";
+  return "SPEECH_PROVIDER_REFUSED";
+}
 
 function safeCode(value: unknown): string {
   return typeof value === "string" &&
