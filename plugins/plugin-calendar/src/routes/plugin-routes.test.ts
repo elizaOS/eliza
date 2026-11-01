@@ -3,10 +3,17 @@
  * the runtime boundary and the owner gate on the calendar read routes.
  */
 
+import { EventEmitter } from "node:events";
 import type http from "node:http";
-import type { AccessContext, ElizaError, IAgentRuntime } from "@elizaos/core";
+import {
+  type AccessContext,
+  type ElizaError,
+  type IAgentRuntime,
+  logger,
+} from "@elizaos/core";
 import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { describe, expect, it, vi } from "vitest";
+import { CalendarServiceError } from "../internal/errors.js";
 import {
   __calendarRouteRateLimitBucketCountForTests,
   calendarHttpRoutes,
@@ -386,4 +393,114 @@ describe("calendar owner read routes", () => {
     expect(result.status).toBe(403);
     expect(readService.getCalendarFeed).not.toHaveBeenCalled();
   });
+});
+
+describe("legacy feed disconnect errors", () => {
+  it.each(["cancel", "unexpected", "service"] as const)(
+    "preserves failure reporting after disconnect: %s",
+    async (kind) => {
+      const requestEvents = new EventEmitter(),
+        responseEvents = new EventEmitter();
+      const request = Object.assign(createRequest(), {
+        once: requestEvents.once.bind(requestEvents),
+        removeListener: requestEvents.removeListener.bind(requestEvents),
+      });
+      const response = Object.assign(createResponse(), {
+        once: responseEvents.once.bind(responseEvents),
+        removeListener: responseEvents.removeListener.bind(responseEvents),
+      });
+      let release: () => void = () => {},
+        started: () => void = () => {};
+      const gate = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const ready = new Promise<void>((resolve) => {
+        started = resolve;
+      });
+      const failure =
+        kind === "service"
+          ? new CalendarServiceError(409, "independent provider conflict")
+          : new Error("independent database failure");
+      const service = {
+        ...Object.fromEntries(
+          [
+            "listCalendars",
+            "setCalendarIncluded",
+            "getNextCalendarEventContext",
+            "createCalendarEvent",
+            "updateCalendarEvent",
+            "deleteCalendarEvent",
+            "respondToCalendarEvent",
+            "listIcsCalendarSources",
+            "createIcsCalendarSource",
+            "updateIcsCalendarSource",
+            "deleteIcsCalendarSource",
+            "syncIcsCalendarSource",
+            "purgeImportedCalendarData",
+            "seedImportedCalendarData",
+            "listLinkedCalendarEvents",
+            "listLinkedCalendarEventViews",
+            "getLinkedCalendarEvent",
+          ].map((name) => [
+            name,
+            () => {
+              throw new Error(`Unexpected service call: ${name}`);
+            },
+          ]),
+        ),
+        getCalendarFeed: async (
+          _url: URL,
+          _request: unknown,
+          _now: Date | undefined,
+          signal: AbortSignal,
+        ) => {
+          started();
+          await gate;
+          throw kind === "cancel" ? signal.reason : failure;
+        },
+      };
+      const errorLog = vi.spyOn(logger, "error").mockImplementation(() => {});
+      const warningLog = vi.spyOn(logger, "warn").mockImplementation(() => {});
+      const run = calendarRouteHandler()(
+        request,
+        response as unknown as Parameters<
+          ReturnType<typeof calendarRouteHandler>
+        >[1],
+        createRuntime({ service }),
+      );
+      const outcome = run.then(
+        () => undefined,
+        (error) => error,
+      );
+      try {
+        await Promise.race([
+          ready,
+          outcome.then(() => {
+            throw new Error("Handler returned before feed read");
+          }),
+        ]);
+        responseEvents.emit("close");
+        release();
+        expect(await outcome).toBe(kind === "unexpected" ? failure : undefined);
+        if (kind === "unexpected")
+          expect(errorLog).toHaveBeenCalledWith(
+            expect.objectContaining({ boundary: "calendar" }),
+            expect.stringContaining(failure.message),
+          );
+        else expect(errorLog).not.toHaveBeenCalled();
+        if (kind === "service")
+          expect(warningLog).toHaveBeenCalledWith(
+            expect.objectContaining({ boundary: "calendar", statusCode: 409 }),
+            expect.stringContaining(failure.message),
+          );
+        else expect(warningLog).not.toHaveBeenCalled();
+        expect(response.headersSent).toBe(false);
+      } finally {
+        release();
+        await outcome;
+        errorLog.mockRestore();
+        warningLog.mockRestore();
+      }
+    },
+  );
 });

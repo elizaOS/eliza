@@ -546,10 +546,18 @@ async function runCalendarRoute(
     await fn(service);
     return true;
   } catch (error) {
-    if (signal?.aborted) return true;
+    // A disconnect must not hide an unrelated failure racing with cancellation.
+    if (signal?.aborted && error === signal.reason) return true;
     // error-policy:J1 Typed calendar failures retain actionable status and clarification;
     // unexpected errors are reported and rethrown to the outer server boundary.
     if (error instanceof CalendarLocalTimeError) {
+      if (signal?.aborted) {
+        logger.warn(
+          { boundary: "calendar", operation, statusCode: error.status },
+          `[calendar] Route failed after disconnect: ${error.message}`,
+        );
+        return true;
+      }
       sendJson(
         res,
         {
@@ -570,7 +578,7 @@ async function runCalendarRoute(
         { boundary: "calendar", operation, statusCode: error.status },
         `[calendar] Route failed: ${error.message}`,
       );
-      sendJsonError(res, error.message, error.status);
+      if (!signal?.aborted) sendJsonError(res, error.message, error.status);
       return true;
     }
     logger.error(
