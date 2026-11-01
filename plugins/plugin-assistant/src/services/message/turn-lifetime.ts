@@ -508,17 +508,37 @@ export class MessageTurnLifetime {
             ? async (text) => {
                 // The existing model-authored acknowledgement remains turn-owned:
                 // await audience revalidation before any irreversible speech.
-                const signal = getStreamingContext()?.abortSignal ?? options.abortSignal;
+                const signal =
+                  getStreamingContext()?.abortSignal ?? options.abortSignal;
                 const isCurrent = () =>
-                  !signal?.aborted && !finalReplyDelivered && !firstSentenceSent &&
+                  !signal?.aborted &&
+                  !finalReplyDelivered &&
+                  !firstSentenceSent &&
                   (opts.keepExistingResponses ||
-                    latestResponseIds.get(runtime.agentId)?.get(message.roomId)?.at(-1) === responseId);
-                if (planningAcknowledgmentAttempted || !text.trim() || !isCurrent()) return;
-                if (guardOutboundEnvelopeText(runtime, text, "planning-acknowledgment") !== text)
+                    latestResponseIds
+                      .get(runtime.agentId)
+                      ?.get(message.roomId)
+                      ?.at(-1) === responseId);
+                if (
+                  planningAcknowledgmentAttempted ||
+                  !text.trim() ||
+                  !isCurrent()
+                )
+                  return;
+                if (
+                  guardOutboundEnvelopeText(
+                    runtime,
+                    text,
+                    "planning-acknowledgment",
+                  ) !== text
+                )
                   return;
                 planningAcknowledgmentAttempted = true;
                 if (ownerExclusiveDisclosureWasUsed(message)) {
-                  const audience = await revalidateOwnerExclusiveDisclosure(runtime, message);
+                  const audience = await revalidateOwnerExclusiveDisclosure(
+                    runtime,
+                    message,
+                  );
                   if (!audience.allowed) return;
                 }
                 // Recheck after the asynchronous audience read, including preemption.

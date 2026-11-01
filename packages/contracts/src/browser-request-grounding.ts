@@ -32,12 +32,14 @@ const QUOTE_PAIRS: Record<string, string> = {
 // suffix and closing punctuation. A closed allow-list; nothing else matches.
 const OPEN_COMMAND = String.raw`(?:open|visit|go\s+to|navigate\s+to)`;
 const COMMAND = new RegExp(
-  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:please,?\s+)?${OPEN_COMMAND}\s+(\S+)(\s.*)?$`, "i",
+  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:please,?\s+)?${OPEN_COMMAND}\s+(\S+)(\s.*)?$`,
+  "i",
 );
 // Explicit polite questions are direct requests too, but file-like bare names
 // still need a website signal rather than acquiring authority from the verb.
 const DIRECT_QUESTION = new RegExp(
-  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:can|could|would|will)\s+you\s+(?:please,?\s+)?${OPEN_COMMAND}\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`, "i",
+  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:can|could|would|will)\s+you\s+(?:please,?\s+)?${OPEN_COMMAND}\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
+  "i",
 );
 const SUFFIX =
   /^\s+(?:please|for\s+me|thanks|thank\s+you|(?:would|will|could|can)\s+you)[.,!?]*$/i;
@@ -155,13 +157,22 @@ export function directBrowserDestination(text: string): string | undefined {
   if (strict) return strict;
   const question = DIRECT_QUESTION.exec(text.trim());
   if (question) {
-    const destination = authoredBrowserDestination(`Open ${question[1]}${question[3] ?? ""}`);
+    const destination = authoredBrowserDestination(
+      `Open ${question[1]}${question[3] ?? ""}`,
+    );
     if (!destination) return;
-    const url = new URL(destination), tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
-    if (FILE_TYPE_TLDS.has(tld) && !/^(?:https:\/\/|www\.)/i.test(question[1]) && !question[2]) return;
+    const url = new URL(destination),
+      tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
+    if (
+      FILE_TYPE_TLDS.has(tld) &&
+      !/^(?:https:\/\/|www\.)/i.test(question[1]) &&
+      !question[2]
+    )
+      return;
     return destination;
   }
-  const bare = text.trim(), url = webAddress(bare);
+  const bare = text.trim(),
+    url = webAddress(bare);
   if (!url) return;
   const tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
   if (FILE_TYPE_TLDS.has(tld) && !/^(?:https:\/\/|www\.)/i.test(bare)) return;
@@ -296,7 +307,7 @@ function typedAddresses(
 ): { url: URL; webSignal: boolean; negated: boolean }[] {
   const found: { url: URL; webSignal: boolean; negated: boolean }[] = [];
   for (const word of text.matchAll(/\S+/g)) {
-    const lead = word[0].replace(/^[("'“‘«<\[]+/u, "");
+    const lead = word[0].replace(/^[("'“‘«<[]+/u, "");
     const tokens = new Set([
       lead,
       lead.replace(/[)\]>"'”’».,!?;:]+$/u, "").replace(/['’]s$/u, ""),

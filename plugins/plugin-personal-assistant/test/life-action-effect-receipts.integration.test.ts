@@ -453,7 +453,8 @@ it("anchors an explicit one-shot reminder at its requested due time", async () =
       action: "create",
       kind: "definition",
       confirmed: true,
-      intent: "Remind me in 2 minutes to check the notification with an alert, in-app only",
+      intent:
+        "Remind me in 2 minutes to check the notification with an alert, in-app only",
       createPlan: {
         mode: "create",
         requestKind: "reminder",
@@ -873,65 +874,61 @@ it.each([undefined, "apple_reminders"])(
   120000,
 );
 
-it(
-  "keeps an unresolved reminder alert choice effect-free instead of treating a due time as an alert",
-  async () => {
-    const service = new LifeOpsService(runtime, {
-      ownerEntityId: runtime.agentId,
-    });
-    const before = (await service.listDefinitions())
-      .map((record) => record.definition.id)
-      .sort();
-    const native = vi.spyOn(appleReminders, "createNativeAppleReminderLikeItem");
-    try {
-      const intent = "Add check the notification as a task due in 2 minutes";
-      const created = await invoke(
-        {
-          action: "create",
-          ownerSurface: "OWNER_REMINDERS",
-          kind: "definition",
-          confirmed: true,
-          intent,
-          createPlan: {
-            mode: "create",
-            requestKind: "unspecified",
-            notificationMode: null,
-            nativeProjection: "in_app_only",
-            title: "Unresolved alert choice",
-            cadenceKind: "once",
-            description: null,
-            dueDate: null,
-            dueInDays: null,
-            dueWeekday: null,
-            dueInMinutes: 2,
-            timeOfDay: null,
-            timeZone: null,
-            multiStep: false,
-          },
-        },
+it("keeps an unresolved reminder alert choice effect-free instead of treating a due time as an alert", async () => {
+  const service = new LifeOpsService(runtime, {
+    ownerEntityId: runtime.agentId,
+  });
+  const before = (await service.listDefinitions())
+    .map((record) => record.definition.id)
+    .sort();
+  const native = vi.spyOn(appleReminders, "createNativeAppleReminderLikeItem");
+  try {
+    const intent = "Add check the notification as a task due in 2 minutes";
+    const created = await invoke(
+      {
+        action: "create",
+        ownerSurface: "OWNER_REMINDERS",
+        kind: "definition",
+        confirmed: true,
         intent,
-      );
-      expect(created.result.success).toBe(false);
-      expect(created.result.data).toMatchObject({
-        error: "REMINDER_ALERT_PREFERENCE_UNRESOLVED",
-        awaitingUserInput: true,
-      });
-      expect(receipt(created.result)).toMatchObject({
-        outcome: "failed",
-        failure: {
-          code: "REMINDER_ALERT_PREFERENCE_UNRESOLVED",
-          acceptance: "rejected",
+        createPlan: {
+          mode: "create",
+          requestKind: "unspecified",
+          notificationMode: null,
+          nativeProjection: "in_app_only",
+          title: "Unresolved alert choice",
+          cadenceKind: "once",
+          description: null,
+          dueDate: null,
+          dueInDays: null,
+          dueWeekday: null,
+          dueInMinutes: 2,
+          timeOfDay: null,
+          timeZone: null,
+          multiStep: false,
         },
-      });
-      expect(
-        (await service.listDefinitions())
-          .map((record) => record.definition.id)
-          .sort(),
-      ).toEqual(before);
-      expect(native).not.toHaveBeenCalled();
-    } finally {
-      native.mockRestore();
-    }
-  },
-  120000,
-);
+      },
+      intent,
+    );
+    expect(created.result.success).toBe(false);
+    expect(created.result.data).toMatchObject({
+      error: "REMINDER_ALERT_PREFERENCE_UNRESOLVED",
+      awaitingUserInput: true,
+    });
+    expect(receipt(created.result)).toMatchObject({
+      outcome: "failed",
+      failure: {
+        code: "REMINDER_ALERT_PREFERENCE_UNRESOLVED",
+        acceptance: "rejected",
+      },
+    });
+    expect(
+      (await service.listDefinitions())
+        .map((record) => record.definition.id)
+        .sort(),
+    ).toEqual(before);
+    expect(native).not.toHaveBeenCalled();
+  } finally {
+    native.mockRestore();
+  }
+}, 120000);
