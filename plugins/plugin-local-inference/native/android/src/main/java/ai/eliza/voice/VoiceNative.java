@@ -56,6 +56,9 @@ final class VoiceNative {
 
     static native int nativeParadeeUnloadVoice(long ctx, String voiceId);
 
+    // ABI v21: the speed range a slot's synthesis clamps to; 0, 0 restores the model's validated range.
+    static native int nativeParadeeSetVoiceSpeedRange(long ctx, String voiceId, float minSpeed, float maxSpeed);
+
     static native String nativeParadeeVoiceInfo(long ctx, String voiceId);
 
     static native String nativeParadeePhonemizeVoice(long ctx, String voiceId, byte[] utf8Text);
