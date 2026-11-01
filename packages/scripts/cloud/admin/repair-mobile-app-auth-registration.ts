@@ -135,12 +135,22 @@ export async function repairRegistrationTransaction(
   protectedOrganizationId?: string,
   protectedOwnerUserId?: string,
   target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+  admit?: (
+    client: RegistrationRepairClient,
+  ) => Promise<undefined | "unchanged">,
 ): Promise<void> {
   try {
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       "eliza-mobile-app-auth-registration",
     ]);
+
+    // Provisioning admits only the reviewed absent row under this same lock.
+    // An exact, fully validated retry must not revoke keys or rewrite metadata.
+    if ((await admit?.(client)) === "unchanged") {
+      await client.query("COMMIT");
+      return;
+    }
 
     const existing = await client.query<{
       organization_id: string;
