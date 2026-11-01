@@ -548,7 +548,11 @@ export async function fetchOllamaModels(
     const res = await fetch(`${urlStr}/api/tags`, {
       signal: AbortSignal.timeout(2000),
     });
-    if (!res.ok) return [];
+    if (!res.ok) {
+      throw new ModelCatalogFetchError("ollama", {
+        upstreamStatus: res.status,
+      });
+    }
     const data = (await res.json()) as {
       models?: Array<{
         name: string;
@@ -560,6 +564,10 @@ export async function fetchOllamaModels(
       category: classifyModel(m.name),
     }));
   } catch (e: unknown) {
+    // error-policy:J4 an unreachable catalog is an explicit empty provider list;
+    // a provider that answered with an error status stays a typed catalog
+    // failure for the HTTP boundary (models-routes.ts).
+    if (e instanceof ModelCatalogFetchError) throw e;
     const message = `[model-catalog] Failed to fetch Ollama models: ${e instanceof Error ? e.message : e}`;
     // A localhost probe discovers Ollama when it happens to be installed; its
     // absence is the normal case. An operator-supplied endpoint is intentional
