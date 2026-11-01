@@ -19,11 +19,13 @@ const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const DEPLOY_COMMIT = "ELIZA_DEPLOY_COMMIT";
 
 // Scripts outside this repository that bind the namespace by the API's class.
-// Every readback proves the binding record is unchanged: this namespace ID,
-// the class and the API as `script_name`, on a version that never changes
-// during the transfer. Cloudflare does not show how that record resolves at
-// runtime in each phase; only a rehearsal can. Rebinding or deleting one is a
-// reviewed change to this list; anything else stops the readback.
+// Root's phase readback proves each binding record is unchanged: this
+// namespace ID, the class and the API as `script_name`, on a version that
+// never changes during the transfer. Cloudflare does not show how that record
+// resolves at runtime in each phase; only a rehearsal can. A release does not
+// depend on these diagnostic Workers: it accepts a deleted one, and a present
+// one must keep its record. Rebinding one is a reviewed change to this list;
+// anything else stops the readback.
 export const KNOWN_EXTERNAL_CONSUMERS = [
   { script: "diag-admission-caller-9bd05690", binding: "PRODUCTION" },
 ] as const;
@@ -137,7 +139,11 @@ const sha256 = (text: string) =>
 const NAMESPACE_PAGE_SIZE = 100;
 const NAMESPACE_PAGE_LIMIT = 50;
 
-/** Every namespace, or an error: each page must carry counts that add up. */
+/**
+ * Every namespace, or an error. Each page must carry counts that add up, and
+ * the listing ends only on a short page, so a total that is a multiple of the
+ * page size still reads the empty page after it.
+ */
 export async function listNamespaces(read: CloudflareRead) {
   const namespaces = new Map<string, Namespace>();
   let total: unknown;
@@ -166,11 +172,14 @@ export async function listNamespaces(read: CloudflareRead) {
         );
       namespaces.set(namespace.id, namespace);
     }
-    if (namespaces.size === total) return [...namespaces.values()];
-    if (namespaces.size > total || result.length < NAMESPACE_PAGE_SIZE)
+    if (
+      namespaces.size > total ||
+      (result.length < NAMESPACE_PAGE_SIZE && namespaces.size !== total)
+    )
       throw new Error(
         "Cloudflare namespace pages do not add up to their total",
       );
+    if (result.length < NAMESPACE_PAGE_SIZE) return [...namespaces.values()];
   }
   throw new Error(
     `Cloudflare namespace listing did not finish within ${NAMESPACE_PAGE_LIMIT} pages`,
@@ -202,7 +211,8 @@ export async function listScripts(read: CloudflareRead) {
   return ids;
 }
 
-async function activeVersion(read: CloudflareRead, script: string) {
+/** The versions of the script's latest deployment; none if never deployed. */
+async function servingVersions(read: CloudflareRead, script: string) {
   const deployments = (
     (await read(`/workers/scripts/${script}/deployments`)).result as {
       deployments?: {
@@ -211,14 +221,22 @@ async function activeVersion(read: CloudflareRead, script: string) {
       }[];
     }
   )?.deployments;
-  if (!deployments?.length)
-    throw new Error(`${script} has no Cloudflare deployment`);
-  const [active] = deployments.toSorted(
+  const [active] = (deployments ?? []).toSorted(
     (left, right) => Date.parse(right.created_on) - Date.parse(left.created_on),
   );
-  if (active.versions?.length !== 1 || active.versions[0].percentage !== 100)
+  return active?.versions ?? [];
+}
+
+async function activeVersion(read: CloudflareRead, script: string) {
+  const versions = await servingVersions(read, script);
+  if (!versions.length)
+    throw new Error(`${script} has no Cloudflare deployment`);
+  if (versions.length !== 1 || versions[0].percentage !== 100)
     throw new Error(`${script} must serve exactly one version at 100%`);
-  const id = active.versions[0].version_id;
+  return readVersion(read, script, versions[0].version_id);
+}
+
+async function readVersion(read: CloudflareRead, script: string, id: string) {
   const version = (await read(`/workers/scripts/${script}/versions/${id}`))
     .result as {
     id?: string;
@@ -285,31 +303,39 @@ function requireCommit(bindings: Binding[], script: string, commit: string) {
     throw new Error(`${script} does not serve commit ${commit}`);
 }
 
-/** Bindings anywhere in the account that reach the namespace. */
+/**
+ * Bindings anywhere in the account that reach the namespace: in each script's
+ * latest uploaded version (its settings) and in every version its latest
+ * deployment serves, so a gradual rollout cannot hide one. An older uploaded
+ * version that no deployment serves is not read.
+ */
 async function namespaceBindings(
   read: CloudflareRead,
   scripts: string[],
   owners: string[],
 ) {
-  const found: string[] = [];
+  const found = new Set<string>();
   for (const script of scripts) {
-    const bindings = (
+    const settings = (
       (await read(`/workers/scripts/${script}/settings`)).result as {
         bindings?: Binding[];
       }
     )?.bindings;
-    if (!Array.isArray(bindings))
+    if (!Array.isArray(settings))
       throw new Error(`${script} settings did not read back its bindings`);
-    for (const binding of bindings)
+    const bindings = [settings];
+    for (const { version_id } of await servingVersions(read, script))
+      bindings.push((await readVersion(read, script, version_id)).bindings);
+    for (const binding of bindings.flat())
       if (
         binding.type === "durable_object_namespace" &&
         (binding.namespace_id === PRODUCTION_ADMISSION_NAMESPACE_ID ||
           (binding.class_name === GATE &&
             owners.includes(String(binding.script_name ?? script))))
       )
-        found.push(`${script}/${String(binding.name)}`);
+        found.add(`${script}/${String(binding.name)}`);
   }
-  return found.sort();
+  return [...found].sort();
 }
 
 /**
@@ -453,9 +479,14 @@ export async function verifyProductionAdmission(
     throw new Error(
       `${options.phase} requires ${options.target} to ${expected.target === "absent" ? "not exist" : "exist"}`,
     );
+  // Root's phase proof requires every known consumer; a release reads only
+  // the ones that still exist.
+  const knownConsumers = KNOWN_EXTERNAL_CONSUMERS.filter(
+    (consumer) => options.effective || scriptIds.includes(consumer.script),
+  );
   for (const script of [
     options.api,
-    ...KNOWN_EXTERNAL_CONSUMERS.map((consumer) => consumer.script),
+    ...knownConsumers.map((consumer) => consumer.script),
   ])
     if (!scriptIds.includes(script))
       throw new Error(`The script list does not include ${script}`);
@@ -498,7 +529,7 @@ export async function verifyProductionAdmission(
   }
 
   const consumers = [];
-  for (const consumer of KNOWN_EXTERNAL_CONSUMERS) {
+  for (const consumer of knownConsumers) {
     const version = await activeVersion(read, consumer.script);
     requireNamespaceBinding(
       named(version.bindings, consumer.binding),
@@ -657,10 +688,12 @@ const OBJECT_PAGE_LIMIT = 100;
 
 /**
  * Finds every sampled object by ID in the namespace, wherever enumeration
- * lists it. A missing sampled object stops the transfer. The gate deletes
- * keys in normal traffic, so a sampled object may gain or lose stored data;
- * both are counted. Losing it in most of the sample looks like a wipe and
- * stops the transfer.
+ * lists it. A missing sampled object that had stored data stops the transfer.
+ * One that had none may drop out of enumeration in normal operation, so those
+ * are counted, and only losing most of them stops the transfer. The gate
+ * deletes keys in normal traffic, so a sampled object may gain or lose stored
+ * data; both are counted. Losing it in most of the sample looks like a wipe
+ * and stops the transfer.
  */
 export async function verifyObjectSample(
   read: CloudflareRead,
@@ -696,29 +729,39 @@ export async function verifyObjectSample(
       if (before && !object.hasStoredData) lostStoredData += 1;
       if (!before && object.hasStoredData) gainedStoredData += 1;
     }
-    if (!remaining.size) {
-      const storedDataBefore = [...sample.values()].filter(Boolean).length;
-      if (lostStoredData * 2 > storedDataBefore)
-        throw new Error(
-          `${lostStoredData} of ${storedDataBefore} sampled objects lost their stored data`,
-        );
-      return {
-        sampled: sample.size,
-        storedDataBefore,
-        gainedStoredData,
-        lostStoredData,
-        listed: listed.size,
-        pages: page,
-      };
-    }
     const next = info.cursor;
-    if (typeof next !== "string" || !next)
+    if (remaining.size && typeof next === "string" && next) {
+      if (cursors.has(next))
+        throw new Error("Cloudflare object cursor repeated");
+      cursors.add(next);
+      cursor = next;
+      continue;
+    }
+    const storedDataBefore = [...sample.values()].filter(Boolean).length;
+    const missing = [...remaining.values()];
+    const missingStoredData = missing.filter(Boolean).length;
+    const missingWithoutStoredData = missing.length - missingStoredData;
+    if (missingStoredData)
       throw new Error(
-        `${remaining.size} sampled objects are missing from the namespace`,
+        `${missingStoredData} sampled objects with stored data are missing from the namespace`,
       );
-    if (cursors.has(next)) throw new Error("Cloudflare object cursor repeated");
-    cursors.add(next);
-    cursor = next;
+    if (missingWithoutStoredData * 2 > sample.size - storedDataBefore)
+      throw new Error(
+        `${missingWithoutStoredData} of ${sample.size - storedDataBefore} sampled objects without stored data are missing from the namespace`,
+      );
+    if (lostStoredData * 2 > storedDataBefore)
+      throw new Error(
+        `${lostStoredData} of ${storedDataBefore} sampled objects lost their stored data`,
+      );
+    return {
+      sampled: sample.size,
+      storedDataBefore,
+      gainedStoredData,
+      lostStoredData,
+      missingWithoutStoredData,
+      listed: listed.size,
+      pages: page,
+    };
   }
   throw new Error(
     `Cloudflare object listing did not reach every sampled object within ${OBJECT_PAGE_LIMIT} pages`,
