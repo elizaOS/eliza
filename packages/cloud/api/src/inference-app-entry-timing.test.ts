@@ -1,5 +1,6 @@
 /** Exercises diagnostic modes through the existing Hono shell without providers. */
 import { afterAll, afterEach, expect, spyOn, test } from "bun:test";
+import type { RuntimeR2Bucket } from "@elizaos/cloud-shared/lib/storage/r2-runtime-binding";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
@@ -10,13 +11,24 @@ const path = "/api/v1/voice/stt";
 const audit = spyOn(logger, "audit").mockImplementation(() => {});
 afterEach(() => audit.mockClear());
 afterAll(() => audit.mockRestore());
+const inertR2Bucket: RuntimeR2Bucket = {
+  async get() {
+    throw new Error("Unexpected R2 get in inference shell test");
+  },
+  async put() {
+    throw new Error("Unexpected R2 put in inference shell test");
+  },
+  async delete() {
+    throw new Error("Unexpected R2 delete in inference shell test");
+  },
+};
 const bindings = (environment: string) =>
   ({
     ENVIRONMENT: environment,
     NODE_ENV: "test",
     CACHE_ENABLED: "false",
     DATABASE_URL: "postgres://test.invalid/eliza",
-    BLOB: {},
+    BLOB: inertR2Bucket,
     GLOBAL_RATE_LIMITER: { limit: async () => ({ success: true }) },
   }) as AppEnv["Bindings"];
 const phases = () =>
@@ -93,7 +105,8 @@ test.each(["staging", "production"])(
     );
     await entered;
     controller.abort();
-    expect(await (await response).json()).toEqual({ aborted: true });
+    const body: unknown = await (await response).json();
+    expect(body).toEqual({ aborted: true });
     if (environment === "production") expect(phases()).toEqual([]);
   },
 );
