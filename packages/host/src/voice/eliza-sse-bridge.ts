@@ -68,8 +68,6 @@ const SERVER_TIMING_PROVIDERS = [
   "other",
   "unknown",
 ] as const;
-const ACTION_PROGRESS_TEXT =
-  /^(?:on it\b|checking\b|fetching\b|gathering\b|looking\s+(?:up|into)\b|running\b|working\s+on\b|one\s+moment\b)/iu;
 
 export type ElizaServerTimingMetric = (typeof SERVER_TIMING_METRICS)[number];
 export type ElizaServerTimingProvider =
@@ -173,7 +171,7 @@ export interface ElizaSseBridgeRequest {
    * before its durable persistence receipt and view-handoff metadata are ready.
    */
   onReplyReady?: () => void;
-  /** Test hook; production uses six seconds between progress cues. */
+  /** Retained for call-site compatibility; manufactured periodic cues are disabled. */
   progressIntervalMs?: number;
   /** Injectable fetch for tests; defaults to global fetch. */
   fetchImpl?: typeof fetch;
@@ -394,19 +392,9 @@ export async function streamElizaConversation(
   let eventType = "";
   let emittedText = "";
   let pendingProvisionalText: string | null = null;
-  let progressTimer: ReturnType<typeof setTimeout> | null = null;
-  let progressActive = false;
   let progressInFlight = false;
   let planningAcknowledgmentSeen = false;
   let replyAuthorized = false;
-  const progressIntervalMs = request.progressIntervalMs ?? 6_000;
-  const clearProgress = (): void => {
-    progressActive = false;
-    if (progressTimer !== null) {
-      clearTimeout(progressTimer);
-      progressTimer = null;
-    }
-  };
   const emitProgress = async (text: string): Promise<void> => {
     if (request.signal.aborted || replyAuthorized || progressInFlight) return;
     progressInFlight = true;
@@ -425,24 +413,6 @@ export async function streamElizaConversation(
       progressInFlight = false;
     }
   };
-  const scheduleProgress = (): void => {
-    if (
-      !request.onProgress ||
-      progressActive ||
-      !Number.isFinite(progressIntervalMs) ||
-      progressIntervalMs <= 0
-    )
-      return;
-    progressActive = true;
-    const tick = async (): Promise<void> => {
-      if (!progressActive || request.signal.aborted) return;
-      await emitProgress("Still working on that.");
-      if (progressActive && !request.signal.aborted) {
-        progressTimer = setTimeout(() => void tick(), progressIntervalMs);
-      }
-    };
-    progressTimer = setTimeout(() => void tick(), progressIntervalMs);
-  };
   const emitDelta = (text: string): void => {
     if (!text) return;
     emittedText += text;
@@ -450,7 +420,6 @@ export async function streamElizaConversation(
   };
   const authorizeText = (authoritativeText: string): void => {
     replyAuthorized = true;
-    clearProgress();
     pendingProvisionalText = null;
     if (!authoritativeText.startsWith(emittedText)) {
       throw new ElizaSseBridgeError(
@@ -466,7 +435,6 @@ export async function streamElizaConversation(
         update.kind === "snapshot"
           ? update.text
           : `${pendingProvisionalText ?? emittedText}${update.text}`;
-      if (ACTION_PROGRESS_TEXT.test(update.text.trim())) scheduleProgress();
       return;
     }
 
@@ -585,7 +553,6 @@ export async function streamElizaConversation(
       }
     }
   } finally {
-    clearProgress();
     request.signal.removeEventListener("abort", cancelReaderOnAbort);
     if (abortCancellation) {
       await abortCancellation;
