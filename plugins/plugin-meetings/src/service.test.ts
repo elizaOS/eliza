@@ -11,7 +11,9 @@ import {
   MEETING_TRANSCRIPT_FINALIZED_EVENT,
 } from "@elizaos/core/protocol";
 import { buildMeetingArtifactFixtures } from "@elizaos/testing/fixtures";
+import type { Page } from "playwright-core";
 import { describe, expect, it, vi } from "vitest";
+import { GoogleSpeakerIdentity } from "./platforms/googlemeet/speaker-identity.js";
 import { MeetingJoinError, MeetingService } from "./service.js";
 import {
   FakeMeetingBillingSession,
@@ -704,6 +706,62 @@ describe("MeetingService — roster, transcripts, listing", () => {
         evidenceId: "event-123",
       },
     ]);
+  });
+
+  it("names a late Google Meet speaker from the speaking ring, not the roster order", async () => {
+    const adapter = new ScriptedAdapter("google_meet");
+    const { service, pipelines } = makeService([adapter]);
+    await service.requestJoin({
+      platform: "google_meet",
+      meetingUrl: MEET_URL,
+    });
+    const botSession = await adapter.started;
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    try {
+      const start = Date.now();
+      // The call page lists Alice first. Its speaking ring lags the audio.
+      let names = ["Alice", "Bob"];
+      let speaking: string[] = [];
+      const page = {
+        evaluate: async () => ({ names, speaking }),
+      } as unknown as Page;
+      const identity = new GoogleSpeakerIdentity(
+        page,
+        botSession.sink,
+        "Eliza",
+      );
+      identity.start();
+      const chunkAt = async (track: string, atMs: number) => {
+        await vi.advanceTimersByTimeAsync(start + atMs - Date.now());
+        await identity.observeAudio(track);
+      };
+      // 20 s into the call Bob starts to talk on track 1. Meet lights his
+      // ring after his first two audio chunks.
+      await chunkAt("1", 20_000);
+      await chunkAt("1", 20_900);
+      speaking = ["Bob"];
+      await chunkAt("1", 21_800);
+      await chunkAt("1", 22_700);
+      expect(pipelines[0].named.get("1")).toBe("Bob");
+
+      // A track with no ring 15 s after its first audio still gets a name.
+      speaking = [];
+      await chunkAt("2", 30_000);
+      await chunkAt("2", 45_100);
+      expect(pipelines[0].named.get("2")).toBe("Alice");
+
+      // Bob leaves and Carol talks on his freed track, again before her ring.
+      names = ["Alice", "Carol"];
+      await chunkAt("1", 50_000);
+      await chunkAt("1", 50_900);
+      speaking = ["Carol"];
+      await chunkAt("1", 51_800);
+      await chunkAt("1", 52_700);
+      identity.stop();
+      expect(pipelines[0].named.get("1")).toBe("Carol");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("wires participants to entities and tracks join/leave", async () => {

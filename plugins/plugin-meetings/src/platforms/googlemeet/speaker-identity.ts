@@ -199,6 +199,8 @@ export class GoogleSpeakerIdentity {
   private roster = new Map<string, RosterEntry>();
   private rosterTimer: ReturnType<typeof setInterval> | null = null;
   private readonly startedAt = Date.now();
+  /** First audio of each unmapped track: the start of its fallback window. */
+  private readonly unmappedSinceMs = new Map<number, number>();
 
   constructor(
     private readonly page: Page,
@@ -230,6 +232,8 @@ export class GoogleSpeakerIdentity {
     if (this.table.isLocked(track)) return;
 
     const now = Date.now();
+    const unmappedSince = this.unmappedSinceMs.get(track) ?? now;
+    this.unmappedSinceMs.set(track, unmappedSince);
     const last = this.lastAttributionMs.get(track) ?? 0;
     if (now - last < ATTRIBUTION_THROTTLE_MS) return;
     this.lastAttributionMs.set(track, now);
@@ -242,7 +246,7 @@ export class GoogleSpeakerIdentity {
       this.vote(track, speaking[0], 1.0);
     } else if (speaking.length === 2) {
       for (const name of speaking) this.vote(track, name, 0.5);
-    } else if (now - this.startedAt > FALLBACK_MS) {
+    } else if (now - unmappedSince > FALLBACK_MS) {
       // Fallback: attribute by participant order when correlation stalls.
       this.fallbackAttribute(track, state.names);
     }
@@ -288,7 +292,10 @@ export class GoogleSpeakerIdentity {
       if (!next.has(id)) {
         this.sink.participantLeft(id, nowMs);
         // A departed participant frees their track mapping for reuse.
-        for (const track of this.tracksNamed(id)) this.table.invalidate(track);
+        for (const track of this.tracksNamed(id)) {
+          this.table.invalidate(track);
+          this.unmappedSinceMs.delete(track);
+        }
       }
     }
     this.roster = next;
