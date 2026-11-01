@@ -45,6 +45,7 @@ import type {
 import { FIRST_SENTENCE_SNIP_VERSION, firstSentenceSnip } from "@elizaos/voice";
 import { Hono } from "hono";
 import { z } from "zod";
+import { validRequestId } from "@/api-app/inference-admission-gate";
 import {
   admitFlatGenerativeOperation,
   asGenerativeCacheApiError,
@@ -695,6 +696,15 @@ async function __hono_POST(c: AppContext) {
           synthesis: TtsSynthesisOptions.parse(body),
         })}`
       : null;
+    // A Worker replays a keyed request by its admission gate request id. Where
+    // the gate admits the id with the key in it, the id stays as it was, so a
+    // request completed or left unsettled under it before is not dispatched or
+    // charged again. The gate refused any other such id before dispatch (a UUID
+    // key makes it 148 characters, over its 128), so that id carries the digest
+    // of the key instead. The reservation key below stays the key itself.
+    const keyedRequestId = ttsIdempotencyKey
+      ? `voice-tts:${user.organization_id}:${ttsIdempotencyKey}`
+      : null;
     const billingContext: BillingContext = {
       organizationId: user.organization_id,
       userId: user.id,
@@ -702,13 +712,12 @@ async function __hono_POST(c: AppContext) {
       model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
       provider: "elevenlabs",
       billingSource: "elevenlabs",
-      // The admission gate refuses request ids over 128 characters. A UUID
-      // key with its utterance digest is 101 of them, past the 81 left after
-      // the prefix, so the id carries the digest of the key. The reservation
-      // key below stays the key itself.
-      requestId: ttsIdempotencyKey
-        ? `voice-tts:${user.organization_id}:${settlementDigest(ttsIdempotencyKey)}`
-        : `voice-tts:${crypto.randomUUID()}`,
+      requestId:
+        keyedRequestId === null
+          ? `voice-tts:${crypto.randomUUID()}`
+          : validRequestId(keyedRequestId)
+            ? keyedRequestId
+            : `voice-tts:${user.organization_id}:${settlementDigest(ttsIdempotencyKey)}`,
       affiliateCode: request.headers.get("X-Affiliate-Code"),
       description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
     };

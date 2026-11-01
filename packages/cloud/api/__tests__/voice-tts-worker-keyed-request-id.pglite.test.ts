@@ -1,13 +1,15 @@
 /**
  * `POST /api/v1/voice/tts` in a Worker under an `Idempotency-Key` (#16425).
  * A Worker admits through the organization admission Durable Object lease,
- * whose request ids hold at most 128 characters. The keyed request id names
- * the organization and the digest of the key bound to its utterance, so a
- * production-shaped key (one UUID per utterance) fits: with the raw key and
- * utterance digest in the id it was 148 characters, the gate answered 400 and
- * every keyed request got a 503 "warming" that never succeeded.
- * Only the id changes. A repeated key and utterance, a second utterance under
- * one key and unkeyed requests behave as they did with a short key.
+ * which replays a request by its request id and admits ids of at most 128
+ * characters from [A-Za-z0-9._:-]. The route kept the raw key and utterance
+ * digest in the id, voice-tts:<org>:<key>:<utterance digest>. That id is
+ * unchanged wherever the gate admitted it, so a request completed or left
+ * unknown under it before this change is not synthesized or charged again.
+ * The gate refused every other keyed id before dispatch (a UUID key, what the
+ * app sends, made it 148 characters), and such an id now carries the digest
+ * of the key and utterance. Repeats, a second utterance under one key and
+ * unkeyed requests behave as they did with a short key.
  * Real route, real admission, the real gate class on in-memory storage and
  * the real credits service on PGlite; auth, pricing, content safety, the
  * ElevenLabs client, the first-line cache and usage records are replaced.
@@ -44,9 +46,31 @@ const userId = randomUUID();
 const COST_PER_CHAR = 0.001;
 const providerCalls: string[] = [];
 let balanceRevision = "0";
+/**
+ * While set, the route admits under the keyed id it used before #38564
+ * (fbb124e5): voice-tts:<org>:<the key and utterance digest it reserves>.
+ */
+let routeBefore = false;
+/** While set, the provider fails after it received the request. */
+let providerOutcomeUnknown = false;
+const { admitFlatGenerativeOperation } = generativeRouteAuth;
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   ...generativeRouteAuth,
+  admitFlatGenerativeOperation: (
+    params: Parameters<typeof admitFlatGenerativeOperation>[0],
+  ) =>
+    admitFlatGenerativeOperation(
+      routeBefore && params.idempotencyKey
+        ? {
+            ...params,
+            context: {
+              ...params.context,
+              requestId: `voice-tts:${orgId}:${params.idempotencyKey}`,
+            },
+          }
+        : params,
+    ),
   requireGenerativeRouteCaller: async () => ({
     user: { id: userId, organization_id: orgId },
     apiKeyId: null,
@@ -98,6 +122,7 @@ mock.module("@elizaos/cloud-shared/lib/services/elevenlabs", () => ({
   getElevenLabsService: () => ({
     textToSpeech: async ({ text }: { text: string }) => {
       providerCalls.push(text);
+      if (providerOutcomeUnknown) throw new Error("connection reset");
       return new ReadableStream<Uint8Array>({
         start(controller) {
           controller.enqueue(new Uint8Array([0xff, 0xfb, 0x90, 0x00]));
@@ -260,6 +285,8 @@ beforeAll(async () => {
 });
 beforeEach(() => {
   leasedRequestIds.length = 0;
+  routeBefore = false;
+  providerOutcomeUnknown = false;
 });
 afterAll(async () => {
   await closeDatabaseConnectionsForTests();
@@ -318,9 +345,14 @@ async function speak(
   };
 }
 
+const shortKey = () => `k-${randomUUID().slice(0, 8)}`;
+/** The id before this change was 112 characters plus the key. */
+const hexKey = (length: number) =>
+  randomUUID().replaceAll("-", "").slice(0, length);
+
 /** A short key fit the gate with the raw key in the id; a UUID key did not. */
 const KEY_SHAPES = [
-  ["a short key", () => `k-${randomUUID().slice(0, 8)}`],
+  ["a short key", shortKey],
   ["a UUID key", () => randomUUID()],
 ] as const;
 
@@ -341,36 +373,72 @@ test("requests without a key each synthesize and pay under their own request id"
   expect(new Set(leasedRequestIds).size).toBe(2);
 });
 
-test.each(KEY_SHAPES)(
-  "%s is admitted at the gate, synthesizes and pays once",
-  async (shape, newKey) => {
-    const text = `Your table is booked for seven, with ${shape}.`;
+test.each([
+  ["a short key", "completed", shortKey, 122],
+  ["a 16 character key", "completed", () => hexKey(16), 128],
+  ["a short key", "left unknown after dispatch", shortKey, 122],
+] as const)(
+  "with %s, a request %s before this change is not synthesized or charged again",
+  async (shape, outcome, newKey, idLength) => {
+    const key = newKey();
+    const text = `Your order ships tomorrow, with ${shape}, ${outcome}.`;
     const before = await balance();
     const calls = providerCalls.length;
-    const answer = await speak(text, newKey());
-    expect(answer.status).toBe(200);
+    routeBefore = true;
+    providerOutcomeUnknown = outcome === "left unknown after dispatch";
+    expect((await speak(text, key)).status).toBe(
+      providerOutcomeUnknown ? 500 : 200,
+    );
+    expect(providerCalls.slice(calls)).toEqual([text]);
+    const paid = before - text.length * COST_PER_CHAR;
+    expect(await balance()).toBeCloseTo(paid, 6);
+    expect(leasedRequestIds[0]).toMatch(
+      new RegExp(`^voice-tts:${orgId}:${key}:[0-9a-f]{64}$`),
+    );
+    expect(leasedRequestIds[0]).toHaveLength(idLength);
+
+    // The same key and utterance after the change: the same id, refused.
+    routeBefore = false;
+    providerOutcomeUnknown = false;
+    const retry = await speak(text, key);
+    expect(providerCalls.slice(calls)).toEqual([text]);
+    expect(await balance()).toBeCloseTo(paid, 6);
+    expect(retry.status).toBe(503);
+    expect(retry.retryAfter).toBe("1");
+    expect(leasedRequestIds[1]).toBe(leasedRequestIds[0]);
+  },
+);
+
+test.each([
+  ["a 17 character key", () => hexKey(17), 129],
+  ["a UUID key", () => randomUUID(), 148],
+  [
+    "a key with a character outside [A-Za-z0-9._:-]",
+    () => `${shortKey()}/`,
+    123,
+  ],
+] as const)(
+  "%s, refused at the gate before dispatch, is admitted under the digest of the key and utterance and pays once",
+  async (shape, newKey, refusedLength) => {
+    const key = newKey();
+    const text = `Your room is ready, with ${shape}.`;
+    const before = await balance();
+    const calls = providerCalls.length;
+    routeBefore = true;
+    expect((await speak(text, key)).status).toBe(503);
+    expect(leasedRequestIds[0]).toHaveLength(refusedLength);
+    expect(await balance()).toBeCloseTo(before, 6);
+
+    routeBefore = false;
+    expect((await speak(text, key)).status).toBe(200);
     expect(providerCalls.slice(calls)).toEqual([text]);
     expect(await balance()).toBeCloseTo(
       before - text.length * COST_PER_CHAR,
       6,
     );
-    expect(leasedRequestIds).toHaveLength(1);
-  },
-);
-
-test.each(KEY_SHAPES)(
-  "with %s, the keyed request id is the organization and a digest of the key and utterance, 111 characters",
-  async (shape, newKey) => {
-    const key = newKey();
-    expect(
-      (await speak(`One id per utterance, with ${shape}.`, key)).status,
-    ).toBe(200);
-    expect(leasedRequestIds).toHaveLength(1);
-    expect(leasedRequestIds[0]).toMatch(
+    expect(leasedRequestIds[1]).toMatch(
       new RegExp(`^voice-tts:${orgId}:[0-9a-f]{64}$`),
     );
-    expect(leasedRequestIds[0]).toHaveLength(111);
-    expect(leasedRequestIds[0]).not.toContain(key);
   },
 );
 
