@@ -248,6 +248,12 @@ export interface EventEditorDrawerProps {
   onSaved?: (event: LifeOpsCalendarEvent) => void;
   onCreated?: (event: LifeOpsCalendarEvent) => void;
   onDeleted?: (eventId: string) => void;
+  /**
+   * A save or delete landed after its editing session had already ended
+   * (the owner closed the editor or opened another event). The host should
+   * refresh its list, but must not touch the current editor session.
+   */
+  onDataChanged?: () => void;
   onChat?: (event: LifeOpsCalendarEvent) => void;
 }
 
@@ -489,6 +495,7 @@ export function EventEditorDrawer({
   onSaved,
   onCreated,
   onDeleted,
+  onDataChanged,
   onChat,
 }: EventEditorDrawerProps) {
   installCalendarClient();
@@ -514,6 +521,12 @@ export function EventEditorDrawer({
   const createOperationKey = useRef<string | null>(null);
   const updateOperationKey = useRef<string | null>(null);
   const deleteOperationKey = useRef<string | null>(null);
+  // Bumped every time the session-reset effect below seeds a new editing
+  // session, and when the drawer closes. A save/delete/create captures it
+  // before awaiting the provider; if it has moved on by completion, that
+  // completion belongs to a session the owner already left and must not
+  // drive the current one.
+  const sessionGeneration = useRef(0);
 
   const isCreate = mode === "create";
   const calendarRequestSide = isCreate
@@ -556,6 +569,7 @@ export function EventEditorDrawer({
       : null;
 
   useEffect(() => {
+    sessionGeneration.current += 1;
     if (!open) return;
     if (isCreate) {
       setForm(blankFormState(createDefaults));
@@ -708,8 +722,17 @@ export function EventEditorDrawer({
               calendarId: form.calendarId || undefined,
             },
           });
+          const createSession = sessionGeneration.current;
           const result =
             await calendarClient.createLifeOpsCalendarEvent(request);
+          if (sessionGeneration.current !== createSession) {
+            // The create landed, but the owner closed this editor or moved
+            // to another session while it was in flight. Refresh the list
+            // only; the late completion must not select the created event
+            // over the current session or close a newer one.
+            onDataChanged?.();
+            return;
+          }
           if (result.outcome === "accepted_without_readback") {
             setActionNotice(
               t("eventEditor.createdWriteOnly", {
@@ -782,10 +805,19 @@ export function EventEditorDrawer({
               calendarId: form.calendarId || event.calendarId,
             },
           });
+          const saveSession = sessionGeneration.current;
           const result = await calendarClient.updateLifeOpsCalendarEvent(
             event.externalId,
             patch,
           );
+          if (sessionGeneration.current !== saveSession) {
+            // The write landed, but the owner closed this editor or opened
+            // another event while it was in flight. Refresh the list only;
+            // the late completion must not reopen, close, or rewrite the
+            // editing session that is current now.
+            onDataChanged?.();
+            return;
+          }
           setActionNotice(
             t("eventEditor.saved", { defaultValue: "Event saved." }),
             "success",
@@ -822,6 +854,7 @@ export function EventEditorDrawer({
       mutability,
       onClose,
       onCreated,
+      onDataChanged,
       onSaved,
       setActionNotice,
       t,
@@ -848,6 +881,7 @@ export function EventEditorDrawer({
       const deleteIdempotencyKey =
         deleteOperationKey.current ?? createEditorOperationKey();
       deleteOperationKey.current = deleteIdempotencyKey;
+      const deleteSession = sessionGeneration.current;
       const result = await calendarClient.deleteLifeOpsCalendarEvent(
         event.externalId,
         {
@@ -860,6 +894,12 @@ export function EventEditorDrawer({
           cancellationMode,
         },
       );
+      if (sessionGeneration.current !== deleteSession) {
+        // Same stale-completion guard as the save path: the delete landed,
+        // but its editing session is gone, so only refresh the list.
+        onDataChanged?.();
+        return;
+      }
       if (result.outcome === "invitation_declined") {
         setActionNotice(
           t("eventEditor.invitationDeclined", {
@@ -898,6 +938,7 @@ export function EventEditorDrawer({
     event,
     mutability,
     onClose,
+    onDataChanged,
     onDeleted,
     onSaved,
     setActionNotice,

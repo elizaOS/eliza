@@ -1,10 +1,19 @@
 /** Canonical runtime binding for the shared controlled Calendar workspace. */
 import type { LifeOpsCalendarEvent } from "@elizaos/contracts";
 import { useAppSelector, useViewEvent, VIEW_EVENTS } from "@elizaos/ui";
-import { type CSSProperties, useCallback, useEffect, useState } from "react";
+import {
+  type CSSProperties,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useCalendarWeek } from "../hooks/useCalendarWeek.js";
 import { CalendarWorkspace } from "./CalendarWorkspace.js";
-import { EventEditorDrawer } from "./EventEditorDrawer.js";
+import {
+  type EventEditorDefaults,
+  EventEditorDrawer,
+} from "./EventEditorDrawer.js";
 
 export interface CalendarSectionProps {
   /** Currently-selected event id, owned by the host shell. */
@@ -37,6 +46,15 @@ export function CalendarSection({
   );
   const [createOpen, setCreateOpen] = useState(false);
   const [createDefaultDate, setCreateDefaultDate] = useState(new Date());
+  // The create drawer re-seeds its form whenever this object's identity
+  // changes, so keep the identity stable until the default date itself
+  // changes. An inline literal would make every host re-render — a feed
+  // refresh landing, for example — reset an open create form and drop
+  // what the owner already typed.
+  const createDefaults = useMemo<EventEditorDefaults>(
+    () => ({ date: createDefaultDate, side: "owner" }),
+    [createDefaultDate],
+  );
   const handleCloseEditor = useCallback(() => {
     setDrawerEvent(null);
     onSelectEvent(null);
@@ -98,17 +116,23 @@ export function CalendarSection({
           setDrawerEvent(null);
           onSelectEvent(null);
         }}
+        onDataChanged={() => {
+          void calendar.refresh();
+        }}
       />
       <EventEditorDrawer
         open={createOpen}
         mode="create"
         event={null}
-        createDefaults={{ date: createDefaultDate, side: "owner" }}
+        createDefaults={createDefaults}
         onClose={() => setCreateOpen(false)}
         onCreated={(event) => {
           void calendar.refresh();
           setCreateOpen(false);
           onSelectEvent(event.id);
+        }}
+        onDataChanged={() => {
+          void calendar.refresh();
         }}
       />
     </>
