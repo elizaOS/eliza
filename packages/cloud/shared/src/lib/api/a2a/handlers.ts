@@ -6,7 +6,6 @@
 
 import { v4 as uuidv4 } from "uuid";
 import { a2aTaskStoreService, type TaskStoreEntry } from "../../services/a2a-task-store";
-import { contentModerationService } from "../../services/content-moderation";
 import { resolveOutboundMessageStanding } from "../../services/outbound-message-standing";
 import { logger } from "../../utils/logger";
 import {
@@ -134,12 +133,6 @@ export async function handleMessageSend(
     throw new Error("Message must contain at least one part");
   }
 
-  // Extract text content for moderation
-  const textContent = message.parts
-    .filter((p): p is { type: "text"; text: string } => p.type === "text")
-    .map((p) => p.text)
-    .join("\n");
-
   const requestedSkill = message.parts.find(
     (part): part is { type: "data"; data: Record<string, unknown> } => part.type === "data",
   )?.data.skill;
@@ -157,19 +150,8 @@ export async function handleMessageSend(
       });
       throw new Error(`Account standing denied: ${standing.reason}`);
     }
-  } else if (await contentModerationService.shouldBlockUser(ctx.user.id)) {
-    throw new Error("Account suspended due to policy violations");
   }
-
-  if (textContent) {
-    contentModerationService.moderateInBackground(textContent, ctx.user.id, undefined, (result) => {
-      logger.warn("[A2A] Moderation violation detected", {
-        userId: ctx.user.id,
-        categories: result.flaggedCategories,
-        action: result.action,
-      });
-    });
-  }
+  // Chat content is not moderated; account standing is the cached decision above.
 
   // Create a new task
   const taskId = (metadata?.taskId as string | undefined) || uuidv4();

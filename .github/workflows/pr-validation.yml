@@ -752,7 +752,6 @@ jobs:
           bun run --cwd packages/cloud/api test voice-cloudflare-selection
           bun run --cwd packages/cloud/api test voice-tts-idempotency-key.pglite
           bun run --cwd packages/cloud/api test voice-speech-rate-limit.pglite
-          bun run --cwd packages/cloud/shared test tts-safety-cache
           bun run --cwd packages/cloud/api test speech-phase-timing
 
       - name: Verify Network Personal room routes

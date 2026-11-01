@@ -10,8 +10,11 @@
  *
  * Storage is split for Cloudflare Workers:
  *   - audio bytes → R2 (the `BLOB` binding) at `tts-first-line/<provider>/
- *     <voiceId>/<voiceRevision>/<keyHash>.<ext>`.
- *   - manifest    → Postgres (`tts_first_line_cache` table).
+ *     <voiceId>/<voiceRevision>/<keyHash>.<ext>`, with the entry's scope and
+ *     descriptive fields in R2 custom metadata. A lookup (`get`) is one R2
+ *     read and never touches Postgres, so it can run on the request path.
+ *   - manifest    → Postgres (`tts_first_line_cache` table), written by `put`
+ *     and used only for LRU accounting and eviction.
  *
  * The cache is **shared across orgs for `scope="global"`** entries (ElevenLabs
  * default voices) and **org-scoped** (`scope="org:<orgId>"`) for custom user
@@ -34,7 +37,6 @@ import { and, eq, sql } from "drizzle-orm";
 import { dbRead, dbWrite } from "../../db/client";
 import {
   type TtsFirstLineCacheInsert,
-  type TtsFirstLineCacheRow,
   ttsFirstLineCache,
 } from "../../db/schemas/tts-first-line-cache";
 import { getRuntimeR2Bucket } from "../storage/r2-runtime-binding";
@@ -189,21 +191,27 @@ export function shouldBypassCloudFirstLineCache(args: {
 // ---------------------------------------------------------------------------
 // R2 read + write helpers
 // ---------------------------------------------------------------------------
-async function r2GetBytes(blobKey: string): Promise<Uint8Array<ArrayBuffer> | null> {
+interface R2CacheObject {
+  bytes: Uint8Array<ArrayBuffer>;
+  metadata: Record<string, string>;
+}
+
+async function r2GetObject(blobKey: string): Promise<R2CacheObject | null> {
   const bucket = getRuntimeR2Bucket();
   if (!bucket) return null;
   try {
     const obj = await bucket.get(blobKey);
     if (!obj) return null;
+    const metadata = obj.customMetadata ?? {};
     // Workers' real R2 object has both `text()` and `arrayBuffer()`.
     // Our shim type may only declare `text()` — fall back to encoding the
     // text if `arrayBuffer` is unavailable (test environments).
     if (typeof obj.arrayBuffer === "function") {
       const ab = await obj.arrayBuffer();
-      return new Uint8Array(ab);
+      return { bytes: new Uint8Array(ab), metadata };
     }
     const text = await obj.text();
-    return new TextEncoder().encode(text);
+    return { bytes: new TextEncoder().encode(text), metadata };
   } catch (err) {
     logger.warn?.(
       `[tts-first-line-cache] R2 get(${blobKey}) failed: ${err instanceof Error ? err.message : String(err)}`,
@@ -215,6 +223,7 @@ async function r2PutBytes(
   blobKey: string,
   bytes: Uint8Array,
   contentType: string,
+  customMetadata: Record<string, string>,
 ): Promise<boolean> {
   const bucket = getRuntimeR2Bucket();
   if (!bucket) return false;
@@ -225,6 +234,7 @@ async function r2PutBytes(
     ) as ArrayBuffer;
     await bucket.put(blobKey, ab, {
       httpMetadata: { contentType },
+      customMetadata,
     });
     return true;
   } catch (err) {
@@ -256,50 +266,67 @@ export class CloudFirstLineCacheService {
     this.ttlDays = opts.ttlDays ?? DEFAULT_TTL_DAYS;
   }
   /**
-   * Look up a cache entry. Returns null on miss / R2 read failure / orphan
-   * (manifest row exists but blob is gone — row is dropped in that case).
+   * Look up a cache entry with ONE R2 read and no Postgres query. Returns
+   * null on a miss, an R2 read failure, an object written for another scope
+   * (tenant isolation: an org-scoped clone never serves another scope), or a
+   * legacy object without descriptive metadata (re-populated by the next
+   * `put`).
    *
-   * On hit, atomically bumps `hit_count` and `last_accessed_at`.
+   * On hit, the manifest's `hit_count` / `last_accessed_at` LRU touch is
+   * handed to `waitUntil` when supplied; it never delays the response.
    */
-  async get(key: CloudFirstLineCacheKey): Promise<CloudFirstLineCacheEntry | null> {
+  async get(
+    key: CloudFirstLineCacheKey,
+    options: { waitUntil?(promise: Promise<unknown>): void } = {},
+  ): Promise<CloudFirstLineCacheEntry | null> {
     if (!key.voiceRevision) return null;
     if (!key.normalizedText) return null;
     const keyHash = hashCloudCacheKey(key);
-    const [row] = (await dbRead
-      .select()
-      .from(ttsFirstLineCache)
-      .where(and(eq(ttsFirstLineCache.keyHash, keyHash), eq(ttsFirstLineCache.scope, key.scope)))
-      .limit(1)) as TtsFirstLineCacheRow[];
-    if (!row) return null;
-    const bytes = await r2GetBytes(row.blobKey);
-    if (!bytes) {
-      // Orphan — drop the row so the next call will re-populate.
-      await dbWrite.delete(ttsFirstLineCache).where(eq(ttsFirstLineCache.id, row.id));
+    const blobKey = blobKeyFor(key, keyHash);
+    const object = await r2GetObject(blobKey);
+    if (!object) return null;
+    const meta = object.metadata;
+    const durationMs = Number(meta.durationMs);
+    const wordCount = Number(meta.wordCount);
+    if (
+      meta.scope !== key.scope ||
+      meta.keyHash !== keyHash ||
+      typeof meta.contentType !== "string" ||
+      typeof meta.rawText !== "string" ||
+      !Number.isFinite(durationMs) ||
+      !Number.isSafeInteger(wordCount)
+    ) {
       return null;
     }
-    // LRU touch + hit count. Fire-and-forget — failure here is non-fatal.
-    void dbWrite
+    // LRU touch — off the response path; failure here is non-fatal.
+    const touch = dbWrite
       .update(ttsFirstLineCache)
       .set({
         lastAccessedAt: new Date(),
-        hitCount: row.hitCount + 1,
+        hitCount: sql`${ttsFirstLineCache.hitCount} + 1`,
       })
-      .where(eq(ttsFirstLineCache.id, row.id))
-      .catch((err) => {
-        logger.warn?.(
-          `[tts-first-line-cache] failed to touch row ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
+      .where(and(eq(ttsFirstLineCache.keyHash, keyHash), eq(ttsFirstLineCache.scope, key.scope)))
+      .then(
+        () => undefined,
+        (err) => {
+          // error-policy:J7 LRU bookkeeping must not fail a served cache hit.
+          logger.warn?.(
+            `[tts-first-line-cache] failed to touch ${keyHash}: ${err instanceof Error ? err.message : String(err)}`,
+          );
+        },
+      );
+    if (options.waitUntil) options.waitUntil(touch);
+    else void touch;
     return {
       ...key,
-      bytes,
-      rawText: row.rawText,
-      contentType: row.contentType,
-      durationMs: row.durationMs,
-      wordCount: row.wordCount,
-      byteSize: row.byteSize,
-      hitCount: row.hitCount + 1,
-      blobKey: row.blobKey,
+      bytes: object.bytes,
+      rawText: decodeURIComponent(meta.rawText),
+      contentType: meta.contentType,
+      durationMs,
+      wordCount,
+      byteSize: object.bytes.length,
+      hitCount: 0,
+      blobKey,
     };
   }
   async has(key: CloudFirstLineCacheKey): Promise<boolean> {
@@ -326,7 +353,14 @@ export class CloudFirstLineCacheService {
     }
     const keyHash = hashCloudCacheKey(input);
     const blobKey = blobKeyFor(input, keyHash);
-    const ok = await r2PutBytes(blobKey, input.bytes, input.contentType);
+    const ok = await r2PutBytes(blobKey, input.bytes, input.contentType, {
+      scope: input.scope,
+      keyHash,
+      contentType: input.contentType,
+      rawText: encodeURIComponent(input.rawText),
+      durationMs: String(input.durationMs),
+      wordCount: String(input.wordCount),
+    });
     if (!ok) return false;
     const insert: TtsFirstLineCacheInsert = {
       keyHash,

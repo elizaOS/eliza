@@ -25,6 +25,7 @@ import { HTTPException } from "hono/http-exception";
 import { logger as honoLogger } from "hono/logger";
 import { requestId } from "hono/request-id";
 import { secureHeaders } from "hono/secure-headers";
+import { recordInferenceEntryPhase } from "./inference-entry-timing";
 import { inferenceIngressRateLimit } from "./inference-ingress-rate-limit";
 import { cookieMutationGuardMiddleware } from "./middleware/cookie-mutation-guard";
 
@@ -146,6 +147,17 @@ export function createInferenceApp(
   // See middleware/cookie-mutation-guard.ts.
   app.use("*", cookieMutationGuardMiddleware);
 
+  app.use("*", async (c, next) => {
+    recordInferenceEntryPhase({
+      environment: c.env?.ENVIRONMENT,
+      traceId: c.get("traceId"),
+      path: c.req.path,
+      phase: "route_enter",
+      durationMs: 0,
+      outcome: "entered",
+    });
+    await next();
+  });
   app.route(mountPath, route);
   app.notFound((c) =>
     c.json(

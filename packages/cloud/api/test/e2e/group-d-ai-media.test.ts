@@ -37,10 +37,10 @@ import { connect as connectTls } from "node:tls";
 import {
   api,
   bearerHeaders,
+  fetchRetryingCacheWarming,
   getBaseUrl,
   isLocalTarget,
   isServerReachable,
-  url,
 } from "./_helpers/api";
 
 const serverReachable = await isServerReachable();
@@ -316,19 +316,19 @@ describeE2E("Group D — /api/elevenlabs/stt", () => {
       "audio",
       new File(["not audio"], "bad.wav", { type: "audio/wav" }),
     );
-    const res = await fetch(url("/api/elevenlabs/stt"), {
+    const res = await fetchRetryingCacheWarming("/api/elevenlabs/stt", () => ({
       method: "POST",
       headers: bearerOnlyHeaders(),
       body: form,
       signal: AbortSignal.timeout(30_000),
-    });
+    }));
     // fileTypeFromBuffer cannot identify the bogus bytes → the route's own
     // signature validation rejects with 400 before any upstream STT I/O.
     expect(res.status).toBe(400);
   });
 
   test("validation: malformed multipart with auth returns 400", async () => {
-    const res = await fetch(url("/api/elevenlabs/stt"), {
+    const res = await fetchRetryingCacheWarming("/api/elevenlabs/stt", () => ({
       method: "POST",
       headers: {
         ...bearerOnlyHeaders(),
@@ -336,7 +336,7 @@ describeE2E("Group D — /api/elevenlabs/stt", () => {
       },
       body: "not a multipart body",
       signal: AbortSignal.timeout(30_000),
-    });
+    }));
     expect(res.status).toBe(400);
     expect((await res.json()) as { error: string }).toEqual({
       error: "Invalid multipart form data",
