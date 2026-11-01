@@ -2,7 +2,9 @@
 import { test } from "bun:test";
 import {
   reportedSpeechRelayTest,
+  speechRelayPhases,
   speechRelayRefusal,
+  speechServerTimings,
 } from "../test/speech-relay-live-report";
 
 const environment = process.env.ELIZA_VOICE_CLOUD_ENVIRONMENT;
@@ -65,7 +67,12 @@ maybe(
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     };
-    async function json(path: string, body?: unknown) {
+    const serverTimings: Record<string, number> = {};
+    async function json(
+      path: string,
+      body?: unknown,
+      timingRoute?: "consent" | "session",
+    ) {
       let response: Response;
       try {
         response = await fetch(`${base}${path}`, {
@@ -78,6 +85,14 @@ maybe(
         throw new Error("SPEECH_HTTP_UNAVAILABLE");
       }
       check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
+      if (timingRoute)
+        Object.assign(
+          serverTimings,
+          speechServerTimings(
+            timingRoute,
+            response.headers.get("Server-Timing"),
+          ),
+        );
       try {
         return (await response.json()) as Record<string, unknown>;
       } catch {
@@ -92,12 +107,14 @@ maybe(
     );
     const started = performance.now();
     stage("consent");
-    const consent = await json("/api/v1/voice/speech/consent", {});
+    const consent = await json("/api/v1/voice/speech/consent", {}, "consent");
     const consentAt = performance.now();
     stage("session");
-    const minted = await json("/api/v1/voice/speech/session", {
-      consentNonce: consent.consentNonce,
-    });
+    const minted = await json(
+      "/api/v1/voice/speech/session",
+      { consentNonce: consent.consentNonce },
+      "session",
+    );
     const sessionAt = performance.now();
     check(
       typeof minted.wsUrl === "string" &&
@@ -124,6 +141,7 @@ maybe(
       completeAt = 0,
       finalAt = 0,
       readyAt = 0,
+      socketOpenAt = 0,
       ttsRequestedAt = 0,
       speechInputEndedAt = 0,
       frameCount = 0,
@@ -136,12 +154,15 @@ maybe(
       final.reject(error);
     };
     socket.addEventListener("open", () => {
+      socketOpenAt = performance.now();
       stage("ready");
       socket.send(
         JSON.stringify({
           t: "hello",
           token: minted.token,
           errorReasons: true,
+          // Staging returns one numeric bootstrap-phase frame after ready.
+          ...(environment === "staging" ? { timings: true } : {}),
         }),
       );
     });
@@ -179,6 +200,10 @@ maybe(
         const message = JSON.parse(event.data) as Record<string, any>;
         if (message.t === "error") {
           fail(speechRelayRefusal(message.code, message.reason));
+          return;
+        }
+        if (message.t === "timings") {
+          Object.assign(serverTimings, speechRelayPhases(message));
           return;
         }
         if (message.t === "ready") {
@@ -248,6 +273,8 @@ maybe(
           consentMs: Math.round(consentAt - started),
           sessionMs: Math.round(sessionAt - consentAt),
           wsReadyMs: Math.round(readyAt - socketStartedAt),
+          wsOpenMs: Math.round(socketOpenAt - socketStartedAt),
+          ...serverTimings,
           bootstrapMs: Math.round(readyAt - started),
           ttsStartupMs: Math.round(firstPcmAt - ttsRequestedAt),
           firstPcmMs: Math.round(firstPcmAt - started),
