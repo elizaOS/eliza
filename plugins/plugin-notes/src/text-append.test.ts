@@ -8,10 +8,10 @@ import {
   runWithTrajectoryContext,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { notesAction } from "./action.js";
-import { notesPlugin } from "./plugin.js";
 import { boundNotesRequest } from "./__tests__/helpers/bound-notes-request.ts";
+import { notesAction } from "./action.js";
 import { inferSelectedNotesUpdate } from "./native-note-update.js";
+import { notesPlugin } from "./plugin.js";
 import { NOTES_SERVICE_TYPE, NotesService } from "./service.js";
 import { NotesStore } from "./store.js";
 import { noteTextEditSchema } from "./types.js";

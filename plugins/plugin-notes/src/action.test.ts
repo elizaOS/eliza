@@ -1617,11 +1617,20 @@ describe("promoted Notes execution", () => {
             requestOperationIssuer: request.issuer,
           }),
         evaluate: ({ trajectory }) => {
-          const lastResult = trajectory.steps.at(-1)?.result;
+          const last = trajectory.steps.at(-1);
+          const lastResult = last?.result;
           // The host must first reject the unrelated completion and request
-          // another planning turn. Then the scripted judge ends honestly;
-          // it must not repeat a false FINISH until the continuation cap.
-          if (lastResult?.success && useModel.mock.calls.length > 2) {
+          // another planning turn. That turn is text-only, so the scripted
+          // judge then ends honestly on the saved retry's receipts; it must
+          // not repeat a false FINISH until the continuation cap.
+          const saved = trajectory.steps.findLast(
+            (step) => step.result?.success,
+          )?.result;
+          if (
+            (lastResult?.success || last?.terminalOnly) &&
+            saved &&
+            useModel.mock.calls.length > 2
+          ) {
             return parseEvaluatorOutput(
               JSON.stringify({
                 success: false,
@@ -1632,7 +1641,7 @@ describe("promoted Notes execution", () => {
                   "The first note could not be saved; the second note was saved.",
                 requestFullyCovered: false,
                 replyEffectStatus: "applied",
-                effectReceiptIds: lastResult.effectReceipts?.map(
+                effectReceiptIds: saved.effectReceipts?.map(
                   (receipt) => receipt.receiptId,
                 ),
               }),

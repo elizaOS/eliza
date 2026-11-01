@@ -13,12 +13,12 @@ import {
 import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, test } from "vitest";
 import { notesPlugin } from "../plugin.js";
+import { NotesService } from "../service.js";
+import { NotesStore } from "../store.js";
 import {
   boundNotesRequest,
   notesFixtureText,
 } from "./helpers/bound-notes-request.ts";
-import { NotesService } from "../service.js";
-import { NotesStore } from "../store.js";
 
 const runtimes: AgentRuntime[] = [];
 const directories: string[] = [];
