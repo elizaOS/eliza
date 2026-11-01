@@ -6,11 +6,13 @@ import {
   type ContentValue,
   extractUserText,
   type HandlerCallback,
+  hasDocumentAugmentationEnvelope,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
   type State,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePromptFromState } from "@elizaos/plugin-assistant/text/template-rendering";
@@ -102,6 +104,27 @@ function toCallbackData(
  * 2. Legacy direct actionParams/actionInput
  * 3. LLM extraction from conversation context
  */
+/**
+ * Fallback search query from a turn message: the user's words, not either
+ * envelope that can wrap them. `unwrapUserMessageText` strips the
+ * external-content armor (or yields "" for armor debris); the recalled
+ * `<contextual_documents>` block is then dropped before unwrapping the
+ * document-augmentation envelope, so a document quoting a `<user_request>`
+ * pair cannot stand in for the real request, and an envelope with no
+ * request yields "" instead of the whole envelope. An empty result falls
+ * through to the missing-query reply instead of searching warning words.
+ */
+const CONTEXTUAL_DOCUMENTS_BLOCK =
+  /<contextual_documents>[\s\S]*?<\/contextual_documents>/i;
+const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/i;
+
+export function resolveFallbackSearchQuery(message: Memory): string {
+  const raw = unwrapUserMessageText(message);
+  if (!hasDocumentAugmentationEnvelope(raw)) return extractUserText(raw);
+  const withoutDocuments = raw.replace(CONTEXTUAL_DOCUMENTS_BLOCK, "");
+  return withoutDocuments.match(USER_REQUEST_WRAPPER)?.[1]?.trim() ?? "";
+}
+
 async function extractSearchParams(
   runtime: IAgentRuntime,
   message: Memory,
@@ -185,8 +208,8 @@ async function extractSearchParams(
     );
   }
   // Final fallback: use the user's request text as the query, not the
-  // document-augmentation envelope around it
-  const messageText = extractUserText(message.content?.text ?? "");
+  // document-augmentation envelope or the external-content armor around it
+  const messageText = resolveFallbackSearchQuery(message);
   if (messageText) {
     logger.info(
       { src: "webSearch:extractParams", source: "messageText" },
