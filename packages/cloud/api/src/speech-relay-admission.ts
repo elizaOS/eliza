@@ -5,6 +5,7 @@
  */
 import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/cloud-shared/lib/pricing-constants";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/host/voice/cartesia-sonic-tts";
 import type { SpeechRelayCreditReservation } from "@elizaos/host/voice/speech-relay-session";
 import { SPEECH_RELAY_BUDGET } from "@elizaos/host/voice/speech-relay-session";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
@@ -46,7 +47,7 @@ export async function reserveSpeechRelayAdmission(input: {
             requestId: `speech:${sessionId}:${kind}`,
             provider: "cartesia",
             billingSource: "cartesia",
-            model: kind === "stt" ? "ink-2" : "sonic-3.5",
+            model: kind === "stt" ? "ink-2" : CARTESIA_SONIC_MODEL_ID,
             description: "Bounded streaming speech session",
           },
           apiKeyId: caller.apiKeyId,

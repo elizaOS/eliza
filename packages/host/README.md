@@ -97,6 +97,12 @@ must inject token verification, owner/session authorization, conversation scope,
 revocation and usage storage; importing these modules grants no authority or
 opens provider connections. Cloud retains its JWT and durable Redis policies.
 
+The shared Sonic TTS default is `sonic-3.6`, which follows Cartesia's stable
+3.6 snapshots. Cartesia documents it as fully compatible with Sonic 3.5;
+see the [model guide](https://docs.cartesia.ai/build-with-cartesia/tts-models/latest).
+Cloud synthesis, cache revisions and Cartesia usage records use that same default.
+This does not change explicit voice or other-provider model selections.
+
 Task gateways accept a trusted host `databaseProvider` with `open({path})` and
 `assertEncryption({db,path})`. `requireEncryptedDatabase: true` refuses startup
 unless the provider explicitly verifies the open connection before the gateway
