@@ -305,7 +305,7 @@ test("own inference prepares direct routing and retains independently admitted G
   });
   expect(JSON.stringify(f.state.config)).not.toContain("synthetic-");
   expect(f.state.routing).toMatchObject({
-    preferredProvider: { TEXT_SMALL: "cerebras", TEXT_LARGE: "cerebras" },
+    preferredProvider: { TEXT_SMALL: "openai", TEXT_LARGE: "openai" },
   });
   await host?.close();
   expect(f.env.ELIZA_MANAGED_CALENDAR_READ_BROKER).toBeUndefined();

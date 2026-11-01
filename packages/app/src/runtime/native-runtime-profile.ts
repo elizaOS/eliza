@@ -327,8 +327,9 @@ export async function applyNativeDirectRuntimeProfile(
     ...current,
     preferredProvider: {
       ...current.preferredProvider,
-      TEXT_SMALL: "cerebras",
-      TEXT_LARGE: "cerebras",
+      // Cerebras uses the OpenAI-compatible plugin's registered provider ID.
+      TEXT_SMALL: "openai",
+      TEXT_LARGE: "openai",
     },
     policy: {
       ...current.policy,
