@@ -152,11 +152,13 @@ and builds the bundle with that tree's Wrangler, always with `--config` of the
 admission configuration. It refuses to upload for the API's phases.
 `--bundle-sha256` must equal the bundle it builds. `--deploy` needs it and
 `--api-commit`, the commit the API serves now, which `$TIP` must have. Before
-the upload, the API commit's tree must validate as the step before (the live
-source predates the validator), and a live readback, with the readback's
-credentials, must prove that step fully rolled out: each Worker on one version
-at 100%, the API on `--api-commit` and, for phase 3, the target still on the
-phase 1 commit. A failed readback uploads nothing.
+the upload, the API commit's tree must validate as the step before. For phase
+1, whose live source predates the validator, the tool instead runs the
+audit's before-phase-1 check on the API commit against this runbook's chain,
+so a skipped audit cannot create the target. Then a live readback, with the
+readback's credentials, must prove that step fully rolled out: each Worker on
+one version at 100%, the API on `--api-commit` and, for phase 3, the target
+still on the phase 1 commit. A failed check or readback uploads nothing.
 
 ```bash
 bun $TIP/packages/cloud/scripts/production-admission-target-deploy.ts \
@@ -237,7 +239,8 @@ stops the transfer.
 4. Run the audit with `--commit source-owned=<commit the API serves>`.
    Expect no problems. A problem in its `before phase 1` entry means the
    frozen chain does not match the API's source: stop, then regenerate the
-   phase chain on the commit the API serves and have it reviewed again.
+   phase chain on the commit the API serves and have it reviewed again. The
+   phase 1 upload repeats this check on its `--api-commit`.
 5. Record the baseline as `R0.json`: `--phase source-owned --commit <commit
    the API serves>`, without `--previous`.
 6. Record the release's inputs. Take `since`, the `createdAt` of the latest
@@ -279,8 +282,9 @@ Durable Object binding. Wrangler warns that the top-level
 `INFERENCE_ADMISSION_GATES` is not on `env.production`; that is intended.
 Record the printed `bundleSHA256` as `H1`. Then upload with the same command,
 a new `--outdir`, `--bundle-sha256 H1 --deploy --api-commit <commit the API
-serves, as in R0>`. The tool first reads back `source-owned`: the target
-absent and the API on that commit.
+serves, as in R0>`. The tool first runs the before-phase-1 source check on
+that commit, then reads back `source-owned`: the target absent and the API on
+that commit.
 
 Record the pending-transfer receipt for `Nprod`. Read back `--phase
 target-pending --commit 42df2e14de66779ff02f67e0afd8216357989620 --previous

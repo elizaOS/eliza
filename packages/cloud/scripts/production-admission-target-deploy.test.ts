@@ -253,31 +253,55 @@ describe("an upload starts only from its live predecessor", () => {
     expect(uploads).toEqual([]);
   });
 
+  test("phase 1 runs the before-phase-1 source check on the API commit", () => {
+    // The live source predates the production validator; it must instead be
+    // the chain base's source.
+    const base = rows["source-owned"];
+    expect(() =>
+      requireApiPhase(deployOf("target-pending", base).predecessor, runbook),
+    ).not.toThrow();
+    // Phase 1's own tree carries other phase 2 path content than the base.
+    expect(() =>
+      requireApiPhase(deployOf("target-pending", PENDING).predecessor, runbook),
+    ).toThrow(
+      `API commit ${PENDING} does not match the phase chain; regenerate it:\n.github/workflows/cloud-tests.yml differs from the phase chain's base`,
+    );
+    // An API commit this checkout does not have stops before any readback.
+    expect(() =>
+      requireApiPhase(deployOf("target-pending").predecessor, runbook),
+    ).toThrow("git diff");
+  });
+
   test("the API commit must be a tree of the predecessor phase", () => {
-    // The live source predates the production validator.
     expect(() =>
-      requireApiPhase(deployOf("target-pending").predecessor),
+      requireApiPhase(
+        {
+          phase: "source-commit",
+          commits: { api: rows["source-commit"] },
+        },
+        runbook,
+      ),
     ).not.toThrow();
     expect(() =>
-      requireApiPhase({
-        phase: "source-commit",
-        commits: { api: rows["source-commit"] },
-      }),
-    ).not.toThrow();
-    expect(() =>
-      requireApiPhase({
-        phase: "source-commit",
-        commits: { api: PENDING },
-      }),
+      requireApiPhase(
+        {
+          phase: "source-commit",
+          commits: { api: PENDING },
+        },
+        runbook,
+      ),
     ).toThrow(
       `API commit ${PENDING} is not source-commit: error: Expected production admission phase source-commit, found target-pending`,
     );
     // Cloudflare cannot tell `adopted` from `reverse-pending`; the tree can.
     expect(() =>
-      requireApiPhase({
-        phase: "reverse-pending",
-        commits: { api: rows.adopted },
-      }),
+      requireApiPhase(
+        {
+          phase: "reverse-pending",
+          commits: { api: rows.adopted },
+        },
+        runbook,
+      ),
     ).toThrow(
       "Expected production admission phase reverse-pending, found adopted",
     );

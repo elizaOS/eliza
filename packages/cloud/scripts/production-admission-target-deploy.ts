@@ -11,6 +11,7 @@
  * bundle. Only `--deploy` uploads, publishing the commit as
  * ELIZA_DEPLOY_COMMIT and the version tag, and only after a live readback
  * proves the step before it fully rolled out, with the API on `--api-commit`.
+ * Phase 1 first runs the audit's before-phase-1 source check on that commit.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -20,6 +21,8 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
 import {
   commitFiles,
+  liveSourceFacts,
+  liveSourceProblems,
   runbookPhases,
   runValidator,
 } from "./production-admission-phase-audit.ts";
@@ -132,10 +135,21 @@ export function targetDeployPlan(input: {
  * The API commit must be a tree of the predecessor phase. Cloudflare shows
  * `adopted` and `reverse-pending` with the same bindings; only the API's
  * committed declaration tells them apart. The live source predates the
- * production validator.
+ * production validator, so before phase 1 the API commit must instead pass
+ * the audit's before-phase-1 source check against the runbook's chain: phase
+ * 1 cannot be undone with these tools.
  */
-export function requireApiPhase(predecessor: Predecessor) {
-  if (predecessor.phase === "source-owned") return;
+export function requireApiPhase(predecessor: Predecessor, runbook: string) {
+  if (predecessor.phase === "source-owned") {
+    const problems = liveSourceProblems(
+      liveSourceFacts(runbookPhases(runbook), predecessor.commits.api),
+    );
+    if (problems.length)
+      throw new Error(
+        `API commit ${predecessor.commits.api} does not match the phase chain; regenerate it:\n${problems.join("\n")}`,
+      );
+    return;
+  }
   const result = runValidator(commitFiles(predecessor.commits.api), [
     "--production",
     "--phase",
@@ -210,6 +224,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       )
     )
       throw new Error("The checkout has uncommitted changes");
+    const runbook = readFileSync(RUNBOOK, "utf8");
     const plan = targetDeployPlan({
       checkout,
       commit,
@@ -218,9 +233,9 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       deploy: values.deploy,
       apiCommit: values["api-commit"],
       runtime: process.execPath,
-      runbook: readFileSync(RUNBOOK, "utf8"),
+      runbook,
     });
-    if (plan.deploy) requireApiPhase(plan.deploy.predecessor);
+    if (plan.deploy) requireApiPhase(plan.deploy.predecessor, runbook);
     run(plan.validate, checkout);
     run(plan.dryRun, plan.cwd);
     const bundleSHA256 = createHash("sha256")
