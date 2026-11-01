@@ -702,8 +702,12 @@ async function __hono_POST(c: AppContext) {
       model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
       provider: "elevenlabs",
       billingSource: "elevenlabs",
+      // The admission gate refuses request ids over 128 characters. A UUID
+      // key with its utterance digest is 101 of them, past the 81 left after
+      // the prefix, so the id carries the digest of the key. The reservation
+      // key below stays the key itself.
       requestId: ttsIdempotencyKey
-        ? `voice-tts:${user.organization_id}:${ttsIdempotencyKey}`
+        ? `voice-tts:${user.organization_id}:${settlementDigest(ttsIdempotencyKey)}`
         : `voice-tts:${crypto.randomUUID()}`,
       affiliateCode: request.headers.get("X-Affiliate-Code"),
       description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
