@@ -50,6 +50,7 @@ import {
   getGenerativeExecutionContext,
   getGenerativePricingCacheOptions,
   requireGenerativeRouteCaller,
+  timeSpeechPhase,
 } from "@/api-app/lib/generative-route-auth";
 import {
   CartesiaRestTtsError,
@@ -222,7 +223,7 @@ async function __hono_POST(c: AppContext) {
   const requestStart = Date.now();
   const timings: TtsTimings = {};
   try {
-    const decodedRawBody = await decodeRequestJson(request);
+    const decodedRawBody = await timeSpeechPhase(c, "json_decode", () => decodeRequestJson(request));
     let pendingResponse: Response | undefined;
     let body: z.infer<typeof TtsBody> | undefined;
     if (!decodedRawBody.ok) {
