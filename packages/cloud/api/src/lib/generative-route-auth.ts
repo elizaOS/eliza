@@ -39,7 +39,7 @@ export interface GenerativeRouteCaller {
   apiKeyId: string | null;
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /** Strong proof that the next paid admission must consume atomically. */
+  /** Verified identity metadata; deferred callers must consume it at the paid admission boundary. */
   credential?: InferenceCredentialCheck;
   appScopeId: string | null;
 }
@@ -445,11 +445,13 @@ export async function requireGenerativeRouteCaller(
      * will thread the returned credential into that admission consumer.
      */
     deferStrongCredentialCheck?: boolean;
+    /** Bounded speech bootstrap may retain verified identity metadata, not a raw credential. */
+    includeVerifiedCredential?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const request = options.request ?? c.req.raw;
   const executionCtx = getGenerativeExecutionContext(c);
-  if (!executionCtx) {
+  if (!executionCtx && options.includeVerifiedCredential !== true) {
     if (options.compatibility === "raw") {
       const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
       return {
@@ -479,6 +481,7 @@ export async function requireGenerativeRouteCaller(
       cacheOnly: Boolean(executionCtx),
       executionCtx,
       inlineContinuationDeadlineMs: options.awaitWarmingMs,
+      includeVerifiedCredential: options.includeVerifiedCredential === true,
       ...(options.deferStrongCredentialCheck === true
         ? { deferStrongCredentialCheck: true }
         : {}),
