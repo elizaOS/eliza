@@ -11,6 +11,7 @@ function makeService() {
 		agentId: "00000000-0000-0000-0000-000000000001" as UUID,
 		ensureConnection: vi.fn(),
 		emitEvent: vi.fn(),
+		reportError: vi.fn(),
 		logger: { debug: vi.fn(), warn: vi.fn(), error: vi.fn() },
 	};
 	const service: ReactionServiceInternals = {
@@ -69,6 +70,19 @@ describe("handleReaction", () => {
 
 		expect(runtime.emitEvent.mock.calls[0][1].message.content.text).toBe(
 			'*Added <⏳> to: "ship it"*',
+		);
+	});
+
+	it("reports a reaction listener failure instead of dropping it", async () => {
+		const { runtime, service } = makeService();
+		runtime.emitEvent.mockRejectedValueOnce(new Error("listener boom"));
+
+		await handleReaction(service, reaction, reactor(false), "add");
+
+		expect(runtime.reportError).toHaveBeenCalledWith(
+			"discord:emit-event",
+			expect.any(Error),
+			expect.objectContaining({ accountId: "default" }),
 		);
 	});
 });
