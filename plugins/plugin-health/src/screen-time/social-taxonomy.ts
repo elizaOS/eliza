@@ -99,7 +99,7 @@ const SOCIAL_RULES: SocialRule[] = [
     service: "facebook",
     label: "Facebook",
     category: "social",
-    patterns: ["facebook", "messenger"],
+    patterns: ["facebook"],
   },
   {
     service: "linkedin",
@@ -142,6 +142,15 @@ const SOCIAL_RULES: SocialRule[] = [
     label: "WhatsApp",
     category: "communication",
     patterns: ["whatsapp"],
+  },
+  // "messenger" is also a word in other apps' ids (Telegram for Android is
+  // org.telegram.messenger), so it names Facebook Messenger only when no
+  // other service matched first.
+  {
+    service: "facebook",
+    label: "Facebook",
+    category: "social",
+    patterns: ["messenger"],
   },
 ];
 
