@@ -461,6 +461,31 @@ function requestSignal(timeoutMs) {
   return timeoutMs > 0 ? AbortSignal.timeout(timeoutMs) : undefined;
 }
 
+const GATEWAY_WARMING_MAX_RETRIES = 4;
+const GATEWAY_WARMING_MAX_WAIT_MS = 2_000;
+
+/** Delay before retrying a structured gateway warming refusal, else null. */
+async function gatewayWarmingDelayMs(target, response) {
+  if (target !== "gateway" || response.status !== 503) return null;
+  let body;
+  try {
+    body = await response.clone().json();
+  } catch {
+    // error-policy:J3 a non-JSON 503 is a real failure, not warming.
+    return null;
+  }
+  const code = body?.error?.code ?? body?.code;
+  const warming =
+    (typeof code === "string" && code.endsWith("_cache_warming")) ||
+    code === "inference_admission_unavailable" ||
+    (code === "service_unavailable" && body?.details?.retryable === true);
+  if (!warming) return null;
+  const retryAfter = Number(response.headers.get("retry-after"));
+  const delayMs =
+    Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : 1000;
+  return Math.min(delayMs, GATEWAY_WARMING_MAX_WAIT_MS);
+}
+
 export async function probeOpenAi({
   target,
   probeCase,
@@ -484,22 +509,38 @@ export async function probeOpenAi({
   const url = `${root + (target === "direct" ? "/v1" : "/api/v1")}/chat/completions`;
   const startedAt = performance.now();
   let response;
+  let warmingRetries = 0;
   try {
-    response = await fetchImpl(url, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-        Accept: "text/event-stream",
-        "X-Eliza-Trace-Id": traceId,
-        "X-Eliza-Telemetry": "full",
-        "User-Agent": "eliza-chat-latency/1.0",
-      },
-      body: JSON.stringify(
-        buildOpenAiRequestBody(probeCase, prompt, promptCacheKey),
-      ),
-      signal: requestSignal(timeoutMs),
-    });
+    const send = () =>
+      fetchImpl(url, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+          Accept: "text/event-stream",
+          "X-Eliza-Trace-Id": traceId,
+          "X-Eliza-Telemetry": "full",
+          "User-Agent": "eliza-chat-latency/1.0",
+        },
+        body: JSON.stringify(
+          buildOpenAiRequestBody(probeCase, prompt, promptCacheKey),
+        ),
+        signal: requestSignal(timeoutMs),
+      });
+    response = await send();
+    // The gateway decides from caches only; an entry still hydrating answers
+    // with a structured retryable 503 that the Eliza Cloud client retries.
+    // Retry it the same way, keep timing from the first attempt so cold cost
+    // stays visible, and record how many refusals the request absorbed.
+    for (
+      let delayMs = await gatewayWarmingDelayMs(target, response);
+      delayMs !== null && warmingRetries < GATEWAY_WARMING_MAX_RETRIES;
+      delayMs = await gatewayWarmingDelayMs(target, response)
+    ) {
+      warmingRetries += 1;
+      await new Promise((resolve) => setTimeout(resolve, delayMs));
+      response = await send();
+    }
   } catch (error) {
     return {
       ...baseRecord(target, sequence, metadata),
@@ -527,6 +568,7 @@ export async function probeOpenAi({
       maxTokens: probeCase.maxTokens,
       traceId: response.headers.get("x-eliza-trace-id") || traceId,
       status: response.status,
+      warmingRetries,
       responseHeadersMs,
       totalMs: round(performance.now() - startedAt),
       headers,
@@ -551,6 +593,7 @@ export async function probeOpenAi({
     reasoningEffort: probeCase.reasoningEffort,
     maxTokens: probeCase.maxTokens,
     status: response.status,
+    warmingRetries,
     traceId: response.headers.get("x-eliza-trace-id") || traceId,
     responseHeadersMs,
     firstEventMs: stream.firstEventMs,
