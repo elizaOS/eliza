@@ -34,7 +34,6 @@ import {
   getCloudFirstLineCacheService,
   shouldBypassCloudFirstLineCache,
 } from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
-import { assertSafeTtsText } from "@elizaos/cloud-shared/lib/services/tts-safety-cache";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { decodeRequestJson } from "@elizaos/cloud-shared/lib/utils/json-parsing";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
@@ -123,8 +122,6 @@ interface TtsTimings {
   authMs?: number;
   admissionMs?: number;
   synthesisMs?: number;
-  moderationMs?: number;
-  moderation?: "reviewed" | "approved-hit";
 }
 function buildTtsObservabilityHeaders(
   provider: TtsProvider,
@@ -138,15 +135,9 @@ function buildTtsObservabilityHeaders(
     timings.synthesisMs !== undefined
       ? `synthesis;dur=${timings.synthesisMs}`
       : null,
-    timings.moderationMs !== undefined
-      ? `moderation;dur=${timings.moderationMs}`
-      : null,
   ].filter((entry): entry is string => entry !== null);
   return {
     "X-Eliza-TTS-Provider": provider,
-    ...(timings.moderation
-      ? { "X-Eliza-TTS-Moderation": timings.moderation }
-      : {}),
     ...(serverTiming.length > 0
       ? { "Server-Timing": serverTiming.join(", ") }
       : {}),
@@ -354,35 +345,6 @@ async function __hono_POST(c: AppContext) {
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
     // different codec); billing/usage are identical to the MP3 path.
     const wantWav = body.format === "wav";
-    const moderationStarted = performance.now();
-    const moderation = await assertSafeTtsText(
-      {
-        surface: "media_generation_prompt",
-        organizationId: user.organization_id,
-        userId: user.id,
-        text: [
-          `TTS text: ${text}`,
-          ...(body.previousText !== undefined
-            ? [`Previous context: ${body.previousText}`]
-            : []),
-          ...(body.nextText !== undefined
-            ? [`Next context: ${body.nextText}`]
-            : []),
-        ].join("\n"),
-        metadata: {
-          type: "tts",
-          model: modelId || "eleven_flash_v2_5",
-          voiceId,
-        },
-      },
-      (task) => {
-        const ctx = getGenerativeExecutionContext(c);
-        if (ctx) ctx.waitUntil(task);
-        else void task;
-      },
-    );
-    timings.moderation = moderation;
-    timings.moderationMs = Math.round(performance.now() - moderationStarted);
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
