@@ -906,19 +906,10 @@ async function opCreate(
     tags: [...TRIGGER_TASK_TAGS],
     agentIds: [runtime.agentId],
   });
-  const ownedActive = existingTasks.filter((t) => {
-    const cfg = readTriggerConfig(t);
-    return cfg?.enabled && cfg.createdBy === creatorId;
-  });
-  if (ownedActive.length >= MAX_TRIGGERS_PER_CREATOR) {
-    return failed(
-      "create",
-      `Trigger limit reached (${MAX_TRIGGERS_PER_CREATOR}).`,
-      "LIMIT_REACHED",
-    );
-  }
-
   // Match the complete request and creator before replaying a committed receipt.
+  // The match runs before the cap check below on purpose: the existing
+  // trigger already counts toward the cap, and a replay creates nothing, so
+  // the limit must not answer for a reminder that is already set.
   // A relative-delay key names the delay, not the fire time, so it is a replay
   // only while the stored fire time is within the retry window: the same "in
   // 1 hour" asked 40 minutes later is a new reminder.
@@ -950,6 +941,18 @@ async function opCreate(
         replayed: true,
       }),
       { duplicateTaskId: exactDuplicate.id, dedupeKey },
+    );
+  }
+
+  const ownedActive = existingTasks.filter((t) => {
+    const cfg = readTriggerConfig(t);
+    return cfg?.enabled && cfg.createdBy === creatorId;
+  });
+  if (ownedActive.length >= MAX_TRIGGERS_PER_CREATOR) {
+    return failed(
+      "create",
+      `Trigger limit reached (${MAX_TRIGGERS_PER_CREATOR}).`,
+      "LIMIT_REACHED",
     );
   }
   // A trigger with a workflowId dispatches that workflow; without one it is a
