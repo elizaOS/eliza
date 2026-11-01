@@ -93,6 +93,16 @@ export default defineConfig({
         ),
       },
       {
+        find: /^@elizaos\/contracts\/stated-clock-time$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages",
+          "contracts",
+          "src",
+          "stated-clock-time.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/plugin-google-workspace$/,
         replacement: path.join(pluginGoogleSrc, "index.ts"),
       },
