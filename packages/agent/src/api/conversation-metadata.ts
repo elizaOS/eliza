@@ -124,8 +124,29 @@ export function sanitizeConversationMetadata(
   return Object.keys(next).length > 0 ? next : undefined;
 }
 
+/**
+ * Room-metadata key holding when the conversation was created. Rooms carry no
+ * creation time, so without it a restart could only date an empty
+ * conversation as "now" and float it above newer activity.
+ */
+const CONVERSATION_CREATED_AT_KEY = "webConversationCreatedAt";
+
+function asIsoTimestamp(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  return Number.isFinite(Date.parse(value)) ? value : undefined;
+}
+
+/** The creation time recorded on a conversation room, if any. */
+export function extractConversationCreatedAtFromRoom(
+  room: Pick<Room, "metadata"> | null | undefined,
+): string | undefined {
+  return asIsoTimestamp(
+    asRecord(room?.metadata)?.[CONVERSATION_CREATED_AT_KEY],
+  );
+}
+
 export function buildConversationRoomMetadata(
-  conversation: Pick<ConversationMeta, "id" | "metadata">,
+  conversation: Pick<ConversationMeta, "id" | "metadata" | "createdAt">,
   ownerId: string,
   existingMetadata?: unknown,
 ): RoomMetadataRecord {
@@ -135,6 +156,13 @@ export function buildConversationRoomMetadata(
     ...base,
     ownership: { ownerId },
   };
+  // The first recorded creation time wins; later syncs never move it.
+  const createdAt =
+    asIsoTimestamp(base[CONVERSATION_CREATED_AT_KEY]) ??
+    asIsoTimestamp(conversation.createdAt);
+  if (createdAt) {
+    next[CONVERSATION_CREATED_AT_KEY] = createdAt;
+  }
 
   if (sanitized) {
     next.webConversation = {
