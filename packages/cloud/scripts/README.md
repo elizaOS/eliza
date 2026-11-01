@@ -5,13 +5,16 @@ workspace imports locally so they do not invalidate unrelated build caches.
 Invoke operations through their documented root commands; run the script test
 lane with `bun run test:scripts` from the repository root.
 
-The Pages release reads the protected environment variable
+The protected Pages configuration preflight reads the environment variable
 `ELIZA_NATIVE_AUTH_CALLBACKS_JSON` (with a same-name secret fallback). Its value
 is a JSON array of `{ "redirectUri", "androidPackage", "appName" }` objects.
 Use exact HTTPS callbacks on that environment's canonical app or marketing
 origin. The existing native callback contract rejects unknown fields, duplicate
 URLs and protocol/asset routes. `[]` explicitly removes all native fallbacks;
-an absent value preserves the selected live Pages callback binding.
+an absent value preserves the selected live Pages callback binding. The
+preflight passes only the validated public fields to the deployment job. A
+configured value that GitHub masks or fails to transfer stops deployment;
+use the environment variable for this public configuration.
 `build-pages` bundles `pages-native-auth-callbacks.ts` into the immutable Pages
 artifact so the deployment job needs no installed workspace dependencies.
 The helper copies the canonical Pages configuration into a
