@@ -24,8 +24,9 @@ import {
 } from "../v1/voice/session/lib/provider-socket-factory";
 import { resolveCartesiaVoiceId } from "../v1/voice/tts/provider-selection";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
-import { reserveSpeechRelayCredits } from "./speech-relay-admission";
+import { reserveSpeechRelayAdmission } from "./speech-relay-admission";
 import { speechRelayInkFactory } from "./speech-relay-ink";
+import { subscribeSpeechRevocation } from "./speech-revocation-subscription";
 
 export interface SpeechRelayBootstrap {
   sessionId: string;
@@ -51,6 +52,7 @@ export class SpeechRelayCoordinator {
   private closeTask?: Promise<void>;
   private tts?: CartesiaSonicTtsAdapter;
   private stopped = false;
+  private unsubscribeRevocation?: () => void;
   constructor(
     private state: DurableObjectState,
     private env: AppEnv["Bindings"],
@@ -93,6 +95,8 @@ export class SpeechRelayCoordinator {
           try {
             await this.relay?.close();
           } finally {
+            this.unsubscribeRevocation?.();
+            this.unsubscribeRevocation = undefined;
             this.tts?.close();
             this.socket?.close(1000, "Speech session closed");
             const ledger = await this.load();
@@ -295,6 +299,21 @@ export class SpeechRelayCoordinator {
           throw Error("Speech provider configuration unavailable");
         const usageStore = createDurableVoiceUsageStore(this.env);
         if (!usageStore) throw Error("Durable voice quota unavailable");
+        let retireSpeech = () => {
+          void this.close();
+        };
+        this.unsubscribeRevocation = await subscribeSpeechRevocation(
+          this.env,
+          ledger.caller,
+          ledger.expiresAt,
+          () => {
+            try {
+              this.send({ t: "error", code: "unauthorized" });
+            } catch {}
+            retireSpeech();
+          },
+        );
+        this.current();
         let ready = false;
         const events: unknown[] = [];
         this.tts = new CartesiaSonicTtsAdapter({
@@ -326,7 +345,7 @@ export class SpeechRelayCoordinator {
             usageStore,
             usageLimits: resolveVoiceUsageLimits(this.env),
             reserveCredits: () =>
-              reserveSpeechRelayCredits({
+              reserveSpeechRelayAdmission({
                 caller: ledger.caller,
                 sessionId: ledger.sessionId,
                 usdPerCredit: price,
@@ -334,9 +353,12 @@ export class SpeechRelayCoordinator {
                   waitUntil: (task) => this.state.waitUntil(task),
                 },
               }),
-            // The capability lasts <=60s and has an exact owner-scoped revoke route.
-            // No per-frame identity reads or long-lived copied bearer credential.
-            subscribeRevoked: () => () => {},
+            // The internal organization-DO socket closes on revocation or loss.
+            // Its callback stops this session; no per-frame identity read occurs.
+            subscribeRevoked: (_identity, revoke) => {
+              retireSpeech = revoke;
+              return () => this.unsubscribeRevocation?.();
+            },
             assertTtsAllowed: async (text) => {
               await assertSafeTtsText(
                 {

@@ -79,15 +79,19 @@ and `/session/:sessionId/revoke` under that prefix. Enable only after qualifying
 `VOICE_SPEECH_RELAY_ENABLED=true` and the `SPEECH_RELAY_SESSIONS` binding. This
 does not move an agent, its model calls, tools, or history to Cloud. The scoped,
 single-use capability expires 60 seconds after mint. Clients must close/revoke
-it when the account changes and renew it explicitly after expiry. Remote account
-or API-key revocation does not push-close an active lease. The explicit session
-revoke route, socket close, and expiry stop it. Do not enable this scope where
-instant remote revocation is required without a revocation push subscription.
+it when the account changes and renew it explicitly after expiry. An internal
+WebSocket subscribes to the existing organization revocation authority. API-key,
+account, membership, session, and organization revocations close matching speech
+sessions. Losing that internal socket also stops speech; no polling is required.
+The speech flag enables these existing lifecycle writes without changing the
+general inference authorization or snapshot-admission flags.
 
 One Durable Object owns each session. It admits the server-enforced budget at
 bootstrap: 60 seconds of 16 kHz mono PCM16 input and 4096 TTS characters. Audio
 frames and TTS phrases do not query the database or repeat account/credit
-admission. Existing durable inference leases retain uncertain provider costs
+admission. The canonical inference service uses monthly subscription allowance first for
+subscribers; internal provider-cost reservation does not require prepaid user
+credits. Existing durable inference leases retain uncertain provider costs
 after interruption or a crash. Both STT and TTS reservations are marked dispatched
 at bootstrap before any provider opens. A crash can therefore retain the full
 reservation, including unused TTS; confirmed close reconciles actual usage.
@@ -95,11 +99,19 @@ reservation, including unused TTS; confirmed close reconciles actual usage.
 rate; streaming Ink-2 costs three credits per input second and Sonic one credit
 per character. Bootstrap and final accounting can access the primary store.
 Other inference and legacy batch speech routes retain their own admission paths.
+Staging uses an explicit `CARTESIA_STT_USD_PER_CREDIT=0.000065` estimate: the highest
+published self-serve overage rate ($65 per million provider credits) in the
+[pricing page](https://www.cartesia.ai/pricing) and
+[pricing documentation](https://docs.cartesia.ai/pricing), checked 2026-11-01.
+This is an estimate for staging validation, not an assertion about a private
+invoice. Production retains its existing configured account rate.
 
 The speech-only Ink profile uses responsive thresholds and a 1280 ms final-turn
 timeout. `VOICE_SPEECH_END_TIMEOUT_MS` can select an integer clamped to 640–5000
 ms. Eager-end remains a distinct event; it is never promoted to a final transcript.
-Positive text moderation receipts use a 60-second, exact-input cache bound to
+The streaming route bypasses the legacy SQL audio cache and does not replay
+cached PCM. Its cache stores positive moderation verdicts, not synthesized
+audio. Positive text moderation receipts use a 60-second, exact-input cache bound to
 the tenant, model, policy revision and moderation credential. Skipped, warned,
 degraded, or failed checks never enter that cache. Change
 `CONTENT_SAFETY_POLICY_REVISION` when deployment policy changes.

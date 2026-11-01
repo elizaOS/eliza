@@ -213,7 +213,13 @@ async function commitMutation(
   path: string,
   body: Record<string, unknown>,
 ): Promise<void> {
-  if (!isInferenceStrongRevocationEnabled()) return;
+  // Speech subscriptions share these authoritative lifecycle fences even when
+  // general inference keeps its current admission settings.
+  if (
+    !isInferenceStrongRevocationEnabled() &&
+    getCloudAwareEnv().VOICE_SPEECH_RELAY_ENABLED !== "true"
+  )
+    return;
   const result = await gateRequest(organizationId, path, body, "mutation");
   if (result.committed !== true) {
     throw new InferenceCredentialRevocationUnavailableError(

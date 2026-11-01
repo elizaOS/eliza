@@ -1,4 +1,8 @@
-/** One paid admission for the bounded speech-only session. No per-frame DB work. */
+/** Canonical subscription/usage admission for one bounded speech session.
+ * Provider USD estimates do not require prepaid user credits: the common
+ * admission service uses monthly subscription allowance first when applicable.
+ * No per-frame database or funding work occurs.
+ */
 import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/cloud-shared/lib/pricing-constants";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import type { SpeechRelayCreditReservation } from "@elizaos/host/voice/speech-relay-session";
@@ -12,7 +16,7 @@ const round = (value: number) =>
  * The account's USD/credit is deployment-owned, just as on batch Cartesia STT.
  * https://www.cartesia.ai/pricing
  */
-export async function reserveSpeechRelayCredits(input: {
+export async function reserveSpeechRelayAdmission(input: {
   caller: GenerativeRouteCaller;
   sessionId: string;
   usdPerCredit: number;

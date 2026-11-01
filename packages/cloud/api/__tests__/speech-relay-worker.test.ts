@@ -12,6 +12,18 @@ const bootstrap=(name)=>{const s=stats();if(s.locked)throw Error('DB/auth/admiss
 beforeAll(async () => {
   const sources: Array<[RegExp, string]> = [
     [
+      /\/inference-admission-recovery\.ts$/,
+      `export async function recoverExpiredInferenceAdmissionLease(){throw Error("Unexpected recovery");}`,
+    ],
+    [
+      /\/maps-request-allowance-controller\.ts$/,
+      `export class MapsRequestAllowanceController {}`,
+    ],
+    [
+      /\/inference-funded-budget-controller\.ts$/,
+      `export class InferenceFundedBudgetController { constructor(){ throw Error("Unused budget controller"); } }`,
+    ],
+    [
       /\/services\/credits\.ts$/,
       `export class InsufficientCreditsError extends Error {}`,
     ],
@@ -53,7 +65,7 @@ beforeAll(async () => {
     ],
     [
       /\/voice\/cartesia-ink\.ts$/,
-      `${common} export function createCartesiaInkRealtimeSession({onEvent}){let bytes=0;stats().sttOpened=(stats().sttOpened??0)+1;return {sendAudioChunk(chunk){bytes+=chunk.byteLength;stats().pcmBytes=bytes;onEvent({type:'transcript-update',transcript:'hello'});},cancel(){stats().sttCancelled=true;},async drain(){return {source:'provider-graceful-close',audioBytes:bytes,sampleRate:16000,channels:1,encoding:'pcm_s16le'};}};}`,
+      `${common} export function createCartesiaInkRealtimeSession({onEvent}){let bytes=0;stats().sttOpened=(stats().sttOpened??0)+1;return {sendAudioChunk(chunk){bytes+=chunk.byteLength;stats().pcmBytes=bytes;onEvent({type:'transcript-update',transcript:'hello'});},cancel(){stats().sttCancelled=true;},async drain(){stats().sttDrained=true;stats().sttDrains=(stats().sttDrains??0)+1;return {source:'provider-graceful-close',audioBytes:bytes,sampleRate:16000,channels:1,encoding:'pcm_s16le'};}};}`,
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
@@ -74,6 +86,14 @@ beforeAll(async () => {
       {
         name: "speech-external-boundaries",
         setup(build) {
+          build.onResolve({ filter: /^@elizaos\/core$/ }, () => ({
+            path: "speech-test-core",
+            namespace: "speech-test",
+          }));
+          build.onLoad({ filter: /.*/, namespace: "speech-test" }, () => ({
+            loader: "js",
+            contents: "export class ElizaError extends Error {}",
+          }));
           for (const [filter, contents] of sources)
             build.onLoad({ filter }, () => ({ loader: "js", contents }));
         },
@@ -89,9 +109,14 @@ beforeAll(async () => {
     compatibilityFlags: ["nodejs_compat"],
     durableObjects: {
       SESSIONS: { className: "TestSpeechRelayCoordinator", useSQLite: true },
+      INFERENCE_ADMISSION_GATES: {
+        className: "InferenceAdmissionGate",
+        useSQLite: true,
+      },
     },
     bindings: {
       VOICE_SPEECH_RELAY_ENABLED: "true",
+      INFERENCE_STRONG_REVOCATION_ENABLED: "false",
       CARTESIA_API_KEY: "test-provider-boundary",
       VOICE_REALTIME_CARTESIA_VOICE_ID: "test",
       CARTESIA_STT_USD_PER_CREDIT: "0.00004",
@@ -151,6 +176,11 @@ test("ready speech streams PCM and multiple TTS contexts without another DB/auth
           apiKeyId: null,
           authSource: "combined_cache",
           appScopeId: null,
+          credential: {
+            kind: "api_key",
+            credentialId: "test-key",
+            userId: account.id,
+          },
         },
       })
     ).status,
@@ -281,6 +311,11 @@ test("a refused credit reservation preserves the allowlisted recovery reason bef
       apiKeyId: null,
       authSource: "combined_cache",
       appScopeId: null,
+      credential: {
+        kind: "api_key",
+        credentialId: "test-key",
+        userId: account.id,
+      },
     },
   });
   const baseline = (await (await request("/test-decline")).json()) as Record<
@@ -327,6 +362,11 @@ test("legacy speech clients receive no unnegotiated billing reason", async () =>
         apiKeyId: null,
         authSource: "combined_cache",
         appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
       },
     }),
   });
@@ -344,4 +384,160 @@ test("legacy speech clients receive no unnegotiated billing reason", async () =>
   const refused = next(socket as any, (value) => value.t === "error");
   socket.send(JSON.stringify({ t: "hello", token }));
   expect(await refused).toEqual({ t: "error", code: "unavailable" });
+});
+
+test("authoritative org, API-key and session-cutoff revocations stop active speech through the internal socket", async () => {
+  const cases = [
+    {
+      name: "org-disable",
+      activeTts: false,
+      path: "/organization/set-active",
+      mutation: { active: false },
+      credential: {
+        kind: "api_key",
+        credentialId: "org-key",
+        userId: account.id,
+      },
+    },
+    {
+      name: "api-revoke",
+      activeTts: true,
+      path: "/credential/revoke",
+      mutation: { kind: "api_key", credentialId: "revoked-key" },
+      credential: {
+        kind: "api_key",
+        credentialId: "revoked-key",
+        userId: account.id,
+      },
+    },
+    {
+      name: "session-cutoff",
+      activeTts: false,
+      path: "/session/revoke-through",
+      mutation: { userId: account.id, issuedAt: 1000 },
+      credential: {
+        kind: "steward_session",
+        userId: account.id,
+        stewardUserId: "steward-test",
+        issuedAt: 1000,
+      },
+    },
+  ];
+  for (const [index, entry] of cases.entries()) {
+    const organizationId = `99999999-9999-4999-8999-99999999999${index}`;
+    const headers = {
+      "x-test-session": entry.name,
+      "Content-Type": "application/json",
+    };
+    const token = `${entry.name}-capability`;
+    const request = (path: string, body?: unknown) =>
+      worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+        method: body === undefined ? "GET" : "POST",
+        headers,
+        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      });
+    await request("/test-allow-admission");
+    await request("/initialize", {
+      sessionId: `77777777-7777-4777-8777-77777777777${index}`,
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: Date.now() + 60000,
+      caller: {
+        user: { ...account, organization_id: organizationId },
+        apiKeyId:
+          entry.credential.kind === "api_key"
+            ? entry.credential.credentialId
+            : null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: entry.credential,
+      },
+    });
+    const upgraded = await worker.dispatchFetch(
+      "https://speech-relay.internal/ws",
+      { headers: { ...headers, Upgrade: "websocket" } },
+    );
+    const socket = upgraded.webSocket!;
+    socket.accept();
+    const ready = next(socket as any, (value) => value.t === "ready");
+    socket.send(JSON.stringify({ t: "hello", token }));
+    await ready;
+    const transcript = next(socket as any, (value) => value.t === "stt");
+    socket.send(new Uint8Array(3200));
+    await transcript;
+    if (entry.activeTts) {
+      const prepared = next(
+        socket as any,
+        (value) => value.t === "tts_prepared",
+      );
+      socket.send(
+        JSON.stringify({
+          t: "tts",
+          id: "active",
+          text: "A finalized reply in progress.",
+          flush: true,
+        }),
+      );
+      await prepared;
+    }
+    const before = (await (await request("/test-stats")).json()) as Record<
+      string,
+      number
+    >;
+    const closed = new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(
+        () => reject(Error("Revoked speech socket remained open")),
+        3000,
+      );
+      socket.addEventListener(
+        "close",
+        () => {
+          clearTimeout(timer);
+          resolve();
+        },
+        { once: true },
+      );
+    });
+    const denied = next(socket as any, (value) => value.t === "error");
+    const mutation = await worker.dispatchFetch(
+      `https://speech-relay.internal/test-lifecycle`,
+      {
+        method: "POST",
+        headers: {
+          "x-test-org": organizationId,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          path: entry.path,
+          organizationId,
+          ...entry.mutation,
+        }),
+      },
+    );
+    expect(mutation.status).toBe(200);
+    expect(await denied).toEqual({ t: "error", code: "unauthorized" });
+    await closed;
+    const stats = (await (await request("/test-stats")).json()) as Record<
+      string,
+      unknown
+    >;
+    expect(stats.sttDrains).toBe((before.sttDrains ?? 0) + 1);
+    if (entry.activeTts) expect(stats.ttsCancelled).toBe(true);
+    // The durable fence rejects a new subscription even if the old capability
+    // remains within its 60-second wall-clock lifetime.
+    const retry = await worker.dispatchFetch(
+      "https://speech-relay.internal/test-gate/speech/subscribe",
+      {
+        headers: {
+          "x-test-org": organizationId,
+          Upgrade: "websocket",
+          "X-Eliza-Speech-Identity": JSON.stringify({
+            organizationId,
+            credential: entry.credential,
+            expiresAt: Date.now() + 30000,
+          }),
+        },
+      },
+    );
+    expect(retry.status).toBe(403);
+  }
 });

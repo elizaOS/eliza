@@ -30,9 +30,12 @@ app.post("/consent", async (c) => {
 });
 app.post("/session", async (c) => {
   const caller = await requireGenerativeRouteCaller(c, {
+    includeVerifiedCredential: true,
     rateLimitEndpoint: "strict",
     awaitWarmingMs: 1500,
   });
+  if (!caller.credential)
+    return c.json({ error: "speech_identity_unavailable" }, 403);
   let body: unknown;
   try {
     body = await c.req.json();
@@ -53,7 +56,13 @@ app.post("/session", async (c) => {
     return c.json({ error: "speech_consent_required" }, 403);
   const sessionId = crypto.randomUUID(),
     token = randomBytes(32).toString("base64url"),
-    expiresAt = Date.now() + 60000;
+    expiresAt = Math.min(
+      Date.now() + 60000,
+      caller.credential.kind === "api_key" &&
+        caller.credential.expiresAt != null
+        ? caller.credential.expiresAt
+        : Number.POSITIVE_INFINITY,
+    );
   const result = await c.env
     .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
     .fetch("https://speech-relay.internal/initialize", {
