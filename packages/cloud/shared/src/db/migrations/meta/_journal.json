@@ -3662,6 +3662,13 @@
       "when": 1796083200170,
       "tag": "0552_inference_rate_policy_fences",
       "breakpoints": true
+    },
+    {
+      "idx": 523,
+      "version": "7",
+      "when": 1796083200171,
+      "tag": "0553_inference_policy_snapshot_fence",
+      "breakpoints": true
     }
   ]
 }

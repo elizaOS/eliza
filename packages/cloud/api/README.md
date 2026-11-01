@@ -17,6 +17,22 @@ Worker and accounting hosts. Enroll an organization through the internal
 All policy writers must use the managed mutation service; the database rejects
 an unfenced change for an enrolled organization.
 
+Migration 0553 also rejects an unfenced policy write in a repeatable-read or
+serializable transaction with SQLSTATE `40001`. Restart that whole transaction
+at `READ COMMITTED`, or obtain a valid managed mutation permit in the same
+transaction for an organization-specific write. User standing and identity
+changes always need `READ COMMITTED`: an older snapshot can hide a newly issued
+key and its organization, even when every visible organization has a permit.
+An older snapshot can also hide first enrollment after an advisory lock;
+locking a missing authority row cannot make that snapshot current. PostgreSQL
+treats `READ UNCOMMITTED` as `READ COMMITTED`, so the guard accepts it too.
+Key association writes take shared user locks; standing and identity writes
+hold the same locks exclusively while discovering affected organizations.
+Canonical helpers acquire user locks before organization locks. Direct SQL
+that takes these locks in another order can be retried after a deadlock; it
+cannot skip the policy fence. Enroll a deployment only after its key and user
+policy writers use the managed mutation helpers.
+
 Bounded, direct Cerebras chat requests use the delegated path. The refill amount
 is a target, not a request limit: a larger request can claim the full available
 balance. Other operations retain primary admission and can reclaim idle funds.

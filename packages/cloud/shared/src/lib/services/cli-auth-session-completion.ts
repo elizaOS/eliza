@@ -7,6 +7,7 @@ import { encryptApiKey } from "../../db/crypto/api-keys";
 import { type ApiKey, apiKeys, type NewApiKey } from "../../db/schemas/api-keys";
 import { type CliAuthSession, cliAuthSessions } from "../../db/schemas/cli-auth-sessions";
 import { apiKeysService } from "./api-keys";
+import { withInferencePolicyMutation } from "./inference-policy-fence";
 
 interface CompletionState {
   session: CliAuthSession;
@@ -64,54 +65,57 @@ export class CliAuthSessionCompletionService {
     const { apiKey } = await this.prepareApiKey(params.userId, params.organizationId);
     const now = new Date();
 
-    return await dbWrite.transaction(async (tx) => {
-      const [claimedSession] = await tx
-        .update(cliAuthSessions)
-        .set({
-          status: "authenticated",
-          user_id: params.userId,
-          api_key_id: apiKey.id,
-          authenticated_at: now,
-          updated_at: now,
-        })
-        .where(
-          and(
-            eq(cliAuthSessions.session_id, params.sessionId),
-            eq(cliAuthSessions.status, "pending"),
-            gt(cliAuthSessions.expires_at, now),
-          ),
-        )
-        .returning();
+    return await withInferencePolicyMutation(
+      { organizationIds: [params.organizationId], userLockIds: [params.userId] },
+      async (tx) => {
+        const [claimedSession] = await tx
+          .update(cliAuthSessions)
+          .set({
+            status: "authenticated",
+            user_id: params.userId,
+            api_key_id: apiKey.id,
+            authenticated_at: now,
+            updated_at: now,
+          })
+          .where(
+            and(
+              eq(cliAuthSessions.session_id, params.sessionId),
+              eq(cliAuthSessions.status, "pending"),
+              gt(cliAuthSessions.expires_at, now),
+            ),
+          )
+          .returning();
 
-      if (!claimedSession) {
-        const [currentSession] = await tx
-          .select()
-          .from(cliAuthSessions)
-          .where(eq(cliAuthSessions.session_id, params.sessionId))
-          .limit(1);
-        const [currentApiKey] = currentSession?.api_key_id
-          ? await tx
-              .select()
-              .from(apiKeys)
-              .where(eq(apiKeys.id, currentSession.api_key_id))
-              .limit(1)
-          : [];
+        if (!claimedSession) {
+          const [currentSession] = await tx
+            .select()
+            .from(cliAuthSessions)
+            .where(eq(cliAuthSessions.session_id, params.sessionId))
+            .limit(1);
+          const [currentApiKey] = currentSession?.api_key_id
+            ? await tx
+                .select()
+                .from(apiKeys)
+                .where(eq(apiKeys.id, currentSession.api_key_id))
+                .limit(1)
+            : [];
+          return {
+            claimed: false,
+            session: currentSession,
+            apiKey: currentApiKey,
+          };
+        }
+
+        const [createdKey] = await tx.insert(apiKeys).values(apiKey).returning();
+        if (!createdKey) throw new Error("Failed to create CLI API key");
+
         return {
-          claimed: false,
-          session: currentSession,
-          apiKey: currentApiKey,
+          claimed: true,
+          session: claimedSession,
+          apiKey: createdKey,
         };
-      }
-
-      const [createdKey] = await tx.insert(apiKeys).values(apiKey).returning();
-      if (!createdKey) throw new Error("Failed to create CLI API key");
-
-      return {
-        claimed: true,
-        session: claimedSession,
-        apiKey: createdKey,
-      };
-    });
+      },
+    );
   }
 
   private async prepareApiKey(
