@@ -7332,8 +7332,15 @@ async function cleanupEmptyConversations(
         roomId: conv.roomId,
         tableName: "messages",
       });
-      const hasUserMessage = memories.some((m) => m.entityId !== agentId);
-      if (hasUserMessage) continue;
+      // A draft holds nothing but, at most, a stored agent greeting. Any other
+      // row — a user turn or an agent message delivered to the owner (a
+      // reminder, routine or proactive reply) — makes it a real conversation.
+      const hasContent = memories.some(
+        (m) =>
+          m.entityId !== agentId ||
+          m.content?.source !== MESSAGE_SOURCE_AGENT_GREETING,
+      );
+      if (hasContent) continue;
       const memoryIds = memories
         .map((memory) => memory.id)
         .filter(
