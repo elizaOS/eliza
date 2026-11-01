@@ -13,6 +13,7 @@ import {
   mainMergeProblems,
   reverseChain,
   runbookPhases,
+  steadyMergeProblems,
   TARGET_CONFIG,
   VALIDATOR_INPUTS,
 } from "./production-admission-phase-audit.ts";
@@ -207,6 +208,11 @@ describe("gate 2: the phase 2 main commit", () => {
     live: { phase: "target-pending", api: { commit: live } },
     mergePaths: phasePaths,
     phasePaths,
+    phaseContentPaths: changed(
+      rows["source-commit"],
+      rows["source-commit"],
+      phasePaths,
+    ),
     bundlePaths: changed(
       rows["target-pending"],
       rows["source-commit"],
@@ -223,6 +229,7 @@ describe("gate 2: the phase 2 main commit", () => {
       "packages/cloud/scripts/production-deploy-admission-lock.test.ts",
     ]);
     expect(facts.bundlePaths).toEqual([]);
+    expect(facts.phaseContentPaths).toEqual([]);
     expect(mainMergeProblems(facts)).toEqual([]);
     // Every bundle source exists in the frozen target tree.
     for (const path of ADMISSION_BUNDLE_SOURCES)
@@ -247,6 +254,46 @@ describe("gate 2: the phase 2 main commit", () => {
       `first parent ${moved} is not live main ${live}`,
       "merge changes packages/core/src/index.ts outside the phase 2 change",
       "admission bundle source differs from the target: packages/cloud/api/src/inference-admission-gate.ts",
+    ]);
+  });
+
+  test("the phase 2 paths must carry the frozen content, not only the frozen names", () => {
+    // Phase 1's tree touches the same paths with other content.
+    const content = changed(
+      rows["source-commit"],
+      rows["target-pending"],
+      phasePaths,
+    );
+    expect(content).not.toEqual([]);
+    expect(mainMergeProblems({ ...facts, phaseContentPaths: content })).toEqual(
+      content.map((path) => `${path} differs from the frozen phase 2 change`),
+    );
+  });
+});
+
+describe("gate 3: the steady state on main", () => {
+  const phaseTwoMain = "a".repeat(40);
+  const facts = {
+    firstParent: phaseTwoMain,
+    phaseTwoMain,
+    tree: "b".repeat(40),
+    mergedTree: "b".repeat(40),
+  };
+
+  test("the reviewed tip merged cleanly onto the phase 2 main commit passes", () => {
+    expect(steadyMergeProblems(facts)).toEqual([]);
+  });
+
+  test("another parent or any change beyond the reviewed tip is refused", () => {
+    expect(
+      steadyMergeProblems({
+        ...facts,
+        firstParent: "c".repeat(40),
+        tree: "d".repeat(40),
+      }),
+    ).toEqual([
+      `first parent ${"c".repeat(40)} is not the phase 2 main commit`,
+      "the steady tree differs from the reviewed tip merged onto the phase 2 main commit",
     ]);
   });
 });

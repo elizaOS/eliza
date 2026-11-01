@@ -7,8 +7,9 @@
  * tree's own validator accepts exactly its phase (and staging), it differs
  * from the step before only in admission ownership, and its production
  * variables equal Root's effective-variable receipts. At gate 2 it also
- * proves the phase 2 main commit is live main plus the phase 2 change, with
- * the frozen target's admission bundle sources.
+ * proves the phase 2 main commit is live main plus exactly the frozen phase 2
+ * change, with the frozen target's admission bundle sources; at gate 3, that
+ * the steady merge is exactly the reviewed tip merged onto it.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -331,9 +332,11 @@ export function auditChain(
 
 /**
  * Gate 2. The phase 2 commit on `main` must be live `main` plus only the
- * paths of the frozen phase 2 change, and build the admission bundle from
- * the same sources as the target that serves the namespace once it commits.
- * `live` is Root's phase 1 receipt (R1), which names the API's served commit.
+ * paths of the frozen phase 2 change, each with its frozen content, and build
+ * the admission bundle from the same sources as the target that serves the
+ * namespace once it commits. `live` is Root's phase 1 receipt (R1), which
+ * names the API's served commit. `phaseContentPaths` are the phase paths whose
+ * content differs from the frozen phase 2 commit.
  */
 export function mainMergeProblems(facts: {
   firstParent: string;
@@ -341,6 +344,7 @@ export function mainMergeProblems(facts: {
   live: { phase?: unknown; api?: { commit?: unknown } };
   mergePaths: string[];
   phasePaths: string[];
+  phaseContentPaths: string[];
   bundlePaths: string[];
 }) {
   const problems: string[] = [];
@@ -359,8 +363,34 @@ export function mainMergeProblems(facts: {
   for (const path of facts.mergePaths)
     if (!facts.phasePaths.includes(path))
       problems.push(`merge changes ${path} outside the phase 2 change`);
+  for (const path of facts.phaseContentPaths)
+    problems.push(`${path} differs from the frozen phase 2 change`);
   for (const path of facts.bundlePaths)
     problems.push(`admission bundle source differs from the target: ${path}`);
+  return problems;
+}
+
+/**
+ * Gate 3. The steady state on `main` must be the reviewed tip landed on the
+ * phase 2 main commit and nothing else: its first parent is that commit and
+ * its tree is the tree of a clean merge of the reviewed tip onto it, whether
+ * the tip landed as a merge or a squash.
+ */
+export function steadyMergeProblems(facts: {
+  firstParent: string;
+  phaseTwoMain: string;
+  tree: string;
+  mergedTree: string;
+}) {
+  const problems: string[] = [];
+  if (facts.firstParent !== facts.phaseTwoMain)
+    problems.push(
+      `first parent ${facts.firstParent} is not the phase 2 main commit`,
+    );
+  if (facts.tree !== facts.mergedTree)
+    problems.push(
+      "the steady tree differs from the reviewed tip merged onto the phase 2 main commit",
+    );
   return problems;
 }
 
@@ -377,6 +407,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         steady: { type: "string", default: "HEAD" },
         commit: { type: "string", multiple: true },
         live: { type: "string" },
+        tip: { type: "string" },
       },
     });
     if (!values.effective?.length)
@@ -432,6 +463,10 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         );
       const row = (phase: string) =>
         rows.find((item) => item.phase === phase)?.commit ?? "";
+      const phasePaths = changedPaths(
+        row("source-owned"),
+        row("source-commit"),
+      );
       gates.push({
         gate: "2: phase 2 main merge",
         commit: phaseTwoMain,
@@ -440,7 +475,12 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
           liveMain,
           live: JSON.parse(readFileSync(values.live, "utf8")),
           mergePaths: changedPaths(liveMain, phaseTwoMain),
-          phasePaths: changedPaths(row("source-owned"), row("source-commit")),
+          phasePaths,
+          phaseContentPaths: changedPaths(
+            row("source-commit"),
+            phaseTwoMain,
+            phasePaths,
+          ),
           bundlePaths: changedPaths(
             row("target-pending"),
             phaseTwoMain,
@@ -449,14 +489,21 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         }),
       });
       if (values.steady !== "HEAD") {
-        const parent = git(["rev-parse", `${steady}^1`]).trim();
+        const tip = values.tip ?? "";
+        if (!/^[0-9a-f]{40}$/.test(tip))
+          throw new Error("Gate 3 needs --tip <reviewed branch tip SHA>");
         gates.push({
           gate: "3: steady state main merge",
           commit: steady,
-          problems:
-            parent === phaseTwoMain
-              ? []
-              : [`first parent ${parent} is not the phase 2 main commit`],
+          problems: steadyMergeProblems({
+            firstParent: git(["rev-parse", `${steady}^1`]).trim(),
+            phaseTwoMain,
+            tree: git(["rev-parse", `${steady}^{tree}`]).trim(),
+            // A conflicting merge exits non-zero and stops the audit.
+            mergedTree: git(["merge-tree", "--write-tree", phaseTwoMain, tip])
+              .split("\n")[0]
+              .trim(),
+          }),
         });
       }
     }
