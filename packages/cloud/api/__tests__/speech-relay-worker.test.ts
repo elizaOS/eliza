@@ -2,9 +2,11 @@
  * Provider/DB boundaries are controlled so any hot-path DB call throws. This
  * proves the transport contract, not live provider latency or production billing.
  */
+
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import { CARTESIA_PUBLISHED_USD_PER_CREDIT } from "../v1/voice/stt/cartesia-pricing";
 
 let worker: Miniflare;
 const common = `const stats=()=>globalThis.__speechStats??={};
@@ -119,7 +121,8 @@ beforeAll(async () => {
       INFERENCE_STRONG_REVOCATION_ENABLED: "false",
       CARTESIA_API_KEY: "test-provider-boundary",
       VOICE_REALTIME_CARTESIA_VOICE_ID: "test",
-      CARTESIA_STT_USD_PER_CREDIT: "0.00004",
+      // No account rate: subscription speech sizes reservations at the
+      // published upper bound instead of refusing to open.
     },
   });
 });
@@ -617,7 +620,11 @@ test("barge-in settles only the submitted TTS characters across contexts, not th
     .filter((entry) => entry.model === "sonic-3.6")
     .at(-1)!;
   expect(settled.cost).toBe(
-    Math.round(phrases.join("").length * 0.00004 * 1.2 * 1e6) / 1e6,
+    Math.round(
+      phrases.join("").length * CARTESIA_PUBLISHED_USD_PER_CREDIT * 1.2 * 1e6,
+    ) / 1e6,
   );
-  expect(settled.cost).toBeLessThan(4096 * 0.00004 * 1.2);
+  expect(settled.cost).toBeLessThan(
+    4096 * CARTESIA_PUBLISHED_USD_PER_CREDIT * 1.2,
+  );
 });
