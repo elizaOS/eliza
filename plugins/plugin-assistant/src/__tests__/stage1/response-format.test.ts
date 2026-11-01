@@ -3138,3 +3138,193 @@ describe("deferred provider discovery on sparse installs", () => {
     expect(projectDiscoverableContext(context, state).context).toEqual(context);
   });
 });
+
+// Preserved tj-38bae5f7eaa3b2: after "Launch, 12:00-1:00 pm." a bare "What?"
+// was restated by the model with the wrong hour and an "answer:" label. The
+// source-part schema tells the model to repeat a missed reply as a quote of
+// that reply; the existing quote validation still decides what is sent.
+describe("Stage 1 repeat of a reply the user did not catch", () => {
+  const question = "What's on my calendar today?";
+  const answer = "Launch, 12:00-1:00 pm.";
+  const guidance =
+    "When the user did not catch your last reply ('what?', 'sorry?', 'say that again'), repeat it as a single source part quoting that reply instead of restating it.";
+
+  function dialogueState(withAnswer = true): State {
+    const asked = {
+      ...makeMessage({ text: question }),
+      id: "00000000-0000-0000-0000-00000000fb01" as UUID,
+      createdAt: 1,
+    };
+    const answered = {
+      ...makeMessage({ text: answer }),
+      id: "00000000-0000-0000-0000-00000000fb02" as UUID,
+      entityId: "00000000-0000-0000-0000-000000000003" as UUID,
+      createdAt: 2,
+    };
+    return {
+      ...makeState(),
+      data: {
+        providers: {
+          RECENT_MESSAGES: {
+            data: {
+              recentMessages: withAnswer ? [asked, answered] : [asked],
+            },
+          },
+        },
+      },
+    } as State;
+  }
+
+  function sourceDecision(value: string) {
+    const response = stage1Response({ contexts: ["simple"] });
+    response.toolCalls[0].arguments.replyText = [
+      { kind: "source", value },
+    ] as never;
+    return response;
+  }
+
+  function firstCall(runtime: IAgentRuntime) {
+    const params = useModelCalls(runtime)[0]?.[1] as {
+      messages: unknown;
+      tools?: Array<{
+        name?: string;
+        parameters?: {
+          properties?: { replyText?: { type?: string; description?: string } };
+        };
+      }>;
+    };
+    return {
+      serialized: JSON.stringify({
+        messages: params.messages,
+        tools: params.tools,
+      }),
+      replyText: params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+        ?.parameters?.properties?.replyText,
+    };
+  }
+
+  it("advertises the repeat guidance once, on the source-part replyText schema", async () => {
+    const runtime = makeRuntime([
+      stage1Response({ contexts: ["simple"], replyText: answer }),
+    ]);
+    await runStage1({
+      runtime,
+      message: makeMessage({ text: "What?", channelType: ChannelType.DM }),
+      state: dialogueState(),
+    });
+    const call = firstCall(runtime);
+    expect(call.replyText?.type).toBe("array");
+    expect(call.replyText?.description).toContain(guidance);
+    expect(call.replyText?.description).toContain("single source part");
+    // Guidance only: one copy in the whole model request, no new field.
+    expect(call.serialized.split("did not catch your last reply")).toHaveLength(
+      2,
+    );
+  });
+
+  it("sends a 'What?' repeat quoted as one source part byte-identical", async () => {
+    const runtime = makeRuntime([sourceDecision(answer)]);
+    const result = await runStage1({
+      runtime,
+      message: makeMessage({ text: "What?", channelType: ChannelType.DM }),
+      state: dialogueState(),
+    });
+    expect(useModelCalls(runtime)).toHaveLength(1);
+    expect(result.kind).toBe("direct_reply");
+    if (result.kind !== "direct_reply") return;
+    expect(result.result.responseContent?.text).toBe(answer);
+    // Sent through the quote binding, not as new model prose.
+    expect(
+      result.result.responseContent?.sourceReplyReferences?.sources,
+    ).toHaveLength(1);
+  });
+
+  it("leaves a non-repeat follow-up on its own text reply", async () => {
+    const reply = "Launch starts at 12:00 pm.";
+    const runtime = makeRuntime([
+      stage1Response({
+        contexts: ["simple"],
+        replyText: reply,
+        replyParts: true,
+      }),
+    ]);
+    const result = await runStage1({
+      runtime,
+      message: makeMessage({
+        text: "what time is launch?",
+        channelType: ChannelType.DM,
+      }),
+      state: dialogueState(),
+    });
+    expect(useModelCalls(runtime)).toHaveLength(1);
+    expect(JSON.stringify(useModelCalls(runtime))).not.toContain(
+      "invalid source quote",
+    );
+    expect(result.kind).toBe("direct_reply");
+    if (result.kind === "direct_reply")
+      expect(result.result.responseContent?.text).toBe(reply);
+  });
+
+  it.each([
+    ["a wrong hour", "Launch, 1:00-2:00 pm."],
+    [
+      "the captured restatement",
+      "you asked what's on your calendar today. answer: launch, 1:00–2:00 pm.",
+    ],
+  ])(
+    "still rejects a source part that copies no supplied original (%s)",
+    async (_label, quoted) => {
+      const runtime = makeRuntime([
+        sourceDecision(quoted),
+        sourceDecision(quoted),
+      ]);
+      const dispatch = vi.spyOn(
+        runtime.responseHandlerFieldRegistry,
+        "dispatch",
+      );
+      await expect(
+        runStage1({
+          runtime,
+          message: makeMessage({ text: "What?", channelType: ChannelType.DM }),
+          state: dialogueState(),
+        }),
+      ).rejects.toMatchObject({ code: "STAGE1_INVALID_SOURCE_REPLY" });
+      expect(dispatch).not.toHaveBeenCalled();
+      expect(useModelCalls(runtime)).toHaveLength(2);
+      expect(JSON.stringify(useModelCalls(runtime)[1])).toContain(
+        "invalid source quote",
+      );
+      // The one existing repair still accepts the exact earlier reply.
+      const repaired = makeRuntime([
+        sourceDecision(quoted),
+        sourceDecision(answer),
+      ]);
+      const result = await runStage1({
+        runtime: repaired,
+        message: makeMessage({ text: "What?", channelType: ChannelType.DM }),
+        state: dialogueState(),
+      });
+      expect(result.kind).toBe("direct_reply");
+      if (result.kind === "direct_reply")
+        expect(result.result.responseContent?.text).toBe(answer);
+    },
+  );
+
+  it("does not force a source part when no earlier assistant reply exists", async () => {
+    const reply = "What would you like to know?";
+    for (const state of [dialogueState(false), makeState()]) {
+      const runtime = makeRuntime([
+        stage1Response({ contexts: ["simple"], replyText: reply }),
+      ]);
+      const result = await runStage1({
+        runtime,
+        message: makeMessage({ text: "What?", channelType: ChannelType.DM }),
+        state,
+      });
+      expect(useModelCalls(runtime)).toHaveLength(1);
+      expect(result.kind).toBe("direct_reply");
+      if (result.kind === "direct_reply")
+        expect(result.result.responseContent?.text).toBe(reply);
+    }
+  });
+});
