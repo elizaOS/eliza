@@ -22,7 +22,10 @@ import {
   stringToUuid,
   type UUID,
 } from "@elizaos/core";
-import { extractConversationMetadataFromRoom } from "./conversation-metadata.ts";
+import {
+  extractConversationCreatedAtFromRoom,
+  extractConversationMetadataFromRoom,
+} from "./conversation-metadata.ts";
 import type { ConversationMeta } from "./server-types.ts";
 
 /** The in-memory conversation registry the restore writes into. */
@@ -83,10 +86,15 @@ async function conversationMetaFromRoom(
     tableName: "messages",
     limit: 1,
   });
-  const updatedAt =
+  const lastMessageAt =
     msgs.length > 0 && msgs[0].createdAt
       ? new Date(msgs[0].createdAt).toISOString()
-      : new Date().toISOString();
+      : undefined;
+  // An empty conversation is dated by its recorded creation time, not "now",
+  // so a restart does not float it above conversations with newer activity.
+  const recordedCreatedAt = extractConversationCreatedAtFromRoom(room);
+  const updatedAt =
+    lastMessageAt ?? recordedCreatedAt ?? new Date().toISOString();
 
   const conversationMetadata = await extractConversationMetadataFromRoom(
     room,
@@ -98,7 +106,7 @@ async function conversationMetaFromRoom(
     title: room.name || "Chat",
     roomId: room.id as UUID,
     ...(conversationMetadata ? { metadata: conversationMetadata } : {}),
-    createdAt: updatedAt,
+    createdAt: recordedCreatedAt ?? updatedAt,
     updatedAt,
   };
 }
