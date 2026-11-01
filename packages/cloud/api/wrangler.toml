@@ -1225,8 +1225,8 @@ INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
 # Production voice powers both authenticated app sessions and signed Twilio
 # media streams. Keep it explicit so a deploy cannot silently hang up calls.
 VOICE_REALTIME_WS_ENABLED = "true"
-# Enable only in the reviewed production promotion after the staging proof.
-VOICE_SPEECH_RELAY_ENABLED = "false"
+# Promote this setting only with the matching staged speech contract proof.
+VOICE_SPEECH_RELAY_ENABLED = "true"
 VOICE_SPEECH_END_TIMEOUT_MS = "1280"
 ELIZA_TTS_FISH_ENABLED = "false"
 FISH_AUDIO_DATA_GOVERNANCE_APPROVED = "false"

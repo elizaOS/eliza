@@ -521,11 +521,14 @@ test("each ordered phrase is moderated with bounded prior context before Sonic r
 test("Stop, owner change and phrase cancel during async moderation never dispatch a late phrase", async () => {
   for (const mode of ["stop", "owner", "cancel"]) {
     let resolve: () => void = () => {};
+    let signal: AbortSignal | undefined;
     const f = harness({
-        assertTtsAllowed: () =>
-          new Promise<void>((r) => {
+        assertTtsAllowed: (_text, inputSignal) => {
+          signal = inputSignal;
+          return new Promise<void>((r) => {
             resolve = r;
-          }),
+          });
+        },
       }),
       session = await f.open();
     const pending = session.control({ t: "tts", id: "turn", text: "waiting" });
@@ -534,6 +537,7 @@ test("Stop, owner change and phrase cancel during async moderation never dispatc
     if (mode === "stop") await session.control({ t: "stop" });
     else if (mode === "owner") f.replace();
     else await session.control({ t: "cancel", id: "turn" });
+    if (mode !== "owner") expect(signal?.aborted).toBe(true);
     resolve();
     if (mode === "cancel") await pending;
     else await expect(pending).rejects.toThrow();
@@ -541,4 +545,50 @@ test("Stop, owner change and phrase cancel during async moderation never dispatc
     expect(f.order).not.toContain("tts-phrase");
     await session.close();
   }
+});
+
+test("cancel releases ordered TTS controls before an unresponsive moderation call finishes", async () => {
+  let finishOldReview: () => void = () => {};
+  let oldSignal: AbortSignal | undefined;
+  let oldReviewFinished = false;
+  const sent: string[] = [];
+  const f = harness({
+    assertTtsAllowed: async (text, signal) => {
+      if (text === "cancelled phrase") {
+        oldSignal = signal;
+        await new Promise<void>((resolve) => {
+          finishOldReview = resolve;
+        });
+        oldReviewFinished = true;
+      }
+    },
+    openTts: () => ({
+      sendPhrase: ({ text }) => sent.push(text),
+      finish() {},
+      cancel() {},
+    }),
+  });
+  const session = await f.open();
+  let queue = Promise.resolve<unknown>(undefined);
+  const enqueue = (frame: unknown) =>
+    (queue = queue.then(() => session.control(frame)));
+  const cancelled = enqueue({ t: "tts", id: "old", text: "cancelled phrase" });
+  await tick();
+  const cancelledFinish = enqueue({ t: "finish", id: "old" });
+  const next = enqueue({ t: "tts", id: "new", text: "new phrase" });
+  await session.control({ t: "cancel", id: "old" });
+  await tick();
+  expect(oldSignal?.aborted).toBe(true);
+  expect(oldReviewFinished).toBe(false);
+  expect(sent).toEqual(["new phrase"]);
+  await expect(cancelled).resolves.toBe(false);
+  await expect(cancelledFinish).resolves.toBe(false);
+  await next;
+  finishOldReview();
+  await tick();
+  expect(sent).toEqual(["new phrase"]);
+  await expect(
+    session.control({ t: "finish", id: "unapproved" }),
+  ).rejects.toThrow("not active");
+  await session.close();
 });
