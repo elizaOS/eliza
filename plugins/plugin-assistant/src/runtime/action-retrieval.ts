@@ -6,11 +6,13 @@
  */
 
 import {
+  type Action,
   collectPreparedKeywordTermMatches,
   logger,
   matchActionWildcardParts,
   type PreparedKeywordTerm,
   prepareKeywordTerms,
+  promotedSubactionParent,
 } from "@elizaos/core";
 import {
   type ActionCatalog,
@@ -1346,15 +1348,13 @@ function hasOnlyOperationTokens(tokens: Set<string>): boolean {
 /** Once-per-process dedupe for the ambiguous-simile warn — the resolver runs
  *  on every retrieval and the catalog is stable within a process. */
 const warnedAmbiguousSimiles = new Set<string>();
-/** Normalized similes claimed by MORE than one catalog parent — routing on
- * one of these steals the intent from the other parent (#16561), so both the
- * simile resolver and the shape-heuristic alias fallback must refuse them. */
-function collectAmbiguousSimiles(
+/** Each normalized simile with the catalog parents that claim it. A simile
+ *  equal to a parent name is left out: it must not hijack that parent. */
+function collectSimileClaims(
   parents: readonly ActionCatalogParent[],
-): Set<string> {
+): Map<string, ActionCatalogParent[]> {
   const parentNames = new Set(parents.map((parent) => parent.normalizedName));
-  const claimed = new Map<string, string>();
-  const ambiguous = new Set<string>();
+  const claims = new Map<string, ActionCatalogParent[]>();
   for (const parent of parents) {
     const ownSimiles = new Set(
       [
@@ -1366,15 +1366,40 @@ function collectAmbiguousSimiles(
       }),
     );
     for (const normalized of ownSimiles) {
-      const claimedBy = claimed.get(normalized);
-      if (claimedBy !== undefined && claimedBy !== parent.normalizedName) {
-        ambiguous.add(normalized);
-        continue;
-      }
-      claimed.set(normalized, parent.normalizedName);
+      const claimers = claims.get(normalized);
+      if (claimers) claimers.push(parent);
+      else claims.set(normalized, [parent]);
     }
   }
-  return ambiguous;
+  return claims;
+}
+/** A simile claimed by MORE than one catalog parent is ambiguous: routing on
+ * it steals the intent from the other parent (#16561, e.g. LIST_FILES on a
+ * file-ops and a stored-media action), so both the simile resolver and the
+ * shape-heuristic alias fallback refuse it. The exception is an umbrella name
+ * that every claimer was promoted from: without the umbrella in the catalog it
+ * hints that family (live 2026-11-01: CALENDAR on CALENDAR_CREATE_EVENT and
+ * CALENDAR_DELETE_EVENT). */
+function isAmbiguousSimileClaim(
+  simile: string,
+  claimers: readonly ActionCatalogParent[],
+): boolean {
+  return (
+    claimers.length > 1 &&
+    !claimers.every((parent) => {
+      const umbrella = promotedSubactionParent(parent.source as Action);
+      return umbrella !== undefined && normalizeActionName(umbrella) === simile;
+    })
+  );
+}
+function collectAmbiguousSimiles(
+  parents: readonly ActionCatalogParent[],
+): Set<string> {
+  return new Set(
+    [...collectSimileClaims(parents)].flatMap(([simile, claimers]) =>
+      isAmbiguousSimileClaim(simile, claimers) ? [simile] : [],
+    ),
+  );
 }
 function resolveSimileParentHints(
   parents: readonly ActionCatalogParent[],
@@ -1383,56 +1408,43 @@ function resolveSimileParentHints(
   if (candidateActions.length === 0) {
     return [];
   }
-  const parentNames = new Set(parents.map((parent) => parent.normalizedName));
-  const parentBySimile = new Map<string, string>();
-  // A simile claimed by MORE than one parent is ambiguous and must not route
-  // at all (#16561): first-writer-wins silently steals the intent from the
-  // other parent (catalog order is alphabetical, not semantic — e.g. a
-  // LIST_FILES simile on both a file-ops action and a stored-media action).
+  const claims = collectSimileClaims(parents);
   // The warn dedupes per process: this resolver runs on every retrieval.
-  const ambiguousSimiles = new Set<string>();
-  for (const parent of parents) {
-    const ownSimiles = new Set(
-      [
-        ...parent.similes,
-        ...parent.children.flatMap((child) => child.similes),
-      ].flatMap((simile) => {
-        const normalized = normalizeActionName(simile);
-        // A simile that collides with a real parent name must not hijack it.
-        return !normalized || parentNames.has(normalized) ? [] : [normalized];
-      }),
+  for (const [simile, claimers] of claims) {
+    if (
+      warnedAmbiguousSimiles.has(simile) ||
+      !isAmbiguousSimileClaim(simile, claimers)
+    )
+      continue;
+    warnedAmbiguousSimiles.add(simile);
+    logger.warn(
+      {
+        src: "action-retrieval",
+        simile,
+        parents: claimers.map((parent) => parent.normalizedName),
+      },
+      "simile claimed by multiple parents — dropped from routing as ambiguous",
     );
-    for (const normalized of ownSimiles) {
-      const claimedBy = parentBySimile.get(normalized);
-      if (claimedBy !== undefined && claimedBy !== parent.normalizedName) {
-        if (!warnedAmbiguousSimiles.has(normalized)) {
-          warnedAmbiguousSimiles.add(normalized);
-          logger.warn(
-            {
-              src: "action-retrieval",
-              simile: normalized,
-              parents: [claimedBy, parent.normalizedName],
-            },
-            "simile claimed by multiple parents — dropped from routing as ambiguous",
-          );
-        }
-        ambiguousSimiles.add(normalized);
-        continue;
-      }
-      parentBySimile.set(normalized, parent.normalizedName);
-    }
   }
-  for (const normalized of ambiguousSimiles) {
-    parentBySimile.delete(normalized);
-  }
-  return candidateActions.flatMap((actionName) => {
+  const resolved = candidateActions.flatMap((actionName) => {
     const normalized = normalizeActionName(actionName);
-    if (!normalized || parentNames.has(normalized)) {
-      return [];
-    }
-    const parent = parentBySimile.get(normalized);
-    return parent ? [parent] : [];
+    const claimers = claims.get(normalized);
+    return claimers && !isAmbiguousSimileClaim(normalized, claimers)
+      ? [claimers.map((parent) => parent.normalizedName)]
+      : [];
   });
+  // An operation named beside its umbrella stays the precise hint; the family
+  // hint would only tie it with every sibling.
+  const parentNames = new Set(parents.map((parent) => parent.normalizedName));
+  const precise = new Set([
+    ...candidateActions
+      .map(normalizeActionName)
+      .filter((name) => parentNames.has(name)),
+    ...resolved.flatMap((names) => (names.length === 1 ? names : [])),
+  ]);
+  return resolved.flatMap((names) =>
+    names.length > 1 && names.some((name) => precise.has(name)) ? [] : names,
+  );
 }
 export function candidateNamespaceParentExists(
   parents: readonly Pick<ActionCatalogParent, "normalizedName">[],

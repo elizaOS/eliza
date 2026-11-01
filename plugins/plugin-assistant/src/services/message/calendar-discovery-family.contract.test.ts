@@ -11,9 +11,10 @@ const { calendarPlugin } = await import(
 const { calendarAction, calendarActionPromotionOptions } = await import(
   "../../../../plugin-personal-assistant/src/actions/calendar.ts"
 );
-const { promoteSubactionsToActions, AgentRuntime } = await import(
-  "@elizaos/core"
-);
+const { promoteSubactionsToActions, promotedSubactionParent, AgentRuntime } =
+  await import("@elizaos/core");
+const { buildActionCatalog } = await import("../../runtime/action-catalog.ts");
+const { retrieveActions } = await import("../../runtime/action-retrieval.ts");
 const { retrieveContextualPlannerActions } = await import(
   "./action-surface.ts"
 );
@@ -21,6 +22,7 @@ const { createPlannerToolDiscoveryAction } = await import(
   "./tool-discovery.ts"
 );
 const { collectPlannerTools } = await import("./planned-tool.ts");
+const { stageOneNamesPlannerTool } = await import("./pipeline.ts");
 function family(): Action[] {
   const runtime = new AgentRuntime({
     character: { name: "Closed Calendar discovery", bio: [] },
@@ -116,6 +118,95 @@ for (const [query, wanted] of [
     assert.ok(result.actions.some((a) => a.name === wanted));
     assert.ok(!result.actions.some((a) => a.name === "CALENDAR"));
   });
+// Live direct stage: Stage 1 named CALENDAR while the catalog held only the
+// promoted children. Each child carries the umbrella name, so retrieval
+// dropped it as ambiguous ("simile claimed by multiple parents").
+test("Calendar umbrella name hints its whole family when the umbrella is absent", () => {
+  const standalone = calendarPlugin.actions ?? [];
+  const others = standalone.filter(
+    (a) => a.name !== "CALENDAR" && !promotedSubactionParent(a),
+  );
+  for (const actions of [
+    standalone,
+    promoteSubactionsToActions(calendarAction, calendarActionPromotionOptions),
+  ]) {
+    const children = actions.filter(
+      (a) => promotedSubactionParent(a) === "CALENDAR",
+    );
+    const familyNames = children.map((a) => a.name).sort();
+    const catalog = buildActionCatalog([...children, ...others]);
+    const catalogNames = new Set(catalog.parents.map((p) => p.name));
+    for (const [text, simile, wanted] of [
+      ["Delete my calendar event", "DELETE_EVENT", "CALENDAR_DELETE_EVENT"],
+      ["Create a calendar event", "CREATE_EVENT", "CALENDAR_CREATE_EVENT"],
+    ]) {
+      const hinted = (candidateActions: string[]) => {
+        const { results, query } = retrieveActions({
+          catalog,
+          messageText: text,
+          candidateActions,
+        });
+        return {
+          results: results.map((r) => r.name),
+          hints: query.parentActionHints
+            .filter((name) => catalogNames.has(name))
+            .sort(),
+        };
+      };
+      // The umbrella name alone hints every operation, so the family
+      // outranks the non-family Calendar actions.
+      const umbrella = hinted(["CALENDAR"]);
+      assert.deepEqual(umbrella.hints, familyNames);
+      assert.deepEqual(
+        umbrella.results.slice(0, familyNames.length).sort(),
+        familyNames,
+      );
+      // Named beside one operation, it leaves that operation the only hint.
+      const precise = hinted(["CALENDAR", simile]);
+      assert.deepEqual(precise.hints, [wanted]);
+      assert.equal(precise.results[0], wanted);
+    }
+    // The name stays ambiguous when an action outside the family claims it.
+    const { query } = retrieveActions({
+      catalog: buildActionCatalog([
+        ...children,
+        ...others,
+        { name: "MEETING_NOTES", description: "Notes.", similes: ["CALENDAR"] },
+      ]),
+      messageText: "Delete my calendar event",
+      candidateActions: ["CALENDAR"],
+    });
+    assert.deepEqual(query.parentActionHints, []);
+  }
+});
+// Hard-tool enforcement: the umbrella stays registered while the planner
+// surface holds only its children; Stage 1 naming the umbrella still names
+// an exposed tool.
+test("Stage 1 naming CALENDAR enforces a tool when only its children are exposed", () => {
+  const actions = family();
+  const children = actions.filter(
+    (a) => promotedSubactionParent(a) === "CALENDAR",
+  );
+  const tools = collectPlannerTools(
+    {
+      id: "fixture",
+      events: children.map((action) => ({
+        id: action.name,
+        type: "tool",
+        tool: { name: action.name, action },
+      })),
+    },
+    children,
+    { canonicalFamilies: true },
+  );
+  const toolNames = tools.map((t) => t.name);
+  assert.ok(!toolNames.includes("CALENDAR"));
+  assert.ok(children.every((a) => toolNames.includes(a.name)));
+  const runtime = { actions };
+  assert.equal(stageOneNamesPlannerTool(runtime, tools, ["CALENDAR"]), true);
+  for (const absent of ["CALENDAR_SOURCES", "WEB_SEARCH"])
+    assert.equal(stageOneNamesPlannerTool(runtime, tools, [absent]), false);
+});
 test("standalone Calendar also keeps complete agenda contract for generic plural event wording", () => {
   const result = retrieveContextualPlannerActions({
     actions: calendarPlugin.actions,

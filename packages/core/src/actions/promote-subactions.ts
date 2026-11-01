@@ -480,8 +480,12 @@ export function promoteSubactionsToActions(
 			: `${parent.name} operation "${subKey}".`;
 		const similes = Array.from(
 			new Set([
-				// Parent's name is first so simile-based search/routing can still
-				// find promoted actions through the parent surface.
+				// Parent's name is first so a Stage-1 hint naming the umbrella
+				// still finds promoted actions on a surface that holds only them
+				// (planner hard-tool enforcement, retrieval). Every sibling
+				// carries it, so retrieval reads it as a hint for the whole
+				// family, not as an ambiguous simile (live 2026-11-01: CALENDAR
+				// dropped across CALENDAR_CREATE_EVENT/CALENDAR_DELETE_EVENT).
 				//
 				// The parent's own simile ARRAY is deliberately NOT inherited:
 				// retrieval drops any simile claimed by more than one catalog
@@ -504,10 +508,11 @@ export function promoteSubactionsToActions(
 		// blurb) and `routingHint` are deliberately NOT inherited: duplicated
 		// verbatim across every virtual they multiply into tens of kilobytes
 		// of identical tool-description text per planner turn. Retrieval still
-		// finds virtuals through their similes (parent name + subaction) and
-		// through the parent's own search text, and tool rendering falls back
-		// to the short composed `description` when no per-subaction
-		// `descriptionCompressed` override is provided. The parent's
+		// finds virtuals through their similes (the parent name as a family
+		// hint, plus the subaction) and finds the umbrella through its own
+		// search text, and tool rendering falls back to the short composed
+		// `description` when no per-subaction `descriptionCompressed`
+		// override is provided. The parent's
 		// routingHint instead rides the promotion marker below, where the
 		// planner's routing-hints block picks it up once per family.
 		const virtual: PromotedAction = {
