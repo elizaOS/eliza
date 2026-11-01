@@ -47,7 +47,7 @@ beforeAll(async () => {
     ],
     [
       /\/services\/content-safety\.ts$/,
-      `${common} export const contentSafetyService={async assertSafeForPublicUse(){const s=stats();s.moderation=(s.moderation??0)+1;return {allowed:true,skipped:false,flagged:false,mode:'enforce',issues:[]};}};`,
+      `${common} export const contentSafetyService={async assertSafeForPublicUse(_input,signal){const s=stats();s.moderation=(s.moderation??0)+1;if(s.holdNextModeration){s.holdNextModeration=false;s.moderationPending=true;await new Promise(resolve=>{s.releaseModeration=resolve;signal?.addEventListener('abort',()=>{s.moderationAborted=true;},{once:true});});s.moderationPending=false;}return {allowed:true,skipped:false,flagged:false,mode:'enforce',issues:[]};}};`,
     ],
     [
       /\/services\/voice-usage-meter\.ts$/,
@@ -67,7 +67,7 @@ beforeAll(async () => {
     ],
     [
       /\/voice\/cartesia-ink\.ts$/,
-      `${common} export function createCartesiaInkRealtimeSession({onEvent}){let bytes=0;stats().sttOpened=(stats().sttOpened??0)+1;return {sendAudioChunk(chunk){bytes+=chunk.byteLength;stats().pcmBytes=bytes;onEvent({type:'transcript-update',transcript:'hello'});},cancel(){stats().sttCancelled=true;},async drain(){stats().sttDrained=true;stats().sttDrains=(stats().sttDrains??0)+1;return {source:'provider-graceful-close',audioBytes:bytes,sampleRate:16000,channels:1,encoding:'pcm_s16le'};}};}`,
+      `${common} export const CARTESIA_INK_CHUNK_BYTES=3200;export function createCartesiaInkRealtimeSession({onEvent}){let bytes=0;stats().sttOpened=(stats().sttOpened??0)+1;return {sendAudioChunk(chunk){if(chunk.byteLength!==3200)throw Error('Invalid Ink frame');bytes+=chunk.byteLength;stats().pcmBytes=bytes;onEvent({type:'transcript-update',transcript:'hello'});},cancel(){stats().sttCancelled=true;},async drain(){stats().sttDrained=true;stats().sttDrains=(stats().sttDrains??0)+1;return {source:'provider-graceful-close',audioBytes:bytes,sampleRate:16000,channels:1,encoding:'pcm_s16le'};}};}`,
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
@@ -226,7 +226,8 @@ test("ready speech streams PCM and multiple TTS contexts without another DB/auth
   expect(baseline.admissions).toBe(2);
   expect(baseline.dispatches).toBe(2);
   const transcript = next(socket as any, (value) => value.t === "stt");
-  socket.send(new Uint8Array(3200));
+  for (const length of [1024, 1024, 1024, 128])
+    socket.send(new Uint8Array(length));
   expect((await transcript).event.transcript).toBe("hello");
   for (const id of ["first", "second"]) {
     const prepared = next(
@@ -627,4 +628,117 @@ test("barge-in settles only the submitted TTS characters across contexts, not th
   expect(settled.cost).toBeLessThan(
     4096 * CARTESIA_PUBLISHED_USD_PER_CREDIT * 1.2,
   );
+});
+
+test("cancel frees the coordinator queue while retired moderation remains unresolved", async () => {
+  type Stats = {
+    moderationPending?: boolean;
+    moderationAborted?: boolean;
+    ttsOpened?: number;
+  };
+  const headers = {
+    "x-test-session": "cancel-review",
+    "Content-Type": "application/json",
+  };
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  const token = "cancel-review-capability";
+  await request("/test-allow-admission");
+  await request("/initialize", {
+    sessionId: "99999999-9999-4999-8999-999999999999",
+    tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+    expiresAt: Date.now() + 60000,
+    caller: {
+      user: {
+        ...account,
+        organization_id: "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+      },
+      apiKeyId: "cancel-review-key",
+      authSource: "combined_cache",
+      appScopeId: null,
+      credential: {
+        kind: "api_key",
+        credentialId: "cancel-review-key",
+        userId: account.id,
+      },
+    },
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...headers, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const ready = next(
+    socket as unknown as WebSocket,
+    (value) => value.t === "ready",
+  );
+  socket.send(JSON.stringify({ t: "hello", token }));
+  await ready;
+  const baseline = (await (
+    await request("/test-hold-moderation")
+  ).json()) as Stats;
+  const prepared: string[] = [];
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data !== "string") return;
+    const value = JSON.parse(event.data);
+    if (value.t === "tts_prepared") prepared.push(value.id);
+  });
+  socket.send(
+    JSON.stringify({ t: "tts", id: "old", text: "Retired moderation phrase." }),
+  );
+  socket.send(JSON.stringify({ t: "finish", id: "old" }));
+  for (let i = 0; i < 100; i++) {
+    if (
+      ((await (await request("/test-stats")).json()) as Stats).moderationPending
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+  expect(
+    ((await (await request("/test-stats")).json()) as Stats).moderationPending,
+  ).toBe(true);
+  socket.send(JSON.stringify({ t: "cancel", id: "old" }));
+  const nextReady = next(
+    socket as any,
+    (value) => value.t === "tts_prepared" && value.id === "new",
+  );
+  socket.send(
+    JSON.stringify({
+      t: "tts",
+      id: "new",
+      text: "Current moderation phrase.",
+      flush: true,
+    }),
+  );
+  await nextReady;
+  const current = (await (await request("/test-stats")).json()) as Record<
+    string,
+    any
+  >;
+  expect(current.moderationPending).toBe(true);
+  expect(current.moderationAborted).toBe(true);
+  expect(current.ttsOpened).toBe((baseline.ttsOpened ?? 0) + 1);
+  expect(prepared).toEqual(["new"]);
+  await request("/test-release-moderation");
+  const complete = next(
+    socket as any,
+    (value) => value.t === "complete" && value.id === "new",
+  );
+  socket.send(JSON.stringify({ t: "finish", id: "new" }));
+  await complete;
+  expect(prepared).toEqual(["new"]);
+  expect(
+    ((await (await request("/test-stats")).json()) as Stats).ttsOpened,
+  ).toBe(current.ttsOpened);
+  await request("/test-allow-settlement");
+  const closed = new Promise<void>((resolve) =>
+    socket.addEventListener("close", () => resolve(), { once: true }),
+  );
+  socket.send(JSON.stringify({ t: "stop" }));
+  await closed;
 });

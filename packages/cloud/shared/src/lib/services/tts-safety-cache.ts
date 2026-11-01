@@ -12,12 +12,15 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 export async function assertSafeTtsText(
   input: ContentSafetyInput,
   defer?: (task: Promise<unknown>) => void,
+  signal?: AbortSignal,
 ): Promise<"reviewed" | "approved-hit" | undefined> {
+  signal?.throwIfAborted();
   const env = getCloudAwareEnv();
   // The public TTS route is text-only. A mutable image URL is not an immutable
   // review input and must never reuse a text safety receipt.
   if (input.imageUrls?.length) {
-    await contentSafetyService.assertSafeForPublicUse(input);
+    await contentSafetyService.assertSafeForPublicUse(input, signal);
+    signal?.throwIfAborted();
     return undefined;
   }
   // Model, enforcement mode, failure policy, credential rotation and the
@@ -47,6 +50,7 @@ export async function assertSafeTtsText(
           timeout = setTimeout(() => resolve(null), 100);
         }),
       ]);
+      signal?.throwIfAborted();
       const receipt = raw ? JSON.parse(raw) : null;
       if (
         receipt?.version === 1 &&
@@ -63,7 +67,10 @@ export async function assertSafeTtsText(
       if (timeout) clearTimeout(timeout);
     }
   }
-  const review = await contentSafetyService.assertSafeForPublicUse(input);
+  signal?.throwIfAborted();
+  const review = await contentSafetyService.assertSafeForPublicUse(input, signal);
+  // A late provider success cannot publish a receipt for retired speech.
+  signal?.throwIfAborted();
   if (
     review.allowed &&
     !review.skipped &&

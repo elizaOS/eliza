@@ -29,6 +29,15 @@ export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
       return Response.json(stats);
     }
     if (path === "/test-stats") return Response.json(stats);
+    if (path === "/test-hold-moderation") {
+      stats.holdNextModeration = true;
+      return Response.json(stats);
+    }
+    if (path === "/test-release-moderation") {
+      stats.releaseModeration?.();
+      delete stats.releaseModeration;
+      return Response.json(stats);
+    }
     return super.fetch(request);
   }
 }
