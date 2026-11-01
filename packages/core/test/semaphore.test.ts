@@ -89,3 +89,21 @@ describe("Semaphore cancellation", () => {
 		expect(semaphore.availablePermits).toBe(1);
 	});
 });
+
+it("does not grant a cancelled waiter during an earlier abort listener", async () => {
+	const semaphore = new Semaphore(1),
+		controller = new AbortController();
+	await semaphore.acquire();
+	controller.signal.addEventListener("abort", () => semaphore.release(), {
+		once: true,
+	});
+	const waiting = semaphore.acquire(controller.signal).then(
+		() => ({ granted: true }),
+		(error) => ({ error }),
+	);
+	const reason = new Error("cancel before grant");
+	controller.abort(reason);
+	expect(await waiting).toEqual({ error: reason });
+	expect(semaphore.availablePermits).toBe(1);
+	expect(semaphore.queueLength).toBe(0);
+});
