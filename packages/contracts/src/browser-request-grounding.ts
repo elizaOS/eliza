@@ -37,8 +37,10 @@ const COMMAND = new RegExp(
 );
 // Explicit polite questions are direct requests too, but file-like bare names
 // still need a website signal rather than acquiring authority from the verb.
+// The closing punctuation of a question may follow that signal word directly
+// ("can you open the main.py website?"), so the tail accepts it with no space.
 const DIRECT_QUESTION = new RegExp(
-  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:can|could|would|will)\s+you\s+(?:please,?\s+)?${OPEN_COMMAND}\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`,
+  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:can|could|would|will)\s+you\s+(?:please,?\s+)?${OPEN_COMMAND}\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?((?:\s|[,.!?]).*)?$`,
   "i",
 );
 const SUFFIX =
