@@ -10,6 +10,7 @@ import {
   auditChain,
   configView,
   effectiveDrift,
+  liveSourceProblems,
   mainMergeProblems,
   reverseChain,
   runbookPhases,
@@ -188,20 +189,51 @@ describe("effective variables", () => {
   });
 });
 
+const git = (...args: string[]) =>
+  spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" }).stdout;
+const rows = Object.fromEntries(
+  runbookPhases(
+    read("packages/cloud/admission-worker/PRODUCTION-TRANSFER.md"),
+  ).map((row) => [row.phase, row.commit]),
+);
+const changed = (from: string, to: string, paths: string[] = []) =>
+  git("diff", "--name-only", from, to, "--", ...paths)
+    .split("\n")
+    .filter(Boolean);
+const phasePaths = changed(rows["source-owned"], rows["source-commit"]);
+
+describe("before phase 1: the commit the API serves", () => {
+  // The facts the audit reads with --commit source-owned=<apiCommit>.
+  const facts = (apiCommit: string) => ({
+    bundlePaths: changed(
+      rows["target-pending"],
+      apiCommit,
+      ADMISSION_BUNDLE_SOURCES,
+    ),
+    phasePaths: changed(rows["source-owned"], apiCommit, phasePaths),
+  });
+
+  test("the chain base serves the phase 1 gate code and phase 2 paths", () => {
+    expect(liveSourceProblems(facts(rows["source-owned"]))).toEqual([]);
+  });
+
+  test("an API on other gate code or other phase 2 paths stops before phase 1", () => {
+    // The main commit before the chain base, whose admission gate it changed.
+    const earlier = git("rev-parse", `${rows["source-owned"]}^1`).trim();
+    expect(liveSourceProblems(facts(earlier))).toEqual([
+      "admission bundle source differs from the target: packages/cloud/shared/src/lib/services/inference-admission-gate.ts",
+    ]);
+    // A tree with other phase 2 path content (phase 1's own tree).
+    expect(liveSourceProblems(facts(rows["target-pending"]))).toEqual([
+      ".github/workflows/cloud-tests.yml differs from the phase chain's base",
+      "packages/cloud/admission-worker/verify-staging-contract.ts differs from the phase chain's base",
+      "packages/cloud/admission-worker/wrangler.toml differs from the phase chain's base",
+    ]);
+  });
+});
+
 describe("gate 2: the phase 2 main commit", () => {
-  const git = (...args: string[]) =>
-    spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" }).stdout;
-  const rows = Object.fromEntries(
-    runbookPhases(
-      read("packages/cloud/admission-worker/PRODUCTION-TRANSFER.md"),
-    ).map((row) => [row.phase, row.commit]),
-  );
-  const changed = (from: string, to: string, paths: string[] = []) =>
-    git("diff", "--name-only", from, to, "--", ...paths)
-      .split("\n")
-      .filter(Boolean);
   const live = rows["source-owned"];
-  const phasePaths = changed(live, rows["source-commit"]);
   const facts = {
     firstParent: live,
     liveMain: live,

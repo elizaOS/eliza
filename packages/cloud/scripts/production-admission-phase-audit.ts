@@ -6,10 +6,12 @@
  * step in admission-worker/reverse-transfer/ is checked three ways: that
  * tree's own validator accepts exactly its phase (and staging), it differs
  * from the step before only in admission ownership, and its production
- * variables equal Root's effective-variable receipts. At gate 2 it also
- * proves the phase 2 main commit is live main plus exactly the frozen phase 2
- * change, with the frozen target's admission bundle sources; at gate 3, that
- * the steady merge is exactly the reviewed tip merged onto it.
+ * variables equal Root's effective-variable receipts. Before phase 1 it also
+ * proves the commit the API serves has the frozen target's admission bundle
+ * sources and the chain base's phase 2 paths. At gate 2 it proves the phase 2
+ * main commit is live main plus exactly the frozen phase 2 change, with the
+ * frozen target's admission bundle sources; at gate 3, that the steady merge
+ * is exactly the reviewed tip merged onto it.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -331,6 +333,28 @@ export function auditChain(
 }
 
 /**
+ * Before phase 1. `bundlePaths` are the admission bundle sources in which the
+ * commit the API serves differs from the phase 1 commit; `phasePaths` are the
+ * phase 2 paths in which it differs from the chain base. Either one means
+ * phase 1 would deploy gate code the API does not serve, or gate 2 would
+ * refuse the phase 2 merge only after phase 1 is live. The chain must then be
+ * regenerated on the commit the API serves.
+ */
+export function liveSourceProblems(facts: {
+  bundlePaths: string[];
+  phasePaths: string[];
+}) {
+  return [
+    ...facts.bundlePaths.map(
+      (path) => `admission bundle source differs from the target: ${path}`,
+    ),
+    ...facts.phasePaths.map(
+      (path) => `${path} differs from the phase chain's base`,
+    ),
+  ];
+}
+
+/**
  * Gate 2. The phase 2 commit on `main` must be live `main` plus only the
  * paths of the frozen phase 2 change, each with its frozen content, and build
  * the admission bundle from the same sources as the target that serves the
@@ -454,19 +478,29 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       ).variables,
     );
     const gates: { gate: string; commit: string; problems: string[] }[] = [];
+    const row = (phase: string) =>
+      rows.find((item) => item.phase === phase)?.commit ?? "";
+    const phasePaths = changedPaths(row("source-owned"), row("source-commit"));
+    const liveMain = overrides.get("source-owned");
+    if (liveMain)
+      gates.push({
+        gate: "before phase 1: the commit the API serves",
+        commit: liveMain,
+        problems: liveSourceProblems({
+          bundlePaths: changedPaths(
+            row("target-pending"),
+            liveMain,
+            ADMISSION_BUNDLE_SOURCES,
+          ),
+          phasePaths: changedPaths(row("source-owned"), liveMain, phasePaths),
+        }),
+      });
     const phaseTwoMain = overrides.get("source-commit");
     if (phaseTwoMain) {
-      const liveMain = overrides.get("source-owned");
       if (!liveMain || !values.live)
         throw new Error(
           "Gate 2 needs --commit source-owned=<live main SHA> and --live <R1 receipt>",
         );
-      const row = (phase: string) =>
-        rows.find((item) => item.phase === phase)?.commit ?? "";
-      const phasePaths = changedPaths(
-        row("source-owned"),
-        row("source-commit"),
-      );
       gates.push({
         gate: "2: phase 2 main merge",
         commit: phaseTwoMain,

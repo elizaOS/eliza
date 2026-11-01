@@ -101,6 +101,12 @@ bun $TIP/packages/cloud/scripts/production-admission-phase-audit.ts \
   --effective "$STATE/auth-cache-flag-review/EFFECTIVE-FUNDED-RATE-FLAGS.json"
 ```
 
+With `--commit source-owned=<commit the API serves>` it also checks that
+commit before phase 1: it must have the phase 1 commit's admission bundle
+sources (the audit's `ADMISSION_BUNDLE_SOURCES`) and the chain base's phase 2
+paths. Otherwise phase 1 would deploy gate code the API does not serve, or
+gate 2 would refuse `M` only after phase 1 is live.
+
 For gate 2 add `--commit source-owned=<R1 API commit> --commit
 source-commit=<phase 2 main SHA> --live R1.json`. Then it also requires the
 merge's first parent to be the commit R1 names, only the phase 2 paths in the
@@ -196,10 +202,14 @@ stops the transfer.
    - The same version's `resources.script.named_handlers` lists
      `InferenceAdmissionGate` with `class` among its handlers.
 4. Run the audit with `--commit source-owned=<commit the API serves>`.
-   Expect no problems.
+   Expect no problems. A problem in its `before phase 1` entry means the
+   frozen chain does not match the API's source: stop, then regenerate the
+   phase chain on the commit the API serves and have it reviewed again.
 5. Record the baseline as `R0.json`: `--phase source-owned --commit <commit
    the API serves>`, without `--previous`.
-6. Settle TRANSFER-2 now if possible; phase 2 cannot start without it.
+6. Settle TRANSFER-2 now if possible. Phase 2 cannot start without it, and an
+   abort after phase 1 leaves a pending target that a later attempt cannot
+   start from (see the abort).
 
 ## Phase 1: target pending
 
@@ -237,7 +247,12 @@ pending target has no binding, route or traffic. To abort:
    API with its live class, as today. The tip cannot be released by mistake:
    its release readback requires the target to own `Nprod` before any upload.
 
-A later attempt starts again at the audit, with fresh receipts.
+A later attempt cannot start from this state with these tools: R0
+(`source-owned`) and the tool's phase 1 readback both require the target to
+be absent. It first needs a separately reviewed change: the cleanup of the
+pending target, or a retry that starts phase 1 from the live `target-pending`
+state. Then it starts again at "Before phase 1", on a phase chain based on
+the commit the API serves, with fresh receipts.
 
 ## Phase 2: source commit
 
