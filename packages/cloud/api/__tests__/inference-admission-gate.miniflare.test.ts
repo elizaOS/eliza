@@ -195,6 +195,8 @@ describe("Miniflare Durable Object integration", () => {
   ): Promise<{
     readonly status: number;
     readonly handlerMs: string | null;
+    readonly enteredAt: string | null;
+    readonly activatedAt: string | null;
     text(): Promise<string>;
   }> {
     const response = await miniflare.dispatchFetch(`https://gate.test${path}`, {
@@ -209,6 +211,8 @@ describe("Miniflare Durable Object integration", () => {
     return {
       status: response.status,
       handlerMs: response.headers.get("x-eliza-gate-handler-ms"),
+      enteredAt: response.headers.get("x-eliza-gate-entered-at"),
+      activatedAt: response.headers.get("x-eliza-gate-activated-at"),
       text: async () => await response.text(),
     };
   }
@@ -231,6 +235,28 @@ describe("Miniflare Durable Object integration", () => {
       expect(Number.isFinite(Number(response.handlerMs))).toBe(true);
       expect(Number(response.handlerMs)).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  test("every gate response reports entry and activation clocks for the caller's split", async () => {
+    const gate = "rate-limit:v2:activation-timing";
+    const sentAt = Date.now();
+    const first = await post("/rate-limit-warm", {}, gate);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const secondSentAt = Date.now();
+    const second = await post(
+      "/rate-limit",
+      { endpointType: "completions", windowMs: 60000, maxRequests: 5 },
+      gate,
+    );
+    const invalid = await post("/settle", {}, gate);
+    for (const response of [first, second, invalid]) {
+      expect(response.handlerMs).not.toBeNull();
+      expect(Number(response.enteredAt)).toBeGreaterThanOrEqual(sentAt);
+    }
+    // The first call constructed the object; later calls reuse that instance.
+    expect(Number(first.activatedAt)).toBeGreaterThanOrEqual(sentAt);
+    expect(second.activatedAt).toBe(first.activatedAt);
+    expect(Number(second.activatedAt)).toBeLessThan(secondSentAt);
   });
 
   const concurrently = (
