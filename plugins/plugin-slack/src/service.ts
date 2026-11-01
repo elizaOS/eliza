@@ -2372,6 +2372,16 @@ export class SlackService extends Service implements ISlackService {
         await this.runtime.createMemory(responseMemory, "messages");
       }
 
+      if (responseMemories.length > 0 && responseRoom.id !== room.id) {
+        await this.copyMessageIntoReplyThread(
+          memory,
+          responseRoom.id,
+          channelId,
+          threadTs,
+          accountId,
+        );
+      }
+
       if (responseMemories.length > 0) {
         // Listeners are observers: a failing listener must not turn an
         // already-sent message into a send failure that invites a retry.
@@ -2415,6 +2425,66 @@ export class SlackService extends Service implements ISlackService {
     const messageService = getMessageService(this.runtime);
     if (messageService) {
       await messageService.handleMessage(this.runtime, memory, callback);
+    }
+  }
+
+  /**
+   * A top-level channel message is answered in a thread under it, and the
+   * thread is its own room: the reply and every later message in the thread
+   * are stored there, and that room's messages are the transcript each later
+   * turn in the thread is planned from. The message itself stays in the
+   * channel room, so without a copy the thread's transcript starts at the
+   * agent's answer and a follow-up ("now into Spanish") is planned without
+   * the question it continues. Slack shows the message at the top of its
+   * thread; this stores it there too, once per thread.
+   *
+   * The copy is the stored row (already wrapped and scrubbed by the inbound
+   * security hook), under its own id so reaction and claim lookups keyed on
+   * the Slack timestamp still resolve only the original. Its createdAt is the
+   * message's, so it sorts first in the thread.
+   */
+  private async copyMessageIntoReplyThread(
+    message: Memory,
+    threadRoomId: UUID,
+    channelId: string,
+    threadTs: string | undefined,
+    accountId: string,
+  ): Promise<void> {
+    if (!message.id || !threadTs) return;
+    try {
+      const copyId = createUniqueUuid(
+        this.runtime,
+        this.scopedSlackKey(
+          "slack-thread-root",
+          `${channelId}-${threadTs}`,
+          accountId,
+        ),
+      );
+      // A message answered in several parts copies into its thread once.
+      if (await this.runtime.getMemoryById(copyId)) return;
+      const stored = await this.runtime.getMemoryById(message.id);
+      if (!stored) return;
+      await this.runtime.createMemory(
+        {
+          ...stored,
+          id: copyId,
+          roomId: threadRoomId,
+          embedding: undefined,
+        },
+        "messages",
+      );
+    } catch (error) {
+      // error-policy:J7 The reply is already delivered and stored; a missing
+      // thread copy costs context, not delivery, so it is reported, not thrown.
+      this.runtime.reportError(
+        "SlackService.copyMessageIntoReplyThread",
+        error,
+        {
+          accountId,
+          channelId,
+          threadTs,
+        },
+      );
     }
   }
 
