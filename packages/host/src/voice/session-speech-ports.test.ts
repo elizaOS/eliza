@@ -344,7 +344,9 @@ test("one model acknowledgment is removed from the reply while remaining model t
     // Only the admitted model label is progress. The provisional "On it."
     // does not create a second cue or become authoritative reply speech.
     expect(
-      f.control.filter((frame) => frame.t === "progress").map((frame) => frame.text),
+      f.control
+        .filter((frame) => frame.t === "progress")
+        .map((frame) => frame.text),
     ).toEqual([cue]);
     expect(f.phrases[0]).toBe(cue);
     expect(f.phrases.slice(1).join(" ").replace(/\s+/g, " ").trim()).toBe(

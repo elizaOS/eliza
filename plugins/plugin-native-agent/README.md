@@ -411,8 +411,8 @@ generic transport; Alpha retains its explicit domain effect policy and pending-c
 checks through enrollment and dispatch.
 
 `runtime/CredentialIntentFence` is last-intent-wins fencing over credential
-writes. `runtime/NativeProviderSlot` binds a direct provider key (test-mocks
-builds only) with compare-and-exchange readback, clears the slot with readback,
+writes. `runtime/NativeProviderSlot` binds explicitly owner-selected direct inference and optional
+speech keys with compare-and-exchange readback, clears the slot with readback,
 and composes the launch environment in one order: provider admission (or an
 unbound launch), then the native runtime profile's embedding route, so a native
 profile bound to Eliza Cloud keeps on-device BGE embeddings.

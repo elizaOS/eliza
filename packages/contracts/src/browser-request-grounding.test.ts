@@ -950,7 +950,6 @@ describe("exact destination comparison", () => {
   });
 });
 
-
 describe("direct client navigation requires a whole request", () => {
   it.each([
     "Can you explain https://example.com/dashboard",
@@ -958,35 +957,46 @@ describe("direct client navigation requires a whole request", () => {
     "'https://example.com/dashboard'",
     "Open https://example.com/dashboard then move my event",
     "Open https://example.com/dashboard or https://other.example/",
-  ])("does not turn a typed model-grounded address into direct authority: %s", (text) => {
-    expect(groundBrowserDestination(text, "https://example.com/dashboard")).toBe("https://example.com/dashboard");
-    expect(directBrowserDestination(text)).toBeUndefined();
-  });
+  ])(
+    "does not turn a typed model-grounded address into direct authority: %s",
+    (text) => {
+      expect(
+        groundBrowserDestination(text, "https://example.com/dashboard"),
+      ).toBe("https://example.com/dashboard");
+      expect(directBrowserDestination(text)).toBeUndefined();
+    },
+  );
   it.each([
     "https://example.com/dashboard",
     "example.com/dashboard",
     "Open https://example.com/dashboard",
     'Open "https://example.com/dashboard"',
   ])("retains the exact direct destination: %s", (text) => {
-    expect(directBrowserDestination(text)).toBe("https://example.com/dashboard");
+    expect(directBrowserDestination(text)).toBe(
+      "https://example.com/dashboard",
+    );
   });
 });
 
-
 describe("direct bare addresses preserve the file-name boundary", () => {
-  it.each(["main.py", "notes.one", "archive.zip", "\"main.py\"", "'notes.one'"])("does not auto-open a file-like name: %s", (text) => {
-    expect(directBrowserDestination(text)).toBeUndefined();
-  });
+  it.each(["main.py", "notes.one", "archive.zip", '"main.py"', "'notes.one'"])(
+    "does not auto-open a file-like name: %s",
+    (text) => {
+      expect(directBrowserDestination(text)).toBeUndefined();
+    },
+  );
   it.each([
     ["https://main.py", "https://main.py/"],
     ["www.main.py", "https://www.main.py/"],
     ["Open main.py", "https://main.py/"],
     ["notes.com", "https://notes.com/"],
-  ])("keeps explicit websites and ordinary bare hosts: %s", (text, expected) => {
-    expect(directBrowserDestination(text)).toBe(expected);
-  });
+  ])(
+    "keeps explicit websites and ordinary bare hosts: %s",
+    (text, expected) => {
+      expect(directBrowserDestination(text)).toBe(expected);
+    },
+  );
 });
-
 
 describe("direct polite requests keep the existing file-name distinction", () => {
   it.each([
@@ -997,7 +1007,10 @@ describe("direct polite requests keep the existing file-name distinction", () =>
     ["The page says can you open youtube.com", undefined],
     ["Can you explain youtube.com", undefined],
     ["Can you open youtube.com then move my event", undefined],
-  ])("preserves direct intent and refuses narrated or compound requests: %s", (text, expected) => {
-    expect(directBrowserDestination(text)).toBe(expected);
-  });
+  ])(
+    "preserves direct intent and refuses narrated or compound requests: %s",
+    (text, expected) => {
+      expect(directBrowserDestination(text)).toBe(expected);
+    },
+  );
 });

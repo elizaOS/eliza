@@ -25,7 +25,7 @@ async function ownerModelAcknowledgment(
   {
     changeAudienceBeforeAcknowledgment = false,
     abortDuringRevalidation = false,
-    acknowledgment = "Let me have a look.",
+    acknowledgment = "Let me check.",
   } = {},
 ) {
   const controller = new AbortController();
@@ -67,7 +67,7 @@ async function ownerModelAcknowledgment(
   let compositions = 0;
   runtime.composeState = vi.fn(async (message: Memory) => {
     compositions++;
-    if (ownerPrivatePlannerState && compositions >= 1) {
+    if (ownerPrivatePlannerState && compositions === 1) {
       expect(
         (await authorizeOwnerExclusiveDisclosure(runtime, message)).allowed,
       ).toBe(true);
@@ -86,22 +86,31 @@ async function ownerModelAcknowledgment(
       },
     ],
     validate: async () => true,
-    handler: async () => { events.push("tool"); return { success: true, text: "private result" }; },
+    handler: async () => {
+      events.push("tool");
+      return { success: true, text: "private result" };
+    },
   };
   runtime.registerAction(lookup);
   const readParticipants = runtime.getParticipantsForRoom.bind(runtime);
   if (changeAudienceBeforeAcknowledgment || abortDuringRevalidation) {
-    vi.spyOn(runtime, "getParticipantsForRoom").mockImplementation(async (roomId) => {
-      if (stage1Returned) {
-        stage1Returned = false;
-        if (changeAudienceBeforeAcknowledgment) {
-          await runtime.createEntity({ id: GUEST_ID, agentId: runtime.agentId, names: ["Guest"] });
-          await runtime.addParticipant(GUEST_ID, ROOM_ID);
+    vi.spyOn(runtime, "getParticipantsForRoom").mockImplementation(
+      async (roomId) => {
+        if (stage1Returned) {
+          stage1Returned = false;
+          if (changeAudienceBeforeAcknowledgment) {
+            await runtime.createEntity({
+              id: GUEST_ID,
+              agentId: runtime.agentId,
+              names: ["Guest"],
+            });
+            await runtime.addParticipant(GUEST_ID, ROOM_ID);
+          }
+          if (abortDuringRevalidation) controller.abort();
         }
-        if (abortDuringRevalidation) controller.abort();
-      }
-      return readParticipants(roomId);
-    });
+        return readParticipants(roomId);
+      },
+    );
   }
   let handlerCalls = 0;
   runtime.registerModel(
@@ -122,7 +131,9 @@ async function ownerModelAcknowledgment(
                   contexts: ["general"],
                   intents: ["look up entry"],
                   candidateActionNames: ["LOOKUP"],
-                  replyText: acknowledgment ? [{ kind: "text", value: acknowledgment }] : [],
+                  // This fixture supplies no source originals, so Stage 1 declares
+                  // plain reply text rather than source-backed reply parts.
+                  replyText: acknowledgment,
                   replyEffectStatus: "pending",
                   facts: [],
                   relationships: [],
@@ -146,8 +157,11 @@ async function ownerModelAcknowledgment(
   runtime.registerModel(
     ModelType.ACTION_PLANNER,
     async () => ({
-      text: "", thought: "Look it up.",
-      toolCalls: [{ id: "lookup-1", name: "LOOKUP", arguments: { query: "private arg" } }],
+      text: "",
+      thought: "Look it up.",
+      toolCalls: [
+        { id: "lookup-1", name: "LOOKUP", arguments: { query: "private arg" } },
+      ],
     }),
     "owner-tool-phase",
     300,
@@ -158,7 +172,9 @@ async function ownerModelAcknowledgment(
     agentId: runtime.agentId,
     roomId: ROOM_ID,
     content: {
-      text: acknowledgment ? "Look up this week." : "Look up this week without saying anything or acknowledging it.",
+      text: acknowledgment
+        ? "Look up this week."
+        : "Look up this week without saying anything or acknowledging it.",
       source: "client_chat",
       channelType: ChannelType.DM,
     },
@@ -189,9 +205,12 @@ async function ownerModelAcknowledgment(
   } catch (error) {
     if (
       !controller.signal.aborted ||
-      !(error instanceof TurnAbortedError ||
-        (error instanceof Error && error.name === "AbortError"))
-    ) throw error;
+      !(
+        error instanceof TurnAbortedError ||
+        (error instanceof Error && error.name === "AbortError")
+      )
+    )
+      throw error;
   }
   return { chunks, acknowledgments, events };
 }
@@ -200,14 +219,17 @@ describe("awaited owner model acknowledgments", () => {
   beforeEach(() => vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0"));
   afterEach(async () => {
     vi.unstubAllEnvs();
-    await Promise.all(runtimes.splice(0).map(async (runtime) => {
-      await runtime.stop(); await runtime.close();
-    }));
+    await Promise.all(
+      runtimes.splice(0).map(async (runtime) => {
+        await runtime.stop();
+        await runtime.close();
+      }),
+    );
   });
 
   it("awaits one original model acknowledgment before private tool work", async () => {
     const result = await ownerModelAcknowledgment(true);
-    expect(result.acknowledgments).toEqual(["Let me have a look."]);
+    expect(result.acknowledgments).toEqual(["Let me check."]);
     expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
     expect(result.chunks).toEqual([]);
   });
@@ -219,12 +241,16 @@ describe("awaited owner model acknowledgments", () => {
   });
 
   it("does not send private model words to a changed audience", async () => {
-    const result = await ownerModelAcknowledgment(true, { changeAudienceBeforeAcknowledgment: true });
+    const result = await ownerModelAcknowledgment(true, {
+      changeAudienceBeforeAcknowledgment: true,
+    });
     expect(result.acknowledgments).toEqual([]);
   });
 
   it("does not send an acknowledgment after cancellation during revalidation", async () => {
-    const result = await ownerModelAcknowledgment(true, { abortDuringRevalidation: true });
+    const result = await ownerModelAcknowledgment(true, {
+      abortDuringRevalidation: true,
+    });
     expect(result.acknowledgments).toEqual([]);
   });
 });

@@ -129,7 +129,9 @@ public final class NativeProviderSlot {
     bindDirectProvider(store, key, model, cartesiaKey);
     store.assertCurrent();
     JSONObject saved = new JSONObject(store.readProvider());
-    if (!key.equals(saved.optString("key")) || !model.equals(saved.optString("model"))) throw new IllegalStateException();
+    if (!key.equals(saved.optString("key")) || !model.equals(saved.optString("model"))
+        || !java.util.Objects.equals(cartesiaKey, saved.has("cartesiaKey") ? saved.getString("cartesiaKey") : null))
+      throw new IllegalStateException("Provider credentials could not be confirmed");
     return null;
   }
 
