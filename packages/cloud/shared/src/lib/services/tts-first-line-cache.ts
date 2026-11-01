@@ -255,6 +255,24 @@ export interface CloudFirstLineCacheOptions {
   ttlDays?: number;
 }
 const FIRST_SENTENCE_MAX_WORDS = 10;
+function cacheEntry(
+  key: CloudFirstLineCacheKey,
+  row: TtsFirstLineCacheRow,
+  bytes: Uint8Array<ArrayBuffer>,
+  hitCount: number,
+): CloudFirstLineCacheEntry {
+  return {
+    ...key,
+    bytes,
+    rawText: row.rawText,
+    contentType: row.contentType,
+    durationMs: row.durationMs,
+    wordCount: row.wordCount,
+    byteSize: row.byteSize,
+    hitCount,
+    blobKey: row.blobKey,
+  };
+}
 export class CloudFirstLineCacheService {
   private readonly maxBytesPerScope: number;
   private readonly maxBytesPerEntry: number;
@@ -271,7 +289,27 @@ export class CloudFirstLineCacheService {
    * On hit, atomically bumps `hit_count` and `last_accessed_at`.
    */
   async get(key: CloudFirstLineCacheKey): Promise<CloudFirstLineCacheEntry | null> {
-    return this.applyPeek(await this.peek(key));
+    const { row, bytes } = await this.peek(key);
+    if (!row) return null;
+    if (!bytes) {
+      // Orphan — drop the row so the next call will re-populate.
+      await dbWrite.delete(ttsFirstLineCache).where(eq(ttsFirstLineCache.id, row.id));
+      return null;
+    }
+    // LRU touch + hit count. Fire-and-forget — failure here is non-fatal.
+    void dbWrite
+      .update(ttsFirstLineCache)
+      .set({
+        lastAccessedAt: new Date(),
+        hitCount: sql`${ttsFirstLineCache.hitCount} + 1`,
+      })
+      .where(eq(ttsFirstLineCache.id, row.id))
+      .catch((err) => {
+        logger.warn?.(
+          `[tts-first-line-cache] failed to touch row ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      });
+    return cacheEntry(key, row, bytes, row.hitCount + 1);
   }
   /**
    * The read half of `get()`: reads the manifest row and its blob and writes
@@ -293,8 +331,16 @@ export class CloudFirstLineCacheService {
     return { key, row, bytes: await r2GetBytes(row.blobKey) };
   }
   /**
-   * The write half of `get()`: drops an orphan row, or on a hit bumps
-   * `hit_count` and `last_accessed_at`. Returns the hit entry, or null.
+   * Settles a `peek()` once the request may use the cache. The cache may have
+   * changed since the peek, so nothing is decided on the peeked row alone:
+   *   - miss: returns null. A row stored since the peek serves a later request.
+   *   - orphan: re-reads through `get()`, which drops the row only if it is
+   *     still an orphan now. Another request may have repaired it with
+   *     `put()` meanwhile, so the peeked id never authorizes a delete.
+   *   - hit: one conditional update bumps `hit_count` and `last_accessed_at`
+   *     only if the row still has the peeked id and the fields `put()`
+   *     rewrites. If the row was evicted, deleted or rewritten, the
+   *     prefetched bytes no longer speak for it and `get()` re-reads.
    */
   async applyPeek({
     key,
@@ -302,35 +348,34 @@ export class CloudFirstLineCacheService {
     bytes,
   }: CloudFirstLineCachePeek): Promise<CloudFirstLineCacheEntry | null> {
     if (!row) return null;
-    if (!bytes) {
-      // Orphan — drop the row so the next call will re-populate.
-      await dbWrite.delete(ttsFirstLineCache).where(eq(ttsFirstLineCache.id, row.id));
-      return null;
+    if (!bytes) return this.get(key);
+    let touched: { hitCount: number } | undefined;
+    try {
+      [touched] = await dbWrite
+        .update(ttsFirstLineCache)
+        .set({
+          lastAccessedAt: new Date(),
+          hitCount: sql`${ttsFirstLineCache.hitCount} + 1`,
+        })
+        .where(
+          and(
+            eq(ttsFirstLineCache.id, row.id),
+            eq(ttsFirstLineCache.blobKey, row.blobKey),
+            eq(ttsFirstLineCache.byteSize, row.byteSize),
+            eq(ttsFirstLineCache.contentType, row.contentType),
+            eq(ttsFirstLineCache.durationMs, row.durationMs),
+          ),
+        )
+        .returning({ hitCount: ttsFirstLineCache.hitCount });
+    } catch (err) {
+      // error-policy:J4 an unconfirmed hit is re-read, never served from the peek.
+      logger.warn?.(
+        `[tts-first-line-cache] failed to touch row ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return this.get(key);
     }
-    // LRU touch + hit count. Fire-and-forget — failure here is non-fatal.
-    void dbWrite
-      .update(ttsFirstLineCache)
-      .set({
-        lastAccessedAt: new Date(),
-        hitCount: row.hitCount + 1,
-      })
-      .where(eq(ttsFirstLineCache.id, row.id))
-      .catch((err) => {
-        logger.warn?.(
-          `[tts-first-line-cache] failed to touch row ${row.id}: ${err instanceof Error ? err.message : String(err)}`,
-        );
-      });
-    return {
-      ...key,
-      bytes,
-      rawText: row.rawText,
-      contentType: row.contentType,
-      durationMs: row.durationMs,
-      wordCount: row.wordCount,
-      byteSize: row.byteSize,
-      hitCount: row.hitCount + 1,
-      blobKey: row.blobKey,
-    };
+    if (!touched) return this.get(key);
+    return cacheEntry(key, row, bytes, touched.hitCount);
   }
   async has(key: CloudFirstLineCacheKey): Promise<boolean> {
     if (!key.voiceRevision) return false;

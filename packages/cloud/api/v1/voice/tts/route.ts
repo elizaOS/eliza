@@ -433,32 +433,24 @@ async function __hono_POST(c: AppContext) {
             scope: "global",
           }
         : null;
-    // The paid lane's first-line cache lookup and catalog price do not depend
-    // on the moderation verdict, so both start here and run while moderation
-    // is in flight. Both only read: peek() writes nothing, and the cache
-    // bookkeeping a lookup owes (hit count, LRU touch, orphan-row cleanup)
-    // runs in applyPeek() only after moderation passes, so a refused request
-    // leaves the cache as it found it. Nothing uses either result before the
-    // verdict. The free lanes (Workers AI, Kokoro) start neither read.
+    // The paid lane's first-line cache lookup does not depend on the moderation
+    // verdict, so its read half starts here and runs while moderation is in
+    // flight: peek() reads the manifest row and the R2 blob and writes
+    // nothing. Everything that writes or charges still waits for the verdict.
+    // applyPeek() revalidates the peeked row and does the cache bookkeeping
+    // (hit count, LRU touch, orphan-row cleanup) only after moderation passes,
+    // and the catalog price is read only after a cache miss, as before,
+    // because pricing can hydrate and persist the shared pricing cache. A
+    // refused request leaves both caches as it found them. The free lanes
+    // (Workers AI, Kokoro) start no paid read.
     const cacheKey = mp3CacheKey ?? wavCacheKey;
-    const paidReads = willAdmit
-      ? {
-          cachePeek: cacheKey
-            ? getCloudFirstLineCacheService().peek(cacheKey)
-            : null,
-          ttsCost: calculateTTSCostFromCatalog({
-            model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
-            characterCount: text.length,
-            ...(getGenerativePricingCacheOptions(c).cacheOnly
-              ? { cache: getGenerativePricingCacheOptions(c) }
-              : {}),
-          }),
-        }
-      : undefined;
-    // A moderation rejection leaves before either read is awaited. This marks
-    // both as handled; the awaits below still receive their errors.
-    paidReads?.cachePeek?.catch(() => undefined);
-    paidReads?.ttsCost.catch(() => undefined);
+    const cachePeek =
+      willAdmit && cacheKey
+        ? getCloudFirstLineCacheService().peek(cacheKey)
+        : null;
+    // A moderation rejection leaves before the peek is awaited. This marks it
+    // handled; the await below still receives its error.
+    cachePeek?.catch(() => undefined);
     await contentSafetyService.assertSafeForPublicUse({
       surface: "media_generation_prompt",
       organizationId: user.organization_id,
@@ -636,16 +628,16 @@ async function __hono_POST(c: AppContext) {
         },
       });
     }
-    if (!paidReads) {
-      throw new Error("Paid TTS reads were not started");
+    if (cacheKey && !cachePeek) {
+      throw new Error("Paid TTS cache read was not started");
     }
     timings.admissionMs = Date.now() - admissionStart;
     const cacheStart = Date.now();
     let cached: CloudFirstLineCacheEntry | null = null;
-    if (cacheKey && paidReads.cachePeek) {
+    if (cacheKey && cachePeek) {
       try {
         cached = await getCloudFirstLineCacheService().applyPeek(
-          await paidReads.cachePeek,
+          await cachePeek,
         );
       } catch (err) {
         // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
@@ -672,7 +664,13 @@ async function __hono_POST(c: AppContext) {
         },
       });
     }
-    const ttsCost = await paidReads.ttsCost;
+    const ttsCost = await calculateTTSCostFromCatalog({
+      model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
+      characterCount: text.length,
+      ...(getGenerativePricingCacheOptions(c).cacheOnly
+        ? { cache: getGenerativePricingCacheOptions(c) }
+        : {}),
+    });
     const estimatedCost = isCustomVoice
       ? Math.round(ttsCost.totalCost * CUSTOM_VOICE_TTS_MARKUP * 1000000) /
         1000000
