@@ -14,6 +14,7 @@ import {
   billFlatUsage,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { calculateTTSCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import {
   type CreditReservation,
   InsufficientCreditsError,
@@ -573,7 +574,7 @@ async function __hono_POST(c: AppContext) {
       providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
     const mp3VoiceRevision =
       providerSelection.provider === "cartesia"
-        ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
+        ? `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:mp3_44100_128`
         : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
@@ -642,7 +643,7 @@ async function __hono_POST(c: AppContext) {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
             provider: "cartesia",
             voiceId: cartesiaVoiceId,
-            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
+            voiceRevision: `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:pcm${WAV_PCM_SAMPLE_RATE}`,
             sampleRate: WAV_PCM_SAMPLE_RATE,
             codec: "wav" as const,
             voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
@@ -877,7 +878,7 @@ async function __hono_POST(c: AppContext) {
             ...billingContext,
             model:
               synthesisEngine === "cartesia"
-                ? "cartesia/sonic-3.5"
+                ? `cartesia/${CARTESIA_SONIC_MODEL_ID}`
                 : billingContext.model,
             provider: synthesisEngine,
           },
@@ -906,7 +907,7 @@ async function __hono_POST(c: AppContext) {
           // ElevenLabs-served one would.
           model:
             synthesisEngine === "cartesia"
-              ? "sonic-3.5"
+              ? CARTESIA_SONIC_MODEL_ID
               : modelId || "eleven_flash_v2_5",
           provider: synthesisEngine,
           input_tokens: Math.ceil(text.length / 4),

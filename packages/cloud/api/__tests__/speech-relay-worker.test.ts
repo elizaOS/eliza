@@ -69,7 +69,7 @@ beforeAll(async () => {
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
-      `${common} export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;}};}close(){stats().ttsClosed=true;}}`,
+      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;}};}close(){stats().ttsClosed=true;}}`,
     ],
   ];
   const result = await Bun.build({
@@ -614,7 +614,7 @@ test("barge-in settles only the submitted TTS characters across contexts, not th
     settledAmounts: Array<{ model: string; cost: number }>;
   };
   const settled = stats.settledAmounts
-    .filter((entry) => entry.model === "sonic-3.5")
+    .filter((entry) => entry.model === "sonic-3.6")
     .at(-1)!;
   expect(settled.cost).toBe(
     Math.round(phrases.join("").length * 0.00004 * 1.2 * 1e6) / 1e6,

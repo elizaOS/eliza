@@ -9,7 +9,10 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { resolveVoiceUsageLimits } from "@elizaos/cloud-shared/lib/voice-session/config";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { createCartesiaInkRealtimeSession } from "@elizaos/host/voice/cartesia-ink";
-import { CartesiaSonicTtsAdapter } from "@elizaos/host/voice/cartesia-sonic-tts";
+import {
+  CARTESIA_SONIC_MODEL_ID,
+  CartesiaSonicTtsAdapter,
+} from "@elizaos/host/voice/cartesia-sonic-tts";
 import {
   createSpeechRelaySession,
   SPEECH_RELAY_BUDGET,
@@ -366,7 +369,7 @@ export class SpeechRelayCoordinator {
                   userId: ledger.caller.user.id,
                   organizationId: ledger.caller.user.organization_id,
                   text: `TTS text: ${text}`,
-                  metadata: { type: "tts", model: "sonic-3.5" },
+                  metadata: { type: "tts", model: CARTESIA_SONIC_MODEL_ID },
                 },
                 (task) => this.state.waitUntil(task),
               );
