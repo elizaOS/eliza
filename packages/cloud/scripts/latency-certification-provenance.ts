@@ -26,14 +26,12 @@ export function certificationTarget(environment = "staging") {
       environment,
       sourceRef: "refs/heads/staging",
       baseUrl: "https://api-staging.eliza.app",
-      worker: "eliza-cloud-api-staging",
     };
   if (environment === "production")
     return {
       environment,
       sourceRef: "refs/heads/main",
       baseUrl: "https://api.eliza.app",
-      worker: "eliza-cloud-api",
     };
   throw new Error("Unsupported certification environment");
 }
@@ -52,6 +50,7 @@ export async function readDeploymentPlacement(
   );
   let config: {
     targetPresent: boolean;
+    worker: unknown;
     placement: { mode: string; region: string } | null;
     rootPlacement: unknown;
   };
@@ -65,9 +64,13 @@ export async function readDeploymentPlacement(
           "--eval",
           `
       const config = Bun.TOML.parse(await Bun.stdin.text());
+      // Canonical releases pass --env for both environments. Root settings
+      // must not replace the selected profile's identity or placement policy.
+      const target = config.env?.[${JSON.stringify(environment)}];
       console.log(JSON.stringify({
-        targetPresent: ${JSON.stringify(environment)} === "production" ? config.vars?.ENVIRONMENT === "production" : Boolean(config.env?.staging),
-        placement: ${JSON.stringify(environment)} === "production" ? (config.placement ?? null) : (config.env?.staging?.placement ?? null),
+        targetPresent: Boolean(target),
+        worker: target?.name,
+        placement: target?.placement ?? null,
         rootPlacement: config.placement ?? null,
       }));
     `,
@@ -90,13 +93,16 @@ export async function readDeploymentPlacement(
   }
   if (
     config.targetPresent !== true ||
-    (environment === "staging" &&
-      config.placement === null &&
-      config.rootPlacement !== null)
+    (config.placement === null && config.rootPlacement !== null)
   )
     throw new Error(
       "Deployment requires an explicit environment placement policy",
     );
+  if (
+    typeof config.worker !== "string" ||
+    !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(config.worker)
+  )
+    throw new Error("Deployment requires an explicit environment Worker name");
   const placement = config.placement;
   if (
     placement !== null &&
@@ -111,6 +117,7 @@ export async function readDeploymentPlacement(
   return {
     kind: "deployment_placement",
     deploySha,
+    worker: config.worker,
     configSha256: createHash("sha256").update(source).digest("hex"),
     ...(placement === null ? { mode: "default" } : placement),
   };

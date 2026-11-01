@@ -14,10 +14,15 @@ import { apiKeys } from "../../db/schemas/api-keys";
 import type { RouteParams } from "../api/hono-next-style-params";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import {
+  consumeAuthorizedInferenceRateLimit,
   consumeInferenceRateLimit,
   InferenceAdmissionGateUnavailableError,
 } from "../services/inference-admission-gate";
 import { warmInferenceAdmissionSnapshot } from "../services/inference-admission-snapshot";
+import {
+  type InferenceBudgetPolicy,
+  isRatePolicyAdmissionEnabled,
+} from "../services/inference-funded-budget-admission";
 import { isHotPathCachesEnabled } from "../services/inference-hot-path-caches";
 import type { EndpointType, OrgRateLimitConfig } from "../services/org-rate-limits";
 import { type OrgTierCacheExecutionContext, recalculateOrgTier } from "../services/org-rate-limits";
@@ -493,6 +498,124 @@ export async function readApiKeyRateLimit(
   return row.rateLimit < planCeiling ? { id: apiKeyId, maxRequests: row.rateLimit } : null;
 }
 
+/** Rate-policy proof: an organization epoch and the key cap read with it. */
+export interface InferenceRatePolicyProof {
+  policy: InferenceBudgetPolicy;
+  credential: {
+    kind: "api_key";
+    credentialId: string;
+    userId: string;
+    rateLimit: number;
+    expiresAt: number | null;
+  };
+}
+
+/**
+ * Build the proof from one authorized API-key auth context. The context's
+ * admission snapshot and key fields were read in one primary snapshot (and
+ * the cache write drops the proof if a mutation intervened), so the epoch
+ * vouches for exactly this key cap. Returns undefined when anything is absent.
+ */
+export function inferenceRatePolicyProof(ctx: {
+  orgId: string;
+  userId: string;
+  apiKeyId?: string | null;
+  apiKeyRateLimit?: number;
+  apiKeyExpiresAt?: number | null;
+  admission?: { ratePolicy?: InferenceBudgetPolicy };
+}): InferenceRatePolicyProof | undefined {
+  const policy = ctx.admission?.ratePolicy;
+  if (
+    !policy?.rateEnabled ||
+    policy.organizationId !== ctx.orgId ||
+    !ctx.apiKeyId ||
+    !Number.isSafeInteger(ctx.apiKeyRateLimit) ||
+    (ctx.apiKeyRateLimit ?? 0) <= 0 ||
+    ctx.apiKeyExpiresAt === undefined
+  )
+    return undefined;
+  return {
+    policy,
+    credential: {
+      kind: "api_key",
+      credentialId: ctx.apiKeyId,
+      userId: ctx.userId,
+      rateLimit: ctx.apiKeyRateLimit as number,
+      expiresAt: ctx.apiKeyExpiresAt,
+    },
+  };
+}
+
+const RATE_POLICY_FALLBACK = Symbol("rate-policy-fallback");
+
+/**
+ * Decide a request from the cached rate-policy proof with Durable Object
+ * calls only. Returns the fallback marker whenever the proof cannot be
+ * accepted as-is; the caller then runs the unchanged primary path. Only an
+ * allow or a counter denial is returned as a decision.
+ */
+async function admitByRatePolicy(
+  organizationId: string,
+  endpointType: EndpointType,
+  proof: InferenceRatePolicyProof,
+  options: {
+    executionCtx?: OrgTierCacheExecutionContext;
+    config?: OrgRateLimitConfig;
+    apiKeyId?: string | null;
+    userId?: string | null;
+  },
+): Promise<Response | null | typeof RATE_POLICY_FALLBACK> {
+  const { policy, credential } = proof;
+  if (
+    !options.executionCtx ||
+    !isRatePolicyAdmissionEnabled() ||
+    policy.organizationId !== organizationId ||
+    policy.rateEnabled !== true ||
+    policy.validUntil <= Date.now() ||
+    credential.kind !== "api_key" ||
+    !options.apiKeyId ||
+    credential.credentialId !== options.apiKeyId ||
+    (options.userId != null && credential.userId !== options.userId) ||
+    // A supplied observation must agree with the proof it travels with.
+    (options.config !== undefined &&
+      (options.config.authority?.generation !== policy.policyGeneration ||
+        options.config.maxRequests !== policy.rateLimits[`${endpointType}Rpm`]))
+  )
+    return RATE_POLICY_FALLBACK;
+  try {
+    const decision = await consumeAuthorizedInferenceRateLimit({
+      organizationId,
+      endpointType,
+      policyEpoch: policy.epoch,
+      policyGeneration: policy.policyGeneration,
+      credential,
+    });
+    if (decision.allowed) return null;
+    const tiers = policy.rateLimits;
+    const planCeiling =
+      tiers.completionsRpm + tiers.embeddingsRpm + tiers.standardRpm + tiers.strictRpm;
+    const maxRequests = tiers[`${endpointType}Rpm`];
+    return rateLimitExceededResponse(
+      decision,
+      credential.rateLimit < planCeiling
+        ? Math.min(maxRequests, credential.rateLimit)
+        : maxRequests,
+      60_000,
+      "durable-object",
+    );
+  } catch (error) {
+    if (!(error instanceof InferenceAdmissionGateUnavailableError)) throw error;
+    // error-policy:J4 a refused or unavailable proof is not a decision; the
+    // primary path re-reads policy and key cap under the policy lock.
+    logger.info("[RateLimit] Rate-policy admission fell back to the primary path", {
+      organizationId,
+      endpointType,
+      reason: error.message,
+    });
+    return RATE_POLICY_FALLBACK;
+  }
+}
+
 /**
  * Per-org tier-based rate limit. Returns a 429 `Response` when denied, or `null` when allowed.
  * Call INSIDE the handler AFTER auth — same pattern as enforceMcpOrganizationRateLimit.
@@ -517,6 +640,13 @@ export async function enforceOrgRateLimit(
     apiKeyId?: string | null;
     /** Authenticated user; with the organization and plan it keys the plan buckets. */
     userId?: string | null;
+    /**
+     * Cached rate-policy proof from the authorized API-key context (see
+     * `inferenceRatePolicyProof`). With `INFERENCE_RATE_POLICY_ADMISSION` the
+     * organization Durable Object decides it without a primary transaction;
+     * any refusal other than a rate denial falls back to the primary path.
+     */
+    ratePolicy?: InferenceRatePolicyProof;
     fundedBudget?: {
       policy: import("../services/inference-funded-budget-admission").InferenceBudgetPolicy;
       credential: import("../services/inference-credential-revocation").InferenceCredentialCheck;
@@ -535,6 +665,15 @@ export async function enforceOrgRateLimit(
     if (planLimited) return planLimited;
   }
   try {
+    if (options.ratePolicy && options.cacheOnly && !options.fundedBudget) {
+      const decided = await admitByRatePolicy(
+        organizationId,
+        endpointType,
+        options.ratePolicy,
+        options,
+      );
+      if (decided !== RATE_POLICY_FALLBACK) return decided;
+    }
     if (options.fundedBudget) {
       const { inferenceBudgetGateRequest, isFundedBudgetAdmissionEnabled } = await import(
         "../services/inference-funded-budget-admission"

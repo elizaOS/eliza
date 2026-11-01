@@ -571,15 +571,17 @@ export async function requireGenerativeRouteCaller(
       }
       const rateLimitEndpoint = options.rateLimitEndpoint;
       if (rateLimitEndpoint) {
-        const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-          await timeSpeechPhase(c, "limiter_module_load", () =>
-            Promise.all([
-              import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
-              import(
-                "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
-              ),
-            ]),
-          );
+        const [
+          { enforceOrgRateLimit, inferenceRatePolicyProof },
+          { inferenceRateLimitConfig },
+        ] = await timeSpeechPhase(c, "limiter_module_load", () =>
+          Promise.all([
+            import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
+            import(
+              "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+            ),
+          ]),
+        );
         const limited = await timeSpeechPhase(c, "org_limiter", () =>
           enforceOrgRateLimit(resolution.ctx.orgId, rateLimitEndpoint, {
             // Same limiter as chat completions: a shared policy lock and one
@@ -594,6 +596,11 @@ export async function requireGenerativeRouteCaller(
               rateLimitEndpoint,
             ),
             apiKeyId: resolution.ctx.apiKeyId,
+            // Only an API-key context carries a key cap read with its epoch.
+            ratePolicy:
+              "keyHash" in resolution.ctx
+                ? inferenceRatePolicyProof(resolution.ctx)
+                : undefined,
           }),
         );
         if (limited) {
