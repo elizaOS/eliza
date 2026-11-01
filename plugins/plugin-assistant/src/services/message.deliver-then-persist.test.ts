@@ -38,12 +38,12 @@ import {
 } from "../../../../packages/agent/src/triggers/scheduling.ts";
 import { createAssistantPlugin } from "../index.ts";
 import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
+import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
 import {
   DefaultMessageService,
   enforceTrustedDeliveryAudienceOnResult,
   evaluatePlannedReplyEgress,
 } from "./message.ts";
-import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
 
 /** The Stage-1 HANDLE_RESPONSE tool-call envelope a live model emits. */
 function stage1DirectReply(replyText: string, nativeParts = false) {
