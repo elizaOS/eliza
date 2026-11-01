@@ -1,14 +1,16 @@
 /** Source fixtures for the admission transfer audit; no Cloudflare or Wrangler. */
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
+  ADMISSION_BUNDLE_SOURCES,
   API_CONFIG,
   applyPatch,
   auditChain,
   configView,
   effectiveDrift,
-  effectiveVariables,
+  mainMergeProblems,
   reverseChain,
   runbookPhases,
   TARGET_CONFIG,
@@ -169,59 +171,82 @@ describe("effective variables", () => {
     expect(effectiveDrift(api, funded, effective)).toEqual([
       "target sets INFERENCE_FUNDED_BUDGET_ADMISSION, which production leaves unset",
     ]);
+    // The gate's Maps allowance controller reads these from its environment.
+    const maps = {
+      ...api,
+      vars: { ...api?.vars, ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES: "{}" },
+    };
+    expect(effectiveDrift(maps, target, effective)).toEqual([
+      "API sets ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES, which production leaves unset",
+    ]);
     const deployCommit = new Map(effective).set(
       "ELIZA_DEPLOY_COMMIT",
       "a".repeat(40),
     );
     expect(effectiveDrift(api, target, deployCommit)).toEqual([]);
   });
+});
 
-  test("Root's receipt shapes merge and must agree", () => {
-    const current = JSON.stringify({
-      version: "742e1bf0-5c05-41c1-9b1b-b957be25800b",
-      flags: [
-        { name: "ENVIRONMENT", type: "plain_text", text: "production" },
-        {
-          name: "INFERENCE_STRONG_REVOCATION_ENABLED",
-          type: "plain_text",
-          text: "false",
-        },
-      ],
-    });
-    const review = JSON.stringify({
-      effectiveFlags: {
-        "eliza-cloud-api-prod": {
-          INFERENCE_STRONG_REVOCATION_ENABLED: "false",
-        },
-        "eliza-cloud-api-staging": {
-          INFERENCE_STRONG_REVOCATION_ENABLED: "true",
-        },
-      },
-    });
-    const fundedRate = JSON.stringify({
-      flags: { "eliza-cloud-api-prod": {}, "eliza-cloud-api-staging": {} },
-    });
-    expect(effectiveVariables([current, review, fundedRate])).toEqual(
-      new Map([
-        ["ENVIRONMENT", "production"],
-        ["INFERENCE_STRONG_REVOCATION_ENABLED", "false"],
-      ]),
-    );
-    const conflicting = JSON.stringify({
-      effectiveFlags: {
-        "eliza-cloud-api-prod": { INFERENCE_STRONG_REVOCATION_ENABLED: "true" },
-      },
-    });
-    expect(() => effectiveVariables([current, conflicting])).toThrow(
-      "disagree on INFERENCE_STRONG_REVOCATION_ENABLED",
-    );
-    expect(() =>
-      effectiveVariables([
-        JSON.stringify({ flags: [{ name: "SECRET", type: "secret_text" }] }),
-      ]),
-    ).toThrow("is not plain text");
-    expect(() => effectiveVariables([JSON.stringify({ other: {} })])).toThrow(
-      "Unrecognized effective-variable receipt",
-    );
+describe("gate 2: the phase 2 main commit", () => {
+  const git = (...args: string[]) =>
+    spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" }).stdout;
+  const rows = Object.fromEntries(
+    runbookPhases(
+      read("packages/cloud/admission-worker/PRODUCTION-TRANSFER.md"),
+    ).map((row) => [row.phase, row.commit]),
+  );
+  const changed = (from: string, to: string, paths: string[] = []) =>
+    git("diff", "--name-only", from, to, "--", ...paths)
+      .split("\n")
+      .filter(Boolean);
+  const live = rows["source-owned"];
+  const phasePaths = changed(live, rows["source-commit"]);
+  const facts = {
+    firstParent: live,
+    liveMain: live,
+    live: { phase: "target-pending", api: { commit: live } },
+    mergePaths: phasePaths,
+    phasePaths,
+    bundlePaths: changed(
+      rows["target-pending"],
+      rows["source-commit"],
+      ADMISSION_BUNDLE_SOURCES,
+    ),
+  };
+
+  test("the frozen phase 2 change builds the target's admission bundle", () => {
+    expect(phasePaths).toEqual([
+      ".github/workflows/cloud-tests.yml",
+      "packages/cloud/admission-worker/verify-staging-contract.ts",
+      "packages/cloud/admission-worker/wrangler.toml",
+      "packages/cloud/api/wrangler.toml",
+      "packages/cloud/scripts/production-deploy-admission-lock.test.ts",
+    ]);
+    expect(facts.bundlePaths).toEqual([]);
+    expect(mainMergeProblems(facts)).toEqual([]);
+    // Every bundle source exists in the frozen target tree.
+    for (const path of ADMISSION_BUNDLE_SOURCES)
+      expect(
+        git("ls-tree", "--name-only", rows["target-pending"], "--", path),
+      ).not.toBe("");
+  });
+
+  test("a moved main, a wider merge or other gate code is refused", () => {
+    const moved = "e".repeat(40);
+    expect(
+      mainMergeProblems({
+        ...facts,
+        firstParent: moved,
+        live: { phase: "source-commit", api: { commit: moved } },
+        mergePaths: [...phasePaths, "packages/core/src/index.ts"],
+        bundlePaths: ["packages/cloud/api/src/inference-admission-gate.ts"],
+      }),
+    ).toEqual([
+      "live receipt is source-commit, not target-pending",
+      `the API serves ${moved}, not live main ${live}`,
+      `first parent ${moved} is not live main ${live}`,
+      "merge changes packages/core/src/index.ts outside the phase 2 change",
+      "admission bundle source differs from the target: packages/cloud/api/src/inference-admission-gate.ts",
+    ]);
   });
 });

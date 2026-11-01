@@ -32,11 +32,13 @@ function requireContract(
 }
 
 // Staging checks the accepted steady state. Production checks whichever
-// same-namespace transfer phase is committed; `--phase` pins the expected one.
+// same-namespace transfer phase is committed; `--phase` pins the expected one
+// and `--print-phase` prints only the phase the release then publishes.
 const { values: options } = parseArgs({
   options: {
     production: { type: "boolean", default: false },
     phase: { type: "string" },
+    "print-phase": { type: "boolean", default: false },
   },
 });
 const environment = options.production ? "production" : "staging";
@@ -296,25 +298,34 @@ for (const key of ["CACHE_BACKEND", "CACHE_ENABLED", "NEXT_PUBLIC_APP_URL"]) {
 }
 // The API keeps its own copy of these flags, so a missing target variable is a
 // silent feature split (for example, speech subscriptions answering 404 while
-// the API opens sessions). Compare every variable the gate's modules read.
+// the API opens sessions). Compare every variable the gate's modules read:
+// `env.NAME` in the gate, and `*_ENV = "NAME"` keys in the Maps allowance
+// modules, which receive the gate's environment.
 const gateSources = [
-  "inference-admission-gate.ts",
-  "inference-funded-budget-controller.ts",
-  "speech-revocation-registry.ts",
+  "../api/src/inference-admission-gate.ts",
+  "../api/src/inference-funded-budget-controller.ts",
+  "../api/src/speech-revocation-registry.ts",
+  "../api/src/maps-request-allowance-controller.ts",
+  "../shared/src/lib/services/maps-request-policy.ts",
+  "../shared/src/lib/services/plan-request-limiter.ts",
 ];
 const gateVariables = new Set<string>();
 for (const file of gateSources) {
-  const text = await readFile(
-    new URL(`../api/src/${file}`, import.meta.url),
-    "utf8",
-  );
-  for (const match of text.matchAll(/\benv\.([A-Z][A-Z0-9_]*)\b/g))
-    gateVariables.add(match[1]);
+  const text = await readFile(new URL(file, import.meta.url), "utf8");
+  for (const match of text.matchAll(
+    /\benv\.([A-Z][A-Z0-9_]*)\b|\b[A-Z][A-Z0-9_]*_ENV\s*=\s*"([A-Z][A-Z0-9_]*)"/g,
+  ))
+    gateVariables.add(match[1] ?? match[2]);
 }
-requireContract(
-  gateVariables.has("VOICE_SPEECH_RELAY_ENABLED"),
-  "Gate variable scan no longer finds the speech subscription flag",
-);
+for (const sentinel of [
+  "VOICE_SPEECH_RELAY_ENABLED",
+  "ELIZA_CLOUD_MAPS_REQUEST_ALLOWANCES",
+  "ELIZA_CLOUD_PLAN_RATE_LIMITS",
+])
+  requireContract(
+    gateVariables.has(sentinel),
+    `Gate variable scan no longer finds ${sentinel}`,
+  );
 for (const key of gateVariables) {
   requireContract(
     target.vars?.[key] === stage.vars?.[key],
@@ -375,5 +386,7 @@ requireContract(
 );
 
 console.log(
-  `Admission ${environment} ${phase === "adopted" ? "steady-state" : `${phase} phase`} source contract passed; live namespace and secret parity require separate receipts.`,
+  options["print-phase"]
+    ? phase
+    : `Admission ${environment} ${phase === "adopted" ? "steady-state" : `${phase} phase`} source contract passed; live namespace and secret parity require separate receipts.`,
 );
