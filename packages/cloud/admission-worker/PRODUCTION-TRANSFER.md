@@ -7,6 +7,14 @@ creates, deletes or replaces a namespace. A production release publishes only
 a committed `adopted`, `reverse-pending` or `reverse-adopted` state, after live
 readback proves the state it starts from (`cloud-cf-release.yml`).
 
+**PARKED.** The phase chain below is regenerated on `fbb124e5` only as a
+reviewed reference. Do not execute it: TRANSFER-0 (see "Before phase 1")
+needs production to serve a `main` that carries #38551 and #38552. The chain
+must be regenerated once more on the stable, reviewed `main` that production
+serves with both, and not before that `main` is selected. That regeneration
+changes the phase commits and the source this runbook names, and needs its
+own review.
+
 ## Fixed identities
 
 | Item | Value |
@@ -214,30 +222,52 @@ stops the transfer.
 
 ## Before phase 1
 
-**Precondition TRANSFER-0: the Worker auth this chain releases.** `fbb124e5`
-carries the Worker auth of #38523. The Worker hot path always decides from
-the auth cache (`inference-auth-context.ts`: `authCacheEnabled =
-options.cacheOnly === true || isInferenceAuthCacheEnabled()`), with entries
-refreshed after 30 s and kept for 7 days. So a revoked or disabled key can
-keep working for about 30 s, or up to 7 days while the refresh fails. Root's
-decision of 2026-11-01T15:03:49Z is no auth staleness window in production.
-This chain adds no auth code, but it releases that auth again: the phase 2
-release of `M` and the steady release both publish it. The freeze holds any
-auth correction from R0 until gate 3 reads back. After phase 2, the
-Cloudflare version rollback of the API to `a6252d47` is forbidden (see
+**Precondition TRANSFER-0: the Worker auth and billing admission this chain
+releases.** This chain adds no auth or billing code, but it releases the
+API's source again: the phase 2 release of `M` and the steady release both
+publish it. On `fbb124e5` that source has two Worker hot path defects:
+
+- **Auth.** `fbb124e5` carries the Worker auth of #38523. The hot path
+  always decides from the auth cache (`inference-auth-context.ts`:
+  `authCacheEnabled = options.cacheOnly === true ||
+  isInferenceAuthCacheEnabled()`), with entries refreshed after 30 s and kept
+  for 7 days. So a revoked or disabled key can keep working for about 30 s,
+  or up to 7 days while the refresh fails. Root's decision of
+  2026-11-01T15:03:49Z is no auth staleness window in production. #38551
+  (merged to `develop` at `3c012400`) makes cache-only resolution obey the
+  auth cache flag, and fences and evicts revoked mobile credentials.
+- **Billing admission.** Every Worker request is admitted from the cached
+  admission snapshot (`organization-inference-admission.ts`:
+  `workerAdmissionSnapshot`, then `admitFromSnapshot`). The snapshot's age is
+  not checked, and `INFERENCE_SNAPSHOT_ADMISSION_ENABLED` does not turn this
+  lane off. So once an organization has an authoritative billing hold that
+  its cached snapshot does not carry yet (`billingHold` still `false`), its
+  Worker requests still get spending leases. #38552 (merged to `develop` at
+  `d9222280`) removes this lane: except for the enrolled funded-budget path,
+  Worker requests keep the authoritative hold and policy checks and check
+  the hold again before provider dispatch.
+
+The freeze holds any correction from R0 until gate 3 reads back. After phase
+2, the Cloudflare version rollback of the API to `a6252d47` is forbidden (see
 "Rollback"), and that rollback is the emergency lever of Root's prod
 catch-up plan (`PROD-CATCH-UP-PLAN-20261101.md` 3.5) for this window. So
-step 1 does not start until `$STATE` records one of:
+both corrections must be live in production before the transfer starts.
+Step 1 does not start until `$STATE` records all of:
 
-- the auth correction released first: it reached `main` by the normal
-  promotion, production serves it, and the phase chain was regenerated on
-  that `main` and reviewed again; or
-- Root's or the owner's explicit acceptance of the transfer on `fbb124e5`'s
-  auth, which states that the phase 2 and steady releases republish it, that
-  the freeze holds any correction until gate 3 reads back, and that the
-  version rollback to `a6252d47` is gone after phase 2.
+- the release: production released a `main` commit that carries both
+  corrections and reverts neither. `git merge-base --is-ancestor <merge>
+  <released main SHA>` succeeds for `3c01240086717019782c7e01d8747beb41a10d89`
+  (#38551) and for `d92222805728dbc6624d847fe373621e27462de7` (#38552), and
+  the production run of that SHA succeeded;
+- the readback: with effective-variable receipts captured again on that
+  version, a readback `--phase source-owned --commit <released main SHA>`,
+  without `--previous`, proves that the API serves that SHA; and
+- the regenerated chain: the phase chain regenerated on that `main` and
+  reviewed again (see "PARKED").
 
-Without either, do not start.
+Root's decision of 2026-11-01T17:15:25Z does not accept a transfer on
+`fbb124e5`'s auth or billing admission. No acceptance or override replaces
+these records. Without all three, do not start.
 
 1. Production must serve the tip of `main`, and `develop` and `staging` must
    equal it (`gh api repos/elizaOS/eliza/branches/<branch> --jq
@@ -253,14 +283,14 @@ Without either, do not start.
    do:
    - Promote `develop`'s work to `main` and release it, then fast-forward
      `develop` and `staging` to the new `main`. On 2026-11-01 that work
-     holds the auth correction (#38551, #38552), so this is the first option
-     of TRANSFER-0. `main` moves: capture fresh receipts, then regenerate the
-     phase chain on the new `main` and have it reviewed again.
+     holds #38551 and #38552, which TRANSFER-0 needs released and read back
+     first. `main` moves: capture fresh receipts, then regenerate the phase
+     chain on the new `main` and have it reviewed again.
    - Recreate `develop` at `main` and keep its work on another branch until
      gate 3 lands, then merge it again. This removes that work from
      `develop` for the window: it is a maintainer's or the owner's decision.
-     It also holds the auth correction, so TRANSFER-0 then needs the recorded
-     acceptance.
+     It never holds back #38551 or #38552: TRANSFER-0 needs both on the
+     `main` that production serves before step 1.
 2. Root takes the release lock, and the freeze starts.
 3. Root confirms, read-only on staging's completed transfer, the Cloudflare
    fields the readback has seen only in fixtures. `eliza-cloud-api-staging`
