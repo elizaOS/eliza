@@ -29,7 +29,7 @@ beforeAll(async () => {
     ],
     [
       /\/services\/organization-inference-admission\.ts$/,
-      `${common} export async function admitOrganizationInference(input){bootstrap('admissions');return {async markProviderDispatched(){bootstrap('dispatches');},async settle(cost){const s=stats();s.settlements=(s.settlements??0)+1;},async settleUnknown(){const s=stats();s.unknown=(s.unknown??0)+1;}};}`,
+      `import {InsufficientCreditsError} from '@elizaos/cloud-shared/lib/services/credits'; ${common} export async function admitOrganizationInference(input){bootstrap('admissions');if(stats().decline)throw new InsufficientCreditsError('private provider details');return {async markProviderDispatched(){bootstrap('dispatches');},async settle(cost){const s=stats();s.settlements=(s.settlements??0)+1;},async settleUnknown(){const s=stats();s.unknown=(s.unknown??0)+1;}};}`,
     ],
     [
       /\/services\/content-safety\.ts$/,
@@ -257,4 +257,53 @@ test("ready speech streams PCM and multiple TTS contexts without another DB/auth
       })
     ).status,
   ).toBe(410);
+});
+
+test("a refused credit reservation preserves the allowlisted recovery reason before providers open", async () => {
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        "x-test-session": "credit-decline",
+        "Content-Type": "application/json",
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  const token = "refused-test-capability";
+  await request("/initialize", {
+    sessionId: "44444444-4444-4444-8444-444444444444",
+    tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+    expiresAt: Date.now() + 60000,
+    caller: {
+      user: account,
+      apiKeyId: null,
+      authSource: "combined_cache",
+      appScopeId: null,
+    },
+  });
+  const baseline = (await (await request("/test-decline")).json()) as Record<
+    string,
+    number
+  >;
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    {
+      headers: { "x-test-session": "credit-decline", Upgrade: "websocket" },
+    },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const refused = next(socket as any, (value) => value.t === "error");
+  socket.send(JSON.stringify({ t: "hello", token }));
+  expect(await refused).toEqual({
+    t: "error",
+    code: "unavailable",
+    reason: "insufficient_credits",
+  });
+  const after = (await (await request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  expect(after.sttOpened).toBe(baseline.sttOpened);
+  expect(after.ttsOpened).toBe(baseline.ttsOpened);
 });

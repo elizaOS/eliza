@@ -12,6 +12,10 @@ export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
       stats.locked = false;
       return Response.json(stats);
     }
+    if (path === "/test-decline") {
+      stats.decline = true;
+      return Response.json(stats);
+    }
     if (path === "/test-stats") return Response.json(stats);
     return super.fetch(request);
   }
