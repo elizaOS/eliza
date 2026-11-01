@@ -1,3 +1,5 @@
+import { NOTES_REQUEST_OPERATIONS } from "@elizaos/core";
+import { restrictNotesAction } from "./request-effect-gate.js";
 /**
  * NOTES — the chat door onto the durable notes store.
  *
@@ -24,6 +26,7 @@ import {
   isObjectRecord,
   type Memory,
   normalizeEffectReceipt,
+  promotedSubactionDescription,
   type State,
   stringToUuid,
 } from "@elizaos/core";
@@ -40,14 +43,7 @@ import {
 } from "./types.js";
 import { parseNoteDateRange, parseNoteFieldPatch } from "./validation.js";
 
-const NOTES_OPS = [
-  "create",
-  "list",
-  "get",
-  "update",
-  "patch",
-  "delete",
-] as const;
+const NOTES_OPS = NOTES_REQUEST_OPERATIONS;
 type NotesOp = (typeof NOTES_OPS)[number];
 
 function readParams(options?: HandlerOptions): Record<string, unknown> {
@@ -134,6 +130,32 @@ function failure(
             ],
           }
         : {}),
+    },
+  };
+}
+
+/** Owner validation before any store mutation; not an execution grant. */
+function parameterFailure(
+  text: string,
+  code: string,
+  parameter: "content" | "replacementContent" | "noteId",
+): ActionResult {
+  const result = failure(text, code, parameter);
+  return {
+    ...result,
+    failureProvenance: {
+      kind: "handler_error",
+      boundary: "handler",
+      code,
+      retryable: true,
+    },
+    data: {
+      ...result.data,
+      code,
+      acceptance: "rejected",
+      executionStatus: "not_started",
+      executed: false,
+      retryable: true,
     },
   };
 }
@@ -341,15 +363,29 @@ export const notesAction: Action = {
     "UPDATE_NOTE",
   ],
   description:
-    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch edits selected title/body fields or exact text, preserving other content; action=update appends text, edits authored checklist/transcript entries or replaces complete plain-note content; action=delete removes one by exact noteId or matching title/body text. The first line is the note's label and later lines are its body. For append/add use textEdit append with only the new suffix; never rewrite existing content. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
+    "Durable notes the user can write and read back. action=create writes a note from one content field; action=get reads one exact noteId; action=list reads/searches note text; action=patch appends text or edits selected title/body fields or exact text, preserving other content; action=update substitutes exact text, adds a NEW checklist item or edits authored checklist/transcript entries, or replaces complete plain-note content; action=delete removes one by exact noteId or matching title/body text. The first line is the note's label and later lines are its body. For append/add use action=patch with changes [] and textEdit append: field=item for one list item, field=body for an exact suffix; never rewrite existing content. Prefer textEdit for an exact substitution: the service preserves every other character without needing the model to read and rewrite the note. NOTES changes data, not the visible view: an explicit request to also open Notes needs its own navigation action (prefer VIEWS_SHOW when available).",
   descriptionCompressed:
-    "notes: create, list/search, patch title/body or exact text, authored checklist append/edit or whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
+    "notes: create, list/search, patch append/title/body/exact text, authored checklist append/edit or whole-note update, delete; opening the Notes view separately uses VIEWS_SHOW when available, otherwise VIEWS",
   routingHint:
     "Use the Notes store for saved-note work; MEMORY, documents, files and DATABASE do not search it. Do not use raw SQL. Prefer available NOTES child operations; discover the required operation when missing. Never substitute a read for a requested edit or deletion. A title index is not body or timestamp evidence; use supplied current complete records or the appropriate read. Keep exact wording, punctuation and line breaks. Dates inside note text are content unless scheduling or a reminder is explicitly requested. Opening Notes is separate navigation, only when requested.",
   // Notes are stored per agent rather than per sender. Only the owner may see
   // or mutate that personal store, including through direct tool execution.
   roleGate: { minRole: "OWNER" },
   validate: async () => true,
+  restrictRequestOperation: ({ runtime, message, state, action, params }) => {
+    // The fixed operation is owned by actual promotion metadata, never by
+    // splitting an arbitrary action name or accepting a caller origin flag.
+    const promoted = promotedSubactionDescription(action);
+    const parsed = readOp(
+      promoted?.parent === notesAction.name
+        ? { action: promoted.subaction }
+        : isObjectRecord(params)
+          ? params
+          : {},
+    );
+    if (parsed && !parsed.recognized) return undefined;
+    return restrictNotesAction(runtime, message, state, parsed?.op ?? "list");
+  },
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -368,6 +404,8 @@ export const notesAction: Action = {
       );
     }
     const op: NotesOp = parsed?.op ?? "list";
+    const restricted = restrictNotesAction(runtime, message, _state, op);
+    if (restricted) return restricted;
     const alternatives = readAlternatives(params, [
       "content",
       "text",
@@ -636,7 +674,7 @@ export const notesAction: Action = {
       params.noteId !== undefined &&
       !noteId
     ) {
-      return failure(
+      return parameterFailure(
         "Supply a nonempty exact note ID.",
         "NOTES_INVALID_ID",
         "noteId",
@@ -650,7 +688,7 @@ export const notesAction: Action = {
     }
     const target = noteId ?? content;
     if (!target) {
-      return failure(
+      return parameterFailure(
         "Tell me what the note should say.",
         "NOTES_MISSING_TEXT",
         "content",
@@ -726,7 +764,7 @@ export const notesAction: Action = {
       );
     }
     if (!hasAuthoredEdit && !hasTextEdit && !replacement) {
-      return failure(
+      return parameterFailure(
         "Pass textEdit for an append or exact substitution, or replacementContent for the complete updated note.",
         "NOTES_MISSING_PATCH",
         "replacementContent",
@@ -757,58 +795,6 @@ export const notesAction: Action = {
     );
   },
   parameters: [
-    {
-      name: "authoredEdit",
-      description:
-        "Append a NEW checklist item with {field:checklist,action:append,text:exact new item}; it starts unchecked and needs current expectedRevision. Indexed field/index/expectedText edits REPLACE existing text or done state only; never use an out-of-range index, empty expectedText or newline merge to append. Identify existing note with noteId OR content, never both. New item text belongs only in authoredEdit.text.",
-      subactions: ["update"],
-      required: false,
-      schema: {
-        oneOf: [
-          {
-            type: "object",
-            properties: {
-              field: { type: "string", enum: ["checklist"] },
-              action: { type: "string", enum: ["append"] },
-              text: { type: "string", minLength: 1, maxLength: 20001 },
-            },
-            required: ["field", "action", "text"],
-            additionalProperties: false,
-          },
-          {
-            type: "object",
-            properties: {
-              field: {
-                type: "string",
-                enum: [
-                  "checklist",
-                  "voice-line",
-                  "voice-summary",
-                  "voice-action",
-                  "link-clip",
-                ],
-              },
-              action: { type: "string", enum: ["replace"] },
-              index: { type: "integer", minimum: 0 },
-              expectedText: { type: "string" },
-              text: { type: "string" },
-              done: { type: "boolean" },
-            },
-            required: ["field", "index", "expectedText"],
-            additionalProperties: false,
-          },
-        ],
-      },
-    },
-    {
-      name: "expectedRevision",
-      description:
-        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
-      subactions: ["update", "patch"],
-      required: false,
-      requiredForSubactions: ["patch"],
-      schema: { type: "integer", minimum: 0 },
-    },
     {
       name: "latestBy",
       description:
@@ -959,10 +945,66 @@ export const notesAction: Action = {
     {
       name: "textEdit",
       description:
-        "For append/add, use {action:append,field:body,text:exact suffix} with current expectedRevision. Include any desired newline or space in text; the service appends it verbatim and preserves all old content. Never retype the existing body for an append. For an exact substitution, prefer this instead of reading and rewriting the full note. noteId or content identifies the existing note; field selects title or body; oldText and newText are the exact user-requested strings, with no grammar correction or added context. The service replaces one unique literal match atomically and preserves every other character and field. A missing or repeated match fails without changes; read the note and use a unique surrounding phrase if needed. Omit replacementContent.",
+        "To add one list item use {action:append,field:item,text:the item}; the service adds it in the note's own checklist, comma or line list form. For other added text use field=body with the exact suffix, including any newline or space; it is appended verbatim. Both need current expectedRevision and preserve all old content. Never retype the existing body for an append. For an exact substitution, prefer this instead of reading and rewriting the full note. noteId or content identifies the existing note; field selects title or body; oldText and newText are the exact user-requested strings, with no grammar correction or added context. The service replaces one unique literal match atomically and preserves every other character and field. A missing or repeated match fails without changes; read the note and use a unique surrounding phrase if needed. Omit replacementContent.",
       subactions: ["update", "patch"],
       required: false,
       schema: noteTextEditSchema,
+    },
+    // Strict tool grammars (Cerebras) emit properties only in declaration
+    // order, so an optional key declared before one the model writes first
+    // becomes unreachable. The edit payload and its revision token follow the
+    // action, target and text fields so they stay writable after them.
+    {
+      name: "authoredEdit",
+      description:
+        "Append a NEW checklist item with {field:checklist,action:append,text:exact new item}; it starts unchecked and needs current expectedRevision. Indexed field/index/expectedText edits REPLACE existing text or done state only; never use an out-of-range index, empty expectedText or newline merge to append. Identify existing note with noteId OR content, never both. New item text belongs only in authoredEdit.text.",
+      subactions: ["update"],
+      required: false,
+      schema: {
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              field: { type: "string", enum: ["checklist"] },
+              action: { type: "string", enum: ["append"] },
+              text: { type: "string", minLength: 1, maxLength: 20001 },
+            },
+            required: ["field", "action", "text"],
+            additionalProperties: false,
+          },
+          {
+            type: "object",
+            properties: {
+              field: {
+                type: "string",
+                enum: [
+                  "checklist",
+                  "voice-line",
+                  "voice-summary",
+                  "voice-action",
+                  "link-clip",
+                ],
+              },
+              action: { type: "string", enum: ["replace"] },
+              index: { type: "integer", minimum: 0 },
+              expectedText: { type: "string" },
+              text: { type: "string" },
+              done: { type: "boolean" },
+            },
+            required: ["field", "index", "expectedText"],
+            additionalProperties: false,
+          },
+        ],
+      },
+    },
+    {
+      name: "expectedRevision",
+      description:
+        "Required for every PATCH, including textEdit, and for UPDATE append, authoredEdit or replacementContent: copy notesRevision from the same complete note commit/read/provider content used to prepare the edit. CREATE returns its exact transaction revision with the complete created note. Never guess or refresh only the token. Any later mutation or conflict requires re-reading and reconciling. Only UPDATE literal textEdit may omit it.",
+      subactions: ["update", "patch"],
+      required: false,
+      requiredForSubactions: ["patch"],
+      schema: { type: "integer", minimum: 0 },
     },
   ],
   examples: [],

@@ -520,6 +520,9 @@ export const ANDROID_CLOUD_NATIVE_SIGN_IN_JAVA_FILES = Object.freeze([
   "ElizaCloudSignInPlugin.java",
   "ElizaCloudSignInRegistration.java",
   "ElizaCloudCredentialSlots.java",
+  "ElizaResidentCredentials.java",
+  "ElizaSecureStorePlugin.java",
+  "ElizaCredentialRetirement.java",
 ]);
 
 // Java sources that survive the cloud strip but are rewritten (or deleted) by
@@ -530,6 +533,7 @@ export const ANDROID_CLOUD_REWRITTEN_JAVA_FILES = [
   "MainActivity.java",
   "AgentPlugin.java",
   "ElizaNativeBridge.java",
+  "ElizaCredentialRetirement.java",
 ];
 
 export const ANDROID_CLOUD_STRIPPED_ASSET_FILES = new Set([

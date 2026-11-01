@@ -17,6 +17,7 @@ credential storage. Keep credentials in the trusted host; never log them.
 | `@elizaos/auth/start`       | Hosted Bun service with PostgreSQL                                          |
 | `@elizaos/auth/embedded`    | Embedded Bun service with persistent PGlite                                 |
 | `@elizaos/auth/native-host` | Trusted Node enrollment flow                                                |
+| `@elizaos/auth/app-return`  | Browser-safe foreground return and registered Workspace AppReturn v2 policy |
 | `@elizaos/auth/testing`     | Vault fixtures for tests only                                               |
 
 Use these barrels in repository consumers. Explicit old account/vault paths and
@@ -192,6 +193,21 @@ minted key in the secure store's `session.steward_token` that its renderer reads
 policy, the exact plugin methods and Eliza's host registration and storage on a
 plain JVM, not on a device.
 
+Native sign-in hosts reserve credential-write intent when an attempt is accepted,
+before network work. The same guard stays with that attempt through verification
+and MFA. A later sign-out can therefore refuse an earlier pending write. Optional
+UUID `requestId` input is echoed on MFA and authenticated outcomes; authenticated
+outcomes also include the native `attemptId` and saved local `credentialId`. These
+values correlate an interaction, and do not prove account ownership. Cancellation
+with `requestId` retires only its matching attempt; a stale scoped cancel is a no-op.
+Old callers can still use unscoped cancellation. A queued scoped cleanup also keeps
+the original intent guard, so it cannot erase a newer attempt's pending record.
+Cancellation
+acknowledgement suppresses later delivery for that interaction; it does not roll
+back a key already committed. An old browser pending record without a live intent
+requires a fresh native sign-in. Existing saved-key acknowledgement recovery stays
+separate from interactive completion.
+
 The renderer half is `@elizaos/auth/auth/native-cloud-sign-in`
 (`src/auth/native-cloud-sign-in.ts`, dependency-free): the plugin methods as a
 `NativeCloudSignInPort`, strict parsers for every answer (`nativeSignInAuthenticated`,
@@ -271,3 +287,12 @@ pass `--apply-source-quiesced` to publish atomically. Conflicting live values fa
 expired records are skipped and existing expiration times are never extended.
 Snapshots contain secrets: keep them out of logs and Git. Other Redis records,
 including enforcement counters and telemetry, need their own transfer.
+
+`createWorkspaceAppReturn` takes the product's exact HTTPS callback, native plugin name
+and method names. It validates the offered redirect and consumes only bounded Workspace
+outcomes for the same account, credential and UI session. A connected outcome still needs
+canonical account/connection readback; it is not a Google grant. `watchForegroundAccountReturn`
+requires an observed background transition after arming. Cached native resume events,
+late listener registration and a replaced client cannot trigger another account's refresh.
+
+Native mobile completion and `credentialIdentity` readback use the host’s existing lifecycle-to-vault lock order. Completion checks the original credential intent and exact installed credential ID before queueing its result. A newer credential never becomes the result of an older sign-in. Custom native hosts must implement `withCredentialRead` with the same locks used by credential mutation. The identity method returns no token or account data.

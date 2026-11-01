@@ -66,6 +66,13 @@ export default defineConfig({
   resolve: {
     alias: [
       {
+        find: /^@elizaos\/contracts\/client-turn-observation$/,
+        replacement: path.join(
+          elizaRoot,
+          "packages/contracts/src/client-turn-observation.ts",
+        ),
+      },
+      {
         find: /^@elizaos\/contracts$/,
         replacement: path.join(
           elizaRoot,

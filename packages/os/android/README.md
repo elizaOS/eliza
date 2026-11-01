@@ -252,6 +252,35 @@ launcher's signer (`certificateSha256`), a different package and module name, an
 no HOME activity. It is staged in the launcher's partition as another presigned,
 nonprivileged import, and it gets no default permissions.
 
+A launcher that runs code from its native library directory (for example the Eliza
+runtime's musl loader and Bun) needs its `lib/<abi>` beside the app: Android never
+extracts a bundled app's libraries, and Soong's `android_app_import` installs none.
+Pass `--native-abi arm64-v8a` (or `x86_64`) to install them. The helper reads every
+`lib/<abi>/*.so` entry from the same hash-pinned private copy it stages; each must be
+stored (as `preprocessed` already requires), a flat library name, a little-endian
+ELF64 for that ABI and match its CRC, else nothing is staged. The launcher then moves
+to `Android.mk`, AOSP's supported prebuilt app rule (`LOCAL_PREBUILT_JNI_LIBS`),
+which installs the libraries in `<partition>/app/<module>/lib/<arch>` and keeps the
+presigned APK. Grants and companions stay in `Android.bp`. `config.fs` gives the
+shared runtime's loader and Bun mode 0755 and every other library 0644, and
+`product.mk` adds it to `TARGET_FS_CONFIG_GEN`. `native-libraries.json` records each
+library's APK entry, install path, mode and SHA-256. It is not runtime admission
+(`runtimeAdmitted: false`): the libraries are only the reviewed APK's own bytes.
+
+That rule needs a product that still reads `Android.mk`. A Soong-only product
+(`PRODUCT_SOONG_ONLY`; Android 17 Cuttlefish sets it from `RELEASE_SOONG_ONLY_CUTTLEFISH`,
+which `cp2a` inherits as true) never reads it. For one, also pass
+`--native-install soong`. The launcher then stays an `android_app_import` that
+`required`s one `prebuilt_app_native` module per library, installed at the same
+`<partition>/app/<module>/lib/<arch>` path with the same `config.fs` modes, and no
+`Android.mk` is written. `prebuilt_app_native` is the reviewed
+`patches/soong-app-native` build/soong extension (the type `stage-android-native.py
+--finalize-soong` emits); apply that exact patch in the AOSP checkout first, or Soong
+refuses the unknown module type. Its base, build/soong `6722dd88`, is the
+`android-17.0.0_r1` revision. `native-libraries.json` then records
+`installRule: "soong-app-native"` and the patch manifest's SHA-256. The default
+(`--native-install make`) is the `Android.mk` rule above.
+
 For a downstream **system-only GSI**, set `partition: "system"` in the reviewed
 launcher descriptor. Both the nonprivileged APK and optional revocable permission
 file then install in `/system`; the default remains `/product`. Inherit the staged

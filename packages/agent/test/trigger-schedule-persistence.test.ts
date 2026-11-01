@@ -332,6 +332,43 @@ it.each([
   },
 );
 
+it("fires an omitted-instructions reminder with the request, not the help envelope", async () => {
+  // content.text as chat augmentation rewrites it for a short request.
+  const request = `stretch reminder ${randomUUID()}`;
+  const text = [
+    "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+    "If the answer appears verbatim in the contextual documents, repeat it exactly.",
+    "Do not ask follow-up questions or invoke tools/actions when the contextual documents already answer the request.",
+    "",
+    "<contextual_documents>",
+    '<source title="source-1" similarity="1.000">',
+    "Q: What can Eliza actually do?\nA: Beyond chatting, Eliza can manage tasks and reminders.",
+    "</source>",
+    "</contextual_documents>",
+    "",
+    "<user_request>",
+    request,
+    "</user_request>",
+  ].join("\n");
+  const result = await triggerAction.handler(
+    fixture.runtime,
+    {
+      entityId: fixture.runtime.agentId,
+      agentId: fixture.runtime.agentId,
+      roomId: randomUUID() as UUID,
+      content: { text },
+    } as Memory,
+    undefined,
+    { parameters: { action: "create", delayMinutes: 5 } },
+  );
+  expect(result).toMatchObject({ success: true });
+  const tasks = await fixture.runtime.getTasks({ tags: ["trigger"] });
+  const task = tasks.find((task) =>
+    task.metadata?.trigger?.instructions?.includes(request),
+  );
+  expect(task && readTriggerConfig(task)?.instructions).toBe(request);
+});
+
 it.each<{ label: string; schedule: JsonObject }>([
   {
     label: "triggerType=interval alone when intervalMs is absent",
@@ -454,6 +491,76 @@ it("updates a trigger by the triggerId create returned and refuses fields it can
   }
 });
 
+it("edits a paused trigger through the action and keeps it paused", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Remind me every morning to stretch." },
+  } as Memory;
+  const run = (parameters: JsonObject) =>
+    triggerAction.handler(fixture.runtime, message, undefined, { parameters });
+  const created = await run({
+    action: "create",
+    displayName: "Stretch",
+    instructions: "Remind the user to stretch.",
+    cronExpression: "0 9 * * *",
+  });
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId, triggerId } = created.data as {
+    taskId: UUID;
+    triggerId: UUID;
+  };
+  try {
+    const paused = await run({
+      action: "toggle",
+      taskId: triggerId,
+      enabled: false,
+    });
+    expect(paused, paused?.text).toMatchObject({ success: true });
+
+    // Like the PUT route's "Renamed while paused": the edit is saved and the
+    // trigger stays paused on the disabled interval.
+    const edited = await run({
+      action: "update",
+      taskId: triggerId,
+      displayName: "Stretch and breathe",
+      cronExpression: "0 17 * * *",
+    });
+    expect(edited, edited?.text).toMatchObject({ success: true });
+    expect(edited?.text).toContain("(paused)");
+    const saved = await fixture.runtime.getTask(taskId);
+    expect(saved && readTriggerConfig(saved)).toMatchObject({
+      displayName: "Stretch and breathe",
+      cronExpression: "0 17 * * *",
+      enabled: false,
+    });
+    expect(
+      (saved?.metadata as { updateInterval?: number } | undefined)
+        ?.updateInterval,
+    ).toBe(DISABLED_TRIGGER_INTERVAL_MS);
+
+    // Resuming schedules the edited time.
+    const resumed = await run({
+      action: "toggle",
+      taskId: triggerId,
+      enabled: true,
+    });
+    expect(resumed, resumed?.text).toMatchObject({ success: true });
+    const live = await fixture.runtime.getTask(taskId);
+    expect(live && readTriggerConfig(live)).toMatchObject({
+      cronExpression: "0 17 * * *",
+      enabled: true,
+    });
+    expect(
+      (live?.metadata as { updateInterval?: number } | undefined)
+        ?.updateInterval,
+    ).not.toBe(DISABLED_TRIGGER_INTERVAL_MS);
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+
 it("reads a once time with no offset in the user's zone on create and update", async () => {
   // Asia/Kolkata is UTC+05:30 all year, so the expected instant does not
   // depend on the zone of the host that runs this test.
@@ -505,6 +612,81 @@ it("reads a once time with no offset in the user's zone on create and update", a
       scheduledAtIso: "2099-01-17T09:00:00-08:00",
       nextRunAtMs: Date.parse("2099-01-17T17:00:00.000Z"),
     });
+  } finally {
+    await fixture.runtime.deleteTask(taskId);
+  }
+});
+// Live tj-9f09a0f51d65aa, "actually make it 30 minutes": the planner sent
+// TRIGGER_UPDATE delayMinutes:30 and got INVALID_UPDATE, then a second round
+// re-sent the same move as scheduledAtIso.
+it("moves a one-off trigger by a relative delay on update, as create reads it", async () => {
+  const message = {
+    entityId: fixture.runtime.agentId,
+    agentId: fixture.runtime.agentId,
+    roomId: randomUUID() as UUID,
+    content: { text: "Set a reminder for 20 minutes from now to stretch." },
+  } as Memory;
+  const instructions = `Remind the user to stretch ${randomUUID()}`;
+  const created = await triggerAction.handler(
+    fixture.runtime,
+    message,
+    undefined,
+    { parameters: { action: "create", instructions, delayMinutes: 20 } },
+  );
+  if (!created?.success) throw new Error(created?.text ?? "create failed");
+  const { taskId } = created.data as { taskId: UUID };
+  try {
+    const update = (parameters: Record<string, unknown>) =>
+      triggerAction.handler(fixture.runtime, message, undefined, {
+        parameters: { action: "update", taskId, ...parameters },
+      });
+    for (const delayMinutes of [0, -5, 366 * 24 * 60 + 1]) {
+      const refused = await update({ delayMinutes });
+      expect(refused, String(delayMinutes)).toMatchObject({
+        success: false,
+        error: "INVALID_UPDATE",
+      });
+      expect(refused?.effectReceipts).toBeUndefined();
+    }
+    const before = Date.now();
+    const moved = await update({ delayMinutes: 30 });
+    const after = Date.now();
+    expect(moved, moved?.text).toMatchObject({
+      success: true,
+      effectReceipts: [{ operation: "trigger.update", outcome: "applied" }],
+    });
+    const stored = await fixture.runtime.getTask(taskId);
+    const config = stored && readTriggerConfig(stored);
+    const firesAt = Date.parse(config?.scheduledAtIso ?? "");
+    expect(firesAt).toBeGreaterThanOrEqual(before + 30 * 60_000);
+    expect(firesAt).toBeLessThanOrEqual(after + 30 * 60_000);
+    expect(config).toMatchObject({
+      triggerType: "once",
+      delayMs: 30 * 60_000,
+      nextRunAtMs: firesAt,
+    });
+    // The moved trigger carries create's relative identity: an immediate
+    // "in 30 minutes" create for it replays instead of adding a duplicate.
+    const retried = await triggerAction.handler(
+      fixture.runtime,
+      message,
+      undefined,
+      { parameters: { action: "create", instructions, delayMinutes: 30 } },
+    );
+    expect(retried?.effectReceipts?.[0]).toMatchObject({ outcome: "noop" });
+    // An explicit scheduledAtIso still wins over a delay sent beside it.
+    const pinned = await update({
+      scheduledAtIso: "2099-01-01T17:00:00Z",
+      delayMinutes: 45,
+    });
+    expect(pinned, pinned?.text).toMatchObject({ success: true });
+    const afterPinned = await fixture.runtime.getTask(taskId);
+    expect(afterPinned && readTriggerConfig(afterPinned)).toMatchObject({
+      scheduledAtIso: "2099-01-01T17:00:00Z",
+    });
+    expect(
+      afterPinned && readTriggerConfig(afterPinned)?.delayMs,
+    ).toBeUndefined();
   } finally {
     await fixture.runtime.deleteTask(taskId);
   }

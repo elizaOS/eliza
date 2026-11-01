@@ -27,6 +27,7 @@ import {
   getContextRoutingFromState,
   getDirectActionRoutingRules,
   getLocalizedExamplesProvider,
+  getRequestOperationIssuer,
   getStreamingContext,
   getTrajectoryContext,
   getUserMessageText,
@@ -941,6 +942,7 @@ export async function runV5MessageRuntimeStage1(
           await resolvePlannedReplyEgress({
             providers: args.state.data.providers,
             contexts: messageHandler.plan.contexts,
+
             runtime: args.runtime,
             message: args.message,
             reply,
@@ -1084,7 +1086,9 @@ export async function runV5MessageRuntimeStage1(
       !messageHandler.plan.deterministicToolCall &&
       earlyReplyText.trim().length > 0
     ) {
-      args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
+      await args.onPlanningAcknowledgment(
+        restorePiiInUserReplyText(earlyReplyText),
+      );
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning
@@ -1637,6 +1641,21 @@ export async function runV5MessageRuntimeStage1(
           : {}),
         plan: {
           contexts: messageHandler.plan.contexts,
+          ...(messageHandler.plan.notesRequestEffect !== undefined
+            ? { notesRequestEffect: messageHandler.plan.notesRequestEffect }
+            : {}),
+          ...(messageHandler.plan.notesRequestInterpretation !== undefined
+            ? {
+                notesRequestInterpretation:
+                  messageHandler.plan.notesRequestInterpretation,
+              }
+            : {}),
+          ...(messageHandler.plan.notesRequestHostRestriction !== undefined
+            ? {
+                notesRequestHostRestriction:
+                  messageHandler.plan.notesRequestHostRestriction,
+              }
+            : {}),
           ...(messageHandler.plan.replyEffectStatus !== undefined
             ? { replyEffectStatus: messageHandler.plan.replyEffectStatus }
             : {}),
@@ -2176,6 +2195,10 @@ export async function runV5MessageRuntimeStage1(
             };
           }
           return runPlannerLoop({
+            requestOperationIssuer: getRequestOperationIssuer(
+              args.runtime,
+              args.message,
+            ),
             ...(args.resolveTypedReadReply
               ? {
                   resolveTypedReadReply: args.resolveTypedReadReply,
@@ -2252,6 +2275,10 @@ export async function runV5MessageRuntimeStage1(
     ) =>
       timeInferenceSpan("message:planner", () =>
         runPlannerLoop({
+          requestOperationIssuer: getRequestOperationIssuer(
+            args.runtime,
+            args.message,
+          ),
           ...(args.resolveTypedReadReply
             ? {
                 resolveTypedReadReply: args.resolveTypedReadReply,
@@ -2261,6 +2288,13 @@ export async function runV5MessageRuntimeStage1(
               }
             : {}),
           deferInternalReplyRecoveryToCaller: true,
+          // Stage 1 judged requested navigation part of a larger request, so the
+          // loop may replan an uncovered follow-up after a prepared view
+          // (tj-a2dfaa98a8bc03).
+          ...(isRecord(fieldRunResult?.parsed.visualContinuation) &&
+          fieldRunResult?.parsed.visualContinuation.disposition === "planning"
+            ? { navigationWithFollowUp: true }
+            : {}),
           runtime: plannerRuntime,
           context: loopContext,
           codingMode: args.codingMode === true,
@@ -2572,9 +2606,29 @@ export async function runV5MessageRuntimeStage1(
             sanitizedPartial?.kind === "text"
               ? sanitizedPartial.text
               : undefined;
+          // The notice never claims success. "Nothing was changed" needs every
+          // executed call to prove it was refused before dispatch, as the four
+          // rejected reminder calls of tj-7471737298abb6 did; otherwise it
+          // says that part of the work may already be done.
+          const unchanged = [
+            ...actionResults,
+            ...settledPlannerToolResults.map(({ result }) => result),
+          ].every(
+            (result) =>
+              result.success === false &&
+              !result.effectReceipts?.length &&
+              result.data?.acceptance === "rejected" &&
+              result.data?.executionStatus === "not_started",
+          );
           const notice = rateLimited
-            ? "The model provider is temporarily rate limited. The request remains incomplete; recorded tool outcomes are preserved. Check the conversation before sending again."
-            : "The request remains incomplete because processing stopped unexpectedly. Recorded tool outcomes are preserved; remaining work has not been completed.";
+            ? unchanged
+              ? "I hit a rate limit, so nothing was changed."
+              : "I hit a rate limit and couldn't finish that, so check what's done before sending it again."
+            : unchanged
+              ? "I couldn't do that, so nothing was changed."
+              : safePartial
+                ? "I couldn't finish the rest of that."
+                : "I couldn't finish that, and part of it may already be done.";
           const text = [safePartial, notice].filter(Boolean).join("\n\n");
           endStatus = "errored";
           args.runtime.reportError("MessageService.plannerLoop", error, {
@@ -2809,7 +2863,13 @@ export async function runV5MessageRuntimeStage1(
         contexts: selectedContexts,
         runtime: args.runtime,
         message: args.message,
-        reply: plannerResult.finalMessage ?? "",
+        // A planner claim rejection has no deliverable draft. An empty reply
+        // enters the existing reply-only recovery and its grounding review.
+        reply:
+          plannerResult.replyRecoveryRequired === true &&
+          plannerResult.terminalFailure?.code === "REPLY_GROUNDING_FAILED"
+            ? ""
+            : (plannerResult.finalMessage ?? ""),
         actionResults: egressActionResults,
         evaluator: plannerResult.evaluator,
         recovery: capturePlannerReplyRecovery(
@@ -2822,6 +2882,12 @@ export async function runV5MessageRuntimeStage1(
         ...plannerResult,
         finalMessage: recoveredReply.text,
         replyRecoveryRequired: undefined,
+        // Successful checked prose repairs only this presentation failure.
+        // Tool/provider/pending outcomes and evaluator coverage stay intact.
+        ...(plannerResult.terminalFailure?.kind === "reply_generation_error" &&
+        plannerResult.terminalFailure.code === "REPLY_GROUNDING_FAILED"
+          ? { terminalFailure: undefined }
+          : {}),
       };
       replyRecovered = true;
     }

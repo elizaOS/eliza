@@ -45,15 +45,22 @@ function runJava(name: string, text: string, extra: string[] = []) {
 }
 
 test("actual service credential shutdown confirms process exit and exact lifecycle request only", () => {
-  const fields = source.slice(
-    source.indexOf("    private static final String CREDENTIAL_SHUTDOWN_EPOCH"),
-    source.indexOf(
-      "    /**",
-      source.indexOf(
-        "    public static synchronized boolean isCredentialShutdownConfirmed",
-      ),
-    ),
+  const fieldsStart = source.indexOf(
+    "    private static long ownerRequestEpoch;",
   );
+  const fieldsEnd = source.indexOf(
+    "    /** Called by the Capacitor agent plugin Android binding. */",
+    fieldsStart,
+  );
+  expect(fieldsStart).toBeGreaterThanOrEqual(0);
+  expect(fieldsEnd).toBeGreaterThan(fieldsStart);
+  // A fresh real lease isolates each fixture scenario; production keeps this field final.
+  const fields = source
+    .slice(fieldsStart, fieldsEnd)
+    .replace(
+      "private static final ai.eliza.plugins.agent.runtime.CredentialShutdownLease",
+      "private static ai.eliza.plugins.agent.runtime.CredentialShutdownLease",
+    );
   const stopBranchStart = source.indexOf(
     "        if (ACTION_STOP.equals(action))",
   );
@@ -65,7 +72,7 @@ test("actual service credential shutdown confirms process exit and exact lifecyc
     ),
   );
   const launchStart = source.indexOf(
-    "    private void startAgentProcess(boolean allowAdoption)",
+    "    private boolean startAgentProcess(boolean allowAdoption)",
   );
   const launchPrefix = source.slice(
     launchStart,
@@ -77,6 +84,7 @@ test("actual service credential shutdown confirms process exit and exact lifecyc
 class BaseService {public void onDestroy(){}}
 public class ElizaAgentService extends BaseService {
  static final String ACTION_STOP="stop",TAG="closed",NOTIFICATION_SERVICE="notification";static final int NOTIFICATION_ID=2,START_NOT_STICKY=2;static final long PROCESS_TERMINATE_GRACE_MS=10;
+ static java.util.concurrent.CompletableFuture<Void> serviceLifecycleCompletion=java.util.concurrent.CompletableFuture.completedFuture(null);
  static ElizaAgentService activeInstance;static int launches,deleted,timestamps,schedulerStops,signals,diagnostics;static volatile boolean interruptedObserved;static Runnable inventory=()->{};static Runnable onWait=()->{};
  final Object processLock=new Object();Process agentProcess;Thread stdoutPump,stderrPump,startWorker,watchdog;boolean detachedAgentMode,shuttingDown,foregroundStartDenied;long detachedLaunchStartedAtMs;String currentStatus="running";static String currentLocalAgentToken="protected-root",currentTerminalRunToken="protected-terminal";
  static class CloseablePort {void close(){}void stop(){}}CloseablePort chromiumBrowserConnection,agentSecureStore,bionicInferenceServer;
@@ -84,12 +92,13 @@ public class ElizaAgentService extends BaseService {
  static class NotificationManager{void cancel(int id){}}Object getSystemService(String name){return new NotificationManager();}Object getApplicationContext(){return this;}
  static class Log{static void w(String tag,String message){}static void w(String tag,String message,Throwable e){interruptedObserved=Thread.currentThread().isInterrupted();}static void i(String tag,String message){}}
  static class ElizaWorkScheduler{static void runtimeStopped(Object context){schedulerStops++;}}
- static class IpcStartupRecovery {static boolean sole=true;static int checks;static void requireSoleUidProcess()throws Exception{checks++;if(!sole)throw new IOException("Other/unreadable same-UID process");}}
- static class Context {static final String NOTIFICATION_SERVICE="notification";Intent sent;int calls;boolean fail;void startService(Intent intent){calls++;if(fail)throw new IllegalStateException("Denied");sent=intent;}}
- static class Intent {String action;long epoch=-1;Intent(Context c,Class<?> target){}void setAction(String value){action=value;}void putExtra(String key,long value){epoch=value;}long getLongExtra(String key,long fallback){return epoch;}}
- void appendDiagnosticEvent(String event,Object value){diagnostics++;}void deleteLocalAgentTokenFile(){deleted++;}void persistDetachedLaunchTimestamp(long value){timestamps++;}long safePid(Process p){return 1;}void stopDetachedAgentProcess(){inventory.run();}void stopSelf(){}
+ static class android{static class os{static class SystemClock{static long elapsedRealtime(){return System.nanoTime()/1000000;}}}}
+ static class IpcStartupRecovery {static boolean sole=true;static int checks;static void requireSoleUidProcess(long deadline)throws Exception{checks++;if(!sole)throw new IOException("Other/unreadable same-UID process");}}
+ static class Context {static final String NOTIFICATION_SERVICE="notification";Intent sent;int calls;boolean fail;void startService(Intent intent){calls++;sent=intent;if(fail)throw new IllegalStateException("Denied");}}
+ static class Intent {String action;long epoch=-1;Intent(Context c,Class<?> target){}void setAction(String value){action=value;}void putExtra(String key,long value){epoch=value;}long getLongExtra(String key,long fallback){return epoch;}boolean hasExtra(String key){return epoch>=0;}}
+ void appendDiagnosticEvent(String event,Object value){diagnostics++;}void deleteLocalAgentTokenFile(){deleted++;}void persistDetachedLaunchTimestamp(long value){timestamps++;}long safePid(Process p){return 1;}void stopDetachedAgentProcess(long deadline){inventory.run();}void stopSelf(){}
  ${fields}
- ${launchPrefix} launches++;}}
+ ${launchPrefix} launches++;return true;}}
  ${method(source, "    private void stopAgentProcess(boolean terminalStop) {")}
  ${method(source, "    private void stopAgentProcess(boolean terminalStop, boolean confirmTermination)")}
  ${method(source, "    private boolean stopAgentProcessForCredentialChange(")}
@@ -98,8 +107,8 @@ public class ElizaAgentService extends BaseService {
  int stopIntent(Intent intent){String action=intent.action;Object details=null;${stopBranch}return -1;}
  static class FakeProcess extends Process {boolean alive=true,stubborn,neverExits,interrupt;int kills;public OutputStream getOutputStream(){return OutputStream.nullOutputStream();}public InputStream getInputStream(){return InputStream.nullInputStream();}public InputStream getErrorStream(){return InputStream.nullInputStream();}public int waitFor(){alive=false;return 0;}public boolean waitFor(long value,TimeUnit unit)throws InterruptedException{onWait.run();if(interrupt)throw new InterruptedException();return !alive;}public int exitValue(){return 0;}public void destroy(){if(!stubborn)alive=false;}public Process destroyForcibly(){kills++;if(!neverExits)alive=false;return this;}public boolean isAlive(){return alive;}}
  static void check(boolean value,String reason){if(!value)throw new AssertionError(reason);}static ElizaAgentService service(){ElizaAgentService value=new ElizaAgentService();activeInstance=value;return value;}
- static void drain()throws Exception{for(int i=0;i<500&&credentialShutdownPending;i++)Thread.sleep(2);check(!credentialShutdownPending,"Release worker did not settle");}
- static void reset(){interruptedObserved=false;credentialShutdownPending=false;inventory=()->{};onWait=()->{};IpcStartupRecovery.sole=true;IpcStartupRecovery.checks=0;deleted=timestamps=schedulerStops=0;currentLocalAgentToken="protected-root";currentTerminalRunToken="protected-terminal";}
+ static void drain()throws Exception{serviceLifecycleCompletion.get(5,TimeUnit.SECONDS);}
+ static void reset(){interruptedObserved=false;activeInstance=null;credentialShutdown=new ai.eliza.plugins.agent.runtime.CredentialShutdownLease();serviceLifecycleCompletion=CompletableFuture.completedFuture(null);inventory=()->{};onWait=()->{};IpcStartupRecovery.sole=true;IpcStartupRecovery.checks=0;deleted=timestamps=schedulerStops=0;currentLocalAgentToken="protected-root";currentTerminalRunToken="protected-terminal";}
  public static void main(String[] args)throws Exception {
   int cases=0;Context context=new Context();reset();long request=stopForCredentialChange(context);ElizaAgentService owned=service();owned.stopIntent(context.sent);check(!isCredentialShutdownConfirmed(request),"Confirmed before teardown");owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request)&&activeInstance==null,"Successful shutdown not confirmed");cases++;
   reset();request=stopForCredentialChange(context);owned=service();owned.detachedAgentMode=true;owned.stopIntent(context.sent);inventory=()->{throw new IllegalStateException("Resident preserved");};IpcStartupRecovery.sole=false;owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request)&&currentLocalAgentToken!=null&&deleted==0&&owned.detachedAgentMode,"Refused stop lost ownership or confirmed");cases++;
@@ -109,15 +118,16 @@ public class ElizaAgentService extends BaseService {
   reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);FakeProcess direct=new FakeProcess();direct.stubborn=true;owned.agentProcess=direct;owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request)&&!direct.isAlive()&&direct.kills==1,"Confirmed kill was not awaited");cases++;
   reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);direct=new FakeProcess();direct.stubborn=direct.neverExits=true;owned.agentProcess=direct;owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request)&&owned.agentProcess==direct&&currentLocalAgentToken!=null&&deleted==0,"Unconfirmed direct kill erased ownership");cases++;
   reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);direct=new FakeProcess();direct.interrupt=true;owned.agentProcess=direct;owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request)&&interruptedObserved&&deleted==0,"Interrupted wait confirmed");cases++;
-  reset();long old=stopForCredentialChange(context);Intent oldIntent=context.sent;int dispatched=context.calls;long same=stopForCredentialChange(context);check(same==old&&context.calls==dispatched+1,"Pending stop retry did not redispatch the same epoch");owned=service();owned.stopIntent(oldIntent);owned.onDestroy();drain();long latest=stopForCredentialChange(context);check(!isCredentialShutdownConfirmed(old)&&!isCredentialShutdownConfirmed(latest),"Old shutdown proof rebound");owned=service();owned.stopIntent(context.sent);owned.onDestroy();drain();cases++;
-  reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);try{invalidateCredentialShutdown();throw new AssertionError("Concurrent start admitted");}catch(IllegalStateException expected){}owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request),"Refused start changed owned shutdown");invalidateCredentialShutdown();check(!isCredentialShutdownConfirmed(request),"Actual later start reused proof");cases++;
+  reset();long old=stopForCredentialChange(context);Intent oldIntent=context.sent;int dispatched=context.calls;long same=retryCredentialShutdown(context,old);check(same==old&&context.calls==dispatched+1,"Pending stop retry did not redispatch the same epoch");owned=service();owned.stopIntent(oldIntent);owned.onDestroy();drain();long latest=stopForCredentialChange(context);check(!isCredentialShutdownConfirmed(old)&&!isCredentialShutdownConfirmed(latest),"Distinct mutation cannot inherit old shutdown proof");owned=service();owned.stopIntent(context.sent);owned.onDestroy();drain();cases++;
+  reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);try{invalidateCredentialShutdown();throw new AssertionError("Concurrent start admitted");}catch(IllegalStateException expected){}owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request),"Refused start changed owned shutdown");check(releaseCredentialShutdown(request),"Confirmed credential commit releases its exact stop");invalidateCredentialShutdown();check(!isCredentialShutdownConfirmed(request),"Actual later start reused proof");cases++;
   reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);direct=new FakeProcess();direct.stubborn=true;owned.agentProcess=direct;onWait=()->{try{invalidateCredentialShutdown();throw new AssertionError("Start during drain admitted");}catch(IllegalStateException expected){}};owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request),"Refused start corrupted proof");cases++;
-  reset();owned=service();Intent normal=new Intent(context,ElizaAgentService.class);normal.setAction(ACTION_STOP);owned.stopIntent(normal);owned.detachedAgentMode=true;inventory=()->{throw new IllegalStateException("Preserved normal stop");};owned.onDestroy();drain();check(deleted==0&&currentLocalAgentToken!=null,"Ordinary stop changed preservation semantics");cases++;
+  reset();owned=service();Intent normal=new Intent(context,ElizaAgentService.class);normal.setAction(ACTION_STOP);owned.stopIntent(normal);owned.detachedAgentMode=true;inventory=()->{throw new IllegalStateException("Preserved normal stop");};IpcStartupRecovery.sole=false;owned.onDestroy();drain();check(deleted==0&&currentLocalAgentToken!=null,"Ordinary stop changed preservation semantics");cases++;
   reset();owned=service();owned.foregroundStartDenied=true;request=stopForCredentialChange(context);owned.stopIntent(context.sent);owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request),"Foreground denial confirmed preserved runtime");cases++;
-  reset();context.fail=true;try{stopForCredentialChange(context);throw new AssertionError("Rejected request admitted");}catch(IllegalStateException expected){}check(!isCredentialShutdownConfirmed(credentialShutdownEpoch),"Failed request confirmed");long failedEpoch=credentialShutdownEpoch;context.fail=false;dispatched=context.calls;request=stopForCredentialChange(context);check(request==failedEpoch&&context.calls==dispatched+1,"Failed dispatch could not retry");owned=service();owned.stopIntent(context.sent);owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request),"Retried dispatch did not confirm actual teardown");cases++;
-  reset();context.fail=false;request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);inventory=()->{entered.countDown();try{release.await(5,TimeUnit.SECONDS);}catch(InterruptedException e){throw new IllegalStateException(e);}};owned.onDestroy();check(entered.await(5,TimeUnit.SECONDS)&&credentialShutdownPending&&!isCredentialShutdownConfirmed(request),"Main callback blocked or published before drain");try{invalidateCredentialShutdown();throw new AssertionError("Start admitted during held drain");}catch(IllegalStateException expected){}release.countDown();drain();check(isCredentialShutdownConfirmed(request),"Held cleanup failed to confirm");cases++;
+  reset();context.fail=true;try{stopForCredentialChange(context);throw new AssertionError("Rejected request admitted");}catch(IllegalStateException expected){}long failedEpoch=context.sent.epoch;check(!isCredentialShutdownConfirmed(failedEpoch),"Failed request confirmed");context.fail=false;dispatched=context.calls;request=retryCredentialShutdown(context,failedEpoch);check(request==failedEpoch&&context.calls==dispatched+1,"Failed dispatch could not retry");owned=service();owned.stopIntent(context.sent);owned.onDestroy();drain();check(isCredentialShutdownConfirmed(request),"Retried dispatch did not confirm actual teardown");cases++;
+  reset();context.fail=false;request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);CountDownLatch entered=new CountDownLatch(1),release=new CountDownLatch(1);inventory=()->{entered.countDown();try{release.await(5,TimeUnit.SECONDS);}catch(InterruptedException e){throw new IllegalStateException(e);}};owned.onDestroy();check(entered.await(5,TimeUnit.SECONDS)&&credentialShutdown.isCurrent(request)&&!isCredentialShutdownConfirmed(request),"Main callback blocked or published before drain");try{invalidateCredentialShutdown();throw new AssertionError("Start admitted during held drain");}catch(IllegalStateException expected){}release.countDown();drain();check(isCredentialShutdownConfirmed(request),"Held cleanup failed to confirm");cases++;
   reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);owned.ipcRecovery=new Recovery();owned.onDestroy();drain();check(!isCredentialShutdownConfirmed(request),"Failed IPC release confirmed");cases++;
   reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);ElizaAgentService queued=owned;Thread late;launches=0;synchronized(owned.processLock){late=new Thread(()->queued.startAgentProcess(true));late.start();owned.onDestroy();}late.join(5000);drain();check(!late.isAlive()&&launches==0&&isCredentialShutdownConfirmed(request),"Queued worker relaunched after teardown");cases++;
+  reset();request=stopForCredentialChange(context);owned=service();owned.stopIntent(context.sent);check(abandonCredentialShutdown(request),"Pre-commit cancellation is recorded");try{invalidateCredentialShutdown();throw new AssertionError("Cancellation before ACK admitted startup");}catch(ai.eliza.plugins.agent.runtime.CredentialShutdownLease.Pending expected){}owned.onDestroy();drain();check(isCredentialShutdownReleased(request),"Late real teardown releases abandoned pre-commit cancellation");invalidateCredentialShutdown();cases++;
   System.out.println("PASS "+cases+" actual service credential shutdown cases");
  }
 }`,
@@ -126,9 +136,13 @@ public class ElizaAgentService extends BaseService {
         root,
         "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProcessSupervisor.java",
       ),
+      join(
+        root,
+        "plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/CredentialShutdownLease.java",
+      ),
     ],
   );
-  expect(output).toContain("PASS 18 actual service credential shutdown cases");
+  expect(output).toContain("PASS 19 actual service credential shutdown cases");
 });
 
 test("existing sole-full-UID absence gate refuses live children and unreadable or changing identities", () => {
@@ -141,7 +155,8 @@ test("existing sole-full-UID absence gate refuses live children and unreadable o
     "    private static IOException refused(",
     "    private static String bounded(",
     "    private static String identity(",
-    "    static void requireSoleUidProcess(",
+    "    static void requireSoleUidProcess()",
+    "    static void requireSoleUidProcess(long deadline)",
   ]
     .map((start) => method(recovery, start))
     .join("\n")
@@ -153,7 +168,7 @@ public class UidAbsenceTest {
  static String PROC;static int self=100;static Map<String,StructStat> values=new HashMap<>();static boolean unreadable,changed;static int selfReads;
  static class StructStat{int st_uid;long st_ino;StructStat(int uid,long inode){st_uid=uid;st_ino=inode;}}
  static class Process{static int myPid(){return self;}static int myUid(){return 10001;}}
- static class OsConstants{static final int ENOENT=2;}static class android{static class system{static class ErrnoException extends Exception{int errno=2;}}}
+ static class OsConstants{static final int ENOENT=2;}static class android{static class os{static class SystemClock{static long elapsedRealtime(){return System.nanoTime()/1000000;}}}static class system{static class ErrnoException extends Exception{int errno=2;}}}
  static class Os{static StructStat stat(String path)throws Exception{if(unreadable)throw new IOException("Inventory unreadable");StructStat value=values.get(path);if(value==null)throw new android.system.ErrnoException();if(path.equals(PROC+"/100")&&changed&&++selfReads==2)return new StructStat(value.st_uid,value.st_ino+1);return value;}static String readlink(String path){return "/owned/runtime";}}
  ${gate}
  static void check(boolean value){if(!value)throw new AssertionError("Sole UID guard admitted uncertainty");}interface Task{void run()throws Exception;}static void denied(Task task)throws Exception{try{task.run();}catch(Exception expected){return;}throw new AssertionError("Expected inventory refusal");}

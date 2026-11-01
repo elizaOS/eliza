@@ -42,12 +42,18 @@ test("connection and resident lifecycle JVM contracts pass", () => {
   try {
     const shared = [
       "connection/OwnerRoutePolicy",
+      "connection/NativeAppReadPolicy",
+      "connection/NativeAppRequestPolicy",
+      "connection/NativeOwnerTransport",
       "connection/CloudConnectionPolicy",
       "connection/ConnectionTransport",
       "connection/DelegationCallback",
       "connection/PendingRequests",
       "connection/SecureSlotPolicy",
+      "connection/WorkspaceAppReturn",
+      "connection/WorkspaceAppReturnFlow",
       "runtime/CredentialIntentFence",
+      "runtime/CredentialRequestFence",
       "runtime/NativeProviderAdmission",
       "runtime/NativeProviderSlot",
       "runtime/NativeRuntimeEmbeddings",
@@ -59,14 +65,35 @@ test("connection and resident lifecycle JVM contracts pass", () => {
       .map((name) => fileURLToPath(new URL(name, import.meta.url)));
     execFileSync(
       java("javac"),
-      ["--release", "11", "-cp", jar, "-d", output, ...shared, ...tests],
+      [
+        "--release",
+        "11",
+        "-cp",
+        jar,
+        "-d",
+        output,
+        path.resolve(
+          root,
+          "../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
+        ),
+        ...shared,
+        path.resolve(
+          root,
+          "../plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/CartesiaSpeech.java",
+        ),
+        ...tests,
+      ],
       { timeout: 120000, stdio: "pipe" },
     );
     for (const [name, pass] of [
       ["OwnerRoutePolicyTest", /^PASS owner route policy/],
+      ["NativeOwnerTransportTest", /^PASS native owner transport/],
       ["CloudConnectionPolicyTest", /^PASS cloud connection policy/],
       ["ConnectionTransportTest", /^PASS connection transport/],
       ["ResidentLifecycleTest", /^PASS resident lifecycle/],
+      ["OwnerProviderTest", /^PASS owner provider/],
+      ["WorkspaceAppReturnTest", /^PASS Workspace return pure contract/],
+      ["WorkspaceAppReturnFlowTest", /^PASS Workspace flow/],
     ]) {
       assert.match(
         execFileSync(
@@ -75,6 +102,7 @@ test("connection and resident lifecycle JVM contracts pass", () => {
             "-cp",
             output + path.delimiter + jar,
             `ai.eliza.plugins.agent.connection.test.${name}`,
+            "https://client.example/workspace/gmail/callback",
           ],
           { encoding: "utf8", timeout: 120000 },
         ),

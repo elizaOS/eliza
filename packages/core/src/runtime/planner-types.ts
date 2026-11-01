@@ -1,3 +1,4 @@
+import type { RequestOperationIssuer } from "../actions/task-extraction-context";
 import type {
 	TypedReadEgressReceipt,
 	TypedReadReplyBinding,
@@ -381,11 +382,19 @@ export interface PlannerLoopResult {
 }
 
 export interface PlannerLoopParams {
+	/** Actual host request capability; the model port and serialized IDs cannot supply it. */
+	requestOperationIssuer?: RequestOperationIssuer;
 	resolveTypedReadReply?: TypedReadReplyResolver;
 	onTypedReadEgress?: (receipt: TypedReadEgressReceipt) => void;
 	admitTypedReadCorrection?: () => boolean;
 	/** Host owns receipt-bound recovery of missing replies after evaluated internal effects. */
 	deferInternalReplyRecoveryToCaller?: boolean;
+	/**
+	 * Stage 1 judged the requested app-view navigation part of a larger request
+	 * (visualContinuation disposition "planning"): opening the view alone does
+	 * not satisfy it. A hint for replanning only; it grants no authority.
+	 */
+	navigationWithFollowUp?: boolean;
 	runtime: PlannerRuntime;
 	context: ContextObject;
 	/**

@@ -23,14 +23,6 @@ await buildPlugin({
       target: "node",
       format: "esm",
     },
-    {
-      label: "Node (CJS)",
-      entry: "index.node.ts",
-      outSubdir: "cjs",
-      target: "node",
-      format: "cjs",
-      renames: [["index.node.js", "index.node.cjs"]],
-    },
   ],
   dtsProject: "tsconfig.build.json",
   dtsShims: [
@@ -39,3 +31,19 @@ await buildPlugin({
     { path: "cjs/index.d.ts", content: reexport("./index.node") },
   ],
 });
+
+// The ESM-then-CJS sequence fails in one Bun 1.4.2 process while a fresh
+// CJS build succeeds. Keep both formats and isolate the second build.
+const cjsBuild = Bun.spawn(
+  [process.execPath, `${import.meta.dir}/scripts/build-cjs.ts`],
+  {
+    cwd: import.meta.dir,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  },
+);
+const cjsExit = await cjsBuild.exited;
+if (cjsExit !== 0) {
+  throw new Error(`CJS build failed with exit code ${cjsExit}`);
+}

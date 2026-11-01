@@ -159,10 +159,26 @@ export function createMailboxReadPort({ accountId, request }) {
             attachmentTypes.has(mimeType) && part.size <= 5 * 1024 * 1024,
         };
       });
+      // The mailbox state a reviewed change names: Gmail's historyId for this
+      // message, and the labels that say whether it is unread, in the inbox
+      // or in the trash. Labels are reduced to those three booleans.
+      const labels = Array.isArray(value.message.labels)
+        ? value.message.labels.filter((label) => typeof label === "string")
+        : [];
+      const historyId = value.message.metadata?.historyId;
       return {
         version: 1,
         accountId,
         message: summary(value.message),
+        state: {
+          historyId:
+            typeof historyId === "string" && /^[0-9]{1,40}$/.test(historyId)
+              ? historyId
+              : null,
+          unread: labels.includes("UNREAD"),
+          inInbox: labels.includes("INBOX"),
+          inTrash: labels.includes("TRASH"),
+        },
         format: "text",
         remoteImages: false,
         bodyText: text(value.bodyText, 1024 * 1024),

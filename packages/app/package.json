@@ -3,6 +3,7 @@
   "version": "2.0.12-beta.0",
   "type": "module",
   "scripts": {
+    "build:browser-consumer": "node --import tsx scripts/build-browser-consumer.ts",
     "clean": "node ../scripts/rm-path-recursive.ts dist web-dist .turbo",
     "prepublishOnly": "bun run build:dist",
     "build": "bun scripts/build.ts",

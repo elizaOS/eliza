@@ -123,6 +123,8 @@ export function permissionStateAccess(value: unknown): {
 export interface WalkthroughMemory {
   dismissed: boolean;
   attempted: Record<string, true>;
+  /** Explicitly reviewed cards; UI intent only, never OS access. */
+  reviewed?: Record<string, true>;
 }
 
 export interface WalkthroughMemoryStore {
@@ -157,7 +159,16 @@ export function walkthroughMemory(
         for (const [name, flag] of Object.entries(value.attempted))
           if (flag === true && /^[a-z]{1,32}$/.test(name))
             attempted[name] = true;
-      return { dismissed: value.dismissed === true, attempted };
+      const reviewed: Record<string, true> = {};
+      if (value.reviewed && typeof value.reviewed === "object")
+        for (const [name, flag] of Object.entries(value.reviewed))
+          if (flag === true && /^[a-z]{1,32}$/.test(name))
+            reviewed[name] = true;
+      return {
+        dismissed: value.dismissed === true,
+        attempted,
+        ...(Object.keys(reviewed).length ? { reviewed } : {}),
+      };
     } catch {
       return { dismissed: false, attempted: {} };
     }
@@ -167,6 +178,7 @@ export function walkthroughMemory(
     const next = {
       dismissed: patch.dismissed ?? current.dismissed,
       attempted: { ...current.attempted, ...(patch.attempted || {}) },
+      reviewed: patch.reviewed ?? current.reviewed,
     };
     try {
       const target = store();
@@ -181,7 +193,7 @@ export function walkthroughMemory(
     read,
     write,
     reopen() {
-      write({ dismissed: false });
+      write({ dismissed: false, reviewed: {} });
       try {
         globalThis.dispatchEvent?.(new Event(reopenEvent));
       } catch {
@@ -360,6 +372,28 @@ export function walkthroughAttemptKey(id: string): string {
     .slice(0, 32);
   if (!key) throw Error("Permission id has no letters");
   return key;
+}
+
+/** Retain prior reviewed UI steps without treating any stored choice as OS access. */
+export function adoptWalkthroughProgress(
+  memory: WalkthroughMemoryStore,
+  progress: WalkthroughProgress,
+  orderedIds: readonly string[],
+): boolean {
+  if (
+    !Number.isInteger(progress.step) ||
+    progress.step < 0 ||
+    progress.step > orderedIds.length
+  )
+    throw Error("Invalid permission walkthrough cursor");
+  const current = memory.read();
+  const reviewed = { ...current.reviewed };
+  for (const id of orderedIds.slice(0, progress.step))
+    reviewed[walkthroughAttemptKey(id)] = true;
+  return memory.write({
+    reviewed,
+    dismissed: current.dismissed || progress.status === "completed",
+  });
 }
 
 /**

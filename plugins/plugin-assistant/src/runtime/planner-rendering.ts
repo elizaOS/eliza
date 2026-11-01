@@ -34,6 +34,26 @@ import {
 } from "./provider-cache-plan.ts";
 
 /**
+ * Reserved native tool argument carrying the planner's turn-scope declaration
+ * (#17034). Native function-calling envelopes have no side channel for the
+ * planner schema's top-level `completed` boolean, which left the
+ * `tryGateEvaluator` "planner said the turn is incomplete" veto structurally
+ * inert on exactly the lane the action-owned `turnComplete` gate targets — a
+ * sequential multi-op request could be truncated after its first terminal
+ * action result. Every exposed tool schema therefore requires this enum
+ * (`withTurnScopeToolArg`), the planner sets it per call, and
+ * `parsePlannerOutput` lifts it into the parse result's `completed` field
+ * while stripping the argument so no action handler ever sees it. An initially
+ * unspecified declaration preserves compatibility. Once the planner explicitly
+ * leaves work pending, a later native batch with missing or invalid scope must
+ * repair its declaration before execution; it cannot erase that pending scope.
+ * JSON callers retain their top-level `completed` contract. Model history
+ * replays each call's valid declaration (`declaredTurnScope`) so later calls
+ * copy complete calls.
+ */
+export const TURN_SCOPE_ARG = "eliza_turn_scope";
+
+/**
  * Options for {@link trajectoryStepsToMessages}.
  */
 export interface TrajectoryStepsToMessagesOptions {
@@ -155,11 +175,20 @@ export function trajectoryStepsToMessages(
     if (thought) {
       assistantContent.push({ type: "text", text: thought });
     }
+    // Execution never sees the declared scope, but the replayed call keeps
+    // it so history matches the schema the next call must follow.
+    const declaredTurnScope =
+      "declaredTurnScope" in step.toolCall &&
+      typeof step.toolCall.declaredTurnScope === "string"
+        ? step.toolCall.declaredTurnScope
+        : undefined;
     assistantContent.push({
       type: "tool-call",
       toolCallId,
       toolName: step.toolCall.name,
-      input: safeArgs,
+      input: declaredTurnScope
+        ? { ...safeArgs, [TURN_SCOPE_ARG]: declaredTurnScope }
+        : safeArgs,
     });
     messages.push({
       role: "assistant",

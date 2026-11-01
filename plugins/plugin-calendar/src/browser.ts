@@ -13,6 +13,12 @@ export {
   type CalendarSourceManagerProps,
 } from "./components/CalendarSourceManager.js";
 export {
+  CalendarWorkspace,
+  type CalendarWorkspaceProps,
+  type CalendarWorkspaceState,
+  type CalendarWorkspaceStatus,
+} from "./components/CalendarWorkspace.js";
+export {
   CalendarPage,
   CalendarPage as CalendarView,
 } from "./components/calendar/CalendarPage.js";

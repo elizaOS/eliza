@@ -3,6 +3,8 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 /** Validate a downstream HOME APK and stage an additive AOSP product overlay.
  * An optional reviewed list of runtime permissions is granted on first boot.
+ * With a native ABI, the launcher's stored lib/<abi> libraries are installed beside it,
+ * through Android.mk or, for a Soong-only product, the reviewed soong-app-native rule.
  * This does not claim agent payload, privileged permissions, default HOME policy,
  * image boot, or release qualification. The caller owns those separate gates.
  * Companion APKs (for example an update supervisor) are staged beside it only when
@@ -13,6 +15,8 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { crc32 } from "node:zlib";
+import { soongAppNativePatch } from "./soong-app-native.mjs";
 
 /** A second presigned package of the same product, pinned by hash. Its signer pin is
  * the launcher's certificateSha256, so a companion cannot carry another signer. */
@@ -310,6 +314,219 @@ export function renderOverlay(d: LauncherDescriptor) {
     permissions,
   };
 }
+/** Android ABIs a launcher's bundled JNI can be installed for, never inferred from a fat APK. */
+export const NATIVE_TARGETS = {
+  "arm64-v8a": { arch: "arm64", machine: 0xb7, musl: "aarch64" },
+  x86_64: { arch: "x86_64", machine: 0x3e, musl: "x86_64" },
+} as const;
+export type NativeAbi = keyof typeof NATIVE_TARGETS;
+/**
+ * How the image installs the bundled JNI. `make`: Android.mk's `LOCAL_PREBUILT_JNI_LIBS`,
+ * which a product that still reads Android.mk honours. `soong`: one `prebuilt_app_native`
+ * module per library, `required` by the `android_app_import`, for products that ignore
+ * Android.mk (`PRODUCT_SOONG_ONLY`, as Android 17 Cuttlefish sets through
+ * `RELEASE_SOONG_ONLY_CUTTLEFISH`). That module type is the reviewed build/soong patch
+ * `patches/soong-app-native`, which the consumer applies in its AOSP checkout.
+ */
+export const NATIVE_INSTALLS = ["make", "soong"] as const;
+export type NativeInstall = (typeof NATIVE_INSTALLS)[number];
+const JNI_NAME = /^lib[A-Za-z0-9_.+-]+\.so$/;
+const MAX_JNI_BYTES = 1024 ** 3;
+
+/**
+ * The stored `lib/<abi>/*.so` entries of an already hash-pinned APK, byte for byte.
+ * Android never extracts a bundled app's libraries, so the image must carry them beside
+ * the APK for `nativeLibraryDir`. Every entry must be stored (as `preprocessed` already
+ * requires), a flat library name, a little-endian ELF64 for the ABI and match its CRC.
+ */
+export function readNativeLibraries(bytes: Buffer, abi: NativeAbi) {
+  if (!Object.hasOwn(NATIVE_TARGETS, abi))
+    throw new Error("Unsupported native ABI");
+  const target = NATIVE_TARGETS[abi];
+  const fail = (message: string): never => {
+    throw new Error(`Launcher native libraries: ${message}`);
+  };
+  let eocd = -1;
+  for (
+    let at = bytes.length - 22;
+    at >= Math.max(0, bytes.length - 22 - 0xffff);
+    at--
+  )
+    if (bytes.readUInt32LE(at) === 0x06054b50) {
+      eocd = at;
+      break;
+    }
+  if (eocd < 0) fail("the APK has no end-of-central-directory record");
+  const count = bytes.readUInt16LE(eocd + 10),
+    size = bytes.readUInt32LE(eocd + 12),
+    offset = bytes.readUInt32LE(eocd + 16);
+  if (count === 0xffff || size === 0xffffffff || offset === 0xffffffff)
+    fail("ZIP64 APKs are not admitted");
+  if (offset + size > eocd) fail("the central directory is outside the APK");
+  const prefix = `lib/${abi}/`;
+  const names = new Set<string>();
+  const libraries: { name: string; data: Buffer; sha256: string }[] = [];
+  let at = offset;
+  for (let index = 0; index < count; index++) {
+    if (at + 46 > offset + size || bytes.readUInt32LE(at) !== 0x02014b50)
+      fail("the central directory is malformed");
+    const flags = bytes.readUInt16LE(at + 8),
+      method = bytes.readUInt16LE(at + 10),
+      crc = bytes.readUInt32LE(at + 16),
+      compressed = bytes.readUInt32LE(at + 20),
+      uncompressed = bytes.readUInt32LE(at + 24),
+      nameLength = bytes.readUInt16LE(at + 28),
+      extraLength = bytes.readUInt16LE(at + 30),
+      commentLength = bytes.readUInt16LE(at + 32),
+      local = bytes.readUInt32LE(at + 42);
+    const name = bytes.subarray(at + 46, at + 46 + nameLength).toString("utf8");
+    at += 46 + nameLength + extraLength + commentLength;
+    if (names.has(name)) fail(`the APK repeats ${name}`);
+    names.add(name);
+    if (!name.startsWith(prefix)) continue;
+    const file = name.slice(prefix.length);
+    if (!JNI_NAME.test(file)) fail(`unexpected native path ${name}`);
+    if (flags & 0x1) fail(`${name} is encrypted`);
+    if (method !== 0 || compressed !== uncompressed)
+      fail(`${name} is compressed; the image installs stored libraries only`);
+    if (uncompressed < 64 || uncompressed > MAX_JNI_BYTES)
+      fail(`${name} has an implausible size`);
+    if (local + 30 > bytes.length || bytes.readUInt32LE(local) !== 0x04034b50)
+      fail(`${name} has no local header`);
+    const start =
+      local +
+      30 +
+      bytes.readUInt16LE(local + 26) +
+      bytes.readUInt16LE(local + 28);
+    if (start + compressed > offset) fail(`${name} is truncated`);
+    const data = bytes.subarray(start, start + compressed);
+    if (crc32(data) !== crc) fail(`${name} does not match its CRC`);
+    if (
+      data.readUInt32BE(0) !== 0x7f454c46 ||
+      data[4] !== 2 ||
+      data[5] !== 1 ||
+      data.readUInt16LE(18) !== target.machine
+    )
+      fail(`${name} is not a little-endian ELF64 ${abi} library`);
+    libraries.push({
+      name: file,
+      data,
+      sha256: createHash("sha256").update(data).digest("hex"),
+    });
+  }
+  if (!libraries.length) fail(`the APK has no ${prefix} libraries`);
+  return libraries.sort((a, b) => (a.name < b.name ? -1 : 1));
+}
+
+/**
+ * Build rules that install the pinned launcher with its bundled JNI beside it.
+ * AOSP's supported prebuilt app rule (`LOCAL_PREBUILT_JNI_LIBS` with `BUILD_PREBUILT`)
+ * installs the libraries in `<partition>/app/<module>/lib/<arch>` and keeps the presigned
+ * APK unchanged; Soong's `android_app_import` installs none. The rest of the overlay
+ * (grants, companions) stays in Soong. With `install: "soong"` the launcher stays an
+ * `android_app_import` that `required`s one `prebuilt_app_native` per library, installed
+ * at the same path (the rules stage-android-native.py's `finalize_soong` writes).
+ * `config.fs` gives the shared Eliza runtime's loader and Bun their executable mode
+ * (the table in stage-android-native.py); every other library is 0644 as for any app.
+ */
+export function renderNativeOverlay(
+  d: LauncherDescriptor,
+  abi: NativeAbi,
+  libraries: { name: string; sha256: string }[],
+  install: NativeInstall = "make",
+) {
+  validateDescriptor(d);
+  if (!Object.hasOwn(NATIVE_TARGETS, abi))
+    throw new Error("Unsupported native ABI");
+  if (!NATIVE_INSTALLS.includes(install))
+    throw new Error("Unsupported native install rule");
+  const target = NATIVE_TARGETS[abi];
+  if (!libraries.length || libraries.some((l) => !JNI_NAME.test(l.name)))
+    throw new Error("Invalid native library list");
+  const full = renderOverlay(d);
+  const { defaultPermissions: _grants, companions: _companions, ...alone } = d;
+  const main = renderOverlay(alone).blueprint;
+  if (!full.blueprint.startsWith(main))
+    throw new Error("Cannot separate the launcher module");
+  const partition = d.partition ?? "product";
+  const executables = new Set([
+    "libeliza_bun.so",
+    `libeliza_ld_musl_${target.musl}.so`,
+    `libeliza_ld_musl_${target.musl}_real.so`,
+  ]);
+  const directory = `native-${target.arch}`;
+  const records = libraries.map((library) => ({
+    apkEntry: `lib/${abi}/${library.name}`,
+    path: `${directory}/${library.name}`,
+    installPath: `/${partition}/app/${d.moduleName}/lib/${target.arch}/${library.name}`,
+    mode: executables.has(library.name) ? "0755" : "0644",
+    sha256: library.sha256,
+  }));
+  const rest = full.blueprint.slice(main.length);
+  // Module names with "_" cannot collide: launcher and companion names are [A-Za-z0-9].
+  const nativeModules = records.map((_, i) => `${d.moduleName}_native_${i}`);
+  const partitionProperty =
+    partition === "product" ? "    product_specific: true,\n" : "";
+  const patch = install === "soong" ? soongAppNativePatch() : null;
+  const soongBlueprint = () => {
+    const launcher = main.replace(
+      "    dex_preopt:",
+      `    required: [${nativeModules.map((m) => `"${m}"`).join(", ")}],\n    dex_preopt:`,
+    );
+    if (launcher === main) throw new Error("Cannot extend the launcher module");
+    return `${launcher.replace(
+      "// Generated from a hash- and signer-verified downstream launcher.\n",
+      `// Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\n// prebuilt_app_native is the reviewed build/soong patch soong-app-native; apply it first.\n`,
+    )}${records
+      .map(
+        (r, i) =>
+          `\nprebuilt_app_native {\n    name: "${nativeModules[i]}",\n    src: "${r.path}",\n    filename: "${libraries[i]?.name}",\n    relative_install_path: "${d.moduleName}/lib/${target.arch}",\n${partitionProperty}}\n`,
+      )
+      .join("")}${rest}`;
+  };
+  return {
+    directory,
+    blueprint:
+      install === "soong"
+        ? soongBlueprint()
+        : `// The launcher ${d.moduleName} is in Android.mk, which installs its bundled JNI.\n${rest}`,
+    makefile:
+      install === "soong"
+        ? null
+        : `# Generated from a hash- and signer-verified downstream launcher and its bundled ${abi} JNI.\nLOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := ${d.moduleName}\nLOCAL_MODULE_CLASS := APPS\nLOCAL_MODULE_SUFFIX := .apk\nLOCAL_SRC_FILES := Launcher.apk\nLOCAL_CERTIFICATE := PRESIGNED\nLOCAL_SDK_VERSION := 36\n${partition === "product" ? "LOCAL_PRODUCT_MODULE := true\n" : ""}LOCAL_MULTILIB := 64\nLOCAL_MODULE_TARGET_ARCH := ${target.arch}\nLOCAL_DEX_PREOPT := false\nLOCAL_PREBUILT_JNI_LIBS := ${records.map((r) => r.path).join(" ")}\ninclude $(BUILD_PREBUILT)\n`,
+    product: `${full.product}\n# Exact modes for the launcher's bundled JNI.\nlauncher_native_dir := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))\nTARGET_FS_CONFIG_GEN += $(launcher_native_dir)/config.fs\n`,
+    config: records
+      .map(
+        (r) =>
+          `[${r.installPath.slice(1)}]\nmode: ${r.mode}\nuser: AID_ROOT\ngroup: AID_ROOT\ncaps: 0\n\n`,
+      )
+      .join(""),
+    report: {
+      schemaVersion: 1,
+      apkSha256: d.apkSha256,
+      abi,
+      moduleName: d.moduleName,
+      installRule: install === "soong" ? "soong-app-native" : "android-mk",
+      ...(patch
+        ? {
+            // The consumer's build/soong must carry exactly this reviewed patch.
+            soongPatch: {
+              name: patch.name,
+              manifestSha256: patch.manifestSha256,
+              project: patch.manifest.project,
+              revision: patch.manifest.revision,
+              files: patch.manifest.files,
+            },
+          }
+        : {}),
+      libraries: records,
+      // The bytes are the pinned APK's; the runtime they hold is not admitted here.
+      runtimeAdmitted: false,
+      fsConfigRequired: true,
+      deployReady: false,
+    },
+  };
+}
 export function stageLauncher(options: {
   env?: NodeJS.ProcessEnv;
   descriptor: string;
@@ -320,7 +537,22 @@ export function stageLauncher(options: {
   aapt: string;
   apksigner: string;
   development: boolean;
+  /** Install the launcher's stored lib/<abi> libraries beside it in the image. */
+  nativeAbi?: NativeAbi;
+  /** With nativeAbi: Android.mk (default) or the Soong-only soong-app-native rule. */
+  nativeInstall?: NativeInstall;
 }) {
+  if (
+    options.nativeAbi !== undefined &&
+    !Object.hasOwn(NATIVE_TARGETS, options.nativeAbi)
+  )
+    throw new Error("Unsupported native ABI");
+  if (options.nativeInstall !== undefined) {
+    if (!NATIVE_INSTALLS.includes(options.nativeInstall))
+      throw new Error("Unsupported native install rule");
+    if (options.nativeAbi === undefined)
+      throw new Error("A native install rule requires a native ABI");
+  }
   const d = validateDescriptor(
     JSON.parse(fs.readFileSync(options.descriptor, "utf8")),
   );
@@ -376,8 +608,36 @@ export function stageLauncher(options: {
     for (const [c, file] of companionApks)
       validateCompanionInspection(d, c, ...inspect(file), options.development);
     const overlay = renderOverlay(d);
-    fs.writeFileSync(path.join(temporary, "Android.bp"), overlay.blueprint);
-    fs.writeFileSync(path.join(temporary, "product.mk"), overlay.product);
+    if (options.nativeAbi) {
+      const libraries = readNativeLibraries(
+        fs.readFileSync(apk),
+        options.nativeAbi,
+      );
+      const native = renderNativeOverlay(
+        d,
+        options.nativeAbi,
+        libraries,
+        options.nativeInstall ?? "make",
+      );
+      fs.mkdirSync(path.join(temporary, native.directory));
+      for (const library of libraries)
+        fs.writeFileSync(
+          path.join(temporary, native.directory, library.name),
+          library.data,
+        );
+      fs.writeFileSync(path.join(temporary, "Android.bp"), native.blueprint);
+      if (native.makefile !== null)
+        fs.writeFileSync(path.join(temporary, "Android.mk"), native.makefile);
+      fs.writeFileSync(path.join(temporary, "product.mk"), native.product);
+      fs.writeFileSync(path.join(temporary, "config.fs"), native.config);
+      fs.writeFileSync(
+        path.join(temporary, "native-libraries.json"),
+        `${JSON.stringify(native.report, null, 2)}\n`,
+      );
+    } else {
+      fs.writeFileSync(path.join(temporary, "Android.bp"), overlay.blueprint);
+      fs.writeFileSync(path.join(temporary, "product.mk"), overlay.product);
+    }
     if (overlay.permissions)
       fs.writeFileSync(
         path.join(temporary, "default-permissions.xml"),
@@ -415,6 +675,8 @@ export function main(argv = process.argv.slice(2)) {
         "--output",
         "--aapt",
         "--apksigner",
+        "--native-abi",
+        "--native-install",
       ].includes(flag) ||
       !value ||
       value.startsWith("--") ||
@@ -422,7 +684,7 @@ export function main(argv = process.argv.slice(2)) {
         (!companion?.[1] || !companion[2] || companion[1] in companions))
     )
       throw new Error(
-        "Expected --descriptor PATH --apk PATH [--companion MODULE=PATH ...] --output NEW_DIR [--aapt PATH] [--apksigner PATH] [--development]",
+        "Expected --descriptor PATH --apk PATH [--companion MODULE=PATH ...] --output NEW_DIR [--native-abi arm64-v8a|x86_64 [--native-install make|soong]] [--aapt PATH] [--apksigner PATH] [--development]",
       );
     if (companion?.[1] && companion[2]) companions[companion[1]] = companion[2];
     else args[flag.slice(2)] = value;
@@ -438,6 +700,12 @@ export function main(argv = process.argv.slice(2)) {
       aapt: args.aapt || "aapt",
       apksigner: args.apksigner || "apksigner",
       development,
+      ...(args["native-abi"]
+        ? { nativeAbi: args["native-abi"] as NativeAbi }
+        : {}),
+      ...(args["native-install"]
+        ? { nativeInstall: args["native-install"] as NativeInstall }
+        : {}),
     }),
   );
 }

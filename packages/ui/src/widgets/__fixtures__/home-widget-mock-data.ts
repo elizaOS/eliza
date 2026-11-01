@@ -81,11 +81,28 @@ export function homeWidgetMockMode(): HomeWidgetMockMode {
 
 /** CalendarUpcomingWidget reads /api/lifeops/calendar/feed; a timed event within
  *  the next 2h floats up at reminder weight. */
+const calendarSource = {
+  provider: "eliza",
+  side: "owner",
+  grantId: "home-fixture-grant",
+  connectorAccountId: "home-fixture-account",
+  calendarId: "primary",
+  includeInFeed: true,
+  accessRole: "owner",
+};
 function calendarFeed() {
+  const now = new Date();
   return {
+    state: "complete",
+    sources: [],
+    timeMin: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+    timeMax: new Date(now.getFullYear(), now.getMonth() + 2, 1).toISOString(),
     events: [
       {
+        ...calendarSource,
         id: "evt-soon",
+        externalId: "evt-soon",
+        status: "confirmed",
         title: "Design review",
         startAt: minutesFromNow(45),
         endAt: minutesFromNow(105),
@@ -238,7 +255,14 @@ function routeTable(): RouteMatch[] {
   return [
     {
       test: has("/api/lifeops/calendar/feed"),
-      body: whenAttention(calendarFeed, { events: [] }),
+      body: () =>
+        homeWidgetMockMode() === "attention"
+          ? calendarFeed()
+          : { ...calendarFeed(), events: [] },
+    },
+    {
+      test: has("/api/lifeops/calendar/calendars"),
+      body: () => ({ calendars: [calendarSource] }),
     },
     {
       test: has("/api/connectors/google/accounts"),

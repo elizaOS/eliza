@@ -15,8 +15,11 @@ Read-only hosts may compile `ai.eliza.plugins.calendar.read.CalendarReadAccess`
 without registering the writable bridge or requesting WRITE_CALENDAR. The host
 checks READ_CALENDAR and its source-consent policy before reading. Calendar and
 instance reads return the complete requested range; unavailable provider cursors
-reject rather than masquerading as empty data. The existing bridge list method
-uses this same reader and no longer truncates at 2,000 instances. With the host
+reject rather than masquerading as empty data. The legacy configuration keeps complete reads. A host can set
+`CalendarConfiguration.maximumReadEvents` to a positive bound. Its bridge `list`
+uses `CalendarReadAccess.window` and reports `truncated: true` after observing an
+additional row; callers must preserve that incomplete state. `events` itself
+still returns the complete range. With the host
 package and creation URI prefix, the reader also returns `creationId` for
 events the host created through `save`. CalendarProvider can reuse a row id
 after a deletion, so hosts that link records to events use `creationId`. Other
@@ -42,6 +45,16 @@ time-zone and simple recurrence fields. Recurring provider values use RFC2445
 the host reports launch separately from save, and requested alerts still need
 the editor because Android has no standard insert extra for them.
 
+`saveOptions`, `readOptions` and `insertHandoff` expose these helpers through the
+shared bridge. Pending creation reads and acknowledgements cover both journals. A creation ID
+cannot be reused across journals. An unreadable other journal refuses the write;
+an old cross-journal collision refuses acknowledgement and retains both receipts.
+The two existing journal guards are ordered by their canonical preference-file
+identity, so Activity instances cannot race a UUID into opposite stores.
+`saveOptions` does not edit existing events; the native editor handoff reports
+`opened` separately from any save. Host review and deferred-deletion overrides
+remain in force for the existing agent and removal paths.
+
 `CalendarOptionCreationStore` retains the `-options` journal and `options/`
 creation URI suffixes. It shares the existing journal implementation, including
 cross-instance locking and failed-write quarantine, while preserving the ordered
@@ -49,3 +62,11 @@ field hash used by installed option receipts. `CalendarDestinations` is shared
 by the original bridge and host extensions; it refuses unavailable provider
 lookups instead of treating them as a missing local calendar. Hosts must check
 permissions, chosen destinations and owner authority before invoking these helpers.
+
+Run `node --test test/native-host/read-window.test.mjs` for the complete/default and
+bounded-read contracts. After compiling the real shared bridge and host classes
+against Android APIs, `test/native-host/bridge-check.mjs` accepts `--classes`,
+`--classpath`, `--json` (the JVM JSON jar), `--host`, `--journal` and `--prefix`.
+It invokes the real methods against a controlled provider and checks permission
+refusal, receipt recovery, cross-journal identity fences and editor handoff. This
+is a JVM test and does not replace the isolated Android consumer run.

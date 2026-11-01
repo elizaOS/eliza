@@ -120,7 +120,7 @@ export function injectAndroidSmsGatewayBuildConfigFields(content) {
 
 /**
  * Inject the `androidResources { noCompress += [...] }` block that keeps
- * `.tar.gz`, `.tar`, `.gguf`, and `.so` files byte-identical in the
+ * `.tar.gz`, `.tar`, and `.so` files unchanged in the
  * packaged APK.
  *
  * Why: aapt2's default packaging treats `.gz` and `.tar.gz` as
@@ -138,11 +138,11 @@ export function injectAndroidSmsGatewayBuildConfigFields(content) {
 export function injectNoCompressTarGz(content) {
   if (/noCompress[^\n]*['"]tar\.gz['"]/.test(content)) return content;
   const block =
-    `\n    // Preserve .tar.gz / .tar / .gguf / .so as-is in the packaged APK.\n` +
+    `\n    // Preserve .tar.gz / .tar / .so as-is in the packaged APK.\n` +
     `    // aapt2 otherwise rewrites .tar.gz to .tar and PGlite's runtime\n` +
     `    // extension loader fails to find vector.tar.gz / fuzzystrmatch.tar.gz.\n` +
     `    androidResources {\n` +
-    `        noCompress += ['gguf', 'tar.gz', 'so', 'tar']\n` +
+    `        noCompress += ['tar.gz', 'so', 'tar']\n` +
     `    }\n`;
   // Inject just before the closing brace of the top-level `android { ... }`
   // block. Match the LAST `}` in the file as a heuristic that's robust

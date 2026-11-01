@@ -28,6 +28,7 @@ import {
   CalendarLocalTimeError,
   calendarLocalTimeClarification,
 } from "../internal/time.js";
+import { ownerCalendarFeedWithReadDiagnostics } from "../service/managed-calendar-read.js";
 import {
   type CalendarRouteRateLimitKey,
   type CalendarRouteService,
@@ -750,10 +751,12 @@ export const calendarHttpRoutes: Route[] = [
     modeReason:
       "The calendar feed is owned by the active runtime in every supported topology",
     routeHandler: (context) =>
-      readOwnerCalendar(context, (service, url) =>
-        service.getCalendarFeed(
-          url,
-          parseCalendarFeedQuery(url.searchParams, queryParsers),
+      readOwnerCalendar(context, async (service, url) =>
+        ownerCalendarFeedWithReadDiagnostics(
+          await service.getCalendarFeed(
+            url,
+            parseCalendarFeedQuery(url.searchParams, queryParsers),
+          ),
         ),
       ),
   },

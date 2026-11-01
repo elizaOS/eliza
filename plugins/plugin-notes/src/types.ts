@@ -112,7 +112,7 @@ export const noteTextEditSchema: ActionParameterSchema & JSONSchema = {
       type: "object",
       properties: {
         action: { type: "string", enum: ["append"] },
-        field: { type: "string", enum: ["body"] },
+        field: { type: "string", enum: ["body", "item"] },
         text: { type: "string", minLength: 1, maxLength: 20001 },
       },
       required: ["action", "field", "text"],

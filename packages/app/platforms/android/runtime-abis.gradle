@@ -10,5 +10,16 @@ if (configuredRuntimeAbis != null) {
     android.defaultConfig.ndk.abiFilters.clear()
     android.defaultConfig.ndk.abiFilters.addAll(runtimeAbis)
     def otherRuntimeAbis = supportedRuntimeAbis.findAll { !runtimeAbis.contains(it) }
-    android.sourceSets.main.assets.exclude(*(otherRuntimeAbis.collect { "agent/${it}/**" }))
+    // AGP's asset merger reads source directories, not SourceDirectorySet's
+    // excludes. Filter its output and bind the selection to task invalidation
+    // so switching ABIs also works without cleaning a previous merge.
+    tasks.matching { it.name.startsWith('merge') && it.name.endsWith('Assets') }.configureEach { mergeTask ->
+        mergeTask.inputs.property('elizaRuntimeAbis', runtimeAbis)
+        mergeTask.doLast {
+            def assetsDir = mergeTask.outputDir.get().asFile
+            otherRuntimeAbis.each { abi ->
+                delete new File(assetsDir, "agent/${abi}")
+            }
+        }
+    }
 }

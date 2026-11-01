@@ -176,6 +176,31 @@ test("native Google responses map to a fixed classification and a bounded diagno
 
 test("exact native verify/connect/token/ack chain keeps failures explicit and custody native (plain JVM)", () => {
   const { file, directory } = harness("CloudSignInChainTest.java.txt", {
+    ACTUAL_CREDENTIAL_IDENTITY: between(
+      plugin,
+      " @PluginMethod public void credentialIdentity(",
+      " /**\n  * Called once when an explicit attempt",
+    ).replace("@PluginMethod ", ""),
+    ACTUAL_CALLER_REQUEST: between(
+      plugin,
+      " private static String callerRequestId(",
+      " @PluginMethod public void startGoogle(",
+    ),
+    ACTUAL_CANCEL: between(
+      plugin,
+      " @PluginMethod public void cancel(",
+      " /** Post-authentication consent",
+    ).replace("@PluginMethod ", ""),
+    ACTUAL_CALLBACK: between(
+      plugin,
+      " private boolean captureCallback(",
+      " /** Cancelled, ended or consumed",
+    ),
+    ACTUAL_BURN: between(
+      plugin,
+      " private void burnUnclaimedPending()",
+      " // ── Email code and MFA:",
+    ),
     ACTUAL_VERIFY:
       between(
         plugin,
@@ -224,7 +249,7 @@ test("exact native verify/connect/token/ack chain keeps failures explicit and cu
         [...pure, ...support, file],
         "ai.eliza.auth.cloud.CloudSignInChainTest",
       ),
-      /^PASS native sign-in chain \(14 scenarios; no browser facilities\)/,
+      /^PASS native sign-in chain \(38 scenarios; no browser facilities\)/,
     );
   } finally {
     rmSync(directory, { recursive: true, force: true });
@@ -396,8 +421,8 @@ test("the plugin owns every secret, compares state before burning and logs only 
     "receipt, then key, then ack",
   );
   assert.ok(
-    tail.indexOf("reserveCredentialCommit()") < key,
-    "the host fence is reserved before the key write",
+    tail.indexOf("current.credentialGuard.run()") < key,
+    "the accepted attempt's existing host fence guards the key write",
   );
   assert.ok(
     tail.indexOf("previousToken(") < key &&
@@ -654,15 +679,27 @@ test("Eliza's Android app wires the host, its build and its renderer port", () =
     /ElizaCloudSignInRegistration\.registration\(\s*BuildConfig\.DEBUG \|\| BuildConfig\.ELIZA_CLOUD_SIGN_IN_STAGING\)/,
     "staging only in development builds",
   );
-  assert.match(elizaHost, /"session\.steward_token"/);
-  assert.match(elizaHost, /getNoBackupFilesDir\(\)/);
+  const credentialBinding = read(
+    join(elizaJava, "ElizaResidentCredentials.java"),
+  );
+  assert.match(credentialBinding, /"session\.steward_token"/);
+  assert.match(credentialBinding, /getNoBackupFilesDir\(\)/);
+  assert.match(
+    elizaHost,
+    /reserveCredentialCommit\(\) \{ return ElizaResidentCredentials.reserve\(\); \}/,
+  );
+  assert.match(
+    elizaHost,
+    /return ElizaResidentCredentials.cloud\(getContext\(\), guard\);/,
+  );
   assert.doesNotMatch(
     elizaHost,
-    /reserveCredentialCommit|@PluginMethod|android\.util\.Log/,
-    "no extra method, fence or log beside the shared client",
+    /@PluginMethod|android\.util\.Log/,
+    "no extra sign-in flow or log beside the shared client",
   );
   const sources = [
     elizaHost,
+    credentialBinding,
     read(join(elizaJava, "ElizaCloudSignInRegistration.java")),
     read(join(elizaJava, "ElizaCloudCredentialSlots.java")),
   ].join("\n");
@@ -686,6 +723,16 @@ test("Eliza's Android app wires the host, its build and its renderer port", () =
     cloudActivity,
     /registerPlugin\(ElizaCloudSignInPlugin\.class\);/,
   );
+  for (const source of [
+    cloudActivity,
+    read(join(elizaJava, "MainActivity.java")),
+  ]) {
+    assert.match(
+      source,
+      /initialPlugins\.add\(ElizaSecureStorePlugin\.class\);/,
+      "resident-aware secure-store registration follows generated plugin discovery",
+    );
+  }
   assert.doesNotMatch(
     cloudActivity,
     /isCloudAuthCallback|loadUrl\(/,

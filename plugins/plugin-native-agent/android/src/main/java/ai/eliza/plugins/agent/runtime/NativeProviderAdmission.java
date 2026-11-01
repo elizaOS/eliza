@@ -62,6 +62,8 @@ public class NativeProviderAdmission {
  }
  /** Select exactly one billing authority at process launch; never accept UI balance as authorization. */
  public static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {
+  env.remove("ELIZA_NATIVE_GOOGLE_API_KEY");
+  env.remove("ELIZA_NATIVE_GOOGLE_BINDING_JSON");
   String kind=provider.optString("provider","cerebras"),model=provider.getString("model");
   // Retirement context only: reuse protected selection identity, never a credential or renderer value.
   Object selectedRevision=provider.opt("revision");
@@ -79,6 +81,7 @@ public class NativeProviderAdmission {
    if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
    String token=cloudProviderToken(cloudSaved,provider.getString("credentialId"),now);
    for(String key:new String[]{"CEREBRAS_API_KEY","CEREBRAS_BASE_URL","CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL","OPENAI_API_KEY","OPENAI_BASE_URL","ELIZA_PROVIDER"})env.remove(key);
+   env.remove("CARTESIA_API_KEY");env.remove("CARTESIA_API_KEY_FILE");env.remove("ELIZA_SELF_HOSTED_VOICE_ENABLED");
    env.put("ELIZAOS_CLOUD_API_KEY",token);
    env.put("ELIZAOS_CLOUD_BASE_URL",CLOUD_PROVIDER_BASE);
    env.put("ELIZAOS_CLOUD_USE_INFERENCE","true");
@@ -96,6 +99,11 @@ public class NativeProviderAdmission {
    // Earlier builds accepted any model name; launch always uses the pinned model.
    model=CEREBRAS_PROVIDER_MODEL;
    for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","ELIZA_DISABLE_LOCAL_EMBEDDINGS","ELIZA_LOCAL_EMBEDDING_ENABLED"})env.remove(name);
+   env.remove("CARTESIA_API_KEY");env.remove("CARTESIA_API_KEY_FILE");env.remove("ELIZA_SELF_HOSTED_VOICE_ENABLED");
+   String speech=provider.optString("cartesiaKey", "");
+   if(!speech.isEmpty()){if(!validProviderToken(speech,1024))throw new IllegalArgumentException();env.put("CARTESIA_API_KEY",speech);env.put("ELIZA_SELF_HOSTED_VOICE_ENABLED","1");}
+   env.remove("OPENAI_API_KEY");env.remove("OPENAI_BASE_URL");env.remove("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED");
+   env.put("CEREBRAS_BASE_URL","https://api.cerebras.ai/v1");env.put("ELIZA_PROVIDER","cerebras");
    env.put("CEREBRAS_API_KEY",key);
    env.put("CEREBRAS_MODEL",model);
    env.put("CEREBRAS_SMALL_MODEL",model);
@@ -108,11 +116,14 @@ public class NativeProviderAdmission {
  public static JSONObject providerIdentity(String saved) {
   JSONObject result=new JSONObject();
   try{
-   result.put("provider","cerebras").put("configured",false);
+   result.put("provider","cerebras").put("configured",false).put("selected",false);
    if(saved==null)return result;
    try{
     JSONObject provider=new JSONObject(saved);
+    result.put("selected",true);
     String model=provider.optString("model",""),kind=provider.optString("provider","cerebras");
+    if("cerebras".equals(kind)&&provider.optString("revision", "").matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))result.put("revision",provider.getString("revision"));
+    result.put("voiceConfigured", "cerebras".equals(kind)&&validProviderToken(provider.optString("cartesiaKey", ""),1024));
     if("elizacloud".equals(kind)){result.put("provider","elizacloud");if(CLOUD_PROVIDER_MODEL.equals(model))result.put("configured",true).put("model",model);}
     else if("cerebras".equals(kind)&&model.matches(PROVIDER_MODEL_PATTERN))result.put("configured",true).put("model",CEREBRAS_PROVIDER_MODEL);
    }catch(org.json.JSONException malformed){/* Report unconfigured, never the stored value. */}
@@ -169,14 +180,34 @@ public class NativeProviderAdmission {
  }
  private static final String GENERATION="admissionGeneration",FINGERPRINT="admissionFingerprint",CLOUD_IDENTITY="verifiedCloudIdentity";
  /** Public identity of the native-verified Cloud selection; never the bearer. */
+ /** Keeps managed-service credentials separate from text inference. Direct inference remains usable
+  * when the separately saved Cloud account is signed out, expired or replaced. */
+ public static JSONObject applyManagedGoogleEnvironment(String saved,String cloudSaved,java.util.Map<String,String> env,long now)throws Exception {
+  env.remove("ELIZA_NATIVE_GOOGLE_API_KEY");
+  env.remove("ELIZA_NATIVE_GOOGLE_BINDING_JSON");
+  boolean direct=saved!=null&&"cerebras".equals(new JSONObject(saved).optString("provider"));
+  JSONObject binding;
+  try{binding=managedGoogleBinding(saved,cloudSaved,now);}
+  catch(Exception unavailable){if(direct)return null;throw unavailable;}
+  if(binding!=null)env.put("ELIZA_NATIVE_GOOGLE_API_KEY",cloudProviderToken(cloudSaved,binding.getString("credentialId"),now));
+  return binding;
+ }
  public static JSONObject managedGoogleBinding(String saved,String cloudSaved,long now)throws Exception {
   if(saved==null)throw new SecurityException("Cloud provider admission required");
   JSONObject selected=new JSONObject(saved);
+  String directGeneration=null;
+  if("cerebras".equals(selected.optString("provider"))){
+   directGeneration=currentGeneration(saved,null);if(directGeneration==null)throw new SecurityException("Direct provider admission changed");
+   JSONObject retained=selected.optJSONObject("cloudServices");
+   if(retained==null)throw new SecurityException("Cloud account admission required");
+   saved=retained.toString();selected=retained;
+  }
   if(!"elizacloud".equals(selected.optString("provider")))throw new SecurityException("Cloud provider required");
   String credentialId=selected.getString("credentialId");
   cloudProviderToken(cloudSaved,credentialId,now);
   String generation=currentGeneration(saved,cloudSaved);
   if(generation==null)throw new SecurityException("Cloud provider admission changed");
+  if(directGeneration!=null)generation=directGeneration;
   String reference=cloudAccountRef(selected);JSONArray account=new JSONArray(reference);
   if(account.length()!=4||!"cloud".equals(account.getString(0))||!"production".equals(account.getString(1)))throw new SecurityException("Cloud account admission invalid");
   // A valid Cloud inference account can exist before an organization/Google grant.
@@ -217,7 +248,10 @@ public class NativeProviderAdmission {
   return new JSONArray().put("cloud").put("production").put(identity.getString("userId")).put(identity.opt("organizationId")).toString();
  }
  private static JSONArray cloudIdentity(String saved,String expectedId)throws Exception {
-  String token=cloudProviderToken(saved,expectedId,System.currentTimeMillis());
+  return cloudIdentity(saved,expectedId,System.currentTimeMillis());
+ }
+ private static JSONArray cloudIdentity(String saved,String expectedId,long now)throws Exception {
+  String token=cloudProviderToken(saved,expectedId,now);
   JSONObject credential=new JSONObject(saved);
   return new JSONArray().put("production").put(expectedId).put(credential.opt("userId")).put(credential.opt("organizationId")).put(token);
  }
@@ -227,6 +261,20 @@ public class NativeProviderAdmission {
    String id=new JSONObject(before).getString("credentialId");
    return cloudIdentity(before,id).toString().equals(cloudIdentity(after,id).toString());
   }catch(Exception unavailable){return false;}
+ }
+ /** Credential authority digest for native journals; ignores expiry and unrelated metadata.
+  * The caller supplies its current clock. Invalid, expired or removed credentials are refused. */
+ public static String cloudCredentialFingerprint(String saved,long now)throws Exception {
+  String id=new JSONObject(saved).getString("credentialId");
+  return hashIdentity(cloudIdentity(saved,id,now));
+ }
+ private static String hashIdentity(JSONArray identity)throws Exception {
+  byte[] bytes=identity.toString().getBytes(StandardCharsets.UTF_8);
+  try{
+   byte[] digest=MessageDigest.getInstance("SHA-256").digest(bytes);StringBuilder hex=new StringBuilder();
+   for(byte value:digest)hex.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
+   return hex.toString();
+  }finally{java.util.Arrays.fill(bytes,(byte)0);}
  }
  private static String fingerprint(JSONObject selected,String cloud)throws Exception {
   String kind=selected.optString("provider","cerebras"),model=selected.getString("model");
@@ -244,14 +292,11 @@ public class NativeProviderAdmission {
    if(!model.matches(PROVIDER_MODEL_PATTERN)||!validProviderToken(key,1024))throw new IllegalArgumentException();
    String environment=selected.optString("environment","production");
    if(!"production".equals(environment))throw new IllegalArgumentException();
-   identity.put(environment).put(key);
+   String speech=selected.optString("cartesiaKey", "");
+   if(!speech.isEmpty()&&!validProviderToken(speech,1024))throw new IllegalArgumentException();
+   identity.put(environment).put(key);if(!speech.isEmpty())identity.put(speech);
   }else throw new IllegalArgumentException();
-  byte[] bytes=identity.toString().getBytes(StandardCharsets.UTF_8);
-  try{
-   byte[] digest=MessageDigest.getInstance("SHA-256").digest(bytes);StringBuilder hex=new StringBuilder();
-   for(byte value:digest)hex.append(String.format(java.util.Locale.ROOT,"%02x",value&255));
-   return hex.toString();
-  }finally{java.util.Arrays.fill(bytes,(byte)0);}
+  return hashIdentity(identity);
  }
  /** Invoked only by explicit native configuration inside the existing credential mutation lock. */
  public static String admit(String previous,String selection,String cloud,JSONObject verifiedIdentity)throws Exception {

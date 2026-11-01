@@ -51,9 +51,8 @@ import type {
   ApprovalRequest,
 } from "../approval/types.ts";
 import {
-  authoredBrowserDestination,
-  browserDestinationMatches,
   DeviceBrowserNotRequestedError,
+  groundBrowserDestination,
 } from "./browser-request-grounding.ts";
 import type { CalendarFields } from "./calendar-contract.ts";
 import {
@@ -1963,7 +1962,7 @@ export class DeviceActionService {
       request: ReviewedAvailabilityRequest;
     },
   ): Promise<ApprovalEnqueueResult> {
-    const validated = validateDeviceOperation(operation);
+    let validated = validateDeviceOperation(operation);
     if (!deviceAppRecordOperationAvailable(this.runtime, validated))
       throw new DeviceActionError(
         "Device Notes/Calendar record authority is not selected for this turn",
@@ -2085,15 +2084,15 @@ export class DeviceActionService {
       browserRequest,
     );
     requestOrigin?.assertCurrent();
-    if (
-      browserRequest &&
-      (!requestOrigin ||
-        !browserDestinationMatches(
-          validated,
-          authoredBrowserDestination(requestOrigin.requestText),
-        ))
-    )
-      throw new DeviceBrowserNotRequestedError();
+    if (validated.type === "browser_navigate") {
+      // The durable original request owns the destination: the user's typed
+      // address, never the model's spelling of it.
+      const destination =
+        requestOrigin &&
+        groundBrowserDestination(requestOrigin.requestText, validated.url);
+      if (!destination) throw new DeviceBrowserNotRequestedError();
+      validated = { ...validated, url: destination };
+    }
     const originMessageId = requestOrigin?.messageId;
     if (
       agenda &&

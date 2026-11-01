@@ -4,8 +4,12 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { test } from "node:test";
+import { crc32, deflateRawSync } from "node:zlib";
+import { soongAppNativePatch } from "../android/soong-app-native.mjs";
 import {
   createDevelopmentLauncherDescriptor,
+  readNativeLibraries,
+  renderNativeOverlay,
   renderOverlay,
   stageLauncher,
   validateCompanionInspection,
@@ -465,6 +469,486 @@ test("companion APKs must match the descriptor before any SDK tool runs", () => 
       "launcher.apk",
       "updater.apk",
     ]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+/** A minimal APK-shaped ZIP: each entry stored unless `deflate` is set. */
+function zip(entries: { name: string; data: Buffer; deflate?: boolean }[]) {
+  const locals: Buffer[] = [],
+    central: Buffer[] = [];
+  let offset = 0;
+  for (const { name, data, deflate } of entries) {
+    const body = deflate ? deflateRawSync(data) : data;
+    const file = Buffer.from(name);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(deflate ? 8 : 0, 8);
+    local.writeUInt32LE(crc32(data), 14);
+    local.writeUInt32LE(body.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(file.length, 26);
+    const header = Buffer.alloc(46);
+    header.writeUInt32LE(0x02014b50, 0);
+    header.writeUInt16LE(deflate ? 8 : 0, 10);
+    header.writeUInt32LE(crc32(data), 16);
+    header.writeUInt32LE(body.length, 20);
+    header.writeUInt32LE(data.length, 24);
+    header.writeUInt16LE(file.length, 28);
+    header.writeUInt32LE(offset, 42);
+    locals.push(local, file, body);
+    central.push(header, file);
+    offset += 30 + file.length + body.length;
+  }
+  const directory = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(entries.length, 8);
+  end.writeUInt16LE(entries.length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, directory, end]);
+}
+/** A little-endian ELF64 header for the machine, padded to a plausible library. */
+function elf(machine: number, fill: string) {
+  const data = Buffer.alloc(128, fill);
+  Buffer.from([0x7f, 0x45, 0x4c, 0x46, 2, 1]).copy(data);
+  data.writeUInt16LE(machine, 18);
+  return data;
+}
+const arm64 = 0xb7;
+const launcherApk = (
+  extra: { name: string; data: Buffer; deflate?: boolean }[] = [],
+) =>
+  zip([
+    {
+      name: "AndroidManifest.xml",
+      data: Buffer.from("manifest"),
+      deflate: true,
+    },
+    { name: "classes.dex", data: Buffer.alloc(256, "d"), deflate: true },
+    { name: "lib/arm64-v8a/libeliza_bun.so", data: elf(arm64, "b") },
+    { name: "lib/arm64-v8a/libc++_shared.so", data: elf(arm64, "c") },
+    {
+      name: "lib/arm64-v8a/libeliza_ld_musl_aarch64.so",
+      data: elf(arm64, "l"),
+    },
+    { name: "lib/x86_64/libother.so", data: elf(0x3e, "x"), deflate: true },
+    ...extra,
+  ]);
+
+test("bundled JNI is read byte for byte from the stored lib/<abi> entries only", () => {
+  const libraries = readNativeLibraries(launcherApk(), "arm64-v8a");
+  assert.deepEqual(
+    libraries.map((library) => library.name),
+    ["libc++_shared.so", "libeliza_bun.so", "libeliza_ld_musl_aarch64.so"],
+  );
+  assert.deepEqual(libraries[1]?.data, elf(arm64, "b"));
+  assert.equal(
+    libraries[1]?.sha256,
+    createHash("sha256").update(elf(arm64, "b")).digest("hex"),
+  );
+  // The x86_64 entry is compressed, so the other ABI is never accepted silently.
+  assert.throws(
+    () => readNativeLibraries(launcherApk(), "x86_64"),
+    /compressed/,
+  );
+  for (const [extra, message] of [
+    [
+      { name: "lib/arm64-v8a/libz.so", data: elf(arm64, "z"), deflate: true },
+      /compressed/,
+    ],
+    [
+      { name: "lib/arm64-v8a/libz.so", data: elf(0x3e, "z") },
+      /ELF64 arm64-v8a/,
+    ],
+    [
+      { name: "lib/arm64-v8a/sub/libz.so", data: elf(arm64, "z") },
+      /unexpected native path/,
+    ],
+    [
+      { name: "lib/arm64-v8a/run.sh", data: elf(arm64, "z") },
+      /unexpected native path/,
+    ],
+    [
+      { name: "lib/arm64-v8a/libeliza_bun.so", data: elf(arm64, "b") },
+      /repeats/,
+    ],
+  ] as const)
+    assert.throws(
+      () => readNativeLibraries(launcherApk([extra]), "arm64-v8a"),
+      message,
+    );
+  const tampered = launcherApk();
+  const flipped = tampered.indexOf(elf(arm64, "c")) + 100;
+  tampered.writeUInt8((tampered.readUInt8(flipped) ^ 1) & 0xff, flipped);
+  assert.throws(
+    () => readNativeLibraries(tampered, "arm64-v8a"),
+    /does not match its CRC/,
+  );
+  assert.throws(
+    () =>
+      readNativeLibraries(
+        zip([{ name: "classes.dex", data: Buffer.alloc(64) }]),
+        "arm64-v8a",
+      ),
+    /no lib\/arm64-v8a\/ libraries/,
+  );
+  assert.throws(() =>
+    readNativeLibraries(Buffer.from("not a zip"), "arm64-v8a"),
+  );
+  assert.throws(
+    () => readNativeLibraries(launcherApk(), "toString" as never),
+    /Unsupported native ABI/,
+  );
+});
+
+test("the launcher moves to Android.mk with its JNI; grants and companions stay in Soong", () => {
+  const d = {
+    ...descriptor,
+    defaultPermissions: ["android.permission.RECORD_AUDIO"],
+    companions: [
+      {
+        moduleName: "AlphaPhoneUpdater",
+        packageName: "ai.elizaresearch.alphaphone.updater",
+        apkSha256: "c".repeat(64),
+      },
+    ],
+  };
+  const libraries = readNativeLibraries(launcherApk(), "arm64-v8a");
+  const native = renderNativeOverlay(d, "arm64-v8a", libraries);
+  assert.ok(native.makefile !== null);
+  assert.equal(native.directory, "native-arm64");
+  assert.doesNotMatch(native.blueprint, /name: "AlphaPhone",/);
+  assert.match(native.blueprint, /name: "AlphaPhoneUpdater"/);
+  assert.match(native.blueprint, /name: "AlphaPhoneDefaultPermissions"/);
+  assert.match(native.makefile, /^LOCAL_MODULE := AlphaPhone$/m);
+  assert.match(native.makefile, /^LOCAL_CERTIFICATE := PRESIGNED$/m);
+  assert.match(native.makefile, /^LOCAL_PRODUCT_MODULE := true$/m);
+  assert.match(native.makefile, /^LOCAL_MODULE_TARGET_ARCH := arm64$/m);
+  assert.match(
+    native.makefile,
+    /^LOCAL_PREBUILT_JNI_LIBS := native-arm64\/libc\+\+_shared\.so native-arm64\/libeliza_bun\.so native-arm64\/libeliza_ld_musl_aarch64\.so$/m,
+  );
+  assert.doesNotMatch(native.makefile, /PRIVILEGED|LOCAL_OVERRIDES/);
+  assert.match(
+    native.product,
+    /PRODUCT_PACKAGES \+= AlphaPhone AlphaPhoneDefaultPermissions AlphaPhoneUpdater\n/,
+  );
+  assert.match(
+    native.product,
+    /TARGET_FS_CONFIG_GEN \+= \$\(launcher_native_dir\)\/config\.fs/,
+  );
+  assert.match(
+    native.config,
+    /\[product\/app\/AlphaPhone\/lib\/arm64\/libeliza_bun\.so\]\nmode: 0755\n/,
+  );
+  assert.match(
+    native.config,
+    /\[product\/app\/AlphaPhone\/lib\/arm64\/libeliza_ld_musl_aarch64\.so\]\nmode: 0755\n/,
+  );
+  assert.match(
+    native.config,
+    /\[product\/app\/AlphaPhone\/lib\/arm64\/libc\+\+_shared\.so\]\nmode: 0644\n/,
+  );
+  assert.equal(native.report.runtimeAdmitted, false);
+  assert.equal(native.report.deployReady, false);
+  assert.equal(native.report.libraries[1]?.sha256, libraries[1]?.sha256);
+  const system = renderNativeOverlay(
+    { ...descriptor, partition: "system" },
+    "arm64-v8a",
+    libraries,
+  );
+  assert.ok(system.makefile !== null);
+  assert.doesNotMatch(system.makefile, /LOCAL_PRODUCT_MODULE/);
+  assert.match(
+    system.config,
+    /^\[system\/app\/AlphaPhone\/lib\/arm64\/libeliza_bun\.so\]$/m,
+  );
+  assert.equal(
+    system.blueprint,
+    "// The launcher AlphaPhone is in Android.mk, which installs its bundled JNI.\n",
+  );
+  for (const invalid of [[], [{ name: "../libx.so", sha256: "a".repeat(64) }]])
+    assert.throws(
+      () => renderNativeOverlay(descriptor, "arm64-v8a", invalid),
+      /Invalid native library list/,
+    );
+});
+
+test("staging with a native ABI writes the pinned JNI beside the launcher, or nothing", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-native-test-"));
+  try {
+    const tool = path.join(dir, "tool");
+    fs.writeFileSync(
+      tool,
+      `#!${process.execPath}\nconst a=process.argv.slice(2);if(a[0]==='verify')console.log(process.env.SIGNATURES);else if(a[1]==='badging')console.log(process.env.BADGING);else console.log(process.env.XML);`,
+      { mode: 0o700 },
+    );
+    const env = {
+      ...process.env,
+      SIGNATURES: signer,
+      BADGING: badging,
+      XML: xml,
+    };
+    const stage = (bytes: Buffer, output: string) => {
+      const apk = path.join(dir, `${output}.apk`);
+      fs.writeFileSync(apk, bytes);
+      const descriptorPath = path.join(dir, `${output}.json`);
+      fs.writeFileSync(
+        descriptorPath,
+        JSON.stringify({
+          ...descriptor,
+          apkSha256: createHash("sha256").update(bytes).digest("hex"),
+        }),
+      );
+      return stageLauncher({
+        descriptor: descriptorPath,
+        apk,
+        output: path.join(dir, output),
+        aapt: tool,
+        apksigner: tool,
+        development: false,
+        nativeAbi: "arm64-v8a",
+        env,
+      });
+    };
+    const bytes = launcherApk();
+    const output = stage(bytes, "out");
+    assert.deepEqual(fs.readdirSync(output).sort(), [
+      "Android.bp",
+      "Android.mk",
+      "Launcher.apk",
+      "config.fs",
+      "launcher.json",
+      "native-arm64",
+      "native-libraries.json",
+      "product.mk",
+    ]);
+    assert.deepEqual(fs.readFileSync(path.join(output, "Launcher.apk")), bytes);
+    assert.deepEqual(
+      fs.readFileSync(path.join(output, "native-arm64", "libeliza_bun.so")),
+      elf(arm64, "b"),
+    );
+    const report = JSON.parse(
+      fs.readFileSync(path.join(output, "native-libraries.json"), "utf8"),
+    );
+    assert.equal(report.libraries.length, 3);
+    assert.equal(report.installRule, "android-mk");
+    assert.equal(
+      report.apkSha256,
+      createHash("sha256").update(bytes).digest("hex"),
+    );
+    assert.throws(
+      () =>
+        stage(
+          launcherApk([
+            {
+              name: "lib/arm64-v8a/libz.so",
+              data: elf(arm64, "z"),
+              deflate: true,
+            },
+          ]),
+          "refused",
+        ),
+      /compressed/,
+    );
+    assert.equal(fs.existsSync(path.join(dir, "refused")), false);
+    assert.equal(
+      fs.readdirSync(dir).some((name) => name.startsWith(".launcher-stage-")),
+      false,
+    );
+    assert.throws(
+      () =>
+        stageLauncher({
+          descriptor: path.join(dir, "out.json"),
+          apk: path.join(dir, "out.apk"),
+          output: path.join(dir, "other"),
+          aapt: "must-not-run",
+          apksigner: "must-not-run",
+          development: false,
+          nativeAbi: "armeabi-v7a" as never,
+        }),
+      /Unsupported native ABI/,
+    );
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test("a Soong-only product gets prebuilt_app_native rules required by the launcher", () => {
+  const d = {
+    ...descriptor,
+    defaultPermissions: ["android.permission.RECORD_AUDIO"],
+    companions: [
+      {
+        moduleName: "AlphaPhoneUpdater",
+        packageName: "ai.elizaresearch.alphaphone.updater",
+        apkSha256: "c".repeat(64),
+      },
+    ],
+  };
+  const libraries = readNativeLibraries(launcherApk(), "arm64-v8a");
+  const make = renderNativeOverlay(d, "arm64-v8a", libraries);
+  const native = renderNativeOverlay(d, "arm64-v8a", libraries, "soong");
+  assert.equal(native.makefile, null);
+  // Same install paths, modes and bytes as the Android.mk rule.
+  assert.equal(native.config, make.config);
+  assert.equal(native.product, make.product);
+  assert.deepEqual(native.report.libraries, make.report.libraries);
+  assert.equal(native.report.installRule, "soong-app-native");
+  const patch = soongAppNativePatch();
+  assert.deepEqual(native.report.soongPatch, {
+    name: "soong-app-native",
+    manifestSha256: patch.manifestSha256,
+    project: "build/soong",
+    revision: patch.manifest.revision,
+    files: patch.manifest.files,
+  });
+  assert.equal(make.report.soongPatch, undefined);
+  assert.equal(native.report.runtimeAdmitted, false);
+  assert.equal(native.report.deployReady, false);
+  const launcher =
+    /android_app_import \{\n {4}name: "AlphaPhone",\n[\s\S]*?\n\}\n/.exec(
+      native.blueprint,
+    )?.[0];
+  assert.ok(launcher, native.blueprint);
+  assert.match(launcher, /^ {4}presigned: true,$/m);
+  assert.match(launcher, /^ {4}preprocessed: true,$/m);
+  assert.match(launcher, /^ {4}product_specific: true,$/m);
+  assert.match(
+    launcher,
+    /^ {4}required: \["AlphaPhone_native_0", "AlphaPhone_native_1", "AlphaPhone_native_2"\],$/m,
+  );
+  assert.doesNotMatch(native.blueprint, /privileged|prebuilt_any|overrides/);
+  const modules = [
+    ...native.blueprint.matchAll(/prebuilt_app_native \{\n([^}]*)\}/g),
+  ].map((match) => match[1]);
+  assert.deepEqual(
+    modules,
+    libraries.map(
+      (library, index) =>
+        `    name: "AlphaPhone_native_${index}",\n    src: "native-arm64/${library.name}",\n    filename: "${library.name}",\n    relative_install_path: "AlphaPhone/lib/arm64",\n    product_specific: true,\n`,
+    ),
+  );
+  // Grants and companions are unchanged from the plain overlay.
+  assert.ok(
+    native.blueprint.endsWith(make.blueprint.split("\n").slice(1).join("\n")),
+  );
+  assert.match(native.blueprint, /name: "AlphaPhoneDefaultPermissions"/);
+  assert.match(native.blueprint, /name: "AlphaPhoneUpdater"/);
+
+  const system = renderNativeOverlay(
+    { ...descriptor, partition: "system" },
+    "x86_64",
+    [{ name: "libeliza_bun.so", sha256: "a".repeat(64) }],
+    "soong",
+  );
+  assert.doesNotMatch(system.blueprint, /product_specific/);
+  assert.match(
+    system.blueprint,
+    /relative_install_path: "AlphaPhone\/lib\/x86_64",\n\}/,
+  );
+  assert.match(
+    system.config,
+    /^\[system\/app\/AlphaPhone\/lib\/x86_64\/libeliza_bun\.so\]\nmode: 0755$/m,
+  );
+  assert.throws(
+    () =>
+      renderNativeOverlay(descriptor, "arm64-v8a", libraries, "bazel" as never),
+    /Unsupported native install rule/,
+  );
+});
+
+test("staging for a Soong-only product writes no Android.mk, or nothing on refusal", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "launcher-soong-test-"));
+  try {
+    const tool = path.join(dir, "tool");
+    fs.writeFileSync(
+      tool,
+      `#!${process.execPath}\nconst a=process.argv.slice(2);if(a[0]==='verify')console.log(process.env.SIGNATURES);else if(a[1]==='badging')console.log(process.env.BADGING);else console.log(process.env.XML);`,
+      { mode: 0o700 },
+    );
+    const env = {
+      ...process.env,
+      SIGNATURES: signer,
+      BADGING: badging,
+      XML: xml,
+    };
+    const bytes = launcherApk();
+    const apk = path.join(dir, "launcher.apk");
+    fs.writeFileSync(apk, bytes);
+    const descriptorPath = path.join(dir, "launcher.json");
+    fs.writeFileSync(
+      descriptorPath,
+      JSON.stringify({
+        ...descriptor,
+        apkSha256: createHash("sha256").update(bytes).digest("hex"),
+      }),
+    );
+    const output = stageLauncher({
+      descriptor: descriptorPath,
+      apk,
+      output: path.join(dir, "out"),
+      aapt: tool,
+      apksigner: tool,
+      development: false,
+      nativeAbi: "arm64-v8a",
+      nativeInstall: "soong",
+      env,
+    });
+    assert.deepEqual(fs.readdirSync(output).sort(), [
+      "Android.bp",
+      "Launcher.apk",
+      "config.fs",
+      "launcher.json",
+      "native-arm64",
+      "native-libraries.json",
+      "product.mk",
+    ]);
+    const blueprint = fs.readFileSync(path.join(output, "Android.bp"), "utf8");
+    for (const library of fs.readdirSync(path.join(output, "native-arm64"))) {
+      assert.match(
+        blueprint,
+        new RegExp(
+          `src: "native-arm64/${library.replaceAll(".", "\\.").replaceAll("+", "\\+")}"`,
+        ),
+      );
+    }
+    assert.deepEqual(
+      fs.readFileSync(path.join(output, "native-arm64", "libeliza_bun.so")),
+      elf(arm64, "b"),
+    );
+    const report = JSON.parse(
+      fs.readFileSync(path.join(output, "native-libraries.json"), "utf8"),
+    );
+    assert.equal(report.installRule, "soong-app-native");
+    assert.equal(
+      report.soongPatch.manifestSha256,
+      soongAppNativePatch().manifestSha256,
+    );
+    for (const [options, message] of [
+      [{ nativeInstall: "soong" }, /requires a native ABI/],
+      [
+        { nativeAbi: "arm64-v8a", nativeInstall: "ninja" },
+        /Unsupported native install rule/,
+      ],
+    ] as const)
+      assert.throws(
+        () =>
+          stageLauncher({
+            descriptor: descriptorPath,
+            apk,
+            output: path.join(dir, "refused"),
+            aapt: "must-not-run",
+            apksigner: "must-not-run",
+            development: false,
+            ...(options as object),
+          }),
+        message,
+      );
+    assert.equal(fs.existsSync(path.join(dir, "refused")), false);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }

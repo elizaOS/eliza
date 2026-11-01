@@ -107,6 +107,14 @@ test("every current resident anchor matches and the host identity replaces the u
     agent.split("HostAgentEnvironment.configure(this, agentEnv);").length,
     2,
   );
+  assert.match(
+    agent,
+    /private boolean startAgentProcess\(boolean allowAdoption\)/,
+  );
+  assert.match(
+    agent,
+    /HostAgentEnvironment\.configure\(this, agentEnv\);[^\n]*return false;/,
+  );
   assert.equal(agent.split(".setColor(0xff0000ff)").length, 3);
   for (const [, anchor] of RESIDENT_NOTIFICATION_STRINGS)
     assert.ok(!agent.includes(anchor), anchor);

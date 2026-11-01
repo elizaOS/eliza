@@ -1,7 +1,10 @@
 import { Capacitor } from "@capacitor/core";
 import {
   createSenseInvocationController,
+  mobileVoiceEntryPolicy,
   Sense,
+  type SenseVoiceEntryPolicy,
+  stopSenseListenerForChatOnly,
 } from "@elizaos/capacitor-system/sense";
 import { loadSecretsManagerSection } from "@elizaos/ui";
 /**
@@ -201,7 +204,6 @@ import {
 } from "@elizaos/ui";
 import { X } from "lucide-react";
 import {
-  type ComponentType,
   lazy,
   type ReactNode,
   Suspense,
@@ -209,6 +211,7 @@ import {
   useEffect,
   useLayoutEffect,
   useMemo,
+  useReducer,
   useRef,
   useState,
   useSyncExternalStore,
@@ -239,6 +242,7 @@ import {
   LazyViewBoundary,
   scheduleRouteViewChunkPrefetch,
 } from "./app-route-loaders";
+import { CanonicalMobileApplication } from "./CanonicalMobileApplication";
 import { TutorialConductorMount } from "./onboarding/TutorialConductor";
 import { FirstRunConductorMount } from "./onboarding/use-first-run-conductor";
 
@@ -367,7 +371,7 @@ function TrayPopoverShell() {
       className="fixed inset-0 flex flex-col gap-3 overflow-y-auto bg-transparent p-3"
     >
       <TrayLauncher />
-      <WidgetHost slot="home" layout="stack" />
+      <WidgetHost slot="home" layout="stack" surface="tray" />
     </div>
   );
 }
@@ -1369,20 +1373,6 @@ function ViewUnavailableFallback({ viewId }: { viewId: string }): ReactNode {
     </AppWorkspaceContent>
   );
 }
-function renderPhoneSurface(
-  enabled: boolean,
-  Component: ComponentType,
-  pageLayout: PageLayoutManifest,
-  viewId: string,
-): ReactNode {
-  return enabled ? (
-    <AppWorkspaceContent pageLayout={pageLayout}>
-      <Component />
-    </AppWorkspaceContent>
-  ) : (
-    <ViewUnavailableFallback viewId={viewId} />
-  );
-}
 function renderAppsSurface(
   navigationPath: string,
   pageLayout: PageLayoutManifest,
@@ -1498,16 +1488,12 @@ function buildStaticTabRenderers(): Record<
       </AppWorkspaceContent>
     ),
     vault: wrapOverlayAware(<LazyVaultPageView />),
-    // Camera is an AOSP-ElizaOS-fork-only surface — gate the route on the same
-    // marker as the home tile, so a deep-link off the fork falls back to
-    // "unavailable" instead of rendering on web/desktop/iOS/Play-Store Android.
-    camera: ({ pageLayout }) =>
-      renderPhoneSurface(
-        isAospShellEnabled(),
-        LazyCameraPageView,
-        pageLayout,
-        "camera",
-      ),
+    // The shared camera bridge keeps permission and secure-capture authority.
+    camera: ({ pageLayout }) => (
+      <AppWorkspaceContent pageLayout={pageLayout}>
+        <LazyCameraPageView />
+      </AppWorkspaceContent>
+    ),
     phone: () => <ViewUnavailableFallback viewId="phone" />,
     messages: () => <ViewUnavailableFallback viewId="messages" />,
     contacts: () => <ViewUnavailableFallback viewId="contacts" />,
@@ -1872,6 +1858,7 @@ const APP_SHELL_CLASS_TRANSPARENT =
   "flex flex-col flex-1 min-h-0 w-full font-body text-txt";
 type ShellContentProps = {
   actionNotice: ActionNotice | null;
+  mobileHome?: boolean;
   availableViewsForLayout: ViewRegistryEntry[];
   cloudAuthenticated: boolean;
   customActionsPanelOpen: boolean;
@@ -1893,24 +1880,37 @@ type ShellContentProps = {
   onClearViewLayout: () => void;
 };
 function ChatRouteShellContent(props: ShellContentProps): ReactNode {
-  // The /chat route is the ambient conversational home: open space behind the
-  // always-present ChatOverlay (mounted at the shell root), which is
-  // the whole chat experience. Ask it anything, or ask it to open a view ("show
-  // me the coding view") which surfaces over this base. The home is wordless,
-  // sitting directly on the unified app background (mounted once at the shell
-  // root) — its shell is transparent so that background shows through.
+  const actions = (
+    <CustomActionsPanel
+      open={props.customActionsPanelOpen}
+      onClose={() => props.setCustomActionsPanelOpen(false)}
+      onOpenEditor={(action) => {
+        props.setEditingAction(action ?? null);
+        props.setCustomActionsEditorOpen(true);
+      }}
+    />
+  );
+  if (props.mobileHome)
+    return (
+      <div
+        style={{
+          position: "absolute",
+          right: 0,
+          top: 0,
+          height: "100%",
+          width: props.customActionsPanelOpen ? "min(20rem, 100%)" : 0,
+          pointerEvents: "auto",
+          zIndex: 40,
+        }}
+      >
+        {actions}
+      </div>
+    );
   return (
     <div key="chat-shell" className={APP_SHELL_CLASS_TRANSPARENT}>
       <div className="relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden">
         <HomeScreenMount initialSection="home" />
-        <CustomActionsPanel
-          open={props.customActionsPanelOpen}
-          onClose={() => props.setCustomActionsPanelOpen(false)}
-          onOpenEditor={(action) => {
-            props.setEditingAction(action ?? null);
-            props.setCustomActionsEditorOpen(true);
-          }}
-        />
+        {actions}
       </div>
     </div>
   );
@@ -1998,7 +1998,10 @@ function ShellContent(props: ShellContentProps): ReactNode {
       registration: notesRegistration,
     };
   }
-  const otherContent = showNotes ? null : props.isFullBleed ? (
+  const otherContent = showNotes ? null : props.mobileHome &&
+    ["chat", "views"].includes(props.tab) ? (
+    <ChatRouteShellContent {...props} />
+  ) : props.isFullBleed ? (
     <FullBleedShellContent {...props} />
   ) : props.isChat ? (
     <ChatRouteShellContent {...props} />
@@ -2396,7 +2399,9 @@ function ChatOverlayMount({
   onPilledChange,
   onDetentChange,
   onStateChange,
+  voiceEntryPolicy,
 }: {
+  voiceEntryPolicy?: SenseVoiceEntryPolicy;
   initialMode?: "input" | "half";
   fillHostAtHalf?: boolean;
   releaseFirstRunToFull: boolean;
@@ -2408,6 +2413,53 @@ function ChatOverlayMount({
   onDetentChange?: (detent: "pill" | "input" | "half" | "full") => void;
   onStateChange?: (state: DesktopBottomBarSurfaceState) => void;
 }): ReactNode {
+  const t = useAppSelector((state) => state.t);
+  const [wakeStopUnconfirmed, setWakeStopUnconfirmed] = useState(false);
+  const [wakeStopRetry, retryWakeStop] = useReducer(
+    (attempt: number) => attempt + 1,
+    0,
+  );
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a visible retry repeats the bounded native acknowledgement.
+  useEffect(() => {
+    if (
+      Capacitor.getPlatform() !== "android" ||
+      voiceEntryPolicy?.externalInvocation !== false
+    ) {
+      setWakeStopUnconfirmed(false);
+      return;
+    }
+    let active = true;
+    void stopSenseListenerForChatOnly(
+      Capacitor.isPluginAvailable("ElizaSense") ? Sense : undefined,
+    ).then((stopped) => {
+      if (active) setWakeStopUnconfirmed(!stopped);
+    });
+    return () => {
+      active = false;
+    };
+  }, [voiceEntryPolicy, wakeStopRetry]);
+  const wakeStopNotice = wakeStopUnconfirmed ? (
+    <div
+      role="alert"
+      data-testid="wake-listener-stop-unconfirmed"
+      className="fixed inset-x-3 top-[calc(var(--safe-area-top,0px)+0.5rem)] z-[2000] mx-auto max-w-xl rounded-sm border border-border bg-card p-3 text-sm text-txt shadow-lg"
+    >
+      <p>
+        {t("voicesection.listenerStopUnconfirmed", {
+          defaultValue: "Wake listening could not be confirmed off.",
+        })}
+      </p>
+      <button
+        type="button"
+        className="mt-2 min-h-11 underline"
+        onClick={() => retryWakeStop()}
+      >
+        {t("voicesection.retryListenerStop", {
+          defaultValue: "Retry stopping wake listening",
+        })}
+      </button>
+    </div>
+  ) : null;
   const controller = useShellControllerContext();
   const { characterData, agentStatus, firstRunComplete, startupPhase } =
     useAppSelectorShallow((s) => ({
@@ -2441,43 +2493,47 @@ function ChatOverlayMount({
         !current.controller.responding
       );
     };
-    const binding = createSenseInvocationController(Sense, {
-      authority: () => {
-        const auth = getAuthStatusSnapshot();
-        if (auth.phase !== "authenticated") return null;
-        return JSON.stringify([
-          getActiveAgentAuthority(),
-          auth.identity.id,
-          auth.session.id,
-          auth.session.kind,
-        ]);
+    const binding = createSenseInvocationController(
+      Sense,
+      {
+        authority: () => {
+          const auth = getAuthStatusSnapshot();
+          if (auth.phase !== "authenticated") return null;
+          return JSON.stringify([
+            getActiveAgentAuthority(),
+            auth.identity.id,
+            auth.session.id,
+            auth.session.kind,
+          ]);
+        },
+        ready,
+        voiceActive: () => {
+          const current = senseHost.current.controller;
+          return !!(
+            current?.recording ||
+            current?.handsFree ||
+            current?.realtimeVoice?.active ||
+            current?.realtimeVoice?.connecting
+          );
+        },
+        startVoice: () => {
+          const current = senseHost.current.controller;
+          if (current && ready()) {
+            current.open();
+            window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT));
+            current.toggleHandsFree();
+          }
+        },
+        subscribe: (changed) => subscribeAuthStatus(changed),
       },
-      ready,
-      voiceActive: () => {
-        const current = senseHost.current.controller;
-        return !!(
-          current?.recording ||
-          current?.handsFree ||
-          current?.realtimeVoice?.active ||
-          current?.realtimeVoice?.connecting
-        );
-      },
-      startVoice: () => {
-        const current = senseHost.current.controller;
-        if (current && ready()) {
-          current.open();
-          window.dispatchEvent(new CustomEvent(CHAT_OPEN_EVENT));
-          current.toggleHandsFree();
-        }
-      },
-      subscribe: (changed) => subscribeAuthStatus(changed),
-    });
+      voiceEntryPolicy,
+    );
     senseInvocation.current = binding;
     return () => {
       senseInvocation.current = null;
       binding.dispose();
     };
-  }, []);
+  }, [voiceEntryPolicy]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: These observations invalidate the ref-backed native authority check.
   useEffect(() => {
     senseInvocation.current?.check();
@@ -2487,26 +2543,29 @@ function ChatOverlayMount({
       onFirstRunChatMounted?.(firstRunMountEpoch);
     }
   }, [controller, firstRunMountEpoch, firstRunOpen, onFirstRunChatMounted]);
-  if (!controller) return null;
+  if (!controller) return wakeStopNotice;
   // The live agent's name drives the composer placeholder ("Ask {name}").
   // Character name wins (what the user configured), then the running agent's
   // reported name; "Eliza" is the default the overlay falls back to.
   const agentName =
     characterData?.name?.trim() || agentStatus?.agentName?.trim() || undefined;
   return (
-    <ChatOverlay
-      controller={controller}
-      agentName={agentName}
-      initialMode={initialMode}
-      fillHostAtHalf={fillHostAtHalf}
-      firstRunOpen={firstRunOpen}
-      acceptPendingFirstRunText={firstRunComplete}
-      releaseFirstRunToFull={releaseFirstRunToFull}
-      onFirstRunReleaseHandled={onFirstRunReleaseHandled}
-      onPilledChange={onPilledChange}
-      onDetentChange={onDetentChange}
-      onStateChange={onStateChange}
-    />
+    <>
+      {wakeStopNotice}
+      <ChatOverlay
+        controller={controller}
+        agentName={agentName}
+        initialMode={initialMode}
+        fillHostAtHalf={fillHostAtHalf}
+        firstRunOpen={firstRunOpen}
+        acceptPendingFirstRunText={firstRunComplete}
+        releaseFirstRunToFull={releaseFirstRunToFull}
+        onFirstRunReleaseHandled={onFirstRunReleaseHandled}
+        onPilledChange={onPilledChange}
+        onDetentChange={onDetentChange}
+        onStateChange={onStateChange}
+      />
+    </>
   );
 }
 /**
@@ -2614,6 +2673,8 @@ function AppContent() {
   }));
   const isPopout = useIsPopout();
   const isAuxiliaryAppWindow = isAppWindowRoute();
+  const sharedMobileApplication =
+    Capacitor.getPlatform() === "android" && !isAuxiliaryAppWindow;
   const shellMode = useShellMode();
   // Register the developer-only sandboxed-iframe consumer once at boot (#14180),
   // so the level has a shipped, navigable first-party view. Idempotent.
@@ -3327,6 +3388,7 @@ function AppContent() {
     () => (
       <ShellContent
         actionNotice={actionNotice}
+        mobileHome={sharedMobileApplication}
         availableViewsForLayout={availableViewsForDesktopTabs}
         cloudAuthenticated={cloudAuthenticated}
         customActionsPanelOpen={customActionsPanelOpen}
@@ -3349,6 +3411,7 @@ function AppContent() {
     [
       tab,
       uiShellMode,
+      sharedMobileApplication,
       actionNotice,
       isChat,
       isFullBleed,
@@ -3364,6 +3427,22 @@ function AppContent() {
       handleClearViewLayout,
     ],
   );
+  const mobileVoicePolicy = mobileVoiceEntryPolicy(
+    Capacitor.getPlatform() === "android" &&
+      isAospShellEnabled({ search: "", hash: "" }),
+  );
+  const mobileAssistant =
+    !isAuxiliaryAppWindow &&
+    (!authenticatedAccountPage || firstRunComplete === true) ? (
+      <ChatOverlayMount
+        voiceEntryPolicy={mobileVoicePolicy}
+        releaseFirstRunToFull={firstRunChatRelease.releasePending}
+        retainMountedFirstRunOpen={firstRunChatRelease.mountedOnboarding}
+        onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
+        onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+        firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+      />
+    ) : null;
   // Pop-out mode — render only StreamView, skip startup gates.
   // Platform init is skipped in main.tsx; AppProvider hydrates WS in background.
   if (isPopout) {
@@ -3734,7 +3813,15 @@ function AppContent() {
           ) : null}
           <div className="relative z-10 flex min-h-0 w-full flex-1 flex-col">
             <SystemWarningBanner />
-            {shellContent}
+            {sharedMobileApplication ? (
+              <CanonicalMobileApplication
+                content={shellContent}
+                assistant={mobileAssistant}
+                cloudAuthenticated={cloudAuthenticated}
+              />
+            ) : (
+              shellContent
+            )}
           </div>
         </div>
         {/* Full-screen overlay app — renders whichever overlay app is active */}
@@ -3767,13 +3854,19 @@ function AppContent() {
         {!isAuxiliaryAppWindow &&
         (!authenticatedAccountPage || firstRunComplete === true) ? (
           <>
-            <ChatOverlayMount
-              releaseFirstRunToFull={firstRunChatRelease.releasePending}
-              retainMountedFirstRunOpen={firstRunChatRelease.mountedOnboarding}
-              onFirstRunReleaseHandled={firstRunChatRelease.acknowledgeRelease}
-              onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
-              firstRunMountEpoch={firstRunChatRelease.mountEpoch}
-            />
+            {!sharedMobileApplication && (
+              <ChatOverlayMount
+                releaseFirstRunToFull={firstRunChatRelease.releasePending}
+                retainMountedFirstRunOpen={
+                  firstRunChatRelease.mountedOnboarding
+                }
+                onFirstRunReleaseHandled={
+                  firstRunChatRelease.acknowledgeRelease
+                }
+                onFirstRunChatMounted={firstRunChatRelease.recordMountedOverlay}
+                firstRunMountEpoch={firstRunChatRelease.mountEpoch}
+              />
+            )}
             {/* In-chat first-run conductor (headless) — while firstRunComplete
                 is false it seeds the onboarding greeting + choices into the
                 SAME live transcript the overlay renders and routes first-run
@@ -3849,9 +3942,9 @@ function AppContent() {
             </div>
           </div>
         ) : null}
-        {/* Android Cloud builds sign in natively; a sign-in started from
-          Settings or chat shows these screens over the shell. */}
-        {androidCloudAuthAutoStart ? <AndroidNativeCloudSignInHost /> : null}
+        {/* Explicit native sign-in also comes from branded local-runtime hosts.
+          The broker renders nothing until requested; only Cloud builds auto-start. */}
+        <AndroidNativeCloudSignInHost />
       </ShellControllerProvider>
     </BugReportProvider>
   );

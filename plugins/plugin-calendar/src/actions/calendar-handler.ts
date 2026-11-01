@@ -2611,6 +2611,12 @@ function namesBareWeekday(text: string): boolean {
  * The action pauses with the facts and, when the user named a bare weekday,
  * the same wall-clock time one week later as the suggestion. The planner may
  * set `allowPast` when the user explicitly wants a past time recorded.
+ * A message that states today as this create's date other than by weekday
+ * ("today at 12pm" said at 11 PM, live 2026-10-29) has already confirmed the
+ * date the pause asks for, so it is that explicit request whether or not the
+ * planner set `allowPast`. An earlier stated day does not: a yearless
+ * "january 5" said in October parses to this year's date, which has passed,
+ * when the user most likely means next year.
  */
 function resolvePastStartClarification(args: {
   request: CreateLifeOpsCalendarEventRequest;
@@ -2627,6 +2633,29 @@ function resolvePastStartClarification(args: {
   if (
     !Number.isFinite(startMs) ||
     startMs >= args.now.getTime() - PAST_START_GRACE_MS
+  ) {
+    return null;
+  }
+  const statedText = calendarDateConstraintText(args.currentMessage, [
+    args.title,
+  ]);
+  const [statedDate, ...otherStatedDates] = distinctStatedLocalDates(
+    statedText,
+    args.timeZone,
+    args.now,
+  );
+  if (
+    statedDate &&
+    otherStatedDates.length === 0 &&
+    !namesBareWeekday(statedText) &&
+    compareLocalDates(
+      statedDate,
+      getZonedDateParts(args.now, args.timeZone),
+    ) === 0 &&
+    compareLocalDates(
+      statedDate,
+      getZonedDateParts(new Date(startMs), args.timeZone),
+    ) === 0
   ) {
     return null;
   }
@@ -4188,6 +4217,9 @@ async function inferCreateEventDetails(
       actionType: "lifeops.calendar.extract_create_event",
       temperature: 0,
       responseSchema: createExtractionSchema,
+      // Schema-bound extraction on the reply's critical path; default provider
+      // reasoning was ~80% of its completion tokens on qwen-3.8-27b.
+      thinking: "off",
       failureMessage: "Calendar create-event extraction model call failed",
       source: "action:calendar",
     },
@@ -4357,6 +4389,7 @@ async function inferUpdateEventDetails(
       actionType: "lifeops.calendar.extract_update_event",
       responseSchema: updateExtractionSchema,
       temperature: 0,
+      thinking: "off",
       failureMessage: "Calendar update-event extraction model call failed",
       source: "action:calendar",
     },
@@ -4586,6 +4619,7 @@ async function groundCalendarSearchMatchesWithLlm(
       runtime,
       prompt,
       actionType: "lifeops.calendar.ground_search_matches",
+      thinking: "off",
       failureMessage: "Calendar search grounding model call failed",
       source: "action:calendar",
     },
@@ -5593,6 +5627,10 @@ export function createCalendarActionRunner(
           ...(scenario === "feed_results"
             ? {
                 asOf: new Date().toISOString(),
+                // The zone the read's local days resolved in. A call that
+                // names no zone reads in the owner's Calendar zone, and the
+                // evaluator checks the read window in this same zone.
+                timeZone: planningTimeZone,
                 selection: "bounded_agenda",
                 nextEventLookupPerformed: false,
                 completionBoundary:

@@ -84,7 +84,9 @@ export {
   isRateLimitedError,
 } from "./api/client-types-core.js";
 export {
+  admitConversationStopReceipt,
   type ConversationRoom,
+  type ConversationStopReceipt,
   type ConversationStopResult,
   type ConversationTurnContext,
   ConversationTurnController,
@@ -92,6 +94,7 @@ export {
   type ConversationTurnObserver,
   ConversationTurnRefusal,
   type ConversationTurnRefusalCode,
+  type ConversationTurnRequestOptions,
   type ConversationTurnTransport,
   findStoppedUserTurn,
   isConversationTurnRefusal,

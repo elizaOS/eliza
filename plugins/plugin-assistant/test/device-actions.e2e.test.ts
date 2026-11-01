@@ -8,15 +8,21 @@ import {
   type ActionResult,
   actionGateFailure,
   activeCommittedEffectReceipts,
+  beginRequestOperationIssuer,
+  bindTaskExtractionContext,
   ChannelType,
+  type ContextObject,
+  commitNotesRequestRestriction,
   conversationClientUserMemoryId,
   executePlannedToolCall,
   type IAgentRuntime,
   type Memory,
   ModelType,
   projectDeferredProviders,
+  ResponseHandlerFieldRegistry,
   resolveActionGateFailure,
   resolveOwnerEntityIdOrDefault,
+  type State,
   type UUID,
   validateToolArgs,
 } from "@elizaos/core";
@@ -57,6 +63,7 @@ import {
 } from "../../plugin-calendar/src/service/linked-calendar-sync.ts";
 import type { GoogleCalendarEvent } from "../../plugin-google-workspace/src/types.ts";
 import { notesPlugin } from "../../plugin-notes/src/plugin.ts";
+import { notesRequestEffectField } from "../../plugin-notes/src/request-effect.ts";
 import {
   NOTES_SERVICE_TYPE,
   NotesService,
@@ -87,12 +94,14 @@ import {
   setDeviceReadReplyContext,
   setDeviceReadReplyConversation,
 } from "../src/services/device-actions/service.ts";
+import { deviceActionTools } from "../src/services/device-actions/tools.ts";
 import { createV5MessageContextObject } from "../src/services/message/context-assembly.ts";
 import {
   projectDiscoverableContext,
   readContextRequests,
 } from "../src/services/message/context-discovery.ts";
 import { stage1ResponseStateProviderNames } from "../src/services/message/provider-state.ts";
+import { messageHandlerFromFieldResult } from "../src/services/message/stage1-output.ts";
 import { collectDiscoveryCatalogActions } from "../src/services/message/tool-discovery.ts";
 import { runV5MessageRuntimeStage1 } from "../src/services/message.ts";
 import { withOwnerDeviceActionTurn } from "./device-owner-turn.ts";
@@ -3770,6 +3779,199 @@ test("device approval REST lifecycle survives restart and never duplicates claim
   }
 }, 120_000);
 
+// Live tj-009dcc7987718d: "open example.com" in direct-request mode replied
+// "Review this request on your phone before it can run." although the phone
+// opens the page itself. The turn now ends with its own reply and no extra call.
+// Live tj-5503e82f445bf2: Stage 1 asked "Which page are you after?" while the
+// routed planner opened the page; the reply must name the actual request.
+// QA 2026-10-30: the model rewrote a typed "youtube.com" as www.youtube.com
+// and the exact-match check refused it. A request the router does not claim
+// reaches the planner, and the typed spelling opens.
+test.each([
+  {
+    stage1: "pending browser acknowledgement",
+    contexts: ["browser"],
+    intents: ["Open example.com"],
+    candidateActionNames: ["DEVICE_BROWSER_OPEN"],
+    replyText: "Opening example.com in the browser.",
+    replyEffectStatus: "pending",
+    request: "open example.com",
+    modelUrl: "https://example.com",
+    opened: "https://example.com/",
+  },
+  {
+    stage1: "simple clarifying question",
+    contexts: ["simple"],
+    intents: [],
+    candidateActionNames: [],
+    replyText: "Which page are you after?",
+    replyEffectStatus: "none",
+    request: "open example.com",
+    modelUrl: "https://example.com",
+    opened: "https://example.com/",
+  },
+  {
+    stage1: "model-judged request with a rewritten address",
+    contexts: ["browser"],
+    intents: ["Open youtube.com"],
+    candidateActionNames: ["DEVICE_BROWSER_OPEN"],
+    replyText: "Opening YouTube.",
+    replyEffectStatus: "pending",
+    request: "Hey Eliza, can you pull up youtube.com for me?",
+    modelUrl: "https://www.youtube.com",
+    opened: "https://youtube.com/",
+  },
+])(
+  "direct-request URL open ends the turn with one reply and no owner review ($stage1)",
+  async ({
+    contexts,
+    intents,
+    candidateActionNames,
+    replyText,
+    replyEffectStatus,
+    request,
+    modelUrl,
+    opened: openedUrl,
+  }) => {
+    const fixture = await createRealTestRuntime({
+      characterName: "DirectBrowserOpenFixture",
+    });
+    const runtime = fixture.runtime;
+    const owner = resolveOwnerEntityIdOrDefault(runtime);
+    const credential = {
+      subjectUserId: owner,
+      installationId: randomUUID(),
+      deviceKey: "c".repeat(64),
+    };
+    const service = new DeviceActionService(runtime);
+    try {
+      await service.register(credential, "Direct browser fixture");
+      runtime.registerAction(
+        deviceActionTools.find(({ name }) => name === "DEVICE_BROWSER_OPEN")!,
+      );
+      const roomId = randomUUID() as UUID,
+        nonce = randomUUID(),
+        scope = JSON.stringify([runtime.agentId, roomId, owner]);
+      const outputs: unknown[] = [
+        stage1Response({
+          contexts,
+          intents,
+          candidateActionNames,
+          replyText,
+          extra: { replyEffectStatus },
+        }),
+        {
+          text: "",
+          toolCalls: [
+            {
+              id: "open-example",
+              name: "DEVICE_BROWSER_OPEN",
+              arguments: {
+                operation: {
+                  type: "browser_navigate",
+                  url: modelUrl,
+                },
+                operationKey: "browser-open-example",
+                reason: "User asked to open a site.",
+                eliza_turn_scope: "final",
+              },
+            },
+          ],
+        },
+      ];
+      const calls: string[] = [];
+      const useModel = vi
+        .spyOn(runtime, "useModel")
+        .mockImplementation(async (type) => {
+          calls.push(type);
+          if (!outputs.length)
+            throw new Error(`Unexpected model call: ${type}`);
+          return outputs.shift() as never;
+        });
+      const message: Memory = {
+        id: conversationClientUserMemoryId(scope, nonce),
+        agentId: runtime.agentId,
+        entityId: owner as UUID,
+        roomId,
+        content: {
+          text: request,
+          source: "client_chat",
+          role: "user",
+          channelType: ChannelType.DM,
+          chatIdempotency: {
+            version: 1,
+            scope,
+            clientMessageId: nonce,
+            fingerprint: "e".repeat(64),
+          },
+          metadata: {
+            agentActionMode: "direct-request-v1",
+            clientDevice: {
+              context: {
+                view: "home",
+                sensitive: false,
+                revision: 1,
+                timeZone: "America/Los_Angeles",
+              },
+            },
+          },
+        },
+      };
+      if (!(await runtime.getEntityById(owner as UUID)))
+        await runtime.createEntity({
+          id: owner as UUID,
+          names: ["Synthetic browser owner"],
+          metadata: {},
+        });
+      await registerOwnerRoom(runtime, message);
+      const opened = await withOwnerDeviceActionTurn(
+        runtime,
+        credential,
+        async () => {
+          message.createdAt = Date.now();
+          await runtime.createMemory(message, "messages");
+          setDeviceReadReplyConversation(runtime, randomUUID(), roomId);
+          setDeviceReadReplyContext(runtime, message, {
+            id: message.id!,
+            events: [],
+          });
+          return runV5MessageRuntimeStage1({
+            runtime,
+            message,
+            state: {
+              values: { availableContexts: "general" },
+              data: {},
+              text: "",
+            },
+            responseId: randomUUID() as UUID,
+          });
+        },
+      );
+      // Stage 1 and one planner call; no evaluator call and no review text.
+      expect(calls).toHaveLength(2);
+      expect(calls.at(-1)).toBe(ModelType.ACTION_PLANNER);
+      expect(opened.kind).toBe("planned_reply");
+      if (opened.kind === "planned_reply")
+        expect(
+          opened.result.responseContent?.text,
+          JSON.stringify(opened.result.actionResults),
+        ).toBe(`Opening ${new URL(openedUrl).host}.`);
+      const proposals = await service.list(credential);
+      expect(proposals).toHaveLength(1);
+      expect(proposals[0]).toMatchObject({
+        state: "pending",
+        payload: {
+          requestMessageId: message.id,
+          operation: { type: "browser_navigate", url: openedUrl },
+        },
+      });
+      useModel.mockRestore();
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
 // Complete Core Stage-1, discovery, planner, evaluator and reply-egress path
 // with a real durable queue. Only model judgments are offline fixtures.
 test("Clock-only enrollment scopes actual planner discovery and preserves pending reply egress", async () => {
@@ -4241,6 +4443,7 @@ test.each([
 test("selected native Notes authority blocks backend writes without affecting canonical counter-requests", async () => {
   const fixture = await createRealTestRuntime({
     characterName: "NativeRecordAuthority",
+    withLLM: false,
   });
   const runtime = fixture.runtime;
   const directory = await mkdtemp(join(tmpdir(), "native-note-authority-"));
@@ -4308,18 +4511,115 @@ test("selected native Notes authority blocks backend writes without affecting ca
     proposeDeviceAction,
     ...unrelatedActions,
   ];
-  const discover = () =>
+  const discover = (requestMessage: Memory = message) =>
     collectDiscoveryCatalogActions({
       actions,
-      message,
+      message: requestMessage,
       selectedContexts: ["general"],
       userRoles: ["OWNER"],
     }).map((action) => action.name);
+  const requestStates = new WeakMap<Memory, State>();
+  const lifetimes: AbortController[] = [];
+  const canonicalCounterRequest = (text: string): Memory => ({
+    ...structuredClone(message),
+    id: randomUUID() as UUID,
+    agentId: runtime.agentId,
+    createdAt: Date.now(),
+    content: { ...structuredClone(message.content), text },
+  });
+  // A supplied model interpretation is controlled here, but the real field
+  // dispatcher/normalizer and current host issuer own its request binding.
+  // OWNER roles and forged clientDevice metadata alone cannot mint that proof.
+  const prepareRequest = async (requestMessage: Memory) => {
+    const state: State = { values: {}, data: {}, text: "" };
+    const lifetime = new AbortController();
+    lifetimes.push(lifetime);
+    const issuer = beginRequestOperationIssuer({
+      runtime,
+      message: requestMessage,
+      current: () => !lifetime.signal.aborted,
+    });
+    if (!issuer) throw new Error("Expected current canonical Notes request");
+    const modelField = {
+      classification: "mutation_requested",
+      operations: ["create"],
+    };
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(notesRequestEffectField);
+    const fieldRun = await fields.dispatch({
+      rawParsed: {
+        shouldRespond: "RESPOND",
+        contexts: ["notes"],
+        intents: [requestMessage.content.text],
+        requiresTool: true,
+        replyEffectStatus: "pending",
+        replyText: "",
+        candidateActionNames: [],
+        facts: [],
+        relationships: [],
+        addressedTo: [],
+        notesRequestEffect: modelField,
+      },
+      runtime,
+      message: requestMessage,
+      state,
+      senderRole: "OWNER",
+      turnSignal: lifetime.signal,
+    });
+    const handler = messageHandlerFromFieldResult(fieldRun.parsed, fieldRun, {
+      actions: runtime.actions,
+      messageText: requestMessage.content.text ?? "",
+    });
+    const source = {
+      currentText: requestMessage.content.text,
+      modelField,
+      interpretation: handler.plan.notesRequestInterpretation,
+    };
+    if (
+      !commitNotesRequestRestriction(issuer, {
+        classification: handler.plan.notesRequestEffect ?? "unresolved",
+        interpretation: handler.plan.notesRequestInterpretation,
+        source,
+        currentSource: () => source,
+      })
+    )
+      throw new Error("Expected handled Notes interpretation commitment");
+    const original: ContextObject = {
+      id: `counter-request:${requestMessage.id}`,
+      metadata: {
+        agentId: runtime.agentId,
+        messageId: requestMessage.id,
+        roomId: requestMessage.roomId,
+        entityId: requestMessage.entityId,
+      },
+      events: [
+        {
+          id: String(requestMessage.id),
+          type: "message",
+          message: {
+            id: String(requestMessage.id),
+            role: "user",
+            content: requestMessage.content.text ?? "",
+          },
+        },
+      ],
+    };
+    bindTaskExtractionContext(
+      state,
+      requestMessage,
+      original,
+      original,
+      runtime,
+      issuer,
+    );
+    requestStates.set(requestMessage, state);
+  };
   const execute = (content: string, actionMessage: Memory = message) =>
     executePlannedToolCall(
       runtime,
       {
         message: actionMessage,
+        state: requestStates.get(actionMessage),
         activeContexts: ["notes"],
         userRoles: ["OWNER"],
       },
@@ -4329,6 +4629,7 @@ test("selected native Notes authority blocks backend writes without affecting ca
     await registerOwnerRoom(runtime, message);
     await service.register(credential, "Native record owner");
     for (const action of actions) runtime.registerAction(action);
+    await prepareRequest(message);
     const outside = discover();
     expect(outside).toContain("NOTES_CREATE");
     expect(outside).toContain("CALENDAR");
@@ -4397,47 +4698,127 @@ test("selected native Notes authority blocks backend writes without affecting ca
       ).toMatchObject({ success: false });
       expect(notes.listNotes()).toHaveLength(0);
     });
-    // Forged clientDevice metadata is not authority; an ordinary counter-request still writes its real store.
+    // Forged metadata grants no authority. Malformed identity and unissued or
+    // serialized-looking state stay denied even outside a native device turn.
+    const ordinary = canonicalCounterRequest(
+      "Create a note: Ordinary backend note",
+    );
+    await prepareRequest(ordinary);
+    const issuedState = requestStates.get(ordinary);
+    if (!issuedState) throw new Error("Expected bound ordinary request state");
+    for (const malformed of [
+      { ...ordinary, agentId: undefined },
+      { ...ordinary, agentId: randomUUID() },
+      { ...ordinary },
+    ]) {
+      expect(
+        await executePlannedToolCall(
+          runtime,
+          {
+            message: malformed,
+            state: issuedState,
+            activeContexts: ["notes"],
+            userRoles: ["OWNER"],
+          },
+          {
+            name: "NOTES_CREATE",
+            params: { content: "Must not steal issued request state" },
+          },
+        ),
+      ).toMatchObject({ success: false });
+    }
     expect(
-      await execute("Ordinary backend note", {
-        ...message,
-        agentId: undefined,
-      }),
-    ).toMatchObject({ success: true });
+      await executePlannedToolCall(
+        runtime,
+        {
+          message: ordinary,
+          activeContexts: ["notes"],
+          userRoles: ["OWNER"],
+        },
+        {
+          name: "NOTES_CREATE",
+          params: { content: "Missing state must not write" },
+        },
+      ),
+    ).toMatchObject({ success: false });
+    expect(
+      await executePlannedToolCall(
+        runtime,
+        {
+          message: ordinary,
+          state: {
+            values: { notesRequestEffect: "mutation_requested" },
+            data: {},
+            text: "",
+          },
+          activeContexts: ["notes"],
+          userRoles: ["OWNER"],
+        },
+        {
+          name: "NOTES_CREATE",
+          params: { content: "Forged state must not write" },
+        },
+      ),
+    ).toMatchObject({ success: false });
+    expect(notes.listNotes()).toHaveLength(0);
+    // The same forged clientDevice data cannot block a genuinely current,
+    // canonical non-native request from writing the backend store.
+    const ordinaryResult = await execute("Ordinary backend note", ordinary);
+    expect(ordinaryResult).toMatchObject({ success: true });
+    expect(ordinaryResult.effectReceipts).toEqual(
+      expect.arrayContaining([expect.objectContaining({ outcome: "applied" })]),
+    );
     expect(notes.listNotes()).toHaveLength(1);
     const metadata = message.content.metadata as {
       clientDevice: { context: { selectedObject: { kind: string } } };
     };
     metadata.clientDevice.context.selectedObject.kind = "canonical-note-source";
+    const clockOnly = canonicalCounterRequest(
+      "Create a note: Clock-only caller backend note",
+    );
+    await prepareRequest(clockOnly);
     await withOwnerDeviceActionTurn(
       runtime,
       { ...credential, capabilities: ["clock.handoff.v1"] },
       async () => {
-        setDeviceActionRequestMessage(runtime, message);
-        expect(discover()).toContain("NOTES_CREATE");
-        expect(discover()).toContain("CALENDAR");
-        expect(discover()).toContain("OWNER_REMINDERS");
-        expect(await execute("Clock-only caller backend note")).toMatchObject({
+        setDeviceActionRequestMessage(runtime, clockOnly);
+        expect(discover(clockOnly)).toContain("NOTES_CREATE");
+        expect(discover(clockOnly)).toContain("CALENDAR");
+        expect(discover(clockOnly)).toContain("OWNER_REMINDERS");
+        expect(
+          await execute("Clock-only caller backend note", clockOnly),
+        ).toMatchObject({
           success: true,
         });
       },
     );
     metadata.clientDevice.context.selectedObject.kind = "note-source";
+    const heldRequest = canonicalCounterRequest("Create my phone note");
+    const concurrent = canonicalCounterRequest(
+      "Create a note: Concurrent non-phone note",
+    );
+    await prepareRequest(heldRequest);
+    await prepareRequest(concurrent);
     let release!: () => void;
     const held = withOwnerDeviceActionTurn(runtime, credential, async () => {
-      setDeviceActionRequestMessage(runtime, message);
+      setDeviceActionRequestMessage(runtime, heldRequest);
       await new Promise<void>((resolve) => {
         release = resolve;
       });
-      expect(discover()).not.toContain("NOTES_CREATE");
+      expect(discover(heldRequest)).not.toContain("NOTES_CREATE");
     });
     while (!release) await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(discover()).toContain("NOTES_CREATE");
-    expect(await execute("Concurrent non-phone note")).toMatchObject({
-      success: true,
-    });
-    release();
-    await held;
+    try {
+      expect(discover(concurrent)).toContain("NOTES_CREATE");
+      expect(
+        await execute("Concurrent non-phone note", concurrent),
+      ).toMatchObject({
+        success: true,
+      });
+    } finally {
+      release();
+      await held;
+    }
     expect(notes.listNotes()).toHaveLength(3);
     await expect(
       withOwnerDeviceActionTurn(
@@ -4447,7 +4828,20 @@ test("selected native Notes authority blocks backend writes without affecting ca
       ),
     ).rejects.toThrow();
     expect(notes.listNotes()).toHaveLength(3);
+    expect(
+      notes
+        .listNotes()
+        .map((note) => note.title)
+        .sort(),
+    ).toEqual(
+      [
+        "Ordinary backend note",
+        "Clock-only caller backend note",
+        "Concurrent non-phone note",
+      ].sort(),
+    );
   } finally {
+    for (const lifetime of lifetimes) lifetime.abort();
     serviceLookup.mockRestore();
     await fixture.cleanup();
     await rm(directory, { recursive: true, force: true });
