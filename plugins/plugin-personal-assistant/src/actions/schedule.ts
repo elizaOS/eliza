@@ -13,6 +13,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { getUserMessageText } from "@elizaos/core";
 import { getCircadianInsightContract } from "@elizaos/plugin-health";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { toActionData } from "../lifeops/google/format-helpers.js";
@@ -28,7 +29,11 @@ type OwnerScheduleParameters = {
 };
 
 function messageText(message: Memory): string {
-  return (message.content.text ?? "").toString().toLowerCase();
+  // Read the user's words, not the raw rendered text: under document
+  // augmentation, content.text carries the preamble, the recalled documents
+  // and the real request wrapped in <user_request>, so scanning it would
+  // let document words flip a summary request into an inspection.
+  return getUserMessageText(message).toLowerCase();
 }
 
 function coerceSubaction(value: unknown, text: string): ScheduleSubaction {
