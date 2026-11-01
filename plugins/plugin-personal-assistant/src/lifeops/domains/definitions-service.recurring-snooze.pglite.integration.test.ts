@@ -262,15 +262,62 @@ it("keeps a daily habit snoozed for three days and delivers it when the snooze e
     ).filter((attempt) => attempt.ownerId === occurrence.id),
   ).toMatchObject([{ scheduledFor: snoozedUntil, outcome: "delivered" }]);
 
-  // Once the delivered occurrence expires it leaves with its date.
+  const delivered = (
+    await service.repository.listReminderAttempts(fixture.runtime.agentId)
+  ).filter((attempt) => attempt.ownerId === occurrence.id);
+  expect(delivered).toHaveLength(1);
+  const deliveredAttempt = delivered[0];
+  if (!deliveredAttempt) {
+    throw new Error("Missing delivered snoozed reminder attempt");
+  }
+  expect(deliveredAttempt).toMatchObject({
+    scheduledFor: snoozedUntil,
+    outcome: "delivered",
+  });
+  expect(
+    getRecordedTestNotifications(fixture.runtime).filter(
+      (notification) => notification.data?.ownerId === occurrence.id,
+    ),
+  ).toHaveLength(1);
+
+  // Terminal expiry remains audit evidence, not an active or repeatable delivery.
   for (const tick of ["2026-10-16T12:00:00.000Z", "2026-10-16T12:01:00.000Z"]) {
     vi.setSystemTime(new Date(tick));
     await service.processReminders({ now: tick, scope: "definitions" });
   }
+  const expired = await service.repository.getOccurrence(
+    fixture.runtime.agentId,
+    occurrence.id,
+  );
+  expect(expired).toMatchObject({
+    id: occurrence.id,
+    state: "expired",
+    snoozedUntil,
+  });
   expect(
-    await service.repository.getOccurrence(
-      fixture.runtime.agentId,
-      occurrence.id,
+    (
+      await service.repository.listOccurrencesForDefinition(
+        fixture.runtime.agentId,
+        occurrence.definitionId,
+      )
+    ).filter(
+      (row) =>
+        row.id === occurrence.id &&
+        ["pending", "visible", "snoozed"].includes(row.state),
     ),
-  ).toBeNull();
+  ).toEqual([]);
+  const after = (
+    await service.repository.listReminderAttempts(fixture.runtime.agentId)
+  ).filter((attempt) => attempt.ownerId === occurrence.id);
+  expect(after).toHaveLength(1);
+  expect(after[0]).toMatchObject({
+    id: deliveredAttempt.id,
+    scheduledFor: snoozedUntil,
+    outcome: "delivered",
+  });
+  expect(
+    getRecordedTestNotifications(fixture.runtime).filter(
+      (notification) => notification.data?.ownerId === occurrence.id,
+    ),
+  ).toHaveLength(1);
 }, 120_000);
