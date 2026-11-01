@@ -9,6 +9,7 @@ import { parseRegisteredMobileClients } from "../../../cloud/shared/src/lib/serv
 import {
   type RegistrationRepairClient,
   repairRegistrationTransaction,
+  validateRegistrationAuthority,
 } from "./repair-mobile-app-auth-registration.ts";
 import {
   MOBILE_APP_AUTH_CLIENT_ID,
@@ -66,12 +67,7 @@ export interface AdditionInput {
   authoritySha256: string;
   displayName?: string;
 }
-export interface AdditionDatabase {
-  query(
-    text: string,
-    values?: string[],
-  ): Promise<{ rows: Record<string, unknown>[] }>;
-}
+export type AdditionDatabase = RegistrationRepairClient;
 
 /** Private row identity. Only its digest may leave the protected process. */
 export interface RegisteredAppBinding {
@@ -380,7 +376,7 @@ function provisioningTarget(
   };
 }
 
-/** The protected primary UUID, never a caller-selected owner, anchors new clients. */
+/** The configured creation tuple is operator authority; the primary is a namespace baseline. */
 async function platformOwner(database: AdditionDatabase, input: AdditionInput) {
   await validateDatabaseIdentity(database, input);
   await validateApp(
@@ -388,31 +384,20 @@ async function platformOwner(database: AdditionDatabase, input: AdditionInput) {
     input.primaryAppId,
     PRIMARY_MOBILE_APP_AUTH_TARGET,
   );
-  const result = await database.query(
-    "SELECT organization_id::text, created_by_user_id::text FROM apps WHERE id=$1::uuid",
-    [input.primaryAppId],
-  );
-  const row = result.rows[0];
-  if (
-    typeof row?.organization_id !== "string" ||
-    !UUID.test(row.organization_id) ||
-    typeof row.created_by_user_id !== "string" ||
-    !UUID.test(row.created_by_user_id)
-  )
-    fail("primary_owner");
-  if (
-    (input.organizationId &&
-      (!UUID.test(input.organizationId) ||
-        input.organizationId !== row.organization_id)) ||
-    (input.ownerUserId &&
-      (!UUID.test(input.ownerUserId) ||
-        input.ownerUserId !== row.created_by_user_id))
-  )
-    fail("protected_primary_owner_mismatch");
-  return {
-    organizationId: row.organization_id,
-    creatorUserId: row.created_by_user_id,
-  };
+  if (!UUID.test(input.organizationId) || !UUID.test(input.ownerUserId))
+    fail("protected_creation_owner_required");
+  const organizationId = input.organizationId.toLowerCase();
+  const creatorUserId = input.ownerUserId.toLowerCase();
+  try {
+    await validateRegistrationAuthority(
+      database,
+      organizationId,
+      creatorUserId,
+    );
+  } catch {
+    fail("protected_creation_authority_invalid");
+  }
+  return { organizationId, creatorUserId };
 }
 
 async function provisioningState(

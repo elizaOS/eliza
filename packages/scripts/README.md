@@ -87,8 +87,10 @@ For a new platform-owned native client, `plan-provision` accepts a fixed new
 primary app and database identity, then seals an additional-client candidate and
 the original registry to the reviewed GitHub environment key. The prospective
 plan has `requiresCreation: true`; it does not prove that the new app exists.
-The primary app's validated organization and creator own the new registration.
-Optional protected owner values must match that primary app.
+The configured protected creation organization and owner are mandatory and own
+the new registration. They must be active, and the owner must be an undeleted
+owner or admin in that organization. The primary app remains a validated namespace
+baseline; its owner does not select or constrain the new registration's owner.
 
 Review the candidate, non-target, app-binding, and creation hashes. Run
 `provision-registry` with those hashes and the same UUID, name, and callback while
