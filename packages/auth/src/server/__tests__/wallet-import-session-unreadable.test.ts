@@ -7,14 +7,18 @@
  */
 import { expect, test } from "bun:test";
 import { randomBytes } from "node:crypto";
+import { KeyStore } from "../wallet/index";
 
 test("reports an unreadable stored wallet-import session", async () => {
   const previous = process.env.STEWARD_MASTER_PASSWORD;
   process.env.STEWARD_MASTER_PASSWORD = randomBytes(32).toString("hex");
   try {
-    const { encryptImportSessionJson } = await import(
-      "../api/services/auth-lifecycle"
-    );
+    // Seal the fixture with the very store the parser decrypts with. The store
+    // is cached at module scope (auth-lifecycle.ts:684-700), so if another
+    // module already initialised it the env value above is ignored; sealing
+    // through getOAuthKeyStore() keeps the fixture valid either way instead of
+    // assuming the assignment reached the code under test.
+    const { getOAuthKeyStore } = await import("../api/services/auth-lifecycle");
     const {
       parseStoredUserWalletEncryptedImportSession,
       UserWalletEncryptedImportSessionUnreadableError,
@@ -35,11 +39,12 @@ test("reports an unreadable stored wallet-import session", async () => {
     };
 
     // A record that is present and decrypts still parses.
-    expect(
-      parseStoredUserWalletEncryptedImportSession(
-        encryptImportSessionJson(session),
-      ),
-    ).toEqual(session);
+    const sealed = JSON.stringify(
+      getOAuthKeyStore().encrypt(JSON.stringify(session)),
+    );
+    expect(parseStoredUserWalletEncryptedImportSession(sealed)).toEqual(
+      session,
+    );
 
     // No record at all is a legitimate absence.
     expect(parseStoredUserWalletEncryptedImportSession(null)).toBeNull();
@@ -56,6 +61,16 @@ test("reports an unreadable stored wallet-import session", async () => {
     expect(thrown).toBeInstanceOf(
       UserWalletEncryptedImportSessionUnreadableError,
     );
+    // The real key-store rotation: the envelope is well formed but was sealed
+    // with a key this process no longer has. Same typed error, not `null`.
+    const rotatedAway = new KeyStore(randomBytes(32).toString("hex"));
+    const sealedWithPreviousKey = JSON.stringify(
+      rotatedAway.encrypt(JSON.stringify(session)),
+    );
+    expect(() =>
+      parseStoredUserWalletEncryptedImportSession(sealedWithPreviousKey),
+    ).toThrow(UserWalletEncryptedImportSessionUnreadableError);
+
     // A bare SyntaxError would be rewritten to 400 "Invalid JSON" at the HTTP
     // boundary, so the wrapper has to be its own type.
     expect(thrown).not.toBeInstanceOf(SyntaxError);
