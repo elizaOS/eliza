@@ -96,20 +96,22 @@ its bundle sources (the audit's `ADMISSION_BUNDLE_SOURCES`) still equal phase
 
    Keep the window short: line up the gate 3 maintainer before phase 3 and
    land gate 3 right after R3.
-3. **Human merge gate 2: the phase 2 change on `main`.** A maintainer with
-   merge authority lands exactly the frozen phase 2 change (`fbb124e5` to
-   `ac729ff0`) on live `main` as `M`: a merge of `ac729ff0`, not a squash, so
-   the tip later merges onto `M` cleanly. `M`'s first parent must be the
-   commit the API serves in R1. It may change only the five paths of that
-   change, each with its content at `ac729ff0`. It reaches `main` through the
-   normal promotion (see "Delivery of `M`" under phase 2). Root's phase
-   approval does not grant this merge. If `main` moved after R0, stop: the
-   audit refuses the merge, and the phase chain must be regenerated on the new
-   `main` and reviewed again.
-4. **Final human merge gate 3.** After phase 3 reads back, a maintainer lands
-   the reviewed branch tip on `main`, on top of `M`, by the same promotion.
-   Only then does the release workflow publish the adopted state. Root's
-   approval does not grant this merge either.
+3. **Human merge gate 2: the phase 2 change.** A maintainer with merge
+   authority merges exactly the frozen phase 2 change (`fbb124e5` to
+   `ac729ff0`) into `develop`: a merge commit of `ac729ff0`, not a squash, so
+   the tip later merges cleanly. The audit refuses a squash: `ac729ff0` must
+   be an ancestor of the commit it checks. The change reaches `main` as `M`
+   only through the normal promotion, `develop` to `staging` to `main` (see
+   "Delivery of `M`" under phase 2). `M`'s first parent must be the commit the
+   API serves in R1. `M` may change only the five paths of that change, each
+   with its content at `ac729ff0`. Root's phase approval does not grant this
+   merge. If `main` moved after R0, stop: the audit refuses the merge, and
+   the phase chain must be regenerated on the new `main` and reviewed again.
+4. **Final human merge gate 3.** After phase 3 reads back, a maintainer
+   merges the reviewed branch tip into `develop` on top of the phase 2 change,
+   and it reaches `main` on top of `M` by the same promotion. Only then does
+   the release workflow publish the adopted state. Root's approval does not
+   grant this merge either.
 
 ## Tools
 
@@ -341,19 +343,23 @@ tree forward from its own head (the phase 2 change leaves staging's
 configuration unchanged), and the promotion to `main` lands `M`. That is why
 `develop` and `staging` equal `main` at R0. Never dispatch a staging deploy
 from another ref: it would roll staging off its head. Call the `staging`
-commit that holds the change `S2`. `M` is `S2` or a merge commit with `S2`'s
-tree whose first parent is the previous `main`; the main reconciler refuses a
-`main` commit whose tree differs from the reviewed `staging` commit. The gate
-2 audit reads only the first parent and the tree, and the freeze keeps `main`
-on the commit the API serves, so Root checks `S2` before the promotion. Once
-`M` is on `main`, nothing stops its release (see the freeze under Gates).
+commit that holds the change `S2`. `M` is a merge commit with `S2`'s tree
+whose first parent is the previous `main`. The main reconciler only checks
+that `M`'s tree equals the promotion pull request's head at the moment of the
+merge. That head is the `staging` branch, so it follows any later `staging`
+commit, not the `S2` that Root audited. So the merge itself pins `S2` (step
+5). The gate 2 audit reads the first parent, the ancestry and the tree, and
+the freeze keeps `main` on the commit the API serves, so Root checks `S2`
+before the promotion. Once `M` is on `main`, nothing stops its release (see
+the freeze under Gates).
 
-1. Gate 2 lands the phase 2 change on `develop`, and it reaches `staging` as
-   `S2`.
+1. Gate 2 merges `ac729ff0` into `develop` with a merge commit, not a
+   squash, and it reaches `staging` as `S2`.
 2. Run the audit with the gate 2 arguments and `--commit
    source-commit=<S2>`. The phase 2 API diff must be exactly
    `exports.InferenceAdmissionGate` (`storage` to `state = "transferred"`,
-   `transferred_to`) and the binding's `script_name`.
+   `transferred_to`) and the binding's `script_name`. Record the gate 2
+   entry's `tree` as `T2`.
 3. Check out `S2` in `$PHASE` and run the target deploy tool with `--phase
    source-commit --bundle-sha256 H1` and no `--deploy` (it refuses one). It
    runs `S2`'s validator and proves that its admission bundle, from phase 1's
@@ -369,10 +375,17 @@ on the commit the API serves, so Root checks `S2` before the promotion. Once
    "$STATE/INPUTS-M.tsv"` must print nothing: an added, changed, deleted or
    unreadable input stops phase 2, because the release would change a live
    value together with the commit.
-5. Only then may a maintainer merge the promotion of `S2` to `main`. When
-   Develop Full passes on `M`, the main reconciler dispatches the production
-   release of `M`, and it runs without approval. Root dispatches nothing and
-   confirms exactly one production run of `M`, and that it succeeded:
+5. Only then may a maintainer merge the promotion of `S2` to `main`, pinned
+   to the audited head: `gh pr merge <promotion PR> --repo elizaOS/eliza
+   --merge --match-head-commit <S2>`. GitHub refuses the merge if `staging`
+   moved past `S2`; then stop. Right after the merge, before Develop Full
+   completes, Root runs the gate 2 audit again with `--commit
+   source-commit=<M>`. It must report no problems and `T2` as its `tree`;
+   otherwise stop and report at once, because the release of `M` would
+   publish a tree nobody audited together with the commit. When Develop Full
+   passes on `M`, the main reconciler dispatches the production release of
+   `M`, and it runs without approval. Root dispatches nothing and confirms
+   exactly one production run of `M`, and that it succeeded:
 
    ```bash
    gh run list --repo elizaOS/eliza --workflow cloud-cf-deploy.yml \
@@ -412,16 +425,21 @@ target's local binding names `Nprod`, not a new ID. Recovery of an expired
 lease reaches the API through `INFERENCE_RECOVERY_SERVICE` (observability
 logs). A failed recovery keeps the lease for the existing retry path.
 
-Then gate 3, without delay. The reviewed tip lands on `develop` and reaches
-`staging` the same way, as `S3`: a merge onto the phase 2 commit there.
-Before its promotion to `main`, Root runs the audit with the gate 2
+Then gate 3, without delay. The reviewed tip is merged into `develop` with a
+merge commit and reaches `staging` the same way, as `S3`: a merge onto `S2`
+there. Before its promotion to `main`, Root runs the audit with the gate 2
 arguments, `--commit source-commit=<first parent of S3>`, `--steady <S3>` and
 `--tip <reviewed tip SHA>`; the gate 2 checks pin that first parent to `M`'s
-tree. Once the promotion lands, the main reconciler releases it without
-approval. Root reads back `--phase adopted --commit <released main SHA>` as
-`R4.json`, without `--previous`: that release deploys both Workers. From then
-on, each production release validates the committed phase, reads back,
-deploys the admission Worker, reads back, deploys the API and reads back.
+tree. Record the gate 3 entry's `tree` as `T3`. The maintainer merges the
+promotion with `--match-head-commit <S3>`, as in phase 2 step 5. Right after
+the merge, Root runs the audit again with `--commit source-commit=<M>` and
+`--steady <the new main commit>`; it must report no problems and `T3` as the
+gate 3 `tree`, or Root stops and reports at once. The main reconciler then
+releases it without approval. Root reads back `--phase adopted --commit
+<released main SHA>` as `R4.json`, without `--previous`: that release deploys
+both Workers. From then on, each production release validates the committed
+phase, reads back, deploys the admission Worker, reads back, deploys the API
+and reads back.
 
 ## Stop conditions
 
