@@ -25,7 +25,10 @@ import {
   vi,
 } from "vitest";
 import { __testing } from "../src/apple-calendar.js";
-import { calendarHttpRoutes } from "../src/routes/plugin-routes.js";
+import {
+  calendarHttpRoutes,
+  calendarRouteHandler,
+} from "../src/routes/plugin-routes.js";
 import {
   type CalendarHostGate,
   CalendarService,
@@ -704,70 +707,97 @@ describe("managed Calendar caller cancellation", { timeout: 30_000 }, () => {
   });
 });
 
-it("propagates the owner route signal to real managed HTTP feed requests", async () => {
-  shown = new Set(CALENDARS.map((calendar) => calendar.calendarId));
-  let started = 0,
-    closed = 0;
-  const server = createServer(async (req, res) => {
-    const chunks: Buffer[] = [];
-    for await (const chunk of req) chunks.push(Buffer.from(chunk));
-    const input = JSON.parse(Buffer.concat(chunks).toString()).calendar;
-    if (input.operation === "feed") {
-      started++;
-      res.once("close", () => {
-        closed++;
+it.each(["return-shape", "legacy-http"] as const)(
+  "propagates %s cancellation to real managed HTTP feed requests",
+  async (transport) => {
+    shown = new Set(CALENDARS.map((calendar) => calendar.calendarId));
+    let started = 0,
+      closed = 0;
+    const server = createServer(async (req, res) => {
+      const chunks: Buffer[] = [];
+      for await (const chunk of req) chunks.push(Buffer.from(chunk));
+      const input = JSON.parse(Buffer.concat(chunks).toString()).calendar;
+      if (input.operation === "feed") {
+        started++;
+        res.once("close", () => {
+          closed++;
+        });
+        return;
+      }
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(broker(input)));
+    });
+    server.listen(0, "127.0.0.1");
+    await once(server, "listening");
+    const port = (server.address() as AddressInfo).port;
+    vi.stubEnv(
+      "ELIZA_MANAGED_CALENDAR_READ_BROKER",
+      `http://127.0.0.1:${port}/__alpha-owner-gmail`,
+    );
+    vi.stubEnv("ELIZA_API_TOKEN", "a".repeat(64));
+    vi.stubGlobal("fetch", nativeFetch);
+    const calendar = calendarService();
+    const serviceLookup = vi
+      .spyOn(runtime, "getService")
+      .mockReturnValue(calendar);
+    const route = calendarHttpRoutes.find(
+      (route) => route.path === "/api/lifeops/calendar/feed",
+    )?.routeHandler;
+    if (!route) throw new Error("Owner feed route missing");
+    const controller = new AbortController(),
+      reason = new Error("HTTP caller stopped");
+    let incoming: ReturnType<typeof createServer> | undefined;
+    let handled: Promise<void> = Promise.resolve();
+    let read: Promise<unknown>;
+    if (transport === "return-shape") {
+      read = route({
+        signal: controller.signal,
+        body: undefined,
+        params: {},
+        headers: { host: "agent.local" },
+        query: {
+          timeMin: WINDOW.timeMin,
+          timeMax: WINDOW.timeMax,
+          timeZone: WINDOW.timeZone,
+        },
+        method: "GET",
+        path: "/api/lifeops/calendar/feed",
+        runtime,
+        inProcess: false,
+        isTrustedLocal: true,
+      } satisfies RouteHandlerContext);
+    } else {
+      const handler = calendarRouteHandler();
+      incoming = createServer((request, response) => {
+        handled = handler(request, response, runtime);
+        void handled.catch(() => {});
       });
-      return;
+      incoming.listen(0, "127.0.0.1");
+      await once(incoming, "listening");
+      const address = incoming.address() as AddressInfo;
+      read = nativeFetch(
+        `http://127.0.0.1:${address.port}/api/lifeops/calendar/feed?${new URLSearchParams(WINDOW)}`,
+        { signal: controller.signal },
+      );
     }
-    res.writeHead(200, { "content-type": "application/json" });
-    res.end(JSON.stringify(broker(input)));
-  });
-  server.listen(0, "127.0.0.1");
-  await once(server, "listening");
-  const port = (server.address() as AddressInfo).port;
-  vi.stubEnv(
-    "ELIZA_MANAGED_CALENDAR_READ_BROKER",
-    `http://127.0.0.1:${port}/__alpha-owner-gmail`,
-  );
-  vi.stubEnv("ELIZA_API_TOKEN", "a".repeat(64));
-  vi.stubGlobal("fetch", nativeFetch);
-  const calendar = calendarService();
-  const serviceLookup = vi
-    .spyOn(runtime, "getService")
-    .mockReturnValue(calendar);
-  const route = calendarHttpRoutes.find(
-    (route) => route.path === "/api/lifeops/calendar/feed",
-  )?.routeHandler;
-  if (!route) throw new Error("Owner feed route missing");
-  const controller = new AbortController(),
-    reason = new Error("HTTP caller stopped");
-  const read = route({
-    signal: controller.signal,
-    body: undefined,
-    params: {},
-    headers: { host: "agent.local" },
-    query: {
-      timeMin: WINDOW.timeMin,
-      timeMax: WINDOW.timeMax,
-      timeZone: WINDOW.timeZone,
-    },
-    method: "GET",
-    path: "/api/lifeops/calendar/feed",
-    runtime,
-    inProcess: false,
-    isTrustedLocal: true,
-  } satisfies RouteHandlerContext);
-  const failure = read.catch((error) => error);
-  try {
-    await vi.waitFor(() => expect(started).toBe(CALENDARS.length));
-    controller.abort(reason);
-    expect(await failure).toBe(reason);
-    await vi.waitFor(() => expect(closed).toBe(CALENDARS.length));
-  } finally {
-    controller.abort(reason);
-    server.closeAllConnections();
-    await new Promise<void>((resolve) => server.close(() => resolve()));
-    await failure;
-    serviceLookup.mockRestore();
-  }
-}, 10_000);
+    const failure = read.catch((error) => error);
+    try {
+      await vi.waitFor(() => expect(started).toBe(CALENDARS.length));
+      controller.abort(reason);
+      expect(await failure).toBe(reason);
+      await vi.waitFor(() => expect(closed).toBe(CALENDARS.length));
+    } finally {
+      controller.abort(reason);
+      server.closeAllConnections();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+      await failure;
+      if (incoming) {
+        incoming.closeAllConnections();
+        await new Promise<void>((resolve) => incoming!.close(() => resolve()));
+        await handled;
+      }
+      serviceLookup.mockRestore();
+    }
+  },
+  10_000,
+);

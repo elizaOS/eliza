@@ -529,8 +529,11 @@ async function runCalendarRoute(
   res: http.ServerResponse,
   operation: string,
   fn: (service: CalendarRouteService) => Promise<void>,
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  if (signal?.aborted) return true;
   const service = await resolveCalendarService(runtime);
+  if (signal?.aborted) return true;
   if (!service) {
     logger.warn(
       { boundary: "calendar", operation, statusCode: 503 },
@@ -543,6 +546,7 @@ async function runCalendarRoute(
     await fn(service);
     return true;
   } catch (error) {
+    if (signal?.aborted) return true;
     // error-policy:J1 Typed calendar failures retain actionable status and clarification;
     // unexpected errors are reported and rethrown to the outer server boundary.
     if (error instanceof CalendarLocalTimeError) {
@@ -596,25 +600,36 @@ export function calendarRouteHandler(): LegacyRouteHandler {
       });
       return;
     }
-    const cancellation = new AbortController();
+    const cancellation =
+      method === "GET" && url.pathname === "/api/lifeops/calendar/feed"
+        ? new AbortController()
+        : undefined;
     const aborted = () =>
-      cancellation.abort(
+      cancellation?.abort(
         new DOMException("Calendar request was cancelled.", "AbortError"),
       );
     const closed = () => {
       if (!httpRes.writableEnded) aborted();
     };
-    httpReq.once?.("aborted", aborted);
-    httpRes.once?.("close", closed);
+    if (cancellation) {
+      httpReq.once?.("aborted", aborted);
+      httpRes.once?.("close", closed);
+    }
     if (httpReq.aborted || httpRes.destroyed) aborted();
     try {
       const handled = await handleCalendarRoutes({
-        signal: cancellation.signal,
+        signal: cancellation?.signal,
         method,
         pathname: url.pathname,
         url,
         runRoute: (fn) =>
-          runCalendarRoute(agentRuntime, httpRes, operation, fn),
+          runCalendarRoute(
+            agentRuntime,
+            httpRes,
+            operation,
+            fn,
+            cancellation?.signal,
+          ),
         rateLimit: (key) =>
           rateLimitRequest({
             runtime: agentRuntime,
