@@ -1,9 +1,10 @@
 // Real registered Calendar families and shared discovery; no model/domain execution.
 import assert from "node:assert/strict";
-import test from "node:test";
+import type { Action, IAgentRuntime, Memory } from "@elizaos/core";
 import React from "react";
+import { test } from "vitest";
 
-globalThis.React = React;
+Object.assign(globalThis, { React });
 const { calendarPlugin } = await import(
   "../../../../plugin-calendar/src/plugin.ts"
 );
@@ -20,7 +21,7 @@ const { createPlannerToolDiscoveryAction } = await import(
   "./tool-discovery.ts"
 );
 const { collectPlannerTools } = await import("./planned-tool.ts");
-function family() {
+function family(): Action[] {
   const runtime = new AgentRuntime({
     character: { name: "Closed Calendar discovery", bio: [] },
     logLevel: "fatal",
@@ -39,7 +40,7 @@ function family() {
     runtime.registerAction(action);
   return runtime.actions;
 }
-const message = {
+const message: Memory = {
   id: "00000000-0000-4000-8000-000000000001",
   roomId: "00000000-0000-4000-8000-000000000002",
   entityId: "00000000-0000-4000-8000-000000000003",
@@ -53,24 +54,30 @@ for (const intent of [
     intent +
       " retains the complete parent rather than guessing filtered search",
     async () => {
-      const actions = family(),
-        loaded = [];
+      const actions = family();
+      const loaded: Action[] = [];
       const discovery = createPlannerToolDiscoveryAction(
         actions,
         (a) => loaded.push(...a),
         undefined,
         { taskIntents: [intent] },
       );
+      assert.ok(discovery.handler);
       const result = await discovery.handler(
-        { contexts: new Map() },
+        { contexts: new Map() } as unknown as IAgentRuntime,
         message,
         undefined,
         { parameters: { contexts: ["calendar"] } },
       );
+      assert.ok(result);
       assert.equal(result.success, true);
+      assert.ok(result.data);
+      assert.ok(Array.isArray(result.data.loadedTools));
       assert.ok(result.data.loadedTools.includes("CALENDAR"));
       assert.ok(!result.data.loadedTools.includes("CALENDAR_SEARCH_EVENTS"));
       const parent = loaded.find((a) => a.name === "CALENDAR");
+      assert.ok(parent);
+      assert.ok(parent.subActions);
       assert.ok(parent.subActions.includes("CALENDAR_FEED"));
       assert.deepEqual(parent.roleGate, { minRole: "OWNER" });
       const tools = collectPlannerTools(
@@ -133,9 +140,10 @@ test("omitted families are never synthesized outside the supplied authorized cat
 });
 
 test("already loaded feed stays callable beside a later generic context discovery", async () => {
-  const actions = family(),
-    feed = actions.find((a) => a.name === "CALENDAR_FEED"),
-    loaded = [feed];
+  const actions = family();
+  const feed = actions.find((a) => a.name === "CALENDAR_FEED");
+  assert.ok(feed);
+  const loaded: Action[] = [feed];
   const discovery = createPlannerToolDiscoveryAction(
     actions,
     (next) => {
@@ -145,9 +153,13 @@ test("already loaded feed stays callable beside a later generic context discover
     undefined,
     { taskIntents: ["List the user calendar events"] },
   );
-  await discovery.handler({ contexts: new Map() }, message, undefined, {
-    parameters: { contexts: ["calendar"] },
-  });
+  assert.ok(discovery.handler);
+  await discovery.handler(
+    { contexts: new Map() } as unknown as IAgentRuntime,
+    message,
+    undefined,
+    { parameters: { contexts: ["calendar"] } },
+  );
   assert.equal(loaded[0], feed);
   const tools = collectPlannerTools(
     {
@@ -167,7 +179,7 @@ test("already loaded feed stays callable beside a later generic context discover
   assert.ok(tools.some((t) => t.name === "CALENDAR_FEED"));
 });
 test("the correction is domain-independent and still recognizes a specific operation suffix", () => {
-  const parent = {
+  const parent: Action = {
     name: "LEDGER",
     description: "Manage ledger entries",
     contexts: ["ledger"],

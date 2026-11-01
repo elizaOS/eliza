@@ -917,7 +917,8 @@ export async function createCloudSpeechRelayPorts(
         requireValue(retired.has(frame.id));
         return;
       }
-      requireValue(context.finished);
+      // The provider also closes an idle continuation context on its own.
+      context.finished = true;
       contexts.delete(frame.id);
       retired.add(frame.id);
       if (!context.cancelled)

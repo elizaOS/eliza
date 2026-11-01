@@ -1984,16 +1984,27 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     const spokenProgressCues: string[] = [];
 
     let tts: RealtimeTtsStream | null = null;
+    // Speakable phrases sent to the current context since its last audio.
+    let unvoicedPhrases: RealtimeTtsPhraseInput[] = [];
     // Cartesia requires a non-empty terminal request carrying continue:false.
     // Keep one complete phrase pending so the final word is never synthesized
     // as a detached request with different cadence or prosody.
     let pendingPhrase: string | null = null;
+    // Speech can span provider contexts (see onComplete); end it once.
+    const endPlayback = (): void => {
+      ttsPlaybackComplete = true;
+      this.send({ t: "assistant_playing", active: false, traceId });
+      this.send({ t: "speaking_end", traceId });
+    };
     const ensureTts = (): RealtimeTtsStream => {
       if (tts) return tts;
       const callbacks: RealtimeTtsStreamCallbacks = {
         onFirstAudio: () => {
           if (this.currentVoiceTurnId !== traceId) return;
           this.armAssistantPlaybackSuppression();
+          // A reply in a fresh context after a closed cue context continues
+          // the speaking phase the cue started.
+          if (modelAudioStarted) return;
           modelAudioStarted = true;
           const firstAudioAt = this.now();
           logger.info(
@@ -2046,15 +2057,26 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         onAudioFrame: (frame) => {
           // Guard: no post-cancel / stale-turn frames ever reach the client.
           if (this.currentVoiceTurnId !== traceId) return;
+          unvoicedPhrases = [];
           this.noteAudioFrame(traceId, frame.bytes.byteLength);
           this.noteAssistantPlaybackAudio(frame.bytes.byteLength);
           this.config.downlink.sendAudio(frame.bytes);
         },
-        onComplete: () => {
+        onComplete: ({ frameCount }) => {
           if (this.currentVoiceTurnId !== traceId) return;
-          ttsPlaybackComplete = true;
-          this.send({ t: "assistant_playing", active: false, traceId });
-          this.send({ t: "speaking_end", traceId });
+          const replay = frameCount > 0 ? unvoicedPhrases : [];
+          if (!ttsReplyFinalized || replay.length > 0) {
+            // Cartesia closes a continuation context that is idle for a few
+            // seconds, e.g. after a progress cue spoken before a slow action.
+            // The reply is not over: speak it, and any phrase that raced the
+            // close, in a fresh context on the same socket.
+            unvoicedPhrases = [];
+            tts = null;
+            this.ttsStream = null;
+            for (const input of replay) sendTtsPhrase(ensureTts(), input);
+            return;
+          }
+          endPlayback();
           // Long replies and the early reply-ready path can finish playback
           // while the canonical route is still persisting its durable receipt.
           // Keep the turn alive until terminal metadata arrives so a successful
@@ -2079,6 +2101,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           abort.abort();
           // Close out the failed turn so the client gets usage + returns to
           // listening, instead of the session being stuck on a dead turn.
+          if (modelAudioStarted && !ttsPlaybackComplete) endPlayback();
           this.finishTurn(traceId, "error");
         },
       };
@@ -2095,6 +2118,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       firstTtsPhraseSubmittedAt ??= this.now();
       this.turnTtsChars += input.text.length;
       this.noteSonicRequest(traceId, ttsTransportReadyAt !== null);
+      // Record before sending: a provider can emit audio synchronously.
+      if (SPOKEN_TRANSCRIPT_RE.test(input.text)) unvoicedPhrases.push(input);
       stream.sendPhrase(input);
     };
     const queueStreamingPhrases = (phrases: readonly string[]): void => {
@@ -2159,8 +2184,10 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       } else if (spokenProgressCues.length > 0) {
         // Only progress was spoken: the reply repeated it or had no speech.
         // The context already carries the cue text, so an empty continue:false
-        // request just closes it, like the Sonic adapter's finish().
-        sendTtsPhrase(ensureTts(), { text: "", continueContext: false });
+        // request just closes it, like the Sonic adapter's finish(). If the
+        // provider already closed that context, the cue's playback is over.
+        if (tts) sendTtsPhrase(tts, { text: "", continueContext: false });
+        else endPlayback();
       }
     };
 
@@ -2441,6 +2468,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // stream fails before a terminal TTS phrase is sent. finishTurn has not
       // run yet, so ttsStream still belongs to this turn.
       this.ttsStream?.cancel("llm_error");
+      // A spoken cue opened a speaking phase the reply can no longer close.
+      if (modelAudioStarted && !ttsPlaybackComplete) endPlayback();
       this.finishTurn(traceId, "error");
       const fallbackGreeting = options.fallbackGreeting?.trim();
       if (fallbackGreeting && !modelAudioStarted) {

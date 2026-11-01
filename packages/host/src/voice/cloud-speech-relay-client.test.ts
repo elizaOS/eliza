@@ -298,6 +298,33 @@ test("cancel never replays a context and ignores its delayed audio, while owner 
   expect(f.requests.filter((r) => r.path.endsWith("/revoke"))).toHaveLength(1);
   expect(frames).toBeLessThanOrEqual(1);
 });
+test("a context the provider closes while idle completes without failing the relay", async () => {
+  const f = await fixture(),
+    client = await createCloudSpeechRelayPorts(f.options),
+    complete: number[] = [];
+  const cue = client.speechPorts.tts.createStream(
+    { traceId: "trace", maxBufferDelayMs: 250 },
+    { onComplete: (event) => complete.push(event.frameCount) },
+  );
+  cue.sendPhrase({ text: "Let me check.", continueContext: true });
+  await until(() => f.controls.some((c) => c.t === "tts"));
+  f.send({ t: "complete", id: f.controls.find((c) => c.t === "tts")?.id });
+  await cue.closed;
+  expect(complete).toEqual([1]);
+  expect(() =>
+    cue.sendPhrase({ text: "Late", continueContext: false }),
+  ).toThrow();
+  const reply = client.speechPorts.tts.createStream(
+    { traceId: "trace", maxBufferDelayMs: 250 },
+    { onComplete: (event) => complete.push(event.frameCount) },
+  );
+  reply.sendPhrase({ text: "Nothing today.", continueContext: false });
+  await reply.closed;
+  expect(complete).toEqual([1, 1]);
+  expect(f.controls.filter((c) => c.t === "tts")).toHaveLength(2);
+  expect(f.diagnostics.some((x) => x.cause === "message_rejected")).toBe(false);
+  await client.close();
+});
 test("disabled mode and unsafe origin fail before credential or network access; foreign/expired/expanded mint never connects", async () => {
   let credentials = 0;
   const options = {

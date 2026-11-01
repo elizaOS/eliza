@@ -1915,7 +1915,7 @@ test("without the host opt-in, the owner's mailbox stays read-only and no writer
   );
 });
 
-test("with the host opt-in, the owner grant holds modify and send while agent tasks stay read-only", async (t) => {
+test("with the host opt-in, the owner grant holds modify and send and agent tasks still read mail", async (t) => {
   const google = {
     connectionId: GRANT_A,
     scopes: [READ_SCOPE, MODIFY_SCOPE, SEND_SCOPE, "openid"],
@@ -1945,12 +1945,13 @@ test("with the host opt-in, the owner grant holds modify and send while agent ta
     retryDelaysMs: [],
   });
   await mailbox.list({ accountId: GRANT_A, query: "in:inbox", pageSize: 10 });
-  // Agent task reads never run under a grant that can change or send mail.
+  // Agent task reads still read the owner's mail under the write grant.
   const tasks = routes.googleForAccount({
     actorId: "owner",
     retryDelaysMs: [],
   });
-  await assert.rejects(tasks.currentAccount(), { code: "insufficient_scope" });
+  assert.equal((await tasks.currentAccount()).accountId, GRANT_A);
+  await tasks.searchGmailMessagesPage(search(GRANT_A));
   // Anything wider than read, modify and send is still refused everywhere.
   for (const wider of [
     [READ_SCOPE, MODIFY_SCOPE, "https://mail.google.com/"],
@@ -1960,6 +1961,11 @@ test("with the host opt-in, the owner grant holds modify and send while agent ta
     google.scopes = wider;
     const widened = await (await get("/gmail/status")).json();
     assert.equal(widened.canReadMessages, false, wider.join(" "));
+    await assert.rejects(
+      tasks.currentAccount(),
+      { code: "insufficient_scope" },
+      wider.join(" "),
+    );
     assert.equal(widened.canChangeMessages, false, wider.join(" "));
     assert.equal(widened.canSendMessages, false, wider.join(" "));
   }

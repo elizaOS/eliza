@@ -3,21 +3,27 @@ import {
   downloadThreatFeed,
   exceptionRule,
   installThreatRules,
+  neverBlockHosts,
   parseThreatDomains,
   plausibleTime,
+  RULE_BASE,
 } from "./policy.mjs";
-/** Install one shared protection engine inside a host-owned extension worker. */
+/** Install one shared protection engine inside a host-owned extension worker.
+ * `neverBlock` lists reviewed hosts (confirmed feed false positives) that no threat rule
+ * blocks or redirects, with their subdomains; it comes only from trusted host composition. */
 export function installBrowserProtection({
   chrome: chromeApi,
   fetchImpl = globalThis.fetch,
   advisory,
   feeds,
+  neverBlock = [],
   warningPage = "warning.html",
   refreshAlarm = "eliza-protection-refresh",
   exceptionAlarm = "eliza-protection-exception",
 }) {
   if (!Array.isArray(feeds) || !feeds.length || feeds.length > 8)
     throw Error("Protection feeds are required");
+  const excluded = neverBlockHosts(neverBlock);
   if (!/^[a-z][a-z0-9-]*\.html$/.test(warningPage))
     throw Error("Invalid warning page");
   const chrome = chromeApi,
@@ -46,6 +52,29 @@ export function installBrowserProtection({
       try {
         ({ protection } = await chrome.storage.local.get("protection"));
         const rules = await chrome.declarativeNetRequest.getDynamicRules();
+        // A changed never-block list applies to the saved rules at once, without a download.
+        if (
+          installed(rules, protection) &&
+          JSON.stringify(protection.neverBlock ?? []) !==
+            JSON.stringify(excluded)
+        ) {
+          const saved = rules
+            .filter(
+              (r) =>
+                r.id >= RULE_BASE &&
+                r.id < RULE_BASE + 2000 &&
+                r.action.type === "block",
+            )
+            .flatMap((r) => r.condition.requestDomains);
+          const ruleCount = await installThreatRules(
+            chrome.declarativeNetRequest,
+            saved,
+            chrome.runtime.id,
+            { warningPage, neverBlock: excluded },
+          );
+          protection = { ...protection, ruleCount, neverBlock: excluded };
+          await chrome.storage.local.set({ protection });
+        }
         // Age only schedules a refresh; it never makes saved rules unusable.
         if (
           plausibleTime(protection?.updatedAt) &&
@@ -58,13 +87,14 @@ export function installBrowserProtection({
           chrome.declarativeNetRequest,
           sources.flatMap((s) => s.domains),
           chrome.runtime.id,
-          { warningPage },
+          { warningPage, neverBlock: excluded },
         );
         await chrome.storage.local.set({
           protection: {
             updatedAt: Date.now(),
             publishedAt: Math.min(...sources.map((s) => s.publishedAt)),
             ruleCount,
+            neverBlock: excluded,
             status: "current",
           },
         });

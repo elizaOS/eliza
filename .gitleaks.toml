@@ -128,6 +128,21 @@ regexes = [
   '''capacity-proposal-key-1''',
 ]
 
+# The reminder namesake table seeds each row by a readable fixture key such as
+# "yesterday530pm"; the generic-api-key rule reads `key: "<label>"` as a
+# credential. Scope the exact seed key to the one test file so every other
+# token in it stays scanned.
+[[allowlists]]
+description = "Reminder namesake test fixture seed key (synthetic literal)"
+condition = "AND"
+paths = [
+  '''(^|/)plugins/plugin-personal-assistant/src/actions/life\.update-reminder-delay\.pglite\.integration\.test\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''key: "yesterday530pm"''',
+]
+
 # This deterministic runtime redaction test supplies an invented credential to
 # prove configured secrets are removed from output. Match only that literal in
 # that test; other credentials in the same file must still fail the scan.

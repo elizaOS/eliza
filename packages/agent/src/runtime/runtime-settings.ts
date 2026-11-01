@@ -55,6 +55,7 @@ export interface RuntimeSettingsProjectionOptions {
  * mnemonics, and seed phrases while allowing API keys that plugins need.
  */
 export function isEnvKeyAllowedForForwarding(key: string): boolean {
+  if (isProcessOnlyEnvKey(key)) return false;
   const upper = key.toUpperCase();
   if (upper === "ALLOW_NO_DATABASE") return false;
   if (upper.includes("PRIVATE_KEY")) return false;

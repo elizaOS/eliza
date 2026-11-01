@@ -208,9 +208,10 @@ plus sign-in identity). A host that sets `hostPolicy.gmailOwnerWrites: true`
 asks Google for `gmail.modify` and `gmail.send` as well, and lets the owner's
 mailbox (`/gmail/list`, `/gmail/read`, `mailboxForAccount`) hold that grant;
 `/gmail/status` then also reports `canChangeMessages` and `canSendMessages`.
-Agent task reads (`googleForAccount`) stay held to the exactly read-only grant
-and refuse a wider one with `insufficient_scope`. Compose, full mail access or
-any other scope is still refused.
+Agent task reads (`googleForAccount`) also accept that owner grant, so the
+agent can still read the owner's mail. The task port only sends GET reads; it
+has no write operation. Compose, full mail access or any other scope is still
+refused everywhere with `insufficient_scope`.
 
 `mailboxWriterForAccount({actorId, accountId})` exists only with that opt-in. It
 is host-only: it enables no HTTP route and never reaches agent tasks. It relays

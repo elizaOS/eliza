@@ -7,7 +7,9 @@ const LEAF_FILES = [
 	"../src/schema-types.ts",
 	"../src/types/json.ts",
 	"../src/types/schema.ts",
+	"../src/types/surface-manifest.ts",
 	"../src/types/view-capability.ts",
+	"../src/types/view-kind.ts",
 ];
 
 describe("@elizaos/core/schema-types", () => {
@@ -17,15 +19,19 @@ describe("@elizaos/core/schema-types", () => {
 		expectTypeOf<Leaf.JsonValue>().toEqualTypeOf<Root.JsonValue>();
 		expectTypeOf<Leaf.JsonObject>().toEqualTypeOf<Root.JsonObject>();
 		expectTypeOf<Leaf.JsonPrimitive>().toEqualTypeOf<Root.JsonPrimitive>();
+		expectTypeOf<Leaf.SurfaceManifest>().toEqualTypeOf<Root.SurfaceManifest>();
 		expectTypeOf<Leaf.ViewCapability>().toEqualTypeOf<Root.ViewCapability>();
 		expectTypeOf<Leaf.ViewCapabilityParameter>().toEqualTypeOf<Root.ViewCapabilityParameter>();
+		expectTypeOf<Leaf.ViewKind>().toEqualTypeOf<Root.ViewKind>();
 	});
 
 	it("stays a type-only leaf that loads no other core module", () => {
 		const allowed = new Set([
 			"./types/json.ts",
 			"./types/schema.ts",
+			"./types/surface-manifest.ts",
 			"./types/view-capability.ts",
+			"./types/view-kind.ts",
 			"./json",
 		]);
 		for (const file of LEAF_FILES) {
