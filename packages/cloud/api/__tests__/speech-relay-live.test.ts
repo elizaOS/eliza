@@ -1,6 +1,9 @@
 /** Protected provider proof. No user text, token, or credential is logged. */
 import { test } from "bun:test";
-import { reportedSpeechRelayTest } from "../test/speech-relay-live-report";
+import {
+  reportedSpeechRelayTest,
+  speechRelayRefusal,
+} from "../test/speech-relay-live-report";
 
 const environment = process.env.ELIZA_VOICE_CLOUD_ENVIRONMENT;
 const target =
@@ -169,7 +172,10 @@ maybe(
         }
         check(typeof event.data === "string", "SPEECH_FRAME_INVALID");
         const message = JSON.parse(event.data) as Record<string, any>;
-        if (message.t === "error") throw new Error("SPEECH_PROVIDER_REFUSED");
+        if (message.t === "error") {
+          fail(speechRelayRefusal(message.code, message.reason));
+          return;
+        }
         if (message.t === "ready") {
           readyAt = performance.now();
           ready.resolve();
