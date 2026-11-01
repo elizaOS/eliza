@@ -90,8 +90,11 @@ function fakeRes(): {
         headers: {} as Record<string, string>,
         body: null as Buffer | string | null,
     };
+    let headersSent = false;
     const res = evented({
-        headersSent: false,
+        get headersSent() {
+            return headersSent;
+        },
         set statusCode(code: number) {
             state.statusCode = code;
         },
@@ -101,8 +104,14 @@ function fakeRes(): {
         setHeader(name: string, value: string) {
             state.headers[name.toLowerCase()] = value;
         },
+        write(chunk: Uint8Array) {
+            headersSent = true;
+            state.body = Buffer.concat([Buffer.isBuffer(state.body) ? state.body : Buffer.alloc(0), chunk]);
+            return true;
+        },
         end(payload?: Buffer | string) {
-            state.body = payload ?? null;
+            if (payload !== undefined)
+                state.body = payload;
         },
     }) as unknown as http.ServerResponse;
     return { res, state };
@@ -584,6 +593,42 @@ describe("Cloud speech evidence and client lifecycle", () => {
         const active=await proxy(kind);
         try{await started;await active.requestComplete;expect(signal?.aborted).toBe(false);release(new Response(kind === "tts"?new Uint8Array([73,68,51]):JSON.stringify({transcript:"synthetic transcript"})));expect((await active.received).status).toBe(200);await active.finished;expect(signal?.aborted).toBe(false);}
         finally{release(new Response("fixture cleanup"));await active.finished;await active.close();}
+    });
+    async function streamedTts(){
+        let push!:ReadableStreamDefaultController<Uint8Array>,entered!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve});
+        globalThis.fetch=(async()=>{entered();return new Response(new ReadableStream<Uint8Array>({start(controller){push=controller;}}),{headers:{"content-type":"audio/mpeg","X-Eliza-TTS-Provider":"cartesia"}});}) as typeof fetch;
+        const active=await proxy("tts");await started;
+        return {active,push:()=>push};
+    }
+    test("tts forwards the first audio chunk before the upstream body ends",async()=>{
+        const logs=vi.spyOn(logger,"info");
+        const {active,push}=await streamedTts();
+        try{
+            const first=new Promise<{headers:http.IncomingHttpHeaders;chunk:Buffer}>(resolve=>active.client.once("response",res=>res.once("data",chunk=>resolve({headers:res.headers,chunk}))));
+            await new Promise(resolve=>setImmediate(resolve));push().enqueue(new Uint8Array([73,68,51]));
+            const head=await first;
+            expect(head.headers["content-type"]).toBe("audio/mpeg");
+            expect(head.headers["cache-control"]).toBe("no-store");
+            expect(head.headers["x-eliza-speech-provider"]).toBe("cartesia");
+            expect(Array.from(head.chunk)).toEqual([73,68,51]);
+            push().enqueue(new Uint8Array([4,5]));push().close();
+            const done=await active.received;
+            expect(done.status).toBe(200);
+            expect(Array.from(done.body)).toEqual([73,68,51,4,5]);
+            await active.finished;
+            const drain=logs.mock.calls.map(([value])=>value).find(value=>typeof value==="object"&&value!==null&&"phase" in value&&value.phase==="body_drain");
+            expect(drain).toMatchObject({kind:"tts",outcome:"returned",bytes:5,status:200});
+            expect(typeof (drain as {firstChunkMs?:unknown}).firstChunkMs).toBe("number");
+        }finally{logs.mockRestore();await active.close();}
+    });
+    test("tts upstream failure after audio started truncates the response instead of ending it",async()=>{
+        const {active,push}=await streamedTts();
+        try{
+            const outcome=new Promise<{complete:boolean;ended:boolean}>(resolve=>active.client.once("response",res=>{let ended=false;res.on("end",()=>{ended=true});res.on("error",()=>{});res.once("data",()=>push().error(Error("synthetic upstream reset")));res.once("close",()=>resolve({complete:res.complete,ended}));}));
+            await new Promise(resolve=>setImmediate(resolve));push().enqueue(new Uint8Array([73,68,51]));
+            expect(await outcome).toEqual({complete:false,ended:false});
+            await active.finished;
+        }finally{await active.close();}
     });
     test("disconnect interrupts warming backoff without another paid attempt",async()=>{
         vi.useFakeTimers();upstreamResponse=()=>Response.json({error:{code:"auth_cache_warming",retryAfter:3}},{status:503});
