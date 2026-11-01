@@ -163,6 +163,7 @@
   },
   "scripts": {
     "build": "tsc6 --noCheck -p tsconfig.emit.json && node ../scripts/rewrite-dist-relative-imports-node-esm.ts packages/contracts",
+    "test": "node --test src/*.test.ts",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "lint:check": "bunx @biomejs/biome check src",
     "lint": "bunx @biomejs/biome check --write src",
