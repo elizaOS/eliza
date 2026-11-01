@@ -9,6 +9,11 @@ name: Voice Live E2E
 on:
   workflow_dispatch:
     inputs:
+      cartesia_latency_only:
+        description: "Only two paid requests against existing staging Cartesia configuration"
+        required: false
+        default: false
+        type: boolean
       cloudflare_environment:
         description: "Protected environment for the authenticated speech contract"
         required: true
@@ -71,6 +76,7 @@ jobs:
   # paradee-voice inputs.json and the llama.cpp fork pins, and Hugging Face
   # still serves those exact bytes at that revision.
   voice-product-release:
+    if: ${{ !inputs.cartesia_latency_only }}
     name: Product voice release (Phonon-2 ASR + Paradee v1.1 TTS)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
@@ -92,6 +98,7 @@ jobs:
         run: node packages/scripts/verify-voice-product-release.ts --require-fork-pins --github-annotations
 
   voice-platform-matrix-index:
+    if: ${{ !inputs.cartesia_latency_only }}
     name: Canonical voice matrix index
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 20
@@ -125,7 +132,7 @@ jobs:
   # Verify the authenticated application routes and their actual provider headers.
   voice-cloudflare-contract:
     name: Cloudflare authenticated speech contract
-    if: ${{ github.event_name == 'schedule' || inputs.run_cloudflare_contract }}
+    if: ${{ !inputs.cartesia_latency_only && (github.event_name == 'schedule' || inputs.run_cloudflare_contract) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     environment: ${{ inputs.cloudflare_environment || 'staging' }}
@@ -165,7 +172,7 @@ jobs:
   # so an unprovisioned nightly cannot turn into a misleading red run.
   voice-web-live-cloudflare:
     name: Web Cloudflare live mic → agent → audible TTS
-    if: ${{ (github.event_name == 'schedule' && vars.ELIZA_VOICE_WEB_LIVE_READY == '1') || (github.event_name == 'workflow_dispatch' && inputs.run_web_live_cloudflare) }}
+    if: ${{ !inputs.cartesia_latency_only && ((github.event_name == 'schedule' && vars.ELIZA_VOICE_WEB_LIVE_READY == '1') || (github.event_name == 'workflow_dispatch' && inputs.run_web_live_cloudflare)) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
@@ -338,6 +345,7 @@ jobs:
   # fork submodule commit + build-script hash, so most nights restore in
   # seconds instead of compiling.
   voice-fused-build:
+    if: ${{ !inputs.cartesia_latency_only }}
     name: Build fused libelizainference (linux-x64 cpu)
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -409,6 +417,7 @@ jobs:
           if-no-files-found: error
 
   voice-roundtrip:
+    if: ${{ !inputs.cartesia_latency_only }}
     name: Optional mixed voice round-trip (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
@@ -476,6 +485,7 @@ jobs:
           echo "::warning title=Mixed cloud round-trip skipped::ELEVENLABS_API_KEY and/or CEREBRAS_API_KEY are not configured, so the cloud-TTS → Phonon-2 ASR → cloud-LLM round-trip step did not run."
 
   voice-acoustic-matrix:
+    if: ${{ !inputs.cartesia_latency_only }}
     name: Real acoustic components + Phonon-2 ASR / Paradee TTS matrix (self-hosted)
     # Single point of runner config — override with repo var VOICE_LIVE_RUNNER_LABELS.
     runs-on: ${{ fromJSON(vars.VOICE_LIVE_RUNNER_LABELS || '["self-hosted","Linux","X64","eliza"]') }}
@@ -668,7 +678,7 @@ jobs:
 
   voice-macos-electrobun-matrix:
     name: macOS Electrobun live-voice matrix
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_macos_electrobun) || vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY == '1' }}
+    if: ${{ !inputs.cartesia_latency_only && ((github.event_name == 'workflow_dispatch' && inputs.run_macos_electrobun) || vars.ELIZA_VOICE_MACOS_ELECTROBUN_READY == '1') }}
     # Physical microphone and speaker-loopback acceptance cannot run on a
     # GitHub-hosted VM. The ready gate is meaningful only on the owner-operated
     # hardware runner named by this label set. Device variables use ffmpeg's
@@ -753,7 +763,7 @@ jobs:
 
   voice-windows-electrobun-matrix:
     name: Windows Electrobun live-voice matrix
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_windows_electrobun) || vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY == '1' }}
+    if: ${{ !inputs.cartesia_latency_only && ((github.event_name == 'workflow_dispatch' && inputs.run_windows_electrobun) || vars.ELIZA_VOICE_WINDOWS_ELECTROBUN_READY == '1') }}
     # Windows device variables are exact dshow audio names from
     # `ffmpeg -list_devices true -f dshow -i dummy`.
     runs-on: ${{ fromJSON(vars.ELIZA_VOICE_WINDOWS_RUNNER_LABELS || '["self-hosted","Windows","X64","eliza","voice-hardware"]') }}
@@ -837,7 +847,7 @@ jobs:
 
   voice-ios-matrix:
     name: iOS simulator/device live-voice matrix
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_ios) || vars.ELIZA_VOICE_IOS_READY == '1' }}
+    if: ${{ !inputs.cartesia_latency_only && ((github.event_name == 'workflow_dispatch' && inputs.run_ios) || vars.ELIZA_VOICE_IOS_READY == '1') }}
     runs-on: macos-15
     timeout-minutes: 90
     env:
@@ -885,7 +895,7 @@ jobs:
 
   voice-android-matrix:
     name: Android live-voice + native bridge matrix
-    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.run_android) || vars.ELIZA_VOICE_ANDROID_READY == '1' }}
+    if: ${{ !inputs.cartesia_latency_only && ((github.event_name == 'workflow_dispatch' && inputs.run_android) || vars.ELIZA_VOICE_ANDROID_READY == '1') }}
     runs-on: ${{ fromJSON(vars.HETZNER_FLEET_ONLINE != 'true' && '["ubuntu-24.04"]' || '["self-hosted","hetzner-robot"]') }}
     timeout-minutes: 120
     env:
@@ -933,4 +943,30 @@ jobs:
             ${{ runner.temp }}/voice-android-matrix/voice-matrix.json
             ${{ runner.temp }}/voice-android-matrix/voice-matrix.md
             ${{ runner.temp }}/voice-android-matrix/index.html
+          if-no-files-found: error
+
+  cartesia-latency:
+    if: ${{ inputs.cartesia_latency_only && inputs.cloudflare_environment == 'staging' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    environment: staging
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
+        with:
+          node-version: '24.15.0'
+      - name: Verify existing Cartesia route (two paid requests maximum)
+        env:
+          ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
+          EXPECTED_CLOUD_COMMIT: ${{ inputs.expected_cloud_commit }}
+          CARTESIA_CONFIG_COMMIT: ${{ vars.CARTESIA_CONFIG_COMMIT }}
+          RECEIPT_PATH: ${{ runner.temp }}/cartesia-latency.json
+        run: node packages/scripts/verify-cartesia-latency.mjs
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: cartesia-latency
+          path: ${{ runner.temp }}/cartesia-latency.json
           if-no-files-found: error
