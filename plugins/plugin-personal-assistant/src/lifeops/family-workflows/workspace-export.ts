@@ -15,6 +15,7 @@ import {
 } from "@elizaos/core";
 import { DocumentService } from "@elizaos/plugin-assistant";
 import { z } from "zod";
+import { readFamilyCorrespondenceText } from "../family-coordination/intake-service.js";
 import { getAgreementKnowledgeService } from "../household/agreement-knowledge.js";
 import { executeRawSql, sqlQuote } from "../sql.js";
 
@@ -275,13 +276,14 @@ export async function exportFamilyWorkspace(
           "Canonical document service is unavailable",
           "FAMILY_EXPORT_UNAVAILABLE",
         );
+      const owner = {
+        requesterEntityId: resolveOwnerEntityIdOrDefault(runtime),
+        role: "OWNER" as const,
+        isOwner: true,
+      };
       const document = await documents.getDocumentByIdWithAccessContext(
         documentId,
-        {
-          requesterEntityId: resolveOwnerEntityIdOrDefault(runtime),
-          role: "OWNER",
-          isOwner: true,
-        },
+        owner,
       );
       if (!document || document.id !== documentId)
         failure(
@@ -295,7 +297,11 @@ export async function exportFamilyWorkspace(
           contentType: z.literal("text/plain"),
         })
         .safeParse(document.metadata);
-      const text = document.content.text;
+      // Intake selected the text that the canonical reader restored; segmented
+      // parents (over the inline limit) carry no content.text of their own.
+      const text = metadata.success
+        ? await readFamilyCorrespondenceText(documents, document, owner)
+        : undefined;
       if (
         !metadata.success ||
         typeof text !== "string" ||
