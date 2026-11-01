@@ -13,6 +13,7 @@ import { accountDeletionExports } from "../../db/schemas/account-deletion-export
 import { accountDeletionPhaseReceipts } from "../../db/schemas/account-deletion-phase-receipts";
 import { accountDeletionRequests } from "../../db/schemas/account-deletion-requests";
 import { apiKeys } from "../../db/schemas/api-keys";
+import { nativeAppPublishers } from "../../db/schemas/native-app-publishers";
 import { organizationBalanceRevisionSequence, organizations } from "../../db/schemas/organizations";
 import { providerAdmissions } from "../../db/schemas/provider-admissions";
 import { userSessions } from "../../db/schemas/user-sessions";
@@ -45,6 +46,7 @@ beforeAll(async () => {
         apiKeys,
         organizationBalanceRevisionSequence,
         organizations,
+        nativeAppPublishers,
         providerAdmissions,
         userSessions,
         users,
