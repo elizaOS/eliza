@@ -1024,7 +1024,11 @@ describe("LifeOps registered provider planner restoration", () => {
       };
       const context = await makeContext(deferred);
       const source = context.events.find((event) => event.type === "provider" && event.name === lifeOpsProvider.name);
-      expect(source?.type === "provider" && source.referenceBodyDeferred).toBe(true);
+      expect(
+        source?.type === "provider" &&
+        "referenceBodyDeferred" in source &&
+        source.referenceBodyDeferred,
+      ).toBe(true);
       expect(projectDeferredProviders(context).available).toContain(lifeOpsProvider.name);
       if (noCalendar) reads.getNextCalendarEventContext.mockRejectedValue(new Error("CALENDAR_SOURCES_UNAVAILABLE"));
       const compose = vi.spyOn(runtime, "composeState");

@@ -159,7 +159,8 @@ export function projectDeferredProviders(context: ContextObject): {
 			!("name" in event) ||
 			typeof event.name !== "string" ||
 			(source.referenceBodyDeferred !== true &&
-				Array.isArray(loaded) && loaded.includes(event.name))
+				Array.isArray(loaded) &&
+				loaded.includes(event.name))
 		)
 			return event;
 		available.push(event.name);
