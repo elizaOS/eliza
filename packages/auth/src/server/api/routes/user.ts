@@ -397,49 +397,74 @@ function userWalletEncryptedImportSessionStoreKey(id: string): string {
   return `user-wallet:${id}`;
 }
 
-function parseStoredUserWalletEncryptedImportSession(
+/**
+ * The stored import session exists but cannot be read (key-store rotation,
+ * torn write, corrupted ciphertext, or a record that carries no usable
+ * session shape). Distinct from an absent session: callers must not read it as
+ * "invalid or expired".
+ */
+export class UserWalletEncryptedImportSessionUnreadableError extends Error {
+  constructor(cause: unknown) {
+    super("Stored wallet import session could not be read");
+    this.name = "UserWalletEncryptedImportSessionUnreadableError";
+    this.cause = cause;
+  }
+}
+
+export function parseStoredUserWalletEncryptedImportSession(
   raw: string | null,
 ): UserWalletEncryptedImportSession | null {
   if (!raw) return null;
+  let parsed: Partial<UserWalletEncryptedImportSession>;
   try {
-    const parsed =
+    parsed =
       decryptImportSessionJson<Partial<UserWalletEncryptedImportSession>>(raw);
-    const walletIndex = parsed.walletIndex;
-    const createdAt = parsed.createdAt;
-    const expiresAt = parsed.expiresAt;
-    if (
-      !isNonEmptyString(parsed.id) ||
-      !isNonEmptyString(parsed.tenantId) ||
-      !isNonEmptyString(parsed.userId) ||
-      !isNonEmptyString(parsed.agentId) ||
-      (parsed.chain !== "evm" && parsed.chain !== "solana") ||
-      typeof walletIndex !== "number" ||
-      !Number.isSafeInteger(walletIndex) ||
-      !isNonEmptyString(parsed.privateKey) ||
-      !isNonEmptyString(parsed.publicKey) ||
-      typeof createdAt !== "number" ||
-      !Number.isSafeInteger(createdAt) ||
-      typeof expiresAt !== "number" ||
-      !Number.isSafeInteger(expiresAt)
-    ) {
-      return null;
-    }
-    return {
-      id: parsed.id,
-      tenantId: parsed.tenantId,
-      userId: parsed.userId,
-      agentId: parsed.agentId,
-      chain: parsed.chain,
-      walletIndex,
-      appId: typeof parsed.appId === "string" ? parsed.appId : null,
-      privateKey: parsed.privateKey,
-      publicKey: parsed.publicKey,
-      createdAt,
-      expiresAt,
-    };
-  } catch {
-    return null;
+  } catch (error) {
+    // The bytes are present but no longer decrypt: a key-store rotation, a torn
+    // write or corrupted ciphertext. Throwing keeps that server fault out of
+    // the "session is invalid or expired" 400 the submit route returns for a
+    // genuinely absent session.
+    throw new UserWalletEncryptedImportSessionUnreadableError(error);
   }
+  const walletIndex = parsed.walletIndex;
+  const createdAt = parsed.createdAt;
+  const expiresAt = parsed.expiresAt;
+  if (
+    !isNonEmptyString(parsed.id) ||
+    !isNonEmptyString(parsed.tenantId) ||
+    !isNonEmptyString(parsed.userId) ||
+    !isNonEmptyString(parsed.agentId) ||
+    (parsed.chain !== "evm" && parsed.chain !== "solana") ||
+    typeof walletIndex !== "number" ||
+    !Number.isSafeInteger(walletIndex) ||
+    !isNonEmptyString(parsed.privateKey) ||
+    !isNonEmptyString(parsed.publicKey) ||
+    typeof createdAt !== "number" ||
+    !Number.isSafeInteger(createdAt) ||
+    typeof expiresAt !== "number" ||
+    !Number.isSafeInteger(expiresAt)
+  ) {
+    // The bytes decrypt but do not describe a session: a torn write or a
+    // record written by another schema. The record is present, so a null here
+    // would reach the submit route as a 400 "session is invalid or expired"
+    // client error and hide the storage fault.
+    throw new UserWalletEncryptedImportSessionUnreadableError(
+      new Error("stored wallet import session record has no usable shape"),
+    );
+  }
+  return {
+    id: parsed.id,
+    tenantId: parsed.tenantId,
+    userId: parsed.userId,
+    agentId: parsed.agentId,
+    chain: parsed.chain,
+    walletIndex,
+    appId: typeof parsed.appId === "string" ? parsed.appId : null,
+    privateKey: parsed.privateKey,
+    publicKey: parsed.publicKey,
+    createdAt,
+    expiresAt,
+  };
 }
 
 async function createUserWalletEncryptedImportSession(input: {
