@@ -111,10 +111,12 @@ export async function withGuardedPaidProxyAdmission(
           ),
         );
       }
-      return dispatch({ mode: "compatibility", auth, requestId });
+      return await dispatch({ mode: "compatibility", auth, requestId });
     }
 
-    return dispatch({
+    // Awaited: the credential guard is disposed only after dispatch settles,
+    // so an admitted request never runs the standalone credential check.
+    return await dispatch({
       mode: "combined",
       auth,
       requestId,
