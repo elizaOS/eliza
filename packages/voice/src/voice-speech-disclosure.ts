@@ -69,17 +69,23 @@ const ALL_KINDS: readonly SpeechDataKind[] = [
   "audio",
   "reply-text",
 ];
+const SPEECH_DISCLOSURE_NAME_MAX_CHARS = 60;
+// biome-ignore lint/suspicious/noControlCharactersInRegex: copy must not carry control characters.
+const CONTROL_CHARACTER_PATTERN = /[\x00-\x1f\x7f]/;
 const without = (sends: readonly SpeechDataKind[]) =>
   Object.freeze(ALL_KINDS.filter((kind) => !sends.includes(kind)));
 
-/** A product name for the copy. A name that is not one line of text throws: the copy must never name another service. */
+/** A bounded, one-line product name for the copy. The copy must never name another service. */
 function oneLine(value: string | undefined, fallback: string): string {
   if (value === undefined) return fallback;
   const text = typeof value === "string" ? value.trim() : "";
-  // biome-ignore lint/suspicious/noControlCharactersInRegex: copy must not carry control characters.
-  if (!text || /[\x00-\x1f\x7f]/.test(text))
+  if (
+    !text ||
+    text.length > SPEECH_DISCLOSURE_NAME_MAX_CHARS ||
+    CONTROL_CHARACTER_PATTERN.test(text)
+  )
     throw new TypeError(
-      `Speech disclosure name must be one line of text: ${JSON.stringify(value)}`,
+      `Speech disclosure name must be one line of at most ${SPEECH_DISCLOSURE_NAME_MAX_CHARS} characters: ${JSON.stringify(value)}`,
     );
   return text;
 }
