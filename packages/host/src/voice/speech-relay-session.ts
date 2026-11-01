@@ -85,7 +85,7 @@ export interface SpeechRelayPorts {
     revoke: () => void,
   ): () => void;
   /** Applies public-TTS safety policy before every paid phrase dispatch. */
-  assertTtsAllowed(text: string): Promise<void>;
+  assertTtsAllowed(text: string, signal?: AbortSignal): Promise<void>;
   /** Factories hold provider credentials server-side and clean partial acquisitions on failure. */
   openStt(onEvent: (event: CartesiaInkRealtimeEvent) => void): Pick<
     CartesiaInkRealtimeSession,
@@ -201,10 +201,13 @@ export async function createSpeechRelaySession(
     closing: Promise<void> | undefined;
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
-    finishedIds = new Set<string>();
+    finishedIds = new Set<string>(),
+    cancelledIds = new Set<string>(),
+    reviews = new Map<AbortController, string>();
   const close = (): Promise<void> => {
     if (closing) return closing;
     closed = true;
+    for (const review of reviews.keys()) review.abort();
     if (streams.size) ttsUncertain = true;
     if (timer) clearTimeout(timer);
     closing = Promise.resolve().then(async () => {
@@ -440,6 +443,8 @@ export async function createSpeechRelaySession(
         retire();
         return;
       }
+      // A cancel may overtake queued phrases and finish for the same context.
+      if (cancelledIds.has(frame.id)) return false;
       if (frame.t === "finish") {
         const stream = streams.get(frame.id);
         if (!stream || finishedIds.has(frame.id)) {
@@ -463,6 +468,9 @@ export async function createSpeechRelaySession(
             usedIds.add(frame.id);
           }
           finishedIds.add(frame.id);
+          cancelledIds.add(frame.id);
+          for (const [review, id] of reviews)
+            if (id === frame.id) review.abort();
           if (streams.has(frame.id)) ttsUncertain = true;
           streams.get(frame.id)?.cancel("speech-relay-cancelled");
           streams.delete(frame.id);
@@ -490,10 +498,21 @@ export async function createSpeechRelaySession(
       // Total text is bounded by the 4096-character session admission. Preserve
       // prior phrases/contexts so splitting text cannot evade the safety policy.
       moderationText += frame.text;
+      const review = new AbortController();
+      reviews.set(review, frame.id);
+      let abortReview: (() => void) | undefined;
       try {
-        await ports.assertTtsAllowed(moderationText);
+        const aborted = new Promise<never>((_resolve, reject) => {
+          abortReview = () => reject(review.signal.reason);
+          review.signal.addEventListener("abort", abortReview, { once: true });
+        });
+        // Release the ordered control queue even if a provider ignores abort.
+        await Promise.race([
+          ports.assertTtsAllowed(moderationText, review.signal),
+          aborted,
+        ]);
         current();
-        if (finishedIds.has(frame.id)) return;
+        if (cancelledIds.has(frame.id)) return false;
         if (!credits)
           throw new SpeechRelayError(
             "closed",
@@ -501,6 +520,7 @@ export async function createSpeechRelaySession(
           );
         await credits.beforeProviderDispatch("tts");
         current();
+        if (cancelledIds.has(frame.id)) return false;
         ttsCharacters += frame.text.length;
         dispatched.tts = true;
         let stream = streams.get(frame.id);
@@ -546,9 +566,14 @@ export async function createSpeechRelaySession(
           ...(frame.flush !== undefined ? { flush: frame.flush } : {}),
         });
       } catch (error) {
+        if (review.signal.aborted && cancelledIds.has(frame.id)) return false;
         ttsUncertain = true;
         retire();
         throw error;
+      } finally {
+        if (abortReview)
+          review.signal.removeEventListener("abort", abortReview);
+        reviews.delete(review);
       }
     },
     close,
