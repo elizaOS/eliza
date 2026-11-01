@@ -386,7 +386,7 @@ function validOptionalPolicyNumber(value: unknown): boolean {
 function validAppPolicy(policy: Record<string, unknown>): boolean {
   return (
     validId(policy.name) &&
-    validId(policy.creatorUserId) &&
+    (policy.creatorUserId === null || validTrimmedId(policy.creatorUserId)) &&
     typeof policy.monetizationEnabled === "boolean" &&
     typeof policy.reviewStatus === "string" &&
     APP_REVIEW_STATUSES.has(policy.reviewStatus) &&
