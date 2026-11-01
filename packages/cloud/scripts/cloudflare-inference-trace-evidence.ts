@@ -294,15 +294,22 @@ export function validateTraceKeysResponse(text) {
   return Object.fromEntries(REQUIRED_KEYS);
 }
 
+/** The caller supplies the Worker name from the verified deployment profile. */
+function traceWorker(value) {
+  if (
+    typeof value !== "string" ||
+    !/^[a-z0-9](?:[a-z0-9-]{0,62}[a-z0-9])?$/.test(value)
+  ) {
+    throw new CloudflareTraceSchemaError("Invalid deployment Worker identity");
+  }
+  return value;
+}
+
 function filter(key, value) {
   return { kind: "filter", key, operation: "eq", type: "string", value };
 }
 
-export function buildRootTraceQuery(
-  timeframe,
-  references,
-  environment = "staging",
-) {
+export function buildRootTraceQuery(timeframe, references, worker) {
   return {
     queryId: "eliza-inference-trace-roots-v1",
     timeframe,
@@ -312,7 +319,7 @@ export function buildRootTraceQuery(
     parameters: {
       filterCombination: "and",
       filters: [
-        filter("$metadata.service", certificationTarget(environment).worker),
+        filter("$metadata.service", traceWorker(worker)),
         {
           kind: "group",
           filterCombination: "or",
@@ -325,11 +332,7 @@ export function buildRootTraceQuery(
   };
 }
 
-export function buildTraceEventsQuery(
-  timeframe,
-  traceId,
-  environment = "staging",
-) {
+export function buildTraceEventsQuery(timeframe, traceId, worker) {
   if (!TRACE_ID_PATTERN.test(traceId)) {
     throw new CloudflareTraceSchemaError(
       "Cloudflare returned an invalid trace correlation identifier",
@@ -344,7 +347,7 @@ export function buildTraceEventsQuery(
     parameters: {
       filterCombination: "and",
       filters: [
-        filter("$metadata.service", certificationTarget(environment).worker),
+        filter("$metadata.service", traceWorker(worker)),
         filter("$metadata.traceId", traceId),
       ],
     },
@@ -361,7 +364,7 @@ function readCompletedRun(result, label) {
   return run.status === "COMPLETED";
 }
 
-export function parseRootTraceResponse(text, environment = "staging") {
+export function parseRootTraceResponse(text, worker) {
   const result = readEnvelope(text, "root trace query");
   if (!readCompletedRun(result, "root trace query")) {
     return { completed: false, traceIds: [] };
@@ -379,7 +382,7 @@ export function parseRootTraceResponse(text, environment = "staging") {
       !trace ||
       !TRACE_ID_PATTERN.test(trace.traceId) ||
       !Array.isArray(trace.service) ||
-      !trace.service.includes(certificationTarget(environment).worker)
+      !trace.service.includes(traceWorker(worker))
     ) {
       throw new CloudflareTraceSchemaError(
         "Cloudflare root trace summary changed schema",
@@ -455,7 +458,7 @@ function phaseForEvent(event) {
   return phase;
 }
 
-function requireMetadata(event, environment = "staging") {
+function requireMetadata(event, worker) {
   const metadata = object(event?.$metadata);
   if (
     !metadata ||
@@ -464,7 +467,7 @@ function requireMetadata(event, environment = "staging") {
     typeof metadata.traceId !== "string" ||
     !TRACE_ID_PATTERN.test(metadata.traceId) ||
     typeof metadata.service !== "string" ||
-    metadata.service !== certificationTarget(environment).worker
+    metadata.service !== traceWorker(worker)
   ) {
     throw new CloudflareTraceSchemaError(
       "Cloudflare trace event changed its metadata schema",
@@ -484,15 +487,15 @@ function isDescendant(metadata, ancestorSpanId, bySpanId) {
   return false;
 }
 
-function sanitizePhase(subrequest, phase, events, bySpanId, environment) {
-  const metadata = requireMetadata(subrequest, environment);
+function sanitizePhase(subrequest, phase, events, bySpanId, worker) {
+  const metadata = requireMetadata(subrequest, worker);
   if (typeof metadata.spanId !== "string") {
     throw new CloudflareTraceSchemaError(
       "Cloudflare Durable Object subrequest has no span identity",
     );
   }
   const roots = events.filter((event) => {
-    const childMetadata = requireMetadata(event, environment);
+    const childMetadata = requireMetadata(event, worker);
     const workers = object(event.$workers);
     return (
       childMetadata.parentSpanId === metadata.spanId &&
@@ -502,13 +505,13 @@ function sanitizePhase(subrequest, phase, events, bySpanId, environment) {
   });
   if (roots.length !== 1) return null;
   const root = roots[0];
-  const rootMetadata = requireMetadata(root, environment);
+  const rootMetadata = requireMetadata(root, worker);
   if (typeof rootMetadata.spanId !== "string") return null;
   const workers = object(root.$workers);
   const doColo = coarseColo(rootMetadata.region);
   if (!doColo) return null;
   const storage = events.filter((event) => {
-    const candidate = requireMetadata(event, environment);
+    const candidate = requireMetadata(event, worker);
     return (
       typeof candidate.spanName === "string" &&
       candidate.spanName.startsWith("durable_object_storage_") &&
@@ -518,7 +521,7 @@ function sanitizePhase(subrequest, phase, events, bySpanId, environment) {
   let storageInclusiveSumMs = 0;
   for (const event of storage) {
     storageInclusiveSumMs += roundDuration(
-      requireMetadata(event, environment).duration,
+      requireMetadata(event, worker).duration,
       "storage duration",
     );
   }
@@ -536,11 +539,7 @@ function sanitizePhase(subrequest, phase, events, bySpanId, environment) {
   };
 }
 
-export function sanitizeTraceEvents(
-  rawEvents,
-  references,
-  environment = "staging",
-) {
+export function sanitizeTraceEvents(rawEvents, references, worker) {
   const events = rawEvents.map((event) => {
     const value = object(event);
     if (!value) {
@@ -548,29 +547,29 @@ export function sanitizeTraceEvents(
         "Cloudflare trace event is not an object",
       );
     }
-    requireMetadata(value, environment);
+    requireMetadata(value, worker);
     return value;
   });
   const bySpanId = new Map();
   for (const event of events) {
-    const metadata = requireMetadata(event, environment);
+    const metadata = requireMetadata(event, worker);
     if (typeof metadata.spanId === "string")
       bySpanId.set(metadata.spanId, metadata);
   }
   const rayRoots = events.filter((event) => {
-    const metadata = requireMetadata(event, environment);
+    const metadata = requireMetadata(event, worker);
     return typeof metadata.rayId === "string";
   });
   const matchedReferences = new Set();
   for (const event of rayRoots) {
-    const rayId = requireMetadata(event, environment).rayId.toLowerCase();
+    const rayId = requireMetadata(event, worker).rayId.toLowerCase();
     const reference = references.find((candidate) => candidate.rayId === rayId);
     if (reference) matchedReferences.add(reference);
   }
   if (matchedReferences.size !== 1) return null;
   const [reference] = matchedReferences;
   const workerRoots = rayRoots.filter((event) => {
-    const metadata = requireMetadata(event, environment);
+    const metadata = requireMetadata(event, worker);
     return (
       metadata.rayId.toLowerCase() === reference.rayId &&
       metadata.spanName === "fetch" &&
@@ -578,9 +577,7 @@ export function sanitizeTraceEvents(
     );
   });
   if (workerRoots.length !== 1) return null;
-  const workerColo = coarseColo(
-    requireMetadata(workerRoots[0], environment).region,
-  );
+  const workerColo = coarseColo(requireMetadata(workerRoots[0], worker).region);
   if (!workerColo) return null;
   const subrequests = events
     .map((event) => ({ event, phase: phaseForEvent(event) }))
@@ -594,7 +591,7 @@ export function sanitizeTraceEvents(
   }
   if (counts.get("rate") !== 1 || counts.get("billing") !== 1) return null;
   const phases = subrequests.map(({ event, phase }) =>
-    sanitizePhase(event, phase, events, bySpanId, environment),
+    sanitizePhase(event, phase, events, bySpanId, worker),
   );
   if (phases.some((phase) => phase === null)) return null;
   return {
@@ -602,7 +599,7 @@ export function sanitizeTraceEvents(
     ingressColo: reference.workerColo,
     workerColo,
     workerWallMs: roundDuration(
-      requireMetadata(workerRoots[0], environment).duration,
+      requireMetadata(workerRoots[0], worker).duration,
       "Worker root duration",
     ),
     phases: Object.fromEntries(phases.map((phase) => [phase.phase, phase])),
@@ -700,7 +697,7 @@ async function completeTraceEvents(options, body, state) {
     }
     total = response.total ?? total;
     for (const event of response.events) {
-      const metadata = requireMetadata(event, options.environment);
+      const metadata = requireMetadata(event, options.worker);
       if (
         metadata.traceId !== body.parameters.filters[1].value ||
         seenIds.has(metadata.id)
@@ -728,7 +725,7 @@ async function completeTraceEvents(options, body, state) {
         "Cloudflare trace pagination ended before its total",
       );
     }
-    offset = requireMetadata(response.events.at(-1), options.environment).id;
+    offset = requireMetadata(response.events.at(-1), options.worker).id;
   }
   throw new CloudflareTraceSchemaError(
     "Cloudflare trace pagination exceeded its diagnostic budget",
@@ -749,12 +746,8 @@ async function discoverSettledRootTraces(
     for (let sliceIndex = 0; sliceIndex < slices.length; sliceIndex++) {
       const response = await completedQuery(
         options,
-        buildRootTraceQuery(
-          slices[sliceIndex],
-          references,
-          options.environment,
-        ),
-        (text) => parseRootTraceResponse(text, options.environment),
+        buildRootTraceQuery(slices[sliceIndex], references, options.worker),
+        (text) => parseRootTraceResponse(text, options.worker),
         `roots-s${sliceIndex + 1}-r${round + 1}`,
         state,
       );
@@ -788,7 +781,7 @@ async function settleTraceSample(options, body, references, state) {
         state,
       );
       for (const event of events) {
-        const metadata = requireMetadata(event, options.environment);
+        const metadata = requireMetadata(event, options.worker);
         const prior = eventsById.get(metadata.id);
         if (prior && !isDeepStrictEqual(prior, event)) {
           throw new CloudflareTraceSchemaError(
@@ -802,7 +795,7 @@ async function settleTraceSample(options, body, references, state) {
     const sample = sanitizeTraceEvents(
       [...eventsById.values()],
       references,
-      options.environment,
+      options.worker,
     );
     const eventSweep = {
       settleRounds: round + 1,
@@ -830,6 +823,7 @@ async function settleTraceSample(options, body, references, state) {
 export async function collectInferenceTraceEvidence({
   pairedRecords,
   environment = "staging",
+  worker,
   deploySha,
   accountId,
   apiToken,
@@ -839,10 +833,11 @@ export async function collectInferenceTraceEvidence({
     new Promise((resolvePromise) => setTimeout(resolvePromise, duration)),
 }) {
   certificationTarget(environment);
+  traceWorker(worker);
   const { references, timeframe } = pairedGatewayTraceWindow(pairedRecords);
   const state = { rawSequence: 1 };
   const requestOptions = {
-    environment,
+    worker,
     accountId,
     apiToken,
     privateDirectory,
@@ -869,7 +864,7 @@ export async function collectInferenceTraceEvidence({
   for (const traceId of rootDiscovery.traceIds) {
     const settled = await settleTraceSample(
       requestOptions,
-      buildTraceEventsQuery(timeframe, traceId, environment),
+      buildTraceEventsQuery(timeframe, traceId, worker),
       references,
       state,
     );
