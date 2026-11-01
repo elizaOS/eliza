@@ -428,6 +428,13 @@ export async function admitFlatGenerativeOperation(params: {
  * authorization. Wallet proof remains on the compatibility path because
  * replay-protected signatures cannot be cached.
  */
+/**
+ * Bounded join of a cold organization admission hydration. Below the client's
+ * 1 s warming retry plus a second request; a slower hydration still returns
+ * the retryable warming contract.
+ */
+export const GENERATIVE_ROUTE_HYDRATION_WAIT_MS = 1_500;
+
 export async function requireGenerativeRouteCaller(
   c: AppContext,
   options: {
@@ -528,6 +535,10 @@ export async function requireGenerativeRouteCaller(
               options.rateLimitEndpoint,
             ),
             admissionSnapshot: resolution.ctx.admission,
+            // A cold projection would otherwise cost a 503, a 1 s client
+            // sleep and a second full request. Join the same hydration
+            // (policy lock, hold, gate publication, cache write) instead.
+            awaitHydrationMs: GENERATIVE_ROUTE_HYDRATION_WAIT_MS,
             apiKeyId: resolution.ctx.apiKeyId,
             apiKeyRateLimit:
               "apiKeyRateLimit" in resolution.ctx
