@@ -36,10 +36,12 @@ import {
   applyGroundedActionReply,
   recentConversationTexts as collectRecentConversationTexts,
   ElizaError,
+  extractUserText,
   ModelType,
   parseJsonModelRecord,
   resolveOptimizedPromptForRuntime,
   runWithTrajectoryPurpose,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import {
   buildWideLookupRange,
@@ -655,8 +657,11 @@ export async function runProposeMeetingTimesHandler(
 
   const params = getParams<ProposeMeetingTimesParameters>(options);
   const preferences = await readLifeOpsMeetingPreferences(runtime);
-  const messageBody =
-    typeof message.content.text === "string" ? message.content.text : "";
+  // Read the user's words, not the raw rendered text: under document
+  // augmentation, content.text carries the preamble, the recalled documents
+  // and the real request wrapped in <user_request>, so scanning it would
+  // let document text set the meeting time zone and location label.
+  const messageBody = extractUserText(unwrapUserMessageText(message));
   const inferredTimeZone =
     (typeof params.timeZone === "string" && params.timeZone.trim().length > 0
       ? params.timeZone.trim()
