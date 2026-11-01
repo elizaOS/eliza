@@ -1046,6 +1046,105 @@ describe("request-bound Notes negative constraints", () => {
     }
   });
 
+  // Stage 1 names the requested edit as update or patch; the planner may run
+  // the other registered entry point for the same stored-note edit.
+  async function appliedEditFinishes(
+    interpreted: "update" | "patch",
+    text: string,
+    tool: "NOTES_UPDATE" | "NOTES_PATCH",
+    params: (f: Awaited<ReturnType<typeof fixture>>) => Record<string, unknown>,
+  ) {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: [interpreted] },
+      text,
+    );
+    try {
+      const result = await diagnosedPlanner(f, {
+        context: f.context,
+        tools: [{ name: tool, parameters: { type: "object", properties: {} } }],
+        runtime: {
+          useModel: async () => ({
+            text: "",
+            toolCalls: [
+              {
+                name: tool,
+                id: "requested-edit",
+                arguments: { ...params(f), eliza_turn_scope: "final" },
+              },
+            ],
+          }),
+        },
+        executeToolCall: async (call) =>
+          actionResultToPlannerToolResult(
+            await f.execute(call.name, call.params ?? {}),
+            { requestOperationIssuer: f.issuer },
+          ),
+        evaluate: async () => ({
+          success: true,
+          decision: "FINISH",
+          thought: "The requested edit applied.",
+          messageToUser: "The ideas note now has the launch date.",
+        }),
+      });
+      const step = result.trajectory.steps[0]?.result;
+      if (!step) throw new Error("The edit step did not run");
+      expect(step.success).toBe(true);
+      expect(
+        step.effectReceipts?.some((receipt) => receipt.outcome === "applied"),
+      ).toBe(true);
+      expect(readNotesMutationCompletion(step, f.issuer)).toMatchObject({
+        requested: true,
+        rejected: false,
+        outsideRequestRejection: false,
+        status: "current",
+      });
+      expect(f.service.getNote(f.historical.value.id).body).toContain(
+        "March 3",
+      );
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(result.evaluator?.success).toBe(true);
+      expect(result.finalMessage).toBe(
+        "The ideas note now has the launch date.",
+      );
+    } finally {
+      await f.service.stop();
+    }
+  }
+
+  it("finishes an applied append when the request was interpreted as update", async () => {
+    await appliedEditFinishes(
+      "update",
+      "update my ideas note: add the launch date",
+      "NOTES_PATCH",
+      (f) => ({
+        target: { kind: "id", value: f.historical.value.id },
+        changes: [],
+        textEdit: {
+          action: "append",
+          field: "body",
+          text: "\nlaunch date: March 3",
+        },
+        expectedRevision: f.before.revision,
+      }),
+    );
+  });
+
+  it("finishes an applied text edit when the request was interpreted as patch", async () => {
+    await appliedEditFinishes(
+      "patch",
+      "append the launch date to my ideas note",
+      "NOTES_UPDATE",
+      (f) => ({
+        noteId: f.historical.value.id,
+        textEdit: {
+          field: "body",
+          oldText: "launch on a Tuesday",
+          newText: "launch on a Tuesday, March 3",
+        },
+      }),
+    );
+  });
+
   it("does not dismiss an unrequested operation with an uncertain outcome", async () => {
     const f = await fixture(
       { classification: "mutation_requested", operations: ["create"] },

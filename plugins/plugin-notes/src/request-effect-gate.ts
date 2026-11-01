@@ -3,6 +3,7 @@ import {
   type ActionResult,
   BoundRequestOperationError,
   bindRequestOperationResult,
+  canonicalNotesRequestOperation,
   checkBoundNotesOperation,
   copyBoundOperationDenial,
   getActionRoutingContext,
@@ -20,7 +21,7 @@ function decisionFor(
   message: Memory | undefined,
   operation: NotesRequestOperation,
 ) {
-  const canonicalOperation = operation === "patch" ? "update" : operation;
+  const canonicalOperation = canonicalNotesRequestOperation(operation);
   const routing = getActionRoutingContext();
   if (routing?.requestRuntime !== runtime) {
     return checkBoundNotesOperation(undefined, undefined, canonicalOperation);
