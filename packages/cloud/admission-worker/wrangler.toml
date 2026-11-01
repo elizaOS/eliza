@@ -1,5 +1,6 @@
-# STAGING-ONLY steady state after the admission namespace transfer is accepted.
+# Top level: STAGING steady state after the admission namespace transfer is accepted.
 # Preserve the adopted namespace and the private recovery service binding.
+# [env.production] holds the committed production transfer phase.
 name = "eliza-cloud-admission-staging"
 main = "src/index.ts"
 account_id = "23cf6feaeaa541f6a0675053c33da768"
@@ -67,4 +68,56 @@ VOICE_SPEECH_RELAY_ENABLED = "true"
 [[services]]
 binding = "INFERENCE_RECOVERY_SERVICE"
 service = "eliza-cloud-api-staging"
+entrypoint = "InferenceRecoveryService"
+
+# PRODUCTION phase 1: pending-transfer target for the existing namespace of
+# eliza-cloud-api-prod. No namespace is created here. No self-binding is legal
+# during pending transfer; add it only after the source commit. Root executes
+# each phase from PRODUCTION-TRANSFER.md; releases never run a lifecycle phase.
+[env.production]
+name = "eliza-cloud-admission-prod"
+workers_dev = false
+preview_urls = false
+
+[env.production.define]
+__dirname = "\"/\""
+__filename = "\"/worker.js\""
+
+# Exports are inherited as one map, so production replaces the staging map.
+[env.production.exports.InferenceAdmissionGate]
+type = "durable-object"
+state = "expecting-transfer"
+storage = "sqlite"
+transfer_from = "eliza-cloud-api-prod"
+
+# Empty on purpose until the source commit: the pending class has no binding.
+[env.production.durable_objects]
+bindings = []
+
+# The accepted staging variable names with the production API values.
+# Strong revocation and snapshot admission stay off, as in the production API.
+[env.production.vars]
+NODE_ENV = "production"
+ENVIRONMENT = "production"
+CACHE_BACKEND = "auto"
+CACHE_ENABLED = "true"
+NEXT_PUBLIC_APP_URL = "https://cloud.eliza.app"
+INFERENCE_OPTIMISTIC_BILLING = "true"
+SAFE_BALANCE_THRESHOLD = "5.00"
+INFERENCE_BILLING_LEDGER = "db"
+INFERENCE_DEFERRED_ADMISSION = "true"
+INFERENCE_HOT_PATH_CACHES = "true"
+INFERENCE_AUTH_CACHE_ENABLED = "true"
+INFERENCE_STRONG_REVOCATION_ENABLED = "false"
+INFERENCE_SNAPSHOT_ADMISSION_ENABLED = "false"
+INFERENCE_PASSTHROUGH_STREAMING = "true"
+INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+VOICE_SPEECH_RELAY_ENABLED = "true"
+# Source leaves funded and rate-policy admission unset; target preserves their
+# disabled defaults. Never enable them or invent a seal during this transfer.
+
+# All accounting and its credential/configuration ownership remain on the API.
+[[env.production.services]]
+binding = "INFERENCE_RECOVERY_SERVICE"
+service = "eliza-cloud-api-prod"
 entrypoint = "InferenceRecoveryService"
