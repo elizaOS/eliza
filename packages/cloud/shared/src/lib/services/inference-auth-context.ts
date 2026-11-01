@@ -154,6 +154,8 @@ export interface ResolveInferenceAuthOptions {
   onAuthoritativeRejection?(reason: InferenceAuthRejectionReason): void;
   /** The caller will fuse this strong check into its atomic admission lease. */
   deferStrongCredentialCheck?: boolean;
+  /** Return verified identity metadata for a bounded speech session; never skips an auth check. */
+  includeVerifiedCredential?: boolean;
   /** Override the Worker miss deadline; zero retains an immediate warming result. */
   inlineContinuationDeadlineMs?: number;
 }
@@ -761,6 +763,7 @@ export async function resolveInferenceAuthContext(
         useAuthCache: authCacheEnabled,
         executionCtx: options.executionCtx,
         deferStrongCredentialCheck,
+        includeVerifiedCredential: options.includeVerifiedCredential === true,
       });
       if (session.kind === "not_session") {
         return { kind: "slow_path", reason: "non_api_key" };
@@ -916,7 +919,12 @@ export async function resolveInferenceAuthContext(
         );
         scheduleAgedRefresh();
         trace.result = "authorized_cache";
-        return { kind: "authorized", ctx: cached.ctx, source: "cache" };
+        return {
+          kind: "authorized",
+          ctx: cached.ctx,
+          source: "cache",
+          ...(options.includeVerifiedCredential === true ? { credential } : {}),
+        };
       }
       if (cached.kind === "rejected") {
         trace.result = cached.decision === "suspended" ? "suspended" : "rejected";
@@ -988,7 +996,22 @@ export async function resolveInferenceAuthContext(
           observeInferenceApiKeyUsage(continued, options.executionCtx);
           return deferStrongCredentialCheck
             ? continued
-            : { kind: "authorized", ctx: continued.ctx, source: continued.source };
+            : {
+                kind: "authorized",
+                ctx: continued.ctx,
+                source: continued.source,
+                ...(options.includeVerifiedCredential === true && "keyHash" in continued.ctx
+                  ? {
+                      credential: {
+                        kind: "api_key" as const,
+                        credentialId: continued.ctx.apiKeyId,
+                        userId: continued.ctx.userId,
+                        rateLimit: continued.ctx.apiKeyRateLimit,
+                        expiresAt: continued.ctx.apiKeyExpiresAt,
+                      },
+                    }
+                  : {}),
+              };
         }
         if (continued?.kind === "suspended") {
           trace.authoritative = "suspended";
@@ -1175,7 +1198,7 @@ export async function resolveInferenceAuthContext(
         kind: "authorized",
         ctx,
         source: "origin",
-        ...(deferStrongCredentialCheck
+        ...(deferStrongCredentialCheck || options.includeVerifiedCredential === true
           ? {
               credential: {
                 kind: "api_key" as const,
@@ -1194,7 +1217,7 @@ export async function resolveInferenceAuthContext(
         kind: "authorized",
         ctx,
         source: "origin",
-        ...(deferStrongCredentialCheck
+        ...(deferStrongCredentialCheck || options.includeVerifiedCredential === true
           ? {
               credential: {
                 kind: "api_key" as const,
@@ -1238,7 +1261,7 @@ export async function resolveInferenceAuthContext(
       kind: "authorized",
       ctx,
       source: "origin",
-      ...(deferStrongCredentialCheck
+      ...(deferStrongCredentialCheck || options.includeVerifiedCredential === true
         ? {
             credential: {
               kind: "api_key" as const,

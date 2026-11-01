@@ -16,6 +16,7 @@ import type {
 } from "@elizaos/cloud-shared/lib/services/inference-admission-recovery";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { SpeechRevocationRegistry } from "./speech-revocation-registry";
 
 interface ActiveLeaseTiming {
   estimatedCostUsd: number;
@@ -649,6 +650,9 @@ interface LeaseStorageMutation {
 export class InferenceAdmissionGate {
   private readonly state: DurableObjectState;
   private readonly env: AppEnv["Bindings"];
+  private readonly speechSubscriptions = new SpeechRevocationRegistry(
+    (credential) => this.credentialDenial(credential),
+  );
   private ledger: GateLedger | undefined;
   private rateLimitWindows: RateLimitWindows | undefined;
   private operationQueue: Promise<void> = Promise.resolve();
@@ -1718,6 +1722,12 @@ export class InferenceAdmissionGate {
       revocationStorageKey(REVOKED_API_KEY_PREFIX, request.credentialId),
       true,
     );
+    this.speechSubscriptions.revoke(
+      (identity) =>
+        identity.organizationId === request.organizationId &&
+        identity.credential.kind === "api_key" &&
+        identity.credential.credentialId === request.credentialId,
+    );
     return Response.json({ committed: true });
   }
 
@@ -1735,6 +1745,12 @@ export class InferenceAdmissionGate {
     const key = subjectRevocationStorageKey(request.userId, request.reason);
     if (request.active) await this.state.storage.delete(key);
     else await this.state.storage.put(key, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) =>
+          identity.organizationId === request.organizationId &&
+          identity.credential.userId === request.userId,
+      );
     return Response.json({ committed: true });
   }
 
@@ -1752,6 +1768,13 @@ export class InferenceAdmissionGate {
     const key = revocationStorageKey(SESSION_CUTOFF_PREFIX, request.userId);
     const previous = (await this.state.storage.get<number>(key)) ?? 0;
     await this.state.storage.put(key, Math.max(previous, request.issuedAt));
+    this.speechSubscriptions.revoke(
+      (identity) =>
+        identity.organizationId === request.organizationId &&
+        identity.credential.kind === "steward_session" &&
+        identity.credential.userId === request.userId &&
+        identity.credential.issuedAt <= request.issuedAt,
+    );
     return Response.json({ committed: true });
   }
 
@@ -1769,6 +1792,14 @@ export class InferenceAdmissionGate {
     const key = sessionBindingStorageKey(request.userId, request.stewardUserId);
     if (request.active) await this.state.storage.delete(key);
     else await this.state.storage.put(key, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) =>
+          identity.organizationId === request.organizationId &&
+          identity.credential.kind === "steward_session" &&
+          identity.credential.userId === request.userId &&
+          identity.credential.stewardUserId === request.stewardUserId,
+      );
     return Response.json({ committed: true });
   }
 
@@ -1784,6 +1815,10 @@ export class InferenceAdmissionGate {
     if (request.active)
       await this.state.storage.delete(ORGANIZATION_DISABLED_KEY);
     else await this.state.storage.put(ORGANIZATION_DISABLED_KEY, true);
+    if (!request.active)
+      this.speechSubscriptions.revoke(
+        (identity) => identity.organizationId === request.organizationId,
+      );
     return Response.json({ committed: true });
   }
 
@@ -1794,6 +1829,16 @@ export class InferenceAdmissionGate {
 
   async fetch(request: Request): Promise<Response> {
     const handlerStartedAt = performance.now();
+    if (
+      new URL(request.url).pathname === "/speech/subscribe" &&
+      request.headers.get("Upgrade")?.toLowerCase() === "websocket"
+    ) {
+      if (this.env.VOICE_SPEECH_RELAY_ENABLED !== "true")
+        return new Response("Not found", { status: 404 });
+      return this.serializeRevocation(() =>
+        this.speechSubscriptions.subscribe(request),
+      );
+    }
     if (request.method !== "POST") {
       return new Response("Method not allowed", { status: 405 });
     }

@@ -17,6 +17,8 @@ import { userModerationStatus } from "../../db/schemas/moderation-violations";
 import { organizations } from "../../db/schemas/organizations";
 import { users } from "../../db/schemas/users";
 import { AuthenticationError, ForbiddenError } from "../api/errors";
+import { mintStewardTokenFromClaims } from "../auth/steward-client";
+import { runWithCloudBindings } from "../runtime/cloud-bindings";
 import { requireInferenceApiKeyWithOrg } from "./inference-api-key-auth";
 import { type InferenceAuthTelemetry, resolveInferenceAuthContext } from "./inference-auth-context";
 
@@ -303,5 +305,167 @@ describe("mobile credentials on the Worker inference boundary", () => {
       executionCtx: { waitUntil() {} },
     });
     expect(result).toEqual({ kind: "slow_path", reason: "non_api_key" });
+  });
+});
+
+describe("verified bootstrap credential metadata", () => {
+  const bindings = {
+    INFERENCE_AUTH_CACHE_ENABLED: "false",
+    INFERENCE_STRONG_REVOCATION_ENABLED: "false",
+    STEWARD_SESSION_SECRET: "synthetic-bootstrap-secret-".repeat(3),
+  };
+  function request(token: string) {
+    return new Request("https://api.eliza.app/api/v1/voice/speech/session", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+  }
+  async function resolve(token: string, includeVerifiedCredential = true) {
+    return await runWithCloudBindings(bindings, () =>
+      resolveInferenceAuthContext(request(token), { includeVerifiedCredential }),
+    );
+  }
+  async function rejectAtStrongBoundary(token: string, reason: string) {
+    const checks: Record<string, unknown>[] = [];
+    try {
+      return await runWithCloudBindings(
+        {
+          ...bindings,
+          INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+          INFERENCE_ADMISSION_GATES: {
+            getByName(organizationId: string) {
+              expect(organizationId).toBe(ORG);
+              return {
+                async fetch(req: Request) {
+                  expect(new URL(req.url).pathname).toBe("/credential/check");
+                  checks.push((await req.json()) as Record<string, unknown>);
+                  return Response.json({ allowed: false, reason }, { status: 403 });
+                },
+              };
+            },
+          },
+        },
+        () => resolveInferenceAuthContext(request(token), { includeVerifiedCredential: true }),
+      );
+    } finally {
+      expect(checks).toHaveLength(1);
+      expect(JSON.stringify(checks)).not.toContain(token);
+    }
+  }
+  test("API-key metadata requires ordinary authorization and does not enable caching", async () => {
+    const key = await seedKey({ userId: USER, organizationId: ORG });
+    const ordinary = await resolve(key, false);
+    expect(ordinary.kind).toBe("authorized");
+    expect("credential" in ordinary).toBe(false);
+    let trace: InferenceAuthTelemetry | undefined;
+    const included = await runWithCloudBindings(bindings, () =>
+      resolveInferenceAuthContext(request(key), {
+        includeVerifiedCredential: true,
+        onTelemetry(value) {
+          trace = value;
+        },
+      }),
+    );
+    expect(included.kind).toBe("authorized");
+    if (included.kind !== "authorized") throw Error("Expected verified API key");
+    expect(included.credential).toEqual({
+      kind: "api_key",
+      credentialId: included.ctx.apiKeyId,
+      userId: USER,
+      rateLimit: 1000,
+      expiresAt: null,
+    });
+    expect(JSON.stringify(included.credential)).not.toContain(key);
+    expect(trace?.cacheRead).toBe("not_run");
+    expect(trace?.cacheWrite).toBe("not_run");
+    expect(await rejectAtStrongBoundary(key, "credential_revoked")).toMatchObject({
+      kind: "rejected",
+      status: 401,
+    });
+    for (const values of [
+      { userId: USER, organizationId: ORG, isActive: false },
+      { userId: USER, organizationId: ORG, deleted: true },
+      { userId: USER, organizationId: ORG, expired: true },
+      { userId: INACTIVE_USER, organizationId: ORG },
+      { userId: INACTIVE_ORG_USER, organizationId: INACTIVE_ORG },
+    ]) {
+      await expect(resolve(await seedKey(values))).rejects.toBeInstanceOf(Error);
+    }
+  });
+  test("signed session metadata uses verified subject and issue time while revoked standing is denied", async () => {
+    const subject = "synthetic-bootstrap-steward";
+    await getPgliteClientForTests().query("UPDATE users SET steward_user_id=$1 WHERE id=$2", [
+      subject,
+      USER,
+    ]);
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const signed = await mintStewardTokenFromClaims(bindings, {
+      userId: subject,
+      issuedAt,
+      expiration: issuedAt + 600,
+    });
+    if (!signed) throw Error("Synthetic session signer unavailable");
+    const ordinary = await resolve(signed.token, false);
+    expect(ordinary.kind).toBe("authorized");
+    expect("credential" in ordinary).toBe(false);
+    const included = await resolve(signed.token);
+    expect(included.kind).toBe("authorized");
+    if (included.kind !== "authorized") throw Error("Expected verified session");
+    expect(included.credential).toEqual({
+      kind: "steward_session",
+      userId: USER,
+      stewardUserId: subject,
+      issuedAt,
+    });
+    expect(JSON.stringify(included.credential)).not.toContain(signed.token);
+    await expect(rejectAtStrongBoundary(signed.token, "session_revoked")).rejects.toBeInstanceOf(
+      Error,
+    );
+    const parts = signed.token.split(".");
+    parts[2] = `${parts[2].startsWith("A") ? "B" : "A"}${parts[2].slice(1)}`;
+    expect((await resolve(parts.join("."))).kind).toBe("rejected");
+    await getPgliteClientForTests().query("UPDATE users SET is_active=false WHERE id=$1", [USER]);
+    try {
+      await expect(resolve(signed.token)).rejects.toBeInstanceOf(Error);
+    } finally {
+      await getPgliteClientForTests().query("UPDATE users SET is_active=true WHERE id=$1", [USER]);
+    }
+  });
+  test("route bootstrap returns verified API and session metadata without a Worker context", async () => {
+    const { requireGenerativeRouteCaller } = await import(
+      "../../../../api/src/lib/generative-route-auth"
+    );
+    const key = await seedKey({ userId: USER, organizationId: ORG });
+    const values = new Map<string, unknown>();
+    const c = {
+      req: { raw: request(key) },
+      get: (name: string) => values.get(name),
+      set: (name: string, value: unknown) => values.set(name, value),
+    } as Parameters<typeof requireGenerativeRouteCaller>[0];
+    const caller = await runWithCloudBindings(bindings, () =>
+      requireGenerativeRouteCaller(c, { includeVerifiedCredential: true }),
+    );
+    expect(caller.credential).toMatchObject({ kind: "api_key", userId: USER });
+    expect(caller.user.organization_id).toBe(ORG);
+    expect(JSON.stringify(caller)).not.toContain(key);
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const signed = await mintStewardTokenFromClaims(bindings, {
+      userId: "synthetic-bootstrap-steward",
+      issuedAt,
+      expiration: issuedAt + 600,
+    });
+    if (!signed) throw Error("Synthetic session signer unavailable");
+    c.req.raw = request(signed.token);
+    const sessionCaller = await runWithCloudBindings(bindings, () =>
+      requireGenerativeRouteCaller(c, { includeVerifiedCredential: true }),
+    );
+    expect(sessionCaller.credential).toEqual({
+      kind: "steward_session",
+      userId: USER,
+      stewardUserId: "synthetic-bootstrap-steward",
+      issuedAt,
+    });
+    expect(sessionCaller.apiKeyId).toBeNull();
+    expect(JSON.stringify(sessionCaller)).not.toContain(signed.token);
   });
 });
