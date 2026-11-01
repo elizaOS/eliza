@@ -704,6 +704,13 @@ export interface ViewDeclaration {
 	 * frontend `view:interact` WebSocket round-trip. Runtime context keeps
 	 * service-backed handlers scoped to the agent that owns the request.
 	 */
+	/** Owner policy before any agent capability delivery (including frontend).
+	 * Runtime-only callback; existing route/role/manifest gates still apply. */
+	beforeAgentInteract?: (
+		capability: string,
+		params: Record<string, unknown> | undefined,
+		context: { runtime: IAgentRuntime },
+	) => void;
 	serverInteract?: (
 		capability: string,
 		params?: Record<string, unknown>,

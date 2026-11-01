@@ -109,7 +109,10 @@ const defaultCopy = {
 
 /** The owner comes only from trusted host composition, never a website message.
  * Changing or retiring it clears all in-memory acknowledgements before any await.
- * `unscanned: false` draws no bar when the lists are unavailable; a lookalike still warns. */
+ * `unscanned: false` draws no bar when the lists are unavailable; a lookalike still warns.
+ * `unscannedWhileLoading: false` draws no unscanned bar until the first list refresh has
+ * finished (no protection record is saved yet): a first start whose lists are still
+ * downloading shows nothing, and a refresh that ended without lists shows the bar. */
 export function createProtectionAdvisory(
   api,
   {
@@ -117,11 +120,13 @@ export function createProtectionAdvisory(
     copy = {},
     warningPage = "warning.html",
     unscanned = true,
+    unscannedWhileLoading = true,
   } = {},
 ) {
   const labels = { ...defaultCopy, ...copy };
   if (
     typeof unscanned !== "boolean" ||
+    typeof unscannedWhileLoading !== "boolean" ||
     Object.keys(copy).some((key) => !(key in defaultCopy)) ||
     Object.values(labels).some(
       (value) =>
@@ -171,6 +176,8 @@ export function createProtectionAdvisory(
     }
     // "current" means the threat rules are loaded. Their age does not matter.
     const current = protection?.status === "current";
+    // No saved record: the first refresh has not finished, so the lists may still be downloading.
+    const loading = !protection;
     const similar = detectDomainLookalike(url.href, referenceDomains);
     const evidence = similar
       ? `lookalike:${similar.suggested}`
@@ -188,7 +195,7 @@ export function createProtectionAdvisory(
     if (revision !== epoch) return again();
     const nonce = crypto.randomUUID();
     const state =
-      !similar && (current || !unscanned)
+      !similar && (current || !unscanned || (loading && !unscannedWhileLoading))
         ? null
         : {
             nonce,

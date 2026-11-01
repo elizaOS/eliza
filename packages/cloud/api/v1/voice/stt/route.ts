@@ -46,6 +46,10 @@ import { Hono } from "hono";
 
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import {
+  appendServerTiming,
+  type ServerTimingMetric,
+} from "@elizaos/cloud-shared/lib/observability/http-telemetry";
+import {
   type BillingContext,
   billFlatUsage,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
@@ -472,9 +476,17 @@ async function readRequestWithMultipartLimit(
  * Includes 20% platform markup on all STT costs.
  *
  * @param request - Form data with audio file and optional languageCode.
- * @returns Transcript and processing duration.
+ * @returns Transcript and processing duration, with `upload`, `auth`,
+ * `admission` and `transcription` Server-Timing entries for the steps reached.
  */
 async function __hono_POST(c: AppContext) {
+  const timings: ServerTimingMetric[] = [];
+  const response = await transcribeRequest(c, timings);
+  appendServerTiming(response.headers, timings);
+  return response;
+}
+
+async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
   let reservation: CreditReservation | undefined;
   let settleUnknown: (() => Promise<unknown>) | undefined;
   let markProviderDispatched: (() => Promise<void>) | undefined;
@@ -501,10 +513,15 @@ async function __hono_POST(c: AppContext) {
       );
     }
 
+    const uploadStartedAt = performance.now();
     const sizeCheckedRequest = await readRequestWithMultipartLimit(
       request,
       multipartBodyLimit,
     );
+    timings.push({
+      name: "upload",
+      durationMs: performance.now() - uploadStartedAt,
+    });
     if (sizeCheckedRequest instanceof Response) {
       // Intentional transport-limit exception: reject and cancel oversized
       // multipart bytes before any authentication cache, database, billing,
@@ -513,12 +530,18 @@ async function __hono_POST(c: AppContext) {
     }
     request = sizeCheckedRequest;
 
+    const authStartedAt = performance.now();
     const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
         awaitWarmingMs: 1500,
         deferStrongCredentialCheck: true,
+      }).finally(() => {
+        timings.push({
+          name: "auth",
+          durationMs: performance.now() - authStartedAt,
+        });
       });
     await using credentialGuard = deferredCredentialAdmissionGuard({
       organizationId: () => user.organization_id,
@@ -662,6 +685,7 @@ async function __hono_POST(c: AppContext) {
     ): Promise<
       Response | Awaited<ReturnType<typeof admitFlatGenerativeOperation>>
     > => {
+      const admissionStartedAt = performance.now();
       try {
         return await admitFlatGenerativeOperation({
           c,
@@ -683,6 +707,11 @@ async function __hono_POST(c: AppContext) {
           );
         }
         throw error;
+      } finally {
+        timings.push({
+          name: "admission",
+          durationMs: performance.now() - admissionStartedAt,
+        });
       }
     };
 
@@ -790,7 +819,7 @@ async function __hono_POST(c: AppContext) {
         });
       };
 
-      const deepgramStart = Date.now();
+      const deepgramStart = performance.now();
       const deepgramUrl = new URL(DEEPGRAM_PRERECORDED_URL);
       deepgramUrl.searchParams.set("model", DEEPGRAM_PRERECORDED_MODEL);
       deepgramUrl.searchParams.set("smart_format", "true");
@@ -863,7 +892,8 @@ async function __hono_POST(c: AppContext) {
         );
       }
 
-      const deepgramDuration = Date.now() - deepgramStart;
+      const deepgramDuration = Math.round(performance.now() - deepgramStart);
+      timings.push({ name: "transcription", durationMs: deepgramDuration });
       // Bill the audio Deepgram transcribed; the container header estimate
       // only sized the reservation.
       const billedDurationSeconds =
@@ -1027,7 +1057,7 @@ async function __hono_POST(c: AppContext) {
         });
       };
 
-      const cartesiaStart = Date.now();
+      const cartesiaStart = performance.now();
       const cartesiaForm = new FormData();
       cartesiaForm.append(
         "file",
@@ -1125,7 +1155,8 @@ async function __hono_POST(c: AppContext) {
         );
       }
 
-      const cartesiaDuration = Date.now() - cartesiaStart;
+      const cartesiaDuration = Math.round(performance.now() - cartesiaStart);
+      timings.push({ name: "transcription", durationMs: cartesiaDuration });
       const actualSttCost = calculateCartesiaSttCost({
         durationSeconds: transcription.durationSeconds,
         usdPerCredit: cartesiaUsdPerCredit,
@@ -1216,7 +1247,7 @@ async function __hono_POST(c: AppContext) {
     // -------------------------------------------------------------------------
     if (batchSttProvider === "cloudflare" || (!batchSttProvider && env.AI)) {
       await credentialGuard[Symbol.asyncDispose]();
-      const started = Date.now();
+      const started = performance.now();
       const payload = await transcribeCloudflareAudio(
         env.AI,
         new Uint8Array(buffer),
@@ -1232,10 +1263,12 @@ async function __hono_POST(c: AppContext) {
           { status: 502 },
         );
       }
+      const cloudflareDuration = Math.round(performance.now() - started);
+      timings.push({ name: "transcription", durationMs: cloudflareDuration });
       return Response.json(
         {
           transcript: payload.text.trim(),
-          duration_ms: Date.now() - started,
+          duration_ms: cloudflareDuration,
           ...(segments ? { segments } : {}),
           ...(words ? { words } : {}),
         },
@@ -1249,7 +1282,7 @@ async function __hono_POST(c: AppContext) {
     }
     const whisperBaseUrl = env.WHISPER_STT_URL?.trim();
     if (whisperBaseUrl && batchSttProvider !== "elevenlabs") {
-      const whisperStart = Date.now();
+      const whisperStart = performance.now();
       const form = new FormData();
       form.append(
         "file",
@@ -1329,7 +1362,8 @@ async function __hono_POST(c: AppContext) {
           { status: 502 },
         );
       }
-      const whisperDuration = Date.now() - whisperStart;
+      const whisperDuration = Math.round(performance.now() - whisperStart);
+      timings.push({ name: "transcription", durationMs: whisperDuration });
       // "timestamps absent" (plain-text response shape) and "zero timed spans"
       // are different states — log them distinguishably.
       logger.info("[Voice STT API] Whisper completed", {
@@ -1369,35 +1403,15 @@ async function __hono_POST(c: AppContext) {
       description: `STT transcription: ${estimatedDurationMinutes.toFixed(2)} min`,
     };
 
-    try {
-      const admission = await admitFlatGenerativeOperation({
-        c,
-        context: elevenLabsBillingContext,
-        apiKeyId,
-        cost: sttCost,
-        admissionSnapshot,
-        credential: credentialGuard.credentialForAdmission(),
-        atomicProviderBoundary: true,
-      });
-      reservation = admission.reservation;
-      settleUnknown = admission.settleUnknown;
-      markProviderDispatched = admission.markProviderDispatched;
-    } catch (error) {
-      if (error instanceof InsufficientCreditsError) {
-        return Response.json(
-          {
-            error: "Insufficient credits for speech-to-text",
-            required: error.required,
-          },
-          { status: 402 },
-        );
-      }
-      throw error;
-    }
+    const admission = await reserveOr402(elevenLabsBillingContext, sttCost);
+    if (admission instanceof Response) return admission;
+    reservation = admission.reservation;
+    settleUnknown = admission.settleUnknown;
+    markProviderDispatched = admission.markProviderDispatched;
 
     const elevenlabs = getElevenLabsService(env);
 
-    const startTime = Date.now();
+    const startTime = performance.now();
     const validatedFile = new File([buffer], audioFile.name, {
       type: finalMimeType,
     });
@@ -1409,7 +1423,8 @@ async function __hono_POST(c: AppContext) {
         audioFile: validatedFile,
         languageCode,
       });
-    const duration = Date.now() - startTime;
+    const duration = Math.round(performance.now() - startTime);
+    timings.push({ name: "transcription", durationMs: duration });
     // Bill the audio ElevenLabs transcribed; the container header estimate
     // only sized the reservation. Without a reported total, the last word end
     // can only raise the header estimate: audio after the last word is billed.

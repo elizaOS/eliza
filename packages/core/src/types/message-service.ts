@@ -67,7 +67,7 @@ export interface MessageProcessingOptions {
 	shouldRespondModel?: ShouldRespondModelType;
 	onStreamChunk?: StreamChunkCallback;
 	/** Transient progress from existing inference; never a persisted or final reply. */
-	onPlanningAcknowledgment?: (text: string) => void;
+	onPlanningAcknowledgment?: (text: string) => void | Promise<void>;
 	/**
 	 * Called at most once when Stage 1 commits the turn to a response; never
 	 * for IGNORE/STOP or gated turns. Presence only: it carries no content and

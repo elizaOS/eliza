@@ -27,6 +27,7 @@ import {
   getContextRoutingFromState,
   getDirectActionRoutingRules,
   getLocalizedExamplesProvider,
+  getRequestOperationIssuer,
   getStreamingContext,
   getTrajectoryContext,
   getUserMessageText,
@@ -941,6 +942,7 @@ export async function runV5MessageRuntimeStage1(
           await resolvePlannedReplyEgress({
             providers: args.state.data.providers,
             contexts: messageHandler.plan.contexts,
+
             runtime: args.runtime,
             message: args.message,
             reply,
@@ -1084,7 +1086,9 @@ export async function runV5MessageRuntimeStage1(
       !messageHandler.plan.deterministicToolCall &&
       earlyReplyText.trim().length > 0
     ) {
-      args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
+      await args.onPlanningAcknowledgment(
+        restorePiiInUserReplyText(earlyReplyText),
+      );
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning
@@ -1637,6 +1641,21 @@ export async function runV5MessageRuntimeStage1(
           : {}),
         plan: {
           contexts: messageHandler.plan.contexts,
+          ...(messageHandler.plan.notesRequestEffect !== undefined
+            ? { notesRequestEffect: messageHandler.plan.notesRequestEffect }
+            : {}),
+          ...(messageHandler.plan.notesRequestInterpretation !== undefined
+            ? {
+                notesRequestInterpretation:
+                  messageHandler.plan.notesRequestInterpretation,
+              }
+            : {}),
+          ...(messageHandler.plan.notesRequestHostRestriction !== undefined
+            ? {
+                notesRequestHostRestriction:
+                  messageHandler.plan.notesRequestHostRestriction,
+              }
+            : {}),
           ...(messageHandler.plan.replyEffectStatus !== undefined
             ? { replyEffectStatus: messageHandler.plan.replyEffectStatus }
             : {}),
@@ -2176,6 +2195,10 @@ export async function runV5MessageRuntimeStage1(
             };
           }
           return runPlannerLoop({
+            requestOperationIssuer: getRequestOperationIssuer(
+              args.runtime,
+              args.message,
+            ),
             ...(args.resolveTypedReadReply
               ? {
                   resolveTypedReadReply: args.resolveTypedReadReply,
@@ -2252,6 +2275,10 @@ export async function runV5MessageRuntimeStage1(
     ) =>
       timeInferenceSpan("message:planner", () =>
         runPlannerLoop({
+          requestOperationIssuer: getRequestOperationIssuer(
+            args.runtime,
+            args.message,
+          ),
           ...(args.resolveTypedReadReply
             ? {
                 resolveTypedReadReply: args.resolveTypedReadReply,
@@ -2836,7 +2863,13 @@ export async function runV5MessageRuntimeStage1(
         contexts: selectedContexts,
         runtime: args.runtime,
         message: args.message,
-        reply: plannerResult.finalMessage ?? "",
+        // A planner claim rejection has no deliverable draft. An empty reply
+        // enters the existing reply-only recovery and its grounding review.
+        reply:
+          plannerResult.replyRecoveryRequired === true &&
+          plannerResult.terminalFailure?.code === "REPLY_GROUNDING_FAILED"
+            ? ""
+            : (plannerResult.finalMessage ?? ""),
         actionResults: egressActionResults,
         evaluator: plannerResult.evaluator,
         recovery: capturePlannerReplyRecovery(
@@ -2849,6 +2882,12 @@ export async function runV5MessageRuntimeStage1(
         ...plannerResult,
         finalMessage: recoveredReply.text,
         replyRecoveryRequired: undefined,
+        // Successful checked prose repairs only this presentation failure.
+        // Tool/provider/pending outcomes and evaluator coverage stay intact.
+        ...(plannerResult.terminalFailure?.kind === "reply_generation_error" &&
+        plannerResult.terminalFailure.code === "REPLY_GROUNDING_FAILED"
+          ? { terminalFailure: undefined }
+          : {}),
       };
       replyRecovered = true;
     }

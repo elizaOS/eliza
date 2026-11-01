@@ -201,7 +201,8 @@ const GOOGLE_IDENTITY_SCOPES = new Set([
 // gmail.send, gmail.compose, https://mail.google.com/ or another product's
 // scope) can change, send or delete mail, so it is refused rather than used.
 // Checked on the raw list: an unrecognized entry also makes the grant wider.
-// Agent task reads (`googleForAccount`) are always held to this grant.
+// Agent task reads (`googleForAccount`) use this grant unless the host opts
+// in to the owner write grant below.
 const gmailReadOnlyGrant = (scopes) =>
   Array.isArray(scopes) &&
   scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
@@ -212,7 +213,9 @@ const gmailReadOnlyGrant = (scopes) =>
 // A host that opts in (`hostPolicy.gmailOwnerWrites: true`) lets the owner's
 // own mailbox also hold gmail.modify and gmail.send, for the owner's reviewed
 // mail changes (`mailboxWriterForAccount`). Nothing else widens it: compose,
-// full mail access or another product's scope is still refused.
+// full mail access or another product's scope is still refused. Agent task
+// reads may then run under this grant too: their port only sends GET reads, so
+// the wider grant gives a task no write path.
 const gmailOwnerWriteGrant = (scopes) =>
   Array.isArray(scopes) &&
   scopes.includes(GMAIL_READ_ONLY_SCOPE) &&
@@ -537,7 +540,7 @@ export function createCloudRoutes({
     pickMessage,
   } = hostPolicy;
   // Off unless the host opts in: the owner's mailbox may then hold
-  // gmail.modify and gmail.send. Agent task reads stay read-only.
+  // gmail.modify and gmail.send. Agent task reads stay GET-only reads.
   const ownerWrites = hostPolicy.gmailOwnerWrites === true;
   const ownerGmailGrant = ownerWrites
     ? gmailOwnerWriteGrant
@@ -2145,7 +2148,6 @@ export function createCloudRoutes({
   const googleReadPort = (
     { actorId, accountId, timeoutMs = 20000, retryDelaysMs = [250, 1000] },
     createPort,
-    grantAllowed = gmailReadOnlyGrant,
   ) => {
     if (typeof credentialGate !== "function" || typeof actorId !== "string")
       throw fail(message("taskAccountBindingUnavailable"), 503);
@@ -2235,7 +2237,7 @@ export function createCloudRoutes({
         );
       if (!googleGrantId(status.connectionId))
         throw googleReadFailure("unavailable");
-      if (!grantAllowed(status.grantedScopes))
+      if (!ownerGmailGrant(status.grantedScopes))
         throw googleReadFailure("insufficient_scope");
       const email = status.identity?.email;
       return {
@@ -2278,13 +2280,15 @@ export function createCloudRoutes({
       currentAccount: () => currentAccount(googleGeneration),
     });
   };
+  // Agent task reads accept the owner's grant: exactly read-only by default,
+  // or the owner write grant when the host opts in. The port only reads.
   handleCloudRoute.googleForAccount = (options) =>
     googleReadPort(options, createManagedGoogleReadPort);
   // A separate read-only inbox projection. Hosts must explicitly authorize its
   // renderer/native bridge; existing task routes do not gain inbox authority.
   // It reads the owner's grant (the owner write grant when the host opts in).
   handleCloudRoute.mailboxForAccount = (options) =>
-    googleReadPort(options, createMailboxReadPort, ownerGmailGrant);
+    googleReadPort(options, createMailboxReadPort);
   // The owner's reviewed mail changes (send, archive, trash, read state),
   // only for a host that opts in (`hostPolicy.gmailOwnerWrites`). Host-only:
   // it is never a renderer route and never reaches agent tasks. Each effect is

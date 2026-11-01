@@ -27,6 +27,7 @@ import { BUILTIN_RESPONSE_HANDLER_EVALUATORS } from "../../../plugin-assistant/s
 import { createLifeOpsTestRuntime } from "../../test/helpers/runtime.js";
 import { LifeOpsService } from "../lifeops/service.js";
 import {
+  clearRecentLifeSaveCache,
   readRecentLifeSaveCache,
   writeRecentLifeSaveCache,
 } from "./lib/lifeops-deferred-draft.js";
@@ -1053,3 +1054,72 @@ it.each([
     ).toBe(mode === "stale" ? "expired" : "pending");
   },
 );
+
+// Live tj-88d81a113942ad: "cancel the call mom reminder" listed two identical
+// "Call mom" lines because one of them was already cancelled.
+it("cancels the live reminder its title names, not a cancelled namesake", async () => {
+  const cancelled = await service.updateDefinition(
+    (await seed("Call mom")).definition.id,
+    { status: "archived" },
+  );
+  const live = await seed("Call mom");
+  try {
+    const result = await invoke(
+      {
+        action: "cancel",
+        title: "Call mom",
+        kind: "definition",
+        intent: "cancel the call mom reminder",
+      },
+      "cancel the call mom reminder",
+    );
+    expect(result.success, JSON.stringify(result)).toBe(true);
+    expect(
+      (await service.getDefinition(live.definition.id)).definition.status,
+    ).toBe("archived");
+    expect(
+      (await service.getDefinition(cancelled.definition.id)).definition,
+    ).toEqual(cancelled.definition);
+  } finally {
+    for (const entry of [cancelled, live])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
+// An edit follows the reminder this conversation just saved, but a cancel by
+// name still asks between live namesakes.
+it("asks which live namesake to cancel, even right after saving one", async () => {
+  const older = await seed("Call mom");
+  const recent = await seed("Call mom");
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: recent.definition.id,
+      title: recent.definition.title,
+      createdAt: Date.now(),
+    });
+    const result = await invoke(
+      {
+        action: "cancel",
+        title: "Call mom",
+        kind: "definition",
+        intent: "cancel the call mom reminder",
+      },
+      "cancel the call mom reminder",
+    );
+    expect(result.success).toBe(false);
+    expect(result.text).toContain("Multiple items match");
+    for (const entry of [older, recent]) {
+      expect(
+        (await service.getDefinition(entry.definition.id)).definition,
+      ).toEqual(entry.definition);
+    }
+  } finally {
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    for (const entry of [older, recent])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});

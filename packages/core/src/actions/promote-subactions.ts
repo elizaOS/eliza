@@ -517,6 +517,7 @@ export function promoteSubactionsToActions(
 			similes,
 			examples,
 			handler: buildVirtualHandler(parent, subKey),
+			restrictRequestOperation: parent.restrictRequestOperation,
 			validate: buildVirtualValidator(parent, subKey),
 			parameters: pinDiscriminatorForVirtual(
 				override.parameters ?? parent.parameters,

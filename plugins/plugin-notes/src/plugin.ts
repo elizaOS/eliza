@@ -1,3 +1,5 @@
+import { notesRequestEffectField } from "./request-effect.js";
+import { assertNotesAgentViewOperation } from "./request-effect-gate.js";
 /**
  * Runtime declaration for the managed Cloud Notes view: one agent-drivable
  * view backed by a durable per-agent service, delegating navigation and
@@ -124,6 +126,7 @@ export const notesPlugin: Plugin = {
       },
     }),
   ],
+  responseHandlerFieldEvaluators: [notesRequestEffectField],
   providers: [notesProvider, namedNotesProvider, namedNotesRoutingProvider],
   services: [NotesService],
   routes: notesRoutes,
@@ -152,6 +155,7 @@ export const notesPlugin: Plugin = {
       surface: NOTES_SURFACE,
       capabilities: NOTES_CAPABILITIES,
       relatedActions: ["NOTES"],
+      beforeAgentInteract: assertNotesAgentViewOperation,
       serverInteract,
       visibleInManager: true,
       desktopTabEnabled: true,
