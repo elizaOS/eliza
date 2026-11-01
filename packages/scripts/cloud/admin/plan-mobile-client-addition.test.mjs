@@ -757,7 +757,7 @@ const writable = {
 const makeProvisionPlan = (value) =>
   planRegistryProvisioning(readOnly, value, "elizaOS/eliza", "a".repeat(40));
 
-test("platform plan seals a fixed new UUID under the fully validated protected primary owner without writes", async () => {
+test("platform plan seals a fixed new UUID under validated protected creation authority without writes", async () => {
   const value = await platformFixture();
   const before = (await database.query("SELECT * FROM apps ORDER BY id")).rows;
   const plan = await makeProvisionPlan(value);
@@ -858,26 +858,97 @@ test("a provision retry validates the same row without metadata updates or key r
   );
 });
 
-test("platform owner derivation accepts absent optional owners but rejects mismatches and invalid values", async () => {
+async function configuredAuthorityFixture() {
   const value = await platformFixture();
-  const derived = await makeProvisionPlan({
-    ...value,
-    organizationId: "",
-    ownerUserId: "",
+  await database.query("INSERT INTO organizations VALUES ($1,true)", [
+    OTHER_ORG,
+  ]);
+  await database.query("INSERT INTO users VALUES ($1,$2,true,NULL,'admin')", [
+    OTHER_OWNER,
+    OTHER_ORG,
+  ]);
+  return { ...value, organizationId: OTHER_ORG, ownerUserId: OTHER_OWNER };
+}
+
+test("platform provisioning uses valid configured creation authority when primary ownership differs", async () => {
+  const value = await configuredAuthorityFixture();
+  const primary = (
+    await database.query("SELECT * FROM apps WHERE id=$1", [PRIMARY])
+  ).rows[0];
+  const plan = await makeProvisionPlan(value);
+  assert.equal(
+    plan.appBindingSha256,
+    appBindingDigest(value, {
+      appId: NEW_APP,
+      organizationId: OTHER_ORG,
+      creatorUserId: OTHER_OWNER,
+    }),
+  );
+  await provisionRegistry(writable, value, expectedProvision(plan));
+  const created = (
+    await database.query(
+      "SELECT organization_id,created_by_user_id FROM apps WHERE id=$1",
+      [NEW_APP],
+    )
+  ).rows[0];
+  assert.deepEqual(created, {
+    organization_id: OTHER_ORG,
+    created_by_user_id: OTHER_OWNER,
   });
-  const pinned = await makeProvisionPlan(value);
-  assert.equal(derived.appBindingSha256, pinned.appBindingSha256);
-  assert.equal(derived.creationSha256, pinned.creationSha256);
+  assert.deepEqual(
+    (await database.query("SELECT * FROM apps WHERE id=$1", [PRIMARY])).rows[0],
+    primary,
+  );
+});
+
+test("platform creation requires both configured UUIDs and validates their own authority", async () => {
+  const value = await configuredAuthorityFixture();
   for (const changed of [
-    { organizationId: OTHER_ORG },
-    { ownerUserId: OTHER_OWNER },
+    { organizationId: "" },
+    { ownerUserId: "" },
+    { organizationId: "invalid" },
     { ownerUserId: "invalid" },
   ]) {
     await assert.rejects(
       makeProvisionPlan({ ...value, ...changed }),
-      /protected_primary_owner_mismatch/,
+      /protected_creation_owner_required/,
     );
   }
+  for (const [sql, params] of [
+    ["UPDATE users SET is_active=false WHERE id=$1", [OTHER_OWNER]],
+    ["UPDATE users SET deleted_at=NOW() WHERE id=$1", [OTHER_OWNER]],
+    ["UPDATE users SET role='member' WHERE id=$1", [OTHER_OWNER]],
+    ["UPDATE users SET organization_id=$1 WHERE id=$2", [ORG, OTHER_OWNER]],
+    ["UPDATE organizations SET is_active=false WHERE id=$1", [OTHER_ORG]],
+    ["DELETE FROM users WHERE id=$1", [OTHER_OWNER]],
+    ["DELETE FROM organizations WHERE id=$1", [OTHER_ORG]],
+  ]) {
+    await database.query("BEGIN");
+    try {
+      await database.query(sql, params);
+      await assert.rejects(
+        makeProvisionPlan(value),
+        /protected_creation_authority_invalid/,
+      );
+    } finally {
+      await database.query("ROLLBACK");
+    }
+  }
+});
+
+test("a different valid configured creation authority invalidates the reviewed plan before writes", async () => {
+  const other = await configuredAuthorityFixture();
+  const value = { ...other, organizationId: ORG, ownerUserId: OWNER };
+  const plan = await makeProvisionPlan(value);
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(writable, other, expectedProvision(plan)),
+    /provision_plan_mismatch/,
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
 });
 
 test("platform planning rejects inactive, unprivileged, cross-org or malformed primary anchors", async () => {
@@ -974,32 +1045,22 @@ test("platform provisioning binds source bytes, non-targets, UUID, name, owner, 
   );
 });
 
-test("platform admission rechecks primary ownership under the repair lock and rolls back a changed binding", async () => {
-  const value = await platformFixture();
+test("platform admission rechecks configured creation authority under the repair lock", async () => {
+  const value = await configuredAuthorityFixture();
   const plan = await makeProvisionPlan(value);
-  await database.query("INSERT INTO users VALUES ($1,$2,true,NULL,'admin')", [
-    OTHER_OWNER,
-    ORG,
-  ]);
   const changedAtLock = {
     async query(sql, params) {
       const result = await writable.query(sql, params);
-      if (sql.includes("pg_advisory_xact_lock")) {
-        await database.query(
-          "UPDATE apps SET created_by_user_id=$1 WHERE id=$2",
-          [OTHER_OWNER, PRIMARY],
-        );
-      }
+      if (sql.includes("pg_advisory_xact_lock"))
+        await database.query("UPDATE users SET is_active=false WHERE id=$1", [
+          OTHER_OWNER,
+        ]);
       return result;
     },
   };
   statements = [];
   await assert.rejects(
-    provisionRegistry(
-      changedAtLock,
-      { ...value, ownerUserId: "" },
-      expectedProvision(plan),
-    ),
+    provisionRegistry(changedAtLock, value, expectedProvision(plan)),
   );
   assert.equal(
     statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
@@ -1007,11 +1068,11 @@ test("platform admission rechecks primary ownership under the repair lock and ro
   );
   assert.equal(
     (
-      await database.query("SELECT created_by_user_id FROM apps WHERE id=$1", [
-        PRIMARY,
+      await database.query("SELECT is_active FROM users WHERE id=$1", [
+        OTHER_OWNER,
       ])
-    ).rows[0].created_by_user_id,
-    OWNER,
+    ).rows[0].is_active,
+    true,
   );
   assert.equal(
     (
