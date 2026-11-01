@@ -422,11 +422,11 @@ export async function admitFlatGenerativeOperation(params: {
 }
 
 /**
- * Cache misses consume the already-coalesced authoritative continuation under
- * one bounded deadline. The continuation does not re-read the combined cache;
- * it returns the origin decision directly. The route invokes the real limiter
- * once after authorization. Wallet proof remains on the compatibility path
- * because replay-protected signatures cannot be cached.
+ * Worker callers are decided by one combined-cache read and never query
+ * Postgres: a cache miss is a retryable 503 while authoritative hydration runs
+ * under `waitUntil`. The route invokes the real limiter once after
+ * authorization. Wallet proof remains on the compatibility path because
+ * replay-protected signatures cannot be cached.
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
@@ -435,11 +435,6 @@ export async function requireGenerativeRouteCaller(
     request?: Request;
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
-    /**
-     * Override the default bounded wait for the one-shot origin continuation.
-     * Zero preserves an immediate retryable warming response.
-     */
-    awaitWarmingMs?: number;
     /**
      * This route has a mandatory paid admission before provider dispatch and
      * will thread the returned credential into that admission consumer.
@@ -480,7 +475,6 @@ export async function requireGenerativeRouteCaller(
       traceId: c.get("traceId") ?? c.get("requestId"),
       cacheOnly: Boolean(executionCtx),
       executionCtx,
-      inlineContinuationDeadlineMs: options.awaitWarmingMs,
       includeVerifiedCredential: options.includeVerifiedCredential === true,
       ...(options.deferStrongCredentialCheck === true
         ? { deferStrongCredentialCheck: true }
@@ -524,7 +518,12 @@ export async function requireGenerativeRouteCaller(
               resolution.ctx.admission,
               options.rateLimitEndpoint,
             ),
+            admissionSnapshot: resolution.ctx.admission,
             apiKeyId: resolution.ctx.apiKeyId,
+            apiKeyRateLimit:
+              "apiKeyRateLimit" in resolution.ctx
+                ? resolution.ctx.apiKeyRateLimit
+                : undefined,
             // Only an API-key context carries a key cap read with its epoch.
             ratePolicy:
               "keyHash" in resolution.ctx

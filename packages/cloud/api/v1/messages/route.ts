@@ -619,6 +619,7 @@ app.post("/", async (c) => {
   // and return a retryable response; wallet proofs stay on the non-Worker path
   // because their timestamped signatures are not reusable cache identities.
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
   let guardOrganizationId: string | undefined;
   try {
@@ -638,6 +639,7 @@ app.post("/", async (c) => {
           "api_error",
           "Authorization cache is warming. Retry shortly.",
           503,
+          { "Retry-After": "1" },
         );
       }
       if (resolution.kind === "suspended") {
@@ -671,6 +673,10 @@ app.post("/", async (c) => {
           ? { id: resolution.ctx.apiKeyId }
           : null;
         admissionSnapshot = resolution.ctx.admission;
+        apiKeyRateLimit =
+          "apiKeyRateLimit" in resolution.ctx
+            ? resolution.ctx.apiKeyRateLimit
+            : undefined;
         admissionCredential = resolution.credential;
       } else {
         if (executionCtx) {
@@ -728,7 +734,9 @@ app.post("/", async (c) => {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+          admissionSnapshot,
           apiKeyId: apiKey?.id,
+          apiKeyRateLimit,
           userId: user.id,
         },
       );

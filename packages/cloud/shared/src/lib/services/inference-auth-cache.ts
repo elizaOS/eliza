@@ -7,9 +7,10 @@
  * creating an import cycle with the resolver in `inference-auth-context.ts`.
  *
  * Inference auth-context entries collapse auth + org + moderation into a
- * single cache read for API-key or Steward-session inference. The feature is
- * default-off until a strongly consistent revocation boundary exists. Its
- * data-shape rules are:
+ * single cache read for API-key or Steward-session inference. The Worker hot
+ * path decides from this entry alone and never reads Postgres; entries are
+ * stale-while-revalidate and re-authorized off-response (see
+ * `inference-auth-context.ts`). Its data-shape rules are:
  *   1. A positive entry is ONLY ever written for a FULLY-authorized credential
  *      (active user + active org + not suspended + org present). Explicit
  *      negative entries contain only a bounded 401/403 decision, never identity
@@ -19,7 +20,6 @@
  */
 
 import { createHash } from "node:crypto";
-import { ElizaError } from "@elizaos/core";
 import {
   type CacheBackendKind,
   type CacheReadOutcome,
@@ -29,10 +29,7 @@ import {
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { logger } from "../utils/logger";
 import { isInferenceBudgetPolicy } from "./inference-funded-budget-admission";
-import {
-  isOrganizationPolicyStamp,
-  sameOrganizationPolicyStamp,
-} from "./organization-policy-stamp";
+import { isOrganizationPolicyStamp } from "./organization-policy-stamp";
 import type { OrganizationPolicyStamp } from "./organization-quota-policy";
 
 /** Current IAC schema version. Bump the key suffix in CacheKeys on a breaking change. */
@@ -200,6 +197,8 @@ export type InferenceAuthCacheReadOutcome =
       decision: "rejected" | "suspended";
       status: 401 | 403;
       reason?: InferenceAuthRejectionReason;
+      /** When the denial was decided; aged denials are re-authorized off-response. */
+      cachedAt: number;
       backend: CacheBackendKind;
     }
   | {
@@ -230,6 +229,15 @@ function deferMalformedEntryCleanup(
   } else {
     void cleanup;
   }
+}
+
+/**
+ * Start background work on a later macrotask so it never shares the
+ * response's turn: a request that schedules hydration or usage bookkeeping
+ * returns before any of that work issues its first database statement.
+ */
+export function startOffResponse<T>(task: () => Promise<T>): Promise<T> {
+  return new Promise<void>((resolve) => setTimeout(resolve, 0)).then(task);
 }
 
 /** Org credit-balance snapshot used ONLY as the optimistic-billing fast-path gate hint. */
@@ -378,49 +386,6 @@ export function isOrgBalanceHint(value: unknown): value is OrgBalanceHint {
   );
 }
 
-async function cachedPolicyIsCurrent(
-  orgId: string,
-  snapshot: InferenceAdmissionSnapshot | undefined,
-): Promise<boolean> {
-  if (!isInferenceAdmissionSnapshot(snapshot)) return false;
-  if (snapshot.fundedBudget?.enabled) {
-    const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
-    if (isFundedBudgetAdmissionEnabled()) return true;
-  }
-  const { isSnapshotAdmissionEnabled } = await import("./inference-billing-deferred");
-  if (isSnapshotAdmissionEnabled()) {
-    // Snapshot admission keeps the primary off the warm path. The organization
-    // Durable Object fences the embedded policy generation at lease and
-    // dispatch; here a newer published organization projection only retires
-    // this entry early so it re-authorizes instead of failing at the gate.
-    const { peekInferenceAdmissionSnapshot } = await import("./inference-admission-snapshot");
-    const published = await peekInferenceAdmissionSnapshot(orgId);
-    return (
-      published === null ||
-      BigInt(published.authority.generation) <= BigInt(snapshot.authority.generation)
-    );
-  }
-  try {
-    const { readOrganizationQuotaPolicy, requireOrganizationRateTier } = await import(
-      "./organization-quota-policy"
-    );
-    const policy = await readOrganizationQuotaPolicy(orgId);
-    const tier = requireOrganizationRateTier(policy);
-    return (
-      sameOrganizationPolicyStamp(snapshot.authority, policy.authority) &&
-      tier.completionsRpm === snapshot.rateLimits.completionsRpm &&
-      tier.embeddingsRpm === snapshot.rateLimits.embeddingsRpm &&
-      tier.standardRpm === snapshot.rateLimits.standardRpm &&
-      tier.strictRpm === snapshot.rateLimits.strictRpm
-    );
-  } catch (error) {
-    // error-policy:J4 unresolved authority invalidates only this cached positive decision; the owning auth hydrator reports availability.
-    if (error instanceof ElizaError && error.code === "ORGANIZATION_POLICY_UNAVAILABLE")
-      return false;
-    throw error;
-  }
-}
-
 /**
  * Read only a positive cached IAC for a presented key hash. Returns null for a
  * negative decision, miss, malformed entry, or unavailable cache.
@@ -453,6 +418,7 @@ export async function readInferenceAuthContextWithOutcome(
       decision: outcome.value.decision,
       status: outcome.value.status,
       reason: outcome.value.reason,
+      cachedAt: outcome.value.cachedAt,
       backend: outcome.backend,
     };
   }
@@ -461,8 +427,11 @@ export async function readInferenceAuthContextWithOutcome(
     deferMalformedEntryCleanup(key, executionCtx);
     return { kind: "invalid", backend: outcome.backend };
   }
-  if (!(await cachedPolicyIsCurrent(outcome.value.orgId, outcome.value.admission)))
-    return { kind: "invalid", backend: outcome.backend };
+  // No staleness probe here: the hot path never reads Postgres (or a second
+  // cache key) to second-guess a well-formed entry. Policy, standing and
+  // balance changes reach it through writer invalidation and the aged
+  // background refresh; the organization Durable Object still fences policy
+  // generations at admission.
   return { kind: "hit", ctx: outcome.value, backend: outcome.backend };
 }
 
@@ -522,7 +491,7 @@ export async function writeInferenceApiKeyAuthRejection(
       status,
       ...(reason ? { reason } : {}),
     } satisfies InferenceApiKeyAuthRejection,
-    CacheTTL.inference.authContext,
+    CacheTTL.inference.authContextRejection,
     { keyClass: "inference_auth" },
   );
 }
@@ -552,8 +521,6 @@ export async function readInferenceSessionAuthDecision(
     deferMalformedEntryCleanup(key, executionCtx);
     return null;
   }
-  if ("orgId" in cached && !(await cachedPolicyIsCurrent(cached.orgId, cached.admission)))
-    return null;
   return cached;
 }
 
@@ -592,7 +559,7 @@ export async function writeInferenceSessionAuthDecision(
   return await cache.setWithOutcome(
     CacheKeys.inference.sessionAuthContext(hashStewardUserId(decision.stewardUserId)),
     decision,
-    CacheTTL.inference.authContext,
+    CacheTTL.inference.authContextRejection,
     { keyClass: "inference_auth" },
   );
 }

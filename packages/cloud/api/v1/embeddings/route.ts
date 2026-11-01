@@ -118,6 +118,7 @@ app.post("/", async (c) => {
   let billingReservation: CreditReservation | undefined;
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
   let providerRequestId: string | undefined;
   let providerModel: string | undefined;
@@ -204,6 +205,7 @@ app.post("/", async (c) => {
           },
         },
         503,
+        { "Retry-After": "1" },
       );
     }
     if (resolution.kind === "suspended") {
@@ -251,6 +253,10 @@ app.post("/", async (c) => {
       guardOrganizationId = user.organization_id;
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
+      apiKeyRateLimit =
+        "apiKeyRateLimit" in resolution.ctx
+          ? resolution.ctx.apiKeyRateLimit
+          : undefined;
       admissionCredential = resolution.credential;
     } else {
       if (executionCtx) {
@@ -298,7 +304,9 @@ app.post("/", async (c) => {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "embeddings"),
+          admissionSnapshot,
           apiKeyId,
+          apiKeyRateLimit,
         })
       : Promise.resolve(null);
 

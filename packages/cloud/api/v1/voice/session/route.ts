@@ -86,7 +86,6 @@ app.post("/", async (c) => {
   // start never joins a stale token to a second auth/cache read.
   const caller = await requireGenerativeRouteCaller(c, {
     rateLimitEndpoint: "standard",
-    awaitWarmingMs: 1_500,
   });
   const auth = caller.user;
 
