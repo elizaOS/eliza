@@ -285,6 +285,17 @@ jobs:
           if-no-files-found: error
           retention-days: 3
 
+      # A desktop cache miss builds the native inference fork and then copies
+      # node_modules, which needs 4 GiB free; reclaim the runner's unused SDKs.
+      - name: Free disk space for desktop bundling
+        if: steps.affected.outputs.source == 'true'
+        run: |
+          set -euxo pipefail
+          df -h /
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/lib/android || true
+          docker system prune -af || true
+          df -h /
+
       - name: Build selected workspace closure
         id: notes_owning_build
         if: steps.affected.outputs.source == 'true'
