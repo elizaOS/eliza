@@ -12,6 +12,7 @@ import { and, eq } from "drizzle-orm";
 import type { DbTransaction } from "../../db/client";
 import { apiKeys } from "../../db/schemas/api-keys";
 import type { RouteParams } from "../api/hono-next-style-params";
+import { cache } from "../cache/client";
 import { getCloudAwareEnv } from "../runtime/cloud-bindings";
 import {
   consumeAuthorizedInferenceRateLimit,
@@ -908,7 +909,9 @@ export async function enforceOrgRateLimit(
     // The Worker hot path never reads Postgres: the cached policy and the
     // organization Durable Object decide, including after a refused
     // rate-policy proof.
-    if (options.cacheOnly)
+    // Hosts without any configured cache backend (local dev, e2e) keep the
+    // authoritative path; a cache miss there could never hydrate.
+    if (options.cacheOnly && cache.isBackendConfigured())
       return await admitFromCachedPolicy(organizationId, endpointType, options);
     return await withOrganizationPolicyAdmission(
       organizationId,
