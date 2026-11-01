@@ -120,12 +120,16 @@ export function compactPromptSegments(
 export function normalizePromptSegments(
 	segments: PromptSegment[],
 ): PromptSegment[] {
-	return compactPromptSegments(
-		segments.map((segment, index) => ({
-			...segment,
-			content: `${index === 0 ? "" : "\n\n"}${segment.content}`,
-		})),
-	);
+	// Compact first, then prefix by surviving index. Prefixing before
+	// compacting gave every non-first segment a separator even when the
+	// segments before it were empty and dropped, so an empty first segment
+	// left a leading separator on the prompt, an empty middle segment left a
+	// doubled separator, and an all-empty list left one bare separator
+	// segment behind.
+	return compactPromptSegments(segments).map((segment, index) => ({
+		...segment,
+		content: `${index === 0 ? "" : "\n\n"}${segment.content}`,
+	}));
 }
 
 /**
