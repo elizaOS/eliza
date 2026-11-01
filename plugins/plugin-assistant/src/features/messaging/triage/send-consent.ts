@@ -2,6 +2,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   ElizaError,
+  extractUserText,
   type IAgentRuntime,
   type Memory,
   stableStringify,
@@ -117,7 +118,7 @@ export async function pendingSendDraft(
     !message.id ||
     !message.entityId ||
     !message.roomId ||
-    !isAffirmative(unwrapUserMessageText(message).trim(), {}) ||
+    !isAffirmative(extractUserText(unwrapUserMessageText(message)).trim(), {}) ||
     message.entityId === runtime.agentId ||
     typeof message.createdAt !== "number" ||
     !Number.isFinite(message.createdAt)
@@ -195,7 +196,7 @@ export async function requireSendConsent(
         consumedBy: message.id,
       });
       if (!consumed) return "cancelled";
-      return isAffirmative(unwrapUserMessageText(message).trim(), options)
+      return isAffirmative(extractUserText(unwrapUserMessageText(message)).trim(), options)
         ? "confirmed"
         : "cancelled";
     }
