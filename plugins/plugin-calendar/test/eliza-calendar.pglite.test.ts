@@ -1398,6 +1398,48 @@ describe("built-in Eliza calendar (real PGlite)", { timeout: 30_000 }, () => {
     });
   });
 
+  it.each([
+    [
+      "Move my 3pm to 4",
+      "2026-08-09T15:00:00.000Z",
+      "2026-08-09T04:00:00",
+      "2026-08-09T16:00:00.000Z",
+    ],
+    [
+      "Move my 11am to 1",
+      "2026-08-09T11:00:00.000Z",
+      "2026-08-09T01:00:00",
+      "2026-08-09T13:00:00.000Z",
+    ],
+    [
+      "Move my 11pm to 1",
+      "2026-08-09T23:00:00.000Z",
+      "2026-08-09T13:00:00",
+      "2026-08-10T01:00:00.000Z",
+    ],
+  ])(
+    "moves %s to the bare hour nearest the event, not the model's other half of the day",
+    async (text, startAt, extractedStartAt, expectedStartAt) => {
+      await service.createCalendarEventMutation(INTERNAL_URL, {
+        ...originalEvent,
+        startAt,
+        endAt: new Date(Date.parse(startAt) + 15 * 60_000).toISOString(),
+        idempotencyKey: `calendar-bare-clock-move-${startAt}`,
+      });
+      const moved = await runUpdate(
+        text,
+        {},
+        { requiresInput: false, startAt: extractedStartAt, endAt: null },
+      );
+      expect(moved).toMatchObject({
+        startAt: expectedStartAt,
+        endAt: new Date(
+          Date.parse(expectedStartAt) + 15 * 60_000,
+        ).toISOString(),
+      });
+    },
+  );
+
   it("preserves elapsed duration when a pure move crosses a DST fold", async () => {
     const created = await service.createCalendarEventMutation(INTERNAL_URL, {
       title: "Overnight maintenance",

@@ -3107,9 +3107,46 @@ export function observedCalendarDayWindow(
  * compound clauses and conflicting source dates retain ordinary lookup/extraction.
  */
 const WHOLE_CLOCK_MOVE_QUERY = new RegExp(
-  `^(?:please\\s+)?(?:(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?(?:move|reschedule)\\s+(?:(?:my|the|this|that|our)\\s+)?(?<source>(?:${STATED_CLOCK_MENTION_SOURCE}))\\s+to\\s+(?:(?:${STATED_CLOCK_MENTION_SOURCE})|(?:[1-9]|1[0-2])(?::[0-5]\\d)?)\\s*[.!?]?$`,
+  `^(?:please\\s+)?(?:(?:can|could|would|will)\\s+you\\s+(?:please\\s+)?)?(?:move|reschedule)\\s+(?:(?:my|the|this|that|our)\\s+)?(?<source>(?:${STATED_CLOCK_MENTION_SOURCE}))\\s+to\\s+(?:(?:${STATED_CLOCK_MENTION_SOURCE})|(?<bare>(?:[1-9]|1[0-2])(?::[0-5]\\d)?))\\s*[.!?]?$`,
   "iu",
 );
+
+/**
+ * "Move my 3pm to 4" names no meridiem for the destination. Take the reading
+ * nearest the event's own start (4pm, not 4am; "11pm to 1" is 1am next day)
+ * instead of leaving the half of the day to the extractor. A tie keeps the
+ * extracted start.
+ * @returns the local civil start in `timeZone`, or undefined when not a bare move.
+ */
+export function bareClockMoveStart(
+  original: string,
+  event: Pick<LifeOpsCalendarEvent, "startAt">,
+  timeZone: string,
+): string | undefined {
+  const bare = WHOLE_CLOCK_MOVE_QUERY.exec(original.trim())?.groups?.bare;
+  if (!bare) return;
+  const [hourText, minuteText = "0"] = bare.split(":");
+  const hour = Number(hourText) % 12;
+  const minute = Number(minuteText);
+  const start = getZonedDateParts(new Date(event.startAt), timeZone);
+  const source = start.hour * 60 + start.minute;
+  const options = [-1, 0, 1].flatMap((day) =>
+    [hour, hour + 12].map((h) => ({
+      day,
+      hour: h,
+      distance: Math.abs(day * 1440 + h * 60 + minute - source),
+    })),
+  );
+  options.sort((a, b) => a.distance - b.distance);
+  const [best, next] = options;
+  if (!best || best.distance === next?.distance) return;
+  const date = addDaysToLocalDate(
+    { year: start.year, month: start.month, day: start.day },
+    best.day,
+  );
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${String(date.year).padStart(4, "0")}-${pad(date.month)}-${pad(date.day)}T${pad(best.hour)}:${pad(minute)}:00`;
+}
 export function isRedundantObservedClockQuery(args: {
   original: string;
   queries: readonly string[];
@@ -6635,6 +6672,11 @@ export function createCalendarActionRunner(
           }
           const updateTimeZone =
             extractedTimeZoneForUpdate ?? targetEvent?.timezone ?? undefined;
+          const bareMoveStart = bareClockMoveStart(
+            extractUserText(unwrapUserMessageText(message)),
+            targetEvent,
+            updateTimeZone ?? planningTimeZone,
+          );
           for (const field of ["description", "location"] as const) {
             if (
               Array.isArray(extractedForUpdate.clearFields) &&
@@ -6667,8 +6709,8 @@ export function createCalendarActionRunner(
               "location",
             ),
             ...resolveUpdateTimeRange({
-              extractedStart: extractedStartAt,
-              extractedEnd: extractedEndAt,
+              extractedStart: bareMoveStart ?? extractedStartAt,
+              extractedEnd: bareMoveStart ? undefined : extractedEndAt,
               target: targetEvent,
               timeZone: updateTimeZone ?? planningTimeZone,
             }),
