@@ -1,10 +1,22 @@
-/** Fixtures for the production admission readback; no Cloudflare calls. */
+/** The production admission readback against a fake Cloudflare account. */
 import { describe, expect, test } from "bun:test";
-import { createHash } from "node:crypto";
+import {
+  API,
+  DIAG,
+  digest,
+  GATE,
+  gate,
+  hex,
+  reader,
+  setText,
+  TARGET,
+  text,
+  type World,
+  world,
+} from "./production-admission-fixtures.ts";
 import {
   type CloudflareRead,
   effectiveVariables,
-  KNOWN_EXTERNAL_CONSUMERS,
   LIVE_PHASES,
   type LivePhase,
   listNamespaces,
@@ -21,207 +33,7 @@ import {
   verifyProductionAdmission,
 } from "./production-admission-readback.ts";
 
-const API = "eliza-cloud-api-prod";
-const TARGET = "eliza-cloud-admission-prod";
-const DIAG = KNOWN_EXTERNAL_CONSUMERS[0].script;
-const GATE = "InferenceAdmissionGate";
 const PHASES = Object.keys(LIVE_PHASES) as LivePhase[];
-
-type Binding = Record<string, unknown>;
-interface World {
-  namespaces: Record<string, unknown>[];
-  namespacePage?: (
-    page: number,
-    items: Record<string, unknown>[],
-  ) => Awaited<ReturnType<CloudflareRead>>;
-  scripts: Record<
-    string,
-    { version: string; bindings: Binding[]; classes?: string[] | null }
-  >;
-  scriptList?: () => Awaited<ReturnType<CloudflareRead>>;
-  objects: { id: string; hasStoredData: boolean }[];
-  objectPageSize: number;
-}
-
-const gate = (scriptName?: string): Binding => ({
-  name: "INFERENCE_ADMISSION_GATES",
-  type: "durable_object_namespace",
-  class_name: GATE,
-  namespace_id: NPROD,
-  ...(scriptName ? { script_name: scriptName } : {}),
-});
-const text = (name: string, value: string): Binding => ({
-  name,
-  type: "plain_text",
-  text: value,
-});
-const flags = () => [
-  text("ENVIRONMENT", "production"),
-  text("INFERENCE_STRONG_REVOCATION_ENABLED", "false"),
-  text("VOICE_SPEECH_RELAY_ENABLED", "true"),
-];
-const setText = (bindings: Binding[], name: string, value: string) => {
-  bindings[bindings.findIndex((binding) => binding.name === name)] = text(
-    name,
-    value,
-  );
-};
-const digest = (value: string) =>
-  createHash("sha256").update(value).digest("hex");
-const hex = (value: number, length: number) =>
-  value.toString(16).padStart(length, "0");
-
-function world(phase: LivePhase): World {
-  const live = LIVE_PHASES[phase];
-  const scripts: World["scripts"] = {
-    [API]: {
-      version: "api-v1",
-      classes: [GATE, "SpeechRelayCoordinator"],
-      bindings: [
-        gate(live.apiGate === "target" ? TARGET : undefined),
-        ...flags(),
-        text("ELIZA_DEPLOY_COMMIT", "a".repeat(40)),
-      ],
-    },
-    [DIAG]: {
-      version: "diag-v1",
-      bindings: [
-        {
-          name: "PRODUCTION",
-          type: "durable_object_namespace",
-          class_name: GATE,
-          namespace_id: NPROD,
-          script_name: API,
-        },
-      ],
-    },
-    // Staging binds its own namespace of the same class; it is not a consumer.
-    "eliza-cloud-admission-staging": {
-      version: "staging-v1",
-      bindings: [{ ...gate(), namespace_id: "f".repeat(32) }],
-    },
-  };
-  if (live.target !== "absent")
-    scripts[TARGET] = {
-      version: "target-v1",
-      classes: [GATE],
-      bindings: [
-        ...(live.target === "bound" ? [gate()] : []),
-        {
-          name: "INFERENCE_RECOVERY_SERVICE",
-          type: "service",
-          service: API,
-          entrypoint: "InferenceRecoveryService",
-        },
-        ...flags(),
-        text("ELIZA_DEPLOY_COMMIT", "b".repeat(40)),
-      ],
-    };
-  return {
-    namespaces: [
-      {
-        id: NPROD,
-        class: GATE,
-        script: live.owner === "api" ? API : TARGET,
-        use_sqlite: true,
-      },
-      ...Array.from({ length: 120 }, (_, index) => ({
-        id: hex(index, 32),
-        class: "OtherClass",
-        script: `worker-${index}`,
-        use_sqlite: true,
-      })),
-    ],
-    scripts,
-    objects: Array.from({ length: 30 }, (_, index) => ({
-      id: hex(index, 64),
-      hasStoredData: index % 3 !== 0,
-    })),
-    objectPageSize: 7,
-  };
-}
-
-function reader(state: World, calls: string[] = []): CloudflareRead {
-  return async (path) => {
-    calls.push(path);
-    const url = new URL(path, "https://cloudflare.invalid");
-    if (url.pathname === "/workers/durable_objects/namespaces") {
-      const page = Number(url.searchParams.get("page"));
-      const size = Number(url.searchParams.get("per_page"));
-      const items = state.namespaces.slice((page - 1) * size, page * size);
-      return (
-        state.namespacePage?.(page, items) ?? {
-          result: items,
-          result_info: {
-            page,
-            per_page: size,
-            count: items.length,
-            total_count: state.namespaces.length,
-          },
-        }
-      );
-    }
-    if (
-      url.pathname === `/workers/durable_objects/namespaces/${NPROD}/objects`
-    ) {
-      const start = Number(url.searchParams.get("cursor") ?? 0);
-      const items = state.objects.slice(start, start + state.objectPageSize);
-      const next = start + items.length;
-      return {
-        result: items,
-        result_info: {
-          count: items.length,
-          ...(next < state.objects.length ? { cursor: String(next) } : {}),
-        },
-      };
-    }
-    if (url.pathname === "/workers/scripts")
-      return (
-        state.scriptList?.() ?? {
-          result: Object.keys(state.scripts).map((id) => ({ id })),
-        }
-      );
-    const match = url.pathname.match(
-      /^\/workers\/scripts\/([^/]+)\/(deployments|settings|versions\/(.+))$/,
-    );
-    const worker = match && state.scripts[match[1]];
-    if (!match || !worker)
-      throw new Error(`Cloudflare readback failed (HTTP 404): ${path}`);
-    if (match[2] === "deployments")
-      return {
-        result: {
-          deployments: [
-            {
-              created_on: "2026-11-01T00:00:00Z",
-              versions: [{ version_id: worker.version, percentage: 100 }],
-            },
-          ],
-        },
-      };
-    if (match[2] === "settings")
-      return { result: { bindings: worker.bindings } };
-    return {
-      result:
-        match[3] === worker.version
-          ? {
-              id: worker.version,
-              resources: {
-                bindings: worker.bindings,
-                script:
-                  worker.classes === null
-                    ? {}
-                    : {
-                        named_handlers: (worker.classes ?? []).map((name) => ({
-                          name,
-                          handlers: ["class"],
-                        })),
-                      },
-              },
-            }
-          : undefined,
-    };
-  };
-}
 
 // Root's receipts as the readback parses them: the API's live values and the
 // version they read.
@@ -277,6 +89,36 @@ describe("namespace pagination fails closed", () => {
         "A second production admission namespace exists",
       );
     }
+  });
+
+  test("a listing ends only on a short page, so a low total cannot end it early", async () => {
+    const state = world("adopted");
+    state.namespaces.push(
+      ...Array.from({ length: 79 }, (_, index) => ({
+        id: hex(1_000 + index, 32),
+        class: "OtherClass",
+        script: `worker-${1_000 + index}`,
+        use_sqlite: true,
+      })),
+    );
+    // 200 namespaces fill two pages; the empty third page confirms the end.
+    const calls: string[] = [];
+    expect(await listNamespaces(reader(state, calls))).toHaveLength(200);
+    expect(calls).toHaveLength(3);
+    // A total that undercounts by a later page is refused, not trusted.
+    state.namespaces.push({ id: "e".repeat(32), class: GATE, script: TARGET });
+    state.namespacePage = (page, items) => ({
+      result: items,
+      result_info: {
+        page,
+        per_page: 100,
+        count: items.length,
+        total_count: 200,
+      },
+    });
+    await expect(listNamespaces(reader(state))).rejects.toThrow(
+      "namespace pages do not add up to their total",
+    );
   });
 
   test("a namespace repeated on a later page is inconsistent", async () => {
@@ -405,12 +247,28 @@ describe("each phase requires its owner, bindings and consumers", () => {
       const rebound = world(phase);
       rebound.scripts[DIAG].bindings[0].script_name = TARGET;
       await expect(verify(rebound, phase)).rejects.toThrow(DIAG);
+      // A release still refuses a present consumer whose record changed.
+      await expect(
+        verify(rebound, phase, { effective: undefined }),
+      ).rejects.toThrow(DIAG);
       const deleted = world(phase);
       delete deleted.scripts[DIAG];
-      await expect(
-        verify(deleted, phase, { effective: undefined }),
-      ).rejects.toThrow(`The script list does not include ${DIAG}`);
+      await expect(verify(deleted, phase)).rejects.toThrow(
+        `The script list does not include ${DIAG}`,
+      );
     });
+
+  test("a release does not depend on the diagnostic consumer existing", async () => {
+    for (const phase of PHASES) {
+      const deleted = world(phase);
+      delete deleted.scripts[DIAG];
+      const receipt = await verify(deleted, phase, { effective: undefined });
+      expect(receipt.consumers).toEqual([]);
+      expect(receipt.owner).toBe(
+        LIVE_PHASES[phase].owner === "api" ? API : TARGET,
+      );
+    }
+  });
 
   test("the API binding must name the phase's serving script", async () => {
     const state = world("source-commit");
@@ -508,6 +366,30 @@ describe("each phase requires its owner, bindings and consumers", () => {
     await expect(verify(state, "target-pending")).rejects.toThrow(
       "InferenceRecoveryService",
     );
+  });
+
+  test("a binding in a gradual rollout or only in the latest upload stops the phase", async () => {
+    const rogue = {
+      name: "ROGUE",
+      type: "durable_object_namespace",
+      namespace_id: NPROD,
+    };
+    const rolling = world("source-commit");
+    rolling.scripts.rogue = {
+      version: "rogue-v1",
+      bindings: [],
+      split: { version: "rogue-v2", percentage: 10, bindings: [rogue] },
+    };
+    const uploaded = world("source-commit");
+    uploaded.scripts.rogue = {
+      version: "rogue-v1",
+      bindings: [],
+      settings: [rogue],
+    };
+    for (const state of [rolling, uploaded])
+      await expect(verify(state, "source-commit")).rejects.toThrow(
+        /^Namespace bindings differ from source-commit: .*, rogue\/ROGUE$/,
+      );
   });
 
   test("an untracked binding of the namespace stops the phase", async () => {
@@ -842,17 +724,34 @@ describe("object sample readback", () => {
       storedDataBefore: 2,
       gainedStoredData: 0,
       lostStoredData: 0,
+      missingWithoutStoredData: 0,
       listed: 39,
       pages: 6,
     });
   });
 
-  test("a missing sampled object stops the phase", async () => {
+  test("a missing sampled object with stored data stops the phase", async () => {
     const state = world("adopted");
     const sample = sampleOf(state, [1, 2]);
     sample.set(hex(9_999, 64), true);
     await expect(verifyObjectSample(reader(state), sample)).rejects.toThrow(
-      "1 sampled objects are missing from the namespace",
+      "1 sampled objects with stored data are missing from the namespace",
+    );
+  });
+
+  test("sampled objects without stored data may leave enumeration, but not most of them", async () => {
+    const state = world("adopted");
+    // Indexes 0, 3 and 6 have no stored data; 1 and 2 have.
+    const sample = sampleOf(state, [0, 1, 2, 3, 6]);
+    state.objects.splice(6, 1);
+    expect(await verifyObjectSample(reader(state), sample)).toMatchObject({
+      sampled: 5,
+      storedDataBefore: 2,
+      missingWithoutStoredData: 1,
+    });
+    state.objects.splice(3, 1);
+    await expect(verifyObjectSample(reader(state), sample)).rejects.toThrow(
+      "2 of 3 sampled objects without stored data are missing from the namespace",
     );
   });
 
