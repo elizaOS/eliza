@@ -10,6 +10,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { apps, appUsers } from "./apps";
+import { users } from "./users";
 
 export const appBillingRegistrations = pgTable(
   "app_billing_registrations",
@@ -18,7 +19,9 @@ export const appBillingRegistrations = pgTable(
     app_id: uuid("app_id").notNull(),
     owner_organization_id: uuid("owner_organization_id").notNull(),
     infrastructure_payer_organization_id: uuid("infrastructure_payer_organization_id").notNull(),
-    registered_by_user_id: uuid("registered_by_user_id").notNull(),
+    registered_by_user_id: uuid("registered_by_user_id").references(() => users.id, {
+      onDelete: "set null",
+    }),
     provider_environment: text("provider_environment").$type<"test" | "live">().notNull(),
     merchant_state: text("merchant_state")
       .$type<"unconfigured">()
@@ -29,8 +32,8 @@ export const appBillingRegistrations = pgTable(
   },
   (table) => ({
     app_owner_fk: foreignKey({
-      columns: [table.app_id, table.owner_organization_id, table.registered_by_user_id],
-      foreignColumns: [apps.id, apps.organization_id, apps.created_by_user_id],
+      columns: [table.app_id, table.owner_organization_id],
+      foreignColumns: [apps.id, apps.organization_id],
       name: "app_billing_registrations_owner_fk",
     }).onDelete("cascade"),
     app_environment_unique: uniqueIndex("app_billing_registrations_app_environment_idx").on(

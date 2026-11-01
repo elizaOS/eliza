@@ -40,8 +40,12 @@ const PRODUCTION_KEY = Object.freeze({
   key_id: "3380204578043523366",
   key: "ZtYTpDp9pOP34tJYPmEX9eIu0i4pOJ8VJLgGL9yEqBs=",
 });
+const STAGING_KEY = Object.freeze({
+  key_id: "3380204578043523366",
+  key: "kpWdDmFz4bR6DYsNOze7+eb8eLlBAErj8bDEBEUcEik=",
+});
 
-class RegistryError extends Error {
+export class RegistryError extends Error {
   readonly invariant: string;
   constructor(invariant: string) {
     super(invariant);
@@ -67,6 +71,7 @@ export interface AdditionInput {
   authoritySha256: string;
   displayName?: string;
   provisioningAuthority?: "configured" | "primary";
+  publisherOrganizationId?: string;
 }
 export type AdditionDatabase = RegistrationRepairClient;
 
@@ -74,7 +79,7 @@ export type AdditionDatabase = RegistrationRepairClient;
 export interface RegisteredAppBinding {
   appId: string;
   organizationId: string;
-  creatorUserId: string;
+  creatorUserId: string | null;
 }
 
 export function appBindingDigest(
@@ -83,18 +88,19 @@ export function appBindingDigest(
 ): string {
   return registryDigest(
     JSON.stringify({
-      version: 1,
+      version: 2,
       environment: input.environment,
       clientId: input.clientId,
       redirectUri: input.redirectUri,
       appId: binding.appId,
       organizationId: binding.organizationId,
-      creatorUserId: binding.creatorUserId,
     }),
   );
 }
 
-function targetFor(input: AdditionInput): MobileAppAuthRegistrationTarget {
+export function targetFor(
+  input: AdditionInput,
+): MobileAppAuthRegistrationTarget {
   if (input.environment !== "production" && input.environment !== "staging")
     fail("environment");
   if (input.clientId === MOBILE_APP_AUTH_CLIENT_ID)
@@ -134,7 +140,7 @@ function targetFor(input: AdditionInput): MobileAppAuthRegistrationTarget {
   };
 }
 
-async function validateDatabaseIdentity(
+export async function validateDatabaseIdentity(
   database: AdditionDatabase,
   input: AdditionInput,
 ): Promise<void> {
@@ -171,7 +177,7 @@ async function validateApp(
   }
 }
 
-/** Use operator/registry selection first; callback discovery remains owner-bound. */
+/** Use operator/registry selection first; callback discovery remains organization-bound. */
 export async function discoverRegisteredApp(
   database: AdditionDatabase,
   input: AdditionInput,
@@ -216,12 +222,8 @@ export async function discoverRegisteredApp(
   // to true. Only an operator/registry UUID selects a foreign owner's app;
   // matching callback and approval fields alone do not attest product ownership.
   if (!selectedAppId) {
-    if (!UUID.test(input.organizationId) || !UUID.test(input.ownerUserId))
-      fail("protected_owner");
-    if (
-      row.organization_id !== input.organizationId ||
-      row.created_by_user_id !== input.ownerUserId
-    )
+    if (!UUID.test(input.organizationId)) fail("protected_owner");
+    if (row.organization_id !== input.organizationId)
       fail("callback_owner_mismatch");
   }
   if (
@@ -229,8 +231,9 @@ export async function discoverRegisteredApp(
     !UUID.test(row.id) ||
     typeof row.organization_id !== "string" ||
     !UUID.test(row.organization_id) ||
-    typeof row.created_by_user_id !== "string" ||
-    !UUID.test(row.created_by_user_id)
+    (row.created_by_user_id !== null &&
+      (typeof row.created_by_user_id !== "string" ||
+        !UUID.test(row.created_by_user_id)))
   )
     fail("callback_app_id");
   await validateApp(database, row.id, target);
@@ -296,9 +299,11 @@ export function buildRegistryAddition(input: AdditionInput, appId: string) {
 }
 
 export function trustedGithubKey(repository: string, environment: string) {
-  if (repository !== REPOSITORY || environment !== "production")
-    fail("trusted_github_key_unavailable");
-  return PRODUCTION_KEY;
+  if (repository === REPOSITORY) {
+    if (environment === "production") return PRODUCTION_KEY;
+    if (environment === "staging") return STAGING_KEY;
+  }
+  return fail("trusted_github_key_unavailable");
 }
 
 /** Export ciphertext to GitHub's key only. The private key never leaves GitHub. */
@@ -348,7 +353,7 @@ export interface ProvisioningExpectation {
   creationSha256: string;
 }
 
-function provisioningTarget(
+export function provisioningTarget(
   input: AdditionInput,
 ): MobileAppAuthRegistrationTarget {
   const target = targetFor(input);
@@ -385,7 +390,10 @@ function authorityMode(input: AdditionInput): "configured" | "primary" {
 }
 
 /** Authority selection is explicit; an invalid configured owner never falls back. */
-async function platformOwner(database: AdditionDatabase, input: AdditionInput) {
+export async function platformOwner(
+  database: AdditionDatabase,
+  input: AdditionInput,
+) {
   const mode = authorityMode(input);
   await validateDatabaseIdentity(database, input);
   await validateApp(
@@ -407,6 +415,11 @@ async function platformOwner(database: AdditionDatabase, input: AdditionInput) {
       !UUID.test(row.created_by_user_id)
     )
       fail("primary_owner");
+    await validateRegistrationAuthority(
+      database,
+      row.organization_id,
+      row.created_by_user_id,
+    );
     return {
       organizationId: row.organization_id,
       creatorUserId: row.created_by_user_id,
@@ -433,6 +446,7 @@ async function provisioningState(
   input: AdditionInput,
   allowExisting: boolean,
 ) {
+  if (authorityMode(input) === "primary") fail("use_publisher_operation");
   const target = provisioningTarget(input);
   if (!input.intendedAppId || !UUID.test(input.intendedAppId))
     fail("intended_app_id_required");
@@ -457,7 +471,6 @@ async function provisioningState(
     if (!allowExisting) fail("provision_app_already_exists");
     if (
       row.organization_id !== binding.organizationId ||
-      row.created_by_user_id !== binding.creatorUserId ||
       row.name !== target.appName ||
       row.description !== target.appDescription ||
       row.slug !== `${target.slugPrefix}-${binding.appId}` ||
@@ -475,6 +488,7 @@ async function provisioningState(
       candidateSha256: plan.candidateSha256,
       nonTargetSha256: plan.nonTargetSha256,
       appBindingSha256,
+      creationActorUserId: owner.creatorUserId,
       displayName: target.appName,
       description: target.appDescription,
       slug: `${target.slugPrefix}-${binding.appId}`,
@@ -554,7 +568,7 @@ export async function provisionRegistry(
     database,
     state.binding.appId,
     state.binding.organizationId,
-    state.binding.creatorUserId,
+    state.binding.creatorUserId ?? undefined,
     state.target,
     async (locked) => {
       // Repeat every admission after BEGIN SERIALIZABLE and the shared lock,
@@ -766,18 +780,27 @@ function runtimeInput(
     authoritySha256: env.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 ?? "",
     displayName: env.ELIZA_MOBILE_APP_AUTH_DISPLAY_NAME ?? "",
     provisioningAuthority: mode,
+    publisherOrganizationId:
+      env.ELIZA_MOBILE_APP_AUTH_PUBLISHER_ORGANIZATION_ID ?? "",
   };
 }
 
 async function main() {
   const operation = process.argv[2];
+  const publisherOperation =
+    operation === "plan-provision-publisher" ||
+    operation === "provision-publisher" ||
+    operation === "plan-isolate-publisher" ||
+    operation === "isolate-publisher" ||
+    operation === "verify-publisher";
   if (
     operation !== "plan-addition" &&
     operation !== "publish-registry" &&
     operation !== "plan-provision" &&
     operation !== "provision-registry" &&
     operation !== "plan-provision-primary" &&
-    operation !== "provision-primary"
+    operation !== "provision-primary" &&
+    !publisherOperation
   )
     fail("operation");
   const input = runtimeInput(
@@ -796,6 +819,13 @@ async function main() {
   });
   await database.connect();
   try {
+    if (publisherOperation) {
+      const { runPublisherOperation } = await import(
+        "./isolate-mobile-app-auth-registration.ts"
+      );
+      await runPublisherOperation(database, input, operation, process.env);
+      return;
+    }
     if (
       operation === "provision-registry" ||
       operation === "provision-primary"

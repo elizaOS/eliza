@@ -146,6 +146,30 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Run speech-only streaming contract
+        run: |
+          set -euo pipefail
+          PRIVATE_LOG=$(mktemp "$RUNNER_TEMP/speech-relay-contract.XXXXXX")
+          trap 'rm -f "$PRIVATE_LOG"' EXIT
+          result=0
+          bun test packages/cloud/api/__tests__/speech-relay-live.test.ts > "$PRIVATE_LOG" 2>&1 || result=$?
+          python3 - "$PRIVATE_LOG" <<'PY'
+          import json, sys
+          allowed = {"bootstrapMs", "firstPcmMs", "ttsCompleteMs", "sttFinalMs", "revokeMs", "pcmFrames", "pcmBytes"}
+          for line in open(sys.argv[1]):
+              try:
+                  value = json.loads(line)
+              except ValueError:
+                  continue
+              if value.get("phase") == "speech-relay-live" and value.get("status") == "passed":
+                  safe = {key: value[key] for key in allowed if isinstance(value.get(key), (int, float))}
+                  print(json.dumps({"phase": "speech-relay-live", "status": "passed", **safe}, sort_keys=True))
+          PY
+          if [ "$result" -ne 0 ]; then
+            echo "phase=speech-relay-live status=failed code=SPEECH_CONTRACT_FAILED" >&2
+            exit "$result"
+          fi
+
       - name: Run authenticated Cloudflare speech contract
         run: |
           set -euo pipefail

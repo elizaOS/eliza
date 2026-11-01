@@ -1,4 +1,3 @@
-import { ElevenLabsError } from "@elevenlabs/elevenlabs-js";
 import {
   CLOUDFLARE_STT_MODEL,
   CloudflareSpeechError,
@@ -11,6 +10,7 @@ import {
  */
 
 import {
+  elevenLabsSdkErrorStatus,
   isKnownUnacceptedProviderError,
   isKnownUnacceptedProviderStatus,
 } from "@elizaos/cloud-shared/lib/services/inference-provider-outcome";
@@ -59,7 +59,6 @@ import {
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
-import { getElevenLabsService } from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import { usageService } from "@elizaos/cloud-shared/lib/services/usage";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { fileTypeFromBuffer } from "file-type";
@@ -1417,6 +1416,11 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     settleUnknown = admission.settleUnknown;
     markProviderDispatched = admission.markProviderDispatched;
 
+    // Only this lane loads the ElevenLabs SDK, so cold requests on the other
+    // providers do not evaluate its module graph.
+    const { getElevenLabsService } = await import(
+      "@elizaos/cloud-shared/lib/services/elevenlabs"
+    );
     const elevenlabs = getElevenLabsService(env);
 
     const startTime = performance.now();
@@ -1523,8 +1527,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     if (reservation) {
       // A clear provider rejection (the ElevenLabs SDK error carries the HTTP
       // status) proves nothing was transcribed.
-      const rejectedStatus =
-        error instanceof ElevenLabsError ? error.statusCode : undefined;
+      const rejectedStatus = elevenLabsSdkErrorStatus(error);
       const rejected =
         isKnownUnacceptedProviderError(error) ||
         (rejectedStatus !== undefined &&

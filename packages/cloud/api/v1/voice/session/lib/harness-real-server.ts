@@ -1,3 +1,4 @@
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/host/voice/cartesia-sonic-tts";
 /**
  * HARNESS-ONLY node/bun boot of the REAL Phase-1 voice-session server.
  *
@@ -477,7 +478,7 @@ export async function startRealVoiceServer(
         "Content-Type": "audio/wav",
         "Content-Length": String(synthesis.wav.byteLength),
         "Cache-Control": "no-store",
-        "X-Eliza-TTS-Provider": "cartesia-sonic-3.5",
+        "X-Eliza-TTS-Provider": `cartesia-${CARTESIA_SONIC_MODEL_ID}`,
       });
       res.end(Buffer.from(synthesis.wav));
       return;

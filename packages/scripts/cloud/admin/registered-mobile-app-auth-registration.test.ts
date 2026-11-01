@@ -7,6 +7,7 @@ import {
   expect,
   test,
 } from "bun:test";
+import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
 import { selectRegisteredMobileClient } from "../../../cloud/shared/src/lib/services/mobile-client-registry.ts";
 import {
@@ -183,28 +184,55 @@ describe("first app registration repair transaction", () => {
   beforeAll(async () => {
     database = new PGlite();
     await database.exec(`
+      CREATE TABLE native_app_publishers(organization_id uuid PRIMARY KEY);
       CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL);
       CREATE TABLE users (
-        id uuid PRIMARY KEY, organization_id uuid, role text NOT NULL,
+        id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE, role text NOT NULL,
         is_active boolean NOT NULL, deleted_at timestamptz
       );
       CREATE TABLE api_keys (
-        id uuid PRIMARY KEY, organization_id uuid NOT NULL, user_id uuid NOT NULL,
-        is_active boolean NOT NULL, deleted_at timestamptz
+        id uuid PRIMARY KEY, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        source_app_id uuid, is_active boolean NOT NULL, deleted_at timestamptz
       );
       CREATE TABLE apps (
         id uuid PRIMARY KEY, name text NOT NULL, description text,
-        slug text NOT NULL UNIQUE, organization_id uuid NOT NULL,
-        created_by_user_id uuid NOT NULL, app_url text NOT NULL,
+        slug text NOT NULL UNIQUE, organization_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        created_by_user_id uuid NOT NULL CONSTRAINT apps_created_by_user_id_users_id_fk REFERENCES users(id) ON DELETE CASCADE,
+        app_url text NOT NULL,
         allowed_origins jsonb NOT NULL, api_key_id uuid,
         is_active boolean NOT NULL, is_approved boolean NOT NULL,
         updated_at timestamptz
       );
+      CREATE TABLE app_users (
+        id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,
+        user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE(app_id, user_id)
+      );
     `);
+    for (const file of [
+      "0381_app_billing_registration.sql",
+      "0550_app_creator_audit_reference.sql",
+      "0277_mobile_app_auth_pkce_grants.sql",
+    ]) {
+      const migration = readFileSync(
+        new URL(
+          `../../../cloud/shared/src/db/migrations/${file}`,
+          import.meta.url,
+        ),
+        "utf8",
+      );
+      for (const statement of migration.split("--> statement-breakpoint")) {
+        if (statement.trim()) await database.exec(statement);
+      }
+    }
   });
 
   beforeEach(async () => {
-    await database.exec("TRUNCATE apps, api_keys, users, organizations");
+    await database.exec(
+      "TRUNCATE app_subscriber_accounts, app_billing_registrations, app_users, mobile_app_auth_grants, apps, api_keys, users, organizations",
+    );
     await database.query(
       "INSERT INTO organizations (id, is_active) VALUES ($1::uuid, TRUE)",
       [ORGANIZATION_ID],
@@ -374,5 +402,169 @@ describe("first app registration repair transaction", () => {
         PRODUCTION,
       ),
     ).rejects.toThrow("registration.unique_callback_owner");
+  });
+
+  test("creator erasure preserves the organization app and other customers' independent grants", async () => {
+    const customerOrg = "10000000-0000-4000-8000-000000000001";
+    const customerOrg2 = "10000000-0000-4000-8000-000000000002";
+    const customer = "20000000-0000-4000-8000-000000000001";
+    const customer2 = "20000000-0000-4000-8000-000000000002";
+    const key = "30000000-0000-4000-8000-000000000001";
+    const key2 = "30000000-0000-4000-8000-000000000002";
+    await repairRegistrationTransaction(
+      client,
+      FIRST_APP_ID,
+      ORGANIZATION_ID,
+      OWNER_ID,
+      PRODUCTION,
+    );
+    for (const [org, user, credential, char] of [
+      [customerOrg, customer, key, "a"],
+      [customerOrg2, customer2, key2, "b"],
+    ]) {
+      await database.query("INSERT INTO organizations VALUES ($1, TRUE)", [
+        org,
+      ]);
+      await database.query(
+        "INSERT INTO users VALUES ($1, $2, 'owner', TRUE, NULL)",
+        [user, org],
+      );
+      await database.query(
+        "INSERT INTO api_keys VALUES ($1, $2, $3, $4, TRUE, NULL)",
+        [credential, org, user, FIRST_APP_ID],
+      );
+      await database.query(
+        `INSERT INTO mobile_app_auth_grants
+        (code_hash, app_id, client_id, user_id, organization_id, environment, redirect_uri,
+         state_hash, code_challenge, code_challenge_method, scopes, status, credential_id, expires_at)
+        VALUES ($1, $2, $3, $4, $5, 'production', $6, $1, $7, 'S256', '["cloud:user"]', 'acknowledged', $8, now() + interval '30 days')`,
+        [
+          char.repeat(64),
+          FIRST_APP_ID,
+          PRODUCTION.clientId,
+          user,
+          org,
+          PRODUCTION.redirectUri,
+          char.repeat(43),
+          credential,
+        ],
+      );
+    }
+    const registration = (
+      await database.query<{ id: string }>(
+        `INSERT INTO app_billing_registrations
+      (app_id, owner_organization_id, infrastructure_payer_organization_id, registered_by_user_id, provider_environment)
+      VALUES ($1, $2, $2, $3, 'test') RETURNING id`,
+        [FIRST_APP_ID, ORGANIZATION_ID, OWNER_ID],
+      )
+    ).rows[0].id;
+    for (const user of [customer, customer2]) {
+      await database.query(
+        "INSERT INTO app_users(app_id,user_id) VALUES ($1,$2)",
+        [FIRST_APP_ID, user],
+      );
+      await database.query(
+        "INSERT INTO app_subscriber_accounts(registration_id,app_id,subscriber_user_id) VALUES ($1,$2,$3)",
+        [registration, FIRST_APP_ID, user],
+      );
+    }
+    await database.query("UPDATE users SET is_active=FALSE WHERE id=$1", [
+      OWNER_ID,
+    ]);
+    validateMobileAppAuthRegistrationRow(
+      await read(FIRST_APP_ID),
+      FIRST_APP_ID,
+      PRODUCTION,
+    );
+    await database.query("DELETE FROM users WHERE id=$1", [OWNER_ID]);
+    expect(
+      (
+        await database.query(
+          "SELECT created_by_user_id FROM apps WHERE id=$1",
+          [FIRST_APP_ID],
+        )
+      ).rows,
+    ).toEqual([{ created_by_user_id: null }]);
+    expect(
+      (
+        await database.query(
+          "SELECT registered_by_user_id FROM app_billing_registrations WHERE id=$1",
+          [registration],
+        )
+      ).rows,
+    ).toEqual([{ registered_by_user_id: null }]);
+    expect(
+      (await database.query("SELECT id FROM app_subscriber_accounts")).rows,
+    ).toHaveLength(2);
+    await expect(
+      database.query(
+        "UPDATE app_billing_registrations SET owner_organization_id=$1 WHERE id=$2",
+        [customerOrg, registration],
+      ),
+    ).rejects.toThrow();
+    await repairRegistrationTransaction(
+      client,
+      FIRST_APP_ID,
+      ORGANIZATION_ID,
+      undefined,
+      PRODUCTION,
+    );
+    validateMobileAppAuthRegistrationRow(
+      await read(FIRST_APP_ID),
+      FIRST_APP_ID,
+      PRODUCTION,
+    );
+    const grants = () =>
+      database.query<{
+        user_id: string;
+        organization_id: string;
+        credential_id: string;
+      }>(
+        "SELECT user_id, organization_id, credential_id FROM mobile_app_auth_grants ORDER BY user_id",
+      );
+    expect((await grants()).rows).toEqual([
+      { user_id: customer, organization_id: customerOrg, credential_id: key },
+      {
+        user_id: customer2,
+        organization_id: customerOrg2,
+        credential_id: key2,
+      },
+    ]);
+    await database.query("DELETE FROM users WHERE id=$1", [customer]);
+    expect((await grants()).rows).toEqual([
+      {
+        user_id: customer2,
+        organization_id: customerOrg2,
+        credential_id: key2,
+      },
+    ]);
+    expect(
+      (
+        await database.query(
+          "SELECT subscriber_user_id FROM app_subscriber_accounts",
+        )
+      ).rows,
+    ).toEqual([{ subscriber_user_id: customer2 }]);
+    await database.query("DELETE FROM organizations WHERE id=$1", [
+      ORGANIZATION_ID,
+    ]);
+    expect(
+      (await database.query("SELECT id FROM apps WHERE id=$1", [FIRST_APP_ID]))
+        .rows,
+    ).toEqual([]);
+    expect((await grants()).rows).toEqual([]);
+    expect(
+      (await database.query("SELECT id FROM app_billing_registrations")).rows,
+    ).toEqual([]);
+    expect(
+      (await database.query("SELECT id FROM app_subscriber_accounts")).rows,
+    ).toEqual([]);
+    expect(
+      (
+        await database.query("SELECT source_app_id FROM api_keys WHERE id=$1", [
+          key2,
+        ])
+      ).rows,
+    ).toEqual([{ source_app_id: FIRST_APP_ID }]);
   });
 });

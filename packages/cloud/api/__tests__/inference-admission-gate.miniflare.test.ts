@@ -195,6 +195,8 @@ describe("Miniflare Durable Object integration", () => {
   ): Promise<{
     readonly status: number;
     readonly handlerMs: string | null;
+    readonly enteredAt: string | null;
+    readonly activatedAt: string | null;
     text(): Promise<string>;
   }> {
     const response = await miniflare.dispatchFetch(`https://gate.test${path}`, {
@@ -209,6 +211,8 @@ describe("Miniflare Durable Object integration", () => {
     return {
       status: response.status,
       handlerMs: response.headers.get("x-eliza-gate-handler-ms"),
+      enteredAt: response.headers.get("x-eliza-gate-entered-at"),
+      activatedAt: response.headers.get("x-eliza-gate-activated-at"),
       text: async () => await response.text(),
     };
   }
@@ -231,6 +235,28 @@ describe("Miniflare Durable Object integration", () => {
       expect(Number.isFinite(Number(response.handlerMs))).toBe(true);
       expect(Number(response.handlerMs)).toBeGreaterThanOrEqual(0);
     }
+  });
+
+  test("every gate response reports entry and activation clocks for the caller's split", async () => {
+    const gate = "rate-limit:v2:activation-timing";
+    const sentAt = Date.now();
+    const first = await post("/rate-limit-warm", {}, gate);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const secondSentAt = Date.now();
+    const second = await post(
+      "/rate-limit",
+      { endpointType: "completions", windowMs: 60000, maxRequests: 5 },
+      gate,
+    );
+    const invalid = await post("/settle", {}, gate);
+    for (const response of [first, second, invalid]) {
+      expect(response.handlerMs).not.toBeNull();
+      expect(Number(response.enteredAt)).toBeGreaterThanOrEqual(sentAt);
+    }
+    // The first call constructed the object; later calls reuse that instance.
+    expect(Number(first.activatedAt)).toBeGreaterThanOrEqual(sentAt);
+    expect(second.activatedAt).toBe(first.activatedAt);
+    expect(Number(second.activatedAt)).toBeLessThan(secondSentAt);
   });
 
   const concurrently = (
@@ -488,6 +514,78 @@ describe("Miniflare Durable Object integration", () => {
       );
     }
     expect([first.status, second.status].sort()).toEqual([200, 402]);
+  }, 120_000);
+
+  test("an app recovery lease permits an absent creator and rejects malformed creator identities", async () => {
+    const gate = "org-creator-audit";
+    const lease = (
+      requestId: string,
+      creatorUserId: unknown,
+      estimatedCostUsd = 7,
+    ) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "1",
+          estimatedCostUsd,
+          recovery: {
+            version: 1,
+            kind: "app",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare creator audit test",
+            appId: "00000000-0000-4000-8000-000000000003",
+            estimatedBaseCostUsd: estimatedCostUsd,
+            appPolicy: {
+              name: "Organization-owned app",
+              creatorUserId,
+              monetizationEnabled: false,
+              reviewStatus: "approved",
+              platformOffsetAmount: 0,
+              purchaseSharePercentage: 0,
+              inferenceMarkupPercentage: 0,
+            },
+          },
+        },
+        gate,
+      );
+    expect(
+      (await post("/hydrate", { balanceUsd: 10, balanceRevision: "1" }, gate))
+        .status,
+    ).toBe(200);
+    for (const [index, invalid] of [
+      undefined,
+      "",
+      " ",
+      " creator ",
+      "x".repeat(257),
+      1,
+      {},
+    ].entries()) {
+      expect((await lease(`invalid-creator-${index}`, invalid)).status).toBe(
+        400,
+      );
+    }
+    expect((await lease("absent-creator", null)).status).toBe(200);
+    expect((await lease("absent-creator", null)).status).toBe(200);
+    // Invalid policies reserved nothing, and the valid replay reserved only once.
+    expect(
+      (
+        await lease(
+          "retained-creator",
+          "00000000-0000-4000-8000-000000000004",
+          3,
+        )
+      ).status,
+    ).toBe(200);
+    expect((await lease("exhausted-creator", null, 1)).status).toBe(402);
   }, 120_000);
 
   test("credential checks bypass a blocked billing queue on the same object", async () => {

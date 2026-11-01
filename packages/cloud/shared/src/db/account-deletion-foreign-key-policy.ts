@@ -24,12 +24,12 @@ export interface AccountDeletionForeignKeyDescriptor {
   onDelete: string;
 }
 /**
- * SHA-256 of the 283 sorted direct user/organization FK descriptors, each
+ * SHA-256 of the 284 sorted direct user/organization FK descriptors, each
  * serialized as `source|columns|target|targetColumns|onDelete` and joined with
  * `\n` (see `serializeDescriptor`). Recompute when the FK inventory changes.
  */
 export const ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256 =
-  "643cdecde85e4c242873470ae9fc27a10ed8890a618f8c07a64fe2c1c799c4f3";
+  "e51b1cc2c553ee9879beee200e56a56b78509e7ac38a400ce4f07bf908e0abc4";
 
 function serializeDescriptor(descriptor: AccountDeletionForeignKeyDescriptor): string {
   return [
@@ -147,6 +147,7 @@ const EXTERNAL_RESOURCE_TABLES = new Set([
 /** Shared tenant assets must be transferred or explicitly revoked, never cascaded. */
 const SHARED_RESOURCE_TABLES = new Set([
   "agent_budgets",
+  "native_app_publishers",
   "organization_invites",
   "personal_shared_group_bindings",
   "personal_shared_group_claims",
@@ -237,6 +238,10 @@ export function classifyAccountDeletionForeignKey(
   descriptor: AccountDeletionForeignKeyDescriptor,
 ): AccountDeletionForeignKeyAction {
   const { sourceTable, targetTable, onDelete } = descriptor;
+
+  if (sourceTable === "apps" && targetTable === "users" && onDelete === "set null") {
+    return "anonymize_retained_record";
+  }
 
   if (RETAINED_AUDIT_TABLES.has(sourceTable) && onDelete !== "cascade") {
     return "anonymize_retained_record";

@@ -26,6 +26,7 @@ let admissionFailure: Error | undefined;
 let authenticationFailure: Error | undefined;
 let admissions = 0;
 let dispatched = 0;
+let settledUnknown = 0;
 const reconciled: number[] = [];
 const pricedSeconds: number[] = [];
 
@@ -53,7 +54,9 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
           reconciled.push(actual);
         },
       },
-      settleUnknown: async () => undefined,
+      settleUnknown: async () => {
+        settledUnknown++;
+      },
       markProviderDispatched: async () => {
         dispatched++;
       },
@@ -184,6 +187,7 @@ beforeEach(() => {
   authenticationFailure = undefined;
   admissions = 0;
   dispatched = 0;
+  settledUnknown = 0;
   reconciled.length = 0;
   pricedSeconds.length = 0;
 });
@@ -269,6 +273,42 @@ test("ElevenLabs lane never bills less than the file for a word end inside it", 
 
   expect(reconciled).toEqual([1]);
 });
+
+// The ElevenLabs SDK error carries the HTTP status: a rejection releases the
+// reservation, while a failure without a status keeps it as possibly billed.
+test.each([
+  ["rejected request", 422, "synthetic rejection", 500, [0], 0],
+  ["trial-tier refusal", 403, "Not available on the trial tier", 402, [0], 0],
+  ["transport failure", undefined, "", 500, [], 1],
+] as const)(
+  "ElevenLabs lane settles a %s",
+  async (_label, status, message, expected, released, unknown) => {
+    globalThis.fetch = (async (input) => {
+      const host = new URL(input instanceof Request ? input.url : String(input))
+        .host;
+      if (host !== "api.elevenlabs.io")
+        throw Error("Unexpected external provider dispatch");
+      if (status === undefined)
+        throw new TypeError("synthetic transport failure");
+      return Response.json({ detail: { message } }, { status });
+    }) as typeof fetch;
+    const form = new FormData();
+    form.append(
+      "audio",
+      new File([oneSecondWav()], "note.wav", { type: "audio/wav" }),
+    );
+    const response = await sttApp.request(
+      "http://cloud.test/",
+      { method: "POST", body: form },
+      { VOICE_BATCH_STT_PROVIDER: "elevenlabs", ELEVENLABS_API_KEY: "el-test" },
+    );
+
+    expect(response.status).toBe(expected);
+    expect(dispatched).toBe(1);
+    expect(reconciled).toEqual([...released]);
+    expect(settledUnknown).toBe(unknown);
+  },
+);
 
 test("a response without a duration bills the header estimate", async () => {
   stubProvider("api.deepgram.com", {

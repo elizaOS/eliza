@@ -17,6 +17,7 @@ process.env.NODE_ENV ||= "test";
 import { createHash, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { accountDeletionRequests } from "../../../db/schemas/account-deletion-requests";
+import { nativeAppPublishers } from "../../../db/schemas/native-app-publishers";
 import { organizations } from "../../../db/schemas/organizations";
 import { providerAdmissions } from "../../../db/schemas/provider-admissions";
 import { users } from "../../../db/schemas/users";
@@ -31,7 +32,13 @@ let activateExpiredRecoveryRequests: typeof import("../account-deletion").activa
 beforeAll(async () => {
   ({ closeDatabaseConnectionsForTests: closeDb, dbWrite } = await import("../../../db/client"));
   const { pushSchemaToTestDb } = await import("../../../db/push-schema-for-tests");
-  await pushSchemaToTestDb({ organizations, users, accountDeletionRequests, providerAdmissions });
+  await pushSchemaToTestDb({
+    organizations,
+    users,
+    accountDeletionRequests,
+    providerAdmissions,
+    nativeAppPublishers,
+  });
   ({ activateExpiredRecoveryRequests } = await import("../account-deletion"));
 });
 

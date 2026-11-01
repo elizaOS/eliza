@@ -1267,11 +1267,12 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
+          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --all-clients
 
       - name: Verify Steward provider discovery before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
@@ -1396,8 +1397,9 @@ jobs:
           # Environment-scoped opt-in for prerecorded Deepgram STT. Production
           # remains on its existing provider while this variable is unset.
           VOICE_BATCH_STT_PROVIDER: ${{ vars.VOICE_BATCH_STT_PROVIDER }}
-          # Cartesia batch STT is separately opt-in and billed. The price is
-          # deployment-owned rather than embedded in application code; the
+          # Optional Cartesia account USD/credit. Unset uses the highest
+          # published paid-plan rate (cartesia-pricing.ts); speech is funded
+          # from subscription allowance, so this only sizes reservations. The
           # timeout may be tuned within the route's bounded parser.
           CARTESIA_STT_USD_PER_CREDIT: ${{ vars.CARTESIA_STT_USD_PER_CREDIT || secrets.CARTESIA_STT_USD_PER_CREDIT }}
           CARTESIA_BATCH_STT_TIMEOUT_MS: ${{ vars.CARTESIA_BATCH_STT_TIMEOUT_MS }}
@@ -1634,6 +1636,18 @@ jobs:
           recheck_canonical_source
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
             (cd "$CHECKOUT_DIR" && ENVIRONMENT=staging bun packages/cloud/scripts/reconcile-steward-email-callback-config.ts)
+            # Staging's existing organization authority lives in this adopted
+            # namespace. Publish its canonical class before the API that calls
+            # it, including speech revocation subscriptions. This is a code
+            # update, never a namespace transfer or a new quota/balance lane.
+            # Production owns this class in the API Worker and updates both together.
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/admission-worker/verify-staging-contract.ts)
+            recheck_canonical_source
+            bunx wrangler deploy \
+              --config ../admission-worker/wrangler.toml \
+              --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" \
+              --tag "$GITHUB_SHA"
+            recheck_canonical_source
           fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
@@ -1812,10 +1826,11 @@ jobs:
         env:
           ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --skip-database --verify-live
+          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --all-clients --skip-database --verify-live
 
       - name: Canary authenticated staging realtime and rollback on failure
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'

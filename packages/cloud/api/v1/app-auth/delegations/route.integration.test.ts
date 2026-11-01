@@ -146,13 +146,21 @@ beforeAll(async () => {
   await database.exec(`
     CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL DEFAULT true);
     CREATE TABLE users (id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id), email text, name text, email_verified boolean DEFAULT false, is_active boolean DEFAULT true, is_anonymous boolean DEFAULT false, deleted_at timestamptz, expires_at timestamp);
-    CREATE TABLE apps (id uuid PRIMARY KEY, created_by_user_id uuid, organization_id uuid REFERENCES organizations(id), name text NOT NULL, app_url text NOT NULL, allowed_origins jsonb NOT NULL DEFAULT '[]', is_active boolean DEFAULT true, is_approved boolean DEFAULT true, total_users integer DEFAULT 0);
+    CREATE TABLE apps (id uuid PRIMARY KEY, created_by_user_id uuid CONSTRAINT apps_created_by_user_id_users_id_fk REFERENCES users(id) ON DELETE CASCADE, organization_id uuid REFERENCES organizations(id), name text NOT NULL, app_url text NOT NULL, allowed_origins jsonb NOT NULL DEFAULT '[]', is_active boolean DEFAULT true, is_approved boolean DEFAULT true, total_users integer DEFAULT 0);
     CREATE TABLE app_users (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), app_id uuid REFERENCES apps(id), user_id uuid REFERENCES users(id), signup_source text, referral_code_used text, ip_address text, user_agent text, total_requests integer DEFAULT 0, total_credits_used numeric DEFAULT 0, first_seen_at timestamp DEFAULT now(), last_seen_at timestamp DEFAULT now(), metadata jsonb DEFAULT '{}', UNIQUE(app_id,user_id));
   `);
   await database.exec(
     await Bun.file(
       new URL(
         "../../../../shared/src/db/migrations/0381_app_billing_registration.sql",
+        import.meta.url,
+      ),
+    ).text(),
+  );
+  await database.exec(
+    await Bun.file(
+      new URL(
+        "../../../../shared/src/db/migrations/0550_app_creator_audit_reference.sql",
         import.meta.url,
       ),
     ).text(),

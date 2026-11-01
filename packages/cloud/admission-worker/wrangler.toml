@@ -57,6 +57,9 @@ INFERENCE_STRONG_REVOCATION_ENABLED = "true"
 INFERENCE_SNAPSHOT_ADMISSION_ENABLED = "true"
 INFERENCE_PASSTHROUGH_STREAMING = "true"
 INFERENCE_PASSTHROUGH_EMBEDDINGS = "true"
+# The canonical gate serves speech revocation subscriptions only while this
+# matches the staging API; the source contract checks every gate-read variable.
+VOICE_SPEECH_RELAY_ENABLED = "true"
 # Source leaves funded admission unset; target preserves its disabled default.
 # Never enable it or invent a seal while preparing this split.
 

@@ -163,7 +163,7 @@ export interface AppDto {
   description: string | null;
   slug: string;
   organization_id: string;
-  created_by_user_id: string;
+  created_by_user_id: string | null;
   app_url: string;
   allowed_origins: string[];
   api_key_id: string | null;

@@ -74,6 +74,50 @@ separate migration work.
 
 ## Development
 
+Speech-only clients can use `/api/v1/voice/speech/consent`, `/session`, `/ws`,
+and `/session/:sessionId/revoke` under that prefix. Enable only after qualifying
+`VOICE_SPEECH_RELAY_ENABLED=true` and the `SPEECH_RELAY_SESSIONS` binding. This
+does not move an agent, its model calls, tools, or history to Cloud. The scoped,
+single-use capability expires 60 seconds after mint. Clients must close/revoke
+it when the account changes and renew it explicitly after expiry. An internal
+WebSocket subscribes to the existing organization revocation authority. API-key,
+account, membership, session, and organization revocations close matching speech
+sessions. Losing that internal socket also stops speech; no polling is required.
+The speech flag enables these existing lifecycle writes without changing the
+general inference authorization or snapshot-admission flags.
+
+One Durable Object owns each session. It admits the server-enforced budget at
+bootstrap: 60 seconds of 16 kHz mono PCM16 input and 4096 TTS characters. Audio
+frames and TTS phrases do not query the database or repeat account/credit
+admission. The canonical inference service uses monthly subscription allowance first for
+subscribers; internal provider-cost reservation does not require prepaid user
+credits. Existing durable inference leases retain uncertain provider costs
+after interruption or a crash. Both STT and TTS reservations are marked dispatched
+at bootstrap before any provider opens. A crash can therefore retain the full
+reservation, including unused TTS. A live close, including barge-in, settles
+TTS against the server-counted submitted characters; STT requires its matching
+provider drain receipt.
+`CARTESIA_STT_USD_PER_CREDIT` supplies the account
+rate; streaming Ink-2 costs three credits per input second and Sonic one credit
+per character. Bootstrap and final accounting can access the primary store.
+Other inference and legacy batch speech routes retain their own admission paths.
+Staging uses an explicit `CARTESIA_STT_USD_PER_CREDIT=0.000065` estimate: the highest
+published self-serve overage rate ($65 per million provider credits) in the
+[pricing page](https://www.cartesia.ai/pricing) and
+[pricing documentation](https://docs.cartesia.ai/pricing), checked 2026-11-01.
+This is an estimate for staging validation, not an assertion about a private
+invoice. Production retains its existing configured account rate.
+
+The speech-only Ink profile uses responsive thresholds and a 1280 ms final-turn
+timeout. `VOICE_SPEECH_END_TIMEOUT_MS` can select an integer clamped to 640–5000
+ms. Eager-end remains a distinct event; it is never promoted to a final transcript.
+The streaming route bypasses the legacy SQL audio cache and does not replay
+cached PCM. Its cache stores positive moderation verdicts, not synthesized
+audio. Positive text moderation receipts use a 60-second, exact-input cache bound to
+the tenant, model, policy revision and moderation credential. Skipped, warned,
+degraded, or failed checks never enter that cache. Change
+`CONTENT_SAFETY_POLICY_REVISION` when deployment policy changes.
+
 Install dependencies with `bun install` at the repository root. Run from that root:
 
 ```bash
@@ -112,9 +156,16 @@ callback. App IDs in Cloud and client IDs in Steward belong to different stores
 and must not be assumed interchangeable. No product repository is imported by
 these shared mechanisms.
 
-Before enabling a client, provision its own active, approved app with an active
-owner/organization, an exact allowed callback, and no live generated application
-API key. Use separate registrations in staging and production. Validate the public
+New platform clients use a dedicated, memberless publisher organization and an
+active, approved app with an exact allowed callback and no live generated app
+API key. The protected registration workflow authorizes provisioning; a login
+user does not own the publisher. Database guards prevent user membership and
+personal-account deletion from disabling or deleting that publisher. Existing
+registration-only apps can be moved with the workflow's reviewed publisher
+isolation operation while preserving their app UUID and customer grants. A
+historical creator is only optional audit metadata. Each customer's consent and
+credential remain bound to that customer's user and organization. Use separate
+registrations in staging and production. Validate the public
 `/api/v1/app-auth/mobile/config` response for that client/environment/return URL
 before shipping. The admin preflight allows an `app_url` homepage path on the
 registered HTTPS origin, while `allowed_origins` must contain the sole exact
@@ -138,7 +189,9 @@ Set `ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID` to select the same client for the
 standalone verifier. With the protected environment variables present, run
 `node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
 --skip-database --verify-live` to check its public metadata without a database read.
-Omitting the selector keeps the primary-client release check.
+Omitting the selector checks the primary client. Release gates use `--all-clients`
+to check the primary client and every enabled additional client, both in the
+database before deployment and through public metadata after deployment.
 
 ### App-owned managed Google returns
 
