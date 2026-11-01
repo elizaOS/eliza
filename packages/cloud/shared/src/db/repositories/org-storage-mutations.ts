@@ -299,7 +299,7 @@ export class OrgStorageMutationsRepository {
             organization_id, amount, type, description, metadata, created_at
           ) VALUES (
             ${params.organizationId}, -CAST(${String(operation.price_usd)} AS numeric),
-            'debit', 'API proxy: storage — native put (reserved)', ${metadata}::jsonb, NOW()
+            'debit', 'API proxy: storage \u2014 native put (reserved)', ${metadata}::jsonb, NOW()
           ) RETURNING id`,
       );
       const holdId = requiredRow(holdRows, "credit reservation insert").id;
@@ -718,7 +718,7 @@ export class OrgStorageMutationsRepository {
               organization_id, amount, type, description, metadata, created_at
             ) VALUES (
               ${params.organizationId}, CAST(${String(operation.price_usd)} AS numeric),
-              'refund', 'API proxy: storage — native put (refund)',
+              'refund', 'API proxy: storage \u2014 native put (refund)',
               ${refundMetadata}::jsonb, NOW()
             )`);
           const settled = await sqlRows<{ id: string }>(

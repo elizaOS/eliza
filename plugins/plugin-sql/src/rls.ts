@@ -502,7 +502,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
               )
             ', schema_name, table_name, room_column_name, room_column_name);
           END IF;
-          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % → participants.room_id, entity REQUIRED)', schema_name, table_name, room_column_name;
+          RAISE NOTICE '[Entity RLS] Applied STRICT RESTRICTIVE to %.% (via % \u2192 participants.room_id, entity REQUIRED)', schema_name, table_name, room_column_name;
         ELSE
           EXECUTE format('
             CREATE POLICY entity_isolation_policy ON %I.%I
@@ -524,7 +524,7 @@ export async function installEntityRLS(adapter: IDatabaseAdapter): Promise<void>
               )
             )
           ', schema_name, table_name, room_column_name, room_column_name);
-          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % → participants.room_id, NULL allowed)', schema_name, table_name, room_column_name;
+          RAISE NOTICE '[Entity RLS] Applied PERMISSIVE RESTRICTIVE to %.% (via % \u2192 participants.room_id, NULL allowed)', schema_name, table_name, room_column_name;
         END IF;
 
       ELSIF entity_column_name IS NOT NULL THEN

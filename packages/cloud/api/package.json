@@ -18,7 +18,7 @@
     "check:router-contract": "node test/_router-contract.mjs",
     "build": "tsc6 --noEmit",
     "typecheck": "tsc --noEmit && bun run check:router-contract && bun run check:worker-bundle",
-    "check:worker-bundle": "wrangler deploy --env production --dry-run --outdir .wrangler-dry-run",
+    "check:worker-bundle": "wrangler deploy --env production --dry-run --outdir .wrangler-dry-run && node ../scripts/worker-bundle-one-byte.ts .wrangler-dry-run/index.js",
     "qualify:photo-closure": "node test/native-worker/run-photo-closure.mjs",
     "preflight:subscription-catalog": "bun --conditions=eliza-source ../scripts/admin/preflight-subscription-catalog.ts",
     "test": "node test/run-unit-isolated.mjs",
