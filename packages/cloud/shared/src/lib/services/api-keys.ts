@@ -992,7 +992,11 @@ export class ApiKeysService {
         await apiKeysRepository.findByHashConsistent(credential.key_hash),
         false,
       );
-      if (result?.receipt.credentialId === credential.id) return result;
+      if (result?.receipt.credentialId === credential.id) {
+        await revokeInferenceApiKey(result.organizationId, credential.id);
+        await this.invalidateCache(credential.key_hash);
+        return result;
+      }
       throw new ElizaError("Validated mobile credential no longer matches an active key", {
         code: "MOBILE_API_KEY_EXACT_REVOCATION_MISMATCH",
         context: { credentialId: credential.id },
@@ -1000,6 +1004,7 @@ export class ApiKeysService {
       });
     }
 
+    await revokeInferenceApiKey(exact.organization_id, exact.id);
     const tombstone = await withMutationAudit(
       (tx) =>
         apiKeysRepository.tombstoneExactMobileCredential(
@@ -1023,6 +1028,7 @@ export class ApiKeysService {
         false,
       );
       if (concurrentResult?.receipt.credentialId === credential.id) {
+        await this.invalidateCache(credential.key_hash);
         return concurrentResult;
       }
       throw new ElizaError("Validated mobile credential no longer matches an active key", {
@@ -1039,6 +1045,7 @@ export class ApiKeysService {
         severity: "fatal",
       });
     }
+    await this.invalidateCache(credential.key_hash);
     return result;
   }
 
