@@ -598,6 +598,8 @@ test("half duplex keeps the microphone closed while a caller turn waits for its 
       halfDuplexArmedCount: 1,
       halfDuplexSuppressedFrameCount: 2,
       halfDuplexSuppressedBytes: 6400,
+      halfDuplexBusySuppressedFrameCount: 2,
+      halfDuplexBusySuppressedBytes: 6400,
     },
   ]);
 });
@@ -660,6 +662,232 @@ test("AEC-safe sessions keep the uplink open while a caller turn waits for its r
     await until(() => f.control.some((frame) => frame.t === "usage"));
     f.session.bye();
   }
+});
+// Serves the canonical voice stream from a request and body the test settles,
+// so a turn can be held at an exact point.
+function heldConversationStream() {
+  const encoder = new TextEncoder();
+  const signals: AbortSignal[] = [];
+  let request!: {
+    resolve: (r: Response) => void;
+    reject: (e: unknown) => void;
+  };
+  let body!: ReadableStreamDefaultController<Uint8Array>;
+  return {
+    signals,
+    fetchImpl: ((_input: unknown, init?: RequestInit) => {
+      if (init?.signal) signals.push(init.signal);
+      return new Promise<Response>((resolve, reject) => {
+        request = { resolve, reject };
+      });
+    }) as typeof fetch,
+    open() {
+      request.resolve(
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(controller) {
+              body = controller;
+            },
+          }),
+          { headers: { "content-type": "text/event-stream" } },
+        ),
+      );
+    },
+    rejectRequest(error: unknown) {
+      request.reject(error);
+    },
+    send(frame: Record<string, unknown>) {
+      body.enqueue(encoder.encode(`data: ${JSON.stringify(frame)}\n\n`));
+    },
+    close() {
+      body.close();
+    },
+    fail(error: unknown) {
+      body.error(error);
+    },
+  };
+}
+test("half duplex keeps the microphone closed until the caller turn ends, even after its reply audio drained", async () => {
+  const receipts: VoiceTurnMetricsReceipt[] = [];
+  const f = await setup();
+  // The drain ends the echo tail; a long settle proves nothing else reopens it.
+  f.config.halfDuplexPlaybackSettleMs = 60_000;
+  f.config.onTurnMetrics = (receipt) => receipts.push(receipt);
+  const stream = heldConversationStream();
+  f.config.fetchImpl = stream.fetchImpl;
+  const uplinks = () => f.order.filter((value) => value === "uplink").length;
+  f.session.start();
+  f.emit({ type: "connected", raw: {} });
+  f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  f.emit({ type: "end-of-turn", transcript: "open notes", raw: {} });
+  await until(() => stream.signals.length === 1);
+  stream.open();
+  // The early reply-ready path speaks the reply while the canonical route is
+  // still persisting it.
+  stream.send({ type: "reply_ready", text: "You are on Notes." });
+  await until(() => f.control.some((frame) => frame.t === "speaking_end"));
+  const ended = f.control.find((frame) => frame.t === "speaking_end");
+  if (ended?.t !== "speaking_end") throw Error("Missing playback");
+  f.session.playbackComplete(ended.traceId);
+  const before = uplinks();
+  f.session.pushUplinkAudio(new Uint8Array(3200));
+  f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  f.emit({ type: "transcript-update", transcript: "hello?", raw: {} });
+  f.emit({ type: "end-of-turn", transcript: "hello?", raw: {} });
+  await tick();
+  expect(uplinks()).toBe(before);
+  expect(stream.signals[0].aborted).toBe(false);
+  expect(f.control.some((frame) => frame.t === "interrupted")).toBe(false);
+  expect(f.control.some((frame) => frame.t === "usage")).toBe(false);
+  stream.send({
+    type: "done",
+    userMessageId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    text: "You are on Notes.",
+    actionResults: [
+      {
+        actionName: "VIEWS",
+        success: true,
+        values: { mode: "open", viewId: "notes" },
+      },
+    ],
+  });
+  stream.close();
+  await until(() => f.control.some((frame) => frame.t === "usage"));
+  expect(f.control.filter((frame) => frame.t === "stt_final")).toHaveLength(1);
+  expect(f.control.some((frame) => frame.t === "interrupted")).toBe(false);
+  expect(f.control.find((frame) => frame.t === "reply_complete")).toMatchObject(
+    { userMessageId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" },
+  );
+  expect(
+    f.control
+      .filter((frame) => frame.t === "navigate_view")
+      .map((frame) => frame.viewId),
+  ).toEqual(["notes"]);
+  expect(stream.signals).toHaveLength(1);
+  // Terminal completion settles the turn; the drained reply left no echo tail.
+  f.session.pushUplinkAudio(new Uint8Array(3200));
+  await tick();
+  expect(uplinks()).toBeGreaterThan(before);
+  expect(receipts).toMatchObject([
+    {
+      outcome: "completed",
+      halfDuplexArmedCount: 1,
+      halfDuplexSuppressedFrameCount: 1,
+      halfDuplexSuppressedBytes: 3200,
+      halfDuplexBusySuppressedFrameCount: 1,
+      halfDuplexBusySuppressedBytes: 3200,
+    },
+  ]);
+});
+test("a fetch-layer timeout or abort the session did not cause fails the caller turn and reopens the microphone", async () => {
+  for (const [name, phase] of [
+    ["TimeoutError", "request"],
+    ["AbortError", "request"],
+    ["TimeoutError", "stream"],
+  ] as const) {
+    const receipts: VoiceTurnMetricsReceipt[] = [];
+    const f = await setup();
+    f.config.halfDuplexPlaybackSettleMs = 60_000;
+    f.config.onTurnMetrics = (receipt) => receipts.push(receipt);
+    const stream = heldConversationStream();
+    f.config.fetchImpl = stream.fetchImpl;
+    const uplinks = () => f.order.filter((value) => value === "uplink").length;
+    f.session.start();
+    f.emit({ type: "connected", raw: {} });
+    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+    f.emit({ type: "end-of-turn", transcript: "open notes", raw: {} });
+    await until(() => stream.signals.length === 1);
+    if (phase === "stream") {
+      stream.open();
+      stream.send({ type: "reply_ready", text: "You are on Notes." });
+      await until(() => f.control.some((frame) => frame.t === "speaking_end"));
+      const ended = f.control.find((frame) => frame.t === "speaking_end");
+      if (ended?.t !== "speaking_end") throw Error("Missing playback");
+      f.session.playbackComplete(ended.traceId);
+    }
+    const before = uplinks();
+    f.session.pushUplinkAudio(new Uint8Array(3200));
+    await tick();
+    expect(uplinks()).toBe(before);
+    const error = new DOMException("The operation timed out.", name);
+    if (phase === "request") stream.rejectRequest(error);
+    else stream.fail(error);
+    await until(() => f.control.some((frame) => frame.t === "usage"));
+    expect(stream.signals[0].aborted).toBe(false);
+    expect(f.control).toContainEqual(
+      expect.objectContaining({
+        t: "error",
+        code: "upstream_error",
+        retryable: true,
+      }),
+    );
+    expect(
+      f.control.filter((frame) => frame.t === "speaking_end"),
+    ).toHaveLength(phase === "stream" ? 1 : 0);
+    expect(receipts).toMatchObject([{ outcome: "error" }]);
+    expect(f.session.currentState).toBe("listening");
+    f.session.pushUplinkAudio(new Uint8Array(3200));
+    await tick();
+    expect(uplinks()).toBeGreaterThan(before);
+    // Ink turn events reach the session again, so the caller can retry.
+    f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+    f.emit({ type: "end-of-turn", transcript: "open notes", raw: {} });
+    await until(() => stream.signals.length === 2);
+    expect(f.control.filter((frame) => frame.t === "stt_final")).toHaveLength(
+      2,
+    );
+    f.session.bye();
+  }
+});
+test("a late drain report for the previous reply cannot release the next caller turn", async () => {
+  const f = await setup();
+  // Turn one's echo estimate expires at once, so only its drain report is left.
+  f.config.halfDuplexPlaybackSettleMs = 0;
+  const forward = f.config.fetchImpl;
+  if (!forward) throw Error("Missing local conversation fetch");
+  let held: Promise<void> | null = null;
+  let release!: () => void;
+  const signals: AbortSignal[] = [];
+  f.config.fetchImpl = (async (input, init) => {
+    if (init?.signal) signals.push(init.signal);
+    if (held) await held;
+    return forward(input, init);
+  }) as typeof fetch;
+  const uplinks = () => f.order.filter((value) => value === "uplink").length;
+  const usages = () => f.control.filter((frame) => frame.t === "usage").length;
+  f.session.start();
+  f.emit({ type: "connected", raw: {} });
+  f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  f.emit({ type: "end-of-turn", transcript: "open notes", raw: {} });
+  await until(() => usages() === 1);
+  const ended = f.control.find((frame) => frame.t === "speaking_end");
+  if (ended?.t !== "speaking_end") throw Error("Missing playback");
+  await sleep(10);
+  held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  f.emit({
+    type: "end-of-turn",
+    transcript: "create a launch at noon",
+    raw: {},
+  });
+  await until(() => signals.length === 2);
+  const before = uplinks();
+  f.session.playbackComplete(ended.traceId);
+  f.session.pushUplinkAudio(new Uint8Array(3200));
+  f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  f.emit({ type: "transcript-update", transcript: "hello?", raw: {} });
+  await tick();
+  expect(uplinks()).toBe(before);
+  expect(signals[1].aborted).toBe(false);
+  expect(f.control.some((frame) => frame.t === "interrupted")).toBe(false);
+  release();
+  await until(() => usages() === 2);
+  expect(
+    f.control.filter((frame) => frame.t === "reply_complete"),
+  ).toHaveLength(2);
+  f.session.bye();
 });
 test("injected speech still uses canonical interruption and ignores late audio after cancellation", async () => {
   const f = await setup();
