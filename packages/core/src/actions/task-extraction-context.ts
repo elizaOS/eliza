@@ -1237,6 +1237,18 @@ export function bindRequestOperationResult(
 						row.op === attempt.registeredOperation ||
 						row.op === attempt.resolved,
 				);
+			// The Notes owner resolves its registered patch action to update before
+			// checking permission. An explicit edit may be fulfilled by that patch;
+			// keep its raw dispatch identity for matching and freshness checks.
+			const requested =
+				value.interpretation?.status === "explicit"
+					? value.interpretation.operations.includes(
+							attempt.registeredOperation,
+						) ||
+						(attempt.registeredOperation === "patch" &&
+							attempt.resolved === "update" &&
+							value.interpretation.operations.includes("update"))
+					: undefined;
 			if (dispatch && canonicalChild)
 				completion = Object.freeze({
 					issuer: attempt.issuer,
@@ -1247,24 +1259,9 @@ export function bindRequestOperationResult(
 					dispatch: Object.freeze(dispatch),
 					canonicalChild,
 					childDefinition: definition(canonicalChild),
-					requested:
-						value.interpretation?.status === "explicit"
-							? value.interpretation.operations.includes(
-									attempt.registeredOperation,
-								)
-							: undefined,
-					rejected:
-						value.interpretation?.status === "explicit" &&
-						value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) &&
-						noEffectRejection,
-					outsideRequestRejection:
-						value.interpretation?.status === "explicit" &&
-						!value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) &&
-						noEffectRejection,
+					requested,
+					rejected: requested === true && noEffectRejection,
+					outsideRequestRejection: requested === false && noEffectRejection,
 					ambiguousRejection:
 						value.interpretation?.status !== "explicit" && noEffectRejection,
 				});

@@ -528,6 +528,190 @@ describe("request-bound Notes negative constraints", () => {
     }
   });
 
+  it("confirms an explicit update completed by the registered Notes patch edit", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["update"] },
+      "Edit the ideas note so its text is: edited by QA check.",
+    );
+    let modelCalls = 0;
+    let toolCalls = 0;
+    try {
+      const result = await diagnosedPlanner(f, {
+        context: f.context,
+        tools: [
+          {
+            name: "NOTES_PATCH",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        runtime: {
+          useModel: async () => {
+            if (++modelCalls > 1)
+              throw new Error("The committed edit must not be replayed");
+            return {
+              text: "",
+              toolCalls: [
+                {
+                  name: "NOTES_PATCH",
+                  id: "case5-edit",
+                  arguments: {
+                    target: { kind: "id", value: f.historical.value.id },
+                    changes: [{ field: "body", value: "edited by QA check" }],
+                    expectedRevision: f.before.revision,
+                    eliza_turn_scope: "final",
+                  },
+                },
+              ],
+            };
+          },
+        },
+        executeToolCall: async (call) => {
+          toolCalls++;
+          return executeV5PlannedToolCall({
+            runtime: f.runtime,
+            toolCall: call,
+            plannerContext: f.context,
+            executorCtx: {
+              message: f.message,
+              state: f.state,
+              userRoles: ["OWNER"],
+              activeContexts: ["notes"],
+              replyOwner: "planner",
+            },
+            plannerRuntime: {
+              useModel: async () => {
+                throw new Error("No patch sub-planner expected");
+              },
+            },
+          });
+        },
+        evaluate: async () => ({
+          success: true,
+          decision: "FINISH",
+          thought: "Use the actual durable edit receipt.",
+          messageToUser: "Updated the note.",
+        }),
+      });
+      expect(modelCalls).toBe(1);
+      expect(toolCalls).toBe(1);
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(f.service.snapshot().revision).toBe(f.before.revision + 1);
+      expect(f.service.getNote(f.historical.value.id).body).toBe(
+        "\nedited by QA check",
+      );
+      expect(result.finalMessage).toBe("Updated the note.");
+      expect(result.evaluator?.success).toBe(true);
+      const applied = result.trajectory.steps.find(
+        (step) => step.toolCall?.name === "NOTES_PATCH",
+      )?.result;
+      if (!applied)
+        throw new Error("Expected the actual registered patch result");
+      expect(readNotesMutationCompletion(applied, f.issuer)).toMatchObject({
+        requested: true,
+        rejected: false,
+        outsideRequestRejection: false,
+        status: "current",
+        dispatch: { child: "NOTES_PATCH", value: "patch" },
+      });
+      expect(applied.effectReceipts?.[0]).toMatchObject({
+        operation: "notes.note.update",
+        outcome: "applied",
+        resource: {
+          id: f.historical.value.id,
+          version: String(f.before.revision + 1),
+        },
+        commit: { kind: "durable", id: f.historical.value.id },
+      });
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  it("keeps a rejected registered patch required for an explicit update and preserves its raw retry identity", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["update"] },
+      "Edit the ideas note body.",
+    );
+    const execute = (params: Record<string, unknown>) =>
+      executeV5PlannedToolCall({
+        runtime: f.runtime,
+        toolCall: { name: "NOTES_PATCH", params },
+        plannerContext: f.context,
+        executorCtx: {
+          message: f.message,
+          state: f.state,
+          userRoles: ["OWNER"],
+          activeContexts: ["notes"],
+          replyOwner: "planner",
+        },
+        plannerRuntime: {
+          useModel: async () => {
+            throw new Error("No patch sub-planner expected");
+          },
+        },
+      });
+    try {
+      const target = { kind: "id", value: f.historical.value.id };
+      const rejected = await execute({ target, changes: [] });
+      expect(readNotesMutationCompletion(rejected, f.issuer)).toMatchObject({
+        requested: true,
+        rejected: true,
+        outsideRequestRejection: false,
+        status: "current",
+        dispatch: { child: "NOTES_PATCH", value: "patch" },
+      });
+      expect(f.writes).not.toHaveBeenCalled();
+      const corrected = await execute({
+        target,
+        changes: [{ field: "body", value: "edited by QA check" }],
+        expectedRevision: f.before.revision,
+      });
+      expect(
+        isMatchingNotesMutationCompletion(rejected, corrected, f.issuer),
+      ).toBe(true);
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(
+        readNotesMutationCompletion(
+          JSON.parse(JSON.stringify(corrected)),
+          f.issuer,
+        ),
+      ).toBeUndefined();
+      f.retire();
+      expect(readNotesMutationCompletion(corrected, f.issuer)?.status).toBe(
+        "stale",
+      );
+    } finally {
+      await f.service.stop();
+    }
+  });
+
+  it("does not classify an ordinary update as requested by a patch-only interpretation", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["patch"] },
+      "Append a line to the ideas note.",
+    );
+    try {
+      const changed = await f.execute("NOTES_UPDATE", {
+        noteId: f.historical.value.id,
+        textEdit: {
+          field: "title",
+          oldText: "ideas",
+          newText: "ideas revised",
+        },
+      });
+      expect(changed.success).toBe(true);
+      expect(readNotesMutationCompletion(changed, f.issuer)).toMatchObject({
+        requested: false,
+        rejected: false,
+        outsideRequestRejection: false,
+        status: "current",
+        dispatch: { child: "NOTES_UPDATE", value: "update" },
+      });
+    } finally {
+      await f.service.stop();
+    }
+  });
+
   it("retains the original rejection when a same-key unbound unknown failure follows it", async () => {
     const f = await fixture(
       { classification: "mutation_requested", operations: ["create"] },

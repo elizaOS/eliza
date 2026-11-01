@@ -157,6 +157,12 @@ export interface VoiceTurnMetricsReceipt {
   halfDuplexSettlingCount: number;
   halfDuplexSuppressedFrameCount: number;
   halfDuplexSuppressedBytes: number;
+  /**
+   * Subset of the suppressed totals dropped by the caller-turn busy gate alone,
+   * while no reply audio was playing or settling its echo tail.
+   */
+  halfDuplexBusySuppressedFrameCount: number;
+  halfDuplexBusySuppressedBytes: number;
 }
 
 interface VoiceTurnMetricsState extends VoiceTurnMetricsReceipt {
@@ -335,6 +341,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private assistantPlaybackSuppressedUntilMs = Number.NEGATIVE_INFINITY;
   private assistantPlaybackDroppedUplinkBytes = 0;
   private assistantPlaybackDropLogged = false;
+  private callerTurnBusy = false;
   private turnMetrics: VoiceTurnMetricsState | null = null;
 
   private state: SessionState = "ready";
@@ -704,14 +711,20 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // No AEC is guaranteed on the mobile clients. During assistant playback,
     // forwarding speaker echo to Ink makes the model transcribe and answer
     // itself. Drop before re-framing and metering so suppressed echo is neither
-    // provider input nor billed caller audio. Explicit UI barge-in clears this
-    // gate synchronously; acoustic barge-in is available only to AEC-safe
-    // clients that opt in through the session config.
+    // provider input nor billed caller audio. The same gate stays closed for
+    // the whole caller turn, from submission until the turn ends, even when
+    // its reply audio drains first. Explicit UI barge-in clears this gate
+    // synchronously; acoustic barge-in is available only to AEC-safe clients
+    // that opt in through the session config.
     if (this.isAssistantPlaybackSuppressed()) {
       this.assistantPlaybackDroppedUplinkBytes += bytes.byteLength;
       if (this.turnMetrics) {
         this.turnMetrics.halfDuplexSuppressedFrameCount += 1;
         this.turnMetrics.halfDuplexSuppressedBytes += bytes.byteLength;
+        if (!this.isAssistantPlaybackEchoPending()) {
+          this.turnMetrics.halfDuplexBusySuppressedFrameCount += 1;
+          this.turnMetrics.halfDuplexBusySuppressedBytes += bytes.byteLength;
+        }
       }
       if (!this.assistantPlaybackDropLogged) {
         this.assistantPlaybackDropLogged = true;
@@ -793,6 +806,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       halfDuplexSettlingCount: 0,
       halfDuplexSuppressedFrameCount: 0,
       halfDuplexSuppressedBytes: 0,
+      halfDuplexBusySuppressedFrameCount: 0,
+      halfDuplexBusySuppressedBytes: 0,
       lastLlmDeltaAtMs: null,
       lastSonicRequestAtMs: null,
       lastAudioFrameAtMs: null,
@@ -886,6 +901,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       halfDuplexSettlingCount: metrics.halfDuplexSettlingCount,
       halfDuplexSuppressedFrameCount: metrics.halfDuplexSuppressedFrameCount,
       halfDuplexSuppressedBytes: metrics.halfDuplexSuppressedBytes,
+      halfDuplexBusySuppressedFrameCount:
+        metrics.halfDuplexBusySuppressedFrameCount,
+      halfDuplexBusySuppressedBytes: metrics.halfDuplexBusySuppressedBytes,
     };
     try {
       this.config.onTurnMetrics?.(receipt);
@@ -1021,7 +1039,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   playbackComplete(traceId: string): void {
     if (this.closed || this.pendingPlaybackCompletionTraceId !== traceId)
       return;
+    // A drain ends the reply's echo tail, not the caller turn. The early
+    // reply-ready path can drain before the request has finished persisting,
+    // so the busy gate keeps the microphone closed until the turn ends.
+    const callerTurnBusy = this.callerTurnBusy;
     this.clearAssistantPlaybackSuppression();
+    this.callerTurnBusy = callerTurnBusy;
   }
 
   private isAssistantPlaybackSuppressed(): boolean {
@@ -1030,9 +1053,39 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.continuousHandoffEnabled
     )
       return false;
+    return this.callerTurnBusy || this.isAssistantPlaybackEchoPending();
+  }
+
+  /** Reply audio is playing or its echo tail has not settled yet. */
+  private isAssistantPlaybackEchoPending(): boolean {
     return (
       this.assistantPlaybackActive ||
       this.now() < this.assistantPlaybackSuppressedUntilMs
+    );
+  }
+
+  /**
+   * Half duplex keeps the microphone closed for the whole time a submitted
+   * caller turn is busy. An action can run for seconds before any audio, and
+   * the request can still be persisting after its audio drained. Caller speech
+   * in either gap would commit a new turn and abort a request whose action
+   * already ran. Only the end of the turn (finishTurn), interruption, Stop or
+   * session close releases this gate; playback drain never does.
+   */
+  private armCallerTurnBusy(): void {
+    if (
+      this.config.acousticBargeInEnabled === true ||
+      this.continuousHandoffEnabled
+    )
+      return;
+    this.callerTurnBusy = true;
+    this.assistantPlaybackDropLogged = false;
+    this.discardSuppressedUplinkState();
+    logger.info(
+      {
+        traceId: this.currentVoiceTurnId,
+      },
+      "[voice-session] half-duplex caller-turn busy gate armed",
     );
   }
 
@@ -1070,6 +1123,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   private settleAssistantPlaybackSuppression(): void {
+    // The caller turn is over. Without reply audio there is no echo tail to
+    // wait out, so the caller can speak again at once, e.g. to retry.
+    this.callerTurnBusy = false;
     if (!this.assistantPlaybackActive) return;
     if (this.continuousHandoffEnabled) {
       this.assistantPlaybackActive = false;
@@ -1105,6 +1161,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private clearAssistantPlaybackSuppression(): void {
     this.pendingPlaybackCompletionTraceId = null;
     const wasSuppressed = this.isAssistantPlaybackSuppressed();
+    this.callerTurnBusy = false;
     this.assistantPlaybackActive = false;
     this.assistantPlaybackStartedAtMs = null;
     this.assistantPlaybackAudioBytes = 0;
@@ -1561,6 +1618,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "thinking";
     this.callerResponseTurnCount += 1;
+    this.armCallerTurnBusy();
     this.activeResponseModelSettled = this.runResponseTurn(
       transcript,
       traceId,
@@ -2080,7 +2138,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           // Long replies and the early reply-ready path can finish playback
           // while the canonical route is still persisting its durable receipt.
           // Keep the turn alive until terminal metadata arrives so a successful
-          // VIEWS action still reaches the client after speech has ended.
+          // VIEWS action still reaches the client after speech has ended. The
+          // half-duplex busy gate keeps the microphone closed until then.
           if (upstreamComplete) this.finishTurn(traceId);
         },
         onFlushComplete: () => {
@@ -2282,6 +2341,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             "[voice-session] action progress cue",
           );
         },
+        // Content-free activity names are shown, never spoken or saved.
+        onActivity: (label: string) => {
+          if (this.currentVoiceTurnId !== traceId || abort.signal.aborted)
+            return;
+          this.send({ t: "activity", label, traceId });
+        },
         onReplyReady: finalizeTtsReply,
       };
       const onDelta = (delta: string) => {
@@ -2368,10 +2433,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
       if (this.currentVoiceTurnId !== traceId) return; // interrupted mid-stream.
 
-      if (result.aborted) {
-        // Interruption already handled the teardown of this turn's TTS.
-        return;
-      }
+      // Interruption, Stop and close end the turn before aborting its request,
+      // so an abort that reaches a still-current turn came from the fetch
+      // layer, e.g. an idle timeout. Fail the turn below like a dropped stream
+      // so it cannot hold the microphone or the session forever.
+      if (result.aborted)
+        throw new ElizaSseBridgeError(
+          "Eliza request aborted outside the voice session",
+          "upstream_error",
+        );
 
       // Canonical conversation completion is independent of TTS playback.
       // Let the renderer reconcile the saved reply even when an earlier

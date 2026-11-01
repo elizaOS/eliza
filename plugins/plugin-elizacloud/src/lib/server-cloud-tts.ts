@@ -1,4 +1,4 @@
-import {emitSpeechProxyTiming,timeSpeechProxyFetch,speechUpstreamTraceId} from "./cloud-speech-proxy-timing";
+import {emitSpeechProxyTiming,timeSpeechProxyFetch,speechUpstreamTraceId,speechProxyFailureClass} from "./cloud-speech-proxy-timing";
 /**
  * Cloud TTS helpers — proxy to Eliza Cloud (`api.eliza.app`).
  *
@@ -14,6 +14,7 @@ import {emitSpeechProxyTiming,timeSpeechProxyFetch,speechUpstreamTraceId} from "
  * `for (;;)` warming loop forever.
  */
 import type http from "node:http";
+import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { ELIZA_CLOUD_TTS_MAX_TEXT_CHARS } from "../cloud-config/server-cloud-tts.js";
 import { _internalResolveCloudApiKey } from "../cloud-config/server-cloud-tts.js";
@@ -212,6 +213,7 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
         let lastStatus = 0;
         let lastDetails = "unknown error";
         let cloudResponse: Response | null = null;
+        let cloudSignal: AbortSignal = client.signal;
         let successfulCandidate=-1;
         for (let i = 0; i < cloudUrls.length; i++) {
             const cloudUrl = cloudUrls[i];
@@ -224,10 +226,11 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
             // fallback transport.
             const idempotencyKey = req.headers["idempotency-key"];
             let attempt: Response;
+            let ttsSignal: AbortSignal;
             let warmingRetries = 0;
             for (;;) {
                 client.signal.throwIfAborted();
-                const ttsSignal = cloudProxyAbortSignal("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", client.signal);
+                ttsSignal = cloudProxyAbortSignal("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", client.signal);
                 attempt = await timeSpeechProxyFetch(()=>fetch(cloudUrl, {
                     method: "POST",
                     headers: {
@@ -257,6 +260,7 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
             }
             if (attempt.ok) {
                 cloudResponse = attempt;
+                cloudSignal = ttsSignal;
                 successfulCandidate=i;
                 ttsDebug("server:cloud-tts:upstream-ok", {
                     urlIndex: i,
@@ -298,22 +302,56 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
             sendJsonErrorResponse(res, 502, `Eliza Cloud TTS failed (${lastStatus || 502}): ${lastDetails}`);
             return true;
         }
+        // Cloud sends the mp3 chunked as the provider synthesizes it. Forward
+        // each chunk as it arrives so playback can start at the first frame
+        // instead of after the whole clip. Headers are committed with the first
+        // chunk: a body that fails before any audio still gets the JSON 502
+        // envelope, and a failure after that destroys the response so the
+        // client sees a truncated clip, never a cleanly ended one. The body
+        // stays under the successful attempt's TTS deadline and client abort,
+        // including backpressure waits on a connected reader that stops
+        // draining; the abort cancels the upstream even mid-read.
+        const audio=cloudResponse;
+        const signal=cloudSignal;
         const drainStarted=Date.now();
-        let audioBuffer:Buffer;
-        try{audioBuffer=Buffer.from(await cloudResponse.arrayBuffer());}
-        catch(error){emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),status:cloudResponse.status,outcome:"threw",upstreamTraceId:speechUpstreamTraceId(cloudResponse)});throw error;}
-        emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes:audioBuffer.length,status:cloudResponse.status,outcome:"returned",upstreamTraceId:speechUpstreamTraceId(cloudResponse)});
-        client.signal.throwIfAborted();
-        forwardCloudSpeechHeaders(cloudResponse, res, "tts");
+        const reader=audio.body?.getReader();
+        const cancelUpstream=()=>{void reader?.cancel(signal.reason).catch(()=>{});};
+        signal.addEventListener("abort",cancelUpstream,{once:true});
+        let bytes=0;
+        let firstChunkMs:number|undefined;
+        const commit=()=>{
+            firstChunkMs=Math.max(0,Date.now()-drainStarted);
+            forwardCloudSpeechHeaders(audio, res, "tts");
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "audio/mpeg");
+            res.setHeader("Cache-Control", "no-store");
+        };
+        try{
+            signal.throwIfAborted();
+            while(reader){
+                const chunk=await reader.read();
+                signal.throwIfAborted();
+                if(chunk.done)break;
+                if(!chunk.value.byteLength)continue;
+                if(firstChunkMs===undefined)commit();
+                bytes+=chunk.value.byteLength;
+                if(!res.write(chunk.value))await once(res,"drain",{signal});
+            }
+            if(firstChunkMs===undefined)commit();
+        }
+        catch(error){
+            emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes,firstChunkMs,status:audio.status,outcome:"threw",failureClass:speechProxyFailureClass(signal.aborted?signal.reason:error),upstreamTraceId:speechUpstreamTraceId(audio)});
+            if(res.headersSent){res.destroy();return true;}
+            throw error;
+        }
+        finally{signal.removeEventListener("abort",cancelUpstream);await reader?.cancel(signal.reason).catch(()=>{});}
+        emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes,firstChunkMs,status:audio.status,outcome:"returned",upstreamTraceId:speechUpstreamTraceId(audio)});
         ttsDebug("server:cloud-tts:success", {
-            bytes: audioBuffer.length,
+            bytes,
             preview: ttsPreview,
             ...dbgExtra,
         });
-        res.statusCode = 200;
-        res.setHeader("Content-Type", "audio/mpeg");
-        res.setHeader("Cache-Control", "no-store");
-        res.end(audioBuffer);
+        res.end();
         return true;
     }
     catch (err) {

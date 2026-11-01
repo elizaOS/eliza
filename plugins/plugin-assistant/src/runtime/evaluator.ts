@@ -4271,7 +4271,37 @@ function parseEvaluatorText(text: string): ParsedEvaluatorObject {
   // unambiguous for every canonical spelling (think/thinking/reasoning/…):
   // everything before the LAST close is reasoning, never output — strip it
   // before any envelope handling (#20080 generalizes the F18 </think> fix).
-  return parseEvaluatorVisibleText(stripReasoningPrefixes(text));
+  return parseEvaluatorVisibleText(
+    unwrapNativeVerdictEnvelope(stripReasoningPrefixes(text).trim()),
+  );
+}
+
+/**
+ * Qwen-family models can serialize the evaluator verdict in their native
+ * tool-call dialect even though the evaluator offers no tools (live cold
+ * calendar voice turn tj-929faaf3d187f1: `<tool_call><function=functions.<hash>>`
+ * around a complete FINISH verdict). Rejecting it as extra text replanned a
+ * REPLY and paid a second evaluator call (3.6 s + 5.4 s). Unwrap only one
+ * envelope that is the whole response, names that opaque function and holds
+ * exactly one evaluator-shaped JSON object; the body then gets the same checks
+ * as bare evaluator JSON. Every other shape keeps its current path. The name
+ * must be that observed `functions.<64 hex>$<32 hex>` digest: an action in any
+ * case or namespace (`CALENDAR`, `calendar`, `functions.CALENDAR`) is still an
+ * action call, and unwrapping it would discard that identity before validation.
+ * The body is matched greedily and trimmed after: a lazy body between two
+ * `\s*` runs backtracks quadratically on padding before the close and
+ * cubically on padding after the open tag when the envelope does not close.
+ */
+function unwrapNativeVerdictEnvelope(text: string): string {
+  const match =
+    /^<tool_call>\s*<function=([^>\s]+)>([\s\S]*)<\/function>\s*<\/tool_call>$/.exec(
+      text,
+    );
+  if (!match || !/^functions\.[0-9a-f]{64}\$[0-9a-f]{32}$/.test(match[1])) {
+    return text;
+  }
+  const body = match[2].trim();
+  return isEvaluatorShapedObject(tryParseJson(body)) ? body : text;
 }
 
 function parseEvaluatorVisibleText(text: string): ParsedEvaluatorObject {

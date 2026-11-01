@@ -259,11 +259,14 @@ export function createManagedCalendarRead(
   async function call(
     calendar: object,
     attempt?: ReadAttempt,
+    signal?: AbortSignal,
   ): Promise<Record<string, unknown>> {
     const r = await request(url, {
       method: "POST",
       redirect: "error",
-      signal: AbortSignal.timeout(30000),
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(30000)])
+        : AbortSignal.timeout(30000),
       headers: {
         Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
@@ -334,9 +337,13 @@ export function createManagedCalendarRead(
     },
     acceptsGrantId: (grantId?: string) => !grantId || scoped(grantId),
     owns: (calendar: LifeOpsCalendarSummary) => scoped(calendar.grantId),
-    async sources(): Promise<LifeOpsCalendarSummary[]> {
+    async sources(signal?: AbortSignal): Promise<LifeOpsCalendarSummary[]> {
       const attempt: ReadAttempt = { operation: "sources", httpStatus: null };
-      const { calendars } = await call({ operation: "sources" }, attempt);
+      const { calendars } = await call(
+        { operation: "sources" },
+        attempt,
+        signal,
+      );
       if (
         !Array.isArray(calendars) ||
         calendars.length > 1000 ||
@@ -368,6 +375,7 @@ export function createManagedCalendarRead(
       timeMax: string,
       timeZone: string,
       agentId: string,
+      signal?: AbortSignal,
     ): Promise<LifeOpsCalendarFeed> {
       const attempt: ReadAttempt = { operation: "feed", httpStatus: null };
       if (!scoped(calendar.grantId))
@@ -382,6 +390,7 @@ export function createManagedCalendarRead(
           timeZone,
         },
         attempt,
+        signal,
       );
       if (
         !record(feed) ||

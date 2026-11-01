@@ -14,6 +14,8 @@ export function providerReviewSources(context: ContextObject) {
 	const providers = context.events.filter(
 		(event): event is ContextProviderEvent =>
 			event.type === "provider" &&
+			(!("referenceBodyDeferred" in event) ||
+				event.referenceBodyDeferred !== true) &&
 			"reviewableSources" in event &&
 			Boolean(event.reviewableSources) &&
 			// Indexed originals may be reviewed after this turn loaded their full
@@ -152,10 +154,13 @@ export function projectDeferredProviders(context: ContextObject): {
 			!event.discoveryText.trim() ||
 			!("text" in event) ||
 			typeof event.text !== "string" ||
-			event.discoveryText.length >= event.text.length ||
+			(source.referenceBodyDeferred !== true &&
+				event.discoveryText.length >= event.text.length) ||
 			!("name" in event) ||
 			typeof event.name !== "string" ||
-			(Array.isArray(loaded) && loaded.includes(event.name))
+			(source.referenceBodyDeferred !== true &&
+				Array.isArray(loaded) &&
+				loaded.includes(event.name))
 		)
 			return event;
 		available.push(event.name);

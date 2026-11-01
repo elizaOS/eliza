@@ -34,7 +34,7 @@ export function createSerialise(): <T>(fn: () => Promise<T>) => Promise<T> {
 /** FIFO permit admission shared by asynchronous task processors. */
 export class Semaphore {
 	private permits: number;
-	private waiters: Array<() => void> = [];
+	private waiters: Array<() => boolean> = [];
 
 	constructor(count: number) {
 		this.permits =
@@ -53,23 +53,46 @@ export class Semaphore {
 		return this.waiters.length;
 	}
 
-	async acquire(): Promise<void> {
+	/** Cancelled waiters own no permit; callers release only after admission. */
+	async acquire(signal?: AbortSignal): Promise<void> {
+		signal?.throwIfAborted();
 		if (this.permits > 0) {
 			this.permits -= 1;
 			return;
 		}
 
-		await new Promise<void>((resolve) => {
-			this.waiters.push(resolve);
+		await new Promise<void>((resolve, reject) => {
+			const admitted = () => {
+				signal?.removeEventListener("abort", cancelled);
+				if (signal?.aborted) {
+					reject(signal.reason);
+					return false;
+				}
+				resolve();
+				return true;
+			};
+			const cancelled = () => {
+				const index = this.waiters.indexOf(admitted);
+				if (index < 0) return;
+				this.waiters.splice(index, 1);
+				signal?.removeEventListener("abort", cancelled);
+				reject(signal?.reason);
+			};
+			this.waiters.push(admitted);
+			signal?.addEventListener("abort", cancelled, { once: true });
 		});
 	}
 
 	release(): void {
 		this.permits += 1;
-		const next = this.waiters.shift();
-		if (next && this.permits > 0) {
+		while (this.permits > 0) {
+			const next = this.waiters.shift();
+			if (!next) return;
 			this.permits -= 1;
-			next();
+			if (next()) return;
+			// An earlier abort listener can release before this waiter's listener.
+			// Keep that permit available and skip the cancelled waiter without recursion.
+			this.permits += 1;
 		}
 	}
 }

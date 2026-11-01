@@ -37,9 +37,12 @@ import {
   normalizeTriggerDraft,
 } from "../../../../packages/agent/src/triggers/scheduling.ts";
 import { createAssistantPlugin } from "../index.ts";
+import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
+import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
 import {
   DefaultMessageService,
   enforceTrustedDeliveryAudienceOnResult,
+  evaluatePlannedReplyEgress,
 } from "./message.ts";
 
 /** The Stage-1 HANDLE_RESPONSE tool-call envelope a live model emits. */
@@ -831,21 +834,29 @@ describe("planning progress delivery boundaries", () => {
       expect(delivered.map((content) => content.text)).toEqual([final]);
     },
   );
+  // Owner-only progress is spoken only after its audience revalidates; a
+  // changed room or a failed lookup fails closed. Progress never consumes the
+  // final reply's own delivery.
   it.each(
     [ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
-      (["clean", "private", "revoked", "envelope"] as const).map((kind) => ({
+      (
+        ["clean", "private", "revoked", "lookup_failed", "envelope"] as const
+      ).map((kind) => ({
         channelType,
         kind,
       })),
     ),
   )(
-    "protects $kind progress on $channelType without consuming final delivery",
+    "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
     async ({ kind, channelType }) => {
       const h = await createHarness();
       const turn = h.makeMessage();
       turn.content.channelType = channelType;
       h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
-      if (kind === "private" || kind === "revoked") {
+      const ownerOnly =
+        kind === "private" || kind === "revoked" || kind === "lookup_failed";
+      let failNextAudienceRead = false;
+      if (ownerOnly) {
         h.runtime.registerProvider({
           name: "userPersonalityPreferences",
           override: true,
@@ -854,19 +865,38 @@ describe("planning progress delivery boundaries", () => {
           get: async () => ({ text: "PRIVATE_CONTEXT_TEST_VALUE" }),
         });
         await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+        const readParticipants = h.runtime.getParticipantsForRoom.bind(
+          h.runtime,
+        );
+        vi.spyOn(h.runtime, "getParticipantsForRoom").mockImplementation(
+          async (roomId) => {
+            if (failNextAudienceRead) {
+              failNextAudienceRead = false;
+              throw new Error("injected audience lookup failure");
+            }
+            return readParticipants(roomId);
+          },
+        );
       }
+      // Owner-only rows speak an acknowledgement the gate admits, so only
+      // audience revalidation can drop it.
       const progressText =
         kind === "envelope"
           ? "Checking <<<EXTERNAL_UNTRUSTED_CONTENT>>> now."
           : kind === "clean"
             ? "Checking that now."
-            : "Checking PRIVATE_CONTEXT_TEST_VALUE.";
+            : "Let me check your notes.";
       h.runtime.registerModel(
         ModelType.RESPONSE_HANDLER,
-        async () => {
+        async (_rt, params) => {
           if (kind === "revoked")
             await h.runtime.addParticipant(asUUID(v4()), h.roomId);
-          const response = stage1DirectReply(progressText);
+          if (kind === "lookup_failed") failNextAudienceRead = true;
+          const response = stage1DirectReply(
+            progressText,
+            params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+              ?.parameters?.properties?.replyText?.type === "array",
+          );
           Object.assign(response.toolCalls[0].arguments, {
             contexts: ["general"],
             requiresTool: true,
@@ -914,6 +944,109 @@ describe("planning progress delivery boundaries", () => {
         expect(JSON.stringify(delivered)).not.toContain(
           "PRIVATE_CONTEXT_TEST_VALUE",
         );
+    },
+  );
+  // The acknowledgement rule teaches the model to acknowledge a view planned
+  // with other work as opening it. Its example is guidance the unchanged
+  // closed grammar and egress already admit, never a substitute: the owner's
+  // live draft (tj-6ae578d9ff0774) is still dropped and nothing is spoken in
+  // its place.
+  it.each([
+    { draft: "Let me open Calendar.", spoken: true },
+    {
+      draft: "Calendar. Killing coffee and putting a launch at noon.",
+      spoken: false,
+    },
+  ])(
+    "speaks a planned-view acknowledgement only as the model wrote it: $draft",
+    async ({ draft, spoken }) => {
+      const sentence =
+        'When a view opens alongside other planned work, acknowledge it as opening that view, as in "Let me open Calendar."; never name items, times or effects.';
+      const example = "Let me open Calendar.";
+      const request =
+        "Can you open the calendar and delete the coffee event and create a new event to have a launch at noon?";
+      expect(ACKNOWLEDGMENT_RULE.endsWith(` ${sentence}`)).toBe(true);
+      expect(sentence).toContain(`"${example}"`);
+      expect(replyIsClaimSafeAcknowledgment(example)).toBe(true);
+      expect(
+        evaluatePlannedReplyEgress({
+          reply: example,
+          pendingWork: true,
+          request,
+          providers: {
+            VIEW_NAVIGATION: {
+              data: {
+                views: [{ id: "calendar", label: "Calendar" }],
+                currentViewId: "chat",
+              },
+            },
+          } as never,
+          actionResults: [],
+          actions: [],
+        }).verdict,
+      ).toBe("allow");
+      expect(replyIsClaimSafeAcknowledgment(draft)).toBe(spoken);
+
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.text = request;
+      turn.content.channelType = ChannelType.VOICE_DM;
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      const stage1Calls: string[] = [];
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async (_rt, params) => {
+          stage1Calls.push(JSON.stringify(params.tools));
+          const response = stage1DirectReply(
+            draft,
+            params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+              ?.parameters?.properties?.replyText?.type === "array",
+          );
+          Object.assign(response.toolCalls[0].arguments, {
+            contexts: ["general"],
+            intents: [
+              "Open the Calendar view",
+              "Delete the coffee event",
+              "Create a launch event at noon",
+            ],
+            requiresTool: true,
+            replyEffectStatus: "pending",
+          });
+          return response;
+        },
+        "planned-view-acknowledgement",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () =>
+          JSON.stringify({
+            thought: "The request is resolved.",
+            toolCalls: [],
+            messageToUser: h.replyText,
+          }),
+        "planned-view-acknowledgement",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            progress.push(text);
+          },
+        },
+      );
+      expect(stage1Calls[0]).toContain(JSON.stringify(sentence).slice(1, -1));
+      expect(progress).toEqual(spoken ? [draft] : []);
+      expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
+      expect(await h.storedReplies()).toHaveLength(1);
     },
   );
 });

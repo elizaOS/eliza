@@ -87,6 +87,8 @@ export interface ContextProviderEvent extends ContextEventBase {
 	text?: string;
 	/** Provider-owned index; the complete text stays in the original context. */
 	discoveryText?: string;
+	/** Complete body requires fresh composition; never a fully loaded source. */
+	referenceBodyDeferred?: true;
 	values?: Record<string, JsonValue | undefined>;
 	data?: Record<string, unknown>;
 	/**

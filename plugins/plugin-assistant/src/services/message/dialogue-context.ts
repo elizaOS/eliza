@@ -32,6 +32,7 @@ export function asProviderRecord(value: unknown):
   | {
       text?: unknown;
       discoveryText?: unknown;
+      referenceBodyDeferred?: unknown;
       reviewableSources?: ProviderResult["reviewableSources"];
       providerName?: unknown;
       data?: unknown;
@@ -43,6 +44,7 @@ export function asProviderRecord(value: unknown):
   return value as {
     text?: unknown;
     discoveryText?: unknown;
+    referenceBodyDeferred?: unknown;
     reviewableSources?: ProviderResult["reviewableSources"];
     providerName?: unknown;
     data?: unknown;
@@ -811,6 +813,9 @@ export function appendStateProviderEvents(
       ...(originals ? { data: { originalMessages: originals } } : {}),
       ...(typeof provider.discoveryText === "string"
         ? { discoveryText: provider.discoveryText }
+        : {}),
+      ...(provider.referenceBodyDeferred === true
+        ? { referenceBodyDeferred: true as const }
         : {}),
       reviewableSources: provider.reviewableSources,
       cacheStable: cacheStableByName.get(resolvedName.toUpperCase()),
