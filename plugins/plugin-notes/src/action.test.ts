@@ -1395,6 +1395,7 @@ describe("promoted Notes execution", () => {
     const request = await boundNotesRequest(runtime, {
       text: "Create the requested note, then open Notes.",
       operations: ["create"],
+      message: { entityId: "owner-id" as UUID, roomId: "room-id" as UUID },
     });
     const useModel = vi.fn().mockResolvedValue({
       toolCalls: [
@@ -1475,7 +1476,7 @@ describe("promoted Notes execution", () => {
         calls: result.trajectory.steps
           .filter((step) => step.toolCall)
           .map((step) => ({
-            name: step.toolCall!.name,
+            name: step.toolCall?.name,
             success: step.result?.success,
             receipts: step.result?.effectReceipts?.length ?? 0,
           })),
@@ -1574,6 +1575,7 @@ describe("promoted Notes execution", () => {
       const request = await boundNotesRequest(runtime, {
         text: "Create the requested note with its complete supplied content.",
         operations: ["create"],
+        message: { entityId: "owner-id" as UUID, roomId: "room-id" as UUID },
       });
       const body = "Bring the blue notebook and charger; no water.";
       const content = bodyOnlyInTitle
@@ -2386,6 +2388,7 @@ describe("literal Notes edits", () => {
     const request = await boundNotesRequest(runtime, {
       text: "Apply the requested patch to the saved note.",
       operations: ["patch"],
+      message: { entityId: "owner-id" as UUID, roomId: "room-id" as UUID },
     });
     const service = getNotesService(runtime);
     const note = await service.createNote({
