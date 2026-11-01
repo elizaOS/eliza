@@ -470,6 +470,74 @@ it("waits for the boot restore before answering a message search", async () => {
   }
 }, 120_000);
 
+it("labels a message search hit with its sender, not the owner", async () => {
+  const { adapter, adminId, agentId, dataDir, runtime, state } =
+    await createFixture();
+  try {
+    const created = await call(state, "POST", "/api/conversations", {
+      title: "Shared room",
+    });
+    const { conversation } = created.payload as {
+      conversation: { id: string; roomId: UUID };
+    };
+    const memberId = stringToUuid("search-sender-member");
+    await runtime.createEntity({
+      id: memberId,
+      agentId,
+      names: ["Member"],
+    } as never);
+    await runtime.createMemory(
+      {
+        entityId: memberId,
+        agentId,
+        roomId: conversation.roomId,
+        content: { text: "the walrus report from a member", source: "discord" },
+        metadata: {
+          type: "message",
+          entityName: "Member Display",
+          entityUserName: "member_handle",
+        },
+      } as never,
+      "messages",
+    );
+    await runtime.createMemory(
+      {
+        entityId: adminId,
+        agentId,
+        roomId: conversation.roomId,
+        content: { text: "the walrus report from the owner" },
+      } as never,
+      "messages",
+    );
+
+    const searched = await call(
+      state,
+      "GET",
+      "/api/conversations/messages/search?q=walrus",
+    );
+
+    expect(searched.status).toBe(200);
+    const { results } = searched.payload as {
+      results: Array<Record<string, unknown>>;
+    };
+    const member = results.find((r) => String(r.text).includes("a member"));
+    const owner = results.find((r) => String(r.text).includes("the owner"));
+    expect(member).toMatchObject({
+      role: "user",
+      from: "Member Display",
+      fromUserName: "member_handle",
+      source: "discord",
+    });
+    expect(owner).toBeDefined();
+    expect(owner).not.toHaveProperty("from");
+    expect(owner).not.toHaveProperty("fromUserName");
+    expect(owner).not.toHaveProperty("source");
+  } finally {
+    await adapter.close();
+    fs.rmSync(dataDir, { recursive: true, force: true });
+  }
+}, 120_000);
+
 it.each(["\ud800", "valid-prefix\udfffsuffix"])(
   "rejects an import source identity with a lone surrogate before any write: %j",
   async (sourceId) => {
