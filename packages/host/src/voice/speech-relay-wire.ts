@@ -31,6 +31,8 @@ export type SpeechRelayHello = {
   t: "hello";
   token: string;
   errorReasons?: true;
+  /** Staging diagnostics: request one numeric `timings` frame after `ready`. */
+  timings?: true;
 };
 export type SpeechRelayServerControl =
   | {
@@ -62,11 +64,14 @@ export function parseSpeechRelayJson(
     const hello = value as Record<string, unknown>;
     if (
       Object.keys(hello).length !==
-        (Object.hasOwn(hello, "errorReasons") ? 3 : 2) ||
+        2 +
+          Number(Object.hasOwn(hello, "errorReasons")) +
+          Number(Object.hasOwn(hello, "timings")) ||
       Object.keys(hello).some(
-        (key) => !["t", "token", "errorReasons"].includes(key),
+        (key) => !["t", "token", "errorReasons", "timings"].includes(key),
       ) ||
       (Object.hasOwn(hello, "errorReasons") && hello.errorReasons !== true) ||
+      (Object.hasOwn(hello, "timings") && hello.timings !== true) ||
       typeof hello.token !== "string" ||
       hello.token.length > 6144 ||
       !hello.token
@@ -76,6 +81,7 @@ export function parseSpeechRelayJson(
       t: "hello",
       token: hello.token,
       ...(hello.errorReasons === true ? { errorReasons: true as const } : {}),
+      ...(hello.timings === true ? { timings: true as const } : {}),
     };
   }
   return parseSpeechRelayControl(value);
