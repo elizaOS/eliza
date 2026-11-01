@@ -15,6 +15,10 @@ const voice = path.resolve(
   here,
   "../../../../plugins/plugin-local-inference/native/android/src/main/java/ai/eliza/voice",
 );
+const bridge = path.resolve(
+  here,
+  "../../../../plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice",
+);
 const fixtures = path.join(here, "speech-pipeline");
 const java = (name) =>
   process.env.JAVA_HOME ? path.join(process.env.JAVA_HOME, "bin", name) : name;
@@ -300,10 +304,6 @@ test("the product-subclassable speech bridge compiles with the library against A
     "platforms/android-36/android.jar",
   );
   assert.ok(fs.existsSync(sdk), "Android 36 platform required");
-  const bridge = path.resolve(
-    here,
-    "../../../../plugins/plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice",
-  );
   // Compile-only Capacitor signatures (speech-pipeline/capacitor-api); no Capacitor code runs.
   const capacitor = path.join(fixtures, "capacitor-api");
   const javaFiles = (directory) =>
@@ -379,4 +379,32 @@ test("the product-subclassable speech bridge compiles with the library against A
     /File file=capture\.selected\(required\(call\.getString\("recordingId"\),256\)\);/,
   );
   assert.doesNotMatch(source, /openConnection|new URL\(/);
+});
+
+test("an automatic live capture reopen never prompts: without permission it is refused first", () => {
+  const source = fs
+    .readFileSync(path.join(bridge, "LocalSpeechBridgePlugin.java"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\/|\/\/[^\n]*/g, "");
+  const start = source.indexOf(
+    "@PluginMethod public void startLiveCapture(PluginCall call){",
+  );
+  assert.ok(start >= 0, "startLiveCapture");
+  const method = source.slice(start, source.indexOf("\n }", start));
+  const refusal = method.search(
+    /if\(Boolean\.TRUE\.equals\(call\.getBoolean\("reopen",false\)\)&&getPermissionState\("microphone"\)!=PermissionState\.GRANTED\)\{call\.reject\("Microphone permission is not granted","permission"\);return;\}/,
+  );
+  assert.ok(refusal >= 0, "a reopen without permission is rejected");
+  assert.ok(
+    refusal < method.indexOf("live.reserve("),
+    "before any reservation",
+  );
+  assert.ok(
+    refusal < method.indexOf("requestPermissionForAlias("),
+    "before any permission prompt",
+  );
+  // The controller receives the flag for its call and pause fence.
+  assert.match(
+    source,
+    /live\.start\(ticket,[^;]*,Boolean\.TRUE\.equals\(call\.getBoolean\("reopen",false\)\),new LiveCaptureController\.Started\(\)\{/,
+  );
 });
