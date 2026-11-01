@@ -407,13 +407,16 @@ function normalizeEmbeddingResult(
 	return embedding;
 }
 function normalizeAudioBytes(
-	result: Uint8Array | ArrayBuffer | Buffer,
+	result: Uint8Array | ArrayBuffer | Buffer | DataView,
 ): Uint8Array {
 	if (result instanceof Uint8Array) {
 		return new Uint8Array(result.buffer, result.byteOffset, result.byteLength);
 	}
 	if (result instanceof ArrayBuffer) {
 		return new Uint8Array(result);
+	}
+	if (result instanceof DataView) {
+		return new Uint8Array(result.buffer, result.byteOffset, result.byteLength);
 	}
 	throw unavailable(
 		ModelType.TEXT_TO_SPEECH,
