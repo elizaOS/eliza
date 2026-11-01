@@ -27,7 +27,13 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger, ModelType, parseKeyValueXml } from "@elizaos/core";
+import {
+  extractUserText,
+  logger,
+  ModelType,
+  parseKeyValueXml,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 import {
   draftConsentDigest,
   pendingSendDraft,
@@ -168,8 +174,11 @@ export async function outboundDraftOptionsFromMessage(
   options: HandlerOptions | undefined,
 ): Promise<HandlerOptions | undefined> {
   const params = getParameters(options);
-  const text =
-    typeof message.content.text === "string" ? message.content.text : "";
+  // Read the user's words, not the document-augmentation envelope: on an
+  // augmented turn content.text holds contextual documents plus the request,
+  // and a document fragment must not supply the draft recipient or body.
+  // This matches the send-consent unwrap in the same triage area.
+  const text = extractUserText(unwrapUserMessageText(message));
 
   // Structured params from the planner/tool-call win; only invoke the model to
   // fill the gaps (cheap no-LLM fast path when they are already complete).
