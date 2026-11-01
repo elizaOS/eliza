@@ -43,7 +43,16 @@ function policyFencingEnabled(): boolean {
   );
 }
 
-/** Keep key association and standing discovery in one transaction lock domain. */
+/**
+ * Keep key association and standing discovery in one transaction lock domain.
+ *
+ * Lock order (global): users rows, then user policy advisory locks, then
+ * organization policy locks. A trigger-guarded users write already holds its
+ * row lock when the trigger takes the user advisory lock, so managed writers
+ * must take the same row lock first. The opposite order deadlocks with every
+ * unmanaged users writer, for example a Steward link that locks the row
+ * FOR UPDATE and then changes `steward_user_id`.
+ */
 async function lockUserPolicyAssociations(
   tx: DbTransaction,
   userIds: string[],
@@ -56,6 +65,7 @@ async function lockUserPolicyAssociations(
     userIds.map((userId) => sql`${userId}::uuid`),
     sql`, `,
   );
+  await tx.execute(sql`SELECT id FROM users WHERE id = ANY(ARRAY[${ids}]) ORDER BY id FOR UPDATE`);
   await tx.execute(sql`SELECT lock_inference_policy_users(ARRAY[${ids}], ${shared})`);
 }
 

@@ -357,6 +357,63 @@ async function acknowledge(input: Awaited<ReturnType<typeof seedGrant>>) {
       }
     }, 30_000);
 
+    test("acknowledgement and an unmanaged Steward link on one user take locks in one order", async () => {
+      const input = await seedGrant();
+      await exchange(input);
+      // An unmanaged users writer (UsersRepository.linkStewardId through the
+      // group-consent revocation) locks the row first; the 0553 trigger then
+      // takes the exclusive user lock. Acknowledgement must not hold the
+      // shared user lock while it waits for that row.
+      const linker = new Client({ connectionString: scopedUrl });
+      await linker.connect();
+      try {
+        await linker.query("BEGIN");
+        await linker.query("SELECT id FROM users WHERE id=$1 FOR UPDATE", [userId]);
+        await linker.query(
+          "INSERT INTO inference_policy_mutations(organization_id,mutation_id,fence_token,permit_expires_at,applying_txid,phase) VALUES($1,$2,'local-link',clock_timestamp()+interval '30 seconds',txid_current(),'applying')",
+          [organizationId, randomUUID()],
+        );
+        const linkerPid = (await linker.query("SELECT pg_backend_pid() AS pid")).rows[0].pid;
+        const acknowledged = acknowledge(input).then(
+          (value) => ({ value }),
+          (error: unknown) => ({ error }),
+        );
+        // Wait until acknowledgement is blocked behind the linker's row lock.
+        let waiting = false;
+        for (let attempt = 0; attempt < 200 && !waiting; attempt++) {
+          const blocked = await observer.query(
+            "SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname=current_database() AND $1 = ANY(pg_blocking_pids(pid))",
+            [linkerPid],
+          );
+          waiting = blocked.rows[0].n > 0;
+          if (!waiting) await Bun.sleep(10);
+        }
+        expect(waiting).toBe(true);
+        let linkError: unknown;
+        try {
+          await linker.query("UPDATE users SET steward_user_id=$1 WHERE id=$2", [
+            `steward-${randomUUID()}`,
+            userId,
+          ]);
+          await linker.query("COMMIT");
+        } catch (error) {
+          linkError = error;
+          await linker.query("ROLLBACK");
+        }
+        const result = await acknowledged;
+        // Opposite lock order surfaces as SQLSTATE 40P01 on one of the two.
+        expect((linkError as { code?: string } | undefined)?.code).toBeUndefined();
+        expect("error" in result ? String(result.error) : "").toBe("");
+        expect("value" in result ? result.value : null).not.toBeNull();
+        expect(
+          (await setup.query("SELECT is_active FROM api_keys WHERE id=$1", [input.credential.id]))
+            .rows[0].is_active,
+        ).toBe(true);
+      } finally {
+        await linker.end();
+      }
+    }, 30_000);
+
     test("permit failure rolls back the mobile claim without minting a credential", async () => {
       const input = await seedGrant();
       rejectPermit = true;

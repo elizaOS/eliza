@@ -40,6 +40,10 @@ BEGIN
  IF TG_OP = 'UPDATE' AND (OLD.user_id, OLD.organization_id) IS NOT DISTINCT FROM (NEW.user_id, NEW.organization_id) THEN RETURN NEW; END IF;
  IF TG_OP <> 'INSERT' THEN old_user := OLD.user_id; END IF;
  IF TG_OP <> 'DELETE' THEN new_user := NEW.user_id; END IF;
+ -- Global lock order: users rows before user policy advisory locks. An
+ -- exclusive standing writer holds its users row first, so waiting here for
+ -- that row cannot hold the shared user lock it needs next.
+ PERFORM 1 FROM users WHERE id IN (old_user, new_user) ORDER BY id FOR KEY SHARE;
  PERFORM lock_inference_policy_users(ARRAY[old_user, new_user], true);
  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
  RETURN NEW;
