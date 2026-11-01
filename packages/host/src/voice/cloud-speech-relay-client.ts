@@ -128,14 +128,21 @@ async function readJson(
   response: Response,
   cap: number,
   current: () => void,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const reader = response.body?.getReader();
   requireValue(reader);
   const chunks: Uint8Array[] = [];
   let bytes = 0;
+  const abort = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener("abort", abort, { once: true });
   try {
+    signal?.throwIfAborted();
     for (;;) {
       const part = await reader.read();
+      signal?.throwIfAborted();
       current();
       if (part.done) break;
       bytes += part.value.length;
@@ -143,6 +150,7 @@ async function readJson(
       chunks.push(part.value);
     }
   } finally {
+    signal?.removeEventListener("abort", abort);
     await reader.cancel().catch(() => {});
   }
   const data = new Uint8Array(bytes);
@@ -154,6 +162,51 @@ async function readJson(
   return record(
     JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data)),
   );
+}
+
+// This refusal is emitted before authentication admits the operation. Never
+// replay a generic 503, network failure, or an already-admitted speech request.
+function warmingDelay(
+  response: Response,
+  body: Record<string, unknown>,
+): number | null {
+  const error = body.error;
+  const nested =
+    error && typeof error === "object" && !Array.isArray(error)
+      ? (error as Record<string, unknown>)
+      : undefined;
+  if (
+    body.code !== "auth_cache_warming" &&
+    nested?.code !== "auth_cache_warming"
+  )
+    return null;
+  const value = response.headers.get("retry-after");
+  if (value !== null) {
+    if (/^\d+$/.test(value)) return Number(value) * 1000;
+    if (
+      !/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(
+        value,
+      )
+    )
+      return null;
+    const date = Date.parse(value);
+    return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
+  }
+  return 1000;
+}
+function waitForWarming(ms: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", abort, { once: true });
+  });
 }
 
 export async function createCloudSpeechRelayPorts(
@@ -401,33 +454,71 @@ export async function createCloudSpeechRelayPorts(
     let serverTimingMs: Record<string, number> | undefined;
     let returned = false;
     try {
-      assertCurrent();
-      const response = await (options.fetch ?? fetch)(new URL(path, origin), {
-        method: "POST",
-        redirect: "error",
-        headers: {
-          authorization: `Bearer ${credential}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]),
-      });
-      headersMs = performance.now() - started;
-      try {
-        const value = response.headers.get("X-Eliza-Trace-Id");
-        if (value !== null && /^[a-f0-9]{32}$/.test(value)) httpTraceId = value;
-      } catch {
-        // Optional correlation cannot change the request's result or failure.
-      }
-      serverTimingMs = speechHttpTimings(response.headers);
-      status = response.status;
-      assertCurrent();
-      if (!response.ok) {
-        await response.body?.cancel();
-        throw new CloudSpeechRelayClientError(
-          speechHttpFailureCode(response.status),
-          "Cloud speech request was not admitted",
-        );
+      const deadline = performance.now() + 10000;
+      const requestSignal = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(10000),
+      ]);
+      const encoded = JSON.stringify(body);
+      let response: Response;
+      for (let attempt = 0; ; attempt++) {
+        requestSignal.throwIfAborted();
+        assertCurrent();
+        response = await (options.fetch ?? fetch)(new URL(path, origin), {
+          method: "POST",
+          redirect: "error",
+          headers: {
+            authorization: `Bearer ${credential}`,
+            "content-type": "application/json",
+          },
+          body: encoded,
+          signal: requestSignal,
+        });
+        headersMs = performance.now() - started;
+        try {
+          const value = response.headers.get("X-Eliza-Trace-Id");
+          httpTraceId =
+            value !== null && /^[a-f0-9]{32}$/.test(value) ? value : undefined;
+        } catch {
+          // Optional correlation cannot change the request's result or failure.
+        }
+        serverTimingMs = speechHttpTimings(response.headers);
+        status = response.status;
+        requestSignal.throwIfAborted();
+        assertCurrent();
+        if (response.ok) break;
+        let delay: number | null = null;
+        if (
+          response.status === 503 &&
+          response.headers
+            .get("content-type")
+            ?.toLowerCase()
+            .startsWith("application/json")
+        ) {
+          try {
+            delay = warmingDelay(
+              response,
+              await readJson(response, 16384, assertCurrent, requestSignal),
+            );
+          } catch {
+            requestSignal.throwIfAborted();
+            assertCurrent();
+          }
+        } else {
+          await response.body?.cancel();
+        }
+        if (
+          delay === null ||
+          attempt >= 2 ||
+          !Number.isFinite(delay) ||
+          delay >= deadline - performance.now()
+        ) {
+          throw new CloudSpeechRelayClientError(
+            speechHttpFailureCode(response.status),
+            "Cloud speech request was not admitted",
+          );
+        }
+        await waitForWarming(delay, requestSignal);
       }
       if (
         !response.headers
@@ -442,7 +533,12 @@ export async function createCloudSpeechRelayPorts(
         );
       }
       bodyStarted = performance.now();
-      const result = await readJson(response, 16384, assertCurrent);
+      const result = await readJson(
+        response,
+        16384,
+        assertCurrent,
+        requestSignal,
+      );
       returned = true;
       return result;
     } finally {
