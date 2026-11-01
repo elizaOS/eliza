@@ -2282,6 +2282,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             "[voice-session] action progress cue",
           );
         },
+        // Content-free activity names are shown, never spoken or saved.
+        onActivity: (label: string) => {
+          if (this.currentVoiceTurnId !== traceId || abort.signal.aborted)
+            return;
+          this.send({ t: "activity", label, traceId });
+        },
         onReplyReady: finalizeTtsReply,
       };
       const onDelta = (delta: string) => {

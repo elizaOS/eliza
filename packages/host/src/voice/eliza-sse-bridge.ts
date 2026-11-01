@@ -167,6 +167,11 @@ export interface ElizaSseBridgeRequest {
   /** Emits a non-authoritative progress cue while an action-backed turn is pending. */
   onProgress?: (text: string) => void | Promise<void>;
   /**
+   * Shows each content-free activity label (`running_tool` status) while the
+   * turn is pending. Display only: never spoken and never reply text.
+   */
+  onActivity?: (label: string) => void;
+  /**
    * Fires once the canonical route has finalized the authoritative reply text,
    * before its durable persistence receipt and view-handoff metadata are ready.
    */
@@ -394,6 +399,7 @@ export async function streamElizaConversation(
   let pendingProvisionalText: string | null = null;
   let progressInFlight = false;
   let planningAcknowledgmentSeen = false;
+  let lastActivityLabel: string | undefined;
   let replyAuthorized = false;
   const emitProgress = async (text: string): Promise<void> => {
     if (request.signal.aborted || replyAuthorized || progressInFlight) return;
@@ -526,25 +532,41 @@ export async function streamElizaConversation(
           request.onReplyReady?.();
           continue;
         }
-        if (
-          payloadType === "status" &&
-          !planningAcknowledgmentSeen &&
-          !replyAuthorized
-        ) {
+        if (payloadType === "status" && !replyAuthorized) {
           // The canonical route attaches the already-admitted acknowledgement
           // to thinking status and repeats it through later phases. It is
-          // transient speech, never an authoritative reply prefix.
+          // transient speech, never an authoritative reply prefix. Each tool
+          // status carries its own content-free activity label to display.
           const status = JSON.parse(payload) as {
             kind?: unknown;
             label?: unknown;
           };
-          if (
-            status.kind === "thinking" &&
-            typeof status.label === "string" &&
-            status.label.trim()
+          const label =
+            typeof status.label === "string" ? status.label.trim() : "";
+          if (!planningAcknowledgmentSeen && status.kind === "thinking") {
+            if (label) {
+              planningAcknowledgmentSeen = true;
+              await emitProgress(status.label as string);
+            }
+          } else if (
+            status.kind === "running_tool" &&
+            label &&
+            label !== lastActivityLabel &&
+            !request.signal.aborted
           ) {
-            planningAcknowledgmentSeen = true;
-            await emitProgress(status.label);
+            lastActivityLabel = label;
+            try {
+              request.onActivity?.(label);
+            } catch (error) {
+              // error-policy:J7 activity display must not kill the canonical turn.
+              logger.warn(
+                {
+                  traceId: request.traceId,
+                  error: error instanceof Error ? error.message : String(error),
+                },
+                "[eliza-sse-bridge] activity observer failed",
+              );
+            }
           }
           continue;
         }

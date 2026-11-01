@@ -911,3 +911,29 @@ export function replyClaimsInProgressWork(reply: string): boolean {
   if (text.includes("?")) return false;
   return PROGRESS_PROMISE_REPLY_PATTERN.test(text);
 }
+
+// An answer rides after a progress cue ("Checking now. Your next event is…").
+const ACKNOWLEDGMENT_SENTENCE_BOUNDARY = /[.!…]+\s+(?=\S)|\n/u;
+
+/**
+ * True when a short model-authored reply may precede pending work as its
+ * acknowledgement. The wording stays the model's own: instead of requiring a
+ * known progress phrasing, reject what an acknowledgement must never carry,
+ * namely a completed effect or an absent/empty result. Beyond one sentence,
+ * every sentence must itself be progress. Callers still run the planned-reply
+ * egress checks (times, navigation, financial state) on it.
+ */
+export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
+  const text = reply.trim();
+  if (!text || text.length > PROGRESS_PROMISE_MAX_LENGTH) return false;
+  if (text.includes("?")) return false;
+  if (
+    ACKNOWLEDGMENT_SENTENCE_BOUNDARY.test(text) &&
+    !PROGRESS_PROMISE_REPLY_PATTERN.test(text)
+  )
+    return false;
+  return (
+    !replyClaimsCompletedSideEffect(text, { pendingWork: true }) &&
+    !replyClaimsEmptyTrackedWorkState(text)
+  );
+}

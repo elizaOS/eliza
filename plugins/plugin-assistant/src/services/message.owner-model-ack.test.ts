@@ -26,12 +26,15 @@ async function ownerModelAcknowledgment(
     changeAudienceBeforeAcknowledgment = false,
     abortDuringRevalidation = false,
     acknowledgment = "Let me have a look.",
+    toolCategories = [] as string[],
+    guestInRoom = false,
   } = {},
 ) {
   const controller = new AbortController();
   let stage1Returned = false;
   const events: string[] = [];
   const acknowledgments: string[] = [];
+  const statuses: Array<{ actionName: string; label: string }> = [];
   const runtime = createSQLiteTestRuntime({
     plugins: [createAssistantPlugin()],
     character: createCharacter({
@@ -62,6 +65,14 @@ async function ownerModelAcknowledgment(
   });
   await runtime.addParticipant(OWNER_ID, ROOM_ID);
   await runtime.addParticipant(runtime.agentId, ROOM_ID);
+  if (guestInRoom) {
+    await runtime.createEntity({
+      id: GUEST_ID,
+      agentId: runtime.agentId,
+      names: ["Guest"],
+    });
+    await runtime.addParticipant(GUEST_ID, ROOM_ID);
+  }
   runtime.actions.length = 0;
   runtime.evaluators.length = 0;
   let compositions = 0;
@@ -74,9 +85,14 @@ async function ownerModelAcknowledgment(
     }
     return { values: { availableContexts: "general" }, data: {}, text: "" };
   }) as AgentRuntime["composeState"];
-  const lookup: Action = {
-    name: "LOOKUP",
+  const lookup = (
+    name: string,
+    event: string,
+    contexts?: Action["contexts"],
+  ): Action => ({
+    name,
     description: "Looks up an entry.",
+    ...(contexts ? { contexts } : {}),
     parameters: [
       {
         name: "query",
@@ -86,22 +102,44 @@ async function ownerModelAcknowledgment(
       },
     ],
     validate: async () => true,
-    handler: async () => { events.push("tool"); return { success: true, text: "private result" }; },
-  };
-  runtime.registerAction(lookup);
+    handler: async () => {
+      events.push(event);
+      return { success: true, text: "private result" };
+    },
+  });
+  // Notes is a plugin-registered category; Calendar is a default one.
+  runtime.contexts.tryRegister({
+    id: "notes",
+    label: "Notes",
+    sensitivity: "personal",
+  });
+  const tools = toolCategories.length
+    ? toolCategories.map((category) =>
+        lookup(`${category.toUpperCase()}_LOOKUP`, `tool:${category}`, [
+          category,
+        ]),
+      )
+    : [lookup("LOOKUP", "tool")];
+  for (const tool of tools) runtime.registerAction(tool);
   const readParticipants = runtime.getParticipantsForRoom.bind(runtime);
   if (changeAudienceBeforeAcknowledgment || abortDuringRevalidation) {
-    vi.spyOn(runtime, "getParticipantsForRoom").mockImplementation(async (roomId) => {
-      if (stage1Returned) {
-        stage1Returned = false;
-        if (changeAudienceBeforeAcknowledgment) {
-          await runtime.createEntity({ id: GUEST_ID, agentId: runtime.agentId, names: ["Guest"] });
-          await runtime.addParticipant(GUEST_ID, ROOM_ID);
+    vi.spyOn(runtime, "getParticipantsForRoom").mockImplementation(
+      async (roomId) => {
+        if (stage1Returned) {
+          stage1Returned = false;
+          if (changeAudienceBeforeAcknowledgment) {
+            await runtime.createEntity({
+              id: GUEST_ID,
+              agentId: runtime.agentId,
+              names: ["Guest"],
+            });
+            await runtime.addParticipant(GUEST_ID, ROOM_ID);
+          }
+          if (abortDuringRevalidation) controller.abort();
         }
-        if (abortDuringRevalidation) controller.abort();
-      }
-      return readParticipants(roomId);
-    });
+        return readParticipants(roomId);
+      },
+    );
   }
   let handlerCalls = 0;
   runtime.registerModel(
@@ -121,8 +159,8 @@ async function ownerModelAcknowledgment(
                   thought: "Look it up.",
                   contexts: ["general"],
                   intents: ["look up entry"],
-                  candidateActionNames: ["LOOKUP"],
-                  replyText: acknowledgment ? [{ kind: "text", value: acknowledgment }] : [],
+                  candidateActionNames: tools.map((tool) => tool.name),
+                  replyText: acknowledgment,
                   replyEffectStatus: "pending",
                   facts: [],
                   relationships: [],
@@ -133,12 +171,22 @@ async function ownerModelAcknowledgment(
             ],
             finishReason: "tool_calls",
           }
-        : JSON.stringify({
-            thought: "Covered.",
-            success: true,
-            decision: "FINISH",
-            messageToUser: "Nothing this week.",
-          });
+        : // A multi-tool turn continues to its queued second activity.
+          JSON.stringify(
+            toolCategories.length > 1 && handlerCalls === 2
+              ? {
+                  thought: "Notes remain.",
+                  success: true,
+                  decision: "CONTINUE",
+                  messageToUser: "",
+                }
+              : {
+                  thought: "Covered.",
+                  success: true,
+                  decision: "FINISH",
+                  messageToUser: "Nothing this week.",
+                },
+          );
     },
     "owner-tool-phase",
     300,
@@ -146,8 +194,13 @@ async function ownerModelAcknowledgment(
   runtime.registerModel(
     ModelType.ACTION_PLANNER,
     async () => ({
-      text: "", thought: "Look it up.",
-      toolCalls: [{ id: "lookup-1", name: "LOOKUP", arguments: { query: "private arg" } }],
+      text: "",
+      thought: "Look it up.",
+      toolCalls: tools.map((tool, index) => ({
+        id: `lookup-${index + 1}`,
+        name: tool.name,
+        arguments: { query: "private arg" },
+      })),
     }),
     "owner-tool-phase",
     300,
@@ -158,7 +211,9 @@ async function ownerModelAcknowledgment(
     agentId: runtime.agentId,
     roomId: ROOM_ID,
     content: {
-      text: acknowledgment ? "Look up this week." : "Look up this week without saying anything or acknowledging it.",
+      text: acknowledgment
+        ? "Look up this week."
+        : "Look up this week without saying anything or acknowledging it.",
       source: "client_chat",
       channelType: ChannelType.DM,
     },
@@ -184,25 +239,35 @@ async function ownerModelAcknowledgment(
         onStreamChunk: async (chunk) => {
           chunks.push(chunk);
         },
+        onActivityStatus: async (activity) => {
+          events.push(`status:${activity.label}`);
+          statuses.push(activity);
+        },
       },
     );
   } catch (error) {
     if (
       !controller.signal.aborted ||
-      !(error instanceof TurnAbortedError ||
-        (error instanceof Error && error.name === "AbortError"))
-    ) throw error;
+      !(
+        error instanceof TurnAbortedError ||
+        (error instanceof Error && error.name === "AbortError")
+      )
+    )
+      throw error;
   }
-  return { chunks, acknowledgments, events };
+  return { chunks, acknowledgments, events, statuses };
 }
 
 describe("awaited owner model acknowledgments", () => {
   beforeEach(() => vi.stubEnv("ELIZA_TRAJECTORY_LOGGING", "0"));
   afterEach(async () => {
     vi.unstubAllEnvs();
-    await Promise.all(runtimes.splice(0).map(async (runtime) => {
-      await runtime.stop(); await runtime.close();
-    }));
+    await Promise.all(
+      runtimes.splice(0).map(async (runtime) => {
+        await runtime.stop();
+        await runtime.close();
+      }),
+    );
   });
 
   it("awaits one original model acknowledgment before private tool work", async () => {
@@ -212,6 +277,15 @@ describe("awaited owner model acknowledgments", () => {
     expect(result.chunks).toEqual([]);
   });
 
+  it.each(["I've saved that to your notes.", "You have no notes this week."])(
+    "keeps a completion or result claim out of early progress: %s",
+    async (acknowledgment) => {
+      const result = await ownerModelAcknowledgment(true, { acknowledgment });
+      expect(result.acknowledgments).toEqual([]);
+      expect(result.events).toEqual(["tool"]);
+    },
+  );
+
   it("still performs authorized tool work when the model supplies no acknowledgment", async () => {
     const result = await ownerModelAcknowledgment(true, { acknowledgment: "" });
     expect(result.acknowledgments).toEqual([]);
@@ -219,12 +293,52 @@ describe("awaited owner model acknowledgments", () => {
   });
 
   it("does not send private model words to a changed audience", async () => {
-    const result = await ownerModelAcknowledgment(true, { changeAudienceBeforeAcknowledgment: true });
+    const result = await ownerModelAcknowledgment(true, {
+      changeAudienceBeforeAcknowledgment: true,
+    });
     expect(result.acknowledgments).toEqual([]);
   });
 
+  it("shows one content-free status per activity, in order, after the one acknowledgment", async () => {
+    const result = await ownerModelAcknowledgment(true, {
+      toolCategories: ["calendar", "notes"],
+    });
+    expect(result.acknowledgments).toEqual(["Let me have a look."]);
+    expect(result.events).toEqual([
+      "ack-start",
+      "ack-end",
+      "status:Using Calendar",
+      "tool:calendar",
+      "status:Using Notes",
+      "tool:notes",
+    ]);
+    expect(result.statuses).toEqual([
+      { actionName: "CALENDAR_LOOKUP", label: "Using Calendar" },
+      { actionName: "NOTES_LOOKUP", label: "Using Notes" },
+    ]);
+    expect(JSON.stringify(result.statuses)).not.toMatch(/private/u);
+    expect(result.chunks).toEqual([]);
+  });
+
+  it("keeps a private category from a shared room and still shows a public one", async () => {
+    const result = await ownerModelAcknowledgment(false, {
+      toolCategories: ["calendar", "web"],
+      guestInRoom: true,
+    });
+    expect(result.acknowledgments).toEqual(["Let me have a look."]);
+    expect(result.events).toEqual([
+      "ack-start",
+      "ack-end",
+      "tool:calendar",
+      "status:Using Web",
+      "tool:web",
+    ]);
+  });
+
   it("does not send an acknowledgment after cancellation during revalidation", async () => {
-    const result = await ownerModelAcknowledgment(true, { abortDuringRevalidation: true });
+    const result = await ownerModelAcknowledgment(true, {
+      abortDuringRevalidation: true,
+    });
     expect(result.acknowledgments).toEqual([]);
   });
 });
