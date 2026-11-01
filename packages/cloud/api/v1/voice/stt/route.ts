@@ -535,7 +535,6 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: true,
       }).finally(() => {
         timings.push({
@@ -802,10 +801,32 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         const rejected =
           rejectedStatus !== undefined &&
           isKnownUnacceptedProviderStatus(rejectedStatus);
-        await (providerWorkMayHaveStarted && settleUnknown && !rejected
-          ? settleUnknown()
-          : reservation.reconcile(0));
+        const settlement =
+          providerWorkMayHaveStarted && settleUnknown && !rejected
+            ? settleUnknown()
+            : reservation.reconcile(0);
         reservation = undefined;
+        // An unknown-outcome debit writes Postgres; on the Worker it runs off
+        // the response path under `waitUntil` like every other settlement.
+        const failureExecutionCtx = getGenerativeExecutionContext(c);
+        if (failureExecutionCtx) {
+          failureExecutionCtx.waitUntil(
+            Promise.resolve(settlement).catch((error: unknown) => {
+              // error-policy:J7 the failure response is already decided; the
+              // lease alarm remains the durable recovery for this settlement.
+              logger.error(
+                "[Voice STT API] Failed-transcription settlement failed",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  traceId:
+                    c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+                },
+              );
+            }),
+          );
+        } else {
+          await settlement;
+        }
         logger.warn("[Voice STT API] Settled failed paid transcription", {
           provider: "deepgram",
           providerDispatchState: providerWorkMayHaveStarted
@@ -1040,10 +1061,32 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         const rejected =
           rejectedStatus !== undefined &&
           isKnownUnacceptedProviderStatus(rejectedStatus);
-        await (providerWorkMayHaveStarted && settleUnknown && !rejected
-          ? settleUnknown()
-          : reservation.reconcile(0));
+        const settlement =
+          providerWorkMayHaveStarted && settleUnknown && !rejected
+            ? settleUnknown()
+            : reservation.reconcile(0);
         reservation = undefined;
+        // An unknown-outcome debit writes Postgres; on the Worker it runs off
+        // the response path under `waitUntil` like every other settlement.
+        const failureExecutionCtx = getGenerativeExecutionContext(c);
+        if (failureExecutionCtx) {
+          failureExecutionCtx.waitUntil(
+            Promise.resolve(settlement).catch((error: unknown) => {
+              // error-policy:J7 the failure response is already decided; the
+              // lease alarm remains the durable recovery for this settlement.
+              logger.error(
+                "[Voice STT API] Failed-transcription settlement failed",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  traceId:
+                    c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+                },
+              );
+            }),
+          );
+        } else {
+          await settlement;
+        }
         logger.warn("[Voice STT API] Settled failed paid transcription", {
           provider: "cartesia",
           providerDispatchState: providerWorkMayHaveStarted
@@ -1546,7 +1589,18 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
 
     if (error instanceof CloudflareSpeechError) {
