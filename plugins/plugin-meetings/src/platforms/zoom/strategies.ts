@@ -490,7 +490,12 @@ export function createZoomStrategies(
               win.__elizaZoomAudioChunk?.(Array.from(data));
             };
             source.connect(processor);
-            processor.connect(ctx.destination);
+            // ScriptProcessor only fires while connected to a destination; a
+            // zero-gain node keeps it silent so the bot never plays audio out.
+            const gain = ctx.createGain();
+            gain.gain.value = 0;
+            processor.connect(gain);
+            gain.connect(ctx.destination);
           }
         };
         wire();
