@@ -3,11 +3,13 @@
  * real Durable Object storage and request serialization preserve spend holds.
  */
 
-import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, spyOn, test } from "bun:test";
 import { fileURLToPath } from "node:url";
+import { runWithCloudBindings } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import {
   type InferenceAdmissionLease,
   markInferenceAdmissionLeaseDispatched,
+  wakeInferenceAdmissionGate,
 } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { Miniflare } from "miniflare";
 
@@ -230,6 +232,201 @@ describe("Miniflare Durable Object integration", () => {
       expect(Number(response.handlerMs)).toBeGreaterThanOrEqual(0);
     }
   });
+
+  const concurrently = (
+    gate: string,
+    requests: Array<{ path: string; body: Record<string, unknown> }>,
+  ) => Promise.all(requests.map(({ path, body }) => post(path, body, gate)));
+
+  test("an idle wake starts only the billing gate and creates no ledger or lease", async () => {
+    const organizationId = "org-miniflare-wake";
+    const forwarded: Array<{ gate: string; path: string; body: unknown }> = [];
+    const pending: Promise<unknown>[] = [];
+    // The production client reaches the real object through this binding.
+    const bindings = {
+      INFERENCE_ADMISSION_GATES: {
+        getByName: (gate: string) => ({
+          fetch: async (request: Request) => {
+            const path = new URL(request.url).pathname;
+            const body = (await request.json()) as Record<string, unknown>;
+            forwarded.push({ gate, path, body });
+            const response = await post(path, body, gate);
+            return new Response(await response.text(), {
+              status: response.status,
+            });
+          },
+        }),
+      },
+    };
+    const requestAt = (now: number) => {
+      const clock = spyOn(Date, "now").mockReturnValue(now);
+      try {
+        runWithCloudBindings(bindings, () =>
+          wakeInferenceAdmissionGate(organizationId, {
+            waitUntil: (promise) => pending.push(promise),
+          }),
+        );
+      } finally {
+        clock.mockRestore();
+      }
+    };
+    // A burst wakes once, requests 4 s apart do not, 5 s idle wakes again.
+    for (const now of [1_000, 1_100, 5_100, 9_100, 14_100]) requestAt(now);
+    await Promise.all(pending);
+    const wake = { gate: organizationId, path: "/rate-limit-warm", body: {} };
+    expect(forwarded).toEqual([wake, wake]);
+
+    const recovery = (requestId: string) => ({
+      version: 1,
+      kind: "organization",
+      organizationId,
+      userId: "00000000-0000-0000-0000-000000000002",
+      requestId,
+      model: "test-model",
+      provider: "test-provider",
+      billingSource: "test",
+      description: "Miniflare wake test",
+      accounting: { kind: "direct_debit" },
+    });
+    const lease = (requestId: string) => ({
+      path: "/lease",
+      body: {
+        organizationId,
+        requestId,
+        balanceUsd: 10,
+        balanceRevision: "1",
+        estimatedCostUsd: 7,
+        recovery: recovery(requestId),
+      },
+    });
+    const cold = await post(
+      "/lease",
+      lease("wake-request-cold").body,
+      organizationId,
+    );
+    expect(cold.status).toBe(503);
+    expect(JSON.parse(await cold.text()).code).toBe(
+      "inference_admission_gate_uninitialized",
+    );
+
+    expect(
+      (
+        await post(
+          "/hydrate",
+          { balanceUsd: 10, balanceRevision: "1" },
+          organizationId,
+        )
+      ).status,
+    ).toBe(200);
+    const warm = { path: "/rate-limit-warm", body: {} };
+    const [wakeA, first, wakeB, second, wakeC] = await concurrently(
+      organizationId,
+      [warm, lease("wake-request-a"), warm, lease("wake-request-b"), warm],
+    );
+    expect([wakeA, wakeB, wakeC].map(({ status }) => status)).toEqual([
+      200, 200, 200,
+    ]);
+    expect([first.status, second.status].sort()).toEqual([200, 402]);
+
+    // The wake runs on the rate queue, so a busy billing queue cannot hold it.
+    expect(
+      (await post("/test-block-billing-queue", {}, organizationId)).status,
+    ).toBe(202);
+    try {
+      const woke = await Promise.race([
+        post("/rate-limit-warm", {}, organizationId),
+        new Promise<never>((_, reject) => {
+          setTimeout(
+            () => reject(new Error("wake waited behind billing")),
+            500,
+          );
+        }),
+      ]);
+      expect(woke.status).toBe(200);
+    } finally {
+      await post("/test-release-billing-queue", {}, organizationId);
+    }
+  }, 120_000);
+
+  test("a failed wake never reaches the caller", async () => {
+    const pending: Promise<unknown>[] = [];
+    const waitUntil = (promise: Promise<unknown>) => pending.push(promise);
+    runWithCloudBindings({}, () =>
+      wakeInferenceAdmissionGate("org-miniflare-wake-unbound", { waitUntil }),
+    );
+    runWithCloudBindings(
+      {
+        INFERENCE_ADMISSION_GATES: {
+          getByName: () => ({
+            fetch: async () => {
+              throw new Error("binding unavailable");
+            },
+          }),
+        },
+      },
+      () =>
+        wakeInferenceAdmissionGate("org-miniflare-wake-down", { waitUntil }),
+    );
+    expect(pending).toHaveLength(2);
+    expect(await Promise.all(pending)).toEqual([undefined, undefined]);
+  });
+
+  test.each([
+    "org-miniflare-wake-rate",
+    "rate-limit:v2:org-miniflare-wake-rate",
+  ])(
+    "wakes neither count nor bypass concurrent rate decisions on %s",
+    async (gate) => {
+      const windowMs = 60_000;
+      const windowStartedAt = Math.floor(Date.now() / windowMs) * windowMs;
+      const operationDeadlineAt = Date.now() + 4_000;
+      const decide = (operationId: string) => ({
+        path: "/rate-limit",
+        body: {
+          endpointType: "completions",
+          windowMs,
+          maxRequests: 3,
+          windowStartedAt,
+          operationId,
+          operationDeadlineAt,
+        },
+      });
+      const responses = await concurrently(
+        gate,
+        Array.from({ length: 8 }, (_, index) => [
+          decide(`wake-op-${index}`),
+          { path: "/rate-limit-warm", body: {} },
+        ]).flat(),
+      );
+      const decisions = responses
+        .filter((_, index) => index % 2 === 0)
+        .map(({ status }) => status);
+      const wakes = responses
+        .filter((_, index) => index % 2 === 1)
+        .map(({ status }) => status);
+      expect(wakes).toEqual(Array(8).fill(200));
+      expect(decisions.filter((status) => status === 200)).toHaveLength(3);
+      expect(decisions.filter((status) => status === 429)).toHaveLength(5);
+
+      // A retried operation replays its receipt instead of counting again.
+      const replays = await concurrently(gate, [
+        decide("wake-op-0"),
+        decide("wake-op-0"),
+      ]);
+      expect(replays.map(({ status }) => status)).toEqual([
+        decisions[0],
+        decisions[0],
+      ]);
+      const persisted = JSON.parse(
+        await (await post("/test-read-legacy-rate-limits", {}, gate)).text(),
+      );
+      expect(persisted.completions).toMatchObject({
+        windowStartedAt,
+        count: 8,
+      });
+    },
+    120_000,
+  );
 
   // Match the cloud test lane's budget because Miniflare startup can be delayed
   // when this integration test runs alongside the rest of the batched suite.
