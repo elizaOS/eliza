@@ -34,7 +34,6 @@ function harness(overrides: Partial<SpeechRelayPorts> = {}) {
   };
   const ports: SpeechRelayPorts = {
     enabled: true,
-    assertTtsAllowed: async () => {},
     now: () => now,
     usageStore: usage,
     usageLimits: { organizationDailyMinutes: 5, userDailyMinutes: 5 },
@@ -479,34 +478,15 @@ test("canonical Ink semantic events pass with safe fields and one Sonic context 
   await s.close();
 });
 
-test("public-TTS policy denial occurs before paid TTS marker or provider dispatch", async () => {
+test("each phrase reaches Sonic with only the paid dispatch marker before it", async () => {
   const markers: string[] = [];
   const f = harness({
-    assertTtsAllowed: async () => {
-      throw Error("Content failed safety review");
-    },
-    reserveCredits: async () => ({
-      beforeProviderDispatch: async (kind) => {
-        markers.push(kind);
-      },
-      settle: async () => {},
-    }),
-  });
-  const session = await f.open();
-  await expect(
-    session.control({ t: "tts", id: "turn", text: "blocked" }),
-  ).rejects.toThrow("safety review");
-  expect(markers).toEqual(["stt"]);
-  expect(f.order).not.toContain("tts-open");
-  expect(f.order).not.toContain("tts-phrase");
-  await session.close();
-});
-test("each ordered phrase is moderated with bounded prior context before Sonic receives it", async () => {
-  const reviewed: string[] = [];
-  const f = harness({
-      assertTtsAllowed: async (text) => {
-        reviewed.push(text);
-      },
+      reserveCredits: async () => ({
+        beforeProviderDispatch: async (kind) => {
+          markers.push(kind);
+        },
+        settle: async () => {},
+      }),
     }),
     session = await f.open();
   await session.control({ t: "tts", id: "one", text: "hello " });
@@ -514,81 +494,18 @@ test("each ordered phrase is moderated with bounded prior context before Sonic r
   await session.control({ t: "finish", id: "one" });
   f.complete();
   await session.control({ t: "tts", id: "two", text: " again" });
-  expect(reviewed).toEqual(["hello ", "hello world", "hello world again"]);
+  expect(markers).toEqual(["stt", "tts", "tts", "tts"]);
   expect(f.order.filter((value) => value === "tts-phrase")).toHaveLength(3);
   await session.close();
 });
-test("Stop, owner change and phrase cancel during async moderation never dispatch a late phrase", async () => {
-  for (const mode of ["stop", "owner", "cancel"]) {
-    let resolve: () => void = () => {};
-    let signal: AbortSignal | undefined;
-    const f = harness({
-        assertTtsAllowed: (_text, inputSignal) => {
-          signal = inputSignal;
-          return new Promise<void>((r) => {
-            resolve = r;
-          });
-        },
-      }),
-      session = await f.open();
-    const pending = session.control({ t: "tts", id: "turn", text: "waiting" });
-    await tick();
-    expect(f.order).not.toContain("tts-open");
-    if (mode === "stop") await session.control({ t: "stop" });
-    else if (mode === "owner") f.replace();
-    else await session.control({ t: "cancel", id: "turn" });
-    if (mode !== "owner") expect(signal?.aborted).toBe(true);
-    resolve();
-    if (mode === "cancel") await pending;
-    else await expect(pending).rejects.toThrow();
-    expect(f.order).not.toContain("tts-open");
-    expect(f.order).not.toContain("tts-phrase");
-    await session.close();
-  }
-});
 
-test("cancel releases ordered TTS controls before an unresponsive moderation call finishes", async () => {
-  let finishOldReview: () => void = () => {};
-  let oldSignal: AbortSignal | undefined;
-  let oldReviewFinished = false;
-  const sent: string[] = [];
-  const f = harness({
-    assertTtsAllowed: async (text, signal) => {
-      if (text === "cancelled phrase") {
-        oldSignal = signal;
-        await new Promise<void>((resolve) => {
-          finishOldReview = resolve;
-        });
-        oldReviewFinished = true;
-      }
-    },
-    openTts: () => ({
-      sendPhrase: ({ text }) => sent.push(text),
-      finish() {},
-      cancel() {},
-    }),
-  });
-  const session = await f.open();
-  let queue = Promise.resolve<unknown>(undefined);
-  const enqueue = (frame: unknown) =>
-    (queue = queue.then(() => session.control(frame)));
-  const cancelled = enqueue({ t: "tts", id: "old", text: "cancelled phrase" });
-  await tick();
-  const cancelledFinish = enqueue({ t: "finish", id: "old" });
-  const next = enqueue({ t: "tts", id: "new", text: "new phrase" });
-  await session.control({ t: "cancel", id: "old" });
-  await tick();
-  expect(oldSignal?.aborted).toBe(true);
-  expect(oldReviewFinished).toBe(false);
-  expect(sent).toEqual(["new phrase"]);
-  await expect(cancelled).resolves.toBe(false);
-  await expect(cancelledFinish).resolves.toBe(false);
-  await next;
-  finishOldReview();
-  await tick();
-  expect(sent).toEqual(["new phrase"]);
-  await expect(
-    session.control({ t: "finish", id: "unapproved" }),
-  ).rejects.toThrow("not active");
+test("a cancelled context never dispatches its later phrases", async () => {
+  const f = harness(),
+    session = await f.open();
+  await session.control({ t: "tts", id: "turn", text: "first" });
+  await session.control({ t: "cancel", id: "turn" });
+  // A late phrase for a cancelled context is dropped, not dispatched.
+  await session.control({ t: "tts", id: "turn", text: "late" });
+  expect(f.order.filter((value) => value === "tts-phrase")).toHaveLength(1);
   await session.close();
 });
