@@ -217,15 +217,7 @@ export function createDesktopBrowserWorkspaceCommandScript(
         element.matches("a, button, input, textarea, select, option, [role='button']") ||
         !matches.some((other) => other !== element && element.contains(other))
     );
-  const selectorFor = (element) => {
-    if (!element) return "";
-    if (element.id) return "#" + element.id.replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
-    const testId = element.getAttribute?.("data-testid");
-    if (testId) return \`[data-testid="\${testId}"]\`;
-    const name = element.getAttribute?.("name");
-    if (name) return \`\${element.tagName.toLowerCase()}[name="\${name}"]\`;
-    const type = element.getAttribute?.("type");
-    if (type) return \`\${element.tagName.toLowerCase()}[type="\${type}"]\`;
+  const nthOfTypeSelectorFor = (element) => {
     let index = 1;
     let previous = element.previousElementSibling;
     while (previous) {
@@ -233,6 +225,40 @@ export function createDesktopBrowserWorkspaceCommandScript(
       previous = previous.previousElementSibling;
     }
     return \`\${element.tagName.toLowerCase()}:nth-of-type(\${index})\`;
+  };
+  const shortSelectorFor = (element) => {
+    if (element.id) return "#" + element.id.replace(/[^a-zA-Z0-9_-]/g, "\\\\$&");
+    const testId = element.getAttribute?.("data-testid");
+    if (testId) return \`[data-testid="\${testId}"]\`;
+    const name = element.getAttribute?.("name");
+    if (name) return \`\${element.tagName.toLowerCase()}[name="\${name}"]\`;
+    const type = element.getAttribute?.("type");
+    if (type) return \`\${element.tagName.toLowerCase()}[type="\${type}"]\`;
+    return nthOfTypeSelectorFor(element);
+  };
+  const selects = (element, selector) => {
+    try {
+      return element.ownerDocument.querySelector(selector) === element;
+    } catch {
+      return false;
+    }
+  };
+  // Element refs are read back with querySelector (first match): when the
+  // short form selects an earlier element, prefix parent steps until the
+  // path selects this one; a path from :root always does.
+  const selectorFor = (element) => {
+    if (!element) return "";
+    const selector = shortSelectorFor(element);
+    if (selects(element, selector)) return selector;
+    let path = nthOfTypeSelectorFor(element);
+    for (
+      let parent = element.parentElement;
+      parent && !selects(element, path);
+      parent = parent.parentElement
+    ) {
+      path = \`\${parent.parentElement ? nthOfTypeSelectorFor(parent) : ":root"} > \${path}\`;
+    }
+    return path;
   };
   const serialize = (element) => {
     const value =
