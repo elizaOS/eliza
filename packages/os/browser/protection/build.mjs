@@ -6,7 +6,7 @@ import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { REPUTATION_FEEDS } from "./policy.mjs";
+import { neverBlockHosts, REPUTATION_FEEDS } from "./policy.mjs";
 
 const root = fileURLToPath(new URL(".", import.meta.url));
 const escapeHtml = (s) =>
@@ -47,7 +47,7 @@ export function renderWarningPage(template, values) {
 }
 
 /** @param {string} output
- * @param {{warningDirectory?: string, warning?: {assistantName?: string, copy?: Partial<Record<"title"|"heading"|"stopped"|"mistake"|"feeds"|"limits", string>>}, feeds?: typeof REPUTATION_FEEDS, refreshAlarm?: string, exceptionAlarm?: string, advisory?: {referenceDomains?: string[], copy?: Record<string,string>, unscanned?: boolean}}} options
+ * @param {{warningDirectory?: string, warning?: {assistantName?: string, copy?: Partial<Record<"title"|"heading"|"stopped"|"mistake"|"feeds"|"limits", string>>}, feeds?: typeof REPUTATION_FEEDS, neverBlock?: string[], refreshAlarm?: string, exceptionAlarm?: string, advisory?: {referenceDomains?: string[], copy?: Record<string,string>, unscanned?: boolean}}} options
  */
 export async function buildBrowserProtection(
   output,
@@ -56,6 +56,7 @@ export async function buildBrowserProtection(
     warning,
     advisory,
     feeds = REPUTATION_FEEDS,
+    neverBlock = [],
     refreshAlarm = "eliza-protection-refresh",
     exceptionAlarm = "eliza-protection-exception",
   } = {},
@@ -63,6 +64,7 @@ export async function buildBrowserProtection(
   for (const feed of feeds)
     if (!feed.notice) throw Error(`Feed ${feed.id} has no license notice`);
   const copy = warningCopy(warning, feeds);
+  const excluded = neverBlockHosts(neverBlock);
   await mkdir(output, { recursive: true });
   for (const file of ["policy.mjs", "warning.mjs", "warning.css"])
     await copyFile(
@@ -100,6 +102,7 @@ export async function buildBrowserProtection(
       "\nexport const protection = installBrowserProtection({chrome:globalThis.chrome,..." +
       JSON.stringify({
         feeds: runtimeFeeds,
+        ...(excluded.length ? { neverBlock: excluded } : {}),
         refreshAlarm,
         exceptionAlarm,
         advisory,

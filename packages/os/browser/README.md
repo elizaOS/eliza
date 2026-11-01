@@ -400,8 +400,12 @@ bundle the extension engine into their admitted worker resource and include the
 Node module in the verified native gateway dependency closure. Run the protection
 regressions with `node --test browser/src/protection-*.test.mjs` from `packages/os`.
 
-`buildBrowserProtection(output, {warningDirectory, warning, feeds, refreshAlarm, exceptionAlarm})`
-builds the optional unpacked worker using the shared engine. HTML/CSS overrides
+`buildBrowserProtection(output, {warningDirectory, warning, feeds, neverBlock, refreshAlarm, exceptionAlarm})`
+builds the optional unpacked worker using the shared engine. `neverBlock` (also an
+`installBrowserProtection` option) lists reviewed hosts, confirmed feed false positives,
+that no threat rule blocks or redirects; Chromium's `excludedRequestDomains` covers each
+host and its subdomains by whole labels, never a lookalike or a parent domain. A changed
+list is applied to the saved rules at once, without a download. HTML/CSS overrides
 preserve shared messaging and enforcement. The default warning style supports dark,
 high-contrast and forced-colors modes. `warning: {assistantName, copy}` fills the
 page's `{{title}}`, `{{heading}}`, `{{stopped}}`, `{{mistake}}`, `{{feeds}}` and
