@@ -215,17 +215,23 @@ function findStructurallyAliasedChildAction(
  * User words from an unwrapped turn text. `extractUserText` takes the first
  * `<user_request>` pair, but the recalled documents render before the real
  * request, so a document quoting a `<user_request>` pair would win the match.
- * Drop the untrusted `<contextual_documents>` block first; an envelope with
- * no request block is no user words (""), not the whole envelope.
+ * Drop the untrusted `<contextual_documents>` block first, then take the last
+ * `<user_request>` pair: the builder emits the real request as the trailing
+ * block, so any pair that survives the strip comes from document text that
+ * precedes it — including a document that carries a literal
+ * `</contextual_documents>` close tag, which ends the lazy strip early. An
+ * envelope with no request block is no user words (""), not the whole
+ * envelope.
  */
 const CONTEXTUAL_DOCUMENTS_BLOCK =
   /<contextual_documents>[\s\S]*?<\/contextual_documents>/i;
-const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/i;
+const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/gi;
 
 function userWordsFromTurnText(raw: string): string {
   if (!hasDocumentAugmentationEnvelope(raw)) return extractUserText(raw);
   const withoutDocuments = raw.replace(CONTEXTUAL_DOCUMENTS_BLOCK, "");
-  return withoutDocuments.match(USER_REQUEST_WRAPPER)?.[1]?.trim() ?? "";
+  const pairs = [...withoutDocuments.matchAll(USER_REQUEST_WRAPPER)];
+  return pairs.at(-1)?.[1]?.trim() ?? "";
 }
 
 function prepareAliasedChildParameters(
