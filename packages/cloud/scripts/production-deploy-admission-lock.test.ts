@@ -228,15 +228,14 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-app-");
   });
 
-  test("staging publishes the validated admission authority before its API", () => {
+  test("each environment publishes its validated admission authority before its API", () => {
     const apiConfig = Bun.TOML.parse(
       readFileSync(
         resolve(repoRoot, "packages/cloud/api/wrangler.toml"),
         "utf8",
       ),
     );
-    // The production source commit binds the namespace through its target.
-    // Root executes that lifecycle phase; this release only publishes the API.
+    // Production split ownership after the Root-executed namespace transfer.
     expect(
       apiConfig.env.production.durable_objects.bindings.filter(
         (binding) => binding.name === "INFERENCE_ADMISSION_GATES",
@@ -258,7 +257,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
       (step) => step.name === "Deploy to Cloudflare Workers",
     ).run;
     const fragment = deploy.match(
-      /recheck_canonical_source\nif \[ "\$DEPLOY_ENVIRONMENT" = "staging" \]; then\n[\s\S]*?bunx wrangler deploy "\$\{args\[@\]\}"\n/,
+      /recheck_canonical_source\nif \[ "\$DEPLOY_ENVIRONMENT" = "staging" \]; then\n[\s\S]*?bunx wrangler deploy "\$\{args\[@\]\}"\n[\s\S]*?(?=trap - ERR\n)/,
     )?.[0];
     expect(fragment).toBeDefined();
 
@@ -276,8 +275,12 @@ bun() {
   case "$1" in
     *reconcile-steward-email-callback-config.ts) printf 'reconcile\n' ;;
     *verify-staging-contract.ts)
-      printf 'validate\n'
+      shift
+      printf 'validate%s\n' "\${*:+ $*}"
       [ "$FAILURE" != validation ] || return 23 ;;
+    *production-admission-readback.ts)
+      printf 'readback %s\n' "$3"
+      [ "$FAILURE" != "readback-$3" ] || return 25 ;;
     *) return 90 ;;
   esac
 }
@@ -303,7 +306,8 @@ ${fragment}`,
           },
         },
       );
-    const admission = `admission wrangler deploy --config ../admission-worker/wrangler.toml --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)} --tag ${"a".repeat(40)}`;
+    const admission = (environment = "") =>
+      `admission wrangler deploy --config ../admission-worker/wrangler.toml${environment && ` --env ${environment}`} --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)} --tag ${"a".repeat(40)}`;
     const api = (environment) =>
       `api wrangler deploy --env ${environment} --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)}`;
     const staging = run("staging");
@@ -313,7 +317,7 @@ ${fragment}`,
       "reconcile",
       "validate",
       "guard",
-      admission,
+      admission(),
       "guard",
       api("staging"),
     ]);
@@ -321,13 +325,33 @@ ${fragment}`,
     expect(production.status).toBe(0);
     expect(production.stdout.trim().split("\n")).toEqual([
       "guard",
+      "validate --production --phase adopted",
+      "readback before",
+      "guard",
+      admission("production"),
+      "readback admission",
+      "guard",
       api("production"),
+      "readback api",
     ]);
     for (const failure of ["validation", "admission"]) {
       const stopped = run("staging", failure);
       expect(stopped.status).not.toBe(0);
       expect(stopped.stdout).not.toContain("api wrangler deploy");
       if (failure === "validation")
+        expect(stopped.stdout).not.toContain("admission wrangler deploy");
+    }
+    // A lifecycle phase or a different live namespace stops before any upload.
+    for (const failure of [
+      "validation",
+      "readback-before",
+      "admission",
+      "readback-admission",
+    ]) {
+      const stopped = run("production", failure);
+      expect(stopped.status).not.toBe(0);
+      expect(stopped.stdout).not.toContain("api wrangler deploy");
+      if (failure === "validation" || failure === "readback-before")
         expect(stopped.stdout).not.toContain("admission wrangler deploy");
     }
   });
