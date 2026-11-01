@@ -11,7 +11,7 @@ on:
           - staging
           - production
       operation:
-        description: Diagnose is read-only; repair is idempotent and fail-closed
+        description: Plans are read-only; provisioning creates a DB row; publishing changes one registry
         required: true
         type: choice
         options:
@@ -22,7 +22,9 @@ on:
           - plan-client
           - plan-addition
           - plan-provision
+          - plan-provision-primary
           - provision-registry
+          - provision-primary
           - publish-registry
           - repair
       client:
@@ -32,7 +34,7 @@ on:
         type: string
 
       intended_app_id:
-        description: Operator-selected app UUID; fresh fixed UUID for plan-provision and provision-registry
+        description: Operator-selected app UUID; fresh fixed UUID for all provisioning operations
         required: false
         default: ""
         type: string
@@ -58,12 +60,12 @@ on:
         default: ""
         type: string
       display_name:
-        description: Public product name (plan-provision and provision-registry)
+        description: Public product name for provisioning operations
         required: false
         default: ""
         type: string
       expected_creation_sha256:
-        description: Creation hash from the reviewed prospective plan (provision-registry)
+        description: Creation hash from the reviewed prospective plan (provision-registry or provision-primary)
         required: false
         default: ""
         type: string
@@ -73,7 +75,7 @@ permissions:
 
 concurrency:
   # Publication shares the caller's release lock in cloud-cf-deploy.yml.
-  group: ${{ (inputs.operation == 'publish-registry' || inputs.operation == 'provision-registry') && format('cloud-cf-release-v6-{0}', inputs.target_environment) || format('mobile-app-auth-registration-{0}', inputs.target_environment) }}
+  group: ${{ (inputs.operation == 'publish-registry' || inputs.operation == 'provision-registry' || inputs.operation == 'provision-primary') && format('cloud-cf-release-v6-{0}', inputs.target_environment) || format('mobile-app-auth-registration-{0}', inputs.target_environment) }}
   cancel-in-progress: false
   queue: max
 
@@ -128,7 +130,7 @@ jobs:
         run: node packages/scripts/cloud/admin/repair-mobile-app-auth-registration.ts "${{ inputs.operation }}"
       - name: Prepare encrypted registry addition or provisioning plan (no writes)
         id: addition
-        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision'
+        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision' || inputs.operation == 'plan-provision-primary'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
@@ -144,7 +146,7 @@ jobs:
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
         run: node packages/scripts/cloud/admin/plan-mobile-client-addition.ts "${{ inputs.operation }}"
       - name: Upload only the encrypted candidate and rollback
-        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision'
+        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision' || inputs.operation == 'plan-provision-primary'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: mobile-client-addition-${{ inputs.target_environment }}
@@ -154,7 +156,7 @@ jobs:
       # Keep the normal source registry unchanged until this succeeds. A release
       # may publish that source, so an unprovisioned candidate cannot be installed.
       - name: Provision the reviewed platform registration only
-        if: inputs.operation == 'provision-registry'
+        if: inputs.operation == 'provision-registry' || inputs.operation == 'provision-primary'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
@@ -172,7 +174,7 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_EXPECTED_CREATION_SHA256: ${{ inputs.expected_creation_sha256 }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
-        run: node packages/scripts/cloud/admin/plan-mobile-client-addition.ts provision-registry
+        run: node packages/scripts/cloud/admin/plan-mobile-client-addition.ts "${{ inputs.operation }}"
       # The operator applies the sealed candidate through GitHub's environment-secret
       # API first. A fresh job reads it and refuses any hash or ownership mismatch.
       - name: Publish the exact reviewed registry only
