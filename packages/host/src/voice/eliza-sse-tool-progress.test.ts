@@ -34,7 +34,7 @@ async function run(body: string) {
   return { progress, reply: chunks.join("") };
 }
 
-test("tool work without a drafted acknowledgement speaks one fixed cue", async () => {
+test("tool work without a model acknowledgement stays quiet", async () => {
   expect(
     await run(
       sse(
@@ -46,7 +46,7 @@ test("tool work without a drafted acknowledgement speaks one fixed cue", async (
       ),
     ),
   ).toEqual({
-    progress: ["On it."],
+    progress: [],
     reply: "Nothing on your calendar this week.",
   });
 });
@@ -95,4 +95,57 @@ test("tool status after the reply is authorized adds no cue", async () => {
       ),
     ),
   ).toEqual({ progress: [], reply: "Opening Calendar." });
+});
+
+
+test("model acknowledgments are preserved exactly and emitted once", async () => {
+  const words = "Let me have a look.";
+  expect(await run(sse(
+    { type: "status", kind: "thinking", label: words },
+    { type: "status", kind: "thinking", label: words },
+    { type: "status", kind: "running_tool", toolName: "LOOKUP", label: words },
+    { type: "done", fullText: "All checked." },
+  ))).toEqual({ progress: [words], reply: "All checked." });
+});
+
+test("a provisional progress-shaped phrase cannot manufacture periodic speech", async () => {
+  expect(await run(sse(
+    { type: "token", text: "Checking.", provisional: true },
+    { type: "status", kind: "running_tool", toolName: "LOOKUP" },
+    { type: "done", fullText: "All checked." },
+  ))).toEqual({ progress: [], reply: "All checked." });
+});
+
+
+test("a model acknowledgment after reply authorization is not spoken", async () => {
+  expect(await run(sse(
+    { type: "token", text: "All checked." },
+    { type: "status", kind: "thinking", label: "Let me check." },
+    { type: "done", fullText: "All checked." },
+  ))).toEqual({ progress: [], reply: "All checked." });
+});
+
+test("waiting on provisional text never creates a repeating synthetic cue", async () => {
+  const progress: string[] = [];
+  const stream = new ReadableStream<Uint8Array>({
+    start(controller) {
+      const encode = (text: string) => new TextEncoder().encode(text);
+      controller.enqueue(encode(sse({ type: "token", text: "Checking.", provisional: true })));
+      setTimeout(() => {
+        controller.enqueue(encode(sse({ type: "done", fullText: "All checked." })));
+        controller.close();
+      }, 25);
+    },
+  });
+  const result = await streamElizaConversation({
+    endpoint: "https://fixture.invalid", authorization: "fixture-only", model: "unused",
+    transcript: "check notes", agentId: "agent", conversationId: "conversation",
+    traceId: "a".repeat(32), signal: new AbortController().signal,
+    progressIntervalMs: 1, onProgress: (text) => { progress.push(text); },
+    fetchImpl: Object.assign(async () => new Response(stream, {
+      headers: { "content-type": "text/event-stream" },
+    }), { preconnect() {} }),
+  }, () => {});
+  expect(result.completed).toBe(true);
+  expect(progress).toEqual([]);
 });

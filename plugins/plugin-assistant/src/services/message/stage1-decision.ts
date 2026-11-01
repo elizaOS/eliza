@@ -1278,7 +1278,7 @@ export async function generateStage1Decision(
           }).verdict !== "reject"
         ) {
           stage1TurnSignal.throwIfAborted();
-          args.onPlanningAcknowledgment?.(
+          await args.onPlanningAcknowledgment?.(
             restorePiiInUserReplyText(progress.text),
           );
           contextReadAcknowledgmentSent = true;

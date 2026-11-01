@@ -1086,7 +1086,7 @@ export async function runV5MessageRuntimeStage1(
       !messageHandler.plan.deterministicToolCall &&
       earlyReplyText.trim().length > 0
     ) {
-      args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
+      await args.onPlanningAcknowledgment(restorePiiInUserReplyText(earlyReplyText));
     }
     // The addressing gate above already terminal-routes addressed-to-other
     // turns to ignored, so a gated turn cannot normally reach this planning

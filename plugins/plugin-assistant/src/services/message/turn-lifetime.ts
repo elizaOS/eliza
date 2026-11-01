@@ -29,6 +29,7 @@ import {
   extractFirstSentence,
   getInferenceTimer,
   getModelStreamChunkDeliveryDepth,
+  getStreamingContext,
   getTrajectoryContext,
   guardOutboundEnvelopeText,
   InferenceTurnTimer,
@@ -41,6 +42,7 @@ import {
   parseBooleanFromText,
   RunTerminalOwner,
   resolveTraceCorrelationFromEnv,
+  revalidateOwnerExclusiveDisclosure,
   runWithInferenceTiming,
   runWithStreamingContext,
   runWithTrajectoryContext,
@@ -376,6 +378,8 @@ export class MessageTurnLifetime {
         //
         // The `streamTextFallback` path exists for action handlers or other
         // call sites that don't provide `accumulated` (raw token streams).
+        let planningAcknowledgmentAttempted = false;
+        let finalReplyDelivered = false;
         let firstSentenceSent = false;
         let firstSentenceChecked = false;
         let firstSentenceText = "";
@@ -501,19 +505,25 @@ export class MessageTurnLifetime {
             ),
           onStreamChunk: wrappedOnStreamChunk,
           onPlanningAcknowledgment: options?.onPlanningAcknowledgment
-            ? (text) => {
-                // Progress cannot be recalled. Sensitive turns use final audience
-                // revalidation, and blocked envelope material is never a status label.
-                if (ownerExclusiveDisclosureWasUsed(message)) return;
-                if (
-                  guardOutboundEnvelopeText(
-                    runtime,
-                    text,
-                    "planning-acknowledgment",
-                  ) !== text
-                )
+            ? async (text) => {
+                // The existing model-authored acknowledgement remains turn-owned:
+                // await audience revalidation before any irreversible speech.
+                const signal = getStreamingContext()?.abortSignal ?? options.abortSignal;
+                const isCurrent = () =>
+                  !signal?.aborted && !finalReplyDelivered && !firstSentenceSent &&
+                  (opts.keepExistingResponses ||
+                    latestResponseIds.get(runtime.agentId)?.get(message.roomId)?.at(-1) === responseId);
+                if (planningAcknowledgmentAttempted || !text.trim() || !isCurrent()) return;
+                if (guardOutboundEnvelopeText(runtime, text, "planning-acknowledgment") !== text)
                   return;
-                options.onPlanningAcknowledgment?.(text);
+                planningAcknowledgmentAttempted = true;
+                if (ownerExclusiveDisclosureWasUsed(message)) {
+                  const audience = await revalidateOwnerExclusiveDisclosure(runtime, message);
+                  if (!audience.allowed) return;
+                }
+                // Recheck after the asynchronous audience read, including preemption.
+                if (!isCurrent()) return;
+                await options.onPlanningAcknowledgment?.(text);
               }
             : undefined,
           onResponseDecision: options?.onResponseDecision,
@@ -553,6 +563,7 @@ export class MessageTurnLifetime {
 
         const deliveredVisibleTexts = new Set<string>();
         const recordDeliveredVisibleText = (text: string) => {
+          finalReplyDelivered = true;
           deliveredVisibleTexts.add(
             normalizeVisibleTextForDuplicateCheck(text),
           );
