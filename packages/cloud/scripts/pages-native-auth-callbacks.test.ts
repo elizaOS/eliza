@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
@@ -32,6 +32,202 @@ const canonical = Bun.TOML.parse(
 };
 
 describe("Pages native callback deployment", () => {
+  test("protected workflow configuration reaches the bare deployment job through actual step outputs", async () => {
+    type Step = { id: string; env: Record<string, string>; run: string };
+    type Job = {
+      environment?: string;
+      needs: string[];
+      outputs: Record<string, string>;
+      steps: Step[];
+    };
+    const workflow = Bun.YAML.parse(
+      await readFile(
+        path.resolve(directory, "../../.github/workflows/cloud-cf-release.yml"),
+        "utf8",
+      ),
+    ) as { jobs: Record<string, Job> };
+    const protectedJob = workflow.jobs["resolve-pages-environment-config"];
+    const deployment = workflow.jobs["deploy-app"];
+    expect(protectedJob.environment).toBe(
+      // biome-ignore lint/suspicious/noTemplateCurlyInString: This is the literal GitHub Actions expression.
+      "${{ inputs.target_environment == 'production' && 'production' || 'staging' }}",
+    );
+    expect(deployment.environment).toBeUndefined();
+    expect(deployment.needs).toContain("resolve-pages-environment-config");
+    const resolver = protectedJob.steps.find(
+      (step) => step.id === "native-callbacks",
+    );
+    const prepare = deployment.steps.find(
+      (step) => step.id === "native-callbacks",
+    );
+    if (!resolver || !prepare)
+      throw new Error("native callback workflow steps missing");
+    // Evaluate the actual dotted context/output expressions used by these steps.
+    // The bare job intentionally has no protected vars or secrets of its own.
+    const interpolate = (value: string, context: Record<string, unknown>) =>
+      value.replace(
+        /\$\{\{\s*(.*?)\s*\}\}/g,
+        (_match: string, expression: string) => {
+          for (const candidate of expression.split("||")) {
+            const resolved = candidate
+              .trim()
+              .split(".")
+              .reduce<unknown>(
+                (current, key) =>
+                  current && typeof current === "object"
+                    ? (current as Record<string, unknown>)[key]
+                    : undefined,
+                context,
+              );
+            if (typeof resolved === "string" && resolved) return resolved;
+          }
+          return "";
+        },
+      );
+    const environmentFor = (step: Step, context: Record<string, unknown>) =>
+      Object.fromEntries(
+        Object.entries(step.env).map(([key, value]) => [
+          key,
+          interpolate(value, context),
+        ]),
+      );
+    const outputs = async (file: string): Promise<Record<string, string>> =>
+      Object.fromEntries(
+        (await readFile(file, "utf8"))
+          .trimEnd()
+          .split("\n")
+          .map((line) => {
+            const equals = line.indexOf("=");
+            return [line.slice(0, equals), line.slice(equals + 1)];
+          }),
+      );
+    const temporary = await mkdtemp(
+      path.join(tmpdir(), "pages-workflow-scope-"),
+    );
+    try {
+      const appDirectory = path.join(temporary, "packages/app");
+      await mkdir(appDirectory, { recursive: true });
+      await writeFile(
+        path.join(appDirectory, "wrangler.toml"),
+        await readFile(path.join(directory, "wrangler.toml")),
+      );
+      expect(
+        (
+          await Bun.build({
+            entrypoints: [
+              path.join(import.meta.dirname, "pages-native-auth-callbacks.ts"),
+            ],
+            target: "bun",
+            conditions: ["eliza-source"],
+            outdir: appDirectory,
+            naming: "pages-native-auth-callbacks.mjs",
+          })
+        ).success,
+      ).toBe(true);
+      const run = (step: Step, env: Record<string, string>, output: string) =>
+        spawnSync("bash", ["-c", step.run], {
+          cwd: temporary,
+          encoding: "utf8",
+          timeout: 30_000,
+          env: {
+            PATH: process.env.PATH,
+            CHECKOUT_DIR: temporary,
+            RUNNER_TEMP: temporary,
+            GITHUB_OUTPUT: output,
+            ...env,
+          },
+        });
+      for (const [environment, callback] of [
+        ["staging", stage],
+        ["production", production],
+      ] as const) {
+        const context = {
+          inputs: { target_environment: environment },
+          vars: { [binding]: JSON.stringify([callback], null, 2) },
+          secrets: {},
+        };
+        const resolvedFile = path.join(temporary, `${environment}-resolved`);
+        const resolved = run(
+          resolver,
+          environmentFor(resolver, context),
+          resolvedFile,
+        );
+        expect(resolved.status).toBe(0);
+        expect(resolved.stderr).toBe("");
+        const stepOutputs = await outputs(resolvedFile);
+        const jobOutputs = Object.fromEntries(
+          Object.entries(protectedJob.outputs).map(([key, value]) => [
+            key,
+            interpolate(value, {
+              steps: { "native-callbacks": { outputs: stepOutputs } },
+            }),
+          ]),
+        );
+        const bareContext = {
+          inputs: context.inputs,
+          vars: {},
+          secrets: {},
+          needs: {
+            "resolve-pages-environment-config": { outputs: jobOutputs },
+          },
+        };
+        const preparedFile = path.join(temporary, `${environment}-prepared`);
+        const prepared = run(
+          prepare,
+          environmentFor(prepare, bareContext),
+          preparedFile,
+        );
+        expect(prepared.status).toBe(0);
+        expect(prepared.stderr).toBe("");
+        expect(JSON.parse(prepared.stdout).nativeCallbacks).toBe(1);
+        const preparedOutputs = await outputs(preparedFile);
+        expect(
+          JSON.stringify(
+            JSON.parse(
+              await readFile(
+                path.join(preparedOutputs.directory, "wrangler.json"),
+                "utf8",
+              ),
+            ),
+          ),
+        ).toContain(callback.redirectUri);
+        const missing = run(
+          prepare,
+          { ...environmentFor(prepare, bareContext), [binding]: "" },
+          path.join(temporary, "missing"),
+        );
+        expect(missing.status).toBe(1);
+        expect(missing.stdout).toContain("configuration did not transfer");
+      }
+      const invalid = run(
+        resolver,
+        {
+          TARGET_ENVIRONMENT: "staging",
+          [binding]: JSON.stringify([
+            { ...stage, privateKey: "must-not-be-output" },
+          ]),
+        },
+        path.join(temporary, "invalid"),
+      );
+      expect(invalid.status).toBe(1);
+      expect(invalid.stderr).not.toContain("must-not-be-output");
+      const emptyFile = path.join(temporary, "empty");
+      expect(
+        run(
+          resolver,
+          { TARGET_ENVIRONMENT: "staging", [binding]: "" },
+          emptyFile,
+        ).status,
+      ).toBe(0);
+      expect(await outputs(emptyFile)).toEqual({
+        configured: "false",
+        callbacks: "",
+      });
+    } finally {
+      await rm(temporary, { recursive: true, force: true });
+    }
+  });
+
   test("the immutable helper runs without workspace dependencies in the deployment directory", async () => {
     const temporary = await mkdtemp(
       path.join(tmpdir(), "pages-native-bundle-"),

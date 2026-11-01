@@ -226,6 +226,8 @@ jobs:
       telegram_bot_id: ${{ steps.telegram.outputs.bot_id }}
       telegram_bot_username: ${{ steps.telegram.outputs.bot_username }}
       whatsapp_phone_number: ${{ steps.whatsapp.outputs.phone_number }}
+      native_auth_callbacks: ${{ steps.native-callbacks.outputs.callbacks }}
+      native_auth_callbacks_configured: ${{ steps.native-callbacks.outputs.configured }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -325,6 +327,51 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Resolve public native callback configuration
+        id: native-callbacks
+        env:
+          ELIZA_NATIVE_AUTH_CALLBACKS_JSON: ${{ vars.ELIZA_NATIVE_AUTH_CALLBACKS_JSON || secrets.ELIZA_NATIVE_AUTH_CALLBACKS_JSON }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { appendFileSync } = require('node:fs');
+          try {
+            const environment = process.env.TARGET_ENVIRONMENT;
+            if (environment !== 'staging' && environment !== 'production') throw new Error();
+            const raw = process.env.ELIZA_NATIVE_AUTH_CALLBACKS_JSON || '';
+            let normalized = '';
+            if (raw.trim()) {
+              const entries = JSON.parse(raw);
+              const origins = environment === 'production'
+                ? ['https://eliza.app', 'https://cloud.eliza.app']
+                : ['https://staging.eliza.app', 'https://cloud-staging.eliza.app'];
+              if (!Array.isArray(entries)) throw new Error();
+              // Project only the public fields. The bundled helper applies the
+              // complete serving contract before any Pages deployment.
+              normalized = JSON.stringify(entries.map((entry) => {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+                    Object.keys(entry).length !== 3 ||
+                    Object.keys(entry).some((key) => !['redirectUri', 'androidPackage', 'appName'].includes(key)) ||
+                    typeof entry.redirectUri !== 'string' ||
+                    typeof entry.androidPackage !== 'string' ||
+                    !/^[a-zA-Z][a-zA-Z0-9_]*(?:\.[a-zA-Z][a-zA-Z0-9_]*)+$/.test(entry.androidPackage) ||
+                    typeof entry.appName !== 'string' || !entry.appName.trim()) throw new Error();
+                const url = new URL(entry.redirectUri);
+                if (!origins.includes(url.origin) || url.username || url.password ||
+                    url.search || url.hash || url.href !== entry.redirectUri) throw new Error();
+                return { redirectUri: entry.redirectUri, androidPackage: entry.androidPackage, appName: entry.appName };
+              }));
+            }
+            appendFileSync(process.env.GITHUB_OUTPUT,
+              `configured=${normalized !== ''}\ncallbacks=${normalized}\n`);
+            console.log('Resolved public native callback configuration.');
+          } catch {
+            console.error('Invalid public native callback configuration.');
+            process.exitCode = 1;
+          }
+          NODE
 
   migrate-db:
     name: Run Database Migrations
@@ -2603,11 +2650,22 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          ELIZA_NATIVE_AUTH_CALLBACKS_JSON: ${{ vars.ELIZA_NATIVE_AUTH_CALLBACKS_JSON || secrets.ELIZA_NATIVE_AUTH_CALLBACKS_JSON }}
+          ELIZA_NATIVE_AUTH_CALLBACKS_JSON: ${{ needs.resolve-pages-environment-config.outputs.native_auth_callbacks }}
+          CALLBACKS_CONFIGURED: ${{ needs.resolve-pages-environment-config.outputs.native_auth_callbacks_configured }}
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
         run: |
           set -euo pipefail
           umask 077
+          case "$CALLBACKS_CONFIGURED" in
+            false) ;;
+            true)
+              if [ -z "$ELIZA_NATIVE_AUTH_CALLBACKS_JSON" ]; then
+                echo "::error::Public native callback configuration did not transfer; use the protected environment variable instead of a masked secret"
+                exit 1
+              fi
+              ;;
+            *) echo "::error::Native callback configuration resolution is missing"; exit 1 ;;
+          esac
           bun "$CHECKOUT_DIR/packages/app/pages-native-auth-callbacks.mjs" prepare \
             --canonical "$CHECKOUT_DIR/packages/app/wrangler.toml" \
             --environment "$TARGET_ENVIRONMENT" \
