@@ -1,9 +1,10 @@
 /**
- * The inference hot path is decided by one combined-cache read plus the
- * organization Durable Objects, and never queries Postgres: not on a warm
+ * Inference identity resolution uses one combined-cache read and never
+ * queries Postgres: not on a warm
  * hit, not on a stale entry, not on a first-ever miss. Suspension and
  * revocation are found by the off-response refresh, which rewrites the entry
- * so the NEXT request fails (one stale allow is accepted).
+ * so the NEXT request fails (one stale allow is accepted). Ordinary paid
+ * admission separately retains its primary hold and policy checks.
  *
  * Every "zero queries" claim runs with a primary tripwire armed: any PGlite
  * statement throws and is counted. A control test proves the tripwire fires.
