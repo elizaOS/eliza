@@ -154,6 +154,26 @@ jobs:
         if: steps.affected.outputs.source == 'true'
         run: node packages/scripts/ci-bun-version-contract.ts --inventory "$RUNNER_TEMP/bun-runtime-inventory.json"
 
+
+      - name: Lint changed owning Calendar source before builds
+        if: steps.affected.outputs.source == 'true'
+        timeout-minutes: 3
+        shell: bash
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            plugins/plugin-calendar packages/contracts/src/calendar.ts || status=$?
+          case "$status" in
+            0) echo "No owning Calendar source changed."; exit 0 ;;
+            1) ;;
+            *) echo "::error::Calendar change detection failed with exit $status."; exit "$status" ;;
+          esac
+          bun run --cwd plugins/plugin-calendar lint:check --max-diagnostics=none
+
       - name: Upload Bun runtime resolution inventory
         if: steps.affected.outputs.source == 'true'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
@@ -290,6 +310,32 @@ jobs:
           RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
+
+      - name: Verify owning Calendar regressions
+        if: steps.affected.outputs.source == 'true'
+        timeout-minutes: 10
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          TEST_LANE: pr
+          VITEST_LANE: pr
+          ELIZA_LIVE_TEST: "0"
+          CALENDAR_LLM_LIVE_TEST: "0"
+        run: |
+          set -euo pipefail
+          calendar_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            plugins/plugin-calendar packages/contracts/src/calendar.ts || calendar_diff_status=$?
+          if [ "$calendar_diff_status" -eq 0 ]; then
+            echo "No owning Calendar source changed."
+            exit 0
+          fi
+          if [ "$calendar_diff_status" -ne 1 ]; then
+            exit "$calendar_diff_status"
+          fi
+          node packages/scripts/with-test-runtime.ts \
+            bun run --cwd plugins/plugin-calendar test \
+            --maxWorkers=1 --no-file-parallelism
 
       - name: Verify gateway routing and release preparation
         if: steps.affected.outputs.cloud == 'true'
