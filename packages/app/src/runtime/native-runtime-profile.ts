@@ -270,7 +270,12 @@ export async function applyNativeCloudRuntimeProfile(
   const store = stores ?? (await defaultStores());
   const config = store.loadConfig();
   const { apiKey: _desktopKey, ...cloud } = config.cloud ?? {};
-  config.cloud = { ...cloud, enabled: true, baseUrl: apiBaseUrl };
+  config.cloud = {
+    ...cloud,
+    enabled: true,
+    inferenceMode: "cloud",
+    baseUrl: apiBaseUrl,
+  };
   config.serviceRouting = {
     ...config.serviceRouting,
     ...nativeCloudServiceRouting(profile, { small, large }),
@@ -280,4 +285,57 @@ export async function applyNativeCloudRuntimeProfile(
     nativeRuntimeRoutingPreferences(profile, current),
   );
   return profile;
+}
+
+/** Explicit native direct inference replaces any persisted Cloud route, without persisting keys.
+ * Local embeddings may be unavailable in a model-free QA package; they never fall back to Cloud. */
+export async function applyNativeDirectRuntimeProfile(
+  env: NodeJS.ProcessEnv,
+  stores?: NativeRuntimeProfileStores,
+): Promise<void> {
+  resolveNativeRuntimeProfile(env.ELIZA_RUNTIME_PROFILE);
+  const model = "qwen-3.8-27b";
+  if (
+    env.ELIZA_PROVIDER !== "cerebras" ||
+    !env.CEREBRAS_API_KEY ||
+    env.CEREBRAS_SMALL_MODEL !== model ||
+    env.CEREBRAS_LARGE_MODEL !== model ||
+    env.ELIZAOS_CLOUD_USE_INFERENCE !== "false"
+  )
+    throw new Error("Native direct inference binding is incomplete");
+  const store = stores ?? (await defaultStores());
+  const config = store.loadConfig();
+  const { apiKey: _desktopKey, ...cloud } = config.cloud ?? {};
+  config.cloud = { ...cloud, enabled: false, inferenceMode: "local" };
+  config.serviceRouting = {
+    ...config.serviceRouting,
+    embeddings: { ...LOCAL_EMBEDDING_ROUTE },
+    llmText: {
+      backend: "cerebras",
+      transport: "direct",
+      nanoModel: model,
+      smallModel: model,
+      mediumModel: model,
+      largeModel: model,
+      megaModel: model,
+      responseHandlerModel: model,
+      actionPlannerModel: model,
+    },
+  };
+  store.saveConfig(config);
+  await store.updateRoutingPreferences((current) => ({
+    ...current,
+    preferredProvider: {
+      ...current.preferredProvider,
+      TEXT_SMALL: "cerebras",
+      TEXT_LARGE: "cerebras",
+    },
+    policy: {
+      ...current.policy,
+      TEXT_SMALL: "manual",
+      TEXT_LARGE: "manual",
+      TRANSCRIPTION: "local-only",
+      TEXT_TO_SPEECH: "local-only",
+    },
+  }));
 }

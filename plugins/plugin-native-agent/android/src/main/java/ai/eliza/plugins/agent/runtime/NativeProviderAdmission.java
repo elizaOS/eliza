@@ -62,6 +62,8 @@ public class NativeProviderAdmission {
  }
  /** Select exactly one billing authority at process launch; never accept UI balance as authorization. */
  public static void applyProviderEnvironment(JSONObject provider,String cloudSaved,java.util.Map<String,String> env,long now) throws Exception {
+  env.remove("ELIZA_NATIVE_GOOGLE_API_KEY");
+  env.remove("ELIZA_NATIVE_GOOGLE_BINDING_JSON");
   String kind=provider.optString("provider","cerebras"),model=provider.getString("model");
   // Retirement context only: reuse protected selection identity, never a credential or renderer value.
   Object selectedRevision=provider.opt("revision");
@@ -178,6 +180,18 @@ public class NativeProviderAdmission {
  }
  private static final String GENERATION="admissionGeneration",FINGERPRINT="admissionFingerprint",CLOUD_IDENTITY="verifiedCloudIdentity";
  /** Public identity of the native-verified Cloud selection; never the bearer. */
+ /** Keeps managed-service credentials separate from text inference. Direct inference remains usable
+  * when the separately saved Cloud account is signed out, expired or replaced. */
+ public static JSONObject applyManagedGoogleEnvironment(String saved,String cloudSaved,java.util.Map<String,String> env,long now)throws Exception {
+  env.remove("ELIZA_NATIVE_GOOGLE_API_KEY");
+  env.remove("ELIZA_NATIVE_GOOGLE_BINDING_JSON");
+  boolean direct=saved!=null&&"cerebras".equals(new JSONObject(saved).optString("provider"));
+  JSONObject binding;
+  try{binding=managedGoogleBinding(saved,cloudSaved,now);}
+  catch(Exception unavailable){if(direct)return null;throw unavailable;}
+  if(binding!=null)env.put("ELIZA_NATIVE_GOOGLE_API_KEY",cloudProviderToken(cloudSaved,binding.getString("credentialId"),now));
+  return binding;
+ }
  public static JSONObject managedGoogleBinding(String saved,String cloudSaved,long now)throws Exception {
   if(saved==null)throw new SecurityException("Cloud provider admission required");
   JSONObject selected=new JSONObject(saved);
