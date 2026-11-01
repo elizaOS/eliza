@@ -228,6 +228,14 @@ function hexOrIntToBigInt(value: unknown): bigint | undefined {
     }
     throw new EvmSignInputError("bigint value must be a number, bigint, or string");
 }
+// eth_signTransaction and eth_sendTransaction carry the dApp's nonce (a
+// replacement or a queued transaction); without one, viem fills in the
+// account's pending nonce.
+function readEvmNonce(value: EvmTxRequest["nonce"]): number | undefined {
+    if (typeof value === "number")
+        return value;
+    return value ? Number(hexOrIntToBigInt(value)) : undefined;
+}
 const sendTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => {
     if (!authorize(req, res, runtime))
         return;
@@ -259,11 +267,7 @@ const sendTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
             gas: hexOrIntToBigInt(tx.gas),
             maxFeePerGas: hexOrIntToBigInt(tx.maxFeePerGas),
             maxPriorityFeePerGas: hexOrIntToBigInt(tx.maxPriorityFeePerGas),
-            nonce: typeof tx.nonce === "number"
-                ? tx.nonce
-                : tx.nonce
-                    ? Number(hexOrIntToBigInt(tx.nonce))
-                    : undefined,
+            nonce: readEvmNonce(tx.nonce),
         });
         res.status(200).json({ hash, address: account.address, chainId });
     }
@@ -303,6 +307,7 @@ const signTransactionHandler: LegacyRouteHandler = async (req, res, runtime) => 
             gas: hexOrIntToBigInt(tx.gas),
             maxFeePerGas: hexOrIntToBigInt(tx.maxFeePerGas),
             maxPriorityFeePerGas: hexOrIntToBigInt(tx.maxPriorityFeePerGas),
+            nonce: readEvmNonce(tx.nonce),
         });
         const serialized = await wallet.signTransaction(request);
         res.status(200).json({
