@@ -27,6 +27,7 @@ import { randomUUID } from "node:crypto";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import * as aiPricing from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import * as elevenlabs from "@elizaos/cloud-shared/lib/services/elevenlabs";
+import { loadInferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import * as firstLineCache from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { Hono } from "hono";
@@ -74,31 +75,9 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   requireGenerativeRouteCaller: async () => ({
     user: { id: userId, organization_id: orgId },
     apiKeyId: null,
-    admissionSnapshot: {
-      authority: {
-        generation: "1",
-        effectiveFrom: "2026-01-01T00:00:00.000Z",
-        effectiveUntil: null,
-        source: "legacy",
-        sourceSubscriptionId: null,
-        sourceRevision: null,
-        projectionRevision: null,
-        catalogVersion: null,
-      },
-      subscriptionFunded: false,
-      billingHold: false,
-      balance: {
-        balanceUsd: 10,
-        balanceAt: Date.now(),
-        balanceRevision,
-      },
-      rateLimits: {
-        completionsRpm: 60,
-        embeddingsRpm: 60,
-        standardRpm: 60,
-        strictRpm: 60,
-      },
-    },
+    // The snapshot the Worker carries is the projection of the stored policy,
+    // which admission checks against the locked policy row.
+    admissionSnapshot: await loadInferenceAdmissionSnapshot(orgId),
     credential: undefined,
   }),
 }));
