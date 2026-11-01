@@ -27,9 +27,12 @@ export const DEFAULT_QUARANTINED_SUITES = [
  * dependencies for the lifetime of the Bun process. Bun's `--isolate` keeps
  * test globals separate but does not restore those process-wide module mocks,
  * so these suites need a process boundary from their alphabetical neighbors.
+ * Real HTTP moderation also owns a temporary fetch redirect and must not
+ * inherit neighboring safety-service mocks.
  */
 export const DEFAULT_PROCESS_ISOLATED_SUITES = [
   "src/lib/services/shared-runtime/shared-runtime-chat.test.ts",
+  "src/lib/services/speech-moderation-cancellation.test.ts",
 ];
 
 /** Total attempts for the quarantined pass (first run + retries). */
