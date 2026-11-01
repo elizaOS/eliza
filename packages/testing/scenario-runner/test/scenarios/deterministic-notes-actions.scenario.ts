@@ -13,6 +13,7 @@ import {
   type ContextObject,
   commitNotesRequestRestriction,
   type IAgentRuntime,
+  isObjectRecord,
   type NotesRequestOperation,
   runWithActionRoutingContext,
   type State,
@@ -307,10 +308,12 @@ export default scenario({
       },
       assertTurn: async (execution) => {
         const result = capturedNotesAction(execution)?.result;
+        const data = result?.data;
         if (
           result?.success !== false ||
-          result.data?.code !== "REQUEST_OPERATION_RESTRICTED" ||
-          result.data.executionStatus !== "not_started"
+          !isObjectRecord(data) ||
+          data.code !== "REQUEST_OPERATION_RESTRICTED" ||
+          data.executionStatus !== "not_started"
         )
           return "read-only request did not reject the attempted write";
         const stored = JSON.parse(await readFile(notesFilePath, "utf8"));
