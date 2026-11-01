@@ -45,6 +45,7 @@
     "**/*.e2e.test.ts",
     "**/*.test.tsx",
     "build.ts",
+    "scripts/build-cjs.ts",
     "ui/**",
     "src/ui/**"
   ]
