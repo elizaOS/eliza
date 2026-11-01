@@ -1070,3 +1070,166 @@ test("negotiated insufficient credits stop before PCM with a public billing reas
   expect(f.pcm).toHaveLength(0);
   expect(f.connections).toBe(1);
 });
+
+test("auth-cache warming retries consent and mint before admission with identical authority and bodies", async () => {
+  const f = await fixture();
+  const calls: {
+    path: string;
+    authorization: string | null;
+    body: string;
+    at: number;
+  }[] = [];
+  const warmed = new Set<string>();
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    fetch: Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        calls.push({
+          path,
+          authorization: new Headers(init?.headers).get("authorization"),
+          body: String(init?.body),
+          at: performance.now(),
+        });
+        if (!path.endsWith("/revoke") && !warmed.has(path)) {
+          warmed.add(path);
+          return Response.json(
+            { error: { code: "auth_cache_warming" } },
+            {
+              status: 503,
+              headers: path.endsWith("/consent") ? { "Retry-After": "1" } : {},
+            },
+          );
+        }
+        return fetch(input, init);
+      },
+      { preconnect() {} },
+    ),
+  });
+  expect(calls).toHaveLength(4);
+  for (const [first, second] of [
+    [calls[0], calls[1]],
+    [calls[2], calls[3]],
+  ]) {
+    expect(second).toMatchObject({
+      path: first.path,
+      authorization: first.authorization,
+      body: first.body,
+    });
+  }
+  expect(calls[1].at - calls[0].at).toBeGreaterThanOrEqual(990);
+  expect(f.requests.map((r) => r.path)).toEqual([
+    "/api/v1/voice/speech/consent",
+    "/api/v1/voice/speech/session",
+  ]);
+  expect(f.connections).toBe(1);
+  await client.close();
+});
+
+test("auth-cache retry is bounded and never treats unrelated refusals or failures as replayable", async () => {
+  for (const fixtureCase of [
+    {
+      status: 503,
+      body: { code: "auth_cache_warming" },
+      wait: "0",
+      expected: 3,
+    },
+    {
+      status: 503,
+      body: { code: "auth_cache_warming" },
+      wait: "Thu, 01 Jan 1970 00:00:00 GMT",
+      expected: 3,
+    },
+    {
+      status: 503,
+      body: { code: "auth_cache_warming" },
+      wait: "10",
+      expected: 1,
+    },
+    {
+      status: 503,
+      body: { code: "auth_cache_warming" },
+      wait: "1.5",
+      expected: 1,
+    },
+    {
+      status: 503,
+      body: { code: "auth_cache_warming" },
+      wait: "invalid",
+      expected: 1,
+    },
+    {
+      status: 503,
+      body: { code: "billing_cache_warming" },
+      wait: "0",
+      expected: 1,
+    },
+    {
+      status: 429,
+      body: { code: "auth_cache_warming" },
+      wait: "0",
+      expected: 1,
+    },
+    {
+      status: 401,
+      body: { code: "auth_cache_warming" },
+      wait: "0",
+      expected: 1,
+    },
+    {
+      status: 503,
+      body: { code: "auth_cache_warming", data: "x".repeat(17000) },
+      wait: "0",
+      expected: 1,
+    },
+  ]) {
+    const f = await fixture();
+    let calls = 0;
+    await expect(
+      createCloudSpeechRelayPorts({
+        ...f.options,
+        fetch: Object.assign(
+          async () => {
+            calls++;
+            return Response.json(fixtureCase.body, {
+              status: fixtureCase.status,
+              headers: { "Retry-After": fixtureCase.wait },
+            });
+          },
+          { preconnect() {} },
+        ),
+      }),
+    ).rejects.toBeDefined();
+    expect(calls).toBe(fixtureCase.expected);
+    expect(f.connections).toBe(0);
+  }
+});
+
+test("cancellation and owner replacement during warming prevent another auth request", async () => {
+  for (const change of ["abort", "owner"]) {
+    const f = await fixture();
+    const controller = new AbortController();
+    let calls = 0;
+    const opening = createCloudSpeechRelayPorts({
+      ...f.options,
+      signal: controller.signal,
+      fetch: Object.assign(
+        async () => {
+          calls++;
+          return Response.json(
+            { code: "auth_cache_warming" },
+            { status: 503, headers: { "Retry-After": "1" } },
+          );
+        },
+        { preconnect() {} },
+      ),
+    });
+    const rejected = expect(opening).rejects.toBeDefined();
+    await until(() => calls === 1);
+    if (change === "abort") controller.abort();
+    else f.changeOwner();
+    await rejected;
+    expect(calls).toBe(1);
+    expect(f.connections).toBe(0);
+  }
+});

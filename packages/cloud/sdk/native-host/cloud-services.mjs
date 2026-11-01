@@ -15,6 +15,53 @@ const speechLanguageCode = (value) =>
 
 const fail = (message, status = 400) =>
   new NativeCloudServiceError(message, { status });
+// Read a small, structured refusal without retaining or exposing provider text.
+async function speechWarmingDelay(response, signal) {
+  const reader = response.body?.getReader();
+  if (!reader) return null;
+  const abort = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal.addEventListener("abort", abort, { once: true });
+  const chunks = [];
+  let size = 0;
+  try {
+    signal.throwIfAborted();
+    for (;;) {
+      const part = await reader.read();
+      signal.throwIfAborted();
+      if (part.done) break;
+      size += part.value.length;
+      if (size > 16384) return null;
+      chunks.push(part.value);
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+    if (
+      body?.code !== "auth_cache_warming" &&
+      body?.error?.code !== "auth_cache_warming"
+    )
+      return null;
+    const value = response.headers.get("retry-after");
+    if (value !== null) {
+      if (/^\d+$/.test(value)) return Number(value) * 1000;
+      if (
+        !/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(
+          value,
+        )
+      )
+        return null;
+      const date = Date.parse(value);
+      return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
+    }
+    return 1000;
+  } catch {
+    signal.throwIfAborted();
+    return null;
+  } finally {
+    signal.removeEventListener("abort", abort);
+    await reader.cancel().catch(() => {});
+  }
+}
 // Renderer-safe invoice facts. Merchant metadata and provider identifiers stay private.
 function invoiceProjection(value, id) {
   if (
@@ -764,6 +811,70 @@ export function createCloudRoutes({
     responseEpoch.set(response, epoch);
     return response;
   }
+  // Only this pre-admission auth refusal is safe to replay. Keep retries out of
+  // the generic request helper used by billing and other stateful operations.
+  async function speechRequest(path, options) {
+    // Freeze the wire bytes once, as well as the captured credential and owner.
+    const requestOptions = options.json
+      ? {
+          ...options,
+          json: undefined,
+          rawBody: JSON.stringify(options.json),
+          headers: { "Content-Type": "application/json", ...options.headers },
+        }
+      : options;
+    const epoch = options.authorityGeneration;
+    const deadline = performance.now() + 10000;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const signal = options.signal
+      ? AbortSignal.any([options.signal, controller.signal])
+      : controller.signal;
+    try {
+      for (let attempt = 0; ; attempt++) {
+        options.signal?.throwIfAborted();
+        if (attempt > 0) signal.throwIfAborted();
+        current(epoch);
+        // Preserve the original first-request/stream lifetime. The retry deadline
+        // bounds warming reads, backoff and repeat headers, never admitted audio.
+        const response = await request(
+          path,
+          attempt === 0 ? requestOptions : { ...requestOptions, signal },
+        );
+        if (
+          response.status !== 503 ||
+          !response.headers
+            .get("content-type")
+            ?.toLowerCase()
+            .startsWith("application/json")
+        )
+          return response;
+        const delay = await speechWarmingDelay(response, signal);
+        signal.throwIfAborted();
+        current(epoch);
+        if (
+          delay === null ||
+          attempt >= 2 ||
+          !Number.isFinite(delay) ||
+          delay >= deadline - performance.now()
+        )
+          return response;
+        await new Promise((resolve, reject) => {
+          const abort = () => {
+            clearTimeout(wait);
+            reject(signal.reason);
+          };
+          const wait = setTimeout(() => {
+            signal.removeEventListener("abort", abort);
+            resolve();
+          }, delay);
+          signal.addEventListener("abort", abort, { once: true });
+        });
+      }
+    } finally {
+      clearTimeout(timer);
+    }
+  }
   async function parse(response) {
     if (!response.ok)
       throw fail(
@@ -894,7 +1005,7 @@ export function createCloudRoutes({
     assertOwner: checkSpeechOwner,
     open: async (input, signal, owner) => {
       const { epoch, key } = await checkSpeechOwner(owner);
-      const response = await request("/api/v1/voice/tts", {
+      const response = await speechRequest("/api/v1/voice/tts", {
         method: "POST",
         json: { ...input, withTimestamps: true },
         key,
@@ -1756,7 +1867,7 @@ export function createCloudRoutes({
       }
       if (method === "POST" && path === "/voice/tts") {
         const input = speechInput(await body(req));
-        const response = await request("/api/v1/voice/tts", {
+        const response = await speechRequest("/api/v1/voice/tts", {
           method: "POST",
           json: input,
           key,
@@ -1848,7 +1959,7 @@ export function createCloudRoutes({
           ),
         ]);
         const value = await parse(
-          await request("/api/v1/voice/stt", {
+          await speechRequest("/api/v1/voice/stt", {
             method: "POST",
             rawBody: multipart,
             headers: {
