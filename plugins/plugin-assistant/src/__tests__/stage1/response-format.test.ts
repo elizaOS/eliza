@@ -3107,18 +3107,24 @@ describe("Stage 1 response format", () => {
   });
 });
 
-
 describe("deferred provider discovery on sparse installs", () => {
   it("keeps a deferred body restorable even when its notice is longer", () => {
     const skipped = "Calendar read deferred.";
-    const notice = "Restore the complete lifeops reference to check connected calendar sources.";
+    const notice =
+      "Restore the complete lifeops reference to check connected calendar sources.";
     const context: ContextObject = {
       id: "sparse-reference",
-      events: [{ id: "lifeops", type: "provider", name: "lifeops", text: skipped }],
+      events: [
+        { id: "lifeops", type: "provider", name: "lifeops", text: skipped },
+      ],
     };
     const state = makeState();
     state.data.providers = {
-      lifeops: { text: skipped, discoveryText: notice, referenceBodyDeferred: true },
+      lifeops: {
+        text: skipped,
+        discoveryText: notice,
+        referenceBodyDeferred: true,
+      },
     };
     for (const loaded of [new Set<string>(), new Set(["lifeops"])]) {
       const projected = projectDiscoverableContext(context, state, loaded);

@@ -44,7 +44,7 @@ export function asProviderRecord(value: unknown):
   return value as {
     text?: unknown;
     discoveryText?: unknown;
-      referenceBodyDeferred?: unknown;
+    referenceBodyDeferred?: unknown;
     reviewableSources?: ProviderResult["reviewableSources"];
     providerName?: unknown;
     data?: unknown;
