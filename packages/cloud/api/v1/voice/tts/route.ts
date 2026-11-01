@@ -15,6 +15,7 @@ import {
 import { calculateTTSCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import {
+  type CreditReconciliationResult,
   type CreditReservation,
   InsufficientCreditsError,
 } from "@elizaos/cloud-shared/lib/services/credits";
@@ -213,7 +214,9 @@ async function captureExactAudioForCache(
  */
 async function __hono_POST(c: AppContext) {
   let reservation: CreditReservation | undefined;
-  let settleUnknown: (() => Promise<unknown>) | undefined;
+  let settleUnknown:
+    | (() => Promise<CreditReconciliationResult | null>)
+    | undefined;
   let markProviderDispatched: (() => Promise<void>) | undefined;
   let providerWorkMayHaveStarted = false;
   /** Settles, never rejecting, once the paid dispatch mark has its outcome. */
@@ -961,9 +964,19 @@ async function __hono_POST(c: AppContext) {
           },
         });
       } catch (error) {
-        if (!billingApplied) await settleUnknown?.();
         // error-policy:J7 billing and usage persistence run outside the audio
-        // response; conservative settlement remains observable on failure.
+        // response; conservative settlement remains observable on failure,
+        // and a failed one never escapes as an unhandled rejection.
+        if (!billingApplied) {
+          await settleUnknown?.().catch((settlementError) => {
+            logger.error("[Voice TTS API] Conservative settlement failed", {
+              errorType:
+                settlementError instanceof Error
+                  ? settlementError.name
+                  : "unknown",
+            });
+          });
+        }
         logger.error("[Voice TTS API] Failed to create usage record", {
           errorType: error instanceof Error ? error.name : "unknown",
         });
@@ -1096,23 +1109,46 @@ async function __hono_POST(c: AppContext) {
         await providerDispatchSettled;
         const unknownSettlement =
           providerWorkMayHaveStarted && !rejected ? settleUnknown : undefined;
-        if (unknownSettlement) await unknownSettlement();
-        else await failedReservation.reconcile(0);
-        // Logged only once the settlement has succeeded.
+        const settled = unknownSettlement
+          ? await unknownSettlement()
+          : ((await failedReservation.reconcile(0)) ?? null);
+        // Logged only once the settlement has succeeded. A replay moved no
+        // money: another attempt under the key had already settled.
         logger.warn("[Voice TTS API] Settled failed paid synthesis", {
           organizationId: settlementOrganizationId,
           provider: settlementProvider,
           providerDispatchState: providerWorkMayHaveStarted
             ? "possibly_dispatched"
             : "not_dispatched",
-          settlement: unknownSettlement ? "unknown" : "released",
+          settlement: settled?.replayed
+            ? "already_settled"
+            : unknownSettlement
+              ? "unknown"
+              : "released",
           traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
           userId: settlementUserId,
         });
       })();
       const executionCtx = getGenerativeExecutionContext(c);
-      if (executionCtx) executionCtx.waitUntil(settlement);
-      else await settlement;
+      if (executionCtx) {
+        executionCtx.waitUntil(
+          settlement.catch((settlementError) => {
+            // error-policy:J7 the response is already decided; the failed
+            // settlement stays observable and the reservation sweep settles it.
+            logger.error(
+              "[Voice TTS API] Failed paid synthesis settlement failed",
+              {
+                errorType:
+                  settlementError instanceof Error
+                    ? settlementError.name
+                    : "unknown",
+                traceId:
+                  c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+              },
+            );
+          }),
+        );
+      } else await settlement;
     }
     if (request.signal.aborted) {
       // A caller abort is cancellation, never a provider failure or timeout.

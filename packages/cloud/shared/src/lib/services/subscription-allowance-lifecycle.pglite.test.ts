@@ -1213,3 +1213,128 @@ test("Worker mobile identity funds inference entirely from its active Plus allow
   ]);
   await Promise.allSettled(deferred);
 });
+
+describe("inference reservations released at zero", () => {
+  /** One Plus subscriber and keyed TTS-sized holds under a request key. */
+  async function keyedSubscriber() {
+    const now = await databaseNow();
+    const { org } = await seedSubscriber({
+      periodStart: new Date(now.getTime() - 24 * HOUR),
+      periodEnd: new Date(now.getTime() + 24 * HOUR),
+      allowance: "1.000000",
+      credits: "5.000000",
+    });
+    const { reserveSubscriptionFundedCredits } = await import("./allowance-first-credits");
+    const reserve = (
+      logicalOperationId: string,
+      operation: "ai_inference" | "voice" = "ai_inference",
+    ) =>
+      reserveSubscriptionFundedCredits({
+        organizationId: org,
+        operation,
+        logicalOperationId,
+        amount: "0.500000",
+        description: "TTS generation",
+      });
+    return { org, reserve };
+  }
+
+  test("a keyed retry after a release pays once, its replay is free, and the released handle stays on its own hold", async () => {
+    const { org, reserve } = await keyedSubscriber();
+    const key = "inference-gate:tts-release-replay-0001";
+    const first = await reserve(key);
+    // The caller left before dispatch: the hold is released.
+    expect(await first.reconcile(0)).toMatchObject({ collectedAmount: 0 });
+
+    // The retry under the key is new paid work, not a replay of the release.
+    const retry = await reserve(key);
+    expect(retry.reservationTransactionId).not.toBe(first.reservationTransactionId);
+    expect(await retry.reconcile(0.5)).toMatchObject({ collectedAmount: 0.5 });
+    // A repeated release by the first handle replays its own settlement only.
+    expect(await first.reconcile(0)).toMatchObject({
+      reservationTransactionId: first.reservationTransactionId,
+      collectedAmount: 0,
+    });
+    // The paid retry replays for free.
+    const replay = await reserve(key);
+    expect(replay.reservationTransactionId).toBe(retry.reservationTransactionId);
+    await replay.reconcile(0.5);
+
+    const state = await readState(org);
+    expect(state.balance).toBe("5.000000");
+    expect(state.periods).toEqual([
+      expect.objectContaining({
+        available_amount: "0.500000",
+        reserved_amount: "0.000000",
+        settled_amount: "0.500000",
+      }),
+    ]);
+    expect(state.reservations.map((row) => row.status)).toEqual(["finalized", "finalized"]);
+  });
+
+  test("two attempts under one key: whichever order, the synthesized one pays once", async () => {
+    const { org, reserve } = await keyedSubscriber();
+    // B replays A's open hold, then A releases it before dispatch.
+    const releasedFirst = "inference-gate:tts-two-in-flight-0001";
+    const a = await reserve(releasedFirst);
+    const b = await reserve(releasedFirst);
+    expect(b.reservationTransactionId).toBe(a.reservationTransactionId);
+    await a.reconcile(0);
+    // B synthesized: it reserves again under the key and pays once.
+    expect(await b.reconcile(0.5)).toMatchObject({ collectedAmount: 0.5 });
+    expect((await readState(org)).periods[0]).toMatchObject({
+      available_amount: "0.500000",
+      settled_amount: "0.500000",
+    });
+    // A third attempt replays B's paid hold for free.
+    const c = await reserve(releasedFirst);
+    await c.reconcile(0.5);
+
+    // B's charge settles first: A's late release keeps it charged.
+    const chargedFirst = "inference-gate:tts-two-in-flight-0002";
+    const a2 = await reserve(chargedFirst);
+    const b2 = await reserve(chargedFirst);
+    await b2.reconcile(0.5);
+    await expect(a2.reconcile(0)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_ALLOWANCE_CONFLICT",
+    });
+
+    const state = await readState(org);
+    expect(state.balance).toBe("5.000000");
+    expect(state.periods[0]).toMatchObject({
+      available_amount: "0.000000",
+      reserved_amount: "0.000000",
+      settled_amount: "1.000000",
+    });
+  });
+
+  test("a keyed retry after the stale sweep canceled the hold reserves again; the stranded owner stays refused", async () => {
+    const { org, reserve } = await keyedSubscriber();
+    const key = "inference-gate:tts-swept-0001";
+    const stranded = await reserve(key);
+    await fixture.query(
+      `UPDATE billing_funding_reservations SET created_at = now() - interval '3 hours',
+         expires_at = now() - interval '2 hours' WHERE organization_id = $1`,
+      [org],
+    );
+    expect(await funding.subscriptionFundingService.sweepStaleReservations()).toMatchObject({
+      canceled: 1,
+    });
+    await expect(stranded.reconcile(0.5)).rejects.toMatchObject({
+      code: "SUBSCRIPTION_ALLOWANCE_CONFLICT",
+    });
+    const retry = await reserve(key);
+    expect(retry.reservationTransactionId).not.toBe(stranded.reservationTransactionId);
+    expect(await retry.reconcile(0.5)).toMatchObject({ collectedAmount: 0.5 });
+    expect((await readState(org)).periods[0]).toMatchObject({ settled_amount: "0.500000" });
+  });
+
+  test("a released hold outside the inference keys still replays under its key", async () => {
+    const { org, reserve } = await keyedSubscriber();
+    const voice = await reserve("voice:clone-release-0001", "voice");
+    await voice.reconcile(0);
+    const retry = await reserve("voice:clone-release-0001", "voice");
+    expect(retry.reservationTransactionId).toBe(voice.reservationTransactionId);
+    expect((await readState(org)).reservations).toHaveLength(1);
+  });
+});

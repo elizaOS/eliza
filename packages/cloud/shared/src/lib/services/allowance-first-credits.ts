@@ -28,6 +28,7 @@ import {
 } from "./organization-quota-policy";
 import {
   SUBSCRIPTION_FUNDING_INSUFFICIENT,
+  SUBSCRIPTION_FUNDING_RELEASED,
   type SubscriptionFundingSettlementResult,
   subscriptionFundingService,
 } from "./subscription-funding";
@@ -245,24 +246,36 @@ export async function reserveSubscriptionFundedCredits(params: {
     }
     throw error;
   }
+  // A retry after a release reserves under the key the release left behind.
+  const logicalOperationId = reserved.reservation.logical_operation_id;
   const occurredAt = reserved.reservation.created_at;
   return {
     reservedAmount: Number(reserved.reservation.requested_amount),
     reservationTransactionId: reserved.reservation.id,
     funding: {
-      logicalOperationId: params.logicalOperationId,
+      logicalOperationId,
       operation: params.operation,
       occurredAt,
     },
-    reconcile: (actualCost) =>
-      settleSubscriptionFundedReservation({
-        organizationId: params.organizationId,
-        logicalOperationId: params.logicalOperationId,
-        operation: params.operation,
-        actualCost,
-        occurredAt,
-        metadata: params.metadata,
-      }),
+    reconcile: async (actualCost) => {
+      try {
+        return await settleSubscriptionFundedReservation({
+          organizationId: params.organizationId,
+          logicalOperationId,
+          operation: params.operation,
+          actualCost,
+          occurredAt,
+          metadata: params.metadata,
+        });
+      } catch (error) {
+        // Another attempt under this key released the reservation this one
+        // replayed: the charged work reserves again under the key (a new
+        // reservation, or the one a later attempt holds) and pays once.
+        if (!(error instanceof ElizaError && error.code === SUBSCRIPTION_FUNDING_RELEASED))
+          throw error;
+        return await (await reserveSubscriptionFundedCredits(params)).reconcile(actualCost);
+      }
+    },
   };
 }
 

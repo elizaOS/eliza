@@ -135,6 +135,30 @@ function oneSecondWav(): Uint8Array<ArrayBuffer> {
   return buf;
 }
 
+/** Records this test's failed-transcription settlement logs. */
+function captureSettlementLogs() {
+  const logs = {
+    warnings: [] as unknown[],
+    failures: [] as unknown[],
+  };
+  const warn = spyOn(logger, "warn").mockImplementation((message, data) => {
+    if (message === "[Voice STT API] Settled failed paid transcription")
+      logs.warnings.push(data);
+  });
+  const error = spyOn(logger, "error").mockImplementation((message, data) => {
+    if (
+      message === "[Voice STT API] Failed paid transcription settlement failed"
+    )
+      logs.failures.push(data);
+  });
+  restoreLogSpies.push(() => {
+    warn.mockRestore();
+    error.mockRestore();
+  });
+  return logs;
+}
+const restoreLogSpies: Array<() => void> = [];
+
 const PROVIDER_SECONDS = 3600;
 const realFetch = globalThis.fetch;
 
@@ -208,9 +232,11 @@ beforeEach(() => {
   settlementFailures = 0;
   reconciled.length = 0;
   pricedSeconds.length = 0;
+  for (const restore of restoreLogSpies.splice(0)) restore();
 });
 
 afterAll(() => {
+  for (const restore of restoreLogSpies.splice(0)) restore();
   phaseLog.mockRestore();
   globalThis.fetch = realFetch;
 });
@@ -294,13 +320,23 @@ test("ElevenLabs lane never bills less than the file for a word end inside it", 
 
 // The ElevenLabs SDK error carries the HTTP status: a rejection releases the
 // reservation, while a failure without a status keeps it as possibly billed.
+// The settlement log names the settlement that ran.
 test.each([
-  ["rejected request", 422, "synthetic rejection", 500, [0], 0],
-  ["trial-tier refusal", 403, "Not available on the trial tier", 402, [0], 0],
-  ["transport failure", undefined, "", 500, [], 1],
+  ["rejected request", 422, "synthetic rejection", 500, [0], 0, "released"],
+  [
+    "trial-tier refusal",
+    403,
+    "Not available on the trial tier",
+    402,
+    [0],
+    0,
+    "released",
+  ],
+  ["transport failure", undefined, "", 500, [], 1, "unknown"],
 ] as const)(
   "ElevenLabs lane settles a %s",
-  async (_label, status, message, expected, released, unknown) => {
+  async (_label, status, message, expected, released, unknown, settlement) => {
+    const settled = captureSettlementLogs();
     globalThis.fetch = (async (input) => {
       const host = new URL(input instanceof Request ? input.url : String(input))
         .host;
@@ -325,8 +361,73 @@ test.each([
     expect(dispatched).toBe(1);
     expect(reconciled).toEqual([...released]);
     expect(settledUnknown).toBe(unknown);
+    expect(settled.warnings).toEqual([
+      expect.objectContaining({
+        providerDispatchState: "possibly_dispatched",
+        settlement,
+      }),
+    ]);
   },
 );
+
+test("a Cartesia refusal after dispatch is released and logged as released", async () => {
+  const settled = captureSettlementLogs();
+  globalThis.fetch = (async () => {
+    providerCalls++;
+    return Response.json({ error: "unsupported audio" }, { status: 422 });
+  }) as unknown as typeof fetch;
+  const response = await transcribeWithCartesia(
+    new AbortController().signal,
+    "2000",
+  );
+
+  expect(response.status).toBe(502);
+  expect(dispatched).toBe(1);
+  expect(reconciled).toEqual([0]);
+  expect(settledUnknown).toBe(0);
+  expect(settled.warnings).toEqual([
+    expect.objectContaining({
+      provider: "cartesia",
+      providerDispatchState: "possibly_dispatched",
+      settlement: "released",
+    }),
+  ]);
+});
+
+test("in a Worker, a failed settlement of a failed transcription is logged as failed, never as settled", async () => {
+  const settled = captureSettlementLogs();
+  settlementFailures = 1;
+  globalThis.fetch = (async () =>
+    Response.json(
+      { detail: { message: "synthetic rejection" } },
+      { status: 422 },
+    )) as typeof fetch;
+  const form = new FormData();
+  form.append(
+    "audio",
+    new File([oneSecondWav()], "note.wav", { type: "audio/wav" }),
+  );
+  const pending: Promise<unknown>[] = [];
+  const response = await sttApp.request(
+    "http://cloud.test/",
+    { method: "POST", body: form },
+    { VOICE_BATCH_STT_PROVIDER: "elevenlabs", ELEVENLABS_API_KEY: "el-test" },
+    {
+      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+      passThroughOnException: () => undefined,
+      props: {},
+    },
+  );
+  expect(response.status).toBe(500);
+  await Promise.all(pending);
+
+  expect(settlementFailures).toBe(0);
+  expect(reconciled).toEqual([]);
+  expect(settled.warnings).toEqual([]);
+  expect(settled.failures).toEqual([
+    expect.objectContaining({ errorType: "Error" }),
+  ]);
+});
 
 test("a response without a duration bills the header estimate", async () => {
   stubProvider("api.deepgram.com", {

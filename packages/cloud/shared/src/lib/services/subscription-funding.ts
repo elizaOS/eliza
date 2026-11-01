@@ -17,6 +17,7 @@ import {
 import { readEligibleSubscriptionAllowance } from "../../db/repositories/subscription-allowance-eligibility";
 import {
   type CanonicalMoney,
+  type LockedFundingReservation,
   microsToMoney,
   moneyToMicros,
   subscriptionFundingReservationsRepository,
@@ -42,6 +43,11 @@ export const SUBSCRIPTION_FUNDING_INSUFFICIENT = "SUBSCRIPTION_FUNDING_INSUFFICI
 export const SUBSCRIPTION_FUNDING_REPLAY_CONFLICT = "SUBSCRIPTION_FUNDING_REPLAY_CONFLICT";
 export const SUBSCRIPTION_FUNDING_ORGANIZATION_NOT_FOUND =
   "SUBSCRIPTION_FUNDING_ORGANIZATION_NOT_FOUND";
+/** A charge settled against an inference reservation that collected nothing. */
+export const SUBSCRIPTION_FUNDING_RELEASED = "SUBSCRIPTION_FUNDING_RELEASED";
+
+/** Inference keys whose released reservations a retry reserves again. */
+const RELEASABLE_INFERENCE_PREFIX = "inference-gate:";
 
 interface ReserveSubscriptionFundingBaseInput {
   organizationId: string;
@@ -326,6 +332,64 @@ function reservationExpiry(input: ReserveSubscriptionFundingInput, now: Date): D
   return new Date(now.getTime() + input.reservationTtlMs);
 }
 
+/**
+ * An inference reservation released at zero: finalized without collecting
+ * anything. It paid for no work, so it never replays under its key and never
+ * settles a charge.
+ */
+function isReleasedInferenceReservation({
+  reservation,
+  allocations,
+}: LockedFundingReservation): boolean {
+  return (
+    reservation.logical_operation_id.startsWith(RELEASABLE_INFERENCE_PREFIX) &&
+    reservation.status === "finalized" &&
+    moneyToMicros(reservation.requested_amount, "requestedAmount") > 0n &&
+    moneyToMicros(reservation.uncollected_overage_amount, "uncollectedOverageAmount") === 0n &&
+    allocations.every(
+      (row) => moneyToMicros(row.finalized_amount, "allocation.finalizedAmount") === 0n,
+    )
+  );
+}
+
+/**
+ * Locks the reservation a reserve under this key replays. An inference
+ * reservation that funded no work (released at zero, or canceled by the stale
+ * sweep) is passed over for the key it leaves behind, so a retry of work it
+ * never paid for reserves again, once.
+ */
+async function lockReplayableOperation(
+  tx: DbTransaction,
+  organizationId: string,
+  logicalOperationId: string,
+): Promise<{ logicalOperationId: string; existing?: BillingFundingReservation }> {
+  for (;;) {
+    const [existing] = await tx
+      .select()
+      .from(billingFundingReservations)
+      .where(
+        and(
+          eq(billingFundingReservations.organization_id, organizationId),
+          eq(billingFundingReservations.logical_operation_id, logicalOperationId),
+        ),
+      )
+      .for("update");
+    const fundedNothing =
+      existing?.logical_operation_id.startsWith(RELEASABLE_INFERENCE_PREFIX) &&
+      (existing.status === "canceled" ||
+        (existing.status === "finalized" &&
+          isReleasedInferenceReservation(
+            await subscriptionFundingReservationsRepository.lockById(
+              tx,
+              organizationId,
+              existing.id,
+            ),
+          )));
+    if (!existing || !fundedNothing) return { logicalOperationId, existing };
+    logicalOperationId = `${RELEASABLE_INFERENCE_PREFIX}after.${existing.id}`;
+  }
+}
+
 async function findReservation(
   tx: DbTransaction,
   organizationId: string,
@@ -428,28 +492,23 @@ export class SubscriptionFundingService {
   ): Promise<TransactionalFundingReservationResult> {
     validateOperationId(input.logicalOperationId);
     const requestedAmount = canonicalMoney(input.amount, "amount", false);
-    const digest = await reserveRequestDigest(
-      input.organizationId,
-      input.logicalOperationId,
-      input.operation,
-      requestedAmount,
-    );
     let purchasedDebit = false;
     // Cash-only reservations never enter the allowance repository, so this is their sole organization lock.
     await lockOrganization(tx, input.organizationId);
     const now = await readPostLockDatabaseNow(tx);
     const fundingClass = SUBSCRIPTION_FUNDING_CLASS_BY_OPERATION[input.operation];
     // Replay is pinned to the original allocation, even after its period or source changes.
-    const [existing] = await tx
-      .select()
-      .from(billingFundingReservations)
-      .where(
-        and(
-          eq(billingFundingReservations.organization_id, input.organizationId),
-          eq(billingFundingReservations.logical_operation_id, input.logicalOperationId),
-        ),
-      )
-      .for("update");
+    const { logicalOperationId, existing } = await lockReplayableOperation(
+      tx,
+      input.organizationId,
+      input.logicalOperationId,
+    );
+    const digest = await reserveRequestDigest(
+      input.organizationId,
+      logicalOperationId,
+      input.operation,
+      requestedAmount,
+    );
     if (existing) {
       if (
         existing.request_digest !== digest ||
@@ -543,7 +602,7 @@ export class SubscriptionFundingService {
     }
     const common = {
       organizationId: input.organizationId,
-      logicalOperationId: input.logicalOperationId,
+      logicalOperationId,
       requestDigest: digest,
       requestedAmount,
       allowanceAmount: microsToMoney(allowance),
@@ -657,6 +716,18 @@ export class SubscriptionFundingService {
         input.organizationId,
         reservation.id,
       ));
+    // Another attempt under this key released the reservation: it paid for
+    // no work, so the charged work reserves again under the key.
+    if (
+      moneyToMicros(actualAmount, "actualAmount") > 0n &&
+      isReleasedInferenceReservation(locked)
+    ) {
+      fundingError(
+        SUBSCRIPTION_FUNDING_RELEASED,
+        "Funding reservation was released before this settlement",
+        { logicalOperationId: input.logicalOperationId },
+      );
+    }
     const allowanceAllocation = locked.allocations.find((row) => row.source === "allowance");
     const purchasedAllocation = locked.allocations.find((row) => row.source === "purchased_credit");
     const allowanceReserved = allowanceAllocation

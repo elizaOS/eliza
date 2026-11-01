@@ -809,8 +809,10 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         const rejected =
           rejectedStatus !== undefined &&
           isKnownUnacceptedProviderStatus(rejectedStatus);
-        await (providerWorkMayHaveStarted && settleUnknown && !rejected
-          ? settleUnknown()
+        const unknownSettlement =
+          providerWorkMayHaveStarted && !rejected ? settleUnknown : undefined;
+        await (unknownSettlement
+          ? unknownSettlement()
           : reservation.reconcile(0));
         reservation = undefined;
         logger.warn("[Voice STT API] Settled failed paid transcription", {
@@ -819,7 +821,8 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
             ? "possibly_dispatched"
             : "not_dispatched",
           reason,
-          settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+          // The settlement that ran: a provider refusal is released.
+          settlement: unknownSettlement ? "unknown" : "released",
           traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
           userId: user.id,
           organizationId: user.organization_id,
@@ -1047,8 +1050,10 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         const rejected =
           rejectedStatus !== undefined &&
           isKnownUnacceptedProviderStatus(rejectedStatus);
-        await (providerWorkMayHaveStarted && settleUnknown && !rejected
-          ? settleUnknown()
+        const unknownSettlement =
+          providerWorkMayHaveStarted && !rejected ? settleUnknown : undefined;
+        await (unknownSettlement
+          ? unknownSettlement()
           : reservation.reconcile(0));
         reservation = undefined;
         logger.warn("[Voice STT API] Settled failed paid transcription", {
@@ -1057,7 +1062,8 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
             ? "possibly_dispatched"
             : "not_dispatched",
           reason,
-          settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+          // The settlement that ran: a provider refusal is released.
+          settlement: unknownSettlement ? "unknown" : "released",
           traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
           userId: user.id,
           organizationId: user.organization_id,
@@ -1549,22 +1555,44 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         isKnownUnacceptedProviderError(error) ||
         (rejectedStatus !== undefined &&
           isKnownUnacceptedProviderStatus(rejectedStatus));
-      const settlement =
-        providerWorkMayHaveStarted && settleUnknown && !rejected
-          ? settleUnknown()
-          : reservation.reconcile(0);
+      const failedReservation = reservation;
+      const unknownSettlement =
+        providerWorkMayHaveStarted && !rejected ? settleUnknown : undefined;
+      const settlement = (async () => {
+        await (unknownSettlement
+          ? unknownSettlement()
+          : failedReservation.reconcile(0));
+        // Logged only once the settlement has succeeded.
+        logger.warn("[Voice STT API] Settled failed paid transcription", {
+          provider: settlementProvider ?? "unknown",
+          providerDispatchState: providerWorkMayHaveStarted
+            ? "possibly_dispatched"
+            : "not_dispatched",
+          reason: "route_failure",
+          settlement: unknownSettlement ? "unknown" : "released",
+          traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+        });
+      })();
       const executionCtx = getGenerativeExecutionContext(c);
-      if (executionCtx) executionCtx.waitUntil(settlement);
-      else await settlement;
-      logger.warn("[Voice STT API] Settled failed paid transcription", {
-        provider: settlementProvider ?? "unknown",
-        providerDispatchState: providerWorkMayHaveStarted
-          ? "possibly_dispatched"
-          : "not_dispatched",
-        reason: "route_failure",
-        settlement: providerWorkMayHaveStarted ? "unknown" : "released",
-        traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
-      });
+      if (executionCtx) {
+        executionCtx.waitUntil(
+          settlement.catch((settlementError) => {
+            // error-policy:J7 the response is already decided; the failed
+            // settlement stays observable and the reservation sweep settles it.
+            logger.error(
+              "[Voice STT API] Failed paid transcription settlement failed",
+              {
+                errorType:
+                  settlementError instanceof Error
+                    ? settlementError.name
+                    : "unknown",
+                traceId:
+                  c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+              },
+            );
+          }),
+        );
+      } else await settlement;
     }
 
     const apiError =

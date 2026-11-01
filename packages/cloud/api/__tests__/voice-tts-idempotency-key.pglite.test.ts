@@ -9,8 +9,10 @@
  * so a keyed retry pays once. A WAV synthesis that ends while its dispatch
  * mark is pending settles on the mark, also under a Worker waitUntil: a commit
  * keeps the unknown charge, a refusal releases. The settlement log reports the
- * settlement that ran, once it has succeeded. The WAV hard deadline still
- * answers 500.
+ * settlement that ran, once it has succeeded, and a failed one is logged as
+ * failed. Two requests in flight under one key pay once, in either order. A
+ * billing failure never escapes as an unhandled rejection. The WAV hard
+ * deadline still answers 500.
  * Real credits service on PGlite; auth, pricing,
  * content safety, the ElevenLabs client, the Cartesia and Kokoro upstreams,
  * the first-line cache and usage records are replaced.
@@ -56,8 +58,8 @@ const providerFailures = new Map<string, Error>();
 const COST_PER_CHAR = 0.001;
 let moderate: ((signal?: AbortSignal) => Promise<unknown>) | undefined;
 let duringPricing: (() => void) | undefined;
-/** Runs once admission has reserved, before the route continues. */
-let afterAdmission: (() => void) | undefined;
+/** Runs once admission has reserved; the route continues when it settles. */
+let afterAdmission: (() => void | Promise<void>) | undefined;
 /** The gate's dispatch acknowledgement; local admission has none. */
 let acknowledgeDispatch: (() => Promise<void>) | undefined;
 /** A short WAV synthesis deadline in place of the 15 s default. */
@@ -84,7 +86,7 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
       ...params,
       c: {} as typeof params.c,
     });
-    afterAdmission?.();
+    await afterAdmission?.();
     return { ...admission, markProviderDispatched: acknowledgeDispatch };
   },
 }));
@@ -802,6 +804,216 @@ test("the settlement log reports the settlement that ran, and only once it has s
     warnLog.mockRestore();
     providerFailures.delete(text);
     // Settle the held reservation so later tests start with none open.
+    if (release) await reconcile(release);
+  }
+  expect(await openReservations()).toBe(0);
+  expect(await balance()).toBeCloseTo(before, 6);
+});
+
+/**
+ * Waits for the detached billing after an audio response: the balance reaches
+ * `expected` and no reservation stays open.
+ */
+async function billingSettlesAt(expected: number): Promise<number> {
+  for (let i = 0; i < 200; i++) {
+    if (
+      Math.abs((await balance()) - expected) < 1e-6 &&
+      (await openReservations()) === 0
+    )
+      break;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return await balance();
+}
+
+/** Holds the next admitted request until `resume`; resolves `admitted` first. */
+function holdNextAdmission() {
+  let admitted!: () => void;
+  let resume!: () => void;
+  const held = {
+    admitted: new Promise<void>((resolve) => {
+      admitted = resolve;
+    }),
+    resume: () => resume(),
+  };
+  const resumed = new Promise<void>((resolve) => {
+    resume = resolve;
+  });
+  afterAdmission = async () => {
+    afterAdmission = undefined;
+    admitted();
+    await resumed;
+  };
+  return held;
+}
+
+test("two requests in flight under one Idempotency-Key: whichever order, the one that synthesizes pays once", async () => {
+  const text = "Your two requests share one utterance.";
+  const cost = text.length * COST_PER_CHAR;
+  const settlements: unknown[] = [];
+  const warnLog = spyOn(logger, "warn").mockImplementation((message, data) => {
+    if (message === "[Voice TTS API] Settled failed paid synthesis")
+      settlements.push(data);
+  });
+  try {
+    // B replays A's open reservation; A's caller leaves before dispatch and
+    // A releases it; then B synthesizes.
+    let before = await balance();
+    let key = `two-in-flight-${randomUUID()}`;
+    const callerA = new AbortController();
+    const a = holdNextAdmission();
+    const aDone = speak(text, key, {}, 499, { signal: callerA.signal });
+    await a.admitted;
+    const b = holdNextAdmission();
+    const bDone = speak(text, key);
+    await b.admitted;
+    expect(await balance()).toBeCloseTo(before - cost, 6);
+    callerA.abort();
+    a.resume();
+    await aDone;
+    expect(await balance()).toBeCloseTo(before, 6);
+    b.resume();
+    await bDone;
+    // B's audio is paid once, under a new reservation for the key.
+    expect(await billingSettlesAt(before - cost)).toBeCloseTo(before - cost, 6);
+    expect(await openReservations()).toBe(0);
+    // A third request replays B's paid reservation for free.
+    await speak(text, key);
+    expect(await balance()).toBeCloseTo(before - cost, 6);
+    expect(settlements.at(-1)).toMatchObject({ settlement: "released" });
+
+    // B synthesizes and pays while A is held; A's late release moves nothing.
+    before = await balance();
+    key = `two-in-flight-${randomUUID()}`;
+    const callerA2 = new AbortController();
+    const a2 = holdNextAdmission();
+    const a2Done = speak(text, key, {}, 499, { signal: callerA2.signal });
+    await a2.admitted;
+    await speak(text, key);
+    expect(await balance()).toBeCloseTo(before - cost, 6);
+    callerA2.abort();
+    a2.resume();
+    await a2Done;
+    expect(await balance()).toBeCloseTo(before - cost, 6);
+    expect(settlements.at(-1)).toMatchObject({
+      providerDispatchState: "not_dispatched",
+      settlement: "already_settled",
+    });
+  } finally {
+    warnLog.mockRestore();
+  }
+});
+
+test("a billing failure whose conservative settlement also fails stays observable and never escapes as an unhandled rejection", async () => {
+  const text = "Your reply arrived during a billing outage.";
+  const rejections: unknown[] = [];
+  const onRejection = (reason: unknown) => {
+    rejections.push(reason);
+  };
+  process.on("unhandledRejection", onRejection);
+  const errors: string[] = [];
+  const errorLog = spyOn(logger, "error").mockImplementation((message) => {
+    errors.push(String(message));
+  });
+  const reconcile = creditsService.reconcile.bind(creditsService);
+  let held: Parameters<typeof reconcile>[0] | undefined;
+  const outage = spyOn(creditsService, "reconcile").mockImplementation(
+    async (params) => {
+      held = params;
+      throw new Error("synthetic billing outage");
+    },
+  );
+  const before = await balance();
+  try {
+    const response = await app.request(
+      "/api/v1/voice/tts",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "Idempotency-Key": `billing-outage-${randomUUID()}`,
+        },
+        body: JSON.stringify({ text }),
+      },
+      { NODE_ENV: "test" },
+    );
+    expect(response.status).toBe(200);
+    await response.arrayBuffer();
+    for (let i = 0; i < 200; i++) {
+      if (errors.includes("[Voice TTS API] Failed to create usage record"))
+        break;
+      await new Promise((resolve) => setTimeout(resolve, 25));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(errors).toContain("[Voice TTS API] Conservative settlement failed");
+    expect(errors).toContain("[Voice TTS API] Failed to create usage record");
+    expect(rejections).toEqual([]);
+  } finally {
+    outage.mockRestore();
+    errorLog.mockRestore();
+    process.off("unhandledRejection", onRejection);
+    // The audio was delivered: settle the held reservation at its charge.
+    if (held) await reconcile(held);
+  }
+  expect(await openReservations()).toBe(0);
+  expect(await balance()).toBeCloseTo(before - text.length * COST_PER_CHAR, 6);
+});
+
+test("in a Worker, a failed settlement of a failed synthesis is logged as failed, never as settled", async () => {
+  const text = "Please hold the Worker table.";
+  providerFailures.set(text, new ElevenLabs.UnprocessableEntityError({}));
+  const settled: unknown[] = [];
+  const failed: unknown[] = [];
+  const warnLog = spyOn(logger, "warn").mockImplementation((message, data) => {
+    if (message === "[Voice TTS API] Settled failed paid synthesis")
+      settled.push(data);
+  });
+  const errorLog = spyOn(logger, "error").mockImplementation(
+    (message, data) => {
+      if (message === "[Voice TTS API] Failed paid synthesis settlement failed")
+        failed.push(data);
+    },
+  );
+  const reconcile = creditsService.reconcile.bind(creditsService);
+  let release: Parameters<typeof reconcile>[0] | undefined;
+  const settle = spyOn(creditsService, "reconcile").mockImplementationOnce(
+    async (params) => {
+      release = params;
+      throw new Error("synthetic settlement failure");
+    },
+  );
+  const before = await balance();
+  const background: Promise<unknown>[] = [];
+  try {
+    const response = await app.request(
+      "/api/v1/voice/tts",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "Idempotency-Key": `worker-unsettled-${randomUUID()}`,
+        },
+        body: JSON.stringify({ text }),
+      },
+      { NODE_ENV: "test" },
+      {
+        waitUntil(task: Promise<unknown>) {
+          background.push(task);
+        },
+        passThroughOnException() {},
+        props: {},
+      },
+    );
+    expect(response.status).toBe(500);
+    await Promise.all(background);
+    expect(settled).toEqual([]);
+    expect(failed).toEqual([expect.objectContaining({ errorType: "Error" })]);
+    expect(await openReservations()).toBe(1);
+  } finally {
+    settle.mockRestore();
+    warnLog.mockRestore();
+    errorLog.mockRestore();
+    providerFailures.delete(text);
     if (release) await reconcile(release);
   }
   expect(await openReservations()).toBe(0);

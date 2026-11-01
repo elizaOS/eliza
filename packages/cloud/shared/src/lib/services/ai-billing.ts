@@ -656,6 +656,8 @@ export async function billFlatUsage(
       model: context.model,
       reserved: reservation.reservedAmount,
       actual: totalCost,
+      // A replay settled nothing: the reservation already had its settlement.
+      ...(reconciliation?.replayed && { replayed: true }),
     });
   }
 

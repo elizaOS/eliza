@@ -54,6 +54,8 @@ export const MIN_RESERVATION = 0.000001;
 export const EPSILON = MIN_RESERVATION * 0.1;
 export const RESERVATION_SETTLEMENT_MARKER = "credit_reservation_v1";
 export const APP_CHAT_RESERVATION_SETTLEMENT_MARKER = "app_chat_reservation_v1";
+/** Reservation metadata holding the reserve() key that a release at zero freed. */
+const RELEASED_IDEMPOTENCY_KEY_METADATA = "released_idempotency_key";
 /** Default estimated output tokens when not specified */
 export const DEFAULT_OUTPUT_TOKENS = 500;
 
@@ -163,6 +165,26 @@ export class ReservationNotFoundError extends ElizaError {
   }
 }
 
+/**
+ * Thrown when a charge settles against a keyed reservation that another
+ * attempt under the same key already released at zero. The release paid for
+ * nothing, so the charged work must reserve again under the key and pay.
+ */
+export class ReservationReleasedError extends ElizaError {
+  override readonly name = "ReservationReleasedError";
+
+  constructor(
+    public readonly reservationTransactionId: string,
+    public readonly organizationId: string,
+  ) {
+    super(`Reservation transaction ${reservationTransactionId} was released before this charge`, {
+      code: "CREDIT_RESERVATION_RELEASED",
+      context: { organizationId, reservationTransactionId },
+      severity: "fatal",
+    });
+  }
+}
+
 /** Refuses malformed amounts before they can reach a credit-ledger mutation. */
 export class InvalidCreditAmountError extends ElizaError {
   override readonly name = "InvalidCreditAmountError";
@@ -243,6 +265,11 @@ export interface CreditReconciliationResult {
   reservationTransactionId?: string | null;
   settlementTransactionIds: string[];
   adjustmentType: "none" | "refund" | "overage" | "uncollected_overage";
+  /**
+   * Set by the credit ledger when the reservation already had its
+   * settlement, so this call moved no money.
+   */
+  replayed?: boolean;
 }
 
 export interface OrganizationBalanceSnapshot {
@@ -336,7 +363,9 @@ export interface ReserveCreditsParams {
    * transaction id, reservedAmount recovered from its metadata) instead of
    * deducting a second time; settlement stays exactly-once per reservation via
    * the reconcile dedupe (#10846). A reservation released at zero frees its
-   * key, so a later reserve under it deducts again. Namespaced per
+   * key, so a later reserve under it deducts again, and a replaying handle
+   * that settles a charge after the release reserves again under the key and
+   * pays once. Namespaced per
    * organization into `stripe_payment_intent_id` (`reserve:<orgId>:<key>`),
    * whose unique index is the concurrency backstop — so a key replayed from
    * another org can never attach to this org's reservation. Omit for the
@@ -1741,7 +1770,18 @@ export class CreditsService {
         });
       };
 
-      if (reservation.settled_at !== null) {
+      /** Another call settles the reservation, so this call moves no money. */
+      const settledByAnotherCall = async (
+        currentMetadata: Record<string, unknown>,
+      ): Promise<{ kind: "handled"; claimed: false; result: CreditReconciliationResult }> => {
+        // A keyed reservation released at zero paid for no work, so it cannot
+        // settle a charge: the charged work reserves again under its key.
+        if (
+          normalizedActualCost > 0 &&
+          typeof currentMetadata[RELEASED_IDEMPOTENCY_KEY_METADATA] === "string"
+        ) {
+          throw new ReservationReleasedError(reservationTransactionId, organizationId);
+        }
         const settlementTransactionIds = await existingSettlementIds(tx);
         await enqueueAffiliatePayout(
           normalizedActualCost > reservedAmount && settlementTransactionIds.length === 0
@@ -1749,16 +1789,21 @@ export class CreditsService {
             : normalizedActualCost,
         );
         return {
-          kind: "handled" as const,
+          kind: "handled",
           claimed: false,
           result: {
             reservedAmount,
             actualCost: normalizedActualCost,
             reservationTransactionId,
             settlementTransactionIds,
-            adjustmentType: "none" as const,
+            adjustmentType: "none",
+            replayed: true,
           },
         };
+      };
+
+      if (reservation.settled_at !== null) {
+        return await settledByAnotherCall(reservationMetadata);
       }
 
       const preexistingSettlementIds = await existingSettlementIds(tx);
@@ -1823,31 +1868,34 @@ export class CreditsService {
       );
       const claimed = claimedRows[0];
       if (!claimed) {
-        const settlementTransactionIds = await existingSettlementIds(tx);
-        await enqueueAffiliatePayout(
-          normalizedActualCost > reservedAmount && settlementTransactionIds.length === 0
-            ? reservedAmount
-            : normalizedActualCost,
+        // A concurrent settlement claimed the row after the read above (or it
+        // is a storage hold): judge it by its current metadata.
+        const currentRows = await sqlRows<{
+          metadata: Record<string, unknown> | string | null;
+        }>(
+          tx,
+          sql`
+            SELECT metadata
+            FROM credit_transactions
+            WHERE id = ${reservationTransactionId}
+              AND organization_id = ${organizationId}
+          `,
         );
-        return {
-          kind: "handled" as const,
-          claimed: false,
-          result: {
-            reservedAmount,
-            actualCost: normalizedActualCost,
-            reservationTransactionId,
-            settlementTransactionIds,
-            adjustmentType: "none" as const,
-          },
-        };
+        return await settledByAnotherCall(parseMetadata(currentRows[0]?.metadata ?? null));
       }
       if (normalizedActualCost === 0) {
         // A reservation released at zero paid for nothing, so its reserve()
         // idempotency key (#16425) must not replay it: the next reserve under
-        // that key deducts again. Freed in the transaction that releases it.
+        // that key deducts again. Freed in the transaction that releases it,
+        // and kept in the metadata, which links the row to its key and marks
+        // the release for a charge that settles against it later.
         await tx.execute(sql`
           UPDATE credit_transactions
-          SET stripe_payment_intent_id = NULL
+          SET stripe_payment_intent_id = NULL,
+              metadata = metadata || jsonb_build_object(
+                ${RELEASED_IDEMPOTENCY_KEY_METADATA}::text,
+                stripe_payment_intent_id
+              )
           WHERE id = ${reservationTransactionId}
             AND stripe_payment_intent_id LIKE ${`reserve:${organizationId}:%`}
         `);
@@ -2443,8 +2491,11 @@ export class CreditsService {
         } catch (error) {
           // error-policy:J2 retry the same transaction-scoped settlement, then
           // surface its failure so a durable reservation remains recoverable.
-          if (error instanceof ReservationNotFoundError) {
-            // Not transient: the row is absent, not busy. Retrying cannot help.
+          if (
+            error instanceof ReservationNotFoundError ||
+            error instanceof ReservationReleasedError
+          ) {
+            // Not transient: the row is absent or released, not busy. Retrying cannot help.
             throw error;
           }
           if (attempt === MAX_RETRIES) {
@@ -3023,6 +3074,17 @@ export class CreditsService {
       if (!idempotencyMarker) throw error;
       result = await reserveOnce();
     }
+    // A keyed insert that lost to a reservation released (its key freed)
+    // before the replay lookup finds no row, though the balance covered the
+    // insert. The key is free now, so reserve under it once more.
+    if (
+      idempotencyMarker &&
+      !result.success &&
+      result.reason === "insufficient_balance" &&
+      result.newBalance >= reservedAmount
+    ) {
+      result = await reserveOnce();
+    }
 
     if (!result.success) {
       logger.warn("[Credits] Insufficient credits for reservation", {
@@ -3063,18 +3125,26 @@ export class CreditsService {
       reservedAmount,
       reservationTransactionId,
       reconcile: async (actualCost: number) => {
-        return await this.reconcile({
-          organizationId,
-          reservedAmount,
-          actualCost,
-          description,
-          metadata: {
-            ...(params.metadata ?? {}),
-            user_id: userId,
-            reservation_transaction_id: reservationTransactionId,
-            ...(model && { model }),
-          },
-        });
+        try {
+          return await this.reconcile({
+            organizationId,
+            reservedAmount,
+            actualCost,
+            description,
+            metadata: {
+              ...(params.metadata ?? {}),
+              user_id: userId,
+              reservation_transaction_id: reservationTransactionId,
+              ...(model && { model }),
+            },
+          });
+        } catch (error) {
+          // Another attempt under this key released the reservation this one
+          // replayed: the charged work reserves again under the key (a new
+          // reservation, or the one a later attempt holds) and pays once.
+          if (!(error instanceof ReservationReleasedError)) throw error;
+          return await (await this.reserve(params)).reconcile(actualCost);
+        }
       },
     };
   }

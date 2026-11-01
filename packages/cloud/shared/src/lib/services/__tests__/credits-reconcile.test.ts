@@ -27,6 +27,23 @@ const ORG_ID = "00000000-0000-0000-0000-0000000000d4";
 const USER_ID = "00000000-0000-0000-0000-0000000000e5";
 const APP_ID = "00000000-0000-4000-8000-0000000000a6";
 
+/** Affiliate payouts the settlements enqueue, recorded: this schema has no outbox. */
+const payouts: Array<{ actualTotalCost: number; collectedTotalCost: number }> = [];
+const payoutOutbox = await import("../affiliate-payout-outbox");
+mock.module("../affiliate-payout-outbox", () => ({
+  ...payoutOutbox,
+  enqueueCollectedAffiliatePayout: async (
+    _executor: unknown,
+    params: { actualTotalCost: number; collectedTotalCost: number },
+  ) => {
+    payouts.push({
+      actualTotalCost: params.actualTotalCost,
+      collectedTotalCost: params.collectedTotalCost,
+    });
+    return null;
+  },
+}));
+
 let dbWrite: typeof import("../../../db/client").dbWrite;
 let closeDb: typeof import("../../../db/client").closeDatabaseConnectionsForTests | undefined;
 let creditsService: typeof import("../credits").creditsService;
@@ -849,6 +866,146 @@ describe("CreditsService.reserve idempotency key (#16425)", () => {
       expect(await getBalance()).toBeCloseTo(9, 6);
       await retry.reconcile(0.5);
       expect(await getBalance()).toBeCloseTo(9, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "two attempts under one key: whichever order, the charged one pays once and only its charge earns a payout",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      payouts.length = 0;
+      const reserve = (idempotencyKey: string) =>
+        creditsService.reserve({
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          amount: 0.5,
+          description: "tts utterance",
+          idempotencyKey,
+        });
+
+      // B replays A's open reservation, then A releases it before dispatch.
+      const a = await reserve("utt-race");
+      const b = await reserve("utt-race");
+      expect(b.reservationTransactionId).toBe(a.reservationTransactionId);
+      await a.reconcile(0);
+      expect(await getBalance()).toBeCloseTo(10, 6);
+      // B synthesized: it reserves again under the key and pays once.
+      const charged = await b.reconcile(0.5);
+      expect(charged?.reservationTransactionId).not.toBe(a.reservationTransactionId);
+      expect(charged?.replayed).toBeUndefined();
+      expect(await getBalance()).toBeCloseTo(9.5, 6);
+      // The release earns nothing; the one collected charge earns its payout.
+      expect(payouts).toEqual([
+        { actualTotalCost: 0, collectedTotalCost: 0 },
+        { actualTotalCost: 0.5, collectedTotalCost: 0.5 },
+      ]);
+      // A third attempt replays the paid reservation for free, and A's
+      // repeated release still settles only its own reservation.
+      const c = await reserve("utt-race");
+      expect(c.reservationTransactionId).toBe(charged?.reservationTransactionId);
+      expect((await c.reconcile(0.5))?.replayed).toBe(true);
+      expect((await a.reconcile(0))?.replayed).toBe(true);
+      expect(await getBalance()).toBeCloseTo(9.5, 6);
+
+      // B's charge settles first: A's late release moves no money.
+      const a2 = await reserve("utt-race-2");
+      const b2 = await reserve("utt-race-2");
+      await b2.reconcile(0.5);
+      expect((await a2.reconcile(0))?.replayed).toBe(true);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a keyed reserve whose conflicting reservation is released before the replay lookup reserves again, never a false 402",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      const reserve = () =>
+        creditsService.reserve({
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          amount: 0.5,
+          description: "tts utterance",
+          idempotencyKey: "utt-window",
+        });
+      const holder = await reserve();
+      const { creditTransactionsRepository } = await import(
+        "../../../db/repositories/credit-transactions"
+      );
+      const lookup = creditTransactionsRepository.findByStripePaymentIntentForWrite.bind(
+        creditTransactionsRepository,
+      );
+      // The holder's release commits between the retry's insert and its lookup.
+      const window = spyOn(
+        creditTransactionsRepository,
+        "findByStripePaymentIntentForWrite",
+      ).mockImplementationOnce(async (key) => {
+        await holder.reconcile(0);
+        return await lookup(key);
+      });
+      try {
+        const retry = await reserve();
+        expect(retry.reservationTransactionId).not.toBe(holder.reservationTransactionId);
+        expect(await getBalance()).toBeCloseTo(9.5, 6);
+      } finally {
+        window.mockRestore();
+      }
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
+    "a release at zero frees only a reserve() key and keeps it in the metadata",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      const released = await creditsService.reserve({
+        organizationId: ORG_ID,
+        userId: USER_ID,
+        amount: 0.5,
+        description: "tts utterance",
+        idempotencyKey: "utt-trace",
+      });
+      await released.reconcile(0);
+      // An app hold keyed in its own namespace keeps its key when released.
+      const appHold = await insertAppChatReservation(0.5);
+      const appKey = `app-inference:${ORG_ID}:${APP_ID}:utt-trace`;
+      await dbWrite.execute(
+        `UPDATE credit_transactions SET stripe_payment_intent_id = '${appKey}' WHERE id = '${appHold}';`,
+      );
+      await creditsService.reconcile({
+        organizationId: ORG_ID,
+        reservedAmount: 0.5,
+        actualCost: 0,
+        description: "app chat release",
+        metadata: { user_id: USER_ID, reservation_transaction_id: appHold },
+      });
+
+      const res = await dbWrite.execute(
+        `SELECT id, stripe_payment_intent_id, metadata->>'released_idempotency_key' AS released_key
+         FROM credit_transactions WHERE id IN ('${released.reservationTransactionId}', '${appHold}');`,
+      );
+      const rows = new Map(
+        (
+          res.rows as Array<{
+            id: string;
+            stripe_payment_intent_id: string | null;
+            released_key: string | null;
+          }>
+        ).map((row) => [row.id, row]),
+      );
+      expect(rows.get(released.reservationTransactionId ?? "")).toMatchObject({
+        stripe_payment_intent_id: null,
+        released_key: `reserve:${ORG_ID}:utt-trace`,
+      });
+      expect(rows.get(appHold)).toMatchObject({
+        stripe_payment_intent_id: appKey,
+        released_key: null,
+      });
     },
     PGLITE_TIMEOUT,
   );
