@@ -1122,6 +1122,11 @@ function citeRead(f: LiveFeed, id = "step:1") {
   f.output.outcomeCoverage = [{ ...f.coverage, evidenceStepIds: [id] }];
 }
 
+/** Qwen's native tool-call dialect around a reply (live turn tj-929faaf3d187f1). */
+function nativeToolCall(body: string, name = "functions.3e67d62a$0b85e375") {
+  return `<tool_call>\n<function=${name}>\n${body}\n</function>\n</tool_call>`;
+}
+
 describe("required Calendar read cited by a real step ID", () => {
   it.each(Object.keys(LIVE_FEED_TURNS) as LiveFeedTurn[])(
     "keeps the cited request-bound read of live turn %s",
@@ -1154,7 +1159,7 @@ describe("required Calendar read cited by a real step ID", () => {
       citeRead(f);
       const useModel = vi.fn(
         async () =>
-          `<tool_call>\n<function=${name}>\n${JSON.stringify(f.output)}\n</function>\n</tool_call>${trailing}`,
+          `${nativeToolCall(JSON.stringify(f.output), name)}${trailing}`,
       );
       const result = await runEvaluator({
         runtime: { useModel },
@@ -1169,6 +1174,25 @@ describe("required Calendar read cited by a real step ID", () => {
       );
     },
   );
+  // The lazy `\s*([\s\S]*?)\s*` body backtracked on a padded envelope that
+  // does not match: quadratically on padding before the close (14 s at 120k)
+  // and cubically on padding after the open tag (5 s at 3k), blocking the
+  // event loop. The sizes make that form fail in seconds, not hang the suite.
+  it.each([
+    [
+      "padding before its close and text after it",
+      `${nativeToolCall(`${JSON.stringify(fixture().output)}${" ".repeat(120_000)}`)}\nDone.`,
+    ],
+    [
+      "padding after its open tag and no close",
+      `<tool_call>\n<function=functions.x>${"\n".repeat(3_000)}</tool_call>`,
+    ],
+  ])("rejects a native envelope with %s in linear time", (_, text) => {
+    const started = performance.now();
+    const result = parseEvaluatorOutput(text);
+    expect(performance.now() - started).toBeLessThan(50);
+    expect(result).toMatchObject({ success: false, decision: "CONTINUE" });
+  });
   it.each<[string, LiveFeedTurn, (f: LiveFeed) => void]>([
     [
       "a read of this request that compaction archived",
@@ -1395,6 +1419,15 @@ describe("required Calendar read cited by a real step ID", () => {
       expect(result.success).toBe(false);
       expect(result.requestFullyCovered).toBe(false);
       expect(result.messageToUser).not.toContain(LIVE_FEED_TURNS[id].reply);
+      // The native envelope opens to the same coverage rejection.
+      const wrapped = await runEvaluator({
+        runtime: {
+          useModel: async () => nativeToolCall(JSON.stringify(f.output)),
+        },
+        context: f.context,
+        trajectory: f.trajectory,
+      });
+      expect(wrapped).toEqual(result);
     },
   );
 });
