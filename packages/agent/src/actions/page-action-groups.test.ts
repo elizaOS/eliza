@@ -101,6 +101,61 @@ describe("PAGE_DELEGATE call shape", () => {
     expect(seen).toEqual([{ action: "modify", request: "be more playful" }]);
   });
 
+  it("seeds an aliased create from the user request, not the document envelope", async () => {
+    const seen: unknown[] = [];
+    const umbrella = recordingChild(
+      {
+        name: "CHARACTER",
+        contexts: ["settings"],
+        parameters: [
+          {
+            name: "action",
+            description: "Operation.",
+            required: true,
+            schema: { type: "string", enum: ["modify", "create"] },
+          },
+          {
+            name: "seedPrompt",
+            description: "User words to regenerate from.",
+            required: false,
+            schema: { type: "string" },
+          },
+        ],
+      },
+      seen,
+    );
+    const envelope = [
+      "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+      "",
+      "<contextual_documents>",
+      `<source title="note.md" similarity="0.900">`,
+      "Weekly report draft: sales numbers for Q3.",
+      "</source>",
+      "</contextual_documents>",
+      "",
+      "<user_request>",
+      "Create a workflow that summarizes my inbox every morning.",
+      "</user_request>",
+    ].join("\n");
+    const validated = validateToolArgs(pageDelegateAction, {
+      page: "settings",
+      action: "CHARACTER_CREATE",
+    });
+    expect(validated.errors).toEqual([]);
+    await pageDelegateAction.handler(
+      { actions: [pageDelegateAction, umbrella] } as IAgentRuntime,
+      { content: { text: envelope } } as Memory,
+      undefined,
+      { parameters: validated.args as ActionParameters },
+    );
+    expect(seen).toEqual([
+      {
+        action: "create",
+        seedPrompt: "Create a workflow that summarizes my inbox every morning.",
+      },
+    ]);
+  });
+
   it("advertises a wallet child name that resolves to the WALLET discriminator", async () => {
     const advertised = pageDelegateAction.parameters?.find(
       (p) => p.name === "action",

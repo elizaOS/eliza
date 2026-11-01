@@ -10,7 +10,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { resolveActionContexts } from "@elizaos/core";
+import {
+  extractUserText,
+  resolveActionContexts,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 
 const PAGE_KEYS = [
   "browser",
@@ -226,8 +230,11 @@ function prepareAliasedChildParameters(
   // A generated definition is not an authoritative create request. Umbrella
   // actions that accept seedPrompt must regenerate from the user's actual words
   // so a delegated alias cannot smuggle an invented graph past validation.
-  const messageText =
-    typeof message.content.text === "string" ? message.content.text.trim() : "";
+  // Read the user's words, not the raw rendered text: under document
+  // augmentation, content.text carries the preamble, the recalled documents
+  // and the real request wrapped in <user_request>, so seeding from it would
+  // let document text steer the generated definition.
+  const messageText = extractUserText(unwrapUserMessageText(message));
   if (
     discriminator === "create" &&
     declaredNames.has("seedPrompt") &&
