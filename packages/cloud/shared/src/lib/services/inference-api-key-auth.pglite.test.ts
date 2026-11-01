@@ -182,6 +182,27 @@ describe("inference API-key identity", () => {
 });
 
 describe("mobile credentials on the Worker inference boundary", () => {
+  const qualifiedBindings = {
+    INFERENCE_AUTH_CACHE_ENABLED: "true",
+    INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+    INFERENCE_ADMISSION_GATES: {
+      getByName() {
+        return {
+          async fetch() {
+            return Response.json({ allowed: true });
+          },
+        };
+      },
+    },
+  };
+  function qualifiedResolve(
+    request: Request,
+    options?: Parameters<typeof resolveInferenceAuthContext>[1],
+  ) {
+    return runWithCloudBindings(qualifiedBindings, () =>
+      resolveInferenceAuthContext(request, options),
+    );
+  }
   async function mobileKey(
     overrides: {
       active?: boolean;
@@ -220,7 +241,7 @@ describe("mobile credentials on the Worker inference boundary", () => {
   test("active mobile key on a Worker cold miss returns warming instead of an inline primary read", async () => {
     const key = await mobileKey();
     let trace: InferenceAuthTelemetry | undefined;
-    const result = await resolveInferenceAuthContext(request(key), {
+    const result = await qualifiedResolve(request(key), {
       cacheOnly: true,
       deferStrongCredentialCheck: true,
       executionCtx: { waitUntil() {} },
@@ -237,20 +258,22 @@ describe("mobile credentials on the Worker inference boundary", () => {
     const key = await mobileKey();
     const send = async (token: string) => {
       const deferred: Promise<unknown>[] = [];
-      const response = await handleChatCompletionsPOST(
-        new Request("https://api.eliza.app/api/v1/chat/completions", {
-          method: "POST",
-          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-          body: "{}",
-        }),
-        {
-          skipOrgRateLimit: true,
-          executionCtx: {
-            waitUntil(task) {
-              deferred.push(task);
+      const response = await runWithCloudBindings(qualifiedBindings, () =>
+        handleChatCompletionsPOST(
+          new Request("https://api.eliza.app/api/v1/chat/completions", {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: "{}",
+          }),
+          {
+            skipOrgRateLimit: true,
+            executionCtx: {
+              waitUntil(task) {
+                deferred.push(task);
+              },
             },
           },
-        },
+        ),
       );
       await Promise.allSettled(deferred);
       return response;
@@ -275,7 +298,7 @@ describe("mobile credentials on the Worker inference boundary", () => {
       // The authoritative decision (what Worker hydration projects) rejects.
       await expect(resolveInferenceAuthContext(request(key))).rejects.toBeInstanceOf(Error);
       // A Worker request never authorizes a credential it has not cached.
-      const worker = await resolveInferenceAuthContext(request(key), {
+      const worker = await qualifiedResolve(request(key), {
         cacheOnly: true,
         executionCtx: { waitUntil() {} },
       });
@@ -283,7 +306,7 @@ describe("mobile credentials on the Worker inference boundary", () => {
     }
   });
   test("a non-API-key caller retains the generic slow path", async () => {
-    const result = await resolveInferenceAuthContext(request("unrecognized-credential"), {
+    const result = await qualifiedResolve(request("unrecognized-credential"), {
       cacheOnly: true,
       executionCtx: { waitUntil() {} },
     });

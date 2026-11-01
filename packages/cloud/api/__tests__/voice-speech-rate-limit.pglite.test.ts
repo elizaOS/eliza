@@ -1,15 +1,17 @@
 /**
- * Worker speech routes run the chat completions rate limiter. A Worker request
- * is decided from the combined auth cache (one read) and the per-organization
- * Durable Object: a cold credential first gets a retryable 503 while its
- * decision hydrates under `waitUntil` (`speak` below retries once after the
- * background work, as the Eliza Cloud client does), and the limiter takes the
- * tier and key cap from that cached decision instead of the primary. Real STT
- * and TTS routes, API-key auth and policy hydration on PGlite; the
- * per-organization Durable Object and the Redis REST endpoint are counting
- * fakes. The Durable Object's own window logic is covered by its miniflare test.
- * The personal agent's platform-funded image and video media count in the same
- * strict window when the turn runs in a Worker.
+ * Worker speech routes run the chat completions rate limiter. With production
+ * flags (strong revocation off) a Worker request is authorized from the
+ * primary and no decision is cached. With strong revocation on it is decided
+ * from the combined auth cache (one read): a cold credential first gets a
+ * retryable 503 while its decision hydrates under `waitUntil` (`speak` below
+ * retries once after the background work, as the Eliza Cloud client does).
+ * Either way the limiter takes the tier and key cap from the admission
+ * snapshot the decision carries, and the per-organization Durable Object
+ * decides. Real STT and TTS routes, API-key auth and policy hydration on
+ * PGlite; the per-organization Durable Object and the Redis REST endpoint are
+ * counting fakes. The Durable Object's own window logic is covered by its
+ * miniflare test. The personal agent's platform-funded image and video media
+ * count in the same strict window when the turn runs in a Worker.
  */
 import {
   afterAll,
@@ -18,6 +20,7 @@ import {
   describe,
   expect,
   setDefaultTimeout,
+  setSystemTime,
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
@@ -28,9 +31,9 @@ import { Hono } from "hono";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
-// Production values: strong revocation is off (the Worker path is cache-only
-// regardless), and the compatibility limiter uses Redis REST. The combined
-// auth cache uses the in-memory test backend.
+// Production values: strong revocation is off (so no auth decision is cached),
+// and the compatibility limiter uses Redis REST. With strong revocation on, the
+// combined auth cache uses the in-memory test backend.
 process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
 process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
 process.env.CACHE_BACKEND = "memory";
@@ -61,12 +64,18 @@ interface GateCall {
 const gateCalls: GateCall[] = [];
 const gateWindows = new Map<string, number>();
 let gateDown = false;
-/** Fixed windows like the real object: one per endpoint, one per key across endpoints. */
+/**
+ * Fixed windows like the real object: one per endpoint, one per key across
+ * endpoints. With strong revocation on, every credential is active; only
+ * rate-limit decisions are recorded in `gateCalls`.
+ */
 const INFERENCE_ADMISSION_GATES = {
   getByName(name: string) {
     return {
       async fetch(request: Request): Promise<Response> {
         if (gateDown) throw new TypeError("Durable Object unreachable");
+        if (new URL(request.url).pathname === "/credential/check")
+          return Response.json({ allowed: true });
         const call: GateCall = {
           name,
           path: new URL(request.url).pathname,
@@ -281,10 +290,12 @@ async function speak(route: "stt" | "tts", rawKey: string) {
 async function speakOnce(
   route: "stt" | "tts" | "consent" | "session",
   rawKey: string,
+  bindings: Record<string, unknown> = {},
 ) {
   const relay = route === "consent" || route === "session";
   const pending: Promise<unknown>[] = [];
-  const response = await runWithBindings({ INFERENCE_ADMISSION_GATES }, () =>
+  const scope = { INFERENCE_ADMISSION_GATES, ...bindings };
+  const response = await runWithBindings(scope, () =>
     Promise.resolve(
       routes[relay ? "speech" : route].request(
         `http://cloud.test/${relay ? route : ""}`,
@@ -371,10 +382,46 @@ async function generatePersonalMediaOnce(
   }
 }
 
+const STRONG = { INFERENCE_STRONG_REVOCATION_ENABLED: "true" };
+const SESSION_SECRET = {
+  STEWARD_SESSION_SECRET: "synthetic-speech-session-secret-".repeat(2),
+};
+
+/** A new organization with its owner, so its admission projection is cold. */
+async function seedOrganization(): Promise<{
+  organizationId: string;
+  key: string;
+  session: string;
+}> {
+  const organizationId = crypto.randomUUID();
+  const userId = crypto.randomUUID();
+  const subject = `subject_speech_${userId}`;
+  const keyId = crypto.randomUUID();
+  const key = `eliza_speech_rate_new_org_${keyId}`;
+  await pg().exec(`INSERT INTO organizations(id, credit_balance, balance_revision, balance_decrease_revision, settings, is_active, auto_top_up_enabled, account_lifecycle_state) VALUES ('${organizationId}', '0', 1, 0, '{}', true, false, 'active');
+    INSERT INTO users(id, organization_id, is_active, steward_user_id, role) VALUES ('${userId}', '${organizationId}', true, '${subject}', 'owner');
+    INSERT INTO api_keys(id, name, key_hash, key_prefix, organization_id, user_id, rate_limit, is_active, usage_count, created_at, updated_at, user_created) VALUES ('${keyId}', 'new_org', '${createHash("sha256").update(key).digest("hex")}', 'eliza_sp', '${organizationId}', '${userId}', 1000, true, 0, now(), now(), true)`);
+  const { mintStewardTokenFromClaims } = await import(
+    "@elizaos/cloud-shared/lib/auth/steward-client"
+  );
+  const issuedAt = Math.floor(Date.now() / 1000);
+  const signed = await mintStewardTokenFromClaims(SESSION_SECRET, {
+    userId: subject,
+    issuedAt,
+    expiration: issuedAt + 600,
+  });
+  if (!signed) throw new Error("Synthetic session signer unavailable");
+  return { organizationId, key, session: signed.token };
+}
+
 describe("Worker speech rate limit without an admission snapshot", () => {
-  test("cold STT, TTS and relay bootstrap expose a retryable auth code before dispatch", async () => {
+  test("strong revocation on: cold STT, TTS and relay bootstrap expose a retryable auth code before dispatch", async () => {
     for (const route of ["stt", "tts", "consent", "session"] as const) {
-      const response = await speakOnce(route, keys[`cold_${route}`].raw);
+      const response = await speakOnce(
+        route,
+        keys[`cold_${route}`].raw,
+        STRONG,
+      );
       expect(response.status).toBe(503);
       expect(response.headers.get("Retry-After")).toBe("1");
       expect(await response.json()).toMatchObject({
@@ -385,6 +432,108 @@ describe("Worker speech rate limit without an admission snapshot", () => {
     }
     expect(gateCalls).toHaveLength(0);
     expect(redisCalls).toBe(0);
+  });
+
+  test("production flags: a new organization's first STT, TTS and relay request is limited from the snapshot its decision carries", async () => {
+    // No auth decision is cached, so each request is authorized from the
+    // primary; the limiter must not depend on the organization's projection.
+    for (const [route, status, endpointType] of [
+      ["stt", 400, "strict"],
+      ["tts", 400, "strict"],
+      ["consent", 200, "standard"],
+      ["session", 400, "strict"],
+    ] as const) {
+      const { organizationId, key, session } = await seedOrganization();
+      for (const credential of [key, session]) {
+        gateCalls.length = 0;
+        const response = await speakOnce(route, credential, SESSION_SECRET);
+        expect(response.status).toBe(status);
+        expect(gateCalls).toMatchObject([
+          {
+            name: `rate-limit:v2:${organizationId}`,
+            path: "/rate-limit",
+            body: { endpointType },
+          },
+        ]);
+      }
+    }
+  });
+
+  test("production flags: the first request after the organization projection expired is still limited", async () => {
+    const { key } = await seedOrganization();
+    expect((await speakOnce("stt", key)).status).toBe(400);
+    const { resetInferenceAdmissionMemoryCacheForTests } = await import(
+      "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+    );
+    setSystemTime(new Date(Date.now() + 61_000));
+    try {
+      resetInferenceAdmissionMemoryCacheForTests();
+      expect((await speakOnce("stt", key)).status).toBe(400);
+      expect((await speakOnce("tts", key)).status).toBe(400);
+    } finally {
+      setSystemTime();
+    }
+  });
+
+  test("production flags: an app's key keeps its app scope, so another app's route refuses it", async () => {
+    const [{ apps }, { getTableConfig }] = await Promise.all([
+      import("@elizaos/cloud-shared/db/schemas"),
+      import("drizzle-orm/pg-core"),
+    ]);
+    const config = getTableConfig(apps);
+    await pg().exec(
+      `CREATE TABLE IF NOT EXISTS "${config.name}" (${config.columns
+        .map(
+          (column) =>
+            `"${column.name}" ${"enumValues" in column && column.enumValues ? "text" : column.getSQLType()}`,
+        )
+        .join(", ")})`,
+    );
+    const keyId = crypto.randomUUID();
+    const appKey = `eliza_speech_rate_app_${keyId}`;
+    const [ownApp, otherApp] = [crypto.randomUUID(), crypto.randomUUID()];
+    await pg().exec(`INSERT INTO api_keys(id, name, key_hash, key_prefix, organization_id, user_id, rate_limit, is_active, usage_count, created_at, updated_at, user_created) VALUES ('${keyId}', 'app', '${createHash("sha256").update(appKey).digest("hex")}', 'eliza_sp', '${ORG}', '${USER}', 1000, true, 0, now(), now(), true);
+      INSERT INTO apps(id, name, slug, organization_id, created_by_user_id, is_active, is_approved, api_key_id, created_at, updated_at) VALUES
+        ('${ownApp}', 'own', 'own-${ownApp}', '${ORG}', '${USER}', true, true, '${keyId}', now(), now()),
+        ('${otherApp}', 'other', 'other-${otherApp}', '${ORG}', '${USER}', true, true, NULL, now(), now())`);
+    const promoteAssets = new Hono().route(
+      "/apps/:id/promote/assets",
+      (await import("../v1/apps/[id]/promote/assets/route")).default,
+    );
+    // An invalid body: a caller the route admits stops at 400 before provider work.
+    const promote = (rawKey: string, appId: string) =>
+      runWithBindings({ INFERENCE_ADMISSION_GATES }, () =>
+        Promise.resolve(
+          promoteAssets.request(
+            `http://cloud.test/apps/${appId}/promote/assets`,
+            {
+              method: "POST",
+              headers: {
+                authorization: `Bearer ${rawKey}`,
+                "content-type": "application/json",
+              },
+              body: JSON.stringify({ sizes: "none" }),
+            },
+            {},
+            {
+              waitUntil: () => undefined,
+              passThroughOnException: () => undefined,
+              props: {},
+            },
+          ),
+        ),
+      );
+    // Its own app, another app, and an ordinary key (no app scope) on that app.
+    const responses = [
+      await promote(appKey, ownApp),
+      await promote(appKey, otherApp),
+      await promote(keys.plain.raw, otherApp),
+    ];
+    expect(responses.map((response) => response.status)).toEqual([
+      400, 403, 400,
+    ]);
+    const refusal: unknown = await responses[1]!.json();
+    expect(refusal).toEqual({ error: "Access denied" });
   });
 
   test("STT and TTS take one Durable Object decision and no Redis round trip", async () => {
