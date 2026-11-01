@@ -1,6 +1,7 @@
-/** Read-only source checks for the accepted staging topology; never invokes Cloudflare. */
+/** Read-only source checks for the admission topology; never invokes Cloudflare. */
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 
 interface WorkerConfig {
   name?: string;
@@ -30,29 +31,77 @@ function requireContract(
   if (!condition) throw new Error(message);
 }
 
+// Staging checks the accepted steady state. Production checks whichever
+// same-namespace transfer phase is committed; `--phase` pins the expected one.
+const { values: options } = parseArgs({
+  options: {
+    production: { type: "boolean", default: false },
+    phase: { type: "string" },
+  },
+});
+const environment = options.production ? "production" : "staging";
+const names = {
+  staging: {
+    source: "eliza-cloud-api-staging",
+    target: "eliza-cloud-admission-staging",
+  },
+  production: {
+    source: "eliza-cloud-api-prod",
+    target: "eliza-cloud-admission-prod",
+  },
+}[environment];
+
+// Wrangler inherits these keys into an environment. Vars, defines, bindings
+// and services belong to the environment alone; aliases only to the top level.
+const inheritedKeys = [
+  "main",
+  "account_id",
+  "compatibility_date",
+  "compatibility_flags",
+  "workers_dev",
+  "preview_urls",
+  "routes",
+  "migrations",
+  "exports",
+] as const;
+function environmentConfig(config: WorkerConfig, name: string) {
+  const scoped = config.env?.[name];
+  return (
+    scoped &&
+    ({
+      ...Object.fromEntries(inheritedKeys.map((key) => [key, config[key]])),
+      ...scoped,
+    } as WorkerConfig)
+  );
+}
+
 const source = Bun.TOML.parse(
   await readFile(new URL("../api/wrangler.toml", import.meta.url), "utf8"),
 ) as WorkerConfig;
-const target = Bun.TOML.parse(
+const admission = Bun.TOML.parse(
   await readFile(new URL("./wrangler.toml", import.meta.url), "utf8"),
 ) as WorkerConfig;
-const stage = source.env?.staging;
+const stage = environmentConfig(source, environment);
+const target =
+  environment === "staging"
+    ? admission
+    : environmentConfig(admission, environment);
 requireContract(
-  stage?.name === "eliza-cloud-api-staging",
-  "Source must remain the canonical staging API Worker",
+  stage?.name === names.source,
+  `Source must remain the canonical ${environment} API Worker`,
 );
+requireContract(target, `Admission ${environment} target is not configured`);
 requireContract(
   target.account_id === source.account_id,
   "Transfer account must match source",
 );
 requireContract(
-  target.compatibility_date ===
-    (stage.compatibility_date ?? source.compatibility_date),
+  target.compatibility_date === stage.compatibility_date,
   "Compatibility date drift",
 );
 requireContract(
   JSON.stringify(target.compatibility_flags) ===
-    JSON.stringify(stage.compatibility_flags ?? source.compatibility_flags),
+    JSON.stringify(stage.compatibility_flags),
   "Compatibility flag drift",
 );
 function sortedEntries<T>(values: Record<string, T> | undefined) {
@@ -73,14 +122,14 @@ function resolvedAliases(
 
 requireContract(
   JSON.stringify(sortedEntries(target.define)) ===
-    JSON.stringify(sortedEntries(stage.define ?? source.define)),
-  "Build defines must exactly match canonical staging",
+    JSON.stringify(sortedEntries(stage.define)),
+  `Build defines must exactly match canonical ${environment}`,
 );
 requireContract(
   JSON.stringify(
     resolvedAliases(
       Object.fromEntries(
-        Object.entries(target.alias ?? {}).filter(
+        Object.entries(admission.alias ?? {}).filter(
           ([name]) =>
             name !==
             "@elizaos/cloud-shared/lib/services/inference-admission-recovery",
@@ -90,12 +139,9 @@ requireContract(
     ),
   ) ===
     JSON.stringify(
-      resolvedAliases(
-        stage.alias ?? source.alias,
-        new URL("../api/", import.meta.url),
-      ),
+      resolvedAliases(source.alias, new URL("../api/", import.meta.url)),
     ),
-  "Build aliases must resolve to the exact canonical staging map, without extra aliases",
+  `Build aliases must resolve to the exact canonical ${environment} map, without extra aliases`,
 );
 requireContract(
   !target.migrations,
@@ -109,21 +155,26 @@ requireContract(
   !target.routes?.length,
   "Admission Worker must have no public routes",
 );
+// An environment exports map replaces the global one, so it must also stop
+// any legacy migrations from being inherited beside it.
 requireContract(
-  JSON.stringify(stage.migrations) === "[]",
-  "Accepted staging must explicitly disable inherited legacy migrations",
+  source.env?.[environment]?.exports
+    ? JSON.stringify(stage.migrations) === "[]"
+    : !stage.migrations?.length,
+  `Accepted ${environment} must explicitly disable inherited legacy migrations`,
 );
-// Every global SQLite class stays declared in staging; only the admission gate
-// is transferred. Derived from the source so new classes cannot go stale here.
+// Every global SQLite class stays declared; only the admission gate moves.
+// Derived from the source so new classes cannot go stale here.
+const gate = "InferenceAdmissionGate";
 const expectedClasses = Object.keys(source.exports ?? {}).sort();
 requireContract(
-  expectedClasses.includes("InferenceAdmissionGate"),
+  expectedClasses.includes(gate),
   "Global source must declare the admission gate",
 );
 requireContract(
   JSON.stringify(Object.keys(stage.exports ?? {}).sort()) ===
     JSON.stringify(expectedClasses),
-  "Staging must retain exactly every global source declaration",
+  `Accepted ${environment} must retain exactly every global source declaration`,
 );
 for (const name of expectedClasses) {
   const globalDeclaration = source.exports?.[name];
@@ -132,65 +183,115 @@ for (const name of expectedClasses) {
       globalDeclaration.storage === "sqlite",
     `Global source SQLite declaration must remain: ${name}`,
   );
-  const expected =
-    name === "InferenceAdmissionGate"
-      ? {
-          type: "durable-object",
-          state: "transferred",
-          transferred_to: target.name,
-        }
-      : globalDeclaration;
   requireContract(
-    JSON.stringify(sortedEntries(stage.exports?.[name])) ===
-      JSON.stringify(sortedEntries(expected)),
-    `Accepted staging declaration drift: ${name}`,
+    name === gate ||
+      JSON.stringify(sortedEntries(stage.exports?.[name])) ===
+        JSON.stringify(sortedEntries(globalDeclaration)),
+    `Accepted ${environment} declaration drift: ${name}`,
   );
 }
+for (const binding of stage.durable_objects?.bindings ?? []) {
+  requireContract(
+    binding.name === "INFERENCE_ADMISSION_GATES" ||
+      (binding.class_name !== gate && !binding.script_name),
+    `Only the admission binding may leave the ${environment} API: ${binding.name}`,
+  );
+}
+
+// Each committed state is one legal step of the same-namespace transfer or of
+// its reverse. Any other pairing could create a second namespace or strand the
+// existing one, so it is rejected before Wrangler sees it. Staging has only
+// its accepted steady state.
+const live = { type: "durable-object", storage: "sqlite" };
+const expecting = (from: string) => ({
+  type: "durable-object",
+  state: "expecting-transfer",
+  storage: "sqlite",
+  transfer_from: from,
+});
+const transferred = (to: string) => ({
+  type: "durable-object",
+  state: "transferred",
+  transferred_to: to,
+});
+const local = { name: "INFERENCE_ADMISSION_GATES", class_name: gate };
+const remote = (script: string) => ({ ...local, script_name: script });
+const phases = {
+  "target-pending": [expecting(names.source), [], live, [local]],
+  "source-commit": [
+    expecting(names.source),
+    [],
+    transferred(names.target),
+    [remote(names.target)],
+  ],
+  adopted: [live, [local], transferred(names.target), [remote(names.target)]],
+  "reverse-pending": [
+    live,
+    [local],
+    expecting(names.target),
+    [remote(names.target)],
+  ],
+  "reverse-commit": [
+    transferred(names.source),
+    [],
+    expecting(names.target),
+    [remote(names.target)],
+  ],
+  "reverse-adopted": [transferred(names.source), [], live, [local]],
+};
+// Canonical key order: TOML tables compare by content, binding lists by order.
+const canonical = (value: unknown) =>
+  JSON.stringify(value, (_key, item) =>
+    item && typeof item === "object" && !Array.isArray(item)
+      ? Object.fromEntries(sortedEntries(item))
+      : item,
+  );
+const observed = canonical([
+  target.exports?.[gate],
+  target.durable_objects?.bindings ?? [],
+  stage.exports?.[gate],
+  stage.durable_objects?.bindings?.filter(
+    (binding) => binding.name === local.name,
+  ),
+]);
+const phase = Object.entries(phases).find(
+  ([name, shape]) =>
+    (environment === "production" || name === "adopted") &&
+    canonical(shape) === observed,
+)?.[0];
 requireContract(
-  JSON.stringify(target.exports) ===
-    JSON.stringify({
-      InferenceAdmissionGate: { type: "durable-object", storage: "sqlite" },
-    }),
-  "Target must retain exactly one live SQLite export without transfer state",
+  phase,
+  `Accepted ${environment} admission topology is not a legal transfer phase: ${observed}`,
 );
 requireContract(
-  target.name === "eliza-cloud-admission-staging",
-  "Admission target must remain staging-only",
+  !options.phase || options.phase === phase,
+  `Expected ${environment} admission phase ${options.phase}, found ${phase}`,
 );
 requireContract(
-  JSON.stringify(target.durable_objects?.bindings) ===
-    JSON.stringify([
-      {
-        name: "INFERENCE_ADMISSION_GATES",
-        class_name: "InferenceAdmissionGate",
-      },
-    ]),
-  "Accepted target must have exactly one local admission self-binding",
-);
-const sourceGateBindings = stage.durable_objects?.bindings?.filter(
-  (binding) => binding.name === "INFERENCE_ADMISSION_GATES",
+  JSON.stringify(Object.keys(target.exports ?? {})) === JSON.stringify([gate]),
+  "Target must declare only the admission gate",
 );
 requireContract(
-  JSON.stringify(sourceGateBindings) ===
-    JSON.stringify([
-      {
-        name: "INFERENCE_ADMISSION_GATES",
-        class_name: "InferenceAdmissionGate",
-        script_name: target.name,
-      },
-    ]),
-  "Staging API admission binding must reference the adopted target",
+  target.name === names.target,
+  `Admission target must remain ${environment}-only`,
 );
 for (const [key, value] of Object.entries(target.vars ?? {})) {
   requireContract(
     stage.vars?.[key] === value,
-    `Target variable differs from staging: ${key}`,
+    `Target variable differs from ${environment}: ${key}`,
   );
 }
+// Production copies the accepted staging variable names, never their values.
+requireContract(
+  environment === "staging" ||
+    JSON.stringify(Object.keys(target.vars ?? {}).sort()) ===
+      JSON.stringify(Object.keys(admission.vars ?? {}).sort()),
+  "Production target must carry exactly the accepted staging variable names",
+);
 for (const key of ["CACHE_BACKEND", "CACHE_ENABLED", "NEXT_PUBLIC_APP_URL"]) {
   requireContract(
     target.vars?.[key] !== undefined && target.vars[key] === stage.vars?.[key],
-    `Recovery configuration must retain staging variable: ${key}`,
+    `Recovery configuration must retain ${environment} variable: ${key}`,
   );
 }
 // The API keeps its own copy of these flags, so a missing target variable is a
@@ -217,7 +318,7 @@ requireContract(
 for (const key of gateVariables) {
   requireContract(
     target.vars?.[key] === stage.vars?.[key],
-    `Gate variable must match staging: ${key}`,
+    `Gate variable must match ${environment}: ${key}`,
   );
 }
 requireContract(
@@ -230,7 +331,7 @@ for (const binding of target.hyperdrive ?? []) {
     stage.hyperdrive?.some(
       (item) => item.binding === binding.binding && item.id === binding.id,
     ),
-    "Hyperdrive must reuse staging resource",
+    `Hyperdrive must reuse ${environment} resource`,
   );
 }
 for (const binding of target.kv_namespaces ?? []) {
@@ -238,7 +339,7 @@ for (const binding of target.kv_namespaces ?? []) {
     stage.kv_namespaces?.some(
       (item) => item.binding === binding.binding && item.id === binding.id,
     ),
-    "KV must reuse staging resource",
+    `KV must reuse ${environment} resource`,
   );
 }
 const entry = await readFile(
@@ -252,7 +353,7 @@ requireContract(
   "Entry must reuse canonical admission class",
 );
 requireContract(
-  target.alias?.[
+  admission.alias?.[
     "@elizaos/cloud-shared/lib/services/inference-admission-recovery"
   ] === "./src/recovery-service.ts",
   "Recovery must use the private RPC adapter",
@@ -274,5 +375,5 @@ requireContract(
 );
 
 console.log(
-  "Admission staging steady-state source contract passed; live namespace and secret parity require separate receipts.",
+  `Admission ${environment} ${phase === "adopted" ? "steady-state" : `${phase} phase`} source contract passed; live namespace and secret parity require separate receipts.`,
 );
