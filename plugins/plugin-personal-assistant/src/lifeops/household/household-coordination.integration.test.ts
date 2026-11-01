@@ -1242,6 +1242,80 @@ describe("household coordination — real PGlite", () => {
     );
   });
 
+  it("keeps a scheduled warning ready on scheduler ticks inside the grant's final day", async () => {
+    const issuedAt = new Date("2027-05-04T12:00:00.000Z");
+    const childId = await person("warning-window-child");
+    const caregiverId = await person("warning-window-caregiver");
+    await bindFamily({ childId, caregiverId });
+    const issue = (expiresAt: string) =>
+      service(() => new Date(issuedAt)).issueGrant({
+        principalEntityId: caregiverId,
+        role: "caregiver",
+        subjectEntityIds: [childId],
+        scopes: ["calendar.freebusy"],
+        issuedByEntityId: SELF_ENTITY_ID,
+        expiresAt,
+      });
+    const twoDay = await issue("2027-05-06T12:00:00.000Z");
+    const sixHour = await issue("2027-05-04T18:00:00.000Z");
+    const runner = getScheduledTaskRunner(runtime, {
+      agentId: runtime.agentId,
+      now: () => new Date(issuedAt),
+    });
+    const warningTask = async (grantId: string) => {
+      const tasks = (await runner.list({ kind: "watcher" })).filter((task) =>
+        task.idempotencyKey?.includes(grantId),
+      );
+      expect(tasks).toHaveLength(1);
+      return tasks[0];
+    };
+    const twoDayTask = await warningTask(twoDay.id);
+    const sixHourTask = await warningTask(sixHour.id);
+    expect(twoDayTask?.trigger).toEqual({
+      kind: "once",
+      atIso: "2027-05-05T12:00:00.000Z",
+    });
+    expect(sixHourTask?.trigger).toEqual({
+      kind: "once",
+      atIso: issuedAt.toISOString(),
+    });
+
+    const tick = async (at: string, grantId: string) => {
+      const errorsBefore = runtime.getRecentReportedErrors().length;
+      const [receipt] = (
+        await service(() => new Date(at)).reconcileGrantExpiryWarnings()
+      ).filter((candidate) => candidate.grantId === grantId);
+      const errors = runtime
+        .getRecentReportedErrors()
+        .slice(errorsBefore)
+        .filter((entry) => entry.context?.grantId === grantId);
+      return { receipt, errors };
+    };
+    const sixHourTick = await tick("2027-05-04T13:00:00.000Z", sixHour.id);
+    const twoDayTick = await tick("2027-05-05T18:00:00.000Z", twoDay.id);
+    expect({ sixHourTick, twoDayTick }).toEqual({
+      sixHourTick: {
+        receipt: expect.objectContaining({
+          outcome: "ready",
+          scheduledTaskId: sixHourTask?.taskId,
+          warningAt: issuedAt.toISOString(),
+          deduplicated: true,
+        }),
+        errors: [],
+      },
+      twoDayTick: {
+        receipt: expect.objectContaining({
+          outcome: "ready",
+          scheduledTaskId: twoDayTask?.taskId,
+          warningAt: "2027-05-05T12:00:00.000Z",
+          deduplicated: true,
+        }),
+        errors: [],
+      },
+    });
+    expect((await warningTask(twoDay.id))?.taskId).toBe(twoDayTask?.taskId);
+  });
+
   it("durably reconciles a warning after scheduling fails without duplicating its grant", async () => {
     const clock = new Date("2027-04-21T12:00:00.000Z");
     const childId = await person("warning-outbox-child");

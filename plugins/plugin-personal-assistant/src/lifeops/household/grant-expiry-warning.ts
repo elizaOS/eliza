@@ -306,6 +306,12 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
       autoExtend: false,
     };
   }
+  // A linked warning keeps the instant it was scheduled for. Recomputing it
+  // from this reconciliation's clock moves it once the final 24 hours begin.
+  const expected =
+    claim.kind === "complete"
+      ? { ...identity, warningAt: claim.warningAt }
+      : identity;
 
   try {
     const tasks = await input.scheduledTasks.list({ kind: "watcher" });
@@ -335,7 +341,7 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
         buildTask(identity, input.grant.agentId),
       );
     }
-    assertTaskContract(task, identity);
+    assertTaskContract(task, expected);
     const completion =
       claim.kind === "complete"
         ? { kind: "linked" as const, scheduledTaskId: claim.scheduledTaskId }
@@ -378,7 +384,7 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
       grantId: identity.grantId,
       scheduledTaskId,
       taskState: task.state.status,
-      warningAt: identity.warningAt,
+      warningAt: expected.warningAt,
       expiresAt: identity.expiresAt,
       deduplicated,
       autoExtend: false,
@@ -398,7 +404,7 @@ export async function ensureHouseholdGrantExpiryWarning(input: {
       "HOUSEHOLD_INVALID_CONTRACT",
       {
         grantId: identity.grantId,
-        warningAt: identity.warningAt,
+        warningAt: expected.warningAt,
         expiresAt: identity.expiresAt,
       },
       error,
