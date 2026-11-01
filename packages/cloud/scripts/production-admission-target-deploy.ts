@@ -9,7 +9,8 @@
  * Wrangler. Every Wrangler call names the admission configuration, so it can
  * never deploy the API. The bundle must match `--bundle-sha256`, the phase 1
  * bundle. Only `--deploy` uploads, publishing the commit as
- * ELIZA_DEPLOY_COMMIT and the version tag.
+ * ELIZA_DEPLOY_COMMIT and the version tag, and only after a live readback
+ * proves the step before it fully rolled out, with the API on `--api-commit`.
  */
 import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -17,10 +18,17 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { runbookPhases } from "./production-admission-phase-audit.ts";
 import {
+  commitFiles,
+  runbookPhases,
+  runValidator,
+} from "./production-admission-phase-audit.ts";
+import {
+  type CloudflareRead,
   LIVE_PHASES,
   type LivePhase,
+  productionAccount,
+  verifyProductionAdmission,
 } from "./production-admission-readback.ts";
 
 const RUNBOOK = resolve(
@@ -28,30 +36,60 @@ const RUNBOOK = resolve(
   "../admission-worker/PRODUCTION-TRANSFER.md",
 );
 
-/** The commands for one step, in order; `deploy` only when requested. */
+const FULL_COMMIT = /^[0-9a-f]{40}$/;
+const PHASE_ORDER = Object.keys(LIVE_PHASES) as LivePhase[];
+
+/** The live state an upload starts from, and the commit each Worker serves. */
+export interface Predecessor {
+  phase: LivePhase;
+  commits: { api: string; target?: string };
+}
+
+/**
+ * The commands for one step, in order. `deploy` only when requested, with
+ * the predecessor the live state must prove first: the step before it, the
+ * API on `apiCommit`, and before phase 3 the target still on phase 1.
+ */
 export function targetDeployPlan(input: {
   checkout: string;
   commit: string;
   phase: string;
   outdir: string;
   deploy: boolean;
+  apiCommit?: string;
   runtime: string;
   runbook: string;
 }) {
   const live = LIVE_PHASES[input.phase as LivePhase];
   if (!live) throw new Error(`Unknown admission phase ${input.phase}`);
-  if (!/^[0-9a-f]{40}$/.test(input.commit))
+  if (!FULL_COMMIT.test(input.commit))
     throw new Error("The checkout must be at a full commit");
+  let predecessor: Predecessor | undefined;
   if (input.deploy) {
     if (live.deploys !== "target")
       throw new Error(`${input.phase} does not upload the admission Worker`);
-    const row = runbookPhases(input.runbook).find(
+    const rows = runbookPhases(input.runbook);
+    const row = rows.find(
       (item) => item.phase === input.phase && item.phase !== "source-owned",
     );
     if (row && row.commit !== input.commit)
       throw new Error(
         `${input.phase} deploys only the runbook commit ${row.commit}`,
       );
+    if (!input.apiCommit || !FULL_COMMIT.test(input.apiCommit))
+      throw new Error(
+        "--deploy requires --api-commit, the full commit the API serves now",
+      );
+    const phase =
+      PHASE_ORDER[PHASE_ORDER.indexOf(input.phase as LivePhase) - 1];
+    const pending = rows.find((item) => item.phase === "target-pending");
+    predecessor = {
+      phase,
+      commits: {
+        api: input.apiCommit,
+        ...(phase === "source-commit" ? { target: pending?.commit } : {}),
+      },
+    };
   }
   const checkout = resolve(input.checkout);
   const api = join(checkout, "packages/cloud/api");
@@ -76,17 +114,56 @@ export function targetDeployPlan(input: {
       input.phase,
     ],
     dryRun: [...wrangler, "--dry-run", "--outdir", resolve(input.outdir)],
-    deploy: input.deploy
-      ? [
-          ...wrangler,
-          "--var",
-          `ELIZA_DEPLOY_COMMIT:${input.commit}`,
-          "--tag",
-          input.commit,
-        ]
-      : undefined,
+    deploy: predecessor && {
+      predecessor,
+      command: [
+        ...wrangler,
+        "--var",
+        `ELIZA_DEPLOY_COMMIT:${input.commit}`,
+        "--tag",
+        input.commit,
+      ],
+    },
     cwd: api,
   };
+}
+
+/**
+ * The API commit must be a tree of the predecessor phase. Cloudflare shows
+ * `adopted` and `reverse-pending` with the same bindings; only the API's
+ * committed declaration tells them apart. The live source predates the
+ * production validator.
+ */
+export function requireApiPhase(predecessor: Predecessor) {
+  if (predecessor.phase === "source-owned") return;
+  const result = runValidator(commitFiles(predecessor.commits.api), [
+    "--production",
+    "--phase",
+    predecessor.phase,
+  ]);
+  if (!result.ok)
+    throw new Error(
+      `API commit ${predecessor.commits.api} is not ${predecessor.phase}: ${result.output}`,
+    );
+}
+
+/**
+ * Uploads only after the live readback proves the predecessor: the step
+ * before this one, fully rolled out (one version at 100% on each Worker), on
+ * the commits it names. A failed readback uploads nothing.
+ */
+export async function uploadFromLivePredecessor(
+  deploy: { predecessor: Predecessor; command: string[] },
+  account: { read: CloudflareRead; api: string; target: string },
+  upload: (command: string[]) => void,
+) {
+  const receipt = await verifyProductionAdmission(account.read, {
+    api: account.api,
+    target: account.target,
+    ...deploy.predecessor,
+  });
+  upload(deploy.command);
+  return receipt;
 }
 
 function run(command: string[], cwd: string, capture = false) {
@@ -110,6 +187,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         phase: { type: "string" },
         outdir: { type: "string" },
         "bundle-sha256": { type: "string" },
+        "api-commit": { type: "string" },
         deploy: { type: "boolean", default: false },
       },
     });
@@ -138,9 +216,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       phase,
       outdir,
       deploy: values.deploy,
+      apiCommit: values["api-commit"],
       runtime: process.execPath,
       runbook: readFileSync(RUNBOOK, "utf8"),
     });
+    if (plan.deploy) requireApiPhase(plan.deploy.predecessor);
     run(plan.validate, checkout);
     run(plan.dryRun, plan.cwd);
     const bundleSHA256 = createHash("sha256")
@@ -150,9 +230,21 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       throw new Error(
         `Admission bundle ${bundleSHA256} differs from the expected ${expected}`,
       );
-    if (plan.deploy) run(plan.deploy, plan.cwd);
+    const predecessor = plan.deploy
+      ? await uploadFromLivePredecessor(
+          plan.deploy,
+          productionAccount(),
+          (command) => run(command, plan.cwd),
+        )
+      : null;
     console.log(
-      JSON.stringify({ phase, commit, bundleSHA256, deployed: !!plan.deploy }),
+      JSON.stringify({
+        phase,
+        commit,
+        bundleSHA256,
+        predecessor,
+        deployed: !!plan.deploy,
+      }),
     );
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));

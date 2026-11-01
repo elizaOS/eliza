@@ -151,7 +151,7 @@ export function reverseChain(
     });
 }
 
-function runValidator(files: Files, args: string[]) {
+export function runValidator(files: Files, args: string[]) {
   const directory = mkdtempSync(join(tmpdir(), "admission-phase-"));
   try {
     for (const [path, text] of Object.entries(files)) {
