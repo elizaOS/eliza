@@ -11,26 +11,48 @@ async function bytes(response,max){
  try{for(;;){const r=await reader.read();if(r.done)break;size+=r.value.length;check(size<=max,'response_too_large');chunks.push(r.value);}}finally{await reader.cancel().catch(()=>{});}
  return Buffer.concat(chunks);
 }
-function timing(header){
- const result={};check(!header||header.length<=4096,'invalid_timing_header');
- const allowed=new Set(['cloud_worker','entry_dispatch','upload','auth','admission','transcription','synthesis','total','provider']);
- for(const entry of (header??'').split(',').filter(Boolean)){
-  const name=entry.trim().split(';',1)[0];if(!allowed.has(name))continue;
-  const m=/^\s*([a-z_]+)\s*;\s*dur=(\d+(?:\.\d+)?)\s*$/.exec(entry);
-  check(m&&!Object.hasOwn(result,name),'invalid_or_duplicate_timing');
-  const n=Number(m[2]);check(Number.isFinite(n)&&n<=150000,'invalid_timing_duration');result[name]=n;
- }return result;
+/** Reject ambiguous/malformed values; descriptions never become diagnostic fields. */
+export function readAllowedServerTiming(raw, names) {
+  if (!raw || raw.length > 4096 || /[\r\n]/.test(raw)) return undefined;
+  // Remove complete quoted values before splitting so commas in descriptions
+  // cannot introduce a fake metric. Unbalanced quotes reject the whole header.
+  const numeric = raw.replace(/"(?:[^"\\]|\\.)*"/g, "");
+  if (numeric.includes('"')) return undefined;
+  const metrics = {};
+  const seen = new Set();
+  for (const entry of numeric.split(",").slice(0, 64)) {
+    const [label, ...params] = entry.split(";");
+    const name = label?.trim().toLowerCase();
+    if (!names.includes(name)) continue;
+    if (seen.has(name)) {
+      delete metrics[name];
+      continue;
+    }
+    seen.add(name);
+    const durations = params
+      .map((p) => p.trim())
+      .filter((p) => /^dur=/i.test(p));
+    if (durations.length !== 1) continue;
+    const value = durations[0].slice(4);
+    if (!/^(?:0|[1-9]\d{0,5})(?:\.\d{1,3})?$/.test(value)) continue;
+    const duration = Number(value);
+    if (duration <= 600_000) metrics[name] = duration;
+  }
+  return Object.keys(metrics).length ? metrics : undefined;
 }
-function traceHeaders(headers){
+
+const timingNames=['cloud_worker','entry_dispatch','upload','auth','admission','transcription','synthesis','total','provider'];
+function timing(header){return readAllowedServerTiming(header,timingNames);}
+export function traceHeaders(headers){
  const out={};for(const name of ['x-eliza-trace-id','x-request-id','cf-ray']){
   const value=headers.get(name);if(value===null)continue;
-  check(value.length<=128&&/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value),'invalid_trace_header');out[name]=value;
+  if(value.length<=128&&/^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value))out[name]=value;
  }return out;
 }
 async function paid(path,init,attestation,max){
  check(receipt.paidRequests<2,'request_budget');receipt.paidRequests++;
  const started=performance.now();const res=await fetch(origin+path,{...init,redirect:'error',signal});const headersAt=performance.now();
- const row={route:path,status:res.status,headersMs:Math.round(headersAt-started),serverTiming:timing(res.headers.get('server-timing')),trace:traceHeaders(res.headers)};receipt.requests.push(row);
+ const row={route:path,status:res.status,headersMs:Math.round(headersAt-started),serverTiming:timing(res.headers.get('server-timing'))??null,trace:traceHeaders(res.headers)};receipt.requests.push(row);
  check(res.ok,'http_refused');check(res.headers.get(attestation)==='cartesia','provider_mismatch');
  check(/^audio\/mpeg(?:;|$)/i.test(res.headers.get('content-type')??'')||path.endsWith('/stt'),'invalid_audio_content_type');
  const data=await bytes(res,max);row.bodyMs=Math.round(performance.now()-headersAt);row.totalMs=Math.round(performance.now()-started);return data;
