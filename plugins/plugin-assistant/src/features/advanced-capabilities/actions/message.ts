@@ -6861,6 +6861,12 @@ function compareMemoryByCreatedAtDesc(
 export const __testCompareMemoryByCreatedAtDesc = compareMemoryByCreatedAtDesc;
 export const __testCreatedAtSortKey = createdAtSortKey;
 
+/** Test-only export, following the __test* precedent above: the send-target
+ * and send-source inference lives in normalizeSendParams, which is not part
+ * of the action's public surface. Tests use this to pin the inference
+ * without driving the full send handler. */
+export const __testNormalizeSendParams = normalizeSendParams;
+
 export const messageAction: Action = {
   name: "MESSAGE",
   exampleCalls: [
