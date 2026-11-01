@@ -127,8 +127,21 @@ maybe(
     socket.addEventListener("message", (event) => {
       try {
         if (event.data instanceof ArrayBuffer) {
-          const audio = decodeSpeechRelayAudio(new Uint8Array(event.data));
-          check(audio.id === "proof", "SPEECH_AUDIO_CONTEXT_INVALID");
+          // Read the v1 envelope independently; the protected workflow only needs Bun.
+          const frame = new Uint8Array(event.data);
+          check(
+            frame[0] === 1 && frame[1] === 5 && frame.length > 7,
+            "SPEECH_AUDIO_ENVELOPE_INVALID",
+          );
+          check(
+            new TextDecoder().decode(frame.subarray(2, 7)) === "proof",
+            "SPEECH_AUDIO_CONTEXT_INVALID",
+          );
+          const audio = { pcm: frame.subarray(7) };
+          check(
+            audio.pcm.length % 2 === 0 && audio.pcm.length <= 65536,
+            "SPEECH_AUDIO_FORMAT_INVALID",
+          );
           if (!firstPcmAt) firstPcmAt = performance.now();
           totalBytes += audio.pcm.byteLength;
           check(totalBytes <= 1024 * 1024, "SPEECH_AUDIO_BOUND_EXCEEDED");
