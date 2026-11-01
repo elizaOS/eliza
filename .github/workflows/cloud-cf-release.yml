@@ -111,6 +111,8 @@ on:
         required: false
       ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON:
         required: false
+      ELIZA_NATIVE_AUTH_CALLBACKS_JSON:
+        required: false
       ELIZA_SERVICE_JWT_SECRET:
         required: false
       ELIZA_VOICE_CATALOG_PUBLIC_KEY_BASE64:
@@ -2153,6 +2155,14 @@ jobs:
           install -m 0644 "$functions_bundle/index.js" web-dist/_worker.js
           node --check web-dist/_worker.js
 
+      - name: Build self-contained Pages deployment helper
+        run: |
+          set -euo pipefail
+          bun build packages/cloud/scripts/pages-native-auth-callbacks.ts \
+            --target=bun --conditions=eliza-source \
+            --outfile=packages/app/pages-native-auth-callbacks.mjs
+          node --check packages/app/pages-native-auth-callbacks.mjs
+
       - name: Upload consolidated frontend artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
@@ -2160,6 +2170,7 @@ jobs:
           path: |
             packages/app/web-dist
             packages/app/wrangler.toml
+            packages/app/pages-native-auth-callbacks.mjs
           if-no-files-found: error
           retention-days: 1
 
@@ -2380,6 +2391,8 @@ jobs:
           set -euo pipefail
           test -s web-dist/_worker.js
           node --check web-dist/_worker.js
+          test -s pages-native-auth-callbacks.mjs
+          node --check pages-native-auth-callbacks.mjs
 
       - name: Legacy inline fallback - install dependencies
         if: ${{ vars.CLOUD_CF_LEGACY_INLINE_BUILD == 'true' }}
@@ -2583,6 +2596,23 @@ jobs:
           fi
           node packages/cloud/scripts/deploy-freshness-guard-cli.ts "${args[@]}"
 
+      - name: Prepare native callback Pages binding
+        id: native-callbacks
+        if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ELIZA_NATIVE_AUTH_CALLBACKS_JSON: ${{ vars.ELIZA_NATIVE_AUTH_CALLBACKS_JSON || secrets.ELIZA_NATIVE_AUTH_CALLBACKS_JSON }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          umask 077
+          bun "$CHECKOUT_DIR/packages/app/pages-native-auth-callbacks.mjs" prepare \
+            --canonical "$CHECKOUT_DIR/packages/app/wrangler.toml" \
+            --environment "$TARGET_ENVIRONMENT" \
+            --output-root "$RUNNER_TEMP/pages-native-callbacks"
+
       - name: Deploy to Cloudflare Pages
         id: pages-deploy
         if: steps.cf.outputs.configured == 'true' && (github.event_name == 'pull_request' || steps.freshness.outputs.should_deploy == 'true')
@@ -2593,6 +2623,7 @@ jobs:
           PAGES_AUTHORITY_FILE: ${{ runner.temp }}/pages-deployment-authority/pages-deployment-authority.json
           PAGES_BRANCH: ${{ steps.pages.outputs.branch }}
           PAGES_PROJECT: eliza-app
+          PAGES_CONFIG_DIRECTORY: ${{ steps.native-callbacks.outputs.directory }}
           PAGES_ALIAS: https://staging.eliza-app.pages.dev
           TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
           EVENT_NAME: ${{ github.event_name }}
@@ -2600,9 +2631,9 @@ jobs:
           FORCE: ${{ inputs.force }}
           MONOTONIC_FORWARD_PROGRESS: ${{ inputs.target_environment == 'staging' }}
           SERVED_SOURCE_URL: ${{ inputs.target_environment == 'production' && 'https://api.eliza.app' || 'https://api-staging.eliza.app' }}
-        # Do NOT pass a positional `dist` argument: wrangler.toml already sets
-        # `pages_build_output_dir = "./web-dist"`, and passing both makes wrangler
-        # ignore wrangler.toml — which silently drops the `functions/` upload.
+        # Pinned Pages CLI does not accept --config. Use the generated config's
+        # directory with its absolute, already-built _worker.js output. Keep
+        # the exact deploy argv consumed by the closed authority proof.
         run: |
           set -euo pipefail
           umask 077
@@ -2637,20 +2668,20 @@ jobs:
             chmod 600 "$wrangler_output"
             deploy_succeeded=false
             if [ "$TARGET_ENVIRONMENT" = "staging" ]; then
-              if WRANGLER_OUTPUT_FILE_PATH="$wrangler_output" \
+              if (cd "$PAGES_CONFIG_DIRECTORY" && WRANGLER_OUTPUT_FILE_PATH="$wrangler_output" \
                 bunx wrangler@4.100.0 pages deploy \
                   --project-name="$PAGES_PROJECT" \
                   --branch="$PAGES_BRANCH" \
                   --commit-hash="$GITHUB_SHA" \
-                  --commit-dirty=false; then
+                  --commit-dirty=false); then
                 deploy_succeeded=true
               fi
             else
-              if bunx wrangler@4.100.0 pages deploy \
+              if (cd "$PAGES_CONFIG_DIRECTORY" && bunx wrangler@4.100.0 pages deploy \
                 --project-name="$PAGES_PROJECT" \
                 --branch="$PAGES_BRANCH" \
                 --commit-hash="$GITHUB_SHA" \
-                --commit-dirty=false; then
+                --commit-dirty=false); then
                 deploy_succeeded=true
               fi
             fi
@@ -2777,6 +2808,22 @@ jobs:
               --environment "$DEPLOY_ENVIRONMENT" \
               --tenant-id "$tenant_id"
           done
+
+      - name: Verify native callback Pages binding
+        if: steps.cf.outputs.configured == 'true' && github.event_name != 'pull_request' && steps.pages-deploy.outputs.deployed == 'true'
+        working-directory: ${{ env.CHECKOUT_DIR }}
+        env:
+          PAGES_CONFIG_DIRECTORY: ${{ steps.native-callbacks.outputs.directory }}
+          TARGET_ENVIRONMENT: ${{ inputs.target_environment }}
+        run: |
+          set -euo pipefail
+          bun "$CHECKOUT_DIR/packages/app/pages-native-auth-callbacks.mjs" verify \
+            --config "$PAGES_CONFIG_DIRECTORY/wrangler.json" \
+            --environment "$TARGET_ENVIRONMENT"
+
+      - name: Remove generated native callback Pages configuration
+        if: always()
+        run: rm -rf -- "$RUNNER_TEMP/pages-native-callbacks"
 
       - name: Publish closed Pages deployment authority
         if: steps.cf.outputs.configured == 'true' && inputs.target_environment == 'staging' && steps.freshness.outputs.should_deploy == 'true' && steps.pages-deploy.outputs.deployed == 'true'
