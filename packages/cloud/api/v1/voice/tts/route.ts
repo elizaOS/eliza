@@ -216,6 +216,8 @@ async function __hono_POST(c: AppContext) {
   let settleUnknown: (() => Promise<unknown>) | undefined;
   let markProviderDispatched: (() => Promise<void>) | undefined;
   let providerWorkMayHaveStarted = false;
+  /** Settles, never rejecting, once the paid dispatch mark has its outcome. */
+  let providerDispatchSettled: Promise<void> | undefined;
   let settlementOrganizationId = "unavailable";
   let settlementProvider = "unknown";
   let settlementUserId = "unavailable";
@@ -787,20 +789,17 @@ async function __hono_POST(c: AppContext) {
     const markPaidTtsProviderDispatch = async () => {
       // An aborted caller never dispatches: the reservation stays unstarted.
       request.signal.throwIfAborted();
-      // The gate can commit the dispatch before its acknowledgement arrives,
-      // and the WAV synthesis can end (caller abort, deadline) while the
-      // acknowledgement is in flight. A release would race that commit, so
-      // from here a failed request keeps the unknown outcome.
-      providerWorkMayHaveStarted = true;
-      try {
+      const mark = (async () => {
         await markProviderDispatched?.();
-      } catch (error) {
-        // error-policy:J2 the mark ended without a dispatch: the gate refused
-        // it, or the lease still holds its pre-provider cancellation token.
-        // A release stays safe, and the caller still sees the failure.
-        providerWorkMayHaveStarted = false;
-        throw error;
-      }
+        providerWorkMayHaveStarted = true;
+      })();
+      // The WAV synthesis can end (caller abort, deadline) while the mark is
+      // in flight, so a failed request settles only on the mark's outcome.
+      providerDispatchSettled = mark.catch(() => {
+        // error-policy:J2 the awaiting provider call observes the failure; a
+        // refused mark leaves providerWorkMayHaveStarted false.
+      });
+      await mark;
     };
     if (cartesiaEligible && cartesiaApiKey) {
       if (wantWav) {
@@ -1077,6 +1076,7 @@ async function __hono_POST(c: AppContext) {
       errorType: error instanceof Error ? error.name : "unknown",
     });
     if (reservation) {
+      const failedReservation = reservation;
       // A clear rejection before any audio proves nothing was synthesized:
       // the Cartesia REST refusal, or an ElevenLabs SDK error with its status.
       const sdkStatus = elevenLabsSdkErrorStatus(error);
@@ -1085,23 +1085,29 @@ async function __hono_POST(c: AppContext) {
           error.beforeAudio &&
           isKnownUnacceptedProviderStatus(error.status)) ||
         (sdkStatus !== undefined && isKnownUnacceptedProviderStatus(sdkStatus));
-      const settlement =
-        providerWorkMayHaveStarted && settleUnknown && !rejected
+      const settlement = (async () => {
+        // A dispatch mark still in flight decides the outcome. A committed
+        // mark keeps the unknown charge. A refused mark releases: no provider
+        // was called, and the lease still holds its pre-provider cancellation
+        // token.
+        await providerDispatchSettled;
+        logger.warn("[Voice TTS API] Settled failed paid synthesis", {
+          organizationId: settlementOrganizationId,
+          provider: settlementProvider,
+          providerDispatchState: providerWorkMayHaveStarted
+            ? "possibly_dispatched"
+            : "not_dispatched",
+          settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+          traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+          userId: settlementUserId,
+        });
+        return providerWorkMayHaveStarted && settleUnknown && !rejected
           ? settleUnknown()
-          : reservation.reconcile(0);
+          : failedReservation.reconcile(0);
+      })();
       const executionCtx = getGenerativeExecutionContext(c);
       if (executionCtx) executionCtx.waitUntil(settlement);
       else await settlement;
-      logger.warn("[Voice TTS API] Settled failed paid synthesis", {
-        organizationId: settlementOrganizationId,
-        provider: settlementProvider,
-        providerDispatchState: providerWorkMayHaveStarted
-          ? "possibly_dispatched"
-          : "not_dispatched",
-        settlement: providerWorkMayHaveStarted ? "unknown" : "released",
-        traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
-        userId: settlementUserId,
-      });
     }
     if (request.signal.aborted) {
       // A caller abort is cancellation, never a provider failure or timeout.

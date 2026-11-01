@@ -5,8 +5,9 @@
  * utterance still replays. An ElevenLabs rejection releases the reservation.
  * A caller abort reaches moderation and the speech upstreams: before dispatch
  * it releases the reservation, after dispatch it keeps the unknown charge. A
- * WAV synthesis that ends while its dispatch acknowledgement is pending also
- * keeps the unknown charge, and the WAV hard deadline still answers 500.
+ * WAV synthesis that ends while its dispatch mark is pending settles on the
+ * mark: a commit keeps the unknown charge, a refusal releases. The WAV hard
+ * deadline still answers 500.
  * Real credits service on PGlite; auth, pricing,
  * content safety, the ElevenLabs client, the Cartesia and Kokoro upstreams,
  * the first-line cache and usage records are replaced.
@@ -527,65 +528,102 @@ test.each([
   ["a caller abort", 499],
   ["the synthesis deadline", 500],
 ] as const)(
-  "%s while the WAV dispatch acknowledgement is pending keeps the unknown charge; a refused dispatch still releases",
+  "%s while the WAV dispatch mark is pending settles on the mark: a commit keeps the unknown charge, a refusal releases",
   async (ending, status) => {
     const text = "Your WAV reply ended during dispatch.";
-    const before = await balance();
     stubSpeechUpstream("answer");
     if (status === 500) wavDeadlineMs = 50;
-
-    // A refused dispatch never reaches the provider: the reservation is released.
-    acknowledgeDispatch = async () => {
-      throw new Error("synthetic dispatch refusal");
-    };
-    await speak(
-      text,
-      `refused-dispatch-${randomUUID()}`,
-      { format: "wav" },
-      502,
-      { env: CARTESIA },
-    );
-    expect(await balance()).toBeCloseTo(before, 6);
-    expect(await openReservations()).toBe(0);
-
-    let marking!: () => void;
-    const markingStarted = new Promise<void>((resolve) => {
-      marking = resolve;
+    let routeFailed: (() => void) | undefined;
+    const errorLog = spyOn(logger, "error").mockImplementation((message) => {
+      if (message === "[Voice TTS API] Request failed") routeFailed?.();
     });
-    let acknowledge!: () => void;
-    const acknowledged = new Promise<void>((resolve) => {
-      acknowledge = resolve;
-    });
-    acknowledgeDispatch = async () => {
-      marking();
-      await acknowledged;
-    };
-    const caller = new AbortController();
-    const ended = speak(
-      text,
-      `pending-dispatch-${randomUUID()}`,
-      { format: "wav" },
-      status,
-      { signal: caller.signal, env: CARTESIA },
+    const settlements: unknown[] = [];
+    const warnLog = spyOn(logger, "warn").mockImplementation(
+      (message, data) => {
+        if (message === "[Voice TTS API] Settled failed paid synthesis")
+          settlements.push(data);
+      },
     );
-    await markingStarted;
-    if (ending === "a caller abort") caller.abort();
-    await ended;
+    try {
+      // A dispatch refused before the synthesis ends is released.
+      let before = await balance();
+      acknowledgeDispatch = async () => {
+        throw new Error("synthetic dispatch refusal");
+      };
+      await speak(
+        text,
+        `refused-dispatch-${randomUUID()}`,
+        { format: "wav" },
+        502,
+        { env: CARTESIA },
+      );
+      expect(await balance()).toBeCloseTo(before, 6);
+      expect(await openReservations()).toBe(0);
 
-    // The request ended before the acknowledgement, which the gate may already
-    // have committed: the outcome is unknown and the estimate stays charged.
-    expect(await balance()).toBeCloseTo(
-      before - text.length * COST_PER_CHAR,
-      6,
-    );
-    expect(await openReservations()).toBe(0);
+      for (const outcome of ["commit", "refusal"] as const) {
+        before = await balance();
+        let marking!: () => void;
+        const markingStarted = new Promise<void>((resolve) => {
+          marking = resolve;
+        });
+        let finishMark!: () => void;
+        const markFinished = new Promise<void>((resolve) => {
+          finishMark = resolve;
+        });
+        acknowledgeDispatch = async () => {
+          marking();
+          await markFinished;
+          // A refusal before any gate contact, like a stale policy check.
+          if (outcome === "refusal")
+            throw new Error("synthetic dispatch refusal");
+        };
+        const failed = new Promise<void>((resolve) => {
+          routeFailed = resolve;
+        });
+        const caller = new AbortController();
+        const ended = speak(
+          text,
+          `pending-${outcome}-${randomUUID()}`,
+          { format: "wav" },
+          status,
+          { signal: caller.signal, env: CARTESIA },
+        );
+        await markingStarted;
+        if (ending === "a caller abort") caller.abort();
+        // The synthesis has failed while the mark is still in flight.
+        await failed;
+        finishMark();
+        await ended;
+        await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // The late acknowledgement starts the upgrade with an aborted signal, so no
-    // provider request is sent.
-    acknowledge();
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(upstream.urls).toEqual([]);
-    expect(upstream.frames).toEqual([]);
+        // A committed mark is durable at the gate: the outcome is unknown and
+        // the estimate stays charged. A refused mark dispatched nothing: the
+        // reservation is released.
+        expect(await balance()).toBeCloseTo(
+          outcome === "commit" ? before - text.length * COST_PER_CHAR : before,
+          6,
+        );
+        expect(await openReservations()).toBe(0);
+        expect(settlements.at(-1)).toMatchObject(
+          outcome === "commit"
+            ? {
+                providerDispatchState: "possibly_dispatched",
+                settlement: "unknown",
+              }
+            : {
+                providerDispatchState: "not_dispatched",
+                settlement: "released",
+              },
+        );
+        // The upgrade after a late commit has an aborted signal, so no
+        // provider request is sent.
+        expect(upstream.urls).toEqual([]);
+        expect(upstream.frames).toEqual([]);
+      }
+    } finally {
+      errorLog.mockRestore();
+      warnLog.mockRestore();
+    }
   },
   10_000,
 );
