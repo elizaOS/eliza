@@ -659,8 +659,10 @@ export function createHealthActionRunner(
       });
     }
 
+    // today and by_metric both read `date`; a value that is not a calendar
+    // day is refused before any read on either.
     const dayBounds =
-      subaction === "by_metric" && params.date
+      (subaction === "today" || subaction === "by_metric") && params.date
         ? localDayBounds(params.date, timeZone)
         : undefined;
     if (dayBounds === null) {
