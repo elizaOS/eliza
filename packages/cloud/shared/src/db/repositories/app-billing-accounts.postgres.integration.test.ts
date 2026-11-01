@@ -62,8 +62,8 @@ describe.skipIf(!databaseUrl)("app billing PostgreSQL concurrency", () => {
     await setup.query(`CREATE SCHEMA ${schemaName}`);
     await setup.query(`SET search_path TO ${schemaName}, public`);
     await setup.query(`CREATE TABLE organizations(id uuid PRIMARY KEY,is_active boolean NOT NULL DEFAULT true,account_lifecycle_state text DEFAULT 'active',paid_work_fenced_at timestamptz,account_deletion_request_id uuid);
-      CREATE TABLE users(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),is_active boolean DEFAULT true);
-      CREATE TABLE apps(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),created_by_user_id uuid NOT NULL REFERENCES users(id),is_active boolean DEFAULT true,is_approved boolean DEFAULT true,total_users integer DEFAULT 0);
+      CREATE TABLE users(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),is_active boolean DEFAULT true,role text NOT NULL DEFAULT 'owner');
+      CREATE TABLE apps(id uuid PRIMARY KEY,organization_id uuid NOT NULL REFERENCES organizations(id),created_by_user_id uuid NOT NULL CONSTRAINT apps_created_by_user_id_users_id_fk REFERENCES users(id) ON DELETE CASCADE,is_active boolean DEFAULT true,is_approved boolean DEFAULT true,total_users integer DEFAULT 0);
       CREATE TABLE app_users(id uuid PRIMARY KEY DEFAULT gen_random_uuid(),app_id uuid NOT NULL REFERENCES apps(id) ON DELETE CASCADE,user_id uuid NOT NULL REFERENCES users(id),signup_source text,referral_code_used text,ip_address text,user_agent text,total_requests integer DEFAULT 0,total_credits_used numeric DEFAULT 0,metadata jsonb DEFAULT '{}',first_seen_at timestamp DEFAULT now(),last_seen_at timestamp DEFAULT now(),UNIQUE(app_id,user_id));`);
     await installOrganizationPolicyTestSchema((query) => setup.query(query));
     const migration = await readFile(
@@ -71,6 +71,12 @@ describe.skipIf(!databaseUrl)("app billing PostgreSQL concurrency", () => {
       "utf8",
     );
     for (const statement of migration.split("--> statement-breakpoint"))
+      if (statement.trim()) await setup.query(statement);
+    const creatorMigration = await readFile(
+      new URL("../migrations/0550_app_creator_audit_reference.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of creatorMigration.split("--> statement-breakpoint"))
       if (statement.trim()) await setup.query(statement);
     const url = new URL(databaseUrl!);
     url.searchParams.set("options", `-c search_path=${schemaName},public`);
@@ -126,6 +132,43 @@ describe.skipIf(!databaseUrl)("app billing PostgreSQL concurrency", () => {
       }
     }
   }, 30_000);
+  test("creator deletion retains registration and subscriber accounts for organization administrators", async () => {
+    const f = await fixture();
+    const administrator = randomUUID();
+    const member = randomUUID();
+    await setup.query(
+      "INSERT INTO users(id,organization_id,role) VALUES ($1,$2,'admin'),($3,$2,'member')",
+      [administrator, f.org, member],
+    );
+    const registration = await accounts.register(f.appId, "test", {
+      userId: f.owner,
+      credentialId: null,
+    });
+    await appsRepo.connectUser({ appId: f.appId, userId: f.buyer, signupSource: "oauth" });
+    await setup.query("DELETE FROM users WHERE id=$1", [f.owner]);
+    expect(
+      (await setup.query("SELECT created_by_user_id FROM apps WHERE id=$1", [f.appId])).rows,
+    ).toEqual([{ created_by_user_id: null }]);
+    expect(
+      (
+        await setup.query(
+          "SELECT registered_by_user_id FROM app_billing_registrations WHERE id=$1",
+          [registration.id],
+        )
+      ).rows,
+    ).toEqual([{ registered_by_user_id: null }]);
+    expect(
+      await accounts.register(f.appId, "test", { userId: administrator, credentialId: null }),
+    ).toMatchObject({ id: registration.id });
+    expect(
+      await accounts.read(f.appId, "test", { userId: f.buyer, credentialId: null }),
+    ).toMatchObject({ state: "unconfigured", account: { kind: "individual" } });
+    for (const userId of [member, f.buyer]) {
+      await expect(
+        accounts.register(f.appId, "live", { userId, credentialId: null }),
+      ).rejects.toMatchObject({ code: "APP_BILLING_ACCESS_DENIED" });
+    }
+  });
   test("a registration waiting behind committed app deletion cannot resurrect billing identity", async () => {
     const f = await fixture(),
       locker = await connection();

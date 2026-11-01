@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { after, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
+import sodium from "libsodium-wrappers";
 import { readDatabaseIdentityReceipt } from "../../../cloud/scripts/admin/database-identity-receipt.ts";
 import {
   appBindingDigest,
@@ -148,7 +149,7 @@ test("absent or ambiguous approved callbacks never create or select an app", asy
 
 test("foreign ownership, extra callback authority and a live generated key are refused", async () => {
   await assert.rejects(
-    discoverRegisteredApp(readOnly, { ...input, ownerUserId: OTHER }),
+    discoverRegisteredApp(readOnly, { ...input, organizationId: OTHER }),
     /callback_owner_mismatch/,
   );
   await database.query("UPDATE apps SET allowed_origins=$1", [
@@ -216,36 +217,29 @@ test("a different valid owner requires explicit or canonical app selection", asy
   assert.equal(JSON.stringify(sealed).includes(OTHER_OWNER), false);
 });
 
-test("explicit selection retains all shared creator and organization checks", async () => {
+test("an explicit product survives creator departure but requires its organization", async () => {
   await useOtherApprovedOwner();
   const explicit = { ...input, intendedAppId: APP };
-  await database.query("UPDATE users SET is_active=false WHERE id=$1", [
-    OTHER_OWNER,
+  const original = await discoverRegisteredApp(readOnly, explicit);
+  for (const change of [
+    "is_active=false",
+    "role='member'",
+    `organization_id='${ORG}'`,
+  ]) {
+    await database.query(`UPDATE users SET ${change} WHERE id=$1`, [
+      OTHER_OWNER,
+    ]);
+    assert.deepEqual(await discoverRegisteredApp(readOnly, explicit), original);
+  }
+  await database.query("UPDATE apps SET created_by_user_id=NULL WHERE id=$1", [
+    APP,
   ]);
-  await assert.rejects(
-    discoverRegisteredApp(readOnly, explicit),
-    /callback_registration_invalid/,
+  const retained = await discoverRegisteredApp(readOnly, explicit);
+  assert.equal(retained.creatorUserId, null);
+  assert.equal(
+    appBindingDigest(explicit, retained),
+    appBindingDigest(explicit, original),
   );
-  await database.query(
-    "UPDATE users SET is_active=true,role='member' WHERE id=$1",
-    [OTHER_OWNER],
-  );
-  await assert.rejects(
-    discoverRegisteredApp(readOnly, explicit),
-    /callback_registration_invalid/,
-  );
-  await database.query(
-    "UPDATE users SET role='admin',organization_id=$1 WHERE id=$2",
-    [ORG, OTHER_OWNER],
-  );
-  await assert.rejects(
-    discoverRegisteredApp(readOnly, explicit),
-    /callback_registration_invalid/,
-  );
-  await database.query("UPDATE users SET organization_id=$1 WHERE id=$2", [
-    OTHER_ORG,
-    OTHER_OWNER,
-  ]);
   await database.query("UPDATE organizations SET is_active=false WHERE id=$1", [
     OTHER_ORG,
   ]);
@@ -361,51 +355,85 @@ test("registry validation uses a repeatable read-only PostgreSQL transaction", a
   );
 });
 
-test("sealed artifact contains only ciphertext for both candidate and byte-exact rollback", async () => {
-  const plan = await sealRegistryPlan(
-    input,
-    BINDING,
-    "elizaOS/eliza",
-    "a".repeat(40),
-  );
-  const plaintext = buildRegistryAddition(input, APP);
-  assert.equal(plan.candidateSha256, plaintext.candidateSha256);
-  assert.equal(plan.sourceSha256, registryDigest(input.registry));
-  assert.equal(plan.appBindingSha256, appBindingDigest(input, BINDING));
-  assert.equal(
-    Buffer.from(plan.candidate.encrypted_value, "base64").length,
-    Buffer.byteLength(plaintext.candidate) + 48,
-  );
-  assert.equal(
-    Buffer.from(plan.rollback.encrypted_value, "base64").length,
-    Buffer.byteLength(input.registry) + 48,
-  );
-  assert.equal(
-    plan.candidate.key_id,
-    trustedGithubKey("elizaOS/eliza", "production").key_id,
-  );
-  const artifact = JSON.stringify(plan);
-  assert.equal(artifact.includes(APP), false);
-  assert.equal(artifact.includes(ORG), false);
-  assert.equal(artifact.includes(OWNER), false);
-  assert.equal(artifact.includes(retained.clientId), false);
-  assert.equal(artifact.includes(retained.redirectUri), false);
-  await assert.rejects(
-    sealRegistryPlan(input, BINDING, "attacker/repository", "a".repeat(40)),
-    /trusted_github_key_unavailable/,
-  );
-  await assert.rejects(
-    sealRegistryPlan(
-      { ...input, environment: "staging" },
-      BINDING,
-      "elizaOS/eliza",
-      "a".repeat(40),
-    ),
-    /trusted_github_key_unavailable/,
-  );
-});
+for (const environment of ["production", "staging"])
+  test(`${environment} seals the candidate and byte-exact rollback to its own GitHub environment key`, async () => {
+    const selected = { ...input, environment };
+    await sodium.ready;
+    // Both environments use the same GitHub key id. Observe the recipient of
+    // each real encryption call so a wrong environment key cannot pass on id alone.
+    const recipients = [];
+    const seal = sodium.crypto_box_seal;
+    sodium.crypto_box_seal = (message, publicKey, ...rest) => {
+      recipients.push(
+        sodium.to_base64(publicKey, sodium.base64_variants.ORIGINAL),
+      );
+      return seal(message, publicKey, ...rest);
+    };
+    let plan;
+    try {
+      plan = await sealRegistryPlan(
+        selected,
+        BINDING,
+        "elizaOS/eliza",
+        "a".repeat(40),
+      );
+    } finally {
+      sodium.crypto_box_seal = seal;
+    }
+    assert.deepEqual(
+      recipients,
+      Array(2).fill(trustedGithubKey("elizaOS/eliza", environment).key),
+    );
+    const plaintext = buildRegistryAddition(selected, APP);
+    assert.equal(plan.candidateSha256, plaintext.candidateSha256);
+    assert.equal(plan.sourceSha256, registryDigest(input.registry));
+    assert.equal(plan.appBindingSha256, appBindingDigest(selected, BINDING));
+    assert.equal(plan.environment, environment);
+    assert.equal(
+      Buffer.from(plan.candidate.encrypted_value, "base64").length,
+      Buffer.byteLength(plaintext.candidate) + 48,
+    );
+    assert.equal(
+      Buffer.from(plan.rollback.encrypted_value, "base64").length,
+      Buffer.byteLength(input.registry) + 48,
+    );
+    assert.equal(
+      plan.candidate.key_id,
+      trustedGithubKey("elizaOS/eliza", environment).key_id,
+    );
+    assert.equal(plan.rollback.key_id, plan.candidate.key_id);
+    assert.notEqual(
+      trustedGithubKey("elizaOS/eliza", "staging").key,
+      trustedGithubKey("elizaOS/eliza", "production").key,
+      "The environment selects different encryption material even when GitHub uses the same key id",
+    );
+    const artifact = JSON.stringify(plan);
+    assert.equal(artifact.includes(APP), false);
+    assert.equal(artifact.includes(ORG), false);
+    assert.equal(artifact.includes(OWNER), false);
+    assert.equal(artifact.includes(retained.clientId), false);
+    assert.equal(artifact.includes(retained.redirectUri), false);
+    await assert.rejects(
+      sealRegistryPlan(
+        selected,
+        BINDING,
+        "attacker/repository",
+        "a".repeat(40),
+      ),
+      /trusted_github_key_unavailable/,
+    );
+    await assert.rejects(
+      sealRegistryPlan(
+        { ...selected, environment: "preview" },
+        BINDING,
+        "elizaOS/eliza",
+        "a".repeat(40),
+      ),
+      /trusted_github_key_unavailable/,
+    );
+  });
 
-test("publication requires fresh exact bytes, retained entries, and a still-approved owner", async () => {
+test("publication requires fresh exact bytes, retained entries, and an active organization", async () => {
   const plan = buildRegistryAddition(input, APP);
   const expected = {
     candidateSha256: plan.candidateSha256,
@@ -436,6 +464,9 @@ test("publication requires fresh exact bytes, retained entries, and a still-appr
     /non_target_hash_mismatch/,
   );
   await database.query("UPDATE users SET is_active=false");
+  await database.query("UPDATE apps SET created_by_user_id=NULL");
+  await validateRegistryPublication(readOnly, fresh, expected);
+  await database.query("UPDATE organizations SET is_active=false");
   await assert.rejects(
     validateRegistryPublication(readOnly, fresh, expected),
     /callback_registration_invalid/,
@@ -463,7 +494,7 @@ test("a changed app identity is refused before publication despite the same call
   );
 });
 
-test("changed app, organization or creator cannot reach the Worker update", async () => {
+test("changed app or organization cannot reach the Worker update", async () => {
   const plan = buildRegistryAddition(input, APP);
   const expected = {
     ...plan,
@@ -492,10 +523,7 @@ test("changed app, organization or creator cannot reach the Worker update", asyn
     OTHER_OWNER,
     APP,
   ]);
-  await assert.rejects(
-    publishValidatedRegistry(readOnly, fresh, expected, "synthetic", noRequest),
-    /app_binding_mismatch/,
-  );
+  await validateRegistryPublication(readOnly, fresh, expected);
   await database.query("UPDATE apps SET id=$1 WHERE id=$2", [OTHER, APP]);
   await assert.rejects(
     publishValidatedRegistry(readOnly, fresh, expected, "synthetic", noRequest),
@@ -593,7 +621,9 @@ test("CLI failures hide provider configuration and refuse an unprotected branch"
       operation,
     );
     assert.equal(staging.status, 1);
-    assert.match(staging.stderr, /trusted_github_key_unavailable/);
+    assert.match(staging.stderr, /failed invariant=operation_failed/);
+    assert.equal(staging.stderr.includes(secret), false);
+    assert.equal(staging.stdout, "");
   }
 });
 
@@ -975,8 +1005,8 @@ test("platform planning rejects inactive, unprivileged, cross-org or malformed p
     try {
       await database.query(sql, params);
       await assert.rejects(
-        makeProvisionPlan({ ...value, organizationId: "", ownerUserId: "" }),
-        /callback_registration_invalid/,
+        makeProvisionPlan({ ...value, provisioningAuthority: "primary" }),
+        /callback_registration_invalid|protected_creation_authority_invalid|authority\./,
       );
     } finally {
       await database.query("ROLLBACK");
@@ -1288,7 +1318,7 @@ test("explicit primary authority refuses unknown modes and missing or invalid pr
       await database.query(sql, params);
       await assert.rejects(
         makeProvisionPlan(value),
-        /callback_registration_invalid/,
+        /callback_registration_invalid|protected_creation_authority_invalid|authority\./,
       );
     } finally {
       await database.query("ROLLBACK");
@@ -1366,7 +1396,7 @@ test("a fresh primary-mode postcheck detects owner changes after commit without 
   };
   await assert.rejects(
     provisionRegistry(changedAfterCommit, value, expectedProvision(plan)),
-    /provision_existing_mismatch/,
+    /provision_plan_mismatch/,
   );
   assert.equal(
     (

@@ -111,10 +111,11 @@ secret changes exclusive during this sequence; GitHub secret updates have no
 compare-and-swap check. Never install a prospective candidate before provisioning:
 a concurrent release can publish the normal source registry.
 
-These operations currently require the reviewed production key and `main`.
-Staging remains unavailable until its protected registry, primary app, database
-identity pins, and encryption key are configured and reviewed. Empty or malformed
-source registries fail closed; these operations do not initialize them.
+These operations use separate pinned GitHub environment encryption keys for
+production and staging. Production requires `main`; staging requires `staging`.
+Each environment still needs its protected registry, primary app, and database
+identity pins. Empty or malformed source registries fail closed; these operations
+do not initialize them or accept a caller-supplied encryption key.
 
 The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
 catalog binding names. It then makes one unauthenticated plans request with a
