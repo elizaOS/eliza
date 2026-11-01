@@ -6,7 +6,9 @@
  * step in admission-worker/reverse-transfer/ is checked three ways: that
  * tree's own validator accepts exactly its phase (and staging), it differs
  * from the step before only in admission ownership, and its production
- * variables equal Root's effective-variable receipts.
+ * variables equal Root's effective-variable receipts. At gate 2 it also
+ * proves the phase 2 main commit is live main plus the phase 2 change, with
+ * the frozen target's admission bundle sources.
  */
 import { spawnSync } from "node:child_process";
 import {
@@ -20,7 +22,10 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { parseArgs } from "node:util";
-import { GATE_POLICY_VARIABLES } from "./production-admission-readback.ts";
+import {
+  effectiveVariables,
+  UNCARRIED_GATE_VARIABLES,
+} from "./production-admission-readback.ts";
 
 const repoRoot = resolve(import.meta.dirname, "../../..");
 export const API_CONFIG = "packages/cloud/api/wrangler.toml";
@@ -37,6 +42,30 @@ export const VALIDATOR_INPUTS = [
   "packages/cloud/api/src/inference-admission-gate.ts",
   "packages/cloud/api/src/inference-funded-budget-controller.ts",
   "packages/cloud/api/src/speech-revocation-registry.ts",
+  "packages/cloud/api/src/maps-request-allowance-controller.ts",
+  "packages/cloud/shared/src/lib/services/maps-request-policy.ts",
+  "packages/cloud/shared/src/lib/services/plan-request-limiter.ts",
+];
+// Repository sources of the admission Worker bundle (Wrangler's metafile of
+// the phase 1 dry run, by directory) and the manifests that pin its
+// dependencies. Equal sources build the same gate code.
+export const ADMISSION_BUNDLE_SOURCES = [
+  "bun.lock",
+  "package.json",
+  "tsconfig.base.json",
+  "tsconfig.json",
+  "packages/auth",
+  "packages/cloud/admission-worker/src",
+  "packages/cloud/api/package.json",
+  "packages/cloud/api/src",
+  "packages/cloud/sdk",
+  "packages/cloud/services",
+  "packages/cloud/shared",
+  "packages/contracts",
+  "packages/core",
+  "plugins/plugin-native-inference",
+  "plugins/plugin-sql",
+  "plugins/plugin-todos",
 ];
 
 export type Files = Record<string, string>;
@@ -216,38 +245,6 @@ const ADMISSION_PATHS = [
   "production.durable_objects.bindings.INFERENCE_ADMISSION_GATES",
 ];
 
-/** Root's effective-variable receipts for the production API, merged. */
-export function effectiveVariables(
-  receipts: string[],
-  script = "eliza-cloud-api-prod",
-) {
-  const merged = new Map<string, string>();
-  for (const text of receipts) {
-    const json = JSON.parse(text);
-    const table = json?.effectiveFlags?.[script] ?? json?.flags?.[script];
-    let entries: [string, unknown][];
-    if (Array.isArray(json?.flags))
-      entries = json.flags.map((flag: Config) => {
-        if (flag?.type !== "plain_text")
-          throw new Error(`Effective variable ${flag?.name} is not plain text`);
-        return [flag.name, flag.text];
-      });
-    else if (table && typeof table === "object")
-      entries = Object.entries(table);
-    else
-      throw new Error(`Unrecognized effective-variable receipt for ${script}`);
-    for (const [name, value] of entries) {
-      if (
-        typeof value !== "string" ||
-        (merged.has(name) && merged.get(name) !== value)
-      )
-        throw new Error(`Effective variable receipts disagree on ${name}`);
-      merged.set(name, value);
-    }
-  }
-  return merged;
-}
-
 /**
  * Every effective variable keeps its value in the API, and in the target
  * wherever it carries the name. Gate policy flags stay unset unless the
@@ -269,7 +266,7 @@ export function effectiveDrift(
       if (vars && (side === "API" || name in vars) && vars[name] !== value)
         problems.push(`${side} ${name} is ${vars[name]}, effective ${value}`);
   }
-  for (const name of GATE_POLICY_VARIABLES)
+  for (const name of UNCARRIED_GATE_VARIABLES)
     if (!effective.has(name))
       for (const [side, vars] of sides)
         if (vars?.[name] !== undefined)
@@ -332,6 +329,46 @@ export function auditChain(
   });
 }
 
+/**
+ * Gate 2. The phase 2 commit on `main` must be live `main` plus only the
+ * paths of the frozen phase 2 change, and build the admission bundle from
+ * the same sources as the target that serves the namespace once it commits.
+ * `live` is Root's phase 1 receipt (R1), which names the API's served commit.
+ */
+export function mainMergeProblems(facts: {
+  firstParent: string;
+  liveMain: string;
+  live: { phase?: unknown; api?: { commit?: unknown } };
+  mergePaths: string[];
+  phasePaths: string[];
+  bundlePaths: string[];
+}) {
+  const problems: string[] = [];
+  if (facts.live.phase !== "target-pending")
+    problems.push(
+      `live receipt is ${String(facts.live.phase)}, not target-pending`,
+    );
+  if (facts.live.api?.commit !== facts.liveMain)
+    problems.push(
+      `the API serves ${String(facts.live.api?.commit)}, not live main ${facts.liveMain}`,
+    );
+  if (facts.firstParent !== facts.liveMain)
+    problems.push(
+      `first parent ${facts.firstParent} is not live main ${facts.liveMain}`,
+    );
+  for (const path of facts.mergePaths)
+    if (!facts.phasePaths.includes(path))
+      problems.push(`merge changes ${path} outside the phase 2 change`);
+  for (const path of facts.bundlePaths)
+    problems.push(`admission bundle source differs from the target: ${path}`);
+  return problems;
+}
+
+const changedPaths = (from: string, to: string, paths: string[] = []) =>
+  git(["diff", "--name-only", from, to, "--", ...paths])
+    .split("\n")
+    .filter(Boolean);
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
     const { values } = parseArgs({
@@ -339,6 +376,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         effective: { type: "string", multiple: true },
         steady: { type: "string", default: "HEAD" },
         commit: { type: "string", multiple: true },
+        live: { type: "string" },
       },
     });
     if (!values.effective?.length)
@@ -382,10 +420,49 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       ],
       effectiveVariables(
         values.effective.map((path) => readFileSync(path, "utf8")),
-      ),
+      ).variables,
     );
-    console.log(JSON.stringify(report, null, 2));
-    if (report.some((entry) => entry.problems.length)) process.exitCode = 1;
+    const gates: { gate: string; commit: string; problems: string[] }[] = [];
+    const phaseTwoMain = overrides.get("source-commit");
+    if (phaseTwoMain) {
+      const liveMain = overrides.get("source-owned");
+      if (!liveMain || !values.live)
+        throw new Error(
+          "Gate 2 needs --commit source-owned=<live main SHA> and --live <R1 receipt>",
+        );
+      const row = (phase: string) =>
+        rows.find((item) => item.phase === phase)?.commit ?? "";
+      gates.push({
+        gate: "2: phase 2 main merge",
+        commit: phaseTwoMain,
+        problems: mainMergeProblems({
+          firstParent: git(["rev-parse", `${phaseTwoMain}^1`]).trim(),
+          liveMain,
+          live: JSON.parse(readFileSync(values.live, "utf8")),
+          mergePaths: changedPaths(liveMain, phaseTwoMain),
+          phasePaths: changedPaths(row("source-owned"), row("source-commit")),
+          bundlePaths: changedPaths(
+            row("target-pending"),
+            phaseTwoMain,
+            ADMISSION_BUNDLE_SOURCES,
+          ),
+        }),
+      });
+      if (values.steady !== "HEAD") {
+        const parent = git(["rev-parse", `${steady}^1`]).trim();
+        gates.push({
+          gate: "3: steady state main merge",
+          commit: steady,
+          problems:
+            parent === phaseTwoMain
+              ? []
+              : [`first parent ${parent} is not the phase 2 main commit`],
+        });
+      }
+    }
+    console.log(JSON.stringify([...report, ...gates], null, 2));
+    if ([...report, ...gates].some((entry) => entry.problems.length))
+      process.exitCode = 1;
   } catch (error) {
     console.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;
