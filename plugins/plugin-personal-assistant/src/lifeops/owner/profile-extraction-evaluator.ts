@@ -11,6 +11,7 @@ import type {
 } from "@elizaos/core";
 import { hasRoleAccess } from "@elizaos/core";
 import { resolveKnowledgeGraphService } from "@elizaos/plugin-relationships";
+import { resolveKnownTimeZone } from "../defaults.js";
 import { SELF_ENTITY_ID } from "../entities/types.js";
 import {
   createOwnerFactStore,
@@ -100,10 +101,24 @@ function messageText(value: unknown): string {
   return typeof text === "string" ? text : "";
 }
 
+/**
+ * The zone a "my timezone is …" statement names, or null. The capture keeps
+ * `.`, so the period that ends the sentence rides along. The stored fact is
+ * the shared calendar zone, which refuses anything that is not an IANA zone,
+ * so keep only a zone the shared resolver knows.
+ */
+function cleanTimeZone(raw: string | undefined): string | null {
+  const value = raw?.replace(/\.+$/u, "");
+  return value ? resolveKnownTimeZone(value) : null;
+}
+
 function collectFactHints(text: string, facts: OwnerFactsPatch): void {
   for (const entry of FACT_PATTERNS) {
     const match = entry.pattern.exec(text);
-    const value = cleanName(match?.[1]);
+    const value =
+      entry.key === "timezone"
+        ? cleanTimeZone(match?.[1])
+        : cleanName(match?.[1]);
     if (value) {
       facts[entry.key] = value;
     }
