@@ -86,15 +86,18 @@ function valueRuntimeType(value: unknown): RuntimeParameterType {
 
 /**
  * Every value a property pins with `const`/`enum`, on the property itself or
- * on its `anyOf`/`oneOf` branches. Used to read the runtime kind of a property
- * that names no `type`: pydantic emits `{"const": "fast"}` for a single-value
- * Literal and FastMCP unions carry branch `const`/`enum` sets.
+ * on its `anyOf`/`oneOf` branches that name no `type`. Used to read the
+ * runtime kind of a property that names no `type`: pydantic emits
+ * `{"const": "fast"}` for a single-value Literal and FastMCP unions carry
+ * branch `const`/`enum` sets. A branch that names a type already contributes
+ * that type, so its pins are not read here.
  */
 function declaredPinnedValues(prop: JsonSchemaProperty): unknown[] {
   const values: unknown[] = [];
   if (prop.const !== undefined) values.push(prop.const);
   if (prop.enum?.length) values.push(...prop.enum);
   for (const branch of prop.anyOf ?? prop.oneOf ?? []) {
+    if (branch.type !== undefined) continue;
     if (branch.const !== undefined) values.push(branch.const);
     if (branch.enum?.length) values.push(...branch.enum);
   }
@@ -105,25 +108,35 @@ function declaredPinnedValues(prop: JsonSchemaProperty): unknown[] {
  * The value set a call must match: a top-level `const`, or a union whose every
  * branch pins its own values with `const`/`enum` (a `null` branch pins null).
  * Returns undefined when any branch stays open, because then the union accepts
- * more than the pinned values.
+ * more than the pinned values. For a `oneOf` the per-branch sets ride along:
+ * the value must be pinned by exactly one branch, not by the union as a whole
+ * (the same exactly-one reading `isNullable` applies to `oneOf` branches).
  */
-function enforcedPinnedValues(prop: JsonSchemaProperty): unknown[] | undefined {
-  if (prop.const !== undefined) return [prop.const];
+function enforcedPinnedValues(
+  prop: JsonSchemaProperty
+): { values: unknown[]; branchSets?: unknown[][] } | undefined {
+  if (prop.const !== undefined) return { values: [prop.const] };
   const branches = prop.anyOf ?? prop.oneOf;
   if (!branches?.length) return undefined;
-  const values: unknown[] = [];
+  const branchSets: unknown[][] = [];
   for (const branch of branches) {
     if (branch.const !== undefined) {
-      values.push(branch.const);
+      branchSets.push([branch.const]);
     } else if (branch.enum?.length) {
-      values.push(...branch.enum);
+      branchSets.push([...branch.enum]);
     } else if (branch.type === "null") {
-      values.push(null);
+      branchSets.push([null]);
     } else {
       return undefined;
     }
   }
-  return values;
+  const values: unknown[] = [];
+  for (const set of branchSets) {
+    for (const value of set) {
+      if (!values.some((candidate) => deepEqual(candidate, value))) values.push(value);
+    }
+  }
+  return prop.anyOf === undefined ? { values, branchSets } : { values };
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -141,21 +154,26 @@ function deepEqual(a: unknown, b: unknown): boolean {
  * Runtime types a property accepts. A property with no `type` takes the types
  * of its `anyOf`/`oneOf` branches: FastMCP emits
  * `{"anyOf":[{"type":"string"},{"type":"null"}]}` for `Optional[str]`. A
- * property that names no type anywhere still pins its values with
+ * property or branch that names no type can still pin its values with
  * `const`/`enum` (pydantic emits `{"const": "fast"}` for a single-value
- * Literal), so the kind comes from the pinned values. An untyped branch with
- * no pinned values, or no constraint at all, keeps the `object` fallback.
+ * Literal), so the pinned values contribute their kind as well. A branch with
+ * no type and no pinned values, or no constraint at all, keeps the `object`
+ * fallback.
  */
 function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] {
   const branches = prop.anyOf ?? prop.oneOf;
   const names =
     prop.type !== undefined
       ? [prop.type].flat()
-      : branches?.length && branches.every((branch) => branch.type !== undefined)
-        ? branches.flatMap((branch) => [branch.type as string | string[]].flat())
+      : branches?.length
+        ? branches
+            .flatMap((branch) => [branch.type as string | string[]].flat())
+            .filter((name) => name !== undefined)
         : [];
   const types = new Set(names.filter((name) => name !== "null").map(mapJsonSchemaType));
-  if (types.size === 0) {
+  if (prop.type === undefined) {
+    // The pinned kinds join the branch types, so a union of a typed branch
+    // and a pinned branch declares both kinds.
     for (const value of declaredPinnedValues(prop)) {
       if (value !== null) types.add(valueRuntimeType(value));
     }
@@ -402,8 +420,16 @@ export function validateParamsAgainstSchema(
       if (value === undefined) continue;
 
       const pinned = enforcedPinnedValues(prop);
-      const pinnedFailed =
-        pinned !== undefined && !pinned.some((candidate) => deepEqual(candidate, value));
+      let pinnedFailed =
+        pinned !== undefined && !pinned.values.some((candidate) => deepEqual(candidate, value));
+      if (!pinnedFailed && pinned?.branchSets) {
+        // A `oneOf` value must be pinned by exactly one branch; a value that
+        // two branches pin matches both and is not valid for the union.
+        const matchingBranches = pinned.branchSets.filter((set) =>
+          set.some((candidate) => deepEqual(candidate, value))
+        ).length;
+        pinnedFailed = matchingBranches !== 1;
+      }
 
       const allowedTypes = propertyRuntimeTypes(prop);
       const actual = getValueType(value);
@@ -424,10 +450,15 @@ export function validateParamsAgainstSchema(
       }
 
       if (pinnedFailed && pinned) {
+        const pinnedBySeveralBranches =
+          pinned.branchSets !== undefined &&
+          pinned.values.some((candidate) => deepEqual(candidate, value));
         errors.push(
-          pinned.length === 1
-            ? `Parameter '${name}' must be ${JSON.stringify(pinned[0])}`
-            : `Parameter '${name}' must be one of: ${pinned.map((v) => JSON.stringify(v)).join(", ")}`
+          pinnedBySeveralBranches
+            ? `Parameter '${name}' matches more than one branch of the oneOf`
+            : pinned.values.length === 1
+              ? `Parameter '${name}' must be ${JSON.stringify(pinned.values[0])}`
+              : `Parameter '${name}' must be one of: ${pinned.values.map((v) => JSON.stringify(v)).join(", ")}`
         );
       }
 

@@ -81,4 +81,41 @@ describe("const and enum tool arguments without a type", () => {
     };
     expect(validateParamsAgainstSchema({ mode: "anything" }, openUnion)).toEqual([]);
   });
+
+  it("enforces a top-level const that also names a type", () => {
+    // `const` is a simultaneous constraint, not an alternative to `type`:
+    // {"type": "string", "const": "fast"} admits "fast" alone.
+    const schema = { properties: { mode: { type: "string", const: "fast" } } };
+    expect(validateParamsAgainstSchema({ mode: "fast" }, schema)).toEqual([]);
+    expect(validateParamsAgainstSchema({ mode: "slow" }, schema)).toEqual([
+      "Parameter 'mode' must be \"fast\"",
+    ]);
+  });
+
+  it("requires a oneOf value to be pinned by exactly one branch", () => {
+    const overlap = {
+      properties: { mode: { oneOf: [{ const: "a" }, { enum: ["a", "b"] }] } },
+    };
+    expect(validateParamsAgainstSchema({ mode: "b" }, overlap)).toEqual([]);
+    expect(validateParamsAgainstSchema({ mode: "a" }, overlap)).toEqual([
+      "Parameter 'mode' matches more than one branch of the oneOf",
+    ]);
+    expect(validateParamsAgainstSchema({ mode: "c" }, overlap)).toEqual([
+      'Parameter \'mode\' must be one of: "a", "b"',
+    ]);
+  });
+
+  it("declares both kinds of a union that mixes a typed and a pinned branch", () => {
+    // The pinned branch names no type, so its kind comes from its value; the
+    // union declares both kinds and validation accepts both branches' values.
+    const mixed = { properties: { v: { anyOf: [{ type: "integer" }, { const: "x" }] } } };
+    const schema = convertJsonSchemaToActionParams(mixed)?.[0]?.schema;
+    expect(schema?.type).toBeUndefined();
+    expect(schema?.anyOf).toEqual([{ type: "number" }, { type: "string" }]);
+    expect(validateParamsAgainstSchema({ v: 5 }, mixed)).toEqual([]);
+    expect(validateParamsAgainstSchema({ v: "x" }, mixed)).toEqual([]);
+    expect(validateParamsAgainstSchema({ v: true }, mixed)).toEqual([
+      "Parameter 'v' expected number | string, got boolean",
+    ]);
+  });
 });
