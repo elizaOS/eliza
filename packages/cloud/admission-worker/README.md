@@ -15,7 +15,9 @@ Accounting recovery stays on the API through the private
 `InferenceRecoveryService` binding. The service validates the canonical recovery
 context and awaits actor-owned balance-fence callbacks. Failure retains the lease
 for the existing retry path. Database, cache, mail and accounting credentials stay
-with the API; this Worker does not need copies of those credentials. Funded
+with the API; this Worker does not need copies of those credentials. Cold policy
+hydration and committed mutation inspection use that same private capability.
+Warm rate-policy requests keep using the stored policy and existing counters. Funded
 admission remains disabled by default.
 
 ## Validation

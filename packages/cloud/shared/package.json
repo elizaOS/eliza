@@ -432,6 +432,7 @@
     "./lib/services/inference-admission-recovery": "./src/lib/services/inference-admission-recovery.ts",
     "./lib/services/inference-admission-snapshot": "./src/lib/services/inference-admission-snapshot.ts",
     "./lib/services/inference-policy-contract": "./src/lib/services/inference-policy-contract.ts",
+    "./lib/services/inference-policy-primary": "./src/lib/services/inference-policy-primary.ts",
     "./lib/services/inference-funded-budget-admission": "./src/lib/services/inference-funded-budget-admission.ts",
     "./lib/services/inference-funding-budget-protocol": "./src/lib/services/inference-funding-budget-protocol.ts",
     "./lib/services/inference-policy-fence": "./src/lib/services/inference-policy-fence.ts",

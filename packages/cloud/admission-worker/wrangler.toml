@@ -15,6 +15,7 @@ __filename = "\"/worker.js\""
 
 [alias]
 "@elizaos/cloud-shared/lib/services/inference-admission-recovery" = "./src/recovery-service.ts"
+"@elizaos/cloud-shared/lib/services/inference-policy-primary" = "./src/policy-service.ts"
 "@elizaos/plugin-elevenlabs" = "../api/src/stubs/elizaos-plugin-elevenlabs.ts"
 "@elizaos/cloud-sdk" = "../sdk/src/index.ts"
 "@elizaos/cloud-shared" = "../shared/src/index.ts"
