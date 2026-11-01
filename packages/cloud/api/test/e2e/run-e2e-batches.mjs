@@ -232,10 +232,10 @@ async function ensureServer() {
   }
 }
 
-async function runBounded(commandArgs, cwd) {
+async function runBounded(commandArgs, cwd, fixtureEnv = {}) {
   const result = await runCommandWithWatchdog(bun, commandArgs, {
     cwd,
-    env: e2eEnv,
+    env: { ...e2eEnv, ...fixtureEnv },
     writeOut: (text) => process.stdout.write(text),
     writeErr: (text) => process.stderr.write(text),
   });
@@ -317,6 +317,11 @@ try {
     );
   }
   for (const testFile of testFiles) {
+    const strictGroupD = testFile.endsWith("group-d-ai-media.test.ts");
+    const disposableDatabase = ownsLocalServer && !configuredDatabaseUrl &&
+      !process.env.TEST_PGLITE_DATA_DIR && process.env.TEST_PGLITE_PERSIST !== "1";
+    if (strictGroupD && !disposableDatabase)
+      throw new Error("Group D isolated fixtures require an owned transient PGlite store; configured databases are preserved.");
     console.log(`[api-e2e] START ${testFile}`);
     const result = await runBounded(
       [
@@ -330,6 +335,10 @@ try {
         ...extraArgs,
       ],
       appRoot,
+      {
+        CLOUD_E2E_GROUP_D_STRICT_FIXTURES: strictGroupD ? "1" : "0",
+        CLOUD_E2E_DISPOSABLE_DB: disposableDatabase ? "1" : "0",
+      },
     );
 
     if (result.error) {
