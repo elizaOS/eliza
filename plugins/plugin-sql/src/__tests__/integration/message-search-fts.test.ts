@@ -119,6 +119,8 @@ describe("searchMessages FTS + trigram (real DB)", () => {
     await seed(roomA, "I opened a PR on GitHub this morning", "assistant");
     await seed(roomA, "the café down the street has great coffee", "user");
     await seed(roomA, "please don't merge that branch yet", "assistant");
+    // Decomposed (NFD) "créme", as pasted from macOS.
+    await seed(roomA, "the cre\u0301me brulee stall is back", "user");
     await seed(roomA, "how do I edit the configuration file", "user");
     await seed(roomA, "I am configuring the webhook right now", "assistant");
     await seed(roomA, "run `SELECT * FROM users WHERE name LIKE '%bob_%'` now", "user");
@@ -157,6 +159,16 @@ describe("searchMessages FTS + trigram (real DB)", () => {
   it("3. accent + apostrophe fold — cafe~café, dont~don't", async () => {
     expect((await searchTexts("cafe")).some((t) => t.includes("café"))).toBe(true);
     expect((await searchTexts("dont")).some((t) => t.includes("don't"))).toBe(true);
+  });
+
+  it("3b. NFC before fold — decomposed query and decomposed stored text match", async () => {
+    // Decomposed query "cafe" + U+0301 finds the composed "café" row.
+    expect((await searchTexts("cafe\u0301")).some((t) => t.includes("café"))).toBe(true);
+    // A stored decomposed string is found by composed, decomposed and bare queries.
+    for (const q of ["créme", "cre\u0301me", "creme"]) {
+      expect((await searchTexts(q)).some((t) => t.includes("brulee stall"))).toBe(true);
+    }
+    expect((await searchTexts("crumble")).some((t) => t.includes("brulee stall"))).toBe(false);
   });
 
   it("4. partial word (trigram) — 'config' matches 'configuration'", async () => {
