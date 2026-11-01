@@ -168,6 +168,7 @@ it.each([
             ? "The corrected trigger has a durable receipt."
             : "No trigger was created.",
           messageToUser: expectedMessage,
+          raw: { messageToUser: expectedMessage },
           requestFullyCovered: corrected,
           ...(corrected
             ? {
