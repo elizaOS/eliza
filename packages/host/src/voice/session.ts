@@ -335,6 +335,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private assistantPlaybackSuppressedUntilMs = Number.NEGATIVE_INFINITY;
   private assistantPlaybackDroppedUplinkBytes = 0;
   private assistantPlaybackDropLogged = false;
+  private pendingTurnSuppressionActive = false;
   private turnMetrics: VoiceTurnMetricsState | null = null;
 
   private state: SessionState = "ready";
@@ -704,7 +705,8 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     // No AEC is guaranteed on the mobile clients. During assistant playback,
     // forwarding speaker echo to Ink makes the model transcribe and answer
     // itself. Drop before re-framing and metering so suppressed echo is neither
-    // provider input nor billed caller audio. Explicit UI barge-in clears this
+    // provider input nor billed caller audio. The same gate covers a submitted
+    // caller turn that has no reply audio yet. Explicit UI barge-in clears this
     // gate synchronously; acoustic barge-in is available only to AEC-safe
     // clients that opt in through the session config.
     if (this.isAssistantPlaybackSuppressed()) {
@@ -1031,13 +1033,41 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     )
       return false;
     return (
+      this.pendingTurnSuppressionActive ||
       this.assistantPlaybackActive ||
       this.now() < this.assistantPlaybackSuppressedUntilMs
     );
   }
 
+  /**
+   * Half duplex also keeps the microphone closed while a submitted caller turn
+   * waits for its reply. An action can run for seconds before any audio, and
+   * caller speech in that gap would commit a new turn and abort the reply of
+   * an action that already ran. First reply audio hands the gate to playback
+   * suppression; a turn that ends without audio releases it in settle.
+   */
+  private armPendingTurnSuppression(): void {
+    if (
+      this.config.acousticBargeInEnabled === true ||
+      this.continuousHandoffEnabled
+    )
+      return;
+    this.pendingTurnSuppressionActive = true;
+    // A late drain report for the previous reply must not release this turn.
+    this.pendingPlaybackCompletionTraceId = null;
+    this.assistantPlaybackDropLogged = false;
+    this.discardSuppressedUplinkState();
+    logger.info(
+      {
+        traceId: this.currentVoiceTurnId,
+      },
+      "[voice-session] half-duplex pending-turn suppression armed",
+    );
+  }
+
   private armAssistantPlaybackSuppression(): void {
     this.pendingPlaybackCompletionTraceId = null;
+    this.pendingTurnSuppressionActive = false;
     if (this.continuousHandoffEnabled) {
       // Continuous handoff keeps the uplink open, but still needs a truthful
       // first-audio marker so a thinking-time utterance cannot be reported as
@@ -1070,6 +1100,9 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   }
 
   private settleAssistantPlaybackSuppression(): void {
+    // A turn that ends before any reply audio has no echo tail to wait out, so
+    // the caller can speak again at once, e.g. to retry after an error.
+    this.pendingTurnSuppressionActive = false;
     if (!this.assistantPlaybackActive) return;
     if (this.continuousHandoffEnabled) {
       this.assistantPlaybackActive = false;
@@ -1105,6 +1138,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private clearAssistantPlaybackSuppression(): void {
     this.pendingPlaybackCompletionTraceId = null;
     const wasSuppressed = this.isAssistantPlaybackSuppressed();
+    this.pendingTurnSuppressionActive = false;
     this.assistantPlaybackActive = false;
     this.assistantPlaybackStartedAtMs = null;
     this.assistantPlaybackAudioBytes = 0;
@@ -1561,6 +1595,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
 
     this.state = "thinking";
     this.callerResponseTurnCount += 1;
+    this.armPendingTurnSuppression();
     this.activeResponseModelSettled = this.runResponseTurn(
       transcript,
       traceId,
