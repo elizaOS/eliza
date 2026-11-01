@@ -14,6 +14,7 @@ import {emitSpeechProxyTiming,timeSpeechProxyFetch,speechUpstreamTraceId} from "
  * `for (;;)` warming loop forever.
  */
 import type http from "node:http";
+import { once } from "node:events";
 import { setTimeout as delay } from "node:timers/promises";
 import { ELIZA_CLOUD_TTS_MAX_TEXT_CHARS } from "../cloud-config/server-cloud-tts.js";
 import { _internalResolveCloudApiKey } from "../cloud-config/server-cloud-tts.js";
@@ -303,22 +304,49 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
             sendJsonErrorResponse(res, 502, `Eliza Cloud TTS failed (${lastStatus || 502}): ${lastDetails}`);
             return true;
         }
+        // Cloud sends the mp3 chunked as the provider synthesizes it. Forward
+        // each chunk as it arrives so playback can start at the first frame
+        // instead of after the whole clip. Headers are committed with the first
+        // chunk: a body that fails before any audio still gets the JSON 502
+        // envelope, and a failure after that destroys the response so the
+        // client sees a truncated clip, never a cleanly ended one.
+        const audio=cloudResponse;
         const drainStarted=Date.now();
-        let audioBuffer:Buffer;
-        try{audioBuffer=Buffer.from(await cloudResponse.arrayBuffer());}
-        catch(error){emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),status:cloudResponse.status,outcome:"threw",upstreamTraceId:speechUpstreamTraceId(cloudResponse)});throw error;}
-        emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes:audioBuffer.length,status:cloudResponse.status,outcome:"returned",upstreamTraceId:speechUpstreamTraceId(cloudResponse)});
-        client.signal.throwIfAborted();
-        forwardCloudSpeechHeaders(cloudResponse, res, "tts");
+        const reader=audio.body?.getReader();
+        let bytes=0;
+        let firstChunkMs:number|undefined;
+        const commit=()=>{
+            firstChunkMs=Math.max(0,Date.now()-drainStarted);
+            forwardCloudSpeechHeaders(audio, res, "tts");
+            res.statusCode = 200;
+            res.setHeader("Content-Type", "audio/mpeg");
+            res.setHeader("Cache-Control", "no-store");
+        };
+        try{
+            while(reader){
+                const chunk=await reader.read();
+                client.signal.throwIfAborted();
+                if(chunk.done)break;
+                if(!chunk.value.byteLength)continue;
+                if(firstChunkMs===undefined)commit();
+                bytes+=chunk.value.byteLength;
+                if(!res.write(chunk.value))await once(res,"drain",{signal:client.signal});
+            }
+            if(firstChunkMs===undefined)commit();
+        }
+        catch(error){
+            emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes,firstChunkMs,status:audio.status,outcome:"threw",upstreamTraceId:speechUpstreamTraceId(audio)});
+            if(res.headersSent){res.destroy();return true;}
+            throw error;
+        }
+        finally{await reader?.cancel().catch(()=>{});}
+        emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes,firstChunkMs,status:audio.status,outcome:"returned",upstreamTraceId:speechUpstreamTraceId(audio)});
         ttsDebug("server:cloud-tts:success", {
-            bytes: audioBuffer.length,
+            bytes,
             preview: ttsPreview,
             ...dbgExtra,
         });
-        res.statusCode = 200;
-        res.setHeader("Content-Type", "audio/mpeg");
-        res.setHeader("Cache-Control", "no-store");
-        res.end(audioBuffer);
+        res.end();
         return true;
     }
     catch (err) {

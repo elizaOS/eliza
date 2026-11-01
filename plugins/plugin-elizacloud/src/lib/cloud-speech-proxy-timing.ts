@@ -42,6 +42,8 @@ export type SpeechProxyObservation = {
   durationMs?: number;
   status?: number;
   bytes?: number;
+  /** body_drain only: ms from upstream headers to the first audio chunk sent on. */
+  firstChunkMs?: number;
   upstreamTraceId?: string;
   upstreamCfRay?: string;
   upstreamServerTimingMs?: Partial<Record<SpeechServerTimingMetric, number>>;
