@@ -67,7 +67,7 @@ beforeAll(async () => {
     ],
     [
       /\/voice\/cartesia-ink\.ts$/,
-      `${common} export function createCartesiaInkRealtimeSession({onEvent}){let bytes=0;stats().sttOpened=(stats().sttOpened??0)+1;return {sendAudioChunk(chunk){bytes+=chunk.byteLength;stats().pcmBytes=bytes;onEvent({type:'transcript-update',transcript:'hello'});},cancel(){stats().sttCancelled=true;},async drain(){stats().sttDrained=true;stats().sttDrains=(stats().sttDrains??0)+1;return {source:'provider-graceful-close',audioBytes:bytes,sampleRate:16000,channels:1,encoding:'pcm_s16le'};}};}`,
+      `${common} export const CARTESIA_INK_CHUNK_BYTES=3200;export function createCartesiaInkRealtimeSession({onEvent}){let bytes=0;stats().sttOpened=(stats().sttOpened??0)+1;return {sendAudioChunk(chunk){if(chunk.byteLength!==3200)throw Error('Invalid Ink frame');bytes+=chunk.byteLength;stats().pcmBytes=bytes;onEvent({type:'transcript-update',transcript:'hello'});},cancel(){stats().sttCancelled=true;},async drain(){stats().sttDrained=true;stats().sttDrains=(stats().sttDrains??0)+1;return {source:'provider-graceful-close',audioBytes:bytes,sampleRate:16000,channels:1,encoding:'pcm_s16le'};}};}`,
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
@@ -226,7 +226,8 @@ test("ready speech streams PCM and multiple TTS contexts without another DB/auth
   expect(baseline.admissions).toBe(2);
   expect(baseline.dispatches).toBe(2);
   const transcript = next(socket as any, (value) => value.t === "stt");
-  socket.send(new Uint8Array(3200));
+  for (const length of [1024, 1024, 1024, 128])
+    socket.send(new Uint8Array(length));
   expect((await transcript).event.transcript).toBe("hello");
   for (const id of ["first", "second"]) {
     const prepared = next(

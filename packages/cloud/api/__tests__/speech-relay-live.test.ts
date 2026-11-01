@@ -190,12 +190,15 @@ maybe(
       // Feed the generated PCM at microphone speed, then enough silence for Ink's
       // bounded final-turn timer. This proves the two provider streams, not Android playback.
       for (const chunk of [...chunks, new Uint8Array(64_000)]) {
-        for (let offset = 0; offset < chunk.length; offset += 3200) {
-          socket.send(chunk.slice(offset, offset + 3200));
-          await new Promise((resolve) => setTimeout(resolve, 100));
+        for (let offset = 0; offset < chunk.length; offset += 1024) {
+          const frame = chunk.slice(offset, offset + 1024);
+          socket.send(frame);
+          await new Promise((resolve) =>
+            setTimeout(resolve, frame.length / 32),
+          );
         }
       }
-      await bounded(final.promise, "SPEECH_STT_FINAL_TIMEOUT", 10_000);
+      await bounded(final.promise, "SPEECH_STT_FINAL_TIMEOUT", 5000);
       const revokeAt = performance.now();
       revoked = true;
       await json(`/api/v1/voice/speech/session/${minted.sessionId}/revoke`, {});
