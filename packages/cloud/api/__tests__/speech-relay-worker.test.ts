@@ -71,7 +71,7 @@ beforeAll(async () => {
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
-      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;}};}close(){stats().ttsClosed=true;}}`,
+      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;stats().ttsCancels=(stats().ttsCancels??0)+1;}};}close(){stats().ttsClosed=true;}}`,
     ],
   ];
   const result = await Bun.build({
@@ -827,7 +827,7 @@ test("the Cloud client's prepare-first frames speak, finish silently and cancel 
   const socket = upgraded.webSocket!;
   socket.accept();
   const received: any[] = [];
-  socket.addEventListener("message", (event: MessageEvent) =>
+  socket.addEventListener("message", (event: { data: unknown }) =>
     received.push(
       typeof event.data === "string" ? JSON.parse(event.data) : event.data,
     ),
@@ -899,6 +899,13 @@ test("the Cloud client's prepare-first frames speak, finish silently and cancel 
   );
   send({ t: "finish", id: legacy });
   await legacyComplete;
+  // The cancel tore down the prepared context's provider stream; stats are
+  // shared across this file, so compare counts rather than a flag.
+  const settled = (await (await request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  expect(settled.ttsCancels).toBe((before.ttsCancels ?? 0) + 1);
   const closed = new Promise<void>((resolve, reject) => {
     const timer = setTimeout(
       () => reject(Error("Prepared session did not close")),
@@ -925,5 +932,6 @@ test("the Cloud client's prepare-first frames speak, finish silently and cancel 
     unknown
   >;
   expect(after.ttsOpened).toBe((before.ttsOpened ?? 0) + 4);
-  expect(after.ttsCancelled).toBe(true);
+  // Completed and cancelled contexts left nothing open for stop to cancel.
+  expect(after.ttsCancels).toBe(settled.ttsCancels);
 });
