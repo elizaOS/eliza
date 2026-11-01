@@ -293,6 +293,62 @@ jobs:
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
 
+      - name: Verify native direct inference and Google service admission
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.affected.outputs.source == 'true'
+        timeout-minutes: 3
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: |
+          set -euo pipefail
+          native_provider_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            packages/app/src/runtime/native-runtime-profile.ts \
+            packages/app/src/runtime/native-runtime-profile.test.ts \
+            packages/app/src/runtime/native-managed-google-host.ts \
+            packages/app/src/runtime/native-managed-google-host.test.ts \
+            packages/app/src/runtime/native-direct-routing.test.ts \
+            packages/agent/src/runtime/runtime-settings.ts \
+            packages/agent/src/config/blocked-env-keys.ts \
+            packages/agent/test/managed-google-env-process-only.test.ts \
+            packages/core/src/security/process-env-policy.ts \
+            plugins/plugin-local-inference/src/services/router-handler.ts \
+            plugins/plugin-local-inference/src/services/routing-policy.ts \
+            plugins/plugin-native-inference/src/model-catalog/routing-preferences.ts \
+            plugins/plugin-openai/index.ts \
+            plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderAdmission.java \
+            plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderSlot.java \
+            packages/app/vitest.host.config.ts packages/agent/vitest.config.ts \
+            packages/scripts/run-vitest.ts packages/scripts/vitest \
+            .github/workflows/pr-validation.yml || native_provider_diff_status=$?
+          if [ "$native_provider_diff_status" -eq 0 ]; then
+            echo "No native provider admission inputs changed."
+            exit 0
+          fi
+          if [ "$native_provider_diff_status" -ne 1 ]; then
+            exit "$native_provider_diff_status"
+          fi
+          (
+            cd packages/app
+            node ../scripts/run-vitest.ts run --config vitest.host.config.ts \
+              src/runtime/native-runtime-profile.test.ts \
+              src/runtime/native-managed-google-host.test.ts \
+              src/runtime/native-direct-routing.test.ts \
+              --maxWorkers=1 --no-file-parallelism \
+              --execArgv=--max-old-space-size=2048
+          )
+          (
+            cd packages/agent
+            node ../scripts/run-vitest.ts run --config vitest.config.ts \
+              test/managed-google-env-process-only.test.ts \
+              --maxWorkers=1 --no-file-parallelism \
+              --execArgv=--max-old-space-size=2048
+          )
+
       - name: Verify owning Calendar regressions
         if: steps.affected.outputs.source == 'true'
         timeout-minutes: 10

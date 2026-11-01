@@ -43,7 +43,7 @@ test.each([false, true])(
     const runtime = createSQLiteTestRuntime({
       character: {
         name: "NativeDirectRouting",
-        bio: "Routing fixture",
+        bio: ["Routing fixture"],
         settings: {},
       },
       logLevel: "fatal",
