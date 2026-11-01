@@ -568,11 +568,22 @@ test("CLI failures hide provider configuration and refuse an unprotected branch"
   assert.match(failed.stderr, /failed invariant=operation_failed/);
   assert.equal(failed.stderr.includes(secret), false);
   assert.equal(failed.stdout, "");
-  const wrongBranch = run({ ...env, GITHUB_REF: "refs/heads/unreviewed" });
+  assert.match(run(env, "unknown").stderr, /failed invariant=operation\s*$/);
+  const wrongBranch = run(
+    { ...env, GITHUB_REF: "refs/heads/unreviewed" },
+    "provision-primary",
+  );
   assert.equal(wrongBranch.status, 1);
   assert.match(wrongBranch.stderr, /failed invariant=protected_branch/);
   assert.equal(wrongBranch.stderr.includes(secret), false);
-  for (const operation of ["plan-addition", "publish-registry"]) {
+  for (const operation of [
+    "plan-addition",
+    "publish-registry",
+    "plan-provision",
+    "provision-registry",
+    "plan-provision-primary",
+    "provision-primary",
+  ]) {
     const staging = run(
       {
         ...env,
@@ -1195,5 +1206,174 @@ test("a fresh post-commit snapshot detects changed provisioning metadata without
     (await database.query("SELECT name FROM apps WHERE id=$1", [NEW_APP]))
       .rows[0].name,
     "Changed",
+  );
+});
+
+test("explicit primary authority provisions from the validated primary without configured-owner fallback", async () => {
+  const value = {
+    ...(await platformFixture()),
+    organizationId: "invalid",
+    ownerUserId: "",
+  };
+  await assert.rejects(
+    makeProvisionPlan(value),
+    /protected_creation_owner_required/,
+  );
+  const primary = { ...value, provisioningAuthority: "primary" };
+  const plan = await makeProvisionPlan(primary);
+  assert.equal(plan.authorityMode, "primary");
+  assert.equal(
+    plan.appBindingSha256,
+    appBindingDigest(primary, { ...BINDING, appId: NEW_APP }),
+  );
+  await provisionRegistry(writable, primary, expectedProvision(plan));
+  const created = (
+    await database.query(
+      "SELECT organization_id,created_by_user_id FROM apps WHERE id=$1",
+      [NEW_APP],
+    )
+  ).rows[0];
+  assert.deepEqual(created, {
+    organization_id: ORG,
+    created_by_user_id: OWNER,
+  });
+  assert.equal(value.organizationId, "invalid");
+  assert.equal(value.ownerUserId, "");
+});
+
+test("creation hashes prevent cross-mode replay even when both modes select the same valid owner", async () => {
+  const configured = await platformFixture();
+  const primary = { ...configured, provisioningAuthority: "primary" };
+  const configuredPlan = await makeProvisionPlan(configured);
+  const primaryPlan = await makeProvisionPlan(primary);
+  assert.equal(configuredPlan.authorityMode, "configured");
+  assert.equal(configuredPlan.appBindingSha256, primaryPlan.appBindingSha256);
+  assert.notEqual(configuredPlan.creationSha256, primaryPlan.creationSha256);
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(writable, primary, expectedProvision(configuredPlan)),
+    /provision_plan_mismatch/,
+  );
+  await assert.rejects(
+    provisionRegistry(writable, configured, expectedProvision(primaryPlan)),
+    /provision_plan_mismatch/,
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+});
+
+test("explicit primary authority refuses unknown modes and missing or invalid primary registrations", async () => {
+  const value = {
+    ...(await platformFixture()),
+    provisioningAuthority: "primary",
+  };
+  await assert.rejects(
+    makeProvisionPlan({ ...value, provisioningAuthority: "unknown" }),
+    /provision_authority_mode/,
+  );
+  await assert.rejects(
+    makeProvisionPlan({ ...value, primaryAppId: OTHER_ORG }),
+    /callback_registration_invalid/,
+  );
+  for (const [sql, params] of [
+    ["UPDATE users SET is_active=false WHERE id=$1", [OWNER]],
+    ["UPDATE users SET role='member' WHERE id=$1", [OWNER]],
+    ["UPDATE apps SET is_approved=false WHERE id=$1", [PRIMARY]],
+    ["UPDATE apps SET allowed_origins='[]'::jsonb WHERE id=$1", [PRIMARY]],
+  ]) {
+    await database.query("BEGIN");
+    try {
+      await database.query(sql, params);
+      await assert.rejects(
+        makeProvisionPlan(value),
+        /callback_registration_invalid/,
+      );
+    } finally {
+      await database.query("ROLLBACK");
+    }
+  }
+});
+
+test("primary authority is re-derived under the repair lock and changed ownership refuses creation", async () => {
+  const value = {
+    ...(await platformFixture()),
+    provisioningAuthority: "primary",
+  };
+  await database.query("INSERT INTO users VALUES ($1,$2,true,NULL,'admin')", [
+    OTHER_OWNER,
+    ORG,
+  ]);
+  const plan = await makeProvisionPlan(value);
+  const changedAtLock = {
+    async query(sql, params) {
+      const result = await writable.query(sql, params);
+      if (sql.includes("pg_advisory_xact_lock"))
+        await database.query(
+          "UPDATE apps SET created_by_user_id=$1 WHERE id=$2",
+          [OTHER_OWNER, PRIMARY],
+        );
+      return result;
+    },
+  };
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(changedAtLock, value, expectedProvision(plan)),
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+  assert.equal(
+    (
+      await database.query("SELECT created_by_user_id FROM apps WHERE id=$1", [
+        PRIMARY,
+      ])
+    ).rows[0].created_by_user_id,
+    OWNER,
+  );
+  assert.equal(
+    (
+      await database.query("SELECT count(*)::int AS n FROM apps WHERE id=$1", [
+        NEW_APP,
+      ])
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("a fresh primary-mode postcheck detects owner changes after commit without claiming rollback", async () => {
+  const value = {
+    ...(await platformFixture()),
+    provisioningAuthority: "primary",
+  };
+  await database.query("INSERT INTO users VALUES ($1,$2,true,NULL,'admin')", [
+    OTHER_OWNER,
+    ORG,
+  ]);
+  const plan = await makeProvisionPlan(value);
+  const changedAfterCommit = {
+    async query(sql, params) {
+      const result = await writable.query(sql, params);
+      if (sql === "COMMIT")
+        await database.query(
+          "UPDATE apps SET created_by_user_id=$1 WHERE id=$2",
+          [OTHER_OWNER, PRIMARY],
+        );
+      return result;
+    },
+  };
+  await assert.rejects(
+    provisionRegistry(changedAfterCommit, value, expectedProvision(plan)),
+    /provision_existing_mismatch/,
+  );
+  assert.equal(
+    (
+      await database.query("SELECT created_by_user_id FROM apps WHERE id=$1", [
+        NEW_APP,
+      ])
+    ).rows[0].created_by_user_id,
+    OWNER,
   );
 });
