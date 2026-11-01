@@ -1,4 +1,4 @@
-import {emitSpeechProxyTiming,timeSpeechProxyFetch,speechUpstreamTraceId} from "./cloud-speech-proxy-timing";
+import {emitSpeechProxyTiming,timeSpeechProxyFetch,speechUpstreamTraceId,speechProxyFailureClass} from "./cloud-speech-proxy-timing";
 /**
  * Cloud TTS helpers — proxy to Eliza Cloud (`api.eliza.app`).
  *
@@ -218,6 +218,7 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
         let lastStatus = 0;
         let lastDetails = "unknown error";
         let cloudResponse: Response | null = null;
+        let cloudSignal: AbortSignal = client.signal;
         let successfulCandidate=-1;
         for (let i = 0; i < cloudUrls.length; i++) {
             const cloudUrl = cloudUrls[i];
@@ -230,10 +231,11 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
             // fallback transport.
             const idempotencyKey = req.headers["idempotency-key"];
             let attempt: Response;
+            let ttsSignal: AbortSignal;
             let warmingRetries = 0;
             for (;;) {
                 client.signal.throwIfAborted();
-                const ttsSignal = cloudProxyAbortSignal("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", client.signal);
+                ttsSignal = cloudProxyAbortSignal("ELIZAOS_CLOUD_TTS_TIMEOUT_MS", client.signal);
                 attempt = await timeSpeechProxyFetch(()=>fetch(cloudUrl, {
                     method: "POST",
                     headers: {
@@ -263,6 +265,7 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
             }
             if (attempt.ok) {
                 cloudResponse = attempt;
+                cloudSignal = ttsSignal;
                 successfulCandidate=i;
                 ttsDebug("server:cloud-tts:upstream-ok", {
                     urlIndex: i,
@@ -309,10 +312,16 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
         // instead of after the whole clip. Headers are committed with the first
         // chunk: a body that fails before any audio still gets the JSON 502
         // envelope, and a failure after that destroys the response so the
-        // client sees a truncated clip, never a cleanly ended one.
+        // client sees a truncated clip, never a cleanly ended one. The body
+        // stays under the successful attempt's TTS deadline and client abort,
+        // including backpressure waits on a connected reader that stops
+        // draining; the abort cancels the upstream even mid-read.
         const audio=cloudResponse;
+        const signal=cloudSignal;
         const drainStarted=Date.now();
         const reader=audio.body?.getReader();
+        const cancelUpstream=()=>{void reader?.cancel(signal.reason).catch(()=>{});};
+        signal.addEventListener("abort",cancelUpstream,{once:true});
         let bytes=0;
         let firstChunkMs:number|undefined;
         const commit=()=>{
@@ -323,23 +332,24 @@ export async function handleCloudTtsPreviewRoute(req: http.IncomingMessage, res:
             res.setHeader("Cache-Control", "no-store");
         };
         try{
+            signal.throwIfAborted();
             while(reader){
                 const chunk=await reader.read();
-                client.signal.throwIfAborted();
+                signal.throwIfAborted();
                 if(chunk.done)break;
                 if(!chunk.value.byteLength)continue;
                 if(firstChunkMs===undefined)commit();
                 bytes+=chunk.value.byteLength;
-                if(!res.write(chunk.value))await once(res,"drain",{signal:client.signal});
+                if(!res.write(chunk.value))await once(res,"drain",{signal});
             }
             if(firstChunkMs===undefined)commit();
         }
         catch(error){
-            emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes,firstChunkMs,status:audio.status,outcome:"threw",upstreamTraceId:speechUpstreamTraceId(audio)});
+            emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes,firstChunkMs,status:audio.status,outcome:"threw",failureClass:speechProxyFailureClass(signal.aborted?signal.reason:error),upstreamTraceId:speechUpstreamTraceId(audio)});
             if(res.headersSent){res.destroy();return true;}
             throw error;
         }
-        finally{await reader?.cancel().catch(()=>{});}
+        finally{signal.removeEventListener("abort",cancelUpstream);await reader?.cancel(signal.reason).catch(()=>{});}
         emitSpeechProxyTiming(timingSink,{kind:"tts",proxyRequestId,candidate:successfulCandidate,phase:"body_drain",durationMs:Math.max(0,Date.now()-drainStarted),bytes,firstChunkMs,status:audio.status,outcome:"returned",upstreamTraceId:speechUpstreamTraceId(audio)});
         ttsDebug("server:cloud-tts:success", {
             bytes,

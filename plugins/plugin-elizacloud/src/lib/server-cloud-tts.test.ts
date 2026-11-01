@@ -17,6 +17,7 @@ import { describe } from "vitest";
 import { expect } from "vitest";
 import { handleCloudSttRoute } from "./server-cloud-tts";
 import { handleCloudTtsPreviewRoute } from "./server-cloud-tts";
+import type { SpeechProxyObservation } from "./cloud-speech-proxy-timing";
 import { test } from "vitest";
 import { type LogEntry } from "@elizaos/core";
 import { vi } from "vitest";
@@ -594,12 +595,15 @@ describe("Cloud speech evidence and client lifecycle", () => {
         try{await started;await active.requestComplete;expect(signal?.aborted).toBe(false);release(new Response(kind === "tts"?new Uint8Array([73,68,51]):JSON.stringify({transcript:"synthetic transcript"})));expect((await active.received).status).toBe(200);await active.finished;expect(signal?.aborted).toBe(false);}
         finally{release(new Response("fixture cleanup"));await active.finished;await active.close();}
     });
-    async function streamedTts(){
-        let push!:ReadableStreamDefaultController<Uint8Array>,entered!:()=>void;const started=new Promise<void>(resolve=>{entered=resolve});
-        globalThis.fetch=(async()=>{entered();return new Response(new ReadableStream<Uint8Array>({start(controller){push=controller;}}),{headers:{"content-type":"audio/mpeg","X-Eliza-TTS-Provider":"cartesia"}});}) as typeof fetch;
+    async function streamedTts(source:Pick<UnderlyingDefaultSource<Uint8Array>,"pull">={}){
+        let push!:ReadableStreamDefaultController<Uint8Array>,entered!:()=>void,cancel!:(reason:unknown)=>void;const started=new Promise<void>(resolve=>{entered=resolve});
+        const cancelled=new Promise<unknown>(resolve=>{cancel=resolve});
+        globalThis.fetch=(async()=>{entered();return new Response(new ReadableStream<Uint8Array>({...source,start(controller){push=controller;},cancel}),{headers:{"content-type":"audio/mpeg","X-Eliza-TTS-Provider":"cartesia"}});}) as typeof fetch;
         const active=await proxy("tts");await started;
-        return {active,push:()=>push};
+        return {active,push:()=>push,cancelled};
     }
+    const bodyDrains=(calls:readonly unknown[][])=>calls.map(([value])=>value).filter((value):value is SpeechProxyObservation=>typeof value==="object"&&value!==null&&"phase" in value&&value.phase==="body_drain");
+    const truncation=(client:http.ClientRequest,onResponse:(res:http.IncomingMessage)=>void=()=>{})=>new Promise<{complete:boolean;ended:boolean}>(resolve=>client.once("response",res=>{let ended=false;res.on("end",()=>{ended=true});res.on("error",()=>{});onResponse(res);res.once("close",()=>resolve({complete:res.complete,ended}));}));
     test("tts forwards the first audio chunk before the upstream body ends",async()=>{
         const logs=vi.spyOn(logger,"info");
         const {active,push}=await streamedTts();
@@ -616,19 +620,56 @@ describe("Cloud speech evidence and client lifecycle", () => {
             expect(done.status).toBe(200);
             expect(Array.from(done.body)).toEqual([73,68,51,4,5]);
             await active.finished;
-            const drain=logs.mock.calls.map(([value])=>value).find(value=>typeof value==="object"&&value!==null&&"phase" in value&&value.phase==="body_drain");
+            const [drain]=bodyDrains(logs.mock.calls);
             expect(drain).toMatchObject({kind:"tts",outcome:"returned",bytes:5,status:200});
-            expect(typeof (drain as {firstChunkMs?:unknown}).firstChunkMs).toBe("number");
+            expect(typeof drain?.firstChunkMs).toBe("number");
         }finally{logs.mockRestore();await active.close();}
     });
     test("tts upstream failure after audio started truncates the response instead of ending it",async()=>{
+        const logs=vi.spyOn(logger,"info");
         const {active,push}=await streamedTts();
         try{
-            const outcome=new Promise<{complete:boolean;ended:boolean}>(resolve=>active.client.once("response",res=>{let ended=false;res.on("end",()=>{ended=true});res.on("error",()=>{});res.once("data",()=>push().error(Error("synthetic upstream reset")));res.once("close",()=>resolve({complete:res.complete,ended}));}));
+            const outcome=truncation(active.client,res=>res.once("data",()=>push().error(Error("synthetic upstream reset"))));
             await new Promise(resolve=>setImmediate(resolve));push().enqueue(new Uint8Array([73,68,51]));
             expect(await outcome).toEqual({complete:false,ended:false});
             await active.finished;
-        }finally{await active.close();}
+            expect(bodyDrains(logs.mock.calls)).toEqual([expect.objectContaining({outcome:"threw",failureClass:"other",bytes:3})]);
+        }finally{logs.mockRestore();await active.close();}
+    });
+    test("tts deadline interrupts a backpressure wait on a connected reader that stops draining",async()=>{
+        vi.stubEnv("ELIZAOS_CLOUD_TTS_TIMEOUT_MS","1000");
+        const logs=vi.spyOn(logger,"info");
+        let lastPull=0;
+        const {active,cancelled}=await streamedTts({pull(controller){lastPull=Date.now();controller.enqueue(new Uint8Array(64*1024));}});
+        try{
+            let stalled!:http.IncomingMessage;
+            const outcome=truncation(active.client,res=>{stalled=res;res.pause();});
+            const reason=await cancelled;
+            // The proxy stopped reading upstream long before the deadline: it was parked on `drain`.
+            expect(Date.now()-lastPull).toBeGreaterThan(200);
+            expect(reason).toMatchObject({name:"TimeoutError"});
+            // The proxy gives up on the still-stalled reader by itself: response destroyed, handler returned.
+            await active.disconnected;
+            await active.finished;
+            const drains=bodyDrains(logs.mock.calls);
+            expect(drains).toEqual([expect.objectContaining({kind:"tts",outcome:"threw",failureClass:"TimeoutError",status:200})]);
+            expect(drains[0]?.bytes).toBeGreaterThan(0);
+            expect(typeof drains[0]?.firstChunkMs).toBe("number");
+            // Once the reader catches up it finds a truncated clip, never a clean end.
+            stalled.resume();
+            expect(await outcome).toEqual({complete:false,ended:false});
+        }finally{logs.mockRestore();await active.close();}
+    });
+    test("tts client disconnect mid-stream cancels the upstream body",async()=>{
+        const logs=vi.spyOn(logger,"info");
+        const {active,push,cancelled}=await streamedTts();
+        try{
+            active.client.once("response",res=>res.once("data",()=>active.client.destroy()));
+            await new Promise(resolve=>setImmediate(resolve));push().enqueue(new Uint8Array([73,68,51]));
+            expect(await cancelled).toMatchObject({name:"AbortError"});
+            await active.finished;
+            expect(bodyDrains(logs.mock.calls)).toEqual([expect.objectContaining({outcome:"threw",failureClass:"AbortError",bytes:3})]);
+        }finally{logs.mockRestore();await active.close();}
     });
     test("disconnect interrupts warming backoff without another paid attempt",async()=>{
         vi.useFakeTimers();upstreamResponse=()=>Response.json({error:{code:"auth_cache_warming",retryAfter:3}},{status:503});
