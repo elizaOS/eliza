@@ -31,12 +31,13 @@ Each phase is one commit. Before a deploy, the validator must name that phase.
 | Steady state | branch tip, landed on `main` | release workflow | `adopted` |
 
 These commits are frozen. The fixes after Root's reviews of `8da60fe4`,
-`aeb1619e` and `e1dbf878` change only files that no phase deploy reads: the
-readback, the audit, the target deploy tool, their fixtures, the reverse
-patches, this runbook, and the tip's validator and release workflow. Only the
-steady state and the reverse steps read the tip's validator and workflow.
-Deploy only from a phase commit. Run the audit, the target deploy tool and the
-readback from the reviewed branch tip, in a separate checkout (`$TIP`).
+`aeb1619e`, `e1dbf878` and `5661c5cd` change only files that no phase deploy
+reads: the readback, the audit, the target deploy tool, their fixtures, the
+reverse patches, this runbook, and the tip's validator and release workflow.
+Only the steady state and the reverse steps read the tip's validator and
+workflow. Deploy only from a phase commit. Run the audit, the target deploy
+tool and the readback from the reviewed branch tip, in a separate checkout
+(`$TIP`).
 
 Use Bun 1.4.2 and built workspace dependencies (`bun run build:core`) in
 `$TIP` and in one phase checkout, `$PHASE`. The admission bundle includes
@@ -143,8 +144,8 @@ bun $TIP/packages/cloud/scripts/production-admission-target-deploy.ts \
   API version until phase 2; the uncarried gate variables stay unset; API and
   target variables match;
 - Root's saved sample: its counts and `identitySetSHA256` match the summary,
-  every sampled ID with stored data is still listed, and most of those
-  without it;
+  most sampled IDs with stored data keep it, and most of those without it
+  are still listed;
 - with `--previous`: only this phase's Worker changed version, and the sample
   file and every API and target variable value are unchanged.
 
@@ -167,11 +168,11 @@ The sample is JSON: `[{id, hasStoredData}]` or `{namespace, objects: [...]}`.
 newlines, with no trailing newline. If the saved summary used another form,
 R0 stops; Root derives the summary again from the private receipt in this
 form. The receipt holds counts, hashes and variable digests, never IDs or
-values. Traffic can add or delete a sampled object's stored data; the receipt
-counts both. An object without stored data may leave enumeration; the receipt
-counts those too. A missing sampled ID that had stored data, most of the IDs
-without stored data missing, or stored data lost in most of the sample stops
-the transfer.
+values. Traffic can add or delete a sampled object's stored data, and an
+object without stored data may then leave enumeration; the receipt counts
+each case. A missing sampled ID that had stored data has lost it. Stored data
+lost in most of the sample, or most of the IDs without stored data missing,
+stops the transfer.
 
 ## Before phase 1
 
@@ -349,8 +350,8 @@ Stop, keep every Worker, class and tombstone, and report the receipt when:
 - a second `InferenceAdmissionGate` namespace appears;
 - the script list is incomplete, or a Worker stops exporting the class code;
 - any script gains, loses or retargets a binding of `Nprod`;
-- a sampled ID with stored data disappears, most sampled IDs without stored
-  data disappear, or most of the sample loses its stored data;
+- most sampled IDs with stored data lose it (a missing one counts), or most
+  sampled IDs without stored data disappear;
 - an API variable differs from Root's receipts or from the previous receipt,
   or API and target variables differ;
 - a GitHub variable or secret the release reads changed after the last
