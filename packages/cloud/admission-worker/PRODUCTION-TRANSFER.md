@@ -20,12 +20,13 @@ adopted state (`cloud-cf-release.yml`).
 
 Each phase is one commit. Before a deploy, the validator must name that phase.
 
-| Phase | Commit | Deploy | Validator `--production --phase` |
+| Step | Commit | Deploys | `--phase` |
 | --- | --- | --- | --- |
-| 1 target pending | `489ae447576e78e5c1e5fcc4dd07894537a8c325` | admission Worker only | `target-pending` |
-| 2 source commit | `eaf2467cddcd320584b3b0850dbd668caca6c503` | API only | `source-commit` |
-| 3 target adopted | `f24f2879288313c32021ece8168f6f1549891688` | admission Worker only | `adopted` |
-| Steady state | branch tip with this runbook | release workflow | `adopted` |
+| 0 live source | `a6252d47d2c6f022ecc3736c0ed14d760dc01d51` | nothing (serving today) | `source-owned` |
+| 1 target pending | `489ae447576e78e5c1e5fcc4dd07894537a8c325` | admission Worker, Root CLI | `target-pending` |
+| 2 source commit | `eaf2467cddcd320584b3b0850dbd668caca6c503` | API, protected release from `main` | `source-commit` |
+| 3 target adopted | `f24f2879288313c32021ece8168f6f1549891688` | admission Worker, Root CLI | `adopted` |
+| Steady state | branch tip, landed on `main` | release workflow | `adopted` |
 
 Run every command from the repository root with Bun 1.4.2 and built workspace
 dependencies (`bun run build:core`). The admission deploy uses the API's
