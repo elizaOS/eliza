@@ -12,7 +12,7 @@
  *           packages/cloud/api/test/e2e
  */
 
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { resolve } from "node:path";
 import { dbWrite } from "@elizaos/cloud-shared/db/helpers";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
@@ -65,11 +65,13 @@ async function ensureTestUser({
   email,
   stewardUserId,
   role = "admin",
+  withSandbox = true,
 }: {
   slug: string;
   email: string;
   stewardUserId: string;
   role?: string;
+  withSandbox?: boolean;
 }) {
   const walletAddress = testWalletAddress(stewardUserId);
   const existingOrg = await dbWrite.query.organizations.findFirst({
@@ -134,6 +136,7 @@ async function ensureTestUser({
     .where(eq(users.id, user.id));
   await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
 
+  if (withSandbox) {
   const sandboxes = await agentSandboxesRepository.listByOrganization(
     organization.id,
   );
@@ -144,6 +147,8 @@ async function ensureTestUser({
     sandboxes,
     repository: agentSandboxesRepository,
   });
+
+  }
 
   await apiKeysService.deactivateUserKeysByName(user.id, "playwright-e2e");
   const { plainKey } = await apiKeysService.create({
@@ -189,6 +194,30 @@ const { plainKey: affiliatePlainKey } = await apiKeysService.create({
   rate_limit: 10_000,
   is_active: true,
 });
+
+// The owning runner enables these only for Group D on its transient store.
+// No new random tenants may be seeded into configured or persistent databases.
+if (process.env.CLOUD_E2E_GROUP_D_STRICT_FIXTURES === "1") {
+  if (process.env.CLOUD_E2E_DISPOSABLE_DB !== "1")
+    throw new Error("Group D isolated fixtures require the owning runner's disposable database.");
+// Each Group D strict-validation family has its own organization bucket.
+// An API key rate_limit does not override the organization strict-RPM policy.
+const strictValidationKeys: Record<string, string> = {};
+const validationRun = randomUUID();
+for (const family of ["stt", "tts", "image", "video", "fal"] as const) {
+  const identity = `e2e-strict-${validationRun}-${family}`;
+  const fixture = await ensureTestUser({
+    slug: identity,
+    email: `${identity}@example.test`,
+    stewardUserId: identity,
+    role: "admin",
+    withSandbox: false,
+  });
+  strictValidationKeys[family] = fixture.plainKey;
+}
+process.env.TEST_STRICT_VALIDATION_KEYS = JSON.stringify(strictValidationKeys);
+
+}
 
 process.env.TEST_API_KEY = owner.plainKey;
 process.env.TEST_MEMBER_API_KEY = member.plainKey;

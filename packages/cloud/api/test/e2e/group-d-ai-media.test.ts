@@ -73,8 +73,17 @@ const liveInferenceAvailable = Boolean(
   process.env.OPENAI_API_KEY?.trim() || process.env.E2E_LIVE_INFERENCE === "1",
 );
 
+type StrictValidationFamily = "stt" | "tts" | "image" | "video" | "fal";
+function strictValidationHeaders(family: StrictValidationFamily): Record<string, string> {
+  const keys = JSON.parse(process.env.TEST_STRICT_VALIDATION_KEYS ?? "{}");
+  const key = keys[family];
+  if (typeof key !== "string" || !key.trim())
+    throw new Error(`Missing isolated strict-validation fixture: ${family}`);
+  return { ...bearerHeaders(), Authorization: `Bearer ${key}` };
+}
+
 function bearerOnlyHeaders(): Record<string, string> {
-  const { Authorization } = bearerHeaders();
+  const { Authorization } = strictValidationHeaders("stt");
   return { Authorization };
 }
 
@@ -334,7 +343,7 @@ describeE2E("Group D — /api/elevenlabs/stt", () => {
 
   test("validation: non-multipart body with auth returns 400", async () => {
     const res = await api.post("/api/elevenlabs/stt", "not-json", {
-      headers: { ...bearerHeaders(), "Content-Type": "application/json" },
+      headers: { ...strictValidationHeaders("stt"), "Content-Type": "application/json" },
     });
     expect(res.status).toBe(400);
   });
@@ -350,7 +359,7 @@ describeE2E("Group D — /api/elevenlabs/tts", () => {
     const res = await api.post(
       "/api/elevenlabs/tts",
       { text: "x".repeat(5001) },
-      { headers: bearerHeaders() },
+      { headers: strictValidationHeaders("tts") },
     );
     expect(
       res.status,
@@ -362,7 +371,7 @@ describeE2E("Group D — /api/elevenlabs/tts", () => {
     const res = await api.post(
       "/api/elevenlabs/tts",
       {},
-      { headers: bearerHeaders() },
+      { headers: strictValidationHeaders("tts") },
     );
     expect(res.status).toBe(400);
   });
@@ -533,7 +542,7 @@ describeE2E("Group D — /api/v1/generate-image", () => {
     const res = await api.post(
       "/api/v1/generate-image",
       {},
-      { headers: bearerHeaders() },
+      { headers: strictValidationHeaders("image") },
     );
     expect(res.status).toBe(400);
     expect(res.status).not.toBe(501);
@@ -543,7 +552,7 @@ describeE2E("Group D — /api/v1/generate-image", () => {
     const res = await api.post(
       "/api/v1/generate-image",
       { prompt: "A simple red circle", model: "unsupported/image-model" },
-      { headers: bearerHeaders() },
+      { headers: strictValidationHeaders("image") },
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as {
@@ -568,7 +577,7 @@ describeE2E("Group D — /api/v1/generate-video", () => {
     const res = await api.post(
       "/api/v1/generate-video",
       {},
-      { headers: bearerHeaders() },
+      { headers: strictValidationHeaders("video") },
     );
     expect(res.status).toBe(400);
     expect(res.status).not.toBe(501);
@@ -578,7 +587,7 @@ describeE2E("Group D — /api/v1/generate-video", () => {
     const res = await api.post(
       "/api/v1/generate-video",
       { prompt: "A cinematic drone shot", model: "unsupported/video-model" },
-      { headers: bearerHeaders() },
+      { headers: strictValidationHeaders("video") },
     );
     expect(res.status).toBe(400);
     const body = (await res.json()) as {
@@ -600,7 +609,7 @@ describeE2E("Group D — /api/fal/proxy", () => {
   });
 
   test("happy path: with Bearer, proxy handler is reachable without upstream fal.ai", async () => {
-    const res = await api.get("/api/fal/proxy", { headers: bearerHeaders() });
+    const res = await api.get("/api/fal/proxy", { headers: strictValidationHeaders("fal") });
     // Authed but without the x-fal-target-url header the proxy rejects with
     // its own 400 ("Invalid request") before any upstream fal.ai I/O.
     expect(res.status).toBe(400);
@@ -612,7 +621,7 @@ describeE2E("Group D — /api/fal/proxy", () => {
     const res = await api.patch(
       "/api/fal/proxy",
       {},
-      { headers: bearerHeaders() },
+      { headers: strictValidationHeaders("fal") },
     );
     expect(res.status).toBe(404);
   });
