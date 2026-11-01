@@ -922,12 +922,13 @@ const ACKNOWLEDGMENT_MAX_LENGTH = 120;
 // counts, ordinals or quantity words ("one sec" stays a wait cue).
 const ACKNOWLEDGMENT_DATA_TOKEN =
   /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu;
-// A wait cue only asks for time. No assent is listed, because each one also
-// answers a question: "sure", "sure thing", "absolutely", "certainly" and "of
-// course" say yes ("Am I free Friday?"), "okay", "ok" and "alright" say it is
-// fine, "no problem" says nothing is wrong, "got it" says it arrived and "good
-// question" gives an opinion. "Hang tight" and "hang on" advise waiting
-// ("Should I leave now?") and "will do" agrees ("Will you...?").
+// A wait cue only asks for time. Assent also answers a question: "sure
+// thing", "absolutely", "certainly" and "of course" say yes ("Am I free
+// Friday?"), "okay", "ok" and "alright" say it is fine, "no problem" says
+// nothing is wrong, "got it" says it arrived and "good question" gives an
+// opinion. "Hang tight" and "hang on" advise waiting ("Should I leave now?")
+// and "will do" agrees ("Will you...?"). Only "Sure!" is read, and only to
+// open a reply whose next sentence names the work after a lead.
 const ACKNOWLEDGMENT_WAIT_CUE =
   "(?:on it|(?:one|just a) (?:sec|second|moment))";
 // The owner's own containers, which exist whatever the tools find. "Your" is
@@ -942,14 +943,11 @@ const ACKNOWLEDGMENT_CONTAINERS = `(?:your ${ACKNOWLEDGMENT_CONTAINER_NOUN}|the 
 // changes an item says the item exists or is missing ("Pulling it up now",
 // "Adding it now"). Indefinite objects ("an event", "a slot") say the same.
 const ACKNOWLEDGMENT_REFERENT = `(?:${ACKNOWLEDGMENT_CONTAINERS}|it|that|this|both)`;
-// Progress verbs as [base form, gerund], each with its object. Only look-up
-// verbs are listed. A write verb (add, save, draft, write, schedule, set up,
-// create, update) says the item is missing or the change is needed ("Adding
-// it now." after "Is the dentist on my calendar?"); "open", "read", "find",
-// "review", "scan", "go through", "work on" and "handle" read as an answer or
-// someone's status ("Opening now.", "Finding for you.", "Reviewing the
-// files."); "double-check" says it was checked already. A gerund needs an
-// object, so it never stands alone as a status ("Updating now.").
+// Look-up verbs as [base form, gerund], each with its object. A gerund needs
+// an object, so it never stands alone as a status ("Updating now.").
+// "Find", "review", "scan", "go through", "work on" and "handle" read as an
+// answer or someone's status ("Finding for you.", "Reviewing the files."),
+// and "double-check" says it was checked already.
 const ACKNOWLEDGMENT_VERBS: readonly (readonly [string, string])[] = [
   [
     `check(?: ${ACKNOWLEDGMENT_REFERENT})?`,
@@ -976,18 +974,51 @@ const ACKNOWLEDGMENT_VERBS: readonly (readonly [string, string])[] = [
     `searching ${ACKNOWLEDGMENT_CONTAINERS}`,
   ],
 ];
+// An app the owner can open, with or without a capital ("Let me open
+// Calendar.").
+const ACKNOWLEDGMENT_APP =
+  "(?:calendar|notes|inbox|maps|files|photos|settings|workflows|camera|browser)";
+// One definite item. "It" and indefinite objects are not listed: "Adding it
+// now." after "Is the dentist on my calendar?" says the item is missing.
+const ACKNOWLEDGMENT_ITEM =
+  "(?:your|the|that) (?:note|reminder|event|appointment|meeting|draft|task|email|message)";
+// An embedded question names only what will be checked: closed nouns and an
+// optional day or week, never a count, state or answer.
+const ACKNOWLEDGMENT_QUERY_NOUN =
+  "(?:meetings|events|appointments|reminders|tasks|todos|notes|emails|messages|calls)";
+const ACKNOWLEDGMENT_QUERY = `(?:whether|if) (?:there are|you have) any ${ACKNOWLEDGMENT_QUERY_NOUN}(?:(?:,|,? (?:and|or)) ${ACKNOWLEDGMENT_QUERY_NOUN})*(?: (?:today|tomorrow|this week|next week))?`;
+// A person is one capitalised word after "check with", read before
+// lower-casing and replaced by a private-use mark. A possessive, a second
+// word or anything after it falls outside the grammar.
+const ACKNOWLEDGMENT_PERSON_MARK = "\u{E000}";
+const ACKNOWLEDGMENT_PERSON =
+  /\bcheck with \p{Lu}\p{Ll}+(?![\p{L}\p{M}\p{N}'‘’ʼ-])/gu;
+// Intents only follow a lead and have no gerund: "Opening Calendar." or
+// "Saving your note." reports work under way, and "I saved your note."
+// reports it done.
+const ACKNOWLEDGMENT_INTENTS: readonly string[] = [
+  `check (?:with ${ACKNOWLEDGMENT_PERSON_MARK}|${ACKNOWLEDGMENT_QUERY})`,
+  `open (?:${ACKNOWLEDGMENT_APP}|${ACKNOWLEDGMENT_ITEM})`,
+  `read (?:${ACKNOWLEDGMENT_CONTAINERS}|${ACKNOWLEDGMENT_ITEM})`,
+  `(?:save|create|update) ${ACKNOWLEDGMENT_ITEM}`,
+];
 // "Let's" recommends ("Should I update my settings?" "Let's update them.").
 const ACKNOWLEDGMENT_LEAD =
   "(?:let me|i'll|i will|i(?:'m| am) going to|give me (?:a|one) (?:sec|second|moment) to|(?:one|just a) (?:sec|second|moment) while i)";
+const ACKNOWLEDGMENT_LEAD_FORM = `${ACKNOWLEDGMENT_LEAD} (?:${[...ACKNOWLEDGMENT_VERBS.map((verb) => verb[0]), ...ACKNOWLEDGMENT_INTENTS].join("|")})`;
 // No dates or order: "for tomorrow" states when an event is ("When is my
 // dentist appointment?"), and "first" or "then" ranks ("Which should I handle
 // first?").
 const ACKNOWLEDGMENT_TAIL = "(?:,? (?:now|for you|real quick|quickly)){0,2}";
 const ACKNOWLEDGMENT_PROGRESS = new RegExp(
   `^(?:${ACKNOWLEDGMENT_WAIT_CUE}, )?` +
-    `(?:${ACKNOWLEDGMENT_LEAD} (?:${ACKNOWLEDGMENT_VERBS.map((verb) => verb[0]).join("|")})` +
+    `(?:${ACKNOWLEDGMENT_LEAD_FORM}` +
     `|(?:i(?:'m| am) )?(?:${ACKNOWLEDGMENT_VERBS.map((verb) => verb[1]).join("|")}))` +
     `${ACKNOWLEDGMENT_TAIL}$`,
+  "u",
+);
+const ACKNOWLEDGMENT_AFTER_ASSENT = new RegExp(
+  `^${ACKNOWLEDGMENT_LEAD_FORM}${ACKNOWLEDGMENT_TAIL}$`,
   "u",
 );
 const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
@@ -1006,10 +1037,11 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * - a wait cue: on it, one/just a sec/second/moment; or
  * - progress: an optional wait cue and a comma, then a lead (let me, I'll, I
  *   will, I'm going to, give me a sec to, one sec while I) and a look-up verb
- *   in base form, or an optional "I'm" and the verb's gerund ("Checking…"),
- *   then up to two of now, for you, real quick, quickly.
+ *   or intent in base form, or an optional "I'm" and a look-up verb's gerund
+ *   ("Checking…"), then up to two of now, for you, real quick, quickly.
+ * The reply may open with "Sure!" when the sentence after it has a lead.
  *
- * The verbs and their objects:
+ * Look-up verbs and their objects:
  * - check (base form: object optional), look into, dig into: a container
  *   list or it, that, this, both;
  * - look at, look through, pull up: a container list;
@@ -1021,10 +1053,24 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * contacts, workflows, settings or account, or "the weather", joined by "and"
  * or commas ("your calendar, notes and reminders").
  *
- * Assent (sure, okay, got it, no problem), write verbs, indefinite objects,
- * dates, "first" and "then" each answer a question in some context, so they
- * are not listed. Any other word, name, emoji, dash, colon or bracket drops
- * the acknowledgement. The whole reply also has no digits, clock times,
+ * Intents, only after a lead and never as a gerund:
+ * - check with one capitalised word ("Let me check with Sarah.");
+ * - check whether or if there are or you have any meetings, events,
+ *   appointments, reminders, tasks, todos, notes, emails, messages or calls
+ *   (joined by and, or, commas), then optionally today, tomorrow, this week
+ *   or next week;
+ * - open: an app (calendar, notes, inbox, maps, files, photos, settings,
+ *   workflows, camera, browser) or an item;
+ * - read: a container list or an item;
+ * - save, create, update: an item.
+ * An item is your, the or that with note, reminder, event, appointment,
+ * meeting, draft, task, email or message.
+ *
+ * Other assent (okay, got it, no problem), other write verbs, "it" or an
+ * indefinite object after an intent, dates outside the question, "first" and
+ * "then" each answer a question in some context, so they are not listed. Any
+ * other word, name, emoji, dash, colon or bracket drops the acknowledgement.
+ * The whole reply also has no digits, clock times,
  * spelled counts, ordinals, quantity words or question marks, is at most 120
  * characters, and passes the completed-effect and empty-state detectors.
  * Callers still run the planned-reply egress checks on an accepted one.
@@ -1032,16 +1078,24 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
 export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
   const text = reply.trim();
   if (!text || text.length > ACKNOWLEDGMENT_MAX_LENGTH) return false;
-  if (text.includes("?") || ACKNOWLEDGMENT_DATA_TOKEN.test(text)) return false;
-  const sentences = text
+  if (
+    text.includes("?") ||
+    text.includes(ACKNOWLEDGMENT_PERSON_MARK) ||
+    ACKNOWLEDGMENT_DATA_TOKEN.test(text)
+  )
+    return false;
+  const words = text
+    .replace(/\s+/gu, " ")
+    .replace(ACKNOWLEDGMENT_PERSON, `check with ${ACKNOWLEDGMENT_PERSON_MARK}`)
     .toLowerCase()
     .replace(/[‘’ʼ]/gu, "'")
-    .replace(/\s+/gu, " ")
     .replace(/ ?, ?/gu, ", ")
-    .replace(/[.!…]+$/u, "")
-    .split(/[.!…]+ /u);
+    .replace(/[.!…]+$/u, "");
+  const assent = words.startsWith("sure! ");
+  const sentences = words.slice(assent ? "sure! ".length : 0).split(/[.!…]+ /u);
   return (
-    sentences.length <= 3 &&
+    sentences.length <= (assent ? 2 : 3) &&
+    (!assent || ACKNOWLEDGMENT_AFTER_ASSENT.test(sentences[0] ?? "")) &&
     sentences.every(
       (sentence) =>
         ACKNOWLEDGMENT_WAIT_SENTENCE.test(sentence) ||

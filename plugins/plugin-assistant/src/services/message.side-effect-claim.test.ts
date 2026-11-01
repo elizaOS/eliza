@@ -2076,6 +2076,16 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "Let me check your account real quick.",
     "Let me check your calendar, notes and reminders.",
     "On it. Checking your calendar. One sec.",
+    // "Sure!" before a lead, a name or embedded question after "check", and
+    // navigation, read and write intents after a lead.
+    "Sure! Let me check your calendar and notes.",
+    "Let me check with Sarah.",
+    "Let me check whether there are any meetings tomorrow.",
+    "I will read your notes.",
+    "Let me open Calendar.",
+    "I'll save your note.",
+    "Let me create that reminder.",
+    "I'll update the appointment.",
   ])("admits a forward-looking acknowledgement: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(true);
     expect(
@@ -2483,9 +2493,49 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 
+  // "Sure!", "check with", the embedded question and the open, read, save,
+  // create and update intents are closed pieces: a result after one, a
+  // gerund or past form, a possessive or second name, or a word outside the
+  // question's lists drops the acknowledgement.
+  it.each([
+    "Sure! You're free all afternoon.",
+    "Sure! Let me check your calendar. You're free.",
+    "Sure! Checking your calendar, all clear.",
+    "Let me open Calendar, you're free",
+    "Let me open Maps. Traffic looks light.",
+    "Opening Calendar now.",
+    "I will read your notes: none",
+    "I will read your notes which are empty.",
+    "I read your notes.",
+    "I'll save your note, it's saved",
+    "I'll save your note again.",
+    "Saving your note now.",
+    "Let me create that reminder for 5",
+    "Let me create that reminder for tomorrow.",
+    "Created that reminder.",
+    "I'll update the appointment to 3pm",
+    "I'll update the appointment to Friday.",
+    "Updating the appointment now.",
+    "I'll update the event, it moved to lunch.",
+    "I'll save the draft. Already saved.",
+    "Let me open the draft Sarah sent.",
+    "Let me check with Sarah, she said yes",
+    "Let me check with Sarah. She's out today.",
+    "Let me check with Sarah's assistant.",
+    "Let me check with Sarah Lee about lunch.",
+    "Let me check whether there are any meetings tomorrow, there aren't",
+    "Let me check whether there are any meetings tomorrow. There aren't.",
+    "Let me check whether there are any other meetings tomorrow.",
+    "Let me check if you have any reminders, you don't.",
+    "Let me check if you have any meetings left today.",
+  ])("drops a claim added to an intent: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
   // Natural wording outside the closed grammar is dropped as well; the final
-  // reply still answers. Names, appointments, embedded questions, a second
-  // verb, "as well", "certainly" and a fourth sentence are not in the lists.
+  // reply still answers. Possessive or titled names, an appointment with a
+  // date, other embedded questions, a second verb, "as well", "certainly" and
+  // a fourth sentence are not in the lists.
   it.each([
     "Let me pull up your calendar and check whether you have any notes.",
     "Let me check your calendar for today and look through your notes.",
@@ -2494,19 +2544,17 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "Let me go ahead and check your calendar.",
     "Let me check and get back to you.",
     "Let me check your calendar and then pull up your notes.",
-    "Let me check with Sarah.",
     "Let me move your appointment to Friday.",
     "On it! Let me search your notes for Mrs. Lee's address.",
-    "Let me check whether there are any meetings tomorrow.",
     "Let me see what's on your calendar today.",
     "Let me get back to you on that.",
     "Let me check your calendar vs. your notes.",
     "Certainly! Let me check your calendar.",
     "Okay. Let me check. One sec. Let me check your notes.",
-    // Earlier accept rows: assent, hang on or tight, will do, double-check,
-    // write verbs, open, read, find, review, scan, go through, work on,
-    // handle, let's, a date, first and then are no longer listed.
-    "Sure! Let me check your calendar and notes.",
+    // Earlier accept rows: other assent, hang on or tight, will do,
+    // double-check, other write verbs, open or read without a lead or with a
+    // container it does not take, find, review, scan, go through, work on,
+    // handle, let's, a date, first and then are not listed.
     "Got it. Let me check.",
     "Okay! Checking now.",
     "Good question! Let me check.",
