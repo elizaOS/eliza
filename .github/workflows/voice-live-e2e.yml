@@ -9,6 +9,11 @@ name: Voice Live E2E
 on:
   workflow_dispatch:
     inputs:
+      cartesia_config_commit:
+        description: "Operator-attested existing staging Cartesia configuration commit"
+        required: false
+        default: ''
+        type: string
       cartesia_latency_only:
         description: "Only two paid requests against existing staging Cartesia configuration"
         required: false
@@ -961,7 +966,7 @@ jobs:
         env:
           ELIZAOS_CLOUD_API_KEY: ${{ secrets.ELIZAOS_CLOUD_API_KEY }}
           EXPECTED_CLOUD_COMMIT: ${{ inputs.expected_cloud_commit }}
-          CARTESIA_CONFIG_COMMIT: ${{ vars.CARTESIA_CONFIG_COMMIT }}
+          CARTESIA_CONFIG_COMMIT: ${{ inputs.cartesia_config_commit }}
           RECEIPT_PATH: ${{ runner.temp }}/cartesia-latency.json
         run: node packages/scripts/verify-cartesia-latency.mjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
