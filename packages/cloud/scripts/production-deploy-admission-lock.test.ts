@@ -5,6 +5,7 @@
  * three runs; they do not just grep for group: strings.
  */
 import { describe, expect, test } from "bun:test";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import {
@@ -225,6 +226,109 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(cloudCfRelease).not.toContain("cloud-db-migrate-v2-");
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-api-");
     expect(cloudCfRelease).not.toContain("cloud-cf-deploy-app-");
+  });
+
+  test("staging publishes the validated admission authority before its API", () => {
+    const apiConfig = Bun.TOML.parse(
+      readFileSync(
+        resolve(repoRoot, "packages/cloud/api/wrangler.toml"),
+        "utf8",
+      ),
+    );
+    // The production API upload also publishes its local admission class,
+    // including after its speech flag is enabled. Only staging has split ownership.
+    expect(
+      apiConfig.env.production.durable_objects.bindings.filter(
+        (binding) => binding.name === "INFERENCE_ADMISSION_GATES",
+      ),
+    ).toEqual([
+      {
+        name: "INFERENCE_ADMISSION_GATES",
+        class_name: "InferenceAdmissionGate",
+      },
+    ]);
+    expect(
+      apiConfig.env.staging.durable_objects.bindings.find(
+        (binding) => binding.name === "INFERENCE_ADMISSION_GATES",
+      ).script_name,
+    ).toBe("eliza-cloud-admission-staging");
+    const parsed = Bun.YAML.parse(cloudCfRelease);
+    const deploy = parsed.jobs["deploy-api"].steps.find(
+      (step) => step.name === "Deploy to Cloudflare Workers",
+    ).run;
+    const fragment = deploy.match(
+      /recheck_canonical_source\nif \[ "\$DEPLOY_ENVIRONMENT" = "staging" \]; then\n[\s\S]*?bunx wrangler deploy "\$\{args\[@\]\}"\n/,
+    )?.[0];
+    expect(fragment).toBeDefined();
+
+    // Execute the committed shell ordering. The command adapters record only
+    // local calls; this test never loads credentials or contacts Cloudflare.
+    const run = (environment, failure = "") =>
+      spawnSync(
+        "bash",
+        [
+          "-c",
+          `set -euo pipefail
+args=(--env "$DEPLOY_ENVIRONMENT" --var "ELIZA_DEPLOY_COMMIT:$GITHUB_SHA")
+recheck_canonical_source() { printf 'guard\n'; }
+bun() {
+  case "$1" in
+    *reconcile-steward-email-callback-config.ts) printf 'reconcile\n' ;;
+    *verify-staging-contract.ts)
+      printf 'validate\n'
+      [ "$FAILURE" != validation ] || return 23 ;;
+    *) return 90 ;;
+  esac
+}
+bunx() {
+  if [[ "$*" == *--config* ]]; then
+    printf 'admission %s\n' "$*"
+    [ "$FAILURE" != admission ] || return 24
+  else
+    printf 'api %s\n' "$*"
+  fi
+}
+${fragment}`,
+        ],
+        {
+          cwd: repoRoot,
+          encoding: "utf8",
+          env: {
+            PATH: process.env.PATH,
+            CHECKOUT_DIR: repoRoot,
+            DEPLOY_ENVIRONMENT: environment,
+            GITHUB_SHA: "a".repeat(40),
+            FAILURE: failure,
+          },
+        },
+      );
+    const admission = `admission wrangler deploy --config ../admission-worker/wrangler.toml --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)} --tag ${"a".repeat(40)}`;
+    const api = (environment) =>
+      `api wrangler deploy --env ${environment} --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)}`;
+    const staging = run("staging");
+    expect(staging.status).toBe(0);
+    expect(staging.stdout.trim().split("\n")).toEqual([
+      "guard",
+      "reconcile",
+      "validate",
+      "guard",
+      admission,
+      "guard",
+      api("staging"),
+    ]);
+    const production = run("production");
+    expect(production.status).toBe(0);
+    expect(production.stdout.trim().split("\n")).toEqual([
+      "guard",
+      api("production"),
+    ]);
+    for (const failure of ["validation", "admission"]) {
+      const stopped = run("staging", failure);
+      expect(stopped.status).not.toBe(0);
+      expect(stopped.stdout).not.toContain("api wrangler deploy");
+      if (failure === "validation")
+        expect(stopped.stdout).not.toContain("admission wrangler deploy");
+    }
   });
 
   test("Pages builds remain bound to the admitted release environment", () => {

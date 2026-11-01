@@ -1635,6 +1635,18 @@ jobs:
           recheck_canonical_source
           if [ "$DEPLOY_ENVIRONMENT" = "staging" ]; then
             (cd "$CHECKOUT_DIR" && ENVIRONMENT=staging bun packages/cloud/scripts/reconcile-steward-email-callback-config.ts)
+            # Staging's existing organization authority lives in this adopted
+            # namespace. Publish its canonical class before the API that calls
+            # it, including speech revocation subscriptions. This is a code
+            # update, never a namespace transfer or a new quota/balance lane.
+            # Production owns this class in the API Worker and updates both together.
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/admission-worker/verify-staging-contract.ts)
+            recheck_canonical_source
+            bunx wrangler deploy \
+              --config ../admission-worker/wrangler.toml \
+              --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" \
+              --tag "$GITHUB_SHA"
+            recheck_canonical_source
           fi
           bunx wrangler deploy "${args[@]}"
           trap - ERR
