@@ -53,6 +53,8 @@ export interface ResolveInferenceSessionAuthOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   /** The caller will fuse this strong check into its admission lease. */
   deferStrongCredentialCheck?: boolean;
+  /** Return verified JWT identity metadata after the normal authorization boundary. */
+  includeVerifiedCredential?: boolean;
 }
 
 export type InferenceSessionContinuationResolution =
@@ -170,6 +172,7 @@ async function enforceStrongSessionBoundary(
   issuedAt: number,
   source: "cache" | "origin",
   deferStrongCredentialCheck = false,
+  includeVerifiedCredential = false,
 ): Promise<InferenceSessionContinuationResolution> {
   const resolved = toResolution(decision, source);
   if (resolved.kind !== "authorized") return resolved;
@@ -182,7 +185,7 @@ async function enforceStrongSessionBoundary(
   if (deferStrongCredentialCheck) return { ...resolved, credential };
   try {
     await assertInferenceCredentialActive(resolved.ctx.orgId, credential);
-    return resolved;
+    return includeVerifiedCredential ? { ...resolved, credential } : resolved;
   } catch (error) {
     if (error instanceof InferenceCredentialRevokedError) {
       return error.reason === "session_revoked" || error.reason === "session_binding_revoked"
@@ -345,6 +348,7 @@ export async function resolveInferenceSessionAuthContext(
       claims.issuedAt,
       "origin",
       deferStrongCredentialCheck,
+      options.includeVerifiedCredential === true,
     );
   }
 
@@ -380,6 +384,7 @@ export async function resolveInferenceSessionAuthContext(
         claims.issuedAt,
         "cache",
         deferStrongCredentialCheck,
+        options.includeVerifiedCredential === true,
       );
     }
   }
@@ -411,6 +416,7 @@ export async function resolveInferenceSessionAuthContext(
               claims.issuedAt,
               "origin",
               deferStrongCredentialCheck,
+              options.includeVerifiedCredential === true,
             ),
           (error) => {
             // error-policy:J7 the retained hydration above owns failure logging;
@@ -448,6 +454,7 @@ export async function resolveInferenceSessionAuthContext(
     claims.issuedAt,
     "origin",
     deferStrongCredentialCheck,
+    options.includeVerifiedCredential === true,
   );
   if (resolved.kind === "rejected") {
     if (resolved.status === 401) throw AuthenticationError();
