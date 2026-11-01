@@ -1,6 +1,5 @@
 /** Protected staging provider proof. No user text, token, or credential is logged. */
 import { test } from "bun:test";
-import { decodeSpeechRelayAudio } from "@elizaos/host/voice/speech-relay-wire";
 
 const live =
   process.env.ELIZA_VOICE_LIVE_CLOUDFLARE === "1" &&
