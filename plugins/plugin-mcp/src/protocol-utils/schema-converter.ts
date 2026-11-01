@@ -70,11 +70,81 @@ function mapJsonSchemaType(jsonType: string): RuntimeParameterType {
   }
 }
 
+function valueRuntimeType(value: unknown): RuntimeParameterType {
+  if (Array.isArray(value)) return "array";
+  switch (typeof value) {
+    case "string":
+      return "string";
+    case "number":
+      return "number";
+    case "boolean":
+      return "boolean";
+    default:
+      return "object";
+  }
+}
+
+/**
+ * Every value a property pins with `const`/`enum`, on the property itself or
+ * on its `anyOf`/`oneOf` branches. Used to read the runtime kind of a property
+ * that names no `type`: pydantic emits `{"const": "fast"}` for a single-value
+ * Literal and FastMCP unions carry branch `const`/`enum` sets.
+ */
+function declaredPinnedValues(prop: JsonSchemaProperty): unknown[] {
+  const values: unknown[] = [];
+  if (prop.const !== undefined) values.push(prop.const);
+  if (prop.enum?.length) values.push(...prop.enum);
+  for (const branch of prop.anyOf ?? prop.oneOf ?? []) {
+    if (branch.const !== undefined) values.push(branch.const);
+    if (branch.enum?.length) values.push(...branch.enum);
+  }
+  return values;
+}
+
+/**
+ * The value set a call must match: a top-level `const`, or a union whose every
+ * branch pins its own values with `const`/`enum` (a `null` branch pins null).
+ * Returns undefined when any branch stays open, because then the union accepts
+ * more than the pinned values.
+ */
+function enforcedPinnedValues(prop: JsonSchemaProperty): unknown[] | undefined {
+  if (prop.const !== undefined) return [prop.const];
+  const branches = prop.anyOf ?? prop.oneOf;
+  if (!branches?.length) return undefined;
+  const values: unknown[] = [];
+  for (const branch of branches) {
+    if (branch.const !== undefined) {
+      values.push(branch.const);
+    } else if (branch.enum?.length) {
+      values.push(...branch.enum);
+    } else if (branch.type === "null") {
+      values.push(null);
+    } else {
+      return undefined;
+    }
+  }
+  return values;
+}
+
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const aRecord = a as Record<string, unknown>;
+  const bRecord = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRecord);
+  if (aKeys.length !== Object.keys(bRecord).length) return false;
+  return aKeys.every((key) => deepEqual(aRecord[key], bRecord[key]));
+}
+
 /**
  * Runtime types a property accepts. A property with no `type` takes the types
  * of its `anyOf`/`oneOf` branches: FastMCP emits
- * `{"anyOf":[{"type":"string"},{"type":"null"}]}` for `Optional[str]`. An
- * untyped branch, or no type at all, keeps the `object` fallback.
+ * `{"anyOf":[{"type":"string"},{"type":"null"}]}` for `Optional[str]`. A
+ * property that names no type anywhere still pins its values with
+ * `const`/`enum` (pydantic emits `{"const": "fast"}` for a single-value
+ * Literal), so the kind comes from the pinned values. An untyped branch with
+ * no pinned values, or no constraint at all, keeps the `object` fallback.
  */
 function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] {
   const branches = prop.anyOf ?? prop.oneOf;
@@ -85,6 +155,11 @@ function propertyRuntimeTypes(prop: JsonSchemaProperty): RuntimeParameterType[] 
         ? branches.flatMap((branch) => [branch.type as string | string[]].flat())
         : [];
   const types = new Set(names.filter((name) => name !== "null").map(mapJsonSchemaType));
+  if (types.size === 0) {
+    for (const value of declaredPinnedValues(prop)) {
+      if (value !== null) types.add(valueRuntimeType(value));
+    }
+  }
   return types.size > 0 ? [...types] : ["object"];
 }
 
@@ -326,17 +401,34 @@ export function validateParamsAgainstSchema(
       }
       if (value === undefined) continue;
 
+      const pinned = enforcedPinnedValues(prop);
+      const pinnedFailed =
+        pinned !== undefined && !pinned.some((candidate) => deepEqual(candidate, value));
+
       const allowedTypes = propertyRuntimeTypes(prop);
       const actual = getValueType(value);
-      if (!allowedTypes.includes(actual as RuntimeParameterType)) {
+      if (!pinnedFailed && !allowedTypes.includes(actual as RuntimeParameterType)) {
         errors.push(`Parameter '${name}' expected ${allowedTypes.join(" | ")}, got ${actual}`);
       }
 
       const requiresInteger = Array.isArray(prop.type)
         ? prop.type.includes("integer") && !prop.type.includes("number")
         : prop.type === "integer";
-      if (requiresInteger && typeof value === "number" && !Number.isInteger(value)) {
+      if (
+        !pinnedFailed &&
+        requiresInteger &&
+        typeof value === "number" &&
+        !Number.isInteger(value)
+      ) {
         errors.push(`Parameter '${name}' expected integer, got ${value}`);
+      }
+
+      if (pinnedFailed && pinned) {
+        errors.push(
+          pinned.length === 1
+            ? `Parameter '${name}' must be ${JSON.stringify(pinned[0])}`
+            : `Parameter '${name}' must be one of: ${pinned.map((v) => JSON.stringify(v)).join(", ")}`
+        );
       }
 
       if (prop.enum && !prop.enum.includes(value)) {
