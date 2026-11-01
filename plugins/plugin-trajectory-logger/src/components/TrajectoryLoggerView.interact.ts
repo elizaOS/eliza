@@ -26,11 +26,14 @@ export async function interact(
   if (capability === "filter-phase") {
     const requestedPhase =
       typeof params?.phase === "string" ? params.phase.toUpperCase() : "HANDLE";
-    const list = await fetchTrajectoryList({ limit: 10 });
+    const limit = typeof params?.limit === "number" ? params.limit : 10;
+    const list = await fetchTrajectoryList({ limit });
+    // Summarize every listed trajectory: a dropped row is indistinguishable
+    // from a trajectory that does not exist.
     const details = await Promise.all(
-      list.trajectories
-        .slice(0, 5)
-        .map((trajectory) => fetchTrajectoryDetail(trajectory.id)),
+      list.trajectories.map((trajectory) =>
+        fetchTrajectoryDetail(trajectory.id),
+      ),
     );
     return details.map((detail) => ({
       id: detail.trajectory.id,
