@@ -710,6 +710,29 @@ export class SwapAction {
     logger.info(`Token approval confirmed`);
   }
 }
+/**
+ * Shape the user-facing outcome of a finished (or abandoned) swap submission.
+ * A broadcast whose receipt could not be read (`confirmationStatus:
+ * "unconfirmed"`) may still land, so it must not be reported as a completed
+ * swap — the mirror-image rule of `waitForSwapReceipt`'s doc and of the
+ * wallet-router path (`chains/wallet-action.ts`, "Confirmation uncertain").
+ */
+export function describeSwapOutcome(
+  params: SwapParams,
+  resp: Transaction
+): { text: string; succeeded: boolean } {
+  if (resp.confirmationStatus === "unconfirmed") {
+    return {
+      text: `⏳ Submitted swap of ${params.amount} ${params.fromToken} for ${params.toToken} on ${params.chain}\nTransaction Hash: ${resp.hash}\nConfirmation is uncertain: the transaction was broadcast but its receipt could not be read. Check the hash on an explorer before acting. Do not retry the swap automatically.`,
+      succeeded: false,
+    };
+  }
+  return {
+    text: `✅ Successfully swapped ${params.amount} ${params.fromToken} for ${params.toToken} on ${params.chain}\nTransaction Hash: ${resp.hash}`,
+    succeeded: true,
+  };
+}
+
 export async function buildSwapDetails(
   state: State,
   message: Memory,
@@ -1032,25 +1055,27 @@ export const swapAction = {
     }
     const action = new SwapAction(walletProvider);
     const swapResp = await action.swap(swapOptions);
-    const successText = `✅ Successfully swapped ${swapOptions.amount} ${swapOptions.fromToken} for ${swapOptions.toToken} on ${swapOptions.chain}\nTransaction Hash: ${swapResp.hash}`;
+    const outcome = describeSwapOutcome(swapOptions, swapResp);
+    const confirmationStatus = swapResp.confirmationStatus ?? "confirmed";
     if (callback) {
       callback({
-        text: successText,
+        text: outcome.text,
         content: {
-          success: true,
+          success: outcome.succeeded,
           hash: swapResp.hash,
           chain: swapOptions.chain,
           fromToken: swapOptions.fromToken,
           toToken: swapOptions.toToken,
           amount: swapOptions.amount,
+          confirmationStatus,
         },
       });
     }
     return {
       success: true,
-      text: successText,
+      text: outcome.text,
       values: {
-        swapSucceeded: true,
+        swapSucceeded: outcome.succeeded,
         inputToken: swapOptions.fromToken,
         outputToken: swapOptions.toToken,
       },
@@ -1061,6 +1086,7 @@ export const swapAction = {
         fromToken: swapOptions.fromToken,
         toToken: swapOptions.toToken,
         amount: swapOptions.amount,
+        confirmationStatus,
       },
     };
   },
