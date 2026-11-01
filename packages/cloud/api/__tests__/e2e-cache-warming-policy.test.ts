@@ -57,10 +57,13 @@ test("raw E2E fetch retries stay bounded and never replay a generic refusal", as
   try {
     for (const code of ["auth_cache_warming", "service_unavailable"]) {
       let calls = 0;
-      globalThis.fetch = (async () => {
-        calls++;
-        return refusal({ code, details: { retryable: true } });
-      }) as typeof fetch;
+      globalThis.fetch = Object.assign(
+        async () => {
+          calls++;
+          return refusal({ code, details: { retryable: true } });
+        },
+        { preconnect() {} },
+      );
       const response = await fetchRetryingCacheWarming("/synthetic", () => ({
         method: "POST",
         body: "unchanged synthetic request",
