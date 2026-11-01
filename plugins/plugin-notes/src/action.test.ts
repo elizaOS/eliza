@@ -17,13 +17,14 @@ import {
   type JsonSchema,
   type Memory,
   type NotesRequestOperation,
-  type State,
   promoteSubactionsToActions,
+  type State,
   satisfiesRoleGate,
   type UUID,
   validateSchema,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { parseEvaluatorOutput } from "../../plugin-assistant/src/runtime/evaluator.ts";
 import {
   __renderRoutingHintsBlockForTests,
   actionResultToPlannerToolResult,
@@ -34,11 +35,12 @@ import { projectToolResultForModel } from "../../plugin-assistant/src/runtime/pl
 import { collectBudgetedStageOneCandidateActions } from "../../plugin-assistant/src/services/message/planned-tool.ts";
 import { createPlannerToolDiscoveryAction } from "../../plugin-assistant/src/services/message/tool-discovery.ts";
 import { __INTERNAL_normalizeNativeToolsForCall } from "../../plugin-openai/models/text.ts";
-import { notesAction } from "./action.js";
 import {
   boundNotesRequest,
+  notesFixturePlannerRuntime,
   notesFixtureText,
 } from "./__tests__/helpers/bound-notes-request.ts";
+import { notesAction } from "./action.js";
 import { notesPlugin } from "./plugin.js";
 import {
   getNotesService,
@@ -1424,40 +1426,62 @@ describe("promoted Notes execution", () => {
             modelReplyRequired: true,
             turnComplete: false,
           }
-        : request.execute(call),
+        : actionResultToPlannerToolResult(await request.execute(call), {
+            requestOperationIssuer: request.issuer,
+          }),
     );
     const evaluate = vi.fn<
       NonNullable<Parameters<typeof runPlannerLoop>[0]["evaluate"]>
     >(async ({ trajectory }) =>
-      trajectory.steps.at(-1)?.toolCall?.name === "VIEWS"
-        ? {
-            success: true,
-            decision: "FINISH",
-            thought: "The note is saved and navigation completed.",
-            messageToUser: "Your notebook note is saved, and Notes is open.",
-            effectReceiptIds: trajectory.steps.flatMap((step) =>
-              (step.result?.effectReceipts ?? []).map(
-                (receipt) => receipt.receiptId,
-              ),
-            ),
-          }
-        : {
-            success: false,
-            decision: "NEXT_RECOMMENDED",
-            thought: "Opening Notes remains queued.",
-            recommendedToolCallId: "open-notes",
-          },
+      parseEvaluatorOutput(
+        JSON.stringify(
+          trajectory.steps.at(-1)?.toolCall?.name === "VIEWS"
+            ? {
+                success: true,
+                decision: "FINISH",
+                thought: "The note is saved and navigation completed.",
+                messageToUser:
+                  "Your notebook note is saved, and Notes is open.",
+                effectReceiptIds: trajectory.steps.flatMap((step) =>
+                  (step.result?.effectReceipts ?? []).map(
+                    (receipt) => receipt.receiptId,
+                  ),
+                ),
+              }
+            : {
+                success: false,
+                decision: "NEXT_RECOMMENDED",
+                thought: "Opening Notes remains queued.",
+                recommendedToolCallId: "open-notes",
+              },
+        ),
+      ),
     );
 
     const result = await runPlannerLoop({
-      runtime: Object.assign(runtime, { useModel }),
+      runtime: notesFixturePlannerRuntime(
+        Object.assign(runtime, { useModel }),
+        useModel,
+      ),
       requestOperationIssuer: request.issuer,
       context: request.context,
       executeToolCall,
       evaluate,
     });
 
-    expect(useModel).toHaveBeenCalledTimes(1);
+    expect(
+      useModel,
+      JSON.stringify({
+        calls: result.trajectory.steps
+          .filter((step) => step.toolCall)
+          .map((step) => ({
+            name: step.toolCall!.name,
+            success: step.result?.success,
+            receipts: step.result?.effectReceipts?.length ?? 0,
+          })),
+        evaluations: evaluate.mock.calls.length,
+      }),
+    ).toHaveBeenCalledTimes(1);
     expect(executeToolCall.mock.calls.map(([call]) => call.name)).toEqual([
       "NOTES_CREATE",
       "VIEWS",
@@ -1580,27 +1604,57 @@ describe("promoted Notes execution", () => {
         });
       const completion = "Hecho. La nota solicitada está guardada.";
       const result = await runPlannerLoop({
-        runtime: Object.assign(runtime, { useModel }),
+        runtime: notesFixturePlannerRuntime(
+          Object.assign(runtime, { useModel }),
+          useModel,
+        ),
         requestOperationIssuer: request.issuer,
         context: request.context,
-        executeToolCall: (call) => request.execute(call),
+        executeToolCall: async (call) =>
+          actionResultToPlannerToolResult(await request.execute(call), {
+            requestOperationIssuer: request.issuer,
+          }),
         evaluate: ({ trajectory }) => {
           const lastResult = trajectory.steps.at(-1)?.result;
-          return lastResult?.success
-            ? {
-                success: true,
+          // The host must first reject the unrelated completion and request
+          // another planning turn. Then the scripted judge ends honestly;
+          // it must not repeat a false FINISH until the continuation cap.
+          if (lastResult?.success && useModel.mock.calls.length > 2) {
+            return parseEvaluatorOutput(
+              JSON.stringify({
+                success: false,
                 decision: "FINISH",
-                thought: "The requested note was saved.",
-                messageToUser: completion,
+                thought:
+                  "The original operation remains unresolved; the separate result is recorded.",
+                messageToUser:
+                  "The first note could not be saved; the second note was saved.",
+                requestFullyCovered: false,
+                replyEffectStatus: "applied",
                 effectReceiptIds: lastResult.effectReceipts?.map(
                   (receipt) => receipt.receiptId,
                 ),
-              }
-            : {
-                success: false,
-                decision: "CONTINUE",
-                thought: "Correct the missing content.",
-              };
+              }),
+            );
+          }
+          return parseEvaluatorOutput(
+            JSON.stringify(
+              lastResult?.success
+                ? {
+                    success: true,
+                    decision: "FINISH",
+                    thought: "The requested note was saved.",
+                    messageToUser: completion,
+                    effectReceiptIds: lastResult.effectReceipts?.map(
+                      (receipt) => receipt.receiptId,
+                    ),
+                  }
+                : {
+                    success: false,
+                    decision: "CONTINUE",
+                    thought: "Correct the missing content.",
+                  },
+            ),
+          );
         },
       });
       expect((await run(runtime, "list", { action: "list" })).data?.count).toBe(
@@ -1617,6 +1671,8 @@ describe("promoted Notes execution", () => {
       } else {
         expect(result.finalMessage).not.toBe(completion);
         expect(useModel.mock.calls.length).toBeGreaterThan(2);
+        expect(result.evaluator?.success).not.toBe(true);
+        expect(result.evaluator?.requestFullyCovered).toBe(false);
       }
     },
   );
@@ -2339,6 +2395,11 @@ describe("literal Notes edits", () => {
     const originalSnapshot = service.snapshot();
     const useModel = vi
       .fn()
+      .mockRejectedValue(
+        new Error(
+          "Unexpected extra planner call in the two-attempt literal edit fixture",
+        ),
+      )
       .mockResolvedValueOnce({
         toolCalls: [
           {
@@ -2369,27 +2430,37 @@ describe("literal Notes edits", () => {
         ],
       });
     const result = await runPlannerLoop({
-      runtime: Object.assign(runtime, { useModel }),
+      runtime: notesFixturePlannerRuntime(
+        Object.assign(runtime, { useModel }),
+        useModel,
+      ),
       requestOperationIssuer: request.issuer,
       context: request.context,
-      executeToolCall: (call) => request.execute(call),
+      executeToolCall: async (call) =>
+        actionResultToPlannerToolResult(await request.execute(call), {
+          requestOperationIssuer: request.issuer,
+        }),
       evaluate: ({ trajectory }) => {
         const last = trajectory.steps.at(-1)?.result;
-        return last?.success
-          ? {
-              success: true,
-              decision: "FINISH",
-              thought: "Verified corrected edit.",
-              messageToUser: "The quotation marks are removed.",
-              effectReceiptIds: last.effectReceipts?.map(
-                (receipt) => receipt.receiptId,
-              ),
-            }
-          : {
-              success: false,
-              decision: "CONTINUE",
-              thought: "Correct the rejected edit.",
-            };
+        return parseEvaluatorOutput(
+          JSON.stringify(
+            last?.success
+              ? {
+                  success: true,
+                  decision: "FINISH",
+                  thought: "Verified corrected edit.",
+                  messageToUser: "The quotation marks are removed.",
+                  effectReceiptIds: last.effectReceipts?.map(
+                    (receipt) => receipt.receiptId,
+                  ),
+                }
+              : {
+                  success: false,
+                  decision: "CONTINUE",
+                  thought: "Correct the rejected edit.",
+                },
+          ),
+        );
       },
     });
     expect(useModel).toHaveBeenCalledTimes(2);

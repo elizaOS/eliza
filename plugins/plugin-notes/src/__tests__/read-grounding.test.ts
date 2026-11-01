@@ -18,10 +18,13 @@ import {
   plannedReplyHasClaimGroundingReceipt,
 } from "../../../plugin-assistant/src/services/message/egress-policy.ts";
 import { notesAction } from "../action.js";
-import { boundNotesRequest } from "./helpers/bound-notes-request.ts";
 import { notesPlugin } from "../plugin.js";
 import { NotesService } from "../service.js";
 import { NotesStore } from "../store.js";
+import {
+  boundNotesRequest,
+  notesFixturePlannerRuntime,
+} from "./helpers/bound-notes-request.ts";
 
 const runtimes: AgentRuntime[] = [];
 const directories: string[] = [];
@@ -197,7 +200,7 @@ test("the real planner re-reads Notes after a mutation with identical list argum
     } as never;
   });
   const result = await runPlannerLoop({
-    runtime,
+    runtime: notesFixturePlannerRuntime(runtime),
     requestOperationIssuer: request.issuer,
     context: request.context,
     tools: [{ name: "NOTES", description: "Read and create owner notes." }],

@@ -5,19 +5,21 @@
 import {
   type Action,
   type ActionResult,
-  type ContextObject,
-  type IAgentRuntime,
-  type Memory,
-  type NotesRequestOperation,
-  type State,
-  type HandlerCallback,
   beginRequestOperationAttempt,
   beginRequestOperationIssuer,
   bindTaskExtractionContext,
+  type ContextObject,
   commitNotesRequestRestriction,
   executePlannedToolCall,
+  type GenerateTextParams,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type NotesRequestOperation,
+  type PlannerRuntime,
   ResponseHandlerFieldRegistry,
   runWithActionRoutingContext,
+  type State,
   stringToUuid,
 } from "@elizaos/core";
 import { afterEach } from "vitest";
@@ -243,5 +245,42 @@ export async function boundNotesRequest(
         throw Error("Actual Notes handler returned no result");
       return result;
     },
+  };
+}
+
+/** Match the production message host's narrow model/logger boundary.
+ * Core execution and request authority keep the original runtime instance. */
+export function notesFixturePlannerRuntime(
+  runtime: IAgentRuntime,
+  useModel?: PlannerRuntime["useModel"],
+): PlannerRuntime {
+  const optional = runtime as IAgentRuntime &
+    Pick<PlannerRuntime, "supportsModelAttemptPreparation">;
+  return {
+    getSetting: (key) => runtime.getSetting?.(key) ?? null,
+    getModelRegistrations: () => runtime.getModelRegistrations?.() ?? [],
+    supportsModelAttemptPreparation: optional.supportsModelAttemptPreparation,
+    getService: (service) => runtime.getService?.(service) ?? null,
+    useModel:
+      useModel ??
+      ((modelType, params, provider) =>
+        runtime.useModel(modelType, params as GenerateTextParams, provider)),
+    logger: runtime.logger as PlannerRuntime["logger"],
+    ...(typeof runtime.redactSecrets === "function"
+      ? {
+          redactSecrets: (text: string) => runtime.redactSecrets(text),
+        }
+      : {}),
+    ...(typeof runtime.reportError === "function"
+      ? {
+          reportError: (
+            scope: string,
+            error: unknown,
+            context?: Record<string, unknown>,
+          ) => {
+            runtime.reportError(scope, error, context);
+          },
+        }
+      : {}),
   };
 }
