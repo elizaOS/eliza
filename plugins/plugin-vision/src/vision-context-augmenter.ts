@@ -18,9 +18,11 @@
 
 import { Buffer } from "node:buffer";
 import { logger } from "@elizaos/core";
+import { getSharp } from "./image/sharp-compat.js";
 import {
   getOcrWithCoordsService,
   type OcrWithCoordsService,
+  readPngDimensionsOrNull,
 } from "./ocr-with-coords.js";
 
 /** Raw signals extracted from an image, joined into prompt-ready strings. */
@@ -101,7 +103,7 @@ export class FusedVisionContextAugmenter {
           displayId: "vision-describe",
           sourceX: 0,
           sourceY: 0,
-          pngBytes: new Uint8Array(bytes),
+          pngBytes: await toOcrPngBytes(bytes),
         });
         const lines = res.blocks
           .map((b) => b.text.trim())
@@ -195,6 +197,24 @@ function resolveImageBytes(image: AugmenterImageInput): Buffer | null {
     }
     case "url":
       return null;
+  }
+}
+
+/**
+ * The coord-OCR seam takes encoded PNG (`OcrWithCoordsInput.pngBytes`) and
+ * `RapidOcrCoordAdapter` rejects any other format, but describe inputs are
+ * usually JPEG (camera frames, photo uploads). Re-encode a non-PNG image as
+ * PNG; bytes sharp cannot decode pass through for the OCR service to judge.
+ */
+async function toOcrPngBytes(bytes: Buffer): Promise<Uint8Array> {
+  if (readPngDimensionsOrNull(bytes) !== null) return new Uint8Array(bytes);
+  try {
+    const sharp = await getSharp();
+    return new Uint8Array(
+      await sharp(bytes, { limitInputPixels: 100_000_000 }).png().toBuffer(),
+    );
+  } catch {
+    return new Uint8Array(bytes);
   }
 }
 
