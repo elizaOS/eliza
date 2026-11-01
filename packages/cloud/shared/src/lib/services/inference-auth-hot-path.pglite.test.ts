@@ -36,6 +36,7 @@ import { users } from "../../db/schemas/users";
 import { cache } from "../cache/client";
 import { CacheKeys, CacheTTL } from "../cache/keys";
 import { runWithCloudBindingsAsync } from "../runtime/cloud-bindings";
+import { apiKeysService } from "./api-keys";
 import {
   INFERENCE_AUTH_CONTEXT_VERSION,
   type InferenceAdmissionSnapshot,
@@ -152,25 +153,44 @@ interface HotPathCall {
 }
 
 /** One Worker request with the tripwire armed, then its background work. */
-async function workerRequest(rawKey: string): Promise<HotPathCall> {
+const qualifiedBindings = {
+  INFERENCE_AUTH_CACHE_ENABLED: "true",
+  INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+  INFERENCE_ADMISSION_GATES: {
+    getByName() {
+      return {
+        async fetch() {
+          return Response.json({ allowed: true, committed: true });
+        },
+      };
+    },
+  },
+};
+
+async function workerRequest(
+  rawKey: string,
+  bindings: Record<string, unknown> = qualifiedBindings,
+): Promise<HotPathCall> {
   const background: Promise<unknown>[] = [];
   primaryArmed = true;
   primaryTouches = 0;
   let resolution: InferenceAuthResolution;
   try {
-    resolution = await resolveInferenceAuthContext(
-      new Request("https://api.eliza.app/api/v1/chat/completions", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${rawKey}` },
-      }),
-      {
-        cacheOnly: true,
-        executionCtx: {
-          waitUntil(task) {
-            background.push(task);
+    resolution = await runWithCloudBindingsAsync(bindings, () =>
+      resolveInferenceAuthContext(
+        new Request("https://api.eliza.app/api/v1/chat/completions", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${rawKey}` },
+        }),
+        {
+          cacheOnly: true,
+          executionCtx: {
+            waitUntil(task) {
+              background.push(task);
+            },
           },
         },
-      },
+      ),
     );
   } finally {
     primaryArmed = false;
@@ -247,6 +267,42 @@ describe("hosts without a cache backend", () => {
     expect(deployed.touches).toBe(0);
     await settle(deployed);
   });
+});
+
+describe("Worker cache rollout eligibility", () => {
+  for (const flags of [
+    { INFERENCE_AUTH_CACHE_ENABLED: "false", INFERENCE_STRONG_REVOCATION_ENABLED: "false" },
+    { INFERENCE_AUTH_CACHE_ENABLED: "true", INFERENCE_STRONG_REVOCATION_ENABLED: "false" },
+    { INFERENCE_AUTH_CACHE_ENABLED: "false", INFERENCE_STRONG_REVOCATION_ENABLED: "true" },
+  ]) {
+    test(`cache-only does not override auth=${flags.INFERENCE_AUTH_CACHE_ENABLED}, strong=${flags.INFERENCE_STRONG_REVOCATION_ENABLED}`, async () => {
+      const key = await seedKey();
+      await seedPositiveEntry(key);
+      await getPgliteClientForTests().query("UPDATE api_keys SET is_active = false WHERE id = $1", [
+        key.id,
+      ]);
+      let trace: import("./inference-auth-context").InferenceAuthTelemetry | undefined;
+      await expect(
+        runWithCloudBindingsAsync({ ...qualifiedBindings, ...flags }, () =>
+          resolveInferenceAuthContext(
+            new Request("https://api.eliza.app/api/v1/chat/completions", {
+              headers: { Authorization: `Bearer ${key.rawKey}` },
+            }),
+            {
+              cacheOnly: true,
+              executionCtx: { waitUntil() {} },
+              onTelemetry(value) {
+                trace = value;
+              },
+            },
+          ),
+        ),
+      ).rejects.toThrow();
+      expect(trace?.cacheRead).toBe("not_run");
+      expect(trace?.authoritative).toBe("rejected");
+      expect(trace?.cacheWrite).toBe("not_run");
+    });
+  }
 });
 
 describe("Worker inference auth never queries Postgres", () => {
@@ -482,4 +538,99 @@ describe("Worker billing admission never queries Postgres", () => {
     });
     expect(primaryTouches).toBe(0);
   });
+});
+
+describe("mobile lifecycle cache fences", () => {
+  for (const method of ["presented", "account", "exact"] as const) {
+    test(`${method} revocation rejects a retained positive entry without a primary read in the qualified cache lane`, async () => {
+      const rawKey = `eliza_mobile_${crypto.randomUUID().replaceAll("-", "").repeat(2)}`;
+      const key = {
+        rawKey,
+        keyHash: createHash("sha256").update(rawKey).digest("hex"),
+        id: crypto.randomUUID(),
+      };
+      const app = "93000000-0000-4000-8000-000000000001";
+      await getPgliteClientForTests().query(
+        `INSERT INTO api_keys(id,name,key_hash,key_prefix,organization_id,user_id,is_active,
+           usage_count,rate_limit,source_app_id,expires_at,created_at,updated_at)
+         VALUES ($1,'mobile-cache-fence',$2,'eliza_mobile_',$3,$4,true,0,1000,$5,now()+interval '1 hour',now(),now())`,
+        [key.id, key.keyHash, ORG, USER, app],
+      );
+      await seedPositiveEntry(key);
+      const revoked = new Set<string>();
+      const calls: string[] = [];
+      let unavailable = false;
+      const bindings = {
+        INFERENCE_AUTH_CACHE_ENABLED: "true",
+        INFERENCE_STRONG_REVOCATION_ENABLED: "true",
+        VOICE_SPEECH_RELAY_ENABLED: "false",
+        INFERENCE_ADMISSION_GATES: {
+          getByName(organizationId: string) {
+            expect(organizationId).toBe(ORG);
+            return {
+              async fetch(request: Request) {
+                if (unavailable) throw new Error("fixture boundary unavailable");
+                const body = (await request.json()) as { credentialId: string };
+                const path = new URL(request.url).pathname;
+                calls.push(path);
+                if (path === "/credential/revoke") {
+                  revoked.add(body.credentialId);
+                  return Response.json({ committed: true });
+                }
+                expect(path).toBe("/credential/check");
+                return revoked.has(body.credentialId)
+                  ? Response.json({ allowed: false, reason: "credential_revoked" }, { status: 403 })
+                  : Response.json({ allowed: true });
+              },
+            };
+          },
+        },
+      };
+      await runWithCloudBindingsAsync(bindings, async () => {
+        const before = await workerRequest(rawKey, bindings);
+        expect(before.resolution.kind).toBe("authorized");
+        expect(before.touches).toBe(0);
+        await settle(before);
+        const revoke = () =>
+          method === "presented"
+            ? apiKeysService.revokePresentedMobileCredential(rawKey)
+            : method === "account"
+              ? apiKeysService.revokeMobileCredentialForAccount(key.id, USER, ORG)
+              : apiKeysService.revokeExactMobileCredential({
+                  id: key.id,
+                  key_hash: key.keyHash,
+                  source_app_id: app,
+                });
+        const first = await revoke();
+        expect(first?.revokedNow).toBe(true);
+        const rows = await getPgliteClientForTests().query<{
+          is_active: boolean;
+          deleted_at: Date | null;
+        }>("SELECT is_active,deleted_at FROM api_keys WHERE id=$1", [key.id]);
+        expect(rows.rows[0]?.is_active).toBe(false);
+        expect(rows.rows[0]?.deleted_at).not.toBeNull();
+        // An independent location can retain a positive cache value after deletion
+        // or an earlier hydration can refill it. Neither may override the fence.
+        await seedPositiveEntry(key);
+        const after = await workerRequest(rawKey, bindings);
+        expect(after.resolution).toMatchObject({
+          kind: "rejected",
+          status: 401,
+          reason: "credential_inactive",
+        });
+        expect(after.touches).toBe(0);
+        await settle(after);
+        const retry = await revoke();
+        expect(retry?.revokedNow).toBe(false);
+        expect(retry?.receipt).toEqual(first?.receipt);
+        expect(calls.filter((path) => path === "/credential/revoke")).toHaveLength(2);
+        await seedPositiveEntry(key);
+        unavailable = true;
+        await expect(workerRequest(rawKey, bindings)).rejects.toThrow(
+          "revocation boundary is unavailable",
+        );
+        expect(primaryTouches).toBe(0);
+      });
+    });
+  }
 });
