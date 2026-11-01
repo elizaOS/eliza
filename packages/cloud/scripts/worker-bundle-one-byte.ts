@@ -13,12 +13,16 @@
  * different program:
  *   - string literals and untagged templates: `\uXXXX` gives the same value
  *     (an untagged template's raw text cannot be observed);
- *   - regular-expression literals: `/p/f` becomes `new R("p","f")`. The
- *     string's value is exactly the literal's pattern text, and `R` is the
- *     RegExp intrinsic, read by a statement placed before any bundle code
- *     runs. The new object therefore has the same pattern text: matching,
- *     `source`, `flags` and `toString()` do not change. Escaping inside the
- *     literal would change `source`;
+ *   - regular-expression literals: `/p/f` becomes
+ *     `new (/(?:)/.constructor)("p","f")`. The string's value is exactly the
+ *     literal's pattern text, so matching, `source`, `flags` and `toString()`
+ *     do not change; escaping inside the literal would change `source`. The
+ *     ASCII literal's `constructor` is the RegExp intrinsic of the realm that
+ *     evaluates the code, found without a global lookup. The text has no free
+ *     name, so a function that is serialized (Playwright `evaluate` sends
+ *     `String(fn)` to the browser page) runs the same in any realm. A literal
+ *     that `new RegExp` rejects is refused: it is an early SyntaxError, and the
+ *     rewrite would delay it until the code runs;
  *   - comments: U+2028 and U+2029 become "\n", so the comment still contains
  *     a line terminator for automatic semicolon insertion; other code units
  *     become `\uXXXX` text. Legal comments (`/*!`, `//!`, `@license`,
@@ -31,9 +35,17 @@
  * those characters as escapes in the source instead.
  *
  * Not preserved: Function.prototype.toString of a function or class that
- * contains a rewritten site, and columns after a rewrite on the same line
- * (Error.stack positions and source maps). With --write the adjacent source
- * map's columns are updated.
+ * contains a rewritten site (the text stays self-contained), and columns
+ * after a rewrite on the same line (Error.stack positions and source maps).
+ * With --write the adjacent source map's columns are updated.
+ *
+ * Assumed: RegExp.prototype.constructor is still the RegExp intrinsic in the
+ * realm that runs a rewritten literal. The bundle is refused when it uses
+ * `RegExp.prototype` for anything but a named property other than
+ * `constructor` (an assignment, `delete`, an alias or a call argument such as
+ * `Object.defineProperty(RegExp.prototype, ...)`). Not detected: other paths to
+ * the prototype (`Object.getPrototypeOf(/x/)`, an alias of RegExp) and scripts
+ * of another realm, such as the web page that runs a serialized function.
  *
  * Usage: node packages/cloud/scripts/worker-bundle-one-byte.ts <bundle.js> [--write]
  * Without --write it only verifies that the bundle can be made one-byte.
@@ -49,7 +61,6 @@ export type Refusal = { offset: number; site: string };
 
 const LINE_SEPARATOR = 0x2028;
 const PARAGRAPH_SEPARATOR = 0x2029;
-const REGEXP_ALIAS = "__oneByteRegExp";
 
 export class OneByteRefusal extends Error {
   readonly refusals: readonly Refusal[];
@@ -132,85 +143,63 @@ function commentSite(comment: string): string {
   return "comment";
 }
 
-function declaresName(parent: ts.Node, node: ts.Identifier): boolean {
-  return (
-    (ts.isVariableDeclaration(parent) ||
-      ts.isParameter(parent) ||
-      ts.isBindingElement(parent) ||
-      ts.isFunctionDeclaration(parent) ||
-      ts.isFunctionExpression(parent) ||
-      ts.isClassDeclaration(parent) ||
-      ts.isClassExpression(parent) ||
-      ts.isImportClause(parent) ||
-      ts.isImportSpecifier(parent) ||
-      ts.isNamespaceImport(parent) ||
-      ts.isImportEqualsDeclaration(parent)) &&
-    parent.name === node
-  );
-}
-
-function isModule(file: ts.SourceFile): boolean {
-  return file.statements.some(
-    (statement) =>
-      ts.isImportDeclaration(statement) ||
-      ts.isExportDeclaration(statement) ||
-      ts.isExportAssignment(statement) ||
-      (ts.canHaveModifiers(statement) &&
-        (ts.getModifiers(statement) ?? []).some(
-          (modifier) => modifier.kind === ts.SyntaxKind.ExportKeyword,
-        )),
-  );
+/** The property name of `a.b` or `a["b"]`. */
+function memberName(node: ts.Node): string | undefined {
+  if (ts.isPropertyAccessExpression(node)) return node.name.text;
+  return ts.isElementAccessExpression(node) &&
+    ts.isStringLiteralLike(node.argumentExpression)
+    ? node.argumentExpression.text
+    : undefined;
 }
 
 /**
- * A name, unused in the bundle, for the RegExp intrinsic captured by the
- * bundle's first statement, or the reason it cannot be captured. In an ES
- * module with no binding named RegExp, that statement reads the global before
- * any bundle code can replace it.
+ * The offset of a use of `RegExp.prototype` (or `x.RegExp.prototype`) that
+ * could replace its `constructor`: every use except reading or writing
+ * another named property. That refuses `RegExp.prototype.constructor = f`,
+ * `delete`, an alias and a call argument such as `Object.defineProperty`.
  */
-function regExpAliasOrReason(
-  source: string,
-  file: ts.SourceFile,
-): { alias: string } | { reason: string } {
-  if (!isModule(file)) return { reason: "bundle is not an ES module" };
-  if (source.startsWith("#!")) return { reason: "bundle starts with #!" };
-  const taken = new Set<string>();
-  let binding: number | undefined;
+function regExpConstructorExposure(file: ts.SourceFile): number | undefined {
   const stack: Array<[ts.Node, ts.Node]> = [];
   ts.forEachChild(file, (child) => {
     stack.push([child, file]);
   });
   while (stack.length > 0) {
     const [node, parent] = stack.pop() as [ts.Node, ts.Node];
-    if (ts.isIdentifier(node)) {
-      if (node.text === "RegExp" && declaresName(parent, node)) {
-        binding ??= node.getStart(file);
+    if (memberName(node) === "prototype") {
+      const owner = (node as ts.AccessExpression).expression;
+      const property =
+        (ts.isPropertyAccessExpression(parent) ||
+          ts.isElementAccessExpression(parent)) &&
+        parent.expression === node
+          ? memberName(parent)
+          : undefined;
+      if (
+        ((ts.isIdentifier(owner) && owner.text === "RegExp") ||
+          memberName(owner) === "RegExp") &&
+        (property === undefined || property === "constructor")
+      ) {
+        return node.getStart(file);
       }
-      if (node.text.startsWith(REGEXP_ALIAS)) taken.add(node.text);
     }
     ts.forEachChild(node, (child) => {
       stack.push([child, node]);
     });
   }
-  if (binding !== undefined) {
-    return {
-      reason: `a binding named RegExp is declared at offset ${binding}`,
-    };
-  }
-  let alias = REGEXP_ALIAS;
-  for (let n = 1; taken.has(alias) || source.includes(alias); n++) {
-    alias = `${REGEXP_ALIAS}${n}`;
-  }
-  return { alias };
+  return undefined;
 }
 
-/** `/p/f` as `new R("p","f")`: the string's value is the pattern text. */
-function regExpConstruction(
-  literal: string,
-  alias: string,
-  before: string,
-): string {
+/**
+ * `/p/f` as `new (/(?:)/.constructor)("p","f")`, or null when `new RegExp`
+ * rejects the pattern. The string's value is the pattern text.
+ */
+function regExpConstruction(literal: string, before: string): string | null {
   const close = literal.lastIndexOf("/");
+  const flags = literal.slice(close + 1);
+  try {
+    new RegExp(literal.slice(1, close), flags);
+  } catch {
+    return null;
+  }
   let pattern = "";
   for (let i = 1; i < close; i++) {
     const code = literal.charCodeAt(i);
@@ -225,7 +214,7 @@ function regExpConstruction(
   }
   // A space keeps `return/p/` from becoming `returnnew`.
   const space = /[\w$\x80-\xff]/.test(before) ? " " : "";
-  return `${space}new ${alias}("${pattern}","${literal.slice(close + 1)}")`;
+  return `${space}new (/(?:)/.constructor)("${pattern}","${flags}")`;
 }
 
 export type OneByteAnalysis = {
@@ -262,7 +251,7 @@ export function analyzeOneByte(source: string): OneByteAnalysis {
   }
 
   const unitSites = new Map<number, string>();
-  const regExps: Array<[number, number]> = [];
+  const regExpEdits: Edit[] = [];
   const visit = (node: ts.Node, tag: TemplateTag): void => {
     const first = firstIndexAtOrAfter(positions, node.pos);
     if (first >= positions.length || positions[first] >= node.end) return;
@@ -303,12 +292,23 @@ export function analyzeOneByte(source: string): OneByteAnalysis {
               (lineTerminator ? "-line-terminator" : ""),
       );
     }
+    const own = firstIndexAtOrAfter(positions, start);
+    if (own >= positions.length || positions[own] >= node.end) return;
     let site: string;
     switch (node.kind) {
-      case ts.SyntaxKind.RegularExpressionLiteral:
-        regExps.push([start, node.end]);
-        site = "regexp";
+      case ts.SyntaxKind.RegularExpressionLiteral: {
+        const text = regExpConstruction(
+          source.slice(start, node.end),
+          source.charAt(start - 1),
+        );
+        if (text === null) {
+          site = "regexp:invalid-pattern";
+        } else {
+          regExpEdits.push({ start, end: node.end, text });
+          site = "regexp";
+        }
         break;
+      }
       case ts.SyntaxKind.StringLiteral:
         site = "string";
         break;
@@ -325,36 +325,17 @@ export function analyzeOneByte(source: string): OneByteAnalysis {
       default:
         site = `token:${ts.SyntaxKind[node.kind]}`;
     }
-    for (
-      let i = firstIndexAtOrAfter(positions, start);
-      i < positions.length && positions[i] < node.end;
-      i++
-    ) {
+    for (let i = own; i < positions.length && positions[i] < node.end; i++) {
       unitSites.set(positions[i], site);
     }
   };
   visit(file, "none");
 
-  const alias =
-    regExps.length > 0 ? regExpAliasOrReason(source, file) : undefined;
-  if (alias !== undefined && "alias" in alias) {
-    analysis.edits.push({
-      start: 0,
-      end: 0,
-      text: `var ${alias.alias}=RegExp;`,
-    });
-    for (const [start, end] of regExps) {
-      analysis.edits.push({
-        start,
-        end,
-        text: regExpConstruction(
-          source.slice(start, end),
-          alias.alias,
-          source.charAt(start - 1),
-        ),
-      });
-    }
-    analysis.regExpLiterals = regExps.length;
+  const exposure =
+    regExpEdits.length > 0 ? regExpConstructorExposure(file) : undefined;
+  if (exposure === undefined) {
+    analysis.edits.push(...regExpEdits);
+    analysis.regExpLiterals = regExpEdits.length;
   }
 
   for (const index of positions) {
@@ -365,8 +346,8 @@ export function analyzeOneByte(source: string): OneByteAnalysis {
     switch (site) {
       case "regexp":
         // The whole literal is one edit, planned above.
-        if (alias !== undefined && "reason" in alias) {
-          site = `regexp:${alias.reason}`;
+        if (exposure !== undefined) {
+          site = `regexp:RegExp.prototype.constructor may change at offset ${exposure}`;
         } else {
           rewritten = true;
         }

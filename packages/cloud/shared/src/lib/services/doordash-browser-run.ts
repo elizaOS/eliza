@@ -318,7 +318,7 @@ async function runDoorDashOperation(
             const name = price
               ? text
                   .slice(0, text.indexOf(price[0]))
-                  .replace(/[-–—]\s*$/, "")
+                  .replace(/[-\u2013\u2014]\s*$/, "")
                   .trim()
               : "";
             if (!price || name.length < 2 || seen.has(name)) return null;

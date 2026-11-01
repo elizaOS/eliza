@@ -137,11 +137,45 @@ const generatedColumns = (line: string) => {
 describe("toOneByteBundle", () => {
   it("keeps the pattern text, flags and matches of regular expressions", () => {
     const source = rewriteAndCompare(REGEXPS);
-    expect(source.startsWith("var __oneByteRegExp=RegExp;")).toBe(true);
+    expect(
+      source.startsWith("\nexport const vi = new (/(?:)/.constructor)("),
+    ).toBe(true);
     expect(source).toContain(
-      'identity = new __oneByteRegExp("isn\\\\\\u2019t","")',
+      'identity = new (/(?:)/.constructor)("isn\\\\\\u2019t","")',
     );
-    expect(source).toContain("return new __oneByteRegExp(");
+    expect(source).toContain("return new (/(?:)/.constructor)(");
+  });
+
+  it("keeps a serialized function working in another realm", () => {
+    // Playwright `evaluate` sends String(fn) to the browser page, which runs
+    // it in its own realm: the rewritten text must not use a free name.
+    rewriteAndCompare(`
+import { runInNewContext } from "node:vm";
+const menu = (names) => names.map((name) => name.replace(/[-–—]\\s*$/, "").trim());
+const pattern = () => {
+  const r = /(?<ŝ>[–—])\\k<ŝ>/du;
+  return [r.source, r.flags, String(r), Object.getPrototypeOf(r) === Object.getPrototypeOf(/x/), r.exec("a——")?.index];
+};
+export const inPage = () => runInNewContext(\`(\${String(menu)})(["Pad Thai –", "Rice —", "Soup -"])\`);
+export const withoutGlobalRegExp = () => runInNewContext(\`(\${menu})(["Rice —"])\`, { RegExp: undefined });
+export const realm = () => runInNewContext(\`(\${pattern})()\`);
+`);
+  });
+
+  it("rewrites only literals that hold a wide character", () => {
+    const { source, analysis } = toOneByteBundle(
+      "export const f = (s) => /* – dash */ /x/.test(s);",
+    );
+    expect(source).toBe(
+      "export const f = (s) => /* \\u2013 dash */ /x/.test(s);",
+    );
+    expect(analysis.regExpLiterals).toBe(0);
+  });
+
+  it("refuses a literal that is an early SyntaxError", () => {
+    expect(refusedSites("export const r = () => /[[/—]--[a]]/v;")).toEqual([
+      "regexp:invalid-pattern",
+    ]);
   });
 
   it("keeps string, template and comment values", () => {
@@ -173,15 +207,17 @@ export const lineComment = () => { return // ends at U+2028:\u2028 1
     ).toContain("ends at U+2028:\n 1");
   });
 
-  it("captures the RegExp intrinsic before bundle code can replace it", () => {
+  it("uses the RegExp intrinsic whatever the name RegExp holds", () => {
     rewriteAndCompare(`
 globalThis.RegExp = class NotRegExp {};
 export const late = () => /—/u;
 `);
-    const source = rewriteAndCompare(
-      "export const __oneByteRegExp = 1; export const r = /—/;",
-    );
-    expect(source.startsWith("var __oneByteRegExp1=RegExp;")).toBe(true);
+    rewriteAndCompare(`
+const RegExp = class NotRegExp {};
+export const shadowed = /—/;
+export function parameter(RegExp) { return /—/; }
+`);
+    rewriteAndCompare("#!/usr/bin/env node\nexport const r = /—/;");
   });
 
   it("refuses every tagged template, String.raw included", () => {
@@ -202,15 +238,24 @@ export const late = () => /—/u;
     }
   });
 
-  it("refuses regular expressions without a provable RegExp intrinsic", () => {
+  it("refuses regular expressions when RegExp.prototype.constructor may change", () => {
     for (const unsafe of [
-      "var r = /—/;",
-      "const RegExp = class {}; export const r = /—/;",
-      "export function f(RegExp) { return /—/; }",
-      "#!/usr/bin/env node\nexport const r = /—/;",
+      "RegExp.prototype.constructor = Object;",
+      'RegExp.prototype["constructor"] = Object;',
+      "delete RegExp.prototype.constructor;",
+      'Object.defineProperty(RegExp.prototype, "constructor", { value: Object });',
+      "Object.defineProperties(RegExp.prototype, { constructor: { value: Object } });",
+      "Object.assign(RegExp.prototype, { constructor: Object });",
+      "const proto = globalThis.RegExp.prototype; proto.constructor = Object;",
     ]) {
-      expect(refusedSites(unsafe)).toEqual([expect.stringMatching(/^regexp:/)]);
+      expect(refusedSites(`${unsafe} export const r = /—/;`)).toEqual([
+        expect.stringMatching(/^regexp:RegExp\.prototype\.constructor/),
+      ]);
     }
+    // Other named properties leave the constructor alone.
+    rewriteAndCompare(
+      'RegExp.prototype.extra = 1; export const test = typeof RegExp.prototype["test"]; export const r = /—/;',
+    );
   });
 
   it("refuses identifiers, legal and source-map comments and stray whitespace", () => {
