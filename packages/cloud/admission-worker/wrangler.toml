@@ -70,10 +70,10 @@ binding = "INFERENCE_RECOVERY_SERVICE"
 service = "eliza-cloud-api-staging"
 entrypoint = "InferenceRecoveryService"
 
-# PRODUCTION phase 1: pending-transfer target for the existing namespace of
-# eliza-cloud-api-prod. No namespace is created here. No self-binding is legal
-# during pending transfer; add it only after the source commit. Root executes
-# each phase from PRODUCTION-TRANSFER.md; releases never run a lifecycle phase.
+# PRODUCTION steady state after the admission namespace transfer from
+# eliza-cloud-api-prod is accepted. Preserve the adopted namespace and the
+# private recovery service binding. Root executes each lifecycle phase from
+# PRODUCTION-TRANSFER.md; releases only republish this adopted state.
 [env.production]
 name = "eliza-cloud-admission-prod"
 workers_dev = false
@@ -84,15 +84,14 @@ __dirname = "\"/\""
 __filename = "\"/worker.js\""
 
 # Exports are inherited as one map, so production replaces the staging map.
+# The namespace is already adopted; do not reintroduce a transfer declaration.
 [env.production.exports.InferenceAdmissionGate]
 type = "durable-object"
-state = "expecting-transfer"
 storage = "sqlite"
-transfer_from = "eliza-cloud-api-prod"
 
-# Empty on purpose until the source commit: the pending class has no binding.
-[env.production.durable_objects]
-bindings = []
+[[env.production.durable_objects.bindings]]
+name = "INFERENCE_ADMISSION_GATES"
+class_name = "InferenceAdmissionGate"
 
 # The accepted staging variable names with the production API values.
 # Strong revocation and snapshot admission stay off, as in the production API.
