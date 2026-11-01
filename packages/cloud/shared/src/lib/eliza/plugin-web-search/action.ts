@@ -4,6 +4,7 @@ import {
   type ActionResult,
   type Content,
   type ContentValue,
+  extractUserText,
   type HandlerCallback,
   type IAgentRuntime,
   logger,
@@ -183,8 +184,9 @@ async function extractSearchParams(
       "LLM extraction failed, falling back to message text",
     );
   }
-  // Final fallback: use the message text directly as the query
-  const messageText = message.content?.text?.trim();
+  // Final fallback: use the user's request text as the query, not the
+  // document-augmentation envelope around it
+  const messageText = extractUserText(message.content?.text ?? "");
   if (messageText) {
     logger.info(
       { src: "webSearch:extractParams", source: "messageText" },
