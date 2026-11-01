@@ -739,6 +739,31 @@ jobs:
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
 
+      - name: Verify mobile credential revocation transactions
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 3
+        env:
+          NODE_ENV: test
+          DATABASE_URL: pglite://memory
+          BASE_SHA: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
+            packages/cloud/shared/src/lib/services/api-keys.ts \
+            packages/cloud/api/__tests__/api-key-audit-transaction.integration.test.ts \
+            .github/workflows/pr-validation.yml
+          mobile_diff_status=$?
+          set -e
+          if [ "$mobile_diff_status" -gt 1 ]; then exit "$mobile_diff_status"; fi
+          if [ "$mobile_diff_status" -eq 0 ]; then
+            echo "No mobile credential revocation owning inputs changed."
+            exit 0
+          fi
+          bun run --cwd packages/cloud/api test api-key-audit-transaction.integration.test.ts
+
       - name: Verify lazy speech imports, phase diagnostics and billing regressions
         if: steps.affected.outputs.cloud == 'true'
         timeout-minutes: 8
