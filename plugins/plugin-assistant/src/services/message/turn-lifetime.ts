@@ -546,7 +546,7 @@ export class MessageTurnLifetime {
           onStreamChunk: wrappedOnStreamChunk,
           onPlanningAcknowledgment: options?.onPlanningAcknowledgment
             ? async (text) => {
-                // The one acknowledgement (model words or fallback) is turn-owned:
+                // The existing model-authored acknowledgement remains turn-owned:
                 // await audience revalidation before any irreversible speech.
                 const isCurrent = () =>
                   transientEgressIsCurrent() && !firstSentenceSent;

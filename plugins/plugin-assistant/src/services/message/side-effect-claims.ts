@@ -1027,17 +1027,9 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
 );
 
 /**
- * Spoken in place of a pending planning draft the grammar rejects, so an
- * action turn is still acknowledged before its tools run. It is a bare wait
- * cue: it names nothing, reports nothing and parses in the grammar below.
- */
-export const PLANNING_ACKNOWLEDGMENT_FALLBACK = "One sec.";
-
-/**
  * True when a short model-authored reply may be shown and spoken before
- * pending tools as their acknowledgement. An admitted reply is spoken in the
- * model's own words. A rejected one is never spoken in part: a planning caller
- * speaks PLANNING_ACKNOWLEDGMENT_FALLBACK in its place.
+ * pending tools as their acknowledgement. The wording stays the model's own;
+ * nothing is substituted, and a rejected acknowledgement is dropped.
  *
  * After lower-casing, reading curly apostrophes as straight ones and removing
  * the final . ! or …, the whole reply must be one to three sentences (split

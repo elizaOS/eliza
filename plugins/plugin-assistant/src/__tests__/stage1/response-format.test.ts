@@ -15,7 +15,6 @@ import {
   type UUID,
 } from "@elizaos/core/protocol";
 import { describe, expect, it, vi } from "vitest";
-import { PLANNING_ACKNOWLEDGMENT_FALLBACK } from "../../services/message/side-effect-claims.js";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   messageContinuesAfterRecentAgentCorrection,
@@ -2522,8 +2521,7 @@ describe("Stage 1 response format", () => {
   );
 
   // A write verb says the item is missing ("Adding it now." after "Is the
-  // dentist on my calendar?"), so it is not an acknowledgement either. The
-  // pending turn is still acknowledged, by the neutral fallback alone.
+  // dentist on my calendar?"), so it is not an acknowledgement either.
   it.each([
     'Done. The note now says "Bring the green notebook."',
     "Checking.\u0000",
@@ -2532,7 +2530,7 @@ describe("Stage 1 response format", () => {
     "Booking it now.",
     "Moving it to four now.",
   ])(
-    "replaces invalid, completed or write progress with the fallback without another inference: %j",
+    "withholds invalid, completed or write progress without another inference: %j",
     async (replyText) => {
       const runtime = makeRuntime([
         stage1Response({
@@ -2556,9 +2554,7 @@ describe("Stage 1 response format", () => {
         onPlanningAcknowledgment,
         onResponseHandlerEarlyReply: earlyReply,
       });
-      expect(onPlanningAcknowledgment).toHaveBeenCalledExactlyOnceWith(
-        PLANNING_ACKNOWLEDGMENT_FALLBACK,
-      );
+      expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
       expect(earlyReply).not.toHaveBeenCalled();
       expect(runtime.useModel).toHaveBeenCalledTimes(2);
       expect(result.kind).toBe("planned_reply");
@@ -2597,66 +2593,6 @@ describe("Stage 1 response format", () => {
       expect(result.kind).toBe("direct_reply");
       expect(onPlanningAcknowledgment).not.toHaveBeenCalled();
       expect(runtime.useModel).toHaveBeenCalledTimes(1);
-    },
-  );
-
-  // A context read's acknowledgement is the turn's one acknowledgement, so a
-  // later pending draft outside the grammar gets no fallback; without the
-  // read, the same draft does.
-  it.each([true, false])(
-    "sends no fallback after a context-read acknowledgement (read %s)",
-    async (read) => {
-      const runtime = makeRuntime([
-        ...(read
-          ? [
-              {
-                text: "",
-                toolCalls: [
-                  {
-                    name: "READ_CONTEXT",
-                    arguments: {
-                      contextRequests: ["userPersonalityPreferences"],
-                      acknowledgment: "Let me check your notes.",
-                    },
-                  },
-                ],
-              },
-            ]
-          : []),
-        stage1Response({
-          contexts: ["general"],
-          replyText: "Deleted coffee.",
-          extra: { requiresTool: true, replyEffectStatus: "pending" },
-        }),
-        JSON.stringify({
-          thought: "No action was taken.",
-          toolCalls: [],
-          messageToUser: "No event was changed.",
-        }),
-      ]);
-      runtime.providers = [
-        { name: "userPersonalityPreferences", cacheStable: true, get: vi.fn() },
-      ];
-      const state = makeState();
-      state.data.providers = {
-        userPersonalityPreferences: {
-          text: "Complete character preferences: use plain language.",
-          discoveryText: "context_discovery: userPersonalityPreferences",
-        },
-      };
-      runtime.composeState = vi.fn(async () => structuredClone(state));
-      const onPlanningAcknowledgment = vi.fn();
-      const result = await runV5MessageRuntimeStage1({
-        runtime,
-        message: makeMessage({ channelType: ChannelType.DM }),
-        state,
-        responseId: "00000000-0000-0000-0000-000000000005" as UUID,
-        onPlanningAcknowledgment,
-      });
-      expect(result.kind).toBe("planned_reply");
-      expect(onPlanningAcknowledgment).toHaveBeenCalledExactlyOnceWith(
-        read ? "Let me check your notes." : PLANNING_ACKNOWLEDGMENT_FALLBACK,
-      );
     },
   );
 

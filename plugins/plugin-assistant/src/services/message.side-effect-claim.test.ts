@@ -42,11 +42,7 @@ import { createOwnerReminderDirectRoutingRule } from "../../../plugin-personal-a
 import { createScheduledTaskCandidateBackstopRule } from "../../../plugin-personal-assistant/src/lifeops/scheduled-task/candidate-backstop";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
 import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
-import { NAVIGATION_REPLY_POLICY } from "../prompts/response-policy.ts";
-import {
-  PLANNING_ACKNOWLEDGMENT_FALLBACK,
-  replyIsClaimSafeAcknowledgment,
-} from "./message/side-effect-claims.ts";
+import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   evaluatePlannedReplyEgress,
@@ -2681,39 +2677,39 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(admitted);
   });
 
-  // The fallback spoken for a rejected pending draft must itself be admitted,
-  // with or without a planned destination, and pass planned-reply egress.
-  it("admits the planning acknowledgement fallback", () => {
-    expect(PLANNING_ACKNOWLEDGMENT_FALLBACK).toBe("One sec.");
-    expect(
-      replyIsClaimSafeAcknowledgment(PLANNING_ACKNOWLEDGMENT_FALLBACK),
-    ).toBe(true);
-    expect(
-      replyIsClaimSafeAcknowledgment(PLANNING_ACKNOWLEDGMENT_FALLBACK, {
-        plannedDestination,
-      }),
-    ).toBe(true);
-    expect(
-      evaluatePlannedReplyEgress({
-        reply: PLANNING_ACKNOWLEDGMENT_FALLBACK,
-        pendingWork: true,
-        actionResults: [],
-        actions: [],
-      }).verdict,
-    ).not.toBe("reject");
+  // The acknowledgement rule teaches the model which planned-view shapes it
+  // may author. They are guidance, never a substitute: nothing speaks them in
+  // place of a rejected draft, so each must pass the gate as the model's own
+  // words when the planned view is named.
+  it("pins the planned-view guidance in the acknowledgement rule", () => {
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      'When a view opens with other planned work, name only the view, as in "Calendar. One sec." or "Let me open Calendar."',
+    );
   });
 
-  // Navigation policy asks for the destination and the acknowledgement rule
-  // forbids names; both prompts name the same planned-view shapes, and the
-  // grammar admits every one of them.
   it.each(["Calendar. One sec.", "Let me open Calendar."])(
-    "admits the planned-view shape both prompts teach: %s",
+    "admits the planned-view shape the acknowledgement rule teaches: %s",
     (shape) => {
       expect(ACKNOWLEDGMENT_RULE).toContain(`"${shape}"`);
-      expect(NAVIGATION_REPLY_POLICY).toContain(`"${shape}"`);
       expect(
         replyIsClaimSafeAcknowledgment(shape, { plannedDestination }),
       ).toBe(true);
+      expect(
+        evaluatePlannedReplyEgress({
+          reply: shape,
+          pendingWork: true,
+          providers: {
+            VIEW_NAVIGATION: {
+              data: {
+                views: [{ id: "calendar", label: "Calendar" }],
+                currentViewId: "chat",
+              },
+            },
+          } as never,
+          actionResults: [],
+          actions: [],
+        }).verdict,
+      ).not.toBe("reject");
     },
   );
 });
