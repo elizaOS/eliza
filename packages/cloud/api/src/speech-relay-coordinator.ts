@@ -25,6 +25,7 @@ import {
   createWorkerCartesiaFactory,
   createWorkerCartesiaInkFactory,
 } from "../v1/voice/session/lib/provider-socket-factory";
+import { parseCartesiaUsdPerCredit } from "../v1/voice/stt/cartesia-pricing";
 import { resolveCartesiaVoiceId } from "../v1/voice/tts/provider-selection";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
 import { reserveSpeechRelayAdmission } from "./speech-relay-admission";
@@ -297,9 +298,11 @@ export class SpeechRelayCoordinator {
           voiceId =
             this.env.VOICE_REALTIME_CARTESIA_VOICE_ID?.trim() ||
             resolveCartesiaVoiceId(this.env);
-        const price = Number(this.env.CARTESIA_STT_USD_PER_CREDIT);
-        if (!key || !voiceId || !Number.isFinite(price) || price <= 0)
+        if (!key || !voiceId)
           throw Error("Speech provider configuration unavailable");
+        const price = parseCartesiaUsdPerCredit(
+          this.env.CARTESIA_STT_USD_PER_CREDIT,
+        );
         const usageStore = createDurableVoiceUsageStore(this.env);
         if (!usageStore) throw Error("Durable voice quota unavailable");
         let retireSpeech = () => {
