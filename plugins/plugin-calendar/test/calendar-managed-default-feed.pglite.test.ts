@@ -769,7 +769,13 @@ it.each(["return-shape", "legacy-http"] as const)(
     } else {
       const handler = calendarRouteHandler();
       incoming = createServer((request, response) => {
-        handled = handler(request, response, runtime);
+        // The legacy adapter consumes a raw Node response, while its public
+        // compatibility type also lists Express response methods.
+        handled = handler(
+          request,
+          response as unknown as Parameters<typeof handler>[1],
+          runtime,
+        );
         void handled.catch(() => {});
       });
       incoming.listen(0, "127.0.0.1");
