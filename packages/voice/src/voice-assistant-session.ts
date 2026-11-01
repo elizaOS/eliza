@@ -26,11 +26,13 @@
  * Busy hold: submission closes the capture (`close()`, never `cancel()`) and input stays closed
  * while the agent is busy with that turn: the request (and any ack spoken inside `send`), an
  * owner-input pause and the reply until its playback settled. The turn is sent only once the close
- * fulfilled (then `inputHeld` is published); a close that fails ends the conversation, and one
- * that never settles leaves the turn unsent until Stop. After the reply the capture reopens
- * (`reopen` on the listen handlers) unless Mute, Stop or a binding change keeps it closed; a
- * reopen that fails ends the conversation. A closed capture's `onEnd` still ends a held turn at
- * once. Manual Mute is independent of the hold. Speech never interrupts a busy turn:
+ * fulfilled (then `inputHeld` is published); a close that fails ends the conversation, also a
+ * Mute close that failed before the turn was submitted (kept until a capture opens again). A
+ * close that never settles leaves the turn unsent until Stop, so the host bounds `close()`. After
+ * the reply the capture reopens (`reopen` on the listen handlers) unless Mute, Stop or a binding
+ * change keeps it closed; a reopen that fails ends the conversation. A closed capture's `onEnd`
+ * still ends a held turn at once, and under Mute an utterance still waiting to be sent. Manual
+ * Mute is otherwise independent of the hold. Speech never interrupts a busy turn:
  * `interruptSpeech()` or Stop does.
  * The tentative and ignored segment paths below (`bargeInConfirmMs`, `fullDuplex`) only act on a
  * capture that is open while a reply is pending or playing, which the hold never leaves.
@@ -138,7 +140,11 @@ export interface AssistantHeard {
   playbackFailed?: boolean;
 }
 export interface AssistantCapture {
-  /** Finalize: segments closed by this call still deliver their final before it resolves. */
+  /**
+   * Finalize: segments closed by this call still deliver their final before it resolves. Rejects
+   * when the input could not be confirmed closed, within a bound the host sets: a close that never
+   * settles keeps a submitted turn unsent and Stop waiting.
+   */
   close(): Promise<void>;
   /** Discard: no further segment results are delivered. */
   cancel(): void | Promise<void>;
@@ -572,11 +578,18 @@ export class VoiceAssistantSession {
 
   /** Captures still closing, each with its own close (rejects when that close failed). */
   private closingCaptures = new Map<AssistantCapture, Promise<void>>();
+  /**
+   * The last close that failed, until a capture opens again: a turn submitted after it (a Mute
+   * close that failed before the gap) waits on it as on a close still in flight, and so ends.
+   */
+  private closeFailed?: Promise<void>;
   private closeCapture(capture: AssistantCapture) {
     const own = Promise.resolve().then(() => capture.close());
     this.closingCaptures.set(capture, own);
     const closed = own
-      .catch(() => {})
+      .catch(() => {
+        this.closeFailed = own;
+      })
       .finally(() => this.closingCaptures.delete(capture));
     this.closing = Promise.all([this.closing, closed]).then(() => {});
     return own;
@@ -635,6 +648,7 @@ export class VoiceAssistantSession {
             return undefined;
           }
           this.capture = capture;
+          this.closeFailed = undefined;
           return capture;
         },
         (error) => {
@@ -649,7 +663,9 @@ export class VoiceAssistantSession {
   private async captureEnded(session: number, error?: unknown) {
     this.capture = undefined;
     // An end while a turn is held fails at once, muted or not: its reply may need that transport.
-    if (this.mutedValue && !this.hold?.response) return;
+    // So does one under Mute while an utterance still waits to be sent; Mute alone stays quiet.
+    if (this.mutedValue && !this.hold?.response && !this.segments.length)
+      return;
     await this.fail(
       session,
       error ?? new VoiceAssistantError("capture", "The microphone stopped."),
@@ -918,13 +934,16 @@ export class VoiceAssistantSession {
     };
     this.response = response;
     // Busy hold: input closes now, finalizing (never cancelling) the capture, with any Mute close
-    // still in flight; a capture still opening is closed by open() as it arrives.
+    // still in flight or already failed; a capture still opening is closed by open() as it arrives.
     const capture = this.capture,
       opening = this.opening;
     const hold: Hold = {
       response,
       closed: false,
-      closes: [...this.closingCaptures.values()],
+      closes: [
+        ...this.closingCaptures.values(),
+        ...(this.closeFailed ? [this.closeFailed] : []),
+      ],
     };
     this.hold = hold;
     this.capture = undefined;
