@@ -23,6 +23,8 @@ const transactionFences = new WeakMap<DbTransaction, Set<string>>();
 
 interface MutationOptions {
   organizationIds: string[];
+  /** Key association writers take shared user locks before organization locks. */
+  userLockIds?: string[];
   mutationId?: string;
   /** Bootstrap also fences organizations that have not yet enrolled. */
   enable?: boolean;
@@ -39,6 +41,22 @@ function policyFencingEnabled(): boolean {
     env.INFERENCE_FUNDED_BUDGET_ADMISSION === "true" ||
     env.INFERENCE_RATE_POLICY_ADMISSION === "true"
   );
+}
+
+/** Keep key association and standing discovery in one transaction lock domain. */
+async function lockUserPolicyAssociations(
+  tx: DbTransaction,
+  userIds: string[],
+  shared: boolean,
+): Promise<void> {
+  if (userIds.length === 0) return;
+  // The database casts, deduplicates and sorts UUIDs before taking locks, so
+  // alternate UUID spelling cannot differ from the row-trigger lock domain.
+  const ids = sql.join(
+    userIds.map((userId) => sql`${userId}::uuid`),
+    sql`, `,
+  );
+  await tx.execute(sql`SELECT lock_inference_policy_users(ARRAY[${ids}], ${shared})`);
 }
 
 async function policyCall(
@@ -179,6 +197,7 @@ export async function withInferencePolicyMutationInTransaction<T>(
     getCloudAwareEnv().INFERENCE_RATE_POLICY_ADMISSION !== "true"
   )
     throw new InferencePolicyFenceError("Rate policy enrollment is disabled");
+  await lockUserPolicyAssociations(tx, options.userLockIds ?? [], true);
   const active = transactionFences.get(tx) ?? new Set<string>();
   const organizationIds: string[] = [];
   for (const organizationId of [...new Set(options.organizationIds)].sort()) {
@@ -273,16 +292,23 @@ export async function withInferenceUserPolicyMutation<T>(
   transaction?: DbTransaction,
 ): Promise<T> {
   if (!policyFencingEnabled()) return transaction ? fn(transaction) : writeTransaction(fn);
-  const rows = await sqlRows<{ organization_id: string }>(
-    transaction ?? dbWrite,
-    sql`SELECT organization_id FROM users WHERE id = ${userId}::uuid AND organization_id IS NOT NULL UNION SELECT organization_id FROM api_keys WHERE user_id = ${userId}::uuid`,
-  );
-  const options = {
-    organizationIds: [...rows.map((row) => row.organization_id), ...additionalOrganizationIds],
+  const run = async (tx: DbTransaction): Promise<T> => {
+    // Discover only after freezing this user's key associations. Otherwise a
+    // new organization can be omitted while this writer waits on an old one.
+    await lockUserPolicyAssociations(tx, [userId], false);
+    const rows = await sqlRows<{ organization_id: string }>(
+      tx,
+      sql`SELECT organization_id FROM users WHERE id = ${userId}::uuid AND organization_id IS NOT NULL UNION SELECT organization_id FROM api_keys WHERE user_id = ${userId}::uuid`,
+    );
+    return withInferencePolicyMutationInTransaction(
+      tx,
+      {
+        organizationIds: [...rows.map((row) => row.organization_id), ...additionalOrganizationIds],
+      },
+      fn,
+    );
   };
-  return transaction
-    ? withInferencePolicyMutationInTransaction(transaction, options, fn)
-    : withInferencePolicyMutation(options, fn);
+  return transaction ? run(transaction) : writeTransaction(run);
 }
 
 /** Authorize subsequent policy writes through the exact outer transaction's COMMIT. */
