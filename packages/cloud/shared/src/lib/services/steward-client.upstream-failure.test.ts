@@ -7,7 +7,8 @@
  * routes report an existing wallet as missing, with no way for the caller to tell
  * the two cases apart.
  */
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
+import { logger } from "../utils/logger";
 import { getStewardAgent, getStewardWalletInfo } from "./steward-client";
 
 const realFetch = globalThis.fetch;
@@ -65,6 +66,32 @@ test("keeping 404 as the absent-agent answer", async () => {
   stubFetch(() => new Response("not found", { status: 404 }));
 
   expect(await getStewardAgent("agent-missing", options)).toBeNull();
+});
+
+test("a failed read is still logged for operators that catch the typed error", async () => {
+  // The two routes that enrich a listing with Steward wallet data swallow the
+  // thrown error (admin/docker-containers and compat/agents/[id] catch with an
+  // empty block). `stewardFetch` used to log the failure itself before this
+  // change; if the throw replaces that log, those routes go silent.
+  const warnings: string[] = [];
+  const spy = spyOn(logger, "warn").mockImplementation((...args: unknown[]) => {
+    warnings.push(args.map((a) => String(a)).join(" "));
+  });
+
+  try {
+    stubFetch(() => new Response("upstream down", { status: 503 }));
+    await rejection(getStewardAgent("agent-logged", options));
+
+    stubFetch(() => {
+      throw new TypeError("fetch failed");
+    });
+    await rejection(getStewardAgent("agent-logged-transport", options));
+  } finally {
+    spy.mockRestore();
+  }
+
+  expect(warnings.some((line) => line.includes("503"))).toBe(true);
+  expect(warnings.some((line) => line.includes("fetch failed"))).toBe(true);
 });
 
 test("wallet summary still degrades to null so its DB fallback keeps working", async () => {

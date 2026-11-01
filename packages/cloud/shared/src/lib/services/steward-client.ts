@@ -318,6 +318,9 @@ async function stewardFetch<T>(
 
     if (response.status === 404) return null;
     if (!response.ok) {
+      // Callers that treat wallet enrichment as supplementary catch this error
+      // and continue, so the failure itself has to be logged here or it is lost.
+      logger.warn(`[steward-client] ${path} returned ${response.status}`);
       throw new ElizaError(`Steward ${path} answered ${response.status}`, {
         code: STEWARD_READ_UNAVAILABLE,
         context: { path, status: response.status },
@@ -327,6 +330,9 @@ async function stewardFetch<T>(
     return (await response.json()) as T;
   } catch (error) {
     if (error instanceof ElizaError) throw error;
+    logger.warn(
+      `[steward-client] Failed to reach Steward at ${url}: ${error instanceof Error ? error.message : String(error)}`,
+    );
     throw new ElizaError(`Steward ${path} could not be read`, {
       code: STEWARD_READ_UNAVAILABLE,
       cause: error,
