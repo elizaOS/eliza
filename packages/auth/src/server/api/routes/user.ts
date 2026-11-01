@@ -398,13 +398,14 @@ function userWalletEncryptedImportSessionStoreKey(id: string): string {
 }
 
 /**
- * The stored import session exists but cannot be decrypted (key-store rotation,
- * torn write, corrupted ciphertext). Distinct from an absent session: callers
- * must not read it as "invalid or expired".
+ * The stored import session exists but cannot be read (key-store rotation,
+ * torn write, corrupted ciphertext, or a record that carries no usable
+ * session shape). Distinct from an absent session: callers must not read it as
+ * "invalid or expired".
  */
 export class UserWalletEncryptedImportSessionUnreadableError extends Error {
   constructor(cause: unknown) {
-    super("Stored wallet import session could not be decrypted");
+    super("Stored wallet import session could not be read");
     this.name = "UserWalletEncryptedImportSessionUnreadableError";
     this.cause = cause;
   }
@@ -443,7 +444,13 @@ export function parseStoredUserWalletEncryptedImportSession(
     typeof expiresAt !== "number" ||
     !Number.isSafeInteger(expiresAt)
   ) {
-    return null;
+    // The bytes decrypt but do not describe a session: a torn write or a
+    // record written by another schema. The record is present, so a null here
+    // would reach the submit route as a 400 "session is invalid or expired"
+    // client error and hide the storage fault.
+    throw new UserWalletEncryptedImportSessionUnreadableError(
+      new Error("stored wallet import session record has no usable shape"),
+    );
   }
   return {
     id: parsed.id,

@@ -174,6 +174,24 @@ test("fails the wallet-import submit when the stored session is unreadable", asy
     expect(await getImportSessionBackend().get(storedKey)).toBe(
       "v1:not-a-sealed-record",
     );
+
+    // A record that decrypts but carries no usable session shape is the same
+    // storage fault, not a stale client id: still 500, not 400.
+    const { getOAuthKeyStore } = await import("../api/services/auth-lifecycle");
+    await getImportSessionBackend().set(
+      storedKey,
+      JSON.stringify(
+        getOAuthKeyStore().encrypt(
+          JSON.stringify({ id: importSessionId, chain: "evm" }),
+        ),
+      ),
+      600_000,
+    );
+    const shapeInvalid = await submit(importSessionId);
+    expect(shapeInvalid.status).toBe(500);
+    expect((await shapeInvalid.json()).error).not.toContain(
+      "invalid or expired",
+    );
   } finally {
     await server?.stop();
     for (const [key, value] of previous) {

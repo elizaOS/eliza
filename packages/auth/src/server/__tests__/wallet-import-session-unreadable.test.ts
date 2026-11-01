@@ -71,6 +71,17 @@ test("reports an unreadable stored wallet-import session", async () => {
       parseStoredUserWalletEncryptedImportSession(sealedWithPreviousKey),
     ).toThrow(UserWalletEncryptedImportSessionUnreadableError);
 
+    // A record that decrypts but does not describe a session (a torn write, or
+    // a record written by a different schema) is also present-but-unreadable.
+    // Returning null here reads as "invalid or expired" at the submit route.
+    const { walletIndex: _droppedIndex, ...shapeInvalid } = session;
+    const sealedShapeInvalid = JSON.stringify(
+      getOAuthKeyStore().encrypt(JSON.stringify(shapeInvalid)),
+    );
+    expect(() =>
+      parseStoredUserWalletEncryptedImportSession(sealedShapeInvalid),
+    ).toThrow(UserWalletEncryptedImportSessionUnreadableError);
+
     // A bare SyntaxError would be rewritten to 400 "Invalid JSON" at the HTTP
     // boundary, so the wrapper has to be its own type.
     expect(thrown).not.toBeInstanceOf(SyntaxError);
