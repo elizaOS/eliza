@@ -891,6 +891,54 @@ export function readbackRequest(values: {
   return { release: false, phases: [phase], commits } as const;
 }
 
+/**
+ * The protected Eliza account's reader and the production Worker names, from
+ * this tree's Wrangler configurations. It needs `CLOUDFLARE_ACCOUNT_ID` and a
+ * read-capable `CLOUDFLARE_API_TOKEN`.
+ */
+export function productionAccount() {
+  const config = (path: string) =>
+    Bun.TOML.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as {
+      account_id?: string;
+      env?: { production?: { name?: string } };
+    };
+  const apiConfig = config("../api/wrangler.toml");
+  const account = process.env.CLOUDFLARE_ACCOUNT_ID;
+  const token = process.env.CLOUDFLARE_API_TOKEN;
+  if (account !== apiConfig.account_id || !token?.trim())
+    throw new Error(
+      "Readback requires the protected Eliza Cloudflare account and credential",
+    );
+  const read: CloudflareRead = async (path) => {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${account}${path}`,
+      {
+        headers: { authorization: `Bearer ${token}` },
+        redirect: "error",
+        signal: AbortSignal.timeout(20_000),
+      },
+    );
+    if (!response.ok) {
+      await response.body?.cancel();
+      throw new Error(
+        `Cloudflare readback failed (HTTP ${response.status}): ${path}`,
+      );
+    }
+    const body = (await response.json()) as Awaited<
+      ReturnType<CloudflareRead>
+    > & { success?: boolean };
+    if (body?.success !== true)
+      throw new Error(`Cloudflare readback was not successful: ${path}`);
+    return body;
+  };
+  return {
+    read,
+    api: apiConfig.env?.production?.name ?? "",
+    target:
+      config("../admission-worker/wrangler.toml").env?.production?.name ?? "",
+  };
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   try {
     const { values } = parseArgs({
@@ -905,40 +953,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
       },
     });
     const request = readbackRequest(values);
-    const config = (path: string) =>
-      Bun.TOML.parse(readFileSync(new URL(path, import.meta.url), "utf8")) as {
-        account_id?: string;
-        env?: { production?: { name?: string } };
-      };
-    const apiConfig = config("../api/wrangler.toml");
-    const account = process.env.CLOUDFLARE_ACCOUNT_ID;
-    const token = process.env.CLOUDFLARE_API_TOKEN;
-    if (account !== apiConfig.account_id || !token?.trim())
-      throw new Error(
-        "Readback requires the protected Eliza Cloudflare account and credential",
-      );
-    const read: CloudflareRead = async (path) => {
-      const response = await fetch(
-        `https://api.cloudflare.com/client/v4/accounts/${account}${path}`,
-        {
-          headers: { authorization: `Bearer ${token}` },
-          redirect: "error",
-          signal: AbortSignal.timeout(20_000),
-        },
-      );
-      if (!response.ok) {
-        await response.body?.cancel();
-        throw new Error(
-          `Cloudflare readback failed (HTTP ${response.status}): ${path}`,
-        );
-      }
-      const body = (await response.json()) as Awaited<
-        ReturnType<CloudflareRead>
-      > & { success?: boolean };
-      if (body?.success !== true)
-        throw new Error(`Cloudflare readback was not successful: ${path}`);
-      return body;
-    };
+    const { read, api, target } = productionAccount();
     const effective = request.release
       ? undefined
       : effectiveVariables(
@@ -946,10 +961,8 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
         );
     const receipt = await verifyAnyPhase(request.phases, (phase) =>
       verifyProductionAdmission(read, {
-        api: apiConfig.env?.production?.name ?? "",
-        target:
-          config("../admission-worker/wrangler.toml").env?.production?.name ??
-          "",
+        api,
+        target,
         phase,
         commits: request.commits,
         effective,
