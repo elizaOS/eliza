@@ -521,3 +521,54 @@ test(
   },
   TEST_TIMEOUT,
 );
+
+test(
+  "a retained resume whose readiness probe throws returns to a retryable stop",
+  async () => {
+    const scenario = await seedRunningUnpaidAgent();
+    const log: RuntimeLog = {
+      present: true,
+      running: true,
+      retainedStops: [],
+      retainedStarts: [],
+      removals: [],
+      creates: 0,
+    };
+    const { result } = await retainUnpaidAgent(scenario, log);
+    expect(result).toMatchObject({ success: true, retained: true });
+    const provider = retainingProvider(scenario, log);
+    let probeFails = true;
+    provider.checkHealth = async () => {
+      if (probeFails) throw new Error("container metadata read failed");
+      return log.running;
+    };
+    const service = new ElizaSandboxService(provider);
+    const funded = spyOn(
+      agentBillingRepository,
+      "settleAccruedBillingBeforeLifecycle",
+    ).mockResolvedValue({ status: "already_billed_recently" });
+    try {
+      const failed = await service.executeResume(scenario.agentId, scenario.orgId);
+      const released = await readAgent(scenario.agentId);
+      expect(released.status).toBe("stopped");
+      expect(released.error_message).toBe("container metadata read failed");
+      expect(released.retained_runtime).not.toBeNull();
+      expect(failed).toEqual({
+        success: false,
+        containerStarted: true,
+        reprovisioned: false,
+        error: "container metadata read failed",
+      });
+
+      probeFails = false;
+      const resumed = await service.executeResume(scenario.agentId, scenario.orgId);
+      expect(resumed).toEqual({ success: true, containerStarted: true, reprovisioned: false });
+    } finally {
+      funded.mockRestore();
+    }
+    expect(log.retainedStarts).toEqual([scenario.identity, scenario.identity]);
+    expect(log.creates).toBe(0);
+    expect((await readAgent(scenario.agentId)).status).toBe("running");
+  },
+  TEST_TIMEOUT,
+);
