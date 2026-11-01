@@ -11,22 +11,23 @@ import {
   beforeAll,
   expect,
   mock,
-  spyOn,
   setDefaultTimeout,
+  spyOn,
   test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
 import * as aiPricing from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import * as elevenlabs from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import * as firstLineCache from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { Hono } from "hono";
 import * as generativeRouteAuth from "../src/lib/generative-route-auth";
 
-import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 const phaseRows: Array<Record<string, unknown>> = [];
 const phaseLog = spyOn(logger, "audit").mockImplementation((name, data) => {
-  if (name === "[CloudSpeech] phase timing") phaseRows.push(data as Record<string, unknown>);
+  if (name === "[CloudSpeech] phase timing")
+    phaseRows.push(data as Record<string, unknown>);
 });
 let authCalls = 0;
 process.env.DATABASE_URL = "pglite://memory";
@@ -41,12 +42,15 @@ const COST_PER_CHAR = 0.001;
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   ...generativeRouteAuth,
-  requireGenerativeRouteCaller: async () => { authCalls++; return ({
-    user: { id: userId, organization_id: orgId },
-    apiKeyId: null,
-    admissionSnapshot: undefined,
-    credential: undefined,
-  }); },
+  requireGenerativeRouteCaller: async () => {
+    authCalls++;
+    return {
+      user: { id: userId, organization_id: orgId },
+      apiKeyId: null,
+      admissionSnapshot: undefined,
+      credential: undefined,
+    };
+  },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/content-safety", () => ({
   contentSafetyService: { assertSafeForPublicUse: async () => ({}) },
@@ -257,23 +261,36 @@ test("one Idempotency-Key pays for one utterance: a different text is charged, t
   expect(await balance()).toBeCloseTo(afterDirect, 6);
 });
 
-
 test("speech timing preserves TTS provider and charged amount", async () => {
-  const before = await balance(), calls = providerCalls.length, auth = authCalls;
+  const before = await balance(),
+    calls = providerCalls.length,
+    auth = authCalls;
   phaseRows.length = 0;
   const text = "Diagnostic speech fixture.";
   await speak(text, `speech-phase-${randomUUID()}`);
-  expect(phaseRows.map(row => row.phase)).toEqual(["json_decode"]);
-  expect(authCalls - auth).toBe(1); expect(providerCalls.length - calls).toBe(1);
+  expect(phaseRows.map((row) => row.phase)).toEqual(["json_decode"]);
+  expect(authCalls - auth).toBe(1);
+  expect(providerCalls.length - calls).toBe(1);
   expect(await balance()).toBeCloseTo(before - text.length * COST_PER_CHAR, 6);
 });
 
 test("malformed TTS JSON retains auth policy and never calls a provider", async () => {
-  const before = await balance(), calls = providerCalls.length, auth = authCalls;
+  const before = await balance(),
+    calls = providerCalls.length,
+    auth = authCalls;
   phaseRows.length = 0;
-  const response = await app.request("/api/v1/voice/tts", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" }, { NODE_ENV: "test" });
+  const response = await app.request(
+    "/api/v1/voice/tts",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{",
+    },
+    { NODE_ENV: "test" },
+  );
   expect(response.status).toBe(400);
-  expect(phaseRows.map(row => row.phase)).toEqual(["json_decode"]);
-  expect(authCalls - auth).toBe(1); expect(providerCalls.length).toBe(calls);
+  expect(phaseRows.map((row) => row.phase)).toEqual(["json_decode"]);
+  expect(authCalls - auth).toBe(1);
+  expect(providerCalls.length).toBe(calls);
   expect(await balance()).toBeCloseTo(before, 6);
 });

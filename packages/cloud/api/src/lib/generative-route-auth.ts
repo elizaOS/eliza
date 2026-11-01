@@ -4,7 +4,6 @@
  * cache read and never join database authorization to provider dispatch.
  */
 
-import { isInferenceTraceId } from "@elizaos/core/protocol";
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { requireAuthOrApiKeyWithOrg } from "@elizaos/cloud-shared/lib/auth";
 import type {
@@ -31,6 +30,7 @@ import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-l
 import type { OrganizationInferenceAdmission } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import type { AppContext } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import { isInferenceTraceId } from "@elizaos/core/protocol";
 
 export interface GenerativeRouteCaller {
   user: {
@@ -423,8 +423,16 @@ export async function admitFlatGenerativeOperation(params: {
 }
 
 const SPEECH_PHASES = [
-  "upload_read", "multipart_decode", "audio_buffer", "audio_sniff", "audio_metadata",
-  "json_decode", "auth_module_load", "auth_resolution", "limiter_module_load", "org_limiter",
+  "upload_read",
+  "multipart_decode",
+  "audio_buffer",
+  "audio_sniff",
+  "audio_metadata",
+  "json_decode",
+  "auth_module_load",
+  "auth_resolution",
+  "limiter_module_load",
+  "org_limiter",
 ] as const;
 
 /** Optional diagnostics cannot change request results or disclose caller data. */
@@ -438,7 +446,12 @@ export async function timeSpeechPhase<T>(
   let enabled = false;
   try {
     const path = new URL(c.req.url).pathname;
-    route = path === "/api/v1/voice/stt" ? "stt" : path === "/api/v1/voice/tts" ? "tts" : undefined;
+    route =
+      path === "/api/v1/voice/stt"
+        ? "stt"
+        : path === "/api/v1/voice/tts"
+          ? "tts"
+          : undefined;
     enabled = Boolean(route) && SPEECH_PHASES.includes(phase);
     const candidate = c.get("traceId") ?? c.get("requestId");
     if (isInferenceTraceId(candidate)) traceId = candidate;
@@ -448,14 +461,22 @@ export async function timeSpeechPhase<T>(
   if (!enabled) return run();
   const start = performance.now();
   let outcome: "returned" | "threw" = "returned";
-  try { return await run(); }
-  catch (error) { outcome = "threw"; throw error; }
-  finally {
+  try {
+    return await run();
+  } catch (error) {
+    outcome = "threw";
+    throw error;
+  } finally {
     try {
       const durationMs = Math.round((performance.now() - start) * 10) / 10;
       if (Number.isFinite(durationMs) && durationMs >= 0) {
         logger.audit("[CloudSpeech] phase timing", {
-          schema: "cloud_speech_phase_v1", traceId, route, phase, durationMs, outcome,
+          schema: "cloud_speech_phase_v1",
+          traceId,
+          route,
+          phase,
+          durationMs,
+          outcome,
         });
       }
     } catch {
@@ -513,9 +534,11 @@ export async function requireGenerativeRouteCaller(
       appScopeId: null,
     };
   }
-  const { resolveInferenceAuthContext } = await timeSpeechPhase(c, "auth_module_load", () => import(
-    "@elizaos/cloud-shared/lib/services/inference-auth-context"
-  ));
+  const { resolveInferenceAuthContext } = await timeSpeechPhase(
+    c,
+    "auth_module_load",
+    () => import("@elizaos/cloud-shared/lib/services/inference-auth-context"),
+  );
   const resolveCallerAuth = () =>
     resolveInferenceAuthContext(request, {
       traceId: c.get("traceId") ?? c.get("requestId"),
@@ -526,7 +549,11 @@ export async function requireGenerativeRouteCaller(
         ? { deferStrongCredentialCheck: true }
         : {}),
     });
-  const resolution = await timeSpeechPhase(c, "auth_resolution", resolveCallerAuth);
+  const resolution = await timeSpeechPhase(
+    c,
+    "auth_resolution",
+    resolveCallerAuth,
+  );
 
   if (resolution.kind === "authorized") {
     const user = {
@@ -542,16 +569,16 @@ export async function requireGenerativeRouteCaller(
       const rateLimitEndpoint = options.rateLimitEndpoint;
       if (rateLimitEndpoint) {
         const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-          await timeSpeechPhase(c, "limiter_module_load", () => Promise.all([
-            import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
-            import(
-              "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
-            ),
-          ]));
-        const limited = await timeSpeechPhase(c, "org_limiter", () => enforceOrgRateLimit(
-          resolution.ctx.orgId,
-          rateLimitEndpoint,
-          {
+          await timeSpeechPhase(c, "limiter_module_load", () =>
+            Promise.all([
+              import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
+              import(
+                "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+              ),
+            ]),
+          );
+        const limited = await timeSpeechPhase(c, "org_limiter", () =>
+          enforceOrgRateLimit(resolution.ctx.orgId, rateLimitEndpoint, {
             // Same limiter as chat completions: a shared policy lock and one
             // Durable Object decision. Without a snapshot the locked primary
             // policy supplies the limit. The compatibility path took the
@@ -564,8 +591,8 @@ export async function requireGenerativeRouteCaller(
               rateLimitEndpoint,
             ),
             apiKeyId: resolution.ctx.apiKeyId,
-          },
-        ));
+          }),
+        );
         if (limited) {
           throw new ApiError(
             limited.status,

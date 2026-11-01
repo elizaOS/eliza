@@ -515,10 +515,9 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     }
 
     const uploadStartedAt = performance.now();
-    const sizeCheckedRequest = await timeSpeechPhase(c, "upload_read", () => readRequestWithMultipartLimit(
-      request,
-      multipartBodyLimit,
-    ));
+    const sizeCheckedRequest = await timeSpeechPhase(c, "upload_read", () =>
+      readRequestWithMultipartLimit(request, multipartBodyLimit),
+    );
     timings.push({
       name: "upload",
       durationMs: performance.now() - uploadStartedAt,
@@ -561,7 +560,9 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
 
     let formData: FormData;
     try {
-      formData = await timeSpeechPhase(c, "multipart_decode", () => request.formData());
+      formData = await timeSpeechPhase(c, "multipart_decode", () =>
+        request.formData(),
+      );
     } catch (error) {
       // error-policy:J3 malformed multipart bytes are explicit invalid input.
       logger.warn("[Voice STT API] Invalid multipart form data", {
@@ -615,8 +616,12 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       );
     }
 
-    const buffer = Buffer.from(await timeSpeechPhase(c, "audio_buffer", () => audioFile.arrayBuffer()));
-    const fileTypeResult = await timeSpeechPhase(c, "audio_sniff", () => fileTypeFromBuffer(buffer));
+    const buffer = Buffer.from(
+      await timeSpeechPhase(c, "audio_buffer", () => audioFile.arrayBuffer()),
+    );
+    const fileTypeResult = await timeSpeechPhase(c, "audio_sniff", () =>
+      fileTypeFromBuffer(buffer),
+    );
 
     if (!fileTypeResult) {
       logger.warn("[Voice STT API] Unable to detect audio file type", {
@@ -665,7 +670,9 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     let billingEstimate: SttBillingEstimate | undefined;
     const getBillingEstimate = async (): Promise<SttBillingEstimate> => {
       if (billingEstimate) return billingEstimate;
-      const metadata = await timeSpeechPhase(c, "audio_metadata", () => parseBuffer(buffer, { mimeType: finalMimeType }));
+      const metadata = await timeSpeechPhase(c, "audio_metadata", () =>
+        parseBuffer(buffer, { mimeType: finalMimeType }),
+      );
       const parsedDurationSeconds = metadata.format?.duration;
       const durationSeconds = Number.isFinite(parsedDurationSeconds)
         ? Math.max(parsedDurationSeconds ?? 0, 1)

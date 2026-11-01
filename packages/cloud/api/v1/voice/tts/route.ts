@@ -223,7 +223,9 @@ async function __hono_POST(c: AppContext) {
   const requestStart = Date.now();
   const timings: TtsTimings = {};
   try {
-    const decodedRawBody = await timeSpeechPhase(c, "json_decode", () => decodeRequestJson(request));
+    const decodedRawBody = await timeSpeechPhase(c, "json_decode", () =>
+      decodeRequestJson(request),
+    );
     let pendingResponse: Response | undefined;
     let body: z.infer<typeof TtsBody> | undefined;
     if (!decodedRawBody.ok) {

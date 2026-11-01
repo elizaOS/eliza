@@ -9,15 +9,19 @@ import * as aiBilling from "@elizaos/cloud-shared/lib/services/ai-billing";
 import * as aiPricing from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import * as usage from "@elizaos/cloud-shared/lib/services/usage";
-import * as generativeRouteAuth from "../src/lib/generative-route-auth";
+import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 
 import { Hono } from "hono";
-import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
+import * as generativeRouteAuth from "../src/lib/generative-route-auth";
+
 const phaseRows: Array<Record<string, unknown>> = [];
 const phaseLog = spyOn(logger, "audit").mockImplementation((name, data) => {
-  if (name === "[CloudSpeech] phase timing") phaseRows.push(data as Record<string, unknown>);
+  if (name === "[CloudSpeech] phase timing")
+    phaseRows.push(data as Record<string, unknown>);
 });
-let authCalls = 0, billingCalls = 0, providerCalls = 0;
+let authCalls = 0,
+  billingCalls = 0,
+  providerCalls = 0;
 let admissionFailure: Error | undefined;
 let authenticationFailure: Error | undefined;
 let admissions = 0;
@@ -123,19 +127,28 @@ function stubProvider(host: string, payload: unknown): void {
   ) => {
     const url =
       input instanceof Request ? input.url : new URL(String(input)).href;
-    if (new URL(url).host === host) { providerCalls++; return Response.json(payload); }
+    if (new URL(url).host === host) {
+      providerCalls++;
+      return Response.json(payload);
+    }
     return realFetch(input, init);
   }) as typeof fetch;
 }
 
-async function transcribe(env: Record<string, string>, canonical = false): Promise<void> {
+async function transcribe(
+  env: Record<string, string>,
+  canonical = false,
+): Promise<void> {
   const pending: Promise<unknown>[] = [];
   const form = new FormData();
   form.append(
     "audio",
     new File([oneSecondWav()], "note.wav", { type: "audio/wav" }),
   );
-  const response = await (canonical ? new Hono().route("/api/v1/voice/stt", sttApp) : sttApp).request(
+  const response = await (canonical
+    ? new Hono().route("/api/v1/voice/stt", sttApp)
+    : sttApp
+  ).request(
     canonical ? "http://cloud.test/api/v1/voice/stt" : "http://cloud.test/",
     { method: "POST", body: form },
     env,
@@ -163,7 +176,10 @@ async function transcribe(env: Record<string, string>, canonical = false): Promi
 }
 
 beforeEach(() => {
-  phaseRows.length = 0; authCalls = 0; billingCalls = 0; providerCalls = 0;
+  phaseRows.length = 0;
+  authCalls = 0;
+  billingCalls = 0;
+  providerCalls = 0;
   admissionFailure = undefined;
   authenticationFailure = undefined;
   admissions = 0;
@@ -416,33 +432,69 @@ test.each([
   },
 );
 
-
 test("speech phase diagnostics preserve STT order, auth, dispatch and billing counts", async () => {
-  stubProvider("api.deepgram.com", { metadata: { duration: PROVIDER_SECONDS }, results: { channels: [{ alternatives: [{ transcript: "hello", words: [] }] }] } });
-  await transcribe({ VOICE_BATCH_STT_PROVIDER: "deepgram", DEEPGRAM_API_KEY: "fixture" }, true);
-  expect(phaseRows.map(row => row.phase)).toEqual(["upload_read", "multipart_decode", "audio_buffer", "audio_sniff", "audio_metadata"]);
-  expect(authCalls).toBe(1); expect(admissions).toBe(1); expect(dispatched).toBe(1);
-  expect(providerCalls).toBe(1); expect(billingCalls).toBe(1);
+  stubProvider("api.deepgram.com", {
+    metadata: { duration: PROVIDER_SECONDS },
+    results: {
+      channels: [{ alternatives: [{ transcript: "hello", words: [] }] }],
+    },
+  });
+  await transcribe(
+    { VOICE_BATCH_STT_PROVIDER: "deepgram", DEEPGRAM_API_KEY: "fixture" },
+    true,
+  );
+  expect(phaseRows.map((row) => row.phase)).toEqual([
+    "upload_read",
+    "multipart_decode",
+    "audio_buffer",
+    "audio_sniff",
+    "audio_metadata",
+  ]);
+  expect(authCalls).toBe(1);
+  expect(admissions).toBe(1);
+  expect(dispatched).toBe(1);
+  expect(providerCalls).toBe(1);
+  expect(billingCalls).toBe(1);
   expect(reconciled).toEqual([PROVIDER_SECONDS]);
 });
 
 test("oversized STT still stops before auth, decoding, provider and billing", async () => {
   const app = new Hono().route("/api/v1/voice/stt", sttApp);
-  const response = await app.request("http://cloud.test/api/v1/voice/stt", {
-    method: "POST", headers: { "Content-Type": "multipart/form-data; boundary=fixture" }, body: "x".repeat(128),
-  }, { VOICE_STT_MAX_MULTIPART_BYTES: "32" });
+  const response = await app.request(
+    "http://cloud.test/api/v1/voice/stt",
+    {
+      method: "POST",
+      headers: { "Content-Type": "multipart/form-data; boundary=fixture" },
+      body: "x".repeat(128),
+    },
+    { VOICE_STT_MAX_MULTIPART_BYTES: "32" },
+  );
   expect(response.status).toBe(413);
-  expect(phaseRows.map(row => row.phase)).toEqual(["upload_read"]);
-  expect(authCalls).toBe(0); expect(admissions).toBe(0); expect(dispatched).toBe(0);
-  expect(providerCalls).toBe(0); expect(billingCalls).toBe(0);
+  expect(phaseRows.map((row) => row.phase)).toEqual(["upload_read"]);
+  expect(authCalls).toBe(0);
+  expect(admissions).toBe(0);
+  expect(dispatched).toBe(0);
+  expect(providerCalls).toBe(0);
+  expect(billingCalls).toBe(0);
 });
 
 test("STT auth failure preserves refusal and never reaches decoding or effects", async () => {
   authenticationFailure = new ApiError(401);
   const app = new Hono().route("/api/v1/voice/stt", sttApp);
-  const form = new FormData(); form.append("audio", new File([oneSecondWav()], "fixture.wav", { type: "audio/wav" }));
-  const response = await app.request("http://cloud.test/api/v1/voice/stt", { method: "POST", body: form }, {});
-  expect(response.status).toBe(401); expect(authCalls).toBe(1);
-  expect(phaseRows.map(row => row.phase)).toEqual(["upload_read"]);
-  expect(admissions).toBe(0); expect(providerCalls).toBe(0); expect(billingCalls).toBe(0);
+  const form = new FormData();
+  form.append(
+    "audio",
+    new File([oneSecondWav()], "fixture.wav", { type: "audio/wav" }),
+  );
+  const response = await app.request(
+    "http://cloud.test/api/v1/voice/stt",
+    { method: "POST", body: form },
+    {},
+  );
+  expect(response.status).toBe(401);
+  expect(authCalls).toBe(1);
+  expect(phaseRows.map((row) => row.phase)).toEqual(["upload_read"]);
+  expect(admissions).toBe(0);
+  expect(providerCalls).toBe(0);
+  expect(billingCalls).toBe(0);
 });
