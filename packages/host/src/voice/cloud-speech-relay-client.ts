@@ -175,11 +175,22 @@ function warmingDelay(
     error && typeof error === "object" && !Array.isArray(error)
       ? (error as Record<string, unknown>)
       : undefined;
-  if (
-    body.code !== "auth_cache_warming" &&
-    nested?.code !== "auth_cache_warming"
-  )
-    return null;
+  const details =
+    body.details &&
+    typeof body.details === "object" &&
+    !Array.isArray(body.details)
+      ? (body.details as Record<string, unknown>)
+      : undefined;
+  // Cloud decides speech admission from caches only; a cold entry answers with
+  // either the auth-cache code or the retryable generative envelope while it
+  // hydrates. Both are retry-shortly signals; every other 503 fails promptly.
+  const warming =
+    body.code === "auth_cache_warming" ||
+    nested?.code === "auth_cache_warming" ||
+    (typeof nested?.code === "string" &&
+      nested.code.endsWith("_cache_warming")) ||
+    (body.code === "service_unavailable" && details?.retryable === true);
+  if (!warming) return null;
   const value = response.headers.get("retry-after");
   if (value !== null) {
     if (/^\d+$/.test(value)) return Number(value) * 1000;

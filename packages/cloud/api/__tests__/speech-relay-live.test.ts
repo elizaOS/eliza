@@ -66,17 +66,37 @@ maybe(
       "Content-Type": "application/json",
     };
     async function json(path: string, body?: unknown) {
-      let response: Response;
-      try {
-        response = await fetch(`${base}${path}`, {
-          method: body === undefined ? "GET" : "POST",
-          headers,
-          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-          signal: AbortSignal.timeout(20_000),
-        });
-      } catch {
-        throw new Error("SPEECH_HTTP_UNAVAILABLE");
+      let response: Response | undefined;
+      // Like the shipped client, retry the structured warming refusal a cold
+      // auth or billing cache answers with while it hydrates; nothing else.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(`${base}${path}`, {
+            method: body === undefined ? "GET" : "POST",
+            headers,
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+            signal: AbortSignal.timeout(20_000),
+          });
+        } catch {
+          throw new Error("SPEECH_HTTP_UNAVAILABLE");
+        }
+        if (response.status !== 503) break;
+        const refusal = (await response
+          .clone()
+          .json()
+          .catch(() => null)) as Record<string, unknown> | null;
+        const nested = refusal?.error as Record<string, unknown> | undefined;
+        const details = refusal?.details as Record<string, unknown> | undefined;
+        const warming =
+          (typeof nested?.code === "string" &&
+            nested.code.endsWith("_cache_warming")) ||
+          refusal?.code === "auth_cache_warming" ||
+          (refusal?.code === "service_unavailable" &&
+            details?.retryable === true);
+        if (!warming) break;
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
+      if (!response) throw new Error("SPEECH_HTTP_UNAVAILABLE");
       check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
       try {
         return (await response.json()) as Record<string, unknown>;

@@ -1126,6 +1126,38 @@ test("auth-cache warming retries consent and mint before admission with identica
   await client.close();
 });
 
+test("the retryable generative warming envelope is retried like the auth-cache code", async () => {
+  const f = await fixture();
+  const warmed = new Set<string>();
+  let refusals = 0;
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    fetch: Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        if (!path.endsWith("/revoke") && !warmed.has(path)) {
+          warmed.add(path);
+          refusals++;
+          return Response.json(
+            {
+              success: false,
+              error: "Authorization cache is warming; retry shortly",
+              code: "service_unavailable",
+              details: { retryable: true, retryAfterSeconds: 1 },
+            },
+            { status: 503, headers: { "Retry-After": "1" } },
+          );
+        }
+        return fetch(input, init);
+      },
+      { preconnect() {} },
+    ),
+  });
+  expect(refusals).toBe(2);
+  expect(f.connections).toBe(1);
+  await client.close();
+});
+
 test("auth-cache retry is bounded and never treats unrelated refusals or failures as replayable", async () => {
   for (const fixtureCase of [
     {
