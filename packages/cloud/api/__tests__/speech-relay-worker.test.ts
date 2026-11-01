@@ -161,10 +161,12 @@ test("ready speech streams PCM and multiple TTS contexts without another DB/auth
   );
   const wrong = refused.webSocket!;
   wrong.accept();
+  const invalidHello = next(wrong as any, (value) => value.t === "error");
   const refusedClose = new Promise<void>((resolve) =>
     wrong.addEventListener("close", () => resolve()),
   );
   wrong.send(JSON.stringify({ t: "hello", token: "wrong-capability" }));
+  expect(await invalidHello).toEqual({ t: "error", code: "unauthorized" });
   await refusedClose;
   const untouched = (await (await call("/test-stats")).json()) as Record<
     string,
@@ -294,7 +296,7 @@ test("a refused credit reservation preserves the allowlisted recovery reason bef
   const socket = upgraded.webSocket!;
   socket.accept();
   const refused = next(socket as any, (value) => value.t === "error");
-  socket.send(JSON.stringify({ t: "hello", token }));
+  socket.send(JSON.stringify({ t: "hello", token, errorReasons: true }));
   expect(await refused).toEqual({
     t: "error",
     code: "unavailable",
@@ -306,4 +308,40 @@ test("a refused credit reservation preserves the allowlisted recovery reason bef
   >;
   expect(after.sttOpened).toBe(baseline.sttOpened);
   expect(after.ttsOpened).toBe(baseline.ttsOpened);
+});
+
+test("legacy speech clients receive no unnegotiated billing reason", async () => {
+  const token = "legacy-refused-capability";
+  await worker.dispatchFetch("https://speech-relay.internal/initialize", {
+    method: "POST",
+    headers: {
+      "x-test-session": "legacy-credit-decline",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      sessionId: "55555555-5555-4555-8555-555555555555",
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: Date.now() + 60000,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+      },
+    }),
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    {
+      headers: {
+        "x-test-session": "legacy-credit-decline",
+        Upgrade: "websocket",
+      },
+    },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const refused = next(socket as any, (value) => value.t === "error");
+  socket.send(JSON.stringify({ t: "hello", token }));
+  expect(await refused).toEqual({ t: "error", code: "unavailable" });
 });

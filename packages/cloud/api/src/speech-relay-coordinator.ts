@@ -170,20 +170,24 @@ export class SpeechRelayCoordinator {
         let authenticated = false,
           opening = false,
           queued = 0,
-          queuedCharacters = 0;
+          queuedCharacters = 0,
+          errorReasons = false;
         let control = Promise.resolve();
         const prepared = new Set<string>();
         const deadline = setTimeout(
           () => server.close(1008, "Hello required"),
           5000,
         );
-        const fail = (error?: unknown) => {
+        const fail = (
+          error?: unknown,
+          code: "unavailable" | "unauthorized" = "unavailable",
+        ) => {
           try {
             server.send(
               JSON.stringify({
                 t: "error",
-                code: "unavailable",
-                ...(error instanceof InsufficientCreditsError
+                code,
+                ...(errorReasons && error instanceof InsufficientCreditsError
                   ? { reason: "insufficient_credits" }
                   : {}),
               }),
@@ -214,6 +218,7 @@ export class SpeechRelayCoordinator {
                 )
               )
                 throw Error("Invalid hello");
+              errorReasons = hello.errorReasons === true;
               opening = true;
               clearTimeout(deadline);
               this.socket = server;
@@ -224,7 +229,7 @@ export class SpeechRelayCoordinator {
                 opening = false;
               }, fail);
             } catch {
-              fail();
+              fail(undefined, "unauthorized");
             }
             return;
           }
