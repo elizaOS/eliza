@@ -58,6 +58,7 @@ import type {
 } from "@elizaos/contracts";
 import {
   ElizaError,
+  getStreamingContext,
   type IAgentRuntime,
   logger,
   Semaphore,
@@ -3768,7 +3769,9 @@ export class CalendarService extends Service {
   async discoverCalendars(
     requestUrl: URL,
     request?: ListLifeOpsCalendarsRequest,
+    signal?: AbortSignal,
   ): Promise<CalendarSourceDiscovery> {
+    signal?.throwIfAborted();
     const mode = normalizeOptionalConnectorMode(request?.mode, "mode");
     const side = normalizeOptionalConnectorSide(request?.side, "side");
     const targetsNonGoogleProvider =
@@ -3974,7 +3977,8 @@ export class CalendarService extends Service {
       (!mode || mode === "cloud_managed")
     ) {
       try {
-        const managed = await this.managedCalendar.sources();
+        signal?.throwIfAborted();
+        const managed = await this.managedCalendar.sources(signal);
         summaries.push(
           ...managed.filter(
             (calendar) =>
@@ -3982,6 +3986,7 @@ export class CalendarService extends Service {
           ),
         );
       } catch (error) {
+        signal?.throwIfAborted();
         const calendar = managedCalendarPlaceholder(request?.grantId);
         const sourceError = calendarSourceError(error);
         let diagnosticOnly = false;
@@ -4013,6 +4018,7 @@ export class CalendarService extends Service {
         );
       }
     }
+    signal?.throwIfAborted();
     const preferences = await ensureCalendarFeedIncludes(
       this.runtime,
       summaries.map((summary) => {
@@ -5557,8 +5563,11 @@ export class CalendarService extends Service {
     requestUrl: URL,
     request: GetLifeOpsCalendarFeedRequest = {},
     now = new Date(),
+    signal?: AbortSignal,
   ): Promise<LifeOpsCalendarFeed> {
-    return (await this.getCalendarFeedSnapshot(requestUrl, request, now)).feed;
+    return (
+      await this.getCalendarFeedSnapshot(requestUrl, request, now, signal)
+    ).feed;
   }
 
   /** One authorized discovery observation for feed health and its full versioned catalog.
@@ -5568,10 +5577,17 @@ export class CalendarService extends Service {
     requestUrl: URL,
     request: GetLifeOpsCalendarFeedRequest = {},
     now = new Date(),
+    signal?: AbortSignal,
   ): Promise<{
     feed: LifeOpsCalendarFeed;
     calendars: LifeOpsCalendarSummary[];
   }> {
+    const turnSignal = getStreamingContext()?.abortSignal;
+    const requestSignal =
+      signal && turnSignal && signal !== turnSignal
+        ? AbortSignal.any([signal, turnSignal])
+        : (signal ?? turnSignal);
+    requestSignal?.throwIfAborted();
     const mode = normalizeOptionalConnectorMode(request.mode, "mode");
     const side = normalizeOptionalConnectorSide(request.side, "side");
     const explicitCalendarId = normalizeOptionalString(request.calendarId);
@@ -5590,11 +5606,16 @@ export class CalendarService extends Service {
     const forceSync =
       normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
 
-    const discovery = await this.discoverCalendars(requestUrl, {
-      mode,
-      side,
-      grantId: request.grantId,
-    });
+    const discovery = await this.discoverCalendars(
+      requestUrl,
+      {
+        mode,
+        side,
+        grantId: request.grantId,
+      },
+      requestSignal,
+    );
+    requestSignal?.throwIfAborted();
     const listedCalendars = discovery.calendars;
     const discoveryFailures = discovery.failures.filter((source) => {
       if (request.grantId && source.key.grantId !== request.grantId) {
@@ -5743,7 +5764,9 @@ export class CalendarService extends Service {
           forceSync,
           now,
           discoveryFailures,
-          reads.signal,
+          requestSignal
+            ? AbortSignal.any([requestSignal, reads.signal])
+            : reads.signal,
         ),
       };
     } finally {
@@ -5765,6 +5788,8 @@ export class CalendarService extends Service {
     const sources: (AggregatedCalendarFeedSource & {
       calendar: LifeOpsCalendarSummary;
     })[] = [];
+    // Cost: one broker read per managed source, at most four active per service.
+    // Cancellation removes queued work; it adds no polling or provider calls.
     // Managed feeds start now under the service's shared bound, admitted in
     // calendar order, and are consumed in calendar order below. Each settles
     // alone, so a failed source still degrades and reports on its own. A read
@@ -5775,8 +5800,10 @@ export class CalendarService extends Service {
         ? (async (): Promise<
             { feed: LifeOpsCalendarFeed } | { error: unknown }
           > => {
-            await this.managedFeedReads.acquire();
+            let acquired = false;
             try {
+              await this.managedFeedReads.acquire(signal);
+              acquired = true;
               signal.throwIfAborted();
               return {
                 feed: await managed.feed(
@@ -5791,15 +5818,17 @@ export class CalendarService extends Service {
             } catch (error) {
               return { error };
             } finally {
-              this.managedFeedReads.release();
+              if (acquired) this.managedFeedReads.release();
             }
           })()
         : undefined,
     );
     for (const [index, calendar] of calendars.entries()) {
+      signal.throwIfAborted();
       const managedFeed = managedFeeds[index];
       if (managedFeed) {
         const read = await managedFeed;
+        signal.throwIfAborted();
         let feed: LifeOpsCalendarFeed;
         if ("feed" in read) {
           feed = read.feed;

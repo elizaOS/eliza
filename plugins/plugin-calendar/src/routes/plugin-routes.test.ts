@@ -261,10 +261,17 @@ describe("calendar owner read routes", () => {
         "getLinkedCalendarEvent",
       ].map((name) => [name, vi.fn()]),
     ),
-    getCalendarFeed: vi.fn(async (_url: URL, _request: unknown) => ({
-      state: "partial",
-      events: [],
-    })),
+    getCalendarFeed: vi.fn(
+      async (
+        _url: URL,
+        _request: unknown,
+        _now?: Date,
+        _signal?: AbortSignal,
+      ) => ({
+        state: "partial",
+        events: [],
+      }),
+    ),
     listCalendars: vi.fn(async (_url: URL, _request: unknown) => [
       { calendarId: "eliza" },
     ]),
@@ -307,8 +314,10 @@ describe("calendar owner read routes", () => {
   });
 
   it("passes the feed query to CalendarService for the trusted local owner", async () => {
+    const requestSignal = new AbortController().signal;
     const result = await readRoute("/api/lifeops/calendar/feed")(
       readContext({
+        signal: requestSignal,
         isTrustedLocal: true,
         query: {
           side: "owner",
@@ -323,7 +332,10 @@ describe("calendar owner read routes", () => {
       status: 200,
       body: { state: "partial", events: [] },
     });
-    const [url, request] = readService.getCalendarFeed.mock.lastCall ?? [];
+    const [url, request, now, signal] =
+      readService.getCalendarFeed.mock.lastCall ?? [];
+    expect(now).toBeUndefined();
+    expect(signal).toBe(requestSignal);
     expect(String(url)).toBe(
       "http://agent.local/api/lifeops/calendar/feed?side=owner&timeMin=2026-10-01T00%3A00%3A00.000Z&timeMax=2026-11-01T00%3A00%3A00.000Z&timeZone=America%2FArgentina%2FBuenos_Aires",
     );

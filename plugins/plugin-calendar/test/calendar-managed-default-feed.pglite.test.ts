@@ -5,8 +5,13 @@
  * under an earlier hidden default follow the host, and that an explicit owner
  * choice is kept.
  */
+
+import { once } from "node:events";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { PGlite } from "@electric-sql/pglite";
-import type { IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, runWithStreamingContext } from "@elizaos/core";
+import type { RouteHandlerContext } from "@elizaos/host/protocol";
 import { RuntimeMigrator } from "@elizaos/plugin-sql";
 import { drizzle } from "drizzle-orm/pglite";
 import {
@@ -20,12 +25,14 @@ import {
   vi,
 } from "vitest";
 import { __testing } from "../src/apple-calendar.js";
+import { calendarHttpRoutes } from "../src/routes/plugin-routes.js";
 import {
   type CalendarHostGate,
   CalendarService,
   calendarSchema,
 } from "../src/service/index.js";
 
+const nativeFetch = globalThis.fetch;
 const AGENT_ID = "calendar-managed-default-agent";
 const INTERNAL_URL = new URL("http://internal.local/api/calendar");
 const GRANT = `alpha-google:${"b".repeat(64)}`;
@@ -163,6 +170,10 @@ function service(
     );
     return reply instanceof Response ? reply : Response.json(reply);
   });
+  return calendarService();
+}
+
+function calendarService(): CalendarService {
   const calendar = new CalendarService(runtime);
   calendar.setGate({
     getGoogleConnectorAccounts: async () => [],
@@ -468,3 +479,295 @@ describe("managed owner feeds in one aggregate read", {
     reported.mockRestore();
   });
 });
+
+describe("managed Calendar caller cancellation", { timeout: 30_000 }, () => {
+  const queued = (calendar: CalendarService) =>
+    (calendar as unknown as { managedFeedReads: { queueLength: number } })
+      .managedFeedReads.queueLength;
+
+  function heldFeeds(count: number) {
+    const listed = Array.from({ length: count }, (_, index) => ({
+      calendarId: `held-${index}`,
+      summary: `Held ${index}`,
+    }));
+    shown = new Set(listed.map((entry) => entry.calendarId));
+    const started: string[] = [],
+      aborted: string[] = [];
+    const release: (() => void)[] = [];
+    let released = false;
+    const calendar = service(async (input, signal) => {
+      if (input.operation !== "feed") return broker(input, listed);
+      started.push(input.timeMin);
+      if (!released)
+        await new Promise<void>((resolve, reject) => {
+          const abort = () => {
+            aborted.push(input.timeMin);
+            reject(signal.reason);
+          };
+          signal.addEventListener("abort", abort, { once: true });
+          release.push(() => {
+            signal.removeEventListener("abort", abort);
+            resolve();
+          });
+        });
+      return broker(input, listed);
+    });
+    return {
+      calendar,
+      started,
+      aborted,
+      release() {
+        released = true;
+        for (const done of release) done();
+      },
+    };
+  }
+
+  it("rejects a pre-aborted caller before discovery or broker reads", async () => {
+    const respond = vi.fn((input: Record<string, string>) => broker(input));
+    const calendar = service(respond);
+    const controller = new AbortController(),
+      reason = new Error("caller stopped");
+    controller.abort(reason);
+    await expect(
+      calendar.getCalendarFeed(
+        INTERNAL_URL,
+        WINDOW,
+        undefined,
+        controller.signal,
+      ),
+    ).rejects.toBe(reason);
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it("inherits cancellation from the active agent turn", async () => {
+    const respond = vi.fn((input: Record<string, string>) => broker(input));
+    const calendar = service(respond),
+      controller = new AbortController();
+    const reason = new Error("agent turn stopped");
+    controller.abort(reason);
+    for (const explicitSignal of [undefined, new AbortController().signal]) {
+      await expect(
+        runWithStreamingContext({ abortSignal: controller.signal }, () =>
+          calendar.getCalendarFeed(
+            INTERNAL_URL,
+            WINDOW,
+            undefined,
+            explicitSignal,
+          ),
+        ),
+      ).rejects.toBe(reason);
+    }
+    expect(respond).not.toHaveBeenCalled();
+  });
+
+  it("aborts managed discovery without reporting a failed source or starting feeds", async () => {
+    const controller = new AbortController(),
+      reason = new Error("discovery stopped");
+    let started = false,
+      rejected: unknown,
+      release: (() => void) | undefined;
+    const respond = vi.fn(
+      async (input: Record<string, string>, signal: AbortSignal) => {
+        if (input.operation !== "sources")
+          throw new Error("Feed should not start");
+        started = true;
+        await new Promise<void>((resolve, reject) => {
+          release = resolve;
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+        return broker(input);
+      },
+    );
+    const calendar = service(respond),
+      errors = vi.spyOn(runtime, "reportError");
+    const read = calendar
+      .getCalendarFeed(INTERNAL_URL, WINDOW, undefined, controller.signal)
+      .catch((error) => {
+        rejected = error;
+      });
+    try {
+      await vi.waitFor(() => expect(started).toBe(true));
+      controller.abort(reason);
+      await vi.waitFor(() => expect(rejected).toBe(reason));
+      expect(respond).toHaveBeenCalledTimes(1);
+      expect(errors).not.toHaveBeenCalled();
+    } finally {
+      release?.();
+      await read;
+      errors.mockRestore();
+    }
+  });
+
+  it("cancels in-flight and queued feeds without admitting later reads", async () => {
+    const fixture = heldFeeds(6),
+      controller = new AbortController();
+    const reason = new Error("caller stopped");
+    let rejected: unknown;
+    const read = fixture.calendar.getCalendarFeed(
+      INTERNAL_URL,
+      WINDOW,
+      undefined,
+      controller.signal,
+    );
+    const settled = read.catch((error) => {
+      rejected = error;
+    });
+    try {
+      await vi.waitFor(() => expect(fixture.started).toHaveLength(4));
+      controller.abort(reason);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(rejected).toBe(reason);
+      expect(fixture.aborted).toHaveLength(4);
+      expect(fixture.started).toHaveLength(4);
+      expect(queued(fixture.calendar)).toBe(0);
+      expect(
+        (
+          fixture.calendar as unknown as {
+            managedFeedReads: { availablePermits: number };
+          }
+        ).managedFeedReads.availablePermits,
+      ).toBe(4);
+    } finally {
+      fixture.release();
+      await settled;
+    }
+  });
+
+  it("removes a cancelled request while another request holds every permit", async () => {
+    const fixture = heldFeeds(4),
+      controller = new AbortController();
+    const reason = new Error("queued caller stopped");
+    const first = fixture.calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    let rejected: unknown;
+    let second: Promise<unknown> | undefined;
+    try {
+      await vi.waitFor(() => expect(fixture.started).toHaveLength(4));
+      second = fixture.calendar
+        .getCalendarFeed(
+          INTERNAL_URL,
+          {
+            ...WINDOW,
+            timeMin: "2026-10-31T00:00:00.000Z",
+            timeMax: "2026-11-01T00:00:00.000Z",
+          },
+          undefined,
+          controller.signal,
+        )
+        .catch((error) => {
+          rejected = error;
+        });
+      await vi.waitFor(() => expect(queued(fixture.calendar)).toBe(4));
+      controller.abort(reason);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(rejected).toBe(reason);
+      expect(queued(fixture.calendar)).toBe(0);
+      expect(fixture.aborted).toEqual([]);
+      expect(fixture.started).toEqual(Array(4).fill(WINDOW.timeMin));
+    } finally {
+      fixture.release();
+      await Promise.all([first, second]);
+    }
+  });
+  it("removes queued reads after a local failure while another request holds permits", async () => {
+    const fixture = heldFeeds(4);
+    const first = fixture.calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+    const failure = new Error("local source failed");
+    try {
+      await vi.waitFor(() => expect(fixture.started).toHaveLength(4));
+      const localRead = vi
+        .spyOn(
+          fixture.calendar as unknown as {
+            readElizaCalendarFeed(): Promise<unknown>;
+          },
+          "readElizaCalendarFeed",
+        )
+        .mockRejectedValueOnce(failure);
+      await expect(
+        fixture.calendar.getCalendarFeed(INTERNAL_URL, {
+          ...WINDOW,
+          timeMin: "2026-10-31T00:00:00.000Z",
+          timeMax: "2026-11-01T00:00:00.000Z",
+        }),
+      ).rejects.toBe(failure);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      expect(queued(fixture.calendar)).toBe(0);
+      expect(fixture.started).toHaveLength(4);
+      expect(fixture.aborted).toEqual([]);
+      localRead.mockRestore();
+    } finally {
+      fixture.release();
+      await first;
+    }
+  });
+});
+
+it("propagates the owner route signal to real managed HTTP feed requests", async () => {
+  shown = new Set(CALENDARS.map((calendar) => calendar.calendarId));
+  let started = 0,
+    closed = 0;
+  const server = createServer(async (req, res) => {
+    const chunks: Buffer[] = [];
+    for await (const chunk of req) chunks.push(Buffer.from(chunk));
+    const input = JSON.parse(Buffer.concat(chunks).toString()).calendar;
+    if (input.operation === "feed") {
+      started++;
+      res.once("close", () => {
+        closed++;
+      });
+      return;
+    }
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(broker(input)));
+  });
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const port = (server.address() as AddressInfo).port;
+  vi.stubEnv(
+    "ELIZA_MANAGED_CALENDAR_READ_BROKER",
+    `http://127.0.0.1:${port}/__alpha-owner-gmail`,
+  );
+  vi.stubEnv("ELIZA_API_TOKEN", "a".repeat(64));
+  vi.stubGlobal("fetch", nativeFetch);
+  const calendar = calendarService();
+  const serviceLookup = vi
+    .spyOn(runtime, "getService")
+    .mockReturnValue(calendar);
+  const route = calendarHttpRoutes.find(
+    (route) => route.path === "/api/lifeops/calendar/feed",
+  )?.routeHandler;
+  if (!route) throw new Error("Owner feed route missing");
+  const controller = new AbortController(),
+    reason = new Error("HTTP caller stopped");
+  const read = route({
+    signal: controller.signal,
+    body: undefined,
+    params: {},
+    headers: { host: "agent.local" },
+    query: {
+      timeMin: WINDOW.timeMin,
+      timeMax: WINDOW.timeMax,
+      timeZone: WINDOW.timeZone,
+    },
+    method: "GET",
+    path: "/api/lifeops/calendar/feed",
+    runtime,
+    inProcess: false,
+    isTrustedLocal: true,
+  } satisfies RouteHandlerContext);
+  const failure = read.catch((error) => error);
+  try {
+    await vi.waitFor(() => expect(started).toBe(CALENDARS.length));
+    controller.abort(reason);
+    expect(await failure).toBe(reason);
+    await vi.waitFor(() => expect(closed).toBe(CALENDARS.length));
+  } finally {
+    controller.abort(reason);
+    server.closeAllConnections();
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    await failure;
+    serviceLookup.mockRestore();
+  }
+}, 10_000);

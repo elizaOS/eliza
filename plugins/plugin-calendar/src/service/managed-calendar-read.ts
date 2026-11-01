@@ -337,9 +337,13 @@ export function createManagedCalendarRead(
     },
     acceptsGrantId: (grantId?: string) => !grantId || scoped(grantId),
     owns: (calendar: LifeOpsCalendarSummary) => scoped(calendar.grantId),
-    async sources(): Promise<LifeOpsCalendarSummary[]> {
+    async sources(signal?: AbortSignal): Promise<LifeOpsCalendarSummary[]> {
       const attempt: ReadAttempt = { operation: "sources", httpStatus: null };
-      const { calendars } = await call({ operation: "sources" }, attempt);
+      const { calendars } = await call(
+        { operation: "sources" },
+        attempt,
+        signal,
+      );
       if (
         !Array.isArray(calendars) ||
         calendars.length > 1000 ||

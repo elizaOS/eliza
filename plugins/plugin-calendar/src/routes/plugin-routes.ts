@@ -596,97 +596,119 @@ export function calendarRouteHandler(): LegacyRouteHandler {
       });
       return;
     }
-    const handled = await handleCalendarRoutes({
-      method,
-      pathname: url.pathname,
-      url,
-      runRoute: (fn) => runCalendarRoute(agentRuntime, httpRes, operation, fn),
-      rateLimit: (key) =>
-        rateLimitRequest({
-          runtime: agentRuntime,
-          res: httpRes,
-          key,
-        }),
-      json: (data, status) => sendJson(httpRes, data, status),
-      readJsonBody: <T extends object>() =>
-        readCalendarJsonBody<T>(httpReq, httpRes),
-      decodePathComponent: (raw, label) => {
-        try {
-          return decodeURIComponent(raw);
-        } catch {
-          sendJsonError(
-            httpRes,
-            `Invalid ${label}: malformed URL encoding`,
-            400,
-          );
-          return null;
-        }
-      },
-      parseConnectorMode,
-      parseConnectorSide,
-      parseBoolean,
-      serviceError: (status, message) =>
-        new CalendarServiceError(status, message),
-      mutationGateway: {
-        async updateLinkedCalendarControl(requestUrl, request) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.updateLinkedCalendarControl(requestUrl, request);
+    const cancellation = new AbortController();
+    const aborted = () =>
+      cancellation.abort(
+        new DOMException("Calendar request was cancelled.", "AbortError"),
+      );
+    const closed = () => {
+      if (!httpRes.writableEnded) aborted();
+    };
+    httpReq.once?.("aborted", aborted);
+    httpRes.once?.("close", closed);
+    if (httpReq.aborted || httpRes.destroyed) aborted();
+    try {
+      const handled = await handleCalendarRoutes({
+        signal: cancellation.signal,
+        method,
+        pathname: url.pathname,
+        url,
+        runRoute: (fn) =>
+          runCalendarRoute(agentRuntime, httpRes, operation, fn),
+        rateLimit: (key) =>
+          rateLimitRequest({
+            runtime: agentRuntime,
+            res: httpRes,
+            key,
+          }),
+        json: (data, status) => sendJson(httpRes, data, status),
+        readJsonBody: <T extends object>() =>
+          readCalendarJsonBody<T>(httpReq, httpRes),
+        decodePathComponent: (raw, label) => {
+          try {
+            return decodeURIComponent(raw);
+          } catch {
+            sendJsonError(
+              httpRes,
+              `Invalid ${label}: malformed URL encoding`,
+              400,
+            );
+            return null;
+          }
         },
-        async create(requestUrl, request) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.create(requestUrl, request);
-        },
-        async update(requestUrl, request) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.update(requestUrl, request);
-        },
-        async cancel(requestUrl, request) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.cancel(requestUrl, request);
-        },
-        async linkCalendar(requestUrl, request) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.linkCalendar(requestUrl, request);
-        },
-        async reconcileLinkedCalendar(requestUrl, linkId, request) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.reconcileLinkedCalendar(requestUrl, linkId, request);
-        },
-        async resolveLinkedCalendarConflict(requestUrl, linkId, request) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.resolveLinkedCalendarConflict(
-            requestUrl,
-            linkId,
-            request,
-          );
-        },
-        async disconnectLinkedCalendar(requestUrl, linkId, request) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.disconnectLinkedCalendar(requestUrl, linkId, request);
-        },
-        async reconcileLinkedCalendarProviderChanges(
-          requestUrl,
-          providerEventIds,
-        ) {
-          const gateway =
-            await requireCalendarOwnerMutationGateway(agentRuntime);
-          return gateway.reconcileLinkedCalendarProviderChanges(
+        parseConnectorMode,
+        parseConnectorSide,
+        parseBoolean,
+        serviceError: (status, message) =>
+          new CalendarServiceError(status, message),
+        mutationGateway: {
+          async updateLinkedCalendarControl(requestUrl, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.updateLinkedCalendarControl(requestUrl, request);
+          },
+          async create(requestUrl, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.create(requestUrl, request);
+          },
+          async update(requestUrl, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.update(requestUrl, request);
+          },
+          async cancel(requestUrl, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.cancel(requestUrl, request);
+          },
+          async linkCalendar(requestUrl, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.linkCalendar(requestUrl, request);
+          },
+          async reconcileLinkedCalendar(requestUrl, linkId, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.reconcileLinkedCalendar(requestUrl, linkId, request);
+          },
+          async resolveLinkedCalendarConflict(requestUrl, linkId, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.resolveLinkedCalendarConflict(
+              requestUrl,
+              linkId,
+              request,
+            );
+          },
+          async disconnectLinkedCalendar(requestUrl, linkId, request) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.disconnectLinkedCalendar(
+              requestUrl,
+              linkId,
+              request,
+            );
+          },
+          async reconcileLinkedCalendarProviderChanges(
             requestUrl,
             providerEventIds,
-          );
+          ) {
+            const gateway =
+              await requireCalendarOwnerMutationGateway(agentRuntime);
+            return gateway.reconcileLinkedCalendarProviderChanges(
+              requestUrl,
+              providerEventIds,
+            );
+          },
         },
-      },
-    });
-    if (!handled && !httpRes.headersSent) {
-      sendJsonError(httpRes, "Not found", 404);
+      });
+      if (!handled && !httpRes.headersSent) {
+        sendJsonError(httpRes, "Not found", 404);
+      }
+    } finally {
+      httpReq.removeListener?.("aborted", aborted);
+      httpRes.removeListener?.("close", closed);
     }
   };
 }
@@ -699,6 +721,7 @@ async function readOwnerCalendar(
   context: RouteHandlerContext,
   read: (service: CalendarRouteService, url: URL) => Promise<unknown>,
 ): Promise<RouteHandlerResult> {
+  context.signal.throwIfAborted();
   const role = context.accessContext?.role;
   if (
     context.accessContext
@@ -716,6 +739,7 @@ async function readOwnerCalendar(
   });
   if (limited) return limited;
   const service = await resolveCalendarService(context.runtime);
+  context.signal.throwIfAborted();
   if (!service) {
     return {
       status: 503,
@@ -756,6 +780,8 @@ export const calendarHttpRoutes: Route[] = [
           await service.getCalendarFeed(
             url,
             parseCalendarFeedQuery(url.searchParams, queryParsers),
+            undefined,
+            context.signal,
           ),
         ),
       ),
