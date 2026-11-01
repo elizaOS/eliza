@@ -171,6 +171,7 @@ import {
   withContextRoutingValues,
 } from "./response-state.ts";
 import {
+  PLANNING_ACKNOWLEDGMENT_FALLBACK,
   replyClaimsInProgressWork,
   replyIsClaimSafeAcknowledgment,
 } from "./side-effect-claims.ts";
@@ -1084,24 +1085,31 @@ export async function runV5MessageRuntimeStage1(
       earlyReplyText.length > 0 &&
       (onResponseHandlerEarlyReply || args.onPlanningAcknowledgment)
     ) {
+      const pendingDraft =
+        prePatchStageOneReplyEffectStatus === "pending" &&
+        earlyReplyText.trim().length > 0;
       const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
       earlyReplyText =
         visibleProgress.kind === "text" ? visibleProgress.text : "";
       // A pending draft is not a read result. The transient acknowledgement
-      // keeps the model's forward-looking wording; the durable early reply
-      // stays whole-reply progress. Answer-like text (including progress plus
-      // an answer) waits for the normal grounded final path. Never fabricate a
-      // substitute.
-      if (
-        !(args.onPlanningAcknowledgment
-          ? replyIsClaimSafeAcknowledgment(earlyReplyText, {
-              plannedDestination: plannedNavigationCue(
-                fieldRunResult?.parsed.visualContinuation,
-                args.state.data.providers,
-              ),
-            })
-          : replyClaimsInProgressWork(earlyReplyText))
-      )
+      // keeps the model's forward-looking wording or is replaced whole: a
+      // pending draft outside the grammar becomes the fixed neutral wait cue,
+      // so an action turn is still acknowledged before its tools run and no
+      // word of the rejected draft is spoken. The durable early reply stays
+      // whole-reply progress and is never substituted. Answer-like text
+      // (including progress plus an answer) waits for the normal grounded
+      // final path.
+      if (args.onPlanningAcknowledgment) {
+        if (
+          !replyIsClaimSafeAcknowledgment(earlyReplyText, {
+            plannedDestination: plannedNavigationCue(
+              fieldRunResult?.parsed.visualContinuation,
+              args.state.data.providers,
+            ),
+          })
+        )
+          earlyReplyText = pendingDraft ? PLANNING_ACKNOWLEDGMENT_FALLBACK : "";
+      } else if (!replyClaimsInProgressWork(earlyReplyText))
         earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
         currentScope: {

@@ -37,6 +37,7 @@ import {
   normalizeTriggerDraft,
 } from "../../../../packages/agent/src/triggers/scheduling.ts";
 import { createAssistantPlugin } from "../index.ts";
+import { PLANNING_ACKNOWLEDGMENT_FALLBACK } from "./message/side-effect-claims.ts";
 import {
   DefaultMessageService,
   enforceTrustedDeliveryAudienceOnResult,
@@ -726,13 +727,17 @@ describe("simple-path deliver-then-persist ordering", () => {
   });
 });
 
+// The owner's live calendar draft (tj-6ae578d9ff0774).
+const LIVE_CALENDAR_DRAFT =
+  "Calendar. Killing coffee and putting a launch at noon.";
+
 describe("planning progress delivery boundaries", () => {
   it.each([
     'Notes is open. Your latest note is "QA handoff September 24." Your next saved event is "QA handoff September 25," today from 10:00 to 10:15 AM PDT. Nothing was created, edited, or deleted.',
     "Checking now. Your next saved event is at 10:00 AM.",
     "Checking that now.",
   ])(
-    "holds ungrounded read answers while permitting only genuine progress: %s",
+    "holds ungrounded read answers, speaking only genuine progress or the fallback: %s",
     async (draft) => {
       const h = await createHarness();
       const turn = h.makeMessage();
@@ -827,7 +832,11 @@ describe("planning progress delivery boundaries", () => {
         },
       );
       expect(reads).toBe(1);
-      expect(progress).toEqual(draft === "Checking that now." ? [draft] : []);
+      expect(progress).toEqual([
+        draft === "Checking that now."
+          ? draft
+          : PLANNING_ACKNOWLEDGMENT_FALLBACK,
+      ]);
       expect(delivered.map((content) => content.text)).toEqual([final]);
     },
   );
@@ -944,139 +953,237 @@ describe("planning progress delivery boundaries", () => {
   // Navigation policy asks Stage 1 to name the requested view, so a planned
   // destination may lead the acknowledgement (live tj-6ae578d9ff0774). Only
   // the registered id or label of that one planned view is a cue; the rest
-  // must still be progress, and the whole draft is what is spoken.
+  // must still be progress, and then the whole draft is what is spoken. Any
+  // other pending draft is replaced whole by the neutral fallback.
   it.each([
-    { draft: "Calendar. One sec.", route: "planned", spoken: true },
+    { draft: "Calendar. One sec.", route: "planned", verbatim: true },
     {
       draft: "calendar. Let me check your calendar.",
       route: "planned",
-      spoken: true,
+      verbatim: true,
     },
-    { draft: "Calendar. One sec.", route: "none", spoken: false },
-    { draft: "Calendar. One sec.", route: "direct", spoken: false },
-    { draft: "Calendar. One sec.", route: "unregistered", spoken: false },
-    { draft: "Calendar. One sec.", route: "absent", spoken: false },
-    // The live draft: write gerunds with an event name, an indefinite object
-    // and a clock time, before any tool ran.
+    { draft: "Let me open Calendar.", route: "planned", verbatim: true },
+    { draft: "Calendar. One sec.", route: "none", verbatim: false },
+    { draft: "Calendar. One sec.", route: "direct", verbatim: false },
+    { draft: "Calendar. One sec.", route: "unregistered", verbatim: false },
+    { draft: "Calendar. One sec.", route: "absent", verbatim: false },
+    { draft: "Calendar.", route: "planned", verbatim: false },
+    // Completion or state claims, with and without the destination.
+    { draft: "Calendar. Done.", route: "planned", verbatim: false },
+    { draft: "Calendar. Deleted coffee.", route: "planned", verbatim: false },
+    { draft: "Deleted coffee.", route: "planned", verbatim: false },
+    { draft: "Done.", route: "planned", verbatim: false },
     {
-      draft: "Calendar. Killing coffee and putting a launch at noon.",
+      draft: "Calendar. Your launch is set.",
       route: "planned",
-      spoken: false,
+      verbatim: false,
     },
-    { draft: "Calendar.", route: "planned", spoken: false },
-    { draft: "Calendar. Done.", route: "planned", spoken: false },
-    { draft: "Calendar. Deleted coffee.", route: "planned", spoken: false },
-    { draft: "Calendar. Your launch is set.", route: "planned", spoken: false },
-    { draft: "Calendar. Coffee's gone.", route: "planned", spoken: false },
-    { draft: "Notes. One sec.", route: "planned", spoken: false },
+    { draft: "Calendar. Coffee's gone.", route: "planned", verbatim: false },
+    { draft: "Notes. One sec.", route: "planned", verbatim: false },
   ] as const)(
-    "speaks a $route destination cue only before progress: $draft",
-    async ({ draft, route, spoken }) => {
-      const h = await createHarness();
-      const turn = h.makeMessage();
-      turn.content.channelType = ChannelType.VOICE_DM;
-      turn.content.text =
-        "Can you open the calendar and delete the coffee event and create a new event to have a launch at noon?";
-      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
-      h.runtime.registerResponseHandlerFieldEvaluator({
-        name: "visualContinuation",
-        description: "Navigation judgment for the complete request.",
-        schema: {
-          type: "object",
-          additionalProperties: false,
-          properties: {
-            disposition: { type: "string" },
-            viewId: { type: "string" },
-            reason: { type: "string" },
-          },
-          required: ["disposition", "viewId", "reason"],
-        },
+    "speaks a $route destination cue only before progress, else the fallback: $draft",
+    async ({ draft, route, verbatim }) => {
+      const { h, progress, delivered } = await planCalendarTurn({
+        draft,
+        route,
       });
-      // The host navigation evaluator's registry evidence and planning patch.
-      h.runtime.registerResponseHandlerEvaluator({
-        name: "test.view-navigation",
-        priority: 60,
-        shouldRun: () => true,
-        evaluate: ({ state }) => {
-          if (route === "absent")
-            return { requiresTool: true, clearReply: true };
-          state.data.providers ??= {};
-          state.data.providers.VIEW_NAVIGATION = {
-            data: {
-              views: [
-                ...(route === "unregistered"
-                  ? []
-                  : [{ id: "calendar", label: "Calendar" }]),
-                { id: "notes", label: "Notes" },
-              ],
-              currentViewId: "chat",
-            },
-          };
-          return { requiresTool: true, clearReply: true };
-        },
-      });
-      h.runtime.registerModel(
-        ModelType.RESPONSE_HANDLER,
-        async (_rt, params) => {
-          const response = stage1DirectReply(
-            draft,
-            params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
-              ?.parameters?.properties?.replyText?.type === "array",
-          );
-          Object.assign(response.toolCalls[0].arguments, {
-            contexts: ["general"],
-            intents: [
-              "Open the Calendar view",
-              "Delete the coffee event",
-              "Create a launch event at noon",
-            ],
-            requiresTool: true,
-            replyEffectStatus: "pending",
-            visualContinuation: {
-              disposition:
-                route === "none"
-                  ? "none"
-                  : route === "direct"
-                    ? "direct"
-                    : "planning",
-              viewId: route === "none" ? "" : "calendar",
-              reason: "Calendar navigation with calendar record changes.",
-            },
-          });
-          return response;
-        },
-        "destination-cue",
-        100,
-      );
-      h.runtime.registerModel(
-        ModelType.ACTION_PLANNER,
-        async () =>
-          JSON.stringify({
-            thought: "The request is resolved.",
-            toolCalls: [],
-            messageToUser: h.replyText,
-          }),
-        "destination-cue",
-        100,
-      );
-      const progress: string[] = [];
-      const delivered: Content[] = [];
-      await h.service.handleMessage(
-        h.runtime,
-        turn,
-        async (content) => {
-          delivered.push(content);
-          return [];
-        },
-        {
-          onPlanningAcknowledgment: (text) => {
-            progress.push(text);
-          },
-        },
-      );
-      expect(progress).toEqual(spoken ? [draft] : []);
+      expect(progress).toEqual([
+        verbatim ? draft : PLANNING_ACKNOWLEDGMENT_FALLBACK,
+      ]);
       expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
       expect(await h.storedReplies()).toHaveLength(1);
     },
   );
+  // The owner's live draft: write gerunds with an event name, an indefinite
+  // object and a clock time, before any tool ran. None of it is spoken; the
+  // owner hears the fallback once, and it is never stored as a reply.
+  it("acknowledges the live calendar draft with the fallback only, once and transiently", async () => {
+    const { h, progress, delivered } = await planCalendarTurn({
+      draft: LIVE_CALENDAR_DRAFT,
+    });
+    expect(progress).toEqual([PLANNING_ACKNOWLEDGMENT_FALLBACK]);
+    expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
+    const agentTexts = (
+      await h.runtime.getMemories({
+        roomId: h.roomId,
+        tableName: "messages",
+        count: 100,
+      })
+    )
+      .filter((memory) => memory.entityId === h.runtime.agentId)
+      .map((memory) => memory.content.text);
+    expect(agentTexts).toEqual([h.replyText]);
+  });
+  // The fallback replaces a draft; it never invents one.
+  it("sends no fallback when Stage 1 drafts no acknowledgement", async () => {
+    const { h, progress, delivered } = await planCalendarTurn({ draft: "" });
+    expect(progress).toEqual([]);
+    expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
+    expect(await h.storedReplies()).toHaveLength(1);
+  });
+  // An action that owns the early reply keeps the turn silent until its own
+  // result; the same sole candidate without that ownership gets the fallback.
+  it.each([true, false])(
+    "sends the fallback only when no action owns the early reply (suppressEarlyReply=%s)",
+    async (suppressEarlyReply) => {
+      const { progress } = await planCalendarTurn({
+        draft: LIVE_CALENDAR_DRAFT,
+        editAction: { suppressEarlyReply },
+      });
+      expect(progress).toEqual(
+        suppressEarlyReply ? [] : [PLANNING_ACKNOWLEDGMENT_FALLBACK],
+      );
+    },
+  );
+  it("sends no acknowledgement for a direct reply", async () => {
+    const h = await createHarness();
+    const progress: string[] = [];
+    const delivered: Content[] = [];
+    await h.service.handleMessage(
+      h.runtime,
+      h.makeMessage(),
+      async (content) => {
+        delivered.push(content);
+        return [];
+      },
+      {
+        onPlanningAcknowledgment: (text) => {
+          progress.push(text);
+        },
+      },
+    );
+    expect(progress).toEqual([]);
+    expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
+    expect(await h.storedReplies()).toHaveLength(1);
+  });
 });
+
+/**
+ * One planned calendar turn on a voice DM: Stage 1 drafts `draft` as a pending
+ * acknowledgement beside a visualContinuation for `route`, the host navigation
+ * evaluator supplies registry evidence, and the planner answers with the
+ * harness reply. With `editAction`, Stage 1 names one registered calendar
+ * action as its sole candidate.
+ */
+async function planCalendarTurn({
+  draft,
+  route = "planned",
+  editAction,
+}: {
+  draft: string;
+  route?: "planned" | "none" | "direct" | "unregistered" | "absent";
+  editAction?: { suppressEarlyReply: boolean };
+}) {
+  const h = await createHarness();
+  const turn = h.makeMessage();
+  turn.content.channelType = ChannelType.VOICE_DM;
+  turn.content.text =
+    "Can you open the calendar and delete the coffee event and create a new event to have a launch at noon?";
+  h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+  if (editAction)
+    h.runtime.registerAction({
+      name: "TEST_CALENDAR_EDIT",
+      description: "Edit calendar events",
+      contexts: ["general"],
+      suppressEarlyReply: editAction.suppressEarlyReply,
+      validate: async () => true,
+      handler: async () => ({ success: true, text: "edited" }),
+    });
+  h.runtime.registerResponseHandlerFieldEvaluator({
+    name: "visualContinuation",
+    description: "Navigation judgment for the complete request.",
+    schema: {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        disposition: { type: "string" },
+        viewId: { type: "string" },
+        reason: { type: "string" },
+      },
+      required: ["disposition", "viewId", "reason"],
+    },
+  });
+  // The host navigation evaluator's registry evidence and planning patch.
+  h.runtime.registerResponseHandlerEvaluator({
+    name: "test.view-navigation",
+    priority: 60,
+    shouldRun: () => true,
+    evaluate: ({ state }) => {
+      if (route === "absent") return { requiresTool: true, clearReply: true };
+      state.data.providers ??= {};
+      state.data.providers.VIEW_NAVIGATION = {
+        data: {
+          views: [
+            ...(route === "unregistered"
+              ? []
+              : [{ id: "calendar", label: "Calendar" }]),
+            { id: "notes", label: "Notes" },
+          ],
+          currentViewId: "chat",
+        },
+      };
+      return { requiresTool: true, clearReply: true };
+    },
+  });
+  h.runtime.registerModel(
+    ModelType.RESPONSE_HANDLER,
+    async (_rt, params) => {
+      const response = stage1DirectReply(
+        draft,
+        params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+          ?.parameters?.properties?.replyText?.type === "array",
+      );
+      Object.assign(response.toolCalls[0].arguments, {
+        contexts: ["general"],
+        intents: [
+          "Open the Calendar view",
+          "Delete the coffee event",
+          "Create a launch event at noon",
+        ],
+        ...(editAction ? { candidateActionNames: ["TEST_CALENDAR_EDIT"] } : {}),
+        requiresTool: true,
+        replyEffectStatus: "pending",
+        visualContinuation: {
+          disposition:
+            route === "none"
+              ? "none"
+              : route === "direct"
+                ? "direct"
+                : "planning",
+          viewId: route === "none" ? "" : "calendar",
+          reason: "Calendar navigation with calendar record changes.",
+        },
+      });
+      return response;
+    },
+    "destination-cue",
+    100,
+  );
+  h.runtime.registerModel(
+    ModelType.ACTION_PLANNER,
+    async () =>
+      JSON.stringify({
+        thought: "The request is resolved.",
+        toolCalls: [],
+        messageToUser: h.replyText,
+      }),
+    "destination-cue",
+    100,
+  );
+  const progress: string[] = [];
+  const delivered: Content[] = [];
+  await h.service.handleMessage(
+    h.runtime,
+    turn,
+    async (content) => {
+      delivered.push(content);
+      return [];
+    },
+    {
+      onPlanningAcknowledgment: (text) => {
+        progress.push(text);
+      },
+    },
+  );
+  return { h, progress, delivered };
+}

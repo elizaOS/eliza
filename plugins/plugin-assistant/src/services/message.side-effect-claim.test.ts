@@ -41,7 +41,12 @@ import { scheduledTaskAction } from "../../../plugin-personal-assistant/src/acti
 import { createOwnerReminderDirectRoutingRule } from "../../../plugin-personal-assistant/src/lifeops/reminders/direct-routing.ts";
 import { createScheduledTaskCandidateBackstopRule } from "../../../plugin-personal-assistant/src/lifeops/scheduled-task/candidate-backstop";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
-import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
+import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
+import { NAVIGATION_REPLY_POLICY } from "../prompts/response-policy.ts";
+import {
+  PLANNING_ACKNOWLEDGMENT_FALLBACK,
+  replyIsClaimSafeAcknowledgment,
+} from "./message/side-effect-claims.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   evaluatePlannedReplyEgress,
@@ -2675,6 +2680,42 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     );
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(admitted);
   });
+
+  // The fallback spoken for a rejected pending draft must itself be admitted,
+  // with or without a planned destination, and pass planned-reply egress.
+  it("admits the planning acknowledgement fallback", () => {
+    expect(PLANNING_ACKNOWLEDGMENT_FALLBACK).toBe("One sec.");
+    expect(
+      replyIsClaimSafeAcknowledgment(PLANNING_ACKNOWLEDGMENT_FALLBACK),
+    ).toBe(true);
+    expect(
+      replyIsClaimSafeAcknowledgment(PLANNING_ACKNOWLEDGMENT_FALLBACK, {
+        plannedDestination,
+      }),
+    ).toBe(true);
+    expect(
+      evaluatePlannedReplyEgress({
+        reply: PLANNING_ACKNOWLEDGMENT_FALLBACK,
+        pendingWork: true,
+        actionResults: [],
+        actions: [],
+      }).verdict,
+    ).not.toBe("reject");
+  });
+
+  // Navigation policy asks for the destination and the acknowledgement rule
+  // forbids names; both prompts name the same planned-view shapes, and the
+  // grammar admits every one of them.
+  it.each(["Calendar. One sec.", "Let me open Calendar."])(
+    "admits the planned-view shape both prompts teach: %s",
+    (shape) => {
+      expect(ACKNOWLEDGMENT_RULE).toContain(`"${shape}"`);
+      expect(NAVIGATION_REPLY_POLICY).toContain(`"${shape}"`);
+      expect(
+        replyIsClaimSafeAcknowledgment(shape, { plannedDestination }),
+      ).toBe(true);
+    },
+  );
 });
 
 describe("core.simple_progress_promise", () => {
