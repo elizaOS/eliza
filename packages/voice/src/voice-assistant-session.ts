@@ -26,8 +26,8 @@
  * Busy hold: submission closes the capture (`close()`, never `cancel()`) and input stays closed
  * while the agent is busy with that turn: the request (and any ack spoken inside `send`), an
  * owner-input pause and the reply until its playback settled. The turn is sent only once the close
- * fulfilled (then `inputHeld` is published); a close that fails ends the conversation, also a
- * Mute close that failed before the turn was submitted (kept until a capture opens again). A
+ * fulfilled (then `inputHeld` is published); a close that fails ends the conversation, and a Mute
+ * close that fails before a turn waits on it ends it at once, also with nothing to send. A
  * close that never settles leaves the turn unsent until Stop, so the host bounds `close()`. After
  * the reply the capture reopens (`reopen` on the listen handlers) unless Mute, Stop or a binding
  * change keeps it closed; a reopen that fails ends the conversation. A closed capture's `onEnd`
@@ -258,6 +258,11 @@ export class VoiceAssistantError extends Error {
   }
 }
 const stopped = () => new DOMException("Voice assistant stopped", "AbortError");
+const unconfirmedClose = () =>
+  new VoiceAssistantError(
+    "capture",
+    "The microphone did not confirm it was off.",
+  );
 
 /**
  * Split a reply into sentence-sized pieces for playback accounting. Joining the pieces with
@@ -578,17 +583,17 @@ export class VoiceAssistantSession {
 
   /** Captures still closing, each with its own close (rejects when that close failed). */
   private closingCaptures = new Map<AssistantCapture, Promise<void>>();
-  /**
-   * The last close that failed, until a capture opens again: a turn submitted after it (a Mute
-   * close that failed before the gap) waits on it as on a close still in flight, and so ends.
-   */
-  private closeFailed?: Promise<void>;
   private closeCapture(capture: AssistantCapture) {
+    const session = this.session;
     const own = Promise.resolve().then(() => capture.close());
     this.closingCaptures.set(capture, own);
     const closed = own
       .catch(() => {
-        this.closeFailed = own;
+        // A submitted turn's barrier ends a close it waits on. Any other (Mute, with or without an
+        // utterance waiting) ends the conversation now and retires that capture: the microphone may
+        // still be on, so Mute is not left showing over it and Unmute never reopens.
+        if (!this.hold?.closes.includes(own))
+          void this.fail(session, unconfirmedClose());
       })
       .finally(() => this.closingCaptures.delete(capture));
     this.closing = Promise.all([this.closing, closed]).then(() => {});
@@ -648,7 +653,6 @@ export class VoiceAssistantSession {
             return undefined;
           }
           this.capture = capture;
-          this.closeFailed = undefined;
           return capture;
         },
         (error) => {
@@ -934,16 +938,13 @@ export class VoiceAssistantSession {
     };
     this.response = response;
     // Busy hold: input closes now, finalizing (never cancelling) the capture, with any Mute close
-    // still in flight or already failed; a capture still opening is closed by open() as it arrives.
+    // still in flight; a capture still opening is closed by open() as it arrives.
     const capture = this.capture,
       opening = this.opening;
     const hold: Hold = {
       response,
       closed: false,
-      closes: [
-        ...this.closingCaptures.values(),
-        ...(this.closeFailed ? [this.closeFailed] : []),
-      ],
+      closes: [...this.closingCaptures.values()],
     };
     this.hold = hold;
     this.capture = undefined;
@@ -999,14 +1000,7 @@ export class VoiceAssistantSession {
           () => reject(stopped()),
           { once: true },
         );
-        closed.then(resolve, () =>
-          reject(
-            new VoiceAssistantError(
-              "capture",
-              "The microphone did not confirm it was off.",
-            ),
-          ),
-        );
+        closed.then(resolve, () => reject(unconfirmedClose()));
       });
       guard();
       let reply = await this.ports.send({

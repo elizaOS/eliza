@@ -836,12 +836,12 @@ describe("VoiceAssistantSession busy hold", () => {
       muted.mic().onSegment("turn off the alarm");
       await flush();
       if (failsBeforeGap) {
+        // No turn waits on it yet: it ends now, not at the gap, so Mute is never shown over it.
         muteClose.reject(Error("close not confirmed"));
         await flush();
-        expect(muted.session.getSnapshot()).toEqual({
-          phase: "listening",
-          pendingText: "turn off the alarm",
-          muted: true,
+        expect(muted.session.getSnapshot()).toMatchObject({
+          phase: "error",
+          error: { code: "capture" },
         });
       }
       await muted.clock.advance(longGapMs);
@@ -860,22 +860,72 @@ describe("VoiceAssistantSession busy hold", () => {
     }
   });
 
-  it("a failed Mute close with nothing to send leaves Mute quiet; a capture that opens again clears it and the next turn is sent", async () => {
+  it("an idle Mute close that fails, at once or at the host's bound, ends the conversation once; the failed capture is retired, Unmute never reopens and nothing is sent", async () => {
+    for (const [lateMs, unmuteWhilePending] of [
+      [0, false],
+      [2_500, false],
+      [2_500, true],
+    ] as const) {
+      const muteClose = deferred();
+      const h = harness({ close: () => muteClose.promise });
+      await h.session.start();
+      const mic = h.mic();
+      const muting = h.session.setMuted(true);
+      await flush();
+      // Mute shows while the host's close is pending (the host bounds it).
+      expect(h.session.getSnapshot()).toEqual({
+        phase: "listening",
+        muted: true,
+      });
+      const unmuting = unmuteWhilePending
+        ? h.session.setMuted(false)
+        : undefined;
+      await h.clock.advance(lateMs);
+      muteClose.reject(Error("Cloud speech did not confirm the mute in time."));
+      await muting;
+      await unmuting;
+      await flush();
+      expect(h.session.getSnapshot()).toMatchObject({
+        phase: "error",
+        error: { code: "capture" },
+      });
+      // The failed capture's own end, a later Unmute and the gap change nothing.
+      mic.onEnd(Object.assign(Error("speech closed"), { code: "capture" }));
+      await h.session.setMuted(false);
+      await h.clock.advance(longGapMs * 2);
+      expect(h.log.states.filter((state) => state.phase === "error")).toEqual([
+        expect.objectContaining({
+          error: expect.objectContaining({ code: "capture" }),
+        }),
+      ]);
+      expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 1 });
+      expect(h.log.reopens).toEqual([undefined]);
+      expect(h.log.sends).toHaveLength(0);
+      expect(h.speeches).toHaveLength(0);
+    }
+  });
+
+  it("a healthy idle Mute stays quiet until Unmute, which reopens; the next turn is sent and held", async () => {
+    const muteClose = deferred();
     const h = harness({
       close: (capture) =>
-        capture === 1
-          ? Promise.reject(Error("close not confirmed"))
-          : Promise.resolve(),
+        capture === 1 ? muteClose.promise : Promise.resolve(),
     });
     await h.session.start();
-    await h.session.setMuted(true);
+    const muting = h.session.setMuted(true);
+    await h.clock.advance(2_000);
+    muteClose.resolve();
+    await muting;
     await h.clock.advance(longGapMs * 2);
     expect(h.session.getSnapshot()).toEqual({
       phase: "listening",
       muted: true,
     });
+    expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
     await h.session.setMuted(false);
     expect(h.log.captures).toBe(2);
+    expect(h.log.reopens).toEqual([undefined, undefined]);
+    expect(h.session.getSnapshot()).toEqual({ phase: "listening" });
     await h.say("what time is it");
     await h.clock.advance(longGapMs);
     expect(h.log.sends.map((send) => send.text)).toEqual(["what time is it"]);
@@ -883,6 +933,67 @@ describe("VoiceAssistantSession busy hold", () => {
       phase: "thinking",
       inputHeld: true,
     });
+    expect(h.log.states.some((state) => state.phase === "error")).toBe(false);
+  });
+
+  it("a Mute close that fails for a capture still reopening after the reply ends the conversation once; the reopen settles nothing more", async () => {
+    const h = harness({
+      close: (capture) =>
+        capture === 2
+          ? Promise.reject(Error("close not confirmed"))
+          : Promise.resolve(),
+    });
+    await h.session.start();
+    await h.say("what is next");
+    await h.clock.advance(longGapMs);
+    h.answer(0, "Done.");
+    await flush();
+    const reopening = deferred();
+    h.setHoldOpen(reopening);
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.log.reopens).toEqual([undefined, true]);
+    const muting = h.session.setMuted(true);
+    reopening.resolve();
+    await muting;
+    await flush();
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "error",
+      error: { code: "capture" },
+    });
+    await h.session.setMuted(false);
+    await h.clock.advance(longGapMs * 2);
+    expect(
+      h.log.states.filter((state) => state.phase === "error"),
+    ).toHaveLength(1);
+    expect(h.log).toMatchObject({ captures: 2, closed: 2, cancelled: 1 });
+    expect(h.log.sends).toHaveLength(1);
+  });
+
+  it("Stop while an idle Mute close is pending resolves once the close settles; a close that fails after Stop reports nothing", async () => {
+    for (const fails of [false, true]) {
+      const muteClose = deferred();
+      const h = harness({ close: () => muteClose.promise });
+      await h.session.start();
+      void h.session.setMuted(true);
+      await flush();
+      let stopped = false;
+      const stopping = h.session.stop().then(() => {
+        stopped = true;
+      });
+      await flush();
+      expect(h.phase()).toBe("idle");
+      expect(stopped).toBe(false);
+      await h.clock.advance(2_500);
+      if (fails) muteClose.reject(Error("close not confirmed"));
+      else muteClose.resolve();
+      await stopping;
+      await flush();
+      expect(h.phase()).toBe("idle");
+      expect(h.log.states.some((state) => state.phase === "error")).toBe(false);
+      expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 1 });
+      expect(h.log.sends).toHaveLength(0);
+    }
   });
 
   it("under Mute, a capture end fails at once while an utterance waits to be sent; with nothing waiting, Mute stays quiet", async () => {

@@ -23,8 +23,9 @@ failing or late endpoint decision is never treated as complete. Resumed speech c
 pending submit. A submitted turn closes the capture until its reply has played (the busy hold,
 published as `inputHeld` once the close fulfilled), then reopens it unless Mute, Stop or a binding
 change keeps it closed. The turn is sent only after that close fulfilled; a close that fails ends
-the conversation, with nothing reopened, also a Mute close that failed before the turn was
-submitted. The host bounds `close()`: one that never settles keeps the turn unsent until Stop.
+the conversation, with nothing reopened, and so does a Mute close that fails before a turn
+waits on it, at once and also with nothing to send (Unmute never reopens over it). The host
+bounds `close()`: one that never settles keeps the turn unsent until Stop.
 `interruptSpeech()` cuts a playing reply, and only fully played sentences count as heard.
 Generation fencing drops late endpoint, reply and playback callbacks, so a submitted turn is
 never resent. Mute,
