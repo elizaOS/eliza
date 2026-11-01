@@ -26,6 +26,7 @@ import {
   hasRoleAccess,
   logger,
   ModelType,
+  parseJsonObject,
   resolveActionArgs,
   runWithTrajectoryPurpose,
   type SubactionsMap,
@@ -319,22 +320,12 @@ function parseResolutionJson(raw: unknown): ExtractedResolution {
   if (typeof raw !== "string" || raw.trim().length === 0) {
     return { requestId: null, reason: null };
   }
-  const trimmed = raw
-    .trim()
-    .replace(/^```(?:json)?\s*/iu, "")
-    .replace(/\s*```$/u, "")
-    .trim();
-  const objectText = trimmed.match(/\{[\s\S]*\}/u)?.[0] ?? trimmed;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(objectText);
-  } catch {
+  const record = parseJsonObject<{ requestId?: unknown; reason?: unknown }>(
+    raw,
+  );
+  if (!record) {
     return { requestId: null, reason: null };
   }
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    return { requestId: null, reason: null };
-  }
-  const record = parsed as { requestId?: unknown; reason?: unknown };
   return {
     requestId:
       typeof record.requestId === "string" && record.requestId.length > 0
