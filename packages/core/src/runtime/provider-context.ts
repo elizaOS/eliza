@@ -14,7 +14,8 @@ export function providerReviewSources(context: ContextObject) {
 	const providers = context.events.filter(
 		(event): event is ContextProviderEvent =>
 			event.type === "provider" &&
-			event.referenceBodyDeferred !== true &&
+			(!("referenceBodyDeferred" in event) ||
+				event.referenceBodyDeferred !== true) &&
 			"reviewableSources" in event &&
 			Boolean(event.reviewableSources) &&
 			// Indexed originals may be reviewed after this turn loaded their full
