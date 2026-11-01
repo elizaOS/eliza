@@ -81,6 +81,41 @@ and `repair` behavior is unchanged. A present Worker registry is not permission 
 replace it: preserve every existing client and Android certificate when repairing
 configuration. This inventory neither reveals nor changes those values.
 
+For a new platform-owned native client, `plan-provision` accepts a fixed new
+`intended_app_id`, a public `display_name`, and an exact
+`https://cloud.eliza.app/auth/<product>/callback`. It validates the protected
+primary app and database identity, then seals an additional-client candidate and
+the original registry to the reviewed GitHub environment key. The prospective
+plan has `requiresCreation: true`; it does not prove that the new app exists.
+The configured protected creation organization and owner are mandatory and own
+the new registration. They must be active, and the owner must be an undeleted
+owner or admin in that organization. The primary app remains a validated namespace
+baseline; its owner does not select or constrain the configured creation owner.
+
+For an operator-authorized product under the primary app's platform authority,
+use the explicit `plan-provision-primary` and `provision-primary` operations.
+These select only the protected primary app's fully validated organization and
+creator, in the same database snapshot. Configured-authority operations never
+fall back to this mode. The sealed plan reports `authorityMode`, and its creation
+hash binds that mode, so plan and provision must use the same authority selection.
+Neither mode aliases the primary app UUID or adopts an existing callback claim.
+
+Review the candidate, non-target, app-binding, and creation hashes. Run the matching
+`provision-registry` or `provision-primary` with those hashes and the same UUID, name, and callback while
+the original source registry is still installed. This operation creates only
+the admitted registration under the repair transaction's shared lock. An exact
+valid retry leaves rows and keys unchanged. It never publishes a Worker binding.
+Only after it verifies the new row may the operator install the sealed candidate
+in the normal GitHub environment secret and run `publish-registry`. Keep source
+secret changes exclusive during this sequence; GitHub secret updates have no
+compare-and-swap check. Never install a prospective candidate before provisioning:
+a concurrent release can publish the normal source registry.
+
+These operations currently require the reviewed production key and `main`.
+Staging remains unavailable until its protected registry, primary app, database
+identity pins, and encryption key are configured and reviewed. Empty or malformed
+source registries fail closed; these operations do not initialize them.
+
 The protected **Cloud Catalog Diagnostic** workflow checks only the five Stripe
 catalog binding names. It then makes one unauthenticated plans request with a
 random diagnostic header. A temporary Wrangler tail filters that header and GET

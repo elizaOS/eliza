@@ -1,3 +1,4 @@
+import { ownedPostgresFixtureAuthority } from "../../../scripts/api/strict-fixture-authority.mjs";
 // Exercises cloud API test e2e run e2e batches behavior with deterministic Worker route fixtures.
 import { spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -318,10 +319,19 @@ try {
   }
   for (const testFile of testFiles) {
     const strictGroupD = testFile.endsWith("group-d-ai-media.test.ts");
-    const disposableDatabase = ownsLocalServer && !configuredDatabaseUrl &&
-      !process.env.TEST_PGLITE_DATA_DIR && process.env.TEST_PGLITE_PERSIST !== "1";
-    if (strictGroupD && !disposableDatabase)
-      throw new Error("Group D isolated fixtures require an owned transient PGlite store; configured databases are preserved.");
+    const disposableDatabase =
+      ownsLocalServer &&
+      !configuredDatabaseUrl &&
+      !process.env.TEST_PGLITE_DATA_DIR &&
+      process.env.TEST_PGLITE_PERSIST !== "1";
+    const ownedPostgres =
+      strictGroupD && ownsLocalServer && !disposableDatabase
+        ? ownedPostgresFixtureAuthority(e2eEnv)
+        : null;
+    if (strictGroupD && !disposableDatabase && !ownedPostgres)
+      throw new Error(
+        "Group D isolated fixtures require owned transient PGlite or a validated job-owned PostgreSQL receipt.",
+      );
     console.log(`[api-e2e] START ${testFile}`);
     const result = await runBounded(
       [
@@ -337,7 +347,8 @@ try {
       appRoot,
       {
         CLOUD_E2E_GROUP_D_STRICT_FIXTURES: strictGroupD ? "1" : "0",
-        CLOUD_E2E_DISPOSABLE_DB: disposableDatabase ? "1" : "0",
+        CLOUD_E2E_DISPOSABLE_DB:
+          disposableDatabase || ownedPostgres ? "1" : "0",
       },
     );
 

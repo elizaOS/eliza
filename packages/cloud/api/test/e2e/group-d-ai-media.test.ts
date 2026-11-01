@@ -74,7 +74,9 @@ const liveInferenceAvailable = Boolean(
 );
 
 type StrictValidationFamily = "stt" | "tts" | "image" | "video" | "fal";
-function strictValidationHeaders(family: StrictValidationFamily): Record<string, string> {
+function strictValidationHeaders(
+  family: StrictValidationFamily,
+): Record<string, string> {
   const keys = JSON.parse(process.env.TEST_STRICT_VALIDATION_KEYS ?? "{}");
   const key = keys[family];
   if (typeof key !== "string" || !key.trim())
@@ -343,7 +345,10 @@ describeE2E("Group D — /api/elevenlabs/stt", () => {
 
   test("validation: non-multipart body with auth returns 400", async () => {
     const res = await api.post("/api/elevenlabs/stt", "not-json", {
-      headers: { ...strictValidationHeaders("stt"), "Content-Type": "application/json" },
+      headers: {
+        ...strictValidationHeaders("stt"),
+        "Content-Type": "application/json",
+      },
     });
     expect(res.status).toBe(400);
   });
@@ -609,7 +614,9 @@ describeE2E("Group D — /api/fal/proxy", () => {
   });
 
   test("happy path: with Bearer, proxy handler is reachable without upstream fal.ai", async () => {
-    const res = await api.get("/api/fal/proxy", { headers: strictValidationHeaders("fal") });
+    const res = await api.get("/api/fal/proxy", {
+      headers: strictValidationHeaders("fal"),
+    });
     // Authed but without the x-fal-target-url header the proxy rejects with
     // its own 400 ("Invalid request") before any upstream fal.ai I/O.
     expect(res.status).toBe(400);

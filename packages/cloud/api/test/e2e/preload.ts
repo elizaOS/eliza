@@ -137,17 +137,16 @@ async function ensureTestUser({
   await usersRepository.upsertStewardIdentity(user.id, stewardUserId);
 
   if (withSandbox) {
-  const sandboxes = await agentSandboxesRepository.listByOrganization(
-    organization.id,
-  );
-  await ensureFixtureSandbox({
-    slug,
-    organizationId: organization.id,
-    userId: user.id,
-    sandboxes,
-    repository: agentSandboxesRepository,
-  });
-
+    const sandboxes = await agentSandboxesRepository.listByOrganization(
+      organization.id,
+    );
+    await ensureFixtureSandbox({
+      slug,
+      organizationId: organization.id,
+      userId: user.id,
+      sandboxes,
+      repository: agentSandboxesRepository,
+    });
   }
 
   await apiKeysService.deactivateUserKeysByName(user.id, "playwright-e2e");
@@ -199,24 +198,26 @@ const { plainKey: affiliatePlainKey } = await apiKeysService.create({
 // No new random tenants may be seeded into configured or persistent databases.
 if (process.env.CLOUD_E2E_GROUP_D_STRICT_FIXTURES === "1") {
   if (process.env.CLOUD_E2E_DISPOSABLE_DB !== "1")
-    throw new Error("Group D isolated fixtures require the owning runner's disposable database.");
-// Each Group D strict-validation family has its own organization bucket.
-// An API key rate_limit does not override the organization strict-RPM policy.
-const strictValidationKeys: Record<string, string> = {};
-const validationRun = randomUUID();
-for (const family of ["stt", "tts", "image", "video", "fal"] as const) {
-  const identity = `e2e-strict-${validationRun}-${family}`;
-  const fixture = await ensureTestUser({
-    slug: identity,
-    email: `${identity}@example.test`,
-    stewardUserId: identity,
-    role: "admin",
-    withSandbox: false,
-  });
-  strictValidationKeys[family] = fixture.plainKey;
-}
-process.env.TEST_STRICT_VALIDATION_KEYS = JSON.stringify(strictValidationKeys);
-
+    throw new Error(
+      "Group D isolated fixtures require the owning runner's disposable database.",
+    );
+  // Each Group D strict-validation family has its own organization bucket.
+  // An API key rate_limit does not override the organization strict-RPM policy.
+  const strictValidationKeys: Record<string, string> = {};
+  const validationRun = randomUUID();
+  for (const family of ["stt", "tts", "image", "video", "fal"] as const) {
+    const identity = `e2e-strict-${validationRun}-${family}`;
+    const fixture = await ensureTestUser({
+      slug: identity,
+      email: `${identity}@example.test`,
+      stewardUserId: identity,
+      role: "admin",
+      withSandbox: false,
+    });
+    strictValidationKeys[family] = fixture.plainKey;
+  }
+  process.env.TEST_STRICT_VALIDATION_KEYS =
+    JSON.stringify(strictValidationKeys);
 }
 
 process.env.TEST_API_KEY = owner.plainKey;

@@ -7,6 +7,8 @@ import {
   appBindingDigest,
   buildRegistryAddition,
   discoverRegisteredApp,
+  planRegistryProvisioning,
+  provisionRegistry,
   publishRegistryBinding,
   publishValidatedRegistry,
   REGISTRY_SNAPSHOT_SQL,
@@ -61,7 +63,7 @@ before(async () => {
   await database.exec(`
     CREATE TABLE organizations(id uuid PRIMARY KEY,is_active boolean);
     CREATE TABLE users(id uuid PRIMARY KEY,organization_id uuid,is_active boolean,deleted_at timestamptz,role text);
-    CREATE TABLE apps(id uuid PRIMARY KEY,organization_id uuid,created_by_user_id uuid,is_active boolean,is_approved boolean,app_url text,allowed_origins jsonb,api_key_id uuid);
+    CREATE TABLE apps(id uuid PRIMARY KEY,organization_id uuid,created_by_user_id uuid,is_active boolean,is_approved boolean,app_url text,allowed_origins jsonb,api_key_id uuid,name text,description text,slug text,updated_at timestamptz);
     CREATE TABLE api_keys(id uuid PRIMARY KEY,organization_id uuid,user_id uuid,is_active boolean,deleted_at timestamptz);
   `);
 });
@@ -74,7 +76,7 @@ beforeEach(async () => {
     ORG,
   ]);
   await database.query(
-    "INSERT INTO apps VALUES ($1,$2,$3,true,true,$4,$5,$6)",
+    "INSERT INTO apps(id,organization_id,created_by_user_id,is_active,is_approved,app_url,allowed_origins,api_key_id) VALUES ($1,$2,$3,true,true,$4,$5,$6)",
     [
       APP,
       ORG,
@@ -130,7 +132,7 @@ test("absent or ambiguous approved callbacks never create or select an app", asy
   );
   await database.query("UPDATE apps SET is_approved=true");
   await database.query(
-    "INSERT INTO apps SELECT $1,organization_id,created_by_user_id,is_active,is_approved,app_url,allowed_origins,api_key_id FROM apps",
+    "INSERT INTO apps(id,organization_id,created_by_user_id,is_active,is_approved,app_url,allowed_origins,api_key_id) SELECT $1,organization_id,created_by_user_id,is_active,is_approved,app_url,allowed_origins,api_key_id FROM apps",
     [OTHER],
   );
   await assert.rejects(
@@ -566,11 +568,22 @@ test("CLI failures hide provider configuration and refuse an unprotected branch"
   assert.match(failed.stderr, /failed invariant=operation_failed/);
   assert.equal(failed.stderr.includes(secret), false);
   assert.equal(failed.stdout, "");
-  const wrongBranch = run({ ...env, GITHUB_REF: "refs/heads/unreviewed" });
+  assert.match(run(env, "unknown").stderr, /failed invariant=operation\s*$/);
+  const wrongBranch = run(
+    { ...env, GITHUB_REF: "refs/heads/unreviewed" },
+    "provision-primary",
+  );
   assert.equal(wrongBranch.status, 1);
   assert.match(wrongBranch.stderr, /failed invariant=protected_branch/);
   assert.equal(wrongBranch.stderr.includes(secret), false);
-  for (const operation of ["plan-addition", "publish-registry"]) {
+  for (const operation of [
+    "plan-addition",
+    "publish-registry",
+    "plan-provision",
+    "provision-registry",
+    "plan-provision-primary",
+    "provision-primary",
+  ]) {
     const staging = run(
       {
         ...env,
@@ -717,4 +730,650 @@ test("missing Worker and redirects never trigger a secret PUT or leak provider b
     /worker_registry_publication_not_confirmed/,
   );
   assert.deepEqual(methods, ["GET", "PUT"]);
+});
+
+const NEW_APP = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+async function platformFixture() {
+  await database.query(
+    "INSERT INTO apps(id,organization_id,created_by_user_id,is_active,is_approved,app_url,allowed_origins,api_key_id) VALUES ($1,$2,$3,true,true,'https://eliza.app',$4,$5)",
+    [
+      PRIMARY,
+      ORG,
+      OWNER,
+      JSON.stringify(["https://eliza.app/auth/callback"]),
+      KEY,
+    ],
+  );
+  return {
+    ...input,
+    intendedAppId: NEW_APP,
+    redirectUri: "https://cloud.eliza.app/auth/companion/callback",
+    displayName: "Companion",
+  };
+}
+const expectedProvision = (plan) => ({
+  candidateSha256: plan.candidateSha256,
+  nonTargetSha256: plan.nonTargetSha256,
+  appBindingSha256: plan.appBindingSha256,
+  creationSha256: plan.creationSha256,
+});
+const writable = {
+  async query(text, values) {
+    statements.push(text);
+    if (text.includes("pg_catalog.pg_control_system()"))
+      return { rows: [identity] };
+    return database.query(text, values);
+  },
+};
+const makeProvisionPlan = (value) =>
+  planRegistryProvisioning(readOnly, value, "elizaOS/eliza", "a".repeat(40));
+
+test("platform plan seals a fixed new UUID under validated protected creation authority without writes", async () => {
+  const value = await platformFixture();
+  const before = (await database.query("SELECT * FROM apps ORDER BY id")).rows;
+  const plan = await makeProvisionPlan(value);
+  assert.equal(plan.requiresCreation, true);
+  assert.equal(plan.displayName, "Companion");
+  assert.equal(plan.sourceSha256, registryDigest(value.registry));
+  assert.equal(
+    plan.nonTargetSha256,
+    registryDigest(JSON.stringify([retained])),
+  );
+  assert.equal(
+    plan.appBindingSha256,
+    appBindingDigest(value, { ...BINDING, appId: NEW_APP }),
+  );
+  assert.match(plan.creationSha256, /^[a-f0-9]{64}$/);
+  assert.equal(JSON.stringify(plan).includes(NEW_APP), false);
+  assert.equal(JSON.stringify(plan).includes(OWNER), false);
+  assert.deepEqual(
+    (await database.query("SELECT * FROM apps ORDER BY id")).rows,
+    before,
+  );
+  await assert.rejects(
+    makeProvisionPlan({ ...value, intendedAppId: "" }),
+    /intended_app_id_required/,
+  );
+  await assert.rejects(
+    makeProvisionPlan({ ...value, intendedAppId: PRIMARY }),
+    /candidate_registry_invalid/,
+  );
+});
+
+test("platform provisioning creates only the admitted row with public product name and leaves source and old rows intact", async () => {
+  const value = await platformFixture();
+  const plan = await makeProvisionPlan(value);
+  const before = (await database.query("SELECT * FROM apps ORDER BY id")).rows;
+  const source = value.registry;
+  statements = [];
+  await provisionRegistry(writable, value, expectedProvision(plan));
+  const rows = (await database.query("SELECT * FROM apps ORDER BY id")).rows;
+  const created = rows.find((row) => row.id === NEW_APP);
+  assert.equal(created.name, "Companion");
+  assert.equal(created.organization_id, ORG);
+  assert.equal(created.created_by_user_id, OWNER);
+  assert.deepEqual(created.allowed_origins, [value.redirectUri]);
+  assert.equal(created.is_active, true);
+  assert.equal(created.is_approved, true);
+  assert.match(created.api_key_id, /^[a-f0-9-]{36}$/);
+  assert.deepEqual(
+    rows.filter((row) => row.id !== NEW_APP),
+    before,
+  );
+  assert.equal(
+    (await database.query("SELECT count(*)::int AS n FROM api_keys")).rows[0].n,
+    0,
+  );
+  assert.equal(value.registry, source);
+  assert.equal(
+    statements.filter((sql) => /INSERT INTO apps/.test(sql)).length,
+    1,
+  );
+  assert.equal(
+    statements.some((sql) => /UPDATE\s+(apps|api_keys)/.test(sql)),
+    false,
+  );
+  const lock = statements.findIndex((sql) =>
+    sql.includes("pg_advisory_xact_lock"),
+  );
+  const inserted = statements.findIndex((sql) =>
+    sql.includes("INSERT INTO apps"),
+  );
+  assert.ok(lock > 0 && inserted > lock);
+  assert.ok(
+    statements
+      .slice(lock, inserted)
+      .some((sql) => sql.includes("pg_catalog.pg_control_system()")),
+  );
+});
+
+test("a provision retry validates the same row without metadata updates or key revocation", async () => {
+  const value = await platformFixture();
+  const plan = await makeProvisionPlan(value);
+  await provisionRegistry(writable, value, expectedProvision(plan));
+  const snapshot = (await database.query("SELECT * FROM apps ORDER BY id"))
+    .rows;
+  statements = [];
+  await provisionRegistry(writable, value, expectedProvision(plan));
+  assert.deepEqual(
+    (await database.query("SELECT * FROM apps ORDER BY id")).rows,
+    snapshot,
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+  await assert.rejects(
+    makeProvisionPlan(value),
+    /provision_app_already_exists/,
+  );
+});
+
+async function configuredAuthorityFixture() {
+  const value = await platformFixture();
+  await database.query("INSERT INTO organizations VALUES ($1,true)", [
+    OTHER_ORG,
+  ]);
+  await database.query("INSERT INTO users VALUES ($1,$2,true,NULL,'admin')", [
+    OTHER_OWNER,
+    OTHER_ORG,
+  ]);
+  return { ...value, organizationId: OTHER_ORG, ownerUserId: OTHER_OWNER };
+}
+
+test("platform provisioning uses valid configured creation authority when primary ownership differs", async () => {
+  const value = await configuredAuthorityFixture();
+  const primary = (
+    await database.query("SELECT * FROM apps WHERE id=$1", [PRIMARY])
+  ).rows[0];
+  const plan = await makeProvisionPlan(value);
+  assert.equal(
+    plan.appBindingSha256,
+    appBindingDigest(value, {
+      appId: NEW_APP,
+      organizationId: OTHER_ORG,
+      creatorUserId: OTHER_OWNER,
+    }),
+  );
+  await provisionRegistry(writable, value, expectedProvision(plan));
+  const created = (
+    await database.query(
+      "SELECT organization_id,created_by_user_id FROM apps WHERE id=$1",
+      [NEW_APP],
+    )
+  ).rows[0];
+  assert.deepEqual(created, {
+    organization_id: OTHER_ORG,
+    created_by_user_id: OTHER_OWNER,
+  });
+  assert.deepEqual(
+    (await database.query("SELECT * FROM apps WHERE id=$1", [PRIMARY])).rows[0],
+    primary,
+  );
+});
+
+test("platform creation requires both configured UUIDs and validates their own authority", async () => {
+  const value = await configuredAuthorityFixture();
+  for (const changed of [
+    { organizationId: "" },
+    { ownerUserId: "" },
+    { organizationId: "invalid" },
+    { ownerUserId: "invalid" },
+  ]) {
+    await assert.rejects(
+      makeProvisionPlan({ ...value, ...changed }),
+      /protected_creation_owner_required/,
+    );
+  }
+  for (const [sql, params] of [
+    ["UPDATE users SET is_active=false WHERE id=$1", [OTHER_OWNER]],
+    ["UPDATE users SET deleted_at=NOW() WHERE id=$1", [OTHER_OWNER]],
+    ["UPDATE users SET role='member' WHERE id=$1", [OTHER_OWNER]],
+    ["UPDATE users SET organization_id=$1 WHERE id=$2", [ORG, OTHER_OWNER]],
+    ["UPDATE organizations SET is_active=false WHERE id=$1", [OTHER_ORG]],
+    ["DELETE FROM users WHERE id=$1", [OTHER_OWNER]],
+    ["DELETE FROM organizations WHERE id=$1", [OTHER_ORG]],
+  ]) {
+    await database.query("BEGIN");
+    try {
+      await database.query(sql, params);
+      await assert.rejects(
+        makeProvisionPlan(value),
+        /protected_creation_authority_invalid/,
+      );
+    } finally {
+      await database.query("ROLLBACK");
+    }
+  }
+});
+
+test("a different valid configured creation authority invalidates the reviewed plan before writes", async () => {
+  const other = await configuredAuthorityFixture();
+  const value = { ...other, organizationId: ORG, ownerUserId: OWNER };
+  const plan = await makeProvisionPlan(value);
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(writable, other, expectedProvision(plan)),
+    /provision_plan_mismatch/,
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+});
+
+test("platform planning rejects inactive, unprivileged, cross-org or malformed primary anchors", async () => {
+  const value = await platformFixture();
+  for (const [sql, params] of [
+    ["UPDATE users SET is_active=false WHERE id=$1", [OWNER]],
+    ["UPDATE users SET role='member' WHERE id=$1", [OWNER]],
+    ["UPDATE users SET organization_id=$1 WHERE id=$2", [OTHER_ORG, OWNER]],
+    ["UPDATE apps SET is_approved=false WHERE id=$1", [PRIMARY]],
+    ["UPDATE apps SET allowed_origins='[]'::jsonb WHERE id=$1", [PRIMARY]],
+  ]) {
+    await database.query("BEGIN");
+    try {
+      await database.query(sql, params);
+      await assert.rejects(
+        makeProvisionPlan({ ...value, organizationId: "", ownerUserId: "" }),
+        /callback_registration_invalid/,
+      );
+    } finally {
+      await database.query("ROLLBACK");
+    }
+  }
+});
+
+test("platform planning refuses any callback claimant including an inactive foreign row", async () => {
+  const value = await platformFixture();
+  await database.query(
+    "UPDATE apps SET allowed_origins=$1,is_active=false,is_approved=false WHERE id=$2",
+    [JSON.stringify([value.redirectUri]), APP],
+  );
+  await assert.rejects(makeProvisionPlan(value), /platform_callback_claimed/);
+  assert.equal(
+    (await database.query("SELECT is_active FROM apps WHERE id=$1", [APP]))
+      .rows[0].is_active,
+    false,
+  );
+});
+
+test("platform provisioning rejects mismatching existing UUID rows without repair", async () => {
+  const value = await platformFixture();
+  const plan = await makeProvisionPlan(value);
+  await database.query("UPDATE apps SET id=$1 WHERE id=$2", [NEW_APP, APP]);
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(writable, value, expectedProvision(plan)),
+    /provision_existing_mismatch/,
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+});
+
+test("platform provisioning binds source bytes, non-targets, UUID, name, owner, callback and environment before writes", async () => {
+  const value = await platformFixture();
+  const plan = await makeProvisionPlan(value);
+  for (const changed of [
+    { registry: `${value.registry} ` },
+    { registry: JSON.stringify([]) },
+    { intendedAppId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+    { displayName: "Different" },
+    { redirectUri: "https://cloud.eliza.app/auth/other/callback" },
+    { environment: "staging" },
+  ]) {
+    statements = [];
+    await assert.rejects(
+      provisionRegistry(
+        writable,
+        { ...value, ...changed },
+        expectedProvision(plan),
+      ),
+    );
+    assert.equal(
+      statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+      false,
+    );
+  }
+  for (const field of Object.keys(expectedProvision(plan))) {
+    await assert.rejects(
+      provisionRegistry(writable, value, {
+        ...expectedProvision(plan),
+        [field]: "0".repeat(64),
+      }),
+      /provision_plan_mismatch/,
+    );
+  }
+  assert.equal(
+    (
+      await database.query("SELECT count(*)::int AS n FROM apps WHERE id=$1", [
+        NEW_APP,
+      ])
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("platform admission rechecks configured creation authority under the repair lock", async () => {
+  const value = await configuredAuthorityFixture();
+  const plan = await makeProvisionPlan(value);
+  const changedAtLock = {
+    async query(sql, params) {
+      const result = await writable.query(sql, params);
+      if (sql.includes("pg_advisory_xact_lock"))
+        await database.query("UPDATE users SET is_active=false WHERE id=$1", [
+          OTHER_OWNER,
+        ]);
+      return result;
+    },
+  };
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(changedAtLock, value, expectedProvision(plan)),
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+  assert.equal(
+    (
+      await database.query("SELECT is_active FROM users WHERE id=$1", [
+        OTHER_OWNER,
+      ])
+    ).rows[0].is_active,
+    true,
+  );
+  assert.equal(
+    (
+      await database.query("SELECT count(*)::int AS n FROM apps WHERE id=$1", [
+        NEW_APP,
+      ])
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("platform admission checks all callback claims again under the repair lock", async () => {
+  const value = await platformFixture();
+  const plan = await makeProvisionPlan(value);
+  const changedAtLock = {
+    async query(sql, params) {
+      const result = await writable.query(sql, params);
+      if (sql.includes("pg_advisory_xact_lock"))
+        await database.query("UPDATE apps SET allowed_origins=$1 WHERE id=$2", [
+          JSON.stringify([value.redirectUri]),
+          APP,
+        ]);
+      return result;
+    },
+  };
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(changedAtLock, value, expectedProvision(plan)),
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+  assert.deepEqual(
+    (
+      await database.query("SELECT allowed_origins FROM apps WHERE id=$1", [
+        APP,
+      ])
+    ).rows[0].allowed_origins,
+    [CALLBACK],
+  );
+});
+
+test("platform retry refuses a new live generated key rather than revoking it", async () => {
+  const value = await platformFixture();
+  const plan = await makeProvisionPlan(value);
+  await provisionRegistry(writable, value, expectedProvision(plan));
+  const key = (
+    await database.query("SELECT api_key_id FROM apps WHERE id=$1", [NEW_APP])
+  ).rows[0].api_key_id;
+  await database.query("INSERT INTO api_keys VALUES ($1,$2,$3,true,NULL)", [
+    key,
+    ORG,
+    OWNER,
+  ]);
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(writable, value, expectedProvision(plan)),
+    /callback_registration_invalid/,
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+  assert.equal(
+    (await database.query("SELECT is_active FROM api_keys WHERE id=$1", [key]))
+      .rows[0].is_active,
+    true,
+  );
+});
+
+test("platform provisioning rejects absent or malformed source and invalid public product metadata", async () => {
+  const value = await platformFixture();
+  for (const registry of ["", " ", "null", "{}", "not json"])
+    await assert.rejects(
+      makeProvisionPlan({ ...value, registry }),
+      /source_registry_invalid/,
+    );
+  for (const displayName of [
+    "",
+    " Companion",
+    "Companion\nApp",
+    "x".repeat(121),
+  ])
+    await assert.rejects(
+      makeProvisionPlan({ ...value, displayName }),
+      /display_name/,
+    );
+  await assert.rejects(
+    makeProvisionPlan({
+      ...value,
+      redirectUri: "https://unowned.example/auth/companion/callback",
+    }),
+    /platform_callback/,
+  );
+  await assert.rejects(
+    makeProvisionPlan({ ...value, clusterSha256: "0".repeat(64) }),
+    /identity_mismatch/,
+  );
+});
+
+test("a fresh post-commit snapshot detects changed provisioning metadata without claiming rollback", async () => {
+  const value = await platformFixture();
+  const plan = await makeProvisionPlan(value);
+  const changedAfterCommit = {
+    async query(sql, params) {
+      const result = await writable.query(sql, params);
+      if (sql === "COMMIT")
+        await database.query("UPDATE apps SET name='Changed' WHERE id=$1", [
+          NEW_APP,
+        ]);
+      return result;
+    },
+  };
+  await assert.rejects(
+    provisionRegistry(changedAfterCommit, value, expectedProvision(plan)),
+    /provision_existing_mismatch/,
+  );
+  assert.equal(
+    (await database.query("SELECT name FROM apps WHERE id=$1", [NEW_APP]))
+      .rows[0].name,
+    "Changed",
+  );
+});
+
+test("explicit primary authority provisions from the validated primary without configured-owner fallback", async () => {
+  const value = {
+    ...(await platformFixture()),
+    organizationId: "invalid",
+    ownerUserId: "",
+  };
+  await assert.rejects(
+    makeProvisionPlan(value),
+    /protected_creation_owner_required/,
+  );
+  const primary = { ...value, provisioningAuthority: "primary" };
+  const plan = await makeProvisionPlan(primary);
+  assert.equal(plan.authorityMode, "primary");
+  assert.equal(
+    plan.appBindingSha256,
+    appBindingDigest(primary, { ...BINDING, appId: NEW_APP }),
+  );
+  await provisionRegistry(writable, primary, expectedProvision(plan));
+  const created = (
+    await database.query(
+      "SELECT organization_id,created_by_user_id FROM apps WHERE id=$1",
+      [NEW_APP],
+    )
+  ).rows[0];
+  assert.deepEqual(created, {
+    organization_id: ORG,
+    created_by_user_id: OWNER,
+  });
+  assert.equal(value.organizationId, "invalid");
+  assert.equal(value.ownerUserId, "");
+});
+
+test("creation hashes prevent cross-mode replay even when both modes select the same valid owner", async () => {
+  const configured = await platformFixture();
+  const primary = { ...configured, provisioningAuthority: "primary" };
+  const configuredPlan = await makeProvisionPlan(configured);
+  const primaryPlan = await makeProvisionPlan(primary);
+  assert.equal(configuredPlan.authorityMode, "configured");
+  assert.equal(configuredPlan.appBindingSha256, primaryPlan.appBindingSha256);
+  assert.notEqual(configuredPlan.creationSha256, primaryPlan.creationSha256);
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(writable, primary, expectedProvision(configuredPlan)),
+    /provision_plan_mismatch/,
+  );
+  await assert.rejects(
+    provisionRegistry(writable, configured, expectedProvision(primaryPlan)),
+    /provision_plan_mismatch/,
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+});
+
+test("explicit primary authority refuses unknown modes and missing or invalid primary registrations", async () => {
+  const value = {
+    ...(await platformFixture()),
+    provisioningAuthority: "primary",
+  };
+  await assert.rejects(
+    makeProvisionPlan({ ...value, provisioningAuthority: "unknown" }),
+    /provision_authority_mode/,
+  );
+  await assert.rejects(
+    makeProvisionPlan({ ...value, primaryAppId: OTHER_ORG }),
+    /callback_registration_invalid/,
+  );
+  for (const [sql, params] of [
+    ["UPDATE users SET is_active=false WHERE id=$1", [OWNER]],
+    ["UPDATE users SET role='member' WHERE id=$1", [OWNER]],
+    ["UPDATE apps SET is_approved=false WHERE id=$1", [PRIMARY]],
+    ["UPDATE apps SET allowed_origins='[]'::jsonb WHERE id=$1", [PRIMARY]],
+  ]) {
+    await database.query("BEGIN");
+    try {
+      await database.query(sql, params);
+      await assert.rejects(
+        makeProvisionPlan(value),
+        /callback_registration_invalid/,
+      );
+    } finally {
+      await database.query("ROLLBACK");
+    }
+  }
+});
+
+test("primary authority is re-derived under the repair lock and changed ownership refuses creation", async () => {
+  const value = {
+    ...(await platformFixture()),
+    provisioningAuthority: "primary",
+  };
+  await database.query("INSERT INTO users VALUES ($1,$2,true,NULL,'admin')", [
+    OTHER_OWNER,
+    ORG,
+  ]);
+  const plan = await makeProvisionPlan(value);
+  const changedAtLock = {
+    async query(sql, params) {
+      const result = await writable.query(sql, params);
+      if (sql.includes("pg_advisory_xact_lock"))
+        await database.query(
+          "UPDATE apps SET created_by_user_id=$1 WHERE id=$2",
+          [OTHER_OWNER, PRIMARY],
+        );
+      return result;
+    },
+  };
+  statements = [];
+  await assert.rejects(
+    provisionRegistry(changedAtLock, value, expectedProvision(plan)),
+  );
+  assert.equal(
+    statements.some((sql) => /^\s*(INSERT|UPDATE|DELETE)\b/i.test(sql)),
+    false,
+  );
+  assert.equal(
+    (
+      await database.query("SELECT created_by_user_id FROM apps WHERE id=$1", [
+        PRIMARY,
+      ])
+    ).rows[0].created_by_user_id,
+    OWNER,
+  );
+  assert.equal(
+    (
+      await database.query("SELECT count(*)::int AS n FROM apps WHERE id=$1", [
+        NEW_APP,
+      ])
+    ).rows[0].n,
+    0,
+  );
+});
+
+test("a fresh primary-mode postcheck detects owner changes after commit without claiming rollback", async () => {
+  const value = {
+    ...(await platformFixture()),
+    provisioningAuthority: "primary",
+  };
+  await database.query("INSERT INTO users VALUES ($1,$2,true,NULL,'admin')", [
+    OTHER_OWNER,
+    ORG,
+  ]);
+  const plan = await makeProvisionPlan(value);
+  const changedAfterCommit = {
+    async query(sql, params) {
+      const result = await writable.query(sql, params);
+      if (sql === "COMMIT")
+        await database.query(
+          "UPDATE apps SET created_by_user_id=$1 WHERE id=$2",
+          [OTHER_OWNER, PRIMARY],
+        );
+      return result;
+    },
+  };
+  await assert.rejects(
+    provisionRegistry(changedAfterCommit, value, expectedProvision(plan)),
+    /provision_existing_mismatch/,
+  );
+  assert.equal(
+    (
+      await database.query("SELECT created_by_user_id FROM apps WHERE id=$1", [
+        NEW_APP,
+      ])
+    ).rows[0].created_by_user_id,
+    OWNER,
+  );
 });

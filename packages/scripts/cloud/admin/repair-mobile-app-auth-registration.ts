@@ -129,18 +129,63 @@ export interface RegistrationRepairClient {
   ): Promise<{ rows: T[] }>;
 }
 
+/** Validate the operator-selected creation authority without changing any row. */
+export async function validateRegistrationAuthority(
+  client: RegistrationRepairClient,
+  organizationId: string,
+  ownerUserId: string,
+): Promise<void> {
+  const authority = await client.query<{
+    organization_active: boolean;
+    owner_active: boolean;
+    owner_matches_organization: boolean;
+    owner_role: string | null;
+  }>(
+    `SELECT COALESCE(org.is_active, FALSE) AS organization_active,
+              COALESCE(owner.is_active AND owner.deleted_at IS NULL, FALSE) AS owner_active,
+              COALESCE(owner.organization_id = org.id, FALSE) AS owner_matches_organization,
+              owner.role AS owner_role
+         FROM organizations AS org
+         LEFT JOIN users AS owner ON owner.id = $2::uuid
+        WHERE org.id = $1::uuid
+        LIMIT 1`,
+    [organizationId, ownerUserId],
+  );
+  const authorityRow = authority.rows[0];
+  if (!authorityRow?.organization_active) fail("authority.organization_active");
+  if (!authorityRow.owner_active) fail("authority.owner_active");
+  if (!authorityRow.owner_matches_organization)
+    fail("authority.same_organization");
+  if (
+    authorityRow.owner_role !== "owner" &&
+    authorityRow.owner_role !== "admin"
+  ) {
+    fail("authority.owner_or_admin");
+  }
+}
+
 export async function repairRegistrationTransaction(
   client: RegistrationRepairClient,
   appId: string,
   protectedOrganizationId?: string,
   protectedOwnerUserId?: string,
   target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+  admit?: (
+    client: RegistrationRepairClient,
+  ) => Promise<undefined | "unchanged">,
 ): Promise<void> {
   try {
     await client.query("BEGIN ISOLATION LEVEL SERIALIZABLE");
     await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [
       "eliza-mobile-app-auth-registration",
     ]);
+
+    // Provisioning admits only the reviewed absent row under this same lock.
+    // An exact, fully validated retry must not revoke keys or rewrite metadata.
+    if ((await admit?.(client)) === "unchanged") {
+      await client.query("COMMIT");
+      return;
+    }
 
     const existing = await client.query<{
       organization_id: string;
@@ -166,34 +211,7 @@ export async function repairRegistrationTransaction(
     if (!organizationId) fail("input.organization_id_for_creation");
     if (!ownerUserId) fail("input.owner_user_id_for_creation");
 
-    const authority = await client.query<{
-      organization_active: boolean;
-      owner_active: boolean;
-      owner_matches_organization: boolean;
-      owner_role: string | null;
-    }>(
-      `SELECT COALESCE(org.is_active, FALSE) AS organization_active,
-              COALESCE(owner.is_active AND owner.deleted_at IS NULL, FALSE) AS owner_active,
-              COALESCE(owner.organization_id = org.id, FALSE) AS owner_matches_organization,
-              owner.role AS owner_role
-         FROM organizations AS org
-         LEFT JOIN users AS owner ON owner.id = $2::uuid
-        WHERE org.id = $1::uuid
-        LIMIT 1`,
-      [organizationId, ownerUserId],
-    );
-    const authorityRow = authority.rows[0];
-    if (!authorityRow?.organization_active)
-      fail("authority.organization_active");
-    if (!authorityRow.owner_active) fail("authority.owner_active");
-    if (!authorityRow.owner_matches_organization)
-      fail("authority.same_organization");
-    if (
-      authorityRow.owner_role !== "owner" &&
-      authorityRow.owner_role !== "admin"
-    ) {
-      fail("authority.owner_or_admin");
-    }
+    await validateRegistrationAuthority(client, organizationId, ownerUserId);
 
     const duplicate = await client.query<{ count: number }>(
       `SELECT count(*)::integer AS count
