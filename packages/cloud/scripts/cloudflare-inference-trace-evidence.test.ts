@@ -335,7 +335,30 @@ test("key discovery validates every filter and sanitizer field before querying",
   );
   assert.throws(
     () => validateTraceKeysResponse(keysEnvelope(REQUIRED_KEYS.slice(1))),
-    /key contract changed/,
+    /key contract changed for \$metadata\.duration: expected number, observed absent$/,
+  );
+  // A key reported under two types is a changed contract, and the
+  // diagnostic names both instead of keeping whichever came last.
+  assert.throws(
+    () =>
+      validateTraceKeysResponse(
+        keysEnvelope([...REQUIRED_KEYS, ["$metadata.parentSpanId", "number"]]),
+      ),
+    /parentSpanId: expected string, observed number\|string$/,
+  );
+  const filler = Array.from({ length: 1_000 }, (_, index) => [
+    `$metadata.extra${index}`,
+    "string",
+  ]);
+  assert.throws(
+    () =>
+      validateTraceKeysResponse(
+        keysEnvelope([
+          ...filler,
+          ...REQUIRED_KEYS.filter(([key]) => key !== "$metadata.parentSpanId"),
+        ]),
+      ),
+    /parentSpanId: expected string, observed absent; listing filled its 1000-key page/,
   );
   assert.throws(
     () =>
