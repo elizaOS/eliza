@@ -101,6 +101,8 @@ jobs:
         run: bun run --cwd packages/cloud/shared check:tenant-scope
       - name: Staging admission Worker source contract
         run: bun packages/cloud/admission-worker/verify-staging-contract.ts
+      - name: Production admission Worker transfer-phase contract
+        run: bun packages/cloud/admission-worker/verify-staging-contract.ts --production
 
   # NOTE: the Worker bundle stub-drift gate (#14422) runs inside
   # `lint-and-types` above — packages/cloud/api chains `check:worker-bundle`
