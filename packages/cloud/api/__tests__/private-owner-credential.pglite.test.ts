@@ -609,7 +609,11 @@ test("memberless publisher survives creator personal-account deletion without tr
     );
     publicMetadataRead = false;
     expect(survivingMetadata.status).toBe(200);
-    expect(await survivingMetadata.json()).toEqual(payload);
+    const survivingPayload = (await survivingMetadata.json()) as Record<
+      string,
+      unknown
+    >;
+    expect(survivingPayload).toEqual(payload);
   } finally {
     publicMetadataRead = false;
     for (const constraint of constraints.reverse()) {
