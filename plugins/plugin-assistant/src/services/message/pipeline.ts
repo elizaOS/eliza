@@ -1144,13 +1144,22 @@ export async function runV5MessageRuntimeStage1(
           // refresh RECENT_MESSAGES only when an early reply actually
           // changed history. An empty refresh set means maximum reuse;
           // planner-only context-gated providers still run because they
-          // are not cached yet.
+          // are not cached yet. With discovery on, the planner and evaluator
+          // see only discoveryText for providers Stage 1 did not load, and
+          // restoreProviderContext composes their complete text again.
           await args.runtime.composeState(
             args.message,
             plannerProviderNames,
             true,
             false,
             earlyReplySent ? ["RECENT_MESSAGES"] : [],
+            {
+              deferredReferenceProviders: providerDiscoveryEnabled
+                ? plannerProviderNames.filter(
+                    (name) => !loadedContextProviders.includes(name),
+                  )
+                : [],
+            },
           )
         : args.state;
     const selectedContextRoutingState =

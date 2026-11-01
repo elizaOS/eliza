@@ -189,10 +189,11 @@ export function projectDiscoverableContext(
       !result.discoveryText.trim() ||
       typeof result.text !== "string" ||
       result.text.trim() !== event.text.trim() ||
-      result.discoveryText.length >= result.text.length
+      (result.referenceBodyDeferred !== true &&
+        result.discoveryText.length >= result.text.length)
     )
       return [event];
-    if (loaded.has(event.name)) {
+    if (loaded.has(event.name) && result.referenceBodyDeferred !== true) {
       if (!("cacheStable" in event) || event.cacheStable !== true)
         return [event];
       // Preserve the original stable notice and append the complete read to
