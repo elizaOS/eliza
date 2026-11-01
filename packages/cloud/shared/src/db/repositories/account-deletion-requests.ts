@@ -45,6 +45,7 @@ import { organizations } from "../schemas/organizations";
 import { providerAdmissions } from "../schemas/provider-admissions";
 import { userSessions } from "../schemas/user-sessions";
 import { users } from "../schemas/users";
+import { isNativeAppPublisher } from "./native-app-publishers";
 import { readPostLockDatabaseNow } from "./primary-database-clock";
 
 const TERMINAL_REQUEST_STATUSES = ["completed", "canceled"] as const;
@@ -331,7 +332,7 @@ export class AccountDeletionRequestsRepository {
 
       const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
       const activeOwners = activeMembers.filter((member) => member.role === "owner");
-      if (activeMembers.length !== 1) {
+      if (activeMembers.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return {
           outcome: "transfer_required",
           activeOwnerCount: activeOwners.length,
@@ -470,7 +471,7 @@ export class AccountDeletionRequestsRepository {
       if (providerAdmission) return { outcome: "provider_work_in_flight" };
       const activeMembers = members.filter((member) => member.is_active && !member.deleted_at);
       const activeOwners = activeMembers.filter((member) => member.role === "owner");
-      if (activeMembers.length !== 1) {
+      if (activeMembers.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
 
@@ -716,7 +717,7 @@ export class AccountDeletionRequestsRepository {
       const activeOwners = members.filter(
         (member) => member.is_active && !member.deleted_at && member.role === "owner",
       );
-      if (members.length !== 1) {
+      if (members.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return {
           outcome: "transfer_required",
           activeOwnerCount: activeOwners.length,
@@ -1225,7 +1226,7 @@ export class AccountDeletionRequestsRepository {
       const activeOwners = members.filter(
         (member) => member.is_active && !member.deleted_at && member.role === "owner",
       );
-      if (members.length !== 1) {
+      if (members.length !== 1 || (await isNativeAppPublisher(organization.id, tx))) {
         return { outcome: "transfer_required", activeOwnerCount: activeOwners.length };
       }
       if (

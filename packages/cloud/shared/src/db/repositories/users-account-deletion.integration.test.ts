@@ -197,6 +197,7 @@ beforeAll(async () => {
       for (const file of [
         "0381_app_billing_registration.sql",
         "0550_app_creator_audit_reference.sql",
+        "0551_native_app_publishers.sql",
       ]) {
         const migration = await Bun.file(new URL(`../migrations/${file}`, import.meta.url)).text();
         for (const statement of migration.split("--> statement-breakpoint")) {

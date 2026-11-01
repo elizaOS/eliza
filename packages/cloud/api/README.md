@@ -156,13 +156,16 @@ callback. App IDs in Cloud and client IDs in Steward belong to different stores
 and must not be assumed interchangeable. No product repository is imported by
 these shared mechanisms.
 
-Before enabling a client, an active organization owner or administrator must
-provision its own active, approved app with an exact allowed callback and no live
-generated application API key. The organization owns the app. Its creator is an
-optional audit reference: deleting that user does not delete the app, its billing
-registration, or other customers' grants. Each customer's consent and credential
-remain bound to that customer's user and organization. Use separate registrations
-in staging and production. Validate the public
+New platform clients use a dedicated, memberless publisher organization and an
+active, approved app with an exact allowed callback and no live generated app
+API key. The protected registration workflow authorizes provisioning; a login
+user does not own the publisher. Database guards prevent user membership and
+personal-account deletion from disabling or deleting that publisher. Existing
+registration-only apps can be moved with the workflow's reviewed publisher
+isolation operation while preserving their app UUID and customer grants. A
+historical creator is only optional audit metadata. Each customer's consent and
+credential remain bound to that customer's user and organization. Use separate
+registrations in staging and production. Validate the public
 `/api/v1/app-auth/mobile/config` response for that client/environment/return URL
 before shipping. The admin preflight allows an `app_url` homepage path on the
 registered HTTPS origin, while `allowed_origins` must contain the sole exact

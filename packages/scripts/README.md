@@ -81,35 +81,38 @@ and `repair` behavior is unchanged. A present Worker registry is not permission 
 replace it: preserve every existing client and Android certificate when repairing
 configuration. This inventory neither reveals nor changes those values.
 
-For a new platform-owned native client, `plan-provision` accepts a fixed new
-`intended_app_id`, a public `display_name`, and an exact
-`https://cloud.eliza.app/auth/<product>/callback`. It validates the protected
-primary app and database identity, then seals an additional-client candidate and
-the original registry to the reviewed GitHub environment key. The prospective
-plan has `requiresCreation: true`; it does not prove that the new app exists.
-The configured protected creation organization and owner are mandatory and own
-the new registration. They must be active, and the owner must be an undeleted
-owner or admin in that organization. The primary app remains a validated namespace
-baseline; its owner does not select or constrain the configured creation owner.
+For a new platform-owned native client, use `plan-provision-publisher` with a
+fixed new `intended_app_id`, a fixed new `publisher_organization_id`, a public
+`display_name`, and the exact environment callback. The protected primary app's
+active operator authorizes creation; their personal organization and credentials
+are not copied. The new publisher organization has no login users, billing
+identity, balance, or user API key. Migration 0551 must be applied first. Its
+database guards prevent user membership, personal-deletion fencing, and implicit
+organization deletion. The old primary-owner provisioning operations are retired.
 
-For an operator-authorized product under the primary app's platform authority,
-use the explicit `plan-provision-primary` and `provision-primary` operations.
-These select only the protected primary app's fully validated organization and
-creator, in the same database snapshot. Configured-authority operations never
-fall back to this mode. The sealed plan reports `authorityMode`, and its creation
-hash binds that mode, so plan and provision must use the same authority selection.
-Neither mode aliases the primary app UUID or adopts an existing callback claim.
+Review the candidate, non-target, app-binding, and creation hashes. Run
+`provision-publisher` with those hashes and the same inputs while the original
+source registry is still installed. Only after the app and publisher verify may
+the operator install the sealed candidate in the normal GitHub environment secret
+and run `publish-registry`. Keep source secret changes exclusive during this
+sequence; GitHub secret updates have no compare-and-swap check. Never install a
+prospective candidate before provisioning: a concurrent release can publish it.
 
-Review the candidate, non-target, app-binding, and creation hashes. Run the matching
-`provision-registry` or `provision-primary` with those hashes and the same UUID, name, and callback while
-the original source registry is still installed. This operation creates only
-the admitted registration under the repair transaction's shared lock. An exact
-valid retry leaves rows and keys unchanged. It never publishes a Worker binding.
-Only after it verifies the new row may the operator install the sealed candidate
-in the normal GitHub environment secret and run `publish-registry`. Keep source
-secret changes exclusive during this sequence; GitHub secret updates have no
-compare-and-swap check. Never install a prospective candidate before provisioning:
-a concurrent release can publish the normal source registry.
+For an existing native client in a personal organization, use
+`plan-isolate-publisher` and `isolate-publisher` with a fresh publisher organization
+UUID and the four reviewed hashes. The app UUID comes from the protected registry;
+an optional `intended_app_id` must match it. Only a registration with no hosted,
+monetized, or other app-owned resources can move. The operation preserves the app
+UUID and customer grants, detaches a revoked legacy app key without moving it,
+and leaves personal data and billing in their original organization. It does not
+change the registry. Run `verify-publisher` afterward with the same client and
+publisher inputs. Explicit product retirement is separate from personal account
+deletion.
+
+Legacy configured-organization `plan-provision` / `provision-registry` and
+registration repair remain available for their existing scope. Release validation
+retains legacy client compatibility and validates publisher constraints whenever
+the publisher marker is present.
 
 These operations use separate pinned GitHub environment encryption keys for
 production and staging. Production requires `main`; staging requires `staging`.

@@ -78,6 +78,12 @@ describe.skipIf(!databaseUrl)("app billing PostgreSQL concurrency", () => {
     );
     for (const statement of creatorMigration.split("--> statement-breakpoint"))
       if (statement.trim()) await setup.query(statement);
+    const publisherMigration = await readFile(
+      new URL("../migrations/0551_native_app_publishers.sql", import.meta.url),
+      "utf8",
+    );
+    for (const statement of publisherMigration.split("--> statement-breakpoint"))
+      if (statement.trim()) await setup.query(statement);
     const url = new URL(databaseUrl!);
     url.searchParams.set("options", `-c search_path=${schemaName},public`);
     url.searchParams.set("application_name", schemaName);
@@ -94,6 +100,60 @@ describe.skipIf(!databaseUrl)("app billing PostgreSQL concurrency", () => {
     await setup.query(`DROP SCHEMA ${schemaName} CASCADE`);
     await setup.end();
   });
+  test("publisher registration and membership creation cannot both commit in either order", async () => {
+    for (const firstKind of ["publisher", "member"] as const) {
+      const org = randomUUID();
+      const user = randomUUID();
+      await setup.query("INSERT INTO organizations(id) VALUES ($1)", [org]);
+      const first = await connection();
+      const second = await connection();
+      let pending: ReturnType<typeof observe> | undefined;
+      try {
+        await first.query("BEGIN");
+        const publisher = (client: Client) =>
+          client.query("INSERT INTO native_app_publishers(organization_id) VALUES ($1)", [org]);
+        const member = (client: Client) =>
+          client.query("INSERT INTO users(id,organization_id) VALUES ($1,$2)", [user, org]);
+        await (firstKind === "publisher" ? publisher(first) : member(first));
+        const {
+          rows: [{ pid }],
+        } = await second.query<{ pid: number }>("SELECT pg_backend_pid() AS pid");
+        pending = observe(firstKind === "publisher" ? member(second) : publisher(second));
+        let blocked = false;
+        for (let attempt = 0; attempt < 500; attempt++) {
+          const {
+            rows: [{ count }],
+          } = await setup.query<{ count: number }>(
+            "SELECT cardinality(pg_blocking_pids($1)) AS count",
+            [pid],
+          );
+          if (count > 0) {
+            blocked = true;
+            break;
+          }
+          await Bun.sleep(20);
+        }
+        expect(blocked).toBe(true);
+        await first.query("COMMIT");
+        expect(await pending).toHaveProperty("error");
+        const {
+          rows: [state],
+        } = await setup.query<{ publishers: number; members: number }>(
+          `SELECT (SELECT count(*)::integer FROM native_app_publishers WHERE organization_id=$1) AS publishers,
+            (SELECT count(*)::integer FROM users WHERE organization_id=$1) AS members`,
+          [org],
+        );
+        expect(state).toEqual(
+          firstKind === "publisher" ? { publishers: 1, members: 0 } : { publishers: 0, members: 1 },
+        );
+      } finally {
+        await first.query("ROLLBACK");
+        if (pending) await pending;
+        await first.end();
+        await second.end();
+      }
+    }
+  }, 30_000);
   test("both registration/consent completion orders materialize exactly one buyer account", async () => {
     for (const order of ["registration", "consent"]) {
       const f = await fixture(),
