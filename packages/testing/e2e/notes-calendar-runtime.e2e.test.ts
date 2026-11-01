@@ -237,6 +237,7 @@ async function scenario(label: string, withApprovals = false) {
   ) {
     const inbound = createMessageMemory({
       id: randomUUID() as UUID,
+      agentId: runtime.agentId,
       entityId: userId,
       roomId,
       createdAt: Date.parse("2030-10-01T16:00:00Z"),
@@ -353,8 +354,33 @@ async function scenario(label: string, withApprovals = false) {
           : ["notes"],
       messageToUser: checking,
     });
-    // Reuse the exact Stage-1 and native planner wire fixtures, replacing only
-    // their success-only evaluator with a receipt-aware scenario evaluator.
+    const notesOperation = new Map([
+      ["NOTES_CREATE", "create"],
+      ["NOTES_GET", "get"],
+      ["NOTES_LIST", "list"],
+      ["NOTES_UPDATE", "update"],
+      ["NOTES_PATCH", "patch"],
+      ["NOTES_DELETE", "delete"],
+    ]).get(actionName);
+    const stage1 = fixtures[0];
+    if (!stage1 || !isRecord(stage1.response))
+      throw new Error("Expected a structured Stage-1 scenario fixture");
+    // The Notes plugin requires this current-request interpretation before
+    // executing an operation. Supply the declared scenario effect, while the
+    // real runtime still checks ownership, permission and committed receipts.
+    stage1.response = {
+      ...stage1.response,
+      notesRequestEffect: {
+        classification: !notesOperation
+          ? "unresolved"
+          : notesOperation === "get" || notesOperation === "list"
+            ? "read_only"
+            : "mutation_requested",
+        operations: notesOperation ? [notesOperation] : [],
+      },
+    };
+    // Keep the native planner wire fixture and replace its success-only
+    // evaluator with the receipt-aware scenario evaluator below.
     harness.fixtures.register(...fixtures.slice(0, 2));
     if (options.extraction) {
       // Script the current authority contract from this exact persisted request.
@@ -471,6 +497,7 @@ async function scenario(label: string, withApprovals = false) {
         if (message.text) replies.push(message.text);
         return [];
       },
+      { abortSignal: new AbortController().signal },
     );
     expect(replies).toContain(reply);
     if (options.paused)
