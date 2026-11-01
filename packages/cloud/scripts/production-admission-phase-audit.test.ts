@@ -218,11 +218,12 @@ describe("before phase 1: the commit the API serves", () => {
   });
 
   test("an API on other gate code or other phase 2 paths stops before phase 1", () => {
-    // The main commit before the chain base, whose admission gate it changed.
+    // The main commit before the chain base: the base this chain was first
+    // built on. Its gate code differs.
     const earlier = git("rev-parse", `${rows["source-owned"]}^1`).trim();
-    expect(liveSourceProblems(facts(earlier))).toEqual([
-      "admission bundle source differs from the target: packages/cloud/shared/src/lib/services/inference-admission-gate.ts",
-    ]);
+    expect(liveSourceProblems(facts(earlier))).toContain(
+      "admission bundle source differs from the target: packages/cloud/shared/src/lib/middleware/rate-limit.ts",
+    );
     // A tree with other phase 2 path content (phase 1's own tree).
     expect(liveSourceProblems(facts(rows["target-pending"]))).toEqual([
       ".github/workflows/cloud-tests.yml differs from the phase chain's base",

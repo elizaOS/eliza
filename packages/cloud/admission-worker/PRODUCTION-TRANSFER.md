@@ -12,11 +12,20 @@ readback proves the state it starts from (`cloud-cf-release.yml`).
 | Item | Value |
 | --- | --- |
 | Namespace `Nprod` | `9e1a8820e95d4dcaa5867c0e37ea581b` (`eliza-cloud-api-prod_InferenceAdmissionGate`, SQL) |
-| Source | `eliza-cloud-api-prod`, version `742e1bf0`, source `a6252d47` |
+| Source | `eliza-cloud-api-prod`, source `fbb124e5` (`main`, released 2026-11-01T15:52:55Z), on the version that release published. Root records that version in fresh receipts |
 | Target | `eliza-cloud-admission-prod` (does not exist before phase 1) |
 | Bindings of `Nprod` | `eliza-cloud-api-prod` `INFERENCE_ADMISSION_GATES`; known external consumer `diag-admission-caller-9bd05690` `PRODUCTION` (`script_name = eliza-cloud-api-prod`) |
 | Object baseline | 100 sampled IDs, 91 with stored data. Public summary `OBJECT-IDENTITIES-BEFORE.json` (counts and `identitySetSHA256`); the IDs stay in Root's private receipt |
-| Effective variables | Root's receipts `CURRENT-EFFECTIVE-FLAGS.json` (reads version `742e1bf0`), `auth-cache-flag-review/EFFECTIVE-FLAGS.json` and `auth-cache-flag-review/EFFECTIVE-FUNDED-RATE-FLAGS.json` |
+| Effective variables | Root's receipts `CURRENT-EFFECTIVE-FLAGS.json`, `auth-cache-flag-review/EFFECTIVE-FLAGS.json` and `auth-cache-flag-review/EFFECTIVE-FUNDED-RATE-FLAGS.json`, captured again on the version that serves `fbb124e5` |
+
+The receipts of 2026-11-01T12:37Z read version `742e1bf0` (source
+`a6252d47`). Until phase 2 the readback requires the receipts to name the live
+API version, so it refuses them now: Root captures them again first. The
+values stay the same. `packages/cloud/api/wrangler.toml` at `fbb124e5` is
+identical to the file at `a6252d47`, and the audit finds no drift between its
+production variables and those receipts' values. The release workflows on
+`fbb124e5` change only the Pages deploy, not the API's `--var` values or
+secrets. A fresh receipt with another value stops the audit.
 
 ## Phase sources
 
@@ -24,20 +33,24 @@ Each phase is one commit. Before a deploy, the validator must name that phase.
 
 | Step | Commit | Deploys | `--phase` |
 | --- | --- | --- | --- |
-| 0 live source | `a6252d47d2c6f022ecc3736c0ed14d760dc01d51` | nothing (serving today) | `source-owned` |
-| 1 target pending | `489ae447576e78e5c1e5fcc4dd07894537a8c325` | admission Worker, target deploy tool | `target-pending` |
-| 2 source commit | `eaf2467cddcd320584b3b0850dbd668caca6c503` | API, protected release from `main` | `source-commit` |
-| 3 target adopted | `f24f2879288313c32021ece8168f6f1549891688` | admission Worker, target deploy tool | `adopted` |
+| 0 live source | `fbb124e5432197ec8554e99ab5ecf343c31d8f22` | nothing (serving today) | `source-owned` |
+| 1 target pending | `42df2e14de66779ff02f67e0afd8216357989620` | admission Worker, target deploy tool | `target-pending` |
+| 2 source commit | `ac729ff04edf6dc3532803b0bfd1f362327c76d5` | API, protected release from `main` | `source-commit` |
+| 3 target adopted | `e07ab734390d92adfe1d456412c994dddebef439` | admission Worker, target deploy tool | `adopted` |
 | Steady state | branch tip, landed on `main` | release workflow | `adopted` |
 
-These commits are frozen. The fixes after Root's reviews of `8da60fe4`,
-`aeb1619e`, `e1dbf878` and `5661c5cd` change only files that no phase deploy
-reads: the readback, the audit, the target deploy tool, their fixtures, the
-reverse patches, this runbook, and the tip's validator and release workflow.
-Only the steady state and the reverse steps read the tip's validator and
-workflow. Deploy only from a phase commit. Run the audit, the target deploy
-tool and the readback from the reviewed branch tip, in a separate checkout
-(`$TIP`).
+These commits are frozen. The chain was first built on `a6252d47`; `main`
+then moved to `fbb124e5`, so it was regenerated there. The validator commit
+`2e8601d8` and each phase commit carry the same change as their reviewed
+counterparts on `a6252d47` (`e7b911d8`, `489ae447`, `eaf2467c`, `f24f2879`),
+cherry-picked with `-x`: only the base differs. None of the phase files
+changed between the two bases. The commits after phase 3 change only files
+that no phase deploy reads: the readback, the audit, the target deploy tool,
+their fixtures, the reverse patches, this runbook, and the tip's validator
+and release workflow. Only the steady state and the reverse steps read the
+tip's validator and workflow. Deploy only from a phase commit. Run the audit,
+the target deploy tool and the readback from the reviewed branch tip, in a
+separate checkout (`$TIP`).
 
 Use Bun 1.4.2 and built workspace dependencies (`bun run build:core`) in
 `$TIP` and in one phase checkout, `$PHASE`. The admission bundle includes
@@ -84,11 +97,11 @@ its bundle sources (the audit's `ADMISSION_BUNDLE_SOURCES`) still equal phase
    Keep the window short: line up the gate 3 maintainer before phase 3 and
    land gate 3 right after R3.
 3. **Human merge gate 2: the phase 2 change on `main`.** A maintainer with
-   merge authority lands exactly the frozen phase 2 change (`a6252d47` to
-   `eaf2467c`) on live `main` as `M`: a merge of `eaf2467c`, not a squash, so
+   merge authority lands exactly the frozen phase 2 change (`fbb124e5` to
+   `ac729ff0`) on live `main` as `M`: a merge of `ac729ff0`, not a squash, so
    the tip later merges onto `M` cleanly. `M`'s first parent must be the
    commit the API serves in R1. It may change only the five paths of that
-   change, each with its content at `eaf2467c`. It reaches `main` through the
+   change, each with its content at `ac729ff0`. It reaches `main` through the
    normal promotion (see "Delivery of `M`" under phase 2). Root's phase
    approval does not grant this merge. If `main` moved after R0, stop: the
    audit refuses the merge, and the phase chain must be regenerated on the new
@@ -120,7 +133,7 @@ gate 2 would refuse `M` only after phase 1 is live.
 For gate 2 add `--commit source-owned=<R1 API commit> --commit
 source-commit=<phase 2 commit> --live R1.json`. Then it also requires the
 phase 2 commit's first parent to be the commit R1 names, only the phase 2
-paths in the merge, each with its content at `eaf2467c`, and no change to the
+paths in the merge, each with its content at `ac729ff0`, and no change to the
 admission bundle sources from the phase 1 commit. For gate 3 add `--steady
 <steady commit> --tip <reviewed tip SHA>` too: the steady commit's first
 parent must be the phase 2 commit, and its tree must equal a clean merge of
@@ -252,7 +265,7 @@ stops the transfer.
 ## Phase 1: target pending
 
 ```bash
-git -C $PHASE checkout 489ae447576e78e5c1e5fcc4dd07894537a8c325
+git -C $PHASE checkout 42df2e14de66779ff02f67e0afd8216357989620
 bun $TIP/packages/cloud/scripts/production-admission-target-deploy.ts \
   --checkout $PHASE --phase target-pending --outdir <dir 1>
 ```
@@ -266,7 +279,7 @@ serves, as in R0>`. The tool first reads back `source-owned`: the target
 absent and the API on that commit.
 
 Record the pending-transfer receipt for `Nprod`. Read back `--phase
-target-pending --commit 489ae447576e78e5c1e5fcc4dd07894537a8c325 --previous
+target-pending --commit 42df2e14de66779ff02f67e0afd8216357989620 --previous
 R0.json` as `R1.json`. The API still owns `Nprod`, its version does not
 change, and the target has no binding of `Nprod`.
 
@@ -276,7 +289,7 @@ Until the API commits, the API owns `Nprod` and serves every request. The
 pending target has no binding, route or traffic. To abort:
 
 1. Do not land or release phase 2. Read back `--phase target-pending --commit
-   489ae447576e78e5c1e5fcc4dd07894537a8c325 --previous R1.json` as the abort
+   42df2e14de66779ff02f67e0afd8216357989620 --previous R1.json` as the abort
    receipt; it proves nothing moved.
 2. Leave the target deployed as `target-pending`. Do not delete it, and do not
    deploy it without the pending declaration: a cleanup of the pending target
@@ -377,7 +390,7 @@ rolling out stops it. Fetch `M` into `$TIP`: the tool requires `M`'s tree to
 validate as `source-commit`.
 
 ```bash
-git -C $PHASE checkout f24f2879288313c32021ece8168f6f1549891688
+git -C $PHASE checkout e07ab734390d92adfe1d456412c994dddebef439
 bun $TIP/packages/cloud/scripts/production-admission-target-deploy.ts \
   --checkout $PHASE --phase adopted --outdir <dir 3> \
   --bundle-sha256 H1
@@ -386,7 +399,7 @@ bun $TIP/packages/cloud/scripts/production-admission-target-deploy.ts \
 The dry run adds `INFERENCE_ADMISSION_GATES (InferenceAdmissionGate)`, and the
 bundle equals `H1`; only configuration differs. Upload with a new `--outdir`
 and `--deploy --api-commit <M>`. Read back `--phase adopted --commit
-f24f2879288313c32021ece8168f6f1549891688 --previous R2.json` as `R3.json`. The
+e07ab734390d92adfe1d456412c994dddebef439 --previous R2.json` as `R3.json`. The
 target's local binding names `Nprod`, not a new ID. Recovery of an expired
 lease reaches the API through `INFERENCE_RECOVERY_SERVICE` (observability
 logs). A failed recovery keeps the lease for the existing retry path.
@@ -449,9 +462,10 @@ Ordinary version rollback does not move namespace ownership.
   phase 3, then reverse if needed.
 - **After phase 2:** never deploy, roll back or force-dispatch production to
   a source that declares a live local admission class in the API (any source
-  before phase 2, including `a6252d47`). It would try to create the class
-  again. A compatible API version keeps the tombstone and the target binding.
-  Target code may roll back only to adopted, protocol-compatible versions.
+  before phase 2, including `fbb124e5` and `a6252d47`). It would try to
+  create the class again. A compatible API version keeps the tombstone and
+  the target binding. Target code may roll back only to adopted,
+  protocol-compatible versions.
 
 ### Reverse transfer
 
