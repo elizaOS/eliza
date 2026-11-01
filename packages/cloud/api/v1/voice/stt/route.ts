@@ -533,7 +533,8 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
     const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
-        rateLimitEndpoint: "strict",
+        // A voice turn is one STT request and several TTS requests.
+        rateLimitEndpoint: "standard",
         deferStrongCredentialCheck: true,
       }).finally(() => {
         timings.push({

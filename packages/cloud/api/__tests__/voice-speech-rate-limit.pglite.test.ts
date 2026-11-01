@@ -10,8 +10,9 @@
  * decides. Real STT and TTS routes, API-key auth and policy hydration on
  * PGlite; the per-organization Durable Object and the Redis REST endpoint are
  * counting fakes. The Durable Object's own window logic is covered by its
- * miniflare test. The personal agent's platform-funded image and video media
- * count in the same strict window when the turn runs in a Worker.
+ * miniflare test. Voice (STT, TTS and the relay bootstrap) counts in the
+ * standard window; the personal agent's platform-funded image and video media
+ * count in the strict window when the turn runs in a Worker.
  */
 import {
   afterAll,
@@ -115,6 +116,7 @@ const realFetch = globalThis.fetch;
 
 let pg: () => { exec(query: string): Promise<unknown> };
 let closeDatabase: () => Promise<void>;
+let standardRpm: number;
 let runWithBindings: <T>(
   bindings: Record<string, unknown>,
   fn: () => Promise<T>,
@@ -245,11 +247,11 @@ beforeAll(async () => {
       executionCtx,
     ).media;
   runWithBindings = runWithCloudBindingsAsync;
-  strictRpm = await withOrganizationPolicyReadAdmission(
+  ({ strictRpm, standardRpm } = await withOrganizationPolicyReadAdmission(
     ORG,
     undefined,
-    async (policy) => requireOrganizationRateTier(policy).strictRpm,
-  );
+    async (policy) => requireOrganizationRateTier(policy),
+  ));
   routes = {
     stt: (await import("../v1/voice/stt/route")).default as unknown as Hono,
     tts: (await import("../v1/voice/tts/route")).default as unknown as Hono,
@@ -438,10 +440,10 @@ describe("Worker speech rate limit without an admission snapshot", () => {
     // No auth decision is cached, so each request is authorized from the
     // primary; the limiter must not depend on the organization's projection.
     for (const [route, status, endpointType] of [
-      ["stt", 400, "strict"],
-      ["tts", 400, "strict"],
+      ["stt", 400, "standard"],
+      ["tts", 400, "standard"],
       ["consent", 200, "standard"],
-      ["session", 400, "strict"],
+      ["session", 400, "standard"],
     ] as const) {
       const { organizationId, key, session } = await seedOrganization();
       for (const credential of [key, session]) {
@@ -548,8 +550,8 @@ describe("Worker speech rate limit without an admission snapshot", () => {
       expect(call.name).toBe(`rate-limit:v2:${ORG}`);
       expect(call.path).toBe("/rate-limit");
       expect(call.body).toMatchObject({
-        endpointType: "strict",
-        maxRequests: strictRpm,
+        endpointType: "standard",
+        maxRequests: standardRpm,
         windowMs: 60_000,
       });
       expect(call.body.apiKey).toBeUndefined();
@@ -611,25 +613,27 @@ describe("Worker speech rate limit without an admission snapshot", () => {
 });
 
 describe("Personal-agent media in the organization's strict window", () => {
-  test("Worker turn media and the speech routes count in one window", async () => {
-    for (let sent = 1; sent < strictRpm; sent += 1)
-      expect((await speak("stt", keys.plain.raw)).status).toBe(400);
-    // The media takes the last request of the window.
-    await expect(generatePersonalMedia(true, "audio")).rejects.toThrow(
-      "Personal Shared media generation does not support audio",
-    );
-    expect((await speak("tts", keys.plain.raw)).status).toBe(429);
+  test("Worker turn media keeps the whole strict window after speech", async () => {
+    expect((await speak("stt", keys.plain.raw)).status).toBe(400);
+    expect((await speak("tts", keys.plain.raw)).status).toBe(400);
+    for (let sent = 0; sent < strictRpm; sent += 1)
+      await expect(generatePersonalMedia(true, "audio")).rejects.toThrow(
+        "Personal Shared media generation does not support audio",
+      );
     await expect(generatePersonalMedia(true, "image")).rejects.toThrow(
       "Image generation rate limit exceeded.",
     );
 
     expect(redisCalls).toBe(0);
-    expect(gateCalls).toHaveLength(strictRpm + 2);
-    for (const call of gateCalls)
-      expect(call).toMatchObject({
-        name: `rate-limit:v2:${ORG}`,
-        body: { endpointType: "strict", maxRequests: strictRpm },
-      });
+    expect(gateCalls).toHaveLength(strictRpm + 3);
+    expect(gateCalls.map((call) => call.body)).toMatchObject([
+      { endpointType: "standard", maxRequests: standardRpm },
+      { endpointType: "standard", maxRequests: standardRpm },
+      ...Array.from({ length: strictRpm + 1 }, () => ({
+        endpointType: "strict",
+        maxRequests: strictRpm,
+      })),
+    ]);
   });
 
   test("media without an execution context keeps the Redis window", async () => {
@@ -641,6 +645,76 @@ describe("Personal-agent media in the organization's strict window", () => {
     expect(redisCalls).toBe(1);
     expect([...redisWindows]).toEqual([
       [expect.stringMatching(new RegExp(`:ratelimit:org:${ORG}:strict$`)), 1],
+    ]);
+  });
+});
+
+describe("A free-tier organization's voice conversation", () => {
+  /** An invalid body: a caller the strict route admits stops at 400. */
+  async function generateImage(rawKey: string) {
+    const route = (await import("../v1/generate-image/route"))
+      .default as unknown as Hono;
+    return await runWithBindings({ INFERENCE_ADMISSION_GATES }, () =>
+      Promise.resolve(
+        route.request(
+          "http://cloud.test/",
+          {
+            method: "POST",
+            headers: {
+              authorization: `Bearer ${rawKey}`,
+              "content-type": "application/json",
+            },
+            body: "{}",
+          },
+          {},
+          {
+            waitUntil: () => undefined,
+            passThroughOnException: () => undefined,
+            props: {},
+          },
+        ),
+      ),
+    );
+  }
+
+  test("the free tier allows 5 strict and 30 standard requests per minute", () => {
+    expect({ strictRpm, standardRpm }).toEqual({
+      strictRpm: 5,
+      standardRpm: 30,
+    });
+  });
+
+  test("speech is admitted past the strict limit up to the standard limit", async () => {
+    // Each turn is one STT request and four TTS sentences.
+    for (let sent = 0; sent < standardRpm; sent += 1)
+      expect(
+        (await speak(sent % 5 === 0 ? "stt" : "tts", keys.plain.raw)).status,
+      ).toBe(400);
+    const refused = await speak("tts", keys.plain.raw);
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toMatchObject({ code: "rate_limit_exceeded" });
+    expect((await speak("stt", keys.plain.raw)).status).toBe(429);
+
+    expect(gateCalls).toHaveLength(standardRpm + 2);
+    for (const call of gateCalls)
+      expect(call.body).toMatchObject({
+        endpointType: "standard",
+        maxRequests: standardRpm,
+      });
+  });
+
+  test("a strict route keeps its own limit of 5 after a voice turn", async () => {
+    for (let sent = 0; sent <= strictRpm; sent += 1)
+      expect((await speak("tts", keys.plain.raw)).status).toBe(400);
+    for (let sent = 0; sent < strictRpm; sent += 1)
+      expect((await generateImage(keys.plain.raw)).status).toBe(400);
+    const refused = await generateImage(keys.plain.raw);
+    expect(refused.status).toBe(429);
+    expect(await refused.json()).toMatchObject({ code: "rate_limit_exceeded" });
+
+    expect(gateCalls.map((call) => call.body.endpointType)).toEqual([
+      ...Array.from({ length: strictRpm + 1 }, () => "standard"),
+      ...Array.from({ length: strictRpm + 1 }, () => "strict"),
     ]);
   });
 });

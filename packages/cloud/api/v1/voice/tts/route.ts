@@ -299,7 +299,8 @@ async function __hono_POST(c: AppContext) {
     const { user, apiKeyId, admissionSnapshot, credential } =
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
-        rateLimitEndpoint: "strict",
+        // A voice turn is one STT request and several TTS requests.
+        rateLimitEndpoint: "standard",
         deferStrongCredentialCheck: willAdmit,
       });
     await using credentialGuard = deferredCredentialAdmissionGuard({

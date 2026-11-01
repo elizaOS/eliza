@@ -30,7 +30,8 @@ app.post("/consent", async (c) => {
 app.post("/session", async (c) => {
   const caller = await requireGenerativeRouteCaller(c, {
     includeVerifiedCredential: true,
-    rateLimitEndpoint: "strict",
+    // Same class as the STT and TTS requests this session carries.
+    rateLimitEndpoint: "standard",
   });
   if (!caller.credential)
     return c.json({ error: "speech_identity_unavailable" }, 403);
