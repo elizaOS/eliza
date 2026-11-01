@@ -131,9 +131,9 @@ async function ownerModelAcknowledgment(
                   contexts: ["general"],
                   intents: ["look up entry"],
                   candidateActionNames: ["LOOKUP"],
-                  replyText: acknowledgment
-                    ? [{ kind: "text", value: acknowledgment }]
-                    : [],
+                  // This fixture supplies no source originals, so Stage 1 declares
+                  // plain reply text rather than source-backed reply parts.
+                  replyText: acknowledgment,
                   replyEffectStatus: "pending",
                   facts: [],
                   relationships: [],
