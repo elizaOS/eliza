@@ -728,12 +728,14 @@ jobs:
           git diff --quiet "$BASE_SHA" "$HEAD_SHA" -- \
             packages/ui/src/cloud/public-pages/pages/auth/cli-login-page.tsx \
             packages/ui/src/cloud/public-pages/pages/auth/__e2e__/cli-login-page.test.tsx \
-            packages/ui/src/cloud/public-pages/pages/auth/__e2e__/cli-login-page.identity.test.tsx || diff_status=$?
+            packages/ui/src/cloud/public-pages/pages/auth/__e2e__/cli-login-page.identity.test.tsx \
+            packages/ui/src/cloud/public-pages/pages/auth/__e2e__/cli-login-google-hint.test.ts || diff_status=$?
           if [ "$diff_status" -eq 0 ]; then exit 0; fi
           if [ "$diff_status" -ne 1 ]; then exit "$diff_status"; fi
           bun run --cwd packages/ui test:e2e \
             src/cloud/public-pages/pages/auth/__e2e__/cli-login-page.test.tsx \
             src/cloud/public-pages/pages/auth/__e2e__/cli-login-page.identity.test.tsx \
+            src/cloud/public-pages/pages/auth/__e2e__/cli-login-google-hint.test.ts \
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
 
