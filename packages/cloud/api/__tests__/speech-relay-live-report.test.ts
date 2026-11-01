@@ -7,9 +7,35 @@ import {
   publicSpeechRelayReports,
   reportedSpeechRelayTest,
   speechRelayFailure,
+  speechRelayRefusal,
 } from "../test/speech-relay-live-report";
 
 describe("protected speech diagnostics", () => {
+  test("closed relay refusals survive reporting without provider text or arbitrary reasons", () => {
+    const refusals = [
+      ["unavailable", undefined, "SPEECH_REFUSED_UNAVAILABLE"],
+      ["unauthorized", undefined, "SPEECH_REFUSED_UNAUTHORIZED"],
+      [
+        "unavailable",
+        "insufficient_credits",
+        "SPEECH_REFUSED_INSUFFICIENT_CREDITS",
+      ],
+      ["unavailable", "private-token", "SPEECH_REFUSED_UNAVAILABLE"],
+      ["private-token", "insufficient_credits", "SPEECH_PROVIDER_REFUSED"],
+    ] as const;
+    for (const [code, reason, expected] of refusals) {
+      const report = speechRelayFailure(
+        "stt",
+        new Error(speechRelayRefusal(code, reason)),
+      );
+      expect(report.code).toBe(expected);
+      expect(
+        JSON.parse(publicSpeechRelayReports(JSON.stringify(report), true)),
+      ).toEqual(report);
+      expect(JSON.stringify(report)).not.toContain("private-token");
+    }
+  });
+
   test("the live wrapper records the last stage and rejects without original error text", async () => {
     const lines: string[] = [];
     const error = new Error("provider response contains private-token");
