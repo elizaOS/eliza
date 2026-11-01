@@ -36,6 +36,7 @@ import { and, eq, isNull } from "drizzle-orm";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import { lockOrganizationPolicy } from "../../db/repositories/organization-policy-generation";
 import { inferenceFundingBudgetGrants } from "../../db/schemas/inference-funding-budgets";
+import { cache } from "../cache/client";
 import { observeInferenceDependency } from "../observability/cloud-backend-observability";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
@@ -468,7 +469,10 @@ async function admitOrganizationInferenceOnce(
   }
   // KV/LRU entries are observations, never a CAS fence. Compare policy under
   // the same organization lock that serializes entitlement and override writes.
-  const workerHotPath = typeof params.executionCtx?.waitUntil === "function";
+  // A host without any configured cache backend (local dev, e2e) could never
+  // hydrate a snapshot, so it keeps the authoritative lane.
+  const workerHotPath =
+    typeof params.executionCtx?.waitUntil === "function" && cache.isBackendConfigured();
   // The Worker hot path never reads Postgres before dispatch: the Durable
   // Object lease (deferred admission) is its only pre-provider write.
   if (workerHotPath) {

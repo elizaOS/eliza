@@ -17,6 +17,7 @@ import {
   describe,
   expect,
   setDefaultTimeout,
+  spyOn,
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
@@ -224,6 +225,27 @@ describe("primary tripwire", () => {
     ).rejects.toThrow();
     primaryArmed = false;
     expect(primaryTouches).toBeGreaterThan(0);
+  });
+});
+
+describe("hosts without a cache backend", () => {
+  test("keep the authoritative path, because a miss there could never hydrate", async () => {
+    const key = await seedKey();
+    const configured = spyOn(cache, "isBackendConfigured").mockReturnValue(false);
+    let touched = 0;
+    try {
+      await workerRequest(key.rawKey);
+    } catch {
+      // error-policy:J3 the armed tripwire rejects the authoritative read;
+      // reaching it is exactly what this test asserts below.
+    } finally {
+      touched = primaryTouches;
+      configured.mockRestore();
+    }
+    expect(touched).toBeGreaterThan(0);
+    const deployed = await workerRequest(key.rawKey);
+    expect(deployed.touches).toBe(0);
+    await settle(deployed);
   });
 });
 

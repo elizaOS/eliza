@@ -392,7 +392,9 @@ export async function resolveInferenceSessionAuthContext(
     }
   }
 
-  if (options.useAuthCache && options.cacheOnly) {
+  // Cache-only needs a configured backend; hosts without one (local dev, e2e)
+  // keep the authoritative path because a miss could never hydrate.
+  if (options.useAuthCache && options.cacheOnly && cache.isBackendConfigured()) {
     if (cache.isAvailable() && options.executionCtx) {
       const hydration = getOrCreateHydration(
         {
