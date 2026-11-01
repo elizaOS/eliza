@@ -1,5 +1,6 @@
 /** Translates chain data queries into provider requests with read-only replay policy. */
 import { logger } from "../../utils/logger";
+import { canonicalizeAddressParams } from "./address-validation";
 import { getProxyConfig } from "./config";
 import { retryFetch } from "./fetch";
 import { getServiceMethodCost } from "./pricing";
@@ -139,7 +140,8 @@ export const chainDataConfig: ServiceConfig = {
  * - Returns clear error with supported chains list
  */
 export const chainDataHandler: ServiceHandler = async ({ body }) => {
-  const { method, chain, params } = body as ChainDataRequest;
+  const { method, chain, params: rawParams } = body as ChainDataRequest;
+  const params = canonicalizeAddressParams(rawParams);
 
   // Validate chain is supported for enhanced data
   if (!ALCHEMY_SLUGS[chain]) {

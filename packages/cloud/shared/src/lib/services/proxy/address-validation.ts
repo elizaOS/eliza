@@ -54,6 +54,22 @@ const EVM_ADDRESS_REGEX = /^0x[a-fA-F0-9]{40}$/;
 // WHY 64 hex chars: Sui uses 32-byte addresses = 64 hex digits
 const SUI_ADDRESS_REGEX = /^0x[a-fA-F0-9]{64}$/;
 
+/** One lowercase 0x prefix. A copied 0X prefix is the same hex body. */
+export function canonicalPrefixedHex(value: string): string {
+  return /^0x/i.test(value) ? `0x${value.slice(2)}` : value;
+}
+
+/** Rewrite 0X prefixes in query and RPC fields. Base58 values are unchanged. */
+export function canonicalizeAddressParams<T extends Record<string, unknown>>(
+  params: T,
+): T {
+  const next: Record<string, unknown> = { ...params };
+  for (const [key, value] of Object.entries(next)) {
+    if (typeof value === "string") next[key] = canonicalPrefixedHex(value);
+  }
+  return next as T;
+}
+
 export function isValidChain(chain: string): boolean {
   return SUPPORTED_CHAINS.has(chain.toLowerCase());
 }
@@ -70,11 +86,11 @@ export function isValidAddress(chain: string, address: string): boolean {
   }
 
   if (EVM_CHAINS.has(normalizedChain)) {
-    return EVM_ADDRESS_REGEX.test(address);
+    return EVM_ADDRESS_REGEX.test(canonicalPrefixedHex(address));
   }
 
   if (normalizedChain === "sui") {
-    return SUI_ADDRESS_REGEX.test(address);
+    return SUI_ADDRESS_REGEX.test(canonicalPrefixedHex(address));
   }
 
   return false;
