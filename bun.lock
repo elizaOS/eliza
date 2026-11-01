@@ -860,6 +860,7 @@
         "@elizaos/cloud-services-common": "workspace:*",
         "@elizaos/cloud-shared": "workspace:*",
         "@elizaos/core": "workspace:*",
+        "@elizaos/host": "workspace:*",
         "@elizaos/plugin-elizacloud": "workspace:*",
         "@elizaos/plugin-sql": "workspace:*",
         "@elizaos/testing": "workspace:*",
