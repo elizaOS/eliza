@@ -299,16 +299,22 @@ describeE2E("/api/agents/:id/a2a", () => {
   });
 
   test("POST with valid auth on unknown agent returns 404", async () => {
-    const res = await api.post(
-      `/api/agents/${UNOWNED_AGENT_ID}/a2a`,
-      {
-        jsonrpc: "2.0",
-        method: "chat",
-        id: 1,
-        params: {},
-      },
-      { headers: bearerHeaders() },
-    );
+    const request = () =>
+      api.post(
+        `/api/agents/${UNOWNED_AGENT_ID}/a2a`,
+        { jsonrpc: "2.0", method: "chat", id: 1, params: {} },
+        { headers: bearerHeaders() },
+      );
+    let res = await request();
+    for (let retry = 0; retry < 2 && res.status === 503; retry++) {
+      const body = (await res.clone().json()) as {
+        error?: { data?: { code?: unknown } };
+      };
+      if (body?.error?.data?.code !== "auth_cache_warming") break;
+      expect(res.headers.get("Retry-After")).toBe("1");
+      await Bun.sleep(1000);
+      res = await request();
+    }
     expect(res.status).toBe(404);
   });
 
