@@ -1648,25 +1648,37 @@ jobs:
               --tag "$GITHUB_SHA"
             recheck_canonical_source
           elif [ "$DEPLOY_ENVIRONMENT" = "production" ]; then
-            # Production admission authority lives in the existing namespace
-            # adopted by its dedicated Worker. Republish that adopted state
-            # before the API only after live readback proves the same namespace.
-            # A release never runs a transfer phase; any other committed phase
-            # fails closed here. See admission-worker/PRODUCTION-TRANSFER.md.
-            (cd "$CHECKOUT_DIR" && bun packages/cloud/admission-worker/verify-staging-contract.ts --production --phase adopted)
-            (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage before)
-            recheck_canonical_source
-            bunx wrangler deploy \
-              --config ../admission-worker/wrangler.toml \
-              --env production \
-              --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" \
-              --tag "$GITHUB_SHA"
-            (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage admission --commit "$GITHUB_SHA")
+            # Production admission authority lives in the existing namespace.
+            # A release publishes only the committed phase, after live readback
+            # proves the phase it starts from (admission-worker/
+            # PRODUCTION-TRANSFER.md). `adopted` republishes the admission Worker
+            # before the API. `reverse-pending` and `reverse-adopted` are API
+            # steps of the reverse transfer, and `reverse-adopted` is its steady
+            # state; they never upload the admission Worker. Every other phase
+            # is Root's and fails closed here.
+            admission_phase="$(cd "$CHECKOUT_DIR" && bun packages/cloud/admission-worker/verify-staging-contract.ts --production --print-phase)"
+            case "$admission_phase" in
+              adopted | reverse-pending | reverse-adopted) ;;
+              *)
+                echo "::error::A production release cannot publish admission phase ${admission_phase:-<none>}."
+                exit 1
+                ;;
+            esac
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage before --phase "$admission_phase")
+            if [ "$admission_phase" = "adopted" ]; then
+              recheck_canonical_source
+              bunx wrangler deploy \
+                --config ../admission-worker/wrangler.toml \
+                --env production \
+                --var ELIZA_DEPLOY_COMMIT:"$GITHUB_SHA" \
+                --tag "$GITHUB_SHA"
+              (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage admission --phase adopted --commit "$GITHUB_SHA")
+            fi
             recheck_canonical_source
           fi
           bunx wrangler deploy "${args[@]}"
           if [ "$DEPLOY_ENVIRONMENT" = "production" ]; then
-            (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage api --commit "$GITHUB_SHA")
+            (cd "$CHECKOUT_DIR" && bun packages/cloud/scripts/production-admission-readback.ts --stage api --phase "$admission_phase" --commit "$GITHUB_SHA")
           fi
           trap - ERR
 

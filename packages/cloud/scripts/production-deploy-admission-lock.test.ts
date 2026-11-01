@@ -262,34 +262,37 @@ describe("committed Cloud CF workflow matches the policy", () => {
     expect(fragment).toBeDefined();
 
     // Execute the committed shell ordering. The command adapters record only
-    // local calls; this test never loads credentials or contacts Cloudflare.
-    const run = (environment, failure = "") =>
+    // local calls on stderr; this test never loads credentials or contacts
+    // Cloudflare. `PHASE` is the committed production admission phase.
+    const run = (environment, failure = "", phase = "adopted") =>
       spawnSync(
         "bash",
         [
           "-c",
           `set -euo pipefail
 args=(--env "$DEPLOY_ENVIRONMENT" --var "ELIZA_DEPLOY_COMMIT:$GITHUB_SHA")
-recheck_canonical_source() { printf 'guard\n'; }
+recheck_canonical_source() { printf 'guard\n' >&2; }
 bun() {
   case "$1" in
-    *reconcile-steward-email-callback-config.ts) printf 'reconcile\n' ;;
+    *reconcile-steward-email-callback-config.ts) printf 'reconcile\n' >&2 ;;
     *verify-staging-contract.ts)
       shift
-      printf 'validate%s\n' "\${*:+ $*}"
-      [ "$FAILURE" != validation ] || return 23 ;;
+      printf 'validate%s\n' "\${*:+ $*}" >&2
+      [ "$FAILURE" != validation ] || return 23
+      [[ "$*" != *--print-phase* ]] || printf '%s\n' "$PHASE" ;;
     *production-admission-readback.ts)
-      printf 'readback %s\n' "$3"
-      [ "$FAILURE" != "readback-$3" ] || return 25 ;;
+      shift
+      printf 'readback %s\n' "$*" >&2
+      [ "$FAILURE" != "readback-$2" ] || return 25 ;;
     *) return 90 ;;
   esac
 }
 bunx() {
   if [[ "$*" == *--config* ]]; then
-    printf 'admission %s\n' "$*"
+    printf 'admission %s\n' "$*" >&2
     [ "$FAILURE" != admission ] || return 24
   else
-    printf 'api %s\n' "$*"
+    printf 'api %s\n' "$*" >&2
   fi
 }
 ${fragment}`,
@@ -303,16 +306,19 @@ ${fragment}`,
             DEPLOY_ENVIRONMENT: environment,
             GITHUB_SHA: "a".repeat(40),
             FAILURE: failure,
+            PHASE: phase,
           },
         },
       );
+    const calls = (result) => result.stderr.trim().split("\n");
+    const sha = "a".repeat(40);
     const admission = (environment = "") =>
-      `admission wrangler deploy --config ../admission-worker/wrangler.toml${environment && ` --env ${environment}`} --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)} --tag ${"a".repeat(40)}`;
+      `admission wrangler deploy --config ../admission-worker/wrangler.toml${environment && ` --env ${environment}`} --var ELIZA_DEPLOY_COMMIT:${sha} --tag ${sha}`;
     const api = (environment) =>
-      `api wrangler deploy --env ${environment} --var ELIZA_DEPLOY_COMMIT:${"a".repeat(40)}`;
+      `api wrangler deploy --env ${environment} --var ELIZA_DEPLOY_COMMIT:${sha}`;
     const staging = run("staging");
     expect(staging.status).toBe(0);
-    expect(staging.stdout.trim().split("\n")).toEqual([
+    expect(calls(staging)).toEqual([
       "guard",
       "reconcile",
       "validate",
@@ -323,36 +329,68 @@ ${fragment}`,
     ]);
     const production = run("production");
     expect(production.status).toBe(0);
-    expect(production.stdout.trim().split("\n")).toEqual([
+    expect(calls(production)).toEqual([
       "guard",
-      "validate --production --phase adopted",
-      "readback before",
+      "validate --production --print-phase",
+      "readback --stage before --phase adopted",
       "guard",
       admission("production"),
-      "readback admission",
+      `readback --stage admission --phase adopted --commit ${sha}`,
       "guard",
       api("production"),
-      "readback api",
+      `readback --stage api --phase adopted --commit ${sha}`,
     ]);
+    // The reverse transfer's API steps, and its steady state, publish only
+    // the API, between readbacks of the committed phase.
+    for (const phase of ["reverse-pending", "reverse-adopted"]) {
+      const reverse = run("production", "", phase);
+      expect(reverse.status).toBe(0);
+      expect(calls(reverse)).toEqual([
+        "guard",
+        "validate --production --print-phase",
+        `readback --stage before --phase ${phase}`,
+        "guard",
+        api("production"),
+        `readback --stage api --phase ${phase} --commit ${sha}`,
+      ]);
+    }
+    // Root's phases never reach a release upload.
+    for (const phase of [
+      "target-pending",
+      "source-commit",
+      "reverse-commit",
+      "",
+    ]) {
+      const refused = run("production", "", phase);
+      expect(refused.status).not.toBe(0);
+      expect(refused.stdout).toContain(
+        "A production release cannot publish admission phase",
+      );
+      expect(refused.stderr).not.toContain("wrangler deploy");
+      expect(refused.stderr).not.toContain("readback");
+    }
     for (const failure of ["validation", "admission"]) {
       const stopped = run("staging", failure);
       expect(stopped.status).not.toBe(0);
-      expect(stopped.stdout).not.toContain("api wrangler deploy");
+      expect(stopped.stderr).not.toContain("api wrangler deploy");
       if (failure === "validation")
-        expect(stopped.stdout).not.toContain("admission wrangler deploy");
+        expect(stopped.stderr).not.toContain("admission wrangler deploy");
     }
     // A lifecycle phase or a different live namespace stops before any upload.
-    for (const failure of [
-      "validation",
-      "readback-before",
-      "admission",
-      "readback-admission",
+    for (const [failure, phase] of [
+      ["validation", "adopted"],
+      ["readback-before", "adopted"],
+      ["admission", "adopted"],
+      ["readback-admission", "adopted"],
+      ["validation", "reverse-pending"],
+      ["readback-before", "reverse-pending"],
+      ["readback-before", "reverse-adopted"],
     ]) {
-      const stopped = run("production", failure);
+      const stopped = run("production", failure, phase);
       expect(stopped.status).not.toBe(0);
-      expect(stopped.stdout).not.toContain("api wrangler deploy");
+      expect(stopped.stderr).not.toContain("api wrangler deploy");
       if (failure === "validation" || failure === "readback-before")
-        expect(stopped.stdout).not.toContain("admission wrangler deploy");
+        expect(stopped.stderr).not.toContain("admission wrangler deploy");
     }
   });
 
