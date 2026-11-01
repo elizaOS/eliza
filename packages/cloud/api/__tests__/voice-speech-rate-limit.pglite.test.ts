@@ -5,6 +5,8 @@
  * windows. Real STT and TTS routes, API-key auth and policy reads on PGlite;
  * the per-organization Durable Object and the Redis REST endpoint are counting
  * fakes. The Durable Object's own window logic is covered by its miniflare test.
+ * The personal agent's platform-funded image and video media count in the same
+ * strict window when the turn runs in a Worker.
  */
 import {
   afterAll,
@@ -16,6 +18,7 @@ import {
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
+import type { SharedMediaGenerationPort } from "@elizaos/cloud-shared/lib/services/shared-runtime/run-shared-agent-turn";
 import type { Hono } from "hono";
 
 process.env.DATABASE_URL = "pglite://memory";
@@ -102,6 +105,9 @@ let runWithBindings: <T>(
   fn: () => Promise<T>,
 ) => Promise<T>;
 let routes: { stt: Hono; tts: Hono };
+let personalMedia: (
+  executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
+) => SharedMediaGenerationPort | undefined;
 let strictRpm: number;
 const keys: Record<
   "plain" | "capped" | "inactive" | "deleted" | "foreign" | "second",
@@ -189,11 +195,29 @@ beforeAll(async () => {
     { runWithCloudBindingsAsync },
     { withOrganizationPolicyReadAdmission },
     { requireOrganizationRateTier },
+    { personalSharedAgent },
+    { sharedElizaRuntimeExecution, sharedRuntimeRoomKey },
   ] = await Promise.all([
     import("@elizaos/cloud-shared/lib/runtime/cloud-bindings"),
     import("@elizaos/cloud-shared/lib/services/organization-policy-admission"),
     import("@elizaos/cloud-shared/lib/services/organization-quota-policy"),
+    import(
+      "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent"
+    ),
+    import(
+      "@elizaos/cloud-shared/lib/services/shared-runtime/shared-runtime-chat"
+    ),
   ]);
+  const agent = personalSharedAgent({ userId: USER, organizationId: ORG });
+  personalMedia = (executionCtx) =>
+    sharedElizaRuntimeExecution(
+      agent,
+      sharedRuntimeRoomKey(agent.id, agent.id),
+      undefined,
+      {},
+      "platform",
+      executionCtx,
+    ).media;
   runWithBindings = runWithCloudBindingsAsync;
   strictRpm = await withOrganizationPolicyReadAdmission(
     ORG,
@@ -257,6 +281,37 @@ async function speak(route: "stt" | "tts", rawKey: string) {
   );
   await Promise.allSettled(pending);
   return response;
+}
+
+/**
+ * Personal-agent media from a Worker turn (with an execution context) or from
+ * a turn without one. The limiter runs first and audio is refused right after
+ * it, so an admitted request does no provider work.
+ */
+async function generatePersonalMedia(
+  workerTurn: boolean,
+  mediaType: "image" | "audio",
+) {
+  const pending: Promise<unknown>[] = [];
+  try {
+    return await runWithBindings(
+      { INFERENCE_ADMISSION_GATES, BLOB: {}, FAL_KEY: "fal-key-unused" },
+      async () => {
+        const port = personalMedia(
+          workerTurn
+            ? { waitUntil: (promise) => pending.push(promise) }
+            : undefined,
+        );
+        if (!port) throw new Error("Personal media port is not configured");
+        return await port.generateMedia({
+          mediaType,
+          prompt: "a lighthouse at dusk",
+        });
+      },
+    );
+  } finally {
+    await Promise.allSettled(pending);
+  }
 }
 
 describe("Worker speech rate limit without an admission snapshot", () => {
@@ -329,5 +384,40 @@ describe("Worker speech rate limit without an admission snapshot", () => {
     expect((await speak("stt", keys.plain.raw)).status).toBe(503);
     expect((await speak("tts", keys.plain.raw)).status).toBe(503);
     expect(redisCalls).toBe(0);
+  });
+});
+
+describe("Personal-agent media in the organization's strict window", () => {
+  test("Worker turn media and the speech routes count in one window", async () => {
+    for (let sent = 1; sent < strictRpm; sent += 1)
+      expect((await speak("stt", keys.plain.raw)).status).toBe(400);
+    // The media takes the last request of the window.
+    await expect(generatePersonalMedia(true, "audio")).rejects.toThrow(
+      "Personal Shared media generation does not support audio",
+    );
+    expect((await speak("tts", keys.plain.raw)).status).toBe(429);
+    await expect(generatePersonalMedia(true, "image")).rejects.toThrow(
+      "Image generation rate limit exceeded.",
+    );
+
+    expect(redisCalls).toBe(0);
+    expect(gateCalls).toHaveLength(strictRpm + 2);
+    for (const call of gateCalls)
+      expect(call).toMatchObject({
+        name: `rate-limit:v2:${ORG}`,
+        body: { endpointType: "strict", maxRequests: strictRpm },
+      });
+  });
+
+  test("media without an execution context keeps the Redis window", async () => {
+    await expect(generatePersonalMedia(false, "audio")).rejects.toThrow(
+      "Personal Shared media generation does not support audio",
+    );
+
+    expect(gateCalls).toHaveLength(0);
+    expect(redisCalls).toBe(1);
+    expect([...redisWindows]).toEqual([
+      [expect.stringMatching(new RegExp(`:ratelimit:org:${ORG}:strict$`)), 1],
+    ]);
   });
 });
