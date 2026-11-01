@@ -106,10 +106,8 @@ export function buildCharacterFromConfig(config: ElizaConfig): Character {
     defaultCharacterSystemTemplate;
   const style = agentEntry?.style ?? bundledPreset?.style;
   const adjectives = agentEntry?.adjectives ?? bundledPreset?.adjectives;
-  const topics =
-    agentEntry?.topics && agentEntry.topics.length > 0
-      ? agentEntry.topics
-      : bundledPreset?.topics;
+  // A saved empty list is a cleared field, like the bio and adjectives above.
+  const topics = agentEntry?.topics ?? bundledPreset?.topics;
   const postExamples = agentEntry?.postExamples ?? bundledPreset?.postExamples;
   // In-character failure replies. The runtime reads
   // `character.templates.{authFailed,insufficientCredits,noModelProvider,
