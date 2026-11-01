@@ -737,6 +737,16 @@ jobs:
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
 
+      - name: Verify speech phase diagnostics and billing regressions
+        if: steps.affected.outputs.cloud == 'true'
+        timeout-minutes: 5
+        shell: bash
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/cloud/api test speech-phase-timing
+          bun run --cwd packages/cloud/api test voice-stt-provider-duration
+          bun run --cwd packages/cloud/api test voice-tts-idempotency-key.pglite
+
       - name: Verify Network Personal room routes
         if: steps.affected.outputs.cloud == 'true'
         timeout-minutes: 3
