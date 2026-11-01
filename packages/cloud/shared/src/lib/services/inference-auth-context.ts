@@ -664,7 +664,7 @@ export async function resolveInferenceAuthContext(
     trace.timings.extractMs = durationSince(extractStartedAt);
     if (!credential) {
       const session = await resolveInferenceSessionAuthContext(req, {
-        cacheOnly: authCacheEnabled && options.cacheOnly,
+        cacheOnly: options.cacheOnly,
         useAuthCache: authCacheEnabled,
         executionCtx: options.executionCtx,
         deferStrongCredentialCheck,
@@ -937,12 +937,16 @@ export async function resolveInferenceAuthContext(
       return { kind: "suspended", userId: coherent.user.id, reason: "moderation_blocked" };
     }
     if (coherent) ({ user, apiKey } = coherent);
-    const [admission, appScopeId] = authCacheEnabled
-      ? await Promise.all([
-          coherent ? coherent.admission : loadInferenceAdmissionSnapshot(user.organization_id),
-          loadInferenceAppKeyScope(apiKey.id),
-        ])
-      : [coherent?.admission, null];
+    // A Worker decision carries the admission snapshot and app scope even when
+    // the combined cache is not eligible: its limiter and app-scope checks read
+    // them from the decision, never from a cold organization projection.
+    const [admission, appScopeId] =
+      authCacheEnabled || options.cacheOnly === true
+        ? await Promise.all([
+            coherent ? coherent.admission : loadInferenceAdmissionSnapshot(user.organization_id),
+            loadInferenceAppKeyScope(apiKey.id),
+          ])
+        : [coherent?.admission, null];
     const ctx: InferenceAuthContext = {
       v: INFERENCE_AUTH_CONTEXT_VERSION,
       cachedAt: Date.now(),
