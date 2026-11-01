@@ -648,6 +648,8 @@ export interface LiveCaptureOpenOptions {
   signal: AbortSignal;
   /** Platform echo cancellation for full-duplex use (the assistant listens while it speaks). */
   echoCancel: boolean;
+  /** An automatic reopen after a busy hold: refused, never prompted, after a call, pause or permission loss. */
+  reopen?: true;
   roomId?: string;
   onSpeechStart?(atMs: number): void;
   onSpeechEnd?(atMs: number): void;
@@ -679,6 +681,7 @@ export function liveAssistantListener(
     const capture = await open({
       signal: handlers.signal,
       echoCancel: true,
+      ...(handlers.reopen ? { reopen: true } : {}),
       ...(options.roomId ? { roomId: options.roomId } : {}),
       onSpeechStart: handlers.onSpeechStart,
       onSpeechEnd: handlers.onSpeechEnd,

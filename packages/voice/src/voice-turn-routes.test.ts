@@ -317,7 +317,7 @@ describe("heard route", () => {
     expect(await late.report(interrupted())).toBe("stale");
   });
 
-  it("never blocks the next turn: a barge-in reports the played sentence while the next turn is sent", async () => {
+  it("never blocks the next turn: Stop speaking reports the played sentence while the next turn is sent", async () => {
     let now = 0;
     let id = 0;
     const timers = new Map<number, { at: number; callback: () => void }>();
@@ -412,6 +412,8 @@ describe("heard route", () => {
     speeches[0]?.();
     await flush();
     expect(speeches).toHaveLength(2);
+    expect(session.interruptSpeech()).toBe(true);
+    await flush();
     await say("and tomorrow");
     expect(requests).toEqual([
       {

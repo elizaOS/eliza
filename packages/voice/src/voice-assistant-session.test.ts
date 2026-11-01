@@ -91,6 +91,10 @@ function harness(
     shouldRespond?: AssistantPorts["shouldRespond"];
     fullDuplex?: boolean;
     holdOpen?: Deferred<void>;
+    /** The close of the nth capture (1-based); resolves at once when omitted. */
+    close?: (capture: number) => Promise<void>;
+    /** Playback settles only when the test settles it, also after an abort (slow cleanup). */
+    manualSpeech?: boolean;
   } = {},
 ) {
   const clock = fakeClock();
@@ -103,8 +107,11 @@ function harness(
     captures: 0,
     cancelled: 0,
     closed: 0,
+    reopens: [] as (true | undefined)[],
+    levels: [] as number[],
   };
   let mic: AssistantListenHandlers | undefined;
+  let holdOpen = options.holdOpen;
   let current = true;
   const replies: Reply[] = [];
   const speeches: Speech[] = [];
@@ -114,13 +121,15 @@ function harness(
       if (!current) throw new DOMException("binding changed", "AbortError");
     },
     listen: async (handlers) => {
-      log.captures++;
+      const capture = ++log.captures;
+      log.reopens.push(handlers.reopen);
       mic = handlers;
-      if (options.holdOpen) await options.holdOpen.promise;
+      if (holdOpen) await holdOpen.promise;
       return {
         fullDuplex: options.fullDuplex ?? true,
         close: async () => {
           log.closed++;
+          await options.close?.(capture);
         },
         cancel: () => {
           log.cancelled++;
@@ -143,14 +152,16 @@ function harness(
     speak: (input) => {
       const done = deferred<void>();
       speeches.push({ input, done });
-      input.signal.addEventListener(
-        "abort",
-        () => done.reject(new DOMException("stopped", "AbortError")),
-        { once: true },
-      );
+      if (!options.manualSpeech)
+        input.signal.addEventListener(
+          "abort",
+          () => done.reject(new DOMException("stopped", "AbortError")),
+          { once: true },
+        );
       return done.promise;
     },
     onHeard: (value) => log.heard.push(value),
+    onLevel: (peak) => log.levels.push(peak),
     onState: (value) => log.states.push(value),
     onTurn: (event, turnId, detail) => {
       log.turns.push([event, turnId]);
@@ -188,6 +199,10 @@ function harness(
     mic: microphone,
     setCurrent(value: boolean) {
       current = value;
+    },
+    /** Holds every later listen until `gate` settles (a rejection fails that listen). */
+    setHoldOpen(gate: Deferred<void> | undefined) {
+      holdOpen = gate;
     },
     async say(text: string, durationMs = 400) {
       microphone().onSpeechStart(clock.now());
@@ -481,52 +496,42 @@ describe("VoiceAssistantSession with the end-of-turn chain", () => {
   });
 });
 
-describe("VoiceAssistantSession barge-in and heard content", () => {
-  it("cancels an in-flight request on held speech, drops its late reply and sends the new speech next", async () => {
+describe("VoiceAssistantSession interruption and heard content", () => {
+  it("never interrupts a pending request by voice; speech after the reply played is the next turn", async () => {
     const h = harness();
     await h.session.start();
     await h.say("book a table");
     await h.clock.advance(longGapMs);
     expect(h.log.sends).toHaveLength(1);
     const first = at(h.replies, 0);
+    // Held speech on the closed capture confirms neither by time nor by transcript.
     h.mic().onSpeechStart(h.clock.now());
     await flush();
-    await h.clock.advance(560);
-    h.mic().onSpeechEnd(h.clock.now());
-    h.mic().onSegment("");
-    await flush();
-    expect(first.input.signal.aborted).toBe(false);
-    expect(h.phase()).toBe("thinking");
-    h.mic().onSpeechStart(h.clock.now());
-    await flush();
-    expect(first.input.signal.aborted).toBe(false);
-    await h.clock.advance(bargeInConfirmMs);
-    expect(first.input.signal.aborted).toBe(true);
-    expect(h.log.turns.map(([event]) => event)).toEqual([
-      "submitted",
-      "interrupted",
-    ]);
-    await h.clock.advance(300);
+    await h.clock.advance(bargeInConfirmMs * 2);
     h.mic().onSpeechEnd(h.clock.now());
     h.mic().onSegment("for four people");
     await flush();
+    await h.clock.advance(longGapMs);
+    expect(first.input.signal.aborted).toBe(false);
+    expect(h.phase()).toBe("thinking");
+    expect(h.log.sends).toHaveLength(1);
+    expect(h.log.turns.map(([event]) => event)).toEqual(["submitted"]);
+    h.answer(0, "Which restaurant?");
+    await flush();
+    h.speeches[0]?.input.onStarted();
+    h.speeches[0]?.done.resolve();
+    await flush();
+    expect(h.log.captures).toBe(2);
+    await h.say("for four people");
     await h.clock.advance(longGapMs);
     expect(h.log.sends.map((send) => send.text)).toEqual([
       "book a table",
       "for four people",
     ]);
     expect(h.log.sends[1]?.turnId).not.toBe(h.log.sends[0]?.turnId);
-    h.answer(0, "Which restaurant?");
-    await flush();
-    expect(h.speeches).toHaveLength(0);
-    h.answer(1, "Booked for four.");
-    await flush();
-    expect(h.speeches.map((speech) => speech.input.text)).toEqual([
-      "Booked for four.",
-    ]);
   });
 
-  it("stops playback on accepted speech and keeps only the sentences that finished", async () => {
+  it("accepted speech never stops playback; Stop speaking keeps only the sentences that finished", async () => {
     const h = harness();
     await h.session.start();
     await h.say("tell me about my day");
@@ -543,14 +548,9 @@ describe("VoiceAssistantSession barge-in and heard content", () => {
     await flush();
     h.speeches[1]?.input.onStarted();
     await flush();
-    h.mic().onSpeechStart(h.clock.now());
-    await flush();
-    await h.clock.advance(bargeInConfirmMs * 2);
-    h.mic().onSpeechEnd(h.clock.now());
-    await flush();
+    await h.say("wait", bargeInConfirmMs * 2);
     expect(h.speeches[1]?.input.signal.aborted).toBe(false);
-    h.mic().onSegment("wait");
-    await flush();
+    expect(h.session.interruptSpeech()).toBe(true);
     expect(h.speeches[1]?.input.signal.aborted).toBe(true);
     expect(h.speeches).toHaveLength(2);
     expect(h.log.heard).toEqual([
@@ -569,7 +569,7 @@ describe("VoiceAssistantSession barge-in and heard content", () => {
     expect(h.phase()).toBe("listening");
   });
 
-  it("Stop speaking interrupts like barge-in; a reply played to the end is heard in full", async () => {
+  it("Stop speaking interrupts and reopens the microphone; a reply played to the end is heard in full", async () => {
     const h = harness();
     await h.session.start();
     await h.say("what time is it");
@@ -581,6 +581,9 @@ describe("VoiceAssistantSession barge-in and heard content", () => {
     await flush();
     expect(h.session.interruptSpeech()).toBe(true);
     expect(h.log.heard.at(-1)).toMatchObject({ heard: "", interrupted: true });
+    await flush();
+    expect(h.log.captures).toBe(2);
+    expect(h.log.reopens).toEqual([undefined, true]);
     await h.say("and tomorrow");
     await h.clock.advance(longGapMs);
     h.answer(1, "Tomorrow is Thursday.");
@@ -628,7 +631,7 @@ describe("VoiceAssistantSession barge-in and heard content", () => {
     ]);
   });
 
-  it("never sends the reply's own echo as a turn", async () => {
+  it("never hears the reply's own echo while it plays; the gate still rejects its tail after the reopen", async () => {
     const echo: AssistantPorts["shouldRespond"] = (text, context) =>
       !(context.agentSpeaking || context.replyAgeMs < 9000) ||
       !context.recentAgentReply.toLowerCase().includes(text.toLowerCase());
@@ -645,30 +648,459 @@ describe("VoiceAssistantSession barge-in and heard content", () => {
     expect(h.phase()).toBe("speaking");
     h.speeches[0]?.done.resolve();
     await flush();
+    expect(h.log.captures).toBe(2);
+    await h.say("water the plants");
     await h.clock.advance(longGapMs * 2);
     expect(h.log.sends).toHaveLength(1);
     expect(h.log.heard.at(-1)?.interrupted).toBe(false);
   });
 
-  it("ignores speech during playback without an echo canceller; Stop speaking still interrupts", async () => {
-    const h = harness({ fullDuplex: false });
+  it("speech during playback never interrupts, with or without an echo canceller; Stop speaking still does", async () => {
+    for (const fullDuplex of [false, true]) {
+      const h = harness({ fullDuplex });
+      await h.session.start();
+      await h.say("what is the forecast");
+      await h.clock.advance(longGapMs);
+      h.answer(0, "Sunny with a light breeze all afternoon.");
+      await flush();
+      h.speeches[0]?.input.onStarted();
+      await flush();
+      await h.say("no wait, tomorrow", bargeInConfirmMs * 2);
+      expect(h.speeches[0]?.input.signal.aborted).toBe(false);
+      expect(h.session.interruptSpeech()).toBe(true);
+      await h.clock.advance(longGapMs * 2);
+      expect(h.log.sends).toHaveLength(1);
+    }
+  });
+});
+
+describe("VoiceAssistantSession busy hold", () => {
+  it("closes input at submission and keeps it closed through thinking, every sentence and drain; reopens once after the last playback", async () => {
+    const closing = deferred();
+    const h = harness({ close: () => closing.promise });
     await h.session.start();
-    await h.say("what is the forecast");
+    await h.say("what is on today");
     await h.clock.advance(longGapMs);
-    h.answer(0, "Sunny with a light breeze all afternoon.");
-    await flush();
-    h.speeches[0]?.input.onStarted();
-    await flush();
-    h.mic().onSpeechStart(h.clock.now());
-    await flush();
-    await h.clock.advance(bargeInConfirmMs * 2);
-    h.mic().onSpeechEnd(h.clock.now());
-    h.mic().onSegment("sunny with a light breeze");
-    await flush();
-    expect(h.speeches[0]?.input.signal.aborted).toBe(false);
-    expect(h.session.interruptSpeech()).toBe(true);
-    await h.clock.advance(longGapMs * 2);
     expect(h.log.sends).toHaveLength(1);
+    expect(h.log).toMatchObject({ closed: 1, cancelled: 0, captures: 1 });
+    const closed = h.mic();
+    const reply = at(h.replies, 0);
+    // Speech, level and segments on the closed capture never act (no barge-in, no tentative turn).
+    const speakOnClosed = async (text: string) => {
+      closed.onSpeechStart(h.clock.now());
+      closed.onLevel?.(0.8);
+      await h.clock.advance(bargeInConfirmMs * 2);
+      closed.onSpeechEnd(h.clock.now());
+      closed.onSegment(text);
+      await flush();
+    };
+    await speakOnClosed("cancel that");
+    // Not held until the capture's own close fulfilled.
+    expect(h.session.getSnapshot()).toEqual({
+      phase: "thinking",
+      transcript: "what is on today",
+    });
+    closing.resolve();
+    await flush();
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      inputHeld: true,
+    });
+    await speakOnClosed("never mind");
+    expect(reply.input.signal.aborted).toBe(false);
+    h.answer(0, "You have two meetings today. The first one starts at nine.");
+    await flush();
+    at(h.speeches, 0).input.onStarted();
+    await flush();
+    await speakOnClosed("stop");
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    await speakOnClosed("stop");
+    at(h.speeches, 1).input.onStarted();
+    await flush();
+    await speakOnClosed("stop");
+    expect(h.speeches.map((speech) => speech.input.signal.aborted)).toEqual([
+      false,
+      false,
+    ]);
+    expect(h.log.levels).toEqual([]);
+    expect(h.log.captures).toBe(1);
+    expect(h.session.getSnapshot()).toEqual({
+      phase: "speaking",
+      replyId: "a-0",
+      inputHeld: true,
+    });
+    // The reopen waits for the last playback and stays held until that open resolved.
+    const reopening = deferred();
+    h.setHoldOpen(reopening);
+    at(h.speeches, 1).done.resolve();
+    await flush();
+    expect(h.log.captures).toBe(2);
+    expect(h.log.reopens).toEqual([undefined, true]);
+    expect(h.session.getSnapshot()).toEqual({
+      phase: "listening",
+      inputHeld: true,
+    });
+    reopening.resolve();
+    await flush();
+    expect(h.session.getSnapshot()).toEqual({ phase: "listening" });
+    expect(h.log.sends).toHaveLength(1);
+    expect(h.log.heard.at(-1)).toMatchObject({ interrupted: false });
+  });
+
+  it("never publishes the hold for a close that never settles or rejects; a rejected close still plays and releases once", async () => {
+    const hung = harness({ close: () => new Promise<void>(() => {}) });
+    await hung.session.start();
+    await hung.say("what time is it");
+    await hung.clock.advance(longGapMs);
+    hung.answer(0, "It is nine.");
+    await flush();
+    at(hung.speeches, 0).input.onStarted();
+    at(hung.speeches, 0).done.resolve();
+    await flush();
+    expect(hung.log.states.some((state) => state.inputHeld)).toBe(false);
+    // The reopen waits for the close it depends on.
+    expect(hung.log.captures).toBe(1);
+
+    const failed = harness({
+      close: async () => {
+        throw Error("close not confirmed");
+      },
+    });
+    await failed.session.start();
+    await failed.say("what time is it");
+    await failed.clock.advance(longGapMs);
+    failed.answer(0, "It is nine.");
+    await flush();
+    at(failed.speeches, 0).input.onStarted();
+    at(failed.speeches, 0).done.resolve();
+    await flush();
+    expect(failed.log.states.some((state) => state.inputHeld)).toBe(false);
+    expect(failed.log.captures).toBe(2);
+    expect(failed.log.reopens).toEqual([undefined, true]);
+    expect(failed.session.getSnapshot()).toEqual({ phase: "listening" });
+
+    // A Mute close still in flight at submission is one the hold waits on.
+    const muteClose = deferred();
+    const muted = harness({ close: () => muteClose.promise });
+    await muted.session.start();
+    muted.mic().onSpeechStart(muted.clock.now());
+    await flush();
+    void muted.session.setMuted(true);
+    muted.mic().onSpeechEnd(muted.clock.now());
+    muted.mic().onSegment("turn off the alarm");
+    await flush();
+    await muted.clock.advance(longGapMs);
+    expect(muted.log.sends).toHaveLength(1);
+    muteClose.reject(Error("close not confirmed"));
+    await flush();
+    expect(muted.log.states.some((state) => state.inputHeld)).toBe(false);
+    expect(muted.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      muted: true,
+    });
+  });
+
+  it("keeps manual Mute independent: Mute during the hold stays muted after release; Unmute during it opens nothing until release", async () => {
+    const h = harness();
+    await h.session.start();
+    await h.say("what is the weather");
+    await h.clock.advance(longGapMs);
+    await h.session.setMuted(true);
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      muted: true,
+      inputHeld: true,
+    });
+    expect(h.log.closed).toBe(1);
+    h.answer(0, "Sunny.");
+    await flush();
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.log.captures).toBe(1);
+    expect(h.session.getSnapshot()).toEqual({
+      phase: "listening",
+      muted: true,
+    });
+    await h.session.setMuted(false);
+    expect(h.log.captures).toBe(2);
+    expect(h.log.reopens).toEqual([undefined, undefined]);
+
+    const cycles = harness();
+    await cycles.session.start();
+    await cycles.say("what is the weather");
+    await cycles.clock.advance(longGapMs);
+    for (let i = 0; i < 3; i++) {
+      await cycles.session.setMuted(true);
+      await cycles.session.setMuted(false);
+    }
+    expect(cycles.log.captures).toBe(1);
+    expect(cycles.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      inputHeld: true,
+    });
+    cycles.answer(0, "Sunny.");
+    await flush();
+    at(cycles.speeches, 0).done.resolve();
+    await flush();
+    expect(cycles.log.captures).toBe(2);
+    expect(cycles.log.reopens).toEqual([undefined, true]);
+
+    // Muted before submission: held once that Mute close fulfilled; Unmute waits for release.
+    const muteClose = deferred();
+    const m = harness({ close: () => muteClose.promise });
+    await m.session.start();
+    m.mic().onSpeechStart(m.clock.now());
+    await flush();
+    const muting = m.session.setMuted(true);
+    m.mic().onSpeechEnd(m.clock.now());
+    m.mic().onSegment("turn off the alarm");
+    await flush();
+    await m.clock.advance(longGapMs);
+    expect(m.log.sends).toHaveLength(1);
+    muteClose.resolve();
+    await muting;
+    await flush();
+    expect(m.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      muted: true,
+      inputHeld: true,
+    });
+    await m.session.setMuted(false);
+    expect(m.log.captures).toBe(1);
+    expect(m.session.getSnapshot()).toMatchObject({ inputHeld: true });
+    expect(m.session.muted).toBe(false);
+    m.answer(0, "Alarm off.");
+    await flush();
+    at(m.speeches, 0).done.resolve();
+    await flush();
+    expect(m.log.captures).toBe(2);
+    expect(m.log.reopens).toEqual([undefined, true]);
+  });
+
+  it("never reopens after Stop during thinking, speaking or the review pause, also when the reply settles late", async () => {
+    for (const stage of ["thinking", "speaking", "review"] as const) {
+      const h = harness();
+      await h.session.start();
+      await h.say("what is next");
+      await h.clock.advance(longGapMs);
+      if (stage === "review")
+        h.answer(0, "Share it?", {
+          complete: false,
+          awaitingUserInput: { proposalId: "p-1", digest: "d-1" },
+        });
+      if (stage === "speaking") h.answer(0, "Done.");
+      await flush();
+      if (stage === "speaking") at(h.speeches, 0).input.onStarted();
+      await h.session.stop();
+      h.answer(0, "Late.");
+      h.speeches[0]?.done.resolve();
+      await flush();
+      await h.clock.advance(longGapMs * 2);
+      expect(h.log.captures).toBe(1);
+      expect(h.session.getSnapshot()).toEqual({ phase: "idle" });
+    }
+  });
+
+  it("fails instead of reopening when the binding changed while the release waited for the held close", async () => {
+    const closing = deferred();
+    const binding = harness({ close: () => closing.promise });
+    await binding.session.start();
+    await binding.say("what is next");
+    await binding.clock.advance(longGapMs);
+    binding.answer(0, "Done.");
+    await flush();
+    at(binding.speeches, 0).done.resolve();
+    await flush();
+    binding.setCurrent(false);
+    closing.resolve();
+    await flush();
+    expect(binding.log.captures).toBe(1);
+    expect(binding.phase()).toBe("error");
+  });
+
+  it("fails at once when the closed capture's transport ends while held, muted or not", async () => {
+    for (const muted of [false, true]) {
+      const h = harness();
+      await h.session.start();
+      await h.say("what is next");
+      await h.clock.advance(longGapMs);
+      if (muted) await h.session.setMuted(true);
+      const reply = at(h.replies, 0);
+      h.mic().onEnd(Object.assign(Error("speech closed"), { code: "expired" }));
+      await flush();
+      expect(reply.input.signal.aborted).toBe(true);
+      expect(h.phase()).toBe("error");
+      h.answer(0, "Late.");
+      await flush();
+      await h.clock.advance(longGapMs * 2);
+      expect(h.log.captures).toBe(1);
+      expect(h.speeches).toHaveLength(0);
+    }
+  });
+
+  it("ends the conversation when the reopen is refused (a call or pause on the bridge), after one attempt", async () => {
+    const refused = harness();
+    await refused.session.start();
+    await refused.say("what is next");
+    await refused.clock.advance(longGapMs);
+    const open = deferred();
+    open.reject(
+      Object.assign(Error("Voice was interrupted"), { code: "call-active" }),
+    );
+    refused.setHoldOpen(open);
+    refused.answer(0, "Done.");
+    await flush();
+    at(refused.speeches, 0).done.resolve();
+    await flush();
+    expect(refused.log.reopens).toEqual([undefined, true]);
+    expect(refused.session.getSnapshot()).toMatchObject({
+      phase: "error",
+      error: { code: "call-active" },
+    });
+    await refused.clock.advance(longGapMs * 2);
+    expect(refused.log.captures).toBe(2);
+  });
+
+  it("an AbortError that is not the session's own leaves the turn held with no reopen; only Stop clears it", async () => {
+    const owned = harness();
+    await owned.session.start();
+    await owned.say("what is next");
+    await owned.clock.advance(longGapMs);
+    owned.answer(0, "Done.");
+    await flush();
+    at(owned.speeches, 0).done.reject(
+      new DOMException("speech retired", "AbortError"),
+    );
+    await flush();
+    await owned.clock.advance(longGapMs * 2);
+    expect(owned.log.captures).toBe(1);
+    expect(owned.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      inputHeld: true,
+    });
+    await owned.session.stop();
+    await flush();
+    expect(owned.session.getSnapshot()).toEqual({ phase: "idle" });
+    expect(owned.log.captures).toBe(1);
+  });
+
+  it("closes a capture that finishes opening after submission and holds only after that close", async () => {
+    const closes = [deferred(), deferred()];
+    const h = harness({ close: (capture) => at(closes, capture - 1).promise });
+    await h.session.start();
+    const first = h.mic();
+    first.onSpeechStart(h.clock.now());
+    await flush();
+    const muting = h.session.setMuted(true);
+    // Unmute while the muted capture still finalizes; the new capture is slow to open.
+    const opening = deferred();
+    h.setHoldOpen(opening);
+    const unmuting = h.session.setMuted(false);
+    first.onSpeechEnd(h.clock.now());
+    first.onSegment("turn off the alarm");
+    at(closes, 0).resolve();
+    await muting;
+    await flush();
+    expect(h.log.captures).toBe(2);
+    // The final submits while the new capture is still opening.
+    await h.clock.advance(longGapMs);
+    expect(h.log.sends.map((send) => send.text)).toEqual([
+      "turn off the alarm",
+    ]);
+    opening.resolve();
+    await unmuting;
+    await flush();
+    expect(h.log).toMatchObject({ closed: 2, cancelled: 0 });
+    expect(h.session.getSnapshot().inputHeld).toBeUndefined();
+    at(closes, 1).resolve();
+    await flush();
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      inputHeld: true,
+    });
+    h.mic().onSpeechStart(h.clock.now());
+    await h.clock.advance(bargeInConfirmMs * 2);
+    expect(at(h.replies, 0).input.signal.aborted).toBe(false);
+  });
+
+  it("Stop speaking releases once, only after the interrupted playback settled; it does nothing while thinking", async () => {
+    const h = harness({ manualSpeech: true });
+    await h.session.start();
+    await h.say("tell me a story");
+    await h.clock.advance(longGapMs);
+    expect(h.session.interruptSpeech()).toBe(false);
+    await flush();
+    expect(h.log.captures).toBe(1);
+    expect(at(h.replies, 0).input.signal.aborted).toBe(false);
+    h.answer(0, "Once upon a time there was a fox. It lived in the woods.");
+    await flush();
+    at(h.speeches, 0).input.onStarted();
+    await flush();
+    expect(h.session.interruptSpeech()).toBe(true);
+    expect(at(h.speeches, 0).input.signal.aborted).toBe(true);
+    expect(h.log.heard).toEqual([
+      {
+        turnId: h.log.sends[0]?.turnId,
+        replyId: "a-0",
+        heard: "",
+        unheard: "Once upon a time there was a fox. It lived in the woods.",
+        interrupted: true,
+      },
+    ]);
+    // Playback is still stopping: input stays closed, also for an Unmute meanwhile.
+    await h.session.setMuted(true);
+    await h.session.setMuted(false);
+    await h.clock.advance(longGapMs);
+    expect(h.log.captures).toBe(1);
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "listening",
+      inputHeld: true,
+    });
+    expect(h.session.interruptSpeech()).toBe(false);
+    at(h.speeches, 0).done.reject(new DOMException("stopped", "AbortError"));
+    await flush();
+    expect(h.log.captures).toBe(2);
+    expect(h.log.reopens).toEqual([undefined, true]);
+    expect(h.session.getSnapshot()).toEqual({ phase: "listening" });
+    expect(h.log.turns.map(([event]) => event)).toEqual([
+      "submitted",
+      "first-audio",
+      "interrupted",
+    ]);
+  });
+
+  it("captures, endpoints and sends the turn after release and holds it again; a silent reply releases at once", async () => {
+    const h = harness({ endpoint: async () => "finished" });
+    await h.session.start();
+    await h.say("what is the weather");
+    await h.clock.advance(shortGapMs);
+    h.answer(0, "Sunny.");
+    await flush();
+    at(h.speeches, 0).done.resolve();
+    await flush();
+    expect(h.log.captures).toBe(2);
+    await h.say("and tomorrow");
+    await h.clock.advance(shortGapMs);
+    expect(h.log.sends.map((send) => send.text)).toEqual([
+      "what is the weather",
+      "and tomorrow",
+    ]);
+    expect(h.log.endpoints.map((record) => record.by)).toEqual([
+      "semantic",
+      "semantic",
+    ]);
+    expect(h.log.closed).toBe(2);
+    expect(h.session.getSnapshot()).toMatchObject({
+      phase: "thinking",
+      inputHeld: true,
+    });
+    h.answer(1, "");
+    await flush();
+    expect(h.speeches).toHaveLength(1);
+    expect(h.log.captures).toBe(3);
+    expect(h.log.reopens).toEqual([undefined, true, true]);
+    expect(h.session.getSnapshot()).toEqual({ phase: "listening" });
   });
 });
 
@@ -739,7 +1171,13 @@ describe("VoiceAssistantSession lifecycle and authority", () => {
     m.mic().onSpeechStart(m.clock.now());
     await flush();
     expect(m.replies[0]?.input.signal.aborted).toBe(false);
+    // Unmuting while the submitted turn is busy opens the microphone once its reply played.
     await m.session.setMuted(false);
+    expect(m.log.captures).toBe(1);
+    m.answer(0, "Alarm off.");
+    await flush();
+    m.speeches[0]?.done.resolve();
+    await flush();
     expect(m.log.captures).toBe(2);
   });
 
@@ -772,10 +1210,10 @@ describe("VoiceAssistantSession lifecycle and authority", () => {
     await flush();
     expect(h.speeches).toHaveLength(0);
     expect(h.phase()).toBe("error");
-    expect(h.log.cancelled).toBe(1);
+    expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
   });
 
-  it("keeps the microphone off during an owner-input pause until the exact approved result resumes", async () => {
+  it("keeps the microphone closed (never cancelled) through an owner-input pause and the resumed reply, then reopens once", async () => {
     const h = harness();
     await h.session.start();
     await h.say("summarize my packing note");
@@ -786,8 +1224,15 @@ describe("VoiceAssistantSession lifecycle and authority", () => {
     });
     await flush();
     const state = h.session.getSnapshot();
-    expect(state.phase).toBe("awaiting-user-input");
-    expect(h.log.cancelled).toBe(1);
+    expect(state).toMatchObject({
+      phase: "awaiting-user-input",
+      inputHeld: true,
+    });
+    expect(h.log).toMatchObject({ captures: 1, closed: 1, cancelled: 0 });
+    // Speech during the review is never sent.
+    await h.say("yes share it");
+    await h.clock.advance(longGapMs);
+    expect(h.log.sends).toHaveLength(1);
     const pause = state.awaitingUserInput;
     if (!pause) throw new Error("expected a pause");
     const reply = {
@@ -810,8 +1255,12 @@ describe("VoiceAssistantSession lifecycle and authority", () => {
       }),
     ).toBe(true);
     await flush();
-    expect(h.log.captures).toBe(2);
+    expect(h.log.captures).toBe(1);
     expect(h.speeches[0]?.input.text).toBe("Passport, charger and boots.");
+    h.speeches[0]?.done.resolve();
+    await flush();
+    expect(h.log).toMatchObject({ captures: 2, closed: 1, cancelled: 0 });
+    expect(h.log.reopens).toEqual([undefined, true]);
   });
 });
 

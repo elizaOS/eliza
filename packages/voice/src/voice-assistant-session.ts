@@ -21,18 +21,19 @@
  * Generations: each submission and each interruption bumps `turn`. Every asynchronous callback
  * (endpoint decision, agent reply, playback progress) checks the generation it started under and
  * is dropped when it has changed. The controller never resubmits a turn it already handed to
- * `send`: speech after submission interrupts the in-flight reply or playback and becomes the
- * next turn, so the earlier turn is never committed twice.
+ * `send`.
  *
- * Barge-in and heard content: speech that starts while a reply is pending or playing is tentative.
- * While the request is pending it interrupts once the VAD segment has stayed open for
- * `bargeInConfirmMs` or its transcript passes the disfluency/echo gate; while the reply plays only
- * the transcript gate confirms (residual echo can hold the VAD open for a whole sentence). A cough,
- * a blip or the reply's own echo (rejected by the gate) leaves the reply running. While a reply
- * plays, voice can interrupt only over a capture that reports active echo cancellation
- * (`fullDuplex`); otherwise speech during playback is ignored and an explicit stop remains.
- * Interrupting aborts the reply (the request and playback are cancelled through the port's
- * AbortSignal). Replies are played one sentence at a time; only sentences whose playback
+ * Busy hold: submission closes the capture (`close()`, never `cancel()`) and input stays closed
+ * while the agent is busy with that turn: the request (and any ack spoken inside `send`), an
+ * owner-input pause and the reply until its playback settled. `inputHeld` is published only once
+ * the close fulfilled. Then the capture reopens (`reopen` on the listen handlers) unless Mute, Stop
+ * or a binding change keeps it closed; a reopen that fails ends the conversation. Manual Mute is
+ * independent of the hold. Speech never interrupts a busy turn: `interruptSpeech()` or Stop does.
+ * The tentative and ignored segment paths below (`bargeInConfirmMs`, `fullDuplex`) only act on a
+ * capture that is open while a reply is pending or playing, which the hold never leaves.
+ *
+ * Heard content: interrupting aborts the reply (the request and playback are cancelled through the
+ * port's AbortSignal). Replies are played one sentence at a time; only sentences whose playback
  * completed count as heard. The sentence playing when the user interrupted is reported as
  * unheard: playback reports completion per utterance, not a position, so a partial sentence is
  * never claimed as spoken. `onHeard` reports the heard/unheard split for the host to keep in
@@ -70,6 +71,11 @@ export interface AssistantState {
   /** An utterance is waiting for the endpoint gap before it is sent. */
   pendingText?: string;
   muted?: boolean;
+  /**
+   * Input is closed while the agent is busy with a submitted turn (processing, its ack, the reply
+   * until playback settled). Set only after the capture's own close fulfilled.
+   */
+  inputHeld?: boolean;
   transcript?: string;
   replyId?: string;
   error?: unknown;
@@ -146,6 +152,8 @@ export interface AssistantListenHandlers {
   onEnd(error?: unknown): void;
   /** Microphone level in [0, 1], display only. */
   onLevel?(peak: number): void;
+  /** An automatic reopen after a busy hold: refused (never prompted) after a call, pause or permission loss. */
+  reopen?: true;
 }
 export interface AssistantPorts {
   readonly conversationId: string;
@@ -290,6 +298,8 @@ type Response = {
   played: number;
   started: boolean;
 };
+/** Busy hold: from submission until the turn's reply has played. `closes`: the closes it waits on. */
+type Hold = { response?: Response; closed: boolean; closes: Promise<void>[] };
 /** Every sentence of the reply that has started playing: the echo the microphone may hear. */
 const audible = (response: Response) =>
   response.started
@@ -326,6 +336,7 @@ export class VoiceAssistantSession {
   };
   private state: AssistantState = { phase: "idle" };
   private mutedValue = false;
+  private hold?: Hold;
 
   private readonly ports: AssistantPorts;
   constructor(
@@ -363,8 +374,12 @@ export class VoiceAssistantSession {
   }
 
   private publish(state: AssistantState) {
-    const { muted: _muted, ...rest } = state;
-    this.state = { ...rest, ...(this.mutedValue ? { muted: true } : {}) };
+    const { muted: _muted, inputHeld: _held, ...rest } = state;
+    this.state = {
+      ...rest,
+      ...(this.mutedValue ? { muted: true } : {}),
+      ...(this.hold?.closed ? { inputHeld: true } : {}),
+    };
     this.ports.onState?.(this.getSnapshot());
   }
   private listeningState(): AssistantState {
@@ -441,10 +456,11 @@ export class VoiceAssistantSession {
       opening = this.opening;
     this.capture = undefined;
     this.opening = undefined;
+    this.hold = undefined;
     this.publish({ phase: "idle" });
     // Discard: an utterance that was not submitted is not sent after Stop, including a muted
     // capture that is still finalizing.
-    for (const closing of this.closingCaptures)
+    for (const closing of this.closingCaptures.keys())
       void Promise.resolve(closing.cancel()).catch(() => {});
     await Promise.all([
       Promise.resolve(capture?.cancel()).catch(() => {}),
@@ -551,26 +567,30 @@ export class VoiceAssistantSession {
     return true;
   }
 
-  private closingCaptures = new Set<AssistantCapture>();
+  /** Captures still closing, each with its own close (rejects when that close failed). */
+  private closingCaptures = new Map<AssistantCapture, Promise<void>>();
   private closeCapture(capture: AssistantCapture) {
-    this.closingCaptures.add(capture);
-    const closed = Promise.resolve()
-      .then(() => capture.close())
+    const own = Promise.resolve().then(() => capture.close());
+    this.closingCaptures.set(capture, own);
+    const closed = own
       .catch(() => {})
       .finally(() => this.closingCaptures.delete(capture));
     this.closing = Promise.all([this.closing, closed]).then(() => {});
+    return own;
   }
 
-  private async open(session: number) {
+  private async open(session: number, reopen = false) {
     if (this.capture || this.opening) return;
     // A muted capture's last segment is delivered before a new capture can open.
     await this.closing;
     this.check(session);
-    // Never reopen during an owner-review pause; the pause reopens the microphone when it ends.
+    // Never open while a submitted turn holds input closed (its release reopens) or during an
+    // owner-review pause.
     if (
       this.capture ||
       this.opening ||
       this.mutedValue ||
+      this.hold?.response ||
       (this.awaiting && !this.awaiting.resolved)
     )
       return;
@@ -579,8 +599,10 @@ export class VoiceAssistantSession {
     const pending = this.ports
       .listen({
         signal,
+        ...(reopen ? { reopen: true } : {}),
         onSpeechStart: (at) => {
-          if (this.current(session) && !this.mutedValue) this.speechStarted(at);
+          if (this.current(session) && !this.mutedValue && !this.hold?.response)
+            this.speechStarted(at);
         },
         onSpeechEnd: (at) => {
           if (this.current(session)) this.speechEnded(at);
@@ -592,7 +614,7 @@ export class VoiceAssistantSession {
           if (this.current(session)) void this.captureEnded(session, error);
         },
         onLevel: (peak) => {
-          if (this.current(session) && !this.mutedValue)
+          if (this.current(session) && !this.mutedValue && !this.hold?.response)
             this.ports.onLevel?.(peak);
         },
       })
@@ -603,9 +625,10 @@ export class VoiceAssistantSession {
             return undefined;
           }
           this.opening = undefined;
-          // Muted while the microphone was opening: it never stays on.
-          if (this.mutedValue) {
-            this.closeCapture(capture);
+          // Muted or held while the microphone was opening: it never stays on.
+          if (this.mutedValue || this.hold?.response) {
+            const closed = this.closeCapture(capture);
+            if (this.hold?.response) this.hold.closes.push(closed);
             return undefined;
           }
           this.capture = capture;
@@ -622,7 +645,8 @@ export class VoiceAssistantSession {
 
   private async captureEnded(session: number, error?: unknown) {
     this.capture = undefined;
-    if (this.mutedValue) return;
+    // An end while a turn is held fails at once, muted or not: its reply may need that transport.
+    if (this.mutedValue && !this.hold?.response) return;
     await this.fail(
       session,
       error ?? new VoiceAssistantError("capture", "The microphone stopped."),
@@ -890,7 +914,28 @@ export class VoiceAssistantSession {
       started: false,
     };
     this.response = response;
+    // Busy hold: input closes now, finalizing (never cancelling) the capture, with any Mute close
+    // still in flight; a capture still opening is closed by open() as it arrives.
+    const capture = this.capture,
+      opening = this.opening;
+    const hold: Hold = {
+      response,
+      closed: false,
+      closes: [...this.closingCaptures.values()],
+    };
+    this.hold = hold;
+    this.capture = undefined;
+    if (capture) hold.closes.push(this.closeCapture(capture));
     this.publish({ phase: "thinking", transcript: text });
+    void (async () => {
+      await opening?.catch(() => {});
+      // A close that rejects or never settles keeps `inputHeld` off for this turn.
+      await Promise.all(hold.closes);
+      if (this.hold === hold) {
+        hold.closed = true;
+        this.republish();
+      }
+    })().catch(() => {});
     this.ports.onTurn?.("submitted", response.turnId, { endpoint });
     const previous = this.inflight;
     const run = this.respond(session, turn, response, text, previous);
@@ -965,12 +1010,7 @@ export class VoiceAssistantSession {
           userMessageId: reply.userMessageId,
           assistantMessageId: pausedReply,
         };
-        // The microphone is off while the owner reviews; nothing heard meanwhile is sent.
-        const capture = this.capture;
-        this.capture = undefined;
-        await Promise.resolve(capture?.cancel()).catch(() => {});
-        this.segments = [];
-        guard();
+        // The busy hold keeps input closed while the owner reviews and until the resumed reply played.
         reply = await new Promise<AssistantReply>((resolve, reject) => {
           this.awaiting = { pause, resolve, resolved: false };
           response.controller.signal.addEventListener(
@@ -986,8 +1026,6 @@ export class VoiceAssistantSession {
           });
         });
         this.awaiting = undefined;
-        guard();
-        if (!this.mutedValue) await this.open(session);
         guard();
       }
       // Proposals need explicit review in the conversation: voice never approves them.
@@ -1055,6 +1093,7 @@ export class VoiceAssistantSession {
   private finishResponse(response: Response) {
     if (this.response !== response) return;
     this.response = undefined;
+    if (this.hold?.response === response) this.release(this.hold);
     for (const segment of this.segments)
       if (segment.tentative === response) delete segment.tentative;
     this.ports.onTurn?.("finished", response.turnId);
@@ -1069,6 +1108,7 @@ export class VoiceAssistantSession {
     if (!response) return;
     ++this.turn;
     this.response = undefined;
+    if (this.hold?.response === response) this.release(this.hold);
     for (const segment of this.segments)
       if (segment.tentative === response) delete segment.tentative;
     response.controller.abort(
@@ -1078,6 +1118,30 @@ export class VoiceAssistantSession {
       this.lastSpoken = { text: audible(response), at: this.clock.now() };
     this.reportInterrupted(response);
     this.ports.onTurn?.("interrupted", response.turnId);
+  }
+
+  /**
+   * The held turn is over: once its run (the request and an ack inside `send`) and every playback
+   * settled, reopen unless Mute, Stop or a binding change keeps input closed. Until then the hold
+   * keeps refusing an Unmute's open, also after an interruption whose playback is still stopping.
+   */
+  private release(hold: Hold) {
+    const session = this.session;
+    void Promise.all([this.inflight, this.drainSpeech()])
+      .then(() => {
+        hold.response = undefined;
+        return this.open(session, true);
+      })
+      .then(
+        () => {
+          if (this.hold === hold) this.hold = undefined;
+          if (this.current(session)) this.republish();
+        },
+        (error) => {
+          if (this.hold === hold) this.hold = undefined;
+          if (this.current(session)) void this.fail(session, error);
+        },
+      );
   }
 
   private reportInterrupted(response: Response, playbackFailed = false) {

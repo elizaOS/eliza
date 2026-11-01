@@ -65,8 +65,9 @@ only identity and bridge wiring:
   cancellation before native startup, delivers events only while the host's
   lifecycle gate for the capture's epoch holds, applies the Stop cutoff and
   reports whether the agent acknowledged the close, and interrupts capture for a
-  call without blocking. A plugin keeps only its bridge, permission prompt and
-  lifecycle (`Host`, `Started`, `Stopped`).
+  call without blocking. After a call or pause, even with no capture running, it
+  refuses an automatic reopen until a user-initiated start. A plugin keeps only its
+  bridge, permission prompt and lifecycle (`Host`, `Started`, `Stopped`).
 - `LiveSegmentPipe` routes VAD segments to `POST /api/asr/local-inference/live`
   over a host `Transport` bound to the owner who started the capture (bounded
   queue, cutoff, discard, acknowledged close, no retry). Its `check()` throws once
@@ -96,7 +97,9 @@ strings=RECORD_AUDIO))`; the subclass passes its recording and prepared-clip cac
 start/stop/cancel/metrics, `transcribeLocalRecording`, `synthesizeLocal`, `play`/`stopPlayback`,
 `cancel`, live capture status and start/stop with `liveCaptureFrames`, `liveCaptureEnded` and
 `liveCaptureTranscript` events, `localSpeechStatus`/`releaseLocalSpeech`, `nativeVoiceTiming`,
-`markVoiceTurn` and `clearNativeVoiceTiming`. Ports a product overrides:
+`markVoiceTurn` and `clearNativeVoiceTiming`. A live capture start with `reopen` (the voice
+assistant's automatic reopen after a busy hold) never prompts: without microphone permission it
+rejects with `permission`. Ports a product overrides:
 
 - `residentRoute(ownerId)` / `residentTransport()`: the owner-bound transport that carries VAD
   segments to the resident agent of the owner who started a capture (`nativeAsr`). The default

@@ -724,4 +724,20 @@ describe("assistant listen port over a host capture", () => {
     await capture.cancel();
     expect(host.cancels).toBe(1);
   });
+
+  it("forwards the assistant's automatic reopen to the host, never on a first open", async () => {
+    const host = fakeOpener();
+    const listen = liveAssistantListener(host.open);
+    const handlers = {
+      signal: new AbortController().signal,
+      onSpeechStart() {},
+      onSpeechEnd() {},
+      onSegment() {},
+      onEnd() {},
+    };
+    await listen(handlers);
+    await listen({ ...handlers, reopen: true });
+    expect(host.opened.map((input) => input.reopen)).toEqual([undefined, true]);
+    expect(host.opened[0]).not.toHaveProperty("reopen");
+  });
 });

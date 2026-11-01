@@ -51,6 +51,8 @@ export interface NativeLiveCapturePort {
   startLiveCapture(input: {
     captureId: string;
     echoCancel: boolean;
+    /** An automatic reopen: refused, never prompted, after a call, pause or permission loss. */
+    reopen?: true;
     nativeAsr?: true;
     ownerId?: string;
     roomId?: string;
@@ -333,6 +335,7 @@ export async function openNativeResidentCapture(
     const result = await port.startLiveCapture({
       captureId,
       echoCancel: input.echoCancel,
+      ...(input.reopen ? { reopen: true } : {}),
       nativeAsr: true,
       ownerId: input.ownerId,
       ...(input.roomId ? { roomId: input.roomId } : {}),
@@ -484,6 +487,7 @@ export async function openNativeSegmentCapture(
     const result = await port.startLiveCapture({
       captureId,
       echoCancel: input.echoCancel,
+      ...(input.reopen ? { reopen: true } : {}),
     });
     if (result?.captureId !== captureId || result.sampleRate !== 16000)
       throw Error("Live capture identity changed.");
