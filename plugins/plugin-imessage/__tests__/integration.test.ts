@@ -1128,6 +1128,40 @@ describe("openChatDb + ChatDbReader (bun:sqlite backed)", { timeout: 60_000 }, (
     }
   });
 
+  it("fetchNewMessages throws instead of reporting no new messages when the query fails", async ({
+    skip,
+  }) => {
+    const { path, cleanup } = await makeFixtureDb(skip);
+    try {
+      const reader = await openChatDb(path);
+      if (!reader) return;
+      const openDatabase = await getDatabase();
+      if (!openDatabase) return;
+
+      const expectedRowIds = reader.fetchNewMessages(0, 100).map((r) => r.rowId);
+      expect(expectedRowIds.length).toBeGreaterThan(0);
+
+      // Messages.app holds a write lock while it flushes; the poll query then
+      // gets SQLITE_BUSY. Returning [] here ended the poll tick as "no new
+      // messages", so the bridge reported a quiet inbox for a read it never made.
+      const writer = openDatabase(path);
+      writer.run("BEGIN EXCLUSIVE");
+      try {
+        expect(() => reader.fetchNewMessages(0, 100)).toThrow(
+          expect.objectContaining({ code: "IMESSAGE_CHATDB_READ_FAILED" })
+        );
+      } finally {
+        writer.run("ROLLBACK");
+        writer.close();
+      }
+      expect(reader.fetchNewMessages(0, 100).map((r) => r.rowId)).toEqual(expectedRowIds);
+
+      reader.close();
+    } finally {
+      cleanup();
+    }
+  });
+
   it("returns null-text rows with empty text so the service layer can advance its cursor", async ({
     skip,
   }) => {
