@@ -30,8 +30,15 @@ const QUOTE_PAIRS: Record<string, string> = {
 // The strict whole-message command: an optional greeting and name, then
 // "(please) open|visit|go to|navigate to <address>", then an optional polite
 // suffix and closing punctuation. A closed allow-list; nothing else matches.
-const COMMAND =
-  /^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:please,?\s+)?(?:open|visit|go\s+to|navigate\s+to)\s+(\S+)(\s.*)?$/i;
+const OPEN_COMMAND = String.raw`(?:open|visit|go\s+to|navigate\s+to)`;
+const COMMAND = new RegExp(
+  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:please,?\s+)?${OPEN_COMMAND}\s+(\S+)(\s.*)?$`, "i",
+);
+// Explicit polite questions are direct requests too, but file-like bare names
+// still need a website signal rather than acquiring authority from the verb.
+const DIRECT_QUESTION = new RegExp(
+  String.raw`^(?:(?:hey|hi|ok|okay)[,.!]?\s+)?(?:eliza[,.!]?\s+)?(?:can|could|would|will)\s+you\s+(?:please,?\s+)?${OPEN_COMMAND}\s+(?:the\s+)?(\S+)(\s+(?:web\s?)?site\b)?(\s.*)?$`, "i",
+);
 const SUFFIX =
   /^\s+(?:please|for\s+me|thanks|thank\s+you|(?:would|will|could|can)\s+you)[.,!?]*$/i;
 // The word website or site right before or after an address.
@@ -146,6 +153,14 @@ export function directBrowserDestination(text: string): string | undefined {
   if (unreadable(text)) return;
   const strict = authoredBrowserDestination(text);
   if (strict) return strict;
+  const question = DIRECT_QUESTION.exec(text.trim());
+  if (question) {
+    const destination = authoredBrowserDestination(`Open ${question[1]}${question[3] ?? ""}`);
+    if (!destination) return;
+    const url = new URL(destination), tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
+    if (FILE_TYPE_TLDS.has(tld) && !/^(?:https:\/\/|www\.)/i.test(question[1]) && !question[2]) return;
+    return destination;
+  }
   const bare = text.trim(), url = webAddress(bare);
   if (!url) return;
   const tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);

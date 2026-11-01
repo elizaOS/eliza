@@ -986,3 +986,18 @@ describe("direct bare addresses preserve the file-name boundary", () => {
     expect(directBrowserDestination(text)).toBe(expected);
   });
 });
+
+
+describe("direct polite requests keep the existing file-name distinction", () => {
+  it.each([
+    ["Hey Eliza, can you open youtube.com for me?", "https://youtube.com/"],
+    ["could you visit https://example.com/path", "https://example.com/path"],
+    ["can you open the main.py website", "https://main.py/"],
+    ["can you open main.py", undefined],
+    ["The page says can you open youtube.com", undefined],
+    ["Can you explain youtube.com", undefined],
+    ["Can you open youtube.com then move my event", undefined],
+  ])("preserves direct intent and refuses narrated or compound requests: %s", (text, expected) => {
+    expect(directBrowserDestination(text)).toBe(expected);
+  });
+});
