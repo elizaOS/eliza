@@ -3894,9 +3894,20 @@ export class OrchestratorTaskService extends Service {
       (doc.task.paused === true &&
         doc.task.metadata?.pausedWithActiveWork === true);
     await this.stopActiveSessions(doc);
+    // `pausedAt` marks where resume starts reading user messages posted to the
+    // paused task; a repeated pause keeps the first pause's mark.
+    const pausedAt =
+      doc.task.paused === true &&
+      typeof doc.task.metadata?.pausedAt === "number"
+        ? doc.task.metadata.pausedAt
+        : Date.now();
     await this.store.updateTask(taskId, {
       paused: true,
-      metadata: { ...doc.task.metadata, pausedWithActiveWork: hadActiveWork },
+      metadata: {
+        ...doc.task.metadata,
+        pausedWithActiveWork: hadActiveWork,
+        pausedAt,
+      },
     });
     return this.getTask(taskId);
   }
@@ -3912,16 +3923,39 @@ export class OrchestratorTaskService extends Service {
   async resumeTask(taskId: string): Promise<TaskThreadDetailDto | null> {
     const doc = await this.store.getTask(taskId);
     if (!doc) return null;
+    const terminal = TERMINAL_TASK_STATUSES.has(doc.task.status);
     const shouldReEngage =
-      doc.task.metadata?.pausedWithActiveWork === true &&
-      !TERMINAL_TASK_STATUSES.has(doc.task.status);
-    const nextMetadata = { ...doc.task.metadata };
-    delete nextMetadata.pausedWithActiveWork;
-    // Keep `pausedWithActiveWork` until the fresh sub-agent is spawned: if the
+      doc.task.metadata?.pausedWithActiveWork === true && !terminal;
+    // Messages the owner posted while the task was paused were recorded but
+    // not dispatched ({@link postUserMessage} starts no worker on a paused
+    // task). Resume hands them to the work it starts.
+    const pausedAt = doc.task.metadata?.pausedAt;
+    const pausedMessages =
+      typeof pausedAt === "number"
+        ? doc.messages.filter(
+            (message) =>
+              message.senderKind === "user" &&
+              message.direction === "stdin" &&
+              message.timestamp >= pausedAt,
+          )
+        : [];
+    const dispatchPausedMessages =
+      !shouldReEngage &&
+      !terminal &&
+      pausedMessages.length > 0 &&
+      this.acp() !== undefined;
+    const {
+      pausedWithActiveWork: _pausedWithActiveWork,
+      pausedAt: _pausedAt,
+      ...nextMetadata
+    } = doc.task.metadata;
+    // Keep the pause metadata until the fresh sub-agent is spawned: if the
     // spawn fails, a retried resume must still re-engage instead of a no-op.
     const updated = await this.store.updateTask(taskId, {
       paused: false,
-      ...(shouldReEngage ? {} : { metadata: nextMetadata }),
+      ...(shouldReEngage || dispatchPausedMessages
+        ? {}
+        : { metadata: nextMetadata }),
     });
     if (!updated) return null;
     // If the task was parked when paused, re-seed the in-memory order from its
@@ -3929,14 +3963,29 @@ export class OrchestratorTaskService extends Service {
     // that already ran (had a session) carries no admission record and is a
     // no-op here.
     const admission = OrchestratorTaskService.admissionOf(doc.task);
+    let reseededAdmission = false;
     if (
       admission &&
       this.admissionQueueEnabled() &&
       !this.admissionQueue.includes(taskId)
     ) {
       this.admissionQueue.push(taskId);
+      reseededAdmission = true;
       void this.trackBackgroundWork(this.drainAdmissionQueue());
     }
+    const pausedMessageText = pausedMessages
+      .map((message) => message.content)
+      .join("\n\n");
+    const clearPauseMetadata = async () => {
+      const spawned = await this.store.getTask(taskId);
+      if (!spawned) return;
+      const {
+        pausedWithActiveWork: _pausedWithActiveWork,
+        pausedAt: _pausedAt,
+        ...metadata
+      } = spawned.task.metadata;
+      await this.store.updateTask(taskId, { metadata });
+    };
     // A task interrupted mid-work (pausedWithActiveWork) had its subprocesses
     // killed by pause, so resume must spawn a FRESH sub-agent to continue from
     // durable context rather than flip a flag on a task with no running agent.
@@ -3947,19 +3996,42 @@ export class OrchestratorTaskService extends Service {
         eventType: "resume_reengaged",
         summary:
           "Task resumed; re-engaging a sub-agent to continue the interrupted work.",
-        data: {},
+        data: { pausedMessages: pausedMessages.length },
         timestamp: Date.now(),
         createdAt: nowIso(),
       });
       await this.spawnAgentForTask(taskId, {
         completionRole: "coordinator",
-        task: "Resume this task from its current durable context. Reinspect the task timeline and any partial work, then continue until the goal is met or you are blocked.",
+        task: `Resume this task from its current durable context. Reinspect the task timeline and any partial work, then continue until the goal is met or you are blocked.${
+          pausedMessages.length > 0
+            ? `\n\nWhile the task was paused the owner sent:\n\n${pausedMessageText}`
+            : ""
+        }`,
       });
-      const spawned = await this.store.getTask(taskId);
-      if (spawned) {
-        const { pausedWithActiveWork: _, ...metadata } = spawned.task.metadata;
-        await this.store.updateTask(taskId, { metadata });
-      }
+      await clearPauseMetadata();
+    } else if (dispatchPausedMessages && !reseededAdmission) {
+      // Nothing was interrupted, but the owner spoke to the paused task. Start
+      // the worker postUserMessage would have started had the task not been
+      // paused. (A parked task replays its admission instead; that spawn
+      // carries the goal, and a second worker here would double-dispatch.)
+      await this.store.addEvent({
+        id: randomUUID(),
+        taskId,
+        eventType: "resume_reengaged",
+        summary:
+          "Task resumed; starting a sub-agent for the message sent while the task was paused.",
+        data: { pausedMessages: pausedMessages.length },
+        timestamp: Date.now(),
+        createdAt: nowIso(),
+      });
+      await this.spawnAgentForTask(taskId, {
+        completionRole: "coordinator",
+        task: pausedMessageText,
+        workdir: await ensureTaskWorkdir(taskId),
+      });
+      await clearPauseMetadata();
+    } else if (dispatchPausedMessages) {
+      await clearPauseMetadata();
     }
     return this.getTask(taskId);
   }

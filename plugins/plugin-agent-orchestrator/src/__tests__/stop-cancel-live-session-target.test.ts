@@ -567,7 +567,62 @@ describe("postUserMessage to a paused task", () => {
       ]);
       expect(await live(taskId)).toEqual([]);
 
-      // Resume starts exactly one worker for the interrupted work.
+      // Resume starts exactly one worker for the interrupted work, and that
+      // worker is told what the owner said while the task was paused.
+      await tasks.resumeTask(taskId);
+      const resumed = await live(taskId);
+      expect(resumed).toHaveLength(1);
+      expect(resumed[0].originalTask).toContain("also update the README");
+      expect(
+        (await store.getTask(taskId))?.task.metadata?.pausedAt,
+      ).toBeUndefined();
+
+      // A later resume does not replay the message.
+      await tasks.resumeTask(taskId);
+      expect(await live(taskId)).toHaveLength(1);
+    } finally {
+      await service.stop();
+    }
+  }, 30_000);
+
+  it("starts a worker for the message when the task was paused before any work ran", async () => {
+    let service: AcpService | undefined;
+    let tasks: OrchestratorTaskService | undefined;
+    const runtime = runtimeWith(
+      () => service,
+      () => tasks,
+    );
+    service = new AcpService(runtime);
+    await service.start();
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    tasks = new OrchestratorTaskService(runtime, { store });
+    const live = async (taskId: string) =>
+      (await store.getTask(taskId))?.sessions.filter(
+        (s) => s.status !== "stopped",
+      ) ?? [];
+    try {
+      const task = await store.createTask({
+        title: "Paused before work",
+        goal: "finish the long build",
+        acceptanceCriteria: [],
+        roomId: "target-room",
+        worldId: "target-world",
+      });
+      const taskId = task.task.id;
+      await tasks.pauseTask(taskId);
+      const result = await tasks.postUserMessage(taskId, "start with the docs");
+      expect(result?.failedTo.map((failure) => failure.sessionId)).toEqual([
+        "(paused)",
+      ]);
+      expect(await live(taskId)).toEqual([]);
+
+      // Nothing was interrupted, so resume has no work to re-engage; the
+      // owner's message still needs a worker, as it would have had unpaused.
+      await tasks.resumeTask(taskId);
+      const resumed = await live(taskId);
+      expect(resumed).toHaveLength(1);
+      expect(resumed[0].originalTask).toContain("start with the docs");
+
       await tasks.resumeTask(taskId);
       expect(await live(taskId)).toHaveLength(1);
     } finally {
