@@ -446,11 +446,14 @@ interval, and a new helper action starts a new interval. This observation rule
 does not grant permission to execute payment or sign-in controls.
 
 The protection builder accepts optional
-`advisory: {referenceDomains, copy, unscanned}`. It renders a nonblocking yellow
-in-page bar for unavailable lists and local lookalike signals. The default is
-disabled. `unscanned: false` keeps the lookalike bar and draws nothing when the
+`advisory: {referenceDomains, copy, unscanned, unscannedWhileLoading}`. It renders a
+nonblocking yellow in-page bar for unavailable lists and local lookalike signals. The
+default is disabled. `unscanned: false` keeps the lookalike bar and draws nothing when the
 lists are unavailable, for a consumer that warns only on a blacklist hit or a
-lookalike; it defaults to `true`. The engine exposes
+lookalike; it defaults to `true`. `unscannedWhileLoading: false` draws no unscanned bar
+until the first list refresh has finished (no protection record is saved yet), so a
+first start whose lists are still downloading shows nothing; a refresh that ended
+without lists shows the bar. It defaults to `true`. The engine exposes
 `advisory.setOwner(opaqueOwnerOrNull)` only to trusted worker composition. An
 owner is required before an acknowledgement can be saved. Hosts must set or
 retire that context on every account transition and transport loss. This is
