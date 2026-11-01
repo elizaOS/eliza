@@ -28,7 +28,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import {
+  extractUserText,
+  logger,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 
 const CONNECT_ACCOUNT = "CONNECT_ACCOUNT";
 
@@ -142,8 +146,11 @@ export const connectAccountAction: Action = {
     _state?: State,
     _options?: HandlerOptions,
   ): Promise<boolean> => {
-    const text =
-      typeof message.content.text === "string" ? message.content.text : "";
+    // Read the user's own words, not a directive inside a retrieved
+    // document: the document-augmentation envelope wraps the real request
+    // in <user_request>, and a document that mentions connecting an
+    // account must not trigger this action on its own.
+    const text = extractUserText(unwrapUserMessageText(message));
     if (!text.trim()) return false;
     return messageWantsAccountConnect(text);
   },
@@ -154,8 +161,9 @@ export const connectAccountAction: Action = {
     _options?: HandlerOptions,
     callback?: HandlerCallback,
   ): Promise<ActionResult> => {
-    const text =
-      typeof message.content.text === "string" ? message.content.text : "";
+    // Same user-text extraction as validate: provider resolution must
+    // follow the user's request, not document text inside the envelope.
+    const text = extractUserText(unwrapUserMessageText(message));
     const providers = resolveRequestedProviders(text);
 
     if (providers.length === 0) {
