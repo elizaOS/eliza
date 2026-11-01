@@ -5,6 +5,22 @@ workspace imports locally so they do not invalidate unrelated build caches.
 Invoke operations through their documented root commands; run the script test
 lane with `bun run test:scripts` from the repository root.
 
+The Pages release reads the protected environment variable
+`ELIZA_NATIVE_AUTH_CALLBACKS_JSON` (with a same-name secret fallback). Its value
+is a JSON array of `{ "redirectUri", "androidPackage", "appName" }` objects.
+Use exact HTTPS callbacks on that environment's canonical app or marketing
+origin. The existing native callback contract rejects unknown fields, duplicate
+URLs and protocol/asset routes. `[]` explicitly removes all native fallbacks;
+an absent value preserves the selected live Pages callback binding.
+`build-pages` bundles `pages-native-auth-callbacks.ts` into the immutable Pages
+artifact so the deployment job needs no installed workspace dependencies.
+The helper copies the canonical Pages configuration into a
+private temporary directory, keeps its other bindings and uses the existing
+built Worker. Pinned Wrangler reads that directory without `--config` or
+`--env`. The release verifies each public fallback body and privacy header after
+deployment, then removes the temporary configuration. This does not register an
+OAuth client or change Android App Link verification.
+
 Gateway deployment, verification, homepage readiness, and DNS operations belong
 here. Invoke them with `bun run --cwd packages/cloud/scripts sms-gateway:verify:cloud-prod`
 or the corresponding `sms-gateway:*` command in this package. Device installation
