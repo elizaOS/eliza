@@ -787,8 +787,20 @@ async function __hono_POST(c: AppContext) {
     const markPaidTtsProviderDispatch = async () => {
       // An aborted caller never dispatches: the reservation stays unstarted.
       request.signal.throwIfAborted();
-      await markProviderDispatched?.();
+      // The gate can commit the dispatch before its acknowledgement arrives,
+      // and the WAV synthesis can end (caller abort, deadline) while the
+      // acknowledgement is in flight. A release would race that commit, so
+      // from here a failed request keeps the unknown outcome.
       providerWorkMayHaveStarted = true;
+      try {
+        await markProviderDispatched?.();
+      } catch (error) {
+        // error-policy:J2 the mark ended without a dispatch: the gate refused
+        // it, or the lease still holds its pre-provider cancellation token.
+        // A release stays safe, and the caller still sees the failure.
+        providerWorkMayHaveStarted = false;
+        throw error;
+      }
     };
     if (cartesiaEligible && cartesiaApiKey) {
       if (wantWav) {

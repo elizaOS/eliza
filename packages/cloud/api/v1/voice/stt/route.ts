@@ -1086,6 +1086,8 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       const callerSignal = c.req.raw.signal;
       const cartesiaTimeoutSignal = AbortSignal.timeout(cartesiaTimeoutMs);
       // A caller abort is cancellation, never a provider timeout or failure.
+      // Return it awaited: a failed settlement must reach the outer catch,
+      // which retries it like every other failed settlement.
       const cancelledByCaller = async () => {
         await settleCartesiaFailure("caller_aborted");
         return Response.json(
@@ -1111,7 +1113,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         });
       } catch (error) {
         // error-policy:J1 provider transport failures translate at the route boundary.
-        if (callerSignal.aborted) return cancelledByCaller();
+        if (callerSignal.aborted) return await cancelledByCaller();
         await settleCartesiaFailure("transport_failure");
         logger.error("[Voice STT API] Cartesia request failed", {
           errorType: error instanceof Error ? error.name : "unknown",
@@ -1151,7 +1153,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         cartesiaPayload = await cartesiaResponse.json();
       } catch {
         // error-policy:J3 provider JSON is untrusted input at the HTTP boundary.
-        if (callerSignal.aborted) return cancelledByCaller();
+        if (callerSignal.aborted) return await cancelledByCaller();
         await settleCartesiaFailure("unparseable_response");
         if (cartesiaTimeoutSignal.aborted) {
           logger.error("[Voice STT API] Cartesia response body timed out");

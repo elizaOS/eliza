@@ -29,8 +29,16 @@ let duringAdmission: (() => void) | undefined;
 const admittedRequestIds: string[] = [];
 let dispatched = 0;
 let settledUnknown = 0;
+let settlementFailures = 0;
 const reconciled: number[] = [];
 const pricedSeconds: number[] = [];
+
+/** While failures remain, a settlement attempt throws like a billing outage. */
+function failSettlementAttempt(): void {
+  if (settlementFailures === 0) return;
+  settlementFailures--;
+  throw new Error("synthetic settlement failure");
+}
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   ...generativeRouteAuth,
@@ -56,10 +64,12 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
       reservation: {
         reservedAmount: params.cost.totalCost,
         reconcile: async (actual: number) => {
+          failSettlementAttempt();
           reconciled.push(actual);
         },
       },
       settleUnknown: async () => {
+        failSettlementAttempt();
         settledUnknown++;
       },
       markProviderDispatched: async () => {
@@ -195,6 +205,7 @@ beforeEach(() => {
   admittedRequestIds.length = 0;
   dispatched = 0;
   settledUnknown = 0;
+  settlementFailures = 0;
   reconciled.length = 0;
   pricedSeconds.length = 0;
 });
@@ -614,6 +625,58 @@ test.each(["headers", "body"] as const)(
     expect(dispatched).toBe(1);
     expect(settledUnknown).toBe(1);
     expect(reconciled).toEqual([]);
+  },
+);
+
+test.each([
+  ["before dispatch", undefined],
+  ["after dispatch, before the headers", "headers"],
+  ["after dispatch, before the body", "body"],
+] as const)(
+  "a caller abort %s whose settlement fails once gets the same settlement retry as a Cartesia transport failure",
+  async (_label, phase) => {
+    // Reference: a transport failure whose first settlement attempt throws.
+    settlementFailures = 1;
+    globalThis.fetch = (async () => {
+      throw new TypeError("synthetic transport failure");
+    }) as unknown as typeof fetch;
+    const referenceSettlements: Promise<unknown>[] = [];
+    const reference = await transcribeWithCartesia(
+      new AbortController().signal,
+      "2000",
+      referenceSettlements,
+    );
+    await Promise.all(referenceSettlements);
+    const referenceBody = await reference.json();
+    expect(reference.status).toBe(500);
+    expect(settlementFailures).toBe(0);
+    expect(settledUnknown).toBe(1);
+
+    settledUnknown = 0;
+    settlementFailures = 1;
+    const caller = new AbortController();
+    const dispatchedRequest = phase && holdCartesia(phase);
+    if (!phase) duringAdmission = () => caller.abort();
+    const settlements: Promise<unknown>[] = [];
+    const cancelled = transcribeWithCartesia(
+      caller.signal,
+      "2000",
+      settlements,
+    );
+    if (dispatchedRequest) {
+      await dispatchedRequest;
+      caller.abort();
+    }
+    const response = await cancelled;
+    await Promise.all(settlements);
+
+    expect(settlementFailures).toBe(0);
+    // The retry repeats the settlement that failed: a release before
+    // dispatch, the unknown outcome after it.
+    expect(reconciled).toEqual(phase ? [] : [0]);
+    expect(settledUnknown).toBe(phase ? 1 : 0);
+    expect(response.status).toBe(reference.status);
+    expect(await response.text()).toBe(JSON.stringify(referenceBody));
   },
 );
 

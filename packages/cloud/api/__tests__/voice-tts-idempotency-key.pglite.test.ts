@@ -4,7 +4,9 @@
  * sent under the same key is a new paid request, while a retry of the same
  * utterance still replays. An ElevenLabs rejection releases the reservation.
  * A caller abort reaches moderation and the speech upstreams: before dispatch
- * it releases the reservation, after dispatch it keeps the unknown charge.
+ * it releases the reservation, after dispatch it keeps the unknown charge. A
+ * WAV synthesis that ends while its dispatch acknowledgement is pending also
+ * keeps the unknown charge, and the WAV hard deadline still answers 500.
  * Real credits service on PGlite; auth, pricing,
  * content safety, the ElevenLabs client, the Cartesia and Kokoro upstreams,
  * the first-line cache and usage records are replaced.
@@ -30,6 +32,7 @@ import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { generateDrizzleJson, generateMigration } from "drizzle-kit/api";
 import { Hono } from "hono";
 import * as generativeRouteAuth from "../src/lib/generative-route-auth";
+import * as cartesiaSynthesis from "../v1/voice/tts/cartesia-synthesis";
 
 const phaseRows: Array<Record<string, unknown>> = [];
 const phaseLog = spyOn(logger, "audit").mockImplementation((name, data) => {
@@ -49,6 +52,12 @@ const providerFailures = new Map<string, Error>();
 const COST_PER_CHAR = 0.001;
 let moderate: ((signal?: AbortSignal) => Promise<unknown>) | undefined;
 let duringPricing: (() => void) | undefined;
+/** The gate's dispatch acknowledgement; local admission has none. */
+let acknowledgeDispatch: (() => Promise<void>) | undefined;
+/** A short WAV synthesis deadline in place of the 15 s default. */
+let wavDeadlineMs: number | undefined;
+const { admitFlatGenerativeOperation } = generativeRouteAuth;
+const { synthesizeCartesiaWav } = cartesiaSynthesis;
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   ...generativeRouteAuth,
@@ -61,6 +70,20 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
       credential: undefined,
     };
   },
+  admitFlatGenerativeOperation: async (
+    params: Parameters<typeof admitFlatGenerativeOperation>[0],
+  ) => ({
+    ...(await admitFlatGenerativeOperation(params)),
+    markProviderDispatched: acknowledgeDispatch,
+  }),
+}));
+mock.module("../v1/voice/tts/cartesia-synthesis", () => ({
+  ...cartesiaSynthesis,
+  synthesizeCartesiaWav: (args: Parameters<typeof synthesizeCartesiaWav>[0]) =>
+    synthesizeCartesiaWav({
+      ...args,
+      timeoutMs: wavDeadlineMs ?? args.timeoutMs,
+    }),
 }));
 mock.module("@elizaos/cloud-shared/lib/services/content-safety", () => ({
   contentSafetyService: {
@@ -201,6 +224,8 @@ const upstream = {
 beforeEach(() => {
   moderate = undefined;
   duringPricing = undefined;
+  acknowledgeDispatch = undefined;
+  wavDeadlineMs = undefined;
   globalThis.fetch = realFetch;
   upstream.urls.length = 0;
   upstream.signals.length = 0;
@@ -214,8 +239,9 @@ afterAll(async () => {
 
 /**
  * Stub the Cartesia REST, Cartesia WebSocket and Kokoro upstreams. `answer`
- * returns audio. `hold` accepts the request and sends no audio, so only the
- * request signal can end it. Resolves once a held request is in flight.
+ * returns audio. `hold` accepts the request and sends no audio, so only a
+ * cancellation or a deadline can end it. Resolves once a held request is in
+ * flight.
  */
 function stubSpeechUpstream(mode: "answer" | "hold"): Promise<void> {
   let accepted!: () => void;
@@ -223,8 +249,10 @@ function stubSpeechUpstream(mode: "answer" | "hold"): Promise<void> {
     accepted = resolve;
   });
   globalThis.fetch = (async (input, init) => {
-    upstream.urls.push(String(input));
     const signal = init?.signal ?? undefined;
+    // Like fetch, an aborted signal rejects before any request is sent.
+    signal?.throwIfAborted();
+    upstream.urls.push(String(input));
     upstream.signals.push(signal);
     if (new Headers(init?.headers).get("Upgrade") === "websocket") {
       const messageListeners: Array<(event: { data: string }) => void> = [];
@@ -494,6 +522,101 @@ test.each([
     ).toEqual([0, 0]);
   },
 );
+
+test.each([
+  ["a caller abort", 499],
+  ["the synthesis deadline", 500],
+] as const)(
+  "%s while the WAV dispatch acknowledgement is pending keeps the unknown charge; a refused dispatch still releases",
+  async (ending, status) => {
+    const text = "Your WAV reply ended during dispatch.";
+    const before = await balance();
+    stubSpeechUpstream("answer");
+    if (status === 500) wavDeadlineMs = 50;
+
+    // A refused dispatch never reaches the provider: the reservation is released.
+    acknowledgeDispatch = async () => {
+      throw new Error("synthetic dispatch refusal");
+    };
+    await speak(
+      text,
+      `refused-dispatch-${randomUUID()}`,
+      { format: "wav" },
+      502,
+      { env: CARTESIA },
+    );
+    expect(await balance()).toBeCloseTo(before, 6);
+    expect(await openReservations()).toBe(0);
+
+    let marking!: () => void;
+    const markingStarted = new Promise<void>((resolve) => {
+      marking = resolve;
+    });
+    let acknowledge!: () => void;
+    const acknowledged = new Promise<void>((resolve) => {
+      acknowledge = resolve;
+    });
+    acknowledgeDispatch = async () => {
+      marking();
+      await acknowledged;
+    };
+    const caller = new AbortController();
+    const ended = speak(
+      text,
+      `pending-dispatch-${randomUUID()}`,
+      { format: "wav" },
+      status,
+      { signal: caller.signal, env: CARTESIA },
+    );
+    await markingStarted;
+    if (ending === "a caller abort") caller.abort();
+    await ended;
+
+    // The request ended before the acknowledgement, which the gate may already
+    // have committed: the outcome is unknown and the estimate stays charged.
+    expect(await balance()).toBeCloseTo(
+      before - text.length * COST_PER_CHAR,
+      6,
+    );
+    expect(await openReservations()).toBe(0);
+
+    // The late acknowledgement starts the upgrade with an aborted signal, so no
+    // provider request is sent.
+    acknowledge();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(upstream.urls).toEqual([]);
+    expect(upstream.frames).toEqual([]);
+  },
+  10_000,
+);
+
+test("the WAV hard deadline still ends a silent synthesis with a 500 and keeps the unknown charge", async () => {
+  const text = "Your WAV reply went silent.";
+  const before = await balance();
+  wavDeadlineMs = 50;
+  const inFlight = stubSpeechUpstream("hold");
+
+  const failed = await speak(
+    text,
+    `wav-deadline-${randomUUID()}`,
+    { format: "wav" },
+    500,
+    { env: CARTESIA },
+  );
+  await inFlight;
+
+  expect(JSON.parse(new TextDecoder().decode(failed.audio))).toEqual({
+    error: "Failed to generate speech. Please try again.",
+  });
+  // The deadline cancels the socket stream.
+  expect(upstream.frames).toContainEqual({
+    context_id: "cloud-tts",
+    cancel: true,
+  });
+  // Dispatched work has an unknown outcome: the estimate stays charged.
+  expect(await balance()).toBeCloseTo(before - text.length * COST_PER_CHAR, 6);
+  expect(await openReservations()).toBe(0);
+}, 10_000);
 
 test("a caller abort during moderation stops the review and caches no late approval", async () => {
   const receipts = new Map<string, string>();
