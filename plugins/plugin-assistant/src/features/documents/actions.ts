@@ -529,9 +529,15 @@ function getOptionalPlannerString(
 ): string | undefined {
   if (typeof value !== "string" || !value.trim()) return undefined;
   const normalized = value.trim();
+  // Test the user's own words, not the raw message text: on hardened
+  // connectors content.text is the external-content security envelope, and
+  // its sender/subject metadata (for example "release 2.0 notes") can carry
+  // a standalone 0 that the user never wrote. That kept a planner "0"
+  // placeholder, which then failed entity filters as DOCUMENT_INVALID_FILTER
+  // instead of being dropped as omitted.
   if (
     normalized === "0" &&
-    !/(?:^|\D)0(?:\D|$)/.test(message.content.text ?? "")
+    !/(?:^|\D)0(?:\D|$)/.test(unwrapUserMessageText(message))
   ) {
     return undefined;
   }
