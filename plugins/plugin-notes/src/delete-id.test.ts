@@ -8,13 +8,13 @@ import {
   buildPlannerToolsFromActions,
   type IAgentRuntime,
   promoteSubactionsToActions,
-  validateSchema,
   stringToUuid,
+  validateSchema,
 } from "@elizaos/core";
 import { test } from "vitest";
-import { notesAction } from "./action.js";
 import { boundNotesRequest } from "./__tests__/helpers/bound-notes-request.ts";
-import { NotesService } from "./service.js";
+import { notesAction } from "./action.js";
+import { NOTES_STATE_UPDATED_EVENT, NotesService } from "./service.js";
 
 const children = promoteSubactionsToActions(notesAction);
 const deletionCandidate = children.find(
@@ -31,11 +31,26 @@ type Context = {
 async function withService(run: (context: Context) => Promise<void>) {
   const directory = mkdtempSync(path.join(tmpdir(), "notes-delete-id-"));
   let service: NotesService;
+  const broadcastEvents: Array<{
+    type: string;
+    viewEventType: string;
+    payload: { revision: number; mutation: string };
+  }> = [];
+  const reportedErrors: unknown[][] = [];
+  const connector = {
+    broadcastWs: (event: (typeof broadcastEvents)[number]) => {
+      broadcastEvents.push(structuredClone(event));
+    },
+  };
   const runtime = {
     agentId: stringToUuid(directory),
     actions: children,
     getService: (name: string) => (name === "notes" ? service : null),
-    getServiceLoadPromise: async () => null,
+    getServiceLoadPromise: async (name: string) =>
+      name === "connector-setup" ? connector : null,
+    reportError: (...args: unknown[]) => {
+      reportedErrors.push(args);
+    },
   } as unknown as IAgentRuntime;
   service = new NotesService(runtime, { stateDir: directory });
   await service.initialize();
@@ -53,6 +68,18 @@ async function withService(run: (context: Context) => Promise<void>) {
   };
   try {
     await run({ service, remove });
+    assert.deepEqual(reportedErrors, [], "Unexpected Notes runtime diagnostic");
+    assert.ok(broadcastEvents.length > 0, "Seed commit must publish its event");
+    for (const event of broadcastEvents) {
+      assert.equal(event.type, "view:event");
+      assert.equal(event.viewEventType, NOTES_STATE_UPDATED_EVENT);
+      assert.ok(Number.isInteger(event.payload.revision));
+      assert.equal(typeof event.payload.mutation, "string");
+    }
+    assert.equal(
+      broadcastEvents.at(-1)?.payload.revision,
+      service.snapshot().revision,
+    );
   } finally {
     await service.stop();
     rmSync(directory, { recursive: true, force: true });
