@@ -26,6 +26,7 @@ import {
 import {
   logger,
   ModelType,
+  parseJsonObject,
   type StreamEventEnvelope,
   validateUuid,
 } from "@elizaos/core";
@@ -790,12 +791,11 @@ export async function handleMiscRoutes(
       });
       const text =
         typeof llmResponse === "string" ? llmResponse : String(llmResponse);
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
+      const generated = parseJsonObject<Record<string, unknown>>(text);
+      if (!generated) {
         error(res, "Failed to generate action definition", 500);
         return true;
       }
-      const generated = JSON.parse(jsonMatch[0]) as Record<string, unknown>;
       json(res, { ok: true, generated });
     } catch (err) {
       error(
