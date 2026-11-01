@@ -79,12 +79,26 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
   },
   handle({ value, parsed, message, turnSignal }) {
     turnSignal.throwIfAborted();
-    const intents = Array.isArray(parsed.intents) ? parsed.intents : [];
+    const declared = Array.isArray(parsed.intents) ? parsed.intents : [];
+    // Live tj-6a95e9c522dc6a: "Um, when am I supposed to have coffee?" listed
+    // no intents and bound intent:1 to a required next_event read. A message
+    // with no listed intents is its own single intent. Recording it lets the
+    // planner and the evaluator's read coverage resolve the same intent:1.
+    const text = message.content.text?.trim();
+    const intents =
+      declared.length === 0 && value.length > 0 && text ? [text] : declared;
     const valid = value.every((binding) =>
       Boolean(intents[Number(binding.intentId.slice("intent:".length)) - 1]),
     );
+    // That turn shipped a Stage-1 reply copied from earlier chat. A required
+    // read that names no current intent leaves the reply unverified. An empty
+    // reply sends RESPOND to normal planning and keeps the draft out of the
+    // planner's answer rescue.
+    const withheld =
+      !valid && value.some((binding) => binding.execution === "required");
     return {
       mutateResult(result) {
+        if (valid && intents !== declared) result.intents = intents;
         result.calendarReadBindings = valid
           ? value.map((binding) => ({
               ...binding,
@@ -94,9 +108,17 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
               requestedAt: Number(message.createdAt),
             }))
           : [];
+        if (withheld) result.replyText = "";
       },
       ...(!valid
-        ? { debug: ["Calendar read binding did not name a current intent"] }
+        ? {
+            debug: [
+              "Calendar read binding did not name a current intent",
+              ...(withheld
+                ? ["Withheld the reply of an unbound required Calendar read"]
+                : []),
+            ],
+          }
         : {}),
     };
   },
