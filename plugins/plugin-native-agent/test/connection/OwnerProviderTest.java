@@ -69,16 +69,24 @@ public final class OwnerProviderTest {
     leases.begin(leases.reserve());
 
     ResidentLifecycleTest.Slot slot = new ResidentLifecycleTest.Slot();
-    slot.value = new JSONObject().put("provider", "elizacloud").put("credentialId", "retained-account").toString();
+    String credentialId = "0f8fad5b-d9cb-469f-a165-70867728950e";
+    String userId = "3b241101-e2bb-4255-8caf-4136c566a962";
+    String organizationId = "6ba7b810-9dad-41d1-80b4-00c04fd430c8";
+    String cloud = new JSONObject().put("credentialId", credentialId).put("token", "eliza_test_token_not_a_secret_0123456789").put("userId", userId).put("organizationId", organizationId).toString();
+    slot.value = NativeProviderAdmission.admit(null, new JSONObject().put("provider", "elizacloud").put("credentialId", credentialId).put("model", NativeProviderAdmission.CLOUD_PROVIDER_MODEL).toString(), cloud, new JSONObject().put("userId", userId).put("organizationId", organizationId));
     check(NativeProviderSlot.saveVerifiedProvider(slot, KEY, NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL, SPEECH, (key, model) -> null, "Product") == null, "owner credentials must save");
     JSONObject saved = new JSONObject(slot.value);
     check(SPEECH.equals(saved.getString("cartesiaKey")), "speech credential must survive storage");
-    check("retained-account".equals(saved.getJSONObject("cloudServices").getString("credentialId")), "direct choice must retain account services");
+    check(credentialId.equals(saved.getJSONObject("cloudServices").getString("credentialId")), "direct choice must retain account services");
     JSONObject identity = NativeProviderAdmission.providerIdentity(slot.value);
     check(identity.getBoolean("selected") && identity.getBoolean("voiceConfigured"), "identity must expose capability facts");
     check(!identity.toString().contains(KEY) && !identity.toString().contains(SPEECH), "identity cannot disclose credentials");
     slot.value = NativeProviderAdmission.admit(null, slot.value, null, null);
     String generation = NativeProviderAdmission.currentGeneration(slot.value, null);
+    JSONObject binding = NativeProviderAdmission.managedGoogleBinding(slot.value, cloud, System.currentTimeMillis());
+    check(organizationId.equals(binding.getString("organizationId")) && generation.equals(binding.getString("sessionGeneration")), "retained services use verified account and current direct generation");
+    String foreignCloud = new JSONObject(cloud).put("credentialId", "7c9e6679-7425-40de-944b-e07fc1f90ae7").toString();
+    refused(() -> NativeProviderAdmission.managedGoogleBinding(slot.value, foreignCloud, System.currentTimeMillis()), "foreign retained account must be rejected");
     NativeProviderSlot.Store lostSpeech = new NativeProviderSlot.Store() {
       public String readProvider() { return new JSONObject(slot.value).put("cartesiaKey", (Object)null).toString(); }
       public void assertCurrent() {}
