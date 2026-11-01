@@ -36,6 +36,31 @@ export type MessagesSendOutcome =
   | { path: "direct"; result: SendSmsResult }
   | { path: "reviewed"; result: SmsSendResult };
 
+/**
+ * What a reviewed send's recorded status proves about the recipient. A
+ * `cancelled` or `denied` record was written before anything left the device,
+ * so the same text may be sent again. A `failed` or `unknown` record was
+ * written after the platform send started: parts may already have reached the
+ * recipient, so the text must not be sent again without checking.
+ */
+export type SmsSendDisposition = "sent" | "not_sent" | "uncertain";
+
+export function smsSendDisposition(
+  status: SmsSendResult["status"],
+): SmsSendDisposition {
+  switch (status) {
+    case "submitted":
+    case "sent":
+    case "delivered":
+      return "sent";
+    case "cancelled":
+    case "denied":
+      return "not_sent";
+    default:
+      return "uncertain";
+  }
+}
+
 function newOperationId(): string {
   const uuid = globalThis.crypto?.randomUUID?.();
   if (!uuid) throw new Error("No secure random source for an operation ID");
