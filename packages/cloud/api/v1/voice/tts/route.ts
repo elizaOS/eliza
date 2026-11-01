@@ -299,7 +299,6 @@ async function __hono_POST(c: AppContext) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: willAdmit,
       });
     await using credentialGuard = deferredCredentialAdmissionGuard({
@@ -404,8 +403,10 @@ async function __hono_POST(c: AppContext) {
       if (kokoroCacheKey) {
         try {
           const cacheStart = Date.now();
-          const cached =
-            await getCloudFirstLineCacheService().get(kokoroCacheKey);
+          const cached = await getCloudFirstLineCacheService().get(
+            kokoroCacheKey,
+            getGenerativeExecutionContext(c),
+          );
           if (cached) {
             timings.synthesisMs = Date.now() - cacheStart;
             logger.info(
@@ -557,17 +558,20 @@ async function __hono_POST(c: AppContext) {
       try {
         const cacheStart = Date.now();
         const cacheService = getCloudFirstLineCacheService();
-        const cached = await cacheService.get({
-          algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-          provider: mp3CacheProvider,
-          voiceId: resolvedVoiceId,
-          voiceRevision: mp3VoiceRevision,
-          sampleRate: 44100,
-          codec: "mp3",
-          voiceSettingsFingerprint,
-          normalizedText: snipResult.normalized,
-          scope: cacheScope,
-        });
+        const cached = await cacheService.get(
+          {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: mp3CacheProvider,
+            voiceId: resolvedVoiceId,
+            voiceRevision: mp3VoiceRevision,
+            sampleRate: 44100,
+            codec: "mp3",
+            voiceSettingsFingerprint,
+            normalizedText: snipResult.normalized,
+            scope: cacheScope,
+          },
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -622,7 +626,10 @@ async function __hono_POST(c: AppContext) {
     if (wavCacheKey) {
       try {
         const cacheStart = Date.now();
-        const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
+        const cached = await getCloudFirstLineCacheService().get(
+          wavCacheKey,
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -1052,7 +1059,18 @@ async function __hono_POST(c: AppContext) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
     if (error instanceof CartesiaRestTtsError) {
       const status =

@@ -262,6 +262,7 @@ app.post("/", async (c) => {
     > | null = null;
     let anonymousCredential: AnonymousChatGateCredential | null = null;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let apiKeyRateLimit: number | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
     let guardOrganizationId: string | undefined;
     await using credentialGuard = deferredCredentialAdmissionGuard({
@@ -319,6 +320,10 @@ app.post("/", async (c) => {
           ? { id: authResolution.ctx.apiKeyId }
           : undefined;
         admissionSnapshot = authResolution.ctx.admission;
+        apiKeyRateLimit =
+          "apiKeyRateLimit" in authResolution.ctx
+            ? authResolution.ctx.apiKeyRateLimit
+            : undefined;
         admissionCredential = authResolution.credential;
         if (invalidRequestResponse) return invalidRequestResponse;
       } else {
@@ -398,7 +403,9 @@ app.post("/", async (c) => {
             cacheOnly: Boolean(executionCtx),
             executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+            admissionSnapshot,
             apiKeyId: apiKey?.id,
+            apiKeyRateLimit,
             userId: user.id,
           },
         );

@@ -1366,6 +1366,7 @@ export async function handleChatCompletionsPOST(
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let cachedApiKeyRateLimit: number | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
     let ratePolicyProof: InferenceRatePolicyProof | undefined;
     let appScopeId: string | null = null;
@@ -1398,7 +1399,7 @@ export async function handleChatCompletionsPOST(
                 code: "auth_cache_warming",
               },
             },
-            { status: 503 },
+            { status: 503, headers: { "Retry-After": "1" } },
           ),
         ),
       );
@@ -1457,6 +1458,10 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
+      cachedApiKeyRateLimit =
+        "apiKeyRateLimit" in resolution.ctx
+          ? resolution.ctx.apiKeyRateLimit
+          : undefined;
       // Only an API-key context carries a key cap read with its policy epoch.
       ratePolicyProof =
         "keyHash" in resolution.ctx
@@ -1540,7 +1545,9 @@ export async function handleChatCompletionsPOST(
             cacheOnly: Boolean(options.executionCtx),
             executionCtx: options.executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+            admissionSnapshot,
             apiKeyId: apiKey?.id,
+            apiKeyRateLimit: cachedApiKeyRateLimit,
             userId: user.id,
             fundedBudget,
             ratePolicy: ratePolicyProof,
@@ -2141,15 +2148,25 @@ export async function handleChatCompletionsPOST(
         // A plan subscriber (paid or grant) has spent its period allowance and
         // credit: name that state and when the allowance resets. Status and
         // type stay 402 / insufficient_quota for existing OpenAI-style clients.
+        // The Worker never reads Postgres to word a refusal: the cached
+        // admission snapshot names the plan state and its period end.
         const exhaustion = useMonetizedAppBilling
           ? null
-          : await import(
-              "@elizaos/cloud-shared/lib/services/subscription-entitlement-token"
-            )
-              .then(({ readAllowanceExhaustion }) =>
-                readAllowanceExhaustion(user.organization_id),
+          : options.executionCtx
+            ? admissionSnapshot?.subscriptionFunded
+              ? {
+                  resetsAt: admissionSnapshot.authority.effectiveUntil
+                    ? new Date(admissionSnapshot.authority.effectiveUntil)
+                    : null,
+                }
+              : null
+            : await import(
+                "@elizaos/cloud-shared/lib/services/subscription-entitlement-token"
               )
-              .catch(() => null);
+                .then(({ readAllowanceExhaustion }) =>
+                  readAllowanceExhaustion(user.organization_id),
+                )
+                .catch(() => null);
         return addCorsHeaders(
           Response.json(
             {

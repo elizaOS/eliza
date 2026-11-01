@@ -5,7 +5,6 @@
 
 import { ApiError } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
-import { isInferenceAuthCacheEnabled } from "@elizaos/cloud-shared/lib/services/inference-hot-path-caches";
 import type { EndpointType } from "@elizaos/cloud-shared/lib/services/org-rate-limits";
 import type { ProxyCombinedAdmission } from "@elizaos/cloud-shared/lib/services/proxy/engine";
 import {
@@ -93,7 +92,7 @@ export async function withGuardedPaidProxyAdmission(
     };
 
     if (!executionCtx || !caller.admissionSnapshot) {
-      if (executionCtx && isInferenceAuthCacheEnabled(c.env)) {
+      if (executionCtx) {
         logger.error(
           "[PaidProxyAdmission] Combined admission snapshot missing",
           {
