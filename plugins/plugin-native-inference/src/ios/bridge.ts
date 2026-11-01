@@ -2300,6 +2300,51 @@ function readJsonObjectFile(filePath: string): Record<string, unknown> {
     return {};
   }
 }
+/**
+ * Whether the persisted registry can be read at all, or the reason its bytes
+ * cannot be trusted.
+ *
+ * `readJsonObjectFile` answers `{}` for an absent file, an unparseable file and
+ * a file whose `models` field has the wrong shape. That is fine for read-only
+ * callers that also scan the models directory. A caller that writes the
+ * registry back cannot use that answer: it would persist the damage as "no
+ * installed models", dropping every entry the unparseable file still holds.
+ * Only ENOENT means "nothing is installed yet".
+ */
+function readRegistryReadability():
+  | { ok: true }
+  | { ok: false; reason: string } {
+  let raw: string;
+  try {
+    raw = readFileSync(localInferenceRegistryPath(), "utf8");
+  } catch (error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === "ENOENT") return { ok: true };
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (error) {
+    return {
+      ok: false,
+      reason: error instanceof Error ? error.message : String(error),
+    };
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    return { ok: false, reason: "file does not contain a JSON object" };
+  }
+  const rawModels = (parsed as Record<string, unknown>).models;
+  // An absent field is a legitimate empty registry; a present one must be a list.
+  if (rawModels === undefined) return { ok: true };
+  if (!Array.isArray(rawModels)) {
+    return { ok: false, reason: "models is not a JSON array" };
+  }
+  return { ok: true };
+}
 function writeJsonObjectFile(
   filePath: string,
   value: Record<string, unknown>,
@@ -2451,6 +2496,12 @@ function upsertInstalledModel(model: InstalledModelEntry): void {
     throw new Error(
       `iOS local-inference model path must live under ${localInferenceRootPath()}: ${model.path}`,
     );
+  }
+  const readable = readRegistryReadability();
+  if (!readable.ok) {
+    // `readInstalledModels` answers [] for these bytes, so appending would
+    // replace every other installed model with just this one.
+    throw new Error(`Local model registry is unreadable: ${readable.reason}`);
   }
   const existing = readInstalledModels().filter(
     (entry) =>
@@ -3923,6 +3974,15 @@ async function handleNativeIosLocalInferenceRoute(
           : "";
     if (!modelId) {
       return jsonResponse(400, { error: "Missing modelId" });
+    }
+    const readable = readRegistryReadability();
+    if (!readable.ok) {
+      // A download would end in `upsertInstalledModel`, which cannot record the
+      // new model without replacing every entry in these unreadable bytes.
+      return jsonResponse(500, {
+        error: `Local model registry is unreadable: ${readable.reason}`,
+        code: "ios_local_models_unreadable",
+      });
     }
     try {
       return jsonResponse(200, { job: startNativeModelDownload(modelId) });
