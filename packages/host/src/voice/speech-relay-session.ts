@@ -8,6 +8,7 @@ import type {
   CartesiaInkRealtimeSession,
 } from "./cartesia-ink";
 import type { CartesiaSonicTtsStream } from "./cartesia-sonic-tts";
+import { UplinkReframer } from "./uplink-reframer";
 import {
   checkVoiceByteRate,
   type VoiceUsageIdentity,
@@ -188,12 +189,14 @@ export async function createSpeechRelaySession(
   let ttsUncertain = false;
   let closed = false,
     providerMayHaveStarted = false,
+    receivedPcmBytes = 0,
     pcmBytes = 0,
     ttsCharacters = 0,
     admittedTtsCharacters = 0,
     moderationText = "",
     outputBytes = 0,
     quota = false;
+  const uplink = new UplinkReframer();
   let credits: SpeechRelayCreditReservation | undefined,
     stt: ReturnType<SpeechRelayPorts["openStt"]> | undefined,
     unsubscribe: (() => void) | undefined,
@@ -208,6 +211,9 @@ export async function createSpeechRelaySession(
     if (closing) return closing;
     closed = true;
     for (const review of reviews.keys()) review.abort();
+    // Stop/revocation cannot dispatch more audio. Normal microphone silence
+    // carries speech tails into complete frames before an end-of-turn event.
+    uplink.flush();
     if (streams.size) ttsUncertain = true;
     if (timer) clearTimeout(timer);
     closing = Promise.resolve().then(async () => {
@@ -402,7 +408,7 @@ export async function createSpeechRelaySession(
         retire();
         throw new SpeechRelayError("payload", "Speech audio must be PCM bytes");
       }
-      const next = pcmBytes + bytes.byteLength;
+      const next = receivedPcmBytes + bytes.byteLength;
       if (
         !bytes.byteLength ||
         bytes.byteLength % 2 ||
@@ -420,11 +426,16 @@ export async function createSpeechRelaySession(
           "Speech audio exceeds the admitted format or rate",
         );
       }
-      pcmBytes = next;
+      receivedPcmBytes = next;
       try {
         if (!stt)
           throw new SpeechRelayError("closed", "Speech input is not ready");
-        stt.sendAudioChunk(bytes);
+        // Native microphone packets need not align to Ink's 100 ms frames.
+        // Keep admission on received bytes and settlement on actual dispatch.
+        for (const frame of uplink.push(bytes)) {
+          stt.sendAudioChunk(frame);
+          pcmBytes += frame.byteLength;
+        }
       } catch (error) {
         retire();
         throw error;
