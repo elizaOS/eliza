@@ -21,6 +21,7 @@ import {
   createLifeOpsTestRuntime as createBaseLifeOpsTestRuntime,
   getRecordedTestNotifications,
 } from "../../test/helpers/runtime.js";
+import { PersonalAssistantStartupService } from "../startup-work.js";
 import {
   ensureLifeOpsSchedulerTask,
   LIFEOPS_TASK_NAME,
@@ -249,6 +250,8 @@ it.each([
 
 async function createLifeOpsTestRuntime() {
   const fixture = await createBaseLifeOpsTestRuntime();
+  // Drain deferred boot registration before manually owning scheduler ticks.
+  await PersonalAssistantStartupService.forRuntime(fixture.runtime).stop();
   await TaskService.stop(fixture.runtime);
   // Supersede boot observations with an actual persisted owner wake signal.
   vi.setSystemTime(Date.now() + 1);

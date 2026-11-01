@@ -41,6 +41,7 @@ import { scheduledTaskAction } from "../../../plugin-personal-assistant/src/acti
 import { createOwnerReminderDirectRoutingRule } from "../../../plugin-personal-assistant/src/lifeops/reminders/direct-routing.ts";
 import { createScheduledTaskCandidateBackstopRule } from "../../../plugin-personal-assistant/src/lifeops/scheduled-task/candidate-backstop";
 import { choiceAction } from "../features/basic-capabilities/actions/choice.ts";
+import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   evaluatePlannedReplyEgress,
@@ -2027,6 +2028,567 @@ describe("replyClaimsInProgressWork", () => {
     "",
   ])("passes substantive or interrogative replies: %s", (reply) => {
     expect(replyClaimsInProgressWork(reply)).toBe(false);
+  });
+});
+
+describe("replyIsClaimSafeAcknowledgment", () => {
+  it.each([
+    // The live acceptance acknowledgements and short progress cues.
+    "Let me have a look.",
+    "Checking both.",
+    "Let me check.",
+    "On it.",
+    "One sec.",
+    "One sec, checking your calendar.",
+    "On it, looking at your notes now.",
+    "Pulling up your calendar.",
+    "I'll check your calendar and notes.",
+    // A wait cue before a lead, joined objects, a "to" or "while" lead and
+    // "I'm" with a gerund.
+    "One sec! Let me check your calendar and notes.",
+    "Let me check your calendar and your notes.",
+    "One sec while I pull up your calendar.",
+    "Give me a moment to look through your notes.",
+    "I'm checking your calendar now.",
+    // Natural acknowledgements inside the closed grammar.
+    "Let me take a look at your calendar.",
+    "Taking a look at your notes now.",
+    "Having a look at your inbox.",
+    "Taking a look now.",
+    "I’ll take a look at your calendar.",
+    "I'm going to search your notes.",
+    "Let me search your inbox.",
+    "Searching your emails.",
+    "I'm looking into it now.",
+    "Let me look into it.",
+    "Checking that now.",
+    "Let me check it for you.",
+    "Give me a sec to pull up your calendar.",
+    "One sec while I check your reminders.",
+    "Just a moment while I check your reminders.",
+    "Let me dig into your files.",
+    "Let me dig into this.",
+    "Digging into your notes now.",
+    "Let me look through your contacts.",
+    "I'll pull up your contacts.",
+    "Let me check the weather for you.",
+    "Checking your calendar and the weather.",
+    "Let me check your account real quick.",
+    "Let me check your calendar, notes and reminders.",
+    "On it. Checking your calendar. One sec.",
+    // "Sure!" before a lead, a name or embedded question after "check", and
+    // navigation, read and write intents after a lead.
+    "Sure! Let me check your calendar and notes.",
+    "Let me check with Sarah.",
+    "Let me check whether there are any meetings tomorrow.",
+    "I will read your notes.",
+    "Let me open Calendar.",
+    "I'll save your note.",
+    "Let me create that reminder.",
+    "I'll update the appointment.",
+  ])("admits a forward-looking acknowledgement: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(true);
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        pendingWork: true,
+        actionResults: [],
+        actions: [],
+      }).verdict,
+    ).not.toBe("reject");
+  });
+
+  it.each([
+    // Completed effects.
+    "Sent.",
+    "All set.",
+    "All set!",
+    "You're all set",
+    "Done, your note is saved",
+    "Done, your note is saved.",
+    "Your note is saved.",
+    "Got it, saved.",
+    "Done, and your calendar is free",
+    "Done, your 3pm is moved.",
+    "Your meeting with Bob is cancelled.",
+    "Your 3pm with Dana is confirmed.",
+    "Your 3pm with Dr Lee is moved.",
+    "Your 3pm with Dr. Lee is moved.",
+    "Your reminder for tomorrow is set.",
+    "Email sent.",
+    "I've saved that to your notes.",
+    "Note saved!",
+    "Saved.",
+    "Booked.",
+    "Reminder set.",
+    // Absent or present results.
+    "Nothing on your calendar today.",
+    "Your calendar is clear today.",
+    "Your calendar is clear today",
+    "There are no events today.",
+    "You have no events today.",
+    "No notes found.",
+    "You have no notes this week.",
+    "You have a meeting with Bob at 3.",
+    "You have two meetings and one note.",
+    "Your blood test results are back.",
+    // Progress followed by an answer, across a colon or sentence end.
+    "Let me check: you have 3 meetings today.",
+    "Checking now. Your next saved event is at 10:00 AM.",
+    "Let me check. You have no notes.",
+    // An interjection alone reads as completion.
+    "Got it.",
+    "Sure!",
+  ])("drops a result, effect or absence claim: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // The whole utterance is validated, not its lead: a claim appended after a
+  // comma, dash, bracket or clause-opening conjunction is its own clause and
+  // is not progress.
+  it.each([
+    // The independent review's counterexamples.
+    "Checking your calendar, your appointment starts soon.",
+    "I'll be honest, your calendar looks busy.",
+    // After a comma, dash or bracket.
+    "Looking now, Bob already replied.",
+    "Let me check, but the flight is delayed.",
+    "Checking now, it looks like a quiet day.",
+    "Let me look, your inbox looks quiet.",
+    "One sec, your flight leaves soon.",
+    "Hang on, the weather looks great.",
+    "Let me take a look, plus Bob wants to reschedule.",
+    "Got it, Bob's running late.",
+    "Let me see, your next call starts soon.",
+    "I'll look into it — your package arrived.",
+    "Let me check, and you're free all afternoon.",
+    "Checking your calendar, looks like a light day.",
+    "Let me check your calendar (Bob replied).",
+    // After a conjunction that opens a new subject.
+    "On it and the meeting moved.",
+    "Let me check your calendar and Bob replied.",
+    "Let me check your calendar and Dana wants to talk.",
+    "Let me check your calendar and the flight landed.",
+    "Pulling up your notes and Dana shared the draft.",
+    "I'll check your calendar but your afternoon looks open.",
+    "Let me check your calendar because your dentist called.",
+    "Checking your calendar while your meeting runs long.",
+    "Let me check your inbox and there's a reply from Bob.",
+    "Let me check your calendar although it looks clear.",
+    "Let me check your calendar since your meeting got pushed.",
+    "Let me check your calendar and your meeting starts soon.",
+    "I'll pull that up while Bob's call runs over.",
+    "Let me check and then the meeting got pushed.",
+    "Let me check your calendar & Bob replied.",
+    "Let me check your calendar which looks open.",
+    // A lead that is not progress.
+    "I'll say this, your week looks packed.",
+    "I'll tell you, the meeting went well.",
+    "I'm afraid the flight is out.",
+    "I think your calendar is open.",
+    "Let me be clear about your calendar.",
+    // A bare yes answers rather than acknowledges.
+    "Yes, let me check.",
+  ])("drops a claim appended to a progress lead: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // Every word after the progress head is read from closed lists, so an
+  // acknowledgement can name what it will look at but never describe it. The
+  // independent probe's accepted claims, then further variants.
+  it.each([
+    // A run-on claim after the head, with no punctuation, an emoji, bullet or slash.
+    "checking your calendar yep all good",
+    "let me check and yep good to go",
+    "Let me check and yep you can make it",
+    "Checking now and yes that works",
+    "Checking and sure enough a conflict on Thursday",
+    "Let me check your flight lands shortly",
+    "checking your calendar your appointment starts shortly",
+    "Checking your calendar 📅 your appointment starts shortly",
+    "Checking your calendar • packed afternoon",
+    "Checking your calendar / the dentist pushed your cleaning",
+    "let me check your calendar your dentist pushed your cleaning to friday",
+    // Second-person and contraction variants, and a lower-case name.
+    "Checking your calendar youre slammed",
+    "Checking your calendar youʼre slammed",
+    "Checking your calendar you‘re wide open",
+    "Checking the calendar its packed",
+    "checking theres a conflict at lunch",
+    "Checking your calendar plus sarahs out today",
+    "Checking your calendar you seem swamped",
+    "Checking your calendar you need to leave shortly",
+    "Checking your calendar ur slammed",
+    // "Looking" read as perception rather than progress.
+    "Looking good!",
+    "Looking good, let me pull up the rest of your notes.",
+    "Looking rough today. Let me check your calendar.",
+    "Looking like a full day, let me check your calendar.",
+    "Looking pretty grim on Thursday.",
+    "Looking like you can make it.",
+    // A single word after a link (absence, result or completion).
+    "Checking your calendar and nada",
+    "Checking your notes and zilch",
+    "Checking your calendar and bingo",
+    "Having a look and yikes",
+    "Let me check and yep",
+    "Adding it to your calendar and voila",
+    "Saving that now and boom",
+    "Adding that and sorted",
+    "Updating the invite and fixed",
+    "Moving it now and handled",
+    "Booking it and locked in",
+    "Sending it now and off it goes",
+    "Checking now and correct",
+    // A relative, reduced or subordinate clause carrying a result.
+    "Let me read your notes which mention the dentist.",
+    "Let me open the invite which conflicts with lunch.",
+    "Let me pull up the reminder which fired earlier.",
+    "Let me check with Sarah who said yes.",
+    "Let me send a thank-you to Bob who replied.",
+    "Let me find a new slot since yours conflicts.",
+    "Let me find a new slot since yours clashes with lunch.",
+    "Let me check the meeting that got pushed back.",
+    "Let me check the meeting that starts shortly.",
+    "Let me pull up the meeting that just ended.",
+    "Let me pull up the event Bob declined.",
+    "Let me check the meeting Sarah called off.",
+    "Let me open the email that just came in.",
+    "Let me read you Sarah's reply saying she can't make it.",
+    "Let me check the call you missed from Sarah.",
+    "Let me check your calendar before the dentist bumps you again.",
+    "Checking your calendar as always chaotic",
+    "Checking your calendar but wow what a day",
+    "Let me check then reschedule the conflict on Friday.",
+    // A result hidden inside an embedded question.
+    "Let me see what else is on your busy calendar.",
+    "Let me see where your overdue tasks stand.",
+    "Let me check how late your flight is running.",
+    "Let me check when the cancelled meeting was.",
+    "Let me look at what got moved on your calendar.",
+    "Let me check your calendar given how packed it is.",
+    "Checking your calendar when your appointment starts soon",
+    "Let me see how your already booked flight looks.",
+    // An adjective describing the data.
+    "Let me pull up your packed schedule.",
+    "Let me look at your overloaded calendar.",
+    "Pulling up your hectic Thursday.",
+    "Let me move your conflicting dentist appointment.",
+    "Let me add this to your overflowing calendar.",
+    "Let me check your blank calendar for Friday.",
+    "Let me look at your wide-open afternoon.",
+    "Let me check your unscheduled afternoon.",
+    "Let me check your past-due tasks.",
+    "Let me look at your expired reminders.",
+    "Let me go through your messy notes.",
+    "Pulling up your rough-looking week.",
+    "Putting it mildly a packed day ahead",
+    "Let me check your zero-meeting afternoon.",
+    // A clock time, duration, count, quantity or ordinal.
+    "Checking your meeting at one.",
+    "Checking your flight at one am",
+    "Let me check your meeting at one fifteen.",
+    "Let me check your meeting at a quarter to one.",
+    "Checking your meeting in fifteen minutes.",
+    "Let me check the meeting starting in a few minutes.",
+    "Let me check your ninety-minute meeting.",
+    "Let me go through your dozens of notes.",
+    "Let me dig through your hundreds of notes.",
+    "Let me check your only meeting today.",
+    "Let me check your single event tomorrow.",
+    "Let me check your fifteen reminders.",
+    "Pulling up your sixteen unread emails.",
+    "Let me go through your handful of notes.",
+    "Let me pull up your couple of meetings tomorrow.",
+    "Let me check your third meeting today.",
+    // A name, count or result noun read as an object.
+    "Let me check Sarahs out today.",
+    "Let me check Sarahs in today.",
+    "Checking your calendar and NADA",
+    "Checking your calendar and Nada",
+    "Let me check your calendar YEP all good",
+    "Let me check both meetings today.",
+    "Let me read Sarah's reply.",
+    "Let me check if there's a conflict.",
+    "Let me check whether you have any busy days.",
+    "Let me see what's on your packed calendar.",
+    "Checking your calendar, whats up.",
+    "Let me check your seventeenth reminder.",
+  ])("drops a claim read past a progress head: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // Claims an independent probe of the clause gate still accepted. Only the
+  // closed grammar's words are read, so none of them parses.
+  it.each([
+    // A result read as an object or tail.
+    "Checking your flight on time",
+    "checking your flight on schedule",
+    "Checking your order on schedule for delivery tomorrow.",
+    "Checking your package on schedule for delivery today",
+    "Checking your flight on time for tonight.",
+    "Checking your flight today on time",
+    "Sure thing, checking your flight on time.",
+    "checking your calendar friday work from home",
+    "checking your schedule today office tomorrow home",
+    "Let me check Sarah's home tonight.",
+    "Adding that and set",
+    "Moving it now and set",
+    // Assent after progress or a wait cue reads as a result.
+    "Checking your notes. Got it!",
+    "Saving it to your notes. Got it.",
+    "Let me look through your notes... got it",
+    "Checking your calendar for Friday. No problem!",
+    "Checking your calendar... no problem.",
+    "Let me check your calendar. Absolutely!",
+    "Let me check your calendar. Of course!",
+    "On it. Got it.",
+    // Emoji and symbols.
+    "Saving that to your notes ✅",
+    "✅ Adding it to your calendar",
+    "Checking your calendar (✓)",
+    "Checking your inbox 📭",
+    "Checking your notes – ∅",
+    "Checking your calendar → ∅",
+    "Checking your inbox 🦗",
+    "Checking your inbox… 🈳",
+    "Checking your afternoon 🆓",
+    "Checking your calendar = 🆓",
+    "Checking your calendar ⛔",
+    "Checking your calendar 🟢",
+    "Checking your calendar ❌",
+    "Checking your meeting 🕒",
+    "Checking your calendar 💯",
+    "Having a look 😬",
+    "Checking your week 🔥",
+    "Checking your flight 👍",
+    "Let me check — 🆗",
+    // Assent that also answers a yes/no question.
+    "Absolutely! Let me check your calendar.",
+    "Of course, let me check.",
+    // A count or time in the object.
+    "Let me check both of your meetings today.",
+    "Checking both of your appointments tomorrow",
+    "Checking your appointment Friday morning",
+  ])("drops a claim outside the closed grammar: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // Claims an independent probe of the closed grammar accepted, in their own
+  // words or after the request it was paired with. Each list now leaves out
+  // the vocabulary that let them through.
+  it.each([
+    // A look-up verb with an indefinite object says the item exists.
+    "Pulling up an event for tomorrow, then your notes.",
+    "Opening a reminder for today.",
+    "Reading a note for you now.",
+    "Reviewing a draft for you.",
+    "Looking at an event for this week.",
+    "Pulling up a reminder for this week.",
+    "Going through a note now.",
+    "Digging into a draft for you.",
+    "Reading a reminder for today.",
+    "Let me pull up an event for tomorrow.",
+    "I'll open a note for you.",
+    "Double-checking an event for tomorrow.",
+    "Pulling up a slot for tomorrow.",
+    "Let me pull up a time for this week.",
+    "Reviewing a slot for today.",
+    "Okay, let me read a note for you.",
+    // Assent answers the question it follows ("Is there a problem with my
+    // account?", "Am I free Friday afternoon?", "Did Sam's email come in?").
+    "No problem, checking your account.",
+    "No problem. Checking your calendar.",
+    "No problem, let me check your workflows.",
+    "Sure, checking your calendar.",
+    "Sure, checking the weather for tomorrow.",
+    "Sure thing, checking your emails for today.",
+    "Sure, let me double-check your inbox.",
+    "Sure, double-checking your calendar for tomorrow.",
+    "Sure thing, let me check the weather for tomorrow.",
+    "Sure, double-checking your schedule for tomorrow.",
+    "Sure, checking maps.",
+    "Okay, checking your account.",
+    "Alright, checking your files.",
+    "Ok, checking your settings.",
+    "Got it, reading it now.",
+    "Got it, opening it now.",
+    "Good question, checking your notes.",
+    "Sure, checking your calendar for today.",
+    "Sure, drafting it now.",
+    "Sure thing, let me review your account.",
+    "Okay, let me check your calendar.",
+    // A date says when the item is ("When is my dentist appointment?").
+    "Checking your calendar for tomorrow.",
+    "Checking your schedule for today.",
+    "Checking your tasks for this week.",
+    "Scheduling it for tomorrow.",
+    "Scheduling it for this week.",
+    "Creating a reminder for tomorrow.",
+    "Setting it up for today.",
+    "Let's schedule it for tomorrow.",
+    "Updating it for tomorrow.",
+    // A bare gerund or noun reads as an answer ("Is the pharmacy open yet?",
+    // "Which account did the rent come out of?").
+    "Opening now.",
+    "Opening now. Checking maps.",
+    "Opening for tomorrow.",
+    "Opening for this week.",
+    "Checking account.",
+    "Checking account first.",
+    // A write or status says the work is not done or still running ("Is the
+    // draft done?", "Is my bank account open?").
+    "Updating now.",
+    "Drafting it now.",
+    "Saving everything now.",
+    "Writing it now.",
+    "Creating it now.",
+    "Saving a draft now.",
+    "Updating your reminders now.",
+    "Opening your account now.",
+    // Someone's status, an agenda, a ranking or advice ("What's Sam working on
+    // this week?", "Which should I handle first?", "Should I leave now?").
+    "Reviewing your files, then your account.",
+    "Reviewing your emails first.",
+    "Working on the account for this week.",
+    "Updating the workflows.",
+    "Reviewing the files.",
+    "Finding for you.",
+    "Reading for today.",
+    "Let's review the account first.",
+    "Let's update them.",
+    "Hang tight, checking maps.",
+    "Hang on. Checking your messages.",
+    "Handling your email first, then your calendar.",
+    // A write after a read-only request.
+    "Updating your calendar.",
+    "Saving your notes now.",
+    // Retrieving an item, or a pronoun for one, says it exists ("Did my
+    // boarding pass come in?").
+    "Pulling up an event for tomorrow.",
+    "Pulling up a reminder for today.",
+    "Reading a note for you.",
+    "Reviewing a draft now.",
+    "Reading both now.",
+    "Reading them now.",
+    "Reading those now.",
+    "Got it, opening it for you.",
+    "Pulling up both for tomorrow.",
+    "Pulling up a time for today.",
+    "Pulling it up now.",
+    "Pulling those up now.",
+    "Opening it now, then your files.",
+    // A write says the item is missing ("Is the dentist on my calendar?").
+    "Adding it now.",
+    "Saving it now.",
+    "Creating a reminder for you.",
+    "Creating a note for you.",
+    "Creating an event now.",
+    "Setting up a time now.",
+    "Adding it for you.",
+    "Scheduling it now.",
+    "Drafting it now, then your inbox.",
+    "Writing a note now.",
+  ])("drops a claim made with grammar words: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // "Sure!", "check with", the embedded question and the open, read, save,
+  // create and update intents are closed pieces: a result after one, a
+  // gerund or past form, a possessive or second name, or a word outside the
+  // question's lists drops the acknowledgement.
+  it.each([
+    "Sure! You're free all afternoon.",
+    "Sure! Let me check your calendar. You're free.",
+    "Sure! Checking your calendar, all clear.",
+    "Let me open Calendar, you're free",
+    "Let me open Maps. Traffic looks light.",
+    "Opening Calendar now.",
+    "I will read your notes: none",
+    "I will read your notes which are empty.",
+    "I read your notes.",
+    "I'll save your note, it's saved",
+    "I'll save your note again.",
+    "Saving your note now.",
+    "Let me create that reminder for 5",
+    "Let me create that reminder for tomorrow.",
+    "Created that reminder.",
+    "I'll update the appointment to 3pm",
+    "I'll update the appointment to Friday.",
+    "Updating the appointment now.",
+    "I'll update the event, it moved to lunch.",
+    "I'll save the draft. Already saved.",
+    "Let me open the draft Sarah sent.",
+    "Let me check with Sarah, she said yes",
+    "Let me check with Sarah. She's out today.",
+    "Let me check with Sarah's assistant.",
+    "Let me check with Sarah Lee about lunch.",
+    "Let me check whether there are any meetings tomorrow, there aren't",
+    "Let me check whether there are any meetings tomorrow. There aren't.",
+    "Let me check whether there are any other meetings tomorrow.",
+    "Let me check if you have any reminders, you don't.",
+    "Let me check if you have any meetings left today.",
+  ])("drops a claim added to an intent: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // Natural wording outside the closed grammar is dropped as well; the final
+  // reply still answers. Possessive or titled names, an appointment with a
+  // date, other embedded questions, a second verb, "as well", "certainly" and
+  // a fourth sentence are not in the lists.
+  it.each([
+    "Let me pull up your calendar and check whether you have any notes.",
+    "Let me check your calendar for today and look through your notes.",
+    "Let me check Dr. Smith's appointment.",
+    "Let me check your notes as well.",
+    "Let me go ahead and check your calendar.",
+    "Let me check and get back to you.",
+    "Let me check your calendar and then pull up your notes.",
+    "Let me move your appointment to Friday.",
+    "On it! Let me search your notes for Mrs. Lee's address.",
+    "Let me see what's on your calendar today.",
+    "Let me get back to you on that.",
+    "Let me check your calendar vs. your notes.",
+    "Certainly! Let me check your calendar.",
+    "Okay. Let me check. One sec. Let me check your notes.",
+    // Earlier accept rows: other assent, hang on or tight, will do,
+    // double-check, other write verbs, open or read without a lead or with a
+    // container it does not take, find, review, scan, go through, work on,
+    // handle, let's, a date, first and then are not listed.
+    "Got it. Let me check.",
+    "Okay! Checking now.",
+    "Good question! Let me check.",
+    "Hang on, let me check.",
+    "Let me double-check your calendar.",
+    "Let me double check your email quickly.",
+    "Okay, I'll check your calendar first, then your notes.",
+    "Let me pull up your agenda for today.",
+    "Sure thing! Pulling up your schedule.",
+    "Alright, let me look at your reminders.",
+    "Ok, checking your inbox now.",
+    "No problem, I'll draft that for you.",
+    "Let's check your schedule for this week.",
+    "I'll go through your emails real quick.",
+    "I will review your tasks for tomorrow.",
+    "Hang tight, I'm pulling that up.",
+    "Just a sec, scanning your messages.",
+    "Will do. Let me set up a reminder.",
+    "On it. Drafting a note now.",
+    "Let me find a time for you.",
+    "Finding a slot for this week.",
+    "Reading your texts now.",
+    "Saving that now.",
+    "Let me write a draft for you.",
+    "Let me work on that.",
+    "Getting started on it now.",
+    "I'll handle it.",
+    "Let me open your photos.",
+    "Checking the weather for today.",
+    "Got it! I'll check your todos first, then your calendar.",
+    "Good question. Let me review your workflows.",
+    "Okay. Let me check your account. One sec.",
+  ])("drops natural wording outside the closed grammar: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 });
 

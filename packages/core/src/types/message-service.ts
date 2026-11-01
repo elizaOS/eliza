@@ -69,6 +69,16 @@ export interface MessageProcessingOptions {
 	/** Transient progress from existing inference; never a persisted or final reply. */
 	onPlanningAcknowledgment?: (text: string) => void | Promise<void>;
 	/**
+	 * Transient, content-free status for each activity the turn starts, in
+	 * order. The label comes from the action's registered category, never its
+	 * arguments or results, and owner-exclusive turns publish it only to a
+	 * revalidated audience. Never reply text, history or a delivery receipt.
+	 */
+	onActivityStatus?: (activity: {
+		actionName: string;
+		label: string;
+	}) => void | Promise<void>;
+	/**
 	 * Called at most once when Stage 1 commits the turn to a response; never
 	 * for IGNORE/STOP or gated turns. Presence only: it carries no content and
 	 * persists nothing. Hosts may start a typing indicator.

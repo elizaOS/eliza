@@ -463,21 +463,20 @@ jobs:
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
 
-      - name: Verify reminder create contract fixtures
+      - name: Select reminder fixture regressions
+        id: reminder_fixture_scope
         if: >-
           !cancelled() &&
-          steps.notes_owning_build.outcome == 'success' &&
           steps.affected.outputs.source == 'true'
-        timeout-minutes: 5
         working-directory: plugins/plugin-personal-assistant
         env:
           MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
           HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
-          NODE_OPTIONS: "--max-old-space-size=2048"
-          DEBUG: "vite:resolve*"
         run: |
           set -euo pipefail
           fixture_diff_status=0
+          # UI public subpaths are imported by the owning runtime fixture; include
+          # their resolution inputs so an alias or export change reruns the suite.
           git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
             src/actions/lib/reminder-create-contract.test.ts \
             src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts \
@@ -487,8 +486,11 @@ jobs:
             vitest.config.ts \
             vitest.src-integration.config.ts \
             test/setup.ts \
+            test/helpers/runtime.ts \
             src/actions/lib/task-create-plan-parameter.ts \
             src/actions/life.ts \
+            src/startup-work.ts \
+            src/lifeops \
             ../../packages/scripts/run-vitest.ts \
             ../../packages/scripts/vitest \
             ../../packages/ui/package.json \
@@ -496,63 +498,47 @@ jobs:
             ../../packages/ui/src/view-primitives.ts \
             ../../.github/workflows/pr-validation.yml || fixture_diff_status=$?
           if [ "$fixture_diff_status" -eq 0 ]; then
-            echo "No reminder fixture or owning-resolution inputs changed."
-            exit 0
-          fi
-          if [ "$fixture_diff_status" -ne 1 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$fixture_diff_status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
             exit "$fixture_diff_status"
           fi
-          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts \
-            src/actions/lib/reminder-create-contract.test.ts \
-            --maxWorkers=1 --no-file-parallelism \
-            --execArgv=--max-old-space-size=2048
+
+      - name: Verify reminder create contract fixtures
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.reminder_fixture_scope.outputs.run == 'true'
+        timeout-minutes: 5
+        working-directory: plugins/plugin-personal-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+          DEBUG: "vite:resolve*"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/actions/lib/reminder-create-contract.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
 
       - name: Verify reminder lifecycle fixtures through the owning config
         if: >-
           !cancelled() &&
           steps.notes_owning_build.outcome == 'success' &&
-          steps.affected.outputs.source == 'true'
+          steps.reminder_fixture_scope.outputs.run == 'true'
         timeout-minutes: 10
         working-directory: plugins/plugin-personal-assistant
         env:
-          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
-          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
           NODE_OPTIONS: "--max-old-space-size=2048"
           DEBUG: "vite:resolve*"
-        run: |
-          set -euo pipefail
-          fixture_diff_status=0
-          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
-            src/actions/lib/reminder-create-contract.test.ts \
-            src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts \
-            src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts \
-            src/lifeops/reminder-wake.pglite.integration.test.ts \
-            test/life-action-effect-receipts.integration.test.ts \
-            vitest.config.ts \
-            vitest.src-integration.config.ts \
-            test/setup.ts \
-            src/actions/lib/task-create-plan-parameter.ts \
-            src/actions/life.ts \
-            ../../packages/scripts/run-vitest.ts \
-            ../../packages/scripts/vitest \
-            ../../packages/ui/package.json \
-            ../../packages/ui/src/styles/mobile-workspaces.css \
-            ../../packages/ui/src/view-primitives.ts \
-            ../../.github/workflows/pr-validation.yml || fixture_diff_status=$?
-          if [ "$fixture_diff_status" -eq 0 ]; then
-            echo "No reminder fixture or owning-resolution inputs changed."
-            exit 0
-          fi
-          if [ "$fixture_diff_status" -ne 1 ]; then
-            exit "$fixture_diff_status"
-          fi
-          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts \
-            src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts \
-            src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts \
-            src/lifeops/reminder-wake.pglite.integration.test.ts \
-            test/life-action-effect-receipts.integration.test.ts \
-            --maxWorkers=1 --no-file-parallelism \
-            --execArgv=--max-old-space-size=2048
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts
+          src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts
+          src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts
+          src/lifeops/reminder-wake.pglite.integration.test.ts
+          test/life-action-effect-receipts.integration.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
 
       - name: Select website open owning regressions
         id: website_owning_scope
@@ -815,7 +801,8 @@ jobs:
           status=0
           git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
             packages/core packages/contracts packages/host \
-            plugins/plugin-notes plugins/plugin-assistant plugins/plugin-calendar || status=$?
+            plugins/plugin-notes plugins/plugin-assistant plugins/plugin-calendar \
+            packages/testing/scenario-runner/test/scenarios/deterministic-notes-actions.scenario.ts || status=$?
           if [ "$status" -eq 0 ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
           elif [ "$status" -eq 1 ]; then
@@ -853,6 +840,7 @@ jobs:
           --filter=@elizaos/plugin-calendar... --filter=@elizaos/agent...
           --filter=@elizaos/plugin-assistant... --filter=@elizaos/host...
           --filter=@elizaos/core... --filter=@elizaos/plugin-notes...
+          --filter=@elizaos/plugin-personal-assistant...
           --concurrency=4 --output-logs=errors-only
       - name: Run full Core owning suite
         if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'core-notes'
@@ -866,6 +854,18 @@ jobs:
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-notes test 2>&1 | tee "$RUNNER_TEMP/notes-owning.log"
+      - name: Run deterministic Notes action scenario
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'core-notes'
+        timeout-minutes: 5
+        env:
+          SCENARIO_USE_DETERMINISTIC_MODEL: "1"
+        run: >-
+          bun --conditions eliza-source --tsconfig-override tsconfig.json
+          packages/testing/scenario-runner/src/cli.ts run
+          packages/testing/scenario-runner/test/scenarios
+          --scenario deterministic-notes-actions --lane pr-deterministic
+          --report-dir test-results/scenario-runner/notes-pr
+          --run-dir test-results/scenario-runner/notes-pr
       - name: Run full Assistant owning suites
         if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'assistant'
         timeout-minutes: 10
