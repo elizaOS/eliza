@@ -1,5 +1,6 @@
 /** Translates market data queries into replayable provider requests. */
 import { logger } from "../../utils/logger";
+import { canonicalizeAddressParams } from "./address-validation";
 import { getProxyConfig } from "./config";
 import { retryFetch } from "./fetch";
 import { getServiceMethodCost } from "./pricing";
@@ -122,7 +123,8 @@ export async function executeMarketDataProviderRequest({
   }
 
   const queryParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
+  const canonicalParams = canonicalizeAddressParams(params);
+  for (const [key, value] of Object.entries(canonicalParams)) {
     queryParams.append(key, String(value));
   }
 
