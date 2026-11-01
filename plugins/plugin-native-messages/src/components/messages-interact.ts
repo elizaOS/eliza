@@ -5,7 +5,8 @@
  */
 
 import { System } from "@elizaos/capacitor-system";
-import { sendFromMessages } from "../telephony-profile.ts";
+import { smsReceiptLabel } from "@elizaos/contracts/native-telephony-session";
+import { sendFromMessages, smsSendDisposition } from "../telephony-profile.ts";
 import type { MessagesViewCapabilityId } from "../view-capabilities.ts";
 import { loadMessagesState } from "./messages-view-helpers.ts";
 
@@ -57,12 +58,16 @@ const MESSAGES_CAPABILITY_HANDLERS: Record<
     if (outcome.path === "direct")
       return { sent: true, address, bodyLength: body.length };
     // Behind the telephony profile the user reviewed the exact text natively;
-    // report the recorded outcome, never a guess.
-    const sent = ["submitted", "sent", "delivered"].includes(
-      outcome.result.status,
-    );
+    // report the recorded outcome, never a guess. A `failed` or `unknown`
+    // record was written after the platform send started, so the recipient
+    // may already have the text: say so, instead of a plain "not sent" that
+    // invites a second send.
+    const disposition = smsSendDisposition(outcome.result.status);
     return {
-      sent,
+      sent: disposition === "sent",
+      disposition,
+      resendSafe: disposition === "not_sent",
+      receipt: smsReceiptLabel(outcome.result.status),
       reviewed: true,
       status: outcome.result.status,
       operationId: outcome.result.operationId,
