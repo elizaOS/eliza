@@ -801,7 +801,8 @@ jobs:
           status=0
           git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
             packages/core packages/contracts packages/host \
-            plugins/plugin-notes plugins/plugin-assistant plugins/plugin-calendar || status=$?
+            plugins/plugin-notes plugins/plugin-assistant plugins/plugin-calendar \
+            packages/testing/scenario-runner/test/scenarios/deterministic-notes-actions.scenario.ts || status=$?
           if [ "$status" -eq 0 ]; then
             echo "run=false" >> "$GITHUB_OUTPUT"
           elif [ "$status" -eq 1 ]; then
@@ -852,6 +853,18 @@ jobs:
         run: |
           set -euo pipefail
           bun run --cwd plugins/plugin-notes test 2>&1 | tee "$RUNNER_TEMP/notes-owning.log"
+      - name: Run deterministic Notes action scenario
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'core-notes'
+        timeout-minutes: 5
+        env:
+          SCENARIO_USE_DETERMINISTIC_MODEL: "1"
+        run: >-
+          bun --conditions eliza-source --tsconfig-override tsconfig.json
+          packages/testing/scenario-runner/src/cli.ts run
+          packages/testing/scenario-runner/test/scenarios
+          --scenario deterministic-notes-actions --lane pr-deterministic
+          --report-dir test-results/scenario-runner/notes-pr
+          --run-dir test-results/scenario-runner/notes-pr
       - name: Run full Assistant owning suites
         if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'assistant'
         timeout-minutes: 10
