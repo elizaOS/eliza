@@ -29,7 +29,7 @@ export interface AccountDeletionForeignKeyDescriptor {
  * `\n` (see `serializeDescriptor`). Recompute when the FK inventory changes.
  */
 export const ACCOUNT_DELETION_FOREIGN_KEY_SNAPSHOT_SHA256 =
-  "643cdecde85e4c242873470ae9fc27a10ed8890a618f8c07a64fe2c1c799c4f3";
+  "3f874154ac29403f5a3dd626eeaf29c80689b290fdeb8cca1d8409997d23a14f";
 
 function serializeDescriptor(descriptor: AccountDeletionForeignKeyDescriptor): string {
   return [
@@ -237,6 +237,10 @@ export function classifyAccountDeletionForeignKey(
   descriptor: AccountDeletionForeignKeyDescriptor,
 ): AccountDeletionForeignKeyAction {
   const { sourceTable, targetTable, onDelete } = descriptor;
+
+  if (sourceTable === "apps" && targetTable === "users" && onDelete === "set null") {
+    return "anonymize_retained_record";
+  }
 
   if (RETAINED_AUDIT_TABLES.has(sourceTable) && onDelete !== "cascade") {
     return "anonymize_retained_record";

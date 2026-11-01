@@ -190,11 +190,18 @@ beforeAll(async () => {
       await installOrganizationPolicyTestSchema((statement) =>
         getPgliteClientForTests().exec(statement),
       );
-      const migration = await Bun.file(
-        new URL("../migrations/0381_app_billing_registration.sql", import.meta.url),
-      ).text();
-      for (const statement of migration.split("--> statement-breakpoint")) {
-        if (statement.trim()) await getPgliteClientForTests().exec(statement);
+      // Replay billing's historical schema before the creator-audit cutover.
+      await getPgliteClientForTests().exec(
+        "DROP INDEX apps_billing_owner_idx; CREATE UNIQUE INDEX apps_billing_owner_idx ON apps(id, organization_id, created_by_user_id)",
+      );
+      for (const file of [
+        "0381_app_billing_registration.sql",
+        "0550_app_creator_audit_reference.sql",
+      ]) {
+        const migration = await Bun.file(new URL(`../migrations/${file}`, import.meta.url)).text();
+        for (const statement of migration.split("--> statement-breakpoint")) {
+          if (statement.trim()) await getPgliteClientForTests().exec(statement);
+        }
       }
     } else {
       await dbWrite.execute(sql`

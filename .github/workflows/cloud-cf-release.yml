@@ -1265,11 +1265,12 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL || secrets.RAILWAY_DATABASE_URL || secrets.NEON_DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts
+          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --all-clients
 
       - name: Verify Steward provider discovery before cutover
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
@@ -1807,10 +1808,11 @@ jobs:
         env:
           ELIZA_MOBILE_APP_AUTH_ENABLED: ${{ contains(fromJSON('["1","true","TRUE","True","yes","YES","Yes","on","ON","On"]'), vars.ELIZA_MOBILE_APP_AUTH_ENABLED) && 'true' || 'false' }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ steps.env.outputs.deploy_environment }}
         run: |
           set -euo pipefail
-          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --skip-database --verify-live
+          node packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts --all-clients --skip-database --verify-live
 
       - name: Canary authenticated staging realtime and rollback on failure
         if: steps.cf.outputs.configured == 'true' && steps.freshness.outputs.should_deploy == 'true' && steps.env.outputs.deploy_environment == 'staging'
