@@ -146,7 +146,9 @@ function broker(input: Record<string, string>, listed = CALENDARS) {
 }
 
 function service(
-  respond: (input: Record<string, string>) => unknown = broker,
+  respond: (input: Record<string, string>, signal: AbortSignal) => unknown = (
+    input,
+  ) => broker(input),
 ): CalendarService {
   vi.stubEnv(
     "ELIZA_MANAGED_CALENDAR_READ_BROKER",
@@ -154,7 +156,11 @@ function service(
   );
   vi.stubEnv("ELIZA_API_TOKEN", "a".repeat(64));
   vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
-    const reply = await respond(JSON.parse(String(init.body)).calendar);
+    if (!init.signal) throw new Error("Expected a bounded broker read");
+    const reply = await respond(
+      JSON.parse(String(init.body)).calendar,
+      init.signal,
+    );
     return reply instanceof Response ? reply : Response.json(reply);
   });
   const calendar = new CalendarService(runtime);
@@ -288,7 +294,9 @@ describe("managed owner calendars in the aggregate feed", {
 describe("managed owner feeds in one aggregate read", {
   timeout: 30_000,
 }, () => {
-  const managedOrder = (feed: { sources: { key: Record<string, string> }[] }) =>
+  const managedOrder = (feed: {
+    sources: { key: { grantId: string; calendarId: string } }[];
+  }) =>
     feed.sources
       .filter((source) => source.key.grantId === GRANT)
       .map((source) => source.key.calendarId);
@@ -360,6 +368,103 @@ describe("managed owner feeds in one aggregate read", {
             (context as { source: { calendarId: string } }).source.calendarId,
         ),
     ).toEqual(["team@group.calendar.google.com"]);
+    reported.mockRestore();
+  });
+
+  it("shares the four-read bound across overlapping aggregate reads", async () => {
+    const listed = Array.from({ length: 6 }, (_, index) => ({
+      calendarId: `team-${index}@group.calendar.google.com`,
+      summary: `Team ${index}`,
+    }));
+    shown = new Set(listed.map((entry) => entry.calendarId));
+    const nextDay = {
+      timeMin: "2026-10-31T00:00:00.000Z",
+      timeMax: "2026-11-01T00:00:00.000Z",
+      timeZone: "UTC",
+    };
+    const started: [string, string][] = [];
+    let inFlight = 0;
+    let peak = 0;
+    const calendar = service(async (input) => {
+      if (input.operation !== "feed") return broker(input, listed);
+      started.push([input.timeMin, input.calendarId]);
+      peak = Math.max(peak, ++inFlight);
+      await new Promise((done) => setTimeout(done, 20));
+      inFlight--;
+      return broker(input, listed);
+    });
+
+    const [first, second] = await Promise.all([
+      calendar.getCalendarFeed(INTERNAL_URL, WINDOW),
+      calendar.getCalendarFeed(INTERNAL_URL, nextDay),
+    ]);
+
+    // A bound per aggregate read lets these two requests reach eight.
+    expect(peak).toBe(4);
+    for (const timeMin of [WINDOW.timeMin, nextDay.timeMin]) {
+      expect(
+        started.filter(([day]) => day === timeMin).map(([, id]) => id),
+      ).toEqual(listed.map((entry) => entry.calendarId));
+    }
+    for (const feed of [first, second]) {
+      expect(feed.state).toBe("complete");
+      expect(managedOrder(feed)).toEqual(
+        listed.map((entry) => entry.calendarId),
+      );
+    }
+  });
+
+  it("stops waiting and in-flight managed reads when another source branch throws", async () => {
+    const listed = Array.from({ length: 6 }, (_, index) => ({
+      calendarId: `team-${index}@group.calendar.google.com`,
+      summary: `Team ${index}`,
+    }));
+    shown = new Set(listed.map((entry) => entry.calendarId));
+    const reported = vi.spyOn(runtime, "reportError");
+    const started: string[] = [];
+    const aborted: string[] = [];
+    let fourStarted: () => void = () => {};
+    const bounded = new Promise<void>((done) => {
+      fourStarted = done;
+    });
+    const calendar = service(async (input, signal) => {
+      if (input.operation !== "feed") return broker(input, listed);
+      started.push(input.calendarId);
+      if (started.length === 4) fourStarted();
+      // Like fetch: an aborted read rejects; an unaborted one would finish late.
+      await new Promise((done, fail) => {
+        const late = setTimeout(done, 2_000);
+        signal.addEventListener("abort", () => {
+          clearTimeout(late);
+          aborted.push(input.calendarId);
+          fail(signal.reason);
+        });
+      });
+      return broker(input, listed);
+    });
+    // The built-in calendar is consumed before the managed ones; it fails
+    // while four managed reads are in flight and two wait for a turn.
+    vi.spyOn(
+      calendar as unknown as { readElizaCalendarFeed(): Promise<unknown> },
+      "readElizaCalendarFeed",
+    ).mockImplementationOnce(async () => {
+      await bounded;
+      throw new Error("local calendar read failed");
+    });
+
+    await expect(
+      calendar.getCalendarFeed(INTERNAL_URL, WINDOW),
+    ).rejects.toThrow("local calendar read failed");
+    await new Promise((done) => setTimeout(done, 50));
+
+    const firstFour = listed.slice(0, 4).map((entry) => entry.calendarId);
+    expect(started).toEqual(firstFour);
+    expect(aborted.sort()).toEqual([...firstFour].sort());
+    expect(
+      reported.mock.calls.filter(
+        ([scope]) => scope === "calendar:feed-managed-source",
+      ),
+    ).toEqual([]);
     reported.mockRestore();
   });
 });

@@ -60,6 +60,7 @@ import {
   ElizaError,
   type IAgentRuntime,
   logger,
+  Semaphore,
   Service,
   SsrfBlockedError,
   stableStringify,
@@ -274,7 +275,8 @@ type GoogleCalendarSyncBatch = {
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
-/** Managed owner feeds read at once. Each one verifies the owner over the private broker. */
+/** Managed owner feeds one service reads at once, across every overlapping
+ * aggregate read. Each one verifies the owner over the private broker. */
 const MANAGED_CALENDAR_FEED_CONCURRENCY = 4;
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
@@ -1399,6 +1401,9 @@ export class CalendarService extends Service {
   private readonly managedCalendar = createManagedCalendarRead(
     process.env,
     fetch,
+  );
+  private readonly managedFeedReads = new Semaphore(
+    MANAGED_CALENDAR_FEED_CONCURRENCY,
   );
   private gate: CalendarHostGate;
   private microsoftPort: MicrosoftGraphCalendarPort;
@@ -5723,19 +5728,27 @@ export class CalendarService extends Service {
         };
       }
     }
-    return {
-      calendars: listedCalendars,
-      feed: await this.aggregateCalendarFeedsAcrossCalendars(
-        requestUrl,
-        calendars,
-        timeMin,
-        timeMax,
-        timeZone,
-        forceSync,
-        now,
-        discoveryFailures,
-      ),
-    };
+    // Managed reads end with this request: when a source branch throws, the
+    // reads still waiting or in flight stop.
+    const reads = new AbortController();
+    try {
+      return {
+        calendars: listedCalendars,
+        feed: await this.aggregateCalendarFeedsAcrossCalendars(
+          requestUrl,
+          calendars,
+          timeMin,
+          timeMax,
+          timeZone,
+          forceSync,
+          now,
+          discoveryFailures,
+          reads.signal,
+        ),
+      };
+    } finally {
+      reads.abort();
+    }
   }
 
   private async aggregateCalendarFeedsAcrossCalendars(
@@ -5745,26 +5758,26 @@ export class CalendarService extends Service {
     timeMax: string,
     timeZone: string,
     forceSync: boolean,
-    now = new Date(),
-    discoveryFailures: readonly LifeOpsCalendarSourceHealth[] = [],
+    now: Date,
+    discoveryFailures: readonly LifeOpsCalendarSourceHealth[],
+    signal: AbortSignal,
   ): Promise<LifeOpsCalendarFeed> {
     const sources: (AggregatedCalendarFeedSource & {
       calendar: LifeOpsCalendarSummary;
     })[] = [];
-    // Managed feeds start now, a few at a time in calendar order, and are
-    // consumed in calendar order below. Each settles alone, so a failed source
-    // still degrades and reports on its own.
+    // Managed feeds start now under the service's shared bound, admitted in
+    // calendar order, and are consumed in calendar order below. Each settles
+    // alone, so a failed source still degrades and reports on its own. A read
+    // whose request ended while it waited gives its turn back unread.
     const managed = this.managedCalendar;
-    let admitted = 0;
-    const waiting: (() => void)[] = [];
     const managedFeeds = calendars.map((calendar) =>
       managed?.owns(calendar)
         ? (async (): Promise<
             { feed: LifeOpsCalendarFeed } | { error: unknown }
           > => {
-            if (admitted < MANAGED_CALENDAR_FEED_CONCURRENCY) admitted++;
-            else await new Promise<void>((admit) => waiting.push(admit));
+            await this.managedFeedReads.acquire();
             try {
+              signal.throwIfAborted();
               return {
                 feed: await managed.feed(
                   calendar,
@@ -5772,14 +5785,13 @@ export class CalendarService extends Service {
                   timeMax,
                   timeZone,
                   this.agentId(),
+                  signal,
                 ),
               };
             } catch (error) {
               return { error };
             } finally {
-              const next = waiting.shift();
-              if (next) next();
-              else admitted--;
+              this.managedFeedReads.release();
             }
           })()
         : undefined,
