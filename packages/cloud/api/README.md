@@ -79,13 +79,19 @@ and `/session/:sessionId/revoke` under that prefix. Enable only after qualifying
 `VOICE_SPEECH_RELAY_ENABLED=true` and the `SPEECH_RELAY_SESSIONS` binding. This
 does not move an agent, its model calls, tools, or history to Cloud. The scoped,
 single-use capability expires 60 seconds after mint. Clients must close/revoke
-it when the account changes and renew it explicitly after expiry.
+it when the account changes and renew it explicitly after expiry. Remote account
+or API-key revocation does not push-close an active lease. The explicit session
+revoke route, socket close, and expiry stop it. Do not enable this scope where
+instant remote revocation is required without a revocation push subscription.
 
 One Durable Object owns each session. It admits the server-enforced budget at
 bootstrap: 60 seconds of 16 kHz mono PCM16 input and 4096 TTS characters. Audio
 frames and TTS phrases do not query the database or repeat account/credit
 admission. Existing durable inference leases retain uncertain provider costs
-after interruption or a crash. `CARTESIA_STT_USD_PER_CREDIT` supplies the account
+after interruption or a crash. Both STT and TTS reservations are marked dispatched
+at bootstrap before any provider opens. A crash can therefore retain the full
+reservation, including unused TTS; confirmed close reconciles actual usage.
+`CARTESIA_STT_USD_PER_CREDIT` supplies the account
 rate; streaming Ink-2 costs three credits per input second and Sonic one credit
 per character. Bootstrap and final accounting can access the primary store.
 Other inference and legacy batch speech routes retain their own admission paths.
