@@ -1,5 +1,9 @@
 /** Protected provider proof. No user text, token, or credential is logged. */
 import { test } from "bun:test";
+import {
+  reportedSpeechRelayTest,
+  speechRelayRefusal,
+} from "../test/speech-relay-live-report";
 
 const environment = process.env.ELIZA_VOICE_CLOUD_ENVIRONMENT;
 const target =
@@ -48,7 +52,7 @@ async function bounded<T>(
 
 maybe(
   "deployed speech relays provider PCM, final Ink text, and owner revocation",
-  async () => {
+  reportedSpeechRelayTest(async (stage) => {
     check(target, "SPEECH_CONFIGURATION_INVALID");
     const base = process.env.ELIZA_VOICE_CLOUD_API_URL;
     const key = process.env.ELIZAOS_CLOUD_API_KEY;
@@ -80,13 +84,16 @@ maybe(
         throw new Error("SPEECH_HTTP_JSON_INVALID");
       }
     }
+    stage("health");
     const health = await json("/api/health");
     check(
       health.commit === commit && health.environment === environment,
       "SPEECH_RELEASE_MISMATCH",
     );
     const started = performance.now();
+    stage("consent");
     const consent = await json("/api/v1/voice/speech/consent", {});
+    stage("session");
     const minted = await json("/api/v1/voice/speech/session", {
       consentNonce: consent.consentNonce,
     });
@@ -102,6 +109,7 @@ maybe(
         url.pathname === "/api/v1/voice/speech/ws",
       "SPEECH_SOCKET_ORIGIN_INVALID",
     );
+    stage("websocket");
     const socket = new WebSocket(url);
     socket.binaryType = "arraybuffer";
     const ready = deferred<void>(),
@@ -122,11 +130,16 @@ maybe(
       complete.reject(error);
       final.reject(error);
     };
-    socket.addEventListener("open", () =>
+    socket.addEventListener("open", () => {
+      stage("ready");
       socket.send(
-        JSON.stringify({ t: "hello", token: minted.token, errorReasons: true }),
-      ),
-    );
+        JSON.stringify({
+          t: "hello",
+          token: minted.token,
+          errorReasons: true,
+        }),
+      );
+    });
     socket.addEventListener("error", () => fail("SPEECH_SOCKET_FAILED"));
     socket.addEventListener("close", () => {
       closed.resolve();
@@ -159,7 +172,10 @@ maybe(
         }
         check(typeof event.data === "string", "SPEECH_FRAME_INVALID");
         const message = JSON.parse(event.data) as Record<string, any>;
-        if (message.t === "error") throw new Error("SPEECH_PROVIDER_REFUSED");
+        if (message.t === "error") {
+          fail(speechRelayRefusal(message.code, message.reason));
+          return;
+        }
         if (message.t === "ready") {
           readyAt = performance.now();
           ready.resolve();
@@ -181,6 +197,7 @@ maybe(
     });
     try {
       await bounded(ready.promise, "SPEECH_READY_TIMEOUT");
+      stage("tts");
       socket.send(
         JSON.stringify({
           t: "tts",
@@ -197,6 +214,7 @@ maybe(
       );
       // Feed the generated PCM at microphone speed, then enough silence for Ink's
       // bounded final-turn timer. This proves the two provider streams, not Android playback.
+      stage("stt");
       for (const chunk of [...chunks, new Uint8Array(64_000)]) {
         for (let offset = 0; offset < chunk.length; offset += 1024) {
           const frame = chunk.slice(offset, offset + 1024);
@@ -207,6 +225,7 @@ maybe(
         }
       }
       await bounded(final.promise, "SPEECH_STT_FINAL_TIMEOUT", 5000);
+      stage("revocation");
       const revokeAt = performance.now();
       revoked = true;
       await json(`/api/v1/voice/speech/session/${minted.sessionId}/revoke`, {});
@@ -236,6 +255,6 @@ maybe(
       }
       socket.close();
     }
-  },
+  }),
   60_000,
 );
