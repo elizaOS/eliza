@@ -2060,6 +2060,15 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "One sec while I pull up your calendar.",
     "Give me a moment to look through your notes.",
     "I'm checking your calendar now.",
+    // A name after a preposition or before a noun, a question frame, and an
+    // abbreviated link stay progress.
+    "Let me check with Sarah.",
+    "Let me move your appointment to Friday.",
+    "On it! Let me search your notes for Mrs. Lee's address.",
+    "Let me check whether there are any meetings tomorrow.",
+    "Let me see what's on your calendar today.",
+    "Let me get back to you on that.",
+    "Let me check your calendar vs. your notes.",
   ])("admits a forward-looking acknowledgement: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(true);
     expect(
@@ -2164,6 +2173,131 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     // A bare yes answers rather than acknowledges.
     "Yes, let me check.",
   ])("drops a claim appended to a progress lead: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // Every word after the progress head is read from closed lists, so an
+  // acknowledgement can name what it will look at but never describe it. The
+  // independent probe's accepted claims, then further variants.
+  it.each([
+    // A run-on claim after the head, with no punctuation, an emoji, bullet or slash.
+    "checking your calendar yep all good",
+    "let me check and yep good to go",
+    "Let me check and yep you can make it",
+    "Checking now and yes that works",
+    "Checking and sure enough a conflict on Thursday",
+    "Let me check your flight lands shortly",
+    "checking your calendar your appointment starts shortly",
+    "Checking your calendar 📅 your appointment starts shortly",
+    "Checking your calendar • packed afternoon",
+    "Checking your calendar / the dentist pushed your cleaning",
+    "let me check your calendar your dentist pushed your cleaning to friday",
+    // Second-person and contraction variants, and a lower-case name.
+    "Checking your calendar youre slammed",
+    "Checking your calendar youʼre slammed",
+    "Checking your calendar you‘re wide open",
+    "Checking the calendar its packed",
+    "checking theres a conflict at lunch",
+    "Checking your calendar plus sarahs out today",
+    "Checking your calendar you seem swamped",
+    "Checking your calendar you need to leave shortly",
+    "Checking your calendar ur slammed",
+    // "Looking" read as perception rather than progress.
+    "Looking good!",
+    "Looking good, let me pull up the rest of your notes.",
+    "Looking rough today. Let me check your calendar.",
+    "Looking like a full day, let me check your calendar.",
+    "Looking pretty grim on Thursday.",
+    "Looking like you can make it.",
+    // A single word after a link (absence, result or completion).
+    "Checking your calendar and nada",
+    "Checking your notes and zilch",
+    "Checking your calendar and bingo",
+    "Having a look and yikes",
+    "Let me check and yep",
+    "Adding it to your calendar and voila",
+    "Saving that now and boom",
+    "Adding that and sorted",
+    "Updating the invite and fixed",
+    "Moving it now and handled",
+    "Booking it and locked in",
+    "Sending it now and off it goes",
+    "Checking now and correct",
+    // A relative, reduced or subordinate clause carrying a result.
+    "Let me read your notes which mention the dentist.",
+    "Let me open the invite which conflicts with lunch.",
+    "Let me pull up the reminder which fired earlier.",
+    "Let me check with Sarah who said yes.",
+    "Let me send a thank-you to Bob who replied.",
+    "Let me find a new slot since yours conflicts.",
+    "Let me find a new slot since yours clashes with lunch.",
+    "Let me check the meeting that got pushed back.",
+    "Let me check the meeting that starts shortly.",
+    "Let me pull up the meeting that just ended.",
+    "Let me pull up the event Bob declined.",
+    "Let me check the meeting Sarah called off.",
+    "Let me open the email that just came in.",
+    "Let me read you Sarah's reply saying she can't make it.",
+    "Let me check the call you missed from Sarah.",
+    "Let me check your calendar before the dentist bumps you again.",
+    "Checking your calendar as always chaotic",
+    "Checking your calendar but wow what a day",
+    "Let me check then reschedule the conflict on Friday.",
+    // A result hidden inside an embedded question.
+    "Let me see what else is on your busy calendar.",
+    "Let me see where your overdue tasks stand.",
+    "Let me check how late your flight is running.",
+    "Let me check when the cancelled meeting was.",
+    "Let me look at what got moved on your calendar.",
+    "Let me check your calendar given how packed it is.",
+    "Checking your calendar when your appointment starts soon",
+    "Let me see how your already booked flight looks.",
+    // An adjective describing the data.
+    "Let me pull up your packed schedule.",
+    "Let me look at your overloaded calendar.",
+    "Pulling up your hectic Thursday.",
+    "Let me move your conflicting dentist appointment.",
+    "Let me add this to your overflowing calendar.",
+    "Let me check your blank calendar for Friday.",
+    "Let me look at your wide-open afternoon.",
+    "Let me check your unscheduled afternoon.",
+    "Let me check your past-due tasks.",
+    "Let me look at your expired reminders.",
+    "Let me go through your messy notes.",
+    "Pulling up your rough-looking week.",
+    "Putting it mildly a packed day ahead",
+    "Let me check your zero-meeting afternoon.",
+    // A clock time, duration, count, quantity or ordinal.
+    "Checking your meeting at one.",
+    "Checking your flight at one am",
+    "Let me check your meeting at one fifteen.",
+    "Let me check your meeting at a quarter to one.",
+    "Checking your meeting in fifteen minutes.",
+    "Let me check the meeting starting in a few minutes.",
+    "Let me check your ninety-minute meeting.",
+    "Let me go through your dozens of notes.",
+    "Let me dig through your hundreds of notes.",
+    "Let me check your only meeting today.",
+    "Let me check your single event tomorrow.",
+    "Let me check your fifteen reminders.",
+    "Pulling up your sixteen unread emails.",
+    "Let me go through your handful of notes.",
+    "Let me pull up your couple of meetings tomorrow.",
+    "Let me check your third meeting today.",
+    // A name, count or result noun read as an object.
+    "Let me check Sarahs out today.",
+    "Let me check Sarahs in today.",
+    "Checking your calendar and NADA",
+    "Checking your calendar and Nada",
+    "Let me check your calendar YEP all good",
+    "Let me check both meetings today.",
+    "Let me read Sarah's reply.",
+    "Let me check if there's a conflict.",
+    "Let me check whether you have any busy days.",
+    "Let me see what's on your packed calendar.",
+    "Checking your calendar, whats up.",
+    "Let me check your seventeenth reminder.",
+  ])("drops a claim read past a progress head: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 });

@@ -313,6 +313,9 @@ describe("awaited owner model acknowledgments", () => {
     "All set.",
     "Nothing on your calendar today.",
     "Checking your calendar, your appointment starts soon.",
+    "Looking good, let me pull up the rest of your notes.",
+    "checking your calendar yep all good",
+    "Checking your calendar and nada",
   ])(
     "keeps a completion or result claim out of early progress: %s",
     async (acknowledgment) => {
