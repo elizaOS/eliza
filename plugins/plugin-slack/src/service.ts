@@ -56,6 +56,7 @@ import {
   summarizeOutboundAttachmentUrl,
   type TargetInfo,
   type UUID,
+  validateUuid,
   type World,
 } from "@elizaos/core";
 import { App, LogLevel } from "@slack/bolt";
@@ -2135,9 +2136,23 @@ export class SlackService extends Service implements ISlackService {
         this.scopedSlackKey("slack-mention", event.item.ts, accountId),
       ),
     ];
-    const candidates = (
+    let candidates = (
       await Promise.all(ids.map((id) => this.runtime.getMemoryById(id)))
     ).filter((memory): memory is Memory => Boolean(memory));
+    if (candidates.length === 0) {
+      // A reply stored once under the message service's response id is
+      // found by the Slack ts it was delivered under.
+      candidates = await this.runtime.getMemories({
+        tableName: "messages",
+        authorEntityIds: [this.runtime.agentId],
+        metadata: {
+          accountId,
+          slackChannelId: event.item.channel,
+          slackMessageTsList: [event.item.ts],
+        },
+        count: 2,
+      });
+    }
     if (candidates.length === 0) return null;
     const rooms = new Set(candidates.map((memory) => memory.roomId));
     if (rooms.size > 1) {
@@ -2159,6 +2174,55 @@ export class SlackService extends Service implements ISlackService {
           memory.entityId === this.runtime.agentId,
       ) ?? candidates[0]
     );
+  }
+
+  /**
+   * Port of plugin-discord's reply merge: the message service and this
+   * delivery write the same reply id concurrently and SQL keeps the first
+   * insert, so read the stored winner and add the delivery facts to it.
+   */
+  private async mergeIntoCanonicalReply(memory: Memory): Promise<Memory> {
+    const id = memory.id as UUID;
+    let existing = await this.runtime.getMemoryById(id);
+    if (!existing) {
+      await this.runtime.createMemory(memory, "messages");
+      existing = await this.runtime.getMemoryById(id);
+    }
+    if (
+      !existing ||
+      existing.agentId !== this.runtime.agentId ||
+      existing.entityId !== this.runtime.agentId ||
+      existing.roomId !== memory.roomId
+    ) {
+      throw new ElizaError("Slack reply memory does not match delivery", {
+        code: "SLACK_REPLY_MEMORY_MISMATCH",
+        context: { memoryId: id, found: Boolean(existing) },
+      });
+    }
+    const merged: Memory = {
+      ...existing,
+      content: {
+        ...existing.content,
+        source: memory.content.source,
+        inReplyTo: memory.content.inReplyTo,
+      },
+      metadata: {
+        ...(existing.metadata ?? {}),
+        ...(memory.metadata ?? {}),
+      } as Memory["metadata"],
+    };
+    const updated = await this.runtime.updateMemory({
+      id,
+      content: merged.content,
+      metadata: merged.metadata,
+    });
+    if (!updated) {
+      throw new ElizaError("Slack reply delivery metadata was not persisted", {
+        code: "SLACK_REPLY_METADATA_NOT_PERSISTED",
+        context: { memoryId: id },
+      });
+    }
+    return merged;
   }
 
   private readSlackThreadTs(memory: Memory): string | undefined {
@@ -2327,6 +2391,28 @@ export class SlackService extends Service implements ISlackService {
           createdAt: this.parseSlackTimestamp(ts),
         }),
       );
+      // One dialogue row per reply, as in plugin-discord: the message service
+      // stores the reply under content.responseId, so a reply delivered into
+      // that same room merges its Slack ts into that row instead of adding a
+      // second row that renders the reply twice in every later prompt. A reply
+      // sent as several Slack messages keeps its text once and lists every ts;
+      // reactions find it through slackMessageTsList.
+      const canonicalReplyId =
+        responseRoom.id === memory.roomId
+          ? (validateUuid(response.responseId) ?? undefined)
+          : undefined;
+      const firstReply = responseMemories[0];
+      if (canonicalReplyId && firstReply) {
+        responseMemories.splice(0, responseMemories.length, {
+          ...firstReply,
+          id: canonicalReplyId,
+          content: { ...firstReply.content, text: responseText },
+          metadata: {
+            ...firstReply.metadata,
+            slackMessageTsList: sent.messages.map(({ ts }) => ts),
+          } as Memory["metadata"],
+        });
+      }
 
       const attachmentFailures = attachmentDelivery?.failures ?? [];
       const firstFileId = attachmentDelivery?.delivered[0]?.fileId;
@@ -2368,7 +2454,12 @@ export class SlackService extends Service implements ISlackService {
         });
       }
 
-      for (const responseMemory of responseMemories) {
+      for (const [index, responseMemory] of responseMemories.entries()) {
+        if (canonicalReplyId && responseMemory.id === canonicalReplyId) {
+          responseMemories[index] =
+            await this.mergeIntoCanonicalReply(responseMemory);
+          continue;
+        }
         await this.runtime.createMemory(responseMemory, "messages");
       }
 
