@@ -6,18 +6,19 @@ import path from "node:path";
 import {
   AgentRuntime,
   createCharacter,
-  executePlannedToolCall,
   type IAgentRuntime,
+  type NotesRequestOperation,
   stringToUuid,
 } from "@elizaos/core";
 import { initializeTestRuntime } from "@elizaos/testing/runtime";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { runPlannerLoop } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
 import {
   evaluatePlannedReplyEgress,
   plannedReplyHasClaimGroundingReceipt,
 } from "../../../plugin-assistant/src/services/message/egress-policy.ts";
 import { notesAction } from "../action.js";
+import { boundNotesRequest } from "./helpers/bound-notes-request.ts";
 import { notesPlugin } from "../plugin.js";
 import { NotesService } from "../service.js";
 import { NotesStore } from "../store.js";
@@ -33,7 +34,12 @@ afterEach(async () => {
   );
 });
 
-async function setup() {
+async function setup(
+  requested: { text: string; operations: readonly NotesRequestOperation[] } = {
+    text: "List my saved notes; do not change anything.",
+    operations: ["list", "get"],
+  },
+) {
   const directory = await mkdtemp(path.join(os.tmpdir(), "notes-read-proof-"));
   directories.push(directory);
   const filePath = path.join(directory, "notes.json");
@@ -58,22 +64,16 @@ async function setup() {
   await runtime.getServiceLoadPromise(NotesService.serviceType);
   const service = runtime.getService<NotesService>(NotesService.serviceType);
   if (!service) throw new Error("Notes service did not start");
+  const request = await boundNotesRequest(runtime, {
+    ...requested,
+    message: {
+      entityId: runtime.agentId,
+      roomId: stringToUuid("read-proof-room"),
+    },
+  });
   const invoke = (params: Record<string, unknown>, owner = true) =>
-    executePlannedToolCall(
-      runtime,
-      {
-        message: {
-          id: stringToUuid("read-proof-message"),
-          entityId: runtime.agentId,
-          roomId: stringToUuid("read-proof-room"),
-          content: { text: "List my saved notes; do not change anything." },
-        },
-        userRoles: owner ? ["OWNER"] : ["GUEST"],
-        activeContexts: ["notes"],
-      },
-      { name: "NOTES", params },
-    );
-  return { runtime, service, filePath, invoke };
+    request.execute({ name: "NOTES", params }, owner ? ["OWNER"] : ["GUEST"]);
+  return { runtime, service, filePath, invoke, request };
 }
 
 test("an empty owner read remains structured and does not license an invented broader claim", async () => {
@@ -165,7 +165,10 @@ test("a filtered miss preserves its scope and persisted notes without granting g
 });
 
 test("the real planner re-reads Notes after a mutation with identical list arguments", async () => {
-  const { invoke } = await setup();
+  const { runtime, invoke, request } = await setup({
+    text: "Read my notes, create Freshness proof with Complete note body., then read all notes again to verify it is present.",
+    operations: ["list", "create"],
+  });
   const plans: Record<string, string>[] = [
     { action: "list" },
     { action: "create", content: "Freshness proof\nComplete note body." },
@@ -175,42 +178,28 @@ test("the real planner re-reads Notes after a mutation with identical list argum
   let planningRounds = 0;
   let evaluations = 0;
   const finalReply = "The new note is present.";
-  const result = await runPlannerLoop({
-    runtime: {
-      useModel: async () => {
-        const params = plans[planningRounds++];
-        if (!params) throw new Error("Unexpected extra planner round");
-        return {
-          text: "",
-          toolCalls: [
-            {
-              id: `notes-freshness-${planningRounds}`,
-              name: "NOTES",
-              arguments: {
-                ...params,
-                eliza_turn_scope:
-                  planningRounds === plans.length
-                    ? "final"
-                    : "more_work_pending",
-              },
-            },
-          ],
-        };
-      },
-    },
-    context: {
-      id: "notes-read-freshness",
-      events: [
+  const model = vi.spyOn(runtime, "useModel").mockImplementation(async () => {
+    const params = plans[planningRounds++];
+    if (!params) throw new Error("Unexpected extra planner round");
+    return {
+      text: "",
+      toolCalls: [
         {
-          id: "request",
-          type: "message",
-          source: "user",
-          createdAt: 1,
-          content:
-            "Read my notes, create Freshness proof with Complete note body., then read all notes again to verify it is present.",
+          id: `notes-freshness-${planningRounds}`,
+          name: "NOTES",
+          arguments: {
+            ...params,
+            eliza_turn_scope:
+              planningRounds === plans.length ? "final" : "more_work_pending",
+          },
         },
       ],
-    },
+    } as never;
+  });
+  const result = await runPlannerLoop({
+    runtime,
+    requestOperationIssuer: request.issuer,
+    context: request.context,
     tools: [{ name: "NOTES", description: "Read and create owner notes." }],
     executeToolCall: async (call) => {
       const result = await invoke(call.params ?? {});
@@ -245,14 +234,23 @@ test("the real planner re-reads Notes after a mutation with identical list argum
   expect(evaluations).toBeGreaterThan(0);
   expect(evaluations).toBeLessThanOrEqual(3);
   expect(result.finalMessage).toBe(finalReply);
+  model.mockRestore();
 });
 
 test("denied reads and mutations cannot supply empty-read authority", async () => {
-  const { invoke } = await setup();
-  for (const result of [
-    await invoke({ action: "list" }, false),
-    await invoke({ action: "create", content: "Keep this note" }),
-  ]) {
+  const { invoke, service } = await setup();
+  const before = service.snapshot();
+  const forced = await invoke({ action: "create", content: "Keep this note" });
+  expect(forced).toMatchObject({
+    success: false,
+    data: {
+      code: "REQUEST_OPERATION_RESTRICTED",
+      executionStatus: "not_started",
+      executed: false,
+    },
+  });
+  expect(service.snapshot()).toEqual(before);
+  for (const result of [await invoke({ action: "list" }, false), forced]) {
     expect(
       plannedReplyHasClaimGroundingReceipt({
         kind: "empty_tracked_state",
@@ -265,9 +263,20 @@ test("denied reads and mutations cannot supply empty-read authority", async () =
 });
 
 test("a later write invalidates earlier empty inventory authority", async () => {
-  const { invoke } = await setup();
+  const { invoke, runtime } = await setup();
   const empty = await invoke({ action: "list" });
-  const created = await invoke({ action: "create", content: "A real note" });
+  const write = await boundNotesRequest(runtime, {
+    text: "Create a new note.",
+    operations: ["create"],
+    message: {
+      entityId: runtime.agentId,
+      roomId: stringToUuid("read-proof-room"),
+    },
+  });
+  const created = await write.execute({
+    name: "NOTES",
+    params: { action: "create", content: "A real note" },
+  });
   expect(created.success).toBe(true);
   expect(
     evaluatePlannedReplyEgress({

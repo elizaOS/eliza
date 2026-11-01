@@ -6,13 +6,17 @@ import path from "node:path";
 import {
   AgentRuntime,
   createCharacter,
-  executePlannedToolCall,
   type IAgentRuntime,
+  type NotesRequestOperation,
   stringToUuid,
 } from "@elizaos/core";
 import { initializeTestRuntime } from "@elizaos/testing/runtime";
 import { afterEach, expect, test } from "vitest";
 import { notesPlugin } from "../plugin.js";
+import {
+  boundNotesRequest,
+  notesFixtureText,
+} from "./helpers/bound-notes-request.ts";
 import { NotesService } from "../service.js";
 import { NotesStore } from "../store.js";
 
@@ -54,21 +58,21 @@ async function setup() {
   await runtime.getServiceLoadPromise(NotesService.serviceType);
   const service = runtime.getService<NotesService>(NotesService.serviceType);
   if (!service) throw new Error("Notes service did not start");
-  const invoke = (name: string, params: Record<string, unknown>) =>
-    executePlannedToolCall(
-      runtime,
-      {
-        message: {
-          id: stringToUuid(`strict-create-${name}`),
-          entityId: runtime.agentId,
-          roomId: stringToUuid("strict-create-room"),
-          content: { text: "Make a note: Buy milk" },
-        },
-        userRoles: ["OWNER"],
-        activeContexts: ["notes"],
+  const invoke = async (
+    operation: NotesRequestOperation,
+    name: string,
+    params: Record<string, unknown>,
+  ) => {
+    const request = await boundNotesRequest(runtime, {
+      text: notesFixtureText[operation],
+      operations: [operation],
+      message: {
+        entityId: runtime.agentId,
+        roomId: stringToUuid("strict-create-room"),
       },
-      { name, params },
-    );
+    });
+    return request.execute({ name, params });
+  };
   const persisted = async () =>
     (
       JSON.parse(await readFile(filePath, "utf8")) as {
@@ -86,7 +90,7 @@ test.each([
   async (name, params) => {
     const { service, invoke, persisted } = await setup();
 
-    const created = await invoke(name, params);
+    const created = await invoke("create", name, params);
 
     expect(created).toMatchObject({
       success: true,
@@ -99,7 +103,7 @@ test.each([
     expect(replay.replayed).toBe(true);
     expect(await persisted()).toEqual([{ title: "Buy milk", body: "" }]);
 
-    const removed = await invoke("NOTES", {
+    const removed = await invoke("delete", "NOTES", {
       action: "delete",
       content: "Buy milk",
     });
@@ -111,7 +115,7 @@ test.each([
 test("a supplied create body still joins its title with one newline", async () => {
   const { invoke, persisted } = await setup();
 
-  const created = await invoke("NOTES_CREATE", {
+  const created = await invoke("create", "NOTES_CREATE", {
     content: "Groceries",
     body: "eggs\nbread",
   });

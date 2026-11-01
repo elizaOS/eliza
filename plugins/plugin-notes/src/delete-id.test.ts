@@ -6,14 +6,14 @@ import {
   type ActionResult,
   actionToJsonSchema,
   buildPlannerToolsFromActions,
-  type HandlerOptions,
   type IAgentRuntime,
-  type Memory,
   promoteSubactionsToActions,
   validateSchema,
+  stringToUuid,
 } from "@elizaos/core";
 import { test } from "vitest";
 import { notesAction } from "./action.js";
+import { boundNotesRequest } from "./__tests__/helpers/bound-notes-request.ts";
 import { NotesService } from "./service.js";
 
 const children = promoteSubactionsToActions(notesAction);
@@ -30,20 +30,23 @@ type Context = {
 
 async function withService(run: (context: Context) => Promise<void>) {
   const directory = mkdtempSync(path.join(tmpdir(), "notes-delete-id-"));
-  const service = new NotesService(undefined, { stateDir: directory });
-  await service.initialize();
+  let service: NotesService;
   const runtime = {
+    agentId: stringToUuid(directory),
+    actions: children,
     getService: (name: string) => (name === "notes" ? service : null),
+    getServiceLoadPromise: async () => null,
   } as unknown as IAgentRuntime;
+  service = new NotesService(runtime, { stateDir: directory });
+  await service.initialize();
   const remove = async (
     parameters: Record<string, unknown>,
   ): Promise<ActionResult> => {
-    const result = await deletion.handler(
-      runtime,
-      { content: { text: "Delete that note." } } as Memory,
-      undefined,
-      { parameters } as HandlerOptions,
-    );
+    const request = await boundNotesRequest(runtime, {
+      text: "Delete the selected saved note.",
+      operations: ["delete"],
+    });
+    const result = await request.handler(deletion, parameters);
     if (!result || typeof result !== "object")
       throw new Error("Missing Notes result");
     return result;
