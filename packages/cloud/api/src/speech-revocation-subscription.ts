@@ -10,19 +10,25 @@ export async function subscribeSpeechRevocation(
 ): Promise<() => void> {
   if (!caller.credential || !env.INFERENCE_ADMISSION_GATES)
     throw Error("Verified speech revocation identity is unavailable");
+  // This bounds the HTTP upgrade only. Aborting its signal after a 101 also
+  // closes the healthy WebSocket and would falsely revoke active speech.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3000);
   const response = await env.INFERENCE_ADMISSION_GATES.getByName(
     caller.user.organization_id,
-  ).fetch("https://inference-admission.internal/speech/subscribe", {
-    headers: {
-      Upgrade: "websocket",
-      "X-Eliza-Speech-Identity": JSON.stringify({
-        organizationId: caller.user.organization_id,
-        credential: caller.credential,
-        expiresAt,
-      }),
-    },
-    signal: AbortSignal.timeout(3000),
-  });
+  )
+    .fetch("https://inference-admission.internal/speech/subscribe", {
+      headers: {
+        Upgrade: "websocket",
+        "X-Eliza-Speech-Identity": JSON.stringify({
+          organizationId: caller.user.organization_id,
+          credential: caller.credential,
+          expiresAt,
+        }),
+      },
+      signal: controller.signal,
+    })
+    .finally(() => clearTimeout(timeout));
   const socket = response.webSocket;
   if (response.status !== 101 || !socket)
     throw Error("Speech revocation subscription was refused");
