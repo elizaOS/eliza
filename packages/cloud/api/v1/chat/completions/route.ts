@@ -103,6 +103,7 @@ import type {
   CreditReconciliationResult,
   CreditReservation,
 } from "@elizaos/cloud-shared/lib/services/credits";
+import { wakeInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
 import {
@@ -1526,7 +1527,10 @@ export async function handleChatCompletionsPOST(
     // overlap it with the independent cache-only preparation below. We still
     // inspect and return this result first, preserving the existing denial
     // precedence without serializing an unrelated Durable Object round trip
-    // ahead of every dependency read.
+    // ahead of every dependency read. The billing gate wakes at the same time
+    // so dispatch does not pay its activation in series after idle.
+    if (options.executionCtx && user.organization_id)
+      wakeInferenceAdmissionGate(user.organization_id, options.executionCtx);
     const orgRateLimitPromise = observeConcurrentPromise(
       user.organization_id && !options.skipOrgRateLimit
         ? enforceOrgRateLimit(user.organization_id, "completions", {
