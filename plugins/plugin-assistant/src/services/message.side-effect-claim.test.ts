@@ -2049,6 +2049,17 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "Let me pull up your calendar and check whether you have any notes.",
     "Let me check your calendar for today and look through your notes.",
     "Let me check Dr. Smith's appointment.",
+    // A coordinator before another progress verb or only a short object, a
+    // wait cue before a lead or "to", and a "while I" clause stay progress.
+    "Let me check your calendar and your notes.",
+    "Let me check your notes as well.",
+    "Let me go ahead and check your calendar.",
+    "Let me check and get back to you.",
+    "Let me check your calendar and then pull up your notes.",
+    "Hang on, let me check.",
+    "One sec while I pull up your calendar.",
+    "Give me a moment to look through your notes.",
+    "I'm checking your calendar now.",
   ])("admits a forward-looking acknowledgement: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(true);
     expect(
@@ -2103,6 +2114,56 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "Got it.",
     "Sure!",
   ])("drops a result, effect or absence claim: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // The whole utterance is validated, not its lead: a claim appended after a
+  // comma, dash, bracket or clause-opening conjunction is its own clause and
+  // is not progress.
+  it.each([
+    // The independent review's counterexamples.
+    "Checking your calendar, your appointment starts soon.",
+    "I'll be honest, your calendar looks busy.",
+    // After a comma, dash or bracket.
+    "Looking now, Bob already replied.",
+    "Let me check, but the flight is delayed.",
+    "Checking now, it looks like a quiet day.",
+    "Let me look, your inbox looks quiet.",
+    "One sec, your flight leaves soon.",
+    "Hang on, the weather looks great.",
+    "Let me take a look, plus Bob wants to reschedule.",
+    "Got it, Bob's running late.",
+    "Let me see, your next call starts soon.",
+    "I'll look into it — your package arrived.",
+    "Let me check, and you're free all afternoon.",
+    "Checking your calendar, looks like a light day.",
+    "Let me check your calendar (Bob replied).",
+    // After a conjunction that opens a new subject.
+    "On it and the meeting moved.",
+    "Let me check your calendar and Bob replied.",
+    "Let me check your calendar and Dana wants to talk.",
+    "Let me check your calendar and the flight landed.",
+    "Pulling up your notes and Dana shared the draft.",
+    "I'll check your calendar but your afternoon looks open.",
+    "Let me check your calendar because your dentist called.",
+    "Checking your calendar while your meeting runs long.",
+    "Let me check your inbox and there's a reply from Bob.",
+    "Let me check your calendar although it looks clear.",
+    "Let me check your calendar since your meeting got pushed.",
+    "Let me check your calendar and your meeting starts soon.",
+    "I'll pull that up while Bob's call runs over.",
+    "Let me check and then the meeting got pushed.",
+    "Let me check your calendar & Bob replied.",
+    "Let me check your calendar which looks open.",
+    // A lead that is not progress.
+    "I'll say this, your week looks packed.",
+    "I'll tell you, the meeting went well.",
+    "I'm afraid the flight is out.",
+    "I think your calendar is open.",
+    "Let me be clear about your calendar.",
+    // A bare yes answers rather than acknowledges.
+    "Yes, let me check.",
+  ])("drops a claim appended to a progress lead: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 });

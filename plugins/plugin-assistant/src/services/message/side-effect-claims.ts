@@ -913,65 +913,162 @@ export function replyClaimsInProgressWork(reply: string): boolean {
 }
 
 // ── Planning acknowledgement shape ──────────────────────────────────────────
-// Spoken before any tool runs, so it may only look forward. English shapes
-// only; any other wording waits for the final reply.
+// Spoken before any tool runs, so the whole utterance may only look forward.
+// English shapes only; any other wording waits for the final reply.
 const ACKNOWLEDGMENT_MAX_LENGTH = 120;
-// A pre-tool acknowledgement has no data yet: no digits or clock times.
+// A pre-tool acknowledgement has no data yet: no digits, clock times or
+// spelled counts ("one sec" stays a wait cue).
 const ACKNOWLEDGMENT_DATA_TOKEN =
-  /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock)\b/iu;
+  /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|hundred|thousand|dozen|(?:half|quarter) past)\b/iu;
 // These periods do not end a clause ("Let me check Dr. Smith's appointment").
-const ACKNOWLEDGMENT_ABBREVIATION =
-  /\b(?:dr|mr|mrs|ms|st|vs|etc|e\.g|i\.e)\./giu;
-const ACKNOWLEDGMENT_CLAUSE_BOUNDARY = /[.!?…:;–—\n]+|\s-\s/u;
+const ACKNOWLEDGMENT_ABBREVIATION = /\b(?:dr|mr|mrs|ms|st|vs|e\.g|i\.e)\./giu;
+const ACKNOWLEDGMENT_PUNCTUATION_BOUNDARY = /[.!?…:;,–—(){}[\]\n]+|\s-\s/u;
+// A coordinator, subordinator or relative pronoun, with any linking words
+// right after it.
+const ACKNOWLEDGMENT_CLAUSE_LINK =
+  /(?:\b(?:and|but|or|so|yet|plus|then|because|since|as|now that|though|although|while|whereas|which|who)\b|&)(?:\s+(?:and|but|or|so|then|also|just|now|first|quickly)\b)*/giu;
 const ACKNOWLEDGMENT_INTERJECTION =
-  "(?:sure(?: thing)?|okay|ok|alright|all right|got it|of course|good question|great question|no problem|absolutely|yes|yep)";
+  "(?:sure(?: thing)?|okay|ok|alright|all right|got it|of course|good question|great question|no problem|absolutely|will do|right away|hmm|well|so|now|first)";
 const ACKNOWLEDGMENT_INTERJECTION_CLAUSE = new RegExp(
-  String.raw`^${ACKNOWLEDGMENT_INTERJECTION}(?:\s*,?\s*${ACKNOWLEDGMENT_INTERJECTION})*$`,
+  String.raw`^${ACKNOWLEDGMENT_INTERJECTION}(?:\s+${ACKNOWLEDGMENT_INTERJECTION})*$`,
   "iu",
 );
-// Read gerunds plus every activity the bare progress whitelist above admits.
+const ACKNOWLEDGMENT_LEAD =
+  "(?:let me|let['’]s|i['’]ll|i will|i(?:['’]m| am) (?:going to|gonna|about to)|(?:while|as) i)";
+const ACKNOWLEDGMENT_WAIT_CUE =
+  "(?:(?:i(?:['’]m| am) )?on it|(?:give me|gimme) (?:a|one) (?:sec|second|moment|minute)|(?:one|just a) (?:sec|second|moment|minute)|hang on|hang tight|hold on)";
+const ACKNOWLEDGMENT_PRE_VERB = String.raw`(?:(?:just|quickly|also|now|first|then|go ahead and)\s+)*`;
+// Closed progress verbs. A particle or object may follow ("pull that up").
+const ACKNOWLEDGMENT_PROGRESS_VERB =
+  "(?:check|look|take a look|have a look|pull|find|search|open|get|grab|read|review|scan|dig|go through|see|fetch|add|save|schedule|book|send|set|create|update|move|draft|write|put|work on|start|handle)";
+// The same verbs in progress ("Checking…"), except the report frames "seeing",
+// "getting" and "finding" ("Getting an error").
 const ACKNOWLEDGMENT_PROGRESS_GERUND =
-  "(?:checking|looking|pulling|searching|opening|grabbing|reading|getting|fetching|gathering|scanning|reviewing|finding|loading|digging|taking a look|having a look|working|running|using|spawning|starting|saving|creating|updating|deleting|adding|scheduling|setting|booking|making|writing|drafting|sending|moving|changing|rescheduling|canceling|cancelling|removing|adjusting|putting|dropping|popping|throwing|jotting|noting|logging|blocking|penciling|pencilling)";
-// First-person intent or in-progress activity, after optional interjections.
+  "(?:checking|looking|taking a look|having a look|pulling|searching|opening|grabbing|reading|reviewing|scanning|digging|going through|fetching|adding|saving|scheduling|booking|sending|setting|creating|updating|moving|drafting|writing|putting|working on|starting|handling)";
+// After optional interjections and linking words: a wait cue alone, a lead
+// (optionally after a wait cue) and a progress verb, a wait cue and "to" and
+// a progress verb, or a progress gerund (optionally after a wait cue or "I'm").
 const ACKNOWLEDGMENT_PROGRESS_CLAUSE = new RegExp(
-  String.raw`^(?:${ACKNOWLEDGMENT_INTERJECTION}\s*,?\s+)*(?:(?:and|so|then|now|first|also)\s+)?(?:` +
-    String.raw`let(?:['’]s| me(?!\s+know\b))|i(?:['’]ll| will)|i(?:['’]m| am)\s+(?:going to|gonna|about to)|` +
-    String.raw`i(?:['’]m| am)\s+(?:(?:now|just|still)\s+)?(?:on it|${ACKNOWLEDGMENT_PROGRESS_GERUND})|` +
-    String.raw`(?:give me|gimme)\s+(?:a|one)\s+(?:sec|second|moment|minute)|(?:one|just a)\s+(?:sec|second|moment|minute)|` +
-    String.raw`hang (?:on|tight)|hold on|on it|will do|right away|${ACKNOWLEDGMENT_PROGRESS_GERUND})\b`,
+  String.raw`^(?:${ACKNOWLEDGMENT_INTERJECTION}\s+)*(?:(?:and|but|or|yet|then|also|plus|&)\s+)*(?:` +
+    String.raw`${ACKNOWLEDGMENT_WAIT_CUE}(?:\s+(?:now|please))?$|` +
+    String.raw`(?:${ACKNOWLEDGMENT_WAIT_CUE}\s+(?:and\s+)?)?${ACKNOWLEDGMENT_LEAD}\s+${ACKNOWLEDGMENT_PRE_VERB}${ACKNOWLEDGMENT_PROGRESS_VERB}(?=\s|$)|` +
+    String.raw`${ACKNOWLEDGMENT_WAIT_CUE}\s+to\s+${ACKNOWLEDGMENT_PRE_VERB}${ACKNOWLEDGMENT_PROGRESS_VERB}(?=\s|$)|` +
+    String.raw`(?:${ACKNOWLEDGMENT_WAIT_CUE}\s+)?(?:i(?:['’]m| am)\s+(?:(?:now|just|still)\s+)?)?${ACKNOWLEDGMENT_PROGRESS_GERUND}(?=\s|$))`,
   "iu",
 );
+// After a coordinator, another progress verb continues the clause ("and
+// check whether…", "and look through…")…
+const ACKNOWLEDGMENT_CONTINUED_PROGRESS = new RegExp(
+  String.raw`^${ACKNOWLEDGMENT_PRE_VERB}(?:${ACKNOWLEDGMENT_LEAD}\s+${ACKNOWLEDGMENT_PRE_VERB})?(?:${ACKNOWLEDGMENT_PROGRESS_VERB}|${ACKNOWLEDGMENT_PROGRESS_GERUND})(?=\s|$)`,
+  "iu",
+);
+// …as does a short object running to the next coordinator or clause end
+// ("and notes", "and your notes for today").
+const ACKNOWLEDGMENT_OBJECT_ONLY =
+  /^(?:(?:your|my|his|her|their|our|the|a|an|any|some|both|this|that|these|those)\s+)?\p{L}+(?:-\p{L}+)*(?:\s+(?:now|too|first|today|tomorrow|tonight|as well|for (?:you|me|today|tomorrow|tonight)|this week|next week))?$/iu;
+// Otherwise a new subject opens a new clause: a pronoun, "it/that/this/there"
+// with a verb, a determiner or possessive with a noun, a subjectless "looks",
+// a word with a past-tense verb ("notes changed") or a capitalised name.
+const ACKNOWLEDGMENT_NEW_SUBJECT =
+  /^(?:(?:i|you|he|she|we|they|everyone|everybody|everything|someone|somebody|something|nobody|nothing|none|no one|anyone|anything)(?!\p{L})|(?:it|that|this|there|here|these|those)(?:['’]|\s+\p{L})|(?:your|my|his|her|its|our|their|the|a|an|some|any|every|each|no|all|both)\s+\p{L}|(?:looks|seems|appears|sounds)(?!\p{L})|\p{L}+\s+\p{L}+ed(?!\p{L}))/iu;
+const ACKNOWLEDGMENT_PROPER_NAME = /^\p{Lu}/u;
 // "check whether you have any notes" asks rather than tells. The asked part
-// runs to the next comma or coordinating conjunction; a comma-led "which is
-// clear" is a statement, not a question.
+// runs to the next coordinator or the clause end.
 const ACKNOWLEDGMENT_EMBEDDED_QUESTION =
-  /(?<!,\s*)\b(?:if|whether|what|when|where|how)\b.*?(?=,|\b(?:and|but|or|so|then)\b|$)/giu;
-// Outside an embedded question a progress clause carries no second person
-// state, state verb, completion or absence word ("set", "clear" and "free"
-// pass only as an intent's verb: "let me clear that").
+  /\b(?:if|whether|what|when|where|how)\b.*?(?=(?:\b(?:and|but|or|so|yet|plus|then|because|since|as|though|although|while|whereas|which|who)\b|&)|$)/giu;
+// Outside an embedded question a progress clause carries no second-person
+// state, state or perception verb, completion, absence, state or time word
+// ("set", "clear" and "free" pass only as an intent's verb: "let me clear
+// that").
 const ACKNOWLEDGMENT_STATE_CLAIM = new RegExp(
-  String.raw`\b(?:you(?:['’](?:re|ve|d)|\s+(?:are|have|had|were|got))\b|` +
+  String.raw`\b(?:you(?:['’](?:re|ve|d|ll)|\s+(?:are|have|had|were|got|will))\b|` +
     String.raw`(?:it|that|this|there|here|he|she|everything|nothing|something)['’]s\b|` +
     String.raw`(?:is|are|was|were|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|has|had|been)\b|` +
-    String.raw`(?:all set|done|nothing|none|empty|found|saved|sent|booked|confirmed|cancell?ed|moved)\b|` +
+    String.raw`(?:looks|seems|appears|sounds)\b|` +
+    String.raw`(?:all set|done|nothing|none|empty|found|saved|sent|booked|confirmed|cancell?ed|moved|already|soon|busy|late|delayed|overdue|postponed|rescheduled)\b|` +
     String.raw`no\s+(?!problem\b)\p{L}|` +
-    String.raw`(?<!\b(?:me|let['’]s|i['’]ll|will|to|gonna)\s+)(?:set|clear|free)\b)`,
+    String.raw`(?<!\b(?:me|let['’]s|i['’]ll|will|to|gonna|and|then)\s+${ACKNOWLEDGMENT_PRE_VERB})(?:set|clear|free)\b)`,
   "iu",
 );
 
 /**
+ * Clauses of an acknowledgement. Clause punctuation always splits (title and
+ * Latin abbreviations do not); a link splits only before a new subject, never
+ * before another progress verb or a short object alone.
+ */
+function acknowledgmentClauses(text: string): string[] {
+  const clauses: string[] = [];
+  const stretches = text
+    .replace(ACKNOWLEDGMENT_ABBREVIATION, (abbreviation) =>
+      abbreviation.replace(/\./gu, ""),
+    )
+    .split(ACKNOWLEDGMENT_PUNCTUATION_BOUNDARY);
+  for (const stretch of stretches) {
+    const links = [...stretch.matchAll(ACKNOWLEDGMENT_CLAUSE_LINK)];
+    let start = 0;
+    for (const [position, link] of links.entries()) {
+      const linkEnd = link.index + link[0].length;
+      const rest = stretch.slice(linkEnd).trimStart();
+      const object = stretch.slice(linkEnd, links[position + 1]?.index).trim();
+      if (
+        ACKNOWLEDGMENT_CONTINUED_PROGRESS.test(rest) ||
+        ACKNOWLEDGMENT_OBJECT_ONLY.test(object) ||
+        !(
+          ACKNOWLEDGMENT_NEW_SUBJECT.test(rest) ||
+          ACKNOWLEDGMENT_PROPER_NAME.test(rest)
+        )
+      )
+        continue;
+      clauses.push(stretch.slice(start, link.index));
+      start = link.index;
+    }
+    clauses.push(stretch.slice(start));
+  }
+  return clauses
+    .map((clause) =>
+      clause
+        .replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "")
+        .replace(/\s+/gu, " "),
+    )
+    .filter(Boolean);
+}
+
+/**
  * True when a short model-authored reply may be shown and spoken before
  * pending tools as their acknowledgement. The wording stays the model's own;
- * nothing is substituted. Split on sentence ends, colons, semicolons and
- * dashes (title and Latin abbreviations do not split), every clause must be an
- * English forward-looking progress clause ("let me…", "I'll…", "one sec",
- * "Checking…") or a bare interjection ("Sure!", "Got it."), and at least one
- * must be progress. Outside an embedded question ("check whether you have any
- * notes"), a progress clause may not contain second-person state ("you have"),
- * a state verb ("is", "has") or a completion or absence word ("done", "saved",
- * "nothing", "no notes"). The whole reply must have no digits, clock times or
- * question marks, must pass the completed-effect and empty-state detectors,
- * and is at most 120 characters. Rejection drops the acknowledgement; callers
+ * nothing is substituted. The whole utterance is validated, not its lead.
+ *
+ * Clauses: sentence ends, colons, semicolons, commas, dashes and brackets
+ * always split (Dr., Mr., Mrs., Ms., St., vs., e.g. and i.e. do not). A
+ * coordinator, subordinator or relative pronoun (and, but, or, so, yet, plus,
+ * then, because, since, as, now that, though, although, while, whereas,
+ * which, who, &) splits when a new subject follows it: a pronoun,
+ * "there/it/that/this" with a verb, a determiner or possessive with a noun, a
+ * subjectless "looks/seems", a word with a past-tense verb, or a capitalised
+ * name. It does not split when another progress verb follows ("and check
+ * whether…") or only a short object runs to the next link or clause end ("and
+ * notes", "and your notes").
+ *
+ * Every clause is a closed-list interjection ("Sure!", "Got it.", never a
+ * bare "yes") or a progress clause, and at least one is progress. A progress
+ * clause is a lead (let me, let's, I'll, I will, I'm going to, I'm about to,
+ * while I) and a closed progress verb (check, look, take a look, have a look,
+ * pull, find, search, open, get, grab, read, review, scan, dig, go through,
+ * see, fetch, add, save, schedule, book, send, set, create, update, move,
+ * draft, write, put, work on, start, handle); a gerund of one of them
+ * ("Checking…", "I'm looking…"; not the report frames seeing, getting or
+ * finding); or a wait cue (one sec, one moment, just a moment, give me a sec,
+ * hang on, hold on, on it) alone, before a lead or gerund, or with "to" and a
+ * progress verb. "I'll be honest", "I'll tell you", "I'm afraid", "I think"
+ * and "Let me be clear" are not progress.
+ *
+ * Second layer: outside an embedded question ("check whether you have any
+ * notes"), a progress clause has no second-person state ("you have", "you'll"),
+ * state or perception verb ("is", "has", "looks"), completion, absence, state
+ * or time word ("done", "saved", "nothing", "no notes", "already", "busy",
+ * "soon"). The whole reply has no digits, clock times, spelled counts or
+ * question marks, passes the completed-effect and empty-state detectors, and
+ * is at most 120 characters. Rejection drops the acknowledgement; callers
  * still run the planned-reply egress checks on an accepted one.
  */
 export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
@@ -979,13 +1076,8 @@ export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
   if (!text || text.length > ACKNOWLEDGMENT_MAX_LENGTH) return false;
   if (text.includes("?") || ACKNOWLEDGMENT_DATA_TOKEN.test(text)) return false;
   let progress = false;
-  for (const sentence of text
-    .replace(ACKNOWLEDGMENT_ABBREVIATION, (abbreviation) =>
-      abbreviation.replace(/\./gu, ""),
-    )
-    .split(ACKNOWLEDGMENT_CLAUSE_BOUNDARY)) {
-    const clause = sentence.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, "");
-    if (!clause || ACKNOWLEDGMENT_INTERJECTION_CLAUSE.test(clause)) continue;
+  for (const clause of acknowledgmentClauses(text)) {
+    if (ACKNOWLEDGMENT_INTERJECTION_CLAUSE.test(clause)) continue;
     if (
       !ACKNOWLEDGMENT_PROGRESS_CLAUSE.test(clause) ||
       ACKNOWLEDGMENT_STATE_CLAIM.test(

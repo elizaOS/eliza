@@ -114,7 +114,8 @@ async function ownerModelAcknowledgment(
       return { success: true, text: "private result" };
     },
   });
-  // Notes is a plugin-registered category; Calendar is a default one.
+  // Notes is a plugin-registered category; Calendar is a default one. A
+  // "web+calendar" entry is one action listing both categories.
   runtime.contexts.tryRegister({
     id: "notes",
     label: "Notes",
@@ -122,9 +123,11 @@ async function ownerModelAcknowledgment(
   });
   const tools = toolCategories.length
     ? toolCategories.map((category) =>
-        lookup(`${category.toUpperCase()}_LOOKUP`, `tool:${category}`, [
-          category,
-        ]),
+        lookup(
+          `${category.toUpperCase().replace("+", "_")}_LOOKUP`,
+          `tool:${category}`,
+          category.split("+"),
+        ),
       )
     : [lookup("LOOKUP", "tool")];
   for (const tool of tools) runtime.registerAction(tool);
@@ -309,6 +312,7 @@ describe("awaited owner model acknowledgments", () => {
     "You have no notes this week.",
     "All set.",
     "Nothing on your calendar today.",
+    "Checking your calendar, your appointment starts soon.",
   ])(
     "keeps a completion or result claim out of early progress: %s",
     async (acknowledgment) => {
@@ -366,6 +370,26 @@ describe("awaited owner model acknowledgments", () => {
       "tool:web",
     ]);
   });
+
+  // An action is public only when every category it lists is public: a
+  // public category beside a private or an unregistered one still revalidates.
+  it.each(["web+calendar", "web+unregistered"])(
+    "keeps a mixed-publicity action from a shared room: %s",
+    async (mixed) => {
+      const result = await ownerModelAcknowledgment(false, {
+        toolCategories: [mixed, "web"],
+        guestInRoom: true,
+      });
+      expect(result.acknowledgments).toEqual(["Let me have a look."]);
+      expect(result.events).toEqual([
+        "ack-start",
+        "ack-end",
+        `tool:${mixed}`,
+        "status:Using Web",
+        "tool:web",
+      ]);
+    },
+  );
 
   it("does not send an acknowledgment after cancellation during revalidation", async () => {
     const result = await ownerModelAcknowledgment(true, {
