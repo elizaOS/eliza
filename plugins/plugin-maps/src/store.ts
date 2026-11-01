@@ -186,6 +186,10 @@ function buildStateMemory(
   const metadata = {
     type: MemoryType.DOCUMENT,
     scope: "agent-private",
+    // Keeps this ledger out of owner/user document listings and edits. Every
+    // CAS write rebuilds the metadata, so rows stored before the marker gain it
+    // on their next save.
+    runtimeInternal: true,
     source: SAVED_PLACE_SOURCE,
     timestamp: createdAt,
     documentRevision: state.revision,
