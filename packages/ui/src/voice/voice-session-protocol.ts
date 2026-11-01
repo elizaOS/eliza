@@ -105,6 +105,12 @@ export interface ServerProgressEvent {
   text: string;
   traceId: string;
 }
+/** Content-free activity name shown while a turn works; never spoken or saved. */
+export interface ServerActivityEvent {
+  t: "activity";
+  label: string;
+  traceId: string;
+}
 export interface ServerSpeakingStartEvent {
   t: "speaking_start";
   traceId: string;
@@ -177,6 +183,7 @@ export type ServerControlFrame =
   | ServerSttFinalEvent
   | ServerLlmFirstTextEvent
   | ServerProgressEvent
+  | ServerActivityEvent
   | ServerSpeakingStartEvent
   | ServerSpeakingEndEvent
   | ServerAssistantPlayingEvent
@@ -268,6 +275,22 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
       return null;
     return { t, text, traceId };
   }
+  if (t === "activity") {
+    const { label, traceId } = parsed as {
+      label?: unknown;
+      traceId?: unknown;
+    };
+    if (
+      typeof label !== "string" ||
+      !label.trim() ||
+      label.length > 160 ||
+      typeof traceId !== "string" ||
+      !traceId.trim() ||
+      traceId.length > 256
+    )
+      return null;
+    return { t, label, traceId };
+  }
   if (t === "navigate_view") {
     const viewId = readBoundedString(
       (
@@ -350,6 +373,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "llm_first_text",
   "reply_complete",
   "progress",
+  "activity",
   "speaking_start",
   "speaking_end",
   "assistant_playing",

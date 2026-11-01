@@ -20,7 +20,19 @@ const SERVER_TIMING_METRICS = [
   "synthesis",
   "transcription",
 ] as const;
-type SpeechServerTimingMetric = (typeof SERVER_TIMING_METRICS)[number];
+type SpeechServerTimingMetric = Exclude<(typeof SERVER_TIMING_METRICS)[number], "auth"> | "auth_duration";
+/** Never inspect or serialize error messages, bodies, causes or stacks. */
+function speechProxyFailureClass(error: unknown): "AbortError" | "TimeoutError" | "other" {
+  try {
+    if (error !== null && (typeof error === "object" || typeof error === "function")) {
+      const name = (error as { name?: unknown }).name;
+      if (name === "AbortError" || name === "TimeoutError") return name;
+    }
+  } catch {
+    // A throwing property getter cannot replace the original transport failure.
+  }
+  return "other";
+}
 export type SpeechProxyObservation = {
   kind: "stt" | "tts";
   proxyRequestId: string;
@@ -38,6 +50,7 @@ export type SpeechProxyObservation = {
   reason?: string;
   retryWaitSeconds?: number | null;
   outcome?: "returned" | "threw";
+  failureClass?: "AbortError" | "TimeoutError" | "other";
 };
 export type SpeechProxyTimingSink = (observation: SpeechProxyObservation) => void;
 export function emitSpeechProxyTiming(
@@ -68,6 +81,12 @@ export async function timeSpeechProxyFetch(
     const response = await run();
     const cfRay = response.headers.get("CF-Ray");
     const serverTiming = readAllowedServerTiming(response.headers.get("Server-Timing"), SERVER_TIMING_METRICS);
+    // The logger masks the credential-shaped key "auth" regardless of value.
+    // Rename only the parser-validated numeric metric; never loosen redaction.
+    const timingMs = serverTiming ? (() => {
+      const { auth, ...durations } = serverTiming;
+      return { ...durations, ...(auth === undefined ? {} : { auth_duration: auth }) };
+    })() : undefined;
     emitSpeechProxyTiming(sink, {
       ...scope,
       phase: "upstream_headers",
@@ -75,7 +94,7 @@ export async function timeSpeechProxyFetch(
       durationMs: Math.max(0, Date.now() - started),
       upstreamTraceId: speechUpstreamTraceId(response),
       ...(cfRay && /^[a-f0-9]{16}(?:-[a-z]{3})?$/i.test(cfRay) ? { upstreamCfRay: cfRay } : {}),
-      ...(serverTiming ? { upstreamServerTimingMs: serverTiming } : {}),
+      ...(timingMs ? { upstreamServerTimingMs: timingMs } : {}),
       outcome: "returned",
     });
     return response;
@@ -85,6 +104,7 @@ export async function timeSpeechProxyFetch(
       phase: "upstream_headers",
       durationMs: Math.max(0, Date.now() - started),
       outcome: "threw",
+      failureClass: speechProxyFailureClass(error),
     });
     throw error;
   }

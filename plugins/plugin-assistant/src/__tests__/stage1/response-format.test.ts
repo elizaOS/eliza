@@ -1,6 +1,7 @@
 import { CONNECTOR_ACCOUNT_SERVICE_TYPE } from "@elizaos/core";
 import type {
   Action,
+  ContextObject,
   IAgentRuntime,
   Memory,
   ResponseHandlerEvaluator,
@@ -15,6 +16,7 @@ import {
   type UUID,
 } from "@elizaos/core/protocol";
 import { describe, expect, it, vi } from "vitest";
+import { projectDiscoverableContext } from "../../services/message/context-discovery.js";
 import {
   BUILTIN_RESPONSE_HANDLER_EVALUATORS,
   messageContinuesAfterRecentAgentCorrection,
@@ -2384,6 +2386,59 @@ describe("Stage 1 response format", () => {
     expect(JSON.stringify(calls[3])).toContain("a reply is owed");
   });
 
+  it("composes planner references deferred and restores them complete", async () => {
+    // The planner recompose names every provider Stage 1 did not load, so an
+    // owner-private provider can skip reads that feed only its full body.
+    // RESTORE_CONTEXT composes again without that option.
+    const runtime = makeRuntime([
+      stage1Response({
+        contexts: ["general"],
+        intents: ["review the commit diff"],
+        replyText: "",
+      }),
+      {
+        text: "",
+        toolCalls: [
+          {
+            id: "restore-1",
+            name: "RESTORE_CONTEXT",
+            arguments: { scope: "providers", reason: "Read the references." },
+          },
+        ],
+      },
+      {
+        text: "",
+        toolCalls: [
+          { id: "reply-1", name: "REPLY", arguments: { text: "Looks solid." } },
+        ],
+      },
+    ]);
+    const state = makeState();
+    addDeferredReference(runtime, state);
+    const composeState = vi.fn(async () => state);
+    runtime.composeState = composeState as never;
+    await runStage1({
+      runtime,
+      message: makeMessage({
+        text: "Shipped all of this, here is the commit diff.",
+        channelType: ChannelType.DM,
+      }),
+      state,
+    });
+
+    expect(composeState).toHaveBeenCalledTimes(2);
+    const [recompose, restore] = composeState.mock.calls as unknown[][];
+    const plannerNames = recompose[1] as string[];
+    expect(plannerNames).toContain("userPersonalityPreferences");
+    expect(recompose.slice(2)).toEqual([
+      true,
+      false,
+      [],
+      { deferredReferenceProviders: plannerNames },
+    ]);
+    expect(restore).toEqual([recompose[0], plannerNames, true, false]);
+  });
+
   it("includes the agent's own prior replies with speaker attribution", async () => {
     // The current_turn_boundary contract tells the model the prior_message
     // blocks are its ONLY chat-recall window, but the agent's own replies
@@ -2483,10 +2538,10 @@ describe("Stage 1 response format", () => {
   });
 
   it.each([
-    "Adding it now.",
-    "Scheduling that now.",
-    "Booking it now.",
-    "Moving it to four now.",
+    "Let me check your calendar.",
+    "One sec, pulling up your calendar.",
+    "Checking that now.",
+    "Let me look into it.",
   ])(
     "streams pending work as progress without storing it as the final reply: %s",
     async (replyText) => {
@@ -2520,11 +2575,17 @@ describe("Stage 1 response format", () => {
     },
   );
 
+  // A write verb says the item is missing ("Adding it now." after "Is the
+  // dentist on my calendar?"), so it is not an acknowledgement either.
   it.each([
     'Done. The note now says "Bring the green notebook."',
     "Checking.\u0000",
+    "Adding it now.",
+    "Scheduling that now.",
+    "Booking it now.",
+    "Moving it to four now.",
   ])(
-    "withholds invalid or prematurely completed progress without another inference: %j",
+    "withholds invalid, completed or write progress without another inference: %j",
     async (replyText) => {
       const runtime = makeRuntime([
         stage1Response({
@@ -3043,5 +3104,31 @@ describe("Stage 1 response format", () => {
         "Computer Use is unavailable in this app session. Enable Computer Use, restart the app session, and try again. (COMPUTER_USE_UNAVAILABLE)",
       );
     }
+  });
+});
+
+
+describe("deferred provider discovery on sparse installs", () => {
+  it("keeps a deferred body restorable even when its notice is longer", () => {
+    const skipped = "Calendar read deferred.";
+    const notice = "Restore the complete lifeops reference to check connected calendar sources.";
+    const context: ContextObject = {
+      id: "sparse-reference",
+      events: [{ id: "lifeops", type: "provider", name: "lifeops", text: skipped }],
+    };
+    const state = makeState();
+    state.data.providers = {
+      lifeops: { text: skipped, discoveryText: notice, referenceBodyDeferred: true },
+    };
+    for (const loaded of [new Set<string>(), new Set(["lifeops"])]) {
+      const projected = projectDiscoverableContext(context, state, loaded);
+      expect(projected.available.has("lifeops")).toBe(true);
+      expect(projected.context.events).toEqual([
+        { ...context.events[0], text: notice },
+      ]);
+    }
+    // Ordinary short complete bodies retain their existing projection behavior.
+    state.data.providers.lifeops = { text: skipped, discoveryText: notice };
+    expect(projectDiscoverableContext(context, state).context).toEqual(context);
   });
 });

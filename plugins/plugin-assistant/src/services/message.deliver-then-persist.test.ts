@@ -831,21 +831,29 @@ describe("planning progress delivery boundaries", () => {
       expect(delivered.map((content) => content.text)).toEqual([final]);
     },
   );
+  // Owner-only progress is spoken only after its audience revalidates; a
+  // changed room or a failed lookup fails closed. Progress never consumes the
+  // final reply's own delivery.
   it.each(
     [ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
-      (["clean", "private", "revoked", "envelope"] as const).map((kind) => ({
+      (
+        ["clean", "private", "revoked", "lookup_failed", "envelope"] as const
+      ).map((kind) => ({
         channelType,
         kind,
       })),
     ),
   )(
-    "protects $kind progress on $channelType without consuming final delivery",
+    "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
     async ({ kind, channelType }) => {
       const h = await createHarness();
       const turn = h.makeMessage();
       turn.content.channelType = channelType;
       h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
-      if (kind === "private" || kind === "revoked") {
+      const ownerOnly =
+        kind === "private" || kind === "revoked" || kind === "lookup_failed";
+      let failNextAudienceRead = false;
+      if (ownerOnly) {
         h.runtime.registerProvider({
           name: "userPersonalityPreferences",
           override: true,
@@ -854,19 +862,38 @@ describe("planning progress delivery boundaries", () => {
           get: async () => ({ text: "PRIVATE_CONTEXT_TEST_VALUE" }),
         });
         await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+        const readParticipants = h.runtime.getParticipantsForRoom.bind(
+          h.runtime,
+        );
+        vi.spyOn(h.runtime, "getParticipantsForRoom").mockImplementation(
+          async (roomId) => {
+            if (failNextAudienceRead) {
+              failNextAudienceRead = false;
+              throw new Error("injected audience lookup failure");
+            }
+            return readParticipants(roomId);
+          },
+        );
       }
+      // Owner-only rows speak an acknowledgement the gate admits, so only
+      // audience revalidation can drop it.
       const progressText =
         kind === "envelope"
           ? "Checking <<<EXTERNAL_UNTRUSTED_CONTENT>>> now."
           : kind === "clean"
             ? "Checking that now."
-            : "Checking PRIVATE_CONTEXT_TEST_VALUE.";
+            : "Let me check your notes.";
       h.runtime.registerModel(
         ModelType.RESPONSE_HANDLER,
-        async () => {
+        async (_rt, params) => {
           if (kind === "revoked")
             await h.runtime.addParticipant(asUUID(v4()), h.roomId);
-          const response = stage1DirectReply(progressText);
+          if (kind === "lookup_failed") failNextAudienceRead = true;
+          const response = stage1DirectReply(
+            progressText,
+            params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+              ?.parameters?.properties?.replyText?.type === "array",
+          );
           Object.assign(response.toolCalls[0].arguments, {
             contexts: ["general"],
             requiresTool: true,

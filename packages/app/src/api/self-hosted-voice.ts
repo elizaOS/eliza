@@ -1,3 +1,4 @@
+import {readDirectRecording,transcribeDirectRecording,DirectTranscriptionError} from './self-hosted-transcription.js';
 /** Authenticated, process-local voice composition for a single self-hosted agent. */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
@@ -159,7 +160,7 @@ export function createSelfHostedVoice(
     perMessageDeflate: false,
   });
   let closed = false;
-  const readAloud = new Set<AbortController>();
+  const batchRequests = new Set<AbortController>();
 
   function prune() {
     for (const [nonce, entry] of consent)
@@ -286,7 +287,32 @@ export function createSelfHostedVoice(
       if (!configured)
         throw new VoiceAdmissionError(503, "voice_realtime_unavailable");
       prune();
-      if (req.method === "POST" && url.pathname === `${BASE}/read-aloud`) {
+      if (req.method === "POST" && url.pathname === `${BASE}/transcribe`) {
+        if(configured.route!=="direct")throw new VoiceAdmissionError(409,"voice_direct_route_required");
+        const requestId=req.headers["x-request-id"];
+        if(url.search||typeof requestId!=="string"||!UUID.test(requestId))throw new VoiceAdmissionError(400,"voice_invalid_transcription");
+        if(batchRequests.size)throw new VoiceAdmissionError(429,"voice_transcription_busy");
+        const controller=new AbortController();batchRequests.add(controller);
+        const abort=()=>controller.abort(),cancel=()=>{if(!res.writableEnded)abort();};
+        req.once("aborted",abort);req.socket.once("close",abort);res.on("close",cancel);
+        const deadline=setTimeout(()=>{abort();req.destroy();},120_000);let checking=false;
+        const current=async()=>{
+          controller.signal.throwIfAborted();
+          if(!(await active(binding)))throw new VoiceAdmissionError(401,"voice_session_revoked");
+          const next=await configuration(binding.runtime);
+          if(next?.route!=="direct"||next.apiKey!==configured.apiKey)throw new VoiceAdmissionError(409,"voice_selection_changed");
+          controller.signal.throwIfAborted();
+        };
+        const poll=setInterval(()=>{if(checking)return;checking=true;void current().catch(error=>controller.abort(error)).finally(()=>{checking=false;});},1000);
+        try{
+          const audio=await readDirectRecording(req,controller.signal);
+          const text=await transcribeDirectRecording({audio,apiKey:configured.apiKey,signal:controller.signal,current,fetchImpl});
+          await current();
+          res.setHeader("X-Request-Id",requestId);res.setHeader("X-Eliza-STT-Provider","cartesia");res.setHeader("X-Eliza-Speech-Route","direct");
+          sendJson(res,200,{text});
+        }catch(error){if(error instanceof DirectTranscriptionError)throw new VoiceAdmissionError(error.status,error.code);throw error;}
+        finally{clearInterval(poll);clearTimeout(deadline);req.off("aborted",abort);req.socket.off("close",abort);res.off("close",cancel);controller.abort();batchRequests.delete(controller);}
+      } else if (req.method === "POST" && url.pathname === `${BASE}/read-aloud`) {
         // This is local self-hosted speech only. Never use a direct key to
         // service a Cloud-configured runtime, or silently fall back providers.
         if (configured.route !== "direct")
@@ -303,10 +329,10 @@ export function createSelfHostedVoice(
           body.text.length > 16000
         )
           throw new VoiceAdmissionError(400, "voice_invalid_read_aloud");
-        if (readAloud.size)
+        if (batchRequests.size)
           throw new VoiceAdmissionError(429, "voice_read_aloud_busy");
         const controller = new AbortController();
-        readAloud.add(controller);
+        batchRequests.add(controller);
         const cancel = () => {
           if (!res.writableEnded) controller.abort();
         };
@@ -363,7 +389,7 @@ export function createSelfHostedVoice(
           clearInterval(poll);
           res.off("close", cancel);
           controller.abort();
-          readAloud.delete(controller);
+          batchRequests.delete(controller);
         }
       } else if (req.method === "GET" && url.pathname === `${BASE}/health`) {
         const conversationId = await checkConversation(
@@ -701,7 +727,7 @@ export function createSelfHostedVoice(
     return true;
   }
   function reset() {
-    for (const controller of readAloud) controller.abort();
+    for (const controller of batchRequests) controller.abort();
     consent.clear();
     for (const id of tickets.keys()) revoke(id);
     for (const client of wss.clients) client.terminate();

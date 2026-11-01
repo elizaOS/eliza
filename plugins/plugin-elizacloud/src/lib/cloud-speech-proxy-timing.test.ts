@@ -2,6 +2,7 @@ import ts from "typescript";
 import { expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { timeSpeechProxyFetch, speechUpstreamTraceId } from "./cloud-speech-proxy-timing";
+import { redactLogValue } from "../../../../packages/core/src/security/log-redaction";
 import { warmingRetryWaitSeconds } from "../utils/warming";
 test("failed attempt, unchanged retry decision and successful headers retain separate safe trace timing", async () => {
   const logs: any[] = [];
@@ -43,10 +44,10 @@ test("failed attempt, unchanged retry decision and successful headers retain sep
   expect(calls).toBe(2);
   expect(logs[0].status).toBe(503);
   expect(logs[0].upstreamTraceId).toBe("a".repeat(32));
-  expect(logs[0]).toMatchObject({attempt:1,upstreamCfRay:"0123456789abcdef-LAX",upstreamServerTimingMs:{entry_dispatch:9900,cloud_worker:1850,auth:1750}});
+  expect(logs[0]).toMatchObject({attempt:1,upstreamCfRay:"0123456789abcdef-LAX",upstreamServerTimingMs:{entry_dispatch:9900,cloud_worker:1850,auth_duration:1750}});
   expect(logs[1].reason).toBe("rate_limit_unavailable");
   expect(logs[2].status).toBe(200);
-  expect(logs[2]).toMatchObject({attempt:2,upstreamCfRay:"fedcba9876543210-SJC",upstreamTraceId:"b".repeat(32),upstreamServerTimingMs:{entry_dispatch:800,cloud_worker:700,auth:12}});
+  expect(logs[2]).toMatchObject({attempt:2,upstreamCfRay:"fedcba9876543210-SJC",upstreamTraceId:"b".repeat(32),upstreamServerTimingMs:{entry_dispatch:800,cloud_worker:700,auth_duration:12}});
   expect(JSON.stringify(logs)).not.toContain("never retain");
 });
 test("paid refusal retry decisions and caller abort identity remain unchanged", async () => {
@@ -144,9 +145,66 @@ test("response diagnostics drop malformed, oversized, duplicate and description-
     const rows:any[]=[];
     const response=new Response("unchanged",{status:403,headers:{"Server-Timing":raw,"CF-Ray":"secret, untrusted","X-Eliza-Trace-Id":"private-key","Authorization":"Bearer secret","X-Secret":"secret"}});
     expect(await timeSpeechProxyFetch(async()=>response,{kind:"stt",proxyRequestId:"owned",candidate:0,attempt:1},value=>rows.push(value))).toBe(response);
-    expect(rows[0].upstreamServerTimingMs).toEqual(metrics);
+    const expectedMetrics = metrics ? (() => {
+      const { auth, ...durations } = metrics;
+      return { ...durations, ...(auth === undefined ? {} : { auth_duration: auth }) };
+    })() : undefined;
+    expect(rows[0].upstreamServerTimingMs).toEqual(expectedMetrics);
     expect(rows[0].upstreamCfRay).toBeUndefined();
     expect(rows[0].upstreamTraceId).toBeUndefined();
     expect(JSON.stringify(rows)).not.toMatch(/secret|private-key|Authorization|X-Secret|desc=/);
   }
+});
+
+
+test("numeric authentication duration survives the ordinary logger redactor without weakening credential masking", async () => {
+  const rows: any[] = [];
+  const response = new Response("unchanged", { headers: { "Server-Timing": 'auth;dur=0, cloud_worker;dur=12;desc="secret-body"', Authorization: "Bearer test-secret" } });
+  expect(await timeSpeechProxyFetch(async () => response, { kind: "tts", proxyRequestId: "owned", candidate: 0 }, row => rows.push(row))).toBe(response);
+  const safe = redactLogValue({ ...rows[0], auth: "test-secret", authorization: "Bearer test-secret" }, new WeakSet<object>(), 0) as any;
+  expect(safe.upstreamServerTimingMs).toEqual({ auth_duration: 0, cloud_worker: 12 });
+  expect(safe.auth).not.toBe("test-secret");
+  expect(safe.authorization).not.toBe("Bearer test-secret");
+  expect(rows[0].upstreamServerTimingMs).not.toHaveProperty("auth");
+  expect(JSON.stringify(safe)).not.toMatch(/test-secret|secret-body/);
+});
+
+for (const name of ["AbortError", "TimeoutError", "PrivateFailureName"]) test(`thrown ${name} retains identity and only an allowlisted diagnostic class`, async () => {
+  const error = Object.assign(new Error("Bearer private-transport-secret"), { name, body: "private-provider-body", cause: { apiKey: "private-key" } });
+  const rows: any[] = [];
+  let calls = 0;
+  await expect(timeSpeechProxyFetch(async () => { calls++; throw error; }, { kind: "stt", proxyRequestId: "owned", candidate: 0 }, row => rows.push(row))).rejects.toBe(error);
+  expect(calls).toBe(1);
+  expect(rows[0]).toMatchObject({ outcome: "threw", failureClass: name === "PrivateFailureName" ? "other" : name });
+  expect(JSON.stringify(rows)).not.toMatch(/private-|PrivateFailureName|message|stack|body|cause|apiKey/);
+});
+
+test("hostile error getters and failing diagnostic sinks cannot replace the original throw", async () => {
+  let messageReads = 0;
+  const error = Object.defineProperties({}, {
+    name: { get() { throw Error("private-name-getter"); } },
+    message: { get() { messageReads++; throw Error("private-message"); } },
+    stack: { get() { throw Error("private-stack"); } },
+  });
+  const rows: any[] = [];
+  await expect(timeSpeechProxyFetch(async () => { throw error; }, { kind: "tts", proxyRequestId: "owned", candidate: 0 }, row => { rows.push(row); throw Error("private-sink"); })).rejects.toBe(error);
+  expect(rows[0].failureClass).toBe("other");
+  expect(messageReads).toBe(0);
+  expect(JSON.stringify(rows)).not.toContain("private-");
+});
+
+test("a failed timing sink leaves returned response identity and body untouched", async () => {
+  const response = new Response("original audio bytes");
+  expect(await timeSpeechProxyFetch(async () => response, { kind: "tts", proxyRequestId: "owned", candidate: 0 }, () => { throw Error("sink"); })).toBe(response);
+  expect(await response.text()).toBe("original audio bytes");
+});
+
+for (const value of [undefined, null, "private-thrown-text", 7]) test(`non-error throw type ${typeof value} remains unchanged`, async () => {
+  const rows: any[] = [];
+  let caught: unknown = Symbol("not thrown");
+  try { await timeSpeechProxyFetch(async () => { throw value; }, { kind: "stt", proxyRequestId: "owned", candidate: 0 }, row => rows.push(row)); }
+  catch (error) { caught = error; }
+  expect(caught).toBe(value);
+  expect(rows[0].failureClass).toBe("other");
+  expect(JSON.stringify(rows)).not.toContain("private-thrown-text");
 });

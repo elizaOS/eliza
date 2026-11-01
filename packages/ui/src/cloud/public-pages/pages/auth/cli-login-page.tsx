@@ -444,6 +444,14 @@ function CliLoginConfirmation({
   );
 }
 
+export function cliLoginSignInHref(searchParams: URLSearchParams): string {
+  const query = new URLSearchParams(searchParams);
+  const google = query.getAll("provider").length === 1 && query.get("provider") === "google";
+  query.delete("provider");
+  const returnTo = `/auth/cli-login${query.size ? `?${query}` : ""}`;
+  return `/login?returnTo=${encodeURIComponent(returnTo)}${google ? "&nativeProvider=google" : ""}`;
+}
+
 export default function CliLoginPage() {
   const t = useCloudT();
   const { authenticated, ready, user: sessionUser } = useSessionAuth();
@@ -668,9 +676,7 @@ export default function CliLoginPage() {
     t,
     trustedAppLaunch: trustedCompletionAllowed,
   });
-  const returnToQuery = searchParams.toString();
-  const returnTo = `/auth/cli-login${returnToQuery ? `?${returnToQuery}` : ""}`;
-  const signInHref = `/login?returnTo=${encodeURIComponent(returnTo)}`;
+  const signInHref = cliLoginSignInHref(searchParams);
   // No pre-auth interstitial: when the user isn't signed in yet, forward
   // straight to the Steward login. `returnTo` brings the browser back here
   // once authenticated, where the confirmation interstitial waits for the

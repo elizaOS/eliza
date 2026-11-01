@@ -41,7 +41,10 @@ export type VoiceSessionPhase =
 
 export interface VoiceSessionMachineState {
   phase: VoiceSessionPhase;
-  /** Ephemeral acknowledgement for this turn; not conversation history. */
+  /**
+   * Ephemeral acknowledgement, then each content-free activity name, for this
+   * turn; not conversation history.
+   */
   progressText?: string;
   /** Suppress delayed progress from a locally cancelled turn. */
   progressCancelledTraceId?: string | null;
@@ -185,10 +188,14 @@ export function applyServerEvent(
         interimTranscript: "",
       };
     case "progress":
+    case "activity":
       return state.traceId === event.traceId &&
         state.progressCancelledTraceId !== event.traceId &&
         (state.phase === "thinking" || state.phase === "speaking")
-        ? { ...state, progressText: event.text }
+        ? {
+            ...state,
+            progressText: event.t === "progress" ? event.text : event.label,
+          }
         : state;
     case "reply_complete":
       // Transcript reconciliation is separate from audible playback state.
