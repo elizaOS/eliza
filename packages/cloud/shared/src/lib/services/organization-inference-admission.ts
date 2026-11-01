@@ -30,6 +30,7 @@
 
 import { ElizaError } from "@elizaos/core";
 import { and, eq, isNull } from "drizzle-orm";
+import type { DbTransaction } from "../../db/client";
 import { dbWrite, writeTransaction } from "../../db/helpers";
 import {
   lockOrganizationPolicy,
@@ -52,7 +53,7 @@ import {
 } from "./ai-billing";
 import { AiPricingCacheUnavailableError, AiPricingCacheWarmingError } from "./ai-pricing/cache";
 import { isSubscriptionFundedReservation } from "./allowance-first-credits";
-import { billingHoldService } from "./billing-hold";
+import { BillingHoldActiveError, billingHoldService } from "./billing-hold";
 import {
   COST_BUFFER,
   type CreditReconciliationResult,
@@ -112,6 +113,7 @@ import {
 } from "./organization-policy-admission";
 import { sameOrganizationPolicyStamp } from "./organization-policy-stamp";
 import {
+  type OrganizationQuotaPolicy,
   readOrganizationQuotaPolicyInTransaction,
   requireOrganizationPolicyBalance,
   requireOrganizationRateTier,
@@ -175,6 +177,97 @@ export interface OrganizationInferenceAdmissionParams {
    * provider boundary. Limited to callers whose dispatch callback is required.
    */
   atomicProviderBoundary?: boolean;
+  /** Funding inputs already read under this request's rate-decision policy lock. */
+  fundingObservation?: OrganizationFundingObservation;
+}
+
+/**
+ * The authoritative funding inputs (policy, billing-hold verdict, subscriber
+ * capacity) read inside the rate decision's policy read-lock transaction
+ * instead of a separate `funding_policy` transaction. A Worker request owns
+ * one Postgres connection, so the second transaction ran strictly after the
+ * first; this observation takes the same share lock, the same policy row and
+ * the same hold/capacity reads, without the extra BEGIN/lock/policy/COMMIT
+ * round trips. The dispatch fence still re-reads policy under its own lock.
+ */
+export interface OrganizationFundingObservation {
+  readonly organizationId: string;
+  readonly subscriberLaneEligible: boolean;
+  readonly funding:
+    | {
+        readonly policy: OrganizationQuotaPolicy;
+        readonly fundingCapacity?: SubscriberFundingCapacity;
+      }
+    /** The hold refuses admission, not the rate decision; admission rethrows it. */
+    | { readonly hold: BillingHoldActiveError };
+}
+
+async function readFundingInputsUnderPolicyLock(
+  tx: DbTransaction,
+  organizationId: string,
+  policy: OrganizationQuotaPolicy,
+  subscriberLaneEligible: boolean,
+): Promise<{ policy: OrganizationQuotaPolicy; fundingCapacity?: SubscriberFundingCapacity }> {
+  // An underfunding payment reversal holds all new paid inference,
+  // including subscription-allowance funding, until it clears (#22930).
+  await billingHoldService.assertNoHold(organizationId, tx);
+  // Subscriber capacity shares this transaction, its clock and its
+  // balance revision instead of a separate pre-dispatch funding write.
+  const fundingCapacity =
+    subscriberLaneEligible && policy.subscriptionFunded
+      ? await observeInferenceDependency("policy_read", "funding_capacity", () =>
+          readSubscriberFundingCapacityInTransaction(tx, organizationId, { policy }),
+        )
+      : undefined;
+  return { policy, fundingCapacity };
+}
+
+/**
+ * Read organization admission's funding inputs inside a caller's policy
+ * read-lock transaction (the Worker rate decision). Returns undefined when
+ * admission would not read primary funding: no Worker lifetime, the snapshot
+ * lane, or a possible funded-budget lane.
+ */
+export async function observeOrganizationFundingUnderPolicyLock(
+  tx: DbTransaction,
+  policy: OrganizationQuotaPolicy,
+  params: Pick<
+    OrganizationInferenceAdmissionParams,
+    "executionCtx" | "admissionSnapshot" | "credential"
+  > & { organizationId: string },
+): Promise<OrganizationFundingObservation | undefined> {
+  if (typeof params.executionCtx?.waitUntil !== "function") return undefined;
+  const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
+  if (
+    isFundedBudgetAdmissionEnabled() &&
+    params.admissionSnapshot?.fundedBudget?.enabled &&
+    params.credential?.kind === "api_key"
+  )
+    return undefined;
+  if (snapshotAdmissionSnapshot(params, true)) return undefined;
+  const subscriberLaneEligible = isDeferredSubscriberLaneEligible(params);
+  try {
+    return {
+      organizationId: params.organizationId,
+      subscriberLaneEligible,
+      funding: await readFundingInputsUnderPolicyLock(
+        tx,
+        params.organizationId,
+        policy,
+        subscriberLaneEligible,
+      ),
+    };
+  } catch (error) {
+    // error-policy:J2 a billing hold is admission's typed refusal; carry the
+    // same error to admission so the rate decision and its response are unchanged.
+    if (error instanceof BillingHoldActiveError)
+      return {
+        organizationId: params.organizationId,
+        subscriberLaneEligible,
+        funding: { hold: error },
+      };
+    throw error;
+  }
 }
 
 /** Retryable signal preserving route compatibility while identifying pricing hydration. */
@@ -422,7 +515,8 @@ export async function admitOrganizationInference(
     if (handoff.pending === true) throw admissionUnavailable(params, error);
     if (handoff.released !== true) throw admissionUnavailable(params, error);
     try {
-      return await admitOrganizationInferenceOnce(params);
+      // The reclaim changed funding; the retry reads it again under a new lock.
+      return await admitOrganizationInferenceOnce({ ...params, fundingObservation: undefined });
     } catch (retryError) {
       if (retryError instanceof InsufficientCreditsError && (await hasOpenEscrow()))
         throw admissionUnavailable(params, retryError);
@@ -467,10 +561,17 @@ async function admitOrganizationInferenceOnce(
   if (snapshot) return await admitFromSnapshot(params, snapshot);
   const lockPolicy = workerHotPath ? lockOrganizationPolicyForRead : lockOrganizationPolicy;
   const subscriberLaneEligible = isDeferredSubscriberLaneEligible(params);
-  const { policy: authoritativePolicy, fundingCapacity } = await observeInferenceDependency(
-    "transaction",
-    "funding_policy",
-    () =>
+  // Only a Worker read under the same share lock and lane may stand in for this read.
+  const observed =
+    workerHotPath &&
+    params.fundingObservation?.organizationId === params.context.organizationId &&
+    params.fundingObservation.subscriberLaneEligible === subscriberLaneEligible
+      ? params.fundingObservation.funding
+      : undefined;
+  if (observed && "hold" in observed) throw observed.hold;
+  const { policy: authoritativePolicy, fundingCapacity } =
+    observed ??
+    (await observeInferenceDependency("transaction", "funding_policy", () =>
       writeTransaction(async (tx) => {
         await observeInferenceDependency("policy_lock", "funding_policy", () =>
           lockPolicy(tx, params.context.organizationId),
@@ -478,22 +579,14 @@ async function admitOrganizationInferenceOnce(
         const policy = await observeInferenceDependency("policy_read", "funding_policy", () =>
           readOrganizationQuotaPolicyInTransaction(tx, params.context.organizationId),
         );
-        // An underfunding payment reversal holds all new paid inference,
-        // including subscription-allowance funding, until it clears (#22930).
-        await billingHoldService.assertNoHold(params.context.organizationId, tx);
-        // Subscriber capacity shares this transaction, its clock and its
-        // balance revision instead of a separate pre-dispatch funding write.
-        const capacity =
-          subscriberLaneEligible && policy.subscriptionFunded
-            ? await observeInferenceDependency("policy_read", "funding_capacity", () =>
-                readSubscriberFundingCapacityInTransaction(tx, params.context.organizationId, {
-                  policy,
-                }),
-              )
-            : undefined;
-        return { policy, fundingCapacity: capacity };
+        return readFundingInputsUnderPolicyLock(
+          tx,
+          params.context.organizationId,
+          policy,
+          subscriberLaneEligible,
+        );
       }),
-  );
+    ));
   if (
     params.admissionSnapshot &&
     (!isInferenceAdmissionSnapshot(params.admissionSnapshot) ||
@@ -593,7 +686,7 @@ const SNAPSHOT_ADMISSION_CLOCK_SKEW_MS = 5_000;
  * observation) selects the authoritative path instead.
  */
 function snapshotAdmissionSnapshot(
-  params: OrganizationInferenceAdmissionParams,
+  params: Pick<OrganizationInferenceAdmissionParams, "admissionSnapshot">,
   workerHotPath: boolean,
 ): InferenceAdmissionSnapshot | undefined {
   if (!workerHotPath || !isSnapshotAdmissionEnabled()) return undefined;
@@ -680,7 +773,9 @@ async function admitFromSnapshot(
  * organization Durable Object that serializes in-flight leases and owns alarm
  * recovery, so their funding must be reserved before dispatch.
  */
-function isDeferredSubscriberLaneEligible(params: OrganizationInferenceAdmissionParams): boolean {
+function isDeferredSubscriberLaneEligible(
+  params: Pick<OrganizationInferenceAdmissionParams, "executionCtx">,
+): boolean {
   return typeof params.executionCtx?.waitUntil === "function" && isDeferredAdmissionEnabled();
 }
 

@@ -29,7 +29,10 @@ import {
   isOrganizationPolicyStamp,
   sameOrganizationPolicyStamp,
 } from "../services/organization-policy-stamp";
-import { requireOrganizationRateTier } from "../services/organization-quota-policy";
+import {
+  type OrganizationQuotaPolicy,
+  requireOrganizationRateTier,
+} from "../services/organization-quota-policy";
 import { enforcePlanRequestLimit } from "../services/plan-request-limiter";
 import { logger } from "../utils/logger";
 import { getRequestCookie } from "../utils/request-cookie";
@@ -523,6 +526,13 @@ export async function enforceOrgRateLimit(
       requestId: string;
       onReceipt(receipt: string): void;
     };
+    /**
+     * Worker lane only: runs in this policy read-lock transaction after the
+     * Durable Object admitted the request, so the caller can read under the
+     * same lock instead of opening another transaction. Never runs for a
+     * refused, funded-budget or non-Worker decision.
+     */
+    underAdmittedPolicyLock?: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<void>;
   } = {},
 ): Promise<Response | null> {
   if (endpointType === "completions") {
@@ -658,21 +668,15 @@ export async function enforceOrgRateLimit(
           )
             throw new OrgRateLimitCacheNotReadyError("warming", "invalid");
           const { windowMs, maxRequests } = authoritativeConfig;
+          let result: Awaited<ReturnType<typeof consumeInferenceRateLimit>>;
           try {
-            const result = await consumeInferenceRateLimit({
+            result = await consumeInferenceRateLimit({
               organizationId,
               endpointType,
               windowMs,
               maxRequests,
               ...(apiKeyCap && { apiKey: apiKeyCap }),
             });
-            if (result.allowed) return null;
-            return rateLimitExceededResponse(
-              result,
-              apiKeyCap ? Math.min(maxRequests, apiKeyCap.maxRequests) : maxRequests,
-              windowMs,
-              "durable-object",
-            );
           } catch (error) {
             // error-policy:J4 inference requests fail closed with a distinct
             // retryable response when the authoritative Worker limiter is down.
@@ -686,6 +690,15 @@ export async function enforceOrgRateLimit(
             }
             throw error;
           }
+          if (!result.allowed)
+            return rateLimitExceededResponse(
+              result,
+              apiKeyCap ? Math.min(maxRequests, apiKeyCap.maxRequests) : maxRequests,
+              windowMs,
+              "durable-object",
+            );
+          await options.underAdmittedPolicyLock?.(policy, tx);
+          return null;
         }
 
         // Mirror withRateLimit: skip when no shared backend is selected (development).

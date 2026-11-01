@@ -143,6 +143,8 @@ import {
   InferenceAffiliateCacheWarmingError,
   InferencePricingCacheUnavailableError,
   InferencePricingCacheWarmingError,
+  type OrganizationFundingObservation,
+  observeOrganizationFundingUnderPolicyLock,
 } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import {
@@ -1531,6 +1533,34 @@ export async function handleChatCompletionsPOST(
     // so dispatch does not pay its activation in series after idle.
     if (options.executionCtx && user.organization_id)
       wakeInferenceAdmissionGate(user.organization_id, options.executionCtx);
+    // Organization-credit admission reads its funding inputs under the rate
+    // decision's policy lock instead of a second transaction: a Worker request
+    // has one Postgres connection, so that transaction always ran afterwards.
+    // The reads run only when the cache-only dependency reads below have
+    // already shown the request reaches that lane (no app billing, pooled
+    // credential or block). The lock never waits for them: an unsettled read
+    // leaves admission to its own transaction, exactly as before.
+    let fundingObservation: OrganizationFundingObservation | undefined;
+    let fundingObservationWanted = false;
+    const fundingExecutionCtx = options.executionCtx;
+    const observeFundingUnderRateLimit =
+      fundingExecutionCtx && !options.appFundingActor && !options.requiredAppId
+        ? async (
+            policy: Parameters<
+              typeof observeOrganizationFundingUnderPolicyLock
+            >[1],
+            tx: Parameters<typeof observeOrganizationFundingUnderPolicyLock>[0],
+          ): Promise<void> => {
+            if (!fundingObservationWanted) return;
+            fundingObservation =
+              await observeOrganizationFundingUnderPolicyLock(tx, policy, {
+                organizationId: user.organization_id,
+                executionCtx: fundingExecutionCtx,
+                admissionSnapshot,
+                credential: admissionCredential,
+              });
+          }
+        : undefined;
     const orgRateLimitPromise = observeConcurrentPromise(
       user.organization_id && !options.skipOrgRateLimit
         ? enforceOrgRateLimit(user.organization_id, "completions", {
@@ -1540,6 +1570,7 @@ export async function handleChatCompletionsPOST(
             apiKeyId: apiKey?.id,
             userId: user.id,
             fundedBudget,
+            underAdmittedPolicyLock: observeFundingUnderRateLimit,
           })
         : Promise.resolve(null),
     );
@@ -1759,6 +1790,19 @@ export async function handleChatCompletionsPOST(
         shouldBlockUserPromise,
       ]),
     );
+    // Mirrors the admission branch below: organization credits fund the request
+    // only without a monetized app or pooled credential, for an unblocked user.
+    void dependencyResolutionsPromise.then((outcome) => {
+      fundingObservationWanted =
+        outcome.kind === "fulfilled" &&
+        outcome.value[0].kind === "ready" &&
+        outcome.value[0].app === null &&
+        outcome.value[1].kind === "ready" &&
+        outcome.value[1].credential === null &&
+        platformCredentialConfigured &&
+        outcome.value[3].kind === "ready" &&
+        !outcome.value[3].blocked;
+    });
 
     const orgRateLimited = await resolveOrgRateLimit();
     if (orgRateLimited) {
@@ -2118,6 +2162,7 @@ export async function handleChatCompletionsPOST(
           admissionSnapshot,
           credential: credentialGuard.credentialForAdmission(),
           atomicProviderBoundary: Boolean(options.executionCtx),
+          fundingObservation,
         });
         settleReservation = admission.settle;
         settleUnknown = admission.settleUnknown;
