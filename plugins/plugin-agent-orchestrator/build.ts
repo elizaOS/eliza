@@ -34,12 +34,15 @@ await buildPlugin({
 
 // The ESM-then-CJS sequence fails in one Bun 1.4.2 process while a fresh
 // CJS build succeeds. Keep both formats and isolate the second build.
-const cjsBuild = Bun.spawn([process.execPath, `${import.meta.dir}/scripts/build-cjs.ts`], {
-  cwd: import.meta.dir,
-  stdin: "inherit",
-  stdout: "inherit",
-  stderr: "inherit",
-});
+const cjsBuild = Bun.spawn(
+  [process.execPath, `${import.meta.dir}/scripts/build-cjs.ts`],
+  {
+    cwd: import.meta.dir,
+    stdin: "inherit",
+    stdout: "inherit",
+    stderr: "inherit",
+  },
+);
 const cjsExit = await cjsBuild.exited;
 if (cjsExit !== 0) {
   throw new Error(`CJS build failed with exit code ${cjsExit}`);
