@@ -500,13 +500,15 @@ export async function requireGenerativeRouteCaller(
         c.set("apiKeyId", resolution.ctx.apiKeyId);
       }
       if (options.rateLimitEndpoint) {
-        const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-          await Promise.all([
-            import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
-            import(
-              "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
-            ),
-          ]);
+        const [
+          { enforceOrgRateLimit, inferenceRatePolicyProof },
+          { inferenceRateLimitConfig },
+        ] = await Promise.all([
+          import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
+          import(
+            "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+          ),
+        ]);
         const limited = await enforceOrgRateLimit(
           resolution.ctx.orgId,
           options.rateLimitEndpoint,
@@ -523,6 +525,11 @@ export async function requireGenerativeRouteCaller(
               options.rateLimitEndpoint,
             ),
             apiKeyId: resolution.ctx.apiKeyId,
+            // Only an API-key context carries a key cap read with its epoch.
+            ratePolicy:
+              "keyHash" in resolution.ctx
+                ? inferenceRatePolicyProof(resolution.ctx)
+                : undefined,
           },
         );
         if (limited) {

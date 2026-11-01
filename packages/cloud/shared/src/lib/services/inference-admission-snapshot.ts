@@ -64,8 +64,8 @@ export function inferenceRateLimitConfig(
 export async function loadInferenceAdmissionSnapshot(
   organizationId: string,
 ): Promise<InferenceAdmissionSnapshot> {
-  const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
-  if (isFundedBudgetAdmissionEnabled()) {
+  const { isInferencePolicyAdmissionEnabled } = await import("./inference-funded-budget-admission");
+  if (isInferencePolicyAdmissionEnabled()) {
     return withOrganizationPolicyAdmission(organizationId, undefined, (policy, tx) =>
       inferenceAdmissionSnapshotInTransaction(tx, organizationId, policy),
     );
@@ -110,13 +110,18 @@ export async function inferenceAdmissionSnapshotInTransaction(
   const funding = policy.subscriptionFunded
     ? await readSubscriberFundingCapacityInTransaction(tx, organizationId, { policy })
     : undefined;
-  const { readInferenceBudgetPolicy } = await import("./inference-funded-budget-admission");
+  const { readInferenceBudgetPolicy, readInferencePolicy, isRatePolicyAdmissionEnabled } =
+    await import("./inference-funded-budget-admission");
   const fundedBudget = await readInferenceBudgetPolicy(tx, organizationId, policy);
+  const ratePolicy = isRatePolicyAdmissionEnabled()
+    ? await readInferencePolicy(tx, organizationId, policy)
+    : undefined;
   return {
     ...snapshot,
     billingHold: hold.status === "held",
     ...(funding && { funding }),
     ...(fundedBudget && { fundedBudget }),
+    ...(ratePolicy?.rateEnabled && { ratePolicy }),
   };
 }
 

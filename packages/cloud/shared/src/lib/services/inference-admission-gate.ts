@@ -28,11 +28,12 @@ import {
   type InferenceCredentialCheck,
   InferenceCredentialRevokedError,
 } from "./inference-credential-revocation";
+import { INFERENCE_RATE_LIMIT_GATE_PREFIX } from "./inference-policy-contract";
 import type { EndpointType } from "./org-rate-limits";
 
 const GATE_BINDING = "INFERENCE_ADMISSION_GATES";
 const GATE_ORIGIN = "https://inference-admission.internal";
-const RATE_LIMIT_GATE_PREFIX = "rate-limit:v2:";
+
 const HYDRATION_GATE_TIMEOUT_MS = 5_000;
 const GATE_OPERATION_TIMEOUT_MS = 1_500;
 // One bounded readiness window avoids canceling a rate actor before it can run.
@@ -238,7 +239,7 @@ function rateLimitGateStub(organizationId: string): RuntimeDurableObjectStub {
       "Inference admission Durable Object binding is missing",
     );
   }
-  return namespace.getByName(`${RATE_LIMIT_GATE_PREFIX}${organizationId}`);
+  return namespace.getByName(`${INFERENCE_RATE_LIMIT_GATE_PREFIX}${organizationId}`);
 }
 
 function gateTimingHeader(response: Response, name: string): number | undefined {
@@ -762,6 +763,56 @@ export async function consumeInferenceRateLimit(params: {
       "Inference admission gate returned an inconsistent rate-limit decision",
     );
   }
+  return decision;
+}
+
+/**
+ * Consume the primary path's `rate-limit:v2` windows after the organization
+ * object accepts the cached (epoch, generation, key cap) proof. Every outcome
+ * other than an allow or a denial (stale epoch, pending mutation, revoked
+ * credential, cold object, transport failure) throws, and the caller decides
+ * on the primary path instead.
+ */
+export async function consumeAuthorizedInferenceRateLimit(params: {
+  organizationId: string;
+  endpointType: EndpointType;
+  policyEpoch: string;
+  policyGeneration: string;
+  credential: {
+    kind: "api_key";
+    credentialId: string;
+    userId: string;
+    rateLimit: number;
+    expiresAt: number | null;
+  };
+}): Promise<InferenceRateLimitDecision> {
+  const operationStartedAt = Date.now();
+  const response = await gateFetch(
+    params.organizationId,
+    "/rate-policy/rate",
+    {
+      organizationId: params.organizationId,
+      endpointType: params.endpointType,
+      policyEpoch: params.policyEpoch,
+      policyGeneration: params.policyGeneration,
+      credential: params.credential,
+      operationId: crypto.randomUUID(),
+      operationDeadlineAt: operationStartedAt + RATE_LIMIT_GATE_TIMEOUT_MS,
+      // Captured before any queue so a delayed arrival keeps its window.
+      windowStartedAt: Math.floor(operationStartedAt / 60_000) * 60_000,
+    },
+    gateStub(params.organizationId),
+    AbortSignal.timeout(RATE_LIMIT_GATE_TIMEOUT_MS),
+  );
+  if (response.status !== 200 && response.status !== 429)
+    throw new InferenceAdmissionGateUnavailableError(
+      `Inference rate policy refused with status ${response.status}`,
+    );
+  const decision = await parseRateLimitResponse(response);
+  if ((response.status === 200) !== decision.allowed)
+    throw new InferenceAdmissionGateUnavailableError(
+      "Inference rate policy returned an inconsistent decision",
+    );
   return decision;
 }
 
