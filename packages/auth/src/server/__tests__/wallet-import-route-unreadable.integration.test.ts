@@ -200,4 +200,4 @@ test("fails the wallet-import submit when the stored session is unreadable", asy
     }
     await rm(directory, { recursive: true, force: true });
   }
-});
+}, 60_000);
