@@ -2041,34 +2041,58 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "On it, looking at your notes now.",
     "Pulling up your calendar.",
     "I'll check your calendar and notes.",
-    // Interjection plus progress, longer progress, and a title abbreviation.
+    // Interjection plus progress, and joined objects.
     "Sure! Let me check your calendar and notes.",
     "Got it. Let me check.",
     "Okay! Checking now.",
     "Good question! Let me check.",
-    "Let me pull up your calendar and check whether you have any notes.",
-    "Let me check your calendar for today and look through your notes.",
-    "Let me check Dr. Smith's appointment.",
-    // A coordinator before another progress verb or only a short object, a
-    // wait cue before a lead or "to", and a "while I" clause stay progress.
     "Let me check your calendar and your notes.",
-    "Let me check your notes as well.",
-    "Let me go ahead and check your calendar.",
-    "Let me check and get back to you.",
-    "Let me check your calendar and then pull up your notes.",
+    // A wait cue before a lead, a "to" lead and "I'm" with a gerund.
     "Hang on, let me check.",
     "One sec while I pull up your calendar.",
     "Give me a moment to look through your notes.",
     "I'm checking your calendar now.",
-    // A name after a preposition or before a noun, a question frame, and an
-    // abbreviated link stay progress.
-    "Let me check with Sarah.",
-    "Let me move your appointment to Friday.",
-    "On it! Let me search your notes for Mrs. Lee's address.",
-    "Let me check whether there are any meetings tomorrow.",
-    "Let me see what's on your calendar today.",
-    "Let me get back to you on that.",
-    "Let me check your calendar vs. your notes.",
+    // Natural acknowledgements inside the closed grammar.
+    "Let me double-check your calendar.",
+    "Let me double check your email quickly.",
+    "Okay, I'll check your calendar first, then your notes.",
+    "Let me pull up your agenda for today.",
+    "Sure thing! Pulling up your schedule.",
+    "Alright, let me look at your reminders.",
+    "Ok, checking your inbox now.",
+    "No problem, I'll draft that for you.",
+    "Let me take a look at your calendar.",
+    "Taking a look at your notes now.",
+    "Having a look at your inbox.",
+    "Let's check your schedule for this week.",
+    "I'll go through your emails real quick.",
+    "I will review your tasks for tomorrow.",
+    "I'm going to search your notes.",
+    "I'm looking into it now.",
+    "Give me a sec to pull up your calendar.",
+    "One sec while I check your reminders.",
+    "Hang tight, I'm pulling that up.",
+    "Just a sec, scanning your messages.",
+    "Will do. Let me set up a reminder.",
+    "On it. Drafting a note now.",
+    "Let me find a time for you.",
+    "Finding a slot for this week.",
+    "Let me dig into your files.",
+    "Reading your texts now.",
+    "Saving that now.",
+    "Let me write a draft for you.",
+    "Scheduling it now.",
+    "Creating a reminder for tomorrow.",
+    "Let me work on that.",
+    "Getting started on it now.",
+    "I'll handle it.",
+    "Let me open your photos.",
+    "Checking the weather for today.",
+    "Let me look through your contacts.",
+    "Let me check your calendar, notes and reminders.",
+    "Got it! I'll check your todos first, then your calendar.",
+    "Good question. Let me review your workflows.",
+    "Okay. Let me check your account. One sec.",
   ])("admits a forward-looking acknowledgement: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(true);
     expect(
@@ -2298,6 +2322,86 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "Checking your calendar, whats up.",
     "Let me check your seventeenth reminder.",
   ])("drops a claim read past a progress head: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // Claims an independent probe of the clause gate still accepted. Only the
+  // closed grammar's words are read, so none of them parses.
+  it.each([
+    // A result read as an object or tail.
+    "Checking your flight on time",
+    "checking your flight on schedule",
+    "Checking your order on schedule for delivery tomorrow.",
+    "Checking your package on schedule for delivery today",
+    "Checking your flight on time for tonight.",
+    "Checking your flight today on time",
+    "Sure thing, checking your flight on time.",
+    "checking your calendar friday work from home",
+    "checking your schedule today office tomorrow home",
+    "Let me check Sarah's home tonight.",
+    "Adding that and set",
+    "Moving it now and set",
+    // Assent after progress or a wait cue reads as a result.
+    "Checking your notes. Got it!",
+    "Saving it to your notes. Got it.",
+    "Let me look through your notes... got it",
+    "Checking your calendar for Friday. No problem!",
+    "Checking your calendar... no problem.",
+    "Let me check your calendar. Absolutely!",
+    "Let me check your calendar. Of course!",
+    "On it. Got it.",
+    // Emoji and symbols.
+    "Saving that to your notes ✅",
+    "✅ Adding it to your calendar",
+    "Checking your calendar (✓)",
+    "Checking your inbox 📭",
+    "Checking your notes – ∅",
+    "Checking your calendar → ∅",
+    "Checking your inbox 🦗",
+    "Checking your inbox… 🈳",
+    "Checking your afternoon 🆓",
+    "Checking your calendar = 🆓",
+    "Checking your calendar ⛔",
+    "Checking your calendar 🟢",
+    "Checking your calendar ❌",
+    "Checking your meeting 🕒",
+    "Checking your calendar 💯",
+    "Having a look 😬",
+    "Checking your week 🔥",
+    "Checking your flight 👍",
+    "Let me check — 🆗",
+    // Assent that also answers a yes/no question.
+    "Absolutely! Let me check your calendar.",
+    "Of course, let me check.",
+    // A count or time in the object.
+    "Let me check both of your meetings today.",
+    "Checking both of your appointments tomorrow",
+    "Checking your appointment Friday morning",
+  ])("drops a claim outside the closed grammar: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // Natural wording outside the closed grammar is dropped as well; the final
+  // reply still answers. Names, appointments, embedded questions, a second
+  // verb, "as well", "certainly" and a fourth sentence are not in the lists.
+  it.each([
+    "Let me pull up your calendar and check whether you have any notes.",
+    "Let me check your calendar for today and look through your notes.",
+    "Let me check Dr. Smith's appointment.",
+    "Let me check your notes as well.",
+    "Let me go ahead and check your calendar.",
+    "Let me check and get back to you.",
+    "Let me check your calendar and then pull up your notes.",
+    "Let me check with Sarah.",
+    "Let me move your appointment to Friday.",
+    "On it! Let me search your notes for Mrs. Lee's address.",
+    "Let me check whether there are any meetings tomorrow.",
+    "Let me see what's on your calendar today.",
+    "Let me get back to you on that.",
+    "Let me check your calendar vs. your notes.",
+    "Certainly! Let me check your calendar.",
+    "Okay. Let me check. One sec. Let me check your notes.",
+  ])("drops natural wording outside the closed grammar: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 });

@@ -875,12 +875,14 @@ describe("planning progress delivery boundaries", () => {
           },
         );
       }
+      // Owner-only rows speak an acknowledgement the gate admits, so only
+      // audience revalidation can drop it.
       const progressText =
         kind === "envelope"
           ? "Checking <<<EXTERNAL_UNTRUSTED_CONTENT>>> now."
           : kind === "clean"
             ? "Checking that now."
-            : "Checking PRIVATE_CONTEXT_TEST_VALUE.";
+            : "Let me check your notes.";
       h.runtime.registerModel(
         ModelType.RESPONSE_HANDLER,
         async () => {
