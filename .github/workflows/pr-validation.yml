@@ -737,9 +737,9 @@ jobs:
             --maxWorkers=1 --no-file-parallelism \
             --execArgv=--max-old-space-size=2048
 
-      - name: Verify lazy speech imports and preserved provider behavior
+      - name: Verify lazy speech imports, phase diagnostics and billing regressions
         if: steps.affected.outputs.cloud == 'true'
-        timeout-minutes: 5
+        timeout-minutes: 8
         shell: bash
         run: |
           set -euo pipefail
@@ -751,6 +751,7 @@ jobs:
           bun run --cwd packages/cloud/api test voice-tts-idempotency-key.pglite
           bun run --cwd packages/cloud/api test voice-speech-rate-limit.pglite
           bun run --cwd packages/cloud/shared test tts-safety-cache
+          bun run --cwd packages/cloud/api test speech-phase-timing
 
       - name: Verify Network Personal room routes
         if: steps.affected.outputs.cloud == 'true'
