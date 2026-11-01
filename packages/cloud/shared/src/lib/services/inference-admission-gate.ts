@@ -44,6 +44,8 @@ const SETTLEMENT_FENCE_GATE_TOTAL_BUDGET_MS = 4_500;
 const SETTLEMENT_FENCE_GATE_MAX_ATTEMPTS = 3;
 const RATE_LIMIT_WARM_TTL_MS = 5 * 60_000;
 const RATE_LIMIT_WARM_MAX_ENTRIES = 4_096;
+// Below the ~10 s after which Cloudflare may evict an idle Durable Object.
+const GATE_WAKE_IDLE_MS = 5_000;
 
 interface LeaseResponse {
   admitted: boolean;
@@ -625,6 +627,53 @@ export async function warmInferenceRateLimitGate(
     promise: warm,
   });
   await warm;
+}
+
+// Last request this isolate saw per organization, oldest first.
+const gateWakes = new Map<string, number>();
+
+/**
+ * Start the organization's billing gate while the caller's rate decision runs.
+ *
+ * An evicted Durable Object pays activation on its next request. Dispatch
+ * reaches this gate only after the rate decision and reserve, so after idle
+ * that activation ran in series (1.4-2.5 s of gateway_setup). `/rate-limit-warm`
+ * runs on the gate's rate queue and only reads its rate windows: no lease,
+ * quota, balance or durable write. One wake per organization per isolate after
+ * GATE_WAKE_IDLE_MS without a request; a failed wake never fails the request.
+ */
+export function wakeInferenceAdmissionGate(
+  organizationId: string,
+  executionCtx: { waitUntil(promise: Promise<unknown>): void },
+): void {
+  const now = Date.now();
+  const lastRequestAt = gateWakes.get(organizationId);
+  gateWakes.delete(organizationId);
+  gateWakes.set(organizationId, now);
+  if (lastRequestAt !== undefined && now - lastRequestAt < GATE_WAKE_IDLE_MS) return;
+  if (gateWakes.size > RATE_LIMIT_WARM_MAX_ENTRIES) {
+    const oldest = gateWakes.keys().next().value;
+    if (oldest !== undefined) gateWakes.delete(oldest);
+  }
+  executionCtx.waitUntil(
+    (async () => {
+      const response = await gateFetch(
+        organizationId,
+        "/rate-limit-warm",
+        {},
+        gateStub(organizationId),
+        AbortSignal.timeout(HYDRATION_GATE_TIMEOUT_MS),
+      );
+      await response.body?.cancel();
+    })().catch((error) => {
+      // error-policy:J7 the wake only moves activation earlier; dispatch keeps
+      // its own deadline and fails closed on its own.
+      logger.warn("[InferenceAdmissionGate] wake failed", {
+        organizationId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }),
+  );
 }
 
 function scheduleGateHydration(

@@ -21,6 +21,9 @@ export class TestInferenceAdmissionGate extends InferenceAdmissionGate {
       await this.testState.storage.put("rate-limits", body);
       return new Response(null, { status: 204 });
     }
+    // An unread request body makes workerd reset the client's next request on
+    // the same connection (92 of 300 in a probe), so hooks drain it.
+    if (path.startsWith("/test-")) await request.arrayBuffer();
     if (path === "/test-read-legacy-rate-limits") {
       const value = await this.testState.storage.get("rate-limits");
       return Response.json(value ?? null);

@@ -508,11 +508,12 @@ export async function requireGenerativeRouteCaller(
           resolution.ctx.orgId,
           options.rateLimitEndpoint,
           {
-            // The combined decision carries the rate policy only when the hot
-            // cache is enabled. Development and integration Workers still have
-            // an execution context, but their authoritative origin decision has
-            // no snapshot and must retain the compatibility limiter path.
-            cacheOnly: Boolean(resolution.ctx.admission),
+            // Same limiter as chat completions: a shared policy lock and one
+            // Durable Object decision. Without a snapshot the locked primary
+            // policy supplies the limit. The compatibility path took the
+            // exclusive policy lock across Redis REST round trips that fail
+            // open, and every origin-authorized key had no snapshot.
+            cacheOnly: true,
             executionCtx,
             config: inferenceRateLimitConfig(
               resolution.ctx.admission,
