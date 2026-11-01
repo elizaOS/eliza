@@ -6,6 +6,7 @@ import {
   type Memory,
   type MessageHandlerResult,
   promoteSubactionsToActions,
+  ResponseHandlerFieldRegistry,
   runResponseHandlerEvaluators,
   stringToUuid,
 } from "@elizaos/core";
@@ -20,17 +21,110 @@ import {
   calendarReadBindingField,
 } from "./read-binding.js";
 
+/** One Stage-1 HANDLE_RESPONSE as the probe corpus recorded it. */
+type RecordedStage1 = {
+  text: string;
+  reply: string;
+  bindings: unknown;
+  contexts?: string[];
+  intents?: string[];
+  status?: string;
+};
+
+/**
+ * Replays a recorded Stage-1 output through the real field registry and the
+ * read-binding evaluator, with no model call. The plan carries a binding only
+ * from a handled trace, as stage1-output.ts copies it.
+ */
+async function replayStage1(row: RecordedStage1) {
+  const runtime = new AgentRuntime({
+    character: { name: "Recorded Stage 1", bio: [] },
+    logLevel: "fatal",
+  });
+  for (const action of calendarPlugin.actions ?? [])
+    runtime.registerAction(action);
+  const message: Memory = {
+    id: stringToUuid("recorded-stage1"),
+    agentId: runtime.agentId,
+    entityId: stringToUuid("owner"),
+    roomId: stringToUuid("room"),
+    createdAt: 1000,
+    content: { text: row.text },
+  };
+  const state = { values: {}, data: {}, text: "" };
+  const fields = new ResponseHandlerFieldRegistry();
+  fields.register(calendarReadBindingField);
+  const run = await fields.dispatch({
+    rawParsed: {
+      shouldRespond: "RESPOND",
+      contexts: row.contexts ?? ["simple"],
+      intents: row.intents ?? [],
+      candidateActionNames: [],
+      replyText: row.reply,
+      replyEffectStatus: row.status ?? "none",
+      calendarReadBindings: row.bindings,
+    },
+    runtime,
+    message,
+    state,
+    senderRole: "OWNER",
+    turnSignal: new AbortController().signal,
+  });
+  const trace = run.traces.find(
+    (entry) => entry.fieldName === "calendarReadBindings",
+  );
+  const handler: MessageHandlerResult = {
+    processMessage: "RESPOND",
+    thought: "",
+    plan: {
+      contexts: run.parsed.contexts,
+      intents: run.parsed.intents,
+      candidateActions: [],
+      ...(trace?.parseOutcome === "ok" && trace.handled
+        ? {
+            calendarReadBindings: run.parsed
+              .calendarReadBindings as CalendarReadBinding[],
+          }
+        : {}),
+    },
+  };
+  await runResponseHandlerEvaluators({
+    runtime,
+    message,
+    state,
+    messageHandler: handler,
+    availableContexts: [],
+    userRoles: ["OWNER"],
+    evaluators: [calendarReadBindingEvaluator],
+  });
+  const provenance = {
+    sourceMessageId: message.id,
+    roomId: message.roomId,
+    actorId: message.entityId,
+    requestedAt: 1000,
+  };
+  return { run, trace, handler, provenance };
+}
+
+const COFFEE = "Um, when am I supposed to have coffee?";
+const STALE_COFFEE = "Coffee's today, 9 to 10 AM.";
+const QA = "So is QA coffee today?";
+const STALE_QA = "No, QA coffee is tomorrow at 9 AM.";
+const NEXT_EVENT = {
+  intentId: "intent:1",
+  operation: "next_event",
+  execution: "required",
+} as const;
+const WITHHELD = "Withheld the reply of an unbound required Calendar read";
+
 describe("Calendar operation bindings", () => {
-  it("offers provider-compatible intent strings without weakening host parsing", () => {
+  it("offers provider-compatible intent strings without weakening host parsing", async () => {
     const item = calendarReadBindingField.schema.items;
     if (!item || Array.isArray(item) || typeof item !== "object")
       throw new Error("Expected binding object schema");
     expect(item.properties?.intentId).toEqual({ type: "string" });
     expect(item.additionalProperties).toBe(false);
     expect(item.required).toEqual(["intentId", "operation", "execution"]);
-    const context = {} as Parameters<
-      NonNullable<typeof calendarReadBindingField.parse>
-    >[1];
     for (const intentId of [
       "intent:0",
       "intent:-1",
@@ -39,15 +133,27 @@ describe("Calendar operation bindings", () => {
       "other:1",
       "intent:1\nx",
       "intent:",
+      "0",
+      "01",
+      "-1",
+      "1x",
+      " 1",
+      "1\nx",
       1,
       null,
     ]) {
-      expect(
-        calendarReadBindingField.parse?.(
-          [{ intentId, operation: "feed", execution: "required" }],
-          context,
-        ),
-      ).toBeNull();
+      const { run, trace } = await replayStage1({
+        text: COFFEE,
+        reply: STALE_COFFEE,
+        bindings: [{ intentId, operation: "feed", execution: "required" }],
+      });
+      expect(run.parsed.calendarReadBindings).toEqual([]);
+      expect(run.parsed.intents).toEqual([]);
+      expect(run.parsed.replyText).toBe("");
+      expect(trace?.debug).toEqual([
+        "Calendar read binding did not name a current intent",
+        WITHHELD,
+      ]);
     }
   });
   it("binds a bare intent number to its canonical intent ID", async () => {
@@ -78,13 +184,6 @@ describe("Calendar operation bindings", () => {
       [{ intentId: "1", operation: "propose_times", execution: "required" }],
       context,
     );
-    expect(value).toEqual([
-      {
-        intentId: "intent:1",
-        operation: "propose_times",
-        execution: "required",
-      },
-    ]);
     if (!value) throw new Error("Bare intent number rejected");
     const parsed = { intents: [text], calendarReadBindings: value };
     const effect = await calendarReadBindingField.handle?.({
@@ -116,23 +215,6 @@ describe("Calendar operation bindings", () => {
     });
     expect(handler.plan.candidateActions).toEqual(["CALENDAR_PROPOSE_TIMES"]);
     expect(handler.plan.requiresTool).toBe(true);
-    // Both spellings name one intent, so the same read twice stays a duplicate.
-    expect(
-      calendarReadBindingField.parse?.(
-        [
-          { intentId: "1", operation: "feed", execution: "required" },
-          { intentId: "intent:1", operation: "feed", execution: "required" },
-        ],
-        context,
-      ),
-    ).toBeNull();
-    for (const intentId of ["0", "01", "-1", "1x", " 1", "1\nx"])
-      expect(
-        calendarReadBindingField.parse?.(
-          [{ intentId, operation: "feed", execution: "required" }],
-          context,
-        ),
-      ).toBeNull();
   });
   it.each([
     { intentId: "intent:1", execution: "required", bound: true },
@@ -514,41 +596,328 @@ describe("Calendar operation bindings", () => {
       expect(handler.plan.candidateActions ?? []).toEqual([]);
     },
   );
-  it("rejects caller-provided provenance and duplicate operation rows", () => {
+  it("never binds caller-provided provenance and binds a repeated read once", async () => {
     const context = {} as Parameters<
       NonNullable<typeof calendarReadBindingField.parse>
     >[1];
-    expect(
-      calendarReadBindingField.parse?.(
-        [
-          {
-            intentId: "intent:1",
-            operation: "next_event",
-            execution: "required",
-            actorId: "invented",
-          },
-        ],
-        context,
-      ),
-    ).toBeNull();
-    expect(
-      calendarReadBindingField.parse?.(
-        [
-          {
-            intentId: "intent:1",
-            operation: "next_event",
-            execution: "required",
-          },
-          {
-            intentId: "intent:1",
-            operation: "next_event",
-            execution: "required",
-          },
-        ],
-        context,
-      ),
-    ).toBeNull();
+    const invented = await replayStage1({
+      text: COFFEE,
+      reply: STALE_COFFEE,
+      bindings: [{ ...NEXT_EVENT, actorId: "invented" }],
+    });
+    expect(invented.run.parsed.calendarReadBindings).toEqual([]);
+    expect(invented.run.parsed.replyText).toBe("");
+    const repeated = await replayStage1({
+      text: COFFEE,
+      reply: STALE_COFFEE,
+      bindings: [NEXT_EVENT, NEXT_EVENT],
+    });
+    expect(repeated.run.parsed.calendarReadBindings).toEqual([
+      { ...NEXT_EVENT, ...repeated.provenance },
+    ]);
     expect(calendarReadBindingField.parse?.([], context)).toEqual([]);
     expect(calendarReadBindingField.parse?.(undefined, context)).toEqual([]);
   });
+});
+
+// Rows from the 211-row calendar probe corpus (union.probe.test.ts), replayed
+// from their recorded Stage-1 output. At 44ecc6c0 every shape below except
+// the controls was a parse soft fail that shipped the stale draft.
+describe("Calendar read binding normalization", () => {
+  it.each([
+    { row: "C4", contexts: ["simple"] },
+    { row: "C10", contexts: ["calendar"] },
+  ])(
+    "binds '1' and 'intent:1' copies of one read as that read ($row)",
+    async ({ contexts }) => {
+      const { run, trace, handler, provenance } = await replayStage1({
+        text: COFFEE,
+        reply: STALE_COFFEE,
+        contexts,
+        bindings: [{ ...NEXT_EVENT, intentId: "1" }, NEXT_EVENT],
+      });
+      expect(trace).toMatchObject({ parseOutcome: "ok", handled: true });
+      expect(run.parsed.calendarReadBindings).toEqual([
+        { ...NEXT_EVENT, ...provenance },
+      ]);
+      expect(run.parsed.intents).toEqual([COFFEE]);
+      expect(handler.plan.candidateActions).toEqual(["CALENDAR_NEXT_EVENT"]);
+      expect(handler.plan.requiresTool).toBe(true);
+    },
+  );
+  it.each([
+    {
+      row: "C5",
+      bindings: [{ ...NEXT_EVENT, reason: "asks when coffee is" }],
+      rejected: "carried a key other than intentId, operation and execution",
+    },
+    {
+      row: "S9",
+      contexts: ["calendar"],
+      text: QA,
+      reply: STALE_QA,
+      bindings: [
+        {
+          intentId: "intent:1",
+          operation: "search_events",
+          execution: "required",
+          reason: "x",
+        },
+      ],
+      rejected: "carried a key other than intentId, operation and execution",
+    },
+    {
+      row: "C7",
+      bindings: [{ ...NEXT_EVENT, intentId: "intent:0" }],
+      rejected: "did not name a current intent",
+    },
+    {
+      row: "C8",
+      bindings: [NEXT_EVENT, { ...NEXT_EVENT, operation: "agenda" }],
+      rejected: "named an unknown operation or execution",
+    },
+    {
+      row: "adversarial M4",
+      bindings: [NEXT_EVENT, { ...NEXT_EVENT, operation: "list_everything" }],
+      rejected: "named an unknown operation or execution",
+    },
+    {
+      row: "a read both required and conditional",
+      bindings: [NEXT_EVENT, { ...NEXT_EVENT, execution: "conditional" }],
+      rejected: "bound one read as both required and conditional",
+    },
+  ])(
+    "withholds the draft behind a rejected required read ($row)",
+    async ({ contexts, text, reply, bindings, rejected }) => {
+      const { run, trace, handler } = await replayStage1({
+        text: text ?? COFFEE,
+        reply: reply ?? STALE_COFFEE,
+        contexts,
+        bindings,
+      });
+      expect(trace).toMatchObject({
+        parseOutcome: "ok",
+        handled: true,
+        debug: [`Calendar read binding ${rejected}`, WITHHELD],
+      });
+      // Nothing binds, no item is remapped or dropped to save its sibling.
+      expect(run.parsed.calendarReadBindings).toEqual([]);
+      expect(run.parsed.intents).toEqual([]);
+      expect(run.parsed.replyText).toBe("");
+      expect(run.parsed.contexts).toEqual(contexts ?? ["simple"]);
+      expect(handler.plan.requiresTool).not.toBe(true);
+      expect(handler.plan.candidateActions).toEqual([]);
+    },
+  );
+  it.each([
+    {
+      row: "L27",
+      text: "Bye!",
+      reply: "See you tomorrow!",
+      bindings: {
+        intentId: "intent:1",
+        operation: "feed",
+        execution: "required",
+      },
+    },
+    { row: "C6", text: COFFEE, reply: STALE_COFFEE, bindings: NEXT_EVENT },
+    {
+      row: "S10",
+      contexts: ["calendar"],
+      text: QA,
+      reply: STALE_QA,
+      bindings: {
+        intentId: "intent:1",
+        operation: "search_events",
+        execution: "required",
+      },
+    },
+    {
+      row: "a list with a bare string",
+      text: COFFEE,
+      reply: STALE_COFFEE,
+      bindings: [NEXT_EVENT, "next_event"],
+    },
+  ])(
+    "leaves a non-list binding unparsed and its reply as written ($row)",
+    async (row) => {
+      const { run, trace, handler } = await replayStage1(row);
+      expect(trace?.parseOutcome).toBe("soft-fail");
+      expect(run.parsed.replyText).toBe(row.reply);
+      expect(handler.plan.calendarReadBindings).toBeUndefined();
+      expect(handler.plan.requiresTool).not.toBe(true);
+    },
+  );
+  it.each([
+    {
+      row: "A5",
+      bindings: [
+        { ...NEXT_EVENT, intentId: "intent:2", execution: "conditional" },
+      ],
+      bound: false,
+    },
+    {
+      row: "a conditional read with an extra key",
+      bindings: [{ ...NEXT_EVENT, execution: "conditional", reason: "x" }],
+      bound: false,
+    },
+    {
+      row: "C12",
+      bindings: [{ ...NEXT_EVENT, execution: "conditional" }],
+      bound: true,
+    },
+    {
+      row: "C12 twice",
+      bindings: [
+        { ...NEXT_EVENT, intentId: "1", execution: "conditional" },
+        { ...NEXT_EVENT, execution: "conditional" },
+      ],
+      bound: true,
+    },
+  ])(
+    "keeps the draft: a conditional read never withholds it ($row)",
+    async ({ bindings, bound }) => {
+      const { run, handler, provenance } = await replayStage1({
+        text: COFFEE,
+        reply: STALE_COFFEE,
+        bindings,
+      });
+      expect(handler.plan.calendarReadBindings ?? []).toEqual(
+        bound
+          ? [{ ...NEXT_EVENT, execution: "conditional", ...provenance }]
+          : [],
+      );
+      expect(run.parsed.replyText).toBe(STALE_COFFEE);
+      expect(handler.plan.requiresTool).not.toBe(true);
+    },
+  );
+  it.each([
+    { row: "S1", bindings: [NEXT_EVENT] },
+    { row: "C3", bindings: [{ ...NEXT_EVENT, intentId: "1" }] },
+    {
+      row: "S5",
+      text: QA,
+      reply: STALE_QA,
+      bindings: [{ ...NEXT_EVENT, operation: "search_events" }],
+    },
+  ])(
+    "binds a single required read as before ($row)",
+    async ({ text, reply, bindings }) => {
+      const { run, handler, provenance } = await replayStage1({
+        text: text ?? COFFEE,
+        reply: reply ?? STALE_COFFEE,
+        bindings,
+      });
+      expect(run.parsed.calendarReadBindings).toEqual([
+        {
+          ...NEXT_EVENT,
+          operation: bindings[0]?.operation,
+          ...provenance,
+        },
+      ]);
+      expect(run.parsed.intents).toEqual([text ?? COFFEE]);
+      expect(handler.plan.requiresTool).toBe(true);
+    },
+  );
+  it.each([
+    { row: "S2", intents: [], intentId: "intent:2", bound: false },
+    { row: "A15", intents: [], intentId: "2", bound: false },
+    {
+      row: "A8",
+      intents: ["Say hi to Sam", "Is QA coffee today"],
+      intentId: "intent:3",
+      bound: false,
+    },
+    {
+      row: "two declared intents",
+      intents: ["Say hi to Sam", "Is QA coffee today"],
+      intentId: "intent:2",
+      bound: true,
+    },
+  ])(
+    "binds $intentId only to a declared intent ($row)",
+    async ({ intents, intentId, bound }) => {
+      const { run, provenance } = await replayStage1({
+        text: "Say hi to Sam. Also is QA coffee today?",
+        reply: STALE_QA,
+        intents,
+        bindings: [{ ...NEXT_EVENT, intentId }],
+      });
+      expect(run.parsed.calendarReadBindings).toEqual(
+        bound ? [{ ...NEXT_EVENT, intentId, ...provenance }] : [],
+      );
+      expect(run.parsed.intents).toEqual(intents);
+      expect(run.parsed.replyText).toBe(bound ? STALE_QA : "");
+    },
+  );
+  it.each([
+    {
+      row: "R41 navigation",
+      text: "Open my calendar for tomorrow",
+      reply: "Here's your calendar for tomorrow.",
+    },
+    {
+      row: "L9 time conversion",
+      contexts: ["simple"],
+      text: "What's 9 AM Pacific tomorrow in UTC?",
+      reply: "Tomorrow at 9 AM Pacific is 5 PM UTC.",
+    },
+    {
+      row: "B1 time conversion",
+      text: "My meeting is at 3 PM Pacific. What time is that in London?",
+      reply: "Your meeting is at 11 PM London time.",
+    },
+    {
+      row: "R34 history quotation",
+      text: "Quote your earlier answer about QA coffee.",
+      reply: "I told you QA coffee is tomorrow at 9 AM.",
+    },
+    {
+      row: "R2 social",
+      text: "I have a big presentation tomorrow",
+      reply: "Good luck with the presentation tomorrow!",
+    },
+    {
+      row: "R27 advice",
+      text: "My dentist appointment is at 3. How early should I leave?",
+      reply: "For a 3 PM appointment, leave around 2:30.",
+    },
+    {
+      row: "R12 negative constraint",
+      text: "Don't book anything on Fridays",
+      reply: "Okay, no meetings on Fridays.",
+    },
+    {
+      row: "L14 create preview",
+      status: "non_applied",
+      text: "Add QA coffee tomorrow at 9 AM.",
+      reply: "Here's the draft: QA coffee, tomorrow at 9 AM, 1 hour.",
+    },
+    {
+      row: "L1 farewell, field omitted",
+      contexts: ["simple"],
+      text: "Bye!",
+      reply: "See you tomorrow!",
+      bindings: undefined,
+    },
+  ])(
+    "leaves $row unbound and unchanged",
+    async ({ contexts, text, reply, status, ...row }) => {
+      const { run, trace, handler } = await replayStage1({
+        text,
+        reply,
+        status,
+        contexts: contexts ?? ["calendar"],
+        bindings: "bindings" in row ? row.bindings : [],
+      });
+      expect(trace).toMatchObject({ parseOutcome: "ok", handled: true });
+      expect(trace?.debug).toBeUndefined();
+      expect(run.parsed.calendarReadBindings).toEqual([]);
+      expect(run.parsed.intents).toEqual([]);
+      expect(run.parsed.replyText).toBe(reply);
+      expect(run.parsed.contexts).toEqual(contexts ?? ["calendar"]);
+      expect(handler.plan.requiresTool).not.toBe(true);
+      expect(handler.plan.candidateActions).toEqual([]);
+    },
+  );
 });

@@ -16,7 +16,7 @@ type RequestedRead = Pick<
 >;
 
 export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
-  RequestedRead[]
+  Record<string, unknown>[]
 > = {
   name: "calendarReadBindings",
   description:
@@ -47,35 +47,10 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     ),
   parse(value) {
     if (value === undefined || value === null) return [];
-    if (!Array.isArray(value)) return null;
-    const seen = new Set<string>();
-    const reads: RequestedRead[] = [];
-    for (const item of value) {
-      // The free-form ID may arrive as its bare one-based number ("1", as
-      // in tj-97b3ddd147b529); it names the same intent as "intent:1".
-      const index =
-        isObjectRecord(item) && typeof item.intentId === "string"
-          ? /^(?:intent:)?([1-9][0-9]*)$/.exec(item.intentId)?.[1]
-          : undefined;
-      if (
-        !isObjectRecord(item) ||
-        Object.keys(item).some(
-          (key) =>
-            key !== "intentId" && key !== "operation" && key !== "execution",
-        ) ||
-        !index ||
-        typeof item.operation !== "string" ||
-        !Object.hasOwn(CALENDAR_READ_ACTIONS, item.operation) ||
-        (item.execution !== "required" && item.execution !== "conditional")
-      )
-        return null;
-      const intentId = `intent:${index}`;
-      const key = `${intentId}:${item.operation}`;
-      if (seen.has(key)) return null;
-      seen.add(key);
-      reads.push({ ...(item as RequestedRead), intentId });
-    }
-    return reads;
+    // Only a list of items is a binding. Handle checks each item, so a
+    // rejected item reaches the same unbound-read rule as a missing intent.
+    if (!Array.isArray(value) || !value.every(isObjectRecord)) return null;
+    return value;
   },
   handle({ value, parsed, message, turnSignal }) {
     turnSignal.throwIfAborted();
@@ -87,21 +62,19 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     const text = message.content.text?.trim();
     const intents =
       declared.length === 0 && value.length > 0 && text ? [text] : declared;
-    const valid = value.every((binding) =>
-      Boolean(intents[Number(binding.intentId.slice("intent:".length)) - 1]),
-    );
+    const { reads, rejected } = bindRequestedReads(value, intents);
     // That turn shipped a Stage-1 reply copied from earlier chat. A required
-    // read that names no current intent leaves the reply unverified. An empty
-    // reply sends RESPOND to normal planning and keeps the draft out of the
-    // planner's answer rescue.
+    // read that names no current intent, or that the field contract rejects,
+    // leaves the reply unverified. An empty reply sends RESPOND to normal
+    // planning and keeps the draft out of the planner's answer rescue.
     const withheld =
-      !valid && value.some((binding) => binding.execution === "required");
+      !reads && value.some((item) => item.execution === "required");
     return {
       mutateResult(result) {
-        if (valid && intents !== declared) result.intents = intents;
-        result.calendarReadBindings = valid
-          ? value.map((binding) => ({
-              ...binding,
+        if (reads && intents !== declared) result.intents = intents;
+        result.calendarReadBindings = reads
+          ? reads.map((read) => ({
+              ...read,
               sourceMessageId: String(message.id),
               roomId: message.roomId,
               actorId: message.entityId,
@@ -110,10 +83,10 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
           : [];
         if (withheld) result.replyText = "";
       },
-      ...(!valid
+      ...(rejected
         ? {
             debug: [
-              "Calendar read binding did not name a current intent",
+              `Calendar read binding ${rejected}`,
               ...(withheld
                 ? ["Withheld the reply of an unbound required Calendar read"]
                 : []),
@@ -123,6 +96,55 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     };
   },
 };
+
+/** Binds every item to a current intent, or names the first contract break. */
+function bindRequestedReads(
+  items: readonly Record<string, unknown>[],
+  intents: readonly string[],
+):
+  | { reads: RequestedRead[]; rejected?: never }
+  | { reads?: never; rejected: string } {
+  const reads = new Map<string, RequestedRead>();
+  for (const item of items) {
+    if (
+      Object.keys(item).some(
+        (key) =>
+          key !== "intentId" && key !== "operation" && key !== "execution",
+      )
+    )
+      return {
+        rejected: "carried a key other than intentId, operation and execution",
+      };
+    // The free-form ID may arrive as its bare one-based number ("1", as
+    // in tj-97b3ddd147b529); it names the same intent as "intent:1".
+    const index =
+      typeof item.intentId === "string"
+        ? /^(?:intent:)?([1-9][0-9]*)$/.exec(item.intentId)?.[1]
+        : undefined;
+    if (!index || !intents[Number(index) - 1])
+      return { rejected: "did not name a current intent" };
+    const { operation, execution } = item;
+    if (
+      typeof operation !== "string" ||
+      !Object.hasOwn(CALENDAR_READ_ACTIONS, operation) ||
+      (execution !== "required" && execution !== "conditional")
+    )
+      return { rejected: "named an unknown operation or execution" };
+    const read: RequestedRead = {
+      intentId: `intent:${index}`,
+      operation: operation as RequestedRead["operation"],
+      execution,
+    };
+    // "1" and "intent:1" can bind the same read twice; it stays one read.
+    // One read cannot be both required and conditional.
+    const key = `${read.intentId}:${read.operation}`;
+    const bound = reads.get(key);
+    if (bound && bound.execution !== execution)
+      return { rejected: "bound one read as both required and conditional" };
+    reads.set(key, read);
+  }
+  return { reads: [...reads.values()] };
+}
 
 export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
   name: "calendar.read-bindings",
