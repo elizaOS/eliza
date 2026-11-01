@@ -629,3 +629,143 @@ test("barge-in settles only the submitted TTS characters across contexts, not th
     4096 * CARTESIA_PUBLISHED_USD_PER_CREDIT * 1.2,
   );
 });
+
+test("the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context", async () => {
+  const headers = {
+    "x-test-session": "prepare-first",
+    "Content-Type": "application/json",
+  };
+  const token = "prepare-first-capability";
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  await request("/test-allow-admission");
+  await request("/initialize", {
+    sessionId: "66666666-6666-4666-8666-666666666666",
+    tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+    expiresAt: Date.now() + 60000,
+    caller: {
+      user: {
+        ...account,
+        organization_id: "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd",
+      },
+      apiKeyId: "prepare-key",
+      authSource: "combined_cache",
+      appScopeId: null,
+      credential: {
+        kind: "api_key",
+        credentialId: "prepare-key",
+        userId: account.id,
+      },
+    },
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...headers, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const received: any[] = [];
+  socket.addEventListener("message", (event: MessageEvent) =>
+    received.push(
+      typeof event.data === "string" ? JSON.parse(event.data) : event.data,
+    ),
+  );
+  const ready = next(socket as any, (value) => value.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token }));
+  await ready;
+  const before = (await (await request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  // Frames exactly as cloud-speech-relay-client sends them: createStream
+  // sends prepare before any text, then tts phrases, then finish or cancel.
+  const send = (value: unknown) => socket.send(JSON.stringify(value));
+  const binary = (value: unknown) =>
+    value instanceof ArrayBuffer || ArrayBuffer.isView(value);
+  const spoken = crypto.randomUUID();
+  const spokenPrepared = next(
+    socket as any,
+    (value) => value.t === "tts_prepared" && value.id === spoken,
+  );
+  send({ t: "prepare", id: spoken });
+  await spokenPrepared;
+  const audio = next(socket as any, binary);
+  send({
+    t: "tts",
+    id: spoken,
+    text: "This is a finalized phrase.",
+    flush: true,
+  });
+  expect((await audio).byteLength).toBeGreaterThan(4);
+  const spokenComplete = next(
+    socket as any,
+    (value) => value.t === "complete" && value.id === spoken,
+  );
+  send({ t: "finish", id: spoken });
+  await spokenComplete;
+  // A reply with no speech: prepare, then finish with no text.
+  const silent = crypto.randomUUID();
+  const silentComplete = next(
+    socket as any,
+    (value) => value.t === "complete" && value.id === silent,
+  );
+  send({ t: "prepare", id: silent });
+  send({ t: "finish", id: silent });
+  await silentComplete;
+  // Barge-in before the first phrase.
+  const dropped = crypto.randomUUID();
+  const droppedPrepared = next(
+    socket as any,
+    (value) => value.t === "tts_prepared" && value.id === dropped,
+  );
+  send({ t: "prepare", id: dropped });
+  await droppedPrepared;
+  send({ t: "cancel", id: dropped });
+  // An older client's tts-first context is unchanged.
+  const legacy = "legacy-context";
+  const legacyPrepared = next(
+    socket as any,
+    (value) => value.t === "tts_prepared" && value.id === legacy,
+  );
+  const legacyAudio = next(socket as any, binary);
+  send({ t: "tts", id: legacy, text: "An older client.", flush: true });
+  await legacyPrepared;
+  await legacyAudio;
+  const legacyComplete = next(
+    socket as any,
+    (value) => value.t === "complete" && value.id === legacy,
+  );
+  send({ t: "finish", id: legacy });
+  await legacyComplete;
+  const closed = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(Error("Prepared session did not close")),
+      3000,
+    );
+    socket.addEventListener(
+      "close",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  send({ t: "stop" });
+  await closed;
+  expect(received.filter((value) => value.t === "error")).toEqual([]);
+  for (const id of [spoken, silent, dropped, legacy])
+    expect(
+      received.filter((value) => value.t === "tts_prepared" && value.id === id),
+    ).toHaveLength(1);
+  const after = (await (await request("/test-stats")).json()) as Record<
+    string,
+    unknown
+  >;
+  expect(after.ttsOpened).toBe((before.ttsOpened ?? 0) + 4);
+  expect(after.ttsCancelled).toBe(true);
+});

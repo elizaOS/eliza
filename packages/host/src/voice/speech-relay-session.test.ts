@@ -509,3 +509,140 @@ test("a cancelled context never dispatches its later phrases", async () => {
   expect(f.order.filter((value) => value === "tts-phrase")).toHaveLength(1);
   await session.close();
 });
+
+// cloud-speech-relay-client createStream sends { t: "prepare", id } before any
+// text, then tts phrases, then finish or cancel for the same id.
+test("a prepare opens one Sonic context before text; its phrases, audio and finish reuse it", async () => {
+  const markers: string[] = [];
+  const f = harness({
+      reserveCredits: async () => ({
+        beforeProviderDispatch: async (kind) => {
+          markers.push(kind);
+        },
+        settle: async (receipt) => {
+          f.settled.push(receipt);
+        },
+      }),
+    }),
+    s = await f.open(),
+    id = crypto.randomUUID();
+  await s.control({ t: "prepare", id });
+  expect(f.order.at(-1)).toBe("tts-open");
+  expect(f.order).not.toContain("tts-phrase");
+  expect(markers).toEqual(["stt", "tts"]);
+  await s.control({ t: "tts", id, text: "Hello there.", flush: true });
+  await s.control({ t: "tts", id, text: " Second." });
+  f.audio(new Uint8Array([1, 2]));
+  await s.control({ t: "finish", id });
+  f.complete();
+  expect(f.order.filter((row) => row === "tts-open")).toHaveLength(1);
+  expect(f.order.filter((row) => row === "tts-phrase")).toHaveLength(2);
+  expect(f.order.filter((row) => row === "tts-finish")).toHaveLength(1);
+  expect(f.events).toEqual([
+    { t: "audio", id, bytes: new Uint8Array([1, 2]) },
+    { t: "complete", id },
+  ]);
+  expect(f.closures).toEqual([]);
+  await s.close();
+  expect(f.settled).toEqual([
+    {
+      pcmBytes: 0,
+      ttsCharacters: 20,
+      providerMayHaveStarted: true,
+      dispatched: { stt: true, tts: true },
+      outcome: "unknown",
+      outcomes: { stt: "unknown", tts: "complete" },
+    },
+  ]);
+});
+test("a prepare then finish with no text completes cleanly and spends no text budget", async () => {
+  const f = harness(),
+    s = await f.open(),
+    id = crypto.randomUUID();
+  await s.control({ t: "prepare", id });
+  await s.control({ t: "finish", id });
+  f.complete();
+  expect(f.order.slice(-2)).toEqual(["tts-open", "tts-finish"]);
+  expect(f.order).not.toContain("tts-phrase");
+  expect(f.events).toEqual([{ t: "complete", id }]);
+  // The whole text budget is still available after the silent context.
+  for (let n = 0; n < 4; n++)
+    await s.control({ t: "tts", id: `phrase-${n}`, text: "x".repeat(1024) });
+  expect(f.closures).toEqual([]);
+  await s.close();
+  expect(f.settled).toMatchObject([{ ttsCharacters: 4096 }]);
+});
+test("cancel or stop after a prepare cancels the idle context and drops its late frames", async () => {
+  for (const mode of ["cancel", "stop"] as const) {
+    const f = harness(),
+      s = await f.open(),
+      id = crypto.randomUUID();
+    await s.control({ t: "prepare", id });
+    await s.control(mode === "cancel" ? { t: "cancel", id } : { t: "stop" });
+    if (mode === "cancel") {
+      // A late phrase or finish for the cancelled context is dropped.
+      expect(await s.control({ t: "tts", id, text: "late" })).toBe(false);
+      expect(await s.control({ t: "finish", id })).toBe(false);
+      expect(f.closures).toEqual([]);
+    }
+    await s.close();
+    f.audio(new Uint8Array([1, 2]));
+    f.complete();
+    expect(f.events).toEqual([]);
+    expect(f.order.filter((row) => row === "tts-cancel")).toHaveLength(1);
+    expect(f.order).not.toContain("tts-phrase");
+    expect(f.settled).toMatchObject([{ ttsCharacters: 0 }]);
+  }
+});
+test("a prepare follows the existing context id rules and limits", async () => {
+  const f = harness(),
+    s = await f.open();
+  // A repeated prepare, or text after it, reuses the live context.
+  await s.control({ t: "prepare", id: "live" });
+  await s.control({ t: "prepare", id: "live" });
+  await s.control({ t: "tts", id: "live", text: "hello" });
+  expect(f.order.filter((row) => row === "tts-open")).toHaveLength(1);
+  await s.control({ t: "finish", id: "live" });
+  // A finished context cannot be prepared again.
+  await expect(s.control({ t: "prepare", id: "live" })).rejects.toBeDefined();
+  await s.close();
+  const g = harness(),
+    t = await g.open();
+  await t.control({ t: "tts", id: "done", text: "hello" });
+  g.complete();
+  // A completed context cannot be prepared again.
+  await expect(t.control({ t: "prepare", id: "done" })).rejects.toBeDefined();
+  await t.close();
+  const h = harness(),
+    u = await h.open();
+  for (let n = 0; n < 64; n++) await u.control({ t: "prepare", id: `p-${n}` });
+  await expect(u.control({ t: "prepare", id: "p-64" })).rejects.toBeDefined();
+  await u.close();
+  expect(h.order.filter((row) => row === "tts-open")).toHaveLength(64);
+});
+test("a durable dispatch marker blocks the prepared provider factory and revocation drops it", async () => {
+  let releaseTts!: () => void;
+  const f = harness({
+    reserveCredits: async () => ({
+      beforeProviderDispatch: (kind) =>
+        kind === "stt"
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => {
+              releaseTts = resolve;
+            }),
+      settle: async (receipt) => {
+        f.settled.push(receipt);
+      },
+    }),
+  });
+  const s = await f.open();
+  const preparing = s.control({ t: "prepare", id: "p" });
+  await tick();
+  expect(f.order).not.toContain("tts-open");
+  f.revoke();
+  releaseTts();
+  await expect(preparing).rejects.toThrow("closed");
+  await s.close();
+  expect(f.order).not.toContain("tts-open");
+  expect(f.settled).toMatchObject([{ dispatched: { stt: true, tts: false } }]);
+});

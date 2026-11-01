@@ -138,12 +138,15 @@ export async function prewarmSharedAgentTurnCaches(
     const character = projectSharedAgentCharacter(agent, linked);
     const model = resolveSharedAgentTurnModel(character.model);
     if (model) {
+      // Write the Worker-cache entry the cache-only turn reads, not only this
+      // isolate's copy.
       await calculateCost(
         normalizeModelName(model),
         getProviderFromModel(model),
         1,
         1,
         "bitrouter",
+        { warmWorkerCache: true },
       );
     }
   })();
