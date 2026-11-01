@@ -813,6 +813,8 @@ export interface AccountsRouteContext extends RouteRequestContext {
 
 const ACCOUNTS_PREFIX = "/api/accounts";
 const PROVIDERS_PREFIX = "/api/providers";
+/** Pending-OAuth status SSE keepalive, mirroring the conversation stream's cadence. */
+const OAUTH_STATUS_HEARTBEAT_MS = 5000;
 
 export async function handleAccountsRoutes(
   ctx: AccountsRouteContext,
@@ -1463,9 +1465,23 @@ function handleOAuthStatusSse(
   };
 
   let closed = false;
+  // Same keepalive contract as the conversation SSE stream: while the user
+  // completes the provider's OAuth pages this stream can sit idle for
+  // minutes, and idle L7 proxies (nginx default proxy_read_timeout 60s)
+  // would cut it before the terminal state arrives. Comment frames keep the
+  // connection observably alive without touching the event stream.
+  const heartbeat = setInterval(() => {
+    if (closed) return;
+    try {
+      res.write(": heartbeat\n\n");
+    } catch {
+      finish();
+    }
+  }, OAUTH_STATUS_HEARTBEAT_MS);
   const finish = () => {
     if (closed) return;
     closed = true;
+    clearInterval(heartbeat);
     try {
       res.end();
     } catch (err) {
