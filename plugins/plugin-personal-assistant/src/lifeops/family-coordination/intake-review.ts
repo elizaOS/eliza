@@ -154,6 +154,22 @@ function readRecord(row: Record<string, unknown>): FamilyIntakeReview {
   return result.data;
 }
 
+/** Deletion review requires this table even before the first selection. */
+export async function ensureFamilyIntakeReviewStore(
+  runtime: LifeOpsDatabaseContext,
+): Promise<void> {
+  await executeRawSql(runtime, "CREATE SCHEMA IF NOT EXISTS app_lifeops");
+  await executeRawSql(
+    runtime,
+    `CREATE TABLE IF NOT EXISTS app_lifeops.life_family_intake_reviews (
+      agent_id TEXT NOT NULL, id TEXT NOT NULL, period_key TEXT NOT NULL,
+      document_id TEXT NOT NULL, revision INTEGER NOT NULL CHECK (revision > 0),
+      status TEXT NOT NULL, review_json JSONB NOT NULL,
+      PRIMARY KEY (agent_id,id,revision), UNIQUE (agent_id,period_key,document_id,revision)
+    )`,
+  );
+}
+
 /** One tenant-scoped selection per document and target month, with CAS edits. */
 export class FamilyIntakeReviewStore {
   private initialized = false;
@@ -165,19 +181,7 @@ export class FamilyIntakeReviewStore {
 
   private async ensureSchema(): Promise<void> {
     if (this.initialized) return;
-    await executeRawSql(
-      this.runtime,
-      "CREATE SCHEMA IF NOT EXISTS app_lifeops",
-    );
-    await executeRawSql(
-      this.runtime,
-      `CREATE TABLE IF NOT EXISTS app_lifeops.life_family_intake_reviews (
-      agent_id TEXT NOT NULL, id TEXT NOT NULL, period_key TEXT NOT NULL,
-      document_id TEXT NOT NULL, revision INTEGER NOT NULL CHECK (revision > 0),
-      status TEXT NOT NULL, review_json JSONB NOT NULL,
-      PRIMARY KEY (agent_id,id,revision), UNIQUE (agent_id,period_key,document_id,revision)
-    )`,
-    );
+    await ensureFamilyIntakeReviewStore(this.runtime);
     this.initialized = true;
   }
 
