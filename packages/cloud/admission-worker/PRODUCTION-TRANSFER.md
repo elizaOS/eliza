@@ -64,15 +64,25 @@ its bundle sources (the audit's `ADMISSION_BUNDLE_SOURCES`) still equal phase
    phase 2 merge, no `force` dispatch and no rollback. Until gate 3, `main`
    runs the base release workflow, which has no production admission check. A
    revert of the phase 2 merge passes CI, and its release would declare a live
-   local class in the API again. The stop is approval: every production run
-   waits at `Authorize production environment` for a reviewer of the
-   protected `production` GitHub Environment, including the run the main
-   reconciler dispatches whenever `main` moves (`cloud-production` in
-   `.github/main-effects.json`). Until gate 3 reads back, its reviewers
-   approve only the runs Root names and reject any other at once. Before each
-   step Root confirms that no other production run is waiting (`gh run list
-   --workflow cloud-cf-deploy.yml --status waiting`). Keep the window short:
-   line up the gate 3 maintainer before phase 3 and land gate 3 right after R3.
+   local class in the API again. No approval step stops it: the `production`
+   GitHub Environment has only its `main` branch policy and no required
+   reviewers (`gh api repos/elizaOS/eliza/environments/production --jq
+   .protection_rules`). Whenever `main` moves, the main reconciler dispatches
+   the production release once Develop Full passes on `main`
+   (`cloud-production` in `.github/main-effects.json`), and it runs at once.
+   So this freeze is the only stop between gate 2 and gate 3. Required
+   reviewers on `production` for the window would add one; that is Root's or
+   the owner's decision. Before each step Root confirms that no production run
+   is queued or in progress; this prints nothing:
+
+   ```bash
+   gh run list --repo elizaOS/eliza --workflow cloud-cf-deploy.yml --limit 100 \
+     --json databaseId,displayTitle,status --jq '.[] | select(.status !=
+     "completed" and (.displayTitle | startswith("Cloud CF production")))'
+   ```
+
+   Keep the window short: line up the gate 3 maintainer before phase 3 and
+   land gate 3 right after R3.
 3. **Human merge gate 2: the phase 2 change on `main`.** A maintainer with
    merge authority lands exactly the frozen phase 2 change (`a6252d47` to
    `eaf2467c`) on live `main` as `M`: a merge of `eaf2467c`, not a squash, so
@@ -108,13 +118,14 @@ paths. Otherwise phase 1 would deploy gate code the API does not serve, or
 gate 2 would refuse `M` only after phase 1 is live.
 
 For gate 2 add `--commit source-owned=<R1 API commit> --commit
-source-commit=<phase 2 main SHA> --live R1.json`. Then it also requires the
-merge's first parent to be the commit R1 names, only the phase 2 paths in the
-merge, each with its content at `eaf2467c`, and no change to the admission
-bundle sources between the phase 1 commit and the phase 2 `main` commit. For
-gate 3 add `--steady <main SHA> --tip <reviewed tip SHA>` too: the steady
-commit's first parent must be the phase 2 `main` commit, and its tree must
-equal a clean merge of the reviewed tip onto it (`git merge-tree`). Any
+source-commit=<phase 2 commit> --live R1.json`. Then it also requires the
+phase 2 commit's first parent to be the commit R1 names, only the phase 2
+paths in the merge, each with its content at `eaf2467c`, and no change to the
+admission bundle sources from the phase 1 commit. For gate 3 add `--steady
+<steady commit> --tip <reviewed tip SHA>` too: the steady commit's first
+parent must be the phase 2 commit, and its tree must equal a clean merge of
+the reviewed tip onto it (`git merge-tree`). Root runs both on the `staging`
+commits before their promotion to `main` (see "Delivery of `M`"). Any
 `problems` entry stops the transfer.
 
 **Target deploy tool.** Every admission Worker step uses it, never a bare
@@ -183,19 +194,24 @@ stops the transfer.
 ## Before phase 1
 
 1. Production must serve the tip of `main`, and `develop` and `staging` must
-   equal it. If `main` moved since the last production release, Root releases
-   `main` first and captures fresh effective-variable receipts; the readback
-   requires them to name the live API version. If `develop` or `staging` is
-   ahead of `main`, promote or hold that work first.
+   equal it (`gh api repos/elizaOS/eliza/branches/<branch> --jq
+   .commit.sha`). If `main` moved since the last production release, Root
+   releases `main` first and captures fresh effective-variable receipts; the
+   readback requires them to name the live API version. If `develop` or
+   `staging` is ahead of `main`, promote or hold that work first.
 2. Root takes the release lock, and the freeze starts.
 3. Root confirms, read-only on staging's completed transfer, the Cloudflare
    fields the readback has seen only in fixtures. `eliza-cloud-api-staging`
    holds the tombstone and `eliza-cloud-admission-staging` adopted. If any
    differs, stop: the production readback would fail only after the commit.
-   - `GET /workers/durable_objects/namespaces`: staging's
-     `InferenceAdmissionGate` namespace has `eliza-cloud-admission-staging` as
-     `script`. A page past the last returns an empty `result` with the same
-     `total_count`.
+   - `GET /workers/durable_objects/namespaces?per_page=100&page=<n>`:
+     staging's `InferenceAdmissionGate` namespace has
+     `eliza-cloud-admission-staging` as `script`. The page after the last one
+     (`n` one more than `total_count` / 100, rounded up) returns `result`
+     `[]` and `result_info` with `page` equal to `n`, `per_page` 100, `count`
+     0 and the same `total_count`. The readback requires each of these. If
+     Cloudflare returns the last page again instead, every readback stops
+     whenever the namespace total is a multiple of 100.
    - `GET /workers/scripts/eliza-cloud-api-staging/versions/<serving
      version>`: `INFERENCE_ADMISSION_GATES` has that namespace's ID as
      `namespace_id` and `eliza-cloud-admission-staging` as `script_name`.
@@ -207,7 +223,29 @@ stops the transfer.
    phase chain on the commit the API serves and have it reviewed again.
 5. Record the baseline as `R0.json`: `--phase source-owned --commit <commit
    the API serves>`, without `--previous`.
-6. Settle TRANSFER-2 now if possible. Phase 2 cannot start without it, and an
+6. Record the release's inputs. Take `since`, the `createdAt` of the latest
+   successful production run of the commit the API serves, then list each
+   input's last update, names and dates only:
+
+   ```bash
+   gh run list --repo elizaOS/eliza --workflow cloud-cf-deploy.yml \
+     --branch main --commit <commit the API serves> \
+     --json databaseId,displayTitle,createdAt,conclusion
+   for endpoint in environments/production/variables \
+     environments/production/secrets actions/variables actions/secrets \
+     actions/organization-variables actions/organization-secrets; do
+     gh api --paginate "repos/elizaOS/eliza/$endpoint" --jq \
+       "(.variables // .secrets)[] | [\"$endpoint\", .name, .updated_at] | @tsv" ||
+       echo "unreadable $endpoint"
+   done | sort > "$STATE/INPUTS-R0.tsv"
+   ```
+
+   An `updated_at` later than `since`, or an `unreadable` line, stops: the
+   phase 2 release would publish that change together with the commit. A
+   deleted input leaves no entry. Phase 2 compares this list with a new one,
+   so it sees a deletion after R0. A variable deleted between `since` and R0
+   shows only in R2, after the commit, as a changed API variable.
+7. Settle TRANSFER-2 now if possible. Phase 2 cannot start without it, and an
    abort after phase 1 leaves a pending target that a later attempt cannot
    start from (see the abort).
 
@@ -275,50 +313,54 @@ Without either, abort as above.
 
 **Delivery of `M`.** The protected release needs a staging certificate for
 `M`'s exact tree (`validate-staging-certification`), and staging certifies
-only trees it deploys. So `M` takes the normal reviewed promotion, `develop`
-to `staging` to `main`, as the only change on each branch: the merge lands on
-`develop`, `staging` deploys and certifies tree `M` forward from its own head
-(the phase 2 change leaves staging's configuration unchanged), and `main`
-fast-forwards to the same commit. That is why `develop` and `staging` equal
-`main` at R0. Never dispatch a staging deploy of `M` from another ref: it
-would roll staging off its head.
+only trees it deploys. So the phase 2 change takes the normal reviewed
+promotion, `develop` to `staging` to `main`, as the only change on each
+branch: the merge lands on `develop`, `staging` deploys and certifies its
+tree forward from its own head (the phase 2 change leaves staging's
+configuration unchanged), and the promotion to `main` lands `M`. That is why
+`develop` and `staging` equal `main` at R0. Never dispatch a staging deploy
+from another ref: it would roll staging off its head. Call the `staging`
+commit that holds the change `S2`. `M` is `S2` or a merge commit with `S2`'s
+tree whose first parent is the previous `main`; the main reconciler refuses a
+`main` commit whose tree differs from the reviewed `staging` commit. The gate
+2 audit reads only the first parent and the tree, and the freeze keeps `main`
+on the commit the API serves, so Root checks `S2` before the promotion. Once
+`M` is on `main`, nothing stops its release (see the freeze under Gates).
 
-1. Gate 2 lands the phase 2 change as `M`.
-2. Run the audit with the gate 2 arguments. The phase 2 API diff must be
-   exactly `exports.InferenceAdmissionGate` (`storage` to `state =
-   "transferred"`, `transferred_to`) and the binding's `script_name`.
-3. Check out `M` in `$PHASE` and run the target deploy tool with `--phase
+1. Gate 2 lands the phase 2 change on `develop`, and it reaches `staging` as
+   `S2`.
+2. Run the audit with the gate 2 arguments and `--commit
+   source-commit=<S2>`. The phase 2 API diff must be exactly
+   `exports.InferenceAdmissionGate` (`storage` to `state = "transferred"`,
+   `transferred_to`) and the binding's `script_name`.
+3. Check out `S2` in `$PHASE` and run the target deploy tool with `--phase
    source-commit --bundle-sha256 H1` and no `--deploy` (it refuses one). It
-   runs `M`'s validator and proves that `M`'s admission bundle, from phase 1's
+   runs `S2`'s validator and proves that its admission bundle, from phase 1's
    build, equals `H1`. With the audit's unchanged bundle sources, that is the
    evidence that the target serves the API's gate code and storage schema
    once the API commits. The API bundle that CI builds is not compared.
-4. Prove the release's inputs unchanged since the last production release.
-   The release republishes `--var` values and secrets built from GitHub
-   variables, secrets and the live bindings, with code that `M` does not
-   change: the audit allows only the five phase paths, and in the API
-   configuration only the admission export and binding. Take `since`, the
-   `createdAt` of the latest successful production run for R1's API commit,
-   then list each input's last update, names and dates only, from `$TIP`:
+4. Prove the release's inputs unchanged since R0. The release republishes
+   `--var` values and secrets built from GitHub variables, secrets and the
+   live bindings, with code that `M` does not change: the audit allows only
+   the five phase paths, and in the API configuration only the admission
+   export and binding. List them again with the loop of "Before phase 1"
+   step 6 into `"$STATE/INPUTS-M.tsv"`. `diff "$STATE/INPUTS-R0.tsv"
+   "$STATE/INPUTS-M.tsv"` must print nothing: an added, changed, deleted or
+   unreadable input stops phase 2, because the release would change a live
+   value together with the commit.
+5. Only then may a maintainer merge the promotion of `S2` to `main`. When
+   Develop Full passes on `M`, the main reconciler dispatches the production
+   release of `M`, and it runs without approval. Root dispatches nothing and
+   confirms exactly one production run of `M`, and that it succeeded:
 
    ```bash
-   gh run list --workflow cloud-cf-deploy.yml --branch main \
-     --commit <R1 API commit> --json databaseId,createdAt,conclusion
-   for path in environments/production/variables \
-     environments/production/secrets actions/variables actions/secrets \
-     actions/organization-variables actions/organization-secrets; do
-     gh api --paginate "repos/{owner}/{repo}/$path" \
-       --jq '(.variables // .secrets)[] | [.name, .updated_at] | @tsv'
-   done
+   gh run list --repo elizaOS/eliza --workflow cloud-cf-deploy.yml \
+     --commit <M> --json databaseId,displayTitle,status,conclusion
    ```
 
-   An `updated_at` later than `since`, or a list Root cannot read, stops
-   phase 2: the release would change a live value together with the commit.
-5. Approve the protected production release of `M`, exactly one run: the one
-   the main reconciler dispatched when `main` reached `M`, or Root's own
-   dispatch. Secrets, `--var` values and provenance then match every release.
-   The base workflow on `M` publishes only the API. Do not deploy the API from
-   a local CLI: `keep_vars` and the release `--var` values would change live
+   Secrets, `--var` values and provenance then match every release. The base
+   workflow on `M` publishes only the API. Do not deploy the API from a local
+   CLI: `keep_vars` and the release `--var` values would change live
    variables.
 6. Read back `--phase source-commit --commit <M> --previous R1.json` as
    `R2.json`. The target owns `Nprod`. The API binding names the target. The
@@ -349,12 +391,16 @@ target's local binding names `Nprod`, not a new ID. Recovery of an expired
 lease reaches the API through `INFERENCE_RECOVERY_SERVICE` (observability
 logs). A failed recovery keeps the lease for the existing retry path.
 
-Then gate 3, without delay. Root runs the audit with the gate 3 arguments,
-approves the release, and reads back `--phase adopted --commit <released main
-SHA>` as `R4.json`, without `--previous`: that release deploys both Workers.
-From then on, each production release validates the committed phase, reads
-back, deploys the admission Worker, reads back, deploys the API and reads
-back.
+Then gate 3, without delay. The reviewed tip lands on `develop` and reaches
+`staging` the same way, as `S3`: a merge onto the phase 2 commit there.
+Before its promotion to `main`, Root runs the audit with the gate 2
+arguments, `--commit source-commit=<first parent of S3>`, `--steady <S3>` and
+`--tip <reviewed tip SHA>`; the gate 2 checks pin that first parent to `M`'s
+tree. Once the promotion lands, the main reconciler releases it without
+approval. Root reads back `--phase adopted --commit <released main SHA>` as
+`R4.json`, without `--previous`: that release deploys both Workers. From then
+on, each production release validates the committed phase, reads back,
+deploys the admission Worker, reads back, deploys the API and reads back.
 
 ## Stop conditions
 
@@ -369,8 +415,8 @@ Stop, keep every Worker, class and tombstone, and report the receipt when:
   sampled IDs without stored data disappear;
 - an API variable differs from Root's receipts or from the previous receipt,
   or API and target variables differ;
-- a GitHub variable or secret the release reads changed after the last
-  production release;
+- a GitHub variable or secret the release reads changed or appeared after
+  the last production release, or disappeared after R0;
 - a Worker serves more than one version, or an unexpected commit;
 - another merge, deploy, release, variable or secret change runs during the
   freeze.
@@ -431,10 +477,11 @@ phase stops before an upload. `reverse-adopted` is also a steady state:
 later releases publish only the API, and the target keeps its tombstone.
 
 1. **R1.** The R1 commit reaches `main` through a human merge gate, with its
-   staging certificate. Root dispatches its production release, then reads
-   back `--phase reverse-pending --commit <released main SHA> --previous
-   <adopted receipt>`. Take that adopted receipt (`--phase adopted --commit
-   <served main SHA>`) right before the R1 release, with the lock held.
+   staging certificate, and the main reconciler releases it without approval.
+   Root then reads back `--phase reverse-pending --commit <released main SHA>
+   --previous <adopted receipt>`. Take that adopted receipt (`--phase adopted
+   --commit <served main SHA>`) right before the promotion of R1 to `main`,
+   with the lock held.
 2. **R2.** On a checkout of the R2 commit, run the target deploy tool with
    `--phase reverse-commit --bundle-sha256 H1`, then `--deploy --api-commit
    <R1 released main SHA>`. It reads back `reverse-pending` first, with the
@@ -444,10 +491,10 @@ later releases publish only the API, and the target keeps its tombstone.
    --commit <R2> --previous <R1 receipt>`. R2 need not land on `main`; a
    release of `main` at R1 now stops, because the live state is no longer
    `adopted` or `reverse-pending`.
-3. **R3.** The R3 commit (R1, R2 and R3 patches) lands on `main` the same way.
-   Root dispatches its release and reads back `--phase reverse-adopted
-   --commit <released main SHA> --previous <R2 receipt>`. The API's local
-   binding names `Nprod`; the target keeps its tombstone.
+3. **R3.** The R3 commit (R1, R2 and R3 patches) lands on `main` and is
+   released the same way. Root reads back `--phase reverse-adopted --commit
+   <released main SHA> --previous <R2 receipt>`. The API's local binding
+   names `Nprod`; the target keeps its tombstone.
 
 The freeze applies from R1 until R3 reads back. No environment has run a
 reverse transfer: staging accepts only `adopted`, and the disposable rehearsal
