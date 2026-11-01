@@ -1,9 +1,12 @@
 /**
- * Worker speech routes run the chat completions rate limiter. Production
- * flags authorize every API key at origin with no admission snapshot, which
- * used to send STT and TTS through the exclusive policy lock and Redis REST
- * windows. Real STT and TTS routes, API-key auth and policy reads on PGlite;
- * the per-organization Durable Object and the Redis REST endpoint are counting
+ * Worker speech routes run the chat completions rate limiter. A Worker request
+ * is decided from the combined auth cache (one read) and the per-organization
+ * Durable Object: a cold credential first gets a retryable 503 while its
+ * decision hydrates under `waitUntil` (`speak` below retries once after the
+ * background work, as the Eliza Cloud client does), and the limiter takes the
+ * tier and key cap from that cached decision instead of the primary. Real STT
+ * and TTS routes, API-key auth and policy hydration on PGlite; the
+ * per-organization Durable Object and the Redis REST endpoint are counting
  * fakes. The Durable Object's own window logic is covered by its miniflare test.
  * The personal agent's platform-funded image and video media count in the same
  * strict window when the turn runs in a Worker.
@@ -24,10 +27,12 @@ import type { Hono } from "hono";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
-// Production values: the positive auth cache stays off without strong
-// revocation, and the compatibility limiter uses Redis REST.
+// Production values: strong revocation is off (the Worker path is cache-only
+// regardless), and the compatibility limiter uses Redis REST. The combined
+// auth cache uses the in-memory test backend.
 process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
 process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
+process.env.CACHE_BACKEND = "memory";
 process.env.REDIS_RATE_LIMITING = "true";
 process.env.DIRECT_REDIS_BACKEND = "redis-rest";
 process.env.KV_REST_API_URL = "https://redis-rest.test";
@@ -248,6 +253,19 @@ beforeEach(() => {
  * empty TTS text), so an admitted caller gets 400 with no provider work.
  */
 async function speak(route: "stt" | "tts", rawKey: string) {
+  const first = await speakOnce(route, rawKey);
+  if (first.status !== 503) return first;
+  const body = (await first.clone().json()) as {
+    error?: string;
+    message?: string;
+  };
+  if (!JSON.stringify(body).includes("Authorization cache is warming"))
+    return first;
+  expect(first.headers.get("Retry-After")).toBe("1");
+  return await speakOnce(route, rawKey);
+}
+
+async function speakOnce(route: "stt" | "tts", rawKey: string) {
   const pending: Promise<unknown>[] = [];
   const response = await runWithBindings({ INFERENCE_ADMISSION_GATES }, () =>
     Promise.resolve(
@@ -289,6 +307,21 @@ async function speak(route: "stt" | "tts", rawKey: string) {
  * it, so an admitted request does no provider work.
  */
 async function generatePersonalMedia(
+  workerTurn: boolean,
+  mediaType: "image" | "audio",
+) {
+  try {
+    return await generatePersonalMediaOnce(workerTurn, mediaType);
+  } catch (error) {
+    // A cold organization projection is a retryable warming signal; its
+    // hydration already ran under the turn's `waitUntil`.
+    if (!(error instanceof Error) || !/warming/i.test(error.message))
+      throw error;
+    return await generatePersonalMediaOnce(workerTurn, mediaType);
+  }
+}
+
+async function generatePersonalMediaOnce(
   workerTurn: boolean,
   mediaType: "image" | "audio",
 ) {
@@ -363,8 +396,10 @@ describe("Worker speech rate limit without an admission snapshot", () => {
   });
 
   test("a key row owned by another organization fails closed", async () => {
-    expect((await speak("stt", keys.foreign.raw)).status).toBe(503);
-    expect((await speak("tts", keys.foreign.raw)).status).toBe(503);
+    // Refused once by the authoritative hydration (the cached decision is
+    // bound to one organization), never by a per-request key-row read.
+    expect((await speak("stt", keys.foreign.raw)).status).toBe(403);
+    expect((await speak("tts", keys.foreign.raw)).status).toBe(403);
     expect(gateCalls).toHaveLength(0);
     expect(redisCalls).toBe(0);
   });

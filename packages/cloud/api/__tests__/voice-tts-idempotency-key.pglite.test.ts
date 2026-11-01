@@ -3,7 +3,7 @@
  * `Idempotency-Key` (#16425). The key names one utterance: a second utterance
  * sent under the same key is a new paid request, while a retry of the same
  * utterance still replays. An ElevenLabs rejection releases the reservation.
- * A caller abort reaches moderation and the speech upstreams: before admission
+ * A caller abort reaches the speech upstreams: before admission
  * it gets no reservation, before dispatch it releases the reservation, after
  * dispatch it keeps the unknown charge. A released reservation frees its key,
  * so a keyed retry pays once. A WAV synthesis that ends while its dispatch
@@ -30,7 +30,6 @@ import {
 import { randomUUID } from "node:crypto";
 import { getEventListeners } from "node:events";
 import { ElevenLabs, ElevenLabsTimeoutError } from "@elevenlabs/elevenlabs-js";
-import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import * as aiPricing from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import * as elevenlabs from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import * as firstLineCache from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
@@ -56,7 +55,6 @@ const userId = randomUUID();
 const providerCalls: string[] = [];
 const providerFailures = new Map<string, Error>();
 const COST_PER_CHAR = 0.001;
-let moderate: ((signal?: AbortSignal) => Promise<unknown>) | undefined;
 let duringPricing: (() => void) | undefined;
 /** Runs once admission has reserved; the route continues when it settles. */
 let afterAdmission: (() => void | Promise<void>) | undefined;
@@ -99,10 +97,7 @@ mock.module("../v1/voice/tts/cartesia-synthesis", () => ({
     }),
 }));
 mock.module("@elizaos/cloud-shared/lib/services/content-safety", () => ({
-  contentSafetyService: {
-    assertSafeForPublicUse: async (_input: unknown, signal?: AbortSignal) =>
-      moderate ? moderate(signal) : {},
-  },
+  contentSafetyService: { assertSafeForPublicUse: async () => ({}) },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
   ...aiPricing,
@@ -238,7 +233,6 @@ const upstream = {
   frames: [] as Record<string, unknown>[],
 };
 beforeEach(() => {
-  moderate = undefined;
   duringPricing = undefined;
   afterAdmission = undefined;
   acknowledgeDispatch = undefined;
@@ -1047,69 +1041,6 @@ test("the WAV hard deadline still ends a silent synthesis with a 500 and keeps t
   expect(await balance()).toBeCloseTo(before - text.length * COST_PER_CHAR, 6);
   expect(await openReservations()).toBe(0);
 }, 10_000);
-
-test("a caller abort during moderation stops the review and caches no late approval", async () => {
-  const receipts = new Map<string, string>();
-  const bindings = {
-    CACHE_KV: {
-      get: async (key: string) => receipts.get(key) ?? null,
-      put: async (key: string, value: string) => {
-        receipts.set(key, value);
-      },
-    },
-  };
-  const safetyReceipts = () =>
-    [...receipts.keys()].filter((key) => key.startsWith("tts-safety:"));
-  const approved = {
-    allowed: true,
-    skipped: false,
-    flagged: false,
-    mode: "enforce",
-    issues: [],
-  };
-  const text = `A reply the caller left ${randomUUID()}.`;
-  const before = await balance(),
-    calls = providerCalls.length;
-  let reviewSignal: AbortSignal | undefined;
-  let reviewing!: () => void;
-  const inReview = new Promise<void>((resolve) => {
-    reviewing = resolve;
-  });
-  let approve!: () => void;
-  const lateApproval = new Promise<void>((resolve) => {
-    approve = resolve;
-  });
-  // Worst case: the moderation provider ignores the abort and approves late.
-  moderate = async (signal) => {
-    reviewSignal = signal;
-    reviewing();
-    await lateApproval;
-    return approved;
-  };
-  const caller = new AbortController();
-  const aborted = runWithCloudBindingsAsync(bindings, () =>
-    speak(text, `moderation-${randomUUID()}`, {}, 499, {
-      signal: caller.signal,
-    }),
-  );
-  await inReview;
-  caller.abort();
-  approve();
-  await aborted;
-
-  expect(reviewSignal?.aborted).toBe(true);
-  expect(safetyReceipts()).toEqual([]);
-  expect(providerCalls).toHaveLength(calls);
-  expect(await balance()).toBeCloseTo(before, 6);
-
-  // The same text is reviewed again; an uninterrupted approval is cached.
-  moderate = async () => approved;
-  const repeat = await runWithCloudBindingsAsync(bindings, () =>
-    speak(text, `moderation-${randomUUID()}`),
-  );
-  expect(repeat.headers.get("X-Eliza-TTS-Moderation")).toBe("reviewed");
-  expect(safetyReceipts()).toHaveLength(1);
-});
 
 test("a caller abort reaches the free Kokoro upstream", async () => {
   const before = await balance();

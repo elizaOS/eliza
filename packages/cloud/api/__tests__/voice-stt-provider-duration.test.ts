@@ -30,6 +30,8 @@ const admittedRequestIds: string[] = [];
 let dispatched = 0;
 let settledUnknown = 0;
 let settlementFailures = 0;
+/** Every settlement the route started, in order, including failed ones. */
+const settlementAttempts: string[] = [];
 const reconciled: number[] = [];
 const pricedSeconds: number[] = [];
 
@@ -64,11 +66,13 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
       reservation: {
         reservedAmount: params.cost.totalCost,
         reconcile: async (actual: number) => {
+          settlementAttempts.push(`reconcile(${actual})`);
           failSettlementAttempt();
           reconciled.push(actual);
         },
       },
       settleUnknown: async () => {
+        settlementAttempts.push("unknown");
         failSettlementAttempt();
         settledUnknown++;
       },
@@ -147,7 +151,9 @@ function captureSettlementLogs() {
   });
   const error = spyOn(logger, "error").mockImplementation((message, data) => {
     if (
-      message === "[Voice STT API] Failed paid transcription settlement failed"
+      message ===
+        "[Voice STT API] Failed paid transcription settlement failed" ||
+      message === "[Voice STT API] Failed-transcription settlement failed"
     )
       logs.failures.push(data);
   });
@@ -230,6 +236,7 @@ beforeEach(() => {
   dispatched = 0;
   settledUnknown = 0;
   settlementFailures = 0;
+  settlementAttempts.length = 0;
   reconciled.length = 0;
   pricedSeconds.length = 0;
   for (const restore of restoreLogSpies.splice(0)) restore();
@@ -591,11 +598,14 @@ test.each([
   },
 );
 
-/** Explicit Cartesia request whose caller can abort it; the key stays fixed. */
+/**
+ * Explicit Cartesia request whose caller can abort it; the key stays fixed.
+ * It runs in a Worker unless `pending` is null.
+ */
 function transcribeWithCartesia(
   signal: AbortSignal,
   timeoutMs: string,
-  pending: Promise<unknown>[] = [],
+  pending: Promise<unknown>[] | null = [],
 ) {
   const form = new FormData();
   form.append(
@@ -616,11 +626,13 @@ function transcribeWithCartesia(
       CARTESIA_STT_USD_PER_CREDIT: "0.001",
       CARTESIA_BATCH_STT_TIMEOUT_MS: timeoutMs,
     },
-    {
-      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
-      passThroughOnException: () => undefined,
-      props: {},
-    },
+    pending
+      ? {
+          waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+          passThroughOnException: () => undefined,
+          props: {},
+        }
+      : undefined,
   );
 }
 
@@ -729,14 +741,23 @@ test.each(["headers", "body"] as const)(
   },
 );
 
+// A failed-transcription settlement runs off the response under waitUntil in
+// a Worker (the lease alarm is its durable recovery); outside a Worker it is
+// awaited and its failure reaches the outer catch. A caller abort takes the
+// same settlement path as a Cartesia transport failure in both.
 test.each([
-  ["before dispatch", undefined],
-  ["after dispatch, before the headers", "headers"],
-  ["after dispatch, before the body", "body"],
+  ["in a Worker", "before dispatch", undefined],
+  ["in a Worker", "after dispatch, before the headers", "headers"],
+  ["in a Worker", "after dispatch, before the body", "body"],
+  ["outside a Worker", "before dispatch", undefined],
+  ["outside a Worker", "after dispatch, before the headers", "headers"],
+  ["outside a Worker", "after dispatch, before the body", "body"],
 ] as const)(
-  "a caller abort %s whose settlement fails once gets the same settlement retry as a Cartesia transport failure",
-  async (_label, phase) => {
-    // Reference: a transport failure whose first settlement attempt throws.
+  "%s, a caller abort %s whose settlement fails is settled like a Cartesia transport failure, never logged as settled",
+  async (mode, _label, phase) => {
+    const worker = mode === "in a Worker";
+    const logs = captureSettlementLogs();
+    // Reference: a transport failure whose settlement attempt throws.
     settlementFailures = 1;
     globalThis.fetch = (async () => {
       throw new TypeError("synthetic transport failure");
@@ -745,15 +766,20 @@ test.each([
     const reference = await transcribeWithCartesia(
       new AbortController().signal,
       "2000",
-      referenceSettlements,
+      worker ? referenceSettlements : null,
     );
     await Promise.all(referenceSettlements);
     const referenceBody = await reference.json();
-    expect(reference.status).toBe(500);
+    // A Worker answers the provider failure without waiting on the settlement.
+    expect(reference.status).toBe(worker ? 502 : 500);
     expect(settlementFailures).toBe(0);
-    expect(settledUnknown).toBe(1);
+    expect(settlementAttempts).toEqual(["unknown"]);
+    expect(logs.warnings).toEqual([]);
+    expect(logs.failures).toHaveLength(worker ? 1 : 0);
 
-    settledUnknown = 0;
+    settlementAttempts.length = 0;
+    logs.warnings.length = 0;
+    logs.failures.length = 0;
     settlementFailures = 1;
     const caller = new AbortController();
     const dispatchedRequest = phase && holdCartesia(phase);
@@ -762,7 +788,7 @@ test.each([
     const cancelled = transcribeWithCartesia(
       caller.signal,
       "2000",
-      settlements,
+      worker ? settlements : null,
     );
     if (dispatchedRequest) {
       await dispatchedRequest;
@@ -772,12 +798,26 @@ test.each([
     await Promise.all(settlements);
 
     expect(settlementFailures).toBe(0);
-    // The retry repeats the settlement that failed: a release before
-    // dispatch, the unknown outcome after it.
-    expect(reconciled).toEqual(phase ? [] : [0]);
-    expect(settledUnknown).toBe(phase ? 1 : 0);
-    expect(response.status).toBe(reference.status);
-    expect(await response.text()).toBe(JSON.stringify(referenceBody));
+    // One attempt, the settlement the dispatch state calls for: a release
+    // before dispatch, the unknown outcome after it. None succeeded.
+    expect(settlementAttempts).toEqual([phase ? "unknown" : "reconcile(0)"]);
+    expect(reconciled).toEqual([]);
+    expect(settledUnknown).toBe(0);
+    expect(logs.warnings).toEqual([]);
+    if (worker) {
+      // The cancellation stays a cancellation; the failure is logged.
+      expect(response.status).toBe(499);
+      expect(await response.json()).toMatchObject({
+        error: "Speech-to-text cancelled",
+      });
+      expect(logs.failures).toEqual([
+        expect.objectContaining({ error: "synthetic settlement failure" }),
+      ]);
+    } else {
+      expect(response.status).toBe(reference.status);
+      expect(await response.text()).toBe(JSON.stringify(referenceBody));
+      expect(logs.failures).toEqual([]);
+    }
   },
 );
 

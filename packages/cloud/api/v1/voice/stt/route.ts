@@ -534,7 +534,6 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: true,
       }).finally(() => {
         timings.push({
@@ -811,22 +810,47 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
           isKnownUnacceptedProviderStatus(rejectedStatus);
         const unknownSettlement =
           providerWorkMayHaveStarted && !rejected ? settleUnknown : undefined;
-        await (unknownSettlement
-          ? unknownSettlement()
-          : reservation.reconcile(0));
+        const failedReservation = reservation;
+        const settlement = (async () => {
+          await (unknownSettlement
+            ? unknownSettlement()
+            : failedReservation.reconcile(0));
+          // Logged only once the settlement has succeeded.
+          logger.warn("[Voice STT API] Settled failed paid transcription", {
+            provider: "deepgram",
+            providerDispatchState: providerWorkMayHaveStarted
+              ? "possibly_dispatched"
+              : "not_dispatched",
+            reason,
+            // The settlement that ran: a provider refusal is released.
+            settlement: unknownSettlement ? "unknown" : "released",
+            traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+            userId: user.id,
+            organizationId: user.organization_id,
+          });
+        })();
         reservation = undefined;
-        logger.warn("[Voice STT API] Settled failed paid transcription", {
-          provider: "deepgram",
-          providerDispatchState: providerWorkMayHaveStarted
-            ? "possibly_dispatched"
-            : "not_dispatched",
-          reason,
-          // The settlement that ran: a provider refusal is released.
-          settlement: unknownSettlement ? "unknown" : "released",
-          traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
-          userId: user.id,
-          organizationId: user.organization_id,
-        });
+        // An unknown-outcome debit writes Postgres; on the Worker it runs off
+        // the response path under `waitUntil` like every other settlement.
+        const failureExecutionCtx = getGenerativeExecutionContext(c);
+        if (failureExecutionCtx) {
+          failureExecutionCtx.waitUntil(
+            Promise.resolve(settlement).catch((error: unknown) => {
+              // error-policy:J7 the failure response is already decided; the
+              // lease alarm remains the durable recovery for this settlement.
+              logger.error(
+                "[Voice STT API] Failed-transcription settlement failed",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  traceId:
+                    c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+                },
+              );
+            }),
+          );
+        } else {
+          await settlement;
+        }
       };
 
       const deepgramStart = performance.now();
@@ -1052,22 +1076,47 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
           isKnownUnacceptedProviderStatus(rejectedStatus);
         const unknownSettlement =
           providerWorkMayHaveStarted && !rejected ? settleUnknown : undefined;
-        await (unknownSettlement
-          ? unknownSettlement()
-          : reservation.reconcile(0));
+        const failedReservation = reservation;
+        const settlement = (async () => {
+          await (unknownSettlement
+            ? unknownSettlement()
+            : failedReservation.reconcile(0));
+          // Logged only once the settlement has succeeded.
+          logger.warn("[Voice STT API] Settled failed paid transcription", {
+            provider: "cartesia",
+            providerDispatchState: providerWorkMayHaveStarted
+              ? "possibly_dispatched"
+              : "not_dispatched",
+            reason,
+            // The settlement that ran: a provider refusal is released.
+            settlement: unknownSettlement ? "unknown" : "released",
+            traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+            userId: user.id,
+            organizationId: user.organization_id,
+          });
+        })();
         reservation = undefined;
-        logger.warn("[Voice STT API] Settled failed paid transcription", {
-          provider: "cartesia",
-          providerDispatchState: providerWorkMayHaveStarted
-            ? "possibly_dispatched"
-            : "not_dispatched",
-          reason,
-          // The settlement that ran: a provider refusal is released.
-          settlement: unknownSettlement ? "unknown" : "released",
-          traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
-          userId: user.id,
-          organizationId: user.organization_id,
-        });
+        // An unknown-outcome debit writes Postgres; on the Worker it runs off
+        // the response path under `waitUntil` like every other settlement.
+        const failureExecutionCtx = getGenerativeExecutionContext(c);
+        if (failureExecutionCtx) {
+          failureExecutionCtx.waitUntil(
+            Promise.resolve(settlement).catch((error: unknown) => {
+              // error-policy:J7 the failure response is already decided; the
+              // lease alarm remains the durable recovery for this settlement.
+              logger.error(
+                "[Voice STT API] Failed-transcription settlement failed",
+                {
+                  error: error instanceof Error ? error.message : String(error),
+                  traceId:
+                    c.get("traceId") ?? c.get("requestId") ?? "unavailable",
+                },
+              );
+            }),
+          );
+        } else {
+          await settlement;
+        }
       };
 
       const cartesiaStart = performance.now();
@@ -1092,8 +1141,9 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       const callerSignal = c.req.raw.signal;
       const cartesiaTimeoutSignal = AbortSignal.timeout(cartesiaTimeoutMs);
       // A caller abort is cancellation, never a provider timeout or failure.
-      // Return it awaited: a failed settlement must reach the outer catch,
-      // which retries it like every other failed settlement.
+      // Its settlement takes the path of every other failed settlement: under
+      // waitUntil in a Worker. Return it awaited so that, outside a Worker, a
+      // failed settlement reaches the outer catch like every other one.
       const cancelledByCaller = async () => {
         await settleCartesiaFailure("caller_aborted");
         return Response.json(
@@ -1602,7 +1652,18 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
 
     if (error instanceof CloudflareSpeechError) {

@@ -3,16 +3,12 @@ import { createHash, timingSafeEqual } from "node:crypto";
 import { runWithDbCacheAsync } from "@elizaos/cloud-shared/db/client";
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { assertSafeTtsText } from "@elizaos/cloud-shared/lib/services/tts-safety-cache";
 import { createDurableVoiceUsageStore } from "@elizaos/cloud-shared/lib/services/voice-usage-meter";
 import { logger } from "@elizaos/cloud-shared/lib/utils/logger";
 import { resolveVoiceUsageLimits } from "@elizaos/cloud-shared/lib/voice-session/config";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { createCartesiaInkRealtimeSession } from "@elizaos/host/voice/cartesia-ink";
-import {
-  CARTESIA_SONIC_MODEL_ID,
-  CartesiaSonicTtsAdapter,
-} from "@elizaos/host/voice/cartesia-sonic-tts";
+import { CartesiaSonicTtsAdapter } from "@elizaos/host/voice/cartesia-sonic-tts";
 import {
   createSpeechRelaySession,
   SPEECH_RELAY_BUDGET,
@@ -368,19 +364,6 @@ export class SpeechRelayCoordinator {
             subscribeRevoked: (_identity, revoke) => {
               retireSpeech = revoke;
               return () => this.unsubscribeRevocation?.();
-            },
-            assertTtsAllowed: async (text, signal) => {
-              await assertSafeTtsText(
-                {
-                  surface: "media_generation_prompt",
-                  userId: ledger.caller.user.id,
-                  organizationId: ledger.caller.user.organization_id,
-                  text: `TTS text: ${text}`,
-                  metadata: { type: "tts", model: CARTESIA_SONIC_MODEL_ID },
-                },
-                (task) => this.state.waitUntil(task),
-                signal,
-              );
             },
             openStt: (onEvent) =>
               createCartesiaInkRealtimeSession({

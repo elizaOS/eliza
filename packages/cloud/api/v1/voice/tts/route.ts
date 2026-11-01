@@ -32,7 +32,6 @@ import {
   getCloudFirstLineCacheService,
   shouldBypassCloudFirstLineCache,
 } from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
-import { assertSafeTtsText } from "@elizaos/cloud-shared/lib/services/tts-safety-cache";
 import {
   hasTtsSynthesisOptions,
   TtsSynthesisOptions,
@@ -126,8 +125,6 @@ interface TtsTimings {
   authMs?: number;
   admissionMs?: number;
   synthesisMs?: number;
-  moderationMs?: number;
-  moderation?: "reviewed" | "approved-hit";
 }
 function buildTtsObservabilityHeaders(
   provider: TtsProvider,
@@ -141,15 +138,9 @@ function buildTtsObservabilityHeaders(
     timings.synthesisMs !== undefined
       ? `synthesis;dur=${timings.synthesisMs}`
       : null,
-    timings.moderationMs !== undefined
-      ? `moderation;dur=${timings.moderationMs}`
-      : null,
   ].filter((entry): entry is string => entry !== null);
   return {
     "X-Eliza-TTS-Provider": provider,
-    ...(timings.moderation
-      ? { "X-Eliza-TTS-Moderation": timings.moderation }
-      : {}),
     ...(serverTiming.length > 0
       ? { "Server-Timing": serverTiming.join(", ") }
       : {}),
@@ -313,7 +304,6 @@ async function __hono_POST(c: AppContext) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: willAdmit,
       });
     await using credentialGuard = deferredCredentialAdmissionGuard({
@@ -363,37 +353,6 @@ async function __hono_POST(c: AppContext) {
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
     // different codec); billing/usage are identical to the MP3 path.
     const wantWav = body.format === "wav";
-    const moderationStarted = performance.now();
-    const moderation = await assertSafeTtsText(
-      {
-        surface: "media_generation_prompt",
-        organizationId: user.organization_id,
-        userId: user.id,
-        text: [
-          `TTS text: ${text}`,
-          ...(body.previousText !== undefined
-            ? [`Previous context: ${body.previousText}`]
-            : []),
-          ...(body.nextText !== undefined
-            ? [`Next context: ${body.nextText}`]
-            : []),
-        ].join("\n"),
-        metadata: {
-          type: "tts",
-          model: modelId || "eleven_flash_v2_5",
-          voiceId,
-        },
-      },
-      (task) => {
-        const ctx = getGenerativeExecutionContext(c);
-        if (ctx) ctx.waitUntil(task);
-        else void task;
-      },
-      // A caller abort stops the review and never caches a late approval.
-      request.signal,
-    );
-    timings.moderation = moderation;
-    timings.moderationMs = Math.round(performance.now() - moderationStarted);
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
@@ -449,8 +408,10 @@ async function __hono_POST(c: AppContext) {
       if (kokoroCacheKey) {
         try {
           const cacheStart = Date.now();
-          const cached =
-            await getCloudFirstLineCacheService().get(kokoroCacheKey);
+          const cached = await getCloudFirstLineCacheService().get(
+            kokoroCacheKey,
+            getGenerativeExecutionContext(c),
+          );
           if (cached) {
             timings.synthesisMs = Date.now() - cacheStart;
             logger.info(
@@ -604,17 +565,20 @@ async function __hono_POST(c: AppContext) {
       try {
         const cacheStart = Date.now();
         const cacheService = getCloudFirstLineCacheService();
-        const cached = await cacheService.get({
-          algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-          provider: mp3CacheProvider,
-          voiceId: resolvedVoiceId,
-          voiceRevision: mp3VoiceRevision,
-          sampleRate: 44100,
-          codec: "mp3",
-          voiceSettingsFingerprint,
-          normalizedText: snipResult.normalized,
-          scope: cacheScope,
-        });
+        const cached = await cacheService.get(
+          {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: mp3CacheProvider,
+            voiceId: resolvedVoiceId,
+            voiceRevision: mp3VoiceRevision,
+            sampleRate: 44100,
+            codec: "mp3",
+            voiceSettingsFingerprint,
+            normalizedText: snipResult.normalized,
+            scope: cacheScope,
+          },
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -669,7 +633,10 @@ async function __hono_POST(c: AppContext) {
     if (wavCacheKey) {
       try {
         const cacheStart = Date.now();
-        const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
+        const cached = await getCloudFirstLineCacheService().get(
+          wavCacheKey,
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -1164,7 +1131,18 @@ async function __hono_POST(c: AppContext) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
     if (error instanceof CartesiaRestTtsError) {
       const status =

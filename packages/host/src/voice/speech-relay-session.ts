@@ -85,8 +85,6 @@ export interface SpeechRelayPorts {
     identity: Readonly<SpeechRelayIdentity>,
     revoke: () => void,
   ): () => void;
-  /** Applies public-TTS safety policy before every paid phrase dispatch. */
-  assertTtsAllowed(text: string, signal?: AbortSignal): Promise<void>;
   /** Factories hold provider credentials server-side and clean partial acquisitions on failure. */
   openStt(onEvent: (event: CartesiaInkRealtimeEvent) => void): Pick<
     CartesiaInkRealtimeSession,
@@ -193,7 +191,6 @@ export async function createSpeechRelaySession(
     pcmBytes = 0,
     ttsCharacters = 0,
     admittedTtsCharacters = 0,
-    moderationText = "",
     outputBytes = 0,
     quota = false;
   const uplink = new UplinkReframer();
@@ -205,12 +202,10 @@ export async function createSpeechRelaySession(
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
     finishedIds = new Set<string>(),
-    cancelledIds = new Set<string>(),
-    reviews = new Map<AbortController, string>();
+    cancelledIds = new Set<string>();
   const close = (): Promise<void> => {
     if (closing) return closing;
     closed = true;
-    for (const review of reviews.keys()) review.abort();
     // Stop/revocation cannot dispatch more audio. Normal microphone silence
     // carries speech tails into complete frames before an end-of-turn event.
     uplink.flush();
@@ -480,8 +475,6 @@ export async function createSpeechRelaySession(
           }
           finishedIds.add(frame.id);
           cancelledIds.add(frame.id);
-          for (const [review, id] of reviews)
-            if (id === frame.id) review.abort();
           if (streams.has(frame.id)) ttsUncertain = true;
           streams.get(frame.id)?.cancel("speech-relay-cancelled");
           streams.delete(frame.id);
@@ -506,24 +499,9 @@ export async function createSpeechRelaySession(
       }
       usedIds.add(frame.id);
       admittedTtsCharacters += frame.text.length;
-      // Total text is bounded by the 4096-character session admission. Preserve
-      // prior phrases/contexts so splitting text cannot evade the safety policy.
-      moderationText += frame.text;
-      const review = new AbortController();
-      reviews.set(review, frame.id);
-      let abortReview: (() => void) | undefined;
+      // No content review on the speech path: the phrase goes straight to
+      // provider dispatch once the session's admission and budget allow it.
       try {
-        const aborted = new Promise<never>((_resolve, reject) => {
-          abortReview = () => reject(review.signal.reason);
-          review.signal.addEventListener("abort", abortReview, { once: true });
-        });
-        // Release the ordered control queue even if a provider ignores abort.
-        await Promise.race([
-          ports.assertTtsAllowed(moderationText, review.signal),
-          aborted,
-        ]);
-        current();
-        if (cancelledIds.has(frame.id)) return false;
         if (!credits)
           throw new SpeechRelayError(
             "closed",
@@ -577,14 +555,9 @@ export async function createSpeechRelaySession(
           ...(frame.flush !== undefined ? { flush: frame.flush } : {}),
         });
       } catch (error) {
-        if (review.signal.aborted && cancelledIds.has(frame.id)) return false;
         ttsUncertain = true;
         retire();
         throw error;
-      } finally {
-        if (abortReview)
-          review.signal.removeEventListener("abort", abortReview);
-        reviews.delete(review);
       }
     },
     close,
