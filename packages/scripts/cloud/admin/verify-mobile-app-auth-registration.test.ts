@@ -257,6 +257,41 @@ describe("all-client mobile App Auth release gate", () => {
 });
 
 describe("mobile App Auth deployment preflight", () => {
+  test("publisher verification requires a memberless marker and permits no generated credential", () => {
+    const row = registration({
+      publisher_registered: true,
+      publisher_member_count: 0,
+      has_api_key_id: false,
+    });
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(row, APP_ID, undefined, {
+        requirePublisher: true,
+      }),
+    ).not.toThrow();
+    for (const changed of [
+      { publisher_registered: false },
+      { publisher_member_count: 1 },
+      { api_key_row_absent: false, api_key_row_revoked: false },
+      {
+        api_key_row_absent: false,
+        api_key_row_revoked: true,
+        api_key_ownership_matches: false,
+      },
+    ]) {
+      expect(() =>
+        validateMobileAppAuthRegistrationRow(
+          { ...row, ...changed },
+          APP_ID,
+          undefined,
+          { requirePublisher: true },
+        ),
+      ).toThrow();
+    }
+    // Existing unmarked registrations retain the ordinary release contract.
+    expect(() =>
+      validateMobileAppAuthRegistrationRow(registration(), APP_ID),
+    ).not.toThrow();
+  });
   test("accepts the dedicated active and approved first-party registration", () => {
     expect(() =>
       validateMobileAppAuthRegistrationRow(registration(), APP_ID),
@@ -670,6 +705,7 @@ describe("mobile App Auth registration database snapshot", () => {
   beforeAll(async () => {
     database = new PGlite();
     await database.exec(`
+      CREATE TABLE native_app_publishers(organization_id uuid PRIMARY KEY);
       CREATE TABLE organizations (
         id uuid PRIMARY KEY,
         is_active boolean NOT NULL
@@ -724,7 +760,11 @@ describe("mobile App Auth registration database snapshot", () => {
     }, APP_ID);
 
     expect(queryCalls).toBe(1);
-    expect(row).toEqual(registration());
+    expect(row).toEqual({
+      ...registration(),
+      publisher_registered: false,
+      publisher_member_count: 1,
+    });
     expect(() =>
       validateMobileAppAuthRegistrationRow(row, APP_ID),
     ).not.toThrow();

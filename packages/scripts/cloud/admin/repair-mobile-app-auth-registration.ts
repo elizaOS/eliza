@@ -211,7 +211,13 @@ export async function repairRegistrationTransaction(
       ? current.created_by_user_id
       : protectedOwnerUserId;
     if (!organizationId) fail("input.organization_id_for_creation");
-    if (!current && !ownerUserId) fail("input.owner_user_id_for_creation");
+    const publisher = await client.query<{ registered: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM native_app_publishers WHERE organization_id=$1::uuid) AS registered`,
+      [organizationId],
+    );
+    const isPublisher = publisher.rows[0]?.registered === true;
+    if (!current && !ownerUserId && !isPublisher)
+      fail("input.owner_user_id_for_creation");
 
     // Do not require the historical creator to remain active or even exist.
     // An explicitly supplied operator is still checked before any mutation.
@@ -233,13 +239,15 @@ export async function repairRegistrationTransaction(
     if (duplicate.rows[0]?.count !== 0)
       fail("registration.unique_callback_owner");
 
-    const apiKeyId = current?.api_key_id ?? randomUUID();
+    const apiKeyId = isPublisher ? null : (current?.api_key_id ?? randomUUID());
     if (current?.api_key_id) {
       const key = await client.query<{
         organization_id: string;
         user_id: string;
+        is_active: boolean;
+        deleted_at: unknown;
       }>(
-        `SELECT organization_id::text, user_id::text
+        `SELECT organization_id::text, user_id::text, is_active, deleted_at
            FROM api_keys WHERE id = $1::uuid FOR UPDATE`,
         [current.api_key_id],
       );
@@ -247,7 +255,10 @@ export async function repairRegistrationTransaction(
       if (keyRow && keyRow.organization_id !== organizationId) {
         fail("registration.generated_key_ownership");
       }
-      if (keyRow) {
+      if (isPublisher && keyRow && (keyRow.is_active || !keyRow.deleted_at)) {
+        fail("registration.publisher_generated_key_active");
+      }
+      if (keyRow && !isPublisher) {
         await client.query(
           `UPDATE api_keys
               SET is_active = FALSE, deleted_at = COALESCE(deleted_at, NOW())
@@ -282,7 +293,7 @@ export async function repairRegistrationTransaction(
           appId,
           `${target.slugPrefix}-${appId}`,
           organizationId,
-          ownerUserId,
+          ownerUserId ?? null,
           target.redirectOrigin,
           target.redirectUri,
           apiKeyId,

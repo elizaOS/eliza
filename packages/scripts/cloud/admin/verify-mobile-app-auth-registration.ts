@@ -62,6 +62,8 @@ export interface MobileAppAuthRegistrationRow {
   is_approved: boolean;
   organization_exists: boolean;
   organization_is_active: boolean;
+  publisher_registered?: boolean;
+  publisher_member_count?: number;
   creator_exists: boolean;
   creator_is_active: boolean;
   creator_matches_organization: boolean;
@@ -94,6 +96,8 @@ SELECT app.id::text,
        app.is_approved,
        organization.id IS NOT NULL AS organization_exists,
        COALESCE(organization.is_active, FALSE) AS organization_is_active,
+       publisher.organization_id IS NOT NULL AS publisher_registered,
+       (SELECT count(*)::integer FROM users member WHERE member.organization_id = app.organization_id) AS publisher_member_count,
        creator.id IS NOT NULL AS creator_exists,
        COALESCE(creator.is_active AND creator.deleted_at IS NULL, FALSE) AS creator_is_active,
        COALESCE(creator.organization_id = app.organization_id, FALSE) AS creator_matches_organization,
@@ -108,6 +112,7 @@ SELECT app.id::text,
          AS matching_active_approved_registration_count
   FROM apps AS app
   LEFT JOIN organizations AS organization ON organization.id = app.organization_id
+  LEFT JOIN native_app_publishers AS publisher ON publisher.organization_id = app.organization_id
   LEFT JOIN users AS creator ON creator.id = app.created_by_user_id
   LEFT JOIN api_keys AS generated_key ON generated_key.id = app.api_key_id
  WHERE app.id = $1::uuid
@@ -311,6 +316,7 @@ export function validateMobileAppAuthRegistrationRow(
   row: MobileAppAuthRegistrationRow | undefined,
   expectedAppId: string,
   target: MobileAppAuthRegistrationTarget = PRIMARY_MOBILE_APP_AUTH_TARGET,
+  options: { requirePublisher?: boolean } = {},
 ): void {
   if (!row) {
     fail(
@@ -349,9 +355,17 @@ export function validateMobileAppAuthRegistrationRow(
       "The mobile App Auth registration organization must exist and be active",
     );
   }
+  if (
+    (options.requirePublisher || row.publisher_registered) &&
+    (!row.publisher_registered || row.publisher_member_count !== 0)
+  ) {
+    fail(
+      "The mobile App Auth registration requires a memberless native app publisher",
+    );
+  }
   // The organization owns the registration. Its creator is audit metadata:
   // leaving that organization or deleting that user cannot disable the product.
-  if (!row.has_api_key_id) {
+  if (!row.has_api_key_id && !row.publisher_registered) {
     fail(
       "The mobile App Auth registration must retain its generated key reference",
     );

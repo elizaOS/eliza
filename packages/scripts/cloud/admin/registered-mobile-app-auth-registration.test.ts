@@ -184,6 +184,7 @@ describe("first app registration repair transaction", () => {
   beforeAll(async () => {
     database = new PGlite();
     await database.exec(`
+      CREATE TABLE native_app_publishers(organization_id uuid PRIMARY KEY);
       CREATE TABLE organizations (id uuid PRIMARY KEY, is_active boolean NOT NULL);
       CREATE TABLE users (
         id uuid PRIMARY KEY, organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE, role text NOT NULL,
