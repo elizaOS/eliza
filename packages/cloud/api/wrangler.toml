@@ -1000,6 +1000,8 @@ namespace_id = "1615314"
 simple = { limit = 120, period = 60 }
 
 [env.production]
+# Production owns declarative lifecycle after the admission source commit.
+migrations = []
 compatibility_flags = ["nodejs_compat", "enable_request_signal"]
 name = "eliza-cloud-api-prod"
 
@@ -1033,6 +1035,68 @@ routes = [
   { pattern = "x402.elizacloud.ai/*", zone_name = "elizacloud.ai" },
   { pattern = "*.elizacloud.ai/*", zone_name = "elizacloud.ai" },
 ]
+
+# Complete production override: exports is inherited as one map, not merged.
+[env.production.exports.AuthenticationState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.SpeechRelayCoordinator]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.HfEgressState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.VoiceUsageState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.RateLimitState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.A2ATaskState]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.SharedRuntimeConversation]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.InferenceAdmissionGate]
+type = "durable-object"
+state = "transferred"
+transferred_to = "eliza-cloud-admission-prod"
+
+[env.production.exports.AnonymousChatGate]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.OnboardingSessionCoordinator]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.TwitterOAuthRefreshCoordinator]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.PersonalDeliveryProjection]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.PersonalTelegramDelivery]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.InferenceRateLimitV2RollbackFloor]
+type = "durable-object"
+storage = "sqlite"
+
+[env.production.exports.DoorDashCheckoutGate]
+type = "durable-object"
+storage = "sqlite"
 
 [env.production.define]
 __dirname = '"/"'
@@ -1292,6 +1356,7 @@ class_name = "SharedRuntimeConversation"
 [[env.production.durable_objects.bindings]]
 name = "INFERENCE_ADMISSION_GATES"
 class_name = "InferenceAdmissionGate"
+script_name = "eliza-cloud-admission-prod"
 
 [[env.production.durable_objects.bindings]]
 name = "DOORDASH_CHECKOUT_GATES"

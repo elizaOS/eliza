@@ -235,8 +235,8 @@ describe("committed Cloud CF workflow matches the policy", () => {
         "utf8",
       ),
     );
-    // The production API upload also publishes its local admission class,
-    // including after its speech flag is enabled. Only staging has split ownership.
+    // The production source commit binds the namespace through its target.
+    // Root executes that lifecycle phase; this release only publishes the API.
     expect(
       apiConfig.env.production.durable_objects.bindings.filter(
         (binding) => binding.name === "INFERENCE_ADMISSION_GATES",
@@ -245,6 +245,7 @@ describe("committed Cloud CF workflow matches the policy", () => {
       {
         name: "INFERENCE_ADMISSION_GATES",
         class_name: "InferenceAdmissionGate",
+        script_name: "eliza-cloud-admission-prod",
       },
     ]);
     expect(
