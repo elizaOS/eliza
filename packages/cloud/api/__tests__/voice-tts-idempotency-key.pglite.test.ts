@@ -3,11 +3,14 @@
  * `Idempotency-Key` (#16425). The key names one utterance: a second utterance
  * sent under the same key is a new paid request, while a retry of the same
  * utterance still replays. An ElevenLabs rejection releases the reservation.
- * A caller abort reaches moderation and the speech upstreams: before dispatch
- * it releases the reservation, after dispatch it keeps the unknown charge. A
- * WAV synthesis that ends while its dispatch mark is pending settles on the
- * mark: a commit keeps the unknown charge, a refusal releases. The WAV hard
- * deadline still answers 500.
+ * A caller abort reaches moderation and the speech upstreams: before admission
+ * it gets no reservation, before dispatch it releases the reservation, after
+ * dispatch it keeps the unknown charge. A released reservation frees its key,
+ * so a keyed retry pays once. A WAV synthesis that ends while its dispatch
+ * mark is pending settles on the mark, also under a Worker waitUntil: a commit
+ * keeps the unknown charge, a refusal releases. The settlement log reports the
+ * settlement that ran, once it has succeeded. The WAV hard deadline still
+ * answers 500.
  * Real credits service on PGlite; auth, pricing,
  * content safety, the ElevenLabs client, the Cartesia and Kokoro upstreams,
  * the first-line cache and usage records are replaced.
@@ -53,6 +56,8 @@ const providerFailures = new Map<string, Error>();
 const COST_PER_CHAR = 0.001;
 let moderate: ((signal?: AbortSignal) => Promise<unknown>) | undefined;
 let duringPricing: (() => void) | undefined;
+/** Runs once admission has reserved, before the route continues. */
+let afterAdmission: (() => void) | undefined;
 /** The gate's dispatch acknowledgement; local admission has none. */
 let acknowledgeDispatch: (() => Promise<void>) | undefined;
 /** A short WAV synthesis deadline in place of the 15 s default. */
@@ -73,10 +78,15 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   },
   admitFlatGenerativeOperation: async (
     params: Parameters<typeof admitFlatGenerativeOperation>[0],
-  ) => ({
-    ...(await admitFlatGenerativeOperation(params)),
-    markProviderDispatched: acknowledgeDispatch,
-  }),
+  ) => {
+    // Worker-mode requests also reserve through the local credits lane.
+    const admission = await admitFlatGenerativeOperation({
+      ...params,
+      c: {} as typeof params.c,
+    });
+    afterAdmission?.();
+    return { ...admission, markProviderDispatched: acknowledgeDispatch };
+  },
 }));
 mock.module("../v1/voice/tts/cartesia-synthesis", () => ({
   ...cartesiaSynthesis,
@@ -149,6 +159,9 @@ const {
   organizationPaymentReversalHolds,
   autoTopUpAttempts,
 } = await import("@elizaos/cloud-shared/db/schemas");
+const { creditsService } = await import(
+  "@elizaos/cloud-shared/lib/services/credits"
+);
 const { default: ttsRoute } = await import("../v1/voice/tts/route");
 
 const pg = () => getPgliteClientForTests();
@@ -225,6 +238,7 @@ const upstream = {
 beforeEach(() => {
   moderate = undefined;
   duringPricing = undefined;
+  afterAdmission = undefined;
   acknowledgeDispatch = undefined;
   wavDeadlineMs = undefined;
   globalThis.fetch = realFetch;
@@ -305,6 +319,18 @@ async function openReservations(): Promise<number> {
   );
   return Number(rows[0]?.open);
 }
+
+/** Every ledger row of the organization: reservations, refunds and charges. */
+async function ledgerRows(): Promise<number> {
+  const { rows } = await pg().query<{ count: string }>(
+    "SELECT count(*)::text AS count FROM credit_transactions WHERE organization_id=$1",
+    [orgId],
+  );
+  return Number(rows[0]?.count);
+}
+
+/** Requests that reached ElevenLabs, Cartesia or Kokoro in this test. */
+const providerRequests = () => providerCalls.length + upstream.urls.length;
 
 async function speak(
   text: string,
@@ -394,21 +420,32 @@ test("one Idempotency-Key pays for one utterance: a different text is charged, t
   expect(await balance()).toBeCloseTo(afterDirect, 6);
 });
 
-test("an ElevenLabs rejection releases the reservation; a failure without a status stays charged", async () => {
+test("an ElevenLabs rejection releases the reservation and a keyed retry pays once; a failure without a status stays charged", async () => {
   const rejected = "Please confirm the table for two.";
+  const rejectedKey = `rejected-${randomUUID()}`;
   providerFailures.set(rejected, new ElevenLabs.UnprocessableEntityError({}));
   const beforeRejection = await balance();
-  await speak(rejected, `rejected-${randomUUID()}`, {}, 500);
+  await speak(rejected, rejectedKey, {}, 500);
   expect(await balance()).toBeCloseTo(beforeRejection, 6);
+
+  // The released reservation paid for nothing: a retry under its key that
+  // gets audio is charged once.
+  providerFailures.delete(rejected);
+  await speak(rejected, rejectedKey);
+  const afterRetry = await balance();
+  expect(afterRetry).toBeCloseTo(
+    beforeRejection - rejected.length * COST_PER_CHAR,
+    6,
+  );
 
   const timedOut = "Your order is on its way.";
   providerFailures.set(timedOut, new ElevenLabsTimeoutError("timed out"));
   await speak(timedOut, `timeout-${randomUUID()}`, {}, 500);
   expect(await balance()).toBeCloseTo(
-    beforeRejection - timedOut.length * COST_PER_CHAR,
+    afterRetry - timedOut.length * COST_PER_CHAR,
     6,
   );
-  expect(providerCalls.slice(-2)).toEqual([rejected, timedOut]);
+  expect(providerCalls.slice(-3)).toEqual([rejected, rejected, timedOut]);
 });
 
 test("speech timing preserves TTS provider and charged amount", async () => {
@@ -452,26 +489,42 @@ test.each([
   ["Cartesia MP3", {}, CARTESIA],
   ["Cartesia WAV", { format: "wav" }, CARTESIA],
 ] as const)(
-  "a caller abort before %s dispatch calls no provider and releases the reservation",
+  "a caller abort before %s dispatch calls no provider and charges nothing; a keyed retry pays once and its replay is free",
   async (lane, identity, env) => {
-    const before = await balance(),
-      calls = providerCalls.length;
-    const caller = new AbortController();
-    duringPricing = () => caller.abort();
-    stubSpeechUpstream("answer");
+    for (const abortAt of ["pricing", "admission"] as const) {
+      const text = `Cancelled before ${lane} dispatch, at ${abortAt}.`;
+      const key = `pre-dispatch-${randomUUID()}`;
+      const before = await balance(),
+        rows = await ledgerRows(),
+        requests = providerRequests();
+      const caller = new AbortController();
+      if (abortAt === "pricing") duringPricing = () => caller.abort();
+      else afterAdmission = () => caller.abort();
+      stubSpeechUpstream("answer");
 
-    await speak(
-      `Cancelled before ${lane} dispatch.`,
-      `pre-dispatch-${randomUUID()}`,
-      identity,
-      499,
-      { signal: caller.signal, env },
-    );
+      await speak(text, key, identity, 499, { signal: caller.signal, env });
+      duringPricing = undefined;
+      afterAdmission = undefined;
 
-    expect(providerCalls).toHaveLength(calls);
-    expect(upstream.urls).toEqual([]);
-    expect(await openReservations()).toBe(0);
-    expect(await balance()).toBeCloseTo(before, 6);
+      expect(providerRequests()).toBe(requests);
+      expect(await openReservations()).toBe(0);
+      expect(await balance()).toBeCloseTo(before, 6);
+      const rowsAfterAbort = await ledgerRows();
+
+      // The retry under the key synthesizes and pays once. Its own retry
+      // replays that completed reservation for free.
+      for (const charge of [text.length * COST_PER_CHAR, 0]) {
+        const paid = await balance();
+        stubSpeechUpstream("answer");
+        const retry = await speak(text, key, identity, 200, { env });
+        expect(retry.audio.byteLength).toBeGreaterThan(0);
+        expect(await balance()).toBeCloseTo(paid - charge, 6);
+      }
+      expect(providerRequests()).toBe(requests + 2);
+      // A caller gone before admission got no reservation at all. One that
+      // left after admission had its reservation released.
+      if (abortAt === "pricing") expect(rowsAfterAbort).toBe(rows);
+    }
   },
 );
 
@@ -627,6 +680,133 @@ test.each([
   },
   10_000,
 );
+
+test("in a Worker, a caller abort while the WAV dispatch mark is pending answers at once and settles on the mark under waitUntil", async () => {
+  const text = "Your WAV reply ended during dispatch in a Worker.";
+  stubSpeechUpstream("answer");
+  const settlements: unknown[] = [];
+  const warnLog = spyOn(logger, "warn").mockImplementation((message, data) => {
+    if (message === "[Voice TTS API] Settled failed paid synthesis")
+      settlements.push(data);
+  });
+  try {
+    for (const outcome of ["commit", "refusal"] as const) {
+      const before = await balance(),
+        logged = settlements.length;
+      let marking!: () => void;
+      const markingStarted = new Promise<void>((resolve) => {
+        marking = resolve;
+      });
+      let finishMark!: () => void;
+      const markFinished = new Promise<void>((resolve) => {
+        finishMark = resolve;
+      });
+      acknowledgeDispatch = async () => {
+        marking();
+        await markFinished;
+        if (outcome === "refusal")
+          throw new Error("synthetic dispatch refusal");
+      };
+      const background: Promise<unknown>[] = [];
+      const executionCtx = {
+        waitUntil(task: Promise<unknown>) {
+          background.push(task);
+        },
+        passThroughOnException() {},
+        props: {},
+      };
+      const caller = new AbortController();
+      const response = app.request(
+        "/api/v1/voice/tts",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "Idempotency-Key": `worker-pending-${outcome}-${randomUUID()}`,
+          },
+          body: JSON.stringify({ text, format: "wav" }),
+          signal: caller.signal,
+        },
+        { NODE_ENV: "test", ...CARTESIA },
+        executionCtx,
+      );
+      await markingStarted;
+      caller.abort();
+
+      // The Worker answers without waiting for the mark; the settlement waits.
+      const answered = await Promise.race([
+        response,
+        new Promise<undefined>((resolve) => setTimeout(resolve, 2_000)),
+      ]);
+      expect(answered?.status).toBe(499);
+      expect(await openReservations()).toBe(1);
+      expect(settlements).toHaveLength(logged);
+
+      finishMark();
+      await Promise.all(background);
+      expect(await openReservations()).toBe(0);
+      expect(settlements).toHaveLength(logged + 1);
+      expect(await balance()).toBeCloseTo(
+        outcome === "commit" ? before - text.length * COST_PER_CHAR : before,
+        6,
+      );
+      expect(settlements.at(-1)).toMatchObject(
+        outcome === "commit"
+          ? {
+              providerDispatchState: "possibly_dispatched",
+              settlement: "unknown",
+            }
+          : { providerDispatchState: "not_dispatched", settlement: "released" },
+      );
+      expect(upstream.urls).toEqual([]);
+    }
+  } finally {
+    warnLog.mockRestore();
+  }
+}, 10_000);
+
+test("the settlement log reports the settlement that ran, and only once it has succeeded", async () => {
+  const text = "Please hold the table for four.";
+  providerFailures.set(text, new ElevenLabs.UnprocessableEntityError({}));
+  const before = await balance();
+  const settlements: unknown[] = [];
+  const warnLog = spyOn(logger, "warn").mockImplementation((message, data) => {
+    if (message === "[Voice TTS API] Settled failed paid synthesis")
+      settlements.push(data);
+  });
+  const reconcile = creditsService.reconcile.bind(creditsService);
+  let release: Parameters<typeof reconcile>[0] | undefined;
+  const settle = spyOn(creditsService, "reconcile").mockImplementationOnce(
+    async (params) => {
+      release = params;
+      throw new Error("synthetic settlement failure");
+    },
+  );
+  try {
+    // A release that fails is not logged as settled.
+    await speak(text, `unsettled-${randomUUID()}`, {}, 500);
+    expect(release?.actualCost).toBe(0);
+    expect(settlements).toEqual([]);
+    expect(await openReservations()).toBe(1);
+
+    // The provider refused after dispatch, so the reservation is released.
+    await speak(text, `refused-${randomUUID()}`, {}, 500);
+    expect(settlements).toEqual([
+      expect.objectContaining({
+        providerDispatchState: "possibly_dispatched",
+        settlement: "released",
+      }),
+    ]);
+  } finally {
+    settle.mockRestore();
+    warnLog.mockRestore();
+    providerFailures.delete(text);
+    // Settle the held reservation so later tests start with none open.
+    if (release) await reconcile(release);
+  }
+  expect(await openReservations()).toBe(0);
+  expect(await balance()).toBeCloseTo(before, 6);
+});
 
 test("the WAV hard deadline still ends a silent synthesis with a 500 and keeps the unknown charge", async () => {
   const text = "Your WAV reply went silent.";

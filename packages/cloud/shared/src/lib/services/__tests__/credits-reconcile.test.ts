@@ -820,6 +820,40 @@ describe("CreditsService.reserve idempotency key (#16425)", () => {
   );
 
   test(
+    "a key released at zero reserves again; a key settled with a charge still replays",
+    async () => {
+      if (!pgliteReady) return;
+      await seedOrg("10");
+      const reserve = (idempotencyKey: string) =>
+        creditsService.reserve({
+          organizationId: ORG_ID,
+          userId: USER_ID,
+          amount: 0.5,
+          description: "tts utterance",
+          idempotencyKey,
+        });
+
+      const charged = await reserve("utt-charged");
+      await charged.reconcile(0.5);
+      const replay = await reserve("utt-charged");
+      expect(replay.reservationTransactionId).toBe(charged.reservationTransactionId);
+      await replay.reconcile(0.5);
+      expect(await getBalance()).toBeCloseTo(9.5, 6);
+
+      const released = await reserve("utt-released");
+      await released.reconcile(0);
+      expect(await getBalance()).toBeCloseTo(9.5, 6);
+      // The released reservation paid for nothing, so the key reserves again.
+      const retry = await reserve("utt-released");
+      expect(retry.reservationTransactionId).not.toBe(released.reservationTransactionId);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+      await retry.reconcile(0.5);
+      expect(await getBalance()).toBeCloseTo(9, 6);
+    },
+    PGLITE_TIMEOUT,
+  );
+
+  test(
     "keys are org-scoped — the same key in another org reserves independently",
     async () => {
       if (!pgliteReady) return;

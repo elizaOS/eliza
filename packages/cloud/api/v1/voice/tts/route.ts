@@ -745,6 +745,9 @@ async function __hono_POST(c: AppContext) {
       affiliateCode: request.headers.get("X-Affiliate-Code"),
       description: `TTS generation: ${text.length} chars${isCustomVoice ? " (custom voice)" : ""}`,
     };
+    // A caller that has left gets no reservation, so a retry under the same
+    // Idempotency-Key reserves and pays for its own synthesis.
+    request.signal.throwIfAborted();
     try {
       const admission = await admitFlatGenerativeOperation({
         c,
@@ -1091,19 +1094,21 @@ async function __hono_POST(c: AppContext) {
         // was called, and the lease still holds its pre-provider cancellation
         // token.
         await providerDispatchSettled;
+        const unknownSettlement =
+          providerWorkMayHaveStarted && !rejected ? settleUnknown : undefined;
+        if (unknownSettlement) await unknownSettlement();
+        else await failedReservation.reconcile(0);
+        // Logged only once the settlement has succeeded.
         logger.warn("[Voice TTS API] Settled failed paid synthesis", {
           organizationId: settlementOrganizationId,
           provider: settlementProvider,
           providerDispatchState: providerWorkMayHaveStarted
             ? "possibly_dispatched"
             : "not_dispatched",
-          settlement: providerWorkMayHaveStarted ? "unknown" : "released",
+          settlement: unknownSettlement ? "unknown" : "released",
           traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
           userId: settlementUserId,
         });
-        return providerWorkMayHaveStarted && settleUnknown && !rejected
-          ? settleUnknown()
-          : failedReservation.reconcile(0);
       })();
       const executionCtx = getGenerativeExecutionContext(c);
       if (executionCtx) executionCtx.waitUntil(settlement);

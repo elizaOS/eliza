@@ -335,11 +335,12 @@ export interface ReserveCreditsParams {
    * committed returns a handle bound to the ORIGINAL reservation (same
    * transaction id, reservedAmount recovered from its metadata) instead of
    * deducting a second time; settlement stays exactly-once per reservation via
-   * the reconcile dedupe (#10846). Namespaced per organization into
-   * `stripe_payment_intent_id` (`reserve:<orgId>:<key>`), whose unique index is
-   * the concurrency backstop — so a key replayed from another org can never
-   * attach to this org's reservation. Omit for the unchanged per-request
-   * behavior.
+   * the reconcile dedupe (#10846). A reservation released at zero frees its
+   * key, so a later reserve under it deducts again. Namespaced per
+   * organization into `stripe_payment_intent_id` (`reserve:<orgId>:<key>`),
+   * whose unique index is the concurrency backstop — so a key replayed from
+   * another org can never attach to this org's reservation. Omit for the
+   * unchanged per-request behavior.
    */
   idempotencyKey?: string;
 }
@@ -1839,6 +1840,17 @@ export class CreditsService {
             adjustmentType: "none" as const,
           },
         };
+      }
+      if (normalizedActualCost === 0) {
+        // A reservation released at zero paid for nothing, so its reserve()
+        // idempotency key (#16425) must not replay it: the next reserve under
+        // that key deducts again. Freed in the transaction that releases it.
+        await tx.execute(sql`
+          UPDATE credit_transactions
+          SET stripe_payment_intent_id = NULL
+          WHERE id = ${reservationTransactionId}
+            AND stripe_payment_intent_id LIKE ${`reserve:${organizationId}:%`}
+        `);
       }
 
       const claimedReservedAmount = Math.abs(parseNumeric(claimed.amount, "reservation_amount"));
