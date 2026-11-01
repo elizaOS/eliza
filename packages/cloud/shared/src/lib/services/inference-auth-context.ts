@@ -57,7 +57,7 @@ import {
   inferenceCredentialRevocationReason,
   isInferenceStrongRevocationEnabled,
 } from "./inference-credential-revocation";
-import { isFundedBudgetAdmissionEnabled } from "./inference-funded-budget-admission";
+import { isInferencePolicyAdmissionEnabled } from "./inference-funded-budget-admission";
 import { isInferenceAuthCacheEnabled } from "./inference-hot-path-caches";
 import { resolveInferenceSessionAuthContext } from "./inference-session-auth-context";
 import { readOrganizationQuotaPolicyInTransaction } from "./organization-quota-policy";
@@ -1087,7 +1087,7 @@ export async function resolveInferenceAuthContext(
 
     // One MVCC snapshot binds identity, moderation and limits to the policy
     // epoch. Dispatch validates that epoch with the Durable Object authority.
-    const coherent = isFundedBudgetAdmissionEnabled()
+    const coherent = isInferencePolicyAdmissionEnabled()
       ? await dbWrite.transaction(
           async (tx) => {
             const fresh = await requireInferenceApiKeyWithOrg(credential.rawKey, {

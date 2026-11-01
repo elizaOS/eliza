@@ -42,6 +42,8 @@ export const INFERENCE_AUTH_CONTEXT_VERSION = 4 as const;
 export interface InferenceAdmissionSnapshot {
   /** Primary-issued delegation; the DO fences every use against its current epoch. */
   fundedBudget?: import("./inference-funded-budget-admission").InferenceBudgetPolicy;
+  /** Same organization epoch, scoped to rate admission without funding delegation. */
+  ratePolicy?: import("./inference-funded-budget-admission").InferenceBudgetPolicy;
   authority: OrganizationPolicyStamp;
   /** Paid-plan funding authority captured with the combined admission decision. */
   subscriptionFunded: boolean;
@@ -157,6 +159,10 @@ export function isInferenceAdmissionSnapshot(value: unknown): value is Inference
   return (
     isOrganizationPolicyStamp(candidate.authority) &&
     (candidate.fundedBudget === undefined || isInferenceBudgetPolicy(candidate.fundedBudget)) &&
+    (candidate.ratePolicy === undefined ||
+      (isInferenceBudgetPolicy(candidate.ratePolicy) &&
+        candidate.ratePolicy.rateEnabled === true &&
+        candidate.ratePolicy.policyGeneration === candidate.authority?.generation)) &&
     typeof candidate.subscriptionFunded === "boolean" &&
     Boolean(balance) &&
     typeof balance?.balanceUsd === "number" &&
@@ -269,6 +275,10 @@ export function isInferenceAuthContext(value: unknown): value is InferenceAuthCo
       !isInferenceAdmissionSnapshot(v.admission) ||
       v.admission.fundedBudget === undefined ||
       v.admission.fundedBudget.organizationId === v.orgId) &&
+    (v.admission === undefined ||
+      !isInferenceAdmissionSnapshot(v.admission) ||
+      v.admission.ratePolicy === undefined ||
+      v.admission.ratePolicy.organizationId === v.orgId) &&
     typeof v.apiKeyId === "string" &&
     v.apiKeyId.length > 0 &&
     (v.apiKeyRateLimit === undefined ||
@@ -456,6 +466,23 @@ export async function readInferenceAuthContextWithOutcome(
   return { kind: "hit", ctx: outcome.value, backend: outcome.backend };
 }
 
+/**
+ * A rate-policy epoch proves the cached key cap only when both came from one
+ * primary snapshot. The cache write re-reads the snapshot; if a policy
+ * mutation committed between the two reads, the new epoch would vouch for the
+ * old cap. Such an entry keeps no rate proof, so its requests use the primary
+ * rate path until the key is resolved again.
+ */
+export function withCoherentRatePolicy(
+  resolved: InferenceAdmissionSnapshot | undefined,
+  fresh: InferenceAdmissionSnapshot,
+): InferenceAdmissionSnapshot {
+  const { ratePolicy, ...withoutRatePolicy } = fresh;
+  return ratePolicy !== undefined && resolved?.ratePolicy?.epoch === ratePolicy.epoch
+    ? fresh
+    : withoutRatePolicy;
+}
+
 /** Write a fully-authorized IAC entry. Callers MUST only pass authorized identities. */
 export async function writeInferenceAuthContext(
   ctx: InferenceAuthContext,
@@ -466,7 +493,8 @@ export async function writeInferenceAuthContext(
   const { inferenceAdmissionSnapshotInTransaction, publishInferenceAdmissionSnapshotToGate } =
     await import("./inference-admission-snapshot");
   return withOrganizationPolicyAdmission(ctx.orgId, ctx.admission.authority, async (policy, tx) => {
-    const admission = await inferenceAdmissionSnapshotInTransaction(tx, ctx.orgId, policy);
+    const fresh = await inferenceAdmissionSnapshotInTransaction(tx, ctx.orgId, policy);
+    const admission = withCoherentRatePolicy(ctx.admission, fresh);
     await publishInferenceAdmissionSnapshotToGate(ctx.orgId, admission);
     return await cache.setWithOutcome(
       CacheKeys.inference.authContext(ctx.keyHash),
