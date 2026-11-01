@@ -819,7 +819,10 @@ export async function resolveInferenceAuthContext(
       trace.cacheRead = "unavailable";
     }
 
-    if (options.cacheOnly && !options.forceAuthoritative) {
+    // Cache-only resolution needs a configured cache backend; every deployed
+    // environment has one. Without any backend (local dev, e2e harness) a miss
+    // could never hydrate, so those hosts keep the authoritative path.
+    if (options.cacheOnly && !options.forceAuthoritative && cache.isBackendConfigured()) {
       // A true miss (or an unreadable cache) never queries Postgres inline:
       // the request gets a retryable warming result and the authoritative
       // decision is projected into the cache under `waitUntil`.
