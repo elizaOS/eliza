@@ -568,9 +568,10 @@ export function captureSkillInvocationIO(
  * its own call site: tool arguments, tool result/error, captured tool I/O,
  * and model-stage tool-call arguments are projected through the composed
  * redaction before the stage reaches disk. Mutates the (already cloned) stage
- * in place. Model prompt/message text is projected as well; when message bytes
- * change, provider-attribution offsets are dropped through the canonical
- * fallback so they never index text different from the persisted messages.
+ * in place. Model prompt/message/response text, provider content parts and
+ * provider options are projected as well; when message bytes change,
+ * provider-attribution offsets are dropped through the canonical fallback so
+ * they never index text different from the persisted messages.
  */
 export function projectRecordedStageToolDiagnostics(
 	stage: RecordedStage,
@@ -622,6 +623,21 @@ export function projectRecordedStageToolDiagnostics(
 			}
 		}
 		stage.model.response = redactText(stage.model.response);
+		// Provider content parts repeat the visible response and carry private
+		// reasoning; provider options carry the rendered prompt segments. Both
+		// get the projection the response and messages get.
+		if (stage.model.responseContent !== undefined) {
+			stage.model.responseContent = projectCompleteToolValueForModel(
+				stage.model.responseContent,
+				redactText,
+			) as RecordedModelCall["responseContent"];
+		}
+		if (stage.model.providerOptions !== undefined) {
+			stage.model.providerOptions = projectCompleteToolValueForModel(
+				stage.model.providerOptions,
+				redactText,
+			);
+		}
 		if (Array.isArray(stage.model.messages)) {
 			const projectedMessages = projectCompleteToolValueForModel(
 				stage.model.messages,
