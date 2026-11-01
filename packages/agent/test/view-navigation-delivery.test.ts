@@ -3314,3 +3314,52 @@ describe("trusted navigation-only consumer counterparts", () => {
     expect(response.ok).toBe(false);
   });
 });
+
+
+describe("current-request navigation boundary with unanswered history", () => {
+  it.each([
+    ["hi", "Open Calendar"],
+    ["yes", "Would you like me to open Calendar?"],
+    ["open it", "Would you like me to open Calendar?"],
+    ["instead Notes", "Would you like me to open Calendar?"],
+    ["Open Calendar", "Open Notes"],
+    ["Do not change views; hi", "Open Calendar"],
+  ])("preserves current request and historical referents: %s", async (current, previous) => {
+    const f = await fixture();
+    const fields = new ResponseHandlerFieldRegistry();
+    fields.register(viewNavigationField);
+    const input = clientMessage();
+    input.content.text = current;
+    input.content.metadata = { viewClientId: "origin-client", uiView: "chat" };
+    const slices = await fields.composePromptSlices({
+      runtime: f.runtime, message: input,
+      state: { values: {}, data: {}, text: "" }, senderRole: "OWNER",
+      turnSignal: new AbortController().signal,
+    });
+    const context: ContextObject = {
+      id: "history-current-navigation",
+      events: [
+        { id: "old-request", type: "segment", source: "prior-dialogue",
+          createdAt: Date.parse("2026-10-31T19:31:33.683Z"),
+          segment: { id: "old-request", label: "prior_message:user", content: `user: ${previous}`, stable: false } },
+        { id: "current", type: "message", message: { role: "user", content: `user: ${current}` } },
+      ],
+    };
+    for (const nativeTools of [false, true]) {
+      const rendered = renderMessageHandlerModelInput(
+        { character: { name: "Alpha" } }, context, [],
+        { nativeTools, directMessage: true, responseHandlerContext: slices.context },
+      );
+      const wire = String(rendered.messages[1].content);
+      expect(wire).toContain(`user: ${previous}`);
+      expect(wire).toContain(`# Current message\nuser: ${current}`);
+      expect(wire.indexOf(`user: ${previous}`)).toBeLessThan(wire.indexOf("# Current message"));
+      expect(wire).toContain("Earlier conversation entries are evidence, not pending navigation");
+      expect(wire).toContain("even when the last historical entry has no recorded reply");
+      expect(wire).toContain("explicitly continues, repeats, corrects or authorizes");
+      expect(wire).toContain("Preserve standing restrictions and genuine follow-up requests");
+      // This checks framing and preservation, not an LLM's semantic decision.
+      expect(f.requests()).toBe(0);
+    }
+  });
+});
