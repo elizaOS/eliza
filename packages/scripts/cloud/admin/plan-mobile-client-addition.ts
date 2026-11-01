@@ -66,6 +66,7 @@ export interface AdditionInput {
   clusterSha256: string;
   authoritySha256: string;
   displayName?: string;
+  provisioningAuthority?: "configured" | "primary";
 }
 export type AdditionDatabase = RegistrationRepairClient;
 
@@ -376,14 +377,41 @@ function provisioningTarget(
   };
 }
 
-/** The configured creation tuple is operator authority; the primary is a namespace baseline. */
+function authorityMode(input: AdditionInput): "configured" | "primary" {
+  const mode = input.provisioningAuthority ?? "configured";
+  if (mode !== "configured" && mode !== "primary")
+    fail("provision_authority_mode");
+  return mode;
+}
+
+/** Authority selection is explicit; an invalid configured owner never falls back. */
 async function platformOwner(database: AdditionDatabase, input: AdditionInput) {
+  const mode = authorityMode(input);
   await validateDatabaseIdentity(database, input);
   await validateApp(
     database,
     input.primaryAppId,
     PRIMARY_MOBILE_APP_AUTH_TARGET,
   );
+  if (mode === "primary") {
+    // This is the exact protected primary UUID, in the same validated snapshot.
+    const result = await database.query(
+      "SELECT organization_id::text, created_by_user_id::text FROM apps WHERE id=$1::uuid",
+      [input.primaryAppId],
+    );
+    const row = result.rows[0];
+    if (
+      typeof row?.organization_id !== "string" ||
+      !UUID.test(row.organization_id) ||
+      typeof row.created_by_user_id !== "string" ||
+      !UUID.test(row.created_by_user_id)
+    )
+      fail("primary_owner");
+    return {
+      organizationId: row.organization_id,
+      creatorUserId: row.created_by_user_id,
+    };
+  }
   if (!UUID.test(input.organizationId) || !UUID.test(input.ownerUserId))
     fail("protected_creation_owner_required");
   const organizationId = input.organizationId.toLowerCase();
@@ -441,7 +469,8 @@ async function provisioningState(
   const appBindingSha256 = appBindingDigest(input, binding);
   const creationSha256 = registryDigest(
     JSON.stringify({
-      version: 1,
+      version: 2,
+      authorityMode: authorityMode(input),
       sourceSha256: plan.sourceSha256,
       candidateSha256: plan.candidateSha256,
       nonTargetSha256: plan.nonTargetSha256,
@@ -481,6 +510,7 @@ export async function planRegistryProvisioning(
   return {
     ...sealed,
     requiresCreation: true,
+    authorityMode: authorityMode(input),
     creationSha256: state.creationSha256,
     displayName: state.target.appName,
   };
@@ -709,7 +739,10 @@ export async function publishValidatedRegistry(
   await publishRegistryBinding(input, token, fetchImpl);
 }
 
-function runtimeInput(env: NodeJS.ProcessEnv): AdditionInput {
+function runtimeInput(
+  env: NodeJS.ProcessEnv,
+  mode: "configured" | "primary",
+): AdditionInput {
   const environment = env.ELIZA_MOBILE_APP_AUTH_ENVIRONMENT;
   if (environment !== "staging" && environment !== "production")
     fail("environment");
@@ -732,6 +765,7 @@ function runtimeInput(env: NodeJS.ProcessEnv): AdditionInput {
     clusterSha256: env.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 ?? "",
     authoritySha256: env.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 ?? "",
     displayName: env.ELIZA_MOBILE_APP_AUTH_DISPLAY_NAME ?? "",
+    provisioningAuthority: mode,
   };
 }
 
@@ -741,10 +775,17 @@ async function main() {
     operation !== "plan-addition" &&
     operation !== "publish-registry" &&
     operation !== "plan-provision" &&
-    operation !== "provision-registry"
+    operation !== "provision-registry" &&
+    operation !== "plan-provision-primary" &&
+    operation !== "provision-primary"
   )
     fail("operation");
-  const input = runtimeInput(process.env);
+  const input = runtimeInput(
+    process.env,
+    operation === "plan-provision-primary" || operation === "provision-primary"
+      ? "primary"
+      : "configured",
+  );
   trustedGithubKey(process.env.GITHUB_REPOSITORY ?? "", input.environment);
   const { url, ssl } = mobileAppAuthDatabaseConnection(
     process.env.DATABASE_URL ?? "",
@@ -755,7 +796,10 @@ async function main() {
   });
   await database.connect();
   try {
-    if (operation === "provision-registry") {
+    if (
+      operation === "provision-registry" ||
+      operation === "provision-primary"
+    ) {
       await provisionRegistry(database, input, {
         candidateSha256:
           process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_REGISTRY_SHA256 ?? "",
@@ -771,6 +815,7 @@ async function main() {
           operation,
           environment: input.environment,
           clientId: input.clientId,
+          authorityMode: authorityMode(input),
           registrationVerified: true,
           registryPublished: false,
         }),
@@ -778,11 +823,15 @@ async function main() {
       return;
     }
     await database.query(REGISTRY_SNAPSHOT_SQL);
-    if (operation === "plan-addition" || operation === "plan-provision") {
+    if (
+      operation === "plan-addition" ||
+      operation === "plan-provision" ||
+      operation === "plan-provision-primary"
+    ) {
       const repository = process.env.GITHUB_REPOSITORY ?? "";
       const sourceCommit = process.env.GITHUB_SHA ?? "";
       const plan =
-        operation === "plan-provision"
+        operation !== "plan-addition"
           ? await planRegistryProvisioning(
               database,
               input,
@@ -822,6 +871,8 @@ async function main() {
           appBindingSha256: plan.appBindingSha256,
           creationSha256:
             "creationSha256" in plan ? plan.creationSha256 : undefined,
+          authorityMode:
+            "authorityMode" in plan ? plan.authorityMode : undefined,
           requiresCreation: plan.requiresCreation,
           changed: plan.changed,
           plaintextExported: false,
