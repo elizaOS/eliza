@@ -29,6 +29,7 @@ export interface SpeechRelayIdentity extends VoiceUsageIdentity {
   cloudSessionId: string;
 }
 export type SpeechRelayControl =
+  | { t: "prepare"; id: string }
   | { t: "tts"; id: string; text: string; flush?: boolean }
   | { t: "finish"; id: string }
   | { t: "cancel"; id: string }
@@ -133,7 +134,10 @@ export function parseSpeechRelayControl(input: unknown): SpeechRelayControl {
   if (value.t === "stop" && keys.length === 1) return { t: "stop" };
   if (typeof value.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(value.id))
     throw new SpeechRelayError("payload", "Invalid speech context");
-  if ((value.t === "cancel" || value.t === "finish") && keys.length === 2)
+  if (
+    (value.t === "prepare" || value.t === "cancel" || value.t === "finish") &&
+    keys.length === 2
+  )
     return { t: value.t, id: value.id };
   if (
     value.t === "tts" &&
@@ -484,12 +488,13 @@ export async function createSpeechRelaySession(
         }
         return;
       }
+      // A prepare opens the context ahead of its first phrase and carries no text.
+      const text = frame.t === "tts" ? frame.text : "";
       if (
         finishedIds.has(frame.id) ||
         (usedIds.has(frame.id) && !streams.has(frame.id)) ||
         (!usedIds.has(frame.id) && usedIds.size >= 64) ||
-        admittedTtsCharacters + frame.text.length >
-          SPEECH_RELAY_BUDGET.ttsCharacters
+        admittedTtsCharacters + text.length > SPEECH_RELAY_BUDGET.ttsCharacters
       ) {
         retire();
         throw new SpeechRelayError(
@@ -498,7 +503,7 @@ export async function createSpeechRelaySession(
         );
       }
       usedIds.add(frame.id);
-      admittedTtsCharacters += frame.text.length;
+      admittedTtsCharacters += text.length;
       // No content review on the speech path: the phrase goes straight to
       // provider dispatch once the session's admission and budget allow it.
       try {
@@ -510,7 +515,7 @@ export async function createSpeechRelaySession(
         await credits.beforeProviderDispatch("tts");
         current();
         if (cancelledIds.has(frame.id)) return false;
-        ttsCharacters += frame.text.length;
+        ttsCharacters += text.length;
         dispatched.tts = true;
         let stream = streams.get(frame.id);
         if (!stream)
@@ -548,12 +553,13 @@ export async function createSpeechRelaySession(
           });
         streams.set(frame.id, stream);
         current();
-        stream.sendPhrase({
-          text: frame.text,
-          continueContext: true,
-          maxBufferDelayMs: 250,
-          ...(frame.flush !== undefined ? { flush: frame.flush } : {}),
-        });
+        if (frame.t === "tts")
+          stream.sendPhrase({
+            text: frame.text,
+            continueContext: true,
+            maxBufferDelayMs: 250,
+            ...(frame.flush !== undefined ? { flush: frame.flush } : {}),
+          });
       } catch (error) {
         ttsUncertain = true;
         retire();

@@ -31,6 +31,25 @@ test("strict speech wire shares exact routes and binary context-bound PCM", () =
     pcm,
   });
 });
+test("wire accepts the client's prepare frame and rejects a malformed prepare", () => {
+  // cloud-speech-relay-client createStream sends exactly this before any text.
+  const id = crypto.randomUUID();
+  expect(parseSpeechRelayJson(JSON.stringify({ t: "prepare", id }))).toEqual({
+    t: "prepare",
+    id,
+  });
+  for (const frame of [
+    { t: "prepare", id, text: "hello" },
+    { t: "prepare", id, flush: true },
+    { t: "prepare", id, model: "arbitrary" },
+    { t: "prepare" },
+    { t: "prepare", id: "" },
+    { t: "prepare", id: "../escape" },
+    { t: "prepare", id: "x".repeat(65) },
+    { t: "prepare", id: 7 },
+  ])
+    expect(() => parseSpeechRelayJson(JSON.stringify(frame))).toThrow();
+});
 test("wire rejects unknown controls, leaked account fields, oversized strings and malformed audio", () => {
   for (const frame of [
     '{"t":"hello","token":"x","apiKey":"vendor"}',
