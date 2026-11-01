@@ -87,7 +87,11 @@ export async function reserveSpeechRelayAdmission(input: {
             await admission.settle(0);
             continue;
           }
-          if (details.outcomes?.[kind] !== "complete") {
+          // Cartesia TTS charges input characters. The trusted live counter is
+          // an upper bound even if playback is interrupted or the provider ACK
+          // is lost. Only actor loss (which skips this settlement) retains the
+          // full durable reservation. STT still requires its drain receipt.
+          if (kind === "stt" && details.outcomes?.stt !== "complete") {
             await admission.settleUnknown();
             continue;
           }

@@ -94,7 +94,9 @@ subscribers; internal provider-cost reservation does not require prepaid user
 credits. Existing durable inference leases retain uncertain provider costs
 after interruption or a crash. Both STT and TTS reservations are marked dispatched
 at bootstrap before any provider opens. A crash can therefore retain the full
-reservation, including unused TTS; confirmed close reconciles actual usage.
+reservation, including unused TTS. A live close, including barge-in, settles
+TTS against the server-counted submitted characters; STT requires its matching
+provider drain receipt.
 `CARTESIA_STT_USD_PER_CREDIT` supplies the account
 rate; streaming Ink-2 costs three credits per input second and Sonic one credit
 per character. Bootstrap and final accounting can access the primary store.

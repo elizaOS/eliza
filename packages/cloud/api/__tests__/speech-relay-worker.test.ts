@@ -41,7 +41,7 @@ beforeAll(async () => {
     ],
     [
       /\/services\/organization-inference-admission\.ts$/,
-      `import {InsufficientCreditsError} from '@elizaos/cloud-shared/lib/services/credits'; ${common} export async function admitOrganizationInference(input){bootstrap('admissions');if(stats().decline)throw new InsufficientCreditsError('private provider details');return {async markProviderDispatched(){bootstrap('dispatches');},async settle(cost){const s=stats();s.settlements=(s.settlements??0)+1;},async settleUnknown(){const s=stats();s.unknown=(s.unknown??0)+1;}};}`,
+      `import {InsufficientCreditsError} from '@elizaos/cloud-shared/lib/services/credits'; ${common} export async function admitOrganizationInference(input){bootstrap('admissions');if(stats().decline)throw new InsufficientCreditsError('private provider details');return {async markProviderDispatched(){bootstrap('dispatches');},async settle(cost){const s=stats();s.settlements=(s.settlements??0)+1;(s.settledAmounts??=[]).push({model:input.context.model,cost});},async settleUnknown(){const s=stats();s.unknown=(s.unknown??0)+1;}};}`,
     ],
     [
       /\/services\/content-safety\.ts$/,
@@ -540,4 +540,84 @@ test("authoritative org, API-key and session-cutoff revocations stop active spee
     );
     expect(retry.status).toBe(403);
   }
+});
+
+test("barge-in settles only the submitted TTS characters across contexts, not the full reserved monthly allowance", async () => {
+  const headers = {
+    "x-test-session": "barge-in",
+    "Content-Type": "application/json",
+  };
+  const token = "barge-in-capability";
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  await request("/test-allow-admission");
+  await request("/initialize", {
+    sessionId: "88888888-8888-4888-8888-888888888888",
+    tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+    expiresAt: Date.now() + 60000,
+    caller: {
+      user: {
+        ...account,
+        organization_id: "abababab-abab-4bab-8bab-abababababab",
+      },
+      apiKeyId: "barge-key",
+      authSource: "combined_cache",
+      appScopeId: null,
+      credential: {
+        kind: "api_key",
+        credentialId: "barge-key",
+        userId: account.id,
+      },
+    },
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...headers, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const ready = next(socket as any, (value) => value.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token }));
+  await ready;
+  const phrases = ["A short first answer.", "A second interrupted answer."];
+  for (const [index, text] of phrases.entries()) {
+    const id = `interrupted-${index}`;
+    const prepared = next(
+      socket as any,
+      (value) => value.t === "tts_prepared" && value.id === id,
+    );
+    socket.send(JSON.stringify({ t: "tts", id, text, flush: true }));
+    await prepared;
+    socket.send(JSON.stringify({ t: "cancel", id }));
+  }
+  const closed = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(Error("Barge-in session did not close")),
+      3000,
+    );
+    socket.addEventListener(
+      "close",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  socket.send(JSON.stringify({ t: "stop" }));
+  await closed;
+  const stats = (await (await request("/test-stats")).json()) as {
+    settledAmounts: Array<{ model: string; cost: number }>;
+  };
+  const settled = stats.settledAmounts
+    .filter((entry) => entry.model === "sonic-3.5")
+    .at(-1)!;
+  expect(settled.cost).toBe(
+    Math.round(phrases.join("").length * 0.00004 * 1.2 * 1e6) / 1e6,
+  );
+  expect(settled.cost).toBeLessThan(4096 * 0.00004 * 1.2);
 });
