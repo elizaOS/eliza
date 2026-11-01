@@ -11,6 +11,16 @@ title = "elizaOS gitleaks config"
 # Pull in upstream default ruleset.
 useDefault = true
 
+# GitHub's environment public key seals registry updates; it cannot authenticate
+# or decrypt them. Keep the exact reviewed public value scoped to its owner file,
+# including its historical addition in commit-range scans.
+[[allowlists]]
+description = "GitHub environment public encryption key for mobile registry planning"
+condition = "AND"
+paths = ['''^packages/scripts/cloud/admin/plan-mobile-client-addition\.ts$''']
+regexTarget = "secret"
+regexes = ['''^ZtYTpDp9pOP34tJYPmEX9eIu0i4pOJ8VJLgGL9yEqBs=$''']
+
 # Android routing audits pin the SHA-256 of the complete public analytics script
 # shipped by @coinbase/wallet-sdk 4.3.6. This is an integrity digest, not an access
 # token. Match only this digest in its owning file; other values remain scanned.
