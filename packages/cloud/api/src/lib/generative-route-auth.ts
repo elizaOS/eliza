@@ -539,7 +539,8 @@ export async function requireGenerativeRouteCaller(
       if (resolution.ctx.apiKeyId) {
         c.set("apiKeyId", resolution.ctx.apiKeyId);
       }
-      if (options.rateLimitEndpoint) {
+      const rateLimitEndpoint = options.rateLimitEndpoint;
+      if (rateLimitEndpoint) {
         const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
           await timeSpeechPhase(c, "limiter_module_load", () => Promise.all([
             import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
@@ -549,7 +550,7 @@ export async function requireGenerativeRouteCaller(
           ]));
         const limited = await timeSpeechPhase(c, "org_limiter", () => enforceOrgRateLimit(
           resolution.ctx.orgId,
-          options.rateLimitEndpoint,
+          rateLimitEndpoint,
           {
             // Same limiter as chat completions: a shared policy lock and one
             // Durable Object decision. Without a snapshot the locked primary
@@ -560,7 +561,7 @@ export async function requireGenerativeRouteCaller(
             executionCtx,
             config: inferenceRateLimitConfig(
               resolution.ctx.admission,
-              options.rateLimitEndpoint,
+              rateLimitEndpoint,
             ),
             apiKeyId: resolution.ctx.apiKeyId,
           },
