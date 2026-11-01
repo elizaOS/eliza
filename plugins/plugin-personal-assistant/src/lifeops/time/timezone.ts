@@ -50,6 +50,47 @@ const TIME_ZONE_ALIASES: Record<string, string> = {
   gmt: "UTC",
 };
 
+// Aliases that are also ordinary words in prose ("CT scan", "PT session",
+// "Central Park", "mountain biking", "the New York office"). The free-text
+// scan reads them as a zone only where the text uses them as one; the
+// abbreviations (PST, EST, UTC, ...) and the "... time" / "... standard" /
+// "... daylight" phrases name a zone wherever they appear.
+const PROSE_REGION_ALIASES = new Set([
+  "pt",
+  "mt",
+  "ct",
+  "et",
+  "pacific",
+  "mountain",
+  "central",
+  "eastern",
+]);
+const PROSE_CITY_ALIASES = new Set([
+  "los angeles",
+  "denver",
+  "chicago",
+  "new york",
+]);
+
+const CLOCK_TIME_TOKEN_PATTERN =
+  /^(?:\d{1,2}(?::\d{2}|(?::\d{2})?(?:am|pm))|noon|midday|midnight|o['’]?clock)$/;
+// A bare number is a clock time only after a time preposition ("at 5
+// central"); elsewhere it is usually a count ("2 Central Park tickets").
+const BARE_HOUR_TOKEN_PATTERN = /^\d{1,2}$/;
+// "am" or "pm" written apart is a clock time only after an hour ("10 am
+// PT"); elsewhere it is usually a word ("I am central to the launch").
+const MERIDIEM_TOKEN_PATTERN = /^(?:am|pm)$/;
+const HOUR_TOKEN_PATTERN = /^\d{1,2}(?::\d{2})?$/;
+const TIME_PREPOSITIONS = new Set([
+  "at",
+  "by",
+  "around",
+  "before",
+  "after",
+  "until",
+  "till",
+]);
+
 const IANA_TIME_ZONE_PATTERN = /\b([A-Za-z]+(?:\/[A-Za-z0-9_+-]+)+)\b/g;
 
 function supportedTimeZoneValues(): string[] {
@@ -97,6 +138,57 @@ function canonicalizeTimeZoneAliasKey(value: string): string {
     .replace(/\b(?:timezone|time)\b/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function freeTextTokens(value: string): string[] {
+  return value
+    .toLowerCase()
+    .replace(/(?<=\d|\s|^)([ap])\.m\.?/g, "$1m")
+    .replace(/[._,-]+/g, " ")
+    .split(/\s+/)
+    .filter((token) => token.length > 0);
+}
+
+function isClockTimeToken(tokens: readonly string[], index: number): boolean {
+  const token = tokens[index];
+  if (token === undefined) {
+    return false;
+  }
+  if (CLOCK_TIME_TOKEN_PATTERN.test(token)) {
+    return true;
+  }
+  const previous = tokens[index - 1];
+  if (previous === undefined) {
+    return false;
+  }
+  if (MERIDIEM_TOKEN_PATTERN.test(token)) {
+    return HOUR_TOKEN_PATTERN.test(previous);
+  }
+  return BARE_HOUR_TOKEN_PATTERN.test(token) && TIME_PREPOSITIONS.has(previous);
+}
+
+/**
+ * Whether the phrase at `tokens[index, index + size)` is used as a zone or a
+ * place: the whole text, followed by "time" ("Tokyo time"), right after a
+ * clock time ("10am PT", "3:30 central", "noon PT", "at 5 central"), or, for
+ * a place, after "in" ("while I'm in Tokyo").
+ */
+function phraseNamesZone(
+  tokens: readonly string[],
+  index: number,
+  size: number,
+  place: boolean,
+): boolean {
+  if (size === tokens.length) {
+    return true;
+  }
+  const next = tokens[index + size];
+  if (next === "time" || next === "timezone") {
+    return true;
+  }
+  return (
+    isClockTimeToken(tokens, index - 1) || (place && tokens[index - 1] === "in")
+  );
 }
 
 export function normalizeExplicitTimeZoneToken(
@@ -148,15 +240,23 @@ export function extractExplicitTimeZoneFromText(
     }
   }
 
-  const lower = ` ${canonicalizeTimeZoneAliasKey(value)} `;
+  const tokens = freeTextTokens(value);
   for (const alias of Object.keys(TIME_ZONE_ALIASES).sort(
     (left, right) => right.length - left.length,
   )) {
-    const escapedAlias = alias
-      .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
-      .replace(/\\ /g, "\\s+");
-    const aliasPattern = new RegExp(`(^|\\s)${escapedAlias}(?=\\s|$)`, "i");
-    if (aliasPattern.test(lower)) {
+    const aliasTokens = alias.split(" ");
+    const size = aliasTokens.length;
+    const region = PROSE_REGION_ALIASES.has(alias);
+    const place = PROSE_CITY_ALIASES.has(alias);
+    for (let index = 0; index <= tokens.length - size; index += 1) {
+      if (
+        aliasTokens.some((token, offset) => tokens[index + offset] !== token)
+      ) {
+        continue;
+      }
+      if ((region || place) && !phraseNamesZone(tokens, index, size, place)) {
+        continue;
+      }
       const normalized = normalizeExplicitTimeZoneToken(alias);
       if (normalized) {
         return normalized;
@@ -179,10 +279,10 @@ export function inferTimeZoneFromLocationText(
     return null;
   }
 
-  const tokens = canonicalizeTimeZoneAliasKey(value)
-    .split(" ")
-    .map((token) => token.trim())
-    .filter((token) => token.length > 0);
+  // A zone's city segment is often a plain word or a name ("Casey",
+  // "Christmas", "wake", "center"), so a city counts only where the text
+  // uses it as a place or a zone.
+  const tokens = freeTextTokens(value);
   if (tokens.length === 0) {
     return null;
   }
@@ -191,7 +291,11 @@ export function inferTimeZoneFromLocationText(
     for (let index = 0; index <= tokens.length - size; index += 1) {
       const phrase = tokens.slice(index, index + size).join(" ");
       const alias = TIME_ZONE_CITY_ALIASES.get(phrase);
-      if (alias && isValidTimeZone(alias)) {
+      if (
+        alias &&
+        isValidTimeZone(alias) &&
+        phraseNamesZone(tokens, index, size, true)
+      ) {
         return alias;
       }
     }
