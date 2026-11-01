@@ -7,7 +7,11 @@ import type {
   Memory,
   MessageHandlerResult,
 } from "@elizaos/core";
-import { ChannelType, MESSAGE_SOURCE_CLIENT_CHAT } from "@elizaos/core";
+import {
+  ChannelType,
+  MESSAGE_SOURCE_CLIENT_CHAT,
+  getUserMessageText,
+} from "@elizaos/core";
 import { parseMessageHandlerOutput } from "../../runtime/message-handler";
 import { textContainsAgentName } from "./addressing.js";
 import {
@@ -287,7 +291,12 @@ export function shouldUseStage1PlannerFallback(
   if (source.includes(MESSAGE_SOURCE_CLIENT_CHAT)) {
     return true;
   }
-  return textContainsAgentName(content.text, [
+  // The turn message keeps the document-augmentation envelope downstream
+  // (chat-augmentation returns the wrapped text; persistence strips it, the
+  // live turn does not), so a document that merely mentions the agent's name
+  // must not count as the user addressing the agent. Read the user's words,
+  // not the envelope.
+  return textContainsAgentName(getUserMessageText(message), [
     runtime.character.name,
     runtime.character.username,
   ]);
