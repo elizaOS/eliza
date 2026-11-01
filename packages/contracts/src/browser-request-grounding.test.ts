@@ -971,3 +971,18 @@ describe("direct client navigation requires a whole request", () => {
     expect(directBrowserDestination(text)).toBe("https://example.com/dashboard");
   });
 });
+
+
+describe("direct bare addresses preserve the file-name boundary", () => {
+  it.each(["main.py", "notes.one", "archive.zip", "\"main.py\"", "'notes.one'"])("does not auto-open a file-like name: %s", (text) => {
+    expect(directBrowserDestination(text)).toBeUndefined();
+  });
+  it.each([
+    ["https://main.py", "https://main.py/"],
+    ["www.main.py", "https://www.main.py/"],
+    ["Open main.py", "https://main.py/"],
+    ["notes.com", "https://notes.com/"],
+  ])("keeps explicit websites and ordinary bare hosts: %s", (text, expected) => {
+    expect(directBrowserDestination(text)).toBe(expected);
+  });
+});

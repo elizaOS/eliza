@@ -144,7 +144,13 @@ export function authoredBrowserDestination(text: string): string | undefined {
  * Merely mentioning a URL grounds a model proposal, but does not authorize automatic navigation. */
 export function directBrowserDestination(text: string): string | undefined {
   if (unreadable(text)) return;
-  return authoredBrowserDestination(text) ?? webAddress(text.trim())?.href;
+  const strict = authoredBrowserDestination(text);
+  if (strict) return strict;
+  const bare = text.trim(), url = webAddress(bare);
+  if (!url) return;
+  const tld = url.hostname.slice(url.hostname.lastIndexOf(".") + 1);
+  if (FILE_TYPE_TLDS.has(tld) && !/^(?:https:\/\/|www\.)/i.test(bare)) return;
+  return url.href;
 }
 
 /** The destination to open for a model-proposed browser URL, built from the
