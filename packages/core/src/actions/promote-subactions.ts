@@ -478,17 +478,27 @@ export function promoteSubactionsToActions(
 		const description = operationDescription
 			? `${parent.name} operation "${subKey}": ${operationDescription}`
 			: `${parent.name} operation "${subKey}".`;
-		// Neither the parent's name nor its simile ARRAY is inherited: retrieval
-		// drops any simile claimed by more than one catalog parent as
-		// ambiguous, so with two or more promoted virtuals every inherited
-		// alias is claimed by every sibling and dropped (live 2026-08-10: all
-		// TASKS similes dead and "any new issues?" fell back to web search;
-		// live 2026-11-01: CALENDAR on every child of a surface without the
-		// umbrella). The umbrella stays registered and remains the single
-		// owner of its name and similes; the virtual's name carries the
-		// parent prefix, and `promotedSubactionParent` names the umbrella.
 		const similes = Array.from(
-			new Set([...(override.similes ?? []), toUpperSnake(sub)]),
+			new Set([
+				// Parent's name is first so a Stage-1 hint naming the umbrella
+				// still finds promoted actions on a surface that holds only them
+				// (planner hard-tool enforcement, retrieval). Every sibling
+				// carries it, so retrieval reads it as a hint for the whole
+				// family, not as an ambiguous simile (live 2026-11-01: CALENDAR
+				// dropped across CALENDAR_CREATE_EVENT/CALENDAR_DELETE_EVENT).
+				//
+				// The parent's own simile ARRAY is deliberately NOT inherited:
+				// retrieval drops any simile claimed by more than one catalog
+				// parent as ambiguous, so with two or more promoted
+				// virtuals, inheritance guarantees every family simile is claimed
+				// by every sibling and dropped — killing simile routing for the
+				// whole umbrella (live 2026-08-10: all TASKS similes dead and
+				// "any new issues?" fell back to web search). The umbrella stays
+				// registered and remains those similes' single owner.
+				toUpperSnake(parent.name),
+				...(override.similes ?? []),
+				toUpperSnake(sub),
+			]),
 		);
 		const examples =
 			override.examples ??
@@ -498,10 +508,11 @@ export function promoteSubactionsToActions(
 		// blurb) and `routingHint` are deliberately NOT inherited: duplicated
 		// verbatim across every virtual they multiply into tens of kilobytes
 		// of identical tool-description text per planner turn. Retrieval still
-		// finds virtuals through their similes (parent name + subaction) and
-		// through the parent's own search text, and tool rendering falls back
-		// to the short composed `description` when no per-subaction
-		// `descriptionCompressed` override is provided. The parent's
+		// finds virtuals through their similes (the parent name as a family
+		// hint, plus the subaction) and finds the umbrella through its own
+		// search text, and tool rendering falls back to the short composed
+		// `description` when no per-subaction `descriptionCompressed`
+		// override is provided. The parent's
 		// routingHint instead rides the promotion marker below, where the
 		// planner's routing-hints block picks it up once per family.
 		const virtual: PromotedAction = {

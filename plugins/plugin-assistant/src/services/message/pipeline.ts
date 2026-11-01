@@ -238,6 +238,62 @@ export function actionOwnsResponseHandlerEarlyReply(
   return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
 }
 
+/**
+ * Whether a Stage-1 candidate names a tool exposed to the planner this turn.
+ * An unresolvable hint (e.g. a web/fetch-style hint on a runtime with no web
+ * action) cannot be satisfied, so hard-enforcing it would only burn the
+ * required-tool miss budget re-rejecting the planner's honest answer before
+ * the exhaustion hatch ships it. The turn still plans — the planner delivers
+ * the capability decline in one iteration. Candidates are resolved through the
+ * runtime action lookup, not by name alone: Stage 1 routinely names a SIMILE
+ * of an exposed action (SPAWN_AGENT for TASKS), and a name-only membership
+ * test would silently drop enforcement for a tool that IS exposed (the
+ * exposedActionMatches doc records the live ack-then-nothing regression that
+ * pattern causes).
+ */
+export function stageOneNamesPlannerTool(
+  runtime: Pick<IAgentRuntime, "actions">,
+  plannerTools: readonly { name: string }[],
+  candidateActions: readonly string[],
+): boolean {
+  const plannerToolNames = new Set(
+    plannerTools.map((tool) => normalizeActionIdentifier(tool.name)),
+  );
+  const actionLookup = buildRuntimeActionLookup(runtime);
+  const plannerToolActions = plannerTools.flatMap(
+    (tool) => resolveRuntimeAction(actionLookup, tool.name) ?? [],
+  );
+  return candidateActions.some((candidate) => {
+    const name = String(candidate);
+    const normalized = normalizeActionIdentifier(name);
+    if (plannerToolNames.has(normalized)) return true;
+    // Retrieval can replace an umbrella candidate (TASKS) with the precise
+    // promoted child exposed this turn (TASKS_SPAWN_AGENT). Promoted children
+    // deliberately carry the parent name as a simile, so resolve against the
+    // ACTUAL planner surface before consulting the full runtime. Otherwise the
+    // runtime lookup finds the exact parent, which is absent from plannerTools,
+    // and incorrectly disables hard-tool enforcement even though its child is
+    // exposed and runnable.
+    if (exposedActionMatches(plannerToolActions, normalized)) return true;
+    const resolved = resolveRuntimeAction(actionLookup, name);
+    if (resolved === undefined) return false;
+    if (plannerToolNames.has(normalizeActionIdentifier(resolved.name))) {
+      return true;
+    }
+    // The canonical surface represents a promoted alias through its
+    // umbrella's alias contract instead of a second native tool
+    // (collectCanonicalPlannerActions), so a Stage-1 hint naming
+    // CALENDAR_UPDATE_EVENT still names an exposed, runnable operation while
+    // CALENDAR is on the wire. Reading it as unresolvable would silently drop
+    // hard-tool enforcement for exactly the turns Stage 1 routed precisely.
+    const umbrella = promotedSubactionParent(resolved);
+    return (
+      umbrella !== undefined &&
+      plannerToolNames.has(normalizeActionIdentifier(umbrella))
+    );
+  });
+}
+
 export async function runV5MessageRuntimeStage1(
   args: V5MessageRuntimeInput,
 ): Promise<V5MessageRuntimeStage1Result> {
@@ -1799,58 +1855,13 @@ export async function runV5MessageRuntimeStage1(
     // to satisfy the gate. When Stage 1 names no tool, plan with "auto" and
     // trust the planner — it still calls a tool when one genuinely fits and
     // answers directly when none does.
-    // The named candidate must also RESOLVE against the tools actually
-    // exposed to the planner this turn: an unresolvable hint (e.g. a
-    // web/fetch-style hint on a runtime with no web action) cannot be
-    // satisfied, so hard-enforcing it would only burn the required-tool
-    // miss budget re-rejecting the planner's honest answer before the
-    // exhaustion hatch ships it. The turn still plans — the planner
-    // delivers the capability decline in one iteration. Candidates are
-    // resolved through the runtime action lookup, not by name alone: Stage 1
-    // routinely names a SIMILE of an exposed action (SPAWN_AGENT for TASKS),
-    // and a name-only membership test would silently drop enforcement for a
-    // tool that IS exposed (the exposedActionMatches doc records the live
-    // ack-then-nothing regression that pattern causes).
-    const plannerToolNames = new Set(
-      plannerTools.map((tool) => normalizeActionIdentifier(tool.name)),
-    );
-    const stageOneActionLookup = buildRuntimeActionLookup(args.runtime);
-    const plannerToolActions = plannerTools.flatMap(
-      (tool) => resolveRuntimeAction(stageOneActionLookup, tool.name) ?? [],
-    );
-    const candidateResolvesToPlannerTool = (name: string): boolean => {
-      const normalized = normalizeActionIdentifier(name);
-      if (plannerToolNames.has(normalized)) return true;
-      // Retrieval can replace an umbrella candidate (TASKS) with the precise
-      // promoted child exposed this turn (TASKS_SPAWN_AGENT). Promoted children
-      // deliberately carry the parent name as a simile, so resolve against the
-      // ACTUAL planner surface before consulting the full runtime. Otherwise the
-      // runtime lookup finds the exact parent, which is absent from plannerTools,
-      // and incorrectly disables hard-tool enforcement even though its child is
-      // exposed and runnable.
-      if (exposedActionMatches(plannerToolActions, normalized)) return true;
-      const resolved = resolveRuntimeAction(stageOneActionLookup, name);
-      if (resolved === undefined) return false;
-      if (plannerToolNames.has(normalizeActionIdentifier(resolved.name))) {
-        return true;
-      }
-      // The canonical surface represents a promoted alias through its
-      // umbrella's alias contract instead of a second native tool
-      // (collectCanonicalPlannerActions), so a Stage-1 hint naming
-      // CALENDAR_UPDATE_EVENT still names an exposed, runnable operation while
-      // CALENDAR is on the wire. Reading it as unresolvable would silently drop
-      // hard-tool enforcement for exactly the turns Stage 1 routed precisely.
-      const umbrella = promotedSubactionParent(resolved);
-      return (
-        umbrella !== undefined &&
-        plannerToolNames.has(normalizeActionIdentifier(umbrella))
-      );
-    };
     const stageOneNamedAToolForThisTurn =
       messageHandler.plan.requiresTool === true &&
-      messageHandler.plan.candidateActions?.some((name) =>
-        candidateResolvesToPlannerTool(String(name)),
-      ) === true;
+      stageOneNamesPlannerTool(
+        args.runtime,
+        plannerTools,
+        messageHandler.plan.candidateActions ?? [],
+      );
     const requireNonTerminalToolCall =
       stageOneNamedAToolForThisTurn && plannerTools.length > 0;
     const effectivePlannerContext = requireNonTerminalToolCall

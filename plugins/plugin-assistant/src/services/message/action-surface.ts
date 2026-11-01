@@ -21,7 +21,6 @@ import {
   inflectionTermKeys,
   type LocalizedActionExampleResolver,
   normalizeContextId,
-  promotedSubactionParent,
   readEnvBool,
   recordInferenceSpan,
   renewExpiredTrustedDeliveryAudience,
@@ -744,16 +743,9 @@ export function retrieveContextualPlannerActions(args: {
             [
               action.name,
               ...(action.similes ?? []),
-              // A promoted child names its umbrella through the promotion
-              // marker; it carries no umbrella simile (#16561 ambiguity).
-              ...[
-                ...(action.similes ?? []),
-                promotedSubactionParent(action) ?? "",
-              ].flatMap((alias) => {
+              ...(action.similes ?? []).flatMap((alias) => {
                 const parent = actionsByName.get(normalizeActionName(alias));
-                return parent?.subActions?.length
-                  ? [parent.name, ...(parent.similes ?? [])]
-                  : [];
+                return parent?.subActions?.length ? (parent.similes ?? []) : [];
               }),
             ].some((alias) => {
               const words = tokenizeActionSearchText(alias).filter(
