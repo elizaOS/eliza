@@ -559,19 +559,33 @@ describe("planner-loop death after a completed tool", () => {
     },
   );
 
+  // Live tj-6a95e9c522dc6a: one Stage-1 call with contexts [simple], intents
+  // [] and a required intent:1 next_event read. The binding was dropped and
+  // this reply, copied from earlier chat, was delivered.
+  const stale = "Coffee's today, 9 to 10 AM.";
   it.each([
-    { intentId: "intent:1", execution: "required" },
-    { intentId: "intent:2", execution: "required" },
-    { intentId: "intent:2", execution: "conditional" },
+    { intentId: "intent:1", execution: "required", reply: stale, read: true },
+    // With no listed intents the message is the only intent, so a required
+    // read naming intent:2 still runs as intent:1.
+    { intentId: "intent:2", execution: "required", reply: stale, read: true },
+    // A dropped conditional read leaves a direct reply, which still cannot
+    // state a Calendar fact without its read.
+    {
+      intentId: "intent:2",
+      execution: "conditional",
+      reply: stale,
+      read: true,
+    },
+    {
+      intentId: "intent:2",
+      execution: "conditional",
+      reply: "I can check your calendar if you want.",
+      read: false,
+    },
   ] as const)(
-    "grounds or withholds a Stage-1 answer that lists no intents ($intentId, $execution)",
-    async ({ intentId, execution }) => {
-      // Live tj-6a95e9c522dc6a: one Stage-1 call with contexts [simple],
-      // intents [] and a required intent:1 next_event read. The binding was
-      // dropped and this reply, copied from earlier chat, was delivered.
-      const stale = "Coffee's today, 9 to 10 AM.";
+    "grounds a Stage-1 answer that lists no intents ($intentId, $execution, $reply)",
+    async ({ intentId, execution, reply, read }) => {
       const planned = "I'll need to check your calendar for that.";
-      const read = intentId === "intent:1";
       const h = await createHarness({ actionResult: { success: true } });
       const world = await h.runtime.getWorld(h.runtime.agentId);
       if (!world) throw new Error("Missing owner world");
@@ -655,7 +669,7 @@ describe("planner-loop death after a completed tool", () => {
               contexts: ["simple"],
               intents: [],
               candidateActionNames: [],
-              replyText: stale,
+              replyText: reply,
               calendarReadBindings: [
                 { intentId, operation: "next_event", execution },
               ],
@@ -716,10 +730,10 @@ describe("planner-loop death after a completed tool", () => {
       if (outcome.kind !== "planned_reply" && outcome.kind !== "direct_reply")
         throw new Error("Missing reply");
       const text = outcome.result.responseContent?.text;
-      if (execution === "conditional") {
-        // An unbound conditional read keeps the existing direct reply.
+      if (!read) {
+        // An unbound conditional read keeps a direct reply with no Calendar fact.
         expect(outcome.kind).toBe("direct_reply");
-        expect(text).toBe(stale);
+        expect(text).toBe(reply);
         expect(plannerCalls).toBe(0);
         return;
       }
@@ -727,10 +741,202 @@ describe("planner-loop death after a completed tool", () => {
       expect(outcome.kind).toBe("planned_reply");
       expect(plannerCalls).toBeGreaterThan(0);
       expect(text).not.toContain("Coffee's today");
-      if (read) {
-        expect(executed).toEqual(["CALENDAR_NEXT_EVENT"]);
-        expect(text).toBe(facts);
-      } else expect(executed).toEqual([]);
+      expect(executed).toEqual(["CALENDAR_NEXT_EVENT"]);
+      expect(text).toBe(facts);
+    },
+  );
+
+  it.each([
+    {
+      trajectory: "tj-90caa2045f354a",
+      reply:
+        "No, QA coffee is tomorrow, Monday, November 2, 9:00 to 10:00 AM Pacific. Not today.",
+      grounded: true,
+    },
+    {
+      trajectory: "tj-91807fc80cdfb9",
+      reply:
+        "No. It's tomorrow, November 2nd, 9:00\u201310:00 AM. Today is November 1st.",
+      grounded: true,
+    },
+    {
+      trajectory: "current-date control",
+      reply: "Today is Sunday, November 1.",
+      grounded: false,
+    },
+  ] as const)(
+    "grounds a direct Calendar-fact reply with no binding on a Calendar read ($trajectory)",
+    async ({ reply, grounded }) => {
+      // Live: "So is QA coffee today?" got one Stage-1 call with contexts
+      // [simple], intents [] and calendarReadBindings [], 0 planner
+      // iterations and 0 tool calls; the reply restated earlier chat.
+      const facts =
+        'Found 1 Calendar event matching "QA coffee": QA coffee, Monday, November 2, 9:00 to 10:00 AM.';
+      const checked =
+        "I just checked your calendar: QA coffee is Monday, November 2, 9:00 to 10:00 AM, not today.";
+      const h = await createHarness({ actionResult: { success: true } });
+      const world = await h.runtime.getWorld(h.runtime.agentId);
+      if (!world) throw new Error("Missing owner world");
+      await h.runtime.updateWorlds([
+        {
+          ...world,
+          metadata: {
+            ownership: { ownerId: USER_ID },
+            roles: { [USER_ID]: "OWNER" },
+          },
+        },
+      ]);
+      h.runtime.actions.length = 0;
+      const executed: string[] = [];
+      h.runtime.registerAction({
+        name: "CALENDAR_SEARCH_EVENTS",
+        description: "Search Calendar events by content.",
+        contexts: ["calendar"],
+        parameters: [
+          {
+            name: "query",
+            description: "Event content filter",
+            required: false,
+            schema: { type: "string" },
+          },
+        ],
+        validate: async () => true,
+        handler: async (_runtime, _message, _state, options) => {
+          executed.push(`CALENDAR_SEARCH_EVENTS:${options?.parameters?.query}`);
+          return {
+            success: true,
+            text: facts,
+            userFacingText: facts,
+            verifiedUserFacing: true,
+            effectReceipts: [
+              {
+                receiptId: "qa-coffee-search",
+                operation: "calendar.event.search",
+                resource: {
+                  kind: "calendar.feed",
+                  id: "feed",
+                  version: "current",
+                },
+                artifacts: [],
+                idempotency: { key: null, replayed: false },
+                observedAt: new Date().toISOString(),
+                outcome: "noop",
+                reason: "Read only",
+              },
+            ],
+            data: {
+              replyContext: {
+                domain: "calendar",
+                scenario: "search_results",
+                userFacingFacts: facts,
+              },
+            },
+          };
+        },
+      });
+      h.runtime.registerResponseHandlerFieldEvaluator(calendarReadBindingField);
+      h.runtime.responseHandlerEvaluators.push(calendarReadBindingEvaluator);
+      let responseCalls = 0;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          if (++responseCalls === 1) {
+            const result = stageOneToolTurn();
+            const args: Record<string, unknown> = result.toolCalls[0].arguments;
+            delete args.requiresTool;
+            delete args.thought;
+            Object.assign(args, {
+              contexts: ["simple"],
+              intents: [],
+              candidateActionNames: [],
+              replyText: reply,
+              replyEffectStatus: "none",
+              calendarReadBindings: [],
+            });
+            return result;
+          }
+          // The evaluator answers from the search, as live Run B did.
+          return JSON.stringify({
+            success: true,
+            decision: "FINISH",
+            thought: "The Calendar search finished.",
+            requestFullyCovered: true,
+            outcomeCoverage: [
+              {
+                intentId: "intent:1",
+                status: "completed",
+                evidenceStepIds: ["step:1"],
+              },
+            ],
+            messageToUser: checked,
+            replyEffectStatus: "none",
+          });
+        },
+        "direct-calendar-fact-test",
+        200,
+      );
+      let plannerCalls = 0;
+      const plannerInputs: string[] = [];
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, params) => {
+          plannerCalls++;
+          plannerInputs.push(
+            JSON.stringify([
+              params.tools?.map((tool) => tool.name),
+              params.messages,
+            ]),
+          );
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "qa-coffee-search",
+                name: "CALENDAR_SEARCH_EVENTS",
+                arguments: { query: "QA coffee" },
+              },
+            ],
+          };
+        },
+        "direct-calendar-fact-test",
+        200,
+      );
+      const message = {
+        ...makeMessage(h.runtime, "So is QA coffee today?"),
+        id: "00000000-0000-0000-0000-000000000095" as UUID,
+      };
+      const outcome = await runV5MessageRuntimeStage1({
+        runtime: h.runtime,
+        message,
+        state: await h.runtime.composeState(message),
+        responseId: "00000000-0000-0000-0000-000000000096" as UUID,
+        callback: h.callback,
+      });
+      if (outcome.kind !== "planned_reply" && outcome.kind !== "direct_reply")
+        throw new Error("Missing reply");
+      const text = outcome.result.responseContent?.text;
+      if (!grounded) {
+        // A reply that states no Calendar fact keeps the direct path.
+        expect(outcome.kind).toBe("direct_reply");
+        expect(text).toBe(reply);
+        expect(plannerCalls).toBe(0);
+        expect(responseCalls).toBe(1);
+        expect(executed).toEqual([]);
+        return;
+      }
+      expect(outcome.kind).toBe("planned_reply");
+      expect(plannerCalls).toBeGreaterThan(0);
+      // The planner saw the required search_events binding for this message.
+      expect(plannerInputs[0]).toContain('"CALENDAR_SEARCH_EVENTS"');
+      expect(plannerInputs[0]).toMatch(
+        /operation\W+search_events\W+execution\W+required/,
+      );
+      expect(executed).toEqual(["CALENDAR_SEARCH_EVENTS:QA coffee"]);
+      expect(text).toBe(checked);
+      // No early bubble carried the Stage-1 draft either.
+      expect(
+        visibleTexts([...h.callbacks, ...h.sent]).join("\n"),
+      ).not.toContain(reply);
     },
   );
 

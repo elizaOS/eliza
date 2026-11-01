@@ -9,6 +9,7 @@ import {
   type ResponseHandlerEvaluator,
   type ResponseHandlerFieldEvaluator,
 } from "@elizaos/core";
+import { calendarFactReadOperation } from "./calendar-fact-reply.js";
 
 type RequestedRead = Pick<
   CalendarReadBinding,
@@ -85,38 +86,86 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
     // with no listed intents is its own single intent. Recording it lets the
     // planner and the evaluator's read coverage resolve the same intent:1.
     const text = message.content.text?.trim();
-    const intents =
-      declared.length === 0 && value.length > 0 && text ? [text] : declared;
+    const whole = declared.length === 0 && text ? [text] : undefined;
+    const intents = whole && value.length > 0 ? whole : declared;
     const valid = value.every((binding) =>
       Boolean(intents[Number(binding.intentId.slice("intent:".length)) - 1]),
     );
     // That turn shipped a Stage-1 reply copied from earlier chat. A required
     // read that names no current intent leaves the reply unverified. An empty
     // reply sends RESPOND to normal planning and keeps the draft out of the
-    // planner's answer rescue.
-    const withheld =
-      !valid && value.some((binding) => binding.execution === "required");
+    // planner's answer rescue. With no listed intents, the only intent such a
+    // read can name is the message, so it still runs as intent:1.
+    const required = value.filter(
+      (binding) => binding.execution === "required",
+    );
+    const readMessage = (
+      operations: RequestedRead["operation"][],
+    ): RequestedRead[] =>
+      [...new Set(operations)].map((operation) => ({
+        intentId: "intent:1",
+        operation,
+        execution: "required",
+      }));
+    let reads = valid
+      ? value
+      : whole
+        ? readMessage(required.map((binding) => binding.operation))
+        : [];
+    // Live tj-90caa2045f354a and tj-91807fc80cdfb9: "So is QA coffee today?"
+    // got contexts [simple], intents [] and no binding, and the direct reply
+    // stated the event's date and time from earlier chat. A direct reply that
+    // states Calendar facts takes the same required read of the message. An
+    // operation Stage 1 named in a dropped binding wins over the reply shape.
+    const claimed =
+      whole &&
+      reads.length === 0 &&
+      parsed.shouldRespond === "RESPOND" &&
+      parsed.requiresTool !== true &&
+      (parsed.replyEffectStatus ?? "none") === "none" &&
+      (Array.isArray(parsed.contexts) ? parsed.contexts : []).every(
+        (context) => String(context).trim().toLowerCase() === "simple",
+      )
+        ? calendarFactReadOperation(
+            typeof parsed.replyText === "string" ? parsed.replyText : "",
+          )
+        : null;
+    if (claimed)
+      reads = readMessage(
+        value.length > 0
+          ? value.map((binding) => binding.operation)
+          : [claimed],
+      );
+    const withheld = Boolean(claimed) || (!valid && required.length > 0);
     return {
       mutateResult(result) {
-        if (valid && intents !== declared) result.intents = intents;
-        result.calendarReadBindings = valid
-          ? value.map((binding) => ({
-              ...binding,
-              sourceMessageId: String(message.id),
-              roomId: message.roomId,
-              actorId: message.entityId,
-              requestedAt: Number(message.createdAt),
-            }))
-          : [];
+        if (whole && reads.length > 0) result.intents = whole;
+        result.calendarReadBindings = reads.map((binding) => ({
+          ...binding,
+          sourceMessageId: String(message.id),
+          roomId: message.roomId,
+          actorId: message.entityId,
+          requestedAt: Number(message.createdAt),
+        }));
         if (withheld) result.replyText = "";
       },
-      ...(!valid
+      ...(!valid || claimed
         ? {
             debug: [
-              "Calendar read binding did not name a current intent",
-              ...(withheld
-                ? ["Withheld the reply of an unbound required Calendar read"]
+              ...(!valid
+                ? ["Calendar read binding did not name a current intent"]
                 : []),
+              ...(claimed
+                ? [
+                    `Direct reply stated Calendar facts; required ${reads.map((read) => read.operation).join(", ")} read`,
+                  ]
+                : withheld
+                  ? [
+                      whole
+                        ? "Bound an unlisted required Calendar read to the message"
+                        : "Withheld the reply of an unbound required Calendar read",
+                    ]
+                  : []),
             ],
           }
         : {}),

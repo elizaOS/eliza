@@ -137,7 +137,7 @@ describe("Calendar operation bindings", () => {
   it.each([
     { intentId: "intent:1", execution: "required", bound: true },
     { intentId: "intent:1", execution: "conditional", bound: true },
-    { intentId: "intent:2", execution: "required", bound: false },
+    { intentId: "intent:2", execution: "required", bound: true },
     { intentId: "intent:2", execution: "conditional", bound: false },
   ] as const)(
     "binds $intentId ($execution) to a message whose Stage 1 lists no intents",
@@ -182,11 +182,13 @@ describe("Calendar operation bindings", () => {
         value,
       });
       effect?.mutateResult?.(parsed);
+      // The message is the only intent, so a required read naming intent:2
+      // still reads it as intent:1 instead of only withholding the reply.
       expect(parsed.calendarReadBindings).toEqual(
         bound
           ? [
               {
-                intentId,
+                intentId: "intent:1",
                 operation: "next_event",
                 execution,
                 sourceMessageId: message.id,
@@ -198,10 +200,120 @@ describe("Calendar operation bindings", () => {
           : [],
       );
       expect(parsed.intents).toEqual(bound ? [text] : []);
-      // An unbound required read cannot verify the Stage-1 reply.
+      // A required read that named no current intent cannot verify the reply.
       expect(parsed.replyText).toBe(
-        !bound && execution === "required" ? "" : reply,
+        intentId === "intent:2" && execution === "required" ? "" : reply,
       );
+    },
+  );
+  it.each([
+    {
+      name: "QA coffee date from earlier chat",
+      text: "So is QA coffee today?",
+      reply:
+        "No, QA coffee is tomorrow, Monday, November 2, 9:00 to 10:00 AM Pacific. Not today.",
+      operation: "search_events",
+    },
+    {
+      name: "empty agenda",
+      text: "Anything on today?",
+      reply: "You have nothing on your calendar today.",
+      operation: "feed",
+    },
+    {
+      name: "current date",
+      text: "What's the date?",
+      reply: "Today is Sunday, November 1.",
+    },
+    {
+      name: "current time",
+      text: "What time is it?",
+      reply: "It's 9:12 AM Pacific.",
+    },
+    {
+      name: "reminder",
+      text: "When will you remind me?",
+      reply: "Your reminder is set for tomorrow at 9 AM.",
+    },
+    {
+      name: "planned Calendar context",
+      text: "So is QA coffee today?",
+      reply: "QA coffee is tomorrow at 9 AM.",
+      contexts: ["calendar"],
+    },
+    {
+      name: "listed intent",
+      text: "So is QA coffee today?",
+      reply: "QA coffee is tomorrow at 9 AM.",
+      intents: ["check whether QA coffee is today"],
+    },
+    {
+      name: "claimed effect",
+      text: "Move QA coffee to tomorrow at 9.",
+      reply: "QA coffee is now tomorrow at 9 AM.",
+      replyEffectStatus: "applied",
+    },
+  ] as const)(
+    "grounds a direct reply only when it states Calendar facts ($name)",
+    async (row) => {
+      // Live tj-90caa2045f354a / tj-91807fc80cdfb9: contexts [simple], intents
+      // [], no binding, and the reply restated the event from earlier chat.
+      const runtime = new AgentRuntime({
+        character: { name: "Direct Calendar fact", bio: [] },
+        logLevel: "fatal",
+      });
+      const message: Memory = {
+        id: stringToUuid(`direct-${row.name}`),
+        agentId: runtime.agentId,
+        entityId: stringToUuid("owner"),
+        roomId: stringToUuid("room"),
+        createdAt: 1000,
+        content: { text: row.text },
+      };
+      const context = {
+        runtime,
+        message,
+        state: { values: {}, data: {}, text: "" },
+        senderRole: "OWNER" as const,
+        turnSignal: new AbortController().signal,
+      };
+      const value = calendarReadBindingField.parse?.([], context);
+      if (!value) throw new Error("Empty bindings rejected");
+      const intents: readonly string[] =
+        "intents" in row ? [...row.intents] : [];
+      const parsed = {
+        shouldRespond: "RESPOND",
+        contexts: "contexts" in row ? [...row.contexts] : ["simple"],
+        intents: [...intents],
+        replyText: row.reply,
+        replyEffectStatus:
+          "replyEffectStatus" in row ? row.replyEffectStatus : "none",
+        calendarReadBindings: value,
+      };
+      const effect = await calendarReadBindingField.handle?.({
+        ...context,
+        parsed,
+        value,
+      });
+      effect?.mutateResult?.(parsed);
+      const operation = "operation" in row ? row.operation : undefined;
+      expect(parsed.calendarReadBindings).toEqual(
+        operation
+          ? [
+              {
+                intentId: "intent:1",
+                operation,
+                execution: "required",
+                sourceMessageId: message.id,
+                roomId: message.roomId,
+                actorId: message.entityId,
+                requestedAt: 1000,
+              },
+            ]
+          : [],
+      );
+      expect(parsed.intents).toEqual(operation ? [row.text] : intents);
+      expect(parsed.replyText).toBe(operation ? "" : row.reply);
     },
   );
   it("activates for an owner Notes request when Calendar reads are registered", async () => {
