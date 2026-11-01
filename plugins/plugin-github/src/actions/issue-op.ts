@@ -314,6 +314,12 @@ async function runRequest(
           typeof label === "string" ? label : (label?.name ?? null),
         )
         .filter((x): x is string => typeof x === "string");
+      const notApplied = missingNames(request.labels, applied);
+      if (notApplied.length > 0) {
+        const error = `GitHub did not apply labels [${notApplied.join(", ")}] to ${repo}#${number}; this account may lack push access, or the labels do not exist. Current labels: [${applied.join(", ")}]`;
+        await callback?.({ text: error });
+        return { success: false, error };
+      }
       await callback?.({
         text: `Applied labels [${applied.join(", ")}] to ${repo}#${number}`,
       });
