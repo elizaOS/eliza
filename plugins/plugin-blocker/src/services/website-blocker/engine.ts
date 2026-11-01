@@ -1495,10 +1495,13 @@ async function findIneffectiveSelfControlTargets(
       website,
       config,
     );
-    if (
-      addresses.length === 0 ||
-      addresses.some((address) => !isWebsiteBlockSinkholeAddress(address))
-    ) {
+    // A lookup with no verdict (no address, or a failed lookup) is not
+    // evidence that the hostname block fails: the hosts entry is the primary
+    // mechanism. Only an address that resolves outside loopback proves it.
+    if (addresses === null) {
+      continue;
+    }
+    if (addresses.some((address) => !isWebsiteBlockSinkholeAddress(address))) {
       ineffective.push(website);
     }
   }
@@ -1506,12 +1509,23 @@ async function findIneffectiveSelfControlTargets(
   return ineffective;
 }
 
+/**
+ * Resolved addresses for one blocked target, or `null` when the lookup produced
+ * no verdict: an empty result or a failed lookup means the name did not resolve
+ * here, which says nothing about whether the hosts-file entry blocks it.
+ */
 async function lookupResolvedAddressesForWebsiteBlock(
   website: string,
   config: SelfControlPluginConfig,
-): Promise<string[]> {
+): Promise<string[] | null> {
   if (typeof config.resolvedAddressLookup === "function") {
-    return await config.resolvedAddressLookup(website);
+    try {
+      return await config.resolvedAddressLookup(website);
+    } catch {
+      // error-policy:J4 an injected lookup that throws is equally unreadable
+      // data, not proof the block is ineffective.
+      return null;
+    }
   }
 
   if (process.platform === "darwin") {
@@ -1523,7 +1537,13 @@ async function lookupResolvedAddressesForWebsiteBlock(
         "name",
         website,
       ]);
-      return parseResolvedAddressesFromDscacheutilOutput(result.stdout);
+      const addresses = parseResolvedAddressesFromDscacheutilOutput(
+        result.stdout,
+      );
+      if (addresses.length > 0) {
+        return addresses;
+      }
+      // Fall back to dns.lookup below: a cold cache prints no address lines.
     } catch {
       // Fall back to dns.lookup below.
     }
@@ -1534,12 +1554,13 @@ async function lookupResolvedAddressesForWebsiteBlock(
       all: true,
       verbatim: true,
     });
-    return [...new Set(results.map((entry) => entry.address))];
+    const addresses = [...new Set(results.map((entry) => entry.address))];
+    return addresses.length > 0 ? addresses : null;
   } catch {
     // error-policy:J4 resolved-IP sinkholing is supplementary; the hostname block
     // in the hosts file is the primary mechanism, so an unresolvable name degrades
     // to no extra IP rules rather than failing the whole block.
-    return [];
+    return null;
   }
 }
 
