@@ -79,6 +79,7 @@ public class NativeProviderAdmission {
    if(!CLOUD_PROVIDER_MODEL.equals(model))throw new IllegalArgumentException();
    String token=cloudProviderToken(cloudSaved,provider.getString("credentialId"),now);
    for(String key:new String[]{"CEREBRAS_API_KEY","CEREBRAS_BASE_URL","CEREBRAS_MODEL","CEREBRAS_SMALL_MODEL","CEREBRAS_LARGE_MODEL","OPENAI_API_KEY","OPENAI_BASE_URL","ELIZA_PROVIDER"})env.remove(key);
+   env.remove("CARTESIA_API_KEY");env.remove("CARTESIA_API_KEY_FILE");env.remove("ELIZA_SELF_HOSTED_VOICE_ENABLED");
    env.put("ELIZAOS_CLOUD_API_KEY",token);
    env.put("ELIZAOS_CLOUD_BASE_URL",CLOUD_PROVIDER_BASE);
    env.put("ELIZAOS_CLOUD_USE_INFERENCE","true");
@@ -96,6 +97,11 @@ public class NativeProviderAdmission {
    // Earlier builds accepted any model name; launch always uses the pinned model.
    model=CEREBRAS_PROVIDER_MODEL;
    for(String name:new String[]{"ELIZAOS_CLOUD_API_KEY","ELIZAOS_CLOUD_BASE_URL","ELIZAOS_CLOUD_SMALL_MODEL","ELIZAOS_CLOUD_LARGE_MODEL","ELIZAOS_CLOUD_USE_EMBEDDINGS","ELIZAOS_CLOUD_EMBEDDING_MODEL","ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS","ELIZA_DISABLE_LOCAL_EMBEDDINGS","ELIZA_LOCAL_EMBEDDING_ENABLED"})env.remove(name);
+   env.remove("CARTESIA_API_KEY");env.remove("CARTESIA_API_KEY_FILE");env.remove("ELIZA_SELF_HOSTED_VOICE_ENABLED");
+   String speech=provider.optString("cartesiaKey", "");
+   if(!speech.isEmpty()){if(!validProviderToken(speech,1024))throw new IllegalArgumentException();env.put("CARTESIA_API_KEY",speech);env.put("ELIZA_SELF_HOSTED_VOICE_ENABLED","1");}
+   env.remove("OPENAI_API_KEY");env.remove("OPENAI_BASE_URL");env.remove("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED");
+   env.put("CEREBRAS_BASE_URL","https://api.cerebras.ai/v1");env.put("ELIZA_PROVIDER","cerebras");
    env.put("CEREBRAS_API_KEY",key);
    env.put("CEREBRAS_MODEL",model);
    env.put("CEREBRAS_SMALL_MODEL",model);
@@ -108,11 +114,14 @@ public class NativeProviderAdmission {
  public static JSONObject providerIdentity(String saved) {
   JSONObject result=new JSONObject();
   try{
-   result.put("provider","cerebras").put("configured",false);
+   result.put("provider","cerebras").put("configured",false).put("selected",false);
    if(saved==null)return result;
    try{
     JSONObject provider=new JSONObject(saved);
+    result.put("selected",true);
     String model=provider.optString("model",""),kind=provider.optString("provider","cerebras");
+    if("cerebras".equals(kind)&&provider.optString("revision", "").matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"))result.put("revision",provider.getString("revision"));
+    result.put("voiceConfigured", "cerebras".equals(kind)&&validProviderToken(provider.optString("cartesiaKey", ""),1024));
     if("elizacloud".equals(kind)){result.put("provider","elizacloud");if(CLOUD_PROVIDER_MODEL.equals(model))result.put("configured",true).put("model",model);}
     else if("cerebras".equals(kind)&&model.matches(PROVIDER_MODEL_PATTERN))result.put("configured",true).put("model",CEREBRAS_PROVIDER_MODEL);
    }catch(org.json.JSONException malformed){/* Report unconfigured, never the stored value. */}
@@ -172,11 +181,19 @@ public class NativeProviderAdmission {
  public static JSONObject managedGoogleBinding(String saved,String cloudSaved,long now)throws Exception {
   if(saved==null)throw new SecurityException("Cloud provider admission required");
   JSONObject selected=new JSONObject(saved);
+  String directGeneration=null;
+  if("cerebras".equals(selected.optString("provider"))){
+   directGeneration=currentGeneration(saved,null);if(directGeneration==null)throw new SecurityException("Direct provider admission changed");
+   JSONObject retained=selected.optJSONObject("cloudServices");
+   if(retained==null)throw new SecurityException("Cloud account admission required");
+   saved=retained.toString();selected=retained;
+  }
   if(!"elizacloud".equals(selected.optString("provider")))throw new SecurityException("Cloud provider required");
   String credentialId=selected.getString("credentialId");
   cloudProviderToken(cloudSaved,credentialId,now);
   String generation=currentGeneration(saved,cloudSaved);
   if(generation==null)throw new SecurityException("Cloud provider admission changed");
+  if(directGeneration!=null)generation=directGeneration;
   String reference=cloudAccountRef(selected);JSONArray account=new JSONArray(reference);
   if(account.length()!=4||!"cloud".equals(account.getString(0))||!"production".equals(account.getString(1)))throw new SecurityException("Cloud account admission invalid");
   // A valid Cloud inference account can exist before an organization/Google grant.
@@ -261,7 +278,9 @@ public class NativeProviderAdmission {
    if(!model.matches(PROVIDER_MODEL_PATTERN)||!validProviderToken(key,1024))throw new IllegalArgumentException();
    String environment=selected.optString("environment","production");
    if(!"production".equals(environment))throw new IllegalArgumentException();
-   identity.put(environment).put(key);
+   String speech=selected.optString("cartesiaKey", "");
+   if(!speech.isEmpty()&&!validProviderToken(speech,1024))throw new IllegalArgumentException();
+   identity.put(environment).put(key);if(!speech.isEmpty())identity.put(speech);
   }else throw new IllegalArgumentException();
   return hashIdentity(identity);
  }
