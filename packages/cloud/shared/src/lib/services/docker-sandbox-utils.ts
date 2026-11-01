@@ -633,13 +633,25 @@ export function resolveStewardContainerUrl(
   return url.toString().replace(/\/$/, "");
 }
 
-/** Linux Docker needs an explicit host-gateway alias for host.docker.internal. */
+/**
+ * Linux Docker needs an explicit host-gateway alias for host.docker.internal.
+ *
+ * A target that is not an absolute URL with a host cannot be dialed from the
+ * container at all, so it is reported as an invalid STEWARD_CONTAINER_URL
+ * instead of being answered with `false` ("no alias needed"). `false` stays
+ * reserved for URLs that are reachable without the alias.
+ */
 export function requiresDockerHostGateway(targetUrl: string): boolean {
+  let url: URL | undefined;
   try {
-    return new URL(targetUrl).hostname === "host.docker.internal";
+    url = new URL(targetUrl);
   } catch {
-    return false;
+    url = undefined;
   }
+  if (!url || url.hostname === "") {
+    throw new Error(`[docker-sandbox] Invalid steward container URL: ${JSON.stringify(targetUrl)}`);
+  }
+  return url.hostname === "host.docker.internal";
 }
 
 /**
