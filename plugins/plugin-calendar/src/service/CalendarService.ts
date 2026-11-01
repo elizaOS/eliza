@@ -274,6 +274,8 @@ type GoogleCalendarSyncBatch = {
 const CALENDAR_FEED_FRESHNESS_MS = 60_000;
 const DEFAULT_ICS_SYNC_LEASE_MS = 30_000;
 const CALENDAR_SOURCE_UNSUPPORTED = "CALENDAR_SOURCE_UNSUPPORTED";
+/** Managed owner feeds read at once. Each one verifies the owner over the private broker. */
+const MANAGED_CALENDAR_FEED_CONCURRENCY = 4;
 export const MAX_GOOGLE_CALENDAR_EVENTS = 10_000;
 
 type CalendarSecretsService = {
@@ -5749,18 +5751,48 @@ export class CalendarService extends Service {
     const sources: (AggregatedCalendarFeedSource & {
       calendar: LifeOpsCalendarSummary;
     })[] = [];
-    for (const calendar of calendars) {
-      if (this.managedCalendar?.owns(calendar)) {
+    // Managed feeds start now, a few at a time in calendar order, and are
+    // consumed in calendar order below. Each settles alone, so a failed source
+    // still degrades and reports on its own.
+    const managed = this.managedCalendar;
+    let admitted = 0;
+    const waiting: (() => void)[] = [];
+    const managedFeeds = calendars.map((calendar) =>
+      managed?.owns(calendar)
+        ? (async (): Promise<
+            { feed: LifeOpsCalendarFeed } | { error: unknown }
+          > => {
+            if (admitted < MANAGED_CALENDAR_FEED_CONCURRENCY) admitted++;
+            else await new Promise<void>((admit) => waiting.push(admit));
+            try {
+              return {
+                feed: await managed.feed(
+                  calendar,
+                  timeMin,
+                  timeMax,
+                  timeZone,
+                  this.agentId(),
+                ),
+              };
+            } catch (error) {
+              return { error };
+            } finally {
+              const next = waiting.shift();
+              if (next) next();
+              else admitted--;
+            }
+          })()
+        : undefined,
+    );
+    for (const [index, calendar] of calendars.entries()) {
+      const managedFeed = managedFeeds[index];
+      if (managedFeed) {
+        const read = await managedFeed;
         let feed: LifeOpsCalendarFeed;
-        try {
-          feed = await this.managedCalendar.feed(
-            calendar,
-            timeMin,
-            timeMax,
-            timeZone,
-            this.agentId(),
-          );
-        } catch (error) {
+        if ("feed" in read) {
+          feed = read.feed;
+        } else {
+          const { error } = read;
           const sourceError = calendarSourceError(error);
           this.runtime.reportError("calendar:feed-managed-source", error, {
             source: calendarSourceKey(calendar),

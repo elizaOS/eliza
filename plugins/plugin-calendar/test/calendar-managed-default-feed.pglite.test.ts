@@ -36,12 +36,13 @@ const WINDOW = {
 };
 const SYNCED_AT = "2026-10-30T00:00:00.000Z";
 
+type HostCalendar = { calendarId: string; summary: string; primary?: true };
 /** What Alpha's host lists: every readable calendar, shown or not in Google. */
-const CALENDARS = [
+const CALENDARS: readonly HostCalendar[] = [
   { calendarId: "owner@example.test", summary: "Owner", primary: true },
   { calendarId: "team@group.calendar.google.com", summary: "Team" },
   { calendarId: "birthdays", summary: "Birthdays" },
-] as const;
+];
 
 let pg: PGlite;
 let runtime: IAgentRuntime;
@@ -91,10 +92,10 @@ const EVENTS: Record<string, ReturnType<typeof event>[]> = {
   birthdays: [event("birthdays", "birthday", "Birthday")],
 };
 
-function broker(input: Record<string, string>) {
+function broker(input: Record<string, string>, listed = CALENDARS) {
   if (input.operation === "sources") {
     return {
-      calendars: CALENDARS.map((calendar) => ({
+      calendars: listed.map((calendar) => ({
         provider: "google",
         side: "owner",
         grantId: GRANT,
@@ -117,7 +118,7 @@ function broker(input: Record<string, string>) {
   return {
     feed: {
       calendarId: input.calendarId,
-      events: EVENTS[input.calendarId],
+      events: EVENTS[input.calendarId] ?? [],
       source: "synced",
       state: "complete",
       timeMin: input.timeMin,
@@ -144,15 +145,18 @@ function broker(input: Record<string, string>) {
   };
 }
 
-function service(): CalendarService {
+function service(
+  respond: (input: Record<string, string>) => unknown = broker,
+): CalendarService {
   vi.stubEnv(
     "ELIZA_MANAGED_CALENDAR_READ_BROKER",
     "http://127.0.0.1:1/__alpha-owner-gmail",
   );
   vi.stubEnv("ELIZA_API_TOKEN", "a".repeat(64));
-  vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) =>
-    Response.json(broker(JSON.parse(String(init.body)).calendar)),
-  );
+  vi.stubGlobal("fetch", async (_url: unknown, init: RequestInit) => {
+    const reply = await respond(JSON.parse(String(init.body)).calendar);
+    return reply instanceof Response ? reply : Response.json(reply);
+  });
   const calendar = new CalendarService(runtime);
   calendar.setGate({
     getGoogleConnectorAccounts: async () => [],
@@ -278,5 +282,84 @@ describe("managed owner calendars in the aggregate feed", {
       "Launch review",
       "Standup",
     ]);
+  });
+});
+
+describe("managed owner feeds in one aggregate read", {
+  timeout: 30_000,
+}, () => {
+  const managedOrder = (feed: { sources: { key: Record<string, string> }[] }) =>
+    feed.sources
+      .filter((source) => source.key.grantId === GRANT)
+      .map((source) => source.key.calendarId);
+
+  it("reads at most four managed calendars at once and keeps calendar order", async () => {
+    const listed = Array.from({ length: 6 }, (_, index) => ({
+      calendarId: `team-${index}@group.calendar.google.com`,
+      summary: `Team ${index}`,
+    }));
+    shown = new Set(listed.map((entry) => entry.calendarId));
+    const started: string[] = [];
+    let inFlight = 0;
+    let peak = 0;
+    const calendar = service(async (input) => {
+      if (input.operation !== "feed") return broker(input, listed);
+      started.push(input.calendarId);
+      peak = Math.max(peak, ++inFlight);
+      // Earlier calendars answer last.
+      const index = listed.findIndex((e) => e.calendarId === input.calendarId);
+      await new Promise((done) =>
+        setTimeout(done, (listed.length - index) * 15),
+      );
+      inFlight--;
+      return broker(input, listed);
+    });
+
+    const feed = await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+
+    expect(peak).toBe(4);
+    expect(started).toEqual(listed.map((entry) => entry.calendarId));
+    expect(feed.state).toBe("complete");
+    expect(managedOrder(feed)).toEqual(listed.map((entry) => entry.calendarId));
+  });
+
+  it("degrades and reports one failed managed calendar on its own", async () => {
+    shown = new Set(CALENDARS.map((entry) => entry.calendarId));
+    const reported = vi.spyOn(runtime, "reportError");
+    const calendar = service(async (input) => {
+      if (input.calendarId === "owner@example.test")
+        await new Promise((done) => setTimeout(done, 30));
+      if (input.calendarId === "team@group.calendar.google.com")
+        return Response.json({ error: "refused" }, { status: 409 });
+      return broker(input);
+    });
+
+    const feed = await calendar.getCalendarFeed(INTERNAL_URL, WINDOW);
+
+    expect(feed.state).toBe("partial");
+    expect(managedOrder(feed)).toEqual(CALENDARS.map((e) => e.calendarId));
+    expect(
+      feed.sources
+        .filter((source) => source.key.grantId === GRANT)
+        .map((source) => [source.status, source.error?.code ?? null]),
+    ).toEqual([
+      ["fresh", null],
+      ["error", "MANAGED_CALENDAR_READ_UNAVAILABLE"],
+      ["fresh", null],
+    ]);
+    expect(feed.events.map((entry) => entry.title).sort()).toEqual([
+      "Birthday",
+      "Launch review",
+      "Standup",
+    ]);
+    expect(
+      reported.mock.calls
+        .filter(([scope]) => scope === "calendar:feed-managed-source")
+        .map(
+          ([, , context]) =>
+            (context as { source: { calendarId: string } }).source.calendarId,
+        ),
+    ).toEqual(["team@group.calendar.google.com"]);
+    reported.mockRestore();
   });
 });
