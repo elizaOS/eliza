@@ -20,6 +20,7 @@ const SEMANTIC_SETTLE_ROUNDS = 8;
 const DISCOVERY_SLICE_MS = 10_000;
 const MIN_DISCOVERY_SLICE_MS = 5_000;
 const MAX_EVENTS = 2_000;
+const TRACE_KEYS_LIMIT = 1_000;
 const MAX_TRACE_DURATION_MS = 300_000;
 const TRACE_ID_PATTERN = /^[0-9a-f]{32}$/;
 const EVENT_ID_PATTERN = /^[A-Za-z0-9_.:-]{1,256}$/;
@@ -260,7 +261,7 @@ export function buildTraceKeysRequest(timeframe) {
     from: timeframe.from,
     to: timeframe.to,
     keyNeedle: { value: "$metadata.", isRegex: false, matchCase: true },
-    limit: 1_000,
+    limit: TRACE_KEYS_LIMIT,
   };
 }
 
@@ -281,13 +282,23 @@ export function validateTraceKeysResponse(text) {
         entry.type === "number" ||
         entry.type === "boolean")
     ) {
-      discovered.set(entry.key, entry.type);
+      const types = discovered.get(entry.key) ?? new Set();
+      types.add(entry.type);
+      discovered.set(entry.key, types);
     }
   }
   for (const [key, type] of REQUIRED_KEYS) {
-    if (discovered.get(key) !== type) {
+    const types = discovered.get(key);
+    if (types?.size !== 1 || !types.has(type)) {
+      // Only Cloudflare's schema metadata for our fixed key names is public:
+      // the observed types, and whether the listing filled its page.
+      const observed = types ? [...types].sort().join("|") : "absent";
+      const page =
+        result.length >= TRACE_KEYS_LIMIT
+          ? `; listing filled its ${TRACE_KEYS_LIMIT}-key page`
+          : "";
       throw new CloudflareTraceSchemaError(
-        `Cloudflare trace key contract changed for ${key}`,
+        `Cloudflare trace key contract changed for ${key}: expected ${type}, observed ${observed}${page}`,
       );
     }
   }
