@@ -2483,10 +2483,10 @@ describe("Stage 1 response format", () => {
   });
 
   it.each([
-    "Adding it now.",
-    "Scheduling that now.",
-    "Booking it now.",
-    "Moving it to four now.",
+    "Let me check your calendar.",
+    "One sec, pulling up your calendar.",
+    "Checking that now.",
+    "Let me look into it.",
   ])(
     "streams pending work as progress without storing it as the final reply: %s",
     async (replyText) => {
@@ -2520,11 +2520,17 @@ describe("Stage 1 response format", () => {
     },
   );
 
+  // A write verb says the item is missing ("Adding it now." after "Is the
+  // dentist on my calendar?"), so it is not an acknowledgement either.
   it.each([
     'Done. The note now says "Bring the green notebook."',
     "Checking.\u0000",
+    "Adding it now.",
+    "Scheduling that now.",
+    "Booking it now.",
+    "Moving it to four now.",
   ])(
-    "withholds invalid or prematurely completed progress without another inference: %j",
+    "withholds invalid, completed or write progress without another inference: %j",
     async (replyText) => {
       const runtime = makeRuntime([
         stage1Response({

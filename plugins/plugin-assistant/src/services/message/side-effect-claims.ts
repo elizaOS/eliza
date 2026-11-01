@@ -922,76 +922,72 @@ const ACKNOWLEDGMENT_MAX_LENGTH = 120;
 // counts, ordinals or quantity words ("one sec" stays a wait cue).
 const ACKNOWLEDGMENT_DATA_TOKEN =
   /\p{N}|\b[ap]\.m\.|\b(?:pm|noon|midnight|o['’]clock|zero|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|(?:hundred|thousand|dozen)s?|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|eleventh|twelfth|\p{L}+(?:teenth|tieth)|few|couple|handful|several|single|only|(?:half|quarter) (?:past|to|after|till?))\b|\b(?:at|by|until|till|before|after|around) one\b|\bone [ap]m\b/iu;
-// Assent only opens an acknowledgement: after progress or a wait cue it reads
-// as a result ("Checking your notes. Got it!"). "Absolutely", "certainly" and
-// "of course" also answer a yes/no question ("Am I free Friday?"), so they are
-// not listed.
-const ACKNOWLEDGMENT_ASSENT =
-  "(?:sure(?: thing)?|okay|ok|alright|got it|no problem|good question)";
-// A wait cue only asks for time, so it may stand anywhere.
+// A wait cue only asks for time. No assent is listed, because each one also
+// answers a question: "sure", "sure thing", "absolutely", "certainly" and "of
+// course" say yes ("Am I free Friday?"), "okay", "ok" and "alright" say it is
+// fine, "no problem" says nothing is wrong, "got it" says it arrived and "good
+// question" gives an opinion. "Hang tight" and "hang on" advise waiting
+// ("Should I leave now?") and "will do" agrees ("Will you...?").
 const ACKNOWLEDGMENT_WAIT_CUE =
-  "(?:on it|will do|(?:one|just a) (?:sec|second|moment)|hang (?:tight|on))";
-const ACKNOWLEDGMENT_NOUN_PHRASE =
-  "(?:(?:your|the|my) )?(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|maps|weather|workflows|settings|account)";
-const ACKNOWLEDGMENT_PRONOUN =
-  "(?:it|that|this|both|them|those|everything|things|a (?:look|time|slot|draft|note|reminder)|an event)";
-// Noun phrases joined by "and" or a comma ("your calendar, notes and
-// reminders"), or one pronoun.
-const ACKNOWLEDGMENT_OBJECT = `(?:${ACKNOWLEDGMENT_NOUN_PHRASE}(?:(?:,|,? and) ${ACKNOWLEDGMENT_NOUN_PHRASE})*|${ACKNOWLEDGMENT_PRONOUN})`;
-// What may follow a progress verb: an optional object, a required one ("look
-// at"), "at" and an object after "take/have a look", or a phrasal verb split
-// around a pronoun ("pull it up").
-const ACKNOWLEDGMENT_COMPLEMENT = {
-  optional: `(?: ${ACKNOWLEDGMENT_OBJECT})?`,
-  required: ` ${ACKNOWLEDGMENT_OBJECT}`,
-  at: `(?: at ${ACKNOWLEDGMENT_OBJECT})?`,
-  up: ` (?:up(?: ${ACKNOWLEDGMENT_OBJECT})?|${ACKNOWLEDGMENT_PRONOUN} up)`,
-} as const;
-// Progress verbs: base form, gerund, complement.
-const ACKNOWLEDGMENT_VERBS: readonly (readonly [
-  string,
-  string,
-  keyof typeof ACKNOWLEDGMENT_COMPLEMENT,
-])[] = [
-  ["check", "checking", "optional"],
-  ["double[- ]?check", "double[- ]?checking", "optional"],
-  ["look (?:at|into|through)", "looking (?:at|into|through)", "required"],
-  ["(?:take|have) a look", "(?:taking|having) a look", "at"],
-  ["pull", "pulling", "up"],
-  ["open", "opening", "optional"],
-  ["review", "reviewing", "optional"],
-  ["go through", "going through", "required"],
-  ["search", "searching", "optional"],
-  ["scan", "scanning", "optional"],
-  ["find", "finding", "optional"],
-  ["dig into", "digging into", "required"],
-  ["read", "reading", "optional"],
-  ["add", "adding", "optional"],
-  ["save", "saving", "optional"],
-  ["draft", "drafting", "optional"],
-  ["write", "writing", "optional"],
-  ["schedule", "scheduling", "optional"],
-  ["set", "setting", "up"],
-  ["create", "creating", "optional"],
-  ["update", "updating", "optional"],
-  ["work on", "working on", "required"],
-  ["get started on", "getting started on", "required"],
-  ["handle", "handling", "optional"],
+  "(?:on it|(?:one|just a) (?:sec|second|moment))";
+// The owner's own containers, which exist whatever the tools find. "Your" is
+// required: "the files" can be someone else's ("What's taking Sam so long with
+// the files?") and a bare noun can be a compound ("Checking account."). Nouns
+// join with "and" or commas ("your calendar, notes and reminders").
+const ACKNOWLEDGMENT_CONTAINER_NOUN =
+  "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)";
+const ACKNOWLEDGMENT_CONTAINERS = `(?:your ${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather)(?:(?:,|,? and) (?:(?:your )?${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather))*`;
+// "It", "that", "this" and "both" stand for the request, so only a verb that
+// checks whether something is so may take them: a verb that retrieves or
+// changes an item says the item exists or is missing ("Pulling it up now",
+// "Adding it now"). Indefinite objects ("an event", "a slot") say the same.
+const ACKNOWLEDGMENT_REFERENT = `(?:${ACKNOWLEDGMENT_CONTAINERS}|it|that|this|both)`;
+// Progress verbs as [base form, gerund], each with its object. Only look-up
+// verbs are listed. A write verb (add, save, draft, write, schedule, set up,
+// create, update) says the item is missing or the change is needed ("Adding
+// it now." after "Is the dentist on my calendar?"); "open", "read", "find",
+// "review", "scan", "go through", "work on" and "handle" read as an answer or
+// someone's status ("Opening now.", "Finding for you.", "Reviewing the
+// files."); "double-check" says it was checked already. A gerund needs an
+// object, so it never stands alone as a status ("Updating now.").
+const ACKNOWLEDGMENT_VERBS: readonly (readonly [string, string])[] = [
+  [
+    `check(?: ${ACKNOWLEDGMENT_REFERENT})?`,
+    `checking ${ACKNOWLEDGMENT_REFERENT}`,
+  ],
+  [
+    `(?:look|dig) into ${ACKNOWLEDGMENT_REFERENT}`,
+    `(?:looking|digging) into ${ACKNOWLEDGMENT_REFERENT}`,
+  ],
+  [
+    `look (?:at|through) ${ACKNOWLEDGMENT_CONTAINERS}`,
+    `looking (?:at|through) ${ACKNOWLEDGMENT_CONTAINERS}`,
+  ],
+  [
+    `(?:take|have) a look(?: at ${ACKNOWLEDGMENT_CONTAINERS})?`,
+    `(?:taking|having) a look(?: at ${ACKNOWLEDGMENT_CONTAINERS})?`,
+  ],
+  [
+    `pull up ${ACKNOWLEDGMENT_CONTAINERS}`,
+    `pulling up ${ACKNOWLEDGMENT_CONTAINERS}`,
+  ],
+  [
+    `search(?: ${ACKNOWLEDGMENT_CONTAINERS})?`,
+    `searching ${ACKNOWLEDGMENT_CONTAINERS}`,
+  ],
 ];
-function acknowledgmentVerbPhrase(form: 0 | 1): string {
-  return `(?:${ACKNOWLEDGMENT_VERBS.map((verb) => verb[form] + ACKNOWLEDGMENT_COMPLEMENT[verb[2]]).join("|")})`;
-}
+// "Let's" recommends ("Should I update my settings?" "Let's update them.").
 const ACKNOWLEDGMENT_LEAD =
-  "(?:let me|let's|i'll|i will|i(?:'m| am) going to|give me (?:a|one) (?:sec|second|moment) to|(?:one|just a) (?:sec|second|moment) while i)";
-const ACKNOWLEDGMENT_TAIL = `(?:,? (?:for (?:you|today|tomorrow|this week)|now|first|real quick|quickly|(?:and )?then ${ACKNOWLEDGMENT_OBJECT})){0,3}`;
+  "(?:let me|i'll|i will|i(?:'m| am) going to|give me (?:a|one) (?:sec|second|moment) to|(?:one|just a) (?:sec|second|moment) while i)";
+// No dates or order: "for tomorrow" states when an event is ("When is my
+// dentist appointment?"), and "first" or "then" ranks ("Which should I handle
+// first?").
+const ACKNOWLEDGMENT_TAIL = "(?:,? (?:now|for you|real quick|quickly)){0,2}";
 const ACKNOWLEDGMENT_PROGRESS = new RegExp(
-  `^(?:(?:(?<assent>${ACKNOWLEDGMENT_ASSENT})|${ACKNOWLEDGMENT_WAIT_CUE}), )?` +
-    `(?:${ACKNOWLEDGMENT_LEAD} ${acknowledgmentVerbPhrase(0)}|(?:i(?:'m| am) )?${acknowledgmentVerbPhrase(1)})` +
+  `^(?:${ACKNOWLEDGMENT_WAIT_CUE}, )?` +
+    `(?:${ACKNOWLEDGMENT_LEAD} (?:${ACKNOWLEDGMENT_VERBS.map((verb) => verb[0]).join("|")})` +
+    `|(?:i(?:'m| am) )?(?:${ACKNOWLEDGMENT_VERBS.map((verb) => verb[1]).join("|")}))` +
     `${ACKNOWLEDGMENT_TAIL}$`,
-  "u",
-);
-const ACKNOWLEDGMENT_ASSENT_SENTENCE = new RegExp(
-  `^${ACKNOWLEDGMENT_ASSENT}$`,
   "u",
 );
 const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
@@ -1007,37 +1003,31 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * After lower-casing, reading curly apostrophes as straight ones and removing
  * the final . ! or …, the whole reply must be one to three sentences (split
  * at . ! or … before a space), each either:
- * - an interjection: assent (sure, sure thing, okay, ok, alright, got it, no
- *   problem, good question) or a wait cue (on it, will do, one/just a
- *   sec/second/moment, hang tight, hang on); or
- * - progress: an optional interjection and a comma, then a lead (let me,
- *   let's, I'll, I will, I'm going to, give me a sec to, one sec while I) and
- *   a progress verb in base form, or an optional "I'm" and the verb's gerund
- *   ("Checking…"), then an optional object and up to three tail items.
+ * - a wait cue: on it, one/just a sec/second/moment; or
+ * - progress: an optional wait cue and a comma, then a lead (let me, I'll, I
+ *   will, I'm going to, give me a sec to, one sec while I) and a look-up verb
+ *   in base form, or an optional "I'm" and the verb's gerund ("Checking…"),
+ *   then up to two of now, for you, real quick, quickly.
  *
- * Progress verbs: check, double-check, look at/into/through, take a look,
- * have a look (optionally "at" and an object), pull up, open, review, go
- * through, search, scan, find, dig into, read, add, save, draft, write,
- * schedule, set up, create, update, work on, get started on, handle. "Look
- * at/into/through", "go through", "dig into", "work on" and "get started on"
- * need an object; "pull up" and "set up" may split around a pronoun ("pull it
- * up").
- *
- * An object is your/the/my (optional) and calendar, schedule, agenda, notes,
+ * The verbs and their objects:
+ * - check (base form: object optional), look into, dig into: a container
+ *   list or it, that, this, both;
+ * - look at, look through, pull up: a container list;
+ * - take a look, have a look: optionally "at" and a container list;
+ * - search (base form: object optional): a container list.
+ * A gerund always has its object ("Checking both."), except "taking/having a
+ * look". A container list is "your" with calendar, schedule, agenda, notes,
  * inbox, email(s), messages, texts, reminders, tasks, todos, files, photos,
- * contacts, maps, weather, workflows, settings or account, joined by "and" or
- * a comma; or one of it, that, this, both, them, those, everything, things, a
- * look, a time, a slot, a draft, a note, a reminder, an event. A tail item is
- * for you, now, first, real quick, quickly, for today, for tomorrow, for this
- * week, or "then" or "and then" with an object ("first, then your notes").
+ * contacts, workflows, settings or account, or "the weather", joined by "and"
+ * or commas ("your calendar, notes and reminders").
  *
- * At least one sentence is progress or a wait cue, and no assent follows one
- * ("Checking your notes. Got it!" is dropped). Any other word, name, emoji,
- * dash, colon or bracket drops the acknowledgement. The whole reply also has
- * no digits, clock times, spelled counts, ordinals, quantity words or question
- * marks, is at most 120 characters, and passes the completed-effect and
- * empty-state detectors. Callers still run the planned-reply egress checks on
- * an accepted one.
+ * Assent (sure, okay, got it, no problem), write verbs, indefinite objects,
+ * dates, "first" and "then" each answer a question in some context, so they
+ * are not listed. Any other word, name, emoji, dash, colon or bracket drops
+ * the acknowledgement. The whole reply also has no digits, clock times,
+ * spelled counts, ordinals, quantity words or question marks, is at most 120
+ * characters, and passes the completed-effect and empty-state detectors.
+ * Callers still run the planned-reply egress checks on an accepted one.
  */
 export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
   const text = reply.trim();
@@ -1050,22 +1040,13 @@ export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
     .replace(/ ?, ?/gu, ", ")
     .replace(/[.!…]+$/u, "")
     .split(/[.!…]+ /u);
-  if (sentences.length > 3) return false;
-  let forward = false;
-  for (const sentence of sentences) {
-    if (ACKNOWLEDGMENT_WAIT_SENTENCE.test(sentence)) {
-      forward = true;
-      continue;
-    }
-    const progress = ACKNOWLEDGMENT_PROGRESS.exec(sentence);
-    const assent = progress
-      ? progress.groups?.assent !== undefined
-      : ACKNOWLEDGMENT_ASSENT_SENTENCE.test(sentence);
-    if ((!progress && !assent) || (assent && forward)) return false;
-    if (progress) forward = true;
-  }
   return (
-    forward &&
+    sentences.length <= 3 &&
+    sentences.every(
+      (sentence) =>
+        ACKNOWLEDGMENT_WAIT_SENTENCE.test(sentence) ||
+        ACKNOWLEDGMENT_PROGRESS.test(sentence),
+    ) &&
     !replyClaimsCompletedSideEffect(text, { pendingWork: true }) &&
     !replyClaimsEmptyTrackedWorkState(text)
   );

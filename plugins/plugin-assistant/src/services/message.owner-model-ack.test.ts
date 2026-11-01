@@ -300,8 +300,8 @@ describe("awaited owner model acknowledgments", () => {
     expect(result.chunks).toEqual([]);
   });
 
-  it("awaits an interjection-led model acknowledgment in its own words", async () => {
-    const acknowledgment = "Sure! Let me check your calendar and notes.";
+  it("awaits a wait-cue-led model acknowledgment in its own words", async () => {
+    const acknowledgment = "One sec! Let me check your calendar and notes.";
     const result = await ownerModelAcknowledgment(true, { acknowledgment });
     expect(result.acknowledgments).toEqual([acknowledgment]);
     expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
@@ -319,6 +319,9 @@ describe("awaited owner model acknowledgments", () => {
     "Checking your flight on time",
     "checking your package on schedule for delivery today",
     "checking your calendar friday work from home",
+    "Pulling up an event for tomorrow.",
+    "No problem, checking your account.",
+    "Scheduling it for tomorrow.",
   ])(
     "keeps a completion or result claim out of early progress: %s",
     async (acknowledgment) => {
