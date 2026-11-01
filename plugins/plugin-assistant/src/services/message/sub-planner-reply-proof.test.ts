@@ -29,6 +29,9 @@ async function childResult() {
   let plans = 0;
   const child = await runPlannerLoop({
     codingMode: false,
+    // Match the real message host's receipt-bound evaluator path. Standalone
+    // callers instead ask the planner for a reply before evaluating.
+    deferInternalReplyRecoveryToCaller: true,
     context: { id: "child-calendar-proof", events: [] },
     runtime: {
       useModel: async () => {
@@ -79,6 +82,7 @@ async function childResult() {
       }),
   });
   expect(writes).toBe(1);
+  expect(plans).toBe(1);
   expect(evaluations).toBe(1);
   expect(child.finalMessage).toBe(message);
   expect(child.terminalFailure).toBeUndefined();
@@ -129,6 +133,104 @@ async function parentResult(
 }
 
 describe("sub-planner final reply proof projection", () => {
+  it.each(["selected", "bare", "unknown", "inactive"] as const)(
+    "validates the coding terminal's %s model-selected proof without replay",
+    async (mode) => {
+      let plans = 0;
+      let calls = 0;
+      let committedWrites = 0;
+      const selectedIds =
+        mode === "bare"
+          ? undefined
+          : [mode === "unknown" ? "not-executed" : receipt.receiptId];
+      const { commit: _commit, ...unapplied } = receipt;
+      const resultReceipt: EffectReceipt =
+        mode === "inactive"
+          ? { ...unapplied, outcome: "noop", reason: "Preview only" }
+          : receipt;
+      const evaluate = vi.fn(async () => {
+        throw Error("A coding terminal does not invoke the intent judge");
+      });
+      const child = await runPlannerLoop({
+        codingMode: true,
+        context: { id: "coding-terminal-proof", events: [] },
+        runtime: {
+          useModel: async () => {
+            if (++plans > 2) throw Error("No repeated coding operation");
+            return plans === 1
+              ? {
+                  text: "",
+                  toolCalls: [
+                    {
+                      id: "coding-create",
+                      name: "CALENDAR_CREATE_EVENT",
+                      arguments: { title: "Lunch", eliza_turn_scope: "final" },
+                    },
+                  ],
+                }
+              : {
+                  text: "",
+                  toolCalls: [
+                    {
+                      id: "coding-reply",
+                      name: "REPLY",
+                      arguments: {
+                        text: message,
+                        eliza_turn_scope: "final",
+                        ...(selectedIds
+                          ? { effectReceiptIds: selectedIds }
+                          : {}),
+                      },
+                    },
+                  ],
+                };
+          },
+        },
+        executeToolCall: async (call) => {
+          expect(call.name).toBe("CALENDAR_CREATE_EVENT");
+          if (++calls > 1) throw Error("The effect must not be reissued");
+          if (resultReceipt.outcome === "applied") committedWrites++;
+          return {
+            success: true,
+            text: "Internal provider event result.",
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            effectReceipts: [resultReceipt],
+          };
+        },
+        evaluate,
+      });
+      expect(plans).toBe(2);
+      expect(calls).toBe(1);
+      expect(committedWrites).toBe(mode === "inactive" ? 0 : 1);
+      expect(evaluate).not.toHaveBeenCalled();
+      expect(child.status).toBe("finished");
+      expect(child.terminalFailure).toBeUndefined();
+      expect(child.evaluator?.success).toBe(true);
+      expect(child.finalMessage).toBe(message);
+      const history = structuredClone(child.trajectory.evaluatorOutputs);
+      const projected = subPlannerResultToPlannerToolResult(child);
+      expect(child.trajectory.evaluatorOutputs).toEqual(history);
+      if (mode === "selected") {
+        expect(child.evaluator?.plannerReply).toEqual({
+          text: message,
+          effectReceiptIds: [receipt.receiptId],
+        });
+        expect(projected.verifiedUserFacing).toBe(true);
+        expect(projected.userFacingEffectReceiptIds).toEqual([
+          receipt.receiptId,
+        ]);
+        const parent = await parentResult(projected);
+        expect(parent.finalMessage).toBe(message);
+        expect(parent.terminalFailure).toBeUndefined();
+      } else {
+        expect(child.evaluator?.plannerReply).toBeUndefined();
+        expect(projected.verifiedUserFacing).not.toBe(true);
+        expect(projected.userFacingEffectReceiptIds ?? []).toEqual([]);
+      }
+    },
+  );
+
   it("carries actual evaluator-bound proof through the parent without repeating work", async () => {
     const child = await childResult();
     const history = structuredClone(child.trajectory.evaluatorOutputs);

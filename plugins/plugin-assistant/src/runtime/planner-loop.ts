@@ -3131,10 +3131,24 @@ async function runPlannerLoopIterations(
                   ),
               )
             : undefined;
+        const selectedReplyProof = verifiedCodingTerminalReply({
+          trajectory,
+          calls: plannerOutput.toolCalls,
+          completed: plannerOutput.completed,
+          finalMessage: resolvedFinalMessage,
+          evaluator: terminalEvaluator,
+          terminalFailure,
+        });
         return {
           status: "finished",
           trajectory,
-          evaluator: terminalEvaluator,
+          evaluator: selectedReplyProof
+            ? {
+                ...terminalEvaluator,
+                effectReceiptIds: selectedReplyProof.effectReceiptIds,
+                plannerReply: selectedReplyProof,
+              }
+            : terminalEvaluator,
           finalMessage: resolvedFinalMessage,
           ...(terminalFailure ? { terminalFailure } : {}),
           // STOP/IGNORE-only terminals chose silence; a textless REPLY did
@@ -11954,6 +11968,65 @@ function userSafeFailureReport(
   }
   if (PROGRESS_ONLY_OPENER_RE.test(candidate)) return undefined;
   return candidate;
+}
+
+/** Carry only a coding terminal REPLY's selected, still-active commit proof. */
+function verifiedCodingTerminalReply(args: {
+  trajectory: PlannerTrajectory;
+  calls: readonly PlannerToolCall[];
+  completed: boolean | undefined;
+  finalMessage: string | undefined;
+  evaluator: EvaluatorOutput;
+  terminalFailure?: PlannerTerminalFailure;
+}): EvaluatorOutput["plannerReply"] {
+  const call = args.calls.length === 1 ? args.calls[0] : undefined;
+  const steps = allTrajectorySteps(args.trajectory);
+  const latestResult = [...steps]
+    .reverse()
+    .find((step) => step.toolCall && step.result)?.result;
+  if (
+    args.trajectory.codingMode !== true ||
+    args.completed !== true ||
+    call?.name.toUpperCase() !== "REPLY" ||
+    typeof call.params?.text !== "string" ||
+    typeof args.finalMessage !== "string" ||
+    call.params.text.trim() !== args.finalMessage.trim() ||
+    args.evaluator.messageToUser?.trim() !== args.finalMessage.trim() ||
+    args.evaluator.decision !== "FINISH" ||
+    args.evaluator.success !== true ||
+    args.evaluator.protocolFailure === true ||
+    args.evaluator.replyFailure ||
+    args.evaluator.requestFullyCovered === false ||
+    args.evaluator.replyEffectStatus === "non_applied" ||
+    args.terminalFailure ||
+    latestUnresolvedFailedNonTerminalToolStep(args.trajectory) ||
+    (latestResult && hasExecutionPrerequisite(latestResult))
+  )
+    return;
+  const ids = call.params.effectReceiptIds;
+  if (
+    !Array.isArray(ids) ||
+    ids.length === 0 ||
+    !ids.every(
+      (id): id is string => typeof id === "string" && id.trim().length > 0,
+    )
+  )
+    return;
+  const selected = resolveAppliedUserFacingEffectReceipts(
+    {
+      verifiedUserFacing: true,
+      userFacingText: args.finalMessage,
+      userFacingEffectReceiptIds: ids,
+    },
+    steps.flatMap((step) =>
+      step.toolCall ? (step.result?.effectReceipts ?? []) : [],
+    ),
+  );
+  if (!selected) return;
+  return {
+    text: args.finalMessage,
+    effectReceiptIds: selected.map((receipt) => receipt.receiptId),
+  };
 }
 
 function terminalToolCallFinish(
