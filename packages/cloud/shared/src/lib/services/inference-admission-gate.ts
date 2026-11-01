@@ -247,11 +247,6 @@ function gateTimingHeader(response: Response, name: string): number | undefined 
   return value !== null && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) ? Number(value) : undefined;
 }
 
-function gateTimingHeader(response: Response, name: string): number | undefined {
-  const value = response.headers.get(name);
-  return value !== null && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) ? Number(value) : undefined;
-}
-
 async function gateFetch(
   organizationId: string,
   path: string,
