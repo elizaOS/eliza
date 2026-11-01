@@ -54,6 +54,7 @@ export interface AdditionInput {
   redirectUri: string;
   registry: string;
   primaryAppId: string;
+  intendedAppId?: string;
   organizationId: string;
   ownerUserId: string;
   clusterSha256: string;
@@ -64,6 +65,30 @@ export interface AdditionDatabase {
     text: string,
     values?: string[],
   ): Promise<{ rows: Record<string, unknown>[] }>;
+}
+
+/** Private row identity. Only its digest may leave the protected process. */
+export interface RegisteredAppBinding {
+  appId: string;
+  organizationId: string;
+  creatorUserId: string;
+}
+
+export function appBindingDigest(
+  input: AdditionInput,
+  binding: RegisteredAppBinding,
+): string {
+  return registryDigest(
+    JSON.stringify({
+      version: 1,
+      environment: input.environment,
+      clientId: input.clientId,
+      redirectUri: input.redirectUri,
+      appId: binding.appId,
+      organizationId: binding.organizationId,
+      creatorUserId: binding.creatorUserId,
+    }),
+  );
 }
 
 function targetFor(input: AdditionInput): MobileAppAuthRegistrationTarget {
@@ -93,12 +118,9 @@ function targetFor(input: AdditionInput): MobileAppAuthRegistrationTarget {
     input.redirectUri.length > 2000
   )
     fail("callback");
-  if (
-    ![input.primaryAppId, input.organizationId, input.ownerUserId].every(
-      (value) => UUID.test(value),
-    )
-  )
-    fail("protected_owner");
+  if (!UUID.test(input.primaryAppId)) fail("primary_app_id");
+  if (input.intendedAppId && !UUID.test(input.intendedAppId))
+    fail("intended_app_id");
   return {
     clientId: input.clientId,
     redirectUri: input.redirectUri,
@@ -109,11 +131,11 @@ function targetFor(input: AdditionInput): MobileAppAuthRegistrationTarget {
   };
 }
 
-/** Find by callback first: a missing registry must not prevent read-only discovery. */
+/** Use operator/registry selection first; callback discovery remains owner-bound. */
 export async function discoverRegisteredApp(
   database: AdditionDatabase,
   input: AdditionInput,
-): Promise<string> {
+): Promise<RegisteredAppBinding> {
   const target = targetFor(input);
   if (!HASH.test(input.clusterSha256) || !HASH.test(input.authoritySha256))
     fail("identity_pin_required");
@@ -126,21 +148,61 @@ export async function discoverRegisteredApp(
     identity.authoritySha256 !== input.authoritySha256
   )
     fail("identity_mismatch");
+  const registry = parseRegisteredMobileClients(input.registry, {
+    clientId: MOBILE_APP_AUTH_CLIENT_ID,
+    appId: input.primaryAppId,
+    redirectUri: MOBILE_APP_AUTH_REDIRECT_URI,
+  });
+  if (!registry.ok) fail("source_registry_invalid");
+  const registered = registry.registrations.find(
+    (entry) => entry.clientId === input.clientId,
+  );
+  if (
+    registered &&
+    (!registered.enabled || registered.redirectUri !== input.redirectUri)
+  )
+    fail("client_already_registered_differently");
+  if (
+    registered &&
+    input.intendedAppId &&
+    registered.appId.toLowerCase() !== input.intendedAppId.toLowerCase()
+  )
+    fail("intended_app_mismatch");
+  const selectedAppId = input.intendedAppId || registered?.appId;
   const candidates = await database.query(
-    `SELECT id::text, organization_id::text, created_by_user_id::text
+    selectedAppId
+      ? `SELECT id::text, organization_id::text, created_by_user_id::text
+    FROM apps WHERE id=$1::uuid AND is_active = TRUE AND is_approved = TRUE
+      AND allowed_origins @> jsonb_build_array($2::text) LIMIT 1`
+      : `SELECT id::text, organization_id::text, created_by_user_id::text
     FROM apps WHERE is_active = TRUE AND is_approved = TRUE
       AND allowed_origins @> jsonb_build_array($1::text) LIMIT 2`,
-    [target.redirectUri],
+    selectedAppId ? [selectedAppId, target.redirectUri] : [target.redirectUri],
   );
   if (candidates.rows.length === 0) fail("approved_callback_not_found");
   if (candidates.rows.length !== 1) fail("ambiguous_callback");
   const row = candidates.rows[0];
+  // App creators can declare their callback metadata, and approval can default
+  // to true. Only an operator/registry UUID selects a foreign owner's app;
+  // matching callback and approval fields alone do not attest product ownership.
+  if (!selectedAppId) {
+    if (!UUID.test(input.organizationId) || !UUID.test(input.ownerUserId))
+      fail("protected_owner");
+    if (
+      row.organization_id !== input.organizationId ||
+      row.created_by_user_id !== input.ownerUserId
+    )
+      fail("callback_owner_mismatch");
+  }
   if (
-    row.organization_id !== input.organizationId ||
-    row.created_by_user_id !== input.ownerUserId
+    typeof row.id !== "string" ||
+    !UUID.test(row.id) ||
+    typeof row.organization_id !== "string" ||
+    !UUID.test(row.organization_id) ||
+    typeof row.created_by_user_id !== "string" ||
+    !UUID.test(row.created_by_user_id)
   )
-    fail("callback_owner_mismatch");
-  if (typeof row.id !== "string" || !UUID.test(row.id)) fail("callback_app_id");
+    fail("callback_app_id");
   try {
     const registration = await queryMobileAppAuthRegistration(
       async (text, values) => ({
@@ -154,7 +216,11 @@ export async function discoverRegisteredApp(
   } catch {
     fail("callback_registration_invalid");
   }
-  return row.id;
+  return {
+    appId: row.id,
+    organizationId: row.organization_id,
+    creatorUserId: row.created_by_user_id,
+  };
 }
 
 /** The returned plaintext stays inside the protected process, never in artifacts or logs. */
@@ -173,11 +239,11 @@ export function buildRegistryAddition(input: AdditionInput, appId: string) {
   if (
     existing &&
     (!existing.enabled ||
-      existing.appId !== appId ||
+      existing.appId.toLowerCase() !== appId.toLowerCase() ||
       existing.redirectUri !== input.redirectUri)
   )
     fail("client_already_registered_differently");
-  // Wrangler trims stdin. Canonical JSON makes these the exact published bytes,
+  // Canonical JSON gives the reviewed candidate one exact byte representation,
   // including when the requested registration was already present.
   const candidate = JSON.stringify(
     existing
@@ -220,13 +286,16 @@ export function trustedGithubKey(repository: string, environment: string) {
 /** Export ciphertext to GitHub's key only. The private key never leaves GitHub. */
 export async function sealRegistryPlan(
   input: AdditionInput,
-  appId: string,
+  binding: RegisteredAppBinding,
   repository: string,
   sourceCommit: string,
 ) {
   const publicKey = trustedGithubKey(repository, input.environment);
   if (!/^[a-f0-9]{40}$/.test(sourceCommit)) fail("source_commit");
-  const { candidate, ...manifest } = buildRegistryAddition(input, appId);
+  const { candidate, ...manifest } = buildRegistryAddition(
+    input,
+    binding.appId,
+  );
   await sodium.ready;
   const seal = (value: string) => ({
     key_id: publicKey.key_id,
@@ -247,6 +316,7 @@ export async function sealRegistryPlan(
     sourceCommit,
     secretName: REGISTRY_NAME,
     ...manifest,
+    appBindingSha256: appBindingDigest(input, binding),
     candidate: seal(candidate),
     rollback: seal(input.registry),
   };
@@ -255,22 +325,47 @@ export async function sealRegistryPlan(
 export async function validateRegistryPublication(
   database: AdditionDatabase,
   input: AdditionInput,
-  expected: { candidateSha256: string; nonTargetSha256: string },
+  expected: {
+    candidateSha256: string;
+    nonTargetSha256: string;
+    appBindingSha256: string;
+  },
 ) {
   if (
     !HASH.test(expected.candidateSha256) ||
-    !HASH.test(expected.nonTargetSha256)
+    !HASH.test(expected.nonTargetSha256) ||
+    !HASH.test(expected.appBindingSha256)
   )
     fail("expected_hash_required");
   if (registryDigest(input.registry) !== expected.candidateSha256)
     fail("candidate_hash_mismatch");
-  const appId = await discoverRegisteredApp(database, input);
-  const plan = buildRegistryAddition(input, appId);
+  const binding = await discoverRegisteredApp(database, input);
+  if (appBindingDigest(input, binding) !== expected.appBindingSha256)
+    fail("app_binding_mismatch");
+  const plan = buildRegistryAddition(input, binding.appId);
   if (plan.added) fail("client_not_in_fresh_registry");
   if (plan.changed) fail("registry_not_canonical");
   if (plan.nonTargetSha256 !== expected.nonTargetSha256)
     fail("non_target_hash_mismatch");
   return targetFor(input);
+}
+
+/** Called in a new read-only snapshot; this detects changes, it does not lock owners. */
+export async function validatePublishedAppBinding(
+  database: AdditionDatabase,
+  input: AdditionInput,
+  expected: string,
+): Promise<void> {
+  try {
+    if (
+      !HASH.test(expected) ||
+      appBindingDigest(input, await discoverRegisteredApp(database, input)) !==
+        expected
+    )
+      fail("app_binding_mismatch");
+  } catch {
+    fail("app_binding_recheck_failed_after_publication");
+  }
 }
 
 /** Recheck the primary and every enabled source client after the one binding changed. */
@@ -378,6 +473,22 @@ export async function publishRegistryBinding(
     fail("worker_registry_publication_not_confirmed");
 }
 
+/** All validation must finish before the first Cloudflare request. */
+export async function publishValidatedRegistry(
+  database: AdditionDatabase,
+  input: AdditionInput,
+  expected: {
+    candidateSha256: string;
+    nonTargetSha256: string;
+    appBindingSha256: string;
+  },
+  token: string,
+  fetchImpl: MobileAppAuthFetch = fetch,
+): Promise<void> {
+  await validateRegistryPublication(database, input, expected);
+  await publishRegistryBinding(input, token, fetchImpl);
+}
+
 function runtimeInput(env: NodeJS.ProcessEnv): AdditionInput {
   const environment = env.ELIZA_MOBILE_APP_AUTH_ENVIRONMENT;
   if (environment !== "staging" && environment !== "production")
@@ -395,6 +506,7 @@ function runtimeInput(env: NodeJS.ProcessEnv): AdditionInput {
     redirectUri: env.ELIZA_MOBILE_APP_AUTH_ADDITION_REDIRECT_URI ?? "",
     registry: env[REGISTRY_NAME] ?? "",
     primaryAppId: env.ELIZA_MOBILE_APP_AUTH_APP_ID ?? "",
+    intendedAppId: env.ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID ?? "",
     organizationId: env.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID ?? "",
     ownerUserId: env.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID ?? "",
     clusterSha256: env.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 ?? "",
@@ -419,10 +531,10 @@ async function main() {
   try {
     await database.query(REGISTRY_SNAPSHOT_SQL);
     if (operation === "plan-addition") {
-      const appId = await discoverRegisteredApp(database, input);
+      const binding = await discoverRegisteredApp(database, input);
       const plan = await sealRegistryPlan(
         input,
-        appId,
+        binding,
         process.env.GITHUB_REPOSITORY ?? "",
         process.env.GITHUB_SHA ?? "",
       );
@@ -450,23 +562,31 @@ async function main() {
           sourceSha256: plan.sourceSha256,
           candidateSha256: plan.candidateSha256,
           nonTargetSha256: plan.nonTargetSha256,
+          appBindingSha256: plan.appBindingSha256,
           changed: plan.changed,
           plaintextExported: false,
         }),
       );
     } else {
-      await validateRegistryPublication(database, input, {
-        candidateSha256:
-          process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_REGISTRY_SHA256 ?? "",
-        nonTargetSha256:
-          process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_NON_TARGET_SHA256 ?? "",
-      });
+      const expectedAppBindingSha256 =
+        process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_APP_BINDING_SHA256 ?? "";
       if (
         process.env.CLOUDFLARE_ACCOUNT_ID !== WORKER_ACCOUNT_ID ||
         !process.env.CLOUDFLARE_API_TOKEN
       )
         fail("worker_authority");
-      await publishRegistryBinding(input, process.env.CLOUDFLARE_API_TOKEN);
+      await publishValidatedRegistry(
+        database,
+        input,
+        {
+          candidateSha256:
+            process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_REGISTRY_SHA256 ?? "",
+          nonTargetSha256:
+            process.env.ELIZA_MOBILE_APP_AUTH_EXPECTED_NON_TARGET_SHA256 ?? "",
+          appBindingSha256: expectedAppBindingSha256,
+        },
+        process.env.CLOUDFLARE_API_TOKEN,
+      );
       console.log(
         JSON.stringify({
           operation,
@@ -475,6 +595,13 @@ async function main() {
           registrySha256: registryDigest(input.registry),
           publicConfigVerified: false,
         }),
+      );
+      await database.query("ROLLBACK");
+      await database.query(REGISTRY_SNAPSHOT_SQL);
+      await validatePublishedAppBinding(
+        database,
+        input,
+        expectedAppBindingSha256,
       );
       const verifiedClients = await verifyPublishedRegistry(input);
       console.log(
@@ -485,6 +612,7 @@ async function main() {
           registrySha256: registryDigest(input.registry),
           publicConfigVerified: true,
           verifiedClients,
+          appBindingMatchedAfterPublication: true,
           databaseChanged: false,
         }),
       );

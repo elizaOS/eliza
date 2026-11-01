@@ -30,7 +30,7 @@ on:
         type: string
 
       intended_app_id:
-        description: Existing intended app UUID for source-only plan-client; no config write
+        description: Existing operator-selected app UUID (plan-client, plan-addition, or publish-registry)
         required: false
         default: ""
         type: string
@@ -47,6 +47,11 @@ on:
         type: string
       expected_non_target_sha256:
         description: Preserved non-target hash from the reviewed encrypted plan (publish-registry)
+        required: false
+        default: ""
+        type: string
+      expected_app_binding_sha256:
+        description: Validated app and owner binding hash from the reviewed plan (publish-registry)
         required: false
         default: ""
         type: string
@@ -118,6 +123,7 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_ADDITION_REDIRECT_URI: ${{ inputs.redirect_uri }}
           ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
           ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
           ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
@@ -142,11 +148,13 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_ADDITION_REDIRECT_URI: ${{ inputs.redirect_uri }}
           ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
           ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
           ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
           ELIZA_MOBILE_APP_AUTH_EXPECTED_REGISTRY_SHA256: ${{ inputs.expected_registry_sha256 }}
           ELIZA_MOBILE_APP_AUTH_EXPECTED_NON_TARGET_SHA256: ${{ inputs.expected_non_target_sha256 }}
+          ELIZA_MOBILE_APP_AUTH_EXPECTED_APP_BINDING_SHA256: ${{ inputs.expected_app_binding_sha256 }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
