@@ -9,6 +9,7 @@ import {
   resolveDevCloudAuthorityEnvValue,
   resolveDevCloudEnvAuthority,
 } from "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority";
+import { CREDENTIAL_BRIDGE_TOKEN_ENV } from "./credential-bridge-auth.js";
 
 function isDevCloudControlledSubAgentEnvKey(key: string): boolean {
   const normalized = key.toUpperCase();
@@ -96,9 +97,10 @@ const ELIZA_CREDENTIAL_SUFFIX =
 
 /**
  * `ELIZA_*` credentials a coding sub-agent legitimately needs from the parent's
- * process.env. Everything the spawner mints per child (model gateway token,
- * credential bridge and proxy tokens, Pi route key, warm-claim token) is set
- * after this filter runs and needs no entry here.
+ * process.env. The model gateway token and the credential-proxy config are set
+ * by the spawner after this filter runs and need no entry here; the two
+ * per-child credentials that travel through the spawn env are listed in
+ * `SPAWNER_MINTED_ELIZA_CREDENTIAL_KEYS` below.
  */
 export const SUB_AGENT_FORWARDED_ELIZA_CREDENTIAL_KEYS = [
   // Container-registry push credential for app-image builds; the GHCR_* pair
@@ -108,6 +110,23 @@ export const SUB_AGENT_FORWARDED_ELIZA_CREDENTIAL_KEYS = [
 
 const FORWARDED_ELIZA_CREDENTIALS: ReadonlySet<string> = new Set(
   SUB_AGENT_FORWARDED_ELIZA_CREDENTIAL_KEYS,
+);
+
+/**
+ * `ELIZA_*` credentials the spawner mints for one child and passes to
+ * `buildEnv` in the spawn env: the credential bridge token, and the Pi route
+ * key a selected Pi account's models.json references. They stay host-only for
+ * the parent's process.env and for caller customCredentials. The spawn env
+ * may carry them; because `runAcpx` filters an already built env a second
+ * time, the exemption lives in the rule, not in call order.
+ */
+export const SPAWNER_MINTED_ELIZA_CREDENTIAL_KEYS = [
+  CREDENTIAL_BRIDGE_TOKEN_ENV,
+  "ELIZA_PI_ROUTE_API_KEY",
+] as const;
+
+const SPAWNER_MINTED_ELIZA_CREDENTIALS: ReadonlySet<string> = new Set(
+  SPAWNER_MINTED_ELIZA_CREDENTIAL_KEYS,
 );
 
 /**
@@ -158,6 +177,18 @@ export function isDeniedSubAgentEnvKey(key: string): boolean {
     isHostExecutionToolchainEnvKey(key) ||
     isHostOnlyElizaCredentialKey(key) ||
     DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))
+  );
+}
+
+/**
+ * The deny for the spawn env `buildEnv` receives from the spawner: the same
+ * rule as {@link isDeniedSubAgentEnvKey}, except for the credentials the
+ * spawner mints per child.
+ */
+export function isDeniedSpawnEnvKey(key: string): boolean {
+  return (
+    isDeniedSubAgentEnvKey(key) &&
+    !SPAWNER_MINTED_ELIZA_CREDENTIALS.has(key.toUpperCase())
   );
 }
 

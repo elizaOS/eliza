@@ -1,6 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { AcpService } from "../services/acp-service.ts";
 import {
   forwardableSubAgentEnv,
+  isDeniedSpawnEnvKey,
   isDeniedSubAgentEnvKey,
   isForwardedCloudCredentialKey,
 } from "../services/sub-agent-env-policy.ts";
@@ -60,5 +62,80 @@ describe("sub-agent env: host-only ELIZA_* credentials", () => {
       false,
     );
     expect(isDeniedSubAgentEnvKey("ELIZA_CLAUDE_EFFORT")).toBe(false);
+  });
+
+  it("keeps the per-child credentials the spawner mints out of the host and caller paths only", () => {
+    for (const key of [
+      "ELIZA_CREDENTIAL_BRIDGE_TOKEN",
+      "ELIZA_PI_ROUTE_API_KEY",
+    ]) {
+      expect(isDeniedSubAgentEnvKey(key)).toBe(true);
+      expect(isDeniedSpawnEnvKey(key)).toBe(false);
+    }
+    expect(isDeniedSpawnEnvKey("ELIZA_WALLET_EXPORT_TOKEN")).toBe(true);
+    expect(isDeniedSpawnEnvKey("ELIZA_ACP_WARM_CLAIM_TOKEN")).toBe(true);
+  });
+});
+
+describe("AcpService child env: minted credentials reach the child, host secrets do not", () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it("applies the minted bridge token and Pi route key from the spawn env while denying host and caller secrets", () => {
+    // Host process.env copies of the minted names are not the child's values.
+    vi.stubEnv("ELIZA_CREDENTIAL_BRIDGE_TOKEN", "host-bridge");
+    vi.stubEnv("ELIZA_WALLET_EXPORT_TOKEN", "host-wallet");
+    const service = new AcpService({
+      agentId: "00000000-0000-4000-8000-000000024097",
+      character: { name: "Env policy tester" },
+      getSetting: () => undefined,
+      logger: { debug() {}, info() {}, warn() {}, error() {} },
+      reportError() {},
+      getService: () => null,
+    } as never);
+    const buildEnv = (
+      service as unknown as {
+        buildEnv: (
+          extra: Record<string, string>,
+          customCredentials: Record<string, string>,
+          model: string | undefined,
+          agentType: string,
+        ) => NodeJS.ProcessEnv;
+      }
+    ).buildEnv.bind(service);
+
+    const env = buildEnv(
+      {
+        ELIZA_CREDENTIAL_BRIDGE_TOKEN: "minted-bridge",
+        ELIZA_PI_ROUTE_API_KEY: "minted-route",
+        ELIZA_PI_PROVIDER_ROUTE: "route-1",
+        ELIZA_WALLET_EXPORT_TOKEN: "spawn-env-wallet",
+      },
+      {
+        ELIZA_CREDENTIAL_BRIDGE_TOKEN: "caller-bridge",
+        ELIZA_TOKEN_ENCRYPTION_KEY: "caller-key",
+      },
+      undefined,
+      "codex",
+    );
+    expect(env.ELIZA_CREDENTIAL_BRIDGE_TOKEN).toBe("minted-bridge");
+    expect(env.ELIZA_PI_ROUTE_API_KEY).toBe("minted-route");
+    expect(env.ELIZA_PI_PROVIDER_ROUTE).toBe("route-1");
+    expect(env.ELIZA_WALLET_EXPORT_TOKEN).toBeUndefined();
+    expect(env.ELIZA_TOKEN_ENCRYPTION_KEY).toBeUndefined();
+
+    // The same built env filtered again (the cli transport does this in
+    // runAcpx) keeps the minted values.
+    const again = buildEnv(
+      Object.fromEntries(
+        Object.entries(env).filter(
+          (entry): entry is [string, string] => typeof entry[1] === "string",
+        ),
+      ),
+      {},
+      undefined,
+      "codex",
+    );
+    expect(again.ELIZA_CREDENTIAL_BRIDGE_TOKEN).toBe("minted-bridge");
+    expect(again.ELIZA_PI_ROUTE_API_KEY).toBe("minted-route");
   });
 });

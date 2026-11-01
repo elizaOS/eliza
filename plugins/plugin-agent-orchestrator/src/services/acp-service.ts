@@ -133,6 +133,7 @@ import {
   forwardableSubAgentEnv as applySubAgentEnvPolicy,
   canonicalForwardedEnvKey,
   isCloudKeyForwardingOptIn,
+  isDeniedSpawnEnvKey,
   isDeniedSubAgentEnvKey,
   isForwardedCloudCredentialKey,
   SUB_AGENT_SYSTEM_ENV_KEYS,
@@ -5468,7 +5469,10 @@ export class AcpService extends Service {
     }
     for (const [key, value] of Object.entries(extra ?? {})) {
       if (typeof value !== "string") continue;
-      if (isDeniedSubAgentEnvKey(key)) {
+      // The spawn env carries the credentials this spawner mints per child
+      // (bridge token, Pi route key); every other host-only credential is
+      // denied here exactly as it is for process.env and customCredentials.
+      if (isDeniedSpawnEnvKey(key)) {
         this.log("warn", "rejecting spawn env matching env deny-list", {
           key,
         });
