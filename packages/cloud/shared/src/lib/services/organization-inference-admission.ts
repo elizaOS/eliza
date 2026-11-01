@@ -53,7 +53,7 @@ import {
 } from "./ai-billing";
 import { AiPricingCacheUnavailableError, AiPricingCacheWarmingError } from "./ai-pricing/cache";
 import { isSubscriptionFundedReservation } from "./allowance-first-credits";
-import { BillingHoldActiveError, billingHoldService } from "./billing-hold";
+import { billingHoldService } from "./billing-hold";
 import {
   COST_BUFFER,
   type CreditReconciliationResult,
@@ -189,6 +189,8 @@ export interface OrganizationInferenceAdmissionParams {
  * first; this observation takes the same share lock, the same policy row and
  * the same hold/capacity reads, without the extra BEGIN/lock/policy/COMMIT
  * round trips. The dispatch fence still re-reads policy under its own lock.
+ * It belongs to one request: the route passes it only to that request's
+ * admission, which uses it once and drops it for the reclaim retry.
  */
 export interface OrganizationFundingObservation {
   readonly organizationId: string;
@@ -198,8 +200,12 @@ export interface OrganizationFundingObservation {
         readonly policy: OrganizationQuotaPolicy;
         readonly fundingCapacity?: SubscriberFundingCapacity;
       }
-    /** The hold refuses admission, not the rate decision; admission rethrows it. */
-    | { readonly hold: BillingHoldActiveError };
+    /**
+     * The reads failed (a billing hold, an unavailable or stale policy, a
+     * database error). The failure refuses admission, not the rate decision:
+     * admission throws it where its own read would have thrown.
+     */
+    | { readonly failure: unknown };
 }
 
 async function readFundingInputsUnderPolicyLock(
@@ -227,6 +233,12 @@ async function readFundingInputsUnderPolicyLock(
  * read-lock transaction (the Worker rate decision). Returns undefined when
  * admission would not read primary funding: no Worker lifetime, the snapshot
  * lane, or a possible funded-budget lane.
+ *
+ * Never throws into the rate decision. A failed read is returned as the
+ * observation's `failure`, so the route keeps every refusal that runs before
+ * admission and admission throws the same error at the same point as its own
+ * read. A failed Postgres statement aborts the caller's read-only transaction;
+ * its COMMIT then ends as a ROLLBACK, so the admitted rate decision stands.
  */
 export async function observeOrganizationFundingUnderPolicyLock(
   tx: DbTransaction,
@@ -236,17 +248,18 @@ export async function observeOrganizationFundingUnderPolicyLock(
     "executionCtx" | "admissionSnapshot" | "credential"
   > & { organizationId: string },
 ): Promise<OrganizationFundingObservation | undefined> {
-  if (typeof params.executionCtx?.waitUntil !== "function") return undefined;
-  const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
-  if (
-    isFundedBudgetAdmissionEnabled() &&
-    params.admissionSnapshot?.fundedBudget?.enabled &&
-    params.credential?.kind === "api_key"
-  )
-    return undefined;
-  if (snapshotAdmissionSnapshot(params, true)) return undefined;
-  const subscriberLaneEligible = isDeferredSubscriberLaneEligible(params);
+  let subscriberLaneEligible: boolean | undefined;
   try {
+    if (typeof params.executionCtx?.waitUntil !== "function") return undefined;
+    const { isFundedBudgetAdmissionEnabled } = await import("./inference-funded-budget-admission");
+    if (
+      isFundedBudgetAdmissionEnabled() &&
+      params.admissionSnapshot?.fundedBudget?.enabled &&
+      params.credential?.kind === "api_key"
+    )
+      return undefined;
+    if (snapshotAdmissionSnapshot(params, true)) return undefined;
+    subscriberLaneEligible = isDeferredSubscriberLaneEligible(params);
     return {
       organizationId: params.organizationId,
       subscriberLaneEligible,
@@ -257,16 +270,13 @@ export async function observeOrganizationFundingUnderPolicyLock(
         subscriberLaneEligible,
       ),
     };
-  } catch (error) {
-    // error-policy:J2 a billing hold is admission's typed refusal; carry the
-    // same error to admission so the rate decision and its response are unchanged.
-    if (error instanceof BillingHoldActiveError)
-      return {
-        organizationId: params.organizationId,
-        subscriberLaneEligible,
-        funding: { hold: error },
-      };
-    throw error;
+  } catch (failure) {
+    // error-policy:J2 the failure refuses admission, not the rate decision.
+    // Carry it to admission's read; before a lane is known there is no read to
+    // stand in for, so admission repeats the same lane selection itself.
+    return subscriberLaneEligible === undefined
+      ? undefined
+      : { organizationId: params.organizationId, subscriberLaneEligible, funding: { failure } };
   }
 }
 
@@ -568,7 +578,7 @@ async function admitOrganizationInferenceOnce(
     params.fundingObservation.subscriberLaneEligible === subscriberLaneEligible
       ? params.fundingObservation.funding
       : undefined;
-  if (observed && "hold" in observed) throw observed.hold;
+  if (observed && "failure" in observed) throw observed.failure;
   const { policy: authoritativePolicy, fundingCapacity } =
     observed ??
     (await observeInferenceDependency("transaction", "funding_policy", () =>

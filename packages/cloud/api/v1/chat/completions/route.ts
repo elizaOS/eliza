@@ -1539,7 +1539,9 @@ export async function handleChatCompletionsPOST(
     // The reads run only when the cache-only dependency reads below have
     // already shown the request reaches that lane (no app billing, pooled
     // credential or block). The lock never waits for them: an unsettled read
-    // leaves admission to its own transaction, exactly as before.
+    // leaves admission to its own transaction, exactly as before. A failed
+    // funding read does not fail the rate decision: admission throws it, so
+    // every refusal before admission keeps its precedence.
     let fundingObservation: OrganizationFundingObservation | undefined;
     let fundingObservationWanted = false;
     const fundingExecutionCtx = options.executionCtx;

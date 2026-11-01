@@ -530,7 +530,9 @@ export async function enforceOrgRateLimit(
      * Worker lane only: runs in this policy read-lock transaction after the
      * Durable Object admitted the request, so the caller can read under the
      * same lock instead of opening another transaction. Never runs for a
-     * refused, funded-budget or non-Worker decision.
+     * refused, funded-budget or non-Worker decision. It must not throw: a
+     * failure of the caller's reads belongs to the caller's own boundary, not
+     * to this rate decision or its retryable limiter responses.
      */
     underAdmittedPolicyLock?: (policy: OrganizationQuotaPolicy, tx: DbTransaction) => Promise<void>;
   } = {},
