@@ -191,7 +191,7 @@ export class ScreenCaptureService {
       if (this.config.tileProcessingOrder === "priority") {
         // Focus on center tiles first
         const centerRow = Math.floor(tiles.length / 2 / cols);
-        const centerCol = Math.floor((tiles.length / 2) % cols);
+        const centerCol = Math.floor(cols / 2);
         this.activeTileIndex = Math.min(
           tiles.length - 1,
           centerRow * cols + centerCol,
