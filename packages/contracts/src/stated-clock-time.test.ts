@@ -24,6 +24,10 @@ test("a bare range start that would pass the end takes the other meridiem", () =
   );
   assert.deepEqual(parseStatedClockTimes("11-1pm"), range([11, 0], [13, 0]));
   assert.deepEqual(
+    parseStatedClockTimes("11 to 12pm"),
+    range([11, 0], [12, 0]),
+  );
+  assert.deepEqual(
     parseStatedClockTimes("9:30 until 9pm"),
     range([9, 30], [21, 0]),
   );
