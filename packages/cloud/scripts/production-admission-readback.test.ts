@@ -724,18 +724,37 @@ describe("object sample readback", () => {
       storedDataBefore: 2,
       gainedStoredData: 0,
       lostStoredData: 0,
+      missingWithStoredData: 0,
       missingWithoutStoredData: 0,
       listed: 39,
       pages: 6,
     });
   });
 
-  test("a missing sampled object with stored data stops the phase", async () => {
+  test("a sampled object whose stored data traffic deleted may leave enumeration, but not most of them", async () => {
     const state = world("adopted");
-    const sample = sampleOf(state, [1, 2]);
-    sample.set(hex(9_999, 64), true);
+    // Indexes 1, 2, 4 and 5 have stored data.
+    const sample = sampleOf(state, [1, 2, 4, 5]);
+    const drop = (index: number) => {
+      state.objects = state.objects.filter(({ id }) => id !== hex(index, 64));
+    };
+    drop(1);
+    expect(await verifyObjectSample(reader(state), sample)).toMatchObject({
+      storedDataBefore: 4,
+      lostStoredData: 1,
+      missingWithStoredData: 1,
+    });
+    // One more listed without its stored data is still not most of them.
+    state.objects = state.objects.map((object) =>
+      object.id === hex(2, 64) ? { ...object, hasStoredData: false } : object,
+    );
+    expect(await verifyObjectSample(reader(state), sample)).toMatchObject({
+      lostStoredData: 2,
+      missingWithStoredData: 1,
+    });
+    drop(4);
     await expect(verifyObjectSample(reader(state), sample)).rejects.toThrow(
-      "1 sampled objects with stored data are missing from the namespace",
+      "3 of 4 sampled objects lost their stored data",
     );
   });
 

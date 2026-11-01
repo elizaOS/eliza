@@ -688,12 +688,11 @@ const OBJECT_PAGE_LIMIT = 100;
 
 /**
  * Finds every sampled object by ID in the namespace, wherever enumeration
- * lists it. A missing sampled object that had stored data stops the transfer.
- * One that had none may drop out of enumeration in normal operation, so those
- * are counted, and only losing most of them stops the transfer. The gate
- * deletes keys in normal traffic, so a sampled object may gain or lose stored
- * data; both are counted. Losing it in most of the sample looks like a wipe
- * and stops the transfer.
+ * lists it. The gate deletes keys in normal traffic, so a sampled object may
+ * gain or lose stored data, and one without stored data may then drop out of
+ * enumeration; each case is counted. A missing object that had stored data
+ * has lost it. Losing stored data in most of the sample looks like a wipe and
+ * stops the transfer, as does losing most of the objects without it.
  */
 export async function verifyObjectSample(
   read: CloudflareRead,
@@ -739,12 +738,9 @@ export async function verifyObjectSample(
     }
     const storedDataBefore = [...sample.values()].filter(Boolean).length;
     const missing = [...remaining.values()];
-    const missingStoredData = missing.filter(Boolean).length;
-    const missingWithoutStoredData = missing.length - missingStoredData;
-    if (missingStoredData)
-      throw new Error(
-        `${missingStoredData} sampled objects with stored data are missing from the namespace`,
-      );
+    const missingWithStoredData = missing.filter(Boolean).length;
+    const missingWithoutStoredData = missing.length - missingWithStoredData;
+    lostStoredData += missingWithStoredData;
     if (missingWithoutStoredData * 2 > sample.size - storedDataBefore)
       throw new Error(
         `${missingWithoutStoredData} of ${sample.size - storedDataBefore} sampled objects without stored data are missing from the namespace`,
@@ -758,6 +754,7 @@ export async function verifyObjectSample(
       storedDataBefore,
       gainedStoredData,
       lostStoredData,
+      missingWithStoredData,
       missingWithoutStoredData,
       listed: listed.size,
       pages: page,
