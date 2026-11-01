@@ -28,9 +28,9 @@ export function isOrganizationPolicyStamp(
       policy.projectionRevision === null &&
       policy.catalogVersion === null
     );
+  // A lifetime grant (subscription_grants.ends_at NULL) has no end.
   if (policy.source === "promo_grant")
     return (
-      policy.effectiveUntil !== null &&
       typeof policy.sourceGrantId === "string" &&
       policy.sourceGrantId.length > 0 &&
       policy.sourceSubscriptionId === null &&
