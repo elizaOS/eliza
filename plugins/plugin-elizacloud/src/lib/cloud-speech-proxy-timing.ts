@@ -22,7 +22,7 @@ const SERVER_TIMING_METRICS = [
 ] as const;
 type SpeechServerTimingMetric = Exclude<(typeof SERVER_TIMING_METRICS)[number], "auth"> | "auth_duration";
 /** Never inspect or serialize error messages, bodies, causes or stacks. */
-function speechProxyFailureClass(error: unknown): "AbortError" | "TimeoutError" | "other" {
+export function speechProxyFailureClass(error: unknown): "AbortError" | "TimeoutError" | "other" {
   try {
     if (error !== null && (typeof error === "object" || typeof error === "function")) {
       const name = (error as { name?: unknown }).name;
@@ -42,6 +42,8 @@ export type SpeechProxyObservation = {
   durationMs?: number;
   status?: number;
   bytes?: number;
+  /** body_drain only: ms from upstream headers to the first audio chunk sent on. */
+  firstChunkMs?: number;
   upstreamTraceId?: string;
   upstreamCfRay?: string;
   upstreamServerTimingMs?: Partial<Record<SpeechServerTimingMetric, number>>;

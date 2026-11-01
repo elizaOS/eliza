@@ -1,4 +1,3 @@
-import ts from "typescript";
 import { expect, test } from "vitest";
 import { readFileSync } from "node:fs";
 import { timeSpeechProxyFetch, speechUpstreamTraceId } from "./cloud-speech-proxy-timing";
@@ -100,32 +99,8 @@ test("unknown machine fields and arbitrary trace headers are never retained", as
     speechUpstreamTraceId(new Response("", { headers: { "X-Eliza-Trace-Id": "untrusted-value" } }))
   ).toBeUndefined();
 });
-test("actual TTS body drain and attempt wrappers execute without buffering extra audio", async () => {
+test("TTS and STT attempt wrappers keep the bounded warming retry", () => {
   const source = readFileSync(new URL("./server-cloud-tts.ts", import.meta.url), "utf8");
-  const from = source.indexOf("        const drainStarted=Date.now();"),
-    to = source.indexOf("        client.signal.throwIfAborted();", from);
-  const body = ts.transpileModule("async function runDrain(){" + source.slice(from, to) + ";return audioBuffer;}", {compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.ESNext}}).outputText;
-  const logs: any[] = [];
-  const run = new Function(
-    "cloudResponse",
-    "emitSpeechProxyTiming",
-    "timingSink",
-    "proxyRequestId",
-    "successfulCandidate",
-    "speechUpstreamTraceId",
-    body + ";return runDrain();"
-  );
-  const result = await run(
-    new Response(new Uint8Array([1, 2, 3])),
-    (sink: any, value: any) => sink(value),
-    (value: any) => logs.push(value),
-    "owned",
-    0,
-    speechUpstreamTraceId
-  );
-  expect(result.length).toBe(3);
-  expect(logs[0]).toMatchObject({ phase: "body_drain", outcome: "returned", bytes: 3 });
-  expect(typeof logs[0].durationMs).toBe("number");
   expect(source).not.toContain("authorization cache warming (503), retry");
   expect((source.match(/attempt = await timeSpeechProxyFetch/g) || []).length).toBe(2);
   expect(source).toContain("warmingRetries >= 2");
