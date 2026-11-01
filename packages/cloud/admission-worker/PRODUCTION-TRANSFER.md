@@ -214,12 +214,53 @@ stops the transfer.
 
 ## Before phase 1
 
+**Precondition TRANSFER-0: the Worker auth this chain releases.** `fbb124e5`
+carries the Worker auth of #38523. The Worker hot path always decides from
+the auth cache (`inference-auth-context.ts`: `authCacheEnabled =
+options.cacheOnly === true || isInferenceAuthCacheEnabled()`), with entries
+refreshed after 30 s and kept for 7 days. So a revoked or disabled key can
+keep working for about 30 s, or up to 7 days while the refresh fails. Root's
+decision of 2026-11-01T15:03:49Z is no auth staleness window in production.
+This chain adds no auth code, but it releases that auth again: the phase 2
+release of `M` and the steady release both publish it. The freeze holds any
+auth correction from R0 until gate 3 reads back. After phase 2, the
+Cloudflare version rollback of the API to `a6252d47` is forbidden (see
+"Rollback"), and that rollback is the emergency lever of Root's prod
+catch-up plan (`PROD-CATCH-UP-PLAN-20261101.md` 3.5) for this window. So
+step 1 does not start until `$STATE` records one of:
+
+- the auth correction released first: it reached `main` by the normal
+  promotion, production serves it, and the phase chain was regenerated on
+  that `main` and reviewed again; or
+- Root's or the owner's explicit acceptance of the transfer on `fbb124e5`'s
+  auth, which states that the phase 2 and steady releases republish it, that
+  the freeze holds any correction until gate 3 reads back, and that the
+  version rollback to `a6252d47` is gone after phase 2.
+
+Without either, do not start.
+
 1. Production must serve the tip of `main`, and `develop` and `staging` must
    equal it (`gh api repos/elizaOS/eliza/branches/<branch> --jq
    .commit.sha`). If `main` moved since the last production release, Root
    releases `main` first and captures fresh effective-variable receipts; the
-   readback requires them to name the live API version. If `develop` or
-   `staging` is ahead of `main`, promote or hold that work first.
+   readback requires them to name the live API version. Gate 2 needs equal
+   branches: a merge of `ac729ff0` into a `develop` that differs from `main`
+   conflicts or brings other paths, which the gate 2 audit refuses. If
+   `develop` has diverged from `main` (`gh api
+   repos/elizaOS/eliza/compare/main...develop --jq .status` prints
+   `diverged`), as it had on 2026-11-01 with `develop` at `d9222280`, a
+   merge of `main` into `develop` does not make them equal. Only two ways
+   do:
+   - Promote `develop`'s work to `main` and release it, then fast-forward
+     `develop` and `staging` to the new `main`. On 2026-11-01 that work
+     holds the auth correction (#38551, #38552), so this is the first option
+     of TRANSFER-0. `main` moves: capture fresh receipts, then regenerate the
+     phase chain on the new `main` and have it reviewed again.
+   - Recreate `develop` at `main` and keep its work on another branch until
+     gate 3 lands, then merge it again. This removes that work from
+     `develop` for the window: it is a maintainer's or the owner's decision.
+     It also holds the auth correction, so TRANSFER-0 then needs the recorded
+     acceptance.
 2. Root takes the release lock, and the freeze starts.
 3. Root confirms, read-only on staging's completed transfer, the Cloudflare
    fields the readback has seen only in fixtures. `eliza-cloud-api-staging`
