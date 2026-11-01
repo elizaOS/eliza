@@ -98,7 +98,7 @@ const NAME_LIKE_RECURRENCE_PATTERNS: readonly RegExp[] = [
 // negate the same way as determiner forms — a directly negated cadence word
 // is a one-shot statement, not a recurring one. "Only once a week" remains
 // recurring because the one-shot expression is followed by a cadence unit.
-const NEGATION_WORD = String.raw`\b(?:not|no|never|isn't|isn’t|aren't|aren’t|won't|won’t|doesn't|doesn’t|don't|don’t)\b`;
+const NEGATION_WORD = String.raw`\b(?:not|no|never|isn't|isn\u2019t|aren't|aren\u2019t|won't|won\u2019t|doesn't|doesn\u2019t|don't|don\u2019t)\b`;
 const CADENCE_ADJECTIVE = String.raw`\b(?:daily|weekly|monthly|nightly|hourly|yearly|annually|quarterly|biweekly|fortnightly)\b`;
 const PLURAL_WEEKDAY = String.raw`\bmondays\b|\btuesdays\b|\bwednesdays\b|\bthursdays\b|\bfridays\b|\bsaturdays\b|\bsundays\b|\bweekdays\b|\bweekends\b`;
 const ONE_SHOT_DIRECTIVE_PATTERNS: readonly RegExp[] = [

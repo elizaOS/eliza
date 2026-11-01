@@ -49,10 +49,10 @@ const reasons: Record<WorkflowScopeCategory, string> = {
 // A verb at the start of a clause ("call Maya", "…, then text Sam"), never a noun such as "call notes" or "supplied text".
 // "to" opens an instruction ("a workflow to call Maya") but not a question the workflow answers
 // ("when I am free to call the bank", "which bills to pay first").
-const asked = String.raw`(?<!\b(?:[Ww]hether|[Ww]hen|[Ww]here|[Hh]ow|[Ww]hat|[Ww]hich|[Ww]ho|[Ww]hom)\s+(?:[\w'’-]+\s+){0,3})`;
+const asked = String.raw`(?<!\b(?:[Ww]hether|[Ww]hen|[Ww]here|[Hh]ow|[Ww]hat|[Ww]hich|[Ww]ho|[Ww]hom)\s+(?:[\w'\u2019-]+\s+){0,3})`;
 // Polite wrappers open a clause too ("could you kindly pay my rent", "I'd like you to call Maya").
 // Loanword courtesies count ("bitte call Maya", "por favor call Maya", "plz text Sam").
-const polite = String.raw`[Kk]indly|[Jj]ust|[Nn]ow|[Yy]ou|[Ll]et['’]?s|[Gg]o|[Bb]itte|[Ff]avou?r|[Pp]lait|[Pp]lz|[Pp]ls`;
+const polite = String.raw`[Kk]indly|[Jj]ust|[Nn]ow|[Yy]ou|[Ll]et['\u2019]?s|[Gg]o|[Bb]itte|[Ff]avou?r|[Pp]lait|[Pp]lz|[Pp]ls`;
 const clause =
   String.raw`(?:^|[.,;:!?]\s*|\b(?:[Aa]nd|[Tt]hen|[Pp]lease|[Aa]lso|[Oo]r)\s+|` +
   asked +

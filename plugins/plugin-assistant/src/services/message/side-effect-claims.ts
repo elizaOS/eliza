@@ -80,7 +80,7 @@ function sentenceContaining(text: string, index: number): string {
 // an unlisted mutation hide beside the read (for example, "notes are visible
 // and I archived the old ones").
 const READ_NAVIGATION_ONLY_SENTENCE_PATTERN = new RegExp(
-  String.raw`^[\s.!?…–—-]*done\b[\s:;,…–—-]*(?:` +
+  String.raw`^[\s.!?\u2026\u2013\u2014-]*done\b[\s:;,\u2026\u2013\u2014-]*(?:` +
     String.raw`(?:showing|displaying|loading|opening|rendering|highlighting|pulled\s+up|brought\s+up)\s+` +
     String.raw`(?:the\s+|your\s+)?(?:\d+\s+)?(?:notes?|reminders?|tasks?|todos?|to[- ]dos?|goals?|habits?|appointments?|calendar|settings)(?:\s+view)?` +
     "|" +
@@ -92,9 +92,9 @@ const READ_NAVIGATION_ONLY_SENTENCE_PATTERN = new RegExp(
     // view_navigation effect receipt; when the destination view's label
     // collides with a tracked-work noun (Settings, Notes, Calendar) the
     // sentence must still read as navigation, not as a committed mutation.
-    String.raw`(?:you['’]re|you\s+are)\s+(?:now\s+)?(?:back\s+)?(?:on|in|at)\s+` +
+    String.raw`(?:you['\u2019]re|you\s+are)\s+(?:now\s+)?(?:back\s+)?(?:on|in|at)\s+` +
     String.raw`(?:the\s+|your\s+)?(?:notes?|reminders?|tasks?|todos?|to[- ]dos?|goals?|habits?|appointments?|calendar|settings)(?:\s+view)?(?:\s+now)?` +
-    String.raw`)[\s…✅🎉]*$`,
+    String.raw`)[\s\u2026\u2705\u{1F389}]*$`,
   "iu",
 );
 // A bare completion opener ("Done —", "Done!", "Done.") carries no verb of its
@@ -889,13 +889,13 @@ export function replyClaimsEmptyTrackedWorkState(reply: string): boolean {
 const PROGRESS_PROMISE_CLAUSE =
   String.raw`(?:on it|will do|sure thing|you got it|no problem|right away|` +
   String.raw`one (?:sec|second|moment|min(?:ute)?)|just a (?:sec|second|moment|min(?:ute)?)|hold on|hang (?:on|tight)|gimme a (?:sec|second|minute)|` +
-  String.raw`(?:i(?:['’]m|\s+am)\s+)?(?:checking|looking (?:into|up|at|for)|pulling up|grabbing|fetching|getting|working|gathering|running|using|spawning|starting|saving|creating|updating|deleting|adding|scheduling|setting up|setting|booking|making|writing|drafting|sending|opening|moving|changing|rescheduling|canceling|cancelling|removing|searching|finding|adjusting|putting|dropping|popping|throwing|jotting|noting|logging|blocking|penciling|pencilling) (?:it|that|this|on it|(?:[^.!?]|\.(?=\S))+?)(?:\s+now)?|` +
-  String.raw`i(?:['’]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|start|take care of|add|set up|schedule|book|make|create|save|update)(?:\s(?:[^.!?]|\.(?=\S))+)?|` +
+  String.raw`(?:i(?:['\u2019]m|\s+am)\s+)?(?:checking|looking (?:into|up|at|for)|pulling up|grabbing|fetching|getting|working|gathering|running|using|spawning|starting|saving|creating|updating|deleting|adding|scheduling|setting up|setting|booking|making|writing|drafting|sending|opening|moving|changing|rescheduling|canceling|cancelling|removing|searching|finding|adjusting|putting|dropping|popping|throwing|jotting|noting|logging|blocking|penciling|pencilling) (?:it|that|this|on it|(?:[^.!?]|\.(?=\S))+?)(?:\s+now)?|` +
+  String.raw`i(?:['\u2019]ll|\s+will) (?:check|look into|pull(?: that| it)? up|grab|fetch|get|handle|start|take care of|add|set up|schedule|book|make|create|save|update)(?:\s(?:[^.!?]|\.(?=\S))+)?|` +
   String.raw`let me (?:check|look into|pull(?: that| it)? up|grab|fetch|get)(?:\s(?:[^.!?]|\.(?=\S))+)?)`;
 // Several progress sentences are still only progress. Every clause must match;
 // an acknowledgment followed by an answer or request for input is not enough.
 const PROGRESS_PROMISE_REPLY_PATTERN = new RegExp(
-  String.raw`^[\s"'…–—-]*${PROGRESS_PROMISE_CLAUSE}(?:(?:[.!…,]+\s*|\s*[–—]\s*|\s+-\s+)${PROGRESS_PROMISE_CLAUSE})*[\s.!…✅👍🫡–—-]*$`,
+  String.raw`^[\s"'\u2026\u2013\u2014-]*${PROGRESS_PROMISE_CLAUSE}(?:(?:[.!\u2026,]+\s*|\s*[\u2013\u2014]\s*|\s+-\s+)${PROGRESS_PROMISE_CLAUSE})*[\s.!\u2026\u2705\u{1F44D}\u{1FAE1}\u2013\u2014-]*$`,
   "iu",
 );
 const PROGRESS_PROMISE_MAX_LENGTH = 64;

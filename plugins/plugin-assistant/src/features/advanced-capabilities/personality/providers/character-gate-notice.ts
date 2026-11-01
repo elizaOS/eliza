@@ -43,11 +43,11 @@ const LOCAL_OCCASION_SCOPE_PATTERNS = [
     "giu",
   ),
   new RegExp(
-    String.raw`\bduring\s+today['’]s\s+${LOCAL_ARTIFACT}\b${LOCAL_ARTIFACT_BOUNDARY}`,
+    String.raw`\bduring\s+today['\u2019]s\s+${LOCAL_ARTIFACT}\b${LOCAL_ARTIFACT_BOUNDARY}`,
     "giu",
   ),
   new RegExp(
-    String.raw`\b(?:when|while|as)\s+(?:(?:you|i|we)\s+(?:(?:are|am)\s+)?)?[\p{L}'’-]+(?:\s+[\p{L}'’-]+){0,3}\s+(?:this|my|the\s+current)\s+${LOCAL_ARTIFACT}\b${LOCAL_ARTIFACT_BOUNDARY}`,
+    String.raw`\b(?:when|while|as)\s+(?:(?:you|i|we)\s+(?:(?:are|am)\s+)?)?[\p{L}'\u2019-]+(?:\s+[\p{L}'\u2019-]+){0,3}\s+(?:this|my|the\s+current)\s+${LOCAL_ARTIFACT}\b${LOCAL_ARTIFACT_BOUNDARY}`,
     "giu",
   ),
   /\b(?:for\s+now|right\s+now|this\s+time|just\s+this\s+once)\b/giu,
@@ -120,7 +120,7 @@ const GERUND_TO_IMPERATIVE = new Map<string, string>([
 const DISENGAGEMENT_AUDIENCE = String.raw`(?:(?:to|with|at)\s+)?(?:me|us|him|her|them|everyone|everybody|anyone|anybody|all|people|others|every\s+(?:message|msg|post|thread)|everything)`;
 const DISENGAGEMENT_EXTENT = String.raw`(?:again|anymore|any\s+more|ever|at\s+all|so\s+(?:much|often)|all\s+the\s+time|constantly|nonstop|non-stop|first|unprompted|unsolicited|here|in\s+here|in\s+(?:this|the)\s+(?:chat|channel|conversation|group|room|server|thread)|right\s+now|for\s+now|please|kindly|from\s+now\s+on|going\s+forward|permanently|forever|by\s+default|every\s+time)`;
 const DISENGAGEMENT_TAIL = String.raw`(?:[\s,]+(?:${DISENGAGEMENT_AUDIENCE}|${DISENGAGEMENT_EXTENT}))*[\s,]*$`;
-const CESSATION_PREFIX = String.raw`(?:never|stop|quit|cease|don['’]t|do\s+not|no\s+longer)`;
+const CESSATION_PREFIX = String.raw`(?:never|stop|quit|cease|don['\u2019]t|do\s+not|no\s+longer)`;
 // Plain template literal, unlike its `String.raw` siblings: this alternation
 // carries no backslash escapes, and the raw tag on an escape-free string is a
 // lint error rather than a stylistic choice.
