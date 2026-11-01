@@ -1,5 +1,6 @@
 package ai.elizaos.app;
 import java.util.*;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import org.json.JSONObject;
 import org.junit.Test;
@@ -49,6 +50,12 @@ public class WorkflowSurvivorInventoryTest {
   assertThrows(IOException.class,()->WorkflowSurvivorInventory.stopResident(null,null,null,0));
   assertThrows(IOException.class,()->WorkflowSurvivorInventory.requireClassified(null,null,null,null,0));
   assertThrows(IOException.class,()->IpcStartupRecovery.requireSoleUidProcess(0));
+ }
+ @Test public void exitedProcessWithEmptyArgvIsSkippedOnlyAfterTerminalProof()throws Exception {
+  byte[] argv={'b',0};
+  assertSame(argv,WorkflowSurvivorInventory.presentArguments(argv));
+  assertNull(WorkflowSurvivorInventory.observePresent(42,()->WorkflowSurvivorInventory.presentArguments(new byte[0]),pid->false));
+  assertThrows(FileNotFoundException.class,()->WorkflowSurvivorInventory.observePresent(42,()->WorkflowSurvivorInventory.presentArguments(new byte[0]),pid->true));
  }
  @Test public void processVanishingDuringIdentityIsSkippedOnlyAfterAbsenceProof()throws Exception {
   IOException vanished=new IOException("readlink failed: ENOENT");

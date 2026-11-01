@@ -75,6 +75,9 @@ final class WorkflowSurvivorInventory {
  private static <T> T observePresent(int pid,ProcessObservation<T> observation)throws Exception {
   return observePresent(pid,observation,WorkflowSurvivorInventory::liveProcess);
  }
+ /** An exited but unreaped same-UID process (a zombie) reads an empty argv: an observation failure, so it is
+  * skipped only after fresh absence or terminal-state proof; a live process with no argv still refuses. */
+ static byte[] presentArguments(byte[] bytes)throws IOException {if(bytes.length==0)throw new FileNotFoundException("resident argv unavailable");return bytes;}
  /** Only the exact resident command is signalable; shared-runtime siblings are preserved. */
  static boolean residentArguments(byte[] bytes,String bun,String loader,String bundle)throws Exception {
   check(bytes.length>0&&bytes.length<=65536&&bytes[bytes.length-1]==0,"incomplete resident argv");
@@ -97,7 +100,7 @@ final class WorkflowSurvivorInventory {
    StructStat stat;try{stat=Os.stat(entry.getPath());}catch(android.system.ErrnoException gone){if(gone.errno==OsConstants.ENOENT)continue;throw gone;}
    if(stat.st_uid!=Process.myUid()||entry.getName().equals(String.valueOf(Process.myPid())))continue;
    final int pid=Integer.parseInt(entry.getName());
-   byte[] args=observePresent(pid,()->bounded(new File(entry,"cmdline"),65536));if(args==null)continue;
+   byte[] args=observePresent(pid,()->presentArguments(bounded(new File(entry,"cmdline"),65536)));if(args==null)continue;
    if(!residentArguments(args,bun,loader,bundle))continue;
    check(selected==null,"multiple resident processes; preserve all");
    Identity identity=observePresent(pid,()->processIdentity(pid,deadline));if(identity==null)continue;
