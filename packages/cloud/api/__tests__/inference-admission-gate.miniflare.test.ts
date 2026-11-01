@@ -516,6 +516,78 @@ describe("Miniflare Durable Object integration", () => {
     expect([first.status, second.status].sort()).toEqual([200, 402]);
   }, 120_000);
 
+  test("an app recovery lease permits an absent creator and rejects malformed creator identities", async () => {
+    const gate = "org-creator-audit";
+    const lease = (
+      requestId: string,
+      creatorUserId: unknown,
+      estimatedCostUsd = 7,
+    ) =>
+      post(
+        "/lease",
+        {
+          organizationId: "org-miniflare",
+          requestId,
+          balanceUsd: 10,
+          balanceRevision: "1",
+          estimatedCostUsd,
+          recovery: {
+            version: 1,
+            kind: "app",
+            organizationId: "org-miniflare",
+            userId: "00000000-0000-0000-0000-000000000002",
+            requestId,
+            model: "test-model",
+            provider: "test-provider",
+            billingSource: "test",
+            description: "Miniflare creator audit test",
+            appId: "00000000-0000-4000-8000-000000000003",
+            estimatedBaseCostUsd: estimatedCostUsd,
+            appPolicy: {
+              name: "Organization-owned app",
+              creatorUserId,
+              monetizationEnabled: false,
+              reviewStatus: "approved",
+              platformOffsetAmount: 0,
+              purchaseSharePercentage: 0,
+              inferenceMarkupPercentage: 0,
+            },
+          },
+        },
+        gate,
+      );
+    expect(
+      (await post("/hydrate", { balanceUsd: 10, balanceRevision: "1" }, gate))
+        .status,
+    ).toBe(200);
+    for (const [index, invalid] of [
+      undefined,
+      "",
+      " ",
+      " creator ",
+      "x".repeat(257),
+      1,
+      {},
+    ].entries()) {
+      expect((await lease(`invalid-creator-${index}`, invalid)).status).toBe(
+        400,
+      );
+    }
+    expect((await lease("absent-creator", null)).status).toBe(200);
+    expect((await lease("absent-creator", null)).status).toBe(200);
+    // Invalid policies reserved nothing, and the valid replay reserved only once.
+    expect(
+      (
+        await lease(
+          "retained-creator",
+          "00000000-0000-4000-8000-000000000004",
+          3,
+        )
+      ).status,
+    ).toBe(200);
+    expect((await lease("exhausted-creator", null, 1)).status).toBe(402);
+  }, 120_000);
+
   test("credential checks bypass a blocked billing queue on the same object", async () => {
     expect((await post("/test-block-billing-queue", {})).status).toBe(202);
     const credentialCheck = await Promise.race([
