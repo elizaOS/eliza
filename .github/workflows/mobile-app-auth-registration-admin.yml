@@ -21,6 +21,8 @@ on:
           - compare-client
           - plan-client
           - plan-addition
+          - plan-provision
+          - provision-registry
           - publish-registry
           - repair
       client:
@@ -30,13 +32,13 @@ on:
         type: string
 
       intended_app_id:
-        description: Existing operator-selected app UUID (plan-client, plan-addition, or publish-registry)
+        description: Operator-selected app UUID; fresh fixed UUID for plan-provision and provision-registry
         required: false
         default: ""
         type: string
 
       redirect_uri:
-        description: Exact HTTPS callback of an existing approved app (plan-addition and publish-registry)
+        description: Exact HTTPS callback (platform provisioning requires this environment's /auth/PRODUCT/callback)
         required: false
         default: ""
         type: string
@@ -55,13 +57,23 @@ on:
         required: false
         default: ""
         type: string
+      display_name:
+        description: Public product name (plan-provision and provision-registry)
+        required: false
+        default: ""
+        type: string
+      expected_creation_sha256:
+        description: Creation hash from the reviewed prospective plan (provision-registry)
+        required: false
+        default: ""
+        type: string
 
 permissions:
   contents: read
 
 concurrency:
   # Publication shares the caller's release lock in cloud-cf-deploy.yml.
-  group: ${{ inputs.operation == 'publish-registry' && format('cloud-cf-release-v6-{0}', inputs.target_environment) || format('mobile-app-auth-registration-{0}', inputs.target_environment) }}
+  group: ${{ (inputs.operation == 'publish-registry' || inputs.operation == 'provision-registry') && format('cloud-cf-release-v6-{0}', inputs.target_environment) || format('mobile-app-auth-registration-{0}', inputs.target_environment) }}
   cancel-in-progress: false
   queue: max
 
@@ -114,9 +126,9 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
         run: node packages/scripts/cloud/admin/repair-mobile-app-auth-registration.ts "${{ inputs.operation }}"
-      - name: Prepare encrypted registry addition (no writes)
+      - name: Prepare encrypted registry addition or provisioning plan (no writes)
         id: addition
-        if: inputs.operation == 'plan-addition'
+        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision'
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
@@ -124,20 +136,43 @@ jobs:
           ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
           ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
           ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
+          ELIZA_MOBILE_APP_AUTH_DISPLAY_NAME: ${{ inputs.display_name }}
           ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
           ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
           ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
           DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
           DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
-        run: node packages/scripts/cloud/admin/plan-mobile-client-addition.ts plan-addition
+        run: node packages/scripts/cloud/admin/plan-mobile-client-addition.ts "${{ inputs.operation }}"
       - name: Upload only the encrypted candidate and rollback
-        if: inputs.operation == 'plan-addition'
+        if: inputs.operation == 'plan-addition' || inputs.operation == 'plan-provision'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: mobile-client-addition-${{ inputs.target_environment }}
           path: ${{ steps.addition.outputs.artifact_path }}
           if-no-files-found: error
           retention-days: 1
+      # Keep the normal source registry unchanged until this succeeds. A release
+      # may publish that source, so an unprovisioned candidate cannot be installed.
+      - name: Provision the reviewed platform registration only
+        if: inputs.operation == 'provision-registry'
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          ELIZA_MOBILE_APP_AUTH_TARGET_CLIENT_ID: ${{ inputs.client }}
+          ELIZA_MOBILE_APP_AUTH_ADDITION_REDIRECT_URI: ${{ inputs.redirect_uri }}
+          ELIZA_MOBILE_APP_AUTH_DISPLAY_NAME: ${{ inputs.display_name }}
+          ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON: ${{ secrets.ELIZA_MOBILE_APP_AUTH_CLIENTS_JSON }}
+          ELIZA_MOBILE_APP_AUTH_APP_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_APP_ID }}
+          ELIZA_MOBILE_APP_AUTH_INTENDED_APP_ID: ${{ inputs.intended_app_id }}
+          ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_ORGANIZATION_ID }}
+          ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID: ${{ secrets.ELIZA_MOBILE_APP_AUTH_OWNER_USER_ID }}
+          ELIZA_MOBILE_APP_AUTH_ENVIRONMENT: ${{ inputs.target_environment }}
+          ELIZA_MOBILE_APP_AUTH_EXPECTED_REGISTRY_SHA256: ${{ inputs.expected_registry_sha256 }}
+          ELIZA_MOBILE_APP_AUTH_EXPECTED_NON_TARGET_SHA256: ${{ inputs.expected_non_target_sha256 }}
+          ELIZA_MOBILE_APP_AUTH_EXPECTED_APP_BINDING_SHA256: ${{ inputs.expected_app_binding_sha256 }}
+          ELIZA_MOBILE_APP_AUTH_EXPECTED_CREATION_SHA256: ${{ inputs.expected_creation_sha256 }}
+          DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_CLUSTER_SHA256 }}
+          DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256: ${{ vars.DATABASE_IDENTITY_EXPECTED_AUTHORITY_SHA256 }}
+        run: node packages/scripts/cloud/admin/plan-mobile-client-addition.ts provision-registry
       # The operator applies the sealed candidate through GitHub's environment-secret
       # API first. A fresh job reads it and refuses any hash or ownership mismatch.
       - name: Publish the exact reviewed registry only
