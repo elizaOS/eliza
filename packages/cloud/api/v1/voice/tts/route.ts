@@ -384,6 +384,8 @@ async function __hono_POST(c: AppContext) {
         if (ctx) ctx.waitUntil(task);
         else void task;
       },
+      // A caller abort stops the review and never caches a late approval.
+      request.signal,
     );
     timings.moderation = moderation;
     timings.moderationMs = Math.round(performance.now() - moderationStarted);
@@ -477,7 +479,9 @@ async function __hono_POST(c: AppContext) {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ text, voice: kokoroVoice, speed: 1 }),
-          signal: AbortSignal.timeout(30000),
+          // Caller disconnect cancels the upstream; the hard timeout still
+          // bounds a connected caller.
+          signal: AbortSignal.any([request.signal, AbortSignal.timeout(30000)]),
         },
       );
       timings.synthesisMs = Date.now() - kokoroStart;
@@ -781,6 +785,8 @@ async function __hono_POST(c: AppContext) {
     let cartesiaMp3ContentType = "audio/mpeg";
     settlementProvider = providerSelection.provider;
     const markPaidTtsProviderDispatch = async () => {
+      // An aborted caller never dispatches: the reservation stays unstarted.
+      request.signal.throwIfAborted();
       await markProviderDispatched?.();
       providerWorkMayHaveStarted = true;
     };
@@ -793,6 +799,7 @@ async function __hono_POST(c: AppContext) {
           sampleRate: WAV_PCM_SAMPLE_RATE,
           maxPcmBytes: MAX_CARTESIA_PCM_BYTES,
           beforeProviderDispatch: markPaidTtsProviderDispatch,
+          signal: request.signal,
         });
         wav = cartesia.wav;
         synthesisEngine = "cartesia";
@@ -831,6 +838,7 @@ async function __hono_POST(c: AppContext) {
           voiceId: cartesiaVoiceId,
           text,
           beforeProviderDispatch: markPaidTtsProviderDispatch,
+          signal: request.signal,
         });
         audioStream = cartesia.body;
         cartesiaMp3ContentType = cartesia.contentType;
@@ -1082,6 +1090,13 @@ async function __hono_POST(c: AppContext) {
         traceId: c.get("traceId") ?? c.get("requestId") ?? "unavailable",
         userId: settlementUserId,
       });
+    }
+    if (request.signal.aborted) {
+      // A caller abort is cancellation, never a provider failure or timeout.
+      return Response.json(
+        { error: "Text-to-speech cancelled" },
+        { status: 499 },
+      );
     }
     const apiError =
       error instanceof ApiError ? error : asGenerativeCacheApiError(error);

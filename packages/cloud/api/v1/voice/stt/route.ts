@@ -1081,9 +1081,22 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
       }
       cartesiaForm.append("timestamp_granularities[]", "word");
 
+      // Caller disconnect cancels the upstream; the hard timeout still bounds
+      // a connected caller.
+      const callerSignal = c.req.raw.signal;
       const cartesiaTimeoutSignal = AbortSignal.timeout(cartesiaTimeoutMs);
+      // A caller abort is cancellation, never a provider timeout or failure.
+      const cancelledByCaller = async () => {
+        await settleCartesiaFailure("caller_aborted");
+        return Response.json(
+          { error: "Speech-to-text cancelled" },
+          { status: 499 },
+        );
+      };
       let cartesiaResponse: Response;
       try {
+        // An aborted caller never dispatches: the reservation stays unstarted.
+        callerSignal.throwIfAborted();
         await cartesiaAdmission.markProviderDispatched?.();
         providerWorkMayHaveStarted = true;
         settlementProvider = "cartesia";
@@ -1094,10 +1107,11 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
             "Cartesia-Version": CARTESIA_BATCH_STT_API_VERSION,
           },
           body: cartesiaForm,
-          signal: cartesiaTimeoutSignal,
+          signal: AbortSignal.any([callerSignal, cartesiaTimeoutSignal]),
         });
       } catch (error) {
         // error-policy:J1 provider transport failures translate at the route boundary.
+        if (callerSignal.aborted) return cancelledByCaller();
         await settleCartesiaFailure("transport_failure");
         logger.error("[Voice STT API] Cartesia request failed", {
           errorType: error instanceof Error ? error.name : "unknown",
@@ -1137,6 +1151,7 @@ async function transcribeRequest(c: AppContext, timings: ServerTimingMetric[]) {
         cartesiaPayload = await cartesiaResponse.json();
       } catch {
         // error-policy:J3 provider JSON is untrusted input at the HTTP boundary.
+        if (callerSignal.aborted) return cancelledByCaller();
         await settleCartesiaFailure("unparseable_response");
         if (cartesiaTimeoutSignal.aborted) {
           logger.error("[Voice STT API] Cartesia response body timed out");

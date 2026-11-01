@@ -3,13 +3,16 @@
  * `Idempotency-Key` (#16425). The key names one utterance: a second utterance
  * sent under the same key is a new paid request, while a retry of the same
  * utterance still replays. An ElevenLabs rejection releases the reservation.
+ * A caller abort reaches moderation and the speech upstreams: before dispatch
+ * it releases the reservation, after dispatch it keeps the unknown charge.
  * Real credits service on PGlite; auth, pricing,
- * content safety, the ElevenLabs client, the first-line cache and usage
- * records are replaced.
+ * content safety, the ElevenLabs client, the Cartesia and Kokoro upstreams,
+ * the first-line cache and usage records are replaced.
  */
 import {
   afterAll,
   beforeAll,
+  beforeEach,
   expect,
   mock,
   setDefaultTimeout,
@@ -17,7 +20,9 @@ import {
   test,
 } from "bun:test";
 import { randomUUID } from "node:crypto";
+import { getEventListeners } from "node:events";
 import { ElevenLabs, ElevenLabsTimeoutError } from "@elevenlabs/elevenlabs-js";
+import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import * as aiPricing from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import * as elevenlabs from "@elizaos/cloud-shared/lib/services/elevenlabs";
 import * as firstLineCache from "@elizaos/cloud-shared/lib/services/tts-first-line-cache";
@@ -42,6 +47,8 @@ const userId = randomUUID();
 const providerCalls: string[] = [];
 const providerFailures = new Map<string, Error>();
 const COST_PER_CHAR = 0.001;
+let moderate: ((signal?: AbortSignal) => Promise<unknown>) | undefined;
+let duringPricing: (() => void) | undefined;
 
 mock.module("@/api-app/lib/generative-route-auth", () => ({
   ...generativeRouteAuth,
@@ -56,7 +63,10 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
   },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/content-safety", () => ({
-  contentSafetyService: { assertSafeForPublicUse: async () => ({}) },
+  contentSafetyService: {
+    assertSafeForPublicUse: async (_input: unknown, signal?: AbortSignal) =>
+      moderate ? moderate(signal) : {},
+  },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
   ...aiPricing,
@@ -64,11 +74,14 @@ mock.module("@elizaos/cloud-shared/lib/services/ai-pricing", () => ({
     characterCount,
   }: {
     characterCount: number;
-  }) => ({
-    totalCost: characterCount * COST_PER_CHAR,
-    baseTotalCost: characterCount * COST_PER_CHAR * 0.8,
-    platformMarkup: characterCount * COST_PER_CHAR * 0.2,
-  }),
+  }) => {
+    duringPricing?.();
+    return {
+      totalCost: characterCount * COST_PER_CHAR,
+      baseTotalCost: characterCount * COST_PER_CHAR * 0.8,
+      platformMarkup: characterCount * COST_PER_CHAR * 0.2,
+    };
+  },
 }));
 mock.module("@elizaos/cloud-shared/lib/services/elevenlabs", () => ({
   ...elevenlabs,
@@ -178,16 +191,98 @@ beforeAll(async () => {
     [orgId],
   );
 });
+const realFetch = globalThis.fetch;
+/** Requests and socket frames seen by the stubbed Cartesia and Kokoro upstreams. */
+const upstream = {
+  urls: [] as string[],
+  signals: [] as (AbortSignal | undefined)[],
+  frames: [] as Record<string, unknown>[],
+};
+beforeEach(() => {
+  moderate = undefined;
+  duringPricing = undefined;
+  globalThis.fetch = realFetch;
+  upstream.urls.length = 0;
+  upstream.signals.length = 0;
+  upstream.frames.length = 0;
+});
 afterAll(async () => {
   phaseLog.mockRestore();
+  globalThis.fetch = realFetch;
   await closeDatabaseConnectionsForTests();
 });
+
+/**
+ * Stub the Cartesia REST, Cartesia WebSocket and Kokoro upstreams. `answer`
+ * returns audio. `hold` accepts the request and sends no audio, so only the
+ * request signal can end it. Resolves once a held request is in flight.
+ */
+function stubSpeechUpstream(mode: "answer" | "hold"): Promise<void> {
+  let accepted!: () => void;
+  const inFlight = new Promise<void>((resolve) => {
+    accepted = resolve;
+  });
+  globalThis.fetch = (async (input, init) => {
+    upstream.urls.push(String(input));
+    const signal = init?.signal ?? undefined;
+    upstream.signals.push(signal);
+    if (new Headers(init?.headers).get("Upgrade") === "websocket") {
+      const messageListeners: Array<(event: { data: string }) => void> = [];
+      const webSocket = {
+        accept() {},
+        close() {},
+        addEventListener(
+          type: string,
+          listener: (event: { data: string }) => void,
+        ) {
+          if (type === "message") messageListeners.push(listener);
+        },
+        send(data: string) {
+          const frame = JSON.parse(data) as Record<string, unknown>;
+          upstream.frames.push(frame);
+          if (frame.transcript === undefined) return;
+          if (mode === "hold") return accepted();
+          for (const reply of [
+            { type: "chunk", context_id: frame.context_id, data: "AAABAA==" },
+            { type: "done", context_id: frame.context_id },
+          ])
+            queueMicrotask(() => {
+              for (const listener of messageListeners)
+                listener({ data: JSON.stringify(reply) });
+            });
+        },
+      };
+      return { status: 101, webSocket } as unknown as Response;
+    }
+    if (mode === "answer")
+      return new Response(new Uint8Array([0xff, 0xfb, 0x90, 0x00]), {
+        headers: { "Content-Type": "audio/mpeg" },
+      });
+    accepted();
+    return new Promise<never>((_resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason), {
+        once: true,
+      });
+    });
+  }) as typeof fetch;
+  return inFlight;
+}
+
+/** Reservations still awaiting settlement; release refunds are separate rows. */
+async function openReservations(): Promise<number> {
+  const { rows } = await pg().query<{ open: string }>(
+    "SELECT count(*)::text AS open FROM credit_transactions WHERE organization_id=$1 AND type='debit' AND metadata->>'type'='reservation' AND settled_at IS NULL",
+    [orgId],
+  );
+  return Number(rows[0]?.open);
+}
 
 async function speak(
   text: string,
   idempotencyKey: string,
-  identity: { voiceId?: string; modelId?: string } = {},
+  identity: { voiceId?: string; modelId?: string; format?: "wav" } = {},
   expectedStatus = 200,
+  caller: { signal?: AbortSignal; env?: Record<string, string> } = {},
 ) {
   const response = await app.request(
     "/api/v1/voice/tts",
@@ -198,23 +293,24 @@ async function speak(
         "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify({ text, ...identity }),
+      signal: caller.signal,
     },
-    { NODE_ENV: "test" },
+    { NODE_ENV: "test", ...caller.env },
   );
   if (response.status !== expectedStatus)
     throw new Error(`tts ${response.status}: ${await response.text()}`);
-  await response.arrayBuffer();
+  const spoken = {
+    headers: response.headers,
+    audio: new Uint8Array(await response.arrayBuffer()),
+  };
   // A failed request settles before it responds.
-  if (expectedStatus !== 200) return;
+  if (expectedStatus !== 200) return spoken;
   // Settlement runs after the audio response; wait for every reservation to settle.
   for (let i = 0; i < 200; i++) {
-    const { rows } = await pg().query<{ open: string }>(
-      "SELECT count(*)::text AS open FROM credit_transactions WHERE organization_id=$1 AND settled_at IS NULL",
-      [orgId],
-    );
-    if (rows[0]?.open === "0") break;
+    if ((await openReservations()) === 0) break;
     await new Promise((resolve) => setTimeout(resolve, 25));
   }
+  return spoken;
 }
 
 async function balance(): Promise<number> {
@@ -317,5 +413,167 @@ test("malformed TTS JSON retains auth policy and never calls a provider", async 
   expect(phaseRows.map((row) => row.phase)).toEqual(["json_decode"]);
   expect(authCalls - auth).toBe(1);
   expect(providerCalls.length).toBe(calls);
+  expect(await balance()).toBeCloseTo(before, 6);
+});
+
+const CARTESIA = { CARTESIA_API_KEY: "local-test-only" };
+
+test.each([
+  ["ElevenLabs", {}, {}],
+  ["Cartesia MP3", {}, CARTESIA],
+  ["Cartesia WAV", { format: "wav" }, CARTESIA],
+] as const)(
+  "a caller abort before %s dispatch calls no provider and releases the reservation",
+  async (lane, identity, env) => {
+    const before = await balance(),
+      calls = providerCalls.length;
+    const caller = new AbortController();
+    duringPricing = () => caller.abort();
+    stubSpeechUpstream("answer");
+
+    await speak(
+      `Cancelled before ${lane} dispatch.`,
+      `pre-dispatch-${randomUUID()}`,
+      identity,
+      499,
+      { signal: caller.signal, env },
+    );
+
+    expect(providerCalls).toHaveLength(calls);
+    expect(upstream.urls).toEqual([]);
+    expect(await openReservations()).toBe(0);
+    expect(await balance()).toBeCloseTo(before, 6);
+  },
+);
+
+test.each([
+  ["Cartesia MP3", {}],
+  ["Cartesia WAV", { format: "wav" }],
+] as const)(
+  "a caller abort after %s dispatch keeps the unknown charge; a keyed retry replays it and synthesizes again",
+  async (lane, identity) => {
+    const text = `Your ${lane} reply was cut off.`;
+    const key = `after-dispatch-${randomUUID()}`;
+    const before = await balance();
+    const caller = new AbortController();
+    const inFlight = stubSpeechUpstream("hold");
+    const aborted = speak(text, key, identity, 499, {
+      signal: caller.signal,
+      env: CARTESIA,
+    });
+    await inFlight;
+    caller.abort();
+    await aborted;
+
+    // The abort reaches the provider request, and the socket gets a cancel frame.
+    expect(upstream.signals[0]?.aborted).toBe(true);
+    if (lane === "Cartesia WAV")
+      expect(upstream.frames).toContainEqual({
+        context_id: "cloud-tts",
+        cancel: true,
+      });
+    // Dispatched work has an unknown outcome: the reservation stays charged.
+    const afterAbort = await balance();
+    expect(afterAbort).toBeCloseTo(before - text.length * COST_PER_CHAR, 6);
+    expect(await openReservations()).toBe(0);
+
+    stubSpeechUpstream("answer");
+    const retry = await speak(text, key, identity, 200, { env: CARTESIA });
+
+    expect(retry.headers.get("X-Eliza-TTS-Provider")).toBe("cartesia");
+    expect(retry.audio.byteLength).toBeGreaterThan(0);
+    // The retry synthesizes again instead of replaying a success, and replays
+    // the reservation instead of charging twice.
+    expect(upstream.urls).toHaveLength(2);
+    expect(await balance()).toBeCloseTo(afterAbort, 6);
+    // No abort listener outlives its request.
+    expect(
+      upstream.signals.map(
+        (signal) => signal && getEventListeners(signal, "abort").length,
+      ),
+    ).toEqual([0, 0]);
+  },
+);
+
+test("a caller abort during moderation stops the review and caches no late approval", async () => {
+  const receipts = new Map<string, string>();
+  const bindings = {
+    CACHE_KV: {
+      get: async (key: string) => receipts.get(key) ?? null,
+      put: async (key: string, value: string) => {
+        receipts.set(key, value);
+      },
+    },
+  };
+  const safetyReceipts = () =>
+    [...receipts.keys()].filter((key) => key.startsWith("tts-safety:"));
+  const approved = {
+    allowed: true,
+    skipped: false,
+    flagged: false,
+    mode: "enforce",
+    issues: [],
+  };
+  const text = `A reply the caller left ${randomUUID()}.`;
+  const before = await balance(),
+    calls = providerCalls.length;
+  let reviewSignal: AbortSignal | undefined;
+  let reviewing!: () => void;
+  const inReview = new Promise<void>((resolve) => {
+    reviewing = resolve;
+  });
+  let approve!: () => void;
+  const lateApproval = new Promise<void>((resolve) => {
+    approve = resolve;
+  });
+  // Worst case: the moderation provider ignores the abort and approves late.
+  moderate = async (signal) => {
+    reviewSignal = signal;
+    reviewing();
+    await lateApproval;
+    return approved;
+  };
+  const caller = new AbortController();
+  const aborted = runWithCloudBindingsAsync(bindings, () =>
+    speak(text, `moderation-${randomUUID()}`, {}, 499, {
+      signal: caller.signal,
+    }),
+  );
+  await inReview;
+  caller.abort();
+  approve();
+  await aborted;
+
+  expect(reviewSignal?.aborted).toBe(true);
+  expect(safetyReceipts()).toEqual([]);
+  expect(providerCalls).toHaveLength(calls);
+  expect(await balance()).toBeCloseTo(before, 6);
+
+  // The same text is reviewed again; an uninterrupted approval is cached.
+  moderate = async () => approved;
+  const repeat = await runWithCloudBindingsAsync(bindings, () =>
+    speak(text, `moderation-${randomUUID()}`),
+  );
+  expect(repeat.headers.get("X-Eliza-TTS-Moderation")).toBe("reviewed");
+  expect(safetyReceipts()).toHaveLength(1);
+});
+
+test("a caller abort reaches the free Kokoro upstream", async () => {
+  const before = await balance();
+  const caller = new AbortController();
+  const inFlight = stubSpeechUpstream("hold");
+  const aborted = speak(
+    "A Kokoro reply.",
+    `kokoro-${randomUUID()}`,
+    { voiceId: "af_heart" },
+    499,
+    { signal: caller.signal, env: { KOKORO_TTS_URL: "https://kokoro.test" } },
+  );
+  await inFlight;
+  caller.abort();
+  await aborted;
+
+  expect(upstream.urls).toEqual(["https://kokoro.test/api/tts"]);
+  expect(upstream.signals[0]?.aborted).toBe(true);
   expect(await balance()).toBeCloseTo(before, 6);
 });

@@ -57,8 +57,12 @@ export async function synthesizeCartesiaBytes(args: {
   text: string;
   fetch?: typeof fetch;
   beforeProviderDispatch?: () => Promise<void>;
+  /** Caller cancellation for the request and its streamed audio body. */
+  signal?: AbortSignal;
 }): Promise<CartesiaBytesResult> {
   const fetchImpl = args.fetch ?? fetch;
+  // An aborted caller never dispatches the paid request.
+  args.signal?.throwIfAborted();
   await args.beforeProviderDispatch?.();
   const response = await fetchImpl(CARTESIA_BYTES_URL, {
     method: "POST",
@@ -79,6 +83,7 @@ export async function synthesizeCartesiaBytes(args: {
         bit_rate: 128_000,
       },
     }),
+    signal: args.signal,
   });
 
   if (!response.ok || !response.body) {
@@ -131,9 +136,11 @@ function safeCartesiaRestMessage(status: number): string {
  * performs the async `fetch(..., { Upgrade: "websocket" })` connect, and
  * replays `open`/`message`/`close`/`error` from the accepted socket. The
  * adapter already queues `sendPhrase` until `open`, so a lazy connect is safe.
+ * `signal` aborts a pending upgrade.
  */
 export function makeWorkersCartesiaWebSocketFactory(
   beforeProviderDispatch?: () => Promise<void>,
+  signal?: AbortSignal,
 ): CartesiaWebSocketFactory {
   return (url, options) => {
     const openListeners: Array<() => void> = [];
@@ -158,6 +165,7 @@ export function makeWorkersCartesiaWebSocketFactory(
         await beforeProviderDispatch?.();
         const response = await fetch(httpUrl, {
           headers: { ...options.headers, Upgrade: "websocket" },
+          signal,
         });
         const ws = (response as unknown as { webSocket?: WebSocket }).webSocket;
         if (!ws) {
@@ -255,7 +263,8 @@ const DEFAULT_SYNTHESIS_TIMEOUT_MS = 15_000;
  * back to ElevenLabs and never serves broken speech — on provider error, a
  * socket that closes before any audio, audio exceeding `maxPcmBytes`
  * (truncated speech must not be returned as success), or the synthesis
- * deadline expiring.
+ * deadline expiring. A caller abort cancels the stream and rejects with the
+ * caller's reason, never as a timeout.
  */
 export async function synthesizeCartesiaWav(args: {
   apiKey: string;
@@ -266,13 +275,23 @@ export async function synthesizeCartesiaWav(args: {
   webSocketFactory?: CartesiaWebSocketFactory;
   timeoutMs?: number;
   beforeProviderDispatch?: () => Promise<void>;
+  /** Caller cancellation; it ends the synthesis like the deadline does. */
+  signal?: AbortSignal;
 }): Promise<CartesiaWavResult> {
+  // An aborted caller never opens the paid provider socket.
+  args.signal?.throwIfAborted();
+  const timeoutMs = args.timeoutMs ?? DEFAULT_SYNTHESIS_TIMEOUT_MS;
+  const deadline = AbortSignal.timeout(timeoutMs);
+  // Caller disconnect and the synthesis deadline both end the synthesis.
+  const signal = args.signal
+    ? AbortSignal.any([args.signal, deadline])
+    : deadline;
   const adapter = new CartesiaSonicTtsAdapter({
     apiKey: args.apiKey,
     voiceId: args.voiceId,
     websocketFactory:
       args.webSocketFactory ??
-      makeWorkersCartesiaWebSocketFactory(args.beforeProviderDispatch),
+      makeWorkersCartesiaWebSocketFactory(args.beforeProviderDispatch, signal),
     sampleRate: args.sampleRate,
     encoding: "pcm_s16le",
   });
@@ -322,9 +341,13 @@ export async function synthesizeCartesiaWav(args: {
 
   stream.sendPhrase({ text: args.text, continueContext: false, flush: true });
 
-  const timeoutMs = args.timeoutMs ?? DEFAULT_SYNTHESIS_TIMEOUT_MS;
   let timedOut = false;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let endSynthesis: (() => void) | undefined;
+  const cancelOnAbort = () => {
+    timedOut = deadline.aborted;
+    stream.cancel(timedOut ? "synthesis deadline exceeded" : "caller aborted");
+    endSynthesis?.();
+  };
   // A connection failure rejects `opened` but may never emit `close`; keep the
   // success side pending so only the rejection can settle the synthesis race.
   const streamOpenFailure = stream.opened.then(
@@ -336,17 +359,16 @@ export async function synthesizeCartesiaWav(args: {
       streamOpenFailure,
       providerErrorSignal,
       new Promise<void>((resolve) => {
-        timeoutId = setTimeout(() => {
-          timedOut = true;
-          stream.cancel("synthesis deadline exceeded");
-          resolve();
-        }, timeoutMs);
+        endSynthesis = resolve;
+        signal.addEventListener("abort", cancelOnAbort, { once: true });
       }),
     ]);
   } finally {
-    if (timeoutId !== null) clearTimeout(timeoutId);
+    signal.removeEventListener("abort", cancelOnAbort);
   }
 
+  // A caller abort is cancellation, never a provider error or a timeout.
+  args.signal?.throwIfAborted();
   if (providerError) throw providerError;
   if (timedOut) {
     throw new Error(`Cartesia synthesis timed out after ${timeoutMs}ms`);

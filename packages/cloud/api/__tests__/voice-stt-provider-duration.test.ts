@@ -25,6 +25,8 @@ let authCalls = 0,
 let admissionFailure: Error | undefined;
 let authenticationFailure: Error | undefined;
 let admissions = 0;
+let duringAdmission: (() => void) | undefined;
+const admittedRequestIds: string[] = [];
 let dispatched = 0;
 let settledUnknown = 0;
 const reconciled: number[] = [];
@@ -43,9 +45,12 @@ mock.module("@/api-app/lib/generative-route-auth", () => ({
     };
   },
   admitFlatGenerativeOperation: async (params: {
+    context: { requestId: string };
     cost: { totalCost: number };
   }) => {
     admissions++;
+    admittedRequestIds.push(params.context.requestId);
+    duringAdmission?.();
     if (admissionFailure) throw admissionFailure;
     return {
       reservation: {
@@ -186,6 +191,8 @@ beforeEach(() => {
   admissionFailure = undefined;
   authenticationFailure = undefined;
   admissions = 0;
+  duringAdmission = undefined;
+  admittedRequestIds.length = 0;
   dispatched = 0;
   settledUnknown = 0;
   reconciled.length = 0;
@@ -469,6 +476,144 @@ test.each([
       ["upstream", "malformed", "transport"].includes(failure) ? 1 : 0,
     );
     expect(await response.text()).not.toContain("private");
+  },
+);
+
+/** Explicit Cartesia request whose caller can abort it; the key stays fixed. */
+function transcribeWithCartesia(
+  signal: AbortSignal,
+  timeoutMs: string,
+  pending: Promise<unknown>[] = [],
+) {
+  const form = new FormData();
+  form.append(
+    "audio",
+    new File([oneSecondWav()], "note.wav", { type: "audio/wav" }),
+  );
+  form.append("provider", "cartesia");
+  return sttApp.request(
+    "http://cloud.test/",
+    {
+      method: "POST",
+      headers: { "Idempotency-Key": "one-utterance" },
+      body: form,
+      signal,
+    },
+    {
+      CARTESIA_API_KEY: "cartesia-test",
+      CARTESIA_STT_USD_PER_CREDIT: "0.001",
+      CARTESIA_BATCH_STT_TIMEOUT_MS: timeoutMs,
+    },
+    {
+      waitUntil: (promise: Promise<unknown>) => pending.push(promise),
+      passThroughOnException: () => undefined,
+      props: {},
+    },
+  );
+}
+
+/** Cartesia accepts the request, then holds the headers or body until its signal aborts. */
+function holdCartesia(phase: "headers" | "body"): Promise<void> {
+  let accepted!: () => void;
+  const dispatchedRequest = new Promise<void>((resolve) => {
+    accepted = resolve;
+  });
+  globalThis.fetch = (async (_input, init) => {
+    providerCalls++;
+    accepted();
+    const signal = init?.signal;
+    const aborted = new Promise<never>((_resolve, reject) => {
+      signal?.addEventListener("abort", () => reject(signal.reason), {
+        once: true,
+      });
+    });
+    if (phase === "headers") return aborted;
+    return new Response(
+      new ReadableStream({
+        start(controller) {
+          aborted.catch((reason) => controller.error(reason));
+        },
+      }),
+    );
+  }) as typeof fetch;
+  return dispatchedRequest;
+}
+
+test("a caller abort before Cartesia dispatch calls no provider and releases only the unstarted reservation", async () => {
+  const caller = new AbortController();
+  duringAdmission = () => caller.abort();
+  stubProvider("api.cartesia.ai", { text: "hello", duration: 1 });
+
+  const response = await transcribeWithCartesia(caller.signal, "2000");
+
+  expect(response.status).toBe(499);
+  expect(await response.json()).toMatchObject({
+    error: "Speech-to-text cancelled",
+  });
+  expect(admissions).toBe(1);
+  expect(dispatched).toBe(0);
+  expect(providerCalls).toBe(0);
+  expect(reconciled).toEqual([0]);
+  expect(settledUnknown).toBe(0);
+});
+
+test.each(["headers", "body"] as const)(
+  "a caller abort after Cartesia dispatch, before the %s, keeps the unknown outcome and is not a timeout",
+  async (phase) => {
+    const caller = new AbortController();
+    const dispatchedRequest = holdCartesia(phase);
+    const aborted = transcribeWithCartesia(caller.signal, "2000");
+    await dispatchedRequest;
+    caller.abort();
+    const response = await aborted;
+
+    expect(response.status).toBe(499);
+    expect(await response.json()).toMatchObject({
+      error: "Speech-to-text cancelled",
+    });
+    expect(dispatched).toBe(1);
+    expect(settledUnknown).toBe(1);
+    expect(reconciled).toEqual([]);
+
+    // STT mints a fresh billing id per request and ignores Idempotency-Key, so
+    // the retry is a new paid transcription, never a replayed success.
+    stubProvider("api.cartesia.ai", { text: "hello", duration: 1 });
+    const pending: Promise<unknown>[] = [];
+    const retry = await transcribeWithCartesia(
+      new AbortController().signal,
+      "2000",
+      pending,
+    );
+    await Promise.all(pending);
+
+    expect(retry.status).toBe(200);
+    expect(await retry.json()).toMatchObject({ transcript: "hello" });
+    expect(retry.headers.get("X-Eliza-STT-Provider")).toBe("cartesia");
+    expect(providerCalls).toBe(2);
+    expect(new Set(admittedRequestIds).size).toBe(2);
+    expect(dispatched).toBe(2);
+    expect(settledUnknown).toBe(1);
+    expect(reconciled).toHaveLength(1);
+  },
+);
+
+test.each(["headers", "body"] as const)(
+  "the Cartesia hard timeout before the %s still answers 504 with an unknown outcome",
+  async (phase) => {
+    holdCartesia(phase);
+
+    const response = await transcribeWithCartesia(
+      new AbortController().signal,
+      "50",
+    );
+
+    expect(response.status).toBe(504);
+    expect(await response.json()).toMatchObject({
+      error: "Speech-to-text timed out",
+    });
+    expect(dispatched).toBe(1);
+    expect(settledUnknown).toBe(1);
+    expect(reconciled).toEqual([]);
   },
 );
 
