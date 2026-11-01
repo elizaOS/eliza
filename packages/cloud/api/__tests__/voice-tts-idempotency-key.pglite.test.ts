@@ -4,10 +4,10 @@
  * sent under the same key is a new paid request, while a retry of the same
  * utterance still replays. The paid lane reads the first-line cache and the
  * catalog price while moderation runs, and every gate still holds: no cached
- * audio, credit reservation or synthesis before moderation passes, and no
- * synthesis without an admitted reservation. Real credits service on PGlite;
- * auth, pricing, content safety, the ElevenLabs client, the first-line cache
- * and usage records are replaced.
+ * audio, cache bookkeeping, credit reservation or synthesis before moderation
+ * passes, and no synthesis without an admitted reservation. Real credits
+ * service on PGlite; auth, pricing, content safety, the ElevenLabs client, the
+ * first-line cache and usage records are replaced.
  */
 import {
   afterAll,
@@ -118,8 +118,15 @@ mock.module("@elizaos/cloud-shared/lib/services/elevenlabs", () => ({
 }));
 mock.module("@elizaos/cloud-shared/lib/services/tts-first-line-cache", () => ({
   ...firstLineCache,
+  // The read-only lookup and the bookkeeping that follows it. The real pair,
+  // with a moderation refusal leaving the cache untouched, is covered by
+  // voice-tts-first-line-cache-moderation.pglite.test.ts.
   getCloudFirstLineCacheService: () => ({
-    get: () => gates.cacheRead(),
+    peek: () => gates.cacheRead(),
+    applyPeek: async (entry: typeof cachedOpener | null) => {
+      events.push("cache:apply");
+      return entry;
+    },
     put: async () => undefined,
   }),
 }));
@@ -312,7 +319,7 @@ test("one Idempotency-Key pays for one utterance: a different text is charged, t
   expect(await balance()).toBeCloseTo(afterDirect, 6);
 });
 
-test("the cache read and the price read overlap moderation; admission and synthesis wait for it", async () => {
+test("the cache read and the price read overlap moderation; cache bookkeeping, admission and synthesis wait for it", async () => {
   gates.moderation = timedStep("moderation", 60);
   gates.cacheRead = async () => {
     await timedStep("cache", 20)();
@@ -329,6 +336,8 @@ test("the cache read and the price read overlap moderation; admission and synthe
   // Both reads were in flight before the moderation verdict arrived.
   expect(at("cache:start")).toBeLessThan(at("moderation:end"));
   expect(at("price:start")).toBeLessThan(at("moderation:end"));
+  // The cache bookkeeping waits for that verdict.
+  expect(at("cache:apply")).toBeGreaterThan(at("moderation:end"));
   // Paid admission and provider dispatch still wait for that verdict.
   expect(at("admission")).toBeGreaterThan(at("moderation:end"));
   expect(at("synthesis")).toBeGreaterThan(at("admission"));
@@ -388,7 +397,8 @@ test("no synthesis without an admitted reservation or a price", async () => {
   expect(await refused.json()).toMatchObject({
     error: "Insufficient credits for text-to-speech",
   });
-  expect(events).toEqual(["admission"]);
+  // A short opener misses the cache first; its bookkeeping precedes admission.
+  expect(events).toEqual(["cache:apply", "admission"]);
 
   events.length = 0;
   gates = passingGates();
@@ -400,7 +410,7 @@ test("no synthesis without an admitted reservation or a price", async () => {
     `warming-${randomUUID()}`,
   );
   expect(warming.status).toBe(503);
-  expect(events).toEqual([]);
+  expect(events).toEqual(["cache:apply"]);
 
   expect(providerCalls).toHaveLength(calls);
   expect(await ledger()).toEqual(before);

@@ -104,6 +104,15 @@ export interface CloudFirstLineCacheEntry extends CloudFirstLineCacheKey {
   hitCount: number;
   blobKey: string;
 }
+/**
+ * What a read-only `peek()` saw for one key. `row` is null on a miss; a row
+ * with null `bytes` is an orphan (manifest present, blob gone).
+ */
+export interface CloudFirstLineCachePeek {
+  key: CloudFirstLineCacheKey;
+  row: TtsFirstLineCacheRow | null;
+  bytes: Uint8Array<ArrayBuffer> | null;
+}
 export interface CloudFirstLineCachePutInput extends CloudFirstLineCacheKey {
   bytes: Uint8Array;
   rawText: string;
@@ -262,16 +271,37 @@ export class CloudFirstLineCacheService {
    * On hit, atomically bumps `hit_count` and `last_accessed_at`.
    */
   async get(key: CloudFirstLineCacheKey): Promise<CloudFirstLineCacheEntry | null> {
-    if (!key.voiceRevision) return null;
-    if (!key.normalizedText) return null;
+    return this.applyPeek(await this.peek(key));
+  }
+  /**
+   * The read half of `get()`: reads the manifest row and its blob and writes
+   * nothing, so a caller may run it before the request is cleared to use the
+   * cache (for example while content moderation is pending). Pass the result
+   * to `applyPeek()` only once the request may use the cache.
+   */
+  async peek(key: CloudFirstLineCacheKey): Promise<CloudFirstLineCachePeek> {
+    if (!key.voiceRevision || !key.normalizedText) {
+      return { key, row: null, bytes: null };
+    }
     const keyHash = hashCloudCacheKey(key);
     const [row] = (await dbRead
       .select()
       .from(ttsFirstLineCache)
       .where(and(eq(ttsFirstLineCache.keyHash, keyHash), eq(ttsFirstLineCache.scope, key.scope)))
       .limit(1)) as TtsFirstLineCacheRow[];
+    if (!row) return { key, row: null, bytes: null };
+    return { key, row, bytes: await r2GetBytes(row.blobKey) };
+  }
+  /**
+   * The write half of `get()`: drops an orphan row, or on a hit bumps
+   * `hit_count` and `last_accessed_at`. Returns the hit entry, or null.
+   */
+  async applyPeek({
+    key,
+    row,
+    bytes,
+  }: CloudFirstLineCachePeek): Promise<CloudFirstLineCacheEntry | null> {
     if (!row) return null;
-    const bytes = await r2GetBytes(row.blobKey);
     if (!bytes) {
       // Orphan — drop the row so the next call will re-populate.
       await dbWrite.delete(ttsFirstLineCache).where(eq(ttsFirstLineCache.id, row.id));

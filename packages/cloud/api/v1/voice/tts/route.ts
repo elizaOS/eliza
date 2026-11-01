@@ -30,7 +30,7 @@ import { drainPcm16ToWav } from "@elizaos/cloud-shared/lib/services/pcm16-wav";
 import { settlementDigest } from "@elizaos/cloud-shared/lib/services/settlement-digest";
 import { recordCustomVoiceUsage } from "@elizaos/cloud-shared/lib/services/tts-custom-voice-usage";
 import {
-  type CloudFirstLineCacheKey,
+  type CloudFirstLineCacheEntry,
   fingerprintCloudVoiceSettings,
   getCloudFirstLineCacheService,
   shouldBypassCloudFirstLineCache,
@@ -200,26 +200,6 @@ async function captureExactAudioForCache(
     offset += chunk.byteLength;
   }
   return merged;
-}
-/**
- * Reads one first-line cache entry and the time the read took. A failed read
- * degrades to fresh synthesis, so the returned promise never rejects.
- */
-async function readFirstLineCache(key: CloudFirstLineCacheKey | null) {
-  if (!key) return null;
-  const lookupStart = Date.now();
-  try {
-    const entry = await getCloudFirstLineCacheService().get(key);
-    return entry ? { entry, lookupMs: Date.now() - lookupStart } : null;
-  } catch (err) {
-    // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
-    // provider request remains the source of truth.
-    logger.warn?.("[Voice TTS API] first-line cache lookup failed", {
-      codec: key.codec,
-      errorType: err instanceof Error ? err.name : "unknown",
-    });
-    return null;
-  }
 }
 /**
  * POST /api/v1/voice/tts
@@ -453,13 +433,19 @@ async function __hono_POST(c: AppContext) {
             scope: "global",
           }
         : null;
-    // The paid lane's first-line cache read and catalog price do not depend
+    // The paid lane's first-line cache lookup and catalog price do not depend
     // on the moderation verdict, so both start here and run while moderation
-    // is in flight. Nothing reads either result until moderation passes. The
-    // free lanes (Workers AI, Kokoro) start neither read.
+    // is in flight. Both only read: peek() writes nothing, and the cache
+    // bookkeeping a lookup owes (hit count, LRU touch, orphan-row cleanup)
+    // runs in applyPeek() only after moderation passes, so a refused request
+    // leaves the cache as it found it. Nothing uses either result before the
+    // verdict. The free lanes (Workers AI, Kokoro) start neither read.
+    const cacheKey = mp3CacheKey ?? wavCacheKey;
     const paidReads = willAdmit
       ? {
-          cacheHit: readFirstLineCache(mp3CacheKey ?? wavCacheKey),
+          cachePeek: cacheKey
+            ? getCloudFirstLineCacheService().peek(cacheKey)
+            : null,
           ttsCost: calculateTTSCostFromCatalog({
             model: `elevenlabs/${modelId || "eleven_flash_v2_5"}`,
             characterCount: text.length,
@@ -469,8 +455,9 @@ async function __hono_POST(c: AppContext) {
           }),
         }
       : undefined;
-    // A moderation rejection leaves before the price is awaited. This marks
-    // the read as handled; the await below still receives its error.
+    // A moderation rejection leaves before either read is awaited. This marks
+    // both as handled; the awaits below still receive their errors.
+    paidReads?.cachePeek?.catch(() => undefined);
     paidReads?.ttsCost.catch(() => undefined);
     await contentSafetyService.assertSafeForPublicUse({
       surface: "media_generation_prompt",
@@ -653,10 +640,24 @@ async function __hono_POST(c: AppContext) {
       throw new Error("Paid TTS reads were not started");
     }
     timings.admissionMs = Date.now() - admissionStart;
-    const cacheHit = await paidReads.cacheHit;
-    if (cacheHit) {
-      const cached = cacheHit.entry;
-      timings.synthesisMs = cacheHit.lookupMs;
+    const cacheStart = Date.now();
+    let cached: CloudFirstLineCacheEntry | null = null;
+    if (cacheKey && paidReads.cachePeek) {
+      try {
+        cached = await getCloudFirstLineCacheService().applyPeek(
+          await paidReads.cachePeek,
+        );
+      } catch (err) {
+        // error-policy:J4 cache lookup failure degrades to fresh synthesis; the
+        // provider request remains the source of truth.
+        logger.warn?.("[Voice TTS API] first-line cache lookup failed", {
+          codec: cacheKey.codec,
+          errorType: err instanceof Error ? err.name : "unknown",
+        });
+      }
+    }
+    if (cached) {
+      timings.synthesisMs = Date.now() - cacheStart;
       logger.info(
         `[Voice TTS API] first-line cache HIT (${cached.codec}, ${cached.scope}, ${cached.byteSize}B, hits=${cached.hitCount})`,
       );
