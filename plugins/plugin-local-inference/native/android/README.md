@@ -155,7 +155,10 @@ transport is for downstream consumers without that server.
   `InferenceSession.synthesize(text, speed, "es")`,
   `InferenceSession.speechLanguages()`, `VoiceAssets.Bundle.openVoice("es")` or
   `ParadeeVoice.slot(...)`. Speed is clamped to the release's validated
-  0.85–1.15 and text is chunked to 360 ids. The bundle manifest
+  0.85–1.15 unless the app sets another range on the voice with
+  `ParadeeVoice.speedRange(min, max)` (ABI 21; within 0.25–4 and spanning 1;
+  the GGUF and its hash are unchanged), and text is chunked to 360 ids. The
+  bundle manifest
   (`eliza-paradee-voice-v2`) lists it under `voices`.
 - **Transcription:** the ASR head of `libelizainference` with Phonon-2
   (Parakeet-TDT 0.6B, five-value weights) at `<bundle>/asr/phonon-2-fv5.gguf`:

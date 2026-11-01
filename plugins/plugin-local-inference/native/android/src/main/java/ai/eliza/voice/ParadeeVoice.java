@@ -175,10 +175,34 @@ public final class ParadeeVoice implements AutoCloseable {
                 : VoiceNative.nativeParadeePhonemizeVoice(ctx, voiceId, bytes(text));
     }
 
+    /** The slowest and fastest rate {@link #speedRange} accepts (the architecture's limits). */
+    public static final float MIN_SPEED = 0.25f, MAX_SPEED = 4.0f;
+
+    /**
+     * Sets the range {@link #synthesize} and {@link #synthesizeStream} clamp
+     * {@code speed} to, replacing the model's validated range (Delibes: 0.85 to
+     * 1.15; Paradee: the architecture's limits). {@code min} and {@code max} must
+     * satisfy {@link #MIN_SPEED} &lt;= min &lt;= 1 &lt;= max &lt;= {@link #MAX_SPEED};
+     * a rate outside the validated range was not validated by the model's release,
+     * so the caller owns that choice. The model file is unchanged, and the range
+     * survives {@link #trimMemory}. Needs libelizainference ABI 21.
+     */
+    public synchronized void speedRange(float min, float max) {
+        if (!(min >= MIN_SPEED && min <= 1f && max >= 1f && max <= MAX_SPEED)) {
+            throw new IllegalArgumentException("Expected " + MIN_SPEED + " <= min <= 1 <= max <= " + MAX_SPEED);
+        }
+        VoiceNative.nativeParadeeSetVoiceSpeedRange(check(), voiceId == null ? "" : voiceId, min, max);
+    }
+
+    /** Restores the model's validated speed range (undoes {@link #speedRange}). */
+    public synchronized void validatedSpeedRange() {
+        VoiceNative.nativeParadeeSetVoiceSpeedRange(check(), voiceId == null ? "" : voiceId, 0f, 0f);
+    }
+
     /**
      * Speaks text in this voice's language. {@code speed} 1.0 is the model's own
-     * rate; a slot voice clamps it to the model's validated range (Delibes:
-     * 0.85 to 1.15).
+     * rate; it is clamped to the voice's speed range: the model's validated range
+     * (Delibes: 0.85 to 1.15) unless {@link #speedRange} set another.
      */
     public synchronized Audio synthesize(String text, float speed) {
         long ctx = check();
