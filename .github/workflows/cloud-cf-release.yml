@@ -65,6 +65,8 @@ on:
         required: false
       CARTESIA_API_KEY:
         required: false
+      CARTESIA_STT_USD_PER_CREDIT:
+        required: false
       CEREBRAS_API_KEY:
         required: false
       CLOUDFLARE_ACCOUNT_ID:
@@ -1364,9 +1366,8 @@ jobs:
           # STT path. Realtime voice uses Cartesia Ink; publishing this key alone
           # does not change the batch provider.
           DEEPGRAM_API_KEY: ${{ secrets.DEEPGRAM_API_KEY }}
-          # Cartesia cloud TTS default route. Both are routing toggles:
-          # CARTESIA_API_KEY presence makes default/unpinned TTS use Cartesia;
-          # CARTESIA_VOICE_ID overrides the built-in safe UUID.
+          # Preserve the existing provider key when the protected source is blank.
+          # CARTESIA_VOICE_ID is a routing override for the built-in safe UUID.
           CARTESIA_API_KEY: ${{ secrets.CARTESIA_API_KEY }}
           CARTESIA_VOICE_ID: ${{ vars.ELIZA_VOICE_CARTESIA_VOICE_ID }}
           # Fish is an independently gated realtime primary. Its credentials
@@ -1400,7 +1401,7 @@ jobs:
           # published paid-plan rate (cartesia-pricing.ts); speech is funded
           # from subscription allowance, so this only sizes reservations. The
           # timeout may be tuned within the route's bounded parser.
-          CARTESIA_STT_USD_PER_CREDIT: ${{ vars.CARTESIA_STT_USD_PER_CREDIT }}
+          CARTESIA_STT_USD_PER_CREDIT: ${{ vars.CARTESIA_STT_USD_PER_CREDIT || secrets.CARTESIA_STT_USD_PER_CREDIT }}
           CARTESIA_BATCH_STT_TIMEOUT_MS: ${{ vars.CARTESIA_BATCH_STT_TIMEOUT_MS }}
           # Ed25519 keypair for the signed voice-model catalog —
           # /v1/voice-models/catalog 503s while the signing key is unset
@@ -1697,6 +1698,10 @@ jobs:
               "ELIZA_APP_TELEGRAM_BOT_TOKEN",
               "ELIZA_APP_TELEGRAM_WEBHOOK_SECRET",
             ];
+            // Production batch STT requires its operator-owned billing rate.
+            if (process.env.DEPLOY_ENVIRONMENT === "production") {
+              required.push("CARTESIA_API_KEY", "CARTESIA_STT_USD_PER_CREDIT");
+            }
             if (process.env.ELIZA_MOBILE_APP_AUTH_ENABLED === "true") {
               required.push("ELIZA_MOBILE_APP_AUTH_APP_ID");
             }
