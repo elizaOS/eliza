@@ -28,20 +28,19 @@
  * inject deterministic fetchers via {@link setInboxFetchers}.
  */
 
-import type {
-  Action,
-  ActionExample,
-  ActionResult,
-  HandlerCallback,
-  HandlerOptions,
-  IAgentRuntime,
-  Memory,
-  ProviderDataRecord,
-} from "@elizaos/core";
 import {
+  type Action,
+  type ActionExample,
+  type ActionResult,
   describeUserReference,
+  ElizaError,
+  type HandlerCallback,
+  type HandlerOptions,
   hasRoleAccess,
+  type IAgentRuntime,
   logger,
+  type Memory,
+  type ProviderDataRecord,
   resolveScheduledAtIsoInTimeZone,
 } from "@elizaos/core";
 import type { MessageRef, MessageSource } from "@elizaos/plugin-assistant";
@@ -712,6 +711,25 @@ function seedMessageRefForEntry(
   );
 }
 
+/**
+ * Errors the triage service raises before it hands a draft to a connector.
+ * Every other `sendDraft` rejection may have happened after the provider
+ * accepted the message.
+ */
+const PRE_DISPATCH_SEND_ERROR_CODES = new Set([
+  "MESSAGE_DRAFT_NOT_FOUND",
+  "MESSAGE_DRAFT_CONSENT_DIGEST_MISMATCH",
+  "MESSAGE_DRAFT_ALREADY_SCHEDULED",
+  "MESSAGE_ADAPTER_UNAVAILABLE",
+  "GMAIL_REQUEST_CHANGED",
+]);
+
+function failedBeforeDispatch(error: unknown): boolean {
+  return (
+    error instanceof ElizaError && PRE_DISPATCH_SEND_ERROR_CODES.has(error.code)
+  );
+}
+
 async function replyToEntry(args: {
   runtime: IAgentRuntime;
   repo: InboxRepository;
@@ -811,8 +829,22 @@ async function replyToEntry(args: {
         : undefined,
     );
   } catch (error) {
-    await args.repo.releaseReplySend(args.entry.id, args.entry);
-    throw error;
+    // Only a failure raised before the draft reached the connector proves
+    // nothing was sent. Any other rejection (a missing provider receipt, a
+    // transport error after the provider accepted the message) leaves the
+    // outcome unknown; the claim stays so the same text is never sent twice.
+    if (failedBeforeDispatch(error)) {
+      await args.repo.releaseReplySend(args.entry.id, args.entry);
+      throw error;
+    }
+    throw new ElizaError(
+      `The reply on ${args.entry.source} was handed to the connector but its delivery is not confirmed. Approving the same text again will not send it; check ${args.entry.source} before sending a different reply.`,
+      {
+        code: "INBOX_REPLY_DELIVERY_UNCONFIRMED",
+        cause: error,
+        context: { entryId: args.entry.id, draftId: draft.draftId },
+      },
+    );
   }
   return {
     success: true,
