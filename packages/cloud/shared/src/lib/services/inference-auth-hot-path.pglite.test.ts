@@ -462,82 +462,44 @@ describe("Worker inference auth never queries Postgres", () => {
   });
 });
 
-describe("Worker billing admission never queries Postgres", () => {
-  const leases: string[] = [];
-  const gates = {
-    getByName(name: string) {
-      return {
-        async fetch(request: Request) {
-          const path = new URL(request.url).pathname;
-          leases.push(`${name}${path}`);
-          return Response.json({ admitted: true, availableUsd: 10, requiredUsd: 0.1 });
-        },
-      };
-    },
-  };
-  const bindings = {
-    INFERENCE_DEFERRED_ADMISSION: "true",
-    INFERENCE_OPTIMISTIC_BILLING: "true",
-    INFERENCE_SNAPSHOT_ADMISSION_ENABLED: "false",
-    INFERENCE_ADMISSION_GATES: gates,
-  };
-  const params = (snapshot: InferenceAdmissionSnapshot | undefined) => ({
-    context: {
-      organizationId: ORG,
-      userId: USER,
-      model: "openai/gpt-5-mini",
-      provider: "openai",
-      billingSource: "openai",
-      requestId: crypto.randomUUID(),
-    },
-    estimatedInputTokens: 0,
-    estimatedOutputTokens: 0,
-    flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
-    executionCtx: { waitUntil() {} },
-    admissionSnapshot: snapshot,
-  });
-
-  async function admit(snapshot: InferenceAdmissionSnapshot | undefined) {
-    const { admitOrganizationInference } = await import("./organization-inference-admission");
-    primaryArmed = true;
-    primaryTouches = 0;
-    try {
-      return await runWithCloudBindingsAsync(bindings, () =>
-        admitOrganizationInference(params(snapshot)),
-      );
-    } finally {
-      primaryArmed = false;
-    }
+describe("ordinary Worker billing retains primary authority", () => {
+  for (const snapshotFlag of ["false", "true"]) {
+    test(`a cached clear hold cannot bypass primary admission with snapshot flag ${snapshotFlag}`, async () => {
+      const { admitOrganizationInference } = await import("./organization-inference-admission");
+      primaryArmed = true;
+      primaryTouches = 0;
+      try {
+        await expect(
+          runWithCloudBindingsAsync(
+            {
+              INFERENCE_DEFERRED_ADMISSION: "true",
+              INFERENCE_OPTIMISTIC_BILLING: "true",
+              INFERENCE_SNAPSHOT_ADMISSION_ENABLED: snapshotFlag,
+            },
+            () =>
+              admitOrganizationInference({
+                context: {
+                  organizationId: ORG,
+                  userId: USER,
+                  model: "openai/gpt-5-mini",
+                  provider: "openai",
+                  billingSource: "openai",
+                  requestId: crypto.randomUUID(),
+                },
+                estimatedInputTokens: 0,
+                estimatedOutputTokens: 0,
+                flatCost: { totalCost: 0.1, baseTotalCost: 0.1, platformMarkup: 0 },
+                executionCtx: { waitUntil() {} },
+                admissionSnapshot: admission(),
+              }),
+          ),
+        ).rejects.toThrow();
+        expect(primaryTouches).toBeGreaterThan(0);
+      } finally {
+        primaryArmed = false;
+      }
+    });
   }
-
-  test("a cached snapshot leases from the Durable Object with zero primary queries, even with snapshot admission off", async () => {
-    leases.length = 0;
-    // An hour-old balance observation is still admitted: the gate fences it.
-    const snapshot = admission();
-    snapshot.balance.balanceAt = Date.now() - 60 * 60 * 1_000;
-    const admitted = await admit(snapshot);
-    expect(primaryTouches).toBe(0);
-    expect(admitted.mode).toBe("durable_object_debit");
-    expect(leases).toEqual([`${ORG}/lease`]);
-  });
-
-  test("an active billing hold in the snapshot refuses without the primary", async () => {
-    await expect(admit({ ...admission(), billingHold: true })).rejects.toMatchObject({
-      name: "BillingHoldActiveError",
-    });
-    expect(primaryTouches).toBe(0);
-  });
-
-  test("no usable snapshot is a retryable warming error, never a primary fallback", async () => {
-    await expect(admit(undefined)).rejects.toMatchObject({
-      name: "InferenceAdmissionSnapshotWarmingError",
-    });
-    expect(primaryTouches).toBe(0);
-    await expect(admit({ ...admission(), billingHold: undefined })).rejects.toMatchObject({
-      name: "InferenceAdmissionSnapshotWarmingError",
-    });
-    expect(primaryTouches).toBe(0);
-  });
 });
 
 describe("mobile lifecycle cache fences", () => {
