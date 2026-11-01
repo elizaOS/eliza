@@ -1122,8 +1122,12 @@ function citeRead(f: LiveFeed, id = "step:1") {
   f.output.outcomeCoverage = [{ ...f.coverage, evidenceStepIds: [id] }];
 }
 
+/** The opaque function name Qwen gave its verdict in live turn tj-929faaf3d187f1. */
+const liveVerdictFunction =
+  "functions.3e67d62a436f5c14f9e3f38318359c7b4dc3c5732d91f3180327db725faa3708$0b85e3755da244b3b09893e16d757de1";
+
 /** Qwen's native tool-call dialect around a reply (live turn tj-929faaf3d187f1). */
-function nativeToolCall(body: string, name = "functions.3e67d62a$0b85e375") {
+function nativeToolCall(body: string, name = liveVerdictFunction) {
   return `<tool_call>\n<function=${name}>\n${body}\n</function>\n</tool_call>`;
 }
 
@@ -1147,11 +1151,16 @@ describe("required Calendar read cited by a real step ID", () => {
   );
   // Live cold voice turn tj-929faaf3d187f1: Qwen wrapped a complete verdict in
   // its native tool-call dialect; rejecting it cost a REPLY replan and a
-  // second evaluator call. Only the whole-response, non-action envelope opens.
+  // second evaluator call. Only the whole-response envelope under that opaque
+  // name opens; an action in any case or namespace keeps its identity.
   it.each([
-    ["functions.3e67d62a$0b85e375", "", true],
+    [liveVerdictFunction, "", true],
     ["CALENDAR", "", false],
-    ["functions.3e67d62a$0b85e375", "\nDone.", false],
+    ["functions.CALENDAR", "", false],
+    ["tools.CALENDAR", "", false],
+    ["calendar", "", false],
+    ["functions.calendar", "", false],
+    [liveVerdictFunction, "\nDone.", false],
   ])(
     "reads a native <function=%s> verdict envelope only when it is the whole non-action response",
     async (name, trailing, accepted) => {
