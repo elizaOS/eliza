@@ -711,6 +711,10 @@ export class InferenceAdmissionGate {
     return this.fundedBudgetController;
   }
 
+  // Wall clock when this instance was constructed. A caller that sent its
+  // request before this time paid the object's activation on that request.
+  private readonly activatedAt = Date.now();
+
   constructor(state: DurableObjectState, env: AppEnv["Bindings"]) {
     this.state = state;
     this.env = env;
@@ -1828,7 +1832,28 @@ export class InferenceAdmissionGate {
   }
 
   async fetch(request: Request): Promise<Response> {
+    // Workers clocks advance only across I/O, so this is the event's arrival
+    // time. Callers compare it with their send time to separate routing and
+    // activation from handler work and the output gate's storage commit.
+    const enteredAt = Date.now();
     const handlerStartedAt = performance.now();
+    const routed = await this.route(request);
+    if (routed.status === 101) return routed;
+    // A handler may return a Response with immutable headers; copy it once.
+    const response = new Response(routed.body, routed);
+    // Internal binding telemetry only. It includes body parsing and our
+    // queues, but excludes time before handler entry and the platform output
+    // gate that commits storage before delivering the response.
+    response.headers.set(
+      "x-eliza-gate-handler-ms",
+      String(Math.max(0, performance.now() - handlerStartedAt)),
+    );
+    response.headers.set("x-eliza-gate-entered-at", String(enteredAt));
+    response.headers.set("x-eliza-gate-activated-at", String(this.activatedAt));
+    return response;
+  }
+
+  private async route(request: Request): Promise<Response> {
     if (
       new URL(request.url).pathname === "/speech/subscribe" &&
       request.headers.get("Upgrade")?.toLowerCase() === "websocket"
@@ -1961,20 +1986,11 @@ export class InferenceAdmissionGate {
       );
     }
     if (path === "/rate-limit" || path === "/rate-limit-warm") {
-      const response = await this.serializeRateLimit(() =>
+      return await this.serializeRateLimit(() =>
         path === "/rate-limit"
           ? this.rateLimit(body as RateLimitRequest)
           : this.warmRateLimit(),
       );
-      // Internal binding telemetry only. This includes body parsing and our
-      // queue, but excludes time before handler entry and the platform output
-      // gate that commits storage before delivering the response. Do not label
-      // the difference from caller elapsed time as network time alone.
-      response.headers.set(
-        "x-eliza-gate-handler-ms",
-        String(Math.max(0, performance.now() - handlerStartedAt)),
-      );
-      return response;
     }
     if (path === "/rate-limit-v2-cutover") {
       return await this.serializeRateLimit(() =>

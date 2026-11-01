@@ -241,6 +241,11 @@ function rateLimitGateStub(organizationId: string): RuntimeDurableObjectStub {
   return namespace.getByName(`${RATE_LIMIT_GATE_PREFIX}${organizationId}`);
 }
 
+function gateTimingHeader(response: Response, name: string): number | undefined {
+  const value = response.headers.get(name);
+  return value !== null && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value) ? Number(value) : undefined;
+}
+
 async function gateFetch(
   organizationId: string,
   path: string,
@@ -248,24 +253,32 @@ async function gateFetch(
   stub = gateStub(organizationId),
   signal?: AbortSignal,
 ): Promise<Response> {
+  let sentAt = 0;
   try {
     return await observeInferenceDependency(
       "durable_object",
       path,
-      () =>
-        stub.fetch(
+      () => {
+        sentAt = Date.now();
+        return stub.fetch(
           new Request(`${GATE_ORIGIN}${path}`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body),
             signal,
           }),
-        ),
+        );
+      },
       (response) => {
-        const value = response.headers.get("x-eliza-gate-handler-ms");
-        return value !== null && /^(?:0|[1-9]\d*)(?:\.\d+)?$/.test(value)
-          ? Number(value)
-          : undefined;
+        const handlerMs = gateTimingHeader(response, "x-eliza-gate-handler-ms");
+        const enteredAt = gateTimingHeader(response, "x-eliza-gate-entered-at");
+        const activatedAt = gateTimingHeader(response, "x-eliza-gate-activated-at");
+        return {
+          handlerMs,
+          entryMs: enteredAt === undefined ? undefined : enteredAt - sentAt,
+          // The object was constructed for this call: activation was on path.
+          cold: activatedAt === undefined ? undefined : activatedAt >= sentAt,
+        };
       },
     );
   } catch (error) {
