@@ -28,9 +28,11 @@ import { Hono } from "hono";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
-// Production values: strong revocation is off (the Worker path is cache-only
-// regardless), and the compatibility limiter uses Redis REST. The combined
-// auth cache uses the in-memory test backend.
+// Production values: strong revocation is off, so the combined auth cache is
+// not qualified and Worker requests authorize authoritatively; the cache-only
+// limiter then finds a cold organization projection and returns the retryable
+// warming contract. The compatibility limiter uses Redis REST, and the cache
+// uses the in-memory test backend.
 process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
 process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
 process.env.CACHE_BACKEND = "memory";
@@ -373,7 +375,20 @@ async function generatePersonalMediaOnce(
 
 describe("Worker speech rate limit without an admission snapshot", () => {
   test("cold STT, TTS and relay bootstrap expose a retryable auth code before dispatch", async () => {
+    const [
+      { cache },
+      { CacheKeys },
+      { resetInferenceAdmissionMemoryCacheForTests },
+    ] = await Promise.all([
+      import("@elizaos/cloud-shared/lib/cache/client"),
+      import("@elizaos/cloud-shared/lib/cache/keys"),
+      import("@elizaos/cloud-shared/lib/services/inference-admission-snapshot"),
+    ]);
     for (const route of ["stt", "tts", "consent", "session"] as const) {
+      // The cold keys share ORG; coldness is the organization's admission
+      // projection, so each route starts from an evicted projection.
+      resetInferenceAdmissionMemoryCacheForTests();
+      await cache.del(CacheKeys.inference.orgAdmission(ORG));
       const response = await speakOnce(route, keys[`cold_${route}`].raw);
       expect(response.status).toBe(503);
       expect(response.headers.get("Retry-After")).toBe("1");
