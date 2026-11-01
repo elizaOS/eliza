@@ -10,6 +10,7 @@ import type {
   MessageReplyRecoveryContext,
   PlannerTrajectory,
   ResponseHandlerEvaluationRunResult,
+  StateData,
 } from "@elizaos/core";
 import {
   appendContextEvent,
@@ -236,6 +237,40 @@ export function actionOwnsResponseHandlerEarlyReply(
 
   if (resolvedCandidates.size !== 1) return false;
   return resolvedCandidates.values().next().value?.suppressEarlyReply === true;
+}
+
+/**
+ * The registered id and label of the one view Stage 1 plans to open with other
+ * work. Navigation policy asks the model to name that destination, so an early
+ * acknowledgement may open with it ("Calendar. One sec."). Only the host's
+ * current registry evidence names it; a model-chosen viewId that matches no
+ * single registered view names nothing. This grants no navigation authority.
+ */
+function plannedNavigationCue(
+  visualContinuation: unknown,
+  providers: StateData["providers"],
+): readonly string[] | undefined {
+  const evidence = providers?.VIEW_NAVIGATION?.data;
+  if (
+    !isRecord(visualContinuation) ||
+    visualContinuation.disposition !== "planning" ||
+    typeof visualContinuation.viewId !== "string" ||
+    !Array.isArray(evidence?.views)
+  )
+    return;
+  const target = visualContinuation.viewId.trim().toLowerCase();
+  const views = evidence.views.filter(
+    (view): view is { id: string; label: string } =>
+      isRecord(view) &&
+      typeof view.id === "string" &&
+      typeof view.label === "string" &&
+      [view.id, view.label].some(
+        (name) => name.trim().toLowerCase() === target,
+      ),
+  );
+  return target && views.length === 1
+    ? [views[0].id, views[0].label]
+    : undefined;
 }
 
 export async function runV5MessageRuntimeStage1(
@@ -1058,11 +1093,14 @@ export async function runV5MessageRuntimeStage1(
       // an answer) waits for the normal grounded final path. Never fabricate a
       // substitute.
       if (
-        !(
-          args.onPlanningAcknowledgment
-            ? replyIsClaimSafeAcknowledgment
-            : replyClaimsInProgressWork
-        )(earlyReplyText)
+        !(args.onPlanningAcknowledgment
+          ? replyIsClaimSafeAcknowledgment(earlyReplyText, {
+              plannedDestination: plannedNavigationCue(
+                fieldRunResult?.parsed.visualContinuation,
+                args.state.data.providers,
+              ),
+            })
+          : replyClaimsInProgressWork(earlyReplyText))
       )
         earlyReplyText = "";
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({

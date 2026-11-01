@@ -941,4 +941,142 @@ describe("planning progress delivery boundaries", () => {
         );
     },
   );
+  // Navigation policy asks Stage 1 to name the requested view, so a planned
+  // destination may lead the acknowledgement (live tj-6ae578d9ff0774). Only
+  // the registered id or label of that one planned view is a cue; the rest
+  // must still be progress, and the whole draft is what is spoken.
+  it.each([
+    { draft: "Calendar. One sec.", route: "planned", spoken: true },
+    {
+      draft: "calendar. Let me check your calendar.",
+      route: "planned",
+      spoken: true,
+    },
+    { draft: "Calendar. One sec.", route: "none", spoken: false },
+    { draft: "Calendar. One sec.", route: "direct", spoken: false },
+    { draft: "Calendar. One sec.", route: "unregistered", spoken: false },
+    { draft: "Calendar. One sec.", route: "absent", spoken: false },
+    // The live draft: write gerunds with an event name, an indefinite object
+    // and a clock time, before any tool ran.
+    {
+      draft: "Calendar. Killing coffee and putting a launch at noon.",
+      route: "planned",
+      spoken: false,
+    },
+    { draft: "Calendar.", route: "planned", spoken: false },
+    { draft: "Calendar. Done.", route: "planned", spoken: false },
+    { draft: "Calendar. Deleted coffee.", route: "planned", spoken: false },
+    { draft: "Calendar. Your launch is set.", route: "planned", spoken: false },
+    { draft: "Calendar. Coffee's gone.", route: "planned", spoken: false },
+    { draft: "Notes. One sec.", route: "planned", spoken: false },
+  ] as const)(
+    "speaks a $route destination cue only before progress: $draft",
+    async ({ draft, route, spoken }) => {
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.channelType = ChannelType.VOICE_DM;
+      turn.content.text =
+        "Can you open the calendar and delete the coffee event and create a new event to have a launch at noon?";
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      h.runtime.registerResponseHandlerFieldEvaluator({
+        name: "visualContinuation",
+        description: "Navigation judgment for the complete request.",
+        schema: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            disposition: { type: "string" },
+            viewId: { type: "string" },
+            reason: { type: "string" },
+          },
+          required: ["disposition", "viewId", "reason"],
+        },
+      });
+      // The host navigation evaluator's registry evidence and planning patch.
+      h.runtime.registerResponseHandlerEvaluator({
+        name: "test.view-navigation",
+        priority: 60,
+        shouldRun: () => true,
+        evaluate: ({ state }) => {
+          if (route === "absent")
+            return { requiresTool: true, clearReply: true };
+          state.data.providers ??= {};
+          state.data.providers.VIEW_NAVIGATION = {
+            data: {
+              views: [
+                ...(route === "unregistered"
+                  ? []
+                  : [{ id: "calendar", label: "Calendar" }]),
+                { id: "notes", label: "Notes" },
+              ],
+              currentViewId: "chat",
+            },
+          };
+          return { requiresTool: true, clearReply: true };
+        },
+      });
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async (_rt, params) => {
+          const response = stage1DirectReply(
+            draft,
+            params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+              ?.parameters?.properties?.replyText?.type === "array",
+          );
+          Object.assign(response.toolCalls[0].arguments, {
+            contexts: ["general"],
+            intents: [
+              "Open the Calendar view",
+              "Delete the coffee event",
+              "Create a launch event at noon",
+            ],
+            requiresTool: true,
+            replyEffectStatus: "pending",
+            visualContinuation: {
+              disposition:
+                route === "none"
+                  ? "none"
+                  : route === "direct"
+                    ? "direct"
+                    : "planning",
+              viewId: route === "none" ? "" : "calendar",
+              reason: "Calendar navigation with calendar record changes.",
+            },
+          });
+          return response;
+        },
+        "destination-cue",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () =>
+          JSON.stringify({
+            thought: "The request is resolved.",
+            toolCalls: [],
+            messageToUser: h.replyText,
+          }),
+        "destination-cue",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            progress.push(text);
+          },
+        },
+      );
+      expect(progress).toEqual(spoken ? [draft] : []);
+      expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
+      expect(await h.storedReplies()).toHaveLength(1);
+    },
+  );
 });

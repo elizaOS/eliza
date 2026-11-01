@@ -1074,8 +1074,18 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * spelled counts, ordinals, quantity words or question marks, is at most 120
  * characters, and passes the completed-effect and empty-state detectors.
  * Callers still run the planned-reply egress checks on an accepted one.
+ *
+ * Stage 1 is asked to name a requested view. When the caller passes the
+ * registered id and label of a view whose navigation is planned with other
+ * work, a first sentence that is exactly one of them ("Calendar.") is that
+ * cue and is not read as progress; the sentences after it must still be
+ * progress, and the checks on the whole reply above still apply. A
+ * destination alone, a second one or any other word is not stripped.
  */
-export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
+export function replyIsClaimSafeAcknowledgment(
+  reply: string,
+  options: { plannedDestination?: readonly string[] } = {},
+): boolean {
   const text = reply.trim();
   if (!text || text.length > ACKNOWLEDGMENT_MAX_LENGTH) return false;
   if (
@@ -1084,13 +1094,26 @@ export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
     ACKNOWLEDGMENT_DATA_TOKEN.test(text)
   )
     return false;
-  const words = text
+  let words = text
     .replace(/\s+/gu, " ")
     .replace(ACKNOWLEDGMENT_PERSON, `check with ${ACKNOWLEDGMENT_PERSON_MARK}`)
     .toLowerCase()
     .replace(/[‘’ʼ]/gu, "'")
     .replace(/ ?, ?/gu, ", ")
     .replace(/[.!…]+$/u, "");
+  const cue = /^([^.!…]+)[.!…]+ /u.exec(words);
+  if (
+    cue &&
+    options.plannedDestination?.some(
+      (name) =>
+        name
+          .trim()
+          .replace(/\s+/gu, " ")
+          .toLowerCase()
+          .replace(/[‘’ʼ]/gu, "'") === cue[1],
+    )
+  )
+    words = words.slice(cue[0].length);
   const assent = words.startsWith("sure! ");
   const sentences = words.slice(assent ? "sure! ".length : 0).split(/[.!…]+ /u);
   return (

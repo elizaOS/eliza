@@ -2590,6 +2590,91 @@ describe("replyIsClaimSafeAcknowledgment", () => {
   ])("drops natural wording outside the closed grammar: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
+
+  // Navigation policy asks Stage 1 to name the requested view, so a view
+  // planned with other work may lead the acknowledgement as its own sentence
+  // (live tj-6ae578d9ff0774). The caller passes that one registered view's id
+  // and label; everything after it is read as before.
+  const plannedDestination = ["calendar", "Calendar"];
+  it.each([
+    "Calendar. One sec.",
+    "Calendar. On it.",
+    "calendar. Let me check your calendar.",
+    "Calendar! Let me create that event.",
+    "Calendar… Checking your calendar now.",
+    "Calendar. One sec. Let me check your calendar. On it.",
+  ])("admits a planned destination before progress: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply, { plannedDestination })).toBe(
+      true,
+    );
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+    expect(
+      evaluatePlannedReplyEgress({
+        reply,
+        pendingWork: true,
+        providers: {
+          VIEW_NAVIGATION: {
+            data: {
+              views: [{ id: "calendar", label: "Calendar" }],
+              currentViewId: "chat",
+            },
+          },
+        } as never,
+        actionResults: [],
+        actions: [],
+      }).verdict,
+    ).not.toBe("reject");
+  });
+
+  it.each([
+    // The live draft. Its remainder is outside the grammar: subjectless write
+    // gerunds report work under way before any tool ran ("Saving your note
+    // now." above), "coffee" and "launch" are open names, "a launch" is an
+    // indefinite object and "noon" is a clock time.
+    "Calendar. Killing coffee and putting a launch at noon.",
+    "Calendar. Killing coffee and putting a launch.",
+    "Killing coffee and putting a launch at noon.",
+    // Completion, state or a result after the destination.
+    "Calendar. Done.",
+    "Calendar. Deleted coffee.",
+    "Deleted coffee.",
+    "Calendar. Your launch is set.",
+    "Calendar. Coffee's gone.",
+    "Calendar. All set.",
+    "Calendar. Opening calendar now.",
+    "Calendar. Let me check: you have 3 meetings today.",
+    "Calendar is open. One sec.",
+    // The destination alone, twice, inside a longer sentence or after assent.
+    "Calendar.",
+    "Calendar. Calendar. One sec.",
+    "The calendar. One sec.",
+    "Calendar view. One sec.",
+    "Calendar, one sec.",
+    "Sure! Calendar. Let me check your calendar.",
+    // Another view or a word that is no planned destination.
+    "Notes. One sec.",
+    "Done. One sec.",
+    "Sent. Let me check your calendar.",
+  ])("drops a claim beside a planned destination: %s", (reply) => {
+    expect(replyIsClaimSafeAcknowledgment(reply, { plannedDestination })).toBe(
+      false,
+    );
+  });
+
+  // A planned destination changes nothing that does not open with it.
+  it.each([
+    ["Let me check your calendar.", true],
+    ["Let me open Calendar.", true],
+    ["On it. Checking your calendar. One sec.", true],
+    ["Opening Calendar now.", false],
+    ["Sent.", false],
+    ["Checking your calendar and nada", false],
+  ] as const)("reads other replies as before: %s", (reply, admitted) => {
+    expect(replyIsClaimSafeAcknowledgment(reply, { plannedDestination })).toBe(
+      admitted,
+    );
+    expect(replyIsClaimSafeAcknowledgment(reply)).toBe(admitted);
+  });
 });
 
 describe("core.simple_progress_promise", () => {
