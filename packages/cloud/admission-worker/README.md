@@ -1,15 +1,17 @@
-# Staging inference admission Worker
+# Inference admission Worker
 
 This Worker exports the canonical API `InferenceAdmissionGate` in a separate
 isolate. It has no public admission or accounting route. Actor names, persisted
 receipts, quotas, revocation generations and lease state retain their existing
 ownership.
 
-The checked-in configuration describes the post-transfer staging topology:
-the API retains the transfer tombstone, its admission binding points here, and
-this Worker has the SQLite class declaration and self-binding. Preserve the
-existing namespace; creating a replacement would split quota and financial
-state. Production configuration is unchanged.
+The top level of the checked-in configuration describes the post-transfer
+staging topology: the API retains the transfer tombstone, its admission binding
+points here, and this Worker has the SQLite class declaration and self-binding.
+Preserve the existing namespace; creating a replacement would split quota and
+financial state. `[env.production]` holds the committed phase of the same
+transfer for `eliza-cloud-admission-prod`; Root executes each phase from
+[PRODUCTION-TRANSFER.md](PRODUCTION-TRANSFER.md).
 
 Accounting recovery stays on the API through the private
 `InferenceRecoveryService` binding. The service validates the canonical recovery
@@ -24,14 +26,17 @@ Use the pinned toolchain and normal built workspace dependencies. From the root:
 
 ```bash
 bun packages/cloud/admission-worker/verify-staging-contract.ts
+bun packages/cloud/admission-worker/verify-staging-contract.ts --production
 bun run --cwd packages/cloud/api test inference-recovery-service
 bun run --cwd packages/cloud/api test inference-rate-deadline
 bun run --cwd packages/cloud/shared test inference-admission-recovery.pglite
 bun run --cwd packages/cloud/shared test sdk-provider-telemetry.integration
 bun packages/cloud/api/node_modules/wrangler/bin/wrangler.js deploy --config packages/cloud/admission-worker/wrangler.toml --dry-run --outdir test-results/admission-worker-candidate
+bun packages/cloud/api/node_modules/wrangler/bin/wrangler.js deploy --config packages/cloud/admission-worker/wrangler.toml --env production --dry-run --outdir test-results/admission-worker-production
 ```
 
 The source contract checks declarations, bindings, aliases and environment parity.
+In production mode it also accepts only one legal transfer phase.
 The RPC test checks callback transport; PGlite tests exercise canonical accounting.
 Neither establishes live namespace continuity, deployment readiness or a latency
 distribution. Verify the current namespace, receipts and exact deployed modules
