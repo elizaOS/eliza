@@ -1626,6 +1626,15 @@ export class MessageManager {
 			return;
 		}
 
+		// A server notice ("started a thread", "renamed the channel", "pinned a
+		// message", joins, boosts, follows) arrives through messageCreate with the
+		// acting member as author. It is not something they wrote: a thread
+		// notice carries the thread name as its content, which ran a full turn as
+		// if the member had said it. Slack drops its system subtypes the same way.
+		if (message.system) {
+			return;
+		}
+
 		// Discord can emit messageCreate immediately after ClientReady while the
 		// async onReady sequence is still resolving application-owner aliases.
 		// Ingesting before that boundary permanently attributes an owner message to
