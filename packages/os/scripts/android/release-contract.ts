@@ -105,7 +105,7 @@ export function validateReleaseShape(release) {
   requireThat(
     ["os-install", "lab-experiment"].includes(r.operation) &&
       r.artifactType === "factory",
-    "only OS installation and scoped lab experiments are implemented; firmware transitions and OTA need separate adapters",
+    "this contract covers OS installation and scoped lab experiments: OTA updates use channel-manifest.mjs, and firmware transitions are not implemented",
   );
   requireThat(
     r.target && token(r.target.id) && token(r.target.codename),
