@@ -2,12 +2,15 @@
  * Settings view listing the Camera / Microphone / Screen media permissions for
  * live-streaming, with a status badge and request button per row. The internal
  * `useStreamingPermissions` hook checks and requests state through
- * `navigator.permissions` / `navigator.mediaDevices` on web and the `ElizaCamera`
- * Capacitor plugin on mobile; the `mode` ("web" | "mobile") also gates which rows
- * show (Screen is web-only). Falls back to a "Not Set" state when those APIs are absent.
+ * `navigator.permissions` / `navigator.mediaDevices` on web and scoped native
+ * requests on mobile (camera through the `ElizaCamera` plugin's
+ * `requestCameraPermission`, microphone through the TalkMode plugin); the
+ * `mode` ("web" | "mobile") also gates which rows show (Screen is web-only).
+ * Falls back to a "Not Set" state when those APIs are absent.
  */
 import { Check, Loader2 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
+import { getTalkModePlugin } from "../../bridge/native-plugins";
 import { useAppSelector } from "../../state/app-store";
 import { SettingsGroup, SettingsRow } from "../settings/settings-layout";
 import { Button } from "../ui/button";
@@ -36,6 +39,9 @@ interface CameraPermissionPlugin {
   requestPermissions?: () => Promise<{
     camera: string;
     microphone: string;
+  }>;
+  requestCameraPermission?: () => Promise<{
+    camera: string;
   }>;
 }
 
@@ -209,14 +215,44 @@ function useStreamingPermissions(mode: StreamingPermissionMode) {
       });
       if (mode === "mobile") {
         try {
-          const plugin = getCameraPermissionPlugin();
-          if (!plugin?.requestPermissions) return;
-          const result = await plugin.requestPermissions();
-          setPermStates((prev) => ({
-            ...prev,
-            camera: result.camera as MediaPermissionState,
-            microphone: result.microphone as MediaPermissionState,
-          }));
+          if (id === "camera") {
+            // Scoped camera request only. The generic ElizaCamera request
+            // prompts for camera, microphone, and storage together (see
+            // #38310), so it must not run for one row's Grant button.
+            const plugin = getCameraPermissionPlugin();
+            if (typeof plugin?.requestCameraPermission !== "function") {
+              setPermissionErrors((prev) => ({
+                ...prev,
+                [id]: "Could not request device permissions.",
+              }));
+            } else {
+              const result = await plugin.requestCameraPermission();
+              setPermStates((prev) => ({
+                ...prev,
+                camera: result.camera as MediaPermissionState,
+              }));
+            }
+          } else if (id === "microphone") {
+            // Microphone uses the TalkMode plugin. This is the same scoped
+            // path the mobile permissions registry uses after #38310.
+            const talkMode = getTalkModePlugin();
+            if (typeof talkMode.requestPermissions !== "function") {
+              setPermissionErrors((prev) => ({
+                ...prev,
+                [id]: "Could not request device permissions.",
+              }));
+            } else {
+              const result = await talkMode.requestPermissions();
+              if (result.microphone) {
+                setPermStates((prev) => ({
+                  ...prev,
+                  microphone: result.microphone as MediaPermissionState,
+                }));
+              }
+            }
+          }
+          // Screen has no mobile row (it is web-only), so there is
+          // nothing to request here.
         } catch {
           setPermissionErrors((prev) => ({
             ...prev,
