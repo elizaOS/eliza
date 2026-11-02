@@ -659,6 +659,7 @@ export interface LiveCaptureOpenOptions {
   /** The capture or the agent route failed or stopped without being asked to. */
   onLost(error: unknown): void;
 }
+/** A rejection that carries `cancel` left a capture unconfirmed: `cancel` asks it again. */
 export type LiveCaptureOpener = (
   input: LiveCaptureOpenOptions,
 ) => Promise<LiveCaptureStream>;
@@ -725,7 +726,7 @@ export function createLiveDictation(
   );
   type Recording = {
     id: string;
-    capture?: LiveCaptureStream;
+    capture?: Pick<LiveCaptureStream, "cancel">;
     controller: AbortController;
     texts: string[];
     clip?: LiveDictationClip;
@@ -806,7 +807,11 @@ export function createLiveDictation(
           },
         });
       } catch (error) {
-        if (recording === current) recording = undefined;
+        if (typeof (error as { cancel?: unknown })?.cancel === "function") {
+          recording ??= current;
+          current.capture = error as Recording["capture"];
+          current.controller.abort();
+        } else if (recording === current) recording = undefined;
         throw error;
       }
       current.capture = capture;

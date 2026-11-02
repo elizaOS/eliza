@@ -128,6 +128,12 @@ const level = (value: unknown) =>
     : undefined;
 const sessionChanged = () =>
   Object.assign(Error("The agent session changed."), { status: 409 });
+/** What an open rejects with when its capture refused to stop: `cancel` asks it again. */
+const unreleased = (cancel: () => Promise<void>) =>
+  Object.assign(Error("The microphone did not confirm it was off."), {
+    code: "capture",
+    cancel,
+  });
 
 /** Most finals a native capture may hold undelivered, and finished turn ids it remembers. */
 export const NATIVE_PENDING_FINALS = 8;
@@ -376,7 +382,9 @@ export async function openNativeResidentCapture(
       },
     };
   } catch (error) {
-    await stop(true).catch(() => {});
+    await stop(true).catch(() => {
+      throw unreleased(() => stop(true));
+    });
     throw error;
   }
 }
@@ -513,7 +521,9 @@ export async function openNativeSegmentCapture(
   } catch (error) {
     input.signal.removeEventListener("abort", abort);
     stream.cancel();
-    await stopNative().catch(() => {});
+    await stopNative().catch(() => {
+      throw unreleased(stopNative);
+    });
     throw error;
   }
   const startedAt = Date.now();

@@ -171,6 +171,7 @@ export interface AssistantPorts {
   readonly conversationId: string;
   /** Throws when the owner, account, agent session, view or draft binding changed. */
   assertCurrent(): void;
+  /** A rejection that carries `cancel` left a capture unconfirmed: `cancel` asks it again. */
   listen(handlers: AssistantListenHandlers): Promise<AssistantCapture>;
   /** A new utterance began: the host pins the context the turn will be sent with. Throws when stale. */
   beginUtterance?(): void;
@@ -594,9 +595,9 @@ export class VoiceAssistantSession {
   /** Captures still closing, each with its own close (rejects when that close failed). */
   private closingCaptures = new Map<AssistantCapture, Promise<void>>();
   /** Captures not yet confirmed off: stop() asks each again, and no capture opens over one. */
-  private unreleased = new Set<AssistantCapture>();
+  private unreleased = new Set<Pick<AssistantCapture, "cancel">>();
   /** A refusal keeps the capture in `unreleased`, for the next stop() to ask again. */
-  private async discard(capture: AssistantCapture) {
+  private async discard(capture: Pick<AssistantCapture, "cancel">) {
     this.unreleased.add(capture);
     try {
       await capture.cancel();
@@ -680,6 +681,7 @@ export class VoiceAssistantSession {
         },
         (error) => {
           if (this.opening === pending) this.opening = undefined;
+          if (typeof error?.cancel === "function") this.unreleased.add(error);
           throw error;
         },
       );

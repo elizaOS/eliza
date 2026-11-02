@@ -555,6 +555,63 @@ describe("a refused native stop", () => {
     await h.session.stop();
   });
 
+  it.each([
+    ["resident", true],
+    ["segment", false],
+  ])(
+    "while a %s capture fails to start hands back the capture, and the session's Stop asks it",
+    async (_route, nativeTransport) => {
+      const bridge = fakeBridge({ nativeTransport });
+      bridge.port.startLiveCapture = async () => {
+        throw new Error("start failed");
+      };
+      const allow = refusingStops(bridge);
+      const voice = createNativeLiveVoice({
+        port: bridge.port,
+        available: () => true,
+        resident: residentAgent().resident,
+        endedTimeoutMs: 1,
+      });
+      const session = new VoiceAssistantSession({
+        conversationId: "room-1",
+        assertCurrent() {},
+        listen: voice.assistantListener(),
+        send: () => new Promise(() => {}),
+        speak: async () => {},
+      });
+      await expect(session.start()).rejects.toMatchObject({ code: "capture" });
+      await expect(session.stop()).rejects.toMatchObject({ code: "capture" });
+      const asked = bridge.stops.length;
+      allow();
+      await session.stop();
+      expect(bridge.stops.length).toBeGreaterThan(asked);
+    },
+  );
+
+  it("while live dictation fails to start keeps the capture for the host's cancel", async () => {
+    const bridge = fakeBridge();
+    const start = bridge.port.startLiveCapture;
+    bridge.port.startLiveCapture = async () => {
+      throw new Error("start failed");
+    };
+    const allow = refusingStops(bridge);
+    const voice = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => true,
+      resident: residentAgent().resident,
+    });
+    const dictation = voice.dictation();
+    await expect(dictation.startRecording()).rejects.toMatchObject({
+      code: "capture",
+    });
+    await expect(dictation.cancelRecording()).rejects.toThrow("refused");
+    allow();
+    bridge.port.startLiveCapture = start;
+    await dictation.cancelRecording();
+    await dictation.startRecording();
+    expect(bridge.starts).toHaveLength(1);
+  });
+
   it("is no release for live dictation: the repeat reaches the bridge", async () => {
     const bridge = fakeBridge();
     const voice = createNativeLiveVoice({
