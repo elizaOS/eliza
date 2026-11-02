@@ -12,6 +12,7 @@ import type {
 } from "@elizaos/core";
 import {
   recentConversationTexts as collectRecentConversationTexts,
+  getUserMessageText,
   ModelType,
   parseJsonModelRecord,
   resolveActionArgs,
@@ -320,12 +321,19 @@ async function handleBlock(
   // Fall back to LLM-driven planning when the planner did not supply an
   // explicit selection — vague intents like "block social media" need to be
   // resolved against the device's actual installed-app inventory.
+  // Read the user's words, not the raw rendered text: under document
+  // augmentation, content.text carries the preamble, the recalled documents
+  // and the real request wrapped in <user_request>, and a connector envelope
+  // prefixes the user's words, so an app named only in a document or in the
+  // envelope would otherwise be inferred as a block target.
   const inferredPackageNames =
     explicitPackageNames.length === 0 &&
     !appTokens &&
     status.platform === "android"
       ? inferAndroidPackageNamesFromIntent(
-          [params.intent, getMessageText(message)].filter(Boolean).join("\n"),
+          [params.intent, getUserMessageText(message)]
+            .filter(Boolean)
+            .join("\n"),
           installedApps,
         )
       : [];
