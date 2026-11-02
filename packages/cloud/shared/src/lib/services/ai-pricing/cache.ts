@@ -25,8 +25,8 @@ export interface PricingCacheReadOptions {
   /**
    * Keep-warm callers only, never a request path: hydrate through the same
    * loader and await the Worker-cache write, with the key and TTL that
-   * `cacheOnly` reads use. An entry this isolate wrote within the fresh window
-   * is not written again.
+   * `cacheOnly` reads use, and reject when the write did not land. An entry
+   * this isolate wrote within the fresh window is not written again.
    */
   warmWorkerCache?: boolean;
 }
@@ -201,7 +201,7 @@ const textPricingCache = new Map<string, CachedTextPricingRates>();
 const textPricingInFlight = new Map<string, Promise<TokenPricingRates>>();
 const textPricingPersistenceInFlight = new Map<
   string,
-  Promise<TokenPricingRates>
+  Promise<CachedTextPricingRates>
 >();
 const textPricingFailures = new Map<string, number>();
 
@@ -343,12 +343,12 @@ function persistTextPricingRates(
   cacheKey: string,
   required: { input: boolean; output: boolean },
   loader: () => Promise<TokenPricingRates>,
-): Promise<TokenPricingRates> {
+): Promise<CachedTextPricingRates> {
   const existing = textPricingPersistenceInFlight.get(cacheKey);
   if (existing) return existing;
 
   const persistence = loadTextPricingRates(cacheKey, required, loader).then(
-    async (rates) => {
+    async () => {
       const record = textPricingCache.get(cacheKey);
       if (!record) {
         throw new Error(
@@ -356,7 +356,7 @@ function persistTextPricingRates(
         );
       }
       await observePricingCacheWrite(cacheKey, record);
-      return rates;
+      return record;
     },
   );
   textPricingPersistenceInFlight.set(cacheKey, persistence);
@@ -428,7 +428,11 @@ export async function getCachedTextPricingRates(
   const local = readLocalTextPricingRates(cacheKey, required);
   if (options.warmWorkerCache) {
     if (local && !local.stale && workerCacheRecords.has(local.record)) return local.record.rates;
-    return await persistTextPricingRates(cacheKey, required, loader);
+    const record = await persistTextPricingRates(cacheKey, required, loader);
+    // The request path's hydration only logs a write the Worker cache did not
+    // take; a keep-warm that left no Worker-cache entry has failed.
+    if (!workerCacheRecords.has(record)) throw new AiPricingCacheUnavailableError();
+    return record.rates;
   }
   if (local && !local.stale) {
     return local.record.rates;
