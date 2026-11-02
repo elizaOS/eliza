@@ -376,6 +376,11 @@ export function createVoiceSessionClient(
   // clean break-before-make rotation instead of minting repeatedly.
   let standbyAttempted = false;
   let lastUplinkVoiceAtMs: number | null = null;
+  // The last committed user turn on the live session until its `usage` or
+  // `interrupted`. A `bye` before then aborts the canonical request.
+  let unsettledTurnTraceId: string | null = null;
+  // A next session refused for a reason a re-mint would only repeat.
+  let rotationRefusedCode: string | null = null;
   let ownership: VoiceSessionLease | null = null;
   let disposed = false;
   let lifecycleGeneration = 0;
@@ -694,6 +699,7 @@ export function createVoiceSessionClient(
         // budget-refill decision reads on the next transport loss.
         lastLiveAtMs = now();
         everLiveThisLifecycle = true;
+        unsettledTurnTraceId = null;
         // Client-owned: begin capture, then listening.
         void startCapture(generation, socket);
         break;
@@ -706,6 +712,7 @@ export function createVoiceSessionClient(
         // wait for. The reducer owns the emptiness predicate (trim-aligned
         // with the server's dispatch gate); this checks only its verdict.
         if (state.phase === "complete") setState(loopToListening(state));
+        else unsettledTurnTraceId = event.traceId;
         break;
       case "llm_first_text":
         mark("llm_first_text", event.traceId);
@@ -746,6 +753,7 @@ export function createVoiceSessionClient(
         playbackEnd = null;
         playback?.flush();
         mark("interrupted", event.traceId);
+        if (event.traceId === unsettledTurnTraceId) unsettledTurnTraceId = null;
         setState(loopToListening(state));
         break;
       case "error":
@@ -770,6 +778,7 @@ export function createVoiceSessionClient(
         }
         break;
       case "usage":
+        if (event.traceId === unsettledTurnTraceId) unsettledTurnTraceId = null;
         // A deliberate silent turn has no playback completion callback.
         if (state.phase === "complete") setState(loopToListening(state));
         break;
@@ -974,6 +983,7 @@ export function createVoiceSessionClient(
     clearRotationTimer();
     rotationDeadlineMs = null;
     standbyAttempted = false;
+    rotationRefusedCode = null;
     if (rotationLeadMs <= 0) return;
     const expiresAtMs = parseExpiresAtMs(minted.expiresAt);
     if (expiresAtMs === null) return;
@@ -1008,17 +1018,25 @@ export function createVoiceSessionClient(
       const next = standby;
       if (next?.ready) {
         // Until half the fallback lead remains, a ready standby also waits
-        // for a quiet microphone; after that any idle boundary switches.
+        // for the last committed turn to settle (`bye` would abort its
+        // canonical request and drop its late reply frames) and for a quiet
+        // microphone; after that any idle boundary switches.
         if (
           remainingMs <= rotationLeadMs / 2 ||
-          microphoneMuted ||
-          lastUplinkVoiceAtMs === null ||
-          now() - lastUplinkVoiceAtMs >= ROTATION_QUIET_MS
+          (unsettledTurnTraceId === null &&
+            (microphoneMuted ||
+              lastUplinkVoiceAtMs === null ||
+              now() - lastUplinkVoiceAtMs >= ROTATION_QUIET_MS))
         ) {
           promoteStandby(next, next.ready, generation, socket);
           return;
         }
-      } else if (remainingMs <= rotationLeadMs && !next && !standbyMint) {
+      } else if (
+        remainingMs <= rotationLeadMs &&
+        !next &&
+        !standbyMint &&
+        rotationRefusedCode === null
+      ) {
         mark("token_rotation", state.traceId);
         requestRecovery("token_rotation", generation, socket, {
           budgeted: false,
@@ -1077,6 +1095,10 @@ export function createVoiceSessionClient(
         attemptRotation(generation);
       }
     } else if (event?.t === "error" && !event.retryable) {
+      // A re-mint would be refused the same way, so no fallback rotation runs;
+      // the live session keeps going until it is cut.
+      if (NON_RECOVERABLE_SERVER_ERROR_CODES.has(event.code))
+        rotationRefusedCode = event.code;
       discardStandby(`server_error:${event.code}`);
     }
   }
@@ -1100,6 +1122,7 @@ export function createVoiceSessionClient(
     playbackCompletionSupported = ready.playbackCompletion === true;
     lastUiContext = undefined;
     lastLiveAtMs = now();
+    unsettledTurnTraceId = null;
     mark("token_rotation", state.traceId);
     setState({
       ...state,
@@ -1225,6 +1248,33 @@ export function createVoiceSessionClient(
       reconnectsUsed = 0;
     }
     lastLiveAtMs = null;
+    // A session prepared for rotation replaces the lost one with no new mint:
+    // the planned rotation completing, so it spends no reconnect budget.
+    if (standbyMint) await standbyMint;
+    if (!isLifecycleCurrent(generation) || intentionalClose) return;
+    const next = standby;
+    if (next) {
+      standby = null;
+      mark("token_rotation_takeover", state.traceId);
+      ws = next.socket;
+      connPhase = next.opened ? "open" : "connecting";
+      uiContextSupported = false;
+      lastUiContext = undefined;
+      scheduleRotation(next.minted, generation);
+      // A stored `ready` takes the normal ready path; a pending one arrives
+      // on the now-live socket.
+      if (next.ready) handleServerEvent(next.ready, generation, next.socket);
+      return;
+    }
+    if (rotationRefusedCode !== null) {
+      // The next session was already refused for good; end quietly.
+      mark(
+        `not_reached(server_terminal:${rotationRefusedCode})`,
+        state.traceId,
+      );
+      await stop();
+      return;
+    }
     const reconnectCap = everLiveThisLifecycle
       ? maxReconnects
       : preLiveMaxReconnects;
@@ -1251,24 +1301,6 @@ export function createVoiceSessionClient(
           setState({ ...state, phase: "connecting", lastError: null });
         }
         if (attempt > 1) await waitForReconnectBackoff(attempt, generation);
-        if (attempt === 1) {
-          // A session freshly minted for rotation replaces the lost one; its
-          // stored or still pending `ready` takes the normal ready path.
-          if (standbyMint) await standbyMint;
-          assertLifecycleCurrent(generation);
-          const next = standby;
-          if (next) {
-            standby = null;
-            ws = next.socket;
-            connPhase = next.opened ? "open" : "connecting";
-            uiContextSupported = false;
-            lastUiContext = undefined;
-            scheduleRotation(next.minted, generation);
-            if (next.ready)
-              handleServerEvent(next.ready, generation, next.socket);
-            return;
-          }
-        }
         // Reconnect ALWAYS re-mints; the old token is revoked/expired and
         // cannot reconnect (contract §7.1).
         const minted = await mint(generation);

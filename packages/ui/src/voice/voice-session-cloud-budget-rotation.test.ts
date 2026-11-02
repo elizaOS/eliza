@@ -463,6 +463,158 @@ test("a turn still running at hard expiry hands over to the ready next session w
   expect(h.bodies.some((body) => "text" in body)).toBe(false);
   expect(h.errors).toHaveLength(0);
 });
+const eventTypes = (h: ReturnType<typeof harness>) =>
+  h.events.map((event) => (event as { t: string }).t);
+test("a finished reply whose turn has not settled keeps the live session until usage, so its late frames arrive", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const [live] = h.sockets;
+  live.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  live.frame({ t: "speaking_start", traceId: "turn-1" });
+  await h.advance(45000);
+  expect(h.marks).toContain("token_rotation_standby_ready");
+  live.frame({ t: "speaking_end", traceId: "turn-1" });
+  await h.advance(3000);
+  // Playback is done, but bye now would abort the canonical turn.
+  expect(h.client.state.phase).toBe("listening");
+  expect(saidBye(live)).toBe(false);
+  live.frame({ t: "reply_complete", traceId: "turn-1" });
+  live.frame({ t: "navigate_view", viewId: "notes", traceId: "turn-1" });
+  live.frame({ t: "usage", sttMs: 1000, ttsChars: 12, traceId: "turn-1" });
+  await h.advance(1000);
+  expect(saidBye(live)).toBe(true);
+  expect(eventTypes(h)).toEqual(
+    expect.arrayContaining(["reply_complete", "navigate_view", "usage"]),
+  );
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.mints).toBe(2);
+  expect(h.marks.some((mark) => mark.startsWith("reconnect_remint"))).toBe(
+    false,
+  );
+  expect(h.errors).toHaveLength(0);
+});
+test("an interrupted turn releases the prepared switch, and an unsettled one holds it only until half the fallback lead remains", async () => {
+  const interrupted = harness();
+  await interrupted.client.start();
+  await interrupted.settle();
+  const [first] = interrupted.sockets;
+  first.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  await interrupted.advance(45000);
+  expect(saidBye(first)).toBe(false);
+  first.frame({ t: "interrupted", reason: "explicit", traceId: "turn-1" });
+  await interrupted.advance(1000);
+  expect(saidBye(first)).toBe(true);
+  expect(interrupted.mints).toBe(2);
+  await interrupted.client.stop();
+
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const [live] = h.sockets;
+  live.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  live.frame({ t: "speaking_start", traceId: "turn-1" });
+  await h.advance(45000);
+  live.frame({ t: "speaking_end", traceId: "turn-1" });
+  let switchedAtMs: number | null = null;
+  for (let at = 45000; at < 60000 && switchedAtMs === null; at += 1000) {
+    await h.advance(1000);
+    if (saidBye(live)) switchedAtMs = at + 1000;
+  }
+  expect(switchedAtMs).toBe(55000);
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.mints).toBe(2);
+  expect(h.errors).toHaveLength(0);
+});
+for (const maxReconnects of [0, 1]) {
+  test(`with maxReconnects ${maxReconnects}, a session cut at expiry hands over to the prepared session, ready or still opening, without spending the budget`, async () => {
+    const ready = harness(false, undefined, { maxReconnects });
+    await ready.client.start();
+    await ready.settle();
+    const [busy] = ready.sockets;
+    busy.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+    busy.frame({ t: "speaking_start", traceId: "turn-1" });
+    await ready.advance(60000);
+    expect(ready.marks).toContain("token_rotation_standby_ready");
+    busy.close();
+    await ready.settle();
+    expect(ready.client.state.phase).toBe("listening");
+    expect(ready.mints).toBe(2);
+    expect(ready.errors).toHaveLength(0);
+    if (maxReconnects > 0) {
+      // The handover left the whole budget for a real loss soon after.
+      await ready.advance(5000);
+      ready.sockets[1].close();
+      await ready.settle();
+      expect(ready.mints).toBe(3);
+    } else {
+      // The handed-over session rotates again on its own schedule.
+      await ready.advance(30000);
+      expect(ready.mints).toBe(3);
+      expect(saidBye(ready.sockets[1])).toBe(true);
+    }
+    expect(ready.client.state.phase).toBe("listening");
+    expect(ready.errors).toHaveLength(0);
+    expect(ready.marks).toContain("token_rotation_takeover");
+    await ready.client.stop();
+
+    const opening = harness(false, undefined, { maxReconnects });
+    await opening.client.start();
+    await opening.settle();
+    opening.holdReady();
+    await opening.advance(60000);
+    const [old] = opening.sockets;
+    expect(saidBye(old)).toBe(false);
+    old.close();
+    await opening.settle();
+    expect(opening.client.state.phase).toBe("connecting");
+    opening.releaseReady();
+    await opening.settle();
+    expect(opening.client.state.phase).toBe("listening");
+    expect(opening.activeCaptures).toBe(1);
+    expect(opening.mints).toBe(2);
+    expect(opening.sockets).toHaveLength(2);
+    expect(opening.errors).toHaveLength(0);
+  });
+}
+test("the reconnect budget still bounds a loss with no prepared session", async () => {
+  const h = harness(false, undefined, { maxReconnects: 0 });
+  await h.client.start();
+  await h.settle();
+  await h.advance(10000);
+  h.sockets[0].close();
+  await h.settle();
+  expect(h.mints).toBe(1);
+  expect(h.client.state.phase).toBe("idle");
+  expect(h.marks).toContain("not_reached(reconnect_exhausted:ws_close)");
+});
+for (const code of ["insufficient_credits", "quota_exhausted"]) {
+  test(`a next session refused with ${code} keeps the live session until it is cut, then ends quietly without another mint`, async () => {
+    const h = harness();
+    await h.client.start();
+    await h.settle();
+    h.holdReady();
+    await h.advance(40000);
+    const [live, next] = h.sockets;
+    next.frame({ t: "error", code, retryable: false });
+    await h.settle();
+    expect(saidBye(next)).toBe(true);
+    await h.advance(19000);
+    expect(saidBye(live)).toBe(false);
+    expect(h.client.state.phase).toBe("listening");
+    h.pumpAudio();
+    expect(audioFrames(live)).toBeGreaterThan(0);
+    live.close();
+    await h.settle();
+    await h.advance(10000);
+    expect(h.mints).toBe(2);
+    expect(h.sockets).toHaveLength(2);
+    expect(h.client.state.phase).toBe("idle");
+    expect(h.activeCaptures).toBe(0);
+    expect(h.marks).toContain(`not_reached(server_terminal:${code})`);
+    expect(h.errors).toHaveLength(0);
+  });
+}
 test("Stop while the next session is connecting ends both sessions and opens nothing more", async () => {
   const h = harness();
   await h.client.start();
