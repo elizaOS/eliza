@@ -50,8 +50,11 @@ const WEEKDAY_NAMES = [
   "saturday",
 ];
 
+// Full names and the common abbreviations ("Nov 22", "Sept. 11"). A month
+// the pattern cannot read leaves the reply unjudged, so a fabricated "Nov 22"
+// would otherwise escape this guard entirely.
 const MONTH_DAY_PATTERN =
-  /\b(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/gi;
+  /\b(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|June?|July?|Aug(?:ust)?|Sep(?:t(?:ember)?)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/gi;
 const CLOCK_PATTERN =
   /\b(\d{1,2})(?::(\d{2}))(?::\d{2})?\s*(AM|PM|a\.m\.|p\.m\.)/gi;
 const WEEKDAY_PATTERN =
@@ -294,7 +297,8 @@ export function statedTimeIsUngrounded(args: {
     .replace(/[\s,.!():]/g, "");
   if (remainder !== "") return false;
   for (const match of reply.matchAll(MONTH_DAY_PATTERN)) {
-    const month = MONTH_NAMES.indexOf(match[1].toLowerCase()) + 1;
+    const prefix = match[1].slice(0, 3).toLowerCase();
+    const month = MONTH_NAMES.findIndex((name) => name.startsWith(prefix)) + 1;
     const day = Number(match[2]);
     const year = match[3] ? Number(match[3]) : undefined;
     if (month !== local.month || day !== local.day) return true;
