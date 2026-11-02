@@ -175,13 +175,17 @@ test("the privileged allowlist is exactly the privileged permissions the client 
     "android.permission.READ_PRIVILEGED_PHONE_STATE",
     "android.permission.REBOOT",
   ];
-  // A missing or extra entry stops system_server under privapp enforcement.
+  // Under privapp enforcement a requested privileged permission with no entry stops system_server,
+  // so a new permission here must be a deliberate change to this list.
+  assert.deepEqual(requested.toSorted(), [
+    "android.permission.ACCESS_NETWORK_STATE",
+    "android.permission.INTERNET",
+    "android.permission.POST_NOTIFICATIONS",
+    ...privileged,
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+  ]);
   assert.deepEqual(
     privappPermissions(read("privapp-permissions.xml"), "ai.elizaos.updater"),
-    privileged,
-  );
-  assert.deepEqual(
-    privileged.filter((name) => requested.includes(name)),
     privileged,
   );
 });

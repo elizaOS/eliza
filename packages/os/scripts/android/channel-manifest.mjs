@@ -16,7 +16,7 @@
  * build: those fingerprints repeat across builds, so a device cannot tell which build it runs.
  * rolloutPercent 0 halts the channel (kill switch). sequence orders the channel's signed manifests:
  * the updater keeps the highest it has accepted and refuses any lower one, so a replayed earlier
- * manifest cannot undo a later halt.
+ * manifest cannot undo a halt that device has already read.
  *
  * The manifest is written unsigned; signing it (a detached Ed25519 signature over the exact bytes,
  * published beside it as <url>.sig) is the release owner's offline step. Nothing is uploaded, signed
