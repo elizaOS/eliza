@@ -39,6 +39,15 @@ export function getVerboseFlag(
   return false;
 }
 
+/**
+ * Global flags that take a separate value token when they appear before
+ * the command. The value is not a command token: reading it as one makes
+ * `eliza --profile work start` look like the command "work". Kept in step
+ * with the pre-command scanner in profile.ts, which owns these flags
+ * (`--dev` is boolean; `--profile=<name>` carries its value inline).
+ */
+const FLAGS_WITH_VALUES = new Set(["--profile"]);
+
 export function getCommandPath(argv: string[], depth = 2): string[] {
   const args = argv.slice(2);
   const path: string[] = [];
@@ -51,6 +60,9 @@ export function getCommandPath(argv: string[], depth = 2): string[] {
       break;
     }
     if (arg.startsWith("-")) {
+      if (FLAGS_WITH_VALUES.has(arg)) {
+        i += 1;
+      }
       continue;
     }
     path.push(arg);
