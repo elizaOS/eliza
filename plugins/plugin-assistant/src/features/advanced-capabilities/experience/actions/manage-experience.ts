@@ -25,10 +25,12 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  extractUserText,
   hasActionContext,
   logger,
   toWellFormedUnicode,
   truncateWellFormed,
+  unwrapUserMessageText,
   validateUuid,
 } from "@elizaos/core";
 import type { ExperienceService } from "../service.ts";
@@ -433,10 +435,9 @@ export const manageExperienceAction: Action = {
     if (normalizeOp(params) || readStringParam(params, "experienceId", "id")) {
       return true;
     }
-    const text =
-      typeof message.content.text === "string"
-        ? message.content.text.toLowerCase()
-        : "";
+    // Read the user's words, not the document envelope: a retrieved document
+    // that mentions an experience verb must not trigger this mutation gate.
+    const text = extractUserText(unwrapUserMessageText(message)).toLowerCase();
     return (
       (/\b(experience|experiences|learning|learnings)\b/.test(text) &&
         /\b(delete|remove|forget|edit|update|change|correct|revise)\b/.test(
