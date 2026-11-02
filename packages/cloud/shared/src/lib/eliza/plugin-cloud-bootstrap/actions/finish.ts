@@ -1,6 +1,13 @@
 // Wires hosted Eliza agent finish behavior for cloud runtime services.
 
-import type { ActionResult, HandlerCallback, IAgentRuntime, Memory, State } from "@elizaos/core";
+import {
+  type ActionResult,
+  extractUserText,
+  type HandlerCallback,
+  type IAgentRuntime,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { type ActionWithParams, defineActionParameters } from "../types";
 import { normalizeCloudActionArgs } from "../utils/native-planner-guards";
 
@@ -60,7 +67,15 @@ function hasFinishSignal(message: Memory, state?: State): boolean {
   });
   if (typeof params.response === "string" && params.response.trim()) return true;
 
-  const parts = [content.text, state?.values?.conversationLog, state?.values?.recentMessages]
+  // Match the finish signal against the user's own words, not the
+  // document-augmentation envelope: the envelope preamble itself says
+  // "Answer the user request...", so every augmented turn matched the
+  // "answer" keyword even when the request carries no finish signal
+  // (same class as the ACTIONS provider fix). Conversation logs are
+  // history, not the current envelope, so they stay as they are.
+  const currentText =
+    typeof content.text === "string" ? extractUserText(content.text) : undefined;
+  const parts = [currentText, state?.values?.conversationLog, state?.values?.recentMessages]
     .filter((value): value is string => typeof value === "string")
     .join("\n")
     .toLowerCase();
