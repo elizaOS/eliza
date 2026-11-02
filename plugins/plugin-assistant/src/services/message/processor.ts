@@ -355,10 +355,17 @@ export class MessageProcessor {
     if (personalityStore && message.entityId !== runtime.agentId) {
       const userSlot = personalityStore.getSlot(message.entityId);
       const globalSlot = personalityStore.getSlot("global");
+      // Lift phrases anchor at the start of the user's words, so read the
+      // user's words, not the connector envelope: a Discord envelope
+      // ("[Discord #channel] @sender (timestamp): ...") prefixes the text,
+      // which moved a leading "wake up" off the anchor and left a muted
+      // agent unliftable. getUserMessageText prefers currentMessageText
+      // and strips the document-augmentation wrapper, matching the
+      // addressing helpers this gate already pairs with.
       const gateDecision = decideReplyGate({
         userSlot,
         globalSlot,
-        messageText: message.content?.text,
+        messageText: getUserMessageText(message),
         explicitlyAddressesAgent,
       });
       if (gateDecision.allow === false) {
