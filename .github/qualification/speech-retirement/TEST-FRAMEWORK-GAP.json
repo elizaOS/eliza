@@ -1,0 +1,12 @@
+{
+  "state": "BUN_PORT_PUBLISHED_NOT_YET_RUNTIME_QUALIFIED",
+  "source": "04c7bff1eda5a2007858893f8cb75d6ddb38f9c7",
+  "APIFramework": "bun:test",
+  "APIIsolatedFiles": 5,
+  "APIExpectedCases": 40,
+  "hostFramework": "vitest",
+  "hostFiles": 2,
+  "hostExpectedCases": 14,
+  "genericAPIRunnerChanged": false,
+  "remaining": "Full canonical dispatcher/build and type checks remain separate; source-condition tests alone do not prove installed runtime."
+}

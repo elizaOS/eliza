@@ -1,0 +1,79 @@
+name: Speech retirement qualification (isolated)
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Metadata preflight or separately approved qualification
+        required: true
+        default: metadata
+        type: choice
+        options: [metadata, qualify]
+      expected_workflow_sha:
+        description: Exact reviewed qualification workflow commit
+        required: true
+        type: string
+      expected_runner_image:
+        description: Reviewed GitHub hosted ImageVersion (qualification only)
+        required: false
+        type: string
+      expected_docker_server:
+        description: Reviewed Docker server version (qualification only)
+        required: false
+        type: string
+      expires_epoch:
+        description: Root-issued one-run expiration, at most 20 minutes away
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: speech-retirement-qualification-${{ github.run_id }}
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - name: Checkout reviewed operator only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: operator
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+          sparse-checkout: .github/qualification/speech-retirement
+      - name: Checkout exact backend source
+        if: inputs.mode == 'qualify'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6bcd17251657a641ca877591f0cc10d200dc74df
+          path: source
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - name: Isolated dependency installation and offline tests
+        env:
+          EXPECTED_WORKFLOW_SHA: ${{ inputs.expected_workflow_sha }}
+          EXPECTED_RUNNER_IMAGE: ${{ inputs.expected_runner_image }}
+          EXPECTED_DOCKER_SERVER: ${{ inputs.expected_docker_server }}
+          QUALIFICATION_MODE: ${{ inputs.mode }}
+          EXPIRES_EPOCH: ${{ inputs.expires_epoch }}
+        run: >-
+          python3 -I -B
+          operator/.github/qualification/speech-retirement/run.py
+          "$QUALIFICATION_MODE"
+          "$GITHUB_WORKSPACE/source"
+          "$RUNNER_TEMP/speech-retirement-results"
+      - name: Retain bounded non-secret qualification receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: speech-retirement-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/speech-retirement-results/*.json
+            ${{ runner.temp }}/speech-retirement-results/*.log
+            ${{ runner.temp }}/speech-retirement-results/*.xml
