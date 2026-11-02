@@ -92,8 +92,10 @@ function weekdayNameSource(name: string): string {
   }`;
 }
 
+const WEEKDAY_QUALIFIER_SOURCE = "previous|past|next|last|this";
+
 export const WEEKDAY_NAME_PATTERN = new RegExp(
-  `(?:(?<!${SPACED_WORD_CHAR})(this|next)\\s+)?(${WEEKDAY_NAMES_SORTED.map(weekdayNameSource).join("|")})`,
+  `(?:(?<!${SPACED_WORD_CHAR})(${WEEKDAY_QUALIFIER_SOURCE})\\s+)?(${WEEKDAY_NAMES_SORTED.map(weekdayNameSource).join("|")})`,
   "iu",
 );
 
@@ -132,6 +134,25 @@ const RELATIVE_NUMBER_WORDS: Record<string, number> = {
 function relativeCountToNumber(token: string): number | null {
   if (/^\d{1,3}$/.test(token)) return Number(token);
   return RELATIVE_NUMBER_WORDS[token] ?? null;
+}
+
+function isPastWeekdayQualifier(qualifier: string): boolean {
+  return (
+    qualifier === "last" || qualifier === "previous" || qualifier === "past"
+  );
+}
+
+/**
+ * "the last Friday of October" names the final Friday of that month. It is
+ * not the most recent Friday, so the past-weekday rule must not claim it.
+ */
+function namesFinalWeekdayOfPeriod(trailing: string): boolean {
+  const rest = trailing.match(/^\s+(?:of|in)\s+(?:the\s+)?(.*)$/u);
+  const tail = rest?.[1] ?? "";
+  if (/^(?:(?:next|this|last)\s+)?month\b/u.test(tail)) return true;
+  if (/^\s+(?:this|next)\s+month\b/u.test(trailing)) return true;
+  const head = tail.split(/\s+/u)[0]?.replace(/\.$/u, "") ?? "";
+  return head.length > 0 && MONTH_MAP[normalizeLookupKey(head)] !== undefined;
 }
 
 function parseRelativeDayOffset(text: string): number | null {
@@ -248,35 +269,51 @@ export function parseExplicitLocalDate(
     const weekdayKey = normalizeLookupKey(weekdayMatch[2] ?? "");
     const targetWeekday = WEEKDAY_MAP[weekdayKey];
     if (targetWeekday !== undefined) {
-      const dCur = new Date(0);
-      dCur.setUTCFullYear(
-        localToday.year,
-        Math.max(0, localToday.month - 1),
-        localToday.day,
+      const afterWeekday = normalized.slice(
+        (weekdayMatch.index ?? 0) + weekdayMatch[0].length,
       );
-      dCur.setUTCHours(12, 0, 0, 0);
-      const currentWeekday = dCur.getUTCDay();
-      let delta = (targetWeekday - currentWeekday + 7) % 7;
-      if (qualifier === "next") {
-        delta = delta === 0 ? 7 : delta + 7;
-      } else if (qualifier === "cjk-week") {
-        // 下周 / 다음 주 (下下周 / 다다음 주) name the weekday inside the
-        // Monday-start week one (two) weeks ahead, so count to that Monday,
-        // then into the week.
-        const mondayIndex = (weekday: number) => (weekday + 6) % 7;
-        delta =
-          7 * cjkWeeksAhead -
-          mondayIndex(currentWeekday) +
-          mondayIndex(targetWeekday);
+      // A final weekday of a month stays unresolved. Reading it as the
+      // previous Friday would pick the wrong day.
+      if (
+        !(
+          isPastWeekdayQualifier(qualifier) &&
+          namesFinalWeekdayOfPeriod(afterWeekday)
+        )
+      ) {
+        const dCur = new Date(0);
+        dCur.setUTCFullYear(
+          localToday.year,
+          Math.max(0, localToday.month - 1),
+          localToday.day,
+        );
+        dCur.setUTCHours(12, 0, 0, 0);
+        const currentWeekday = dCur.getUTCDay();
+        let delta = (targetWeekday - currentWeekday + 7) % 7;
+        if (qualifier === "next") {
+          delta = delta === 0 ? 7 : delta + 7;
+        } else if (isPastWeekdayQualifier(qualifier)) {
+          // The previous occurrence. On that weekday, "last Friday" is one
+          // week ago, not today.
+          delta = delta === 0 ? -7 : delta - 7;
+        } else if (qualifier === "cjk-week") {
+          // 下周 / 다음 주 (下下周 / 다다음 주) name the weekday inside the
+          // Monday-start week one (two) weeks ahead, so count to that Monday,
+          // then into the week.
+          const mondayIndex = (weekday: number) => (weekday + 6) % 7;
+          delta =
+            7 * cjkWeeksAhead -
+            mondayIndex(currentWeekday) +
+            mondayIndex(targetWeekday);
+        }
+        return addDaysToLocalDate(
+          {
+            year: localToday.year,
+            month: localToday.month,
+            day: localToday.day,
+          },
+          delta,
+        );
       }
-      return addDaysToLocalDate(
-        {
-          year: localToday.year,
-          month: localToday.month,
-          day: localToday.day,
-        },
-        delta,
-      );
     }
   }
 
