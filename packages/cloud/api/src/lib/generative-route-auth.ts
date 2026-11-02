@@ -651,7 +651,7 @@ export async function requireGenerativeRouteCaller(
   if (resolution.kind === "warming") {
     throw new ApiError(
       503,
-      "auth_cache_warming",
+      "service_unavailable",
       "Authorization cache is warming; retry shortly",
       { retryable: true, retryAfterSeconds: 1 },
     );

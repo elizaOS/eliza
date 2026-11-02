@@ -753,6 +753,8 @@ jobs:
           bun run --cwd packages/cloud/api test voice-tts-idempotency-key.pglite
           bun run --cwd packages/cloud/api test voice-speech-rate-limit.pglite
           bun run --cwd packages/cloud/api test speech-phase-timing
+          bun run --cwd packages/cloud/api test speech-relay-worker
+          bun run --cwd packages/cloud/api test chat/completions/tools.test.ts
 
       - name: Verify Network Personal room routes
         if: steps.affected.outputs.cloud == 'true'

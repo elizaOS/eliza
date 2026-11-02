@@ -5,8 +5,7 @@
  * moderation chain into one cache decision for API-key and Steward-session
  * inference.
  *
- * Qualified Worker hot path (`cacheOnly`, authorization caching and strong
- * revocation enabled): the request is decided by ONE cache read and
+ * Worker hot path (`cacheOnly`): the request is decided by ONE cache read and
  * never queries Postgres, not even on a miss. Entries are stale-while-
  * revalidate: an entry older than the refresh age is still served, and one
  * coalesced authoritative refresh runs under `waitUntil`; when it finds a
@@ -153,9 +152,8 @@ export interface ResolveInferenceAuthOptions {
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
   onCacheWriteTelemetry?(telemetry: InferenceAuthCacheWriteTelemetry): void;
   /**
-   * Request cache-only resolution when authorization caching is eligible.
-   * With that staged rollout enabled, a miss returns `warming` and hydrates
-   * under `waitUntil`; disabled hosts retain authoritative authorization.
+   * Worker hot path: decide from the combined cache only. Never queries
+   * Postgres; a miss returns `warming` and hydrates under `waitUntil`.
    */
   cacheOnly?: boolean;
   /** Internal background refresh: bypass the combined decision and revalidate. */
@@ -652,9 +650,9 @@ export async function resolveInferenceAuthContext(
   };
 
   try {
-    // A Worker request must not bypass the staged positive-cache and strongly
-    // consistent revocation contract merely by selecting cache-only resolution.
-    const authCacheEnabled = isInferenceAuthCacheEnabled();
+    // The Worker hot path is always cache-decided; the flag only opts other
+    // hosts into populating and reading the combined cache.
+    const authCacheEnabled = options.cacheOnly === true || isInferenceAuthCacheEnabled();
     const deferStrongCredentialCheck =
       authCacheEnabled &&
       options.deferStrongCredentialCheck === true &&
@@ -664,7 +662,7 @@ export async function resolveInferenceAuthContext(
     trace.timings.extractMs = durationSince(extractStartedAt);
     if (!credential) {
       const session = await resolveInferenceSessionAuthContext(req, {
-        cacheOnly: options.cacheOnly,
+        cacheOnly: authCacheEnabled && options.cacheOnly,
         useAuthCache: authCacheEnabled,
         executionCtx: options.executionCtx,
         deferStrongCredentialCheck,
@@ -824,12 +822,7 @@ export async function resolveInferenceAuthContext(
     // Cache-only resolution needs a configured cache backend; every deployed
     // environment has one. Without any backend (local dev, e2e harness) a miss
     // could never hydrate, so those hosts keep the authoritative path.
-    if (
-      authCacheEnabled &&
-      options.cacheOnly &&
-      !options.forceAuthoritative &&
-      cache.isBackendConfigured()
-    ) {
+    if (options.cacheOnly && !options.forceAuthoritative && cache.isBackendConfigured()) {
       // A true miss (or an unreadable cache) never queries Postgres inline:
       // the request gets a retryable warming result and the authoritative
       // decision is projected into the cache under `waitUntil`.
@@ -937,16 +930,12 @@ export async function resolveInferenceAuthContext(
       return { kind: "suspended", userId: coherent.user.id, reason: "moderation_blocked" };
     }
     if (coherent) ({ user, apiKey } = coherent);
-    // A Worker decision carries the admission snapshot and app scope even when
-    // the combined cache is not eligible: its limiter and app-scope checks read
-    // them from the decision, never from a cold organization projection.
-    const [admission, appScopeId] =
-      authCacheEnabled || options.cacheOnly === true
-        ? await Promise.all([
-            coherent ? coherent.admission : loadInferenceAdmissionSnapshot(user.organization_id),
-            loadInferenceAppKeyScope(apiKey.id),
-          ])
-        : [coherent?.admission, null];
+    const [admission, appScopeId] = authCacheEnabled
+      ? await Promise.all([
+          coherent ? coherent.admission : loadInferenceAdmissionSnapshot(user.organization_id),
+          loadInferenceAppKeyScope(apiKey.id),
+        ])
+      : [coherent?.admission, null];
     const ctx: InferenceAuthContext = {
       v: INFERENCE_AUTH_CONTEXT_VERSION,
       cachedAt: Date.now(),
