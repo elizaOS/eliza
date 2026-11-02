@@ -1,0 +1,187 @@
+{
+  "state": "SOURCE_ONLY_NOT_PUBLISHED_NOT_DISPATCHED",
+  "sourceCommit": "04c7bff1eda5a2007858893f8cb75d6ddb38f9c7",
+  "sourceTree": "139fe36374b75a09d4df8d3215d0b092adce782c",
+  "obsoleteR3PatchUsed": false,
+  "workflowChoice": {
+    "existingWorkflowId": ".github/workflows/cloud-tests.yml",
+    "method": "Dedicated qualification branch overrides registered workflow at dispatch ref only; separately checkout exact866source",
+    "reason": "Existing workflow dispatch runs broad Cloud suite; host-qualification workflow is production/self-hosted/read-only and unsuitable; voice-code-bench uses paid provider"
+  },
+  "existingWorkflowHashes": {
+    ".github/workflows/cloud-tests.yml": "b38c145dfebcdbc822daac0f9ca781374e5be8b0a8b357ec3f7076b415bda027",
+    ".github/workflows/cloud-existing-runner-qualification.yml": "39d3deebf9cff67d5a6622cc4082750c092a5195be6b0f3d8aba6f6f70cf5ebc",
+    ".github/workflows/voice-code-bench.yml": "a96598055eb4a9eed963cd60ca10dfdec39261421f680eb2bcec54e3c8aa669c"
+  },
+  "runner": {
+    "label": "ubuntu-24.04",
+    "kind": "fresh GitHub-hosted VM only",
+    "imageVersion": "record actual ImageVersion; hosted base image is mutable, test userspace pinned by OCI digests",
+    "noSelfHosted": true
+  },
+  "toolchain": {
+    "bunImage": {
+      "tag": "docker.io/oven/bun:1.4.2",
+      "indexDigest": null,
+      "selectedDigest": "sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2",
+      "platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      },
+      "configDigest": "sha256:8165c75cee6a4fca90a1229b3db2b3910e7bc99675f7490df5a112085f224d6d",
+      "layerBytes": 92706740,
+      "layers": [
+        {
+          "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+          "digest": "sha256:27ee9a8250487842a26b1ffa1215982ba9ae27010bce1997d52f9f8628578d17",
+          "size": 49337828
+        },
+        {
+          "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+          "digest": "sha256:ccb86fd70cf1a92d9dddfaaebf11f09cebaec4c7fa60a748c8313b0828b9e41c",
+          "size": 5908192
+        },
+        {
+          "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+          "digest": "sha256:dd000cfe5146b0540e51ab7091b532f4575a75f0b7d02da7e3b5f0c2b4f69931",
+          "size": 296
+        },
+        {
+          "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+          "digest": "sha256:1ba340e2e4f41ebc3af50c87bbd556db48c0d67b69a845466ea0500df4ff8b59",
+          "size": 37456703
+        },
+        {
+          "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+          "digest": "sha256:c1bdc9ba2b9ee10de067d50e69caa7454dcd7e80a7f363bc3f26c85ab44175f0",
+          "size": 185
+        },
+        {
+          "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+          "digest": "sha256:995f23d6717fb18d9e3ee7901ce64cf02d5386f0358688dcb35682d362a9fa11",
+          "size": 3398
+        },
+        {
+          "mediaType": "application/vnd.oci.image.layer.v1.tar+gzip",
+          "digest": "sha256:1b4f41477e9a25fc12a8bc441d03b5ebb9a3bc14d066bd5fa789c596bbea8622",
+          "size": 138
+        }
+      ]
+    },
+    "nodeImage": {
+      "tag": "docker.io/library/node:24.15.0-bookworm-slim",
+      "indexDigest": "sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d",
+      "selectedDigest": "sha256:152aceace5c03e2597988763165ee33e3fd3633636db0fc983cd2e126b02cfde",
+      "platform": {
+        "architecture": "amd64",
+        "os": "linux"
+      },
+      "configDigest": "sha256:3880cf501a3b54bacc5e53dc327478ba723084863fa252cceb43f75aadcab12b",
+      "layerBytes": 79621150
+    },
+    "Bun": "1.4.2",
+    "Node": "24.15.0",
+    "Miniflare": "4.20260730.0",
+    "workerd": "1.20260730.1",
+    "install": "bun install --frozen-lockfile --ignore-scripts --no-progress",
+    "integrity": "Repository bun.lock SHA256 plus its per-package SHA512 SRI; capture actual executable hashes; do not upgrade/rewrite lock",
+    "lifecycle": "No package lifecycle scripts; no native builds; fail if required prebuilt workerd unavailable"
+  },
+  "phases": [
+    {
+      "name": "install",
+      "network": "Docker bridge egress is unrestricted; no production credentials passed. Registry-only enforcement is NOT claimed.",
+      "wallSeconds": 600,
+      "memoryBytes": 4294967296
+    },
+    {
+      "name": "workerd-retirement",
+      "network": "Docker none, local loopback only",
+      "wallSeconds": 90,
+      "memoryBytes": 2147483648,
+      "file": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
+      "pattern": "pre-hello revoke|socket Stop settles|authoritative org",
+      "expectedPass": 3,
+      "expectedSkip": 5
+    },
+    {
+      "name": "api-bun-isolated-files",
+      "network": "Docker none",
+      "wallSecondsPerFile": 60,
+      "memoryBytes": 2147483648,
+      "files": [
+        "packages/cloud/api/src/speech-relay-admission.retirement.test.ts",
+        "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
+        "packages/cloud/api/src/speech-retirement-route.test.ts",
+        "packages/cloud/api/src/speech-retirement-state.test.ts",
+        "packages/cloud/api/v1/voice/session/lib/provider-retirement.test.ts"
+      ],
+      "expectedPass": 40,
+      "expectedSkip": 0
+    },
+    {
+      "name": "host-vitest",
+      "network": "Docker none",
+      "wallSeconds": 90,
+      "memoryBytes": 2147483648,
+      "files": [
+        "packages/host/src/voice/cartesia-sonic-retirement.test.ts",
+        "packages/host/src/voice/speech-retirement-session.test.ts"
+      ],
+      "expectedPass": 14,
+      "expectedSkip": 0
+    }
+  ],
+  "resourceBounds": {
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "maxDiskGrowthBytes": 12884901888,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592
+  },
+  "notIncluded": [
+    "Full Cloud API suite and existing dispatcher/build integration",
+    "Full eight-case Workerd suite",
+    "Full source/Cloud API/router/worker-bundle typecheck",
+    "Live provider or billing acceptance",
+    "Production deployment"
+  ],
+  "laterCommands": {
+    "fullWorkerd": "bun --conditions=eliza-source test --config=/dev/null packages/cloud/api/__tests__/speech-relay-worker.test.ts",
+    "normalAPIUnits": "node packages/cloud/api/test/run-unit-isolated.mjs",
+    "types": "bun run verify:cloud (separate build/resource admission required)"
+  },
+  "sources": [
+    "https://developers.cloudflare.com/workers/testing/miniflare/",
+    "https://developers.cloudflare.com/workers/testing/miniflare/writing-tests/",
+    "https://bun.sh/guides/ecosystem/docker",
+    "https://bun.sh/docs/pm/lockfile"
+  ],
+  "dispatchPrerequisites": [
+    "Independent Root review of workflow/operator/seal",
+    "Publish dedicated qualification branch overriding existing registered cloud-tests.yml only at that ref",
+    "Pin resulting workflow commit and issue finite single-run GO",
+    "Supply reviewed expected ImageVersion and Docker server version; mismatch fails before pulls",
+    "No manual dispatch yet"
+  ],
+  "resultOracle": "ORACLES.json: exact three workerd names/five skipped; exact seven normalized unit files,54executed passed, zero skip/todo/fail",
+  "qualificationBranch": "codex/speech-retirement-qualify-20261102",
+  "sourceGuard": "Exact copied check_source.py and POLICY, SDK mode exact866 before source install/execution; limited ancestry on shallow checkout remains explicit",
+  "metadataMode": "Separate metadata-only dispatch reads ImageVersion/Docker/free/process identity before image pulls or source checkout",
+  "containerCustody": "Intent registered after preexisting-absence before create; reconcile any result by exact name+run labels+CID when known, remove only verified CID, preserve uncertainty after lost reply/absent lookup",
+  "memorySwap": "Each --memory-swap equals --memory; no implicit extra swap",
+  "reviewedRunner": {
+    "ImageVersion": "20261026.354.1",
+    "ImageOS": "ubuntu24",
+    "dockerServer": "28.0.4",
+    "evidenceRun": 41504810728,
+    "evidenceAttempt": 1,
+    "evidenceArtifact": 13169763764,
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+  },
+  "metadataR4Intent": "SPENT_NO_REPLAY",
+  "qualificationScope": "Five API-owned Bun files, each a separate process with explicit eliza-source condition; two unchanged host Vitest files; three selected real-workerd cases. This is not full canonical dispatcher/build/type qualification."
+}

@@ -1,0 +1,90 @@
+{
+  "workerdPassedNames": [
+    "authoritative org, API-key and session-cutoff revocations stop active speech through the internal socket",
+    "socket Stop settles with the DO bindings and a fresh DB context before a later revoke",
+    "pre-hello revoke closes the public socket and late hello cannot open providers"
+  ],
+  "workerdSkippedNames": [
+    "ready speech streams PCM and multiple TTS contexts without another DB/auth/admission operation",
+    "a refused credit reservation preserves the allowlisted recovery reason before providers open",
+    "legacy speech clients receive no unnegotiated billing reason",
+    "barge-in settles only the submitted TTS characters across contexts, not the full reserved monthly allowance",
+    "the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context"
+  ],
+  "unitCountsByFile": {
+    "packages/host/src/voice/cartesia-sonic-retirement.test.ts": 8,
+    "packages/host/src/voice/speech-retirement-session.test.ts": 6
+  },
+  "unitPassedTotal": 14,
+  "unitFailed": 0,
+  "unitSkipped": 0,
+  "unitTodo": 0,
+  "apiBunByFile": {
+    "packages/cloud/api/src/speech-relay-admission.retirement.test.ts": {
+      "count": 5,
+      "names": [
+        "partial settlement retry does not repeat successful STT money",
+        "reserved but not dispatched reconciles both kinds to actual zero",
+        "proof-write failure retries persistence without repeating money",
+        "conservative STT remains explicitly different from actual",
+        "changed settlement target is refused on retry"
+      ]
+    },
+    "packages/cloud/api/src/speech-retirement-coordinator.test.ts": {
+      "count": 13,
+      "names": [
+        "duplicate initialize cannot reset an opened record",
+        "confirmed proof survives recreation and replays byte-equivalently",
+        "failed cleanup followed by recreation cannot manufacture success",
+        "legacy closed record is not a strong receipt",
+        "pending opening cannot resurrect active state after revoke",
+        "proof-write failure never acknowledges before a durable commit",
+        "late subscription after retirement is released exactly once",
+        "mismatched initializer cannot rebind owner or proof version",
+        "strong records require matching proof negotiation and owner",
+        "concurrent opening attempts have one durable winner",
+        "restored active record without a live capability remains unconfirmed",
+        "concurrent revokes share one cleanup and persisted proof",
+        "zero-resource configuration failure stays unconfirmed and cannot invent drain"
+      ]
+    },
+    "packages/cloud/api/src/speech-retirement-route.test.ts": {
+      "count": 5,
+      "names": [
+        "legacy mint shape is unchanged without opt-in",
+        "new mint persists and acknowledges requested proof version",
+        "unsupported proof is refused before admission",
+        "flag-off revoke uses current owner auth rather than paid admission",
+        "bad requested version is not treated as legacy"
+      ]
+    },
+    "packages/cloud/api/src/speech-retirement-state.test.ts": {
+      "count": 16,
+      "names": [
+        "late owned completion cannot overwrite revoke generation",
+        "concurrent revoke joins generation and attempt",
+        "restored active without evidence is unconfirmed",
+        "confirmed proof persists and initialization/revoke replay does not alter it",
+        "conservative settlement never becomes actual or confirmed",
+        "valid never-started closes admission with no reservation",
+        "completed failed attempt gets a new token while pending joins keep theirs",
+        "duplicate initialization never resets starting",
+        "duplicate initialization never resets retiring",
+        "duplicate initialization never resets closed",
+        "rejects changed immutable sessionId",
+        "rejects changed immutable tokenDigest",
+        "rejects changed immutable expiresAt",
+        "rejects changed immutable proofVersion",
+        "initializer cannot change caller id",
+        "initializer cannot change caller organization_id"
+      ]
+    },
+    "packages/cloud/api/v1/voice/session/lib/provider-retirement.test.ts": {
+      "count": 1,
+      "names": [
+        "pre-bind cancellation aborts fetch, drops queued sends, and still observes late real close"
+      ]
+    }
+  },
+  "apiBunPassedTotal": 40
+}
