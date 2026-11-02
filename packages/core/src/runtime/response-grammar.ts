@@ -188,6 +188,23 @@ function compileSimplePatternToGbnf(pattern: string): string | null {
 	return compileSimpleRegexNode(parsed);
 }
 
+/**
+ * Compile a string `pattern` to a JSON string value: the compiled body between
+ * quote literals. The body matches raw characters, so a pattern that can match
+ * a quote, a backslash or a control character (JSON escapes all three) returns
+ * `null` and the caller keeps `jsonstring`.
+ */
+function compileJsonStringPatternToGbnf(pattern: string): string | null {
+	if (/"|\\[\\stnrfvxu]/.test(pattern)) return null;
+	for (const ch of pattern) {
+		if ((ch.codePointAt(0) ?? 0) < 0x20) return null;
+	}
+	const body = compileSimplePatternToGbnf(pattern);
+	if (body === null) return null;
+	const quote = gbnfLiteral('"');
+	return `${quote} ${body} ${quote}`;
+}
+
 function addEstimatedLength(left: number, right: number): number | null {
 	const sum = left + right;
 	return sum <= MAX_SIMPLE_REGEX_GBNF_LENGTH ? sum : null;
@@ -1552,7 +1569,7 @@ function propertyValueGbnf(
 		}
 		const pattern = (propSchema as { pattern?: unknown }).pattern;
 		if (typeof pattern === "string") {
-			const compiledPattern = compileSimplePatternToGbnf(pattern);
+			const compiledPattern = compileJsonStringPatternToGbnf(pattern);
 			if (compiledPattern !== null) {
 				return compiledPattern;
 			}
