@@ -1,0 +1,124 @@
+import { beforeEach, expect, test, vi } from "vitest";
+const control = vi.hoisted(() => ({ closeFails: false, opens: 0, closes: 0, wait: undefined as Promise<void> | undefined, subscriptionWait: undefined as Promise<void> | undefined, subscribed: 0, unsubscribed: 0 }));
+vi.mock("@elizaos/cloud-shared/db/client", () => ({ runWithDbCacheAsync: (fn: () => unknown) => fn() }));
+vi.mock("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({ runWithCloudBindingsAsync: (_env: unknown, fn: () => unknown) => fn() }));
+vi.mock("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError: class extends Error {} }));
+vi.mock("@elizaos/cloud-shared/lib/services/voice-usage-meter", () => ({ createDurableVoiceUsageStore: () => ({}) }));
+vi.mock("@elizaos/cloud-shared/lib/utils/logger", () => ({ logger: { info() {}, error() {} } }));
+vi.mock("@elizaos/cloud-shared/lib/voice-session/config", () => ({ resolveVoiceUsageLimits: () => ({}) }));
+vi.mock("@elizaos/host/voice/cartesia-ink", () => ({ createCartesiaInkRealtimeSession() {} }));
+vi.mock("@elizaos/host/voice/cartesia-sonic-tts", () => ({ CartesiaSonicTtsAdapter: class { close() {} async closeAndConfirm() { return "transport_closed"; } } }));
+vi.mock("../v1/voice/session/lib/provider-socket-factory", () => ({ createWorkerCartesiaFactory: () => () => {}, createWorkerCartesiaInkFactory: () => () => {} }));
+vi.mock("../v1/voice/stt/cartesia-pricing", () => ({ parseCartesiaUsdPerCredit: () => 0.001 }));
+vi.mock("../v1/voice/tts/provider-selection", () => ({ resolveCartesiaVoiceId: () => "voice" }));
+vi.mock("./speech-revocation-subscription", () => ({ subscribeSpeechRevocation: async () => { control.subscribed++; await control.subscriptionWait; return () => { control.unsubscribed++; }; } }));
+vi.mock("./speech-relay-admission", () => ({ reserveSpeechRelayAdmission: async (input: any) => {
+  for (const kind of ["stt", "tts"] as const) await input.onProgress?.(kind, { state: "settled_actual", requestId: `speech:${input.sessionId}:${kind}`, amountUsd: "0" });
+  return {};
+} }));
+vi.mock("@elizaos/host/voice/speech-relay-session", () => ({ SPEECH_RELAY_BUDGET: { durationMs: 60000 }, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
+  control.opens++;
+  const handle = { async close() { control.closes++; if (control.closeFails) throw Error("unknown cleanup"); }, async retryRetirement() { return this.close(); }, evidence: () => ({ stt: "gracefully_drained", tts: "transport_closed", accounting: "settled_actual" }) };
+  ports.registerRetirement(handle); await ports.reserveCredits(); await control.wait;
+  return { retirement: handle, close: () => handle.close() };
+} }));
+import { SpeechRelayCoordinator } from "./speech-relay-coordinator";
+const id = "00000000-0000-4000-8000-000000000001", owner = "00000000-0000-4000-8000-000000000002", org = "00000000-0000-4000-8000-000000000003";
+function fixture() {
+  let row: any, queue = Promise.resolve(), failProof = false;
+  const storage = {
+    async get() { return structuredClone(row); }, async put(_key: string, value: any) { if (failProof && value.retirement?.proof?.state === "confirmed") { failProof = false; throw Error("proof storage failed"); } row = structuredClone(value); },
+    async setAlarm() {}, async deleteAlarm() {},
+    transaction(fn: (tx: unknown) => Promise<unknown>) { const next = queue.then(() => fn(storage)); queue = next.then(() => {}, () => {}); return next; },
+  };
+  const state = { storage, waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } } as never;
+  const env = { VOICE_SPEECH_RELAY_ENABLED: "true", CARTESIA_API_KEY: "synthetic", VOICE_REALTIME_CARTESIA_VOICE_ID: "voice" } as never;
+  const make = () => new SpeechRelayCoordinator(state, env);
+  const c = make();
+  const input = { sessionId: id, tokenDigest: "a".repeat(64), expiresAt: Date.now() + 60000, caller: { user: { id: owner, organization_id: org } }, proofVersion: 1 };
+  const post = (coordinator: SpeechRelayCoordinator, path: string, data: unknown) => coordinator.fetch(new Request(`https://speech-relay.internal/${path}`, { method: "POST", body: JSON.stringify(data) }));
+  const revoke = (coordinator = c) => post(coordinator, "revoke", { userId: owner, organizationId: org, proofVersion: 1 });
+  const open = async () => { const task = (c as any).open(structuredClone(row)); (c as any).openingTask = task; await task; };
+  return { c, make, input, post, revoke, open, failNextProof() { failProof = true; }, get row() { return row; } };
+}
+beforeEach(() => Object.assign(control, { closeFails: false, opens: 0, closes: 0, wait: undefined, subscriptionWait: undefined, subscribed: 0, unsubscribed: 0 }));
+test("duplicate initialize cannot reset an opened record", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
+  const before = structuredClone(f.row); await f.post(f.c, "initialize", f.input);
+  expect(f.row).toEqual(before); expect(control.opens).toBe(1);
+});
+test("confirmed proof survives recreation and replays byte-equivalently", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
+  const first = await f.revoke(); expect(first.status).toBe(200); const text = await first.text();
+  const second = await f.revoke(f.make()); expect(await second.text()).toBe(text); expect(control.closes).toBe(1);
+});
+test("failed cleanup followed by recreation cannot manufacture success", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open(); control.closeFails = true;
+  expect((await f.revoke()).status).toBe(409); expect((await f.revoke(f.make())).status).toBe(409);
+});
+test("legacy closed record is not a strong receipt", async () => {
+  const f = fixture(); const legacy = { ...f.input } as any; delete legacy.proofVersion;
+  await f.post(f.c, "initialize", legacy); expect((await f.revoke()).status).toBe(409);
+});
+test("pending opening cannot resurrect active state after revoke", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input);
+  let release!: () => void; control.wait = new Promise<void>(yes => { release = yes; });
+  const opening = f.open(); void opening.catch(() => {});
+  for (let i = 0; i < 100 && !control.opens; i++) await Promise.resolve();
+  expect(control.opens).toBe(1);
+  let finished = false; const closing = f.revoke().then(result => { finished = true; return result; });
+  await Promise.resolve(); expect(finished).toBe(false); release(); await opening.catch(() => {});
+  expect((await closing).status).toBe(200); expect(f.row.phase).toBe("closed");
+});
+
+test("proof-write failure never acknowledges before a durable commit", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open(); f.failNextProof();
+  expect((await f.revoke()).status).toBe(409); expect(f.row.retirement.proof?.state).not.toBe("confirmed");
+  const failedGeneration = f.row.retirement.generation, failedAttempt = f.row.retirement.attempt;
+  expect((await f.revoke()).status).toBe(200);
+  expect(f.row.retirement.generation).toBeGreaterThan(failedGeneration);
+  expect(f.row.retirement.attempt).toBeGreaterThan(failedAttempt);
+});
+test("late subscription after retirement is released exactly once", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input);
+  let release!: () => void; control.subscriptionWait = new Promise<void>(yes => { release = yes; });
+  const opening = f.open(); void opening.catch(() => {});
+  for (let i = 0; i < 100 && !control.subscribed; i++) await Promise.resolve(); expect(control.subscribed).toBe(1);
+  const closing = f.revoke(); await Promise.resolve(); release(); await opening.catch(() => {}); await closing;
+  expect(control.unsubscribed).toBe(1); expect(control.opens).toBe(0);
+});
+test("mismatched initializer cannot rebind owner or proof version", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input);
+  expect((await f.post(f.c, "initialize", { ...f.input, proofVersion: undefined })).status).toBe(409);
+  expect(f.row.proofVersion).toBe(1);
+});
+test("strong records require matching proof negotiation and owner", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input);
+  expect((await f.post(f.c, "revoke", { userId: owner, organizationId: org })).status).toBe(409);
+  expect((await f.post(f.c, "revoke", { userId: "other", organizationId: org, proofVersion: 1 })).status).toBe(404);
+  expect(f.row.phase).toBe("minted");
+});
+test("concurrent opening attempts have one durable winner", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input);
+  const results = await Promise.allSettled([f.open(), f.open()]);
+  expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+  expect(control.opens).toBe(1); await f.revoke();
+});
+test("restored active record without a live capability remains unconfirmed", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
+  const recreated = f.make(); const response = await f.revoke(recreated);
+  expect(response.status).toBe(409); expect(control.closes).toBe(0);
+});
+test("concurrent revokes share one cleanup and persisted proof", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
+  const [a, b] = await Promise.all([f.revoke(), f.revoke()]);
+  expect(await a.text()).toBe(await b.text()); expect(control.closes).toBe(1);
+});
+
+test("zero-resource configuration failure stays unconfirmed and cannot invent drain", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input);
+  (f.c as any).env.CARTESIA_API_KEY = "";
+  await expect(f.open()).rejects.toThrow();
+  expect((await f.revoke()).status).toBe(409);
+  expect(control.opens).toBe(0);
+});

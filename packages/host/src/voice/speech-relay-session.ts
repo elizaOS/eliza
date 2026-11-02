@@ -8,6 +8,7 @@ import type {
   CartesiaInkRealtimeSession,
 } from "./cartesia-ink";
 import type { CartesiaSonicTtsStream } from "./cartesia-sonic-tts";
+import type { SpeechRetirementEvidence, SpeechSettlementOutcome } from "./speech-relay-wire";
 import { UplinkReframer } from "./uplink-reframer";
 import {
   checkVoiceByteRate,
@@ -67,7 +68,12 @@ export interface SpeechRelayCreditReservation {
     outcomes?: { stt: "complete" | "unknown"; tts: "complete" | "unknown" };
     sttDrain?: CartesiaInkDrainReceipt;
     dispatched?: { stt: boolean; tts: boolean };
-  }): Promise<void>;
+  }): Promise<void | SpeechSettlementOutcome>;
+}
+export interface SpeechRelayRetirementHandle {
+  close(): Promise<void>;
+  retryRetirement(): Promise<void>;
+  evidence(): SpeechRetirementEvidence | undefined;
 }
 export interface SpeechRelayPorts {
   enabled?: boolean;
@@ -103,6 +109,8 @@ export interface SpeechRelayPorts {
   ): Pick<CartesiaSonicTtsStream, "sendPhrase" | "finish" | "cancel">;
   emit(event: SpeechRelayEvent): void;
   onClosed(result: Promise<void>): void;
+  registerRetirement?: (handle: SpeechRelayRetirementHandle) => void;
+  confirmTtsTransportStopped?: () => Promise<"not_dispatched" | "transport_closed" | "unknown">;
   /** Trusted provider drain acknowledgement; socket-close dispatch alone is insufficient. */
   confirmProviderStopped?: () => Promise<"complete" | "unknown">;
   now?: () => number;
@@ -203,6 +211,9 @@ export async function createSpeechRelaySession(
     unsubscribe: (() => void) | undefined,
     timer: ReturnType<typeof setTimeout> | undefined,
     closing: Promise<void> | undefined;
+  let preparation: Promise<void> | undefined;
+  let closeFailed = false;
+  let retirementEvidence: SpeechRetirementEvidence | undefined;
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
     finishedIds = new Set<string>(),
@@ -217,6 +228,12 @@ export async function createSpeechRelaySession(
     if (timer) clearTimeout(timer);
     closing = Promise.resolve().then(async () => {
       const failures: unknown[] = [];
+      // Admission can still be returning a reservation when shutdown wins.
+      await preparation?.catch(() => {});
+      const ttsClosing = dispatched.tts
+        ? Promise.resolve().then(() => ports.confirmTtsTransportStopped?.() ?? "unknown" as const)
+            .catch(error => { failures.push(error); return "unknown" as const; })
+        : Promise.resolve("not_dispatched" as const);
       for (const cancel of [
         () => unsubscribe?.(),
         ...Array.from(
@@ -265,9 +282,10 @@ export async function createSpeechRelaySession(
         } catch (error) {
           failures.push(error);
         }
+      let accounting: void | SpeechSettlementOutcome = undefined;
       try {
         if (credits)
-          await credits.settle({
+          accounting = await credits.settle({
             pcmBytes,
             ttsCharacters,
             providerMayHaveStarted,
@@ -282,6 +300,13 @@ export async function createSpeechRelaySession(
       } catch (error) {
         failures.push(error);
       }
+      const ttsStopped = await ttsClosing;
+      retirementEvidence = {
+        stt: !dispatched.stt ? "not_dispatched" : sttDrained ? "gracefully_drained" : "unknown",
+        tts: !dispatched.tts ? "not_dispatched" : ttsStopped === "transport_closed" ? "transport_closed" : "unknown",
+        accounting: accounting?.stt.state === "actual" && accounting.tts.state === "actual"
+          ? "settled_actual" : !credits && !providerMayHaveStarted ? "not_started" : "unknown",
+      };
       // Once provider work might have started, retain the admitted quota. A failed
       // transport is not proof of zero billable work; credit settlement owns reconciliation.
       try {
@@ -296,7 +321,17 @@ export async function createSpeechRelaySession(
           "Speech relay cleanup was not confirmed",
         );
     });
-    return closing;
+    const attempt = closing;
+    void attempt.catch(() => { if (closing === attempt) closeFailed = true; });
+    return attempt;
+  };
+  const retirement: SpeechRelayRetirementHandle = {
+    close,
+    retryRetirement() {
+      if (closeFailed) { closeFailed = false; closing = undefined; }
+      return close();
+    },
+    evidence: () => retirementEvidence,
   };
   const retire = () => {
     ports.onClosed(close());
@@ -323,21 +358,20 @@ export async function createSpeechRelaySession(
       retire();
     }
   };
+  ports.registerRetirement?.(retirement);
   try {
-    current();
-    if (!(await ports.consumeConsent(scope, consentNonce)))
-      throw new SpeechRelayError("consent", "Speech consent was not verified");
-    current();
-    const admission = await ports.usageStore.checkAndRecord(
-      scope,
-      1,
-      ports.usageLimits,
-    );
-    if (!admission.allowed)
-      throw new SpeechRelayError("quota", "Speech quota exhausted");
-    quota = true;
-    current();
-    credits = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
+    preparation = (async () => {
+      current();
+      if (!(await ports.consumeConsent(scope, consentNonce)))
+        throw new SpeechRelayError("consent", "Speech consent was not verified");
+      current();
+      const admission = await ports.usageStore.checkAndRecord(scope, 1, ports.usageLimits);
+      if (!admission.allowed) throw new SpeechRelayError("quota", "Speech quota exhausted");
+      quota = true;
+      current();
+      credits = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
+    })();
+    await preparation;
     current();
     unsubscribe = ports.subscribeRevoked(scope, retire);
     current();
@@ -567,5 +601,6 @@ export async function createSpeechRelaySession(
       }
     },
     close,
+    retirement,
   };
 }

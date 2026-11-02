@@ -92,6 +92,7 @@ function openWorkerSocket(
       const response = await fetch(httpUrl, {
         method: "GET",
         headers: { ...headers, Upgrade: "websocket" },
+        signal: proxy.signal,
       });
       const ws = (response as unknown as { webSocket?: WorkerUpgradeSocket })
         .webSocket;
@@ -119,6 +120,8 @@ function openWorkerSocket(
  * async Workers upgrade.
  */
 class DeferredWorkerSocket implements WorkerUpgradeSocket {
+  private readonly upgradeAbort = new AbortController();
+  readonly signal = this.upgradeAbort.signal;
   // Report OPEN immediately. The adapters gate `send` on `readyState === 1`,
   // but this proxy BUFFERS every send until the real outbound socket binds, so
   // reporting open is safe and prevents the adapter from dropping the first
@@ -147,6 +150,7 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
       this.real.close(code, reason);
       return;
     }
+    this.upgradeAbort.abort();
     // Closed before the upgrade bound: mark it and drop any buffered audio now,
     // so a later `bind()` can never flush post-close audio to the provider.
     this.closedEarly = { code, reason };
@@ -174,6 +178,8 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
 
   bind(real: WorkerUpgradeSocket): void {
     this.real = real;
+    // Observe a late provider close even when an earlier cancellation won.
+    for (const [type, listener] of this.listeners) real.addEventListener(type, listener);
 
     // If the session was severed/closed BEFORE the outbound upgrade completed
     // (the slow-upgrade race this proxy exists for), we must NOT flush buffered
@@ -188,9 +194,6 @@ class DeferredWorkerSocket implements WorkerUpgradeSocket {
     }
 
     this.readyState = 1;
-    for (const [type, listener] of this.listeners) {
-      real.addEventListener(type, listener);
-    }
     for (const data of this.pendingSends) real.send(data);
     this.pendingSends.length = 0;
     // Synthesize an `open` for adapters that expect it after binding.

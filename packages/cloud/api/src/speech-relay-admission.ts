@@ -8,6 +8,8 @@ import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/o
 import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/host/voice/cartesia-sonic-tts";
 import type { SpeechRelayCreditReservation } from "@elizaos/host/voice/speech-relay-session";
 import { SPEECH_RELAY_BUDGET } from "@elizaos/host/voice/speech-relay-session";
+import type { SpeechSettlementOutcome } from "@elizaos/host/voice/speech-relay-wire";
+import type { SettlementProgress } from "./speech-retirement-state";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
 
 const round = (value: number) =>
@@ -22,6 +24,7 @@ export async function reserveSpeechRelayAdmission(input: {
   sessionId: string;
   usdPerCredit: number;
   executionCtx: { waitUntil(task: Promise<unknown>): void };
+  onProgress?: (kind: "stt" | "tts", progress: SettlementProgress) => Promise<void>;
 }): Promise<SpeechRelayCreditReservation> {
   const { caller, sessionId, usdPerCredit, executionCtx } = input;
   if (!Number.isFinite(usdPerCredit) || usdPerCredit <= 0)
@@ -35,6 +38,8 @@ export async function reserveSpeechRelayAdmission(input: {
   >();
   try {
     for (const kind of ["stt", "tts"] as const) {
+      const requestId = `speech:${sessionId}:${kind}`;
+      await input.onProgress?.(kind, { state: "reserving", requestId });
       const base = rates[kind] * maxima[kind];
       const total = round(base * PLATFORM_MARKUP_MULTIPLIER);
       admissions.set(
@@ -64,6 +69,7 @@ export async function reserveSpeechRelayAdmission(input: {
           atomicProviderBoundary: true,
         }),
       );
+      await input.onProgress?.(kind, { state: "reserved", requestId });
     }
     // Arm both bounded leases once, before opening any provider. In the event
     // of a crash the existing admission alarm retains the full uncertain cost.
@@ -71,43 +77,60 @@ export async function reserveSpeechRelayAdmission(input: {
     for (const admission of admissions.values())
       await admission.markProviderDispatched?.();
   } catch (error) {
-    // No provider has opened yet. Do not keep a reservation for failed bootstrap.
-    await Promise.all(
-      [...admissions.values()].map((admission) => admission.settle(0)),
-    );
+    // Keep each successful zero settlement even if another rollback fails.
+    const rollback = await Promise.allSettled([...admissions].map(async ([kind, admission]) => {
+      const requestId = `speech:${sessionId}:${kind}`;
+      await admission.settle(0);
+      await input.onProgress?.(kind, { state: "settled_actual", requestId, amountUsd: "0" });
+    }));
+    const failures = rollback.filter((item): item is PromiseRejectedResult => item.status === "rejected");
+    if (failures.length) throw new AggregateError([error, ...failures.map(item => item.reason)], "Speech reservation rollback unconfirmed");
     throw error;
   }
-  let settlement: Promise<void> | undefined;
+  let settlement: Promise<SpeechSettlementOutcome> | undefined;
+  const choices = new Map<"stt" | "tts", { state: "actual" | "conservative"; amount: number }>();
+  const outcomes: Partial<SpeechSettlementOutcome> = {};
+  let settlementInput: string | undefined;
   return {
     beforeProviderDispatch: async () => {},
-    settle: (details) =>
-      (settlement ??= (async () => {
+    settle: (details) => {
+      const fingerprint = JSON.stringify([details.pcmBytes, details.ttsCharacters, details.dispatched?.stt, details.dispatched?.tts, details.outcomes?.stt, details.outcomes?.tts]);
+      if (settlementInput !== undefined && settlementInput !== fingerprint) return Promise.reject(Error("Speech settlement target changed"));
+      settlementInput = fingerprint;
+      if (settlement) return settlement;
+      const attempt = (async (): Promise<SpeechSettlementOutcome> => {
         for (const kind of ["stt", "tts"] as const) {
-          const admission = admissions.get(kind)!;
-          if (details.dispatched?.[kind] !== true) {
-            await admission.settle(0);
-            continue;
+          const requestId = `speech:${sessionId}:${kind}`;
+          if (!outcomes[kind]) {
+            let choice = choices.get(kind);
+            if (!choice) {
+              if (details.dispatched?.[kind] !== true) choice = { state: "actual", amount: 0 };
+              else if (kind === "stt" && details.outcomes?.stt !== "complete")
+                choice = { state: "conservative", amount: round(maxima[kind] * rates[kind] * PLATFORM_MARKUP_MULTIPLIER) };
+              else {
+                const quantity = kind === "stt" ? details.pcmBytes / 32000 : details.ttsCharacters;
+                if (!Number.isFinite(quantity) || quantity < 0 || quantity > maxima[kind])
+                  throw Error("Speech usage exceeded its paid reservation");
+                choice = { state: "actual", amount: round(quantity * rates[kind] * PLATFORM_MARKUP_MULTIPLIER) };
+              }
+              choices.set(kind, choice);
+            }
+            await input.onProgress?.(kind, { state: "settling", requestId, amountUsd: String(choice.amount) });
+            const admission = admissions.get(kind)!;
+            if (choice.state === "conservative") await admission.settleUnknown();
+            else await admission.settle(choice.amount);
+            // Cache before persisting progress: a failed proof write retries only that write.
+            outcomes[kind] = { requestId, state: choice.state, amountUsd: String(choice.amount) };
           }
-          // Cartesia TTS charges input characters. The trusted live counter is
-          // an upper bound even if playback is interrupted or the provider ACK
-          // is lost. Only actor loss (which skips this settlement) retains the
-          // full durable reservation. STT still requires its drain receipt.
-          if (kind === "stt" && details.outcomes?.stt !== "complete") {
-            await admission.settleUnknown();
-            continue;
-          }
-          const quantity =
-            kind === "stt" ? details.pcmBytes / 32000 : details.ttsCharacters;
-          if (
-            !Number.isFinite(quantity) ||
-            quantity < 0 ||
-            quantity > maxima[kind]
-          )
-            throw Error("Speech usage exceeded its paid reservation");
-          await admission.settle(
-            round(quantity * rates[kind] * PLATFORM_MARKUP_MULTIPLIER),
-          );
+          const outcome = outcomes[kind]!;
+          await input.onProgress?.(kind, { state: outcome.state === "actual" ? "settled_actual" : "settled_conservative",
+            requestId, amountUsd: outcome.amountUsd });
         }
-      })()),
+        return { stt: outcomes.stt!, tts: outcomes.tts! };
+      })();
+      settlement = attempt;
+      void attempt.catch(() => { if (settlement === attempt) settlement = undefined; });
+      return attempt;
+    },
   };
 }

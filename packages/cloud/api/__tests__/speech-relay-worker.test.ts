@@ -5,7 +5,7 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { Miniflare } from "miniflare";
+import { Miniflare, createFetchMock } from "miniflare";
 import { CARTESIA_PUBLISHED_USD_PER_CREDIT } from "../v1/voice/stt/cartesia-pricing";
 
 let worker: Miniflare;
@@ -77,7 +77,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
-      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;stats().ttsCancels=(stats().ttsCancels??0)+1;}};}close(){stats().ttsClosed=true;}}`,
+      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;stats().ttsCancels=(stats().ttsCancels??0)+1;}};}close(){stats().ttsClosed=true;}async closeAndConfirm(){stats().ttsClosed=true;return "transport_closed";}}`,
     ],
   ];
   const result = await Bun.build({
@@ -110,7 +110,10 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
   });
   if (!result.success)
     throw new AggregateError(result.logs, "Speech worker build failed");
+  const fetchMock = createFetchMock();
+  fetchMock.disableNetConnect();
   worker = new Miniflare({
+    fetchMock,
     modules: true,
     script: await result.outputs[0].text(),
     compatibilityDate: "2026-04-01",
@@ -900,4 +903,27 @@ test("socket Stop settles with the DO bindings and a fresh DB context before a l
     any
   >;
   expect(repeated.settlements).toBe(settled);
+});
+
+test("pre-hello revoke closes the public socket and late hello cannot open providers", async () => {
+  const name = `prehello-${crypto.randomUUID()}`;
+  const request = (path: string, body?: unknown) => worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+    method: body === undefined ? "GET" : "POST",
+    headers: { "x-test-session": name, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  await request("/test-allow-settlement");
+  const token = "prehello-test-capability";
+  const sessionId = crypto.randomUUID();
+  expect((await request("/initialize", { sessionId, tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"), expiresAt: Date.now() + 60000, caller: { user: account }, proofVersion: 1 })).status).toBe(200);
+  const before = await (await request("/test-stats")).json() as Record<string, number>;
+  const upgrade = await worker.dispatchFetch("https://speech-relay.internal/ws", { headers: { Upgrade: "websocket", "x-test-session": name } });
+  expect(upgrade.status).toBe(101); const socket = upgrade.webSocket!; socket.accept();
+  const closed = new Promise<void>((resolve, reject) => { const timer = setTimeout(() => reject(Error("Pre-hello socket stayed open")), 2000); socket.addEventListener("close", () => { clearTimeout(timer); resolve(); }, { once: true }); });
+  const revoked = await request("/revoke", { userId: account.id, organizationId: account.organization_id, proofVersion: 1 });
+  expect(revoked.status).toBe(200); expect(await revoked.json()).toMatchObject({ revoked: true, retirement: { state: "confirmed", mode: "never_started" } }); await closed;
+  try { socket.send(JSON.stringify({ t: "hello", token })); } catch { /* A closed public socket cannot accept a late hello. */ }
+  expect((await worker.dispatchFetch("https://speech-relay.internal/ws", { headers: { Upgrade: "websocket", "x-test-session": name } })).status).toBe(410);
+  const after = await (await request("/test-stats")).json() as Record<string, number>;
+  expect(after.sttOpened ?? 0).toBe(before.sttOpened ?? 0);
 });

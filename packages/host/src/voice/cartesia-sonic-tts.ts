@@ -177,6 +177,7 @@ export interface CartesiaWebSocketLike {
     listener: (event: {
       readonly code?: number;
       readonly reason?: string;
+      readonly wasClean?: boolean;
     }) => void,
   ): void;
   removeEventListener: {
@@ -286,6 +287,14 @@ export class CartesiaSonicTtsAdapter {
   private readonly language: string;
   private readonly metrics?: CartesiaSonicMetricsHook;
   private socket: CartesiaWebSocketLike | undefined;
+  private retiring = false;
+  private failedSocketCreation = false;
+  private socketGeneration = 0;
+  private readonly transportClosures: Array<{
+    socket: CartesiaWebSocketLike; generation: number;
+    state: "pending" | "closed" | "unknown";
+    done: Promise<void>; resolve(): void;
+  }> = [];
 
   constructor(config: CartesiaSonicAdapterConfig) {
     const normalized = validateCartesiaSonicConfig(config);
@@ -337,20 +346,52 @@ export class CartesiaSonicTtsAdapter {
     }
   }
 
+  /** Observes actual socket generations, never a speech context's closed promise. */
+  async closeAndConfirm(timeoutMs = 2000): Promise<"not_dispatched" | "transport_closed" | "unknown"> {
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 10000) throw Error("Invalid TTS close timeout");
+    this.retiring = true;
+    if (!this.transportClosures.length) return this.failedSocketCreation ? "unknown" : "not_dispatched";
+    const records = [...this.transportClosures];
+    const timeout = setTimeout(() => {
+      for (const record of records) if (record.state === "pending") { record.state = "unknown"; record.resolve(); }
+    }, timeoutMs);
+    try {
+      for (const record of records) {
+        if (record.socket.readyState === 0 || record.socket.readyState === 1) {
+          try { record.socket.close(1000, "Speech retirement"); }
+          catch { record.state = "unknown"; record.resolve(); }
+        }
+      }
+      await Promise.all(records.map(record => record.done));
+      return !this.failedSocketCreation && records.every(record => record.state === "closed") ? "transport_closed" : "unknown";
+    } finally { clearTimeout(timeout); }
+  }
+
   private sharedSocket(): { socket: CartesiaWebSocketLike; reused: boolean } {
+    if (this.retiring) throw Error("TTS transport is retiring");
     const current = this.socket;
     if (current && current.readyState !== 2 && current.readyState !== 3) {
       return { socket: current, reused: true };
     }
-    const socket = this.websocketFactory(
-      buildCartesiaWebSocketUrl(this.websocketUrl),
-      {
-        headers: {
-          "Cartesia-Version": CARTESIA_API_VERSION,
-          "X-API-Key": this.apiKey,
-        },
-      },
-    );
+    let socket: CartesiaWebSocketLike;
+    try {
+      socket = this.websocketFactory(buildCartesiaWebSocketUrl(this.websocketUrl), {
+        headers: { "Cartesia-Version": CARTESIA_API_VERSION, "X-API-Key": this.apiKey },
+      });
+    } catch (error) { this.failedSocketCreation = true; throw error; }
+    let resolve!: () => void;
+    const record = { socket, generation: ++this.socketGeneration, state: "pending" as "pending" | "closed" | "unknown",
+      done: new Promise<void>(yes => { resolve = yes; }), resolve: () => resolve() };
+    this.transportClosures.push(record);
+    // Install before any close is initiated. A prior generation cannot settle this record.
+    socket.addEventListener("close", event => {
+      if (record.state !== "pending") return;
+      record.state = event.code === 1000 && event.wasClean === true ? "closed" : "unknown";
+      record.resolve();
+    });
+    socket.addEventListener("error", () => {
+      if (record.state === "pending") { record.state = "unknown"; record.resolve(); }
+    });
     this.socket = socket;
     socket.addEventListener("close", () => {
       if (this.socket === socket) this.socket = undefined;
