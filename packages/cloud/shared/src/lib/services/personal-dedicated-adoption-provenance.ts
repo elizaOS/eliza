@@ -106,6 +106,19 @@ export function personalDedicatedBackupProvenanceFromStored(
 
 const FINGERPRINT_VERSION = "personal-dedicated-selection-v2";
 
+/**
+ * Code-unit order, not localeCompare: ICU collation is locale-dependent, so a
+ * host whose default locale is da-DK orders "aa…" after "b0…" (aa collates as
+ * å). Fingerprint bytes must be identical on every host — see
+ * personalDedicatedInventoryFingerprint, whose result is stored on the
+ * selection receipt and re-verified later, possibly on another node.
+ */
+function codeUnitOrder(left: string, right: string): number {
+  if (left < right) return -1;
+  if (left > right) return 1;
+  return 0;
+}
+
 function canonical(value: unknown): unknown {
   if (value instanceof Date) return value.toISOString();
   if (typeof value === "bigint") return value.toString(10);
@@ -113,7 +126,7 @@ function canonical(value: unknown): unknown {
   if (value && typeof value === "object") {
     return Object.fromEntries(
       Object.entries(value as Record<string, unknown>)
-        .sort(([left], [right]) => left.localeCompare(right))
+        .sort(([left], [right]) => codeUnitOrder(left, right))
         .map(([key, entry]) => [key, canonical(entry)]),
     );
   }
@@ -140,7 +153,7 @@ export async function personalDedicatedInventoryFingerprint(params: {
   backups: PersonalDedicatedBackupProvenance[];
 }): Promise<string> {
   const candidates = [...params.candidates]
-    .sort((left, right) => left.id.localeCompare(right.id))
+    .sort((left, right) => codeUnitOrder(left.id, right.id))
     .map((candidate) => ({
       id: candidate.id,
       status: candidate.status,
@@ -169,8 +182,8 @@ export async function personalDedicatedInventoryFingerprint(params: {
     }));
   const backups = [...params.backups]
     .sort((left, right) => {
-      const sandboxOrder = (left.sandboxRecordId ?? "").localeCompare(right.sandboxRecordId ?? "");
-      return sandboxOrder || left.id.localeCompare(right.id);
+      const sandboxOrder = codeUnitOrder(left.sandboxRecordId ?? "", right.sandboxRecordId ?? "");
+      return sandboxOrder !== 0 ? sandboxOrder : codeUnitOrder(left.id, right.id);
     })
     .map((backup) => ({
       ...backup,
