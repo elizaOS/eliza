@@ -1465,6 +1465,15 @@ describe("check-pr-evidence marker extraction", () => {
     assert.equal(bounded, "- [x] Backend logs:");
     assert.ok(!bounded.includes("user-attachments"));
   });
+
+  it("reads a line that starts with inline triple-backtick code as row text", () => {
+    const row = [
+      "```bun run test:e2e``` does not start a server.",
+      "N/A - this script-only change has no server path.",
+    ].join("\n");
+    assert.equal(boundRowBlock(row), row);
+    assert.equal(isRowSatisfied(row), true);
+  });
 });
 
 describe("check-pr-evidence against the real PR template", () => {
