@@ -986,9 +986,12 @@ export const browserAction: Action = {
       const text = formatBrowserSessionResult(command, result);
       // A native client navigation is a frame sent to the requesting app,
       // which never acknowledges it. The reply may claim only the send.
+      // `show` navigates on the same transport path as `open` and `navigate`.
       const unconfirmedNativeOpen =
         result.targetId === "native-client" &&
-        (command.subaction === "open" || command.subaction === "navigate") &&
+        (command.subaction === "open" ||
+          command.subaction === "navigate" ||
+          command.subaction === "show") &&
         command.url
           ? `I sent ${formatBrowserDestination(command.url)} to your browser, but it hasn't confirmed that it opened.`
           : undefined;
