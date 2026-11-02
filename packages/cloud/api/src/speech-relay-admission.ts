@@ -34,42 +34,54 @@ export async function reserveSpeechRelayAdmission(input: {
     Awaited<ReturnType<typeof admitOrganizationInference>>
   >();
   try {
-    for (const kind of ["stt", "tts"] as const) {
-      const base = rates[kind] * maxima[kind];
-      const total = round(base * PLATFORM_MARKUP_MULTIPLIER);
-      admissions.set(
-        kind,
-        await admitOrganizationInference({
-          context: {
-            organizationId: caller.user.organization_id,
-            userId: caller.user.id,
+    // STT and TTS are independent leases on one organization authority. Admit
+    // them concurrently so bootstrap pays one admission round trip, not two.
+    // Every lease that succeeded is still released below if any one fails.
+    const results = await Promise.allSettled(
+      (["stt", "tts"] as const).map(async (kind) => {
+        const base = rates[kind] * maxima[kind];
+        const total = round(base * PLATFORM_MARKUP_MULTIPLIER);
+        admissions.set(
+          kind,
+          await admitOrganizationInference({
+            context: {
+              organizationId: caller.user.organization_id,
+              userId: caller.user.id,
+              apiKeyId: caller.apiKeyId,
+              requestId: `speech:${sessionId}:${kind}`,
+              provider: "cartesia",
+              billingSource: "cartesia",
+              model: kind === "stt" ? "ink-2" : CARTESIA_SONIC_MODEL_ID,
+              description: "Bounded streaming speech session",
+            },
             apiKeyId: caller.apiKeyId,
-            requestId: `speech:${sessionId}:${kind}`,
-            provider: "cartesia",
-            billingSource: "cartesia",
-            model: kind === "stt" ? "ink-2" : CARTESIA_SONIC_MODEL_ID,
-            description: "Bounded streaming speech session",
-          },
-          apiKeyId: caller.apiKeyId,
-          estimatedInputTokens: 0,
-          estimatedOutputTokens: 0,
-          flatCost: {
-            baseTotalCost: round(base),
-            totalCost: total,
-            platformMarkup: round(total - base),
-          },
-          admissionSnapshot: caller.admissionSnapshot,
-          credential: caller.credential,
-          executionCtx,
-          atomicProviderBoundary: true,
-        }),
-      );
-    }
+            estimatedInputTokens: 0,
+            estimatedOutputTokens: 0,
+            flatCost: {
+              baseTotalCost: round(base),
+              totalCost: total,
+              platformMarkup: round(total - base),
+            },
+            admissionSnapshot: caller.admissionSnapshot,
+            credential: caller.credential,
+            executionCtx,
+            atomicProviderBoundary: true,
+          }),
+        );
+      }),
+    );
+    for (const result of results)
+      if (result.status === "rejected") throw result.reason;
     // Arm both bounded leases once, before opening any provider. In the event
     // of a crash the existing admission alarm retains the full uncertain cost.
     // A live session can reconcile unused TTS to zero on confirmed cleanup.
-    for (const admission of admissions.values())
-      await admission.markProviderDispatched?.();
+    const armed = await Promise.allSettled(
+      [...admissions.values()].map((admission) =>
+        admission.markProviderDispatched?.(),
+      ),
+    );
+    for (const result of armed)
+      if (result.status === "rejected") throw result.reason;
   } catch (error) {
     // No provider has opened yet. Do not keep a reservation for failed bootstrap.
     await Promise.all(

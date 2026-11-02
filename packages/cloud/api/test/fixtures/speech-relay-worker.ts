@@ -29,6 +29,13 @@ export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
       return Response.json(stats);
     }
     if (path === "/test-stats") return Response.json(stats);
+    // Exercise the staging-only timings gate without a second worker.
+    const environment = request.headers.get("x-test-environment");
+    if (environment)
+      (this as unknown as { env: Record<string, unknown> }).env = {
+        ...(this as unknown as { env: Record<string, unknown> }).env,
+        ENVIRONMENT: environment,
+      };
     return super.fetch(request);
   }
 }
