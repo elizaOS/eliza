@@ -9,11 +9,12 @@
  * Cached decisions (positive or denial) are stale-while-revalidate: an aged
  * entry still decides the request and one refresh rewrites it off-response.
  *
- * Cache READS and WRITES are both gated on `useAuthCache` (always on for the
- * Worker `cacheOnly` path, otherwise `INFERENCE_AUTH_CACHE_ENABLED`): while it is off, the origin path
- * neither consults nor populates the session decision cache, mirroring the
- * API-key path in `inference-auth-context.ts`. A disabled authorization cache
- * must leave no positive identities behind in KV.
+ * Cache READS and WRITES are both gated on `useAuthCache` (the caller's
+ * `isInferenceAuthCacheEnabled`, which needs strong revocation on the Worker
+ * as elsewhere): while it is off, the origin path neither consults nor
+ * populates the session decision cache, mirroring the API-key path in
+ * `inference-auth-context.ts`. A disabled authorization cache must leave no
+ * positive identities behind in KV.
  */
 
 import { usersRepository } from "../../db/repositories/users";
@@ -51,6 +52,10 @@ const sessionHydrations = new Map<string, SessionHydration>();
 const AUTH_CONTEXT_REFRESH_AFTER_MS = 30_000;
 
 export interface ResolveInferenceSessionAuthOptions {
+  /**
+   * Worker request. With `useAuthCache` it is decided from the cache only;
+   * otherwise its origin decision still carries the admission snapshot.
+   */
   cacheOnly?: boolean;
   useAuthCache?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
@@ -437,7 +442,11 @@ export async function resolveInferenceSessionAuthContext(
   const decision = await hydration.decision;
   if (!options.executionCtx) await hydration.projection;
   const resolved = await enforceStrongSessionBoundary(
-    decision,
+    // The Worker limiter reads the snapshot from the decision, so an uncached
+    // Worker decision carries one as a cached decision does.
+    options.cacheOnly && "apiKeyId" in decision && !decision.admission
+      ? { ...decision, admission: await loadInferenceAdmissionSnapshot(decision.orgId) }
+      : decision,
     claims.userId,
     claims.issuedAt,
     "origin",

@@ -28,6 +28,7 @@ export type ApiErrorCode =
   | "storage_quota_exceeded"
   | "creator_monetization_retired"
   | "affiliate_payout_exceeds_payable"
+  | "auth_cache_warming"
   | "service_unavailable"
   | "internal_error";
 
