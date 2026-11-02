@@ -59,6 +59,7 @@ import type {
 import {
   ElizaError,
   getStreamingContext,
+  timeInferenceSpan,
   type IAgentRuntime,
   logger,
   Semaphore,
@@ -5606,14 +5607,12 @@ export class CalendarService extends Service {
     const forceSync =
       normalizeOptionalBoolean(request.forceSync, "forceSync") ?? false;
 
-    const discovery = await this.discoverCalendars(
-      requestUrl,
-      {
-        mode,
-        side,
-        grantId: request.grantId,
-      },
-      requestSignal,
+    const discovery = await timeInferenceSpan("calendar:feed:discovery", () =>
+      this.discoverCalendars(
+        requestUrl,
+        { mode, side, grantId: request.grantId },
+        requestSignal,
+      ),
     );
     requestSignal?.throwIfAborted();
     const listedCalendars = discovery.calendars;
@@ -5755,18 +5754,14 @@ export class CalendarService extends Service {
     try {
       return {
         calendars: listedCalendars,
-        feed: await this.aggregateCalendarFeedsAcrossCalendars(
-          requestUrl,
-          calendars,
-          timeMin,
-          timeMax,
-          timeZone,
-          forceSync,
-          now,
-          discoveryFailures,
-          requestSignal
-            ? AbortSignal.any([requestSignal, reads.signal])
-            : reads.signal,
+        feed: await timeInferenceSpan("calendar:feed:aggregate", () =>
+          this.aggregateCalendarFeedsAcrossCalendars(
+            requestUrl, calendars, timeMin, timeMax, timeZone, forceSync,
+            now, discoveryFailures,
+            requestSignal
+              ? AbortSignal.any([requestSignal, reads.signal])
+              : reads.signal,
+          ),
         ),
       };
     } finally {
@@ -5806,13 +5801,10 @@ export class CalendarService extends Service {
               acquired = true;
               signal.throwIfAborted();
               return {
-                feed: await managed.feed(
-                  calendar,
-                  timeMin,
-                  timeMax,
-                  timeZone,
-                  this.agentId(),
-                  signal,
+                feed: await timeInferenceSpan(
+                  "calendar:feed:managed-source",
+                  () => managed.feed(calendar, timeMin, timeMax, timeZone, this.agentId(), signal),
+                  { provider: calendar.provider },
                 ),
               };
             } catch (error) {
@@ -5853,11 +5845,9 @@ export class CalendarService extends Service {
       if (calendar.provider === ELIZA_CALENDAR_PROVIDER) {
         sources.push({
           calendar,
-          feed: await this.readElizaCalendarFeed({
-            calendar,
-            timeMin,
-            timeMax,
-          }),
+          feed: await timeInferenceSpan("calendar:feed:local", () =>
+            this.readElizaCalendarFeed({ calendar, timeMin, timeMax }),
+          ),
         });
         continue;
       }
