@@ -1145,6 +1145,104 @@ describe("request-bound Notes negative constraints", () => {
     );
   });
 
+  it("keeps a rejected append open under an update request instead of reporting it done", async () => {
+    const f = await fixture(
+      { classification: "mutation_requested", operations: ["update"] },
+      "update my ideas note: add the launch date",
+    );
+    const target = { kind: "id", value: f.historical.value.id };
+    let requests = 0;
+    const executed: string[] = [];
+    try {
+      const result = await diagnosedPlanner(f, {
+        context: f.context,
+        tools: [
+          {
+            name: "NOTES_PATCH",
+            parameters: { type: "object", properties: {} },
+          },
+        ],
+        runtime: {
+          useModel: async () => {
+            requests++;
+            if (requests === 1)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_PATCH",
+                    id: "append-invalid",
+                    arguments: {
+                      target,
+                      changes: [],
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            if (requests === 2)
+              return {
+                text: "",
+                toolCalls: [
+                  {
+                    name: "NOTES_PATCH",
+                    id: "append-corrected",
+                    arguments: {
+                      target,
+                      changes: [],
+                      textEdit: {
+                        action: "append",
+                        field: "body",
+                        text: "\nlaunch date: March 3",
+                      },
+                      expectedRevision: f.service.snapshot().revision,
+                      eliza_turn_scope: "final",
+                    },
+                  },
+                ],
+              };
+            throw new Error("Unexpected append retry");
+          },
+        },
+        executeToolCall: async (call) => {
+          executed.push(call.name);
+          return actionResultToPlannerToolResult(
+            await f.execute(call.name, call.params ?? {}),
+            { requestOperationIssuer: f.issuer },
+          );
+        },
+        evaluate: async () => ({
+          success: true,
+          decision: "FINISH",
+          thought:
+            "The host must establish completion before this verdict is accepted.",
+          messageToUser: "The ideas note now has the launch date.",
+        }),
+      });
+      // A rejected edit the owner asked for is not a harmless refusal of an
+      // unrequested operation: the planner must keep working until it applies.
+      expect(executed).toEqual(["NOTES_PATCH", "NOTES_PATCH"]);
+      const rejected = result.trajectory.steps[0].result;
+      if (!rejected) throw new Error("Expected the rejected append step");
+      expect(rejected.success).toBe(false);
+      expect(readNotesMutationCompletion(rejected, f.issuer)).toMatchObject({
+        requested: true,
+        rejected: true,
+        outsideRequestRejection: false,
+      });
+      expect(result.terminalFailure).toBeUndefined();
+      expect(f.service.getNote(f.historical.value.id).body).toContain(
+        "March 3",
+      );
+      expect(f.writes).toHaveBeenCalledTimes(1);
+      expect(result.finalMessage).toBe(
+        "The ideas note now has the launch date.",
+      );
+    } finally {
+      await f.service.stop();
+    }
+  });
+
   it("does not dismiss an unrequested operation with an uncertain outcome", async () => {
     const f = await fixture(
       { classification: "mutation_requested", operations: ["create"] },
