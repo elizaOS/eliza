@@ -60,6 +60,7 @@ test("the existing app entry retains its lazy dashboard transport", async () => 
 function harness(
   playbackCompletion = false,
   getUiContext?: () => { uiViewPath?: string },
+  preparation = false,
 ) {
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
@@ -178,6 +179,7 @@ function harness(
           releaseMint = resolve;
         });
       return Response.json({
+        ...(preparation ? { rotationPreparation: "retire-before-open-v1", stopIntentVersion: 1, stopIntentGeneration: `session-${mints}` } : {}),
         sessionId: `session-${mints}`,
         token: invalidMint && mints > 1 ? "" : `one-use-${mints}`,
         wsUrl: `ws://localhost/voice-${mints}`,
@@ -694,3 +696,33 @@ test("a retired renderer context stops capture instead of silently discarding up
   await h.advance(120000);
   expect(h.mints).toBe(1);
 });
+
+test("prefetch keeps current socket and microphone live until the next ticket arrives",async()=>{
+ const h=harness(false,undefined,true);await h.client.start();await h.settle();const old=h.sockets[0];h.holdMint();await h.advance(50000);
+ expect(h.mints).toBe(2);expect(h.sockets).toHaveLength(1);expect(h.client.state.phase).toBe("listening");expect(h.activeCaptures).toBe(1);
+ expect(old.sent.some((f)=>(f as {t?:string}).t==="bye")).toBe(false);expect(h.bodies[1].predecessorSessionId).toBe("session-1");
+ await h.advance(4000);expect(h.mints).toBe(2);h.releaseMint();await h.settle();expect(h.sockets).toHaveLength(2);expect(old.readyState).toBe(3);expect(h.mints).toBe(2);
+});
+test("Stop during prefetch never adopts the late ticket or reopens capture",async()=>{
+ const h=harness(false,undefined,true);await h.client.start();await h.settle();h.holdMint();await h.advance(50000);await h.client.stop();h.releaseMint();await h.settle();expect(h.sockets).toHaveLength(1);expect(h.activeCaptures).toBe(0);expect(h.client.state.phase).toBe("idle");
+});
+test("invalid prefetched ticket does not close current paid session or repeat mint",async()=>{
+ const h=harness(false,undefined,true);await h.client.start();await h.settle();h.invalidNextMint();await h.advance(50000);await h.settle();expect(h.sockets).toHaveLength(1);expect(h.sockets[0].readyState).toBe(1);await h.advance(5000);expect(h.mints).toBe(2);expect(h.activeCaptures).toBe(1);
+});
+
+test("prefetch waits for matching canonical settlement after playback is listening",async()=>{
+ const h=harness(false,undefined,true);await h.client.start();await h.settle();const old=h.sockets[0];
+ old.frame({t:"stt_final",text:"read my notes",traceId:"live-turn"});old.frame({t:"speaking_start",traceId:"live-turn"});old.frame({t:"speaking_end",traceId:"live-turn"});
+ await h.advance(56000);expect(h.client.state.phase).toBe("listening");expect(h.sockets).toHaveLength(1);expect(h.mints).toBe(2);
+ old.frame({t:"usage",sttMs:1,ttsChars:1,traceId:"wrong-turn"});await h.advance(1000);expect(h.sockets).toHaveLength(1);
+ old.frame({t:"reply_complete",traceId:"live-turn"});await h.advance(1000);expect(h.sockets).toHaveLength(1);
+ old.frame({t:"usage",sttMs:1,ttsChars:1,traceId:"live-turn"});await h.advance(1000);expect(h.sockets).toHaveLength(2);
+});
+test("hard loss marks unsettled turn unknown without replaying it",async()=>{
+ const h=harness(false,undefined,true);await h.client.start();await h.settle();const old=h.sockets[0];old.frame({t:"stt_final",text:"read my notes",traceId:"unfinished"});await h.advance(50000);old.close();await h.settle();
+ expect(h.marks).toContain("not_reached(turn_terminal_unknown:ws_close)");expect(h.bodies.every(b=>!("text"in b))).toBe(true);
+});
+
+test("normal Stop carries explicit current generation",async()=>{const h=harness(false,undefined,true);await h.client.start();await h.settle();await h.client.stop();expect(h.sockets[0].sent.find((v)=>(v as any).t==="bye")).toMatchObject({intent:{version:1,kind:"user_stop",generation:"session-1"}});});
+test("budget rotation names only its exact prepared successor",async()=>{const h=harness(false,undefined,true);await h.client.start();await h.settle();await h.advance(50000);expect(h.sockets[0].sent.find((v)=>(v as any).t==="bye")).toMatchObject({intent:{version:1,kind:"budget_rotation",generation:"session-1",successorSessionId:"session-2"}});});
+test("legacy host Stop stays bare and makes no typed cancellation claim",async()=>{const h=harness();await h.client.start();await h.settle();await h.client.stop();expect(h.sockets[0].sent.find((v)=>(v as any).t==="bye")).toEqual({t:"bye"});});

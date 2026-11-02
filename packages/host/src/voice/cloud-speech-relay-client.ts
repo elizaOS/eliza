@@ -13,6 +13,8 @@ import { speechHttpTimings } from "./speech-http-timing";
 import {
   decodeSpeechRelayAudio,
   SPEECH_RELAY_ROUTES,
+  SPEECH_RETIREMENT_HEADER,
+  readConfirmedSpeechRetirement,
   type SpeechRelayServerControl,
 } from "./speech-relay-wire";
 
@@ -63,6 +65,12 @@ export interface CloudSpeechRelayTransportDiagnostic {
   wireCode?: Extract<SpeechRelayServerControl, { t: "error" }>["code"];
 }
 
+export interface CloudSpeechRelayRetirement {
+  close(): Promise<void>;
+  retryRetirement?(): Promise<void>;
+  /** Explicit current-owner reconciliation only; never used for provider dispatch. */
+  reconcileRetirement?(credential: string): Promise<void>;
+}
 export interface CloudSpeechRelayClientOptions {
   enabled?: boolean;
   /** Exact reviewed API origin, without a path/query. Never taken from a renderer request. */
@@ -72,7 +80,11 @@ export interface CloudSpeechRelayClientOptions {
   credential(): Promise<string>;
   /** Pin owner/credential revision and local agent generation for this whole session. */
   assertCurrent(): void;
+  /** Stable owner/runtime/environment lineage, independent of key rotation; explicit reconciliation only. */
+  assertRetirementLineage?(): void;
   signal?: AbortSignal;
+  /** Register cleanup before remote admission; remains usable if acquisition rejects. */
+  registerRetirement?(retirement: CloudSpeechRelayRetirement): void;
   fetch?: typeof fetch;
   websocket?: (url: string) => WebSocket;
   /** Safe structured diagnostics only; logger failure cannot alter transport lifecycle. */
@@ -90,8 +102,9 @@ export class CloudSpeechRelayClientError extends Error {
       | "expired"
       | "transport",
     message: string,
+    options?: ErrorOptions,
   ) {
-    super(message);
+    super(message, options);
     this.name = "CloudSpeechRelayClientError";
   }
 }
@@ -161,6 +174,10 @@ export async function createCloudSpeechRelayPorts(
 ): Promise<{
   speechPorts: VoiceSessionSpeechPorts;
   close(): Promise<void>;
+  /** Explicitly retry only a failed retirement of this captured session. */
+  retryRetirement?(): Promise<void>;
+  /** Explicit current-owner reconciliation only; never used for provider dispatch. */
+  reconcileRetirement?(credential: string): Promise<void>;
   sessionId: string;
   expiresAt: number;
 }> {
@@ -200,6 +217,7 @@ export async function createCloudSpeechRelayPorts(
   let relayReady = false;
   let closed = false,
     closePromise: Promise<void> | undefined,
+    retirementFailed = false,
     socket: WebSocket | undefined,
     expiryTimer: ReturnType<typeof setTimeout> | undefined,
     sessionId: string | undefined,
@@ -388,6 +406,8 @@ export async function createCloudSpeechRelayPorts(
       "authorization",
       "Cloud account credential is unavailable",
     );
+  let admissionState: "not_started" | "pending" | "identified" | "unknown" = "not_started";
+  let admissionPending: Promise<void> | undefined;
   const request = async (
     path: string,
     body: unknown,
@@ -400,17 +420,27 @@ export async function createCloudSpeechRelayPorts(
     let bodyStarted: number | undefined;
     let serverTimingMs: Record<string, number> | undefined;
     let returned = false;
+    const mintRequest = path === SPEECH_RELAY_ROUTES.mint;
+    let finishAdmission: (() => void) | undefined;
+    const requestDeadline = AbortSignal.timeout(10000);
     try {
       assertCurrent();
+      if (mintRequest) {
+        admissionState = "pending";
+        admissionPending = new Promise<void>(resolve => { finishAdmission = resolve; });
+      }
       const response = await (options.fetch ?? fetch)(new URL(path, origin), {
         method: "POST",
         redirect: "error",
         headers: {
           authorization: `Bearer ${credential}`,
           "content-type": "application/json",
+          [SPEECH_RETIREMENT_HEADER]: "1",
         },
         body: JSON.stringify(body),
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]),
+        // Once dispatched, a mint response is drained for its cleanup identity
+        // even if local Stop wins. It can never authorize a later socket.
+        signal: mintRequest ? requestDeadline : AbortSignal.any([signal, requestDeadline]),
       });
       headersMs = performance.now() - started;
       try {
@@ -421,7 +451,7 @@ export async function createCloudSpeechRelayPorts(
       }
       serverTimingMs = speechHttpTimings(response.headers);
       status = response.status;
-      assertCurrent();
+      if (!mintRequest) assertCurrent();
       if (!response.ok) {
         await response.body?.cancel();
         throw new CloudSpeechRelayClientError(
@@ -442,10 +472,19 @@ export async function createCloudSpeechRelayPorts(
         );
       }
       bodyStarted = performance.now();
-      const result = await readJson(response, 16384, assertCurrent);
+      const result = await readJson(response, 16384, mintRequest ? () => requestDeadline.throwIfAborted() : assertCurrent);
+      if (mintRequest && typeof result.sessionId === "string" && UUID.test(result.sessionId)) {
+        sessionId = result.sessionId;
+        admissionState = "identified";
+      }
+      assertCurrent();
       returned = true;
       return result;
     } finally {
+      if (mintRequest && finishAdmission) {
+        if (admissionState === "pending") admissionState = "unknown";
+        finishAdmission();
+      }
       diagnose("startup", {
         stage:
           path === SPEECH_RELAY_ROUTES.consent ? "consent_post" : "mint_post",
@@ -523,28 +562,41 @@ export async function createCloudSpeechRelayPorts(
     }
     socket?.close(1000, "speech-closed");
   };
-  const close = (): Promise<void> => {
-    if (closePromise) return closePromise;
-    terminate();
-    closePromise = (async () => {
-      if (!sessionId) return;
-      // Retirement can only revoke this already-minted session at its captured
-      // origin with its captured credential. It must survive local ticket expiry,
-      // owner replacement and normal socket teardown; none may admit more audio.
-      const retirementDeadline = AbortSignal.timeout(10000);
+  const confirmRetirement = async (retirementCredential: string, assertLineage?: () => void): Promise<void> => {
+    assertLineage?.();
+    if (typeof retirementCredential !== "string" || !retirementCredential.trim() || /[\r\n]/.test(retirementCredential)) throw new CloudSpeechRelayClientError("authorization", "A current owner credential is required");
+    const retirementDeadline = AbortSignal.timeout(10000);
+    if (admissionPending && admissionState === "pending") {
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => reject(new CloudSpeechRelayClientError("protocol", "Cloud speech admission remains unconfirmed"));
+        retirementDeadline.addEventListener("abort", abort, { once: true });
+        void admissionPending!.then(() => { retirementDeadline.removeEventListener("abort", abort); resolve(); });
+      });
+      assertLineage?.();
+    }
+    if (!sessionId) {
+      if (admissionState === "not_started") return;
+      throw new CloudSpeechRelayClientError("protocol", "Cloud speech admission remains unconfirmed");
+    }
+      // The session and origin stay captured. Only explicit reconciliation
+      // may use a current same-owner credential, exclusively for this revoke;
+      // it never replaces the startup credential or admits more audio.
+      retirementDeadline.throwIfAborted();
       const response = await (options.fetch ?? fetch)(
         new URL(SPEECH_RELAY_ROUTES.revoke(sessionId), origin),
         {
           method: "POST",
           redirect: "error",
           headers: {
-            authorization: `Bearer ${credential}`,
+            authorization: `Bearer ${retirementCredential}`,
             "content-type": "application/json",
+            [SPEECH_RETIREMENT_HEADER]: "1",
           },
           body: "{}",
           signal: retirementDeadline,
         },
       );
+      try { assertLineage?.(); } catch (error) { await response.body?.cancel(); throw error; }
       if (!response.ok) {
         await response.body?.cancel();
         throw new CloudSpeechRelayClientError(
@@ -555,18 +607,57 @@ export async function createCloudSpeechRelayPorts(
       const result = await readJson(response, 1024, () =>
         retirementDeadline.throwIfAborted(),
       );
-      exact(result, ["revoked"]);
-      requireValue(result.revoked === true);
+      assertLineage?.();
+      if (!readConfirmedSpeechRetirement(result, sessionId))
+        throw new CloudSpeechRelayClientError("protocol", "Cloud speech retirement proof is unconfirmed");
       retirementDeadline.throwIfAborted();
-    })();
-    return closePromise;
+  };
+  let reconciliation: Promise<void> | undefined;
+  const close = (): Promise<void> => {
+    if (closePromise) return closePromise;
+    terminate();
+    closePromise = confirmRetirement(credential);
+    const attempt = closePromise;
+    void attempt.catch(() => {
+      // Retry only the same captured session's authenticated retirement.
+      // Transport stays closed; this cannot reopen a provider or admit audio.
+      if (closePromise === attempt) retirementFailed = true;
+    });
+    return attempt;
   };
   const aborted = () =>
     terminate(
       new CloudSpeechRelayClientError("closed", "Cloud speech was cancelled"),
     );
   options.signal?.addEventListener("abort", aborted, { once: true });
+  const retirement: CloudSpeechRelayRetirement = {
+    close,
+    retryRetirement() {
+      if (retirementFailed) { retirementFailed = false; closePromise = undefined; }
+      return close();
+    },
+    reconcileRetirement(currentCredential) {
+      if (reconciliation) return reconciliation;
+      const assertLineage = options.assertRetirementLineage;
+      if (!assertLineage) return Promise.reject(new CloudSpeechRelayClientError("configuration", "Retirement reconciliation requires owner lineage"));
+      const attempt = (async () => {
+        assertLineage();
+        let alreadyConfirmed = false;
+        try { await close(); alreadyConfirmed = true; } catch { /* Explicit owner reconciliation follows. */ }
+        assertLineage();
+        if (alreadyConfirmed) return;
+        await confirmRetirement(currentCredential, assertLineage);
+        assertLineage();
+        retirementFailed = false;
+        closePromise = Promise.resolve();
+      })();
+      reconciliation = attempt;
+      void attempt.then(() => { if (reconciliation === attempt) reconciliation = undefined; }, () => { if (reconciliation === attempt) reconciliation = undefined; });
+      return attempt;
+    },
+  };
   try {
+    options.registerRetirement?.(retirement);
     const consent = await request(SPEECH_RELAY_ROUTES.consent, {});
     exact(consent, ["consentNonce", "expiresAt"]);
     requireValue(
@@ -578,7 +669,7 @@ export async function createCloudSpeechRelayPorts(
     const minted = await request(SPEECH_RELAY_ROUTES.mint, {
       consentNonce: consent.consentNonce,
     });
-    exact(minted, ["sessionId", "token", "expiresAt", "wsUrl", "version"]);
+    exact(minted, ["sessionId", "token", "expiresAt", "wsUrl", "version", "retirementProofVersion"]);
     requireValue(
       typeof minted.sessionId === "string" &&
         UUID.test(minted.sessionId) &&
@@ -586,7 +677,7 @@ export async function createCloudSpeechRelayPorts(
         minted.token.length > 0 &&
         minted.token.length <= 6144 &&
         typeof minted.expiresAt === "string" &&
-        minted.version === 1,
+        minted.version === 1 && minted.retirementProofVersion === 1,
     );
     sessionId = minted.sessionId;
     expiry = Date.parse(minted.expiresAt);
@@ -810,7 +901,21 @@ export async function createCloudSpeechRelayPorts(
     );
   } catch (error) {
     terminate();
-    if (sessionId) await close().catch(() => {});
+    if (sessionId || admissionState !== "not_started") {
+      try { await close(); }
+      catch (cleanupError) {
+        const cause = new AggregateError(
+          [error, cleanupError],
+          "Cloud speech startup failed with unconfirmed retirement",
+        );
+        // Preserve the caller's transport/auth classification without losing
+        // the cleanup failure or treating uncertain admission as retired.
+        if (error instanceof CloudSpeechRelayClientError) {
+          throw new CloudSpeechRelayClientError(error.code, error.message, { cause });
+        }
+        throw cause;
+      }
+    }
     throw error;
   }
   function handleControl(input: SpeechRelayServerControl) {
@@ -1086,5 +1191,5 @@ export async function createCloudSpeechRelayPorts(
     },
   };
   requireValue(sessionId);
-  return { speechPorts, close, sessionId, expiresAt: expiry };
+  return { speechPorts, ...retirement, sessionId, expiresAt: expiry };
 }

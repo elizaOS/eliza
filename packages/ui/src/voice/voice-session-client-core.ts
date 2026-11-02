@@ -327,6 +327,13 @@ export function createVoiceSessionClient(
   // Epoch expiry of the CURRENT minted token; rotation never fires past it
   // (the server has already severed — the reactive recovery path owns it).
   let rotationDeadlineMs: number | null = null;
+  let rotationPreparation: {
+    socket: VoiceWebSocketLike;
+    pending: boolean;
+    minted?: VoiceSessionMintResponse;
+  } | null = null;
+  let rotationOffer: VoiceSessionMintResponse | null = null;
+  const unsettledTurnTraceIds = new Set<string>();
   let ownership: VoiceSessionLease | null = null;
   let disposed = false;
   let lifecycleGeneration = 0;
@@ -428,6 +435,7 @@ export function createVoiceSessionClient(
   };
   async function mintOnce(
     generation: number,
+    predecessorSessionId?: string,
   ): Promise<VoiceSessionMintResponse> {
     let consentNonce: string | null;
     try {
@@ -456,6 +464,7 @@ export function createVoiceSessionClient(
           conversationId: options.conversationId,
           transport: "websocket",
           consentNonce,
+          ...(predecessorSessionId ? { predecessorSessionId } : {}),
         }),
       });
     } catch (cause) {
@@ -636,11 +645,13 @@ export function createVoiceSessionClient(
         // budget-refill decision reads on the next transport loss.
         lastLiveAtMs = now();
         everLiveThisLifecycle = true;
+        unsettledTurnTraceIds.clear();
         // Client-owned: begin capture, then listening.
         void startCapture(generation, socket);
         break;
       case "stt_final":
         mark("stt_final", event.traceId);
+        if (event.text.trim()) unsettledTurnTraceIds.add(event.traceId);
         // An empty final never dispatches the LLM leg server-side, so no
         // speaking_end will follow — the machine parked at 'complete' and the
         // loop must happen HERE or the turn never returns to listening
@@ -688,6 +699,7 @@ export function createVoiceSessionClient(
         playbackEnd = null;
         playback?.flush();
         mark("interrupted", event.traceId);
+        unsettledTurnTraceIds.delete(event.traceId);
         setState(loopToListening(state));
         break;
       case "error":
@@ -712,6 +724,7 @@ export function createVoiceSessionClient(
         }
         break;
       case "usage":
+        unsettledTurnTraceIds.delete(event.traceId);
         // A deliberate silent turn has no playback completion callback.
         if (state.phase === "complete") setState(loopToListening(state));
         break;
@@ -817,6 +830,8 @@ export function createVoiceSessionClient(
     if (!uplink || !downlink) {
       throw new VoiceSessionMintError(-1, "no compatible codec offered");
     }
+    rotationOffer = minted;
+    rotationPreparation = null;
     const acceptedExpiryMs = parseExpiresAtMs(minted.expiresAt);
     if (
       captureRetentionTimer !== null &&
@@ -918,7 +933,32 @@ export function createVoiceSessionClient(
     }
     const socket = ws;
     if (!socket || connPhase !== "open") return;
-    if (state.phase !== "listening") {
+    if (rotationOffer?.rotationPreparation === "retire-before-open-v1") {
+      if (!rotationPreparation || rotationPreparation.socket !== socket) {
+        const preparation = { socket, pending: true } as NonNullable<typeof rotationPreparation>;
+        rotationPreparation = preparation;
+        // Mint only. Do not open a second socket or start a provider in advance.
+        void mintOnce(generation, rotationOffer.sessionId).then((minted) => {
+          if (!isLifecycleCurrent(generation) || intentionalClose || ws !== socket ||
+              recoveryPromise || rotationPreparation !== preparation) return;
+          preparation.pending = false;
+          preparation.minted = minted;
+          attemptRotation(generation);
+        }).catch(() => {
+          if (!isLifecycleCurrent(generation) || ws !== socket ||
+              rotationPreparation !== preparation) return;
+          // Keep the paid current session. Do not repeatedly mint on this lease;
+          // its unchanged hard deadline and existing recovery still apply.
+          preparation.pending = false;
+          mark("token_rotation_prepare_failed", state.traceId);
+        });
+        return;
+      }
+      if (rotationPreparation.pending || !rotationPreparation.minted) return;
+      const expiry = parseExpiresAtMs(rotationPreparation.minted.expiresAt);
+      if (expiry === null || expiry <= epochNow()) return;
+    }
+    if (state.phase !== "listening" || unsettledTurnTraceIds.size > 0) {
       // Mid-turn: never cut audible speech or an in-flight transcription.
       // Re-check until the turn completes or the deadline passes.
       mark("token_rotation_deferred", state.traceId);
@@ -932,6 +972,7 @@ export function createVoiceSessionClient(
     requestRecovery("token_rotation", generation, socket, {
       budgeted: false,
       cleanBye: true,
+      preparedMint: rotationPreparation?.minted,
     });
   }
   function requestRecovery(
@@ -941,6 +982,7 @@ export function createVoiceSessionClient(
     recoveryOptions?: {
       budgeted?: boolean;
       cleanBye?: boolean;
+      preparedMint?: VoiceSessionMintResponse;
     },
   ): void {
     if (!isLifecycleCurrent(generation) || intentionalClose || ws !== socket) {
@@ -954,7 +996,10 @@ export function createVoiceSessionClient(
     clearRotationTimer();
     if (recoveryOptions?.cleanBye) {
       try {
-        socket.send(encodeClientControl({ t: "bye" }));
+        socket.send(encodeClientControl({ t: "bye", ...(rotationOffer?.stopIntentVersion === 1 && rotationOffer.stopIntentGeneration === rotationOffer.sessionId ? { intent: {
+          version: 1 as const, kind: "budget_rotation" as const, generation: rotationOffer.stopIntentGeneration,
+          ...(recoveryOptions?.preparedMint ? { successorSessionId: recoveryOptions.preparedMint.sessionId } : {}),
+        } } : {}) }));
       } catch (ignoredError) {
         // error-policy:J6 the bye frame is a courtesy on a socket being rotated away.
         void ignoredError;
@@ -974,6 +1019,7 @@ export function createVoiceSessionClient(
       reason,
       generation,
       recoveryOptions?.budgeted ?? true,
+      recoveryOptions?.preparedMint,
     );
     recoveryPromise = pending;
     void pending.finally(() => {
@@ -984,9 +1030,12 @@ export function createVoiceSessionClient(
     reason: string,
     generation: number,
     budgetedInitial: boolean,
+    preparedMint?: VoiceSessionMintResponse,
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     clearRotationTimer();
+    for (const traceId of unsettledTurnTraceIds) mark(`not_reached(turn_terminal_unknown:${reason})`, traceId);
+    unsettledTurnTraceIds.clear();
     // The transport is already gone, so publish that fact before a browser
     // driver is allowed to delay microphone teardown. Later retry attempts
     // re-arm the caller's connect watchdog from inside the loop.
@@ -1043,7 +1092,9 @@ export function createVoiceSessionClient(
         if (attempt > 1) await waitForReconnectBackoff(attempt, generation);
         // Reconnect ALWAYS re-mints; the old token is revoked/expired and
         // cannot reconnect (contract §7.1).
-        const minted = await mint(generation);
+        const offered = preparedMint;
+        preparedMint = undefined;
+        const minted = offered ?? await mint(generation);
         assertLifecycleCurrent(generation);
         await openConnection(minted, generation);
         return;
@@ -1115,7 +1166,11 @@ export function createVoiceSessionClient(
     lifecycleAbort?.abort();
     lifecycleAbort = null;
     clearRotationTimer();
+    const stoppedOffer = rotationOffer;
     rotationDeadlineMs = null;
+    rotationPreparation = null;
+    rotationOffer = null;
+    unsettledTurnTraceIds.clear();
     lastLiveAtMs = null;
     // Detach playback before the first await. If a caller reuses this client
     // after the transport reaches `closed`, this stop owns only the old sink
@@ -1129,7 +1184,9 @@ export function createVoiceSessionClient(
     if (socket && connPhase === "open") {
       // Send directly after detaching the socket from asynchronous callbacks.
       try {
-        socket.send(encodeClientControl({ t: "bye" }));
+        socket.send(encodeClientControl({ t: "bye", ...(stoppedOffer?.stopIntentVersion === 1 && stoppedOffer.stopIntentGeneration === stoppedOffer.sessionId ? { intent: {
+          version: 1 as const, kind: "user_stop" as const, generation: stoppedOffer.stopIntentGeneration,
+        } } : {}) }));
       } catch (ignoredError) {
         // error-policy:J6 the bye frame is a courtesy on a socket being torn down.
         void ignoredError;

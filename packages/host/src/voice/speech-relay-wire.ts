@@ -124,3 +124,58 @@ export function decodeSpeechRelayAudio(frame: Uint8Array): {
     throw Error("Invalid speech audio frame");
   return { id, pcm };
 }
+
+/** Opt-in retirement contract. Legacy revocation booleans are not drain proof. */
+export const SPEECH_RETIREMENT_HEADER = "X-Eliza-Speech-Retirement-Version";
+export const SPEECH_RETIREMENT_VERSION = 1 as const;
+export type ConfirmedSpeechRetirement = Readonly<{
+  version: 1;
+  sessionId: string;
+  state: "confirmed";
+  completedAt: string;
+} & (
+  | { mode: "never_started"; stt: "not_dispatched"; tts: "not_dispatched"; accounting: "not_started" }
+  | { mode: "retired"; stt: "not_dispatched" | "gracefully_drained"; tts: "not_dispatched" | "transport_closed"; accounting: "settled_actual" }
+)>;
+export type UnconfirmedSpeechRetirement = Readonly<{
+  version: 1;
+  sessionId: string;
+  state: "unconfirmed";
+  reason: "legacy_state" | "opening_unresolved" | "provider_unconfirmed" | "accounting_unconfirmed" | "proof_persistence_failed";
+}>;
+export type SpeechRetirementProof = ConfirmedSpeechRetirement | UnconfirmedSpeechRetirement;
+export interface SpeechSettlementOutcome {
+  stt: { requestId: string; state: "actual" | "conservative"; amountUsd: string };
+  tts: { requestId: string; state: "actual" | "conservative"; amountUsd: string };
+}
+export interface SpeechRetirementEvidence {
+  stt: "not_dispatched" | "gracefully_drained" | "unknown";
+  tts: "not_dispatched" | "transport_closed" | "unknown";
+  accounting: "not_started" | "settled_actual" | "unknown";
+}
+/** Strict server-proof parser, including exact discriminator key sets. */
+export function readConfirmedSpeechRetirement(
+  value: unknown,
+  sessionId: string,
+  now = Date.now(),
+): ConfirmedSpeechRetirement | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const outer = value as Record<string, unknown>;
+  if (Object.keys(outer).sort().join() !== "retirement,revoked" || outer.revoked !== true) return null;
+  if (!outer.retirement || typeof outer.retirement !== "object" || Array.isArray(outer.retirement)) return null;
+  const proof = outer.retirement as Record<string, unknown>;
+  if (Object.keys(proof).sort().join() !== "accounting,completedAt,mode,sessionId,state,stt,tts,version" ||
+      proof.version !== 1 || proof.sessionId !== sessionId || proof.state !== "confirmed" ||
+      typeof proof.completedAt !== "string") return null;
+  const at = Date.parse(proof.completedAt);
+  if (!Number.isFinite(at) || new Date(at).toISOString() !== proof.completedAt || at > now + 30_000) return null;
+  if (proof.mode === "never_started") {
+    if (proof.stt !== "not_dispatched" || proof.tts !== "not_dispatched" || proof.accounting !== "not_started") return null;
+  } else if (proof.mode === "retired") {
+    if (typeof proof.stt !== "string" || typeof proof.tts !== "string" ||
+        !["not_dispatched", "gracefully_drained"].includes(proof.stt) ||
+        !["not_dispatched", "transport_closed"].includes(proof.tts) ||
+        proof.accounting !== "settled_actual") return null;
+  } else return null;
+  return proof as ConfirmedSpeechRetirement;
+}
