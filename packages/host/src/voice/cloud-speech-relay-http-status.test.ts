@@ -26,7 +26,7 @@ test("HTTP availability is transport, not authorization, and never retries conse
             { status },
           );
         return Response.json({
-          consentNonce: crypto.randomUUID(),
+          consentNonce: crypto.randomUUID(), retirementProofVersion: 1,
           expiresAt: new Date(Date.now() + 300000).toISOString(),
         });
       };

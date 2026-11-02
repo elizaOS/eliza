@@ -8,7 +8,7 @@ import type { Duplex } from "node:stream";
 import { isAllowedHost, isCredentialedCorsOrigin } from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import type { CartesiaWebSocketFactory } from "@elizaos/host/voice/cartesia-sonic-tts";
-import { createCloudSpeechRelayPorts, type CloudSpeechRelayRetirement } from "@elizaos/host/voice/cloud-speech-relay-client";
+import { createCloudSpeechRelayPorts, CloudSpeechRelayClientError, type CloudSpeechRelayRetirement } from "@elizaos/host/voice/cloud-speech-relay-client";
 import { createLocalRuntimeConversationFetch } from "@elizaos/host/voice/local-runtime-conversation-fetch";
 import {
   VoiceSession,
@@ -141,8 +141,9 @@ class VoiceAdmissionError extends Error {
   constructor(
     readonly status: number,
     readonly code: string,
+    options?: ErrorOptions,
   ) {
-    super(code);
+    super(code, options);
   }
 }
 
@@ -675,6 +676,18 @@ export function createSelfHostedVoice(
               }
               return retirement;
             };
+            const retireAfterFailure = async (error: unknown): Promise<never> => {
+              try { await retire(); }
+              catch (cleanupError) {
+                const cause = new AggregateError([error, cleanupError], "Voice startup failed with unconfirmed retirement");
+                if (error instanceof CloudSpeechRelayClientError)
+                  throw new CloudSpeechRelayClientError(error.code, error.message, { cause });
+                if (error instanceof VoiceAdmissionError)
+                  throw new VoiceAdmissionError(error.status, error.code, { cause });
+                throw cause;
+              }
+              throw error;
+            };
             ticket.retire = async () => {
               try { session?.bye(); }
               finally { await retire(); }
@@ -763,8 +776,7 @@ export function createSelfHostedVoice(
                 // Track before another await or owner/Stop validation can fail.
                 activeCloudTickets.add(ticket);
               } catch (error) {
-                await retire();
-                throw error;
+                return await retireAfterFailure(error);
               } finally {
                 pendingCloudAcquisitions.delete(acquisition);
               }
@@ -772,8 +784,7 @@ export function createSelfHostedVoice(
                 if (!(await active(ticket)) || providerLifetime.signal.aborted)
                   throw new VoiceAdmissionError(401, "voice_session_revoked");
               } catch (error) {
-                await retire();
-                throw error;
+                return await retireAfterFailure(error);
               }
               try {
                 logger.info(
@@ -881,8 +892,7 @@ export function createSelfHostedVoice(
                 : new VoiceSession(sessionConfig);
               return session;
             } catch (error) {
-              await retire();
-              throw error;
+              return await retireAfterFailure(error);
             }
             } finally { acquisitionGate?.release(); }
           },

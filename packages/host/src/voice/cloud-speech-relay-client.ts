@@ -14,6 +14,8 @@ import {
   decodeSpeechRelayAudio,
   SPEECH_RELAY_ROUTES,
   SPEECH_RETIREMENT_HEADER,
+  SPEECH_MINT_INTENT_HEADER,
+  SPEECH_ADMISSION_OUTCOME_HEADER,
   readConfirmedSpeechRetirement,
   type SpeechRelayServerControl,
 } from "./speech-relay-wire";
@@ -406,8 +408,9 @@ export async function createCloudSpeechRelayPorts(
       "authorization",
       "Cloud account credential is unavailable",
     );
-  let admissionState: "not_started" | "pending" | "identified" | "unknown" = "not_started";
+  let admissionState: "not_started" | "pending" | "identified" | "rejected" | "unknown" = "not_started";
   let admissionPending: Promise<void> | undefined;
+  let retirementCapabilityAccepted = false;
   const request = async (
     path: string,
     body: unknown,
@@ -421,6 +424,9 @@ export async function createCloudSpeechRelayPorts(
     let serverTimingMs: Record<string, number> | undefined;
     let returned = false;
     const mintRequest = path === SPEECH_RELAY_ROUTES.mint;
+    const mintIntent = mintRequest && body && typeof body === "object" &&
+      "consentNonce" in body && typeof body.consentNonce === "string" && UUID.test(body.consentNonce)
+      ? body.consentNonce : undefined;
     let finishAdmission: (() => void) | undefined;
     const requestDeadline = AbortSignal.timeout(10000);
     try {
@@ -436,6 +442,7 @@ export async function createCloudSpeechRelayPorts(
           authorization: `Bearer ${credential}`,
           "content-type": "application/json",
           [SPEECH_RETIREMENT_HEADER]: "1",
+          ...(mintIntent ? { [SPEECH_MINT_INTENT_HEADER]: mintIntent } : {}),
         },
         body: JSON.stringify(body),
         // Once dispatched, a mint response is drained for its cleanup identity
@@ -453,6 +460,9 @@ export async function createCloudSpeechRelayPorts(
       status = response.status;
       if (!mintRequest) assertCurrent();
       if (!response.ok) {
+        if (retirementCapabilityAccepted && mintRequest && mintIntent && (!response.url || new URL(response.url).origin === origin) && response.headers.get(SPEECH_ADMISSION_OUTCOME_HEADER) === `not-created-v1:${mintIntent}`) {
+          admissionState = "rejected";
+        }
         await response.body?.cancel();
         throw new CloudSpeechRelayClientError(
           speechHttpFailureCode(response.status),
@@ -575,7 +585,7 @@ export async function createCloudSpeechRelayPorts(
       assertLineage?.();
     }
     if (!sessionId) {
-      if (admissionState === "not_started") return;
+      if (admissionState === "not_started" || admissionState === "rejected") return;
       throw new CloudSpeechRelayClientError("protocol", "Cloud speech admission remains unconfirmed");
     }
       // The session and origin stay captured. Only explicit reconciliation
@@ -659,13 +669,15 @@ export async function createCloudSpeechRelayPorts(
   try {
     options.registerRetirement?.(retirement);
     const consent = await request(SPEECH_RELAY_ROUTES.consent, {});
-    exact(consent, ["consentNonce", "expiresAt"]);
+    exact(consent, ["consentNonce", "expiresAt", "retirementProofVersion"]);
     requireValue(
+      consent.retirementProofVersion === 1 &&
       typeof consent.consentNonce === "string" &&
         UUID.test(consent.consentNonce) &&
         typeof consent.expiresAt === "string" &&
         Date.parse(consent.expiresAt) > Date.now(),
     );
+    retirementCapabilityAccepted = true;
     const minted = await request(SPEECH_RELAY_ROUTES.mint, {
       consentNonce: consent.consentNonce,
     });

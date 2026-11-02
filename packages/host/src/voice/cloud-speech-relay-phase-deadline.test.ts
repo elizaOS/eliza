@@ -20,7 +20,7 @@ function fixture(upgradeMs: number, readyMs: number, signal?: AbortSignal) {
       requests.push(url.pathname);
       return Response.json(
         url.pathname.endsWith("/consent")
-          ? { consentNonce: crypto.randomUUID(), expiresAt: expiry }
+          ? { consentNonce: crypto.randomUUID(), retirementProofVersion: 1, expiresAt: expiry }
           : url.pathname.endsWith("/revoke")
             ? { revoked: true, retirement: { version: 1, sessionId: id, state: "confirmed", mode: "retired", stt: "gracefully_drained", tts: "transport_closed", accounting: "settled_actual", completedAt: new Date().toISOString() } }
             : {

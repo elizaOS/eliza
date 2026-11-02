@@ -14,7 +14,7 @@ import { SQLiteDatabaseAdapter } from "@elizaos/plugin-sqlite";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import WebSocket from "ws";
 import { listenLoopbackWebSocket } from "../../test/fixtures/loopback-server.ts";
-import { createCloudSpeechRelayPorts } from "@elizaos/host/voice/cloud-speech-relay-client";
+import { createCloudSpeechRelayPorts, CloudSpeechRelayClientError } from "@elizaos/host/voice/cloud-speech-relay-client";
 import { cartesiaEvents } from "../../test/fixtures/cartesia-events";
 import type { AuthRepository } from "../services/auth-repository";
 import { authStoreForRuntime } from "../services/auth-store";
@@ -973,7 +973,7 @@ it("actual relay startup cleanup failure blocks shutdown and unlinked replacemen
  const remote=await listenLoopbackWebSocket(async request=>{
   const path=new URL(request.url).pathname;
   expect(request.headers.get("authorization")).toBe("Bearer private-cloud-account");
-  if(path.endsWith("/consent"))return Response.json({consentNonce:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString()});
+  if(path.endsWith("/consent"))return Response.json({retirementProofVersion:1,consentNonce:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString()});
   if(path.endsWith("/revoke")){
    const id=path.split("/").at(-2)!;expect(admitted.has(id)).toBe(true);
    return Response.json(allowRetirement ? {revoked:true,retirement:{version:1,sessionId:id,state:"confirmed",mode:"retired",stt:"gracefully_drained",tts:"transport_closed",accounting:"settled_actual",completedAt:new Date().toISOString()}} : {revoked:false},{status:allowRetirement?200:503});
@@ -1068,4 +1068,22 @@ it("concurrent queued admission cannot bypass failed acquisition retirement", as
   const failed = await Promise.all([first, second]); expect(entered).toBe(1);
   for (const item of failed) { expect(item.frame.t).not.toBe("ready"); item.ws.close(); }
   allowCleanup = true; await host.close();
+});
+
+it("retirement failure preserves the primary insufficient-credit code", async () => {
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+  vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  let allowCleanup = false, closes = 0;
+  await host.close();
+  host = createSelfHostedVoice(state, { ...hostOptions, createCloudSpeechPorts: async options => {
+    const close = async () => { closes++; if (!allowCleanup) throw Error("retirement unconfirmed"); };
+    options.registerRetirement?.({ close, retryRetirement: close });
+    throw new CloudSpeechRelayClientError("insufficient_credits", "credits required");
+  } });
+  try {
+    const ticket = await mint(); const failed = await connect(ticket, ticket.token, false);
+    expect(failed.frame.t).toBe("error"); expect(failed.frame.code).toBe("insufficient_credits");
+    expect(closes).toBeGreaterThan(0); failed.ws.close();
+  } finally { allowCleanup = true; await host.close(); }
 });

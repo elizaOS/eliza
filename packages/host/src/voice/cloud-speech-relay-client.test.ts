@@ -54,7 +54,7 @@ async function fixture() {
         return Response.redirect("https://other.invalid/steal", 307);
       if (url.pathname.endsWith("/consent"))
         return Response.json({
-          consentNonce: crypto.randomUUID(),
+          consentNonce: crypto.randomUUID(), retirementProofVersion: 1,
           expiresAt: new Date(Date.now() + 300000).toISOString(),
         });
       if (url.pathname.endsWith("/revoke"))
