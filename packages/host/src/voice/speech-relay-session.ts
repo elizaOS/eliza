@@ -32,6 +32,8 @@ export type SpeechRelayControl =
   | { t: "tts"; id: string; text: string; flush?: boolean }
   | { t: "finish"; id: string }
   | { t: "cancel"; id: string }
+  /** Admits a context before its first phrase; answered with `tts_prepared`. */
+  | { t: "prepare"; id: string }
   | { t: "stop" };
 export type SpeechRelayInkEvent =
   | { type: "connected"; requestId?: string }
@@ -133,7 +135,10 @@ export function parseSpeechRelayControl(input: unknown): SpeechRelayControl {
   if (value.t === "stop" && keys.length === 1) return { t: "stop" };
   if (typeof value.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(value.id))
     throw new SpeechRelayError("payload", "Invalid speech context");
-  if ((value.t === "cancel" || value.t === "finish") && keys.length === 2)
+  if (
+    (value.t === "cancel" || value.t === "finish" || value.t === "prepare") &&
+    keys.length === 2
+  )
     return { t: value.t, id: value.id };
   if (
     value.t === "tts" &&
@@ -202,7 +207,9 @@ export async function createSpeechRelaySession(
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
     finishedIds = new Set<string>(),
-    cancelledIds = new Set<string>();
+    cancelledIds = new Set<string>(),
+    // Admitted by `prepare`, no provider stream yet.
+    preparedIds = new Set<string>();
   const close = (): Promise<void> => {
     if (closing) return closing;
     closed = true;
@@ -451,8 +458,27 @@ export async function createSpeechRelaySession(
       }
       // A cancel may overtake queued phrases and finish for the same context.
       if (cancelledIds.has(frame.id)) return false;
+      if (frame.t === "prepare") {
+        if (usedIds.has(frame.id) || usedIds.size >= 64) {
+          retire();
+          throw new SpeechRelayError("payload", "Speech context is not new");
+        }
+        usedIds.add(frame.id);
+        preparedIds.add(frame.id);
+        return true;
+      }
       if (frame.t === "finish") {
         const stream = streams.get(frame.id);
+        // A prepared context finished before any phrase has nothing to drain.
+        if (
+          !stream &&
+          preparedIds.delete(frame.id) &&
+          !finishedIds.has(frame.id)
+        ) {
+          finishedIds.add(frame.id);
+          emit({ t: "complete", id: frame.id });
+          return;
+        }
         if (!stream || finishedIds.has(frame.id)) {
           retire();
           throw new SpeechRelayError("payload", "Speech context is not active");
@@ -475,6 +501,7 @@ export async function createSpeechRelaySession(
           }
           finishedIds.add(frame.id);
           cancelledIds.add(frame.id);
+          preparedIds.delete(frame.id);
           if (streams.has(frame.id)) ttsUncertain = true;
           streams.get(frame.id)?.cancel("speech-relay-cancelled");
           streams.delete(frame.id);
@@ -486,7 +513,9 @@ export async function createSpeechRelaySession(
       }
       if (
         finishedIds.has(frame.id) ||
-        (usedIds.has(frame.id) && !streams.has(frame.id)) ||
+        (usedIds.has(frame.id) &&
+          !streams.has(frame.id) &&
+          !preparedIds.has(frame.id)) ||
         (!usedIds.has(frame.id) && usedIds.size >= 64) ||
         admittedTtsCharacters + frame.text.length >
           SPEECH_RELAY_BUDGET.ttsCharacters
@@ -547,6 +576,7 @@ export async function createSpeechRelaySession(
             },
           });
         streams.set(frame.id, stream);
+        preparedIds.delete(frame.id);
         current();
         stream.sendPhrase({
           text: frame.text,

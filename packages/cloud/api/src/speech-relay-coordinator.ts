@@ -266,7 +266,7 @@ export class SpeechRelayCoordinator {
                   async () => {
                     const dispatched = await this.relay!.control(frame);
                     if (
-                      frame.t === "tts" &&
+                      (frame.t === "tts" || frame.t === "prepare") &&
                       dispatched !== false &&
                       !prepared.has(frame.id)
                     ) {

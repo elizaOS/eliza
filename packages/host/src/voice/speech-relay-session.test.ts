@@ -509,3 +509,41 @@ test("a cancelled context never dispatches its later phrases", async () => {
   expect(f.order.filter((value) => value === "tts-phrase")).toHaveLength(1);
   await session.close();
 });
+test("prepare admits a context without a provider; its phrases and finish then stream", async () => {
+  const f = harness(),
+    session = await f.open();
+  expect(await session.control({ t: "prepare", id: "turn-1" })).toBe(true);
+  expect(f.order).not.toContain("tts-open");
+  await session.control({ t: "tts", id: "turn-1", text: "hello" });
+  expect(f.order.slice(-2)).toEqual(["tts-open", "tts-phrase"]);
+  await session.control({ t: "finish", id: "turn-1" });
+  expect(f.order.at(-1)).toBe("tts-finish");
+  await session.close();
+});
+test("a prepared context finished without a phrase completes without a provider", async () => {
+  const f = harness(),
+    session = await f.open();
+  await session.control({ t: "prepare", id: "turn-1" });
+  await session.control({ t: "finish", id: "turn-1" });
+  expect(f.events).toContainEqual({ t: "complete", id: "turn-1" });
+  expect(f.order).not.toContain("tts-open");
+  await session.close();
+  expect(f.settled).toMatchObject([{ dispatched: { tts: false } }]);
+});
+test("a repeated or cancelled prepare cannot reopen a context", async () => {
+  const f = harness(),
+    session = await f.open();
+  await session.control({ t: "prepare", id: "turn-1" });
+  await expect(
+    session.control({ t: "prepare", id: "turn-1" }),
+  ).rejects.toMatchObject({ code: "payload" });
+  const g = harness(),
+    other = await g.open();
+  await other.control({ t: "prepare", id: "turn-2" });
+  await other.control({ t: "cancel", id: "turn-2" });
+  expect(await other.control({ t: "tts", id: "turn-2", text: "late" })).toBe(
+    false,
+  );
+  expect(g.order).not.toContain("tts-open");
+  await other.close();
+});

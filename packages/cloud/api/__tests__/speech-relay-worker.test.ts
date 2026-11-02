@@ -629,3 +629,77 @@ test("barge-in settles only the submitted TTS characters across contexts, not th
     4096 * CARTESIA_PUBLISHED_USD_PER_CREDIT * 1.2,
   );
 });
+
+test("a native client's prepare frame is answered once and its context then streams", async () => {
+  const token = "prepare-capability";
+  const session = { "x-test-session": "native-prepare" };
+  await worker.dispatchFetch(
+    "https://speech-relay.internal/test-allow-admission",
+    {
+      headers: session,
+    },
+  );
+  await worker.dispatchFetch("https://speech-relay.internal/initialize", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "77777777-7777-4777-8777-777777777777",
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: Date.now() + 60000,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
+      },
+    }),
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...session, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const frames: Record<string, unknown>[] = [];
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") frames.push(JSON.parse(event.data));
+  });
+  const ready = next(socket as any, (value) => value.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token }));
+  await ready;
+  const prepared = next(
+    socket as any,
+    (value) => value.t === "tts_prepared" && value.id === "turn-1",
+  );
+  socket.send(JSON.stringify({ t: "prepare", id: "turn-1" }));
+  await prepared;
+  const audio = next(
+    socket as any,
+    (value) =>
+      typeof value !== "object" ||
+      value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value),
+  );
+  socket.send(
+    JSON.stringify({
+      t: "tts",
+      id: "turn-1",
+      text: "Hello there.",
+      flush: true,
+    }),
+  );
+  expect((await audio).byteLength).toBeGreaterThan(4);
+  const complete = next(
+    socket as any,
+    (value) => value.t === "complete" && value.id === "turn-1",
+  );
+  socket.send(JSON.stringify({ t: "finish", id: "turn-1" }));
+  await complete;
+  expect(frames.filter((frame) => frame.t === "tts_prepared")).toHaveLength(1);
+  expect(frames.some((frame) => frame.t === "error")).toBe(false);
+});
