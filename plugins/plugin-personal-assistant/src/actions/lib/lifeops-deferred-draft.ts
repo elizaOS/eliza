@@ -872,20 +872,24 @@ export type RecentLifeSaveRecord = {
 };
 
 const RECENT_LIFE_SAVE_CACHE_PREFIX = "lifeops:recent-save";
+const RECENT_LIFE_EDIT_CACHE_PREFIX = "lifeops:recent-edit";
 
 /** Retraction is only honored this soon after an un-previewed save. */
 export const RECENT_SAVE_RETRACTION_WINDOW_MS = DRAFT_EXPIRY_MS;
+
+function conversationCacheKey(
+  prefix: string,
+  runtime: IAgentRuntime,
+  message: Memory,
+): string {
+  return [prefix, runtime.agentId, message.roomId, message.entityId].join(":");
+}
 
 function recentLifeSaveCacheKey(
   runtime: IAgentRuntime,
   message: Memory,
 ): string {
-  return [
-    RECENT_LIFE_SAVE_CACHE_PREFIX,
-    runtime.agentId,
-    message.roomId,
-    message.entityId,
-  ].join(":");
+  return conversationCacheKey(RECENT_LIFE_SAVE_CACHE_PREFIX, runtime, message);
 }
 
 export function coerceRecentLifeSaveRecord(
@@ -940,9 +944,12 @@ export async function writeRecentLifeSaveCache(
   message: Memory,
   record: RecentLifeSaveRecord,
 ): Promise<void> {
-  await asCacheRuntime(runtime).setCache(
-    recentLifeSaveCacheKey(runtime, message),
-    record,
+  const cache = asCacheRuntime(runtime);
+  await cache.setCache(recentLifeSaveCacheKey(runtime, message), record);
+  // A new save is the item this conversation touched last, so an earlier
+  // edit pointer no longer names "that".
+  await cache.deleteCache(
+    conversationCacheKey(RECENT_LIFE_EDIT_CACHE_PREFIX, runtime, message),
   );
 }
 
@@ -952,6 +959,48 @@ export async function clearRecentLifeSaveCache(
 ): Promise<void> {
   await asCacheRuntime(runtime).deleteCache(
     recentLifeSaveCacheKey(runtime, message),
+  );
+}
+
+/**
+ * The reminder this conversation edited after its last save, kept apart from
+ * the save record so a follow-up that says only a new value of "that" follows
+ * the item the owner just moved, while a retraction still deletes only an
+ * un-previewed save. A later save clears it; it expires with the same window
+ * as the save record.
+ */
+export async function readRecentLifeEditCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<RecentLifeSaveRecord | null> {
+  const record = coerceRecentLifeSaveRecord(
+    await asCacheRuntime(runtime).getCache<unknown>(
+      conversationCacheKey(RECENT_LIFE_EDIT_CACHE_PREFIX, runtime, message),
+    ),
+  );
+  return record &&
+    Date.now() - record.createdAt <= RECENT_SAVE_RETRACTION_WINDOW_MS
+    ? record
+    : null;
+}
+
+export async function writeRecentLifeEditCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+  record: RecentLifeSaveRecord,
+): Promise<void> {
+  await asCacheRuntime(runtime).setCache(
+    conversationCacheKey(RECENT_LIFE_EDIT_CACHE_PREFIX, runtime, message),
+    record,
+  );
+}
+
+export async function clearRecentLifeEditCache(
+  runtime: IAgentRuntime,
+  message: Memory,
+): Promise<void> {
+  await asCacheRuntime(runtime).deleteCache(
+    conversationCacheKey(RECENT_LIFE_EDIT_CACHE_PREFIX, runtime, message),
   );
 }
 
