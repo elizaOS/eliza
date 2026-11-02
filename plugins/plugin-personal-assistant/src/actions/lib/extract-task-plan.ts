@@ -131,6 +131,12 @@ const UNSPECIFIED_SCHEDULE_DIRECTIVE_SOURCE = [
   String.raw`\bask\s+me\s+(?:when|for\s+(?:a\s+|the\s+)?(?:date|day|time|timing|schedule))\b`,
 ].join("|");
 
+// A dated reminder is often written with the short month: "Oct 3",
+// "Sept 9", "due Dec 1", "3 Oct". The bare abbreviations are also ordinary
+// words ("mar", "dec", "jan" as a name), so they count only next to a day.
+const ABBREVIATED_MONTH_DAY_SOURCE = String.raw`\b(?:jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\.?\s+\d{1,2}(?:st|nd|rd|th)?\b|\b\d{1,2}(?:st|nd|rd|th)?\s+(?:jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)\b`;
+const ABBREVIATED_MONTH_DAY_RE = new RegExp(ABBREVIATED_MONTH_DAY_SOURCE, "iu");
+
 const EXPLICIT_ONE_SHOT_SCHEDULE_RE =
   /\b(?:today|tomorrow|tonight|this\s+(?:morning|afternoon|evening|weekend|week|month)|next\s+(?:day|week|month|weekend|monday|tuesday|wednesday|thursday|friday|saturday|sunday)|monday|tuesday|wednesday|thursday|friday|saturday|sunday|morning|afternoon|evening|noon|midnight|january|february|march|april|may|june|july|august|september|october|november|december)\b|\b(?:at|around|by|before|after)\s+\d{1,2}(?::\d{2})?\s*(?:a\.?m\.?|p\.?m\.?)?\b|\b(?:on|by|before|after)?\s*(?:the\s+)?\d{1,2}(?:st|nd|rd|th)\b|\bin\s+\d+\s+(?:minutes?|hours?|days?|weeks?|months?)\b|\b\d{1,2}[/-]\d{1,2}(?:[/-]\d{2,4})?\b/iu;
 
@@ -139,7 +145,8 @@ export function textStatesExplicitSchedule(text: string): boolean {
   const normalized = normalizeKeywordMatchText(text);
   return (
     textStatesExplicitRecurrence(normalized) ||
-    EXPLICIT_ONE_SHOT_SCHEDULE_RE.test(normalized)
+    EXPLICIT_ONE_SHOT_SCHEDULE_RE.test(normalized) ||
+    ABBREVIATED_MONTH_DAY_RE.test(normalized)
   );
 }
 
