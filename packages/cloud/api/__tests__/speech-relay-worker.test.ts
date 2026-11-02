@@ -399,6 +399,164 @@ test("legacy speech clients receive no unnegotiated billing reason", async () =>
   expect(await refused).toEqual({ t: "error", code: "unavailable" });
 });
 
+async function openTestSession(input: {
+  name: string;
+  sessionId: string;
+  organizationId?: string;
+  environment?: string;
+}) {
+  const headers: Record<string, string> = {
+    "x-test-session": input.name,
+    "Content-Type": "application/json",
+  };
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  const token = `${input.name}-capability`;
+  await request("/test-allow-admission");
+  await request("/initialize", {
+    sessionId: input.sessionId,
+    tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+    expiresAt: Date.now() + 60000,
+    caller: {
+      user: {
+        ...account,
+        organization_id: input.organizationId ?? account.organization_id,
+      },
+      apiKeyId: "timing-key",
+      authSource: "combined_cache",
+      appScopeId: null,
+      credential: {
+        kind: "api_key",
+        credentialId: "timing-key",
+        userId: account.id,
+      },
+    },
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    {
+      headers: {
+        ...headers,
+        Upgrade: "websocket",
+        ...(input.environment
+          ? { "x-test-environment": input.environment }
+          : {}),
+      },
+    },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  return { socket, token, request };
+}
+
+test("staging reports numeric bootstrap phases only to a client that asked in hello", async () => {
+  const staged = await openTestSession({
+    name: "timings-staging",
+    sessionId: "88888888-8888-4888-8888-888888888881",
+    environment: "staging",
+  });
+  const frames: any[] = [];
+  staged.socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") frames.push(JSON.parse(event.data));
+  });
+  const timings = next(staged.socket as any, (value) => value.t === "timings");
+  staged.socket.send(
+    JSON.stringify({ t: "hello", token: staged.token, timings: true }),
+  );
+  const frame = await timings;
+  // Ready is first, so exact-key clients see the unchanged ready contract.
+  expect(frames[0]?.t).toBe("ready");
+  expect(Object.keys(frames[0]).sort()).toEqual(
+    ["channels", "expiresAt", "sampleRate", "t", "version"].sort(),
+  );
+  for (const [key, value] of Object.entries(frame)) {
+    if (key === "t") continue;
+    expect([
+      "claimMs",
+      "revocationMs",
+      "admissionMs",
+      "relayMs",
+      "activateMs",
+      "openMs",
+    ]).toContain(key);
+    expect(typeof value).toBe("number");
+    expect(value as number).toBeGreaterThanOrEqual(0);
+  }
+  expect(frame.openMs).toBeGreaterThanOrEqual(0);
+  staged.socket.close();
+
+  const production = await openTestSession({
+    name: "timings-production",
+    sessionId: "88888888-8888-4888-8888-888888888882",
+    environment: "production",
+  });
+  const productionFrames: any[] = [];
+  production.socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string")
+      productionFrames.push(JSON.parse(event.data));
+  });
+  const ready = next(production.socket as any, (value) => value.t === "ready");
+  production.socket.send(
+    JSON.stringify({ t: "hello", token: production.token, timings: true }),
+  );
+  await ready;
+  const transcript = next(
+    production.socket as any,
+    (value) => value.t === "stt",
+  );
+  production.socket.send(new Uint8Array(3200));
+  await transcript;
+  expect(productionFrames.some((value) => value.t === "timings")).toBe(false);
+  production.socket.close();
+});
+
+test("a refused revocation fence releases the concurrently admitted leases before any provider opens", async () => {
+  const organizationId = "66666666-6666-4666-8666-666666666666";
+  await worker.dispatchFetch("https://speech-relay.internal/test-lifecycle", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      path: "/organization/set-active",
+      organizationId,
+      active: false,
+    }),
+  });
+  const session = await openTestSession({
+    name: "fence-refused",
+    sessionId: "88888888-8888-4888-8888-888888888883",
+    organizationId,
+  });
+  const before = (await (
+    await session.request("/test-stats")
+  ).json()) as Record<string, any>;
+  const refused = next(session.socket as any, (value) => value.t === "error");
+  session.socket.send(JSON.stringify({ t: "hello", token: session.token }));
+  expect(await refused).toEqual({ t: "error", code: "unavailable" });
+  let after: Record<string, any> = {};
+  for (let attempt = 0; attempt < 50; attempt++) {
+    after = (await (await session.request("/test-stats")).json()) as Record<
+      string,
+      any
+    >;
+    if ((after.settlements ?? 0) - (before.settlements ?? 0) >= 2) break;
+    await Bun.sleep(20);
+  }
+  expect(after.sttOpened).toBe(before.sttOpened);
+  expect(after.ttsOpened).toBe(before.ttsOpened);
+  const admitted = (after.admissions ?? 0) - (before.admissions ?? 0);
+  const settled = (after.settledAmounts ?? []).slice(
+    (before.settledAmounts ?? []).length,
+  );
+  // Admission overlaps the fence, so both leases exist and both settle to zero.
+  expect(admitted).toBe(2);
+  expect(settled.length).toBe(admitted);
+  for (const entry of settled) expect(entry.cost).toBe(0);
+});
+
 test("authoritative org, API-key and session-cutoff revocations stop active speech through the internal socket", async () => {
   const cases = [
     {
@@ -900,4 +1058,183 @@ test("socket Stop settles with the DO bindings and a fresh DB context before a l
     any
   >;
   expect(repeated.settlements).toBe(settled);
+});
+
+test("an extending client keeps one live session past its minted end with a fresh fence and reservation", async () => {
+  const token = "extend-capability";
+  const session = { "x-test-session": "native-extend" };
+  await worker.dispatchFetch(
+    "https://speech-relay.internal/test-allow-admission",
+    { headers: session },
+  );
+  const before = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Renewal is due 10 s before the end, so it starts almost immediately.
+  const mintedEnd = Date.now() + 10_400;
+  await worker.dispatchFetch("https://speech-relay.internal/initialize", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "88888888-8888-4888-8888-888888888888",
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: mintedEnd,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
+      },
+    }),
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...session, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const ready = next(socket as any, (value) => value.t === "ready");
+  const extended = next(socket as any, (value) => value.t === "extended");
+  socket.send(JSON.stringify({ t: "hello", token, extend: true }));
+  await ready;
+  const renewal = await extended;
+  expect(Date.parse(renewal.expiresAt)).toBeGreaterThan(mintedEnd);
+  expect(Date.parse(renewal.expiresAt)).toBeLessThanOrEqual(
+    Date.now() + 60_000,
+  );
+  const after = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Two admissions (STT + TTS) per window: bootstrap and one renewal.
+  expect(after.admissions - (before.admissions ?? 0)).toBe(4);
+  const audio = next(
+    socket as any,
+    (value) =>
+      typeof value !== "object" ||
+      value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value),
+  );
+  socket.send(
+    JSON.stringify({
+      t: "tts",
+      id: "turn-1",
+      text: "Still here.",
+      flush: true,
+    }),
+  );
+  expect((await audio).byteLength).toBeGreaterThan(4);
+  await worker.dispatchFetch("https://speech-relay.internal/revoke", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: account.id,
+      organizationId: account.organization_id,
+    }),
+  });
+  const closed = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Every lease of both windows is settled exactly once.
+  expect(
+    (closed.settlements ?? 0) +
+      (closed.unknown ?? 0) -
+      (before.settlements ?? 0) -
+      (before.unknown ?? 0),
+  ).toBe(4);
+});
+
+test("a declined renewal keeps the minted end and holds no lease for it", async () => {
+  const token = "declined-extend-capability";
+  const session = { "x-test-session": "native-extend-declined" };
+  await worker.dispatchFetch(
+    "https://speech-relay.internal/test-allow-admission",
+    { headers: session },
+  );
+  const stats = async () =>
+    (await (
+      await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+        headers: session,
+      })
+    ).json()) as Record<string, number>;
+  const before = await stats();
+  const mintedEnd = Date.now() + 10_800;
+  await worker.dispatchFetch("https://speech-relay.internal/initialize", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "88888888-8888-4888-8888-888888888889",
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: mintedEnd,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
+      },
+    }),
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...session, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const frames: any[] = [];
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") frames.push(JSON.parse(event.data));
+  });
+  const ready = next(socket as any, (value) => value.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token, extend: true }));
+  await ready;
+  // The account runs out of credit before the renewal is due.
+  await worker.dispatchFetch("https://speech-relay.internal/test-decline", {
+    headers: session,
+  });
+  try {
+    for (let n = 0; n < 100; n++) {
+      if ((await stats()).admissions - (before.admissions ?? 0) >= 4) break;
+      await Bun.sleep(20);
+    }
+    await Bun.sleep(50);
+    expect((await stats()).admissions - (before.admissions ?? 0)).toBe(4);
+    expect(frames.some((value) => value.t === "extended")).toBe(false);
+    expect(frames.some((value) => value.t === "error")).toBe(false);
+  } finally {
+    await worker.dispatchFetch(
+      "https://speech-relay.internal/test-allow-admission",
+      { headers: session },
+    );
+  }
+  await worker.dispatchFetch("https://speech-relay.internal/revoke", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: account.id,
+      organizationId: account.organization_id,
+    }),
+  });
+  const closed = await stats();
+  // Only the bootstrap window's two leases existed, and each settled once.
+  expect(
+    (closed.settlements ?? 0) +
+      (closed.unknown ?? 0) -
+      (before.settlements ?? 0) -
+      (before.unknown ?? 0),
+  ).toBe(2);
 });

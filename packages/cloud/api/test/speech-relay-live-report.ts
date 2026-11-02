@@ -37,6 +37,63 @@ const codes = new Set([
   "SPEECH_STT_FINAL_TIMEOUT",
   "SPEECH_REVOKE_TIMEOUT",
 ]);
+/** Staging Server-Timing span names (the client diagnostics allowlist) mapped to report fields. */
+const SERVER_SPANS = {
+  consent: {
+    speech_identity_rate: "consentAuthMs",
+    speech_consent_write: "consentStoreMs",
+  },
+  session: {
+    speech_identity_rate: "sessionAuthMs",
+    speech_consent_consume: "sessionConsumeMs",
+    speech_directory_write: "sessionRelayInitMs",
+  },
+} as const;
+/** Relay `timings` frame fields mapped to public numeric report fields. */
+const RELAY_PHASES = {
+  claimMs: "relayClaimMs",
+  revocationMs: "relayRevocationMs",
+  admissionMs: "relayAdmissionMs",
+  relayMs: "relaySessionMs",
+  activateMs: "relayActivateMs",
+  openMs: "relayOpenMs",
+} as const;
+const SERVER_TIMING_FIELDS = [
+  ...Object.values(SERVER_SPANS.consent),
+  ...Object.values(SERVER_SPANS.session),
+  ...Object.values(RELAY_PHASES),
+] as const;
+
+/** Keep only known, finite, nonnegative Server-Timing durations. */
+export function speechServerTimings(
+  route: keyof typeof SERVER_SPANS,
+  header: string | null,
+): Record<string, number> {
+  const names: Record<string, string> = SERVER_SPANS[route];
+  const out: Record<string, number> = {};
+  for (const entry of (header ?? "").split(",")) {
+    const [name, ...params] = entry.trim().split(";");
+    const field = name ? names[name] : undefined;
+    if (!field || !Object.hasOwn(names, name)) continue;
+    for (const param of params) {
+      const match = /^\s*dur=([0-9]+(?:\.[0-9]+)?)\s*$/.exec(param);
+      if (match) out[field] = Math.round(Number(match[1]));
+    }
+  }
+  return out;
+}
+
+/** Keep only known, finite, nonnegative relay bootstrap phases. */
+export function speechRelayPhases(frame: Record<string, unknown>) {
+  const out: Record<string, number> = {};
+  for (const [phase, field] of Object.entries(RELAY_PHASES)) {
+    const value = frame[phase];
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0)
+      out[field] = Math.round(value);
+  }
+  return out;
+}
+
 const timings = [
   "consentMs",
   "sessionMs",
@@ -52,6 +109,10 @@ const timings = [
   "revokeMs",
   "pcmFrames",
   "pcmBytes",
+  // WebSocket 101 handshake, before hello. Separates socket routing from bootstrap.
+  "wsOpenMs",
+  // Staging server spans (Server-Timing and the opt-in relay timings frame).
+  ...SERVER_TIMING_FIELDS,
 ] as const;
 
 /** The relay exposes only these refusal enums, never provider error text. */

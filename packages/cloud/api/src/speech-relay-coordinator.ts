@@ -34,10 +34,40 @@ export interface SpeechRelayBootstrap {
   expiresAt: number;
   caller: GenerativeRouteCaller;
 }
+/** Server-side bootstrap spans. Workers clocks advance on I/O, so these are I/O waits. */
+type SpeechRelayBootstrapPhase =
+  | "claimMs"
+  | "revocationMs"
+  | "admissionMs"
+  | "relayMs"
+  | "activateMs"
+  | "openMs";
 type Ledger = SpeechRelayBootstrap & {
   phase: "minted" | "starting" | "active" | "closed";
 };
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+/** Default renewable windows for a client that accepts `extended` frames. */
+const DEFAULT_MAX_WINDOWS = 10;
+/** Validates VOICE_SPEECH_RELAY_MAX_WINDOWS: an integer 1-120, default 10. */
+export function resolveSpeechRelayMaxWindows(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_MAX_WINDOWS;
+  const trimmed = raw.trim();
+  const value = /^[0-9]+$/.test(trimmed) ? Number(trimmed) : Number.NaN;
+  if (!Number.isSafeInteger(value) || value < 1 || value > 120)
+    throw Error("VOICE_SPEECH_RELAY_MAX_WINDOWS must be an integer 1-120");
+  return value;
+}
+/** Windows a session may hold; a misconfigured bound disables renewal, not speech. */
+export function speechRelayMaxWindows(
+  env: Pick<AppEnv["Bindings"], "VOICE_SPEECH_RELAY_MAX_WINDOWS">,
+): number {
+  try {
+    return resolveSpeechRelayMaxWindows(env.VOICE_SPEECH_RELAY_MAX_WINDOWS);
+  } catch {
+    logger.error("[SpeechRelay] invalid VOICE_SPEECH_RELAY_MAX_WINDOWS");
+    return 1;
+  }
+}
 export function speechTokenDigest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -52,6 +82,10 @@ export class SpeechRelayCoordinator {
   private closeTask?: Promise<void>;
   private tts?: CartesiaSonicTtsAdapter;
   private stopped = false;
+  /** Granted budget windows; the queued-text pre-check scales with it. */
+  private windows = 1;
+  /** Admissions taken so far; each window has its own request IDs. */
+  private reservations = 0;
   private unsubscribeRevocation?: () => void;
   constructor(
     private state: DurableObjectState,
@@ -175,7 +209,8 @@ export class SpeechRelayCoordinator {
           opening = false,
           queued = 0,
           queuedCharacters = 0,
-          errorReasons = false;
+          errorReasons = false,
+          extendable = false;
         let control = Promise.resolve();
         const prepared = new Set<string>();
         const deadline = setTimeout(
@@ -223,12 +258,16 @@ export class SpeechRelayCoordinator {
               )
                 throw Error("Invalid hello");
               errorReasons = hello.errorReasons === true;
+              extendable = hello.extend === true;
               opening = true;
               clearTimeout(deadline);
               this.socket = server;
               // The durable claim precedes admission/provider creation. A crash or
               // a second socket can never reuse the consumed session capability.
-              void this.open(ledger).then(() => {
+              void this.open(ledger, {
+                reportTimings: hello.timings === true,
+                extendable,
+              }).then(() => {
                 authenticated = true;
                 opening = false;
               }, fail);
@@ -256,7 +295,10 @@ export class SpeechRelayCoordinator {
             if (++queued > 64) throw Error("Speech control queue exceeded");
             if (frame.t === "tts") {
               queuedCharacters += frame.text.length;
-              if (queuedCharacters > SPEECH_RELAY_BUDGET.ttsCharacters)
+              if (
+                queuedCharacters >
+                SPEECH_RELAY_BUDGET.ttsCharacters * this.windows
+              )
                 throw Error("Speech text budget exceeded");
             }
             control = control
@@ -289,9 +331,63 @@ export class SpeechRelayCoordinator {
     );
   }
 
-  private async open(ledger: Ledger) {
+  /** Opens the revocation fence for `expiresAt`; a revocation retires speech. */
+  private subscribeFence(
+    ledger: Ledger,
+    expiresAt: number,
+    retire: () => void,
+  ) {
+    return subscribeSpeechRevocation(this.env, ledger.caller, expiresAt, () => {
+      try {
+        this.send({ t: "error", code: "unauthorized" });
+      } catch {}
+      retire();
+    });
+  }
+
+  /**
+   * Moves the authoritative end once the relay holds the next window's quota
+   * and reservation. Returns the end in force: unchanged on any refusal.
+   */
+  private async extend(ledger: Ledger, requested: number, retire: () => void) {
+    this.current();
+    const credentialEnd =
+      ledger.caller.credential?.kind === "api_key" &&
+      ledger.caller.credential.expiresAt != null
+        ? ledger.caller.credential.expiresAt
+        : Number.POSITIVE_INFINITY;
+    const previousEnd = this.ledger!.expiresAt;
+    const expiresAt = Math.min(requested, credentialEnd);
+    if (!Number.isSafeInteger(expiresAt) || expiresAt <= previousEnd)
+      return previousEnd;
+    // The new fence is live before the old one is released, so revocation is
+    // never unobserved; releasing the old fence never retires this session.
+    const unsubscribe = await this.subscribeFence(ledger, expiresAt, retire);
+    if (this.stopped) {
+      unsubscribe();
+      return previousEnd;
+    }
+    const previous = this.unsubscribeRevocation;
+    this.unsubscribeRevocation = unsubscribe;
+    previous?.();
+    await this.save({ ...this.ledger!, expiresAt });
+    await this.state.storage.setAlarm(expiresAt);
+    this.windows++;
+    return expiresAt;
+  }
+
+  private async open(
+    ledger: Ledger,
+    {
+      reportTimings = false,
+      extendable = false,
+    }: { reportTimings?: boolean; extendable?: boolean } = {},
+  ) {
     const startedAt = performance.now();
+    const elapsed = (from: number) => Math.round(performance.now() - from);
+    const phases: Partial<Record<SpeechRelayBootstrapPhase, number>> = {};
     await this.save({ ...ledger, phase: "starting" });
+    phases.claimMs = elapsed(startedAt);
     await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
       runWithDbCacheAsync(async () => {
         const key = this.env.CARTESIA_API_KEY?.trim(),
@@ -308,18 +404,23 @@ export class SpeechRelayCoordinator {
         let retireSpeech = () => {
           void this.close();
         };
-        this.unsubscribeRevocation = await subscribeSpeechRevocation(
-          this.env,
-          ledger.caller,
+        const retire = () => retireSpeech();
+        const maxWindows = extendable ? speechRelayMaxWindows(this.env) : 1;
+        // The revocation fence and paid admission are independent round trips.
+        // Start the fence now and join it before any provider opens, so a
+        // provider still never starts without a live revocation subscription.
+        const fenceStartedAt = performance.now();
+        const fence = this.subscribeFence(
+          ledger,
           ledger.expiresAt,
-          () => {
-            try {
-              this.send({ t: "error", code: "unauthorized" });
-            } catch {}
-            retireSpeech();
-          },
-        );
-        this.current();
+          retire,
+        ).then((unsubscribe) => {
+          phases.revocationMs = elapsed(fenceStartedAt);
+          if (this.stopped) unsubscribe();
+          else this.unsubscribeRevocation = unsubscribe;
+        });
+        // A fence failure is observed when it is joined below.
+        void fence.catch(() => {});
         let ready = false;
         const events: unknown[] = [];
         this.tts = new CartesiaSonicTtsAdapter({
@@ -337,6 +438,7 @@ export class SpeechRelayCoordinator {
             events.push(value);
           }
         };
+        const relayStartedAt = performance.now();
         this.relay = await createSpeechRelaySession(
           {
             organizationId: ledger.caller.user.organization_id,
@@ -350,27 +452,74 @@ export class SpeechRelayCoordinator {
             consumeConsent: async () => true,
             usageStore,
             usageLimits: resolveVoiceUsageLimits(this.env),
+            expiresAt: ledger.expiresAt,
+            maxWindows,
+            ...(maxWindows > 1
+              ? {
+                  extend: (_identity, expiresAt) =>
+                    this.extend(ledger, expiresAt, retire),
+                }
+              : {}),
             reserveCredits: async () => {
-              const reservation = await reserveSpeechRelayAdmission({
-                caller: ledger.caller,
-                sessionId: ledger.sessionId,
-                usdPerCredit: price,
-                executionCtx: {
-                  waitUntil: (task) => this.state.waitUntil(task),
-                },
-              });
-              return {
-                ...reservation,
-                // Provider/socket callbacks can close the relay after its opening
-                // request context has ended. Settlement needs this DO's bindings
-                // and a fresh request-scoped DB cache at its invocation boundary.
-                settle: (details) =>
-                  runWithCloudBindingsAsync(
-                    this.env as Record<string, unknown>,
-                    () =>
-                      runWithDbCacheAsync(() => reservation.settle(details)),
-                  ),
-              };
+              const budgetWindow = this.reservations++;
+              // A renewal: the session's fence is already live.
+              if (budgetWindow > 0)
+                return reserveSpeechRelayAdmission({
+                  caller: ledger.caller,
+                  sessionId: ledger.sessionId,
+                  window: budgetWindow,
+                  usdPerCredit: price,
+                  executionCtx: {
+                    waitUntil: (task) => this.state.waitUntil(task),
+                  },
+                });
+              const admissionStartedAt = performance.now();
+              const [fenced, admitted] = await Promise.allSettled([
+                fence,
+                reserveSpeechRelayAdmission({
+                  caller: ledger.caller,
+                  sessionId: ledger.sessionId,
+                  usdPerCredit: price,
+                  executionCtx: {
+                    waitUntil: (task) => this.state.waitUntil(task),
+                  },
+                }).finally(() => {
+                  phases.admissionMs = elapsed(admissionStartedAt);
+                }),
+              ]);
+              const reserved =
+                admitted.status === "fulfilled"
+                  ? {
+                      ...admitted.value,
+                      // Provider/socket callbacks can close the relay after its
+                      // opening request context has ended. Settlement needs this
+                      // DO's bindings and a fresh request-scoped DB cache at its
+                      // invocation boundary.
+                      settle: (
+                        details: Parameters<typeof admitted.value.settle>[0],
+                      ) =>
+                        runWithCloudBindingsAsync(
+                          this.env as Record<string, unknown>,
+                          () =>
+                            runWithDbCacheAsync(() =>
+                              admitted.value.settle(details),
+                            ),
+                        ),
+                    }
+                  : undefined;
+              if (fenced.status === "rejected") {
+                // No provider opened: release any lease this bootstrap took.
+                if (reserved)
+                  await reserved.settle({
+                    pcmBytes: 0,
+                    ttsCharacters: 0,
+                    providerMayHaveStarted: false,
+                    dispatched: { stt: false, tts: false },
+                  });
+                throw fenced.reason;
+              }
+              if (admitted.status === "rejected") throw admitted.reason;
+              return reserved!;
             },
             // The internal organization-DO socket closes on revocation or loss.
             // Its callback stops this session; no per-frame identity read occurs.
@@ -417,8 +566,12 @@ export class SpeechRelayCoordinator {
             },
           },
         );
+        phases.relayMs = elapsed(relayStartedAt);
         this.current();
-        await this.save({ ...ledger, phase: "active" });
+        const activeStartedAt = performance.now();
+        await this.save({ ...this.ledger!, phase: "active" });
+        phases.activateMs = elapsed(activeStartedAt);
+        phases.openMs = elapsed(startedAt);
         ready = true;
         this.send({
           t: "ready",
@@ -427,9 +580,14 @@ export class SpeechRelayCoordinator {
           channels: 1,
           expiresAt: new Date(ledger.expiresAt).toISOString(),
         });
+        // Durations only, and only for a staging client that asked in hello.
+        if (reportTimings && this.env.ENVIRONMENT === "staging")
+          this.send({ t: "timings", ...phases });
         logger.info("[SpeechRelay] bootstrap ready", {
-          durationMs: Math.round(performance.now() - startedAt),
+          durationMs: phases.openMs,
           budgetMs: SPEECH_RELAY_BUDGET.durationMs,
+          maxWindows,
+          ...phases,
         });
         for (const event of events) this.send(event);
       }),

@@ -12,6 +12,8 @@ import type {
 import { speechHttpTimings } from "./speech-http-timing";
 import {
   decodeSpeechRelayAudio,
+  SPEECH_RELAY_EXTEND_HEADER,
+  SPEECH_RELAY_EXTEND_OFFER,
   SPEECH_RELAY_ROUTES,
   type SpeechRelayServerControl,
 } from "./speech-relay-wire";
@@ -128,14 +130,21 @@ async function readJson(
   response: Response,
   cap: number,
   current: () => void,
+  signal?: AbortSignal,
 ): Promise<Record<string, unknown>> {
   const reader = response.body?.getReader();
   requireValue(reader);
   const chunks: Uint8Array[] = [];
   let bytes = 0;
+  const abort = () => {
+    void reader.cancel().catch(() => {});
+  };
+  signal?.addEventListener("abort", abort, { once: true });
   try {
+    signal?.throwIfAborted();
     for (;;) {
       const part = await reader.read();
+      signal?.throwIfAborted();
       current();
       if (part.done) break;
       bytes += part.value.length;
@@ -143,6 +152,7 @@ async function readJson(
       chunks.push(part.value);
     }
   } finally {
+    signal?.removeEventListener("abort", abort);
     await reader.cancel().catch(() => {});
   }
   const data = new Uint8Array(bytes);
@@ -154,6 +164,61 @@ async function readJson(
   return record(
     JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(data)),
   );
+}
+
+const PRE_ADMISSION_CACHE_WARMING_CODES = new Set([
+  "auth_cache_warming",
+  "rate_limit_cache_warming",
+  "inference_dependency_cache_warming",
+  "billing_cache_warming",
+  "inference_admission_cache_warming",
+]);
+
+// This refusal is emitted before authentication admits the operation. Never
+// replay a generic 503, network failure, or an already-admitted speech request.
+function warmingDelay(
+  response: Response,
+  body: Record<string, unknown>,
+): number | null {
+  const error = body.error;
+  const nested =
+    error && typeof error === "object" && !Array.isArray(error)
+      ? (error as Record<string, unknown>)
+      : undefined;
+  // Only explicit pre-admission cache refusals are replayable. A generic
+  // retryable 503 may follow an admitted operation, so it fails promptly.
+  const warming =
+    body.code === "auth_cache_warming" ||
+    (typeof nested?.code === "string" &&
+      PRE_ADMISSION_CACHE_WARMING_CODES.has(nested.code));
+  if (!warming) return null;
+  const value = response.headers.get("retry-after");
+  if (value !== null) {
+    if (/^\d+$/.test(value)) return Number(value) * 1000;
+    if (
+      !/^(?:Mon|Tue|Wed|Thu|Fri|Sat|Sun), \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(
+        value,
+      )
+    )
+      return null;
+    const date = Date.parse(value);
+    return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
+  }
+  return 1000;
+}
+function waitForWarming(ms: number, signal: AbortSignal): Promise<void> {
+  signal.throwIfAborted();
+  return new Promise((resolve, reject) => {
+    const abort = () => {
+      clearTimeout(timer);
+      reject(signal.reason);
+    };
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", abort);
+      resolve();
+    }, ms);
+    signal.addEventListener("abort", abort, { once: true });
+  });
 }
 
 export async function createCloudSpeechRelayPorts(
@@ -203,7 +268,11 @@ export async function createCloudSpeechRelayPorts(
     socket: WebSocket | undefined,
     expiryTimer: ReturnType<typeof setTimeout> | undefined,
     sessionId: string | undefined,
-    expiry = 0;
+    expiry = 0,
+    // Budget windows granted by the relay; every per-session cap scales with it.
+    windows = 1,
+    // Set only when the mint response offered renewal; see the hello below.
+    extendOffered = false;
   let stt: ((event: CartesiaInkRealtimeEvent) => void) | undefined;
   const pendingStt: CartesiaInkRealtimeEvent[] = [];
   const contexts = new Map<
@@ -401,33 +470,77 @@ export async function createCloudSpeechRelayPorts(
     let serverTimingMs: Record<string, number> | undefined;
     let returned = false;
     try {
-      assertCurrent();
-      const response = await (options.fetch ?? fetch)(new URL(path, origin), {
-        method: "POST",
-        redirect: "error",
-        headers: {
-          authorization: `Bearer ${credential}`,
-          "content-type": "application/json",
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.any([signal, AbortSignal.timeout(10000)]),
-      });
-      headersMs = performance.now() - started;
-      try {
-        const value = response.headers.get("X-Eliza-Trace-Id");
-        if (value !== null && /^[a-f0-9]{32}$/.test(value)) httpTraceId = value;
-      } catch {
-        // Optional correlation cannot change the request's result or failure.
-      }
-      serverTimingMs = speechHttpTimings(response.headers);
-      status = response.status;
-      assertCurrent();
-      if (!response.ok) {
-        await response.body?.cancel();
-        throw new CloudSpeechRelayClientError(
-          speechHttpFailureCode(response.status),
-          "Cloud speech request was not admitted",
-        );
+      const deadline = performance.now() + 10000;
+      const requestSignal = AbortSignal.any([
+        signal,
+        AbortSignal.timeout(10000),
+      ]);
+      const encoded = JSON.stringify(body);
+      let response: Response;
+      for (let attempt = 0; ; attempt++) {
+        requestSignal.throwIfAborted();
+        assertCurrent();
+        response = await (options.fetch ?? fetch)(new URL(path, origin), {
+          method: "POST",
+          redirect: "error",
+          headers: {
+            authorization: `Bearer ${credential}`,
+            "content-type": "application/json",
+          },
+          body: encoded,
+          signal: requestSignal,
+        });
+        headersMs = performance.now() - started;
+        try {
+          const value = response.headers.get("X-Eliza-Trace-Id");
+          httpTraceId =
+            value !== null && /^[a-f0-9]{32}$/.test(value) ? value : undefined;
+        } catch {
+          // Optional correlation cannot change the request's result or failure.
+        }
+        serverTimingMs = speechHttpTimings(response.headers);
+        status = response.status;
+        requestSignal.throwIfAborted();
+        assertCurrent();
+        if (response.ok) {
+          if (path === SPEECH_RELAY_ROUTES.mint)
+            extendOffered =
+              response.headers.get(SPEECH_RELAY_EXTEND_HEADER) ===
+              SPEECH_RELAY_EXTEND_OFFER;
+          break;
+        }
+        let delay: number | null = null;
+        if (
+          response.status === 503 &&
+          response.headers
+            .get("content-type")
+            ?.toLowerCase()
+            .startsWith("application/json")
+        ) {
+          try {
+            delay = warmingDelay(
+              response,
+              await readJson(response, 16384, assertCurrent, requestSignal),
+            );
+          } catch {
+            requestSignal.throwIfAborted();
+            assertCurrent();
+          }
+        } else {
+          await response.body?.cancel();
+        }
+        if (
+          delay === null ||
+          attempt >= 2 ||
+          !Number.isFinite(delay) ||
+          delay >= deadline - performance.now()
+        ) {
+          throw new CloudSpeechRelayClientError(
+            speechHttpFailureCode(response.status),
+            "Cloud speech request was not admitted",
+          );
+        }
+        await waitForWarming(delay, requestSignal);
       }
       if (
         !response.headers
@@ -442,7 +555,12 @@ export async function createCloudSpeechRelayPorts(
         );
       }
       bodyStarted = performance.now();
-      const result = await readJson(response, 16384, assertCurrent);
+      const result = await readJson(
+        response,
+        16384,
+        assertCurrent,
+        requestSignal,
+      );
       returned = true;
       return result;
     } finally {
@@ -676,7 +794,14 @@ export async function createCloudSpeechRelayPorts(
         });
         try {
           requireValue(connectedSocket.url === expected.href);
-          send({ t: "hello", token: minted.token, errorReasons: true });
+          // A relay that predates renewal refuses an unknown hello key, so
+          // `extend` is sent only when this deployment's mint offered it.
+          send({
+            t: "hello",
+            token: minted.token,
+            errorReasons: true,
+            ...(extendOffered ? { extend: true } : {}),
+          });
         } catch {
           fail(
             new CloudSpeechRelayClientError(
@@ -718,7 +843,7 @@ export async function createCloudSpeechRelayPorts(
             );
             outputBytes += pcm.length;
             receivedPcmFrames++;
-            requireValue(outputBytes <= 8 * 1024 * 1024);
+            requireValue(outputBytes <= 8 * 1024 * 1024 * windows);
             const context = contexts.get(id);
             if (!context) {
               requireValue(retired.has(id));
@@ -796,6 +921,14 @@ export async function createCloudSpeechRelayPorts(
       };
     });
     assertCurrent();
+    armExpiry();
+  } catch (error) {
+    terminate();
+    if (sessionId) await close().catch(() => {});
+    throw error;
+  }
+  function armExpiry() {
+    if (expiryTimer) clearTimeout(expiryTimer);
     expiryTimer = setTimeout(
       () => {
         diagnose("expired", { clientCode: "expired" });
@@ -808,13 +941,27 @@ export async function createCloudSpeechRelayPorts(
       },
       Math.max(1, expiry - Date.now()),
     );
-  } catch (error) {
-    terminate();
-    if (sessionId) await close().catch(() => {});
-    throw error;
   }
   function handleControl(input: SpeechRelayServerControl) {
     const frame = record(input);
+    if (frame.t === "extended") {
+      requireValue(extendOffered);
+      exact(frame, ["t", "expiresAt"]);
+      const next =
+        typeof frame.expiresAt === "string" ? Date.parse(frame.expiresAt) : NaN;
+      // A renewal starts at most 10 s before the old end and runs 60 s, so it
+      // never moves the end more than one window. Compared on server time only.
+      requireValue(
+        Number.isFinite(next) &&
+          next > expiry &&
+          next <= expiry + 60_000 &&
+          new Date(next).toISOString() === frame.expiresAt,
+      );
+      expiry = next;
+      windows++;
+      armExpiry();
+      return;
+    }
     if (frame.t === "error") {
       exact(
         frame,
@@ -972,7 +1119,7 @@ export async function createCloudSpeechRelayPorts(
                 bytes.byteLength % 2 === 0,
             );
             uplinkBytes += bytes.byteLength;
-            requireValue(uplinkBytes <= (60000 / 1000) * 32000);
+            requireValue(uplinkBytes <= (60000 / 1000) * 32000 * windows);
             const currentSocket = socket;
             requireValue(currentSocket && currentSocket.readyState === 1);
             currentSocket.send(new Uint8Array(bytes));
@@ -999,7 +1146,7 @@ export async function createCloudSpeechRelayPorts(
     tts: {
       createStream(_options, callbacks) {
         assertCurrent();
-        requireValue(++contextsCreated <= 64);
+        requireValue(++contextsCreated <= 64 * windows);
         const id = crypto.randomUUID();
         let resolve!: () => void, reject!: (error: Error) => void;
         const closedPromise = new Promise<void>((yes, no) => {
@@ -1042,7 +1189,7 @@ export async function createCloudSpeechRelayPorts(
             requireValue(
               typeof phrase.text === "string" &&
                 phrase.text.length <= 1024 &&
-                ttsCharacters + phrase.text.length <= 4096 &&
+                ttsCharacters + phrase.text.length <= 4096 * windows &&
                 typeof phrase.continueContext === "boolean" &&
                 (phrase.flush === undefined ||
                   typeof phrase.flush === "boolean"),
@@ -1086,5 +1233,13 @@ export async function createCloudSpeechRelayPorts(
     },
   };
   requireValue(sessionId);
-  return { speechPorts, close, sessionId, expiresAt: expiry };
+  return {
+    speechPorts,
+    close,
+    sessionId,
+    /** Current end; moves forward when the relay extends the session. */
+    get expiresAt() {
+      return expiry;
+    },
+  };
 }
