@@ -422,19 +422,19 @@ export async function admitFlatGenerativeOperation(params: {
 }
 
 /**
- * Worker callers are decided by one combined-cache read and never query
- * Postgres: a cache miss is a retryable 503 while authoritative hydration runs
- * under `waitUntil`. The route invokes the real limiter once after
- * authorization. Wallet proof remains on the compatibility path because
- * replay-protected signatures cannot be cached.
- */
-/**
  * Bounded join of a cold organization admission hydration. Below the client's
  * 1 s warming retry plus a second request; a slower hydration still returns
  * the retryable warming contract.
  */
 export const GENERATIVE_ROUTE_HYDRATION_WAIT_MS = 1_500;
 
+/**
+ * Worker callers are decided by one combined-cache read and never query
+ * Postgres: a cache miss is a retryable 503 while authoritative hydration runs
+ * under `waitUntil`. The route invokes the real limiter once after
+ * authorization. Wallet proof remains on the compatibility path because
+ * replay-protected signatures cannot be cached.
+ */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
   options: {
