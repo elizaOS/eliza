@@ -84,7 +84,7 @@ interface SpeakerBuffer {
   windowStartMs: number;
   /** Monotonic sequence number for segment ids. */
   sequenceNumber: number;
-  /** Clock ms when audio was last fed. */
+  /** Clock ms when the last fed audio was captured. */
   lastAudioTimestampMs: number;
   /** Whether a final idle/flush submission was already made. */
   idleSubmitted: boolean;
@@ -178,19 +178,24 @@ export class SpeakerStreamManager {
     );
   }
 
-  feedAudio(speakerKey: string, audio: Float32Array): void {
+  /**
+   * `atMs` is when the audio was captured, on this manager's clock. Adapters
+   * that hold audio until they can attribute it (Teams waits for the caption
+   * author) feed a batch late and pass each chunk's capture time.
+   */
+  feedAudio(speakerKey: string, audio: Float32Array, atMs = this.now()): void {
     const buffer = this.buffers.get(speakerKey);
     if (!buffer) return;
 
     // Window start reflects when audio actually arrived after a reset, not
     // when the buffer was cleared — segment timing is anchored here.
     if (buffer.totalSamples === 0) {
-      buffer.windowStartMs = this.now();
+      buffer.windowStartMs = atMs;
     }
 
     buffer.chunks.push(audio);
     buffer.totalSamples += audio.length;
-    buffer.lastAudioTimestampMs = this.now();
+    buffer.lastAudioTimestampMs = atMs;
     buffer.idleSubmitted = false;
   }
 

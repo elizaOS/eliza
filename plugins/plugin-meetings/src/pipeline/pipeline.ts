@@ -202,16 +202,17 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     if (!this.manager.hasSpeaker(speakerKey)) {
       this.manager.addSpeaker(speakerKey, this.labelFor(speakerKey));
     }
-    this.manager.feedAudio(speakerKey, chunk);
+    // Place the chunk at its capture time, in the session mix and in the
+    // transcript alike: a batch drained in one call (Teams caption routing)
+    // would otherwise share one offset and be summed on top of itself, and
+    // its segment would start where the batch was drained.
+    const atMs = Math.max(
+      0,
+      (capturedAtMs ?? Date.now()) - this.sessionEpochMs,
+    );
+    this.manager.feedAudio(speakerKey, chunk, atMs);
 
     if (this.options.retainAudio) {
-      // Place the chunk at its capture time: a batch drained in one call
-      // (Teams caption routing) would otherwise share one offset and be
-      // summed on top of itself.
-      const atMs = Math.max(
-        0,
-        (capturedAtMs ?? Date.now()) - this.sessionEpochMs,
-      );
       const offsetSamples = Math.round(
         (atMs / 1000) * MEETING_AUDIO_SAMPLE_RATE,
       );

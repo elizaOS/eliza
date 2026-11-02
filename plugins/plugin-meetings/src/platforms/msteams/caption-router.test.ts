@@ -3,8 +3,9 @@
  * SQLite runtime. The router holds RMS-gated chunks until a caption names
  * their speaker, then drains the batch in one synchronous loop; the session
  * audio stored with the transcript must still lay those chunks end to end at
- * the time they were captured. Only the meeting page and the TRANSCRIPTION
- * model are stand-ins.
+ * the time they were captured, and the transcript segment must start where
+ * that speech starts in the recording. Only the meeting page and the
+ * TRANSCRIPTION model are stand-ins.
  */
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -25,7 +26,7 @@ const TEAMS_URL = "https://teams.microsoft.com/meet/4459812307";
 const CHUNK_SAMPLES = 4096;
 const CHUNK_MS = (CHUNK_SAMPLES / MEETING_AUDIO_SAMPLE_RATE) * 1000;
 
-it("stores a caption-delayed batch of Teams audio end to end at its capture time", async () => {
+it("stores a caption-delayed batch of Teams audio and its segment at its capture time", async () => {
   const previousStateDir = process.env.ELIZA_STATE_DIR;
   const stateDir = mkdtempSync(join(tmpdir(), "eliza-teams-audio-"));
   process.env.ELIZA_STATE_DIR = stateDir;
@@ -35,9 +36,11 @@ it("stores a caption-delayed batch of Teams audio end to end at its capture time
     logLevel: "fatal",
     plugins: [
       {
-        name: "silent-transcription",
-        description: "Returns no words for every meeting window",
-        models: { [ModelType.TRANSCRIPTION]: async () => "" },
+        name: "scripted-transcription",
+        description: "Hears the caption's words in every meeting window",
+        models: {
+          [ModelType.TRANSCRIPTION]: async () => "Good morning everyone",
+        },
       },
     ],
   });
@@ -101,6 +104,11 @@ it("stores a caption-delayed batch of Teams audio end to end at its capture time
       voiced: 4 * CHUNK_SAMPLES,
     });
     expect(peak).toBeCloseTo(0.1, 3);
+    // The segment for that speech starts at the same point in the recording,
+    // not where the caption released the batch (6.5 s).
+    expect(transcript.segments.map((segment) => segment.startMs)).toEqual([
+      (first / MEETING_AUDIO_SAMPLE_RATE) * 1000,
+    ]);
   } finally {
     vi.useRealTimers();
     await runtime.stop();
