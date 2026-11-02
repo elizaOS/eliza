@@ -4,8 +4,11 @@ import {
   type VoiceSessionClient,
   type VoiceWebSocketLike,
 } from "./voice-session-client";
-import type { MicAudioContextLike } from "./voice-session-mic-capture";
 import * as micCapture from "./voice-session-mic-capture";
+import {
+  type MicAudioContextLike,
+  VoiceMicReleaseError,
+} from "./voice-session-mic-capture";
 import type { PlaybackAudioContextLike } from "./voice-session-playback";
 
 const dashboardTransport = vi.hoisted(() => vi.fn());
@@ -74,6 +77,7 @@ function harness(
     holdMint = false,
     stopOnMint = false,
     invalidMint = false,
+    sourceDisconnectFault: Error | undefined,
     releaseMint: (() => void) | undefined;
   const processors: Array<{
       onaudioprocess:
@@ -146,7 +150,12 @@ function harness(
     sampleRate: 16000,
     state: "running",
     destination: node(),
-    createMediaStreamSource: () => node(),
+    createMediaStreamSource: () => ({
+      ...node(),
+      disconnect() {
+        if (sourceDisconnectFault) throw sourceDisconnectFault;
+      },
+    }),
     createScriptProcessor: () => {
       const processor = { ...node(), onaudioprocess: null };
       processors.push(processor);
@@ -195,6 +204,9 @@ function harness(
       let stopped = false;
       const track = {
         enabled: true,
+        get readyState() {
+          return stopped ? "ended" : "live";
+        },
         stop() {
           if (!stopped) {
             stopped = true;
@@ -263,6 +275,9 @@ function harness(
     },
     invalidNextMint() {
       invalidMint = true;
+    },
+    failSourceDisconnect() {
+      sourceDisconnectFault = new Error("source disconnect refused");
     },
     stopOnNextMint() {
       stopOnMint = true;
@@ -693,4 +708,101 @@ test("a retired renderer context stops capture instead of silently discarding up
   ).toHaveLength(0);
   await h.advance(120000);
   expect(h.mints).toBe(1);
+});
+
+function refuseTrackStop(track: { stop(): void }) {
+  const stop = track.stop;
+  track.stop = () => {
+    throw new Error("track stop refused");
+  };
+  return () => {
+    track.stop = stop;
+  };
+}
+
+test("Stop ends a live track past a throwing disconnect, and resolving proves it", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  expect(h.activeCaptures).toBe(1);
+  h.failSourceDisconnect();
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+  expect(h.errors).toEqual([]);
+});
+
+test("a track that refuses keeps Stop rejected until that capture's own retry confirms", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const allow = refuseTrackStop(h.tracks[0]);
+  await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+  expect(h.activeCaptures).toBe(1);
+  await expect(h.client.stop()).rejects.toMatchObject({
+    code: "release_unconfirmed",
+  });
+  expect(h.activeCaptures).toBe(1);
+  allow();
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+  await h.client.stop();
+});
+
+test("no capture opens over a release that is still refused", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const allow = refuseTrackStop(h.tracks[0]);
+  await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+  await h.client.start();
+  await h.settle();
+  expect(h.captures).toBe(1);
+  expect(h.errors.at(-1)).toBeInstanceOf(VoiceMicReleaseError);
+  allow();
+  await h.client.stop();
+  await h.client.start();
+  await h.settle();
+  expect(h.captures).toBe(2);
+  expect(h.maxCaptures).toBe(1);
+  expect(h.activeCaptures).toBe(1);
+});
+
+test("recovery after a peer close opens no second capture over a refused release", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const allow = refuseTrackStop(h.tracks[0]);
+  h.sockets[0].close();
+  await h.settle();
+  expect(h.captures).toBe(1);
+  expect(h.errors.at(-1)).toBeInstanceOf(VoiceMicReleaseError);
+  allow();
+  await h.client.stop();
+  expect(h.activeCaptures).toBe(0);
+});
+
+test("a stop the client ran itself leaves a refused release for the owner's Stop to find", async () => {
+  const unhandled = vi.fn();
+  process.on("unhandledRejection", unhandled);
+  try {
+    const h = harness();
+    await h.client.start();
+    await h.settle();
+    const allow = refuseTrackStop(h.tracks[0]);
+    h.sockets[0].frame({
+      t: "error",
+      code: "insufficient_credits",
+      retryable: false,
+    });
+    await h.settle();
+    vi.useRealTimers();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(unhandled).not.toHaveBeenCalled();
+    await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+    allow();
+    await h.client.stop();
+    expect(h.activeCaptures).toBe(0);
+  } finally {
+    process.off("unhandledRejection", unhandled);
+  }
 });

@@ -16,6 +16,9 @@
  *     `visibilitychange` to hidden we PAUSE capture and notify (`onSuspend`)
  *     rather than silently dropping frames; on return we resume.
  *   - Permission denial surfaces as a typed error, never a silent no-op.
+ *   - Release is proved by the tracks: every teardown step runs whichever of
+ *     them throws, and a track that did not end is a typed error, never a
+ *     resolved stop.
  *
  * The capture is transport-agnostic: it only emits Int16 PCM byte frames via
  * `onFrame`. The client wires those to the WS uplink. Tests inject a fake
@@ -41,11 +44,24 @@ export class VoiceMicCaptureError extends Error {
       | "unsupported"
       | "permission_denied"
       | "no_device"
-      | "start_failed",
+      | "start_failed"
+      | "release_unconfirmed",
     readonly cause?: unknown,
   ) {
     super(message);
     this.name = "VoiceMicCaptureError";
+  }
+}
+
+/**
+ * A stop that could not confirm every track ended: the microphone may still be
+ * on. `retryRelease` asks those same tracks again and resolves only when all of
+ * them have ended.
+ */
+export class VoiceMicReleaseError extends VoiceMicCaptureError {
+  constructor(readonly retryRelease: () => Promise<void>) {
+    super("microphone release unconfirmed", "release_unconfirmed");
+    this.name = "VoiceMicReleaseError";
   }
 }
 
@@ -205,8 +221,43 @@ function awaitCaptureStep<T>(
   });
 }
 
-function stopMediaStream(stream: MediaStream): void {
-  for (const track of stream.getTracks()) track.stop();
+/** Stops every track, whichever of them refuses, and says if all of them ended. */
+function stopMediaStream(stream: MediaStream): boolean {
+  let ended = true;
+  for (const track of stream.getTracks()) {
+    try {
+      track.stop();
+      if (track.readyState === "live") ended = false;
+    } catch (ignoredError) {
+      // error-policy:J6 a refused stop is judged by the track's own state below, and the other tracks still stop.
+      void ignoredError;
+      if (track.readyState !== "ended") ended = false;
+    }
+  }
+  return ended;
+}
+
+/** Rejects while a track may still be live; only the tracks can prove release. */
+async function releaseMediaStream(
+  stream: MediaStream,
+  context?: MicAudioContextLike | null,
+): Promise<void> {
+  const ended = stopMediaStream(stream);
+  // error-policy:J6 best-effort context close during teardown; the tracks above decide the outcome.
+  await context?.close().catch(() => {});
+  if (!ended) throw new VoiceMicReleaseError(() => releaseMediaStream(stream));
+}
+
+/** Runs every step whichever of them throws: none may keep the tracks live. */
+function runTeardownSteps(steps: ReadonlyArray<() => void>): void {
+  for (const step of steps) {
+    try {
+      step();
+    } catch (ignoredError) {
+      // error-policy:J6 graph teardown is best effort; track release follows and reports the outcome.
+      void ignoredError;
+    }
+  }
 }
 
 /** Runtime AudioWorklet availability probe — never assumed (WebView 113). */
@@ -223,7 +274,11 @@ export function hasAudioWorkletSupport(
 export interface VoiceMicCapture {
   /** Whether capture is currently emitting frames. */
   readonly active: boolean;
-  /** Stop capture and release the mic + audio graph. Idempotent. */
+  /**
+   * Stop capture and release the mic + audio graph. Idempotent once released.
+   * Rejects with {@link VoiceMicReleaseError} while a track has not ended;
+   * calling it again asks the tracks again.
+   */
   stop(): Promise<void>;
   /** Disable microphone tracks without destroying the session's audio graph. */
   setMuted(muted: boolean): void;
@@ -341,7 +396,7 @@ export async function startVoiceMicCapture(
     throwIfCaptureCancelled(signal);
   } catch (err) {
     if (err instanceof VoiceMicCaptureCancelledError) {
-      if (stream) stopMediaStream(stream);
+      if (stream) await releaseMediaStream(stream);
       throw err;
     }
     const name = (err as { name?: string })?.name;
@@ -395,10 +450,8 @@ export async function startVoiceMicCapture(
     acquiredSource = acquiredContext.createMediaStreamSource(stream);
     throwIfCaptureCancelled(signal);
   } catch (error) {
-    acquiredSource?.disconnect();
-    stopMediaStream(stream);
-    // error-policy:J6 best-effort context close on the failure path; the pipeline error below is the surfaced failure.
-    await acquiredContext?.close().catch(() => {});
+    runTeardownSteps([() => acquiredSource?.disconnect()]);
+    await releaseMediaStream(stream, acquiredContext);
     if (error instanceof VoiceMicCaptureCancelledError) throw error;
     if (error instanceof VoiceMicCaptureError) throw error;
     throw new VoiceMicCaptureError(
@@ -408,9 +461,7 @@ export async function startVoiceMicCapture(
     );
   }
   if (!acquiredContext || !acquiredSource) {
-    stopMediaStream(stream);
-    // error-policy:J6 best-effort context close on the failure path; the initialization error below is the surfaced failure.
-    await acquiredContext?.close().catch(() => {});
+    await releaseMediaStream(stream, acquiredContext);
     throw new VoiceMicCaptureError(
       "microphone audio pipeline failed to initialize",
       "start_failed",
@@ -447,6 +498,19 @@ export async function startVoiceMicCapture(
   let backend: "audioworklet" | "scriptprocessor";
   let workletNode: AudioWorkletNodeLike | null = null;
   let scriptNode: ScriptProcessorNodeLike | null = null;
+  const disconnectGraph = (): void => {
+    runTeardownSteps([
+      () => {
+        if (workletNode) workletNode.port.onmessage = null;
+      },
+      () => workletNode?.disconnect(),
+      () => {
+        if (scriptNode) scriptNode.onaudioprocess = null;
+      },
+      () => scriptNode?.disconnect(),
+      () => source.disconnect(),
+    ]);
+  };
 
   try {
     if (hasAudioWorkletSupport(ctx)) {
@@ -496,18 +560,8 @@ export async function startVoiceMicCapture(
       );
     }
   } catch (error) {
-    if (workletNode) {
-      workletNode.port.onmessage = null;
-      workletNode.disconnect();
-    }
-    if (scriptNode) {
-      scriptNode.onaudioprocess = null;
-      scriptNode.disconnect();
-    }
-    source.disconnect();
-    stopMediaStream(stream);
-    // error-policy:J6 best-effort context close on the failure path; the pipeline error below is the surfaced failure.
-    await ctx.close().catch(() => {});
+    disconnectGraph();
+    await releaseMediaStream(stream, ctx);
     if (error instanceof VoiceMicCaptureCancelledError) throw error;
     if (error instanceof VoiceMicCaptureError) throw error;
     throw new VoiceMicCaptureError(
@@ -560,7 +614,7 @@ export async function startVoiceMicCapture(
           if (stopped || generation !== visibilityGeneration) return;
           // A non-running graph cannot resume this capture. Release the device
           // rather than retaining an apparently active but silent microphone.
-          void stop();
+          stopUnawaited();
           options.onError?.(
             new VoiceMicCaptureError(
               "Microphone audio could not resume",
@@ -576,29 +630,30 @@ export async function startVoiceMicCapture(
   let onAbort: (() => void) | null = null;
   let detachCaptureLifecycle = () => {};
 
-  const stop = async (): Promise<void> => {
-    if (stopped) return;
-    stopped = true;
-    detachCaptureLifecycle();
-    if (onAbort && signal) signal.removeEventListener("abort", onAbort);
-    visibility?.removeListener(onVisibilityChange);
-    if (workletNode) {
-      workletNode.port.onmessage = null;
-      workletNode.disconnect();
+  let release: Promise<void> | null = null;
+  const stop = (): Promise<void> => {
+    if (release) return release;
+    if (!stopped) {
+      stopped = true;
+      runTeardownSteps([
+        () => detachCaptureLifecycle(),
+        () => {
+          if (onAbort && signal) signal.removeEventListener("abort", onAbort);
+        },
+        () => visibility?.removeListener(onVisibilityChange),
+        disconnectGraph,
+      ]);
     }
-    if (scriptNode) {
-      scriptNode.onaudioprocess = null;
-      scriptNode.disconnect();
-    }
-    source.disconnect();
-    stopMediaStream(stream);
-    // error-policy:J6 best-effort context close during teardown; tracks are already stopped above.
-    await ctx.close().catch(() => {});
+    release = releaseMediaStream(stream, ctx).catch((failure: unknown) => {
+      release = null;
+      throw failure;
+    });
+    return release;
   };
+  // error-policy:J5 a refused release is not lost: the owner's next stop() asks the tracks again and rejects.
+  const stopUnawaited = (): void => void stop().catch(() => {});
 
-  onAbort = () => {
-    void stop();
-  };
+  onAbort = stopUnawaited;
   if (signal?.aborted) {
     await stop();
     throw new VoiceMicCaptureCancelledError(signal.reason);
@@ -608,7 +663,7 @@ export async function startVoiceMicCapture(
   let captureReady = false;
   const failCapture = () => {
     if (stopped) return;
-    void stop();
+    stopUnawaited();
     if (captureReady)
       options.onError?.(
         new VoiceMicCaptureError(

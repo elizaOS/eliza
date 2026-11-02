@@ -54,6 +54,7 @@ import {
   startVoiceMicCapture,
   type VoiceMicCapture,
   VoiceMicCaptureError,
+  VoiceMicReleaseError,
 } from "./voice-session-mic-capture";
 import {
   claimVoiceSession,
@@ -255,7 +256,12 @@ export interface VoiceSessionClient {
   setMicrophoneMuted(muted: boolean): void;
   /** Unlock playback on a user gesture (iOS autoplay). */
   unlockPlayback(): Promise<void>;
-  /** Send a clean `bye` and tear everything down. */
+  /**
+   * Send a clean `bye` and tear everything down. Resolving proves every
+   * microphone track this client opened has ended. Rejects with
+   * {@link VoiceMicReleaseError} while one has not; calling it again asks that
+   * capture again, and no new capture opens over it.
+   */
   stop(): Promise<void>;
 }
 function nowDefault(): number {
@@ -315,6 +321,9 @@ export function createVoiceSessionClient(
   let micSocket: VoiceWebSocketLike | null = null;
   let captureRetentionTimer: ReturnType<typeof setTimeout> | null = null;
   let retiringMic: Promise<void> | null = null;
+  // Captures whose tracks have not confirmed ended. They outlive Stop: only
+  // their own tracks can clear them, and no new capture opens over one.
+  const unreleasedMics = new Set<VoiceMicReleaseError>();
   let playback: VoiceSessionPlayback | null = null;
   let reconnectsUsed = 0;
   // Monotonic timestamp of the most recent server `ready`; null while not live
@@ -726,7 +735,10 @@ export function createVoiceSessionClient(
     generation: number,
     socket: VoiceWebSocketLike,
   ): Promise<void> {
-    if (retiringMic) await retiringMic;
+    if (retiringMic || unreleasedMics.size > 0) {
+      await Promise.all([...unreleasedMics].map(retryMicRelease));
+      await retiringMic;
+    }
     // A ready frame may race Stop/ownership change while the prior device releases.
     if (
       captureSocket === socket ||
@@ -752,6 +764,7 @@ export function createVoiceSessionClient(
         ? mic === capturedMic
         : captureSocket === socket && ws === socket);
     try {
+      for (const unreleased of unreleasedMics) throw unreleased;
       const createdMic = await startVoiceMicCapture({
         onFrame: (bytes) => {
           if (currentCapture() && micSocket !== null && ws === micSocket) {
@@ -783,8 +796,7 @@ export function createVoiceSessionClient(
       });
       capturedMic = createdMic;
       if (!isLifecycleCurrent(generation) || ws !== socket || mic) {
-        // error-policy:J6 best-effort release of a mic whose session was superseded before it attached.
-        await createdMic.stop().catch(() => {});
+        await releaseMic(() => createdMic.stop());
         return;
       }
       mic = createdMic;
@@ -794,6 +806,7 @@ export function createVoiceSessionClient(
       // Now genuinely listening.
       setState(beginListening(state));
     } catch (err) {
+      if (err instanceof VoiceMicReleaseError) unreleasedMics.add(err);
       if (!isLifecycleCurrent(generation) || ws !== socket) return;
       const error =
         err instanceof VoiceMicCaptureError
@@ -1080,6 +1093,27 @@ export function createVoiceSessionClient(
       }
     }
   }
+  /** Never rejects: a refused release stays in unreleasedMics until its own tracks end. */
+  function releaseMic(release: () => Promise<void>): Promise<void> {
+    const pending: Promise<void> = Promise.all([
+      retiringMic,
+      release().catch((failure: unknown) => {
+        unreleasedMics.add(
+          failure instanceof VoiceMicReleaseError
+            ? failure
+            : new VoiceMicReleaseError(release),
+        );
+      }),
+    ]).then(() => {
+      if (retiringMic === pending) retiringMic = null;
+    });
+    retiringMic = pending;
+    return pending;
+  }
+  function retryMicRelease(unreleased: VoiceMicReleaseError): Promise<void> {
+    unreleasedMics.delete(unreleased);
+    return releaseMic(unreleased.retryRelease);
+  }
   async function teardownMic(): Promise<void> {
     clearCaptureRetentionTimer();
     micSocket = null;
@@ -1089,20 +1123,9 @@ export function createVoiceSessionClient(
     pendingCapture?.abort();
     const currentMic = mic;
     mic = null;
-    if (!currentMic) {
-      await retiringMic;
-      return;
-    }
     // Keep a release fence after detaching ownership so a late ready cannot
     // acquire another physical capture before the retiring one actually stops.
-    // error-policy:J6 best-effort mic release after ownership is detached.
-    const release = currentMic.stop().catch(() => {});
-    retiringMic = release;
-    try {
-      await release;
-    } finally {
-      if (retiringMic === release) retiringMic = null;
-    }
+    await (currentMic ? releaseMic(() => currentMic.stop()) : retiringMic);
   }
   async function stop(): Promise<void> {
     disposed = true;
@@ -1301,7 +1324,12 @@ export function createVoiceSessionClient(
         state.traceId,
       );
     },
-    stop,
+    async stop() {
+      const refused = [...unreleasedMics];
+      await stop();
+      await Promise.all(refused.map(retryMicRelease));
+      for (const unreleased of unreleasedMics) throw unreleased;
+    },
   };
 }
 class VoiceSessionLifecycleCancelledError extends Error {
