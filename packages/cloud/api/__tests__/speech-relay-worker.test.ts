@@ -35,15 +35,21 @@ beforeAll(async () => {
     ],
     [
       /\/db\/client\.ts$/,
-      `${common} export async function runWithDbCacheAsync(run){bootstrap('dbContexts');return run();}`,
+      `import {AsyncLocalStorage} from 'node:async_hooks';${common}
+const dbContexts=new AsyncLocalStorage();
+export function testDbContext(){return dbContexts.getStore();}
+export async function runWithDbCacheAsync(run){bootstrap('dbContexts');return dbContexts.run(stats().dbContexts,run);}`,
     ],
-    [
-      /\/runtime\/cloud-bindings\.ts$/,
-      `let current;export async function runWithCloudBindingsAsync(env,run){current=env;return run();}export function getCloudAwareEnv(){return current??{};}export function getCloudBinding(name){return current?.[name];}`,
-    ],
+    // Use the real AsyncLocalStorage binding implementation; a global fake
+    // would leak the opening context into unrelated socket events.
     [
       /\/services\/organization-inference-admission\.ts$/,
-      `import {InsufficientCreditsError} from '@elizaos/cloud-shared/lib/services/credits'; ${common} export async function admitOrganizationInference(input){bootstrap('admissions');if(stats().decline)throw new InsufficientCreditsError('private provider details');return {async markProviderDispatched(){bootstrap('dispatches');},async settle(cost){const s=stats();s.settlements=(s.settlements??0)+1;(s.settledAmounts??=[]).push({model:input.context.model,cost});},async settleUnknown(){const s=stats();s.unknown=(s.unknown??0)+1;}};}`,
+      `import {InsufficientCreditsError} from '@elizaos/cloud-shared/lib/services/credits';
+import {getCloudBinding} from '@elizaos/cloud-shared/lib/runtime/cloud-bindings';
+import {testDbContext} from '@elizaos/cloud-shared/db/client';${common}
+export async function admitOrganizationInference(input){bootstrap('admissions');if(stats().decline)throw new InsufficientCreditsError('private provider details');const openedIn=testDbContext();let settled=false;
+const account=()=>{const s=stats();if(getCloudBinding('HYPERDRIVE')?.connectionString!=='postgres://boundary-test.invalid/not-used'||!testDbContext())throw Error('Missing settlement binding/context');if(settled)throw Error('Duplicate admission settlement');settled=true;(s.settlementContexts??=[]).push({openedIn,settledIn:testDbContext(),hasHyperdrive:true});};
+return {async markProviderDispatched(){bootstrap('dispatches');},async settle(cost){account();const s=stats();s.settlements=(s.settlements??0)+1;(s.settledAmounts??=[]).push({model:input.context.model,cost});},async settleUnknown(){account();const s=stats();s.unknown=(s.unknown??0)+1;}};}`,
     ],
     [
       /\/services\/content-safety\.ts$/,
@@ -71,7 +77,7 @@ beforeAll(async () => {
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
-      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;}};}close(){stats().ttsClosed=true;}}`,
+      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;stats().ttsCancels=(stats().ttsCancels??0)+1;}};}close(){stats().ttsClosed=true;}}`,
     ],
   ];
   const result = await Bun.build({
@@ -118,6 +124,9 @@ beforeAll(async () => {
     },
     bindings: {
       VOICE_SPEECH_RELAY_ENABLED: "true",
+      HYPERDRIVE: {
+        connectionString: "postgres://boundary-test.invalid/not-used",
+      },
       INFERENCE_STRONG_REVOCATION_ENABLED: "false",
       CARTESIA_API_KEY: "test-provider-boundary",
       VOICE_REALTIME_CARTESIA_VOICE_ID: "test",
@@ -628,4 +637,267 @@ test("barge-in settles only the submitted TTS characters across contexts, not th
   expect(settled.cost).toBeLessThan(
     4096 * CARTESIA_PUBLISHED_USD_PER_CREDIT * 1.2,
   );
+});
+
+test("the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context", async () => {
+  const headers = {
+    "x-test-session": "prepare-first",
+    "Content-Type": "application/json",
+  };
+  const token = "prepare-first-capability";
+  const request = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers,
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  await request("/test-allow-admission");
+  await request("/initialize", {
+    sessionId: "66666666-6666-4666-8666-666666666666",
+    tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+    expiresAt: Date.now() + 60000,
+    caller: {
+      user: {
+        ...account,
+        organization_id: "cdcdcdcd-cdcd-4dcd-8dcd-cdcdcdcdcdcd",
+      },
+      apiKeyId: "prepare-key",
+      authSource: "combined_cache",
+      appScopeId: null,
+      credential: {
+        kind: "api_key",
+        credentialId: "prepare-key",
+        userId: account.id,
+      },
+    },
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...headers, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const received: any[] = [];
+  socket.addEventListener("message", (event: { data: unknown }) =>
+    received.push(
+      typeof event.data === "string" ? JSON.parse(event.data) : event.data,
+    ),
+  );
+  const ready = next(socket as any, (value) => value.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token }));
+  await ready;
+  const before = (await (await request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  // Frames exactly as cloud-speech-relay-client sends them: createStream
+  // sends prepare before any text, then tts phrases, then finish or cancel.
+  const send = (value: unknown) => socket.send(JSON.stringify(value));
+  const binary = (value: unknown) =>
+    value instanceof ArrayBuffer || ArrayBuffer.isView(value);
+  const spoken = crypto.randomUUID();
+  const spokenPrepared = next(
+    socket as any,
+    (value) => value.t === "tts_prepared" && value.id === spoken,
+  );
+  send({ t: "prepare", id: spoken });
+  await spokenPrepared;
+  const audio = next(socket as any, binary);
+  send({
+    t: "tts",
+    id: spoken,
+    text: "This is a finalized phrase.",
+    flush: true,
+  });
+  expect((await audio).byteLength).toBeGreaterThan(4);
+  const spokenComplete = next(
+    socket as any,
+    (value) => value.t === "complete" && value.id === spoken,
+  );
+  send({ t: "finish", id: spoken });
+  await spokenComplete;
+  // A reply with no speech: prepare, then finish with no text.
+  const silent = crypto.randomUUID();
+  const silentComplete = next(
+    socket as any,
+    (value) => value.t === "complete" && value.id === silent,
+  );
+  send({ t: "prepare", id: silent });
+  send({ t: "finish", id: silent });
+  await silentComplete;
+  // Barge-in before the first phrase.
+  const dropped = crypto.randomUUID();
+  const droppedPrepared = next(
+    socket as any,
+    (value) => value.t === "tts_prepared" && value.id === dropped,
+  );
+  send({ t: "prepare", id: dropped });
+  await droppedPrepared;
+  send({ t: "cancel", id: dropped });
+  // An older client's tts-first context is unchanged.
+  const legacy = "legacy-context";
+  const legacyPrepared = next(
+    socket as any,
+    (value) => value.t === "tts_prepared" && value.id === legacy,
+  );
+  const legacyAudio = next(socket as any, binary);
+  send({ t: "tts", id: legacy, text: "An older client.", flush: true });
+  await legacyPrepared;
+  await legacyAudio;
+  const legacyComplete = next(
+    socket as any,
+    (value) => value.t === "complete" && value.id === legacy,
+  );
+  send({ t: "finish", id: legacy });
+  await legacyComplete;
+  // The cancel tore down the prepared context's provider stream; stats are
+  // shared across this file, so compare counts rather than a flag.
+  const settled = (await (await request("/test-stats")).json()) as Record<
+    string,
+    number
+  >;
+  expect(settled.ttsCancels).toBe((before.ttsCancels ?? 0) + 1);
+  const closed = new Promise<void>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(Error("Prepared session did not close")),
+      3000,
+    );
+    socket.addEventListener(
+      "close",
+      () => {
+        clearTimeout(timer);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  send({ t: "stop" });
+  await closed;
+  expect(received.filter((value) => value.t === "error")).toEqual([]);
+  for (const id of [spoken, silent, dropped, legacy])
+    expect(
+      received.filter((value) => value.t === "tts_prepared" && value.id === id),
+    ).toHaveLength(1);
+  const after = (await (await request("/test-stats")).json()) as Record<
+    string,
+    unknown
+  >;
+  expect(after.ttsOpened).toBe((before.ttsOpened ?? 0) + 4);
+  // Completed and cancelled contexts left nothing open for stop to cancel.
+  expect(after.ttsCancels).toBe(settled.ttsCancels);
+});
+
+test("socket Stop settles with the DO bindings and a fresh DB context before a later revoke", async () => {
+  const sessionName = "stop-settlement-context";
+  const scopedCall = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        "x-test-session": sessionName,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    });
+  await scopedCall("/test-allow-admission");
+  const token = "stop-boundary-test-token";
+  const digest = new Bun.CryptoHasher("sha256").update(token).digest("hex");
+  expect(
+    (
+      await scopedCall("/initialize", {
+        sessionId: "44444444-4444-4444-8444-444444444444",
+        tokenDigest: digest,
+        expiresAt: Date.now() + 60000,
+        caller: {
+          user: account,
+          apiKeyId: null,
+          authSource: "combined_cache",
+          appScopeId: null,
+          credential: {
+            kind: "api_key",
+            credentialId: "test-key",
+            userId: account.id,
+          },
+        },
+      })
+    ).status,
+  ).toBe(200);
+  const response = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    {
+      headers: { Upgrade: "websocket", "x-test-session": sessionName },
+    },
+  );
+  expect(response.status).toBe(101);
+  const socket = response.webSocket!;
+  socket.accept();
+  const ready = next(socket as any, (frame) => frame.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token }));
+  await ready;
+  const before = (await (
+    await scopedCall("/test-lock-bootstrap")
+  ).json()) as Record<string, any>;
+  const transcript = next(socket as any, (frame) => frame.t === "stt");
+  socket.send(new Uint8Array(3200));
+  await transcript;
+  const streaming = (await (await scopedCall("/test-stats")).json()) as Record<
+    string,
+    any
+  >;
+  expect(streaming.dbContexts).toBe(before.dbContexts);
+  expect(streaming.admissions).toBe(before.admissions);
+  expect(streaming.settlements ?? 0).toBe(before.settlements ?? 0);
+  await scopedCall("/test-allow-settlement");
+  const closed = new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(Error("Stop did not close the relay")),
+      5000,
+    );
+    socket.addEventListener(
+      "close",
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      { once: true },
+    );
+  });
+  socket.send(JSON.stringify({ t: "stop" }));
+  await closed;
+  // The real coordinator's revoke awaits its retained close promise. It must
+  // succeed even though socket Stop initiated settlement in another callback.
+  expect(
+    (
+      await scopedCall("/revoke", {
+        userId: account.id,
+        organizationId: account.organization_id,
+      })
+    ).status,
+  ).toBe(200);
+  const after = (await (await scopedCall("/test-stats")).json()) as Record<
+    string,
+    any
+  >;
+  expect(after.settlements - (before.settlements ?? 0)).toBe(2);
+  const contexts = after.settlementContexts.slice(
+    (before.settlementContexts ?? []).length,
+  );
+  expect(contexts).toHaveLength(2);
+  for (const context of contexts) {
+    expect(context.hasHyperdrive).toBe(true);
+    expect(context.settledIn).not.toBe(context.openedIn);
+  }
+  const settled = after.settlements;
+  expect(
+    (
+      await scopedCall("/revoke", {
+        userId: account.id,
+        organizationId: account.organization_id,
+      })
+    ).status,
+  ).toBe(200);
+  const repeated = (await (await scopedCall("/test-stats")).json()) as Record<
+    string,
+    any
+  >;
+  expect(repeated.settlements).toBe(settled);
 });

@@ -134,6 +134,8 @@ function buildIntegrationEnv({ context, baseUrl, databaseUrl }) {
     TMP: context.tempDir,
     TEMP: context.tempDir,
     CLOUD_INTEGRATION_RUN_ID: context.runId,
+    // Set by main only for the context whose PGlite process and directory it owns.
+    CLOUD_E2E_DISPOSABLE_DB: "0",
   };
 }
 
@@ -162,7 +164,14 @@ async function runBatch({
     ],
     {
       cwd: testCwd,
-      env: integrationEnv,
+      env: {
+        ...integrationEnv,
+        CLOUD_E2E_GROUP_D_STRICT_FIXTURES: files.some((file) =>
+          file.endsWith("group-d-ai-media.test.ts"),
+        )
+          ? "1"
+          : "0",
+      },
       stdio: "inherit",
     },
   );
@@ -215,6 +224,7 @@ export async function main() {
     baseUrl,
     databaseUrl,
   });
+  if (managed) integrationEnv.CLOUD_E2E_DISPOSABLE_DB = "1";
   writeBunfig(context.testCwd);
 
   const childRegistry = createOwnedChildRegistry();

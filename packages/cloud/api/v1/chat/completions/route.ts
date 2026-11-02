@@ -8,6 +8,7 @@ import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
+import { type ChatCompletionTool, convertTools } from "./tools";
 
 /**
  * OpenAI-compatible chat completions endpoint.
@@ -157,7 +158,6 @@ import { settleOffResponsePath } from "@elizaos/cloud-shared/lib/utils/settle-of
 import {
   APICallError,
   generateText,
-  jsonSchema,
   type ModelMessage,
   RetryError,
   type StepResult,
@@ -469,14 +469,7 @@ interface ChatRequest {
    */
   stream_options?: { include_usage?: boolean };
   stop?: string | string[];
-  tools?: Array<{
-    type: "function";
-    function: {
-      name: string;
-      description?: string;
-      parameters?: Record<string, unknown>;
-    };
-  }>;
+  tools?: ChatCompletionTool[];
   tool_choice?:
     | "auto"
     | "none"
@@ -753,26 +746,6 @@ function convertToModelMessagesFromOpenAI(
   }
 
   return modelMessages;
-}
-
-function convertTools(tools: ChatRequest["tools"]) {
-  if (!tools?.length) return undefined;
-
-  return Object.fromEntries(
-    tools.map((tool) => [
-      tool.function.name,
-      {
-        ...(tool.function.description
-          ? { description: tool.function.description }
-          : {}),
-        inputSchema: jsonSchema(tool.function.parameters ?? { type: "object" }),
-        outputSchema: jsonSchema({
-          type: "object",
-          additionalProperties: true,
-        }),
-      },
-    ]),
-  );
 }
 
 function mapToolChoice(
