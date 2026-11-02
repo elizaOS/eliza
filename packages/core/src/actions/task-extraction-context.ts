@@ -266,6 +266,17 @@ export const NOTES_REQUEST_OPERATIONS = Object.freeze([
 	"delete",
 ] as const);
 export type NotesRequestOperation = (typeof NOTES_REQUEST_OPERATIONS)[number];
+/**
+ * `patch` and `update` are two registered entry points for the same stored-note
+ * edit. Permission and completion accounting must agree on that, or an edit the
+ * owner requested under one name and the planner performed under the other is
+ * admitted and then reported as a change nobody asked for.
+ */
+export function canonicalNotesRequestOperation(
+	operation: NotesRequestOperation,
+): NotesRequestOperation {
+	return operation === "patch" ? "update" : operation;
+}
 export type NotesRequestInterpretation = {
 	readonly status: "explicit" | "unavailable" | "contradictory";
 	readonly operations: readonly NotesRequestOperation[];
@@ -1237,6 +1248,17 @@ export function bindRequestOperationResult(
 						row.op === attempt.registeredOperation ||
 						row.op === attempt.resolved,
 				);
+			// The interpretation names operations the owner asked for; the attempt
+			// records the registered entry point the planner used. Compare both in
+			// canonical form so patch and update count as the same requested edit.
+			const requested =
+				value.interpretation?.status === "explicit"
+					? value.interpretation.operations
+							.map(canonicalNotesRequestOperation)
+							.includes(
+								canonicalNotesRequestOperation(attempt.registeredOperation),
+							)
+					: undefined;
 			if (dispatch && canonicalChild)
 				completion = Object.freeze({
 					issuer: attempt.issuer,
@@ -1247,26 +1269,10 @@ export function bindRequestOperationResult(
 					dispatch: Object.freeze(dispatch),
 					canonicalChild,
 					childDefinition: definition(canonicalChild),
-					requested:
-						value.interpretation?.status === "explicit"
-							? value.interpretation.operations.includes(
-									attempt.registeredOperation,
-								)
-							: undefined,
-					rejected:
-						value.interpretation?.status === "explicit" &&
-						value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) &&
-						noEffectRejection,
-					outsideRequestRejection:
-						value.interpretation?.status === "explicit" &&
-						!value.interpretation.operations.includes(
-							attempt.registeredOperation,
-						) &&
-						noEffectRejection,
-					ambiguousRejection:
-						value.interpretation?.status !== "explicit" && noEffectRejection,
+					requested,
+					rejected: requested === true && noEffectRejection,
+					outsideRequestRejection: requested === false && noEffectRejection,
+					ambiguousRejection: requested === undefined && noEffectRejection,
 				});
 		}
 	} catch {

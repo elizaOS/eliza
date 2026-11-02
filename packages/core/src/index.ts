@@ -12,6 +12,7 @@ export {
 	bindRequestOperationProjection,
 	bindRequestOperationResult,
 	bindTaskExtractionContext,
+	canonicalNotesRequestOperation,
 	checkBoundNotesOperation,
 	commitNotesRequestRestriction,
 	copyRequestOperationResult,
