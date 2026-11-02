@@ -365,8 +365,10 @@ export class SpeechRelayCoordinator {
                 // request context has ended. Settlement needs this DO's bindings
                 // and a fresh request-scoped DB cache at its invocation boundary.
                 settle: (details) =>
-                  runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
-                    runWithDbCacheAsync(() => reservation.settle(details)),
+                  runWithCloudBindingsAsync(
+                    this.env as Record<string, unknown>,
+                    () =>
+                      runWithDbCacheAsync(() => reservation.settle(details)),
                   ),
               };
             },

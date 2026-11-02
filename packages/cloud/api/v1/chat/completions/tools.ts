@@ -17,10 +17,17 @@ export function convertTools(tools: ChatCompletionTool[] | undefined) {
     tools.map((tool) => [
       tool.function.name,
       {
-        ...(tool.function.description ? { description: tool.function.description } : {}),
-        ...(typeof tool.function.strict === "boolean" ? { strict: tool.function.strict } : {}),
+        ...(tool.function.description
+          ? { description: tool.function.description }
+          : {}),
+        ...(typeof tool.function.strict === "boolean"
+          ? { strict: tool.function.strict }
+          : {}),
         inputSchema: jsonSchema(tool.function.parameters ?? { type: "object" }),
-        outputSchema: jsonSchema({ type: "object", additionalProperties: true }),
+        outputSchema: jsonSchema({
+          type: "object",
+          additionalProperties: true,
+        }),
       },
     ]),
   );
