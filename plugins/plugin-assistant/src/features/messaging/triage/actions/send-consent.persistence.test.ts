@@ -321,6 +321,59 @@ it("a plain confirmation never sends an older armed draft after a newer draft pr
   }
 });
 
+it("recovers a pending draft from an augmented affirmative turn", async () => {
+  const now = Date.now();
+  const runtime = {
+    agentId: randomUUID(),
+    getCache: async () => ({
+      nonce: "n1",
+      digest: "d1",
+      messageId: "prev-msg",
+      messageTime: now - 60_000,
+      armedAt: now - 1_000,
+      consumedBy: null,
+      draftId: "draft-123",
+    }),
+  } as unknown as IAgentRuntime;
+  const turn = (text: string): Memory => ({
+    id: randomUUID() as UUID,
+    entityId: randomUUID() as UUID,
+    roomId: randomUUID() as UUID,
+    createdAt: now,
+    content: { text },
+  });
+  // The chat route hands action handlers the generation message, so a
+  // confirmation turn can carry the language suffix or the document envelope.
+  // Either wrapper must not hide an otherwise entire affirmative answer.
+  expect(
+    await pendingSendDraft(
+      runtime,
+      turn(
+        "yes\n\n[Language instruction: Reply in natural Korean unless the user explicitly requests another language.]",
+      ),
+    ),
+  ).toBe("draft-123");
+  expect(
+    await pendingSendDraft(
+      runtime,
+      turn(
+        [
+          "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+          "",
+          "<contextual_documents>",
+          '<source title="doc" similarity="0.900">some doc text</source>',
+          "</contextual_documents>",
+          "",
+          "<user_request>",
+          "send it",
+          "</user_request>",
+        ].join("\n"),
+      ),
+    ),
+  ).toBe("draft-123");
+  expect(await pendingSendDraft(runtime, turn("yes, but change it"))).toBeNull();
+});
+
 it("refuses a new outbound draft when the adapter cannot send a new message", async () => {
   class NoSendAdapter extends BaseMessageAdapter {
     readonly source = "telegram" as const;
