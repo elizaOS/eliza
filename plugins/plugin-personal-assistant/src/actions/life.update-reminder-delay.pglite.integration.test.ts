@@ -479,6 +479,75 @@ it("follows 'make that' to the namesake just edited when nothing was saved this 
   }
 });
 
+it("follows 'make that' to the saved namesake once the one just edited is cancelled", async () => {
+  const older = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_4PM,
+  });
+  const saved = await seed("Call mom", {
+    ...STRETCH_CADENCE,
+    dueAt: CALL_MOM_9PM,
+  });
+  const conversation = {
+    roomId,
+    entityId: service.ownerEntityId() as UUID,
+  } as Memory;
+  try {
+    await writeRecentLifeSaveCache(fixture.runtime, conversation, {
+      definitionId: saved.definition.id,
+      title: saved.definition.title,
+      createdAt: Date.now(),
+    });
+    const moved = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_5PM } },
+      },
+      "move the 4pm call mom reminder to 5pm",
+    );
+    expect(moved.success, JSON.stringify(moved)).toBe(true);
+    const cancelled = await updateReminder(
+      {
+        action: "cancel",
+        title: "Call mom",
+        kind: "definition",
+        intent: "cancel that one",
+        target: older.definition.id,
+      },
+      "cancel that one",
+      "OWNER_REMINDERS",
+    );
+    expect(cancelled.success, JSON.stringify(cancelled)).toBe(true);
+    expect(
+      (await service.getDefinition(older.definition.id)).definition.status,
+    ).toBe("archived");
+    const followed = await updateReminder(
+      {
+        title: "Call mom",
+        target: "Call mom",
+        details: { cadence: { kind: "once", dueAt: CALL_MOM_530PM } },
+      },
+      "actually make that 5:30pm",
+    );
+    expect(followed.success, JSON.stringify(followed)).toBe(true);
+    expect(
+      (await service.getDefinition(saved.definition.id)).definition.cadence,
+    ).toMatchObject({ kind: "once", dueAt: CALL_MOM_530PM });
+    expect(
+      (await service.getDefinition(older.definition.id)).definition,
+    ).toMatchObject({
+      status: "archived",
+      cadence: { kind: "once", dueAt: CALL_MOM_5PM },
+    });
+  } finally {
+    await clearRecentLifeSaveCache(fixture.runtime, conversation);
+    await clearRecentLifeEditCache(fixture.runtime, conversation);
+    for (const entry of [older, saved])
+      await service.deleteDefinition(entry.definition.id);
+  }
+});
+
 it("keeps an existing id ahead of a title that names another reminder", async () => {
   const stretch = await seed("Stretch", STRETCH_CADENCE);
   const oven = await seed("Oven check", STRETCH_CADENCE);
