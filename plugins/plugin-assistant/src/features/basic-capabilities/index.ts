@@ -30,10 +30,8 @@ import {
   ChannelType,
   CONNECTOR_MESSAGE_RECEIVED_EVENT_TYPES,
   type Content,
-  ContentType,
   type ControlMessagePayload,
   createUniqueUuid,
-  describeImageCached,
   EmbeddingGenerationService,
   type EntityPayload,
   type EvaluatorEventPayload,
@@ -42,7 +40,6 @@ import {
   fetchWithSsrfGuard,
   formatDiagnosticError,
   getConfiguredOwnerEntityIds,
-  getLocalServerUrl,
   type IAgentRuntime,
   type IControlTransportService,
   type IMessageBusService,
@@ -67,14 +64,12 @@ import {
   readResponseWithLimit,
   recentErrorsProvider,
   recordOwnerGrant,
-  resolveOptimizedPromptForRuntime,
   SensitiveRequestDispatchRegistryService,
   type ServiceClass,
   ServiceType,
   TargetSourceRegistryService,
   TaskService,
   toWellFormedUnicode,
-  truncateWellFormed,
   type UUID,
   type WorldPayload,
 } from "@elizaos/core";
@@ -83,6 +78,7 @@ import type { HttpPlugin as Plugin } from "@elizaos/host/protocol";
 import { v4 } from "uuid";
 import { FileTrajectoryRetentionService } from "../../runtime/trajectory-retention.ts";
 import { EvaluatorService } from "../../services/evaluator.ts";
+import { MessageAttachments } from "../../services/message/attachments.ts";
 import { OptimizedPromptService } from "../../services/optimized-prompt.ts";
 import { composePromptFromState } from "../../text/template-rendering.js";
 import { generateMediaAction } from "../advanced-capabilities/actions/generateMedia.ts";
@@ -112,7 +108,7 @@ import { ignoreAction } from "./actions/ignore.ts";
 import { noneAction } from "./actions/none.ts";
 import { replyAction } from "./actions/reply.ts";
 import { linkExtractionEvaluator } from "./evaluators/link-extraction.ts";
-import { imageDescriptionTemplate, postCreationTemplate } from "./prompts.js";
+import { postCreationTemplate } from "./prompts.js";
 import { actionStateProvider } from "./providers/actionState.ts";
 import { actionsProvider } from "./providers/actions.ts";
 import { anxietyProvider } from "./providers/anxiety.ts";
@@ -233,7 +229,8 @@ export async function fetchMediaData(
 }
 /**
  * Processes attachments by generating descriptions for supported media types.
- * Currently supports image description generation.
+ * This public helper uses the message service's implementation, so remote
+ * bytes go through the SSRF-guarded fetcher and the per-turn byte budget.
  *
  * @param {Media[]} attachments - Array of attachments to process
  * @param {IAgentRuntime} runtime - The agent runtime for accessing AI models
@@ -246,163 +243,7 @@ export async function processAttachments(
   if (!attachments || attachments.length === 0) {
     return [];
   }
-  runtime.logger.debug(
-    {
-      src: "basic-capabilities",
-      agentId: runtime.agentId,
-      count: attachments.length,
-    },
-    "Processing attachments",
-  );
-  const processedAttachments: Media[] = [];
-  for (const attachment of attachments) {
-    const processedAttachment: Media = { ...attachment };
-    const isRemote = /^(http|https):\/\//.test(attachment.url);
-    const url = isRemote ? attachment.url : getLocalServerUrl(attachment.url);
-    if (
-      attachment.contentType === ContentType.IMAGE &&
-      !attachment.description
-    ) {
-      runtime.logger.debug(
-        {
-          src: "basic-capabilities",
-          agentId: runtime.agentId,
-          url: attachment.url,
-        },
-        "Generating description for image",
-      );
-      let imageUrl = url;
-      if (!isRemote) {
-        // Local media-server hops can hang without a bound — use the same
-        // fail-closed timeout as the remote attachment path so a stalled
-        // local server rejects instead of leaving the
-        // attachment-processing turn pending forever.
-        const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-        if (!res.ok) {
-          throw new Error(`Failed to fetch image: ${res.statusText}`);
-        }
-        const buffer = await readBoundedMediaResponse(res, "Image", url);
-        const contentType =
-          res.headers.get("content-type") || "application/octet-stream";
-        imageUrl = `data:${contentType};base64,${buffer.toString("base64")}`;
-      }
-      const resolvedImageDescriptionPrompt = resolveOptimizedPromptForRuntime(
-        runtime,
-        "media_description",
-        imageDescriptionTemplate,
-      );
-      // Route through the shared content-addressed cache so identical bytes
-      // reuse one description across all describe paths.
-      const described = await describeImageCached(
-        runtime,
-        imageUrl,
-        resolvedImageDescriptionPrompt,
-      );
-      if (described) {
-        processedAttachment.description = described.description;
-        processedAttachment.title = described.title || "Image";
-        processedAttachment.text = described.text;
-        runtime.logger.debug(
-          {
-            src: "basic-capabilities",
-            agentId: runtime.agentId,
-            descriptionPreview: described.description
-              ? truncateWellFormed(
-                  toWellFormedUnicode(described.description),
-                  100,
-                )
-              : undefined,
-          },
-          "Generated description",
-        );
-      } else {
-        runtime.logger.warn(
-          { src: "basic-capabilities", agentId: runtime.agentId },
-          "Image description unavailable",
-        );
-      }
-    } else if (
-      attachment.contentType === ContentType.DOCUMENT &&
-      !attachment.text
-    ) {
-      // Same fail-closed bound as the image branch: a stalled local
-      // media-server hop must not hang the attachment-processing turn.
-      const res = await fetch(url, { signal: AbortSignal.timeout(30000) });
-      if (!res.ok) {
-        throw new Error(`Failed to fetch document: ${res.statusText}`);
-      }
-      const contentType = res.headers.get("content-type") || "";
-      // Any text/* document (plain, csv, markdown) and application/json — all
-      // on the chat upload allow-list — is readable as text. Previously only
-      // text/plain was handled, so csv/markdown/json fell through to
-      // "skipped" (#10714).
-      const isText =
-        contentType.startsWith("text/") ||
-        contentType.startsWith("application/json");
-      const isPdf = contentType.startsWith("application/pdf");
-      if (isText) {
-        runtime.logger.debug(
-          {
-            src: "basic-capabilities",
-            agentId: runtime.agentId,
-            url: attachment.url,
-          },
-          "Processing text document",
-        );
-        const textContent = (
-          await readBoundedMediaResponse(res, "Text document", url)
-        ).toString("utf8");
-        processedAttachment.text = textContent;
-        processedAttachment.title = processedAttachment.title || "Text File";
-        runtime.logger.debug(
-          {
-            src: "basic-capabilities",
-            agentId: runtime.agentId,
-            textPreview: processedAttachment.text
-              ? truncateWellFormed(
-                  toWellFormedUnicode(processedAttachment.text),
-                  100,
-                )
-              : undefined,
-          },
-          "Extracted text content",
-        );
-      } else if (isPdf) {
-        // Extract PDF text so a PDF attachment is readable by the agent
-        // instead of being silently skipped (#10714). Dynamic import keeps
-        // the heavy `unpdf` dependency off the hot path — it loads only when
-        // a PDF is actually processed.
-        const { convertPdfToTextFromBuffer } = await import(
-          "../documents/utils.ts"
-        );
-        const pdfBuffer = await readBoundedMediaResponse(res, "PDF", url);
-        const textContent = await convertPdfToTextFromBuffer(
-          pdfBuffer,
-          processedAttachment.title ?? undefined,
-        );
-        processedAttachment.text = textContent;
-        processedAttachment.title = processedAttachment.title || "PDF Document";
-        runtime.logger.debug(
-          {
-            src: "basic-capabilities",
-            agentId: runtime.agentId,
-            textLength: textContent.length,
-            textPreview: textContent
-              ? truncateWellFormed(toWellFormedUnicode(textContent), 100)
-              : undefined,
-          },
-          "Extracted PDF text content",
-        );
-      } else {
-        runtime.logger.warn(
-          { src: "basic-capabilities", agentId: runtime.agentId, contentType },
-          "Skipping unsupported document type",
-        );
-      }
-    }
-    processedAttachments.push(processedAttachment);
-  }
-  return processedAttachments;
+  return new MessageAttachments().processAttachments(runtime, attachments);
 }
 export function shouldRespond(
   runtime: IAgentRuntime,
