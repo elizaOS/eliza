@@ -1049,4 +1049,132 @@ describe("planning progress delivery boundaries", () => {
       expect(await h.storedReplies()).toHaveLength(1);
     },
   );
+  // Preserved tj-07e59cec6d1728: with earlier dialogue Stage 1 offers the
+  // source-part replyText schema, which carried no acknowledgement guidance,
+  // so "what's going on today in the news?" routed to web with replyText []
+  // and nothing was spoken while the search ran. The schema now asks for one
+  // acknowledgement in the model's own words; the runtime still speaks only
+  // what the model wrote and never supplies one.
+  it.each([
+    { draft: "Let me look into that.", pending: true },
+    { draft: "", pending: true },
+    { draft: "It's Sunday.", pending: false },
+  ])(
+    "guides, never supplies, a pending-work acknowledgement: '$draft' (pending $pending)",
+    async ({ draft, pending }) => {
+      const sentence =
+        "When current-request work is pending and will take a moment (search, calendar, notes, reminders or other tool work), write one brief acknowledgment in your own words with no results, times or completion claims, unless the user asked for silence; an answer you can give now is the whole reply, with no acknowledgment.";
+      expect(sentence).not.toMatch(/["“”'‘’]|such as|e\.g\./u);
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.text = pending
+        ? "Um, what's going on today in the news?"
+        : "What day is it?";
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      for (const [entityId, text, createdAt] of [
+        [turn.entityId, "Can you open notes?", Date.now() - 2000],
+        [h.runtime.agentId, "Notes.", Date.now() - 1000],
+      ] as const)
+        await h.runtime.createMemory(
+          {
+            id: asUUID(v4()),
+            entityId,
+            agentId: h.runtime.agentId,
+            roomId: h.roomId,
+            content: { text, source: "test", channelType: ChannelType.DM },
+            createdAt,
+          },
+          "messages",
+        );
+      let searches = 0;
+      h.runtime.registerAction({
+        name: "TEST_WEB_SEARCH",
+        description: "Search the web for current news",
+        contexts: ["web"],
+        validate: async () => true,
+        handler: async () => {
+          searches++;
+          return {
+            success: true,
+            text: "Top story: a test headline.",
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            data: { readOnlyOperation: true },
+          };
+        },
+      });
+      const final = pending ? "One test headline today." : draft;
+      let stage1: string | undefined;
+      let replySchema: { type?: string; description?: string } | undefined;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async (_rt, params) => {
+          if (stage1)
+            return JSON.stringify({
+              success: true,
+              decision: "FINISH",
+              thought: "The search supplies the news.",
+              messageToUser: final,
+              replyEffectStatus: "none",
+            });
+          stage1 = JSON.stringify({
+            messages: params.messages,
+            tools: params.tools,
+          });
+          replySchema = params.tools?.find(
+            (tool) => tool.name === "HANDLE_RESPONSE",
+          )?.parameters?.properties?.replyText as typeof replySchema;
+          const response = stage1DirectReply(draft, true);
+          if (pending)
+            Object.assign(response.toolCalls[0].arguments, {
+              contexts: ["web"],
+              intents: ["Summarize today's top news"],
+              candidateActionNames: ["TEST_WEB_SEARCH"],
+              requiresTool: true,
+              replyEffectStatus: "pending",
+            });
+          return response;
+        },
+        "pending-work-acknowledgement",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "current-search",
+              name: "TEST_WEB_SEARCH",
+              arguments: { eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+        "pending-work-acknowledgement",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            expect(searches).toBe(0);
+            progress.push(text);
+          },
+        },
+      );
+      expect(searches).toBe(pending ? 1 : 0);
+      expect(progress).toEqual(draft && pending ? [draft] : []);
+      expect(delivered.map((content) => content.text)).toEqual([final]);
+      expect(replySchema?.type).toBe("array");
+      expect(replySchema?.description).toContain(sentence);
+      expect(stage1?.split("will take a moment")).toHaveLength(2);
+    },
+  );
 });

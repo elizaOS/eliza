@@ -471,7 +471,7 @@ export async function generateStage1Decision(
         effectiveReplySchema = {
           ...SOURCE_REPLY_SCHEMA,
           description:
-            "Ordered reply parts: text is your own prose. For a verbatim whole-message quote use source with value copied exactly from a supplied original, including whitespace. Source quotes are validated and kept unchanged. When the user did not catch your last reply ('what?', 'sorry?', 'say that again'), repeat it as a single source part quoting that reply instead of restating it. Preserve speaker attribution. Use [] for no reply.",
+            "Ordered reply parts: text is your own prose. When current-request work is pending and will take a moment (search, calendar, notes, reminders or other tool work), write one brief acknowledgment in your own words with no results, times or completion claims, unless the user asked for silence; an answer you can give now is the whole reply, with no acknowledgment. For a verbatim whole-message quote use source with value copied exactly from a supplied original, including whitespace. Source quotes are validated and kept unchanged. When the user did not catch your last reply ('what?', 'sorry?', 'say that again'), repeat it as a single source part quoting that reply instead of restating it. Preserve speaker attribution. Use [] for no reply.",
         };
         fieldSchema = {
           ...fieldSchema,
