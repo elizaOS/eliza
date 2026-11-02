@@ -1,3 +1,4 @@
+import { actionToJsonSchema } from "@elizaos/core";
 import { describe, expect, it } from "vitest";
 import {
   convertJsonSchemaToActionParams,
@@ -24,6 +25,52 @@ describe("const and enum tool arguments without a type", () => {
         (param) => param.schema.type
       )
     ).toEqual(["number"]);
+  });
+
+  it("keeps primitive enum members beside the inferred kind", () => {
+    const numeric = convertJsonSchemaToActionParams({
+      properties: { level: { enum: [1, 2, 3] } },
+    });
+    expect(numeric?.[0]?.schema.type).toBe("number");
+    expect(numeric?.[0]?.schema.enum).toEqual([1, 2, 3]);
+    expect(numeric?.[0]?.schema.enumValues).toEqual([1, 2, 3]);
+
+    const boolean = convertJsonSchemaToActionParams({
+      properties: { flag: { enum: [true, false] } },
+    });
+    expect(boolean?.[0]?.schema.type).toBe("boolean");
+    expect(boolean?.[0]?.schema.enum).toEqual([true, false]);
+    expect(boolean?.[0]?.schema.enumValues).toEqual([true, false]);
+
+    const string = convertJsonSchemaToActionParams({
+      properties: { mode: { enum: ["fast", "slow"] } },
+    });
+    expect(string?.[0]?.schema.type).toBe("string");
+    expect(string?.[0]?.schema.enum).toEqual(["fast", "slow"]);
+    expect(string?.[0]?.schema.enumValues).toEqual(["fast", "slow"]);
+  });
+
+  it("builds a satisfiable core schema for numeric and boolean enums", () => {
+    // The generated tool contract pairs the inferred kind with the members.
+    // Stringified members (`{type: "number", enum: ["1", "2", "3"]}`) would
+    // admit no value at all.
+    const numeric = actionToJsonSchema({
+      name: "MCP_TEST",
+      description: "test",
+      parameters: convertJsonSchemaToActionParams({
+        properties: { level: { enum: [1, 2, 3] } },
+      }),
+    } as never);
+    expect(numeric.properties.level).toMatchObject({ type: "number", enum: [1, 2, 3] });
+
+    const boolean = actionToJsonSchema({
+      name: "MCP_TEST",
+      description: "test",
+      parameters: convertJsonSchemaToActionParams({
+        properties: { flag: { enum: [true, false] } },
+      }),
+    } as never);
+    expect(boolean.properties.flag).toMatchObject({ type: "boolean", enum: [true, false] });
   });
 
   it("declares a mixed-kind enum as a pure anyOf union", () => {

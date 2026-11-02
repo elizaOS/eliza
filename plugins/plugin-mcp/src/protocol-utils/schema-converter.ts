@@ -17,8 +17,8 @@ export interface ActionParameter {
     type?: RuntimeParameterType;
     anyOf?: ReadonlyArray<{ type: RuntimeParameterType }>;
     default?: unknown;
-    enum?: string[];
-    enumValues?: string[];
+    enum?: Array<string | number | boolean | null>;
+    enumValues?: Array<string | number | boolean | null>;
   };
 }
 
@@ -357,6 +357,26 @@ function buildDescription(_name: string, prop: JsonSchemaProperty): string {
   return details.length > 0 ? details : `(${propertyRuntimeTypes(prop).join(" | ")})`;
 }
 
+/**
+ * One enum member as the action parameter carries it. Primitive members keep
+ * their value: the parameter also declares the member kind as its type, so a
+ * stringified number or boolean would leave a schema no value can satisfy
+ * (`{type: "number", enum: ["1", "2", "3"]}`). Core's schema builder accepts
+ * string, number, boolean, and null members. Other members keep the string
+ * form they had before.
+ */
+function projectEnumValue(value: unknown): string | number | boolean | null {
+  if (
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value === null
+  ) {
+    return value;
+  }
+  return String(value);
+}
+
 export function convertJsonSchemaToActionParams(
   schema?: McpInputSchema
 ): ActionParameter[] | undefined {
@@ -378,8 +398,8 @@ export function convertJsonSchemaToActionParams(
           ? {
               type: types[0],
               default: prop.default,
-              enum: prop.enum?.map((value) => String(value)),
-              enumValues: prop.enum?.map((value) => String(value)),
+              enum: prop.enum?.map(projectEnumValue),
+              enumValues: prop.enum?.map(projectEnumValue),
             }
           : { anyOf: types.map((type) => ({ type })) },
     });
