@@ -60,6 +60,16 @@ describe("shouldRespond envelope words", () => {
     expect(decision.reason).toBe("text address with tagged participants");
   });
 
+  it("responds when plain unenveloped words name the agent beside another tag", () => {
+    // Pins the getUserMessageText fallback: with no currentMessageText,
+    // the reader falls back to content.text, so a plain group message
+    // whose own words address the agent still triggers rule 4.
+    const decision = decide("hey @bob, ask testagent later");
+    expect(decision.shouldRespond).toBe(true);
+    expect(decision.skipEvaluation).toBe(true);
+    expect(decision.reason).toBe("text address with tagged participants");
+  });
+
   it("does not respond to plain ambient group text", () => {
     const decision = decide("hello everyone");
     expect(decision.shouldRespond).toBe(false);
