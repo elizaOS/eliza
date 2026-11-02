@@ -30,6 +30,7 @@ import type {
 } from "@elizaos/core";
 import {
   ElizaError,
+  extractUserText,
   hasActionContext,
   hasRoleAccess,
   isObjectRecord as isRecord,
@@ -40,6 +41,7 @@ import {
   stringifyForModel,
   toWellFormedUnicode,
   truncateWellFormed,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import { getCharacterPersistenceService } from "../character-persistence.ts";
 import type { CharacterFileManager } from "../services/character-file-manager.ts";
@@ -554,7 +556,10 @@ function resolveEffectiveRequest(
   params: CharacterParameters,
 ): { text: string; requestSource: "parameter" | "message" } {
   const parameterRequest = params.request?.trim();
-  const rawMessageText = (message.content.text || "").trim();
+  // Read the user's words, not the document envelope: on a
+  // document-augmented turn content.text carries the retrieved documents, and
+  // a directive inside a document must not count as a modification request.
+  const rawMessageText = extractUserText(unwrapUserMessageText(message));
 
   if (!parameterRequest) {
     return { text: rawMessageText, requestSource: "message" };
