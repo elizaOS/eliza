@@ -16,7 +16,10 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
+import {
+  FOLLOW_UP_CAPABLE_ACTION_TAG,
+  getUserMessageText,
+} from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
@@ -248,8 +251,10 @@ function makeOwnerLifeAction(args: {
     handler: async (runtime, message, state, options, callback) => {
       const params = readParameters(options);
       const action = normalizeOwnerActionFromAllowed(options, allowedActions);
-      const messageText =
-        typeof message.content.text === "string" ? message.content.text : "";
+      // Read the user's words, not the document-augmentation envelope: a
+      // retrieved document fragment (for example, "remind him to ...") must
+      // not make this gate refuse the user's own reminder request.
+      const messageText = getUserMessageText(message);
       if (
         args.name === "OWNER_REMINDERS" &&
         (action === undefined || action === "create") &&
