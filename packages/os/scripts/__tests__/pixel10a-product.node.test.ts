@@ -69,15 +69,46 @@ test("a product with an updater block stages the client with its channel and lau
   );
   assert.ok(fs.existsSync(path.join(stage, "Android.bp")));
   assert.ok(fs.existsSync(path.join(stage, "sepolicy/private/updater.te")));
-  assert.match(
-    fs.readFileSync(path.join(stage, "updater.mk"), "utf8"),
-    /PRODUCT_PACKAGES \+= ElizaOsUpdater\nSYSTEM_EXT_PRIVATE_SEPOLICY_DIRS \+= \$\(updater_dir\)\/sepolicy\/private\n/,
-  );
-  assert.match(
-    fs.readFileSync(path.join(f.output, "product.mk"), "utf8"),
-    /\/updater\/updater\.mk\n/,
-  );
 });
+
+for (const listener of [false, true]) {
+  test(`product config resolves the updater ${listener ? "after the listener's include" : "alone"}`, (t) => {
+    const f = fixture(t, "alpha");
+    f.product.updater = updaterBlock();
+    if (listener) {
+      const permissions = path.join(f.output, "listener/permissions");
+      fs.mkdirSync(permissions, { recursive: true });
+      fs.writeFileSync(
+        path.join(permissions, "privapp-permissions-sense.xml"),
+        renderSensePermissions(f.launcher.packageName),
+      );
+      fs.writeFileSync(path.join(f.output, "listener/listener.mk"), "");
+      fs.appendFileSync(
+        path.join(f.output, "product.mk"),
+        "\ninclude $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/listener/listener.mk\n",
+      );
+    }
+    composePixel10aProduct({ ...f, production: false });
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "pixel10a-tree-"));
+    t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    fs.mkdirSync(path.join(root, "vendor"));
+    fs.symlinkSync(f.output, path.join(root, "vendor/alphaphone"));
+    fs.writeFileSync(
+      path.join(root, "Makefile"),
+      "include vendor/alphaphone/product.mk\nresolved: ; @echo $(PRODUCT_PACKAGES) && echo $(SYSTEM_EXT_PRIVATE_SEPOLICY_DIRS)\n",
+    );
+    const [packages, policy] = execFileSync(
+      "make",
+      ["-s", "-C", root, "resolved"],
+      { encoding: "utf8" },
+    )
+      .trim()
+      .split("\n");
+    assert.ok(packages.split(" ").includes("ElizaOsUpdater"));
+    assert.equal(policy, "vendor/alphaphone/updater/sepolicy/private");
+    assert.ok(fs.existsSync(path.join(root, policy, "updater.te")));
+  });
+}
 
 test("a product without an updater block stages no client", (t) => {
   const f = fixture(t, "eliza");

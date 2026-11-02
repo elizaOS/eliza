@@ -1,8 +1,8 @@
-import { createHash, createPublicKey } from "node:crypto";
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { canonicalBase64 } from "../release-key-policy.ts";
+import { ed25519PublicKey } from "../release-key-policy.ts";
 import { requireClockProduct } from "./aosp-clock-handlers.mjs";
 import { CHANNELS } from "./channel-manifest.mjs";
 import {
@@ -83,13 +83,7 @@ export function validatePixel10aProduct(value) {
       throw new Error(
         "updater needs a release channel and an https manifestUrl",
       );
-    const key = createPublicKey({
-      key: canonicalBase64(channelKey, "updater.channelKey"),
-      format: "der",
-      type: "spki",
-    });
-    if (key.asymmetricKeyType !== "ed25519")
-      throw new Error("updater.channelKey must be an Ed25519 public key");
+    ed25519PublicKey(channelKey, "updater.channelKey");
   }
   return value;
 }
@@ -164,14 +158,9 @@ function stageUpdater(output, updater, launcherCertificate) {
     `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="channel" translatable="false">${updater.channel}</string>\n    <string name="channel_manifest_url" translatable="false">${updater.manifestUrl}</string>\n    <string name="channel_key" translatable="false">${updater.channelKey}</string>\n    <string name="launcher_certificate" translatable="false">${launcherCertificate}</string>\n</resources>\n`,
     { flag: "wx" },
   );
-  fs.writeFileSync(
-    path.join(target, "updater.mk"),
-    "updater_dir := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))\nPRODUCT_PACKAGES += ElizaOsUpdater\nSYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += $(updater_dir)/sepolicy/private\n",
-    { flag: "wx" },
-  );
   fs.appendFileSync(
     path.join(output, "product.mk"),
-    "\ninclude $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/updater/updater.mk\n",
+    "\nPRODUCT_PACKAGES += ElizaOsUpdater\nSYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += vendor/alphaphone/updater/sepolicy/private\n",
   );
 }
 

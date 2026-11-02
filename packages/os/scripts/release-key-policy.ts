@@ -23,6 +23,19 @@ export function canonicalBase64(value, label) {
   return decoded;
 }
 
+/** The Ed25519 public key in a canonical base64 SPKI DER value. */
+export function ed25519PublicKey(value, label) {
+  const key = createPublicKey({
+    key: canonicalBase64(value, label),
+    format: "der",
+    type: "spki",
+  });
+  if (key.asymmetricKeyType !== "ed25519") {
+    throw new Error(`${label} must be an Ed25519 public key`);
+  }
+  return key;
+}
+
 export function canonicalFingerprint(value, label) {
   if (
     typeof value !== "string" ||
@@ -52,14 +65,7 @@ export function revokedFingerprints(value) {
 }
 
 export function loadReleaseKeyPolicy(env = process.env) {
-  const key = createPublicKey({
-    key: canonicalBase64(env[publicKeyEnvironment], publicKeyEnvironment),
-    format: "der",
-    type: "spki",
-  });
-  if (key.asymmetricKeyType !== "ed25519") {
-    throw new Error("release verification key must be Ed25519");
-  }
+  const key = ed25519PublicKey(env[publicKeyEnvironment], publicKeyEnvironment);
   const publicKeyDer = key.export({ format: "der", type: "spki" });
   const publicKeyFingerprint = createHash("sha256")
     .update(publicKeyDer)
