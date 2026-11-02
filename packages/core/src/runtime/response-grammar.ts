@@ -120,10 +120,14 @@ function gbnfJsonStringLiteral(value: string): string {
 	return gbnfLiteral(JSON.stringify(value));
 }
 
+/** A JSON string after its opening quote, through the closing quote. */
+const GBNF_JSON_STRING_TAIL =
+	'( [^"\\\\\\x00-\\x1F] | "\\\\" ( ["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] ) )* "\\""';
+
 /** Shared GBNF rule bodies, inlined so the grammar is self-contained. */
 const GBNF_RULE_BODIES: Record<string, string> = {
-	jsonstring:
-		'"\\"" ( [^"\\\\\\x00-\\x1F] | "\\\\" ( ["\\\\/bfnrt] | "u" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] ) )* "\\""',
+	jsonstring: `"\\"" ${GBNF_JSON_STRING_TAIL}`,
+	jsonstringtail: GBNF_JSON_STRING_TAIL,
 	jsonvalue:
 		'jsonobject | jsonarray | jsonstring | jsonnumber | "true" | "false" | "null"',
 	jsonobject:
@@ -1373,8 +1377,8 @@ function emitActionParamsRule(
  * value into a constrained GBNF expression, and assembles a body that
  * sequences required keys in declaration order then permits each optional
  * key zero-or-more times. (GBNF can't express true unordered sets without
- * combinatorial blowup; the single-occurrence invariant of optionals is
- * enforced by the downstream JSON parser rejecting duplicate keys.)
+ * combinatorial blowup, so an optional key may repeat; every copy still has
+ * a value its schema allows, so the copy JSON.parse keeps is valid too.)
  *
  * Recursion: object-typed properties whose schema declares its own
  * `properties` emit a nested rule via this function, capped at
@@ -1383,7 +1387,8 @@ function emitActionParamsRule(
  *
  * Undeclared keys: when `additionalProperties` is `true` or a schema (an
  * action with `allowAdditionalParameters`), each one is one more optional
- * alternative, as `validateToolArgs` accepts them.
+ * alternative, as `validateToolArgs` accepts them. Its key can't be a
+ * declared one, which would let the undeclared value replace the checked one.
  */
 function emitObjectRule(
 	builder: GbnfBuilder,
@@ -1401,6 +1406,7 @@ function emitObjectRule(
 		builder,
 		ruleName,
 		schema,
+		propertyNames,
 		depth,
 	);
 	if (propertyNames.length === 0 && additionalRuleName === null) {
@@ -1461,6 +1467,7 @@ function emitAdditionalPropertyRule(
 	builder: GbnfBuilder,
 	ruleName: string,
 	schema: JSONSchema,
+	declaredKeys: readonly string[],
 	depth: number,
 ): string | null {
 	const additional = (schema as { additionalProperties?: unknown })
@@ -1480,12 +1487,69 @@ function emitAdditionalPropertyRule(
 	} else {
 		return null;
 	}
-	builder.useShared("jsonstring");
+	let keyExpr = "jsonstring";
+	if (declaredKeys.length === 0) {
+		builder.useShared("jsonstring");
+	} else {
+		keyExpr = `${additionalRuleName}-key`;
+		builder.useShared("jsonstringtail");
+		builder.rule(keyExpr, undeclaredKeyGbnf(declaredKeys));
+	}
 	builder.rule(
 		additionalRuleName,
-		`jsonstring ${gbnfLiteral(":")} ${valueExpr}`,
+		`${keyExpr} ${gbnfLiteral(":")} ${valueExpr}`,
 	);
 	return additionalRuleName;
+}
+
+/**
+ * GBNF for a JSON string key that is none of `declaredKeys`: JSON.parse keeps
+ * the last copy of a repeated key. The key follows the declared names one
+ * character at a time; it may close only where no name ends, and is free once
+ * it writes a character no name has there. Before that, escapes are not
+ * allowed, so `\u0061` can't spell a declared name.
+ */
+function undeclaredKeyGbnf(declaredKeys: readonly string[]): string {
+	type Node = { end: boolean; next: Map<string, Node> };
+	const root: Node = { end: false, next: new Map() };
+	for (const key of declaredKeys) {
+		let node = root;
+		let whole = true;
+		for (const ch of key) {
+			// JSON escapes this character, so the plain path ends before it.
+			if (ch === '"' || ch === "\\" || (ch.codePointAt(0) ?? 0) < 0x20) {
+				whole = false;
+				break;
+			}
+			let next = node.next.get(ch);
+			if (!next) {
+				next = { end: false, next: new Map() };
+				node.next.set(ch, next);
+			}
+			node = next;
+		}
+		if (whole) node.end = true;
+	}
+	const rest = (node: Node): string => {
+		const alternatives = node.end ? [] : [gbnfLiteral('"')];
+		let taken = "";
+		for (const [ch, next] of node.next) {
+			alternatives.push(`${gbnfLiteral(ch)} ${rest(next)}`);
+			taken += gbnfClassCodePoint(ch);
+		}
+		alternatives.push(`[^"\\\\\\x00-\\x1F${taken}] jsonstringtail`);
+		return `( ${alternatives.join(" | ")} )`;
+	};
+	return `${gbnfLiteral('"')} ${rest(root)}`;
+}
+
+/** A character for a GBNF class: letters and digits as is, the rest as a hex escape. */
+function gbnfClassCodePoint(ch: string): string {
+	if (/^[A-Za-z0-9_]$/.test(ch)) return ch;
+	const code = ch.codePointAt(0) ?? 0;
+	if (code <= 0xff) return `\\x${code.toString(16).padStart(2, "0")}`;
+	if (code <= 0xffff) return `\\u${code.toString(16).padStart(4, "0")}`;
+	return `\\U${code.toString(16).padStart(8, "0")}`;
 }
 
 /**
