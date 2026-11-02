@@ -24,6 +24,7 @@ import {
   logger,
   type Memory,
   type State,
+  getUserMessageText,
   toWellFormedUnicode,
 } from "@elizaos/core";
 import { performGuardedHttpGet } from "../custom-actions.ts";
@@ -181,8 +182,10 @@ export const webFetch: Action & Record<string, unknown> = {
 
   validate: async (_runtime, message): Promise<boolean> => {
     if (!isWebFetchEnabled()) return false;
-    const text =
-      typeof message.content?.text === "string" ? message.content.text : "";
+    // Read the user's own words, not the document-augmentation envelope:
+    // a retrieved help document that says "search the web" must not
+    // suppress WEB_FETCH for a request that never asks for a web search.
+    const text = getUserMessageText(message);
     return !userExplicitlyRequiresWebSearch(text);
   },
 
