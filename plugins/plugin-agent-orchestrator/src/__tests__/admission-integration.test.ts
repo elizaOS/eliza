@@ -614,6 +614,35 @@ describe("admission queue integration (#13772)", () => {
     await restarted.stop();
   });
 
+  it("hands a parked task's replayed spawn the message the owner posted while it was paused", async () => {
+    const acp = new FakeAcp(1);
+    const store = new OrchestratorTaskStore({ backend: "memory" });
+    const service = new OrchestratorTaskService(makeRuntime(acp) as never, {
+      store,
+    });
+    await service.start();
+
+    const a = await newTask(store, "a");
+    await service.spawnAgentForTask(a);
+    const b = await newTask(store, "b");
+    await service.spawnAgentForTask(b);
+    await service.pauseTask(b);
+    await service.postUserMessage(b, "also update the README");
+    const running = acp.listSessions().find((s) => s.status === "running");
+    expect(running).toBeDefined();
+    if (running) acp.complete(running.id);
+
+    await service.resumeTask(b);
+    await waitUntil(
+      async () => ((await store.getTask(b))?.sessions.length ?? 0) > 0,
+    );
+    const sessions = (await store.getTask(b))?.sessions ?? [];
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0].originalTask).toContain("also update the README");
+    expect((await store.getTask(b))?.task.metadata?.pausedAt).toBeUndefined();
+    await service.stop();
+  });
+
   it("re-parks the head with its ORIGINAL record when a concurrent spawn steals the slot mid-drain", async () => {
     /** Reports a free slot but throws SessionCapError on the next spawn —
      * models a direct spawn winning the slot between the drain's capacity

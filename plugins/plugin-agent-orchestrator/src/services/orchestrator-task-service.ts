@@ -3963,19 +3963,29 @@ export class OrchestratorTaskService extends Service {
     // that already ran (had a session) carries no admission record and is a
     // no-op here.
     const admission = OrchestratorTaskService.admissionOf(doc.task);
+    const pausedMessageText = pausedMessages
+      .map((message) => message.content)
+      .join("\n\n");
     let reseededAdmission = false;
     if (
       admission &&
       this.admissionQueueEnabled() &&
       !this.admissionQueue.includes(taskId)
     ) {
+      // The replayed spawn carries only the parked goal, so the owner's
+      // messages from the pause join its durable record before it is queued.
+      if (pausedMessages.length > 0 && !terminal)
+        await this.writeAdmission(taskId, {
+          ...admission,
+          spawnOpts: {
+            ...admission.spawnOpts,
+            task: `${admission.spawnOpts.task ?? doc.task.goal}\n\nWhile the task was paused the owner sent:\n\n${pausedMessageText}`,
+          },
+        });
       this.admissionQueue.push(taskId);
       reseededAdmission = true;
       void this.trackBackgroundWork(this.drainAdmissionQueue());
     }
-    const pausedMessageText = pausedMessages
-      .map((message) => message.content)
-      .join("\n\n");
     const clearPauseMetadata = async () => {
       const spawned = await this.store.getTask(taskId);
       if (!spawned) return;
@@ -4012,8 +4022,9 @@ export class OrchestratorTaskService extends Service {
     } else if (dispatchPausedMessages && !reseededAdmission) {
       // Nothing was interrupted, but the owner spoke to the paused task. Start
       // the worker postUserMessage would have started had the task not been
-      // paused. (A parked task replays its admission instead; that spawn
-      // carries the goal, and a second worker here would double-dispatch.)
+      // paused. (A parked task replays its admission instead; that spawn now
+      // carries the goal and these messages, and a second worker here would
+      // double-dispatch.)
       await this.store.addEvent({
         id: randomUUID(),
         taskId,
