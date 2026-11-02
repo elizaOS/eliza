@@ -81,12 +81,15 @@ export async function hydrateVoiceSharedAgentScope(
             pricing;
           const { resolveElizaModel } = voiceConfig;
           const model = resolveElizaModel(env);
+          // Write the Worker-cache entry the cache-only turn reads, not only
+          // this isolate's copy.
           await calculateCost(
             normalizeModelName(model),
             getProviderFromModel(model),
             1,
             1,
             "bitrouter",
+            { warmWorkerCache: true },
           );
         };
 

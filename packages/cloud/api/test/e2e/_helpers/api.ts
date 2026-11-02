@@ -220,6 +220,13 @@ async function isLocalWranglerRecycleResponse(
 }
 
 const CACHE_WARMING_MAX_RETRIES = 3;
+const PRE_ADMISSION_CACHE_WARMING_CODES = new Set([
+  "auth_cache_warming",
+  "rate_limit_cache_warming",
+  "inference_dependency_cache_warming",
+  "billing_cache_warming",
+  "inference_admission_cache_warming",
+]);
 
 /**
  * Worker hot paths are decided from the auth cache only. A credential with no
@@ -227,7 +234,7 @@ const CACHE_WARMING_MAX_RETRIES = 3;
  * (the Eliza Cloud client retries it). These refusals precede any mutation,
  * so replaying them is safe. Match only the structured warming shapes.
  */
-async function cacheWarmingRetryDelayMs(
+export async function cacheWarmingRetryDelayMs(
   response: Response,
 ): Promise<number | null> {
   if (
@@ -241,17 +248,28 @@ async function cacheWarmingRetryDelayMs(
   } catch {
     return null;
   }
-  const record = (body ?? {}) as Record<string, unknown>;
-  const error = (record.error ?? {}) as Record<string, unknown>;
-  const code = typeof error.code === "string" ? error.code : record.code;
-  const details = (record.details ?? {}) as Record<string, unknown>;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+  const record = body as Record<string, unknown>;
+  const error =
+    record.error &&
+    typeof record.error === "object" &&
+    !Array.isArray(record.error)
+      ? (record.error as Record<string, unknown>)
+      : undefined;
+  const data =
+    error?.data && typeof error.data === "object" && !Array.isArray(error.data)
+      ? (error.data as Record<string, unknown>)
+      : undefined;
+  const code = typeof error?.code === "string" ? error.code : record.code;
+  // A generic retryable 503 or JSON-RPC -32004 may follow an admitted
+  // operation. Only these explicit pre-admission refusals permit a replay.
   const warming =
-    (typeof code === "string" && code.endsWith("_cache_warming")) ||
-    // Generative routes use the retryable ApiError envelope, which the Eliza
-    // Cloud client also retries.
-    (record.code === "service_unavailable" && details.retryable === true) ||
-    // JSON-RPC routes (A2A) report the same refusal as -32004.
-    (record.jsonrpc === "2.0" && error.code === -32004);
+    (record.jsonrpc === undefined &&
+      typeof code === "string" &&
+      PRE_ADMISSION_CACHE_WARMING_CODES.has(code)) ||
+    (record.jsonrpc === "2.0" &&
+      error?.code === -32004 &&
+      data?.code === "auth_cache_warming");
   if (!warming) return null;
   const retryAfter = Number(response.headers.get("retry-after"));
   return Number.isFinite(retryAfter) && retryAfter > 0
