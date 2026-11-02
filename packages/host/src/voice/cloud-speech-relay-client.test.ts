@@ -1162,6 +1162,33 @@ test("auth-cache warming retries consent and mint before admission with identica
   await client.close();
 });
 
+test("a nested pre-admission cache warming code is retried like the auth-cache code", async () => {
+  const f = await fixture();
+  const warmed = new Set<string>();
+  let refusals = 0;
+  const client = await createCloudSpeechRelayPorts({
+    ...f.options,
+    fetch: Object.assign(
+      async (input: string | URL | Request, init?: RequestInit) => {
+        const path = new URL(String(input)).pathname;
+        if (!path.endsWith("/revoke") && !warmed.has(path)) {
+          warmed.add(path);
+          refusals++;
+          return Response.json(
+            { error: { code: "rate_limit_cache_warming" } },
+            { status: 503, headers: { "Retry-After": "1" } },
+          );
+        }
+        return fetch(input, init);
+      },
+      { preconnect() {} },
+    ),
+  });
+  expect(refusals).toBe(2);
+  expect(f.connections).toBe(1);
+  await client.close();
+});
+
 test("auth-cache retry is bounded and never treats unrelated refusals or failures as replayable", async () => {
   for (const fixtureCase of [
     {
@@ -1197,6 +1224,21 @@ test("auth-cache retry is bounded and never treats unrelated refusals or failure
     {
       status: 503,
       body: { code: "billing_cache_warming" },
+      wait: "0",
+      expected: 1,
+    },
+    {
+      status: 503,
+      body: {
+        code: "service_unavailable",
+        details: { retryable: true, retryAfterSeconds: 1 },
+      },
+      wait: "0",
+      expected: 1,
+    },
+    {
+      status: 503,
+      body: { error: { code: "unknown_cache_warming" } },
       wait: "0",
       expected: 1,
     },
@@ -1260,11 +1302,16 @@ test("cancellation and owner replacement during warming prevent another auth req
         { preconnect() {} },
       ),
     });
-    const rejected = expect(opening).rejects.toBeDefined();
+    // Observe the rejection without asserting yet: Bun's `rejects` matcher
+    // settles the promise eagerly, which would run every warming retry first.
+    const settled = opening.then(
+      () => false,
+      () => true,
+    );
     await until(() => calls === 1);
     if (change === "abort") controller.abort();
     else f.changeOwner();
-    await rejected;
+    expect(await settled).toBe(true);
     expect(calls).toBe(1);
     expect(f.connections).toBe(0);
   }

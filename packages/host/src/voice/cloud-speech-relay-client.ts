@@ -164,6 +164,14 @@ async function readJson(
   );
 }
 
+const PRE_ADMISSION_CACHE_WARMING_CODES = new Set([
+  "auth_cache_warming",
+  "rate_limit_cache_warming",
+  "inference_dependency_cache_warming",
+  "billing_cache_warming",
+  "inference_admission_cache_warming",
+]);
+
 // This refusal is emitted before authentication admits the operation. Never
 // replay a generic 503, network failure, or an already-admitted speech request.
 function warmingDelay(
@@ -175,11 +183,13 @@ function warmingDelay(
     error && typeof error === "object" && !Array.isArray(error)
       ? (error as Record<string, unknown>)
       : undefined;
-  if (
-    body.code !== "auth_cache_warming" &&
-    nested?.code !== "auth_cache_warming"
-  )
-    return null;
+  // Only explicit pre-admission cache refusals are replayable. A generic
+  // retryable 503 may follow an admitted operation, so it fails promptly.
+  const warming =
+    body.code === "auth_cache_warming" ||
+    (typeof nested?.code === "string" &&
+      PRE_ADMISSION_CACHE_WARMING_CODES.has(nested.code));
+  if (!warming) return null;
   const value = response.headers.get("retry-after");
   if (value !== null) {
     if (/^\d+$/.test(value)) return Number(value) * 1000;
