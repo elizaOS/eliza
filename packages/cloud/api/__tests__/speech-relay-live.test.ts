@@ -18,6 +18,19 @@ const target =
 const live =
   process.env.ELIZA_VOICE_LIVE_CLOUDFLARE === "1" && target !== undefined;
 const maybe = live ? test : test.skip;
+/** Durations of the named Server-Timing phases; descriptions are never read. */
+function serverPhases(
+  response: Response,
+  names: Record<string, string>,
+): Record<string, number> {
+  const phases: Record<string, number> = {};
+  for (const part of (response.headers.get("server-timing") ?? "").split(",")) {
+    const match = /^\s*([a-z_]+)\s*;\s*dur=([0-9.]+)/.exec(part);
+    const key = match && names[match[1]];
+    if (key) phases[key] = Math.round(Number(match[2]));
+  }
+  return phases;
+}
 function check(value: unknown, code: string): asserts value {
   if (!value) throw new Error(code);
 }
@@ -65,6 +78,7 @@ maybe(
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     };
+    let lastResponse: Response | undefined;
     async function json(path: string, body?: unknown) {
       let response: Response;
       try {
@@ -77,6 +91,7 @@ maybe(
       } catch {
         throw new Error("SPEECH_HTTP_UNAVAILABLE");
       }
+      lastResponse = response;
       check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
       try {
         return (await response.json()) as Record<string, unknown>;
@@ -94,11 +109,20 @@ maybe(
     stage("consent");
     const consent = await json("/api/v1/voice/speech/consent", {});
     const consentAt = performance.now();
+    const consentPhases = serverPhases(lastResponse!, {
+      speech_identity_rate: "consentIdentityMs",
+      speech_consent_write: "consentWriteMs",
+    });
     stage("session");
     const minted = await json("/api/v1/voice/speech/session", {
       consentNonce: consent.consentNonce,
     });
     const sessionAt = performance.now();
+    const sessionPhases = serverPhases(lastResponse!, {
+      speech_identity_rate: "sessionIdentityMs",
+      speech_consent_consume: "sessionConsumeMs",
+      speech_session_init: "sessionInitMs",
+    });
     check(
       typeof minted.wsUrl === "string" &&
         typeof minted.token === "string" &&
@@ -249,6 +273,8 @@ maybe(
           sessionMs: Math.round(sessionAt - consentAt),
           wsReadyMs: Math.round(readyAt - socketStartedAt),
           bootstrapMs: Math.round(readyAt - started),
+          ...consentPhases,
+          ...sessionPhases,
           ttsStartupMs: Math.round(firstPcmAt - ttsRequestedAt),
           firstPcmMs: Math.round(firstPcmAt - started),
           ttsCompleteMs: Math.round(completeAt - started),

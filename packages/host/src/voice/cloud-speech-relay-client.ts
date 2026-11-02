@@ -256,7 +256,9 @@ export async function createCloudSpeechRelayPorts(
     socket: WebSocket | undefined,
     expiryTimer: ReturnType<typeof setTimeout> | undefined,
     sessionId: string | undefined,
-    expiry = 0;
+    expiry = 0,
+    // Budget windows granted by the relay; every per-session cap scales with it.
+    windows = 1;
   let stt: ((event: CartesiaInkRealtimeEvent) => void) | undefined;
   const pendingStt: CartesiaInkRealtimeEvent[] = [];
   const contexts = new Map<
@@ -772,7 +774,12 @@ export async function createCloudSpeechRelayPorts(
         });
         try {
           requireValue(connectedSocket.url === expected.href);
-          send({ t: "hello", token: minted.token, errorReasons: true });
+          send({
+            t: "hello",
+            token: minted.token,
+            errorReasons: true,
+            extend: true,
+          });
         } catch {
           fail(
             new CloudSpeechRelayClientError(
@@ -814,7 +821,7 @@ export async function createCloudSpeechRelayPorts(
             );
             outputBytes += pcm.length;
             receivedPcmFrames++;
-            requireValue(outputBytes <= 8 * 1024 * 1024);
+            requireValue(outputBytes <= 8 * 1024 * 1024 * windows);
             const context = contexts.get(id);
             if (!context) {
               requireValue(retired.has(id));
@@ -892,6 +899,14 @@ export async function createCloudSpeechRelayPorts(
       };
     });
     assertCurrent();
+    armExpiry();
+  } catch (error) {
+    terminate();
+    if (sessionId) await close().catch(() => {});
+    throw error;
+  }
+  function armExpiry() {
+    if (expiryTimer) clearTimeout(expiryTimer);
     expiryTimer = setTimeout(
       () => {
         diagnose("expired", { clientCode: "expired" });
@@ -904,13 +919,26 @@ export async function createCloudSpeechRelayPorts(
       },
       Math.max(1, expiry - Date.now()),
     );
-  } catch (error) {
-    terminate();
-    if (sessionId) await close().catch(() => {});
-    throw error;
   }
   function handleControl(input: SpeechRelayServerControl) {
     const frame = record(input);
+    if (frame.t === "extended") {
+      exact(frame, ["t", "expiresAt"]);
+      const next =
+        typeof frame.expiresAt === "string" ? Date.parse(frame.expiresAt) : NaN;
+      // A renewal starts at most 10 s before the old end and runs 60 s, so it
+      // never moves the end more than one window. Compared on server time only.
+      requireValue(
+        Number.isFinite(next) &&
+          next > expiry &&
+          next <= expiry + 60_000 &&
+          new Date(next).toISOString() === frame.expiresAt,
+      );
+      expiry = next;
+      windows++;
+      armExpiry();
+      return;
+    }
     if (frame.t === "error") {
       exact(
         frame,
@@ -1068,7 +1096,7 @@ export async function createCloudSpeechRelayPorts(
                 bytes.byteLength % 2 === 0,
             );
             uplinkBytes += bytes.byteLength;
-            requireValue(uplinkBytes <= (60000 / 1000) * 32000);
+            requireValue(uplinkBytes <= (60000 / 1000) * 32000 * windows);
             const currentSocket = socket;
             requireValue(currentSocket && currentSocket.readyState === 1);
             currentSocket.send(new Uint8Array(bytes));
@@ -1095,7 +1123,7 @@ export async function createCloudSpeechRelayPorts(
     tts: {
       createStream(_options, callbacks) {
         assertCurrent();
-        requireValue(++contextsCreated <= 64);
+        requireValue(++contextsCreated <= 64 * windows);
         const id = crypto.randomUUID();
         let resolve!: () => void, reject!: (error: Error) => void;
         const closedPromise = new Promise<void>((yes, no) => {
@@ -1138,7 +1166,7 @@ export async function createCloudSpeechRelayPorts(
             requireValue(
               typeof phrase.text === "string" &&
                 phrase.text.length <= 1024 &&
-                ttsCharacters + phrase.text.length <= 4096 &&
+                ttsCharacters + phrase.text.length <= 4096 * windows &&
                 typeof phrase.continueContext === "boolean" &&
                 (phrase.flush === undefined ||
                   typeof phrase.flush === "boolean"),
@@ -1182,5 +1210,13 @@ export async function createCloudSpeechRelayPorts(
     },
   };
   requireValue(sessionId);
-  return { speechPorts, close, sessionId, expiresAt: expiry };
+  return {
+    speechPorts,
+    close,
+    sessionId,
+    /** Current end; moves forward when the relay extends the session. */
+    get expiresAt() {
+      return expiry;
+    },
+  };
 }

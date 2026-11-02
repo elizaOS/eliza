@@ -20,10 +20,15 @@ const round = (value: number) =>
 export async function reserveSpeechRelayAdmission(input: {
   caller: GenerativeRouteCaller;
   sessionId: string;
+  /** Zero-based budget window; each window is a separate admission. */
+  window?: number;
   usdPerCredit: number;
   executionCtx: { waitUntil(task: Promise<unknown>): void };
 }): Promise<SpeechRelayCreditReservation> {
   const { caller, sessionId, usdPerCredit, executionCtx } = input;
+  const budgetWindow = input.window ?? 0;
+  if (!Number.isSafeInteger(budgetWindow) || budgetWindow < 0)
+    throw Error("Invalid speech budget window");
   if (!Number.isFinite(usdPerCredit) || usdPerCredit <= 0)
     throw Error("Cartesia account pricing is unavailable");
   const seconds = SPEECH_RELAY_BUDGET.durationMs / 1000;
@@ -33,43 +38,54 @@ export async function reserveSpeechRelayAdmission(input: {
     "stt" | "tts",
     Awaited<ReturnType<typeof admitOrganizationInference>>
   >();
-  try {
-    for (const kind of ["stt", "tts"] as const) {
+  // Both admissions are independent organization-gate requests: issue them
+  // together, then arm both leases together, before opening any provider.
+  const kinds = ["stt", "tts"] as const;
+  const admitted = await Promise.allSettled(
+    kinds.map((kind) => {
       const base = rates[kind] * maxima[kind];
       const total = round(base * PLATFORM_MARKUP_MULTIPLIER);
-      admissions.set(
-        kind,
-        await admitOrganizationInference({
-          context: {
-            organizationId: caller.user.organization_id,
-            userId: caller.user.id,
-            apiKeyId: caller.apiKeyId,
-            requestId: `speech:${sessionId}:${kind}`,
-            provider: "cartesia",
-            billingSource: "cartesia",
-            model: kind === "stt" ? "ink-2" : CARTESIA_SONIC_MODEL_ID,
-            description: "Bounded streaming speech session",
-          },
+      return admitOrganizationInference({
+        context: {
+          organizationId: caller.user.organization_id,
+          userId: caller.user.id,
           apiKeyId: caller.apiKeyId,
-          estimatedInputTokens: 0,
-          estimatedOutputTokens: 0,
-          flatCost: {
-            baseTotalCost: round(base),
-            totalCost: total,
-            platformMarkup: round(total - base),
-          },
-          admissionSnapshot: caller.admissionSnapshot,
-          credential: caller.credential,
-          executionCtx,
-          atomicProviderBoundary: true,
-        }),
-      );
-    }
+          requestId: `speech:${sessionId}:${kind}${budgetWindow ? `:${budgetWindow}` : ""}`,
+          provider: "cartesia",
+          billingSource: "cartesia",
+          model: kind === "stt" ? "ink-2" : CARTESIA_SONIC_MODEL_ID,
+          description: "Bounded streaming speech session",
+        },
+        apiKeyId: caller.apiKeyId,
+        estimatedInputTokens: 0,
+        estimatedOutputTokens: 0,
+        flatCost: {
+          baseTotalCost: round(base),
+          totalCost: total,
+          platformMarkup: round(total - base),
+        },
+        admissionSnapshot: caller.admissionSnapshot,
+        credential: caller.credential,
+        executionCtx,
+        atomicProviderBoundary: true,
+      });
+    }),
+  );
+  kinds.forEach((kind, index) => {
+    const result = admitted[index];
+    if (result.status === "fulfilled") admissions.set(kind, result.value);
+  });
+  try {
+    const refused = admitted.find((result) => result.status === "rejected");
+    if (refused) throw refused.reason;
     // Arm both bounded leases once, before opening any provider. In the event
     // of a crash the existing admission alarm retains the full uncertain cost.
     // A live session can reconcile unused TTS to zero on confirmed cleanup.
-    for (const admission of admissions.values())
-      await admission.markProviderDispatched?.();
+    await Promise.all(
+      [...admissions.values()].map((admission) =>
+        admission.markProviderDispatched?.(),
+      ),
+    );
   } catch (error) {
     // No provider has opened yet. Do not keep a reservation for failed bootstrap.
     await Promise.all(

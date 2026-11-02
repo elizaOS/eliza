@@ -15,6 +15,7 @@ export function speechHttpTimings(headers: Headers): Record<string, number> {
     "speech_signing",
     "speech_post_sign_validation",
     "speech_directory_write",
+    "speech_session_init",
   ]);
   let raw: string | null;
   try {

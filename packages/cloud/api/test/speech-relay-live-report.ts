@@ -42,6 +42,12 @@ const timings = [
   "sessionMs",
   "wsReadyMs",
   "bootstrapMs",
+  // Server-Timing phases of the two bootstrap requests (durations only).
+  "consentIdentityMs",
+  "consentWriteMs",
+  "sessionIdentityMs",
+  "sessionConsumeMs",
+  "sessionInitMs",
   "ttsStartupMs",
   "firstPcmMs",
   "ttsCompleteMs",

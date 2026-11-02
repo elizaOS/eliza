@@ -184,6 +184,9 @@ async function fixture() {
     get connections() {
       return connections;
     },
+    get expiry() {
+      return expiry;
+    },
     changeOwner() {
       current = false;
     },
@@ -1231,5 +1234,50 @@ test("cancellation and owner replacement during warming prevent another auth req
     await rejected;
     expect(calls).toBe(1);
     expect(f.connections).toBe(0);
+  }
+});
+
+test("an extending relay moves the session end forward without a new session", async () => {
+  const f = await fixture();
+  f.mode("short");
+  const client = await createCloudSpeechRelayPorts(f.options),
+    events: { type: string }[] = [];
+  expect(f.controls.find((frame) => frame.t === "hello")).toMatchObject({
+    extend: true,
+  });
+  client.speechPorts.openStt((event) => events.push(event));
+  const first = Date.parse(f.expiry),
+    extended = new Date(first + 400).toISOString();
+  f.send({ t: "extended", expiresAt: extended });
+  await until(() => client.expiresAt === Date.parse(extended));
+  await sleep(Math.max(0, first - Date.now()) + 50);
+  // Past the minted end the session is still live and accepts speech.
+  const stream = client.speechPorts.tts.createStream(
+    { traceId: "local", maxBufferDelayMs: 250 },
+    {},
+  );
+  stream.sendPhrase({ text: "Still here", continueContext: false });
+  await stream.closed;
+  expect(events.some((event) => event.type === "error")).toBe(false);
+  expect(f.connections).toBe(1);
+  expect(f.requests.filter((r) => r.path.endsWith("/session"))).toHaveLength(1);
+  // The extended end still retires the session.
+  await until(() => events.some((event) => event.type === "error"));
+  await client.close();
+});
+test("an extension that does not move forward by at most one window is a protocol failure", async () => {
+  for (const offset of [0, -1000, 60_001]) {
+    const f = await fixture();
+    const client = await createCloudSpeechRelayPorts(f.options),
+      events: { type: string }[] = [];
+    client.speechPorts.openStt((event) => events.push(event));
+    const before = client.expiresAt;
+    f.send({
+      t: "extended",
+      expiresAt: new Date(Date.parse(f.expiry) + offset).toISOString(),
+    });
+    await until(() => events.some((event) => event.type === "error"));
+    expect(client.expiresAt).toBe(before);
+    await client.close();
   }
 });

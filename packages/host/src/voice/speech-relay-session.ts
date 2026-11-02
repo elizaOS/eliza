@@ -25,6 +25,9 @@ export const SPEECH_RELAY_BUDGET = Object.freeze({
   outputBytes: 8 * 1024 * 1024,
 });
 export type SpeechRelayBudget = typeof SPEECH_RELAY_BUDGET;
+/** A window is renewed this long before it ends, so the next fence and
+ * reservation are in place before the current one lapses. */
+export const SPEECH_RELAY_RENEW_LEAD_MS = 10_000;
 export interface SpeechRelayIdentity extends VoiceUsageIdentity {
   cloudSessionId: string;
 }
@@ -52,7 +55,8 @@ export type SpeechRelayEvent =
   | { t: "stt"; event: SpeechRelayInkEvent }
   | { t: "flush_complete"; id: string; flushId?: number }
   | { t: "audio"; id: string; bytes: Uint8Array }
-  | { t: "complete"; id: string };
+  | { t: "complete"; id: string }
+  | { t: "extended"; expiresAt: string };
 /** Reservation is for the fixed worst-case server-enforced budget, not client usage reports.
  * Settlement must durably retain ambiguous provider dispatch. Never automatically replay.
  */
@@ -106,6 +110,22 @@ export interface SpeechRelayPorts {
   onClosed(result: Promise<void>): void;
   /** Trusted provider drain acknowledgement; socket-close dispatch alone is insufficient. */
   confirmProviderStopped?: () => Promise<"complete" | "unknown">;
+  /** Absolute end of the first window; defaults to one budget from creation. */
+  expiresAt?: number;
+  /**
+   * Budget windows this session may hold (default 1). Each later window takes
+   * another usage minute and its own full reservation before `extend` moves
+   * the session's authoritative end; nothing is renewed without both.
+   */
+  maxWindows?: number;
+  /**
+   * Moves the authoritative end (revocation fence, ledger, alarm) to at most
+   * `expiresAt` and returns the end it accepted. Required when `maxWindows > 1`.
+   */
+  extend?: (
+    identity: Readonly<SpeechRelayIdentity>,
+    expiresAt: number,
+  ) => Promise<number>;
   now?: () => number;
 }
 export class SpeechRelayError extends Error {
@@ -187,7 +207,19 @@ export async function createSpeechRelaySession(
   )
     throw new SpeechRelayError("consent", "Speech consent required");
   const now = ports.now ?? Date.now,
-    started = now();
+    started = now(),
+    maxWindows = ports.maxWindows ?? 1;
+  if (
+    !Number.isSafeInteger(maxWindows) ||
+    maxWindows < 1 ||
+    (maxWindows > 1 && !ports.extend)
+  )
+    throw new SpeechRelayError("identity", "Invalid speech window budget");
+  let deadline = Math.min(
+      started + SPEECH_RELAY_BUDGET.durationMs,
+      ports.expiresAt ?? Number.POSITIVE_INFINITY,
+    ),
+    windows = 1;
   const dispatched = { stt: false, tts: false };
   let ttsUncertain = false;
   let closed = false,
@@ -203,7 +235,11 @@ export async function createSpeechRelaySession(
     stt: ReturnType<SpeechRelayPorts["openStt"]> | undefined,
     unsubscribe: (() => void) | undefined,
     timer: ReturnType<typeof setTimeout> | undefined,
+    renewTimer: ReturnType<typeof setTimeout> | undefined,
     closing: Promise<void> | undefined;
+  // Every window's reservation, oldest first. Settlement fills each to its
+  // own budget in order, so no reservation is charged above what it admitted.
+  const reservations: SpeechRelayCreditReservation[] = [];
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
     finishedIds = new Set<string>(),
@@ -218,6 +254,7 @@ export async function createSpeechRelaySession(
     uplink.flush();
     if (streams.size) ttsUncertain = true;
     if (timer) clearTimeout(timer);
+    if (renewTimer) clearTimeout(renewTimer);
     closing = Promise.resolve().then(async () => {
       const failures: unknown[] = [];
       for (const cancel of [
@@ -268,11 +305,20 @@ export async function createSpeechRelaySession(
         } catch (error) {
           failures.push(error);
         }
-      try {
-        if (credits)
-          await credits.settle({
-            pcmBytes,
-            ttsCharacters,
+      const pcmWindow =
+          (SPEECH_RELAY_BUDGET.pcmBytesPerSecond *
+            SPEECH_RELAY_BUDGET.durationMs) /
+          1000,
+        ttsWindow = SPEECH_RELAY_BUDGET.ttsCharacters;
+      for (const [index, reservation] of reservations.entries()) {
+        const share = (total: number, size: number) =>
+          index === reservations.length - 1
+            ? Math.max(0, total - index * size)
+            : Math.min(size, Math.max(0, total - index * size));
+        try {
+          await reservation.settle({
+            pcmBytes: share(pcmBytes, pcmWindow),
+            ttsCharacters: share(ttsCharacters, ttsWindow),
             providerMayHaveStarted,
             dispatched,
             ...(sttDrain ? { sttDrain } : {}),
@@ -282,8 +328,9 @@ export async function createSpeechRelaySession(
               tts: ttsUncertain ? "unknown" : "complete",
             },
           });
-      } catch (error) {
-        failures.push(error);
+        } catch (error) {
+          failures.push(error);
+        }
       }
       // Once provider work might have started, retain the admitted quota. A failed
       // transport is not proof of zero billable work; credit settlement owns reconciliation.
@@ -306,7 +353,7 @@ export async function createSpeechRelaySession(
   };
   const current = () => {
     if (closed) throw new SpeechRelayError("closed", "Speech relay is closed");
-    if (now() - started >= SPEECH_RELAY_BUDGET.durationMs) {
+    if (now() >= deadline) {
       retire();
       throw new SpeechRelayError("expired", "Speech relay expired");
     }
@@ -326,6 +373,59 @@ export async function createSpeechRelaySession(
       retire();
     }
   };
+  function arm() {
+    if (timer) clearTimeout(timer);
+    if (renewTimer) clearTimeout(renewTimer);
+    timer = setTimeout(retire, Math.max(1, deadline - now()));
+    timer.unref?.();
+    if (windows >= maxWindows) return;
+    renewTimer = setTimeout(
+      () => void renew(),
+      Math.max(1, deadline - SPEECH_RELAY_RENEW_LEAD_MS - now()),
+    );
+    renewTimer.unref?.();
+  }
+  /** Failure to renew is not an error: the session still ends at `deadline`. */
+  async function renew() {
+    const extend = ports.extend;
+    if (closed || windows >= maxWindows || !extend) return;
+    let recorded = false;
+    try {
+      const usage = await ports.usageStore.checkAndRecord(
+        scope,
+        1,
+        ports.usageLimits,
+      );
+      if (!usage.allowed || closed) {
+        if (usage.allowed) await ports.usageStore.release(scope, 1);
+        return;
+      }
+      recorded = true;
+      const reservation = await ports.reserveCredits(
+        scope,
+        SPEECH_RELAY_BUDGET,
+      );
+      // Held from here: closing settles it with the other windows.
+      reservations.push(reservation);
+      if (closed) return;
+      // The quota minute and reservation now belong to this window; neither is
+      // released if moving the authoritative end fails or is capped.
+      recorded = false;
+      const accepted = await extend(
+        scope,
+        now() + SPEECH_RELAY_BUDGET.durationMs,
+      );
+      if (closed || !Number.isFinite(accepted) || accepted <= deadline) return;
+      deadline = accepted;
+      windows++;
+      arm();
+      emit({ t: "extended", expiresAt: new Date(deadline).toISOString() });
+    } catch {
+      // The current window still ends at `deadline`; its settlement is unchanged.
+      if (recorded)
+        await ports.usageStore.release(scope, 1).catch(() => undefined);
+    }
+  }
   try {
     current();
     if (!(await ports.consumeConsent(scope, consentNonce)))
@@ -341,6 +441,7 @@ export async function createSpeechRelaySession(
     quota = true;
     current();
     credits = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
+    reservations.push(credits);
     current();
     unsubscribe = ports.subscribeRevoked(scope, retire);
     current();
@@ -387,11 +488,7 @@ export async function createSpeechRelaySession(
       });
     });
     current();
-    timer = setTimeout(
-      retire,
-      Math.max(1, SPEECH_RELAY_BUDGET.durationMs - (now() - started)),
-    );
-    timer.unref?.();
+    arm();
   } catch (error) {
     try {
       await close();
@@ -415,7 +512,11 @@ export async function createSpeechRelaySession(
         !bytes.byteLength ||
         bytes.byteLength % 2 ||
         bytes.byteLength > SPEECH_RELAY_BUDGET.chunkBytes ||
-        next > SPEECH_RELAY_BUDGET.pcmBytesPerSecond * 60 ||
+        next >
+          (SPEECH_RELAY_BUDGET.pcmBytesPerSecond *
+            SPEECH_RELAY_BUDGET.durationMs *
+            windows) /
+            1000 ||
         !checkVoiceByteRate({
           observedBytes: next,
           elapsedMs: now() - started,
@@ -459,7 +560,7 @@ export async function createSpeechRelaySession(
       // A cancel may overtake queued phrases and finish for the same context.
       if (cancelledIds.has(frame.id)) return false;
       if (frame.t === "prepare") {
-        if (usedIds.has(frame.id) || usedIds.size >= 64) {
+        if (usedIds.has(frame.id) || usedIds.size >= 64 * windows) {
           retire();
           throw new SpeechRelayError("payload", "Speech context is not new");
         }
@@ -495,7 +596,7 @@ export async function createSpeechRelaySession(
       if (frame.t === "cancel") {
         try {
           if (!usedIds.has(frame.id)) {
-            if (usedIds.size >= 64)
+            if (usedIds.size >= 64 * windows)
               throw new SpeechRelayError("payload", "Too many speech contexts");
             usedIds.add(frame.id);
           }
@@ -516,9 +617,9 @@ export async function createSpeechRelaySession(
         (usedIds.has(frame.id) &&
           !streams.has(frame.id) &&
           !preparedIds.has(frame.id)) ||
-        (!usedIds.has(frame.id) && usedIds.size >= 64) ||
+        (!usedIds.has(frame.id) && usedIds.size >= 64 * windows) ||
         admittedTtsCharacters + frame.text.length >
-          SPEECH_RELAY_BUDGET.ttsCharacters
+          SPEECH_RELAY_BUDGET.ttsCharacters * windows
       ) {
         retire();
         throw new SpeechRelayError(
@@ -549,7 +650,8 @@ export async function createSpeechRelaySession(
               if (
                 !(bytes instanceof Uint8Array) ||
                 bytes.byteLength > 65_536 ||
-                outputBytes + bytes.byteLength > SPEECH_RELAY_BUDGET.outputBytes
+                outputBytes + bytes.byteLength >
+                  SPEECH_RELAY_BUDGET.outputBytes * windows
               ) {
                 retire();
                 return;

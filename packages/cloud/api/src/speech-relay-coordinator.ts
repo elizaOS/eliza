@@ -38,6 +38,15 @@ type Ledger = SpeechRelayBootstrap & {
   phase: "minted" | "starting" | "active" | "closed";
 };
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
+/** Default renewable windows for a client that accepts `extended` frames. */
+const DEFAULT_MAX_WINDOWS = 10;
+export function resolveSpeechRelayMaxWindows(raw: string | undefined): number {
+  if (raw === undefined || raw.trim() === "") return DEFAULT_MAX_WINDOWS;
+  const value = Number(raw.trim());
+  if (!Number.isSafeInteger(value) || value < 1 || value > 120)
+    throw Error("VOICE_SPEECH_RELAY_MAX_WINDOWS must be an integer 1-120");
+  return value;
+}
 export function speechTokenDigest(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
@@ -52,6 +61,8 @@ export class SpeechRelayCoordinator {
   private closeTask?: Promise<void>;
   private tts?: CartesiaSonicTtsAdapter;
   private stopped = false;
+  private windows = 1;
+  private reservations = 0;
   private unsubscribeRevocation?: () => void;
   constructor(
     private state: DurableObjectState,
@@ -175,7 +186,8 @@ export class SpeechRelayCoordinator {
           opening = false,
           queued = 0,
           queuedCharacters = 0,
-          errorReasons = false;
+          errorReasons = false,
+          extendable = false;
         let control = Promise.resolve();
         const prepared = new Set<string>();
         const deadline = setTimeout(
@@ -223,12 +235,13 @@ export class SpeechRelayCoordinator {
               )
                 throw Error("Invalid hello");
               errorReasons = hello.errorReasons === true;
+              extendable = hello.extend === true;
               opening = true;
               clearTimeout(deadline);
               this.socket = server;
               // The durable claim precedes admission/provider creation. A crash or
               // a second socket can never reuse the consumed session capability.
-              void this.open(ledger).then(() => {
+              void this.open(ledger, extendable).then(() => {
                 authenticated = true;
                 opening = false;
               }, fail);
@@ -256,7 +269,10 @@ export class SpeechRelayCoordinator {
             if (++queued > 64) throw Error("Speech control queue exceeded");
             if (frame.t === "tts") {
               queuedCharacters += frame.text.length;
-              if (queuedCharacters > SPEECH_RELAY_BUDGET.ttsCharacters)
+              if (
+                queuedCharacters >
+                SPEECH_RELAY_BUDGET.ttsCharacters * this.windows
+              )
                 throw Error("Speech text budget exceeded");
             }
             control = control
@@ -289,8 +305,56 @@ export class SpeechRelayCoordinator {
     );
   }
 
-  private async open(ledger: Ledger) {
+  /** Opens the revocation fence for `expiresAt`; a revocation retires speech. */
+  private subscribeFence(
+    ledger: Ledger,
+    expiresAt: number,
+    retire: () => void,
+  ) {
+    return subscribeSpeechRevocation(this.env, ledger.caller, expiresAt, () => {
+      try {
+        this.send({ t: "error", code: "unauthorized" });
+      } catch {}
+      retire();
+    });
+  }
+
+  /** Moves the session end once the relay holds the next window's quota and reservation. */
+  private async extend(ledger: Ledger, requested: number, retire: () => void) {
+    this.current();
+    const credentialEnd =
+      ledger.caller.credential?.kind === "api_key" &&
+      ledger.caller.credential.expiresAt != null
+        ? ledger.caller.credential.expiresAt
+        : Number.POSITIVE_INFINITY;
+    const expiresAt = Math.min(requested, credentialEnd);
+    const current = this.ledger!;
+    if (expiresAt <= current.expiresAt) return current.expiresAt;
+    // The new fence is ready before the old one is released, so revocation is
+    // never unobserved; the old fence's own expiry cannot retire this session.
+    const unsubscribe = await this.subscribeFence(ledger, expiresAt, retire);
+    if (this.stopped) {
+      unsubscribe();
+      return current.expiresAt;
+    }
+    const previous = this.unsubscribeRevocation;
+    this.unsubscribeRevocation = unsubscribe;
+    previous?.();
+    await this.save({ ...this.ledger!, expiresAt });
+    await this.state.storage.setAlarm(expiresAt);
+    this.windows++;
+    return expiresAt;
+  }
+
+  private async open(ledger: Ledger, extendable = false) {
     const startedAt = performance.now();
+    const phases: Record<string, number> = {};
+    const span = <T>(name: string, task: Promise<T>) => {
+      const from = performance.now();
+      return task.finally(() => {
+        phases[name] = Math.round(performance.now() - from);
+      });
+    };
     await this.save({ ...ledger, phase: "starting" });
     await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
       runWithDbCacheAsync(async () => {
@@ -308,18 +372,26 @@ export class SpeechRelayCoordinator {
         let retireSpeech = () => {
           void this.close();
         };
-        this.unsubscribeRevocation = await subscribeSpeechRevocation(
-          this.env,
-          ledger.caller,
-          ledger.expiresAt,
-          () => {
-            try {
-              this.send({ t: "error", code: "unauthorized" });
-            } catch {}
-            retireSpeech();
-          },
-        );
-        this.current();
+        const retire = () => retireSpeech();
+        // The fence (an organization-gate round trip) runs alongside consent,
+        // quota and billing; reservation waits for it, so no provider is
+        // dispatched before revocation is observable.
+        const fence = span(
+          "fence",
+          this.subscribeFence(ledger, ledger.expiresAt, retire),
+        ).then((unsubscribe) => {
+          if (this.stopped) {
+            unsubscribe();
+            throw Error("Speech session is closed");
+          }
+          this.unsubscribeRevocation = unsubscribe;
+        });
+        fence.catch(() => undefined);
+        const maxWindows = extendable
+          ? resolveSpeechRelayMaxWindows(
+              this.env.VOICE_SPEECH_RELAY_MAX_WINDOWS,
+            )
+          : 1;
         let ready = false;
         const events: unknown[] = [];
         this.tts = new CartesiaSonicTtsAdapter({
@@ -350,15 +422,43 @@ export class SpeechRelayCoordinator {
             consumeConsent: async () => true,
             usageStore,
             usageLimits: resolveVoiceUsageLimits(this.env),
-            reserveCredits: () =>
-              reserveSpeechRelayAdmission({
+            expiresAt: ledger.expiresAt,
+            maxWindows,
+            ...(maxWindows > 1
+              ? {
+                  extend: (_identity, expiresAt) =>
+                    this.extend(ledger, expiresAt, retire),
+                }
+              : {}),
+            reserveCredits: async () => {
+              const budgetWindow = this.reservations++;
+              const reserved = reserveSpeechRelayAdmission({
                 caller: ledger.caller,
                 sessionId: ledger.sessionId,
+                window: budgetWindow,
                 usdPerCredit: price,
                 executionCtx: {
                   waitUntil: (task) => this.state.waitUntil(task),
                 },
-              }),
+              });
+              if (budgetWindow > 0) return reserved;
+              const [reservation, fenced] = await Promise.allSettled([
+                span("reserve", reserved),
+                fence,
+              ]);
+              if (reservation.status === "rejected") throw reservation.reason;
+              if (fenced.status === "rejected") {
+                // No provider opened: release the bootstrap reservation.
+                await reservation.value.settle({
+                  pcmBytes: 0,
+                  ttsCharacters: 0,
+                  providerMayHaveStarted: false,
+                  dispatched: { stt: false, tts: false },
+                });
+                throw fenced.reason;
+              }
+              return reservation.value;
+            },
             // The internal organization-DO socket closes on revocation or loss.
             // Its callback stops this session; no per-frame identity read occurs.
             subscribeRevoked: (_identity, revoke) => {
@@ -417,6 +517,8 @@ export class SpeechRelayCoordinator {
         logger.info("[SpeechRelay] bootstrap ready", {
           durationMs: Math.round(performance.now() - startedAt),
           budgetMs: SPEECH_RELAY_BUDGET.durationMs,
+          maxWindows,
+          ...phases,
         });
         for (const event of events) this.send(event);
       }),

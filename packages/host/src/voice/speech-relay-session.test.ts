@@ -3,6 +3,7 @@ import {
   createSpeechRelaySession,
   parseSpeechRelayControl,
   SPEECH_RELAY_BUDGET,
+  SPEECH_RELAY_RENEW_LEAD_MS,
   type SpeechRelayIdentity,
   type SpeechRelayPorts,
 } from "./speech-relay-session";
@@ -12,6 +13,11 @@ const identity: SpeechRelayIdentity = {
   organizationId: "org-a",
   userId: "user-a",
   cloudSessionId: "session-a",
+};
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+const until = async (read: () => boolean) => {
+  for (let n = 0; n < 100 && !read(); n++) await sleep(5);
+  expect(read()).toBe(true);
 };
 const tick = async () => {
   for (let n = 0; n < 12; n++) await Promise.resolve();
@@ -546,4 +552,82 @@ test("a repeated or cancelled prepare cannot reopen a context", async () => {
   );
   expect(g.order).not.toContain("tts-open");
   await other.close();
+});
+
+/** Opens a two-window session whose renewal fires on the real clock in ~20 ms. */
+function renewing(overrides: Partial<SpeechRelayPorts> = {}) {
+  const extensions: number[] = [];
+  const f = harness({
+    maxWindows: 2,
+    expiresAt: 1_000 + SPEECH_RELAY_RENEW_LEAD_MS + 20,
+    extend: async (_scope, expiresAt) => {
+      extensions.push(expiresAt);
+      return expiresAt;
+    },
+    ...overrides,
+  });
+  return { ...f, extensions };
+}
+test("a renewable session takes another quota minute and reservation before its end moves", async () => {
+  const f = renewing(),
+    session = await f.open();
+  await until(() => f.events.some((event) => (event as any).t === "extended"));
+  expect(f.order.filter((step) => step === "credits")).toHaveLength(2);
+  expect(f.extensions).toEqual([1_000 + SPEECH_RELAY_BUDGET.durationMs]);
+  expect(f.events).toContainEqual({
+    t: "extended",
+    expiresAt: new Date(f.extensions[0]).toISOString(),
+  });
+  // The first end no longer retires the session.
+  f.advance(SPEECH_RELAY_RENEW_LEAD_MS + 30);
+  await session.control({ t: "tts", id: "turn-1", text: "still live" });
+  // Text beyond one window's budget is admitted once two windows are held.
+  for (let n = 0; n < 4; n++)
+    await session.control({ t: "tts", id: "turn-1", text: "x".repeat(1024) });
+  await session.close();
+  const shares = f.settled.map((receipt) => (receipt as any).ttsCharacters);
+  expect(shares).toEqual([SPEECH_RELAY_BUDGET.ttsCharacters, 10]);
+});
+test("a refused extension or quota keeps the original end and never emits a renewal", async () => {
+  for (const mode of ["extend", "quota", "credits"]) {
+    let reservations = 0;
+    const f = renewing(
+      mode === "extend"
+        ? { extend: async () => 0 }
+        : mode === "quota"
+          ? {
+              usageLimits: {
+                organizationDailyMinutes: 1,
+                userDailyMinutes: 1,
+              },
+            }
+          : {
+              reserveCredits: async () => {
+                if (reservations++) throw Error("declined");
+                return {
+                  beforeProviderDispatch: async () => {},
+                  settle: async () => {},
+                };
+              },
+            },
+    );
+    const session = await f.open();
+    await sleep(60);
+    expect(f.events.some((event) => (event as any).t === "extended")).toBe(
+      false,
+    );
+    expect(f.extensions).toEqual([]);
+    if (mode === "credits") expect(f.order).toContain("quota-release");
+    if (mode === "quota")
+      expect(f.order.filter((step) => step === "credits")).toHaveLength(1);
+    f.advance(SPEECH_RELAY_RENEW_LEAD_MS + 30);
+    await expect(
+      session.control({ t: "tts", id: "late", text: "after end" }),
+    ).rejects.toMatchObject({ code: "expired" });
+  }
+});
+test("more than one window without an extension port is refused before admission", async () => {
+  const f = harness({ maxWindows: 2 });
+  await expect(f.open()).rejects.toMatchObject({ code: "identity" });
+  expect(f.order).toEqual([]);
 });

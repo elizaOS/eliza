@@ -31,6 +31,8 @@ export type SpeechRelayHello = {
   t: "hello";
   token: string;
   errorReasons?: true;
+  /** The client applies `extended` frames, so the relay may renew its window. */
+  extend?: true;
 };
 export type SpeechRelayServerControl =
   | {
@@ -60,13 +62,14 @@ export function parseSpeechRelayJson(
     value.t === "hello"
   ) {
     const hello = value as Record<string, unknown>;
+    const flags = ["errorReasons", "extend"] as const;
     if (
-      Object.keys(hello).length !==
-        (Object.hasOwn(hello, "errorReasons") ? 3 : 2) ||
       Object.keys(hello).some(
-        (key) => !["t", "token", "errorReasons"].includes(key),
+        (key) => !["t", "token", ...flags].includes(key),
       ) ||
-      (Object.hasOwn(hello, "errorReasons") && hello.errorReasons !== true) ||
+      flags.some(
+        (flag) => Object.hasOwn(hello, flag) && hello[flag] !== true,
+      ) ||
       typeof hello.token !== "string" ||
       hello.token.length > 6144 ||
       !hello.token
@@ -76,6 +79,7 @@ export function parseSpeechRelayJson(
       t: "hello",
       token: hello.token,
       ...(hello.errorReasons === true ? { errorReasons: true as const } : {}),
+      ...(hello.extend === true ? { extend: true as const } : {}),
     };
   }
   return parseSpeechRelayControl(value);
