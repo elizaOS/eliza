@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseMeetingUrl } from "../src/meetings";
+import { parseMeetingUrl, stripZoomRegistrantToken } from "../src/meetings";
 
 describe("parseMeetingUrl Zoom registrant links", () => {
 	// A meeting or webinar that requires registration admits a registrant
@@ -40,5 +40,36 @@ describe("parseMeetingUrl Zoom registrant links", () => {
 			meetingUrl: "https://app.zoom.us/wc/84512339087/join?pwd=Pass9",
 			nativeMeetingId: "84512339087",
 		});
+	});
+});
+
+describe("stripZoomRegistrantToken", () => {
+	// The bot navigates with the token; what is stored, listed or logged is
+	// the canonical link of the same meeting without it.
+	it("drops only the registrant token from a Zoom join URL", () => {
+		const withToken = parseMeetingUrl(
+			"https://zoom.us/j/84512339087?pwd=Pa%2Bss&tk=Ab3-x_Yz.DQMAAAAUq9Pc0hY",
+		);
+		const withoutToken = parseMeetingUrl(
+			"https://zoom.us/j/84512339087?pwd=Pa%2Bss",
+		);
+		expect(stripZoomRegistrantToken(withToken?.meetingUrl ?? "")).toBe(
+			withoutToken?.meetingUrl,
+		);
+		expect(
+			stripZoomRegistrantToken(
+				"https://app.zoom.us/wc/84512339087/join?tk=Ab3-x_Yz.DQMAAAAUq9Pc0hY",
+			),
+		).toBe("https://app.zoom.us/wc/84512339087/join");
+	});
+
+	it("leaves links without a Zoom registrant token unchanged", () => {
+		for (const url of [
+			"https://app.zoom.us/wc/84512339087/join?pwd=Pass9",
+			"https://app.zoom.us/wc/84512339087/join",
+			"https://meet.google.com/abc-defg-hij?tk=not-zoom",
+		]) {
+			expect(stripZoomRegistrantToken(url)).toBe(url);
+		}
 	});
 });

@@ -196,7 +196,10 @@ export interface MeetingTranscriptFinalizedPayload {
 /** Result of parsing a user-supplied meeting URL. */
 export interface ParsedMeetingUrl {
 	platform: MeetingPlatform;
-	/** Canonical URL the bot should navigate to. */
+	/**
+	 * Canonical URL the bot should navigate to. A Zoom link may carry the
+	 * registrant token; store, list and log `stripZoomRegistrantToken(meetingUrl)`.
+	 */
 	meetingUrl: string;
 	nativeMeetingId: string;
 }
@@ -283,6 +286,19 @@ export function parseMeetingUrl(raw: string): ParsedMeetingUrl | null {
 		};
 	}
 	return null;
+}
+
+/**
+ * A Zoom web client URL without its registrant token (`tk`). The token admits
+ * one registrant, so only the bot's navigation should carry it; anything
+ * stored, listed or logged uses this form. Every other part keeps its exact
+ * encoding, and any other URL is returned unchanged.
+ */
+export function stripZoomRegistrantToken(meetingUrl: string): string {
+	const parts = /^([^?#]*)\?([^#]*)(#.*)?$/.exec(meetingUrl);
+	if (!parts || !ZOOM_APP_RE.test(meetingUrl)) return meetingUrl;
+	const query = parts[2].split("&").filter((pair) => !pair.startsWith("tk="));
+	return `${parts[1]}${query.length > 0 ? `?${query.join("&")}` : ""}${parts[3] ?? ""}`;
 }
 
 /** Human-readable platform names for UI badges and logs. */
