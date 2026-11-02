@@ -763,7 +763,7 @@ export async function calculateSTTCostFromCatalog(params: {
 }
 
 /**
- * Longest a pricing keep-warm waits for one key (one `ai_pricing` read and one
+ * Longest a pricing keep-warm waits for one key (its `ai_pricing` reads and one
  * Worker-cache write). A slower key, or one that joins a read that never
  * finishes, is counted as failed and the next key still warms, so a stuck read
  * costs the sweep this much per key. The read itself is not cancelled and

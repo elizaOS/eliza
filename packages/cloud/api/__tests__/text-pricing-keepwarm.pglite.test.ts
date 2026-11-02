@@ -59,8 +59,13 @@ const WORKER_CACHE_TTL_SECONDS = 15 * 60;
 
 /** Text catalog reads only; the voice leg reads its own families. */
 let textCatalogReads = 0;
-/** Fails every Worker-cache write of a text pricing key while set. */
-let textWriteFailure: Error | undefined;
+/**
+ * While set, every Worker-cache write of a text pricing key reports this
+ * outcome without writing, as the real client does: it never throws, it
+ * returns "unavailable" when no backend is configured and "error" when the
+ * backend rejects the write.
+ */
+let textWriteFailure: "unavailable" | "error" | undefined;
 let kernelPrewarms = 0;
 
 const realCatalogRead =
@@ -89,7 +94,7 @@ const writtenKeys = new Set<string>();
 const cacheWrites = spyOn(cache, "setWithOutcome").mockImplementation(
   async (...args: Parameters<typeof realCacheWrite>) => {
     if (textWriteFailure && String(args[0]).startsWith(TEXT_KEY_PREFIX))
-      throw textWriteFailure;
+      return { kind: textWriteFailure, backend: "memory" as const };
     writtenKeys.add(String(args[0]));
     return realCacheWrite(...args);
   },
@@ -224,6 +229,8 @@ test("after the sweep a cold serving isolate prices the default text model from 
   expect(swept.status).toBe(200);
   expect(swept.data).toMatchObject({ textPricingWarmed: true });
   expect(kernelPrewarms).toBe(1);
+  // One `ai_pricing` read per side (input and output, in parallel).
+  expect(textCatalogReads).toBe(2);
   const written = cacheWrites.mock.calls.filter(([key]) =>
     String(key).startsWith(TEXT_KEY_PREFIX),
   );
@@ -291,29 +298,36 @@ test("each cron tick keeps the key inside its TTL and a tick in the fresh window
   ).rejects.toBeInstanceOf(AiPricingCacheWarmingError);
 });
 
-test("a failed text keep-warm is logged and leaves the sweep and the route as before", async () => {
-  // The Worker cache is unavailable for the text key.
-  textWriteFailure = new Error("synthetic Worker cache outage");
-  const failed = await sweep();
-  expect(failed.status).toBe(200);
-  expect(failed.data).toMatchObject({ textPricingWarmed: false });
-  expect(failed.data?.voicePricingWarmed).toBeGreaterThan(0);
-  expect(kernelPrewarms).toBe(1);
-  expect(textKeys([...writtenKeys].map((key) => [key]))).toHaveLength(0);
-  // A serving isolate keeps the route's retryable warming 503 for the cold key.
-  __clearPersistedPricingCache();
-  const pending: Promise<unknown>[] = [];
-  await expect(
-    priceChatAdmission("cerebras/qwen-3.8-27b", pending),
-  ).rejects.toBeInstanceOf(AiPricingCacheWarmingError);
-  await Promise.allSettled(pending);
+test.each(["unavailable", "error"] as const)(
+  "a Worker-cache write outcome of %s is a failed text keep-warm and leaves the sweep and the route as before",
+  async (outcome) => {
+    textWriteFailure = outcome;
+    const failed = await sweep();
+    expect(failed.status).toBe(200);
+    expect(failed.data).toMatchObject({ textPricingWarmed: false });
+    expect(failed.data?.voicePricingWarmed).toBeGreaterThan(0);
+    expect(kernelPrewarms).toBe(1);
+    expect(textKeys(cacheWrites.mock.calls)).toHaveLength(1);
+    expect(textKeys([...writtenKeys].map((key) => [key]))).toHaveLength(0);
+    // A second tick in the same isolate retries the write instead of trusting
+    // the copy it could not store.
+    expect((await sweep()).data).toMatchObject({ textPricingWarmed: false });
+    expect(textKeys(cacheWrites.mock.calls)).toHaveLength(2);
+    // A serving isolate keeps the route's retryable warming 503 for the cold key.
+    __clearPersistedPricingCache();
+    const pending: Promise<unknown>[] = [];
+    await expect(
+      priceChatAdmission("cerebras/qwen-3.8-27b", pending),
+    ).rejects.toBeInstanceOf(AiPricingCacheWarmingError);
+    await Promise.allSettled(pending);
 
-  // The next tick warms it.
-  textWriteFailure = undefined;
-  __clearPersistedPricingCache();
-  setSystemTime(new Date(Date.now() + 5 * 60_000));
-  expect((await sweep()).data).toMatchObject({ textPricingWarmed: true });
-  __clearPersistedPricingCache();
-  const served = await priceChatAdmission("cerebras/qwen-3.8-27b");
-  expect(served.totalCost).toBeCloseTo(ROW_COST, 12);
-});
+    // The next tick warms it.
+    textWriteFailure = undefined;
+    __clearPersistedPricingCache();
+    setSystemTime(new Date(Date.now() + 5 * 60_000));
+    expect((await sweep()).data).toMatchObject({ textPricingWarmed: true });
+    __clearPersistedPricingCache();
+    const served = await priceChatAdmission("cerebras/qwen-3.8-27b");
+    expect(served.totalCost).toBeCloseTo(ROW_COST, 12);
+  },
+);
