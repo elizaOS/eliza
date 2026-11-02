@@ -2033,6 +2033,9 @@ describe("replyClaimsInProgressWork", () => {
 
 describe("replyIsClaimSafeAcknowledgment", () => {
   it.each([
+    "Let me pull up the latest headlines.",
+    "Checking the latest news.",
+    "On it — searching the latest headlines.",
     // Public-news lookup intent, including the exact live pending cue.
     "pulling up today's headlines",
     "Pulling up today’s headlines.",
@@ -2118,6 +2121,9 @@ describe("replyIsClaimSafeAcknowledgment", () => {
   });
 
   it.each([
+    "Let me pull up the latest headlines: the president resigned.",
+    "Checking the latest news about Alice's diagnosis.",
+    "Searching the latest headlines and your password is secret.",
     "Pulling up today's headlines: the president resigned.",
     "Checking the news, the market crashed.",
     "Latest headlines say your flight is cancelled.",

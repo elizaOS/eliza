@@ -940,7 +940,7 @@ const ACKNOWLEDGMENT_CONTAINER_NOUN =
 // A relative-day possessive scopes the intended lookup; it reports no result.
 const ACKNOWLEDGMENT_RELATIVE_DAY = "(?:today|tomorrow|yesterday|tonight)'s";
 // Public news topics identify a lookup, not private source data or a headline result.
-const ACKNOWLEDGMENT_PUBLIC_NEWS = `(?:(?:the|latest|${ACKNOWLEDGMENT_RELATIVE_DAY}) )?(?:news|headlines)`;
+const ACKNOWLEDGMENT_PUBLIC_NEWS = `(?:(?:the(?: latest)?|latest|${ACKNOWLEDGMENT_RELATIVE_DAY}) )?(?:news|headlines)`;
 const ACKNOWLEDGMENT_CONTAINERS = `(?:(?:your(?: ${ACKNOWLEDGMENT_RELATIVE_DAY})?|${ACKNOWLEDGMENT_RELATIVE_DAY}) ${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather|${ACKNOWLEDGMENT_PUBLIC_NEWS})(?:(?:,|,? and) (?:(?:your )?(?:${ACKNOWLEDGMENT_RELATIVE_DAY} )?${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather|${ACKNOWLEDGMENT_PUBLIC_NEWS}))*`;
 // "It", "that", "this" and "both" stand for the request, so only a verb that
 // checks whether something is so may take them: a verb that retrieves or
