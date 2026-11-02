@@ -2019,8 +2019,18 @@ export function parseEvaluatorOutput(
         : {}),
     ...(Array.isArray(parsed.outcomeCoverage)
       ? {
-          outcomeCoverage:
-            parsed.outcomeCoverage as EvaluatorOutput["outcomeCoverage"],
+          // Repeated identical wire rows carry no additional judgment. Keep
+          // conflicting rows intact so the coverage guard still rejects them.
+          outcomeCoverage: parsed.outcomeCoverage.filter(
+            (entry, index, entries) =>
+              entries.findIndex(
+                (other) =>
+                  other.intentId === entry.intentId &&
+                  other.status === entry.status &&
+                  JSON.stringify(other.evidenceStepIds) ===
+                    JSON.stringify(entry.evidenceStepIds),
+              ) === index,
+          ) as EvaluatorOutput["outcomeCoverage"],
         }
       : {}),
     decision,

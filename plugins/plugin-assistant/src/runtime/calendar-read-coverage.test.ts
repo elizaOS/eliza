@@ -3059,3 +3059,54 @@ describe("existing-event duration through actual scheduling and coverage", () =>
     );
   });
 });
+
+it("canonicalizes identical coverage rows before the unchanged Calendar proof guard",()=>{
+ const f=fixture(); f.output.outcomeCoverage!.push(structuredClone(f.output.outcomeCoverage![0]));
+ const parsed=parseEvaluatorOutput(JSON.stringify(f.output));
+ expect(parsed.outcomeCoverage).toHaveLength(1);
+ expect(calendarReadCoverage(parsed,f.context,f.trajectory).verified).toBe(true);
+});
+it.each(["blocked","pending"])("does not combine conflicting %s judgment with completion",status=>{
+ const f=fixture(); f.output.outcomeCoverage!.push({...f.output.outcomeCoverage![0],status:status as "blocked"|"pending"});
+ const parsed=parseEvaluatorOutput(JSON.stringify(f.output));
+ expect(parsed.success).toBe(false);
+ expect(parsed.outcomeCoverage).toHaveLength(2);
+});
+it("keeps conflicting evidence rows for the coverage guard to reject",()=>{
+ const f=fixture(); f.output.outcomeCoverage!.push({...f.output.outcomeCoverage![0],evidenceStepIds:["step:99"]});
+ const parsed=parseEvaluatorOutput(JSON.stringify(f.output));
+ expect(parsed.outcomeCoverage).toHaveLength(2);
+ expect(calendarReadCoverage(parsed,f.context,f.trajectory).verified).toBe(false);
+});
+it("never turns duplicate stale evidence into verified coverage",()=>{
+ const f=fixture(); (f.trajectory.steps[0].result!.data as {timeReference:{asOf:string}}).timeReference.asOf="2020-01-01T00:00:00Z";
+ f.output.outcomeCoverage!.push(structuredClone(f.output.outcomeCoverage![0]));
+ const parsed=parseEvaluatorOutput(JSON.stringify(f.output));
+ expect(calendarReadCoverage(parsed,f.context,f.trajectory).verified).toBe(false);
+});
+
+function recordedFeedFixture(){
+ const f=fixture();
+ const binding=f.context.metadata!.calendarReadBindings![0] as CalendarReadBinding;
+ binding.operation="feed"; binding.requestedAt=Date.parse("2026-11-02T06:10:05Z");
+ f.trajectory.outcomeIntents=["Check today's calendar for events"];
+ const step=f.trajectory.steps[0];
+ step.toolCall!.name="CALENDAR_FEED";
+ step.toolCall!.params={subaction:"feed",intent:"Check today's calendar",details:{timeZone:"America/Los_Angeles",date:"2026-11-01"}};
+ step.result={success:true,effectReceipts:[{receiptId:"recorded-read",operation:"calendar.feed.read",resource:{kind:"calendar.feed",id:"owner-feed"},artifacts:[],idempotency:{key:"recorded-read",replayed:false},observedAt:"2026-11-02T06:10:12.450Z",outcome:"noop",reason:"Read only"}],data:{state:"complete",events:[],timeMin:"2026-11-01T07:00:00.000Z",timeMax:"2026-11-02T08:00:00.000Z",sources:[{key:{provider:"eliza",side:"owner",grantId:"local",calendarId:"primary"},status:"fresh",syncedAt:"2026-11-02T06:10:12.450Z"}],replyContext:{domain:"calendar",scenario:"feed_results",context:{sourceScope:{grantId:null,calendarId:null},asOf:"2026-11-02T06:10:12.450Z",timeZone:"America/Los_Angeles",selection:"bounded_agenda"}}}} as typeof step.result;
+ f.output.outcomeCoverage!.push(structuredClone(f.output.outcomeCoverage![0]));return f;
+}
+it("repairs the recorded zero-event Cloud feed with duplicate coverage across the 25-hour DST day",()=>{
+ const f=recordedFeedFixture();const parsed=parseEvaluatorOutput(JSON.stringify(f.output));
+ expect(parsed.outcomeCoverage).toHaveLength(1);
+ expect(calendarReadCoverage(parsed,f.context,f.trajectory)).toEqual({verified:true,unverifiedIntentIds:[]});
+});
+it.each(["partial","owner","stale","window"])("still rejects recorded feed with invalid %s proof",fault=>{
+ const f=recordedFeedFixture(); const data=f.trajectory.steps[0].result!.data as any;
+ if(fault==="partial"){data.state="partial";data.sources[0].status="stale";}
+ if(fault==="owner")data.sources[0].key.side="other";
+ if(fault==="stale")data.replyContext.context.asOf="2026-11-02T06:00:00Z";
+ if(fault==="window")data.timeMax="2026-11-02T07:00:00.000Z";
+ const parsed=parseEvaluatorOutput(JSON.stringify(f.output));
+ expect(calendarReadCoverage(parsed,f.context,f.trajectory).verified).toBe(false);
+});

@@ -2898,3 +2898,6 @@ describe("simple arithmetic evaluator parity", () => {
     },
   );
 });
+
+it.each(["Let me check what's on your calendar today.","I'll check what is on the calendar tomorrow."])("accepts prospective calendar question: %s",text=>{expect(replyIsClaimSafeAcknowledgment(text)).toBe(true)});
+it.each(["I checked what's on your calendar today.","Let me check what's on your calendar today. You have no meetings.","Let me check what is on your calendar today and send it to Alice.","Let me check what's on Sarah's calendar today."])("rejects calendar result or expanded authority: %s",text=>{expect(replyIsClaimSafeAcknowledgment(text)).toBe(false)});

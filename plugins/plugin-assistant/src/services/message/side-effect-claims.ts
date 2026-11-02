@@ -990,7 +990,7 @@ const ACKNOWLEDGMENT_ITEM =
 // optional day or week, never a count, state or answer.
 const ACKNOWLEDGMENT_QUERY_NOUN =
   "(?:meetings|events|appointments|reminders|tasks|todos|notes|emails|messages|calls)";
-const ACKNOWLEDGMENT_QUERY = `(?:whether|if) (?:there are|you have) any ${ACKNOWLEDGMENT_QUERY_NOUN}(?:(?:,|,? (?:and|or)) ${ACKNOWLEDGMENT_QUERY_NOUN})*(?: (?:today|tomorrow|this week|next week))?`;
+const ACKNOWLEDGMENT_QUERY = `(?:(?:whether|if) (?:there are|you have) any ${ACKNOWLEDGMENT_QUERY_NOUN}(?:(?:,|,? (?:and|or)) ${ACKNOWLEDGMENT_QUERY_NOUN})*|what(?:'s| is) on (?:your|the) calendar)(?: (?:today|tomorrow|this week|next week))?`;
 // A person is one capitalised word after "check with", read before
 // lower-casing and replaced by a private-use mark. A possessive, a second
 // word or anything after it falls outside the grammar.
