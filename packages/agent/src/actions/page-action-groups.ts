@@ -10,7 +10,12 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { resolveActionContexts } from "@elizaos/core";
+import {
+  extractUserText,
+  hasDocumentAugmentationEnvelope,
+  resolveActionContexts,
+  unwrapUserMessageText,
+} from "@elizaos/core";
 
 const PAGE_KEYS = [
   "browser",
@@ -206,6 +211,29 @@ function findStructurallyAliasedChildAction(
   return null;
 }
 
+/**
+ * User words from an unwrapped turn text. `extractUserText` takes the first
+ * `<user_request>` pair, but the recalled documents render before the real
+ * request, so a document quoting a `<user_request>` pair would win the match.
+ * Drop the untrusted `<contextual_documents>` block first, then take the last
+ * `<user_request>` pair: the builder emits the real request as the trailing
+ * block, so any pair that survives the strip comes from document text that
+ * precedes it — including a document that carries a literal
+ * `</contextual_documents>` close tag, which ends the lazy strip early. An
+ * envelope with no request block is no user words (""), not the whole
+ * envelope.
+ */
+const CONTEXTUAL_DOCUMENTS_BLOCK =
+  /<contextual_documents>[\s\S]*?<\/contextual_documents>/i;
+const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/gi;
+
+function userWordsFromTurnText(raw: string): string {
+  if (!hasDocumentAugmentationEnvelope(raw)) return extractUserText(raw);
+  const withoutDocuments = raw.replace(CONTEXTUAL_DOCUMENTS_BLOCK, "");
+  const pairs = [...withoutDocuments.matchAll(USER_REQUEST_WRAPPER)];
+  return pairs.at(-1)?.[1]?.trim() ?? "";
+}
+
 function prepareAliasedChildParameters(
   action: Action,
   explicit: ActionParameters | undefined,
@@ -226,8 +254,14 @@ function prepareAliasedChildParameters(
   // A generated definition is not an authoritative create request. Umbrella
   // actions that accept seedPrompt must regenerate from the user's actual words
   // so a delegated alias cannot smuggle an invented graph past validation.
-  const messageText =
-    typeof message.content.text === "string" ? message.content.text.trim() : "";
+  // Read the user's words, not the raw rendered text: under document
+  // augmentation, content.text carries the preamble, the recalled documents
+  // and the real request wrapped in <user_request>, so seeding from it would
+  // let document text steer the generated definition. The recalled block is
+  // dropped before unwrapping, so a document quoting a <user_request> pair
+  // cannot stand in for the real request, and an envelope with no request
+  // yields no seed rather than the whole envelope.
+  const messageText = userWordsFromTurnText(unwrapUserMessageText(message));
   if (
     discriminator === "create" &&
     declaredNames.has("seedPrompt") &&
