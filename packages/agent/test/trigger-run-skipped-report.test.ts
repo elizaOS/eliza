@@ -66,8 +66,7 @@ async function stageRunCount(taskId: UUID, runCount: number) {
   const task = await harness.runtime.getTask(taskId);
   if (!task?.metadata) throw new Error("task missing metadata");
   const metadata = structuredClone(task.metadata);
-  (metadata.trigger as unknown as Record<string, unknown>).runCount =
-    runCount;
+  (metadata.trigger as unknown as Record<string, unknown>).runCount = runCount;
   await harness.runtime.updateTask(taskId, { metadata });
 }
 
