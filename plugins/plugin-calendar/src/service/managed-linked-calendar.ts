@@ -13,6 +13,33 @@ import type { createManagedCalendarRead } from "./managed-calendar-read.js";
 type Transport = NonNullable<ReturnType<typeof createManagedCalendarRead>>;
 const object = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
+const WHOLE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+// Cloud sync-v1 carries all-day bounds as whole dates with no timezone; the
+// reconciler and the built-in calendar carry them as UTC-midnight instants.
+const providerEvent = (
+  event: LinkedCalendarSemanticEvent,
+): LinkedCalendarSemanticEvent =>
+  event.isAllDay
+    ? {
+        ...event,
+        startAt: event.startAt.split("T")[0],
+        endAt: event.endAt.split("T")[0],
+        timeZone: null,
+      }
+    : event;
+const localEvent = (
+  event: LinkedCalendarSemanticEvent,
+): LinkedCalendarSemanticEvent =>
+  event.isAllDay &&
+  WHOLE_DATE.test(event.startAt) &&
+  WHOLE_DATE.test(event.endAt)
+    ? {
+        ...event,
+        startAt: `${event.startAt}T00:00:00.000Z`,
+        endAt: `${event.endAt}T00:00:00.000Z`,
+      }
+    : event;
 
 export class ManagedLinkedCalendarProviderPort
   implements LinkedCalendarProviderPort
@@ -97,7 +124,11 @@ export class ManagedLinkedCalendarProviderPort
     const event = value.event;
     if (!isLinkedCalendarSemanticEvent(event))
       throw Error("Invalid linked Calendar semantic snapshot");
-    return { eventId: value.eventId, etag: value.etag, event };
+    return {
+      eventId: value.eventId,
+      etag: value.etag,
+      event: localEvent(event),
+    };
   }
 
   async get(record: LinkedCalendarEventRecord) {
@@ -119,7 +150,7 @@ export class ManagedLinkedCalendarProviderPort
     const result = await this.call(record, {
       kind: "create",
       idempotencyKey: record.idempotencyKey,
-      event,
+      event: providerEvent(event),
     });
     if (
       !object(result.event) ||
@@ -146,7 +177,7 @@ export class ManagedLinkedCalendarProviderPort
       kind: "update",
       eventId: record.providerEventId,
       expectedEtag: record.providerEtag,
-      event,
+      event: providerEvent(event),
     });
     const written = this.snapshot(result.event, record.providerEventId);
     if (
