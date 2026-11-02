@@ -15,6 +15,7 @@ import { projectNoteForModel, reconstructNoteContent } from "./types.js";
  */
 
 import {
+  getUserMessageText,
   type IAgentRuntime,
   type Memory,
   type Provider,
@@ -129,13 +130,15 @@ export const notesProvider: Provider = {
 function namedNotesSnapshot(runtime: IAgentRuntime, message: Memory) {
   const service = getNotesService(runtime);
   const snapshot = service.snapshot();
-  const notes = service.findNotesNamedInText(
-    message.content.text ?? "",
-    snapshot,
-  );
+  // The provider's contract is titles the user explicitly names this turn, so
+  // match against the user's own words, not the document-augmentation envelope
+  // text: a title named only inside a retrieved document must not surface
+  // the note (with its full body) as if the user named it.
+  const userText = getUserMessageText(message);
+  const notes = service.findNotesNamedInText(userText, snapshot);
   const deletedIds = new Set(
     service
-      .findNotesNamedInText(message.content.text ?? "", {
+      .findNotesNamedInText(userText, {
         ...snapshot,
         notes: (snapshot.trash ?? []).map((entry) => entry.note),
       })
