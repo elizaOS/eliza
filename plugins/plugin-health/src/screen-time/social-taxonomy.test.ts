@@ -65,4 +65,21 @@ describe("screen-time service for app ids that contain 'messenger'", () => {
       }),
     ).toMatchObject({ service: "facebook", category: "social" });
   });
+
+  // A Messenger chat URL or page title can name another service; the
+  // messenger.com host decides before those words do.
+  it.each([
+    ["https://www.messenger.com/t/signal.support", "www.messenger.com"],
+    ["https://www.messenger.com/t/123", "Slack team chat | Messenger"],
+    ["https://www.messenger.com/t/linkedin", "www.messenger.com"],
+  ])("still counts %s (%s) as Facebook", (url, displayName) => {
+    expect(
+      classifyScreenTimeTarget({
+        source: "website",
+        identifier: "www.messenger.com",
+        displayName,
+        metadata: { url },
+      }),
+    ).toMatchObject({ service: "facebook", category: "social" });
+  });
 });

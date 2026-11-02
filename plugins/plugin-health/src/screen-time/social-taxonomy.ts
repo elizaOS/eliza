@@ -99,7 +99,8 @@ const SOCIAL_RULES: SocialRule[] = [
     service: "facebook",
     label: "Facebook",
     category: "social",
-    patterns: ["facebook"],
+    // A host pattern: it matches messenger.com, not the word in an app id.
+    patterns: ["facebook", "messenger.com"],
   },
   {
     service: "linkedin",
