@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { createOpenAI } from "@ai-sdk/openai";
 import { generateText, streamText } from "ai";
 import { convertTools, type ChatCompletionTool } from "./tools";
@@ -17,7 +17,7 @@ function tools(flags: Array<boolean | undefined>): ChatCompletionTool[] {
 }
 async function wire(input: ChatCompletionTool[] | undefined, streaming: boolean) {
   const bodies: Record<string, any>[] = [];
-  const provider = createOpenAI({ apiKey: "test-not-a-real-key", baseURL: "https://provider.invalid/v1", fetch: async (_url, init) => {
+  const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
     bodies.push(JSON.parse(String(init?.body)));
     if (streaming) return new Response(
       'data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
@@ -25,12 +25,15 @@ async function wire(input: ChatCompletionTool[] | undefined, streaming: boolean)
       { headers: { "Content-Type": "text/event-stream" } },
     );
     return Response.json({ id: "test", object: "chat.completion", created: 0, model: "test", choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
-  } });
+  });
+  try {
+  const provider = createOpenAI({ apiKey: "test-not-a-real-key", baseURL: "https://provider.invalid/v1", fetch: globalThis.fetch });
   const options = { model: provider.chat("qwen-3.8-27b"), prompt: "test", tools: convertTools(input), maxRetries: 0 };
   if (streaming) await streamText(options).text;
   else await generateText(options);
   expect(bodies).toHaveLength(1);
   return bodies[0];
+  } finally { fetchSpy.mockRestore(); }
 }
 describe("tool strictness through the actual OpenAI chat adapter fetch body", () => {
   for (const streaming of [false, true]) {
