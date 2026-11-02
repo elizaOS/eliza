@@ -23,7 +23,9 @@ vi.mock("../device-actions/service.ts", async (original) => ({
   readDeviceConversationReceipts: async () => [],
 }));
 
+import { ACKNOWLEDGMENT_RULE } from "../../prompts/acknowledgment.ts";
 import { createV5MessageContextObject } from "./context-assembly.ts";
+import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
 import { renderMessageHandlerModelInput } from "./stage1-input.ts";
 
 const capabilities = [
@@ -313,9 +315,13 @@ describe("voice response policy", () => {
       );
       expect(policy).toHaveLength(1);
       expect(policy![0].content).toContain(
-        "Give more detail when the user asks for it",
+        "Expand when the user explicitly asks for detail",
       );
       expect(policy![0].content).toContain("preserve attribution required");
+      expect(policy![0].content).toContain("one to three short sentences");
+      expect(policy![0].content).toContain(
+        "takes priority over generic thoroughness",
+      );
       expect(policy![0].content).toContain("keep complete internal evidence");
       const input =
         providerPhase === "response"
@@ -344,4 +350,31 @@ describe("voice response policy", () => {
       });
     }
   }
+});
+
+describe("model acknowledgment authoring grammar", () => {
+  it.each([
+    "Let me check.",
+    "I'll search.",
+    "Let me take a look.",
+    "I'll look into that.",
+    "Checking both.",
+    "Let me check your notes.",
+    "I'll pull up your calendar.",
+    "Let me open Calendar.",
+  ])("advertises only admitted short prospective forms: %s", (cue) => {
+    expect(replyIsClaimSafeAcknowledgment(cue)).toBe(true);
+  });
+  it("explains arbitrary topics through referents and forbids the incomplete live form", () => {
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "These references work for any topic",
+    );
+    expect(ACKNOWLEDGMENT_RULE).toContain('not "pull the latest"');
+    expect(ACKNOWLEDGMENT_RULE).toContain(
+      "leave it empty and still do authorized work",
+    );
+    expect(replyIsClaimSafeAcknowledgment("let me pull the latest.")).toBe(
+      false,
+    );
+  });
 });
