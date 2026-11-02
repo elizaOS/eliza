@@ -937,9 +937,12 @@ test("a development certificate left in mac_permissions.xml is refused before an
 
 test("a relative --out holds the outputs although the sign step runs from the otatools root", async (t) => {
   const fixture = setup(t);
+  const start = process.cwd();
+  t.after(() => process.chdir(start));
+  process.chdir(path.dirname(fixture.out));
   await signRelease({
     ...fixture.options,
-    out: path.relative(process.cwd(), fixture.out),
+    out: path.basename(fixture.out),
   });
   for (const name of ["signed-target_files.zip", "ota.zip"])
     assert.ok(fs.existsSync(path.join(fixture.out, name)), name);
