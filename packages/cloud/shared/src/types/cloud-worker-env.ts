@@ -28,6 +28,7 @@ export interface RuntimeDurableObjectNamespace {
 export interface Bindings {
   /** Bounded speech-only sockets; agents and conversation storage remain on the client. */
   VOICE_SPEECH_RELAY_ENABLED?: string;
+  VOICE_SPEECH_RETIREMENT_PROOF_ENABLED?: string;
   /** Speech-only Ink final timeout, clamped to 640..5000 ms; default 1280 ms. */
   VOICE_SPEECH_END_TIMEOUT_MS?: string;
   SPEECH_RELAY_SESSIONS?: RuntimeDurableObjectNamespace;

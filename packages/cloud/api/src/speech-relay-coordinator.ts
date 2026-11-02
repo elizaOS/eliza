@@ -12,10 +12,12 @@ import { CartesiaSonicTtsAdapter } from "@elizaos/host/voice/cartesia-sonic-tts"
 import {
   createSpeechRelaySession,
   SPEECH_RELAY_BUDGET,
+  type SpeechRelayRetirementHandle,
 } from "@elizaos/host/voice/speech-relay-session";
 import {
   encodeSpeechRelayAudio,
   parseSpeechRelayJson,
+  readConfirmedSpeechRetirement,
 } from "@elizaos/host/voice/speech-relay-wire";
 import {
   createWorkerCartesiaFactory,
@@ -25,6 +27,7 @@ import { parseCartesiaUsdPerCredit } from "../v1/voice/stt/cartesia-pricing";
 import { resolveCartesiaVoiceId } from "../v1/voice/tts/provider-selection";
 import type { GenerativeRouteCaller } from "./lib/generative-route-auth";
 import { reserveSpeechRelayAdmission } from "./speech-relay-admission";
+import { initializeSpeechRecord, claimSpeechOpening, markSpeechOwned, beginSpeechRetirement, recordSpeechSettlement, completeSpeechRetirement, type RetirementState, type SettlementProgress } from "./speech-retirement-state";
 import { speechRelayInkFactory } from "./speech-relay-ink";
 import { subscribeSpeechRevocation } from "./speech-revocation-subscription";
 
@@ -33,9 +36,11 @@ export interface SpeechRelayBootstrap {
   tokenDigest: string;
   expiresAt: number;
   caller: GenerativeRouteCaller;
+  proofVersion?: 1;
 }
 type Ledger = SpeechRelayBootstrap & {
-  phase: "minted" | "starting" | "active" | "closed";
+  phase: "minted" | "starting" | "active" | "retiring" | "closed";
+  retirement?: RetirementState;
 };
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 export function speechTokenDigest(token: string): string {
@@ -49,7 +54,12 @@ export class SpeechRelayCoordinator {
   private relay?: Awaited<ReturnType<typeof createSpeechRelaySession>>;
   private socket?: WebSocket;
   private pendingSocket = false;
+  private readonly pendingPublicSockets = new Set<WebSocket>();
   private closeTask?: Promise<void>;
+  private closeFailed = false;
+  private openingTask?: Promise<void>;
+  private openingOwner?: { claim: string; generation: number; settled: boolean };
+  private retirementHandle?: SpeechRelayRetirementHandle;
   private tts?: CartesiaSonicTtsAdapter;
   private stopped = false;
   private unsubscribeRevocation?: () => void;
@@ -63,9 +73,15 @@ export class SpeechRelayCoordinator {
       this.ledger = await this.state.storage.get<Ledger>("session");
     return this.ledger;
   }
-  private async save(ledger: Ledger) {
-    await this.state.storage.put("session", ledger);
+  private async update(change: (record: Ledger | undefined) => Ledger): Promise<Ledger> {
+    const ledger = await this.state.storage.transaction(async storage => {
+      const current = await storage.get<Ledger>("session");
+      const next = change(current);
+      if (next !== current) await storage.put("session", next);
+      return next;
+    });
     this.ledger = ledger;
+    return ledger;
   }
   private current() {
     if (
@@ -85,35 +101,76 @@ export class SpeechRelayCoordinator {
         : JSON.stringify(value),
     );
   }
-  private close(): Promise<void> {
-    if (this.closeTask) return this.closeTask;
+  private close(retry = false, automatic = false): Promise<void> {
+    if (this.closeTask && (!retry || !this.closeFailed)) return this.closeTask;
+    const retryCompletedAttempt = retry && (!this.closeTask || this.closeFailed);
     this.stopped = true;
-    this.closeTask = runWithCloudBindingsAsync(
-      this.env as Record<string, unknown>,
-      () =>
-        runWithDbCacheAsync(async () => {
-          try {
-            await this.relay?.close();
-          } finally {
-            this.unsubscribeRevocation?.();
-            this.unsubscribeRevocation = undefined;
-            this.tts?.close();
-            this.socket?.close(1000, "Speech session closed");
-            const ledger = await this.load();
-            if (ledger) await this.save({ ...ledger, phase: "closed" });
-            await this.state.storage.deleteAlarm();
-          }
-        }),
+    this.closeFailed = false;
+    const attempt = runWithCloudBindingsAsync(this.env as Record<string, unknown>, () => runWithDbCacheAsync(async () => {
+      let admitted = true;
+      const started = await this.update(record => {
+        if (!record) throw Error("Speech session missing");
+        // Check the actual stored generation/count in the same transaction
+        // that advances it. A concurrent manual revoke cannot lend an alarm
+        // an extra attempt after its earlier snapshot became stale.
+        admitted = !(automatic && (record.phase === "retiring" || record.phase === "closed") &&
+          (record.retirement?.proof?.state === "confirmed" ||
+           !this.retirementHandle && !this.relay?.retirement ||
+           (record.retirement?.attempt ?? 3) >= 3 ||
+           Date.now() >= (record.retirement?.retryDeadlineAt ?? 0)));
+        if (!admitted) return record;
+        const next = beginSpeechRetirement(record, retryCompletedAttempt);
+        if (!next.retirement || next.retirement.proof?.state === "confirmed") return next;
+        return { ...next, retirement: { ...next.retirement,
+          retryDeadlineAt: next.retirement.retryDeadlineAt ?? Date.now() + 10000 } };
+      });
+      if (!admitted) return;
+      let failure: unknown;
+      for (const pending of this.pendingPublicSockets) {
+        try { pending.close(1000, "Speech session retired"); } catch (error) { failure ??= error; }
+      }
+      if (started.proofVersion === 1 && started.retirement?.proof?.state === "confirmed") return;
+      const token = { generation: started.retirement?.generation, attempt: started.retirement?.attempt };
+      await this.openingTask?.catch(() => {});
+      const handle = this.retirementHandle ?? this.relay?.retirement;
+      try {
+        if (handle) await (retry ? handle.retryRetirement() : handle.close());
+      } catch (error) { failure = error; }
+      for (const stop of [() => this.unsubscribeRevocation?.(), () => this.tts?.close(), () => this.socket?.close(1000, "Speech session closed")]) {
+        try { stop(); } catch (error) { failure ??= error; }
+      }
+      this.unsubscribeRevocation = undefined;
+      let evidence = failure ? undefined : handle?.evidence();
+      const liveOpening = this.openingOwner?.settled
+        ? { claim: this.openingOwner.claim, generation: this.openingOwner.generation, settled: true as const }
+        : undefined;
+      if (!failure && !handle && liveOpening) {
+        const stopped = this.tts ? await this.tts.closeAndConfirm(2000) : "not_dispatched";
+        if (stopped === "not_dispatched") evidence = { stt: "not_dispatched", tts: "not_dispatched", accounting: "not_started" };
+      }
+      await this.update(record => {
+        if (!record) throw Error("Speech session missing");
+        return completeSpeechRetirement(record, token, evidence, Date.now(), !failure, liveOpening);
+      });
+      // Only the still-live holder can gain new transport evidence. Bound
+      // these retries; an evicted holder or exhausted attempt stays unknown.
+      if (handle && this.ledger?.retirement?.proof?.state === "unconfirmed" &&
+          this.ledger.retirement.attempt < 3 &&
+          Date.now() + 1000 < (this.ledger.retirement.retryDeadlineAt ?? 0)) {
+        await this.state.storage.setAlarm(Date.now() + 1000);
+      } else await this.state.storage.deleteAlarm();
+      if (failure) throw failure;
+    }));
+    this.closeTask = attempt;
+    void attempt.then(
+      () => { if (this.closeTask === attempt && this.ledger?.retirement?.proof?.state === "unconfirmed") this.closeFailed = true; },
+      () => { if (this.closeTask === attempt) this.closeFailed = true; },
     );
-    this.state.waitUntil(
-      this.closeTask.catch(() =>
-        logger.error("[speech-relay] settlement retained for recovery"),
-      ),
-    );
-    return this.closeTask;
+    this.state.waitUntil(attempt.catch(() => logger.error("[speech-relay] retirement remains unconfirmed")));
+    return attempt;
   }
   async alarm() {
-    await this.close();
+    await this.close(true, true);
   }
 
   async fetch(request: Request): Promise<Response> {
@@ -121,10 +178,9 @@ export class SpeechRelayCoordinator {
       this.env as Record<string, unknown>,
       async () => {
         const url = new URL(request.url);
-        if (this.env.VOICE_SPEECH_RELAY_ENABLED !== "true")
+        if (this.env.VOICE_SPEECH_RELAY_ENABLED !== "true" && !(url.pathname === "/revoke" && request.method === "POST"))
           return response(404, "speech_unavailable");
         if (url.pathname === "/initialize" && request.method === "POST") {
-          if (await this.load()) return response(409, "session_exists");
           const input = (await request.json()) as SpeechRelayBootstrap;
           if (
             !UUID.test(input.sessionId) ||
@@ -136,8 +192,15 @@ export class SpeechRelayCoordinator {
             !UUID.test(input.caller?.user?.organization_id)
           )
             return response(400, "invalid_session");
-          await this.save({ ...input, phase: "minted" });
-          await this.state.storage.setAlarm(input.expiresAt);
+          if (input.proofVersion !== undefined && input.proofVersion !== 1) return response(400, "invalid_proof_version");
+          let created = false;
+          try {
+            await this.update(record => {
+              created = record === undefined;
+              return initializeSpeechRecord(record, { sessionId: input.sessionId, tokenDigest: input.tokenDigest, expiresAt: input.expiresAt, caller: input.caller, ...(input.proofVersion ? { proofVersion: input.proofVersion } : {}), phase: "minted" }, Date.now());
+            });
+          } catch { return response(409, "session_exists"); }
+          if (created) await this.state.storage.setAlarm(input.expiresAt);
           return Response.json({ initialized: true });
         }
         const ledger = await this.load();
@@ -146,13 +209,23 @@ export class SpeechRelayCoordinator {
           const owner = (await request.json()) as {
             userId: string;
             organizationId: string;
+            proofVersion?: 1;
           };
           if (
             owner.userId !== ledger.caller.user.id ||
             owner.organizationId !== ledger.caller.user.organization_id
           )
             return response(404, "session_not_found");
-          await this.close();
+          if (ledger.proofVersion === 1 && owner.proofVersion !== 1) return response(409, "proof_version_mismatch");
+          try { await this.close(true); }
+          catch (error) { if (owner.proofVersion !== 1) throw error; }
+          if (owner.proofVersion === 1) {
+            const proof = ledger.proofVersion === 1 ? this.ledger?.retirement?.proof : undefined;
+            const confirmed = readConfirmedSpeechRetirement({ revoked: true, retirement: proof }, ledger.sessionId);
+            if (confirmed) return Response.json({ revoked: true, retirement: confirmed });
+            const unconfirmed = proof?.state === "unconfirmed" ? proof : { version: 1, sessionId: ledger.sessionId, state: "unconfirmed", reason: ledger.proofVersion === 1 ? "provider_unconfirmed" : "legacy_state" };
+            return Response.json({ revoked: false, retirement: unconfirmed }, { status: 409 });
+          }
           return Response.json({ revoked: true });
         }
         if (
@@ -171,6 +244,7 @@ export class SpeechRelayCoordinator {
           server = pair[1];
         server.binaryType = "arraybuffer";
         server.accept();
+        this.pendingPublicSockets.add(server);
         let authenticated = false,
           opening = false,
           queued = 0,
@@ -197,16 +271,20 @@ export class SpeechRelayCoordinator {
               }),
             );
           } catch {}
+          clearTimeout(deadline);
+          // Always close this socket, even if coordinator close is already cached.
+          try { server.close(1008, "Speech refused"); } catch {}
           if (authenticated || opening) void this.close();
-          else server.close(1008, "Speech refused");
         };
         server.addEventListener("close", () => {
+          this.pendingPublicSockets.delete(server);
           clearTimeout(deadline);
           this.pendingSocket = false;
           if (authenticated || opening) void this.close();
         });
         server.addEventListener("error", fail);
         server.addEventListener("message", (event) => {
+          if (this.stopped) { fail(undefined, "unauthorized"); return; }
           if (!authenticated) {
             if (opening || typeof event.data !== "string") {
               fail();
@@ -228,7 +306,10 @@ export class SpeechRelayCoordinator {
               this.socket = server;
               // The durable claim precedes admission/provider creation. A crash or
               // a second socket can never reuse the consumed session capability.
-              void this.open(ledger).then(() => {
+              const task = this.open(ledger);
+              this.openingTask = task;
+              void task.then(() => {
+                this.pendingPublicSockets.delete(server);
                 authenticated = true;
                 opening = false;
               }, fail);
@@ -291,7 +372,15 @@ export class SpeechRelayCoordinator {
 
   private async open(ledger: Ledger) {
     const startedAt = performance.now();
-    await this.save({ ...ledger, phase: "starting" });
+    const claim = crypto.randomUUID();
+    ledger = await this.update(record => {
+      if (!record) throw Error("Speech session missing");
+      return claimSpeechOpening(record, claim);
+    });
+    const generation = ledger.retirement?.generation;
+    const openingOwner = generation === undefined ? undefined : { claim, generation, settled: false };
+    this.openingOwner = openingOwner;
+    try {
     await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
       runWithDbCacheAsync(async () => {
         const key = this.env.CARTESIA_API_KEY?.trim(),
@@ -319,6 +408,7 @@ export class SpeechRelayCoordinator {
             retireSpeech();
           },
         );
+        if (this.stopped) { this.unsubscribeRevocation?.(); this.unsubscribeRevocation = undefined; throw Error("Speech opening retired"); }
         this.current();
         let ready = false;
         const events: unknown[] = [];
@@ -346,6 +436,8 @@ export class SpeechRelayCoordinator {
           "bootstrap-consent-consumed",
           {
             enabled: true,
+            registerRetirement: handle => { this.retirementHandle = handle; },
+            confirmTtsTransportStopped: () => this.tts!.closeAndConfirm(2000),
             assertCurrent: () => this.current(),
             consumeConsent: async () => true,
             usageStore,
@@ -358,6 +450,10 @@ export class SpeechRelayCoordinator {
                 executionCtx: {
                   waitUntil: (task) => this.state.waitUntil(task),
                 },
+                onProgress: ledger.proofVersion === 1 ? (kind, progress: SettlementProgress) => this.update(record => {
+                  if (!record) throw Error("Speech session missing");
+                  return recordSpeechSettlement(record, kind, progress);
+                }).then(() => {}) : undefined,
               });
               return {
                 ...reservation,
@@ -418,7 +514,12 @@ export class SpeechRelayCoordinator {
           },
         );
         this.current();
-        await this.save({ ...ledger, phase: "active" });
+        await this.update(record => {
+          if (!record) throw Error("Speech session missing");
+          const owned = markSpeechOwned(record, claim, generation);
+          if (!owned) throw Error("Speech opening was retired");
+          return owned;
+        });
         ready = true;
         this.send({
           t: "ready",
@@ -434,5 +535,8 @@ export class SpeechRelayCoordinator {
         for (const event of events) this.send(event);
       }),
     );
+    } finally {
+      if (openingOwner) openingOwner.settled = true;
+    }
   }
 }

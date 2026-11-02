@@ -1,4 +1,6 @@
 /** Authenticated bootstrap for a speech-only capability; no hosted agent is created. */
+import { SPEECH_RETIREMENT_HEADER, SPEECH_MINT_INTENT_HEADER, SPEECH_ADMISSION_OUTCOME_HEADER } from "@elizaos/host/voice/speech-relay-wire";
+import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { randomBytes } from "node:crypto";
 import {
   consumeConsentNonce,
@@ -12,22 +14,40 @@ import { speechTokenDigest } from "../../../src/speech-relay-coordinator";
 const app = new Hono<AppEnv>();
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 app.use("*", async (c, next) => {
+  // This attestation is present only while no initialize request has begun.
+  // Bind it to the caller's one-use consent intent to reject stale replies.
+  const intent = c.req.header(SPEECH_MINT_INTENT_HEADER);
+  if (c.req.method === "POST" && /\/session$/.test(c.req.path) && c.req.header(SPEECH_RETIREMENT_HEADER) === "1" && intent && UUID.test(intent)) {
+    c.header("Cache-Control", "no-store");
+    c.header(SPEECH_ADMISSION_OUTCOME_HEADER, `not-created-v1:${intent}`);
+  }
   if (
-    c.env.VOICE_SPEECH_RELAY_ENABLED !== "true" ||
-    !c.env.SPEECH_RELAY_SESSIONS
+    !c.env.SPEECH_RELAY_SESSIONS ||
+    (c.env.VOICE_SPEECH_RELAY_ENABLED !== "true" &&
+      !(c.req.method === "POST" && /\/session\/[^/]+\/revoke$/.test(c.req.path)))
   )
     return c.json({ error: "speech_unavailable" }, 404);
+  const requested = c.req.header(SPEECH_RETIREMENT_HEADER);
+  if (requested !== undefined && requested !== "1") return c.json({ error: "invalid_retirement_version" }, 400);
   return next();
 });
 app.post("/consent", async (c) => {
+  if (c.req.header(SPEECH_RETIREMENT_HEADER) === "1" &&
+      (c.env as unknown as Record<string, unknown>).VOICE_SPEECH_RETIREMENT_PROOF_ENABLED !== "true")
+    return c.json({ error: "speech_retirement_unavailable" }, 503);
   const caller = await requireGenerativeRouteCaller(c, {
     rateLimitEndpoint: "standard",
   });
   const consent = await issueConsentNonce(caller.user.id);
   if (!consent) return c.json({ error: "speech_consent_unavailable" }, 503);
-  return c.json({ consentNonce: consent.nonce, expiresAt: consent.expiresAt });
+  return c.json({ consentNonce: consent.nonce, expiresAt: consent.expiresAt,
+    ...(c.req.header(SPEECH_RETIREMENT_HEADER) === "1" ? { retirementProofVersion: 1 } : {}),
+  });
 });
 app.post("/session", async (c) => {
+  const proofVersion = c.req.header(SPEECH_RETIREMENT_HEADER) === "1" ? 1 as const : undefined;
+  if (proofVersion === 1 && (c.env as unknown as Record<string, unknown>).VOICE_SPEECH_RETIREMENT_PROOF_ENABLED !== "true")
+    return c.json({ error: "speech_retirement_unavailable" }, 503);
   const caller = await requireGenerativeRouteCaller(c, {
     includeVerifiedCredential: true,
     rateLimitEndpoint: "strict",
@@ -61,6 +81,8 @@ app.post("/session", async (c) => {
         ? caller.credential.expiresAt
         : Number.POSITIVE_INFINITY,
     );
+  // From this boundary onward an object may exist even if its response is lost.
+  c.header(SPEECH_ADMISSION_OUTCOME_HEADER, undefined);
   const result = await c.env
     .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
     .fetch("https://speech-relay.internal/initialize", {
@@ -71,6 +93,7 @@ app.post("/session", async (c) => {
         tokenDigest: speechTokenDigest(token),
         expiresAt,
         caller,
+        ...(proofVersion ? { proofVersion } : {}),
       }),
     });
   if (!result.ok) return c.json({ error: "speech_session_unavailable" }, 503);
@@ -81,6 +104,7 @@ app.post("/session", async (c) => {
   c.header("Cache-Control", "no-store");
   return c.json({
     version: 1,
+    ...(proofVersion ? { retirementProofVersion: proofVersion } : {}),
     sessionId,
     token,
     expiresAt: new Date(expiresAt).toISOString(),
@@ -101,17 +125,18 @@ app.post("/session/:sessionId/revoke", async (c) => {
   const sessionId = c.req.param("sessionId");
   if (!UUID.test(sessionId))
     return c.json({ error: "invalid_speech_session" }, 400);
-  const caller = await requireGenerativeRouteCaller(c, {
-    rateLimitEndpoint: "standard",
-  });
+  // Cleanup remains available with a current same-owner credential even if
+  // generation is disabled, unfunded, or the original credential was rotated.
+  const user = await requireUserOrApiKeyWithOrg(c);
   return c.env
     .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
     .fetch("https://speech-relay.internal/revoke", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        userId: caller.user.id,
-        organizationId: caller.user.organization_id,
+        userId: user.id,
+        organizationId: user.organization_id,
+        ...(c.req.header(SPEECH_RETIREMENT_HEADER) === "1" ? { proofVersion: 1 } : {}),
       }),
     });
 });
