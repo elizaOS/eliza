@@ -21,8 +21,9 @@ import {
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
+import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
 import type { SharedMediaGenerationPort } from "@elizaos/cloud-shared/lib/services/shared-runtime/run-shared-agent-turn";
-import type { Hono } from "hono";
+import { Hono } from "hono";
 
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
@@ -109,13 +110,22 @@ let runWithBindings: <T>(
   bindings: Record<string, unknown>,
   fn: () => Promise<T>,
 ) => Promise<T>;
-let routes: { stt: Hono; tts: Hono };
+let routes: { stt: Hono; tts: Hono; speech: Hono };
 let personalMedia: (
   executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined,
 ) => SharedMediaGenerationPort | undefined;
 let strictRpm: number;
 const keys: Record<
-  "plain" | "capped" | "inactive" | "deleted" | "foreign" | "second",
+  | "plain"
+  | "capped"
+  | "inactive"
+  | "deleted"
+  | "foreign"
+  | "second"
+  | "cold_stt"
+  | "cold_tts"
+  | "cold_consent"
+  | "cold_session",
   { id: string; raw: string }
 > = {} as never;
 
@@ -195,6 +205,8 @@ beforeAll(async () => {
   // Authenticates through its user in ORG while the row belongs to another org.
   await seed("foreign", { organizationId: FIXTURE_ORG });
   await seed("second", { organizationId: SECOND_ORG, userId: SECOND_USER });
+  for (const route of ["stt", "tts", "consent", "session"] as const)
+    await seed(`cold_${route}`);
 
   const [
     { runWithCloudBindingsAsync },
@@ -232,6 +244,9 @@ beforeAll(async () => {
   routes = {
     stt: (await import("../v1/voice/stt/route")).default as unknown as Hono,
     tts: (await import("../v1/voice/tts/route")).default as unknown as Hono,
+    speech: new Hono()
+      .route("/", (await import("../v1/voice/speech/route")).default)
+      .onError((error, c) => failureResponse(c, error)),
   };
 });
 
@@ -256,21 +271,23 @@ async function speak(route: "stt" | "tts", rawKey: string) {
   const first = await speakOnce(route, rawKey);
   if (first.status !== 503) return first;
   const body = (await first.clone().json()) as {
-    error?: string;
-    message?: string;
+    code?: string;
   };
-  if (!JSON.stringify(body).includes("Authorization cache is warming"))
-    return first;
+  if (body.code !== "auth_cache_warming") return first;
   expect(first.headers.get("Retry-After")).toBe("1");
   return await speakOnce(route, rawKey);
 }
 
-async function speakOnce(route: "stt" | "tts", rawKey: string) {
+async function speakOnce(
+  route: "stt" | "tts" | "consent" | "session",
+  rawKey: string,
+) {
+  const relay = route === "consent" || route === "session";
   const pending: Promise<unknown>[] = [];
   const response = await runWithBindings({ INFERENCE_ADMISSION_GATES }, () =>
     Promise.resolve(
-      routes[route].request(
-        "http://cloud.test/",
+      routes[relay ? "speech" : route].request(
+        `http://cloud.test/${relay ? route : ""}`,
         route === "stt"
           ? {
               method: "POST",
@@ -288,7 +305,14 @@ async function speakOnce(route: "stt" | "tts", rawKey: string) {
               },
               body: JSON.stringify({ text: "" }),
             },
-        {},
+        {
+          VOICE_SPEECH_RELAY_ENABLED: "true",
+          SPEECH_RELAY_SESSIONS: {
+            getByName() {
+              throw new Error("Cold auth must not dispatch a speech session");
+            },
+          },
+        },
         {
           waitUntil: (promise: Promise<unknown>) => pending.push(promise),
           passThroughOnException: () => undefined,
@@ -348,6 +372,21 @@ async function generatePersonalMediaOnce(
 }
 
 describe("Worker speech rate limit without an admission snapshot", () => {
+  test("cold STT, TTS and relay bootstrap expose a retryable auth code before dispatch", async () => {
+    for (const route of ["stt", "tts", "consent", "session"] as const) {
+      const response = await speakOnce(route, keys[`cold_${route}`].raw);
+      expect(response.status).toBe(503);
+      expect(response.headers.get("Retry-After")).toBe("1");
+      expect(await response.json()).toMatchObject({
+        code: "auth_cache_warming",
+        retryAfterSeconds: 1,
+        details: { retryable: true, retryAfterSeconds: 1 },
+      });
+    }
+    expect(gateCalls).toHaveLength(0);
+    expect(redisCalls).toBe(0);
+  });
+
   test("STT and TTS take one Durable Object decision and no Redis round trip", async () => {
     const stt = await speak("stt", keys.plain.raw);
     const tts = await speak("tts", keys.plain.raw);
