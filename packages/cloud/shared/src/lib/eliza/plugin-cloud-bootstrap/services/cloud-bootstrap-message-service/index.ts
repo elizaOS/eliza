@@ -8,6 +8,7 @@ import {
   createUniqueUuid,
   EventType,
   executePlannedToolCall,
+  extractUserText,
   getStreamingContext,
   type HandlerCallback,
   type IAgentRuntime,
@@ -312,10 +313,15 @@ export class CloudBootstrapMessageService implements IMessageService {
         mode: "none",
       };
     }
-    // Check if room is muted
+    // Check if room is muted. Match the mention against the user's own
+    // words, not the document-augmentation envelope: a retrieved help doc
+    // that mentions the character must not break the mute for a request
+    // that never mentions it (same class as the ACTIONS provider fix).
     const isMuted =
       agentUserState === "MUTED" &&
-      !message.content.text?.toLowerCase().includes(runtime.character.name?.toLowerCase() ?? "");
+      !extractUserText(message.content.text ?? "")
+        .toLowerCase()
+        .includes(runtime.character.name?.toLowerCase() ?? "");
     if (isMuted) {
       logger.debug(`[CloudBootstrap] Ignoring muted room ${message.roomId}`);
       return {
