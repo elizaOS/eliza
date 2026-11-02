@@ -632,6 +632,18 @@ describe("NAMED_NOTES in a script that does not space its words", () => {
     ).toEqual(["회의록"]);
   });
 
+  it("does not match a one-character title inside a longer word", async () => {
+    const service = await serviceWithNotes(["会\n单字标题便签。"]);
+    const runtime = await runtimeWith(service);
+    const named = await namedNotesProvider.get(
+      runtime,
+      recallMessage(runtime, "帮我更新一下会议记录"),
+      EMPTY_STATE,
+    );
+    expect(named.text).toBe("");
+    expect(named.data).toEqual({});
+  });
+
   it("still refuses a title that is only a prefix of a spaced word", async () => {
     const service = await serviceWithNotes(["plan\nTrip budget details."]);
     const runtime = await runtimeWith(service);

@@ -68,14 +68,24 @@ export function normalizedLookup(value: string): string {
 // assistant's app-block action.
 const SPACED_WORD_CHAR_SOURCE =
   "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+// A single Han/kana/Hangul character carries a whole syllable, so it is also a
+// substring of longer names ("会" inside "会议记录"). Without a word boundary to
+// lean on, one such character would name every note that contains it, so the
+// spaced boundary only applies from two characters up.
+const STRICT_WORD_CHAR_SOURCE = "[\\p{L}\\p{M}\\p{N}]";
+const CJK_CHAR = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 
 function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
   const normalizedText = normalizedLookup(text);
   const normalizedTitle = normalizedLookup(title);
   if (!normalizedText || !normalizedTitle) return false;
   const escapedTitle = normalizedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const wordChar =
+    (normalizedTitle.match(CJK_CHAR)?.length ?? 0) >= 2
+      ? SPACED_WORD_CHAR_SOURCE
+      : STRICT_WORD_CHAR_SOURCE;
   return new RegExp(
-    `(?<!${SPACED_WORD_CHAR_SOURCE})${escapedTitle}(?!${SPACED_WORD_CHAR_SOURCE})`,
+    `(?<!${wordChar})${escapedTitle}(?!${wordChar})`,
     "u",
   ).test(normalizedText);
 }
