@@ -25,6 +25,7 @@ export {
   getDefaultVideoBillingDimensions,
   listPersistedPricingEntries,
   listRecentPricingRefreshRuns,
+  warmTextPricingCache,
   warmVoicePricingCache,
 } from "./ai-pricing/lookup";
 export { buildBitRouterPreparedEntries } from "./ai-pricing/providers/bitrouter";

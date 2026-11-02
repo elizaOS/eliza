@@ -763,13 +763,13 @@ export async function calculateSTTCostFromCatalog(params: {
 }
 
 /**
- * Longest the voice keep-warm waits for one key (one `ai_pricing` read and one
+ * Longest a pricing keep-warm waits for one key (one `ai_pricing` read and one
  * Worker-cache write). A slower key, or one that joins a read that never
  * finishes, is counted as failed and the next key still warms, so a stuck read
  * costs the sweep this much per key. The read itself is not cancelled and
  * still writes the entry if it finishes.
  */
-const VOICE_PRICING_KEEPWARM_KEY_DEADLINE_MS = 1_000;
+const PRICING_KEEPWARM_KEY_DEADLINE_MS = 1_000;
 
 /**
  * Keep-warm for the voice routes. Each ElevenLabs catalog TTS and STT row is
@@ -789,7 +789,7 @@ export async function warmVoicePricingCache(): Promise<{ warmed: number; failed:
         productFamily === "tts"
           ? calculateTTSCostFromCatalog({ model: modelId, characterCount: 1, cache: warm })
           : calculateSTTCostFromCatalog({ model: modelId, durationSeconds: 1, cache: warm }),
-        VOICE_PRICING_KEEPWARM_KEY_DEADLINE_MS,
+        PRICING_KEEPWARM_KEY_DEADLINE_MS,
         "voice pricing keep-warm",
       );
       warmed++;
@@ -805,6 +805,40 @@ export async function warmVoicePricingCache(): Promise<{ warmed: number; failed:
     }
   }
   return { warmed, failed };
+}
+
+/**
+ * Keep-warm for one inference route text price. The caller passes the billing
+ * identity the route resolves for the model, and one token each way writes the
+ * input and output key that the route's cache-only admission reads. Same
+ * deadline and failure handling as a voice key.
+ */
+export async function warmTextPricingCache(identity: {
+  model: string;
+  provider: string;
+  billingSource: PricingBillingSource;
+}): Promise<boolean> {
+  try {
+    await withTimeout(
+      calculateTextCostFromCatalog({
+        ...identity,
+        inputTokens: 1,
+        outputTokens: 1,
+        cache: { warmWorkerCache: true },
+      }),
+      PRICING_KEEPWARM_KEY_DEADLINE_MS,
+      "text pricing keep-warm",
+    );
+    return true;
+  } catch (error) {
+    // error-policy:J7 keep-warm only removes latency; a cold key keeps the
+    // route's retryable warming 503.
+    logger.warn("[AI Pricing] text pricing keep-warm failed", {
+      ...identity,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return false;
+  }
 }
 
 export async function calculateVoiceCloneCostFromCatalog(params: {

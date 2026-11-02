@@ -5,16 +5,25 @@
  * retryable 503 warming wall (measured 10-27s of first-message latency). Runs
  * the SAME best-effort prewarm legs agent-create uses — admission snapshot,
  * pricing, character projection — plus the isolate kernel prewarm and the
- * voice routes' catalog prices in the Worker cache; by the prewarm contract
- * this can only remove latency, never change an authorization or billing
- * outcome. Protected by CRON_SECRET.
+ * voice routes' catalog prices and default text model price in the Worker
+ * cache; by the prewarm contract this can only remove latency, never change an
+ * authorization or billing outcome. Protected by CRON_SECRET.
  */
 
 import { requireCronSecret } from "@elizaos/cloud-shared/auth";
 import { agentSandboxesRepository } from "@elizaos/cloud-shared/db/repositories/agent-sandboxes";
 import { sharedRuntimeHistoryRepository } from "@elizaos/cloud-shared/db/repositories/shared-runtime-history";
 import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-errors";
-import { warmVoicePricingCache } from "@elizaos/cloud-shared/lib/services/ai-pricing";
+import { CEREBRAS_DEFAULT_TEXT_MODEL } from "@elizaos/cloud-shared/lib/models/catalog";
+import {
+  getProviderFromModel,
+  normalizeModelName,
+} from "@elizaos/cloud-shared/lib/pricing";
+import { resolveAiProviderSource } from "@elizaos/cloud-shared/lib/providers/language-model";
+import {
+  warmTextPricingCache,
+  warmVoicePricingCache,
+} from "@elizaos/cloud-shared/lib/services/ai-pricing";
 import { isPersonalSharedAgentId } from "@elizaos/cloud-shared/lib/services/shared-runtime/personal-shared-agent";
 import {
   prewarmPersonalSharedRoom,
@@ -116,6 +125,16 @@ async function runKeepwarm(c: AppContext) {
     // so a slow or stuck voice key delays only this step. Failed keys are
     // logged; they never end the sweep.
     const voicePricing = await warmVoicePricingCache();
+    // The inference routes (chat/completions, messages, chat) also price from
+    // the Worker cache only. A resident's first turn after an idle period was
+    // answered with the warming 503 for the default text model, so its key is
+    // warmed with the billing identity those routes resolve for it.
+    const textPricingWarmed = await warmTextPricingCache({
+      model: normalizeModelName(CEREBRAS_DEFAULT_TEXT_MODEL),
+      provider: getProviderFromModel(CEREBRAS_DEFAULT_TEXT_MODEL),
+      billingSource:
+        resolveAiProviderSource(CEREBRAS_DEFAULT_TEXT_MODEL) ?? "gateway",
+    });
 
     logger.info("[SharedKeepwarm Cron] swept recently active shared agents", {
       candidates: agentIds.length,
@@ -126,6 +145,7 @@ async function runKeepwarm(c: AppContext) {
       missing,
       voicePricingWarmed: voicePricing.warmed,
       voicePricingFailed: voicePricing.failed,
+      textPricingWarmed,
     });
 
     return c.json({
@@ -139,6 +159,7 @@ async function runKeepwarm(c: AppContext) {
         missing,
         voicePricingWarmed: voicePricing.warmed,
         voicePricingFailed: voicePricing.failed,
+        textPricingWarmed,
       },
     });
   } catch (error) {

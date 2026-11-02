@@ -352,7 +352,10 @@ test("a sweep on an isolate whose entries came from the Worker cache does not re
     voicePricingWarmed: VOICE_KEYS,
     voicePricingFailed: 0,
   });
-  expect(events).toHaveLength(VOICE_KEYS - 2);
+  // The sweep also reads the text catalog for the inference key.
+  expect(events.filter((event) => event !== "catalog:language")).toHaveLength(
+    VOICE_KEYS - 2,
+  );
   const written = writesWith("iac:flat-pricing:").map(([key]) => String(key));
   expect(written).toHaveLength(VOICE_KEYS - 2);
   for (const key of served) expect(written).not.toContain(key);
