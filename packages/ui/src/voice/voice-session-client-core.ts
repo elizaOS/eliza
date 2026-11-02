@@ -270,6 +270,7 @@ const NON_RECOVERABLE_SERVER_ERROR_CODES: ReadonlySet<string> = new Set([
   "quota_exhausted",
   "insufficient_credits",
   "revoked",
+  "voice_retirement_unconfirmed",
 ]);
 /** Parse the mint `expiresAt` (epoch ms number, epoch seconds, or ISO string). */
 function parseExpiresAtMs(value: number | string | undefined): number | null {
@@ -708,14 +709,12 @@ export function createVoiceSessionClient(
             // Re-minting cannot help (quota) or would defeat the server's
             // intent (revoke). Surface the terminal cause and stop cleanly.
             mark(`not_reached(server_terminal:${event.code})`, state.traceId);
-            emitError(
-              new Error(
-                event.code === "insufficient_credits"
-                  ? "Voice needs more Eliza Cloud credits. Add credits, then try again."
-                  : `voice session ended: ${event.code}`,
-              ),
-            );
-            void stop();
+            // Notify immediately to cancel the UI's fallback watchdog. The
+            // typed refusal carries teardown completion so idle is not handed
+            // back to the caller while the old capture is still retiring.
+            const captureReleased = stop();
+            emitError(new VoiceSessionRefusedError(event.code, captureReleased));
+            void captureReleased.catch(() => {});
             break;
           }
           // Fatal server error: tear down and (unless intentional) re-mint.
@@ -1398,4 +1397,15 @@ export class VoiceSessionMintError extends Error {
       this.status === 0 || this.status >= 500 || this.code === "agent_not_found"
     );
   }
+}
+
+/** A server admission refusal cannot be recovered by starting another capture. */
+export class VoiceSessionRefusedError extends Error {
+  constructor(readonly code: string, readonly captureReleased: Promise<void> = Promise.resolve()) {
+    super(code === "insufficient_credits"
+      ? "Voice needs more Eliza Cloud credits. Add credits, then try again."
+      : `voice session ended: ${code}`);
+    this.name = "VoiceSessionRefusedError";
+  }
+  get quiet(): boolean { return this.code === "voice_retirement_unconfirmed"; }
 }
