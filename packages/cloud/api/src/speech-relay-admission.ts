@@ -20,10 +20,15 @@ const round = (value: number) =>
 export async function reserveSpeechRelayAdmission(input: {
   caller: GenerativeRouteCaller;
   sessionId: string;
+  /** Zero-based budget window; each window is a separate admission. */
+  window?: number;
   usdPerCredit: number;
   executionCtx: { waitUntil(task: Promise<unknown>): void };
 }): Promise<SpeechRelayCreditReservation> {
   const { caller, sessionId, usdPerCredit, executionCtx } = input;
+  const budgetWindow = input.window ?? 0;
+  if (!Number.isSafeInteger(budgetWindow) || budgetWindow < 0)
+    throw Error("Invalid speech budget window");
   if (!Number.isFinite(usdPerCredit) || usdPerCredit <= 0)
     throw Error("Cartesia account pricing is unavailable");
   const seconds = SPEECH_RELAY_BUDGET.durationMs / 1000;
@@ -48,7 +53,7 @@ export async function reserveSpeechRelayAdmission(input: {
               organizationId: caller.user.organization_id,
               userId: caller.user.id,
               apiKeyId: caller.apiKeyId,
-              requestId: `speech:${sessionId}:${kind}`,
+              requestId: `speech:${sessionId}:${kind}${budgetWindow ? `:${budgetWindow}` : ""}`,
               provider: "cartesia",
               billingSource: "cartesia",
               model: kind === "stt" ? "ink-2" : CARTESIA_SONIC_MODEL_ID,

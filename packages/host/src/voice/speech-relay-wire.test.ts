@@ -33,6 +33,11 @@ test("strict speech wire shares exact routes and binary context-bound PCM", () =
   expect(
     parseSpeechRelayJson('{"t":"hello","token":"x","timings":true}'),
   ).toEqual({ t: "hello", token: "x", timings: true });
+  expect(
+    parseSpeechRelayJson(
+      '{"t":"hello","token":"x","errorReasons":true,"extend":true}',
+    ),
+  ).toEqual({ t: "hello", token: "x", errorReasons: true, extend: true });
   const pcm = new Uint8Array([1, 2, 3, 4]);
   expect(decodeSpeechRelayAudio(encodeSpeechRelayAudio("turn", pcm))).toEqual({
     id: "turn",
@@ -62,6 +67,7 @@ test("wire rejects unknown controls, leaked account fields, oversized strings an
   for (const frame of [
     '{"t":"hello","token":"x","apiKey":"vendor"}',
     '{"t":"hello","token":"x","errorReasons":false}',
+    '{"t":"hello","token":"x","extend":false}',
     '{"t":"hello","token":"x","errorReasons":"true"}',
     '{"t":"hello","token":"x","errorReasons":true,"extra":1}',
     '{"t":"hello","token":"x","timings":false}',
