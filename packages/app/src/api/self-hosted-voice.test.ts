@@ -677,6 +677,74 @@ it.each([false, true])(
     expect(relayOptions).toHaveLength(1);
   },
 );
+it("a rotation overlap admits one Cloud relay per local session and bye retires only the replaced one", async () => {
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+  vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  const relays: Array<{
+    retired: number;
+    stt?: (
+      event: import("@elizaos/host/voice/cartesia-ink").CartesiaInkRealtimeEvent,
+    ) => void;
+  }> = [];
+  host.close();
+  host = createSelfHostedVoice(state, {
+    ...hostOptions,
+    createCloudSpeechPorts: async () => {
+      const relay: (typeof relays)[number] = { retired: 0 };
+      relays.push(relay);
+      return {
+        sessionId: randomUUID(),
+        expiresAt: Date.now() + 60000,
+        close: async () => {
+          relay.retired++;
+        },
+        speechPorts: {
+          openStt: (callback) => {
+            relay.stt = callback;
+            return { sendAudioChunk() {}, close() {}, cancel() {} };
+          },
+          tts: {
+            createStream() {
+              throw Error("No reply audio is requested in this case");
+            },
+            close() {},
+          },
+        },
+      };
+    },
+    buildSession: (config) => {
+      sessions.push(config);
+      return new VoiceSession(config);
+    },
+  });
+  const live = await connect(await mint());
+  // The browser prepares the next session while the live one stays open.
+  const next = await connect(await mint());
+  expect(relays.map((relay) => relay.retired)).toEqual([0, 0]);
+  const frames: Record<string, unknown>[] = [];
+  next.ws.on("message", (data, binary) => {
+    if (!binary) frames.push(JSON.parse(data.toString()));
+  });
+  live.ws.send(JSON.stringify({ t: "bye" }));
+  await vi.waitFor(() => expect(relays[0].retired).toBe(1));
+  relays[1].stt?.({ type: "connected", raw: {} });
+  relays[1].stt?.({ type: "start-of-turn", transcript: "", raw: {} });
+  relays[1].stt?.({
+    type: "transcript-update",
+    transcript: "open notes",
+    raw: {},
+  });
+  await vi.waitFor(() =>
+    expect(frames).toContainEqual(
+      expect.objectContaining({ t: "stt_partial", text: "open notes" }),
+    ),
+  );
+  expect(relays.map((relay) => relay.retired)).toEqual([1, 0]);
+  next.ws.send(JSON.stringify({ t: "bye" }));
+  await vi.waitFor(() => expect(relays[1].retired).toBe(1));
+  expect(relays).toHaveLength(2);
+});
 it("unavailable Cloud admission closes the local voice attempt without invoking a direct provider", async () => {
   const log = vi.spyOn(logger, "info");
   vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");

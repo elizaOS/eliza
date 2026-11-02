@@ -18,8 +18,11 @@
  * refills the budget on its next loss — long sessions tolerate well-separated
  * drops forever, while a connect-die loop stays bounded. The server hard-severs
  * at the bootstrap token's exp (<=120s), so the client proactively ROTATES the
- * session (clean bye + re-mint) shortly before expiry, but only at an idle
- * `listening` boundary — never mid-turn — making the periodic sever invisible.
+ * session before expiry, make-before-break: it mints and connects the next
+ * session while the current one stays live, moves the microphone to it at an
+ * idle `listening` boundary, and only then sends `bye` on the old socket. If
+ * that standby cannot be prepared, the clean bye + re-mint fallback still runs
+ * at an idle boundary, never mid-turn.
  *
  * The client wires:
  *   - voice-session-mic-capture (getUserMedia → AudioWorklet/ScriptProcessor →
@@ -227,6 +230,15 @@ export interface VoiceSessionClientOptions {
    * 10_000.
    */
   rotationLeadMs?: number;
+  /**
+   * Lead time before expiry at which the client prepares the next session
+   * (mint, socket, hello, server `ready`) while the current one stays live, so
+   * the switch at an idle boundary has no deaf gap. A Cloud relay bootstrap
+   * takes several seconds, so this must cover that bootstrap plus
+   * `rotationLeadMs`. A value <= `rotationLeadMs` keeps break-before-make
+   * rotation. Default 20_000.
+   */
+  rotationPrepareLeadMs?: number;
   /** Re-check cadence while a due rotation waits for an idle boundary. Default 1000. */
   rotationRecheckMs?: number;
   /**
@@ -271,6 +283,31 @@ const NON_RECOVERABLE_SERVER_ERROR_CODES: ReadonlySet<string> = new Set([
   "insufficient_credits",
   "revoked",
 ]);
+/**
+ * A prepared session takes over early only after the microphone has been below
+ * about -40 dBFS for this long, so a switch cannot cut the start of an
+ * utterance that has no transcript yet.
+ */
+const ROTATION_QUIET_MS = 700;
+const ROTATION_VOICE_RMS = 328;
+function pcm16Rms(bytes: Uint8Array): number {
+  const samples = bytes.byteLength >> 1;
+  if (!samples) return 0;
+  const view = new DataView(bytes.buffer, bytes.byteOffset, samples * 2);
+  let sum = 0;
+  for (let i = 0; i < samples; i += 1) {
+    const sample = view.getInt16(i * 2, true);
+    sum += sample * sample;
+  }
+  return Math.sqrt(sum / samples);
+}
+/** A next session prepared while the current one is still live. */
+interface RotationStandby {
+  socket: VoiceWebSocketLike;
+  minted: VoiceSessionMintResponse;
+  opened: boolean;
+  ready: Extract<ServerControlFrame, { t: "ready" }> | null;
+}
 /** Parse the mint `expiresAt` (epoch ms number, epoch seconds, or ISO string). */
 function parseExpiresAtMs(value: number | string | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) {
@@ -301,6 +338,10 @@ export function createVoiceSessionClient(
     options.reconnectBudgetResetMs ?? 30000,
   );
   const rotationLeadMs = Math.max(0, options.rotationLeadMs ?? 10000);
+  const rotationPrepareLeadMs = Math.max(
+    0,
+    options.rotationPrepareLeadMs ?? 20000,
+  );
   const rotationRecheckMs = Math.max(1, options.rotationRecheckMs ?? 1000);
   const epochNow = options.epochNow ?? Date.now;
   const preLiveMaxAttempts = Math.max(1, options.preLiveMaxAttempts ?? 3);
@@ -327,6 +368,14 @@ export function createVoiceSessionClient(
   // Epoch expiry of the CURRENT minted token; rotation never fires past it
   // (the server has already severed — the reactive recovery path owns it).
   let rotationDeadlineMs: number | null = null;
+  // At most one prepared next session exists; it never receives microphone
+  // audio until it replaces `ws`.
+  let standby: RotationStandby | null = null;
+  let standbyMint: Promise<void> | null = null;
+  // One preparation per accepted session. A failed one falls back to the
+  // clean break-before-make rotation instead of minting repeatedly.
+  let standbyAttempted = false;
+  let lastUplinkVoiceAtMs: number | null = null;
   let ownership: VoiceSessionLease | null = null;
   let disposed = false;
   let lifecycleGeneration = 0;
@@ -561,10 +610,12 @@ export function createVoiceSessionClient(
       // the capture path is never observed mutated after send. A muted session
       // keeps its normal packet cadence but substitutes PCM silence, allowing
       // server VAD to close a partial utterance without leaking microphone data.
-      const uplink =
-        microphoneMuted || state.phase === "speaking"
-          ? new Uint8Array(bytes.byteLength)
-          : bytes.slice();
+      const silenced = microphoneMuted || state.phase === "speaking";
+      const uplink = silenced
+        ? new Uint8Array(bytes.byteLength)
+        : bytes.slice();
+      if (!silenced && pcm16Rms(uplink) >= ROTATION_VOICE_RMS)
+        lastUplinkVoiceAtMs = now();
       ws.send(uplink.buffer);
     } catch (ignoredError) {
       // error-policy:J5 a dropped uplink frame on a dying socket is observed by the close handler's reconnect path.
@@ -610,6 +661,13 @@ export function createVoiceSessionClient(
       mark("not_reached(unparseable_control)", state.traceId);
       return;
     }
+    handleServerEvent(event, generation, socket);
+  }
+  function handleServerEvent(
+    event: ServerControlFrame,
+    generation: number,
+    socket: VoiceWebSocketLike,
+  ): void {
     // Local interruption must reject queued speech before server acknowledgement.
     // Settlement/history frames remain available; a new STT turn has its own ID.
     if (
@@ -810,6 +868,7 @@ export function createVoiceSessionClient(
   async function openConnection(
     minted: VoiceSessionMintResponse,
     generation: number,
+    asStandby = false,
   ): Promise<void> {
     assertLifecycleCurrent(generation);
     const uplink = negotiateCodec(preferredUplink, minted.uplink?.codecs);
@@ -817,24 +876,28 @@ export function createVoiceSessionClient(
     if (!uplink || !downlink) {
       throw new VoiceSessionMintError(-1, "no compatible codec offered");
     }
-    const acceptedExpiryMs = parseExpiresAtMs(minted.expiresAt);
-    if (
-      captureRetentionTimer !== null &&
-      acceptedExpiryMs !== null &&
-      acceptedExpiryMs > epochNow()
-    ) {
-      // A newly accepted same-owner ticket now bounds this muted capture. The
-      // retired ticket's timer must not release it while the new relay opens.
-      retainCaptureUntil(acceptedExpiryMs);
+    if (!asStandby) {
+      const acceptedExpiryMs = parseExpiresAtMs(minted.expiresAt);
+      if (
+        captureRetentionTimer !== null &&
+        acceptedExpiryMs !== null &&
+        acceptedExpiryMs > epochNow()
+      ) {
+        // A newly accepted same-owner ticket now bounds this muted capture. The
+        // retired ticket's timer must not release it while the new relay opens.
+        retainCaptureUntil(acceptedExpiryMs);
+      }
+      connPhase = "connecting";
+      uiContextSupported = false;
+      lastUiContext = undefined;
     }
-    connPhase = "connecting";
-    uiContextSupported = false;
-    lastUiContext = undefined;
     const socket = wsFactory(minted.wsUrl);
     socket.binaryType = "arraybuffer";
-    ws = socket;
+    if (asStandby) standby = { socket, minted, opened: false, ready: null };
+    else ws = socket;
+    const isStandby = () => standby?.socket === socket;
     socket.addEventListener("open", () => {
-      if (!isLifecycleCurrent(generation) || ws !== socket) {
+      if (!isLifecycleCurrent(generation) || (ws !== socket && !isStandby())) {
         try {
           socket.close(1000, "superseded");
         } catch (ignoredError) {
@@ -843,7 +906,9 @@ export function createVoiceSessionClient(
         }
         return;
       }
-      connPhase = "open";
+      const next = standby;
+      if (next?.socket === socket) next.opened = true;
+      else connPhase = "open";
       // FIRST frame MUST be the hello with the token — never a header.
       try {
         socket.send(
@@ -859,16 +924,25 @@ export function createVoiceSessionClient(
       } catch (ignoredError) {
         // error-policy:J1 a failed hello send is translated into the structured transport-recovery path, not rethrown.
         void ignoredError;
-        requestRecovery("hello_send", generation, socket);
+        if (isStandby()) discardStandby("hello_send");
+        else requestRecovery("hello_send", generation, socket);
         return;
       }
       mark("hello_sent", null);
     });
     socket.addEventListener("message", (event) => {
-      handleServerFrame(event.data, generation, socket);
+      if (isStandby()) handleStandbyFrame(event.data, generation, socket);
+      else handleServerFrame(event.data, generation, socket);
     });
     socket.addEventListener("close", () => {
-      if (!isLifecycleCurrent(generation) || ws !== socket) return;
+      if (!isLifecycleCurrent(generation)) return;
+      if (isStandby()) {
+        // The live session is untouched; the fallback rotation still runs.
+        standby = null;
+        mark("not_reached(token_rotation_standby:closed)", state.traceId);
+        return;
+      }
+      if (ws !== socket) return;
       if (connPhase === "closing" || intentionalClose) {
         ws = null;
         connPhase = "closed";
@@ -885,12 +959,13 @@ export function createVoiceSessionClient(
       // here beyond a trace mark.
       mark("ws_error", state.traceId);
     });
-    scheduleRotation(minted, generation);
+    if (!asStandby) scheduleRotation(minted, generation);
   }
   /**
    * Arm the proactive pre-expiry rotation for the freshly-opened connection.
-   * The server hard-severs at the bootstrap token's exp; rotating first — at an
-   * idle boundary — keeps that sever from ever cutting audible speech.
+   * The server hard-severs at the bootstrap token's exp. The next session is
+   * prepared first, then takes over at an idle boundary, so that sever never
+   * cuts audible speech and rotation never leaves the user without a session.
    */
   function scheduleRotation(
     minted: VoiceSessionMintResponse,
@@ -898,11 +973,17 @@ export function createVoiceSessionClient(
   ): void {
     clearRotationTimer();
     rotationDeadlineMs = null;
+    standbyAttempted = false;
     if (rotationLeadMs <= 0) return;
     const expiresAtMs = parseExpiresAtMs(minted.expiresAt);
     if (expiresAtMs === null) return;
     rotationDeadlineMs = expiresAtMs;
-    const delayMs = Math.max(0, expiresAtMs - epochNow() - rotationLeadMs);
+    const delayMs = Math.max(
+      0,
+      expiresAtMs -
+        epochNow() -
+        Math.max(rotationLeadMs, rotationPrepareLeadMs),
+    );
     rotationTimer = setTimeout(() => {
       rotationTimer = null;
       attemptRotation(generation);
@@ -918,21 +999,150 @@ export function createVoiceSessionClient(
     }
     const socket = ws;
     if (!socket || connPhase !== "open") return;
-    if (state.phase !== "listening") {
+    if (!standbyAttempted && rotationPrepareLeadMs > rotationLeadMs) {
+      standbyAttempted = true;
+      prepareStandby(generation);
+    }
+    const remainingMs = (rotationDeadlineMs ?? 0) - epochNow();
+    if (state.phase === "listening") {
+      const next = standby;
+      if (next?.ready) {
+        // Until half the fallback lead remains, a ready standby also waits
+        // for a quiet microphone; after that any idle boundary switches.
+        if (
+          remainingMs <= rotationLeadMs / 2 ||
+          microphoneMuted ||
+          lastUplinkVoiceAtMs === null ||
+          now() - lastUplinkVoiceAtMs >= ROTATION_QUIET_MS
+        ) {
+          promoteStandby(next, next.ready, generation, socket);
+          return;
+        }
+      } else if (remainingMs <= rotationLeadMs && !next && !standbyMint) {
+        mark("token_rotation", state.traceId);
+        requestRecovery("token_rotation", generation, socket, {
+          budgeted: false,
+          cleanBye: true,
+        });
+        return;
+      }
+    } else {
       // Mid-turn: never cut audible speech or an in-flight transcription.
       // Re-check until the turn completes or the deadline passes.
       mark("token_rotation_deferred", state.traceId);
-      rotationTimer = setTimeout(() => {
-        rotationTimer = null;
-        attemptRotation(generation);
-      }, rotationRecheckMs);
-      return;
     }
-    mark("token_rotation", state.traceId);
-    requestRecovery("token_rotation", generation, socket, {
-      budgeted: false,
-      cleanBye: true,
+    rotationTimer = setTimeout(() => {
+      rotationTimer = null;
+      attemptRotation(generation);
+    }, rotationRecheckMs);
+  }
+  /** Mint and connect the next session while the current one stays live. */
+  function prepareStandby(generation: number): void {
+    mark("token_rotation_prepare", state.traceId);
+    const pending = (async () => {
+      try {
+        const minted = await mint(generation);
+        if (intentionalClose) return;
+        await openConnection(minted, generation, true);
+      } catch (error) {
+        if (
+          !isLifecycleCurrent(generation) ||
+          error instanceof VoiceSessionLifecycleCancelledError
+        )
+          return;
+        // The live session is untouched; the fallback rotation still runs.
+        mark("not_reached(token_rotation_prepare_failed)", state.traceId);
+      }
+    })();
+    standbyMint = pending;
+    void pending.finally(() => {
+      if (standbyMint === pending) standbyMint = null;
     });
+  }
+  function handleStandbyFrame(
+    data: unknown,
+    generation: number,
+    socket: VoiceWebSocketLike,
+  ): void {
+    const next = standby;
+    if (!isLifecycleCurrent(generation) || next?.socket !== socket) return;
+    // No audio was sent to this session, so only its admission matters here.
+    const event = typeof data === "string" ? parseServerControl(data) : null;
+    if (event?.t === "ready" && !next.ready) {
+      next.ready = event;
+      mark("token_rotation_standby_ready", event.traceId);
+      // Switch now if the live session is already waiting at a boundary.
+      if (rotationTimer !== null) {
+        clearRotationTimer();
+        attemptRotation(generation);
+      }
+    } else if (event?.t === "error" && !event.retryable) {
+      discardStandby(`server_error:${event.code}`);
+    }
+  }
+  /**
+   * One synchronous handover at an idle boundary: the next microphone packet
+   * goes to the already-ready session, and only then does the old one get
+   * `bye`. The user-visible state stays `listening` throughout.
+   */
+  function promoteStandby(
+    next: RotationStandby,
+    ready: Extract<ServerControlFrame, { t: "ready" }>,
+    generation: number,
+    old: VoiceWebSocketLike,
+  ): void {
+    standby = null;
+    clearRotationTimer();
+    ws = next.socket;
+    micSocket = next.socket;
+    connPhase = "open";
+    uiContextSupported = ready.uiContext === true;
+    playbackCompletionSupported = ready.playbackCompletion === true;
+    lastUiContext = undefined;
+    lastLiveAtMs = now();
+    mark("token_rotation", state.traceId);
+    setState({
+      ...state,
+      sessionId: ready.sessionId,
+      traceId: ready.traceId,
+      lastError: null,
+    });
+    scheduleRotation(next.minted, generation);
+    try {
+      old.send(encodeClientControl({ t: "bye" }));
+    } catch (ignoredError) {
+      // error-policy:J6 the bye frame is a courtesy on a socket being rotated away.
+      void ignoredError;
+    }
+    try {
+      old.close(1000, "token rotation");
+    } catch (ignoredError) {
+      // error-policy:J6 best-effort close of the replaced socket.
+      void ignoredError;
+    }
+    mark("ready", ready.traceId);
+    options.onServerEvent?.(ready);
+  }
+  function discardStandby(reason: string | null): void {
+    const next = standby;
+    if (!next) return;
+    standby = null;
+    if (reason)
+      mark(`not_reached(token_rotation_standby:${reason})`, state.traceId);
+    if (next.opened) {
+      try {
+        next.socket.send(encodeClientControl({ t: "bye" }));
+      } catch (ignoredError) {
+        // error-policy:J6 the bye frame is a courtesy on an unused session.
+        void ignoredError;
+      }
+    }
+    try {
+      next.socket.close(1000, "client bye");
+    } catch (ignoredError) {
+      // error-policy:J6 best-effort close of an unused session.
+      void ignoredError;
+    }
   }
   function requestRecovery(
     reason: string,
@@ -1041,6 +1251,24 @@ export function createVoiceSessionClient(
           setState({ ...state, phase: "connecting", lastError: null });
         }
         if (attempt > 1) await waitForReconnectBackoff(attempt, generation);
+        if (attempt === 1) {
+          // A session freshly minted for rotation replaces the lost one; its
+          // stored or still pending `ready` takes the normal ready path.
+          if (standbyMint) await standbyMint;
+          assertLifecycleCurrent(generation);
+          const next = standby;
+          if (next) {
+            standby = null;
+            ws = next.socket;
+            connPhase = next.opened ? "open" : "connecting";
+            uiContextSupported = false;
+            lastUiContext = undefined;
+            scheduleRotation(next.minted, generation);
+            if (next.ready)
+              handleServerEvent(next.ready, generation, next.socket);
+            return;
+          }
+        }
         // Reconnect ALWAYS re-mints; the old token is revoked/expired and
         // cannot reconnect (contract §7.1).
         const minted = await mint(generation);
@@ -1149,6 +1377,7 @@ export function createVoiceSessionClient(
         void ignoredError;
       }
     }
+    discardStandby(null);
     const micTeardown = teardownMic();
     // error-policy:J6 playback sink release is best effort once detached; stop() must always complete.
     await Promise.all([micTeardown, stoppedPlayback?.stop().catch(() => {})]);

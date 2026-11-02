@@ -2,6 +2,7 @@ import { afterEach, expect, test, vi } from "vitest";
 import {
   createVoiceSessionClient,
   type VoiceSessionClient,
+  type VoiceSessionClientOptions,
   type VoiceWebSocketLike,
 } from "./voice-session-client";
 import type { MicAudioContextLike } from "./voice-session-mic-capture";
@@ -57,9 +58,13 @@ test("the existing app entry retains its lazy dashboard transport", async () => 
   expect(client.state.phase).toBe("idle");
 });
 
+// The clean bye + re-mint rotation remains the fallback whenever no prepared
+// session can take over; these cases pin that path.
+const BREAK_BEFORE_MAKE = { rotationPrepareLeadMs: 0 };
 function harness(
   playbackCompletion = false,
   getUiContext?: () => { uiViewPath?: string },
+  clientOptions: Partial<VoiceSessionClientOptions> = {},
 ) {
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
@@ -71,6 +76,8 @@ function harness(
     activeCaptures = 0,
     maxCaptures = 0,
     holdReady = false,
+    openSockets = 0,
+    maxOpenSockets = 0,
     holdMint = false,
     stopOnMint = false,
     invalidMint = false,
@@ -87,7 +94,9 @@ function harness(
     bodies: Record<string, unknown>[] = [],
     events: unknown[] = [],
     errors: Error[] = [],
-    marks: string[] = [];
+    marks: string[] = [],
+    phases: string[] = [],
+    timeline: string[] = [];
   class Socket implements VoiceWebSocketLike {
     readyState = 0;
     binaryType = "arraybuffer";
@@ -96,7 +105,9 @@ function harness(
     constructor() {
       sockets.push(this);
       queueMicrotask(() => {
+        if (this.readyState !== 0) return;
         this.readyState = 1;
+        maxOpenSockets = Math.max(maxOpenSockets, ++openSockets);
         this.emit("open", {});
       });
     }
@@ -112,12 +123,14 @@ function harness(
       for (const listener of this.listeners.get(type) ?? []) listener(event);
     }
     frame(value: unknown) {
+      timeline.push(`${sockets.indexOf(this)}<${(value as { t: string }).t}`);
       this.emit("message", { data: JSON.stringify(value) });
     }
     send(data: string | ArrayBuffer | ArrayBufferView) {
       if (typeof data === "string") {
         const frame = JSON.parse(data);
         this.sent.push(frame);
+        timeline.push(`${sockets.indexOf(this)}>${frame.t}`);
         if (frame.t === "hello" && !holdReady)
           queueMicrotask(() =>
             this.frame({
@@ -132,6 +145,7 @@ function harness(
     }
     close() {
       if (this.readyState === 3) return;
+      if (this.readyState === 1) openSockets--;
       this.readyState = 3;
       this.emit("close", {});
     }
@@ -218,8 +232,10 @@ function harness(
       if (stopOnMint && mints > 1) void client?.stop();
     },
     onTraceMark: (mark) => marks.push(mark.name),
+    onState: (state) => phases.push(state.phase),
     onServerEvent: (event) => events.push(event),
     onError: (error) => errors.push(error),
+    ...clientOptions,
   });
   return {
     client,
@@ -236,6 +252,11 @@ function harness(
     events,
     errors,
     marks,
+    phases,
+    timeline,
+    get maxOpenSockets() {
+      return maxOpenSockets;
+    },
     get mints() {
       return mints;
     },
@@ -302,6 +323,11 @@ test("three Cloud budget idle rotations use fresh consent and one capture, with 
   expect(h.client.microphoneMuted).toBe(true);
   expect(h.errors).toHaveLength(0);
   expect(h.marks.filter((mark) => mark === "token_rotation")).toHaveLength(3);
+  // Each rotation adds exactly one prepared session; none is re-minted.
+  expect(h.marks.some((mark) => mark.startsWith("reconnect_remint"))).toBe(
+    false,
+  );
+  expect(h.maxOpenSockets).toBe(2);
   expect(
     h.bodies.every(
       (body) =>
@@ -320,8 +346,161 @@ test("three Cloud budget idle rotations use fresh consent and one capture, with 
   await h.client.stop();
   expect(h.activeCaptures).toBe(0);
 });
-test("rotation defers a live finalized turn until listening, then rotates without resubmitting that user turn", async () => {
+type FakeSocket = ReturnType<typeof harness>["sockets"][number];
+const audioFrames = (socket: FakeSocket) =>
+  socket.sent.filter((frame) => frame instanceof ArrayBuffer).length;
+const saidBye = (socket: FakeSocket) =>
+  socket.sent.some((frame) => (frame as { t?: string }).t === "bye");
+const finals = (h: ReturnType<typeof harness>) =>
+  h.events.filter((event) => (event as { t: string }).t === "stt_final");
+
+test("rotation prepares the next session while the live one keeps hearing, then hands audio over with no gap", async () => {
   const h = harness();
+  await h.client.start();
+  await h.settle();
+  const [live] = h.sockets;
+  h.holdReady();
+  await h.advance(40000);
+  // The next session is minted and connecting; the live one is untouched.
+  expect(h.marks).toContain("token_rotation_prepare");
+  expect(h.mints).toBe(2);
+  const next = h.sockets[1];
+  const phasesBefore = h.phases.length;
+  h.pumpAudio();
+  expect(audioFrames(live)).toBeGreaterThan(0);
+  expect(audioFrames(next)).toBe(0);
+  expect(h.tracks[0].enabled).toBe(true);
+  // The next session is ready while speech is still arriving: no switch yet.
+  h.releaseReady();
+  await h.settle();
+  expect(saidBye(live)).toBe(false);
+  const beforeSwitch = audioFrames(live);
+  h.pumpAudio();
+  expect(audioFrames(live)).toBeGreaterThan(beforeSwitch);
+  // At the quiet listening boundary the ready session takes the microphone,
+  // and only then does the old session get bye.
+  await h.advance(1000);
+  expect(h.timeline.indexOf("1<ready")).toBeGreaterThan(-1);
+  expect(h.timeline.indexOf("1<ready")).toBeLessThan(
+    h.timeline.indexOf("0>bye"),
+  );
+  const oldTotal = audioFrames(live);
+  h.pumpAudio();
+  expect(audioFrames(next)).toBeGreaterThan(0);
+  expect(audioFrames(live)).toBe(oldTotal);
+  expect(
+    h.phases.slice(phasesBefore).every((phase) => phase === "listening"),
+  ).toBe(true);
+  // Transcription continues on the new session; the old one is fenced.
+  live.frame({ t: "stt_final", text: "stale", traceId: "old" });
+  next.frame({ t: "stt_final", text: "create a note", traceId: "turn-2" });
+  expect(finals(h)).toHaveLength(1);
+  expect(h.client.state.phase).toBe("thinking");
+  expect(h.mints).toBe(2);
+  expect(h.captures).toBe(1);
+  expect(h.maxOpenSockets).toBe(2);
+  expect(h.marks.filter((mark) => mark === "token_rotation")).toHaveLength(1);
+  expect(h.marks.some((mark) => mark.startsWith("reconnect_remint"))).toBe(
+    false,
+  );
+  expect(h.errors).toHaveLength(0);
+});
+test("continuous speech holds a prepared switch only until half the fallback lead remains", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  await h.advance(39000);
+  let switchedAtMs: number | null = null;
+  for (let at = 39000; at < 58000 && switchedAtMs === null; at += 500) {
+    h.pumpAudio();
+    await h.advance(500);
+    if (saidBye(h.sockets[0])) switchedAtMs = at + 500;
+  }
+  expect(h.marks).toContain("token_rotation_standby_ready");
+  expect(switchedAtMs).toBe(55000);
+  expect(h.mints).toBe(2);
+  expect(h.errors).toHaveLength(0);
+});
+test("a reply in progress keeps the live session until playback ends, then switches without replaying the turn", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const [live] = h.sockets;
+  live.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  live.frame({ t: "speaking_start", traceId: "turn-1" });
+  await h.advance(45000);
+  expect(h.marks).toContain("token_rotation_standby_ready");
+  expect(h.marks).toContain("token_rotation_deferred");
+  expect(saidBye(live)).toBe(false);
+  live.frame({ t: "speaking_end", traceId: "turn-1" });
+  live.frame({ t: "usage", sttMs: 1000, ttsChars: 12, traceId: "turn-1" });
+  await h.advance(1000);
+  expect(saidBye(live)).toBe(true);
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.mints).toBe(2);
+  expect(finals(h)).toHaveLength(1);
+  expect(h.bodies.some((body) => "text" in body)).toBe(false);
+  expect(h.captures).toBe(1);
+});
+test("a turn still running at hard expiry hands over to the ready next session without another mint", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const [live] = h.sockets;
+  live.frame({ t: "stt_final", text: "open notes", traceId: "turn-1" });
+  live.frame({ t: "speaking_start", traceId: "turn-1" });
+  await h.advance(60000);
+  // The next session became ready before the server severed the busy one.
+  expect(h.marks).toContain("token_rotation_standby_ready");
+  expect(h.mints).toBe(2);
+  live.close();
+  await h.settle();
+  expect(h.mints).toBe(2);
+  expect(h.sockets).toHaveLength(2);
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.maxCaptures).toBe(1);
+  expect(finals(h)).toHaveLength(1);
+  expect(h.bodies.some((body) => "text" in body)).toBe(false);
+  expect(h.errors).toHaveLength(0);
+});
+test("Stop while the next session is connecting ends both sessions and opens nothing more", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  h.holdReady();
+  await h.advance(40000);
+  expect(h.sockets).toHaveLength(2);
+  await h.client.stop();
+  expect(h.sockets.every((socket) => saidBye(socket))).toBe(true);
+  expect(h.sockets.every((socket) => socket.readyState === 3)).toBe(true);
+  expect(h.activeCaptures).toBe(0);
+  h.releaseReady();
+  await h.advance(70000);
+  expect(h.mints).toBe(2);
+  expect(h.sockets).toHaveLength(2);
+  expect(h.errors).toHaveLength(0);
+});
+test("a refused next session falls back to the clean idle rotation with at most one overlap", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  h.holdReady();
+  await h.advance(40000);
+  h.sockets[1].frame({ t: "error", code: "unavailable", retryable: false });
+  await h.settle();
+  expect(saidBye(h.sockets[1])).toBe(true);
+  expect(saidBye(h.sockets[0])).toBe(false);
+  // A late ready from the refused session is ignored.
+  h.releaseReady();
+  await h.advance(10000);
+  expect(h.mints).toBe(3);
+  expect(saidBye(h.sockets[0])).toBe(true);
+  expect(h.client.state.phase).toBe("listening");
+  expect(h.maxOpenSockets).toBe(2);
+  expect(h.errors).toHaveLength(0);
+});
+test("rotation defers a live finalized turn until listening, then rotates without resubmitting that user turn", async () => {
+  const h = harness(false, undefined, BREAK_BEFORE_MAKE);
   await h.client.start();
   await h.settle();
   const old = h.sockets[0];
@@ -341,7 +520,7 @@ test("rotation defers a live finalized turn until listening, then rotates withou
   expect(h.maxCaptures).toBe(1);
 });
 test("a busy hard-expiry interruption retires old audio and reconnects without replaying an already finalized turn", async () => {
-  const h = harness();
+  const h = harness(false, undefined, BREAK_BEFORE_MAKE);
   await h.client.start();
   await h.settle();
   const old = h.sockets[0];
@@ -384,7 +563,7 @@ test("Stop during a budget remint releases capture and fences its late response"
 });
 
 test("three ready sessions keep one capture and retarget its actual PCM only after renewed ready", async () => {
-  const h = harness();
+  const h = harness(false, undefined, BREAK_BEFORE_MAKE);
   await h.client.start();
   await h.settle();
   h.pumpAudio();
@@ -450,7 +629,7 @@ test("unexpected peer close still retires its capture before bounded recovery", 
 });
 
 test("a stalled clean renewal releases retained capture at old expiry, then late ready reacquires without overlap", async () => {
-  const h = harness();
+  const h = harness(false, undefined, BREAK_BEFORE_MAKE);
   await h.client.start();
   await h.settle();
   h.holdMint();
@@ -492,7 +671,7 @@ test("expiry racing late ready awaits delayed device release and fences old capt
       return capture;
     });
   try {
-    const h = harness();
+    const h = harness(false, undefined, BREAK_BEFORE_MAKE);
     await h.client.start();
     await h.settle();
     h.holdMint();
@@ -530,7 +709,7 @@ test("expiry racing late ready awaits delayed device release and fences old capt
 });
 
 test("an accepted renewal keeps its muted capture across old expiry until actual late ready", async () => {
-  const h = harness();
+  const h = harness(false, undefined, BREAK_BEFORE_MAKE);
   await h.client.start();
   await h.settle();
   h.pumpAudio();
@@ -571,7 +750,7 @@ test("an accepted renewal keeps its muted capture across old expiry until actual
   expect(h.activeCaptures).toBe(0);
 });
 test("an accepted renewal that never becomes ready releases capture at its own expiry", async () => {
-  const h = harness();
+  const h = harness(false, undefined, BREAK_BEFORE_MAKE);
   await h.client.start();
   await h.settle();
   h.holdReady();
@@ -608,7 +787,7 @@ test("owner retirement in accepted-mint callback cannot extend capture or open t
 });
 
 test("invalid renewal cannot replace the retained capture lease", async () => {
-  const h = harness();
+  const h = harness(false, undefined, BREAK_BEFORE_MAKE);
   await h.client.start();
   await h.settle();
   h.invalidNextMint();
