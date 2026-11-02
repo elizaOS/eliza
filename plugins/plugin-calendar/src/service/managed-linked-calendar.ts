@@ -17,6 +17,7 @@ const WHOLE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // Cloud sync-v1 carries all-day bounds as whole dates with no timezone; the
 // reconciler and the built-in calendar carry them as UTC-midnight instants.
+// The date is sent as written, as googleEventInput does.
 const providerEvent = (
   event: LinkedCalendarSemanticEvent,
 ): LinkedCalendarSemanticEvent =>
@@ -131,6 +132,21 @@ export class ManagedLinkedCalendarProviderPort
     };
   }
 
+  // A local all-day row can still hold whole dates. Compare in the instant
+  // form, but checkpoint the requested form so the next pass pulls the
+  // instants instead of writing the event again.
+  private written(
+    written: LinkedCalendarProviderSnapshot,
+    event: LinkedCalendarSemanticEvent,
+  ): LinkedCalendarProviderSnapshot {
+    if (
+      linkedCalendarSemanticText(written.event) !==
+      linkedCalendarSemanticText(localEvent(event))
+    )
+      throw Error("Linked Calendar result does not match the requested event");
+    return { ...written, event };
+  }
+
   async get(record: LinkedCalendarEventRecord) {
     const result = await this.call(record, {
       kind: "get",
@@ -158,13 +174,7 @@ export class ManagedLinkedCalendarProviderPort
       result.event.remindersDisabled !== true
     )
       throw Error("Linked Calendar create privacy could not be confirmed");
-    const written = this.snapshot(result.event);
-    if (
-      linkedCalendarSemanticText(written.event) !==
-      linkedCalendarSemanticText(event)
-    )
-      throw Error("Linked Calendar result does not match the requested event");
-    return written;
+    return this.written(this.snapshot(result.event), event);
   }
 
   async update(
@@ -179,13 +189,10 @@ export class ManagedLinkedCalendarProviderPort
       expectedEtag: record.providerEtag,
       event: providerEvent(event),
     });
-    const written = this.snapshot(result.event, record.providerEventId);
-    if (
-      linkedCalendarSemanticText(written.event) !==
-      linkedCalendarSemanticText(event)
-    )
-      throw Error("Linked Calendar result does not match the requested event");
-    return written;
+    return this.written(
+      this.snapshot(result.event, record.providerEventId),
+      event,
+    );
   }
 
   async delete(record: LinkedCalendarEventRecord) {

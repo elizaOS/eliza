@@ -1639,6 +1639,77 @@ describe("managed owner linked Calendar provider", () => {
     ]);
   });
 
+  it("writes an all-day event stored as whole dates once and then pulls the instants", async () => {
+    const f = managedFixture();
+    // The local row was pulled through this port while it read Cloud's whole
+    // dates back verbatim.
+    let localEvent: LinkedCalendarSemanticEvent = {
+      ...baseEvent,
+      startAt: "2026-11-01",
+      endAt: "2026-11-03",
+      timeZone: null,
+      isAllDay: true,
+    };
+    let localRevision = 1;
+    let current = {
+      ...record(),
+      connectorAccountId: f.grantId,
+      providerEventId: null,
+      providerEtag: null,
+      state: "dirty" as const,
+      pendingOperation: "create" as const,
+      lastCommonSemanticHash: null,
+    } as LinkedCalendarEventRecord;
+    const store: LinkedCalendarCheckpointStore = {
+      async save(_expected, patch) {
+        current = { ...current, ...patch };
+        return current;
+      },
+    };
+    const local: LinkedCalendarLocalPort = {
+      async get() {
+        return {
+          eventId: current.localEventId,
+          revision: localRevision,
+          event: localEvent,
+        };
+      },
+      async applyProviderEvent(eventId, event) {
+        localEvent = event;
+        localRevision += 1;
+        return { eventId, revision: localRevision, event };
+      },
+      async delete() {
+        throw Error("Unexpected local deletion");
+      },
+    };
+    const engine = new LinkedCalendarReconciler(store, local, f.provider);
+    expect(await engine.reconcile(current)).toBe("pushed");
+    expect(current).toMatchObject({ state: "clean", lastErrorCode: null });
+    expect(await engine.reconcile(current)).toBe("pulled");
+    expect(localEvent).toMatchObject({
+      startAt: "2026-11-01T00:00:00.000Z",
+      endAt: "2026-11-03T00:00:00.000Z",
+    });
+    expect(await engine.reconcile(current)).toBe("clean");
+
+    localEvent = { ...localEvent, startAt: "2026-11-01", endAt: "2026-11-04" };
+    localRevision += 1;
+    expect(await engine.reconcile(current)).toBe("pushed");
+    expect(await engine.reconcile(current)).toBe("pulled");
+    expect(await engine.reconcile(current)).toBe("clean");
+    expect(
+      f.commands.flatMap((command) =>
+        command.kind === "create" || command.kind === "update"
+          ? [[command.kind, command.event.startAt, command.event.endAt]]
+          : [],
+      ),
+    ).toEqual([
+      ["create", "2026-11-01", "2026-11-03"],
+      ["update", "2026-11-01", "2026-11-04"],
+    ]);
+  });
+
   it("quarantines a lost acknowledgement without repeating the provider create", async () => {
     const f = managedFixture();
     f.loseReply();
