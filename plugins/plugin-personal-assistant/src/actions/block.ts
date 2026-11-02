@@ -14,6 +14,7 @@
  * — there is no app-side equivalent for hosts-file rule lifecycle, so silently
  * ignoring the verb would hide a real planner bug.
  */
+import { getUserMessageText } from "@elizaos/core";
 import type {
   Action,
   ActionExample,
@@ -185,9 +186,10 @@ function resolveTarget(
       : undefined,
   );
   if (fromSubaction) return fromSubaction;
-  const text =
-    typeof message.content.text === "string" ? message.content.text : "";
-  return inferTargetFromText(text);
+  // Read the user's words, not the document-augmentation envelope: a
+  // retrieved document fragment (for example, "block apps on my phone")
+  // must not flip a website block to the app backend.
+  return inferTargetFromText(getUserMessageText(message));
 }
 
 function targetSupports(
