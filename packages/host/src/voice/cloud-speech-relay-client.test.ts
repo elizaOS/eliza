@@ -14,7 +14,10 @@ import { createLocalRuntimeConversationFetch } from "./local-runtime-conversatio
 import type { ServerControlFrame } from "./protocol";
 import { VoiceSession } from "./session";
 import { createVoiceSessionRegistry } from "./session-registry";
-import { encodeSpeechRelayAudio } from "./speech-relay-wire";
+import {
+  encodeSpeechRelayAudio,
+  parseSpeechRelayJson,
+} from "./speech-relay-wire";
 import { InMemoryVoiceUsageStore } from "./usage";
 
 const cleanups: (() => void | Promise<void>)[] = [];
@@ -264,6 +267,39 @@ test("server-only client uses account auth only for fixed HTTP routes, then cano
   expect(f.requests.at(-1)?.path).toBe(
     `/api/v1/voice/speech/session/${client.sessionId}/revoke`,
   );
+});
+test("every control the client sends for spoken, silent and cancelled contexts passes the real relay parser", async () => {
+  // The fake relay above answers prepare itself; this pins the client frames
+  // to the parser the Cloud relay actually runs.
+  const f = await fixture(),
+    client = await createCloudSpeechRelayPorts(f.options);
+  const spoken = client.speechPorts.tts.createStream({}, {});
+  await spoken.opened;
+  spoken.sendPhrase({ text: "You are ", continueContext: true, flush: true });
+  spoken.sendPhrase({ text: "on Notes.", continueContext: false });
+  await spoken.closed;
+  const silent = client.speechPorts.tts.createStream({}, {});
+  await silent.opened;
+  silent.sendPhrase({ text: "", continueContext: false });
+  await silent.closed;
+  const dropped = client.speechPorts.tts.createStream({}, {});
+  await dropped.opened;
+  dropped.cancel();
+  await client.close();
+  const controls = f.controls.filter((frame) => frame.t !== "hello");
+  expect(controls.map((frame) => frame.t)).toEqual([
+    "prepare",
+    "tts",
+    "tts",
+    "finish",
+    "prepare",
+    "finish",
+    "prepare",
+    "cancel",
+    "stop",
+  ]);
+  for (const frame of controls)
+    expect(parseSpeechRelayJson(JSON.stringify(frame))).toEqual(frame);
 });
 test("cancel never replays a context and ignores its delayed audio, while owner changes block further dispatch", async () => {
   const f = await fixture(),
