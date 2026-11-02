@@ -723,6 +723,21 @@ export async function createV5MessageContextObject(args: {
             stable: true,
           }
         : undefined,
+      // One channel-scoped instruction reaches Stage 1, planning and final
+      // evaluation through the existing shared context without rewriting generated output.
+      ...(args.message.content?.channelType === "VOICE_DM"
+        ? {
+            staticProviders: [
+              {
+                id: "voice-response-style",
+                label: "system",
+                stable: true,
+                content:
+                  "voice_response_style: Your user-visible reply will be spoken aloud. For an ordinary question or overview, answer conversationally in a few short sentences with the most useful verified facts. Do not turn a broad question into an exhaustive briefing. Give more detail when the user asks for it or it is necessary to answer accurately. Avoid reading long URLs, tables, source inventories or internal tool metadata aloud unless requested; preserve attribution required for the facts you use. Keep important uncertainty and failed checks clear. This governs user-visible prose only: keep complete internal evidence, tool arguments and required response envelopes unchanged. Never invent an answer, shorten a user-provided literal, or replace the final answer with a progress acknowledgment.",
+              },
+            ],
+          }
+        : {}),
       characterPrompt: characterStyleDirections
         ? {
             id: "character-style",

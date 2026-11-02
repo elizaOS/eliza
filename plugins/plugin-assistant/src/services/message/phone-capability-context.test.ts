@@ -5,6 +5,7 @@ import {
   ContextRegistry,
   type IAgentRuntime,
   type Memory,
+  renderContextObject,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
 import { proposeDeviceAction } from "../device-actions/action.ts";
@@ -23,6 +24,7 @@ vi.mock("../device-actions/service.ts", async (original) => ({
 }));
 
 import { createV5MessageContextObject } from "./context-assembly.ts";
+import { renderMessageHandlerModelInput } from "./stage1-input.ts";
 
 const capabilities = [
   "notes.local-record.v1",
@@ -289,4 +291,57 @@ describe("selected phone capability guidance", () => {
       ),
     ).toBe(false);
   });
+});
+
+describe("voice response policy", () => {
+  for (const providerPhase of ["response", "planning", "completion"] as const) {
+    it(`keeps one spoken policy through the ${providerPhase} context without changing the request`, async () => {
+      const args = fixture();
+      const literal =
+        "Give me a detailed news briefing with all requested sources.";
+      args.message.content = {
+        ...args.message.content,
+        channelType: "VOICE_DM",
+        text: literal,
+      };
+      const context = await createV5MessageContextObject({
+        ...args,
+        providerPhase,
+      });
+      const policy = context.staticPrefix?.staticProviders?.filter(
+        (segment) => segment.id === "voice-response-style",
+      );
+      expect(policy).toHaveLength(1);
+      expect(policy![0].content).toContain(
+        "Give more detail when the user asks for it",
+      );
+      expect(policy![0].content).toContain("preserve attribution required");
+      expect(policy![0].content).toContain("keep complete internal evidence");
+      const input =
+        providerPhase === "response"
+          ? renderMessageHandlerModelInput(args.runtime, context, [], {
+              directMessage: true,
+              nativeTools: true,
+            })
+          : renderContextObject(context);
+      const rendered = JSON.stringify(input.messages);
+      expect(rendered.split("voice_response_style:")).toHaveLength(2);
+      expect(rendered).toContain(literal);
+      expect(args.message.content.text).toBe(literal);
+    });
+    for (const channelType of ["DM", "API", "VOICE_GROUP"] as const) {
+      it(`leaves ${channelType} ${providerPhase} context without the private-voice policy`, async () => {
+        const args = fixture();
+        args.message.content = { ...args.message.content, channelType };
+        const context = await createV5MessageContextObject({
+          ...args,
+          providerPhase,
+        });
+        expect(context.staticPrefix?.staticProviders).toBeUndefined();
+        expect(
+          JSON.stringify(renderContextObject(context).messages),
+        ).not.toContain("voice_response_style:");
+      });
+    }
+  }
 });
