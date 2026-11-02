@@ -2405,7 +2405,10 @@ async function runSend(
       ? buildSubAgentCompletionFollowUp(routedCompletion, plannerInput)
       : plannerInput;
     if (textInput) {
-      const delivery = await service.sendToSession(target.session.id, textInput);
+      const delivery = await service.sendToSession(
+        target.session.id,
+        textInput,
+      );
       // sendToSession reports a cancelled/stopped/errored turn as a result
       // instead of throwing (see undeliveredReason in api/agent-routes.ts);
       // claiming the assignment succeeded would tell the planner work was

@@ -55,7 +55,10 @@ describe("TASKS send delivery receipt", () => {
     const result = await tasksAction.handler(runtime, message, undefined, {
       parameters: { action: "send", sessionId: "sess-1", task: "Do the thing" },
     });
-    console.log("SEND cancelled →", JSON.stringify(result, null, 2)?.slice(0, 1200));
+    console.log(
+      "SEND cancelled →",
+      JSON.stringify(result, null, 2)?.slice(0, 1200),
+    );
     expect(result?.success).toBe(false);
   });
 
@@ -70,7 +73,10 @@ describe("TASKS send delivery receipt", () => {
     const result = await tasksAction.handler(runtime, message, undefined, {
       parameters: { action: "send", sessionId: "sess-1", task: "Do the thing" },
     });
-    console.log("SEND end_turn →", JSON.stringify(result, null, 2)?.slice(0, 1200));
+    console.log(
+      "SEND end_turn →",
+      JSON.stringify(result, null, 2)?.slice(0, 1200),
+    );
     expect(result?.success).toBe(true);
   });
 
@@ -91,7 +97,10 @@ describe("TASKS send delivery receipt", () => {
         instruction: "Keep going",
       },
     });
-    console.log("CONTROL error →", JSON.stringify(result, null, 2)?.slice(0, 1200));
+    console.log(
+      "CONTROL error →",
+      JSON.stringify(result, null, 2)?.slice(0, 1200),
+    );
     expect(result?.success).toBe(false);
   });
 });
