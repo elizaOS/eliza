@@ -544,6 +544,9 @@ export function describeInlineTranscriptShortfall(text: string) {
 function fencedBlockDelimiter(line: string) {
   const match = line.match(/^\s*(`{3,}|~{3,})(.*)$/);
   if (!match) return null;
+  // CommonMark: a backtick fence info string cannot contain a backtick, so
+  // ```bun run test:e2e``` is inline code, not a fence.
+  if (match[1][0] === "`" && match[2].includes("`")) return null;
   return {
     character: match[1][0],
     length: match[1].length,
