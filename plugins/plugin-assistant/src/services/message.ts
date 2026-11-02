@@ -132,7 +132,7 @@ import type {
   State,
   UUID,
 } from "@elizaos/core";
-import { formatActionNames, formatActions } from "@elizaos/core";
+import { formatActionNames, formatActions, getUserMessageText } from "@elizaos/core";
 import {
   findWebLookupActionName,
   findWebLookupActionNames,
@@ -408,13 +408,19 @@ export class DefaultMessageService implements IMessageService {
 
     const roomType = room.type?.toString().toLowerCase();
     const sourceStr = message.content.source?.toLowerCase() || "";
-    const textMentionsAgentByName = textContainsAgentName(
-      message.content.text,
-      [runtime.character.name, runtime.character.username],
-    );
-    const textMentionsTaggedParticipants = textContainsUserTag(
-      message.content.text,
-    );
+    // Rule 4 must read the user's own words, not the rendered envelope:
+    // connector envelopes put the channel label, the sender handle, and any
+    // quoted reply into content.text, so a sender handle or channel name
+    // containing the agent token would otherwise count as the user
+    // addressing the agent. getUserMessageText prefers the connector's
+    // currentMessageText (and unwraps the augmentation envelope), matching
+    // stage1-generation and addressing.ts.
+    const userText = getUserMessageText(message);
+    const textMentionsAgentByName = textContainsAgentName(userText, [
+      runtime.character.name,
+      runtime.character.username,
+    ]);
+    const textMentionsTaggedParticipants = textContainsUserTag(userText);
 
     // 1. DM/VOICE_DM/API channels: always respond (private channels)
     if (respondChannels.has(roomType)) {
