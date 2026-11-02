@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
- The A/B OS update client. update_engine downloads and applies; this app only checks the signed
- channel, starts update_engine and offers the restart. res/values/channel.xml is written at staging.
+ The A/B OS update client. update_engine downloads and applies; this app checks the signed channel,
+ starts update_engine, holds its job open while it works and offers the restart.
+ res/values/channel.xml is written at staging.
 -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="ai.elizaos.updater" android:versionCode="1" android:versionName="1">
@@ -11,6 +12,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- signature|privileged: granted only through privapp-permissions.xml. -->
     <uses-permission android:name="android.permission.REBOOT" />
+    <uses-permission android:name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
 
     <!-- Held by the launcher: its signer is not the build's, so knownSigner names it. -->
     <permission android:name="ai.elizaos.updater.permission.READ_STATUS"

@@ -13,7 +13,9 @@ import android.os.Bundle;
 import android.os.PowerManager;
 import android.os.ServiceSpecificException;
 import android.os.UpdateEngine;
+import android.os.UpdateEngine.ErrorCodeConstants;
 import android.os.UpdateEngine.UpdateStatusConstants;
+import android.telecom.TelecomManager;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
@@ -37,16 +39,27 @@ public final class UpdateFlowTest {
         checks++;
     }
 
-    private static void publish(long sequence, int rollout, long date) throws Exception {
-        byte[] manifest = ("{\"schema\":1,\"channel\":\"beta\",\"device\":\"stallion\",\"version\":\"1.0.0\",\"sequence\":" + sequence
+    private static byte[] manifest(long sequence, int rollout, long date) {
+        return ("{\"schema\":1,\"channel\":\"beta\",\"device\":\"stallion\",\"version\":\"1.0.0\",\"sequence\":" + sequence
             + ",\"buildFingerprint\":\"" + NEXT + "\",\"buildDateUtc\":" + date + ",\"rolloutPercent\":" + rollout
             + ",\"updates\":[{\"from\":null,\"url\":\"https://updates.example/ota.zip\",\"payload\":{\"offset\":41,\"size\":1000,"
             + "\"properties\":[\"FILE_HASH=aA==\",\"FILE_SIZE=1000\",\"METADATA_HASH=bQ==\",\"METADATA_SIZE=12\"]}}]}").getBytes(StandardCharsets.UTF_8);
+    }
+
+    private static void publish(byte[] manifest) throws Exception {
         Signature signer = Signature.getInstance("Ed25519");
         signer.initSign(keys.getPrivate());
         signer.update(manifest);
         Device.channel.put(CHANNEL, manifest);
         Device.channel.put(CHANNEL + ".sig", signer.sign());
+    }
+
+    /** The published manifest, valid and signed, padded with trailing spaces to `size` bytes. */
+    private static void publishSized(int size) throws Exception {
+        byte[] body = manifest(5, 100, BUILT + 1);
+        byte[] padded = Arrays.copyOf(body, size);
+        Arrays.fill(padded, body.length, size, (byte) ' ');
+        publish(padded);
     }
 
     private static void reset() throws Exception {
@@ -61,12 +74,16 @@ public final class UpdateFlowTest {
         UpdateEngine.denied = false;
         UpdateEngine.applyFailure = null;
         UpdateEngine.unbinds = 0;
+        UpdateEngine.outcome = ErrorCodeConstants.ERROR;
+        UpdateEngine.callback = null;
         Device.audioMode = AudioManager.MODE_NORMAL;
+        Device.inCall = false;
         Device.services.put(JobScheduler.class, new JobScheduler());
         Device.services.put(NotificationManager.class, new NotificationManager());
         Device.services.put(AudioManager.class, new AudioManager());
+        Device.services.put(TelecomManager.class, new TelecomManager());
         Device.services.put(PowerManager.class, new PowerManager());
-        publish(5, 100, BUILT + 1);
+        publish(manifest(5, 100, BUILT + 1));
     }
 
     /** One job run; returns whether it asked for its backoff. */
@@ -107,7 +124,7 @@ public final class UpdateFlowTest {
         Object[] call = UpdateEngine.applied.get(0);
         check(call[0].equals("https://updates.example/ota.zip") && call[1].equals(41L) && call[2].equals(1000L));
         check(Arrays.equals((String[]) call[3], new String[] {"FILE_HASH=aA==", "FILE_SIZE=1000", "METADATA_HASH=bQ==", "METADATA_SIZE=12", "NETWORK_ID=123456789"}));
-        check("downloading".equals(state()) && "1.0.0".equals(Device.stored.get(UpdateJob.VERSION)));
+        check("downloading".equals(state()));
         check(Device.stored.get("sequence.beta").equals(5L) && Device.notifications.isEmpty() && UpdateEngine.unbinds == 1);
 
         String installId = (String) Device.stored.get("installId");
@@ -116,18 +133,51 @@ public final class UpdateFlowTest {
         check(installId.equals(Device.stored.get("installId")));
 
         reset();
-        publish(5, 100, BUILT);
+        publish(manifest(5, 100, BUILT));
         check(!run());
-        check("up-to-date".equals(state()) && "20261102.1".equals(Device.stored.get(UpdateJob.VERSION)) && UpdateEngine.applied.isEmpty());
+        check("up-to-date".equals(state()) && UpdateEngine.applied.isEmpty());
     }
 
     private static void working() throws Exception {
-        for (int status : new int[] {UpdateStatusConstants.DOWNLOADING, UpdateStatusConstants.VERIFYING, UpdateStatusConstants.FINALIZING, 11}) {
+        for (int status : new int[] {UpdateStatusConstants.DOWNLOADING, UpdateStatusConstants.VERIFYING, UpdateStatusConstants.FINALIZING}) {
             reset();
             UpdateEngine.status = status;
             check(run());
-            check("downloading".equals(state()) && Device.fetched.isEmpty() && UpdateEngine.applied.isEmpty());
+            check("downloading".equals(state()) && Device.fetched.isEmpty() && UpdateEngine.applied.isEmpty() && Device.notifications.isEmpty());
         }
+    }
+
+    /** The merge after a restart: update_engine reports its end as a successful application, which is no new update. */
+    private static void merging() throws Exception {
+        reset();
+        UpdateEngine.status = 11;
+        UpdateEngine.outcome = ErrorCodeConstants.SUCCESS;
+        check(run());
+        check("up-to-date".equals(state()) && Device.fetched.isEmpty() && UpdateEngine.applied.isEmpty() && Device.notifications.isEmpty());
+    }
+
+    /** The job, and so its wake lock, lasts until update_engine finishes or JobScheduler stops it. */
+    private static void held() throws Exception {
+        for (int status : new int[] {UpdateStatusConstants.IDLE, UpdateStatusConstants.DOWNLOADING}) {
+            reset();
+            UpdateEngine.status = status;
+            UpdateEngine.outcome = null;
+            check(new UpdateJob().onStartJob(new JobParameters()));
+            check(Device.finished.poll(200, TimeUnit.MILLISECONDS) == null);
+            while (UpdateEngine.callback == null) Thread.onSpinWait();
+            UpdateEngine.callback.onPayloadApplicationComplete(ErrorCodeConstants.SUCCESS);
+            check(Boolean.FALSE.equals(Device.finished.poll(10, TimeUnit.SECONDS)));
+            check("ready".equals(state()) && Device.notifications.size() == 1 && UpdateEngine.unbinds == 1);
+        }
+        reset();
+        UpdateEngine.status = UpdateStatusConstants.DOWNLOADING;
+        UpdateEngine.outcome = null;
+        UpdateJob job = new UpdateJob();
+        JobParameters params = new JobParameters();
+        check(job.onStartJob(params));
+        check(job.onStopJob(params));
+        check(Boolean.TRUE.equals(Device.finished.poll(10, TimeUnit.SECONDS)));
+        check(Device.notifications.isEmpty() && UpdateEngine.unbinds == 1);
     }
 
     private static void ready() throws Exception {
@@ -153,8 +203,12 @@ public final class UpdateFlowTest {
         quietFailure(run());
         check(!Device.stored.containsKey("sequence.beta"));
         reset();
-        Device.channel.put(CHANNEL, new byte[ChannelManifest.MAX_BYTES + 1]);
+        publishSized(ChannelManifest.MAX_BYTES + 1);
         quietFailure(run());
+        reset();
+        publishSized(ChannelManifest.MAX_BYTES);
+        check(run());
+        check(UpdateEngine.applied.size() == 1);
         reset();
         UpdateEngine.denied = true;
         quietFailure(run());
@@ -167,12 +221,12 @@ public final class UpdateFlowTest {
 
     private static void halt() throws Exception {
         reset();
-        publish(8, 0, BUILT + 1);
+        publish(manifest(8, 0, BUILT + 1));
         check(!run());
         check(UpdateEngine.applied.isEmpty() && "up-to-date".equals(state()) && Device.stored.get("sequence.beta").equals(8L));
-        publish(5, 100, BUILT + 1);
+        publish(manifest(5, 100, BUILT + 1));
         quietReplay();
-        publish(9, 100, BUILT + 1);
+        publish(manifest(9, 100, BUILT + 1));
         check(run());
         check(UpdateEngine.applied.size() == 1 && Device.stored.get("sequence.beta").equals(9L));
     }
@@ -195,6 +249,13 @@ public final class UpdateFlowTest {
             new UpdateReceiver().onReceive(new Context(), new Intent(UpdateReceiver.ACTION_RESTART));
             check(Device.reboots.isEmpty() && Device.notifications.size() == 1 && "ready".equals(state()));
         }
+        // Silent, vibrating or Do Not Disturb: the call rings and the mode stays normal.
+        reset();
+        Device.inCall = true;
+        UpdateEngine.status = UpdateStatusConstants.UPDATED_NEED_REBOOT;
+        run();
+        new UpdateReceiver().onReceive(new Context(), new Intent(UpdateReceiver.ACTION_RESTART));
+        check(Device.reboots.isEmpty() && Device.notifications.size() == 1 && "ready".equals(state()));
     }
 
     private static void status() throws Exception {
@@ -207,11 +268,11 @@ public final class UpdateFlowTest {
         }
         Device.callerPermissions.add(READ_STATUS);
         Bundle before = new StatusProvider().call("status", null, null);
-        check(before.getString(UpdateJob.STATE) == null);
+        check(before.getString(UpdateJob.STATE) == null && "20261102.1".equals(before.getString("version")));
         UpdateEngine.status = UpdateStatusConstants.IDLE;
         run();
         Bundle after = new StatusProvider().call("status", null, null);
-        check("downloading".equals(after.getString(UpdateJob.STATE)) && "1.0.0".equals(after.getString(UpdateJob.VERSION)));
+        check("downloading".equals(after.getString(UpdateJob.STATE)) && "20261102.1".equals(after.getString("version")));
         try {
             new StatusProvider().call("restart", null, null);
             throw new AssertionError("Unknown method accepted");
@@ -232,6 +293,8 @@ public final class UpdateFlowTest {
         schedule();
         idle();
         working();
+        merging();
+        held();
         ready();
         failures();
         halt();

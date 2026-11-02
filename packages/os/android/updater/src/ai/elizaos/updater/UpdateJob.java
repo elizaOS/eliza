@@ -26,16 +26,19 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
 /**
- * One periodic look at update_engine and the signed channel. update_engine downloads and applies on
- * its own, outside this process, so a run only starts it and records state. A failed run ends
- * quietly and the next one retries: nothing here shows an error.
+ * One periodic look at update_engine and the signed channel. update_engine works outside this
+ * process and takes no wake lock, so a run stays open until it finishes: the job's wake lock keeps
+ * the CPU up. A failed run ends quietly and the next one retries: nothing here shows an error.
  */
 public final class UpdateJob extends JobService {
     static final String STATE = "state";
-    static final String VERSION = "version";
     private static final int JOB_ID = 1;
+    /** update_engine's CLEANUP_PREVIOUS_UPDATE, which UpdateStatusConstants leaves out: the merge after a restart. */
+    private static final int MERGING = 11;
     private static final String NOTIFICATION_CHANNEL = "updates";
     private static final int TIMEOUT_MILLIS = 30_000;
+
+    private Thread worker;
 
     static SharedPreferences store(Context context) {
         return context.getSharedPreferences("updater", Context.MODE_PRIVATE);
@@ -54,46 +57,60 @@ public final class UpdateJob extends JobService {
     }
 
     @Override public boolean onStartJob(JobParameters params) {
-        new Thread(() -> jobFinished(params, run(params))).start();
+        worker = new Thread(() -> jobFinished(params, run(params)));
+        worker.start();
         return true;
     }
 
     @Override public boolean onStopJob(JobParameters params) {
+        worker.interrupt();
         return true;
     }
 
-    /** True while update_engine is working: the job's backoff brings the next look. */
+    /** True when the work is not over: the job's backoff brings the next look. */
     private boolean run(JobParameters params) {
         try {
             UpdateEngine engine = new UpdateEngine();
             CompletableFuture<Integer> status = new CompletableFuture<>();
+            CompletableFuture<Integer> applied = new CompletableFuture<>();
             engine.bind(new UpdateEngineCallback() {
                 @Override public void onStatusUpdate(int value, float percent) {
                     status.complete(value);
                 }
-                @Override public void onPayloadApplicationComplete(int errorCode) {}
+                @Override public void onPayloadApplicationComplete(int errorCode) {
+                    applied.complete(errorCode);
+                }
             });
             try {
                 switch (status.get(TIMEOUT_MILLIS, TimeUnit.MILLISECONDS)) {
                     case UpdateEngine.UpdateStatusConstants.IDLE:
-                        return check(engine, params);
+                        if (!check(engine, params)) return false;
+                        break;
                     case UpdateEngine.UpdateStatusConstants.UPDATED_NEED_REBOOT:
-                        store(this).edit().putString(STATE, "ready").apply();
                         offerRestart();
                         return false;
+                    case MERGING:
+                        // The booted build is the update; a later run reads the channel once the merge is over.
+                        store(this).edit().putString(STATE, "up-to-date").apply();
+                        return true;
                     default:
                         store(this).edit().putString(STATE, "downloading").apply();
-                        return true;
                 }
+                if (applied.get() != UpdateEngine.ErrorCodeConstants.SUCCESS) return true;
+                offerRestart();
+                return false;
             } finally {
                 engine.unbind();
             }
+        } catch (InterruptedException stopped) {
+            return true;
         } catch (Exception failure) {
             Log.w("ElizaOsUpdater", "Update run ended early", failure);
             return false;
         }
     }
 
+    /** True when update_engine took a payload. */
     private boolean check(UpdateEngine engine, JobParameters params) throws Exception {
         Network network = params.getNetwork();
         String url = getString(R.string.channel_manifest_url);
@@ -105,11 +122,11 @@ public final class UpdateJob extends JobService {
         store.edit().putLong(sequenceKey, manifest.sequence).apply();
         ChannelManifest.Update update = manifest.offer(Build.FINGERPRINT, Build.TIME, installId(store));
         if (update == null) {
-            store.edit().putString(STATE, "up-to-date").putString(VERSION, Build.VERSION.INCREMENTAL).apply();
+            store.edit().putString(STATE, "up-to-date").apply();
             return false;
         }
         engine.applyPayload(update.url, update.offset, update.size, update.headers(network.getNetworkHandle()));
-        store.edit().putString(STATE, "downloading").putString(VERSION, manifest.version).apply();
+        store.edit().putString(STATE, "downloading").apply();
         return true;
     }
 
@@ -134,6 +151,7 @@ public final class UpdateJob extends JobService {
     }
 
     private void offerRestart() {
+        store(this).edit().putString(STATE, "ready").apply();
         NotificationManager notifications = getSystemService(NotificationManager.class);
         notifications.createNotificationChannel(new NotificationChannel(NOTIFICATION_CHANNEL, "System updates", NotificationManager.IMPORTANCE_LOW));
         PendingIntent restart = PendingIntent.getBroadcast(this, 0,

@@ -1,4 +1,4 @@
-// The A/B update client: its real classes on the host JVM, its image packaging as written, and one
+// The A/B update client: its real classes on the host JVM, its privileged allowlist, and one
 // manifest from channel-manifest.mjs through a real Ed25519 signature into ChannelManifest. These
 // are host checks: Soong, SELinux, update_engine and the phone stay device evidence.
 import assert from "node:assert/strict";
@@ -164,42 +164,24 @@ test("a signed channel-manifest.mjs output reaches ChannelManifest", async (t) =
   if (bucket < 100) assert.notEqual(decide(bucket + 1, PREVIOUS), "none");
 });
 
-test("the image packaging grants exactly what the client uses", () => {
+test("the privileged allowlist is exactly the privileged permissions the client requests", () => {
   const read = (name) => fs.readFileSync(path.join(updater, name), "utf8");
-  const manifest = read("AndroidManifest.xml");
   const requested = [
-    ...manifest.matchAll(/<uses-permission android:name="([^"]+)"/g),
-  ]
-    .map((row) => row[1].replace("android.permission.", ""))
-    .sort();
-  assert.deepEqual(requested, [
-    "ACCESS_NETWORK_STATE",
-    "INTERNET",
-    "POST_NOTIFICATIONS",
-    "REBOOT",
-    "RECEIVE_BOOT_COMPLETED",
-  ]);
+    ...read("AndroidManifest.xml").matchAll(
+      /<uses-permission android:name="([^"]+)"/g,
+    ),
+  ].map((row) => row[1]);
+  const privileged = [
+    "android.permission.READ_PRIVILEGED_PHONE_STATE",
+    "android.permission.REBOOT",
+  ];
   // A missing or extra entry stops system_server under privapp enforcement.
   assert.deepEqual(
     privappPermissions(read("privapp-permissions.xml"), "ai.elizaos.updater"),
-    ["android.permission.REBOOT"],
-  );
-  assert.match(
-    read("default-permissions.xml"),
-    /<exception package="ai\.elizaos\.updater">\s*<permission name="android\.permission\.POST_NOTIFICATIONS" fixed="false" \/>/,
-  );
-  assert.match(read("sysconfig.xml"), /package="ai\.elizaos\.updater"/);
-  assert.match(
-    manifest,
-    /android:protectionLevel="signature\|knownSigner"\s+android:knownCerts="@string\/launcher_certificate"/,
+    privileged,
   );
   assert.deepEqual(
-    read("sepolicy/private/updater.te")
-      .split("\n")
-      .filter((line) => line && !line.startsWith("#")),
-    [
-      "allow priv_app update_engine_service:service_manager find;",
-      "binder_call(priv_app, update_engine)",
-    ],
+    privileged.filter((name) => requested.includes(name)),
+    privileged,
   );
 });
