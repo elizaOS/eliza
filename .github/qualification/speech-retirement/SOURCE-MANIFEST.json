@@ -1,0 +1,25 @@
+{
+  "commit": "ce7cca47e8fc64b071d5619caf803200f4bf2256",
+  "parent": "04c7bff1eda5a2007858893f8cb75d6ddb38f9c7",
+  "tree": "b6731cb659dc94befad300b77c71f21c7effbb71",
+  "files": {
+    "packages/cloud/api/__tests__/speech-relay-worker.test.ts": "dde47a8ebb04cffc6e8a96cc69280c4d925e547209ab71f6bfbb93253101675c",
+    "packages/cloud/api/src/speech-relay-admission.retirement.test.ts": "b3e8f1169afcb955d23bdddecb4adb522758264e29e0f0189da88c50a963772d",
+    "packages/cloud/api/src/speech-relay-admission.ts": "76b18c29a59a1daa7f17eb9b2022eea7e87d8213c54aa09d732f2530c24f0768",
+    "packages/cloud/api/src/speech-relay-coordinator.ts": "3525ba7ab5c393090ad9e08ebf0d296a5bc0a478a31714747e5c74238a36228f",
+    "packages/cloud/api/src/speech-retirement-coordinator.test.ts": "282c37116d22aec5d0193d73720e3503229624eefb2122924ed59e9081fb8466",
+    "packages/cloud/api/src/speech-retirement-route.test.ts": "512493637f795240261d6d8977dda94698490c6ba7529fa389f6418b8fb5579e",
+    "packages/cloud/api/src/speech-retirement-state.test.ts": "d3de3cc52a51f588170327393c74d509b38882a5cdbd2c2314e5ca3a9b0909d6",
+    "packages/cloud/api/src/speech-retirement-state.ts": "90318d3f325ce4f364b8af6e1f1ed3d03016cae1d45fd3a08eef80577f394870",
+    "packages/cloud/api/v1/voice/session/lib/provider-retirement.test.ts": "46a196ca39ccf2e43ed48006201895a988ae2a3aa2d9fb197f6028c4f1ff111a",
+    "packages/cloud/api/v1/voice/session/lib/provider-socket-factory.ts": "4c65d8169659eb13ce3c31bec4143b5147b0d895017a93c1f23c446db496150c",
+    "packages/cloud/api/v1/voice/speech/route.ts": "7285e42d58206ec0ebdbbad2ccbdce4265c649f6f4eed879b4f8be6489ba4561",
+    "packages/host/src/voice/cartesia-sonic-retirement.test.ts": "e443ae697ad07d9a42be84b858af7e7226e44d05c7b4f533b008911fb5ddd6f5",
+    "packages/host/src/voice/cartesia-sonic-tts.ts": "3a5b98ab101df99369820ad5bbea50bc05e977c045bb32638e91bddf6c2f1f0a",
+    "packages/host/src/voice/speech-relay-session.ts": "6636921b0795b7eba3c991fd4a0ef916c0b57af7011cea494e0b7d61ca841676",
+    "packages/host/src/voice/speech-relay-wire.ts": "28a155b4a83d20d68adae05da75e2f717faac00b45ead72380446aeb0b8c54cb",
+    "packages/host/src/voice/speech-retirement-session.test.ts": "83cb673dda076c85a6ac4f7ab9d926f0ec4997e4105e65abcb9dcb33c9e5ae76"
+  },
+  "bunLockSHA256": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
+  "executionReady": true
+}

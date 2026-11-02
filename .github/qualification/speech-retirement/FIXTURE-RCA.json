@@ -1,0 +1,24 @@
+{
+  "state": "PRIMARY_SOURCE_RCA_MATCHES_OBSERVED_FAILURE",
+  "failedRun": 41506669427,
+  "MiniflareVersion": "4.20260730.0",
+  "packageIntegrityMatchesCommittedLock": true,
+  "miniflareFunction": "createFetchMock returns new require(undici).MockAgent",
+  "bunVersion": "1.4.2",
+  "BunPrimarySource": {
+    "url": "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.2/src/js/thirdparty/undici.js",
+    "sha256": "d3a45bef827f53b3a737c0834324c82eaa0da31128f6493cc318f5738935736b",
+    "bytes": 11832,
+    "runtimeNotExecuted": true
+  },
+  "bunImplementation": "MockAgent class has an empty constructor and no disableNetConnect method",
+  "observed": "createFetchMock().disableNetConnect is undefined at fixture setup; zero cases passed",
+  "scope": "Fixture API compatibility failure, not backend behavior evidence",
+  "replacement": "Miniflare documented outboundService function: always throw and count attempts; retain Docker network none",
+  "runtimeProbe": "No extra runtime probe executed",
+  "primaryURLs": [
+    "https://registry.npmjs.org/miniflare/4.20260730.0",
+    "https://raw.githubusercontent.com/oven-sh/bun/bun-v1.4.2/src/js/thirdparty/undici.js",
+    "https://github.com/cloudflare/workers-sdk/blob/main/packages/miniflare/README.md"
+  ]
+}
