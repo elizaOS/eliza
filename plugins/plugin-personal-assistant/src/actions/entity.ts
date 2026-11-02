@@ -116,10 +116,19 @@ function normalizeLookup(value: string): string {
 /**
  * Match `value` only as a whole part: no letter, mark, or digit on either
  * side. Unlike `\b`, this also works next to non-ASCII letters ("José").
+ *
+ * Han, kana and Hangul letters do not delimit words, so they are not word
+ * characters here: a contact named in one of those scripts sits inside a run
+ * of letters ("和李雷开会"), and requiring a non-letter on both sides made that
+ * contact unreachable from any text. Same rule as the app-block action's
+ * `WORD_CHAR_SOURCE`.
  */
+const SPACED_WORD_CHAR =
+  "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+
 function wholePartRegExp(value: string): RegExp {
   return new RegExp(
-    `(?<![\\p{L}\\p{M}\\p{N}])${escapeRegExp(value)}(?![\\p{L}\\p{M}\\p{N}])`,
+    `(?<!${SPACED_WORD_CHAR})${escapeRegExp(value)}(?!${SPACED_WORD_CHAR})`,
     "u",
   );
 }

@@ -354,6 +354,20 @@ describe("ENTITY structured-name resolution fails closed on ambiguity", () => {
     expect(loggedRelationshipIds).toEqual(["rel-jose"]);
   });
 
+  it("logs from the message to the one contact whose name is written in Han script", async () => {
+    directory = [
+      relationship("rel-lilei", "李雷", "+8613800000000"),
+      relationship("rel-bob", "Bob Smith", "@bobsmith"),
+    ];
+    const outcome = await logNamedInteraction(
+      makeRuntime(),
+      {},
+      "帮我记一下今天和李雷开会",
+    );
+    expect(outcome.interactionRelationshipId).toBe("rel-lilei");
+    expect(loggedRelationshipIds).toEqual(["rel-lilei"]);
+  });
+
   it("does not log to a contact whose first name is only the start of an accented word", async () => {
     directory = [
       relationship("rel-ana", "Ana Lopez", "+15550000004"),
