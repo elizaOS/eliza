@@ -19,6 +19,7 @@ import type {
 } from "@elizaos/core";
 import {
   describeUserReference,
+  extractUserText,
   hasActionContext,
   logger,
   userReferenceLogView as queryLogView,
@@ -126,8 +127,9 @@ export const searchExperiencesAction: Action = {
     _options?: HandlerOptions,
   ): Promise<boolean> => {
     // Unwrapped so intent matching runs on the user's words, not the
-    // external-content security envelope around them.
-    const text = unwrapUserMessageText(message).toLowerCase();
+    // external-content security envelope around them, and not the
+    // document-augmentation envelope chat augmentation wraps them in.
+    const text = extractUserText(unwrapUserMessageText(message)).toLowerCase();
     if (!runtime.getService("EXPERIENCE")) {
       return false;
     }
@@ -234,8 +236,10 @@ export const searchExperiencesAction: Action = {
 
 function extractExperienceSearchQuery(message: Memory): string {
   // Unwrapped: on hardened connectors the raw content.text is the whole
-  // external-content security envelope, not the user's request.
-  const text = unwrapUserMessageText(message);
+  // external-content security envelope, not the user's request, and chat
+  // augmentation can wrap the request in a document-augmentation envelope
+  // whose preamble and source text would otherwise become the search query.
+  const text = extractUserText(unwrapUserMessageText(message));
   const normalized = text
     .replace(
       /^\s*(?:please\s+)?(?:search|find|explore|show|recall)\s+(?:my\s+|the\s+)?(?:experience|experiences|memory graph|learnings?)\s*(?:for|about|on)?\s*/i,
