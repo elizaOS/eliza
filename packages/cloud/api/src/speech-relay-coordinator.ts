@@ -350,15 +350,26 @@ export class SpeechRelayCoordinator {
             consumeConsent: async () => true,
             usageStore,
             usageLimits: resolveVoiceUsageLimits(this.env),
-            reserveCredits: () =>
-              reserveSpeechRelayAdmission({
+            reserveCredits: async () => {
+              const reservation = await reserveSpeechRelayAdmission({
                 caller: ledger.caller,
                 sessionId: ledger.sessionId,
                 usdPerCredit: price,
                 executionCtx: {
                   waitUntil: (task) => this.state.waitUntil(task),
                 },
-              }),
+              });
+              return {
+                ...reservation,
+                // Provider/socket callbacks can close the relay after its opening
+                // request context has ended. Settlement needs this DO's bindings
+                // and a fresh request-scoped DB cache at its invocation boundary.
+                settle: (details) =>
+                  runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
+                    runWithDbCacheAsync(() => reservation.settle(details)),
+                  ),
+              };
+            },
             // The internal organization-DO socket closes on revocation or loss.
             // Its callback stops this session; no per-frame identity read occurs.
             subscribeRevoked: (_identity, revoke) => {
