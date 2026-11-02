@@ -30,6 +30,8 @@ export interface Bindings {
   VOICE_SPEECH_RELAY_ENABLED?: string;
   /** Speech-only Ink final timeout, clamped to 640..5000 ms; default 1280 ms. */
   VOICE_SPEECH_END_TIMEOUT_MS?: string;
+  /** Renewable 60 s speech windows per session for extending clients, 1..120; default 10. */
+  VOICE_SPEECH_RELAY_MAX_WINDOWS?: string;
   SPEECH_RELAY_SESSIONS?: RuntimeDurableObjectNamespace;
   CLOUD_HF_EGRESS_BACKEND?: string;
   HF_EGRESS_STATE?: RuntimeDurableObjectNamespace;

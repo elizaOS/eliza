@@ -5,9 +5,16 @@ import {
   issueConsentNonce,
 } from "@elizaos/cloud-shared/lib/voice-session/consent-nonce";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
+import {
+  SPEECH_RELAY_EXTEND_HEADER,
+  SPEECH_RELAY_EXTEND_OFFER,
+} from "@elizaos/host/voice/speech-relay-wire";
 import { Hono } from "hono";
 import { requireGenerativeRouteCaller } from "../../../src/lib/generative-route-auth";
-import { speechTokenDigest } from "../../../src/speech-relay-coordinator";
+import {
+  speechRelayMaxWindows,
+  speechTokenDigest,
+} from "../../../src/speech-relay-coordinator";
 
 const app = new Hono<AppEnv>();
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
@@ -85,12 +92,6 @@ app.post("/session", async (c) => {
   )
     return c.json({ error: "invalid_speech_session" }, 400);
   const consentNonce = body.consentNonce;
-  if (
-    !(await timer.time("speech_consent_consume", () =>
-      consumeConsentNonce(caller.user.id, consentNonce),
-    ))
-  )
-    return c.json({ error: "speech_consent_required" }, 403);
   const sessionId = crypto.randomUUID(),
     token = randomBytes(32).toString("base64url"),
     expiresAt = Math.min(
@@ -100,26 +101,41 @@ app.post("/session", async (c) => {
         ? caller.credential.expiresAt
         : Number.POSITIVE_INFINITY,
     );
-  const result = await timer.time("speech_directory_write", () =>
-    c.env
-      .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
-      .fetch("https://speech-relay.internal/initialize", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          sessionId,
-          tokenDigest: speechTokenDigest(token),
-          expiresAt,
-          caller,
+  // The consent consume and the Durable Object ledger write are independent
+  // remote waits. The token never leaves this Worker unless consent was
+  // consumed, so a refused mint leaves only an unreachable ledger that its
+  // own alarm closes at `expiresAt`.
+  const [consented, result] = await Promise.all([
+    timer.time("speech_consent_consume", () =>
+      consumeConsentNonce(caller.user.id, consentNonce),
+    ),
+    timer.time("speech_directory_write", () =>
+      c.env
+        .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
+        .fetch("https://speech-relay.internal/initialize", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            sessionId,
+            tokenDigest: speechTokenDigest(token),
+            expiresAt,
+            caller,
+          }),
         }),
-      }),
-  );
+    ),
+  ]);
+  if (!consented) return c.json({ error: "speech_consent_required" }, 403);
   if (!result.ok) return c.json({ error: "speech_session_unavailable" }, 503);
   const url = new URL(c.req.url);
   url.protocol = url.protocol === "http:" ? "ws:" : "wss:";
   url.pathname = "/api/v1/voice/speech/ws";
   url.search = `?sessionId=${sessionId}`;
   c.header("Cache-Control", "no-store");
+  // Offered in a header so exact-body clients are unaffected. A client sends
+  // `extend` in its hello only when this deployment offered it, so a new
+  // client never sends a hello key an older relay would refuse.
+  if (speechRelayMaxWindows(c.env) > 1)
+    c.header(SPEECH_RELAY_EXTEND_HEADER, SPEECH_RELAY_EXTEND_OFFER);
   return timer.apply(
     c.json({
       version: 1,
