@@ -1,3 +1,4 @@
+import { createServer } from "node:http";
 import { expect, test } from "vitest";
 import { createCloudSpeechRelayPorts, type CloudSpeechRelayRetirement } from "./cloud-speech-relay-client";
 import { SPEECH_ADMISSION_OUTCOME_HEADER, SPEECH_MINT_INTENT_HEADER } from "./speech-relay-wire";
@@ -54,4 +55,53 @@ test.each(["not-json", "{}"])("malformed successful mint %s keeps the unknown fe
   const f = fixture(() => new Response(body, { status: 200, headers: { "content-type": "application/json" } }));
   await expect(f.start).rejects.toBeInstanceOf(Error);
   await expect(f.retirement().retryRetirement!()).rejects.toThrow("unconfirmed");
+});
+
+for (const status of [403, 429, 503]) {
+  test(`real-response origin permits attested ${status} denial`, async () => {
+    const f = fixture(() => {
+      const response = Response.json({}, { status, headers: { [SPEECH_ADMISSION_OUTCOME_HEADER]: `not-created-v1:${nonce}` } });
+      Object.defineProperty(response, "url", { value: "https://api.eliza.app/api/v1/voice/speech/session" });
+      return response;
+    });
+    await expect(f.start).rejects.toBeInstanceOf(Error);
+    await expect(f.retirement().close()).resolves.toBeUndefined();
+  });
+}
+test("a populated foreign response origin cannot attest rejection", async () => {
+  const f = fixture(() => {
+    const response = Response.json({}, { status: 403, headers: { [SPEECH_ADMISSION_OUTCOME_HEADER]: `not-created-v1:${nonce}` } });
+    Object.defineProperty(response, "url", { value: "https://foreign.example/api/v1/voice/speech/session" });
+    return response;
+  });
+  await expect(f.start).rejects.toBeInstanceOf(Error);
+  await expect(f.retirement().close()).rejects.toThrow("unconfirmed");
+});
+
+test.each([403, 429, 503])("real loopback fetch preserves attested %i rejection", async status => {
+  let retirement!: CloudSpeechRelayRetirement;
+  const server = createServer((request, response) => {
+    response.setHeader("content-type", "application/json");
+    if (request.url?.endsWith("/consent")) {
+      response.end(JSON.stringify({ consentNonce: nonce, expiresAt: new Date(Date.now() + 60000).toISOString(), retirementProofVersion: 1 }));
+    } else {
+      response.statusCode = status;
+      response.setHeader(SPEECH_ADMISSION_OUTCOME_HEADER, `not-created-v1:${nonce}`);
+      response.end(JSON.stringify({ error: "denied" }));
+    }
+  });
+  await new Promise<void>(resolve => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const address = server.address(); if (!address || typeof address === "string") throw Error("Missing loopback port");
+    await expect(createCloudSpeechRelayPorts({
+      enabled: true, allowInsecureLoopback: true, origin: `http://127.0.0.1:${address.port}`,
+      credential: async () => "test-only", assertCurrent() {},
+      registerRetirement: value => { retirement = value; }, fetch: globalThis.fetch,
+      websocket() { throw Error("Rejected mint must not open a provider"); },
+    })).rejects.toBeInstanceOf(Error);
+    await expect(retirement.close()).resolves.toBeUndefined();
+  } finally {
+    server.closeAllConnections();
+    await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+  }
 });

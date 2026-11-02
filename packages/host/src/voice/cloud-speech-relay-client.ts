@@ -460,7 +460,7 @@ export async function createCloudSpeechRelayPorts(
       status = response.status;
       if (!mintRequest) assertCurrent();
       if (!response.ok) {
-        if (retirementCapabilityAccepted && mintRequest && mintIntent && (!response.url || new URL(response.url).origin === origin) && response.headers.get(SPEECH_ADMISSION_OUTCOME_HEADER) === `not-created-v1:${mintIntent}`) {
+        if (retirementCapabilityAccepted && mintRequest && mintIntent && (!response.url || new URL(response.url).origin === origin.origin) && response.headers.get(SPEECH_ADMISSION_OUTCOME_HEADER) === `not-created-v1:${mintIntent}`) {
           admissionState = "rejected";
         }
         await response.body?.cancel();
