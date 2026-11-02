@@ -10,8 +10,14 @@ import { randomBytes } from "node:crypto";
 import { KeyStore } from "../wallet/index";
 
 test("reports an unreadable stored wallet-import session", async () => {
+  // getOAuthKeyStore() builds its key from this variable, so it has to be set
+  // before auth-lifecycle is imported. Only supply one when the ambient
+  // environment has none, so a configured run is never mutated.
   const previous = process.env.STEWARD_MASTER_PASSWORD;
-  process.env.STEWARD_MASTER_PASSWORD = randomBytes(32).toString("hex");
+  const suppliedMasterPassword = previous === undefined;
+  if (suppliedMasterPassword) {
+    process.env.STEWARD_MASTER_PASSWORD = randomBytes(32).toString("hex");
+  }
   try {
     // Seal the fixture with the very store the parser decrypts with. The store
     // is cached at module scope (auth-lifecycle.ts:684-700), so if another
@@ -86,7 +92,6 @@ test("reports an unreadable stored wallet-import session", async () => {
     // boundary, so the wrapper has to be its own type.
     expect(thrown).not.toBeInstanceOf(SyntaxError);
   } finally {
-    if (previous === undefined) delete process.env.STEWARD_MASTER_PASSWORD;
-    else process.env.STEWARD_MASTER_PASSWORD = previous;
+    if (suppliedMasterPassword) delete process.env.STEWARD_MASTER_PASSWORD;
   }
 });
