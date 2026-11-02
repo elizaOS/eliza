@@ -90,15 +90,19 @@ export function bindTaskExtractionContext(
 					),
 				}
 			: original;
-		if (hashStableJson(expected) !== hashStableJson(projected)) return;
+		// Any other view (e.g. background history that also defers settled
+		// effects) extracts from the full original. It never drops the current
+		// decision binding: its request issuer gates Notes writes.
+		const exact = hashStableJson(expected) === hashStableJson(projected);
+		const view = exact ? projected : original;
 		bindings().set(state.data, {
 			original,
-			projected,
+			projected: view,
 			sourceHash: hashStableJson(original),
-			projectionHash: hashStableJson(projected),
+			projectionHash: hashStableJson(view),
 			requestHash: hashStableJson(message),
 			stateHash: stateFingerprint(state),
-			extractionProjectionAuthorized,
+			extractionProjectionAuthorized: exact && extractionProjectionAuthorized,
 			...(runtime && issuer && validIssuer(issuer, runtime, message)
 				? { issuer }
 				: {}),
