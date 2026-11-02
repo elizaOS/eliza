@@ -33,6 +33,7 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
+import { lockInferencePolicyUsers } from "./inference-policy-fence";
 import { managedDomainsService } from "./managed-domains";
 
 const appByIdHydrations = new Map<string, Promise<void>>();
@@ -452,6 +453,9 @@ export class AppsService {
     }
 
     const created = await writeTransaction(async (tx) => {
+      // The key issued below locks its user; take that before the
+      // organization row so app and key creation share one lock order.
+      await lockInferencePolicyUsers(tx, [data.created_by_user_id]);
       await lockOrganizationPolicy(tx, data.organization_id);
       const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
       const limit = Number(requireOrganizationResourceLimit(policy, "apps"));

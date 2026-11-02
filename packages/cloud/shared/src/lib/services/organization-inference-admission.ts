@@ -16,16 +16,11 @@
  * in the same funding transaction as the debit. Only non-Worker callers keep
  * the synchronous funding reservation (see `isDeferredSubscriberLaneEligible`).
  *
- * Snapshot admission (`INFERENCE_SNAPSHOT_ADMISSION_ENABLED`) removes the
- * remaining pre-dispatch database work on the warm Worker path: the policy
- * read and the dispatch-policy transaction are served from the published
- * admission snapshot, and the organization Durable Object fences it. Every
- * snapshot publication first advances the gate's policy generation, so a
- * lease or dispatch decided under an older generation fails closed; balance
- * revisions older than the gate's keep the gate's newer ceiling. What the gate
- * cannot see is a policy or balance write that has not been republished yet;
- * that window is bounded by `SNAPSHOT_ADMISSION_MAX_AGE_MS` (the auth-context
- * physical TTL), after which the request takes the authoritative path.
+ * Only the explicitly enrolled funded-budget path delegates paid admission to
+ * the organization Durable Object's policy-mutation epoch. Other callers keep
+ * authoritative hold and policy checks at bootstrap and before provider
+ * dispatch. A cached clear hold or policy generation alone cannot fence a
+ * payment-reversal mutation for an ordinary organization.
  */
 
 import { ElizaError } from "@elizaos/core";
@@ -36,7 +31,6 @@ import {
   lockOrganizationPolicyForRead,
 } from "../../db/repositories/organization-policy-generation";
 import { inferenceFundingBudgetGrants } from "../../db/schemas/inference-funding-budgets";
-import { CacheTTL } from "../cache/keys";
 import { observeInferenceDependency } from "../observability/cloud-backend-observability";
 import { calculateCost, normalizeModelName } from "../pricing";
 import { createCreditReservationSettler } from "../utils/credit-reservation";
@@ -69,7 +63,6 @@ import {
   type InferenceAdmissionLease,
   InferenceAdmissionLeaseRejectedError,
   inferenceSettlementAmounts,
-  isInferenceAdmissionPolicyStaleError,
   markInferenceAdmissionLeaseDispatched,
   settleInferenceAdmissionLease,
 } from "./inference-admission-gate";
@@ -81,10 +74,7 @@ import {
 } from "./inference-affiliate-cache";
 import type { InferenceAdmissionSnapshot } from "./inference-auth-cache";
 import { isInferenceAdmissionSnapshot } from "./inference-auth-cache";
-import {
-  isDeferredAdmissionEnabled,
-  isSnapshotAdmissionEnabled,
-} from "./inference-billing-deferred";
+import { isDeferredAdmissionEnabled } from "./inference-billing-deferred";
 import {
   createOptimisticDebitSettler,
   debitInferenceCost,
@@ -463,8 +453,6 @@ async function admitOrganizationInferenceOnce(
   // KV/LRU entries are observations, never a CAS fence. Compare policy under
   // the same organization lock that serializes entitlement and override writes.
   const workerHotPath = typeof params.executionCtx?.waitUntil === "function";
-  const snapshot = snapshotAdmissionSnapshot(params, workerHotPath);
-  if (snapshot) return await admitFromSnapshot(params, snapshot);
   const lockPolicy = workerHotPath ? lockOrganizationPolicyForRead : lockOrganizationPolicy;
   const subscriberLaneEligible = isDeferredSubscriberLaneEligible(params);
   const { policy: authoritativePolicy, fundingCapacity } = await observeInferenceDependency(
@@ -554,7 +542,11 @@ async function admitOrganizationInferenceOnce(
       dispatch = admitDispatch(
         params.context.organizationId,
         authoritativePolicy.authority,
-        async (current) => {
+        async (current, tx) => {
+          // A reversal can place a hold after the lease was acquired without
+          // changing subscription policy. Recheck it under the same primary
+          // admission lock before any provider dispatch is acknowledged.
+          await billingHoldService.assertNoHold(params.context.organizationId, tx);
           if (
             requireOrganizationRateTier(current).completionsRpm !==
               requireOrganizationRateTier(authoritativePolicy).completionsRpm ||
@@ -576,98 +568,6 @@ async function admitOrganizationInferenceOnce(
     },
   };
 }
-/**
- * Maximum age of a published admission snapshot the snapshot lane trusts. It
- * equals the auth-context physical TTL, so an entry is never trusted beyond
- * the lifetime the cache already bounds; older observations take the
- * authoritative path.
- */
-export const SNAPSHOT_ADMISSION_MAX_AGE_MS = CacheTTL.inference.authContext * 1_000;
-/** Tolerated Worker-vs-primary clock skew for a snapshot's observation time. */
-const SNAPSHOT_ADMISSION_CLOCK_SKEW_MS = 5_000;
-
-/**
- * Returns the admission snapshot when this Worker request may be admitted from
- * it without a pre-dispatch database read. Anything the snapshot cannot prove
- * (an active or unknown billing hold, missing subscriber capacity, an aged
- * observation) selects the authoritative path instead.
- */
-function snapshotAdmissionSnapshot(
-  params: OrganizationInferenceAdmissionParams,
-  workerHotPath: boolean,
-): InferenceAdmissionSnapshot | undefined {
-  if (!workerHotPath || !isSnapshotAdmissionEnabled()) return undefined;
-  const snapshot = params.admissionSnapshot;
-  if (!isInferenceAdmissionSnapshot(snapshot) || snapshot.billingHold !== false) return undefined;
-  const ageMs = Date.now() - snapshot.balance.balanceAt;
-  if (ageMs < -SNAPSHOT_ADMISSION_CLOCK_SKEW_MS || ageMs > SNAPSHOT_ADMISSION_MAX_AGE_MS) {
-    return undefined;
-  }
-  if (snapshot.subscriptionFunded) {
-    if (snapshot.funding?.balanceRevision !== snapshot.balance.balanceRevision) return undefined;
-  } else if (!isOptimisticBillingEnabled()) {
-    return undefined;
-  }
-  return snapshot;
-}
-
-/**
- * Admit from the published snapshot. The only pre-dispatch round trip is the
- * organization Durable Object lease/dispatch, which refuses a snapshot whose
- * policy generation it has seen superseded. A refusal repairs the shared
- * projection under the Worker lifetime and fails this request closed.
- */
-async function admitFromSnapshot(
-  params: OrganizationInferenceAdmissionParams,
-  snapshot: InferenceAdmissionSnapshot,
-): Promise<OrganizationInferenceAdmission> {
-  const policyGeneration = snapshot.authority.generation;
-  const repairIfStale = (error: unknown): void => {
-    if (!isInferenceAdmissionPolicyStaleError(error)) return;
-    params.executionCtx?.waitUntil(
-      refreshStaleInferenceAdmissionSnapshot(params.context.organizationId).catch((cause) => {
-        // error-policy:J7 the request already fails closed; the next request
-        // retries the republish.
-        logger.warn("[inference-admission] stale snapshot refresh failed", {
-          organizationId: params.context.organizationId,
-          error: cause instanceof Error ? cause.message : String(cause),
-        });
-      }),
-    );
-  };
-  let admission: OrganizationInferenceAdmission;
-  try {
-    admission =
-      snapshot.subscriptionFunded && snapshot.funding
-        ? await admitSubscriberViaDurableObject(params, snapshot.funding, policyGeneration)
-        : await admitWithFundingPolicy(params, {
-            subscriptionFunded: false,
-            balance: () => ({
-              balanceUsd: snapshot.balance.balanceUsd,
-              revision: snapshot.balance.balanceRevision,
-            }),
-            observedAt: snapshot.balance.balanceAt,
-            policyGeneration,
-          });
-  } catch (error) {
-    repairIfStale(error);
-    throw error;
-  }
-  const dispatch = admission.markProviderDispatched;
-  if (!dispatch) return admission;
-  return {
-    ...admission,
-    markProviderDispatched: async () => {
-      try {
-        await dispatch();
-      } catch (error) {
-        repairIfStale(error);
-        throw error;
-      }
-    },
-  };
-}
-
 /**
  * Worker requests whose subscriber funding can be deferred behind the lease.
  *

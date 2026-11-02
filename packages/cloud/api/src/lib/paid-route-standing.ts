@@ -1,8 +1,8 @@
 /**
  * Admits authenticated non-generative paid routes through the shared combined
  * standing decision before any debit, provider lease, or external dispatch.
- * Cold requests consume the resolver's one-shot authoritative continuation;
- * they never perform a second cache read. Durable workflows retain ownership
+ * Cold Worker requests receive a retryable 503 while authorization hydrates
+ * under `waitUntil`; they never join a database read. Durable workflows retain ownership
  * of their synchronous receipt, debit, refund, and reconciliation semantics.
  */
 
@@ -14,8 +14,6 @@ import {
   requireGenerativeRouteCaller,
 } from "@/api-app/lib/generative-route-auth";
 
-const DEFAULT_COLD_STANDING_DEADLINE_MS = 2_500;
-
 type CompatibilityStandingReason =
   | "account_inactive"
   | "membership_missing"
@@ -26,7 +24,6 @@ export interface PaidRouteStandingOptions {
   /** Stable, secret-free route label used in denial diagnostics. */
   route: string;
   compatibility?: "hono" | "raw";
-  coldDeadlineMs?: number;
 }
 
 function errorReason(error: unknown): unknown {
@@ -112,9 +109,8 @@ async function compatibilityStandingReason(
 }
 
 /**
- * Resolve one paid-route caller from the combined standing cache. A cold
- * continuation is awaited once and consumed directly, so a miss still has one
- * cache read and no readback after the authoritative deferred write.
+ * Resolve one paid-route caller from the combined standing cache. A miss is a
+ * retryable warming error; hydration runs off the request path.
  */
 export async function requirePaidRouteStanding(
   c: AppContext,
@@ -125,8 +121,6 @@ export async function requirePaidRouteStanding(
   try {
     const caller = await requireGenerativeRouteCaller(c, {
       compatibility: options.compatibility,
-      awaitWarmingMs:
-        options.coldDeadlineMs ?? DEFAULT_COLD_STANDING_DEADLINE_MS,
     });
 
     const compatibilityReason = await compatibilityStandingReason(

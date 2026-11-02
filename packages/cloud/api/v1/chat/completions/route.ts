@@ -100,7 +100,6 @@ import {
 } from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
 import { appsService } from "@elizaos/cloud-shared/lib/services/apps";
 import { BillingHoldActiveError } from "@elizaos/cloud-shared/lib/services/billing-hold";
-import { contentModerationService } from "@elizaos/cloud-shared/lib/services/content-moderation";
 import type {
   CreditReconciliationResult,
   CreditReservation,
@@ -1366,8 +1365,8 @@ export async function handleChatCompletionsPOST(
     // under a bounded deadline; its cache projection remains off-path.
     let user: { id: string; organization_id: string };
     let apiKey: { id: string } | null;
-    let moderationAlreadyChecked = false;
     let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+    let cachedApiKeyRateLimit: number | undefined;
     let admissionCredential: InferenceCredentialCheck | undefined;
     let ratePolicyProof: InferenceRatePolicyProof | undefined;
     let appScopeId: string | null = null;
@@ -1400,7 +1399,7 @@ export async function handleChatCompletionsPOST(
                 code: "auth_cache_warming",
               },
             },
-            { status: 503 },
+            { status: 503, headers: { "Retry-After": "1" } },
           ),
         ),
       );
@@ -1459,6 +1458,10 @@ export async function handleChatCompletionsPOST(
       };
       apiKey = resolution.ctx.apiKeyId ? { id: resolution.ctx.apiKeyId } : null;
       admissionSnapshot = resolution.ctx.admission;
+      cachedApiKeyRateLimit =
+        "apiKeyRateLimit" in resolution.ctx
+          ? resolution.ctx.apiKeyRateLimit
+          : undefined;
       // Only an API-key context carries a key cap read with its policy epoch.
       ratePolicyProof =
         "keyHash" in resolution.ctx
@@ -1481,9 +1484,6 @@ export async function handleChatCompletionsPOST(
           : resolvedCredential;
       appScopeId =
         "appScopeId" in resolution.ctx ? resolution.ctx.appScopeId : null;
-      // The resolver already verified not-suspended (cache hit = at populate;
-      // origin miss = just now), so the synchronous moderation read is skipped.
-      moderationAlreadyChecked = true;
     } else {
       if (options.executionCtx) {
         return attachPreforwardTelemetry(
@@ -1545,7 +1545,9 @@ export async function handleChatCompletionsPOST(
             cacheOnly: Boolean(options.executionCtx),
             executionCtx: options.executionCtx,
             config: inferenceRateLimitConfig(admissionSnapshot, "completions"),
+            admissionSnapshot,
             apiKeyId: apiKey?.id,
+            apiKeyRateLimit: cachedApiKeyRateLimit,
             userId: user.id,
             fundedBudget,
             ratePolicy: ratePolicyProof,
@@ -1748,15 +1750,6 @@ export async function handleChatCompletionsPOST(
                 stale: false,
               };
             });
-    const shouldBlockUserPromise = moderationAlreadyChecked
-      ? Promise.resolve({ kind: "ready" as const, blocked: false })
-      : options.executionCtx
-        ? contentModerationService.shouldBlockUserCacheOnly(user.id, {
-            executionCtx: options.executionCtx,
-          })
-        : contentModerationService
-            .shouldBlockUser(user.id)
-            .then((blocked) => ({ kind: "ready" as const, blocked }));
     // Promise.all attaches a rejection observer to every input immediately and
     // remains fail-fast. Wrapping the aggregate records that failure until the
     // rate-limit verdict has been applied, including 429 and early-return paths.
@@ -1765,7 +1758,6 @@ export async function handleChatCompletionsPOST(
         monetizedAppPromise,
         pooledCredentialPromise,
         modelCatalogPromise,
-        shouldBlockUserPromise,
       ]),
     );
 
@@ -1775,16 +1767,11 @@ export async function handleChatCompletionsPOST(
       return attachPreforwardTelemetry(orgRateLimited);
     }
 
-    const [
-      appResolution,
-      pooledCredentialResolution,
-      modelCatalogResolution,
-      moderationResolution,
-    ] = unwrapConcurrentPromise(await dependencyResolutionsPromise);
+    const [appResolution, pooledCredentialResolution, modelCatalogResolution] =
+      unwrapConcurrentPromise(await dependencyResolutionsPromise);
     if (
       appResolution.kind !== "ready" ||
-      pooledCredentialResolution.kind !== "ready" ||
-      moderationResolution.kind !== "ready"
+      pooledCredentialResolution.kind !== "ready"
     ) {
       return attachPreforwardTelemetry(
         addCorsHeaders(
@@ -1831,7 +1818,6 @@ export async function handleChatCompletionsPOST(
       modelCatalogResolution.kind === "ready"
         ? modelCatalogResolution.model?.supported_parameters
         : undefined;
-    const shouldBlockUser = moderationResolution.blocked;
 
     if (!pooledCredential && !platformCredentialConfigured) {
       return addCorsHeaders(
@@ -1901,52 +1887,8 @@ export async function handleChatCompletionsPOST(
       maxUses: request.webSearchMaxUses,
     });
 
-    // 5. Check content moderation. Skipped when the hot-path resolver already
-    // verified the suspension status in this request (#9899) — never skipped on
-    // the slow path.
-    if (shouldBlockUser) {
-      return addCorsHeaders(
-        Response.json(
-          {
-            error: {
-              message:
-                "Your account has been suspended due to policy violations.",
-              type: "account_suspended",
-              code: "moderation_violation",
-            },
-          },
-          { status: 403 },
-        ),
-      );
-    }
-
-    // Start async moderation in background. ALWAYS runs (it is off the hot path)
-    // so new violations are still detected; on a violation we invalidate this
-    // user's inference auth-context so the cached fast path can't keep serving a
-    // user who just crossed the suspension threshold (#9899).
-    const lastUserMessage = request.messages
-      .filter((m) => m.role === "user")
-      .pop();
-    if (lastUserMessage) {
-      const content = getMessageContent(lastUserMessage);
-      if (content) {
-        const moderationTask = contentModerationService.moderateInBackground(
-          content,
-          user.id,
-          undefined,
-          (result) => {
-            logger.warn(
-              "[Chat Completions] Async moderation detected violation",
-              {
-                userId: user.id,
-                categories: result.flaggedCategories,
-              },
-            );
-          },
-        );
-        options.executionCtx?.waitUntil(moderationTask);
-      }
-    }
+    // Chat content is not moderated, synchronously or in the background.
+    // Account standing is part of the cached auth decision above.
 
     // 6. Estimate tokens and reserve credits
     const estimatedInputTokens =
@@ -2206,15 +2148,25 @@ export async function handleChatCompletionsPOST(
         // A plan subscriber (paid or grant) has spent its period allowance and
         // credit: name that state and when the allowance resets. Status and
         // type stay 402 / insufficient_quota for existing OpenAI-style clients.
+        // The Worker never reads Postgres to word a refusal: the cached
+        // admission snapshot names the plan state and its period end.
         const exhaustion = useMonetizedAppBilling
           ? null
-          : await import(
-              "@elizaos/cloud-shared/lib/services/subscription-entitlement-token"
-            )
-              .then(({ readAllowanceExhaustion }) =>
-                readAllowanceExhaustion(user.organization_id),
+          : options.executionCtx
+            ? admissionSnapshot?.subscriptionFunded
+              ? {
+                  resetsAt: admissionSnapshot.authority.effectiveUntil
+                    ? new Date(admissionSnapshot.authority.effectiveUntil)
+                    : null,
+                }
+              : null
+            : await import(
+                "@elizaos/cloud-shared/lib/services/subscription-entitlement-token"
               )
-              .catch(() => null);
+                .then(({ readAllowanceExhaustion }) =>
+                  readAllowanceExhaustion(user.organization_id),
+                )
+                .catch(() => null);
         return addCorsHeaders(
           Response.json(
             {

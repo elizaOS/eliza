@@ -25,10 +25,21 @@ export const SPEECH_RELAY_BUDGET = Object.freeze({
   outputBytes: 8 * 1024 * 1024,
 });
 export type SpeechRelayBudget = typeof SPEECH_RELAY_BUDGET;
+/** A window is renewed this long before it ends, so the next fence and
+ * reservation are in place before the current one lapses. */
+export const SPEECH_RELAY_RENEW_LEAD_MS = 10_000;
+/** Settlement of a reservation no provider could have used. */
+const UNGRANTED_SETTLEMENT = Object.freeze({
+  pcmBytes: 0,
+  ttsCharacters: 0,
+  providerMayHaveStarted: false,
+  dispatched: Object.freeze({ stt: false, tts: false }),
+});
 export interface SpeechRelayIdentity extends VoiceUsageIdentity {
   cloudSessionId: string;
 }
 export type SpeechRelayControl =
+  | { t: "prepare"; id: string }
   | { t: "tts"; id: string; text: string; flush?: boolean }
   | { t: "finish"; id: string }
   | { t: "cancel"; id: string }
@@ -50,7 +61,8 @@ export type SpeechRelayEvent =
   | { t: "stt"; event: SpeechRelayInkEvent }
   | { t: "flush_complete"; id: string; flushId?: number }
   | { t: "audio"; id: string; bytes: Uint8Array }
-  | { t: "complete"; id: string };
+  | { t: "complete"; id: string }
+  | { t: "extended"; expiresAt: string };
 /** Reservation is for the fixed worst-case server-enforced budget, not client usage reports.
  * Settlement must durably retain ambiguous provider dispatch. Never automatically replay.
  */
@@ -85,8 +97,6 @@ export interface SpeechRelayPorts {
     identity: Readonly<SpeechRelayIdentity>,
     revoke: () => void,
   ): () => void;
-  /** Applies public-TTS safety policy before every paid phrase dispatch. */
-  assertTtsAllowed(text: string, signal?: AbortSignal): Promise<void>;
   /** Factories hold provider credentials server-side and clean partial acquisitions on failure. */
   openStt(onEvent: (event: CartesiaInkRealtimeEvent) => void): Pick<
     CartesiaInkRealtimeSession,
@@ -106,6 +116,22 @@ export interface SpeechRelayPorts {
   onClosed(result: Promise<void>): void;
   /** Trusted provider drain acknowledgement; socket-close dispatch alone is insufficient. */
   confirmProviderStopped?: () => Promise<"complete" | "unknown">;
+  /** Absolute end of the first window; defaults to one budget from creation. */
+  expiresAt?: number;
+  /**
+   * Budget windows this session may hold (default 1). Each later window takes
+   * another usage minute and its own full reservation before `extend` moves
+   * the session's authoritative end; nothing is renewed without both.
+   */
+  maxWindows?: number;
+  /**
+   * Moves the authoritative end (revocation fence, ledger, alarm) to at most
+   * `expiresAt` and returns the end it accepted. Required when `maxWindows > 1`.
+   */
+  extend?: (
+    identity: Readonly<SpeechRelayIdentity>,
+    expiresAt: number,
+  ) => Promise<number>;
   now?: () => number;
 }
 export class SpeechRelayError extends Error {
@@ -135,7 +161,10 @@ export function parseSpeechRelayControl(input: unknown): SpeechRelayControl {
   if (value.t === "stop" && keys.length === 1) return { t: "stop" };
   if (typeof value.id !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(value.id))
     throw new SpeechRelayError("payload", "Invalid speech context");
-  if ((value.t === "cancel" || value.t === "finish") && keys.length === 2)
+  if (
+    (value.t === "prepare" || value.t === "cancel" || value.t === "finish") &&
+    keys.length === 2
+  )
     return { t: value.t, id: value.id };
   if (
     value.t === "tts" &&
@@ -184,7 +213,19 @@ export async function createSpeechRelaySession(
   )
     throw new SpeechRelayError("consent", "Speech consent required");
   const now = ports.now ?? Date.now,
-    started = now();
+    started = now(),
+    maxWindows = ports.maxWindows ?? 1;
+  if (
+    !Number.isSafeInteger(maxWindows) ||
+    maxWindows < 1 ||
+    (maxWindows > 1 && !ports.extend)
+  )
+    throw new SpeechRelayError("identity", "Invalid speech window budget");
+  let deadline = Math.min(
+      started + SPEECH_RELAY_BUDGET.durationMs,
+      ports.expiresAt ?? Number.POSITIVE_INFINITY,
+    ),
+    windows = 1;
   const dispatched = { stt: false, tts: false };
   let ttsUncertain = false;
   let closed = false,
@@ -193,7 +234,6 @@ export async function createSpeechRelaySession(
     pcmBytes = 0,
     ttsCharacters = 0,
     admittedTtsCharacters = 0,
-    moderationText = "",
     outputBytes = 0,
     quota = false;
   const uplink = new UplinkReframer();
@@ -201,21 +241,24 @@ export async function createSpeechRelaySession(
     stt: ReturnType<SpeechRelayPorts["openStt"]> | undefined,
     unsubscribe: (() => void) | undefined,
     timer: ReturnType<typeof setTimeout> | undefined,
+    renewTimer: ReturnType<typeof setTimeout> | undefined,
     closing: Promise<void> | undefined;
+  // Every window's reservation, oldest first. Settlement fills each to its
+  // own budget in order, so no reservation is charged above what it admitted.
+  const reservations: SpeechRelayCreditReservation[] = [];
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
     finishedIds = new Set<string>(),
-    cancelledIds = new Set<string>(),
-    reviews = new Map<AbortController, string>();
+    cancelledIds = new Set<string>();
   const close = (): Promise<void> => {
     if (closing) return closing;
     closed = true;
-    for (const review of reviews.keys()) review.abort();
     // Stop/revocation cannot dispatch more audio. Normal microphone silence
     // carries speech tails into complete frames before an end-of-turn event.
     uplink.flush();
     if (streams.size) ttsUncertain = true;
     if (timer) clearTimeout(timer);
+    if (renewTimer) clearTimeout(renewTimer);
     closing = Promise.resolve().then(async () => {
       const failures: unknown[] = [];
       for (const cancel of [
@@ -266,22 +309,40 @@ export async function createSpeechRelaySession(
         } catch (error) {
           failures.push(error);
         }
-      try {
-        if (credits)
-          await credits.settle({
-            pcmBytes,
-            ttsCharacters,
-            providerMayHaveStarted,
-            dispatched,
-            ...(sttDrain ? { sttDrain } : {}),
-            outcome,
-            outcomes: {
-              stt: outcome,
-              tts: ttsUncertain ? "unknown" : "complete",
-            },
-          });
-      } catch (error) {
-        failures.push(error);
+      const pcmWindow =
+          (SPEECH_RELAY_BUDGET.pcmBytesPerSecond *
+            SPEECH_RELAY_BUDGET.durationMs) /
+          1000,
+        ttsWindow = SPEECH_RELAY_BUDGET.ttsCharacters;
+      // Only the first `windows` reservations were granted; usage is capped to
+      // them. A reservation taken for a renewal that was never granted cannot
+      // have carried any usage, so it is released whatever the drain outcome.
+      const granted = windows;
+      for (const [index, reservation] of reservations.entries()) {
+        const share = (total: number, size: number) =>
+          index === granted - 1
+            ? Math.max(0, total - index * size)
+            : Math.min(size, Math.max(0, total - index * size));
+        try {
+          await reservation.settle(
+            index < granted
+              ? {
+                  pcmBytes: share(pcmBytes, pcmWindow),
+                  ttsCharacters: share(ttsCharacters, ttsWindow),
+                  providerMayHaveStarted,
+                  dispatched,
+                  ...(sttDrain ? { sttDrain } : {}),
+                  outcome,
+                  outcomes: {
+                    stt: outcome,
+                    tts: ttsUncertain ? "unknown" : "complete",
+                  },
+                }
+              : UNGRANTED_SETTLEMENT,
+          );
+        } catch (error) {
+          failures.push(error);
+        }
       }
       // Once provider work might have started, retain the admitted quota. A failed
       // transport is not proof of zero billable work; credit settlement owns reconciliation.
@@ -304,7 +365,7 @@ export async function createSpeechRelaySession(
   };
   const current = () => {
     if (closed) throw new SpeechRelayError("closed", "Speech relay is closed");
-    if (now() - started >= SPEECH_RELAY_BUDGET.durationMs) {
+    if (now() >= deadline) {
       retire();
       throw new SpeechRelayError("expired", "Speech relay expired");
     }
@@ -324,6 +385,74 @@ export async function createSpeechRelaySession(
       retire();
     }
   };
+  function arm() {
+    if (timer) clearTimeout(timer);
+    if (renewTimer) clearTimeout(renewTimer);
+    timer = setTimeout(retire, Math.max(1, deadline - now()));
+    timer.unref?.();
+    if (windows >= maxWindows) return;
+    renewTimer = setTimeout(
+      () => void renew(),
+      Math.max(1, deadline - SPEECH_RELAY_RENEW_LEAD_MS - now()),
+    );
+    renewTimer.unref?.();
+  }
+  /** Failure to renew is not an error: the session still ends at `deadline`. */
+  async function renew() {
+    const extend = ports.extend;
+    if (closed || windows >= maxWindows || !extend) return;
+    // The renewal's quota minute and reservation belong to a window only once
+    // `extend` has moved the authoritative end. Until then a refusal returns
+    // both; the current end and every granted window's settlement are unchanged.
+    let recorded = false,
+      held: SpeechRelayCreditReservation | undefined;
+    try {
+      const usage = await ports.usageStore.checkAndRecord(
+        scope,
+        1,
+        ports.usageLimits,
+      );
+      if (!usage.allowed) return;
+      recorded = true;
+      if (closed) return;
+      held = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
+      if (closed) return;
+      // From here closing owns this reservation (and settles it to zero
+      // unless the window was granted first).
+      reservations.push(held);
+      const reservation = held;
+      held = undefined;
+      const accepted = await extend(
+        scope,
+        // One window past the current end at most, even if renewal ran late.
+        Math.min(
+          now() + SPEECH_RELAY_BUDGET.durationMs,
+          deadline + SPEECH_RELAY_BUDGET.durationMs,
+        ),
+      );
+      if (closed) return;
+      if (!Number.isFinite(accepted) || accepted <= deadline) {
+        reservations.splice(reservations.indexOf(reservation), 1);
+        held = reservation;
+        return;
+      }
+      deadline = accepted;
+      windows++;
+      recorded = false;
+      arm();
+      emit({ t: "extended", expiresAt: new Date(deadline).toISOString() });
+    } catch {
+      // Refused or failed: the current window still ends at `deadline`.
+      if (!closed) {
+        const index = reservations.length - 1;
+        if (index >= windows) held = reservations.splice(index, 1)[0];
+      }
+    } finally {
+      if (held) await held.settle(UNGRANTED_SETTLEMENT).catch(() => undefined);
+      if (recorded)
+        await ports.usageStore.release(scope, 1).catch(() => undefined);
+    }
+  }
   try {
     current();
     if (!(await ports.consumeConsent(scope, consentNonce)))
@@ -339,6 +468,7 @@ export async function createSpeechRelaySession(
     quota = true;
     current();
     credits = await ports.reserveCredits(scope, SPEECH_RELAY_BUDGET);
+    reservations.push(credits);
     current();
     unsubscribe = ports.subscribeRevoked(scope, retire);
     current();
@@ -385,11 +515,7 @@ export async function createSpeechRelaySession(
       });
     });
     current();
-    timer = setTimeout(
-      retire,
-      Math.max(1, SPEECH_RELAY_BUDGET.durationMs - (now() - started)),
-    );
-    timer.unref?.();
+    arm();
   } catch (error) {
     try {
       await close();
@@ -413,7 +539,11 @@ export async function createSpeechRelaySession(
         !bytes.byteLength ||
         bytes.byteLength % 2 ||
         bytes.byteLength > SPEECH_RELAY_BUDGET.chunkBytes ||
-        next > SPEECH_RELAY_BUDGET.pcmBytesPerSecond * 60 ||
+        next >
+          (SPEECH_RELAY_BUDGET.pcmBytesPerSecond *
+            SPEECH_RELAY_BUDGET.durationMs *
+            windows) /
+            1000 ||
         !checkVoiceByteRate({
           observedBytes: next,
           elapsedMs: now() - started,
@@ -474,14 +604,12 @@ export async function createSpeechRelaySession(
       if (frame.t === "cancel") {
         try {
           if (!usedIds.has(frame.id)) {
-            if (usedIds.size >= 64)
+            if (usedIds.size >= 64 * windows)
               throw new SpeechRelayError("payload", "Too many speech contexts");
             usedIds.add(frame.id);
           }
           finishedIds.add(frame.id);
           cancelledIds.add(frame.id);
-          for (const [review, id] of reviews)
-            if (id === frame.id) review.abort();
           if (streams.has(frame.id)) ttsUncertain = true;
           streams.get(frame.id)?.cancel("speech-relay-cancelled");
           streams.delete(frame.id);
@@ -491,12 +619,14 @@ export async function createSpeechRelaySession(
         }
         return;
       }
+      // A prepare opens the context ahead of its first phrase and carries no text.
+      const text = frame.t === "tts" ? frame.text : "";
       if (
         finishedIds.has(frame.id) ||
         (usedIds.has(frame.id) && !streams.has(frame.id)) ||
-        (!usedIds.has(frame.id) && usedIds.size >= 64) ||
-        admittedTtsCharacters + frame.text.length >
-          SPEECH_RELAY_BUDGET.ttsCharacters
+        (!usedIds.has(frame.id) && usedIds.size >= 64 * windows) ||
+        admittedTtsCharacters + text.length >
+          SPEECH_RELAY_BUDGET.ttsCharacters * windows
       ) {
         retire();
         throw new SpeechRelayError(
@@ -505,25 +635,10 @@ export async function createSpeechRelaySession(
         );
       }
       usedIds.add(frame.id);
-      admittedTtsCharacters += frame.text.length;
-      // Total text is bounded by the 4096-character session admission. Preserve
-      // prior phrases/contexts so splitting text cannot evade the safety policy.
-      moderationText += frame.text;
-      const review = new AbortController();
-      reviews.set(review, frame.id);
-      let abortReview: (() => void) | undefined;
+      admittedTtsCharacters += text.length;
+      // No content review on the speech path: the phrase goes straight to
+      // provider dispatch once the session's admission and budget allow it.
       try {
-        const aborted = new Promise<never>((_resolve, reject) => {
-          abortReview = () => reject(review.signal.reason);
-          review.signal.addEventListener("abort", abortReview, { once: true });
-        });
-        // Release the ordered control queue even if a provider ignores abort.
-        await Promise.race([
-          ports.assertTtsAllowed(moderationText, review.signal),
-          aborted,
-        ]);
-        current();
-        if (cancelledIds.has(frame.id)) return false;
         if (!credits)
           throw new SpeechRelayError(
             "closed",
@@ -532,7 +647,7 @@ export async function createSpeechRelaySession(
         await credits.beforeProviderDispatch("tts");
         current();
         if (cancelledIds.has(frame.id)) return false;
-        ttsCharacters += frame.text.length;
+        ttsCharacters += text.length;
         dispatched.tts = true;
         let stream = streams.get(frame.id);
         if (!stream)
@@ -542,7 +657,8 @@ export async function createSpeechRelaySession(
               if (
                 !(bytes instanceof Uint8Array) ||
                 bytes.byteLength > 65_536 ||
-                outputBytes + bytes.byteLength > SPEECH_RELAY_BUDGET.outputBytes
+                outputBytes + bytes.byteLength >
+                  SPEECH_RELAY_BUDGET.outputBytes * windows
               ) {
                 retire();
                 return;
@@ -570,21 +686,17 @@ export async function createSpeechRelaySession(
           });
         streams.set(frame.id, stream);
         current();
-        stream.sendPhrase({
-          text: frame.text,
-          continueContext: true,
-          maxBufferDelayMs: 250,
-          ...(frame.flush !== undefined ? { flush: frame.flush } : {}),
-        });
+        if (frame.t === "tts")
+          stream.sendPhrase({
+            text: frame.text,
+            continueContext: true,
+            maxBufferDelayMs: 250,
+            ...(frame.flush !== undefined ? { flush: frame.flush } : {}),
+          });
       } catch (error) {
-        if (review.signal.aborted && cancelledIds.has(frame.id)) return false;
         ttsUncertain = true;
         retire();
         throw error;
-      } finally {
-        if (abortReview)
-          review.signal.removeEventListener("abort", abortReview);
-        reviews.delete(review);
       }
     },
     close,

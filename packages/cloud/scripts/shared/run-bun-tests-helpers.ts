@@ -32,7 +32,6 @@ export const DEFAULT_QUARANTINED_SUITES = [
  */
 export const DEFAULT_PROCESS_ISOLATED_SUITES = [
   "src/lib/services/shared-runtime/shared-runtime-chat.test.ts",
-  "src/lib/services/speech-moderation-cancellation.test.ts",
 ];
 
 /** Total attempts for the quarantined pass (first run + retries). */

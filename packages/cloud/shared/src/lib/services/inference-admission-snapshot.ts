@@ -15,6 +15,7 @@ import { publishInferenceAdmissionPolicy } from "./inference-admission-gate";
 import {
   type InferenceAdmissionSnapshot,
   isInferenceAdmissionSnapshot,
+  startOffResponse,
 } from "./inference-auth-cache";
 import { isSnapshotAdmissionEnabled } from "./inference-billing-deferred";
 import { type EndpointType, type OrgRateLimitConfig } from "./org-rate-limits";
@@ -251,8 +252,7 @@ export async function getInferenceAdmissionSnapshotCacheOnly(
     return cached;
   }
 
-  const hydration = Promise.resolve()
-    .then(() => warmInferenceAdmissionSnapshot(organizationId))
+  const hydration = startOffResponse(() => warmInferenceAdmissionSnapshot(organizationId))
     .then(() => undefined)
     .catch((error) => {
       // error-policy:J7 authoritative hydration is deliberately detached from

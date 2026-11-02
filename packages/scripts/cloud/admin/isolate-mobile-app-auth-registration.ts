@@ -95,7 +95,20 @@ async function registrationOnly(
   database: AdditionDatabase,
   app: Record<string, unknown>,
   lockResources: boolean,
+  allowLegacyDefaults = false,
 ) {
+  const neutralFees =
+    Number(app.purchase_share_percentage ?? 0) === 0 &&
+    Number(app.platform_offset_amount ?? 0) === 0;
+  // 0000_last_reavers retained these defaults through the later type changes.
+  // They are unused configuration only when both pricing switches are off;
+  // custom amounts and partially changed pairs are never normalized.
+  const normalizesLegacyDefaults =
+    allowLegacyDefaults &&
+    app.monetization_enabled === false &&
+    app.custom_pricing_enabled === false &&
+    Number(app.purchase_share_percentage) === 10 &&
+    Number(app.platform_offset_amount) === 1;
   if (
     app.deployment_status !== "draft" ||
     app.production_url != null ||
@@ -104,10 +117,9 @@ async function registrationOnly(
     app.monetization_enabled !== false ||
     app.custom_pricing_enabled === true ||
     app.affiliate_code != null ||
+    (!neutralFees && !normalizesLegacyDefaults) ||
     [
       "inference_markup_percentage",
-      "purchase_share_percentage",
-      "platform_offset_amount",
       "total_creator_earnings",
       "total_platform_revenue",
       "total_credits_used",
@@ -151,6 +163,7 @@ async function registrationOnly(
     );
     if (found.rows.length) fail("app_resources_exist");
   }
+  return normalizesLegacyDefaults;
 }
 
 async function state(
@@ -211,9 +224,20 @@ async function state(
     receipt.mode === mode &&
     typeof receipt.sourceBindingSha256 === "string" &&
     HASH.test(receipt.sourceBindingSha256);
+  let normalizesLegacyDefaults = false;
   if (app) {
     if (mode === "provision" && !completed) fail("fresh_app_already_exists");
-    await registrationOnly(database, app, lockResources);
+    const legacyDefaults = await registrationOnly(
+      database,
+      app,
+      lockResources,
+      mode === "isolate" && !completed,
+    );
+    normalizesLegacyDefaults = completed
+      ? receipt.normalizesLegacyDefaults === true
+      : legacyDefaults;
+    if (mode !== "isolate" && normalizesLegacyDefaults)
+      fail("completed_state_changed");
     await verifyRegistration(database, input, completed);
     if (completed && (!existingOrg || app.api_key_id !== null))
       fail("completed_state_changed");
@@ -264,6 +288,9 @@ async function state(
       primaryAppId: input.primaryAppId,
       clusterSha256: input.clusterSha256,
       authoritySha256: input.authoritySha256,
+      // Preserve existing neutral plan digests; the conversion is an explicit
+      // additional commitment only when unused historical defaults are reset.
+      ...(normalizesLegacyDefaults ? { normalizesLegacyDefaults: true } : {}),
     }),
   );
   if (completed && receipt.creationSha256 !== creationSha256)
@@ -277,6 +304,7 @@ async function state(
     appBindingSha256,
     completed,
     existingOrg,
+    normalizesLegacyDefaults,
   };
 }
 
@@ -305,6 +333,7 @@ export async function planPublisherRegistration(
     requiresPublisherCreation: !planned.existingOrg,
     requiresAppCreation: mode === "provision" && !planned.completed,
     requiresCreation: mode === "provision" && !planned.completed,
+    normalizesLegacyDefaults: planned.normalizesLegacyDefaults,
     repository,
     sourceCommit,
   };
@@ -392,12 +421,26 @@ export async function applyPublisherRegistration(
           mode,
           sourceBindingSha256: planned.sourceBindingSha256,
           creationSha256: planned.creationSha256,
+          normalizesLegacyDefaults: planned.normalizesLegacyDefaults,
         },
       };
       if (mode === "provision") {
+        // Real databases retain nonzero fee defaults from 0000_last_reavers.
+        // A native registration explicitly starts with no paid/workload setup.
         await database.query(
-          `INSERT INTO apps(id,name,description,slug,organization_id,created_by_user_id,app_url,allowed_origins,api_key_id,is_active,is_approved,metadata)
-          VALUES($1::uuid,$2,$3,$4,$5::uuid,NULL,$6,jsonb_build_array($7::text),NULL,TRUE,TRUE,$8::jsonb)`,
+          `INSERT INTO apps(
+            id,name,description,slug,organization_id,created_by_user_id,
+            app_url,allowed_origins,api_key_id,is_active,is_approved,metadata,
+            deployment_status,production_url,last_deployed_at,github_repo,
+            monetization_enabled,custom_pricing_enabled,affiliate_code,
+            referral_bonus_credits,inference_markup_percentage,purchase_share_percentage,platform_offset_amount,
+            total_creator_earnings,total_platform_revenue,total_credits_used,
+            discord_automation,telegram_automation,twitter_automation,linked_character_ids,promotional_assets)
+          VALUES($1::uuid,$2,$3,$4,$5::uuid,NULL,
+            $6,jsonb_build_array($7::text),NULL,TRUE,TRUE,$8::jsonb,
+            'draft',NULL,NULL,NULL,FALSE,FALSE,NULL,
+            0,0,0,0,0,0,0,
+            '{"enabled":false}'::jsonb,'{"enabled":false}'::jsonb,'{"enabled":false}'::jsonb,'[]'::jsonb,'[]'::jsonb)`,
           [
             planned.binding.appId,
             planned.target.appName,
@@ -412,8 +455,11 @@ export async function applyPublisherRegistration(
       } else {
         // Preserve historical creator audit and all customer consent/grant IDs.
         // Detach the revoked legacy key; never modify or move its credential row.
+        const neutralizeLegacyFees = planned.normalizesLegacyDefaults
+          ? ",purchase_share_percentage=0,platform_offset_amount=0"
+          : "";
         await database.query(
-          "UPDATE apps SET organization_id=$2::uuid,api_key_id=NULL,metadata=metadata || $3::jsonb,updated_at=NOW() WHERE id=$1::uuid",
+          `UPDATE apps SET organization_id=$2::uuid,api_key_id=NULL,metadata=metadata || $3::jsonb${neutralizeLegacyFees},updated_at=NOW() WHERE id=$1::uuid`,
           [
             planned.binding.appId,
             planned.binding.organizationId,

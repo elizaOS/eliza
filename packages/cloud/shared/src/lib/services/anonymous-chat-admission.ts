@@ -475,22 +475,6 @@ export async function commitAnonymousChatSlot(lease: AnonymousChatGateLease): Pr
   }
 }
 
-export async function refreshAnonymousChatModeration(
-  credential: AnonymousChatGateCredential,
-): Promise<void> {
-  const namespace = gateNamespace();
-  if (!namespace) {
-    throw new Error("Anonymous chat gate binding is unavailable");
-  }
-  const blocked = await contentModerationService.shouldBlockUser(credential.context.userId);
-  const response = await postGate(gateStub(namespace, credential.sessionToken), "/moderation", {
-    blocked,
-  });
-  if (!response.ok) {
-    throw new Error(`Anonymous chat moderation refresh failed with status ${response.status}`);
-  }
-}
-
 export async function invalidateAnonymousChatGateByToken(sessionToken: string): Promise<void> {
   const namespace = gateNamespace();
   if (!namespace) return;

@@ -1,5 +1,11 @@
 /** Protected provider proof. No user text, token, or credential is logged. */
 import { test } from "bun:test";
+import {
+  reportedSpeechRelayTest,
+  speechRelayPhases,
+  speechRelayRefusal,
+  speechServerTimings,
+} from "../test/speech-relay-live-report";
 
 const environment = process.env.ELIZA_VOICE_CLOUD_ENVIRONMENT;
 const target =
@@ -48,7 +54,7 @@ async function bounded<T>(
 
 maybe(
   "deployed speech relays provider PCM, final Ink text, and owner revocation",
-  async () => {
+  reportedSpeechRelayTest(async (stage) => {
     check(target, "SPEECH_CONFIGURATION_INVALID");
     const base = process.env.ELIZA_VOICE_CLOUD_API_URL;
     const key = process.env.ELIZAOS_CLOUD_API_KEY;
@@ -61,35 +67,72 @@ maybe(
       Authorization: `Bearer ${key}`,
       "Content-Type": "application/json",
     };
-    async function json(path: string, body?: unknown) {
-      let response: Response;
-      try {
-        response = await fetch(`${base}${path}`, {
-          method: body === undefined ? "GET" : "POST",
-          headers,
-          ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-          signal: AbortSignal.timeout(20_000),
-        });
-      } catch {
-        throw new Error("SPEECH_HTTP_UNAVAILABLE");
+    const serverTimings: Record<string, number> = {};
+    async function json(
+      path: string,
+      body?: unknown,
+      timingRoute?: "consent" | "session",
+    ) {
+      let response: Response | undefined;
+      // Like the shipped client, retry the structured warming refusal a cold
+      // auth or billing cache answers with while it hydrates; nothing else.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          response = await fetch(`${base}${path}`, {
+            method: body === undefined ? "GET" : "POST",
+            headers,
+            ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+            signal: AbortSignal.timeout(20_000),
+          });
+        } catch {
+          throw new Error("SPEECH_HTTP_UNAVAILABLE");
+        }
+        if (response.status !== 503) break;
+        const refusal = (await response
+          .clone()
+          .json()
+          .catch(() => null)) as Record<string, unknown> | null;
+        const nested = refusal?.error as Record<string, unknown> | undefined;
+        const warming =
+          (typeof nested?.code === "string" &&
+            nested.code.endsWith("_cache_warming")) ||
+          refusal?.code === "auth_cache_warming";
+        if (!warming) break;
+        await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
+      if (!response) throw new Error("SPEECH_HTTP_UNAVAILABLE");
       check(response.ok, `SPEECH_HTTP_STATUS_${response.status}`);
+      if (timingRoute)
+        Object.assign(
+          serverTimings,
+          speechServerTimings(
+            timingRoute,
+            response.headers.get("Server-Timing"),
+          ),
+        );
       try {
         return (await response.json()) as Record<string, unknown>;
       } catch {
         throw new Error("SPEECH_HTTP_JSON_INVALID");
       }
     }
+    stage("health");
     const health = await json("/api/health");
     check(
       health.commit === commit && health.environment === environment,
       "SPEECH_RELEASE_MISMATCH",
     );
     const started = performance.now();
-    const consent = await json("/api/v1/voice/speech/consent", {});
-    const minted = await json("/api/v1/voice/speech/session", {
-      consentNonce: consent.consentNonce,
-    });
+    stage("consent");
+    const consent = await json("/api/v1/voice/speech/consent", {}, "consent");
+    const consentAt = performance.now();
+    stage("session");
+    const minted = await json(
+      "/api/v1/voice/speech/session",
+      { consentNonce: consent.consentNonce },
+      "session",
+    );
+    const sessionAt = performance.now();
     check(
       typeof minted.wsUrl === "string" &&
         typeof minted.token === "string" &&
@@ -102,6 +145,8 @@ maybe(
         url.pathname === "/api/v1/voice/speech/ws",
       "SPEECH_SOCKET_ORIGIN_INVALID",
     );
+    stage("websocket");
+    const socketStartedAt = performance.now();
     const socket = new WebSocket(url);
     socket.binaryType = "arraybuffer";
     const ready = deferred<void>(),
@@ -113,6 +158,9 @@ maybe(
       completeAt = 0,
       finalAt = 0,
       readyAt = 0,
+      socketOpenAt = 0,
+      ttsRequestedAt = 0,
+      speechInputEndedAt = 0,
       frameCount = 0,
       totalBytes = 0,
       revoked = false;
@@ -122,11 +170,19 @@ maybe(
       complete.reject(error);
       final.reject(error);
     };
-    socket.addEventListener("open", () =>
+    socket.addEventListener("open", () => {
+      socketOpenAt = performance.now();
+      stage("ready");
       socket.send(
-        JSON.stringify({ t: "hello", token: minted.token, errorReasons: true }),
-      ),
-    );
+        JSON.stringify({
+          t: "hello",
+          token: minted.token,
+          errorReasons: true,
+          // Staging returns one numeric bootstrap-phase frame after ready.
+          ...(environment === "staging" ? { timings: true } : {}),
+        }),
+      );
+    });
     socket.addEventListener("error", () => fail("SPEECH_SOCKET_FAILED"));
     socket.addEventListener("close", () => {
       closed.resolve();
@@ -159,7 +215,14 @@ maybe(
         }
         check(typeof event.data === "string", "SPEECH_FRAME_INVALID");
         const message = JSON.parse(event.data) as Record<string, any>;
-        if (message.t === "error") throw new Error("SPEECH_PROVIDER_REFUSED");
+        if (message.t === "error") {
+          fail(speechRelayRefusal(message.code, message.reason));
+          return;
+        }
+        if (message.t === "timings") {
+          Object.assign(serverTimings, speechRelayPhases(message));
+          return;
+        }
         if (message.t === "ready") {
           readyAt = performance.now();
           ready.resolve();
@@ -181,6 +244,8 @@ maybe(
     });
     try {
       await bounded(ready.promise, "SPEECH_READY_TIMEOUT");
+      stage("tts");
+      ttsRequestedAt = performance.now();
       socket.send(
         JSON.stringify({
           t: "tts",
@@ -197,7 +262,11 @@ maybe(
       );
       // Feed the generated PCM at microphone speed, then enough silence for Ink's
       // bounded final-turn timer. This proves the two provider streams, not Android playback.
-      for (const chunk of [...chunks, new Uint8Array(64_000)]) {
+      stage("stt");
+      for (const [index, chunk] of [
+        ...chunks,
+        new Uint8Array(64_000),
+      ].entries()) {
         for (let offset = 0; offset < chunk.length; offset += 1024) {
           const frame = chunk.slice(offset, offset + 1024);
           socket.send(frame);
@@ -205,8 +274,11 @@ maybe(
             setTimeout(resolve, frame.length / 32),
           );
         }
+        // End of the paced generated-audio replay, before the added silence.
+        if (index === chunks.length - 1) speechInputEndedAt = performance.now();
       }
       await bounded(final.promise, "SPEECH_STT_FINAL_TIMEOUT", 5000);
+      stage("revocation");
       const revokeAt = performance.now();
       revoked = true;
       await json(`/api/v1/voice/speech/session/${minted.sessionId}/revoke`, {});
@@ -215,10 +287,20 @@ maybe(
         JSON.stringify({
           phase: "speech-relay-live",
           status: "passed",
+          consentMs: Math.round(consentAt - started),
+          sessionMs: Math.round(sessionAt - consentAt),
+          wsReadyMs: Math.round(readyAt - socketStartedAt),
+          wsOpenMs: Math.round(socketOpenAt - socketStartedAt),
+          ...serverTimings,
           bootstrapMs: Math.round(readyAt - started),
+          ttsStartupMs: Math.round(firstPcmAt - ttsRequestedAt),
           firstPcmMs: Math.round(firstPcmAt - started),
           ttsCompleteMs: Math.round(completeAt - started),
           sttFinalMs: Math.round(finalAt - started),
+          // An early final has no nonnegative tail; do not fabricate zero.
+          ...(finalAt >= speechInputEndedAt
+            ? { sttTailMs: Math.round(finalAt - speechInputEndedAt) }
+            : {}),
           revokeMs: Math.round(performance.now() - revokeAt),
           pcmFrames: frameCount,
           pcmBytes: totalBytes,
@@ -236,6 +318,6 @@ maybe(
       }
       socket.close();
     }
-  },
+  }),
   60_000,
 );

@@ -2,8 +2,10 @@
  * Rate-policy admission (`INFERENCE_RATE_POLICY_ADMISSION`) decides a warm
  * request from the cached proof with one Durable Object call and no primary
  * query. Anything other than an allow or a counter denial falls back to the
- * unchanged primary path, which re-reads the tier and key cap under the policy
- * lock. The Durable Object side of the fence is covered by
+ * cached-policy lane: the tier and key cap carried by the combined auth
+ * decision, decided by the organization's rate window object, still with no
+ * primary query (the Worker hot path never reads Postgres). The Durable Object
+ * side of the fence is covered by
  * api/__tests__/inference-rate-policy.miniflare.test.ts.
  */
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
@@ -88,12 +90,33 @@ function proof(overrides: Partial<InferenceBudgetPolicy> = {}) {
   };
 }
 
+/** The combined auth decision's admission snapshot: free-tier limits at generation 3. */
+function admissionSnapshot(): InferenceAdmissionSnapshot {
+  return {
+    authority: {
+      generation: "3",
+      source: "legacy",
+      sourceSubscriptionId: null,
+      sourceRevision: null,
+      projectionRevision: null,
+      catalogVersion: null,
+      effectiveFrom: "2020-01-01T00:00:00.000Z",
+      effectiveUntil: null,
+    },
+    subscriptionFunded: false,
+    balance: { balanceUsd: 10, balanceAt: Date.now(), balanceRevision: "1" },
+    rateLimits: { completionsRpm: 60, embeddingsRpm: 100, standardRpm: 60, strictRpm: 15 },
+    billingHold: false,
+  };
+}
+
 async function enforce(
   reply: GateReply,
   options: {
     enabled?: boolean;
     ratePolicy?: ReturnType<typeof proof>;
     apiKeyId?: string;
+    cacheOnly?: boolean;
   } = {},
 ) {
   return cloudBindings.runWithCloudBindingsAsync(
@@ -104,9 +127,11 @@ async function enforce(
     },
     () =>
       rateLimit.enforceOrgRateLimit(ORG, "embeddings", {
-        cacheOnly: true,
+        cacheOnly: options.cacheOnly ?? true,
         executionCtx: { waitUntil() {} },
         apiKeyId: options.apiKeyId ?? KEY,
+        apiKeyRateLimit: 100,
+        admissionSnapshot: admissionSnapshot(),
         ratePolicy: "ratePolicy" in options ? options.ratePolicy : proof(),
       }),
   );
@@ -159,7 +184,8 @@ afterAll(async () => {
 describe("warm rate-policy admission", () => {
   test("the tripwire catches the primary path, so it can prove the warm path avoids it", async () => {
     primaryArmed = true;
-    await expect(enforce(allowed, { enabled: false })).rejects.toThrow("primary");
+    // Only a non-Worker caller still runs the locked primary policy path.
+    await expect(enforce(allowed, { enabled: false, cacheOnly: false })).rejects.toThrow("primary");
     expect(primaryTouches).toBeGreaterThan(0);
   });
 
@@ -190,8 +216,8 @@ describe("warm rate-policy admission", () => {
   });
 });
 
-describe("fallback to the primary path", () => {
-  // The primary path's own counter call; it receives the locked primary tier and key cap.
+describe("fallback to the cached-policy lane", () => {
+  // The cached lane's counter call; it receives the cached tier and key cap.
   const primaryCounter: GateReply = (call) =>
     call.path === "/rate-policy/rate"
       ? Response.json({ error: "Credential policy proof is stale" }, { status: 503 })
@@ -214,11 +240,13 @@ describe("fallback to the primary path", () => {
       },
     ],
   ] as const) {
-    test(`${reason} re-decides on the primary path`, async () => {
+    test(`${reason} re-decides from the cached policy without the primary`, async () => {
+      primaryArmed = true;
       expect(await enforce(reply)).toBeNull();
+      expect(primaryTouches).toBe(0);
       expect(calls.map((call) => call.path)).toEqual(["/rate-policy/rate", "/rate-limit"]);
-      // Free-tier embeddings from the locked primary; the 100/min key cap is
-      // read again rather than taken from the refused proof.
+      // Embeddings tier and the 100/min key cap come from the cached auth
+      // decision, not from the refused proof.
       expect(calls[1]).toMatchObject({
         name: `rate-limit:v2:${ORG}`,
         body: {
@@ -230,13 +258,15 @@ describe("fallback to the primary path", () => {
     });
   }
 
-  test("a primary-path denial after fallback still denies", async () => {
+  test("a cached-lane denial after fallback still denies", async () => {
+    primaryArmed = true;
     const response = await enforce((call) =>
       call.path === "/rate-policy/rate"
         ? Response.json({ error: "pending" }, { status: 503 })
         : denied(),
     );
     expect(response?.status).toBe(429);
+    expect(primaryTouches).toBe(0);
   });
 
   for (const [reason, options] of [
@@ -248,15 +278,14 @@ describe("fallback to the primary path", () => {
     ["no proof", { ratePolicy: undefined }],
   ] as const) {
     test(`${reason} never reaches the rate-policy object`, async () => {
+      primaryArmed = true;
       const response = await enforce(allowed, options);
       expect(calls.some((call) => call.path === "/rate-policy/rate")).toBe(false);
-      if (reason === "a different presenting key") {
-        // The unknown key is refused by the primary path, exactly as before.
-        expect(response?.status).toBe(503);
-      } else {
-        expect(response).toBeNull();
-        expect(calls.map((call) => call.path)).toEqual(["/rate-limit"]);
-      }
+      expect(primaryTouches).toBe(0);
+      // A different presenting key is still capped by the cached decision's
+      // own cap; revocation is the auth decision's job, not the limiter's.
+      expect(response).toBeNull();
+      expect(calls.map((call) => call.path)).toEqual(["/rate-limit"]);
     });
   }
 });

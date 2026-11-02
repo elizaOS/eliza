@@ -51,8 +51,37 @@ const expectation = ({
   appBindingSha256,
   creationSha256,
 }) => ({ candidateSha256, nonTargetSha256, appBindingSha256, creationSha256 });
+const financialColumns = [
+  "referral_bonus_credits",
+  "total_credits_used",
+  "custom_pricing_enabled",
+  "monetization_enabled",
+  "inference_markup_percentage",
+  "purchase_share_percentage",
+  "platform_offset_amount",
+  "total_creator_earnings",
+  "total_platform_revenue",
+];
 before(async () => {
   pg = await PGlite.create();
+  // Test the deployed migration defaults, not today's Drizzle defaults. Later
+  // migrations change these numeric types but retain purchase share 10 / offset 1.
+  const initialAppsDefinition = readFileSync(
+    new URL(
+      "../../../cloud/shared/src/db/migrations/0000_last_reavers.sql",
+      import.meta.url,
+    ),
+    "utf8",
+  ).match(/CREATE TABLE "apps" \(([\s\S]*?)\n\);/)[1];
+  const financialDefinitions = financialColumns
+    .map((column) => {
+      const definition = initialAppsDefinition
+        .split("\n")
+        .find((line) => line.trimStart().startsWith(`"${column}" `));
+      assert.ok(definition, `Historical apps definition includes ${column}`);
+      return definition.trim().replace(/,$/, "");
+    })
+    .join(",\n");
   await pg.exec(`
     CREATE TABLE organizations(id uuid PRIMARY KEY,name text,slug text,is_active boolean NOT NULL DEFAULT true,
       account_lifecycle_state text NOT NULL DEFAULT 'active',paid_work_fenced_at timestamptz,account_deletion_request_id uuid);
@@ -63,8 +92,10 @@ before(async () => {
     CREATE TABLE apps(id uuid PRIMARY KEY,name text,description text,slug text,organization_id uuid REFERENCES organizations(id) ON DELETE CASCADE,
       created_by_user_id uuid REFERENCES users(id) ON DELETE SET NULL,app_url text,allowed_origins jsonb,api_key_id uuid,
       is_active boolean,is_approved boolean,metadata jsonb NOT NULL DEFAULT '{}',updated_at timestamptz,
-      deployment_status text DEFAULT 'draft',monetization_enabled boolean DEFAULT false,
-      affiliate_code text,referral_bonus_credits numeric DEFAULT 0,promotional_assets jsonb DEFAULT '[]');
+      deployment_status text DEFAULT 'draft',production_url text,last_deployed_at timestamptz,github_repo text,
+      affiliate_code text,promotional_assets jsonb DEFAULT '[]',linked_character_ids jsonb DEFAULT '[]',
+      discord_automation jsonb DEFAULT '{"enabled":false}',telegram_automation jsonb DEFAULT '{"enabled":false}',
+      twitter_automation jsonb DEFAULT '{"enabled":false}',${financialDefinitions});
     CREATE TABLE app_users(app_id uuid REFERENCES apps(id),user_id uuid REFERENCES users(id) ON DELETE CASCADE);
     CREATE TABLE mobile_app_auth_grants(app_id uuid REFERENCES apps(id),user_id uuid REFERENCES users(id) ON DELETE CASCADE,organization_id uuid);
     CREATE TABLE billing_resources(app_id uuid REFERENCES apps(id));
@@ -133,7 +164,15 @@ async function plan(mode, value = input) {
     "a".repeat(40),
   );
 }
-async function seedLegacy() {
+async function seedLegacy(environment = "staging") {
+  input.environment = environment;
+  input.redirectUri =
+    environment === "production"
+      ? "https://cloud.eliza.app/auth/reader/callback"
+      : CALLBACK;
+  const receipt = await readDatabaseIdentityReceipt(database, environment);
+  input.clusterSha256 = receipt.clusterSha256;
+  input.authoritySha256 = receipt.authoritySha256;
   await pg.query("INSERT INTO api_keys VALUES($1,$2,$3,false,NOW())", [
     KEY,
     LEGACY_ORG,
@@ -145,8 +184,15 @@ async function seedLegacy() {
     PRIMARY,
   ]);
   await pg.query(
-    "INSERT INTO apps(id,name,organization_id,created_by_user_id,app_url,allowed_origins,api_key_id,is_active,is_approved) VALUES($1,'Reader',$2,$3,'https://cloud-staging.eliza.app',$4,$5,true,true)",
-    [APP, LEGACY_ORG, CREATOR, JSON.stringify([CALLBACK]), KEY],
+    "INSERT INTO apps(id,name,organization_id,created_by_user_id,app_url,allowed_origins,api_key_id,is_active,is_approved,purchase_share_percentage,platform_offset_amount) VALUES($1,'Reader',$2,$3,$4,$5,$6,true,true,0,0)",
+    [
+      APP,
+      LEGACY_ORG,
+      CREATOR,
+      new URL(input.redirectUri).origin,
+      JSON.stringify([input.redirectUri]),
+      KEY,
+    ],
   );
   await pg.query("INSERT INTO app_users VALUES($1,$2)", [APP, CUSTOMER]);
   await pg.query("INSERT INTO mobile_app_auth_grants VALUES($1,$2,$3)", [
@@ -158,14 +204,23 @@ async function seedLegacy() {
     {
       clientId: input.clientId,
       appId: APP,
-      redirectUri: CALLBACK,
+      redirectUri: input.redirectUri,
       enabled: true,
     },
   ]);
 }
 
-test("fresh publisher planning reveals no private identity and creates only memberless product ownership", async () => {
+test("fresh publisher overrides historical financial defaults without changing existing apps", async () => {
+  const financialProjection = financialColumns.join(",");
+  const existing = (
+    await pg.query(`SELECT ${financialProjection} FROM apps WHERE id=$1`, [
+      PRIMARY,
+    ])
+  ).rows;
+  assert.equal(Number(existing[0].purchase_share_percentage), 10);
+  assert.equal(Number(existing[0].platform_offset_amount), 1);
   const planned = await plan("provision");
+  assert.equal(planned.normalizesLegacyDefaults, false);
   assert.equal(planned.publisherVerified, false);
   assert.equal(planned.requiresPublisherCreation, true);
   assert.equal(planned.requiresAppCreation, true);
@@ -198,6 +253,27 @@ test("fresh publisher planning reveals no private identity and creates only memb
     created_by_user_id: null,
     api_key_id: null,
   });
+  const financial = (
+    await pg.query(`SELECT ${financialProjection} FROM apps WHERE id=$1`, [APP])
+  ).rows[0];
+  for (const column of financialColumns) {
+    if (
+      column === "monetization_enabled" ||
+      column === "custom_pricing_enabled"
+    ) {
+      assert.equal(financial[column], false, column);
+    } else {
+      assert.equal(Number(financial[column]), 0, column);
+    }
+  }
+  assert.deepEqual(
+    (
+      await pg.query(`SELECT ${financialProjection} FROM apps WHERE id=$1`, [
+        PRIMARY,
+      ])
+    ).rows,
+    existing,
+  );
   assert.equal(
     (
       await pg.query("SELECT * FROM users WHERE organization_id=$1", [
@@ -228,6 +304,7 @@ test("isolation preserves app identity, audit creator, customer grants and revok
   const source = input.registry;
   input.intendedAppId = undefined;
   const planned = await plan("isolate");
+  assert.equal(planned.normalizesLegacyDefaults, false);
   assert.equal(planned.candidateSha256, registryDigest(source));
   assert.equal("candidate" in planned, false);
   await applyPublisherRegistration(
@@ -284,6 +361,100 @@ test("isolation preserves app identity, audit creator, customer grants and revok
   );
 });
 
+for (const environment of ["staging", "production"]) {
+  test(`${environment} isolation normalizes only unused historical fee defaults and preserves identity, grants, key and retry receipt`, async () => {
+    await seedLegacy(environment);
+    const neutralPlan = await plan("isolate");
+    await pg.query(
+      "UPDATE apps SET purchase_share_percentage=10,platform_offset_amount=1 WHERE id=$1",
+      [APP],
+    );
+    for (const mutation of [
+      `UPDATE apps SET purchase_share_percentage=11 WHERE id='${APP}'`,
+      `UPDATE apps SET platform_offset_amount=2 WHERE id='${APP}'`,
+      `UPDATE apps SET monetization_enabled=true WHERE id='${APP}'`,
+      `UPDATE apps SET custom_pricing_enabled=true WHERE id='${APP}'`,
+      `UPDATE apps SET custom_pricing_enabled=NULL WHERE id='${APP}'`,
+      `UPDATE apps SET total_creator_earnings=1 WHERE id='${APP}'`,
+      `UPDATE apps SET total_platform_revenue=1 WHERE id='${APP}'`,
+      `UPDATE apps SET total_credits_used=1 WHERE id='${APP}'`,
+      `UPDATE apps SET inference_markup_percentage=1 WHERE id='${APP}'`,
+      `INSERT INTO billing_resources VALUES('${APP}')`,
+    ]) {
+      await pg.exec("BEGIN");
+      // The historical column is nullable after 0048; preserve that DB behavior.
+      await pg.exec(
+        "ALTER TABLE apps ALTER COLUMN custom_pricing_enabled DROP NOT NULL",
+      );
+      await pg.exec(mutation);
+      await assert.rejects(plan("isolate"));
+      await pg.exec("ROLLBACK");
+    }
+    const planned = await plan("isolate");
+    assert.equal(planned.normalizesLegacyDefaults, true);
+    assert.notEqual(planned.creationSha256, neutralPlan.creationSha256);
+    assert.equal(planned.appBindingSha256, neutralPlan.appBindingSha256);
+    await assert.rejects(
+      applyPublisherRegistration(
+        database,
+        input,
+        "isolate",
+        expectation(neutralPlan),
+      ),
+      /publisher_reviewed_plan_mismatch/,
+    );
+    const key = (await pg.query("SELECT * FROM api_keys WHERE id=$1", [KEY]))
+      .rows;
+    const grants = (await pg.query("SELECT * FROM mobile_app_auth_grants"))
+      .rows;
+    const existing = (
+      await pg.query("SELECT * FROM apps WHERE id=$1", [PRIMARY])
+    ).rows;
+    await applyPublisherRegistration(
+      database,
+      input,
+      "isolate",
+      expectation(planned),
+    );
+    const isolated = (await pg.query("SELECT * FROM apps WHERE id=$1", [APP]))
+      .rows;
+    assert.equal(isolated[0].id, APP);
+    assert.equal(isolated[0].organization_id, PUBLISHER);
+    assert.equal(isolated[0].created_by_user_id, CREATOR);
+    assert.equal(isolated[0].api_key_id, null);
+    assert.equal(Number(isolated[0].purchase_share_percentage), 0);
+    assert.equal(Number(isolated[0].platform_offset_amount), 0);
+    assert.equal(isolated[0].monetization_enabled, false);
+    assert.equal(isolated[0].custom_pricing_enabled, false);
+    assert.equal(
+      isolated[0].metadata.nativeAppPublisherIsolation.normalizesLegacyDefaults,
+      true,
+    );
+    assert.deepEqual(
+      (await pg.query("SELECT * FROM apps WHERE id=$1", [PRIMARY])).rows,
+      existing,
+    );
+    assert.deepEqual(
+      (await pg.query("SELECT * FROM api_keys WHERE id=$1", [KEY])).rows,
+      key,
+    );
+    assert.deepEqual(
+      (await pg.query("SELECT * FROM mobile_app_auth_grants")).rows,
+      grants,
+    );
+    await applyPublisherRegistration(
+      database,
+      input,
+      "isolate",
+      expectation(planned),
+    );
+    assert.deepEqual(
+      (await pg.query("SELECT * FROM apps WHERE id=$1", [APP])).rows,
+      isolated,
+    );
+  });
+}
+
 test("isolation refuses active keys, hosted resources, billing history and changed reviewed input before any writes", async () => {
   await seedLegacy();
   for (const mutation of [
@@ -295,6 +466,8 @@ test("isolation refuses active keys, hosted resources, billing history and chang
     `INSERT INTO billing_resources VALUES('${APP}')`,
     `UPDATE apps SET referral_bonus_credits=1 WHERE id='${APP}'`,
     `UPDATE apps SET affiliate_code='reward' WHERE id='${APP}'`,
+    `UPDATE apps SET purchase_share_percentage=10 WHERE id='${APP}'`,
+    `UPDATE apps SET platform_offset_amount=1 WHERE id='${APP}'`,
   ]) {
     await pg.exec("BEGIN");
     await pg.exec(mutation);

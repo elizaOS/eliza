@@ -7,6 +7,7 @@
  */
 import { ElizaError } from "@elizaos/core";
 import { and, asc, count, eq, gt, inArray, isNull, lte, or } from "drizzle-orm";
+import { withInferencePolicyMutation } from "../../lib/services/inference-policy-fence";
 import { dbWrite } from "../client";
 import { buildMobileAppAuthCredentialProvenance } from "../mobile-app-auth-credential-policy";
 import type { ApiKey, NewApiKey } from "../schemas/api-keys";
@@ -203,71 +204,74 @@ export class MobileAppAuthGrantsRepository {
     credential: NewApiKey,
     now: Date,
   ): Promise<MobileAppAuthExchangeClaim> {
-    return await dbWrite.transaction(async (tx) => {
-      const [activeApp] = await tx
-        .select({ id: apps.id })
-        .from(apps)
-        .where(
-          and(eq(apps.id, binding.appId), eq(apps.is_active, true), eq(apps.is_approved, true)),
-        )
-        .for("update");
-      if (!activeApp) return { kind: "invalid", reason: "client_inactive" };
+    return await withInferencePolicyMutation(
+      { organizationIds: [credential.organization_id], userLockIds: [credential.user_id] },
+      async (tx) => {
+        const [activeApp] = await tx
+          .select({ id: apps.id })
+          .from(apps)
+          .where(
+            and(eq(apps.id, binding.appId), eq(apps.is_active, true), eq(apps.is_approved, true)),
+          )
+          .for("update");
+        if (!activeApp) return { kind: "invalid", reason: "client_inactive" };
 
-      const [claimed] = await tx
-        .update(mobileAppAuthGrants)
-        .set({
-          status: "exchanged",
-          exchanged_at: now,
-          updated_at: now,
-        })
-        .where(
-          and(
-            exactBindingConditions(binding, now),
-            eq(mobileAppAuthGrants.status, "pending"),
-            isNull(mobileAppAuthGrants.credential_id),
-          ),
-        )
-        .returning();
-
-      if (claimed) {
-        if (credential.source_app_id !== claimed.app_id) {
-          throw grantIntegrityError(
-            "Mobile App Auth credential source app does not match its authorization grant",
-          );
-        }
-        const [createdCredential] = await tx.insert(apiKeys).values(credential).returning();
-        if (!createdCredential) {
-          throw grantIntegrityError("Failed to create mobile App Auth credential");
-        }
-        const [boundGrant] = await tx
+        const [claimed] = await tx
           .update(mobileAppAuthGrants)
-          .set({ credential_id: createdCredential.id, updated_at: now })
+          .set({
+            status: "exchanged",
+            exchanged_at: now,
+            updated_at: now,
+          })
           .where(
             and(
-              eq(mobileAppAuthGrants.id, claimed.id),
-              eq(mobileAppAuthGrants.status, "exchanged"),
+              exactBindingConditions(binding, now),
+              eq(mobileAppAuthGrants.status, "pending"),
               isNull(mobileAppAuthGrants.credential_id),
             ),
           )
           .returning();
-        if (!boundGrant) {
-          throw grantIntegrityError("Failed to bind mobile App Auth credential");
-        }
-        const state = { grant: boundGrant, credential: createdCredential };
-        assertStateIntegrity(state);
-        return { kind: "created", state };
-      }
 
-      const [existing] = await tx
-        .select({ grant: mobileAppAuthGrants, credential: apiKeys })
-        .from(mobileAppAuthGrants)
-        .leftJoin(apiKeys, eq(mobileAppAuthGrants.credential_id, apiKeys.id))
-        .where(exactBindingConditions(binding, now))
-        .limit(1);
-      if (!existing) return { kind: "invalid", reason: "grant_invalid" };
-      assertStateIntegrity(existing);
-      return { kind: "existing", state: existing };
-    });
+        if (claimed) {
+          if (credential.source_app_id !== claimed.app_id) {
+            throw grantIntegrityError(
+              "Mobile App Auth credential source app does not match its authorization grant",
+            );
+          }
+          const [createdCredential] = await tx.insert(apiKeys).values(credential).returning();
+          if (!createdCredential) {
+            throw grantIntegrityError("Failed to create mobile App Auth credential");
+          }
+          const [boundGrant] = await tx
+            .update(mobileAppAuthGrants)
+            .set({ credential_id: createdCredential.id, updated_at: now })
+            .where(
+              and(
+                eq(mobileAppAuthGrants.id, claimed.id),
+                eq(mobileAppAuthGrants.status, "exchanged"),
+                isNull(mobileAppAuthGrants.credential_id),
+              ),
+            )
+            .returning();
+          if (!boundGrant) {
+            throw grantIntegrityError("Failed to bind mobile App Auth credential");
+          }
+          const state = { grant: boundGrant, credential: createdCredential };
+          assertStateIntegrity(state);
+          return { kind: "created", state };
+        }
+
+        const [existing] = await tx
+          .select({ grant: mobileAppAuthGrants, credential: apiKeys })
+          .from(mobileAppAuthGrants)
+          .leftJoin(apiKeys, eq(mobileAppAuthGrants.credential_id, apiKeys.id))
+          .where(exactBindingConditions(binding, now))
+          .limit(1);
+        if (!existing) return { kind: "invalid", reason: "grant_invalid" };
+        assertStateIntegrity(existing);
+        return { kind: "existing", state: existing };
+      },
+    );
   }
 
   async acknowledge(input: {
@@ -276,135 +280,158 @@ export class MobileAppAuthGrantsRepository {
     credentialHash: string;
     now: Date;
   }): Promise<MobileAppAuthGrantState | null> {
-    return await dbWrite.transaction(async (tx) => {
-      const [activeApp] = await tx
-        .select({ id: apps.id })
-        .from(apps)
-        .where(
-          and(
-            eq(apps.id, input.binding.appId),
-            eq(apps.is_active, true),
-            eq(apps.is_approved, true),
-          ),
-        )
-        .for("update");
-      if (!activeApp) return null;
-
-      const [claimedGrant] = await tx
-        .update(mobileAppAuthGrants)
-        .set({
-          status: "acknowledged",
-          acknowledged_at: input.now,
-          updated_at: input.now,
-        })
-        .where(
-          and(
-            exactBindingConditions(input.binding, input.now),
-            eq(mobileAppAuthGrants.status, "exchanged"),
-            eq(mobileAppAuthGrants.credential_id, input.credentialId),
-          ),
-        )
-        .returning();
-
-      if (claimedGrant) {
-        const [owner] = await tx
-          .select({ organizationId: users.organization_id, isActive: users.is_active })
-          .from(users)
-          .where(eq(users.id, claimedGrant.user_id))
-          .for("update");
-        if (!owner?.isActive || owner.organizationId !== claimedGrant.organization_id) {
-          throw grantIntegrityError(
-            "Mobile App Auth credential requires an active owner in the same organization",
-          );
-        }
-        const [organization] = await tx
-          .select({ isActive: organizations.is_active })
-          .from(organizations)
-          .where(eq(organizations.id, claimedGrant.organization_id))
-          .for("update");
-        if (!organization?.isActive) {
-          throw grantIntegrityError("Mobile App Auth credential requires an active organization");
-        }
-        const expectedProvenance = buildMobileAppAuthCredentialProvenance({
-          grantId: claimedGrant.id,
-          environment: claimedGrant.environment,
-          deviceName: claimedGrant.device_name,
-          clientId: claimedGrant.client_id,
-          scopes: claimedGrant.scopes,
-        });
-        const [activated] = await tx
-          .update(apiKeys)
-          .set({
-            is_active: true,
-            updated_at: input.now,
-            key_ciphertext: null,
-            key_nonce: null,
-            key_auth_tag: null,
-            key_kms_key_id: null,
-            key_kms_key_version: null,
-          })
+    // Plan the locks before taking app, grant, owner or credential row locks.
+    // The claim below rechecks this owner because a concurrent grant rewrite
+    // must not move a credential into an organization outside this permit.
+    const [planned] = await dbWrite
+      .select({
+        userId: mobileAppAuthGrants.user_id,
+        organizationId: mobileAppAuthGrants.organization_id,
+      })
+      .from(mobileAppAuthGrants)
+      .where(exactBindingConditions(input.binding, input.now))
+      .limit(1);
+    if (!planned) return null;
+    return await withInferencePolicyMutation(
+      { organizationIds: [planned.organizationId], userLockIds: [planned.userId] },
+      async (tx) => {
+        const [activeApp] = await tx
+          .select({ id: apps.id })
+          .from(apps)
           .where(
             and(
-              eq(apiKeys.id, input.credentialId),
-              eq(apiKeys.user_id, claimedGrant.user_id),
-              eq(apiKeys.organization_id, claimedGrant.organization_id),
-              eq(apiKeys.source_app_id, claimedGrant.app_id),
-              eq(apiKeys.name, expectedProvenance.name),
-              eq(apiKeys.description, expectedProvenance.description),
-              eq(apiKeys.key_hash, input.credentialHash),
-              eq(apiKeys.is_active, false),
-              isNull(apiKeys.deleted_at),
-              gt(apiKeys.expires_at, input.now),
+              eq(apps.id, input.binding.appId),
+              eq(apps.is_active, true),
+              eq(apps.is_approved, true),
             ),
           )
-          .returning();
-        if (!activated) {
-          throw grantIntegrityError("Mobile App Auth credential could not be activated");
-        }
-        if (!activated.expires_at) {
-          throw grantIntegrityError("Mobile App Auth credential must have a finite expiry");
-        }
-        const [receiptGrant] = await tx
+          .for("update");
+        if (!activeApp) return null;
+
+        const [claimedGrant] = await tx
           .update(mobileAppAuthGrants)
           .set({
-            expires_at: activated.expires_at,
+            status: "acknowledged",
+            acknowledged_at: input.now,
             updated_at: input.now,
           })
           .where(
             and(
-              eq(mobileAppAuthGrants.id, claimedGrant.id),
-              eq(mobileAppAuthGrants.status, "acknowledged"),
-              eq(mobileAppAuthGrants.credential_id, activated.id),
+              exactBindingConditions(input.binding, input.now),
+              eq(mobileAppAuthGrants.user_id, planned.userId),
+              eq(mobileAppAuthGrants.organization_id, planned.organizationId),
+              eq(mobileAppAuthGrants.status, "exchanged"),
+              eq(mobileAppAuthGrants.credential_id, input.credentialId),
             ),
           )
           .returning();
-        if (!receiptGrant) {
-          throw grantIntegrityError("Failed to retain mobile App Auth acknowledgement receipt");
-        }
-        const state = { grant: receiptGrant, credential: activated };
-        assertStateIntegrity(state);
-        return state;
-      }
 
-      const [existing] = await tx
-        .select({ grant: mobileAppAuthGrants, credential: apiKeys })
-        .from(mobileAppAuthGrants)
-        .leftJoin(apiKeys, eq(mobileAppAuthGrants.credential_id, apiKeys.id))
-        .where(exactBindingConditions(input.binding, input.now))
-        .limit(1);
-      if (!existing || existing.grant.status !== "acknowledged") return null;
-      assertStateIntegrity(existing);
-      if (
-        existing.credential?.id !== input.credentialId ||
-        existing.credential.key_hash !== input.credentialHash ||
-        !existing.credential.is_active ||
-        existing.credential.deleted_at ||
-        (existing.credential.expires_at && existing.credential.expires_at <= input.now)
-      ) {
-        return null;
-      }
-      return existing;
-    });
+        if (claimedGrant) {
+          const [owner] = await tx
+            .select({ organizationId: users.organization_id, isActive: users.is_active })
+            .from(users)
+            .where(eq(users.id, claimedGrant.user_id))
+            .for("update");
+          if (!owner?.isActive || owner.organizationId !== claimedGrant.organization_id) {
+            throw grantIntegrityError(
+              "Mobile App Auth credential requires an active owner in the same organization",
+            );
+          }
+          const [organization] = await tx
+            .select({ isActive: organizations.is_active })
+            .from(organizations)
+            .where(eq(organizations.id, claimedGrant.organization_id))
+            .for("update");
+          if (!organization?.isActive) {
+            throw grantIntegrityError("Mobile App Auth credential requires an active organization");
+          }
+          const expectedProvenance = buildMobileAppAuthCredentialProvenance({
+            grantId: claimedGrant.id,
+            environment: claimedGrant.environment,
+            deviceName: claimedGrant.device_name,
+            clientId: claimedGrant.client_id,
+            scopes: claimedGrant.scopes,
+          });
+          const [activated] = await tx
+            .update(apiKeys)
+            .set({
+              is_active: true,
+              updated_at: input.now,
+              key_ciphertext: null,
+              key_nonce: null,
+              key_auth_tag: null,
+              key_kms_key_id: null,
+              key_kms_key_version: null,
+            })
+            .where(
+              and(
+                eq(apiKeys.id, input.credentialId),
+                eq(apiKeys.user_id, claimedGrant.user_id),
+                eq(apiKeys.organization_id, claimedGrant.organization_id),
+                eq(apiKeys.source_app_id, claimedGrant.app_id),
+                eq(apiKeys.name, expectedProvenance.name),
+                eq(apiKeys.description, expectedProvenance.description),
+                eq(apiKeys.key_hash, input.credentialHash),
+                eq(apiKeys.is_active, false),
+                isNull(apiKeys.deleted_at),
+                gt(apiKeys.expires_at, input.now),
+              ),
+            )
+            .returning();
+          if (!activated) {
+            throw grantIntegrityError("Mobile App Auth credential could not be activated");
+          }
+          if (!activated.expires_at) {
+            throw grantIntegrityError("Mobile App Auth credential must have a finite expiry");
+          }
+          const [receiptGrant] = await tx
+            .update(mobileAppAuthGrants)
+            .set({
+              expires_at: activated.expires_at,
+              updated_at: input.now,
+            })
+            .where(
+              and(
+                eq(mobileAppAuthGrants.id, claimedGrant.id),
+                eq(mobileAppAuthGrants.status, "acknowledged"),
+                eq(mobileAppAuthGrants.credential_id, activated.id),
+              ),
+            )
+            .returning();
+          if (!receiptGrant) {
+            throw grantIntegrityError("Failed to retain mobile App Auth acknowledgement receipt");
+          }
+          const state = { grant: receiptGrant, credential: activated };
+          assertStateIntegrity(state);
+          return state;
+        }
+
+        const [existing] = await tx
+          .select({ grant: mobileAppAuthGrants, credential: apiKeys })
+          .from(mobileAppAuthGrants)
+          .leftJoin(apiKeys, eq(mobileAppAuthGrants.credential_id, apiKeys.id))
+          .where(
+            and(
+              exactBindingConditions(input.binding, input.now),
+              eq(mobileAppAuthGrants.user_id, planned.userId),
+              eq(mobileAppAuthGrants.organization_id, planned.organizationId),
+            ),
+          )
+          .limit(1);
+        if (!existing || existing.grant.status !== "acknowledged") return null;
+        assertStateIntegrity(existing);
+        if (
+          existing.credential?.id !== input.credentialId ||
+          existing.credential.key_hash !== input.credentialHash ||
+          !existing.credential.is_active ||
+          existing.credential.deleted_at ||
+          (existing.credential.expires_at && existing.credential.expires_at <= input.now)
+        ) {
+          return null;
+        }
+        return existing;
+      },
+    );
   }
 
   async cleanupExpired(
@@ -419,280 +446,317 @@ export class MobileAppAuthGrantsRepository {
     integrityViolations: number;
     nextCursor: MobileAppAuthCleanupCursor | null;
   }> {
-    return await dbWrite.transaction(async (tx) => {
-      const afterCursor = after
-        ? or(
-            gt(mobileAppAuthGrants.expires_at, after.expiresAt),
+    const afterCursor = after
+      ? or(
+          gt(mobileAppAuthGrants.expires_at, after.expiresAt),
+          and(
+            eq(mobileAppAuthGrants.expires_at, after.expiresAt),
+            gt(mobileAppAuthGrants.created_at, after.createdAt),
+          ),
+          and(
+            eq(mobileAppAuthGrants.expires_at, after.expiresAt),
+            eq(mobileAppAuthGrants.created_at, after.createdAt),
+            gt(mobileAppAuthGrants.id, after.id),
+          ),
+        )
+      : undefined;
+    // A bounded read plans every user and organization lock before row locks.
+    // Lock only that same candidate set, then verify ownership before writes.
+    const planned = await dbWrite
+      .select({
+        id: mobileAppAuthGrants.id,
+        userId: mobileAppAuthGrants.user_id,
+        organizationId: mobileAppAuthGrants.organization_id,
+        expiresAt: mobileAppAuthGrants.expires_at,
+        createdAt: mobileAppAuthGrants.created_at,
+      })
+      .from(mobileAppAuthGrants)
+      .where(and(lte(mobileAppAuthGrants.expires_at, now), afterCursor))
+      .orderBy(
+        asc(mobileAppAuthGrants.expires_at),
+        asc(mobileAppAuthGrants.created_at),
+        asc(mobileAppAuthGrants.id),
+      )
+      .limit(limit);
+    const plannedById = new Map(planned.map((grant) => [grant.id, grant]));
+    // Scan counts include planned candidates skipped by a row lock. Advance
+    // across those candidates as well as processed rows. The next sweep
+    // starts at the beginning and retries grants still held by another writer.
+    const lastPlanned = planned[planned.length - 1];
+    const nextCursor: MobileAppAuthCleanupCursor | null = lastPlanned
+      ? { expiresAt: lastPlanned.expiresAt, createdAt: lastPlanned.createdAt, id: lastPlanned.id }
+      : null;
+    return await withInferencePolicyMutation(
+      {
+        organizationIds: planned.map((grant) => grant.organizationId),
+        userLockIds: planned.map((grant) => grant.userId),
+      },
+      async (tx) => {
+        const expired = await tx
+          .select()
+          .from(mobileAppAuthGrants)
+          .where(
             and(
-              eq(mobileAppAuthGrants.expires_at, after.expiresAt),
-              gt(mobileAppAuthGrants.created_at, after.createdAt),
-            ),
-            and(
-              eq(mobileAppAuthGrants.expires_at, after.expiresAt),
-              eq(mobileAppAuthGrants.created_at, after.createdAt),
-              gt(mobileAppAuthGrants.id, after.id),
+              lte(mobileAppAuthGrants.expires_at, now),
+              afterCursor,
+              inArray(
+                mobileAppAuthGrants.id,
+                planned.map((grant) => grant.id),
+              ),
             ),
           )
-        : undefined;
-      const expired = await tx
-        .select()
-        .from(mobileAppAuthGrants)
-        .where(and(lte(mobileAppAuthGrants.expires_at, now), afterCursor))
-        .orderBy(
-          asc(mobileAppAuthGrants.expires_at),
-          asc(mobileAppAuthGrants.created_at),
-          asc(mobileAppAuthGrants.id),
-        )
-        .limit(limit)
-        .for("update", { skipLocked: true });
-      if (expired.length === 0) {
-        return {
-          grantsDeleted: 0,
-          grantsScanned: 0,
-          inactiveCredentialsTombstoned: 0,
-          acknowledgedCredentialsTombstoned: 0,
-          integrityViolations: 0,
-          nextCursor: null,
-        };
-      }
-      const lastExpired = expired[expired.length - 1];
-      if (!lastExpired) {
-        throw grantIntegrityError("Expired mobile App Auth cleanup lost its scan cursor");
-      }
-      const nextCursor: MobileAppAuthCleanupCursor = {
-        expiresAt: lastExpired.expires_at,
-        createdAt: lastExpired.created_at,
-        id: lastExpired.id,
-      };
+          .orderBy(
+            asc(mobileAppAuthGrants.expires_at),
+            asc(mobileAppAuthGrants.created_at),
+            asc(mobileAppAuthGrants.id),
+          )
+          .limit(limit)
+          .for("update", { skipLocked: true });
+        if (expired.length === 0) {
+          return {
+            grantsDeleted: 0,
+            grantsScanned: planned.length,
+            inactiveCredentialsTombstoned: 0,
+            acknowledgedCredentialsTombstoned: 0,
+            integrityViolations: 0,
+            nextCursor,
+          };
+        }
+        for (const grant of expired) {
+          const owner = plannedById.get(grant.id);
+          if (owner?.userId !== grant.user_id || owner.organizationId !== grant.organization_id)
+            throw grantIntegrityError("Expired mobile App Auth grant owner changed during cleanup");
+        }
 
-      const safeGrantIds = new Set(
-        expired
+        const safeGrantIds = new Set(
+          expired
+            .filter(
+              (grant) =>
+                grant.status === "pending" &&
+                grant.credential_id === null &&
+                grant.exchanged_at === null &&
+                grant.acknowledged_at === null,
+            )
+            .map((grant) => grant.id),
+        );
+        const credentialBearingGrants = expired.filter(
+          (grant) => grant.status === "exchanged" || grant.status === "acknowledged",
+        );
+        const credentialIds = credentialBearingGrants
           .filter(
+            (grant): grant is typeof grant & { credential_id: string } =>
+              grant.credential_id !== null,
+          )
+          .map((grant) => grant.credential_id);
+
+        let inactiveCredentialsTombstoned = 0;
+        let acknowledgedCredentialsTombstoned = 0;
+        let integrityViolations =
+          expired.filter(
             (grant) =>
               grant.status === "pending" &&
-              grant.credential_id === null &&
-              grant.exchanged_at === null &&
-              grant.acknowledged_at === null,
-          )
-          .map((grant) => grant.id),
-      );
-      const credentialBearingGrants = expired.filter(
-        (grant) => grant.status === "exchanged" || grant.status === "acknowledged",
-      );
-      const credentialIds = credentialBearingGrants
-        .filter(
-          (grant): grant is typeof grant & { credential_id: string } =>
-            grant.credential_id !== null,
-        )
-        .map((grant) => grant.credential_id);
-
-      let inactiveCredentialsTombstoned = 0;
-      let acknowledgedCredentialsTombstoned = 0;
-      let integrityViolations =
-        expired.filter(
-          (grant) =>
-            grant.status === "pending" &&
-            (grant.credential_id !== null ||
-              grant.exchanged_at !== null ||
-              grant.acknowledged_at !== null),
-        ).length + credentialBearingGrants.filter((grant) => grant.credential_id === null).length;
-      if (credentialIds.length > 0) {
-        const uniqueCredentialIds = [...new Set(credentialIds)];
-        const credentials = await tx
-          .select()
-          .from(apiKeys)
-          .where(inArray(apiKeys.id, uniqueCredentialIds))
-          .for("update");
-        const referenceCounts = await tx
-          .select({
-            credentialId: mobileAppAuthGrants.credential_id,
-            value: count(),
-          })
-          .from(mobileAppAuthGrants)
-          .where(inArray(mobileAppAuthGrants.credential_id, uniqueCredentialIds))
-          .groupBy(mobileAppAuthGrants.credential_id);
-        const credentialById = new Map(
-          credentials.map((credential) => [credential.id, credential]),
-        );
-        const referenceCountById = new Map(
-          referenceCounts.flatMap((entry) =>
-            entry.credentialId ? [[entry.credentialId, Number(entry.value)]] : [],
-          ),
-        );
-        const inactiveTombstoneCandidates: Array<{ credentialId: string; grantId: string }> = [];
-        const acknowledgedTombstoneCandidates: Array<{
-          credentialId: string;
-          grantId: string;
-        }> = [];
-
-        for (const grant of credentialBearingGrants) {
-          const credentialId = grant.credential_id;
-          if (!credentialId) continue;
-          const credential = credentialById.get(credentialId);
-          const expectedProvenance = buildMobileAppAuthCredentialProvenance({
-            grantId: grant.id,
-            environment: grant.environment,
-            deviceName: grant.device_name,
-            clientId: grant.client_id,
-            scopes: grant.scopes,
-          });
-          const ownsCredential = Boolean(
-            credential &&
-              credential.user_id === grant.user_id &&
-              credential.organization_id === grant.organization_id &&
-              credential.source_app_id === grant.app_id &&
-              credential.name === expectedProvenance.name &&
-              credential.description === expectedProvenance.description &&
-              referenceCountById.get(credentialId) === 1,
+              (grant.credential_id !== null ||
+                grant.exchanged_at !== null ||
+                grant.acknowledged_at !== null),
+          ).length + credentialBearingGrants.filter((grant) => grant.credential_id === null).length;
+        if (credentialIds.length > 0) {
+          const uniqueCredentialIds = [...new Set(credentialIds)];
+          const credentials = await tx
+            .select()
+            .from(apiKeys)
+            .where(inArray(apiKeys.id, uniqueCredentialIds))
+            .for("update");
+          const referenceCounts = await tx
+            .select({
+              credentialId: mobileAppAuthGrants.credential_id,
+              value: count(),
+            })
+            .from(mobileAppAuthGrants)
+            .where(inArray(mobileAppAuthGrants.credential_id, uniqueCredentialIds))
+            .groupBy(mobileAppAuthGrants.credential_id);
+          const credentialById = new Map(
+            credentials.map((credential) => [credential.id, credential]),
           );
-          if (!credential || !ownsCredential) {
-            integrityViolations++;
-            continue;
-          }
-          if (!credential.expires_at) {
-            integrityViolations++;
-            continue;
-          }
-          const validLifecycleTimes =
-            grant.exchanged_at !== null &&
-            grant.exchanged_at <= now &&
-            (grant.status === "exchanged"
-              ? grant.acknowledged_at === null
-              : grant.acknowledged_at !== null &&
-                grant.acknowledged_at >= grant.exchanged_at &&
-                grant.acknowledged_at <= now);
-          if (!validLifecycleTimes) {
-            integrityViolations++;
-            continue;
-          }
-          if (credential.deleted_at) {
-            if (
-              credential.is_active ||
-              credential.deleted_at > now ||
-              credential.key_ciphertext !== null ||
-              credential.key_nonce !== null ||
-              credential.key_auth_tag !== null ||
-              credential.key_kms_key_id !== null ||
-              credential.key_kms_key_version !== null
-            ) {
-              integrityViolations++;
-            } else {
-              safeGrantIds.add(grant.id);
-            }
-            continue;
-          }
+          const referenceCountById = new Map(
+            referenceCounts.flatMap((entry) =>
+              entry.credentialId ? [[entry.credentialId, Number(entry.value)]] : [],
+            ),
+          );
+          const inactiveTombstoneCandidates: Array<{ credentialId: string; grantId: string }> = [];
+          const acknowledgedTombstoneCandidates: Array<{
+            credentialId: string;
+            grantId: string;
+          }> = [];
 
-          if (grant.status === "exchanged") {
-            if (credential.is_active) {
+          for (const grant of credentialBearingGrants) {
+            const credentialId = grant.credential_id;
+            if (!credentialId) continue;
+            const credential = credentialById.get(credentialId);
+            const expectedProvenance = buildMobileAppAuthCredentialProvenance({
+              grantId: grant.id,
+              environment: grant.environment,
+              deviceName: grant.device_name,
+              clientId: grant.client_id,
+              scopes: grant.scopes,
+            });
+            const ownsCredential = Boolean(
+              credential &&
+                credential.user_id === grant.user_id &&
+                credential.organization_id === grant.organization_id &&
+                credential.source_app_id === grant.app_id &&
+                credential.name === expectedProvenance.name &&
+                credential.description === expectedProvenance.description &&
+                referenceCountById.get(credentialId) === 1,
+            );
+            if (!credential || !ownsCredential) {
               integrityViolations++;
               continue;
             }
-            inactiveTombstoneCandidates.push({ credentialId, grantId: grant.id });
-            continue;
-          }
-
-          const credentialExpiresAt = credential.expires_at;
-          if (
-            credentialExpiresAt > now ||
-            credentialExpiresAt.getTime() !== grant.expires_at.getTime()
-          ) {
-            integrityViolations++;
-            continue;
-          }
-          acknowledgedTombstoneCandidates.push({ credentialId, grantId: grant.id });
-        }
-
-        if (inactiveTombstoneCandidates.length > 0) {
-          const candidateIds = inactiveTombstoneCandidates.map(
-            (candidate) => candidate.credentialId,
-          );
-          const tombstoned = await tx
-            .update(apiKeys)
-            .set({
-              is_active: false,
-              deleted_at: now,
-              updated_at: now,
-              key_ciphertext: null,
-              key_nonce: null,
-              key_auth_tag: null,
-              key_kms_key_id: null,
-              key_kms_key_version: null,
-            })
-            .where(
-              and(
-                inArray(apiKeys.id, candidateIds),
-                eq(apiKeys.is_active, false),
-                isNull(apiKeys.deleted_at),
-              ),
-            )
-            .returning({ id: apiKeys.id });
-          inactiveCredentialsTombstoned = tombstoned.length;
-          const tombstonedIds = new Set(tombstoned.map((credential) => credential.id));
-          for (const candidate of inactiveTombstoneCandidates) {
-            if (tombstonedIds.has(candidate.credentialId)) {
-              safeGrantIds.add(candidate.grantId);
-            } else {
+            if (!credential.expires_at) {
               integrityViolations++;
+              continue;
+            }
+            const validLifecycleTimes =
+              grant.exchanged_at !== null &&
+              grant.exchanged_at <= now &&
+              (grant.status === "exchanged"
+                ? grant.acknowledged_at === null
+                : grant.acknowledged_at !== null &&
+                  grant.acknowledged_at >= grant.exchanged_at &&
+                  grant.acknowledged_at <= now);
+            if (!validLifecycleTimes) {
+              integrityViolations++;
+              continue;
+            }
+            if (credential.deleted_at) {
+              if (
+                credential.is_active ||
+                credential.deleted_at > now ||
+                credential.key_ciphertext !== null ||
+                credential.key_nonce !== null ||
+                credential.key_auth_tag !== null ||
+                credential.key_kms_key_id !== null ||
+                credential.key_kms_key_version !== null
+              ) {
+                integrityViolations++;
+              } else {
+                safeGrantIds.add(grant.id);
+              }
+              continue;
+            }
+
+            if (grant.status === "exchanged") {
+              if (credential.is_active) {
+                integrityViolations++;
+                continue;
+              }
+              inactiveTombstoneCandidates.push({ credentialId, grantId: grant.id });
+              continue;
+            }
+
+            const credentialExpiresAt = credential.expires_at;
+            if (
+              credentialExpiresAt > now ||
+              credentialExpiresAt.getTime() !== grant.expires_at.getTime()
+            ) {
+              integrityViolations++;
+              continue;
+            }
+            acknowledgedTombstoneCandidates.push({ credentialId, grantId: grant.id });
+          }
+
+          if (inactiveTombstoneCandidates.length > 0) {
+            const candidateIds = inactiveTombstoneCandidates.map(
+              (candidate) => candidate.credentialId,
+            );
+            const tombstoned = await tx
+              .update(apiKeys)
+              .set({
+                is_active: false,
+                deleted_at: now,
+                updated_at: now,
+                key_ciphertext: null,
+                key_nonce: null,
+                key_auth_tag: null,
+                key_kms_key_id: null,
+                key_kms_key_version: null,
+              })
+              .where(
+                and(
+                  inArray(apiKeys.id, candidateIds),
+                  eq(apiKeys.is_active, false),
+                  isNull(apiKeys.deleted_at),
+                ),
+              )
+              .returning({ id: apiKeys.id });
+            inactiveCredentialsTombstoned = tombstoned.length;
+            const tombstonedIds = new Set(tombstoned.map((credential) => credential.id));
+            for (const candidate of inactiveTombstoneCandidates) {
+              if (tombstonedIds.has(candidate.credentialId)) {
+                safeGrantIds.add(candidate.grantId);
+              } else {
+                integrityViolations++;
+              }
+            }
+          }
+
+          if (acknowledgedTombstoneCandidates.length > 0) {
+            const candidateIds = acknowledgedTombstoneCandidates.map(
+              (candidate) => candidate.credentialId,
+            );
+            const tombstoned = await tx
+              .update(apiKeys)
+              .set({
+                is_active: false,
+                deleted_at: now,
+                updated_at: now,
+                key_ciphertext: null,
+                key_nonce: null,
+                key_auth_tag: null,
+                key_kms_key_id: null,
+                key_kms_key_version: null,
+              })
+              .where(
+                and(
+                  inArray(apiKeys.id, candidateIds),
+                  lte(apiKeys.expires_at, now),
+                  isNull(apiKeys.deleted_at),
+                ),
+              )
+              .returning({ id: apiKeys.id });
+            acknowledgedCredentialsTombstoned = tombstoned.length;
+            const tombstonedIds = new Set(tombstoned.map((credential) => credential.id));
+            for (const candidate of acknowledgedTombstoneCandidates) {
+              if (tombstonedIds.has(candidate.credentialId)) {
+                safeGrantIds.add(candidate.grantId);
+              } else {
+                integrityViolations++;
+              }
             }
           }
         }
 
-        if (acknowledgedTombstoneCandidates.length > 0) {
-          const candidateIds = acknowledgedTombstoneCandidates.map(
-            (candidate) => candidate.credentialId,
-          );
-          const tombstoned = await tx
-            .update(apiKeys)
-            .set({
-              is_active: false,
-              deleted_at: now,
-              updated_at: now,
-              key_ciphertext: null,
-              key_nonce: null,
-              key_auth_tag: null,
-              key_kms_key_id: null,
-              key_kms_key_version: null,
-            })
-            .where(
-              and(
-                inArray(apiKeys.id, candidateIds),
-                lte(apiKeys.expires_at, now),
-                isNull(apiKeys.deleted_at),
-              ),
-            )
-            .returning({ id: apiKeys.id });
-          acknowledgedCredentialsTombstoned = tombstoned.length;
-          const tombstonedIds = new Set(tombstoned.map((credential) => credential.id));
-          for (const candidate of acknowledgedTombstoneCandidates) {
-            if (tombstonedIds.has(candidate.credentialId)) {
-              safeGrantIds.add(candidate.grantId);
-            } else {
-              integrityViolations++;
-            }
-          }
+        const safeIds = [...safeGrantIds];
+        const deletedGrants =
+          safeIds.length === 0
+            ? []
+            : await tx
+                .delete(mobileAppAuthGrants)
+                .where(inArray(mobileAppAuthGrants.id, safeIds))
+                .returning({ id: mobileAppAuthGrants.id });
+        if (deletedGrants.length !== safeIds.length) {
+          throw grantIntegrityError("Expired mobile App Auth grant cleanup lost a locked row");
         }
-      }
-
-      const safeIds = [...safeGrantIds];
-      const deletedGrants =
-        safeIds.length === 0
-          ? []
-          : await tx
-              .delete(mobileAppAuthGrants)
-              .where(inArray(mobileAppAuthGrants.id, safeIds))
-              .returning({ id: mobileAppAuthGrants.id });
-      if (deletedGrants.length !== safeIds.length) {
-        throw grantIntegrityError("Expired mobile App Auth grant cleanup lost a locked row");
-      }
-      return {
-        grantsDeleted: deletedGrants.length,
-        grantsScanned: expired.length,
-        inactiveCredentialsTombstoned,
-        acknowledgedCredentialsTombstoned,
-        integrityViolations,
-        nextCursor,
-      };
-    });
+        return {
+          grantsDeleted: deletedGrants.length,
+          grantsScanned: planned.length,
+          inactiveCredentialsTombstoned,
+          acknowledgedCredentialsTombstoned,
+          integrityViolations,
+          nextCursor,
+        };
+      },
+    );
   }
 
   async countExpired(now: Date): Promise<number> {
