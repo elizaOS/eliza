@@ -277,6 +277,46 @@ test("an unawaited stop that is refused stays quiet until the owner's stop repor
   }
 });
 
+test("a context close that never settles leaves the verdict to the tracks", async () => {
+  class HungClose extends FakeMicAudioContext {
+    close(): Promise<void> {
+      return new Promise(() => {});
+    }
+  }
+  const track = liveTrack();
+  const capture = await startVoiceMicCapture({
+    onFrame: vi.fn(),
+    getUserMedia: async () => streamOf(track),
+    createAudioContext: () => new HungClose(),
+    visibility,
+  });
+  await capture.stop();
+  expect(track.readyState).toBe("ended");
+});
+
+test("a capture cancelled while the device opens rejects until its track has ended", async () => {
+  const track = { readyState: "live", stop: vi.fn() };
+  const controller = new AbortController();
+  const failure = await startVoiceMicCapture({
+    onFrame: vi.fn(),
+    // Cancelled once the stream is in hand, before the capture goes on with it.
+    getUserMedia: () => {
+      const media = Promise.resolve(streamOf(track));
+      void media.then(() => {}).then(() => controller.abort());
+      return media;
+    },
+    createAudioContext: () => new FakeMicAudioContext(),
+    signal: controller.signal,
+    visibility,
+  }).catch((error: unknown) => error);
+  expect(failure).toBeInstanceOf(VoiceMicReleaseError);
+  await expect(
+    (failure as VoiceMicReleaseError).retryRelease(),
+  ).rejects.toBeInstanceOf(VoiceMicReleaseError);
+  track.readyState = "ended";
+  await (failure as VoiceMicReleaseError).retryRelease();
+});
+
 test("a failed startup ends its track past a throwing disconnect", async () => {
   class BrokenPipeline extends FaultyContext {
     createScriptProcessor(): never {

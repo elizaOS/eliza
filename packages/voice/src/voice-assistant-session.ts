@@ -146,7 +146,10 @@ export interface AssistantCapture {
    * settles keeps a submitted turn unsent and Stop waiting.
    */
   close(): Promise<void>;
-  /** Discard: no further segment results are delivered. */
+  /**
+   * Discard: no further segment results are delivered. Rejects while the input could not be
+   * confirmed off; calling it again asks again.
+   */
   cancel(): void | Promise<void>;
   /** The capture cancels the device's own playback (platform echo canceller active). */
   readonly fullDuplex?: boolean;
@@ -442,46 +445,53 @@ export class VoiceAssistantSession {
     try {
       this.ports.assertCurrent();
     } catch {
-      void this.stop();
+      void this.stop().catch(() => {});
     }
   }
 
+  /**
+   * Resolving proves every capture this conversation opened confirmed it is off. Rejects while one
+   * has not; calling it again asks that capture again.
+   */
   async stop(): Promise<void> {
-    if (!this.active) {
-      await Promise.all([this.drainSpeech(), this.closing]);
-      return;
+    if (this.active) {
+      this.active = false;
+      ++this.session;
+      ++this.turn;
+      ++this.utteranceEpoch;
+      this.controller?.abort(stopped());
+      this.clearTimers();
+      this.endpointController?.abort();
+      const response = this.response;
+      this.response = undefined;
+      if (response) {
+        response.controller.abort(stopped());
+        this.reportInterrupted(response);
+      }
+      this.awaiting = undefined;
+      this.segments = [];
+      const capture = this.capture,
+        opening = this.opening;
+      this.capture = undefined;
+      this.opening = undefined;
+      this.hold = undefined;
+      this.publish({ phase: "idle" });
+      // Discard: an utterance that was not submitted is not sent after Stop, including a muted
+      // capture that is still finalizing. A capture still opening is discarded by open().
+      if (capture) this.unreleased.add(capture);
+      for (const closing of this.closingCaptures.keys())
+        this.unreleased.add(closing);
+      this.closingCaptures.clear();
+      this.closing = Promise.all([this.closing, opening?.catch(() => {})]).then(
+        () => {},
+      );
     }
-    this.active = false;
-    ++this.session;
-    ++this.turn;
-    ++this.utteranceEpoch;
-    this.controller?.abort(stopped());
-    this.clearTimers();
-    this.endpointController?.abort();
-    const response = this.response;
-    this.response = undefined;
-    if (response) {
-      response.controller.abort(stopped());
-      this.reportInterrupted(response);
-    }
-    this.awaiting = undefined;
-    this.segments = [];
-    const capture = this.capture,
-      opening = this.opening;
-    this.capture = undefined;
-    this.opening = undefined;
-    this.hold = undefined;
-    this.publish({ phase: "idle" });
-    // Discard: an utterance that was not submitted is not sent after Stop, including a muted
-    // capture that is still finalizing.
-    for (const closing of this.closingCaptures.keys())
-      void Promise.resolve(closing.cancel()).catch(() => {});
     await Promise.all([
-      Promise.resolve(capture?.cancel()).catch(() => {}),
-      opening?.then((late) => late?.cancel()).catch(() => {}),
+      ...[...this.unreleased].map((capture) => this.discard(capture)),
       this.closing,
       this.drainSpeech(),
     ]);
+    if (this.unreleased.size) throw unconfirmedClose();
   }
 
   /**
@@ -583,12 +593,26 @@ export class VoiceAssistantSession {
 
   /** Captures still closing, each with its own close (rejects when that close failed). */
   private closingCaptures = new Map<AssistantCapture, Promise<void>>();
+  /** Captures not yet confirmed off: stop() asks each again, and no capture opens over one. */
+  private unreleased = new Set<AssistantCapture>();
+  /** A refusal keeps the capture in `unreleased`, for the next stop() to ask again. */
+  private async discard(capture: AssistantCapture) {
+    this.unreleased.add(capture);
+    try {
+      await capture.cancel();
+      this.unreleased.delete(capture);
+    } catch {
+      // stop() reports it: it rejects while this capture has not confirmed.
+    }
+  }
   private closeCapture(capture: AssistantCapture) {
     const session = this.session;
     const own = Promise.resolve().then(() => capture.close());
     this.closingCaptures.set(capture, own);
     const closed = own
       .catch(() => {
+        // Not yet in Stop's hands: the capture stays to be discarded, since it may still be on.
+        if (this.closingCaptures.has(capture)) this.unreleased.add(capture);
         // A submitted turn's barrier ends a close it waits on. Any other (Mute, with or without an
         // utterance waiting) ends the conversation now and retires that capture: the microphone may
         // still be on, so Mute is not left showing over it and Unmute never reopens.
@@ -605,6 +629,7 @@ export class VoiceAssistantSession {
     // A muted capture's last segment is delivered before a new capture can open.
     await this.closing;
     this.check(session);
+    if (this.unreleased.size) throw unconfirmedClose();
     // Never open while a submitted turn holds input closed (its release reopens) or during an
     // owner-review pause.
     if (
@@ -641,10 +666,8 @@ export class VoiceAssistantSession {
       })
       .then(
         (capture) => {
-          if (this.opening !== pending || !this.current(session)) {
-            void Promise.resolve(capture.cancel()).catch(() => {});
-            return undefined;
-          }
+          if (this.opening !== pending || !this.current(session))
+            return this.discard(capture).then(() => undefined);
           this.opening = undefined;
           // Muted or held while the microphone was opening: it never stays on.
           if (this.mutedValue || this.hold?.response) {
@@ -665,11 +688,13 @@ export class VoiceAssistantSession {
   }
 
   private async captureEnded(session: number, error?: unknown) {
-    this.capture = undefined;
     // An end while a turn is held fails at once, muted or not: its reply may need that transport.
     // So does one under Mute while an utterance still waits to be sent; Mute alone stays quiet.
-    if (this.mutedValue && !this.hold?.response && !this.segments.length)
+    if (this.mutedValue && !this.hold?.response && !this.segments.length) {
+      this.capture = undefined;
       return;
+    }
+    // The capture stays for Stop: a lost capture is not yet one that confirmed it is off.
     await this.fail(
       session,
       error ?? new VoiceAssistantError("capture", "The microphone stopped."),
@@ -678,7 +703,8 @@ export class VoiceAssistantSession {
 
   private async fail(session: number, error: unknown) {
     if (!this.current(session)) return;
-    await this.stop();
+    // A refused release stays held: the owner's own stop() asks it again and rejects.
+    await this.stop().catch(() => {});
     if (this.session === session + 1) this.publish({ phase: "error", error });
   }
 
@@ -728,7 +754,7 @@ export class VoiceAssistantSession {
       try {
         this.ports.beginUtterance();
       } catch {
-        void this.stop();
+        void this.stop().catch(() => {});
         return;
       }
     }

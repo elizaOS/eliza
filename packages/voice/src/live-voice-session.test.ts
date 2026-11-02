@@ -540,6 +540,7 @@ function fakeOpener() {
   let cancels = 0;
   let segmentsOnClose: string[] = [];
   let closeFailure: Error | undefined;
+  let cancelFailure: Error | undefined;
   const open = async (
     input: LiveCaptureOpenOptions,
   ): Promise<LiveCaptureStream> => {
@@ -556,6 +557,7 @@ function fakeOpener() {
       },
       async cancel() {
         cancels++;
+        if (cancelFailure) throw cancelFailure;
       },
     };
   };
@@ -571,6 +573,9 @@ function fakeOpener() {
     },
     failClose(error: Error | undefined) {
       closeFailure = error;
+    },
+    failCancel(error: Error | undefined) {
+      cancelFailure = error;
     },
   };
 }
@@ -636,6 +641,95 @@ describe("live dictation over a host capture", () => {
     expect(Number.isNaN(stopped[0]?.durationMs)).toBe(true);
     // Transcribe can start again after a lost capture.
     await expect(dictation.startRecording()).resolves.toBeTruthy();
+  });
+
+  it("keeps a refused cancel: the repeat asks the same capture, and only its answer frees Transcribe", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    await dictation.startRecording();
+    host.failCancel(new Error("cancel refused"));
+    await expect(dictation.cancelRecording()).rejects.toThrow("cancel refused");
+    await expect(dictation.cancelRecording()).rejects.toThrow("cancel refused");
+    expect(host.cancels).toBe(2);
+    await expect(dictation.startRecording()).rejects.toThrow("cancel refused");
+    expect(host.cancels).toBe(3);
+    expect(host.opened).toHaveLength(1);
+    host.failCancel(undefined);
+    await dictation.cancelRecording();
+    expect(host.cancels).toBe(4);
+    await dictation.cancelRecording();
+    expect(host.cancels).toBe(4);
+    await dictation.startRecording();
+    expect(host.opened).toHaveLength(2);
+  });
+
+  it("drops speech that arrives while a refused cancel waits for its repeat", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    const { recordingId } = await dictation.startRecording();
+    host.failCancel(new Error("cancel refused"));
+    await expect(dictation.cancelRecording()).rejects.toThrow("cancel refused");
+    host.opened[0]?.onSegment("private");
+    await expect(
+      dictation.transcribe(recordingId, new AbortController().signal),
+    ).rejects.toThrow("no longer available");
+  });
+
+  it("keeps a failed finalize whose cancel is refused until the host's cancel confirms", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    await dictation.startRecording();
+    host.failClose(new Error("close not confirmed"));
+    host.failCancel(new Error("cancel refused"));
+    await expect(dictation.stopRecording()).rejects.toThrow(
+      "close not confirmed",
+    );
+    await expect(dictation.startRecording()).rejects.toThrow("cancel refused");
+    expect(host.opened).toHaveLength(1);
+    host.failCancel(undefined);
+    host.failClose(undefined);
+    await dictation.cancelRecording();
+    await dictation.startRecording();
+    expect(host.opened).toHaveLength(2);
+  });
+
+  it("keeps a lost capture whose cancel is refused: no capture opens over it", async () => {
+    const host = fakeOpener();
+    const dictation = createLiveDictation(host.open);
+    await dictation.startRecording();
+    host.opened[0]?.onLost(new Error("mic"));
+    host.failCancel(new Error("cancel refused"));
+    await expect(dictation.stopRecording()).rejects.toThrow(
+      "No transcription is recording",
+    );
+    await expect(dictation.startRecording()).rejects.toThrow("cancel refused");
+    expect(host.opened).toHaveLength(1);
+    host.failCancel(undefined);
+    await dictation.startRecording();
+    expect(host.opened).toHaveLength(2);
+  });
+
+  it("keeps a capture that opens after Cancel until it confirms", async () => {
+    const host = fakeOpener();
+    let opened!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      opened = resolve;
+    });
+    const dictation = createLiveDictation(async (input) => {
+      await gate;
+      return host.open(input);
+    });
+    const starting = dictation.startRecording();
+    await dictation.cancelRecording();
+    host.failCancel(new Error("cancel refused"));
+    opened();
+    await expect(starting).rejects.toThrow("cancel refused");
+    await expect(dictation.cancelRecording()).rejects.toThrow("cancel refused");
+    expect(host.cancels).toBe(2);
+    host.failCancel(undefined);
+    await dictation.cancelRecording();
+    await dictation.startRecording();
+    expect(host.opened).toHaveLength(2);
   });
 
   it("releases the recording when the host cannot confirm the finalize", async () => {

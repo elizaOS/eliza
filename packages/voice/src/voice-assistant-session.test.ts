@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   ASSISTANT_TIMING_DEFAULTS,
   type AssistantCapture,
@@ -93,6 +93,8 @@ function harness(
     holdOpen?: Deferred<void>;
     /** The close of the nth capture (1-based); resolves at once when omitted. */
     close?: (capture: number) => Promise<void>;
+    /** The cancel of the nth capture (1-based); resolves at once when omitted. */
+    cancel?: (capture: number) => Promise<void>;
     /** Playback settles only when the test settles it, also after an abort (slow cleanup). */
     manualSpeech?: boolean;
   } = {},
@@ -133,6 +135,7 @@ function harness(
         },
         cancel: () => {
           log.cancelled++;
+          return options.cancel?.(capture);
         },
       };
     },
@@ -1440,6 +1443,199 @@ describe("VoiceAssistantSession lifecycle and authority", () => {
     await flush();
     await h.session.stop();
     expect(cancels).toBe(1);
+  });
+
+  describe("microphone release", () => {
+    const refusable = () => {
+      const control = { refused: true, asks: 0 };
+      const cancel = async () => {
+        control.asks++;
+        if (control.refused) throw new Error("cancel refused");
+      };
+      return { control, cancel };
+    };
+
+    it("a normal Stop asks once, resolves, and a repeat asks nothing", async () => {
+      const h = harness();
+      await h.session.start();
+      await h.session.stop();
+      expect(h.log.cancelled).toBe(1);
+      await h.session.stop();
+      expect(h.log.cancelled).toBe(1);
+    });
+
+    it("Stop rejects while the capture refuses, and the repeat asks that capture again", async () => {
+      const { control, cancel } = refusable();
+      const h = harness({ cancel });
+      await h.session.start();
+      await expect(h.session.stop()).rejects.toMatchObject({ code: "capture" });
+      await expect(h.session.stop()).rejects.toMatchObject({ code: "capture" });
+      expect(control.asks).toBe(2);
+      control.refused = false;
+      await h.session.stop();
+      expect(control.asks).toBe(3);
+      await h.session.stop();
+      expect(control.asks).toBe(3);
+    });
+
+    it("a repeat is no proof while the first cancel is unanswered", async () => {
+      const answer = deferred();
+      const h = harness({ cancel: () => answer.promise });
+      await h.session.start();
+      let settled = 0;
+      for (let count = 0; count < 2; count++)
+        void h.session.stop().then(() => settled++);
+      await flush();
+      expect(settled).toBe(0);
+      answer.resolve();
+      await flush();
+      expect(settled).toBe(2);
+    });
+
+    it("waits for a muted capture's cancel and rejects on its refusal", async () => {
+      const { control, cancel } = refusable();
+      const closing = deferred();
+      const h = harness({ cancel, close: () => closing.promise });
+      await h.session.start();
+      void h.session.setMuted(true);
+      await flush();
+      closing.resolve();
+      const stopped = h.session.stop();
+      await expect(stopped).rejects.toMatchObject({ code: "capture" });
+      expect(control.asks).toBe(1);
+      control.refused = false;
+      await h.session.stop();
+    });
+
+    it("a close that fails after Stop's cancel confirmed proves nothing against it", async () => {
+      const closing = deferred();
+      const h = harness({ close: () => closing.promise });
+      await h.session.start();
+      void h.session.setMuted(true);
+      await flush();
+      const stopped = h.session.stop();
+      await flush();
+      closing.reject(new Error("close refused"));
+      await stopped;
+      expect(h.log.cancelled).toBe(1);
+      await h.session.stop();
+      expect(h.log.cancelled).toBe(1);
+    });
+
+    it("a capture that opens after Stop is released, and its refusal rejects Stop", async () => {
+      const { control, cancel } = refusable();
+      const holdOpen = deferred();
+      const h = harness({ cancel, holdOpen });
+      void h.session.start().catch(() => {});
+      await flush();
+      const stopped = h.session.stop();
+      holdOpen.resolve();
+      await expect(stopped).rejects.toMatchObject({ code: "capture" });
+      expect(control.asks).toBe(1);
+      await expect(h.session.stop()).rejects.toMatchObject({ code: "capture" });
+      expect(control.asks).toBe(2);
+      control.refused = false;
+      await h.session.stop();
+    });
+
+    it("a repeat waits for a capture still opening", async () => {
+      const holdOpen = deferred();
+      const h = harness({ holdOpen });
+      void h.session.start().catch(() => {});
+      await flush();
+      void h.session.stop();
+      let repeated = false;
+      void h.session.stop().then(() => {
+        repeated = true;
+      });
+      await flush();
+      expect(repeated).toBe(false);
+      holdOpen.resolve();
+      await flush();
+      expect(repeated).toBe(true);
+      expect(h.log.cancelled).toBe(1);
+    });
+
+    it("a failed close of a submitted turn's capture is discarded, not dropped", async () => {
+      const { control, cancel } = refusable();
+      const h = harness({
+        cancel,
+        close: () => Promise.reject(new Error("close refused")),
+      });
+      await h.session.start();
+      await h.say("what is on today");
+      await h.clock.advance(longGapMs);
+      await flush();
+      expect(h.log.sends).toHaveLength(0);
+      expect(h.phase()).toBe("error");
+      expect(control.asks).toBe(1);
+      await expect(h.session.stop()).rejects.toMatchObject({ code: "capture" });
+      control.refused = false;
+      await h.session.stop();
+    });
+
+    it("a lost capture must confirm too, and stops it ran itself stay quiet", async () => {
+      const unhandled = vi.fn();
+      process.on("unhandledRejection", unhandled);
+      try {
+        const { control, cancel } = refusable();
+        const h = harness({ cancel });
+        await h.session.start();
+        h.mic().onEnd(new Error("microphone lost"));
+        await flush();
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(unhandled).not.toHaveBeenCalled();
+        expect(h.phase()).toBe("error");
+        expect(control.asks).toBe(1);
+        await expect(h.session.stop()).rejects.toMatchObject({
+          code: "capture",
+        });
+        control.refused = false;
+        await h.session.stop();
+      } finally {
+        process.off("unhandledRejection", unhandled);
+      }
+    });
+
+    it("a binding change that stops the session leaves a refusal for the owner's Stop", async () => {
+      const unhandled = vi.fn();
+      process.on("unhandledRejection", unhandled);
+      try {
+        const { control, cancel } = refusable();
+        const h = harness({ cancel });
+        await h.session.start();
+        h.setCurrent(false);
+        h.session.recheck();
+        await flush();
+        await new Promise((resolve) => setImmediate(resolve));
+        expect(unhandled).not.toHaveBeenCalled();
+        await expect(h.session.stop()).rejects.toMatchObject({
+          code: "capture",
+        });
+        control.refused = false;
+        await h.session.stop();
+      } finally {
+        process.off("unhandledRejection", unhandled);
+      }
+    });
+
+    it("no capture opens over one still unconfirmed", async () => {
+      const { control, cancel } = refusable();
+      const h = harness({ cancel });
+      await h.session.start();
+      await expect(h.session.stop()).rejects.toMatchObject({ code: "capture" });
+      await expect(h.session.start()).rejects.toMatchObject({
+        code: "capture",
+      });
+      expect(h.log.captures).toBe(1);
+      control.refused = false;
+      await h.session.start().catch(() => {});
+      await h.session.stop();
+      await h.session.start();
+      expect(h.log.captures).toBe(2);
+      expect(h.phase()).toBe("listening");
+      await h.session.stop();
+    });
   });
 
   it("never approves: a reply with proposals ends voice without speaking it", async () => {

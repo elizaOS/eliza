@@ -168,6 +168,7 @@ export async function openNativeResidentCapture(
   const pending: Array<ReturnType<typeof parseLiveFinal> | null> = [];
   const detach = async () => {
     unsubscribe?.();
+    unsubscribe = undefined;
     input.signal.removeEventListener("abort", abort);
     await Promise.all(
       handles.splice(0).map((handle) => handle.remove().catch(() => {})),
@@ -189,7 +190,7 @@ export async function openNativeResidentCapture(
       return stopped;
     }
     stopping = true;
-    stopped = (async () => {
+    const asked = (async () => {
       try {
         const ack = await port.stopLiveCapture({
           captureId,
@@ -203,7 +204,12 @@ export async function openNativeResidentCapture(
         await detach();
       }
     })();
-    return stopped;
+    stopped = asked;
+    // Only a confirmed stop stays answered: a refused one is asked again.
+    asked.catch(() => {
+      stopped = undefined;
+    });
+    return asked;
   };
   const abort = () => {
     void stop(true).catch(() => {});
@@ -413,8 +419,12 @@ export async function openNativeSegmentCapture(
   const captureId = input.captureId ?? crypto.randomUUID();
   const handles: NativeListenerHandle[] = [];
   let ended!: () => void;
+  let hasEnded = false;
   const endedPromise = new Promise<void>((resolve) => {
-    ended = resolve;
+    ended = () => {
+      hasEnded = true;
+      resolve();
+    };
   });
   const detach = () =>
     Promise.all(
@@ -457,12 +467,14 @@ export async function openNativeSegmentCapture(
   }
   let stopped: Promise<void> | undefined;
   const stopNative = () => {
-    stopped ??= (async () => {
+    if (stopped) return stopped;
+    const asked = (async () => {
       stopping = true;
       try {
         await port.stopLiveCapture({ captureId });
-      } catch {
-        /* Already stopped. */
+      } catch (error) {
+        // Only the capture's own end excuses a refusal: it may still be on.
+        if (!hasEnded) throw error;
       }
       // The bridge flushes its last frames before it reports the end (its stop waits up to 1.5 s).
       await Promise.race([
@@ -474,11 +486,16 @@ export async function openNativeSegmentCapture(
       accepting = false;
       await detach();
     })();
-    return stopped;
+    stopped = asked;
+    // Only a confirmed stop stays answered: a refused one is asked again.
+    asked.catch(() => {
+      stopped = undefined;
+    });
+    return asked;
   };
   const abort = () => {
     stream.cancel();
-    void stopNative();
+    void stopNative().catch(() => {});
   };
   let echoCancelled = false;
   try {
@@ -496,7 +513,7 @@ export async function openNativeSegmentCapture(
   } catch (error) {
     input.signal.removeEventListener("abort", abort);
     stream.cancel();
-    await stopNative();
+    await stopNative().catch(() => {});
     throw error;
   }
   const startedAt = Date.now();

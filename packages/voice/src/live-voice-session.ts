@@ -641,7 +641,7 @@ export interface LiveCaptureStream {
   speaking(): boolean;
   /** Stop at `at` and finalize: results for audio up to `at` arrive before this resolves. */
   close(at?: number): Promise<{ durationMs: number }>;
-  /** Stop now and discard. */
+  /** Stop now and discard. Rejects while unconfirmed; calling it again asks the capture again. */
   cancel(): Promise<void>;
 }
 export interface LiveCaptureOpenOptions {
@@ -737,6 +737,14 @@ export function createLiveDictation(
   const emit = (clip: LiveDictationClip) => {
     for (const listener of [...listeners]) listener(clip);
   };
+  /** Only the capture's own answer frees the recording: a refusal keeps it to be asked again. */
+  const release = async (current: Recording) => {
+    if (current.timer) clearTimeout(current.timer);
+    current.controller.abort();
+    current.texts.length = 0;
+    await current.capture?.cancel();
+    if (recording === current) recording = undefined;
+  };
   const finish = (current: Recording, at?: number) => {
     current.stopping ??= (async () => {
       if (current.timer) clearTimeout(current.timer);
@@ -745,11 +753,9 @@ export function createLiveDictation(
       try {
         result = await capture.close(at);
       } catch (error) {
-        // An unconfirmed finalize leaves no transcript to trust: release the recording so
-        // Transcribe can start again, and discard whatever the host still holds.
-        if (recording === current) recording = undefined;
-        current.texts.length = 0;
-        await capture.cancel().catch(() => {});
+        // An unconfirmed finalize leaves no transcript to trust: discard whatever the host still
+        // holds, and release the recording so Transcribe can start again.
+        await release(current).catch(() => {});
         throw error;
       }
       const clip = { recordingId: current.id, durationMs: result.durationMs };
@@ -764,6 +770,7 @@ export function createLiveDictation(
       recordingId: string;
       maxDurationMs: number;
     }> {
+      if (recording?.controller.signal.aborted) await release(recording);
       if (recording && !recording.clip)
         throw Error("A transcription is already recording.");
       const current: Recording = {
@@ -772,7 +779,8 @@ export function createLiveDictation(
         texts: [],
       };
       recording = current;
-      const owned = () => recording === current;
+      const owned = () =>
+        recording === current && !current.controller.signal.aborted;
       let capture: LiveCaptureStream;
       try {
         capture = await open({
@@ -791,19 +799,20 @@ export function createLiveDictation(
             if (!owned() || current.stopping) return;
             if (current.timer) clearTimeout(current.timer);
             current.controller.abort();
-            // A lost capture leaves nothing to stop or transcribe; Transcribe can start again.
-            recording = undefined;
+            // A lost capture leaves nothing to transcribe. The next cancel or start asks it to
+            // confirm it is off, and Transcribe can start again.
             current.texts.length = 0;
             emit({ recordingId: current.id, durationMs: Number.NaN });
           },
         });
       } catch (error) {
-        if (owned()) recording = undefined;
+        if (recording === current) recording = undefined;
         throw error;
       }
       current.capture = capture;
       if (!owned()) {
-        await capture.cancel();
+        recording ??= current;
+        await release(current);
         throw new DOMException("Transcription cancelled", "AbortError");
       }
       current.timer = setTimeout(() => {
@@ -818,7 +827,8 @@ export function createLiveDictation(
     async stopRecording(): Promise<LiveDictationClip> {
       const current = recording;
       const at = Date.now();
-      if (!current?.capture) throw Error("No transcription is recording.");
+      if (!current?.capture || current.controller.signal.aborted)
+        throw Error("No transcription is recording.");
       return finish(current, at);
     },
     /** The transcript of a stopped recording ('' is reported as no speech). */
@@ -842,13 +852,7 @@ export function createLiveDictation(
       return { text, local: true };
     },
     async cancelRecording() {
-      const current = recording;
-      recording = undefined;
-      if (!current) return;
-      if (current.timer) clearTimeout(current.timer);
-      current.controller.abort();
-      current.texts.length = 0;
-      await current.capture?.cancel();
+      if (recording) await release(recording);
     },
     /** Transcription completes with Stop; nothing is pending. */
     async cancel(_input: { requestId: string }) {},

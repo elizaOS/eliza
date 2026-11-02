@@ -473,6 +473,110 @@ describe("native resident capture", () => {
   });
 });
 
+describe("a refused native stop", () => {
+  const refusingStops = (bridge: ReturnType<typeof fakeBridge>) => {
+    const stop = bridge.port.stopLiveCapture;
+    let refused = true;
+    bridge.port.stopLiveCapture = async (input) => {
+      if (!refused) return stop(input);
+      bridge.stops.push({ ...input });
+      throw new Error("stopLiveCapture refused");
+    };
+    return () => {
+      refused = false;
+    };
+  };
+  const nativeCapture = async (nativeTransport: boolean) => {
+    const bridge = fakeBridge({ nativeTransport });
+    const voice = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => true,
+      resident: residentAgent().resident,
+      endedTimeoutMs: 1,
+    });
+    return {
+      bridge,
+      capture: await voice.open(handlers().open(new AbortController().signal)),
+    };
+  };
+
+  it.each([
+    ["resident", true],
+    ["segment", false],
+  ])(
+    "on the %s route is asked again, and only its answer stays answered",
+    async (_route, nativeTransport) => {
+      const { bridge, capture } = await nativeCapture(nativeTransport);
+      const allow = refusingStops(bridge);
+      await expect(capture.cancel()).rejects.toThrow("refused");
+      await expect(capture.cancel()).rejects.toThrow("refused");
+      expect(bridge.stops).toHaveLength(2);
+      allow();
+      await capture.cancel();
+      expect(bridge.stops).toHaveLength(3);
+      await capture.cancel();
+      expect(bridge.stops).toHaveLength(3);
+    },
+  );
+
+  it("is excused on the segment route only by the capture's own end", async () => {
+    const { bridge, capture } = await nativeCapture(false);
+    refusingStops(bridge);
+    bridge.emit("liveCaptureEnded", { captureId: bridge.captureId });
+    await capture.cancel();
+    expect(bridge.stops).toHaveLength(1);
+  });
+
+  it("keeps the session's Stop rejected until the bridge answers, over the real capture", async () => {
+    const bridge = fakeBridge();
+    const h = assistantOver(bridge);
+    await h.session.start();
+    const allow = refusingStops(bridge);
+    await expect(h.session.stop()).rejects.toMatchObject({ code: "capture" });
+    await expect(h.session.stop()).rejects.toMatchObject({ code: "capture" });
+    expect(bridge.stops).toHaveLength(2);
+    allow();
+    await h.session.stop();
+    expect(bridge.stops).toHaveLength(3);
+    await h.session.stop();
+    expect(bridge.stops).toHaveLength(3);
+  });
+
+  it("keeps a lost capture's refused stop for the owner's Stop", async () => {
+    const bridge = fakeBridge();
+    const h = assistantOver(bridge);
+    await h.session.start();
+    const allow = refusingStops(bridge);
+    bridge.emit("liveCaptureEnded", { captureId: bridge.captureId });
+    await flush();
+    expect(h.session.getSnapshot()).toMatchObject({ phase: "error" });
+    await expect(h.session.stop()).rejects.toMatchObject({ code: "capture" });
+    allow();
+    await h.session.stop();
+  });
+
+  it("is no release for live dictation: the repeat reaches the bridge", async () => {
+    const bridge = fakeBridge();
+    const voice = createNativeLiveVoice({
+      port: bridge.port,
+      available: () => true,
+      resident: residentAgent().resident,
+    });
+    const dictation = voice.dictation();
+    await dictation.startRecording();
+    const allow = refusingStops(bridge);
+    await expect(dictation.cancelRecording()).rejects.toThrow("refused");
+    await expect(dictation.startRecording()).rejects.toThrow("refused");
+    expect(bridge.starts).toHaveLength(1);
+    expect(bridge.stops).toHaveLength(2);
+    allow();
+    await dictation.cancelRecording();
+    expect(bridge.stops).toHaveLength(3);
+    await dictation.startRecording();
+    expect(bridge.starts).toHaveLength(2);
+  });
+});
+
 describe("renderer transport and readiness", () => {
   it("posts frames through the owner's live route on a bridge without native routing", async () => {
     const bridge = fakeBridge({ nativeTransport: false, echoCancelled: false });
@@ -708,7 +812,11 @@ describe("native capture under the assistant's busy hold", () => {
     await h.session.start();
     await h.say(bridge.captureId, "what is on today", "t1");
     await flush();
-    expect(bridge.stops).toHaveLength(1);
+    // The close is unconfirmed, so that capture is discarded too.
+    expect(bridge.stops).toEqual([
+      expect.objectContaining({ discard: false }),
+      expect.objectContaining({ discard: true }),
+    ]);
     expect(h.replies).toHaveLength(0);
     expect(h.speeches).toHaveLength(0);
     expect(h.session.getSnapshot()).toMatchObject({

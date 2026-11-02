@@ -806,3 +806,74 @@ test("a stop the client ran itself leaves a refused release for the owner's Stop
     process.off("unhandledRejection", unhandled);
   }
 });
+
+test("a new capture asks a refused release again first, and opens once it confirms", async () => {
+  const h = harness();
+  await h.client.start();
+  await h.settle();
+  const allow = refuseTrackStop(h.tracks[0]);
+  await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+  allow();
+  await h.client.start();
+  await h.settle();
+  expect(h.captures).toBe(2);
+  expect(h.maxCaptures).toBe(1);
+  expect(h.activeCaptures).toBe(1);
+  await h.client.stop();
+});
+
+test("a capture superseded before it attached keeps its refused release for Stop", async () => {
+  const h = harness();
+  const refusal = new VoiceMicReleaseError(async () => {});
+  const stop = vi.fn(async () => {});
+  stop.mockRejectedValueOnce(refusal);
+  const spy = vi.spyOn(micCapture, "startVoiceMicCapture");
+  try {
+    let open!: () => void;
+    const opened = new Promise<void>((resolve) => {
+      open = resolve;
+    });
+    spy.mockImplementation(async () => {
+      await opened;
+      return {
+        active: false,
+        stop,
+        setMuted() {},
+        backend: "scriptprocessor",
+      } as unknown as micCapture.VoiceMicCapture;
+    });
+    const retry = vi.spyOn(refusal, "retryRelease");
+    await h.client.start();
+    await h.settle();
+    const stopped = h.client.stop();
+    open();
+    await expect(stopped).rejects.toBe(refusal);
+    expect(stop).toHaveBeenCalledOnce();
+    await h.client.stop();
+    expect(retry).toHaveBeenCalledOnce();
+  } finally {
+    spy.mockRestore();
+  }
+});
+
+test("a release refused while a capture failed to start is held for Stop", async () => {
+  const h = harness();
+  let refused = true;
+  const retryRelease = vi.fn(async () => {
+    if (refused) throw new VoiceMicReleaseError(retryRelease);
+  });
+  const spy = vi
+    .spyOn(micCapture, "startVoiceMicCapture")
+    .mockRejectedValue(new VoiceMicReleaseError(retryRelease));
+  try {
+    await h.client.start();
+    await h.settle();
+    await expect(h.client.stop()).rejects.toBeInstanceOf(VoiceMicReleaseError);
+    expect(retryRelease).toHaveBeenCalledOnce();
+    refused = false;
+    await h.client.stop();
+    expect(retryRelease).toHaveBeenCalledTimes(2);
+  } finally {
+    spy.mockRestore();
+  }
+});

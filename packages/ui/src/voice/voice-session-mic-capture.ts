@@ -243,8 +243,8 @@ async function releaseMediaStream(
   context?: MicAudioContextLike | null,
 ): Promise<void> {
   const ended = stopMediaStream(stream);
-  // error-policy:J6 best-effort context close during teardown; the tracks above decide the outcome.
-  await context?.close().catch(() => {});
+  // error-policy:J6 best-effort context close during teardown; the tracks above decide the outcome, so a close that never settles holds nothing.
+  void context?.close().catch(() => {});
   if (!ended) throw new VoiceMicReleaseError(() => releaseMediaStream(stream));
 }
 
