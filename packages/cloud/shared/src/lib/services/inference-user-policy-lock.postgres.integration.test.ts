@@ -156,4 +156,36 @@ describe.skipIf(!url)("managed inference user lock order", () => {
     );
     expect(checks).toBe(before + 1);
   });
+
+  test("a writer that locks an organization first can take the user half of the order up front", async () => {
+    const rowLock = async (strength: string): Promise<boolean> => {
+      try {
+        await observer.query("SAVEPOINT row_probe");
+        await observer.query(`SELECT id FROM ${schema}.users WHERE id=$1 ${strength} NOWAIT`, [
+          userId,
+        ]);
+        await observer.query("RELEASE SAVEPOINT row_probe");
+        return true;
+      } catch (error) {
+        await observer.query("ROLLBACK TO SAVEPOINT row_probe");
+        if ((error as { code?: string }).code === "55P03") return false;
+        throw error;
+      }
+    };
+    await run(() =>
+      helpers.writeTransaction(async (tx) => {
+        await fence.lockInferencePolicyUsers(tx, [userId]);
+        await observer.query("BEGIN");
+        try {
+          // Foreign-key inserts that reference the user still proceed.
+          expect(await rowLock("FOR KEY SHARE")).toBe(true);
+          expect(await rowLock("FOR NO KEY UPDATE")).toBe(false);
+          expect(await probe(true)).toBe(true);
+          expect(await probe(false)).toBe(false);
+        } finally {
+          await observer.query("ROLLBACK");
+        }
+      }),
+    );
+  });
 });

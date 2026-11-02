@@ -70,11 +70,10 @@ BEGIN
  IF TG_TABLE_NAME = 'users' THEN user_ids := ARRAY[(old_row->>'id')::uuid,(new_row->>'id')::uuid];
  ELSE user_ids := ARRAY[(old_row->>'user_id')::uuid,(new_row->>'user_id')::uuid]; END IF;
  PERFORM lock_inference_policy_users(user_ids);
- IF TG_TABLE_NAME = 'users' THEN
-  PERFORM require_inference_policy_fence((old_row->>'organization_id')::uuid);
-  PERFORM require_inference_policy_fence((new_row->>'organization_id')::uuid);
- END IF;
- FOR org IN SELECT organization_id FROM users WHERE id = ANY(user_ids) AND organization_id IS NOT NULL UNION SELECT organization_id FROM api_keys WHERE user_id = ANY(user_ids) ORDER BY 1 LOOP
+ -- One sorted pass over the old, new and discovered organizations, so two
+ -- writers that move users between the same organizations lock them in the
+ -- same order.
+ FOR org IN SELECT organization_id FROM (SELECT (old_row->>'organization_id')::uuid AS organization_id WHERE TG_TABLE_NAME = 'users' UNION SELECT (new_row->>'organization_id')::uuid WHERE TG_TABLE_NAME = 'users' UNION SELECT organization_id FROM users WHERE id = ANY(user_ids) UNION SELECT organization_id FROM api_keys WHERE user_id = ANY(user_ids)) AS touched WHERE organization_id IS NOT NULL ORDER BY 1 LOOP
   PERFORM require_inference_policy_fence(org);
  END LOOP;
  IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;

@@ -65,8 +65,27 @@ async function lockUserPolicyAssociations(
     userIds.map((userId) => sql`${userId}::uuid`),
     sql`, `,
   );
-  await tx.execute(sql`SELECT id FROM users WHERE id = ANY(ARRAY[${ids}]) ORDER BY id FOR UPDATE`);
+  // NO KEY UPDATE orders against every users writer but still admits the
+  // KEY SHARE that foreign-key inserts referencing these users need.
+  await tx.execute(
+    sql`SELECT id FROM users WHERE id = ANY(ARRAY[${ids}]) ORDER BY id FOR NO KEY UPDATE`,
+  );
   await tx.execute(sql`SELECT lock_inference_policy_users(ARRAY[${ids}], ${shared})`);
+}
+
+/**
+ * Take the user half of the global lock order before a caller locks any
+ * organization row or policy fence in the same transaction. Writers that lock
+ * an organization first and then issue a key or change a user would otherwise
+ * invert the order taken by managed key issuance.
+ */
+export async function lockInferencePolicyUsers(
+  tx: DbTransaction,
+  userIds: string[],
+  options: { exclusive?: boolean } = {},
+): Promise<void> {
+  if (!policyFencingEnabled()) return;
+  await lockUserPolicyAssociations(tx, userIds, options.exclusive !== true);
 }
 
 async function policyCall(
