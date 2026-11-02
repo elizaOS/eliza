@@ -59,13 +59,13 @@ import type {
 import {
   ElizaError,
   getStreamingContext,
-  timeInferenceSpan,
   type IAgentRuntime,
   logger,
   Semaphore,
   Service,
   SsrfBlockedError,
   stableStringify,
+  timeInferenceSpan,
   toWellFormedUnicode,
   truncateWellFormed,
 } from "@elizaos/core";
@@ -3781,7 +3781,9 @@ export class CalendarService extends Service {
       isElizaCalendarGrant(request?.grantId);
     const statuses = targetsNonGoogleProvider
       ? []
-      : await this.gate.getGoogleConnectorAccounts(requestUrl, side);
+      : await timeInferenceSpan("calendar:discovery:google-accounts", () =>
+          this.gate.getGoogleConnectorAccounts(requestUrl, side),
+        );
     const grants = statuses
       .filter(hasGoogleConnectorGrant)
       .map((status) => status.grant)
@@ -3806,9 +3808,13 @@ export class CalendarService extends Service {
       );
       for (const grant of grants) {
         try {
-          const entries = await listCalendars({
-            accountId: accountIdForGrant(grant),
-          });
+          const entries = await timeInferenceSpan(
+            "calendar:discovery:google-calendars",
+            () =>
+              listCalendars({
+                accountId: accountIdForGrant(grant),
+              }),
+          );
           summaries.push(
             ...entries.map((entry) =>
               lifeOpsCalendarSummaryFromGoogle({ entry, grant }),
@@ -3835,10 +3841,14 @@ export class CalendarService extends Service {
     if (shouldIncludeMicrosoftCalendar({ mode, grantId: request?.grantId })) {
       let microsoftAccounts: MicrosoftCalendarAccount[] = [];
       try {
-        microsoftAccounts = await this.microsoftPort.listAccounts({
-          side,
-          grantId: request?.grantId,
-        });
+        microsoftAccounts = await timeInferenceSpan(
+          "calendar:discovery:microsoft-accounts",
+          () =>
+            this.microsoftPort.listAccounts({
+              side,
+              grantId: request?.grantId,
+            }),
+        );
       } catch (error) {
         // error-policy:J4 Microsoft discovery remains an explicit failed
         // source so healthy Google/Apple accounts still produce a partial feed.
@@ -3895,7 +3905,10 @@ export class CalendarService extends Service {
           continue;
         }
         try {
-          const calendars = await this.microsoftPort.listCalendars(account);
+          const calendars = await timeInferenceSpan(
+            "calendar:discovery:microsoft-calendars",
+            () => this.microsoftPort.listCalendars(account),
+          );
           summaries.push(
             ...calendars.map((calendar) =>
               lifeOpsCalendarSummaryFromMicrosoft({ account, calendar }),
@@ -3920,11 +3933,15 @@ export class CalendarService extends Service {
       }
     }
     if (shouldIncludeAppleCalendar({ mode, side, grantId: request?.grantId })) {
-      const appleCalendars = await listNativeAppleCalendars({
-        agentId: this.agentId(),
-        side: "owner",
-        runtime: this.runtime,
-      });
+      const appleCalendars = await timeInferenceSpan(
+        "calendar:discovery:apple-calendars",
+        () =>
+          listNativeAppleCalendars({
+            agentId: this.agentId(),
+            side: "owner",
+            runtime: this.runtime,
+          }),
+      );
       if (appleCalendars.ok) {
         summaries.push(...appleCalendars.data);
       } else if (
@@ -3963,7 +3980,10 @@ export class CalendarService extends Service {
       }
     }
     if (shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })) {
-      const icsSources = await this.repo.listIcsCalendarSources(this.agentId());
+      const icsSources = await timeInferenceSpan(
+        "calendar:discovery:ics-sources",
+        () => this.repo.listIcsCalendarSources(this.agentId()),
+      );
       summaries.push(
         ...icsSources
           .filter((source) =>
@@ -3979,7 +3999,10 @@ export class CalendarService extends Service {
     ) {
       try {
         signal?.throwIfAborted();
-        const managed = await this.managedCalendar.sources(signal);
+        const managed = await timeInferenceSpan(
+          "calendar:discovery:managed-sources",
+          () => this.managedCalendar.sources(signal),
+        );
         summaries.push(
           ...managed.filter(
             (calendar) =>
@@ -4020,29 +4043,33 @@ export class CalendarService extends Service {
       }
     }
     signal?.throwIfAborted();
-    const preferences = await ensureCalendarFeedIncludes(
-      this.runtime,
-      summaries.map((summary) => {
-        // A managed host lists the owner's own calendars and declares which
-        // ones its product shows by default; that default holds until the
-        // owner chooses otherwise for the source.
-        const managed = this.managedCalendar?.owns(summary) === true;
-        return {
-          provider: summary.provider,
-          side: summary.side,
-          grantId: summary.grantId,
-          connectorAccountId: summary.connectorAccountId,
-          calendarId: summary.calendarId,
-          // The built-in calendar is the zero-config product surface. Other
-          // external accounts remain discoverable but enter the aggregate feed
-          // only after the owner explicitly enables them in Calendar Sources.
-          initialIncluded:
-            summary.provider === ELIZA_CALENDAR_PROVIDER ||
-            ((summary.provider === "ics" || managed) &&
-              summary.includeInFeed === true),
-          ...(managed ? { followInitialUntilChosen: true } : {}),
-        };
-      }),
+    const preferences = await timeInferenceSpan(
+      "calendar:discovery:preferences",
+      () =>
+        ensureCalendarFeedIncludes(
+          this.runtime,
+          summaries.map((summary) => {
+            // A managed host lists the owner's own calendars and declares which
+            // ones its product shows by default; that default holds until the
+            // owner chooses otherwise for the source.
+            const managed = this.managedCalendar?.owns(summary) === true;
+            return {
+              provider: summary.provider,
+              side: summary.side,
+              grantId: summary.grantId,
+              connectorAccountId: summary.connectorAccountId,
+              calendarId: summary.calendarId,
+              // The built-in calendar is the zero-config product surface. Other
+              // external accounts remain discoverable but enter the aggregate feed
+              // only after the owner explicitly enables them in Calendar Sources.
+              initialIncluded:
+                summary.provider === ELIZA_CALENDAR_PROVIDER ||
+                ((summary.provider === "ics" || managed) &&
+                  summary.includeInFeed === true),
+              ...(managed ? { followInitialUntilChosen: true } : {}),
+            };
+          }),
+        ),
     );
     return {
       calendars: summaries.map((summary) => {
@@ -5756,8 +5783,14 @@ export class CalendarService extends Service {
         calendars: listedCalendars,
         feed: await timeInferenceSpan("calendar:feed:aggregate", () =>
           this.aggregateCalendarFeedsAcrossCalendars(
-            requestUrl, calendars, timeMin, timeMax, timeZone, forceSync,
-            now, discoveryFailures,
+            requestUrl,
+            calendars,
+            timeMin,
+            timeMax,
+            timeZone,
+            forceSync,
+            now,
+            discoveryFailures,
             requestSignal
               ? AbortSignal.any([requestSignal, reads.signal])
               : reads.signal,
@@ -5803,7 +5836,15 @@ export class CalendarService extends Service {
               return {
                 feed: await timeInferenceSpan(
                   "calendar:feed:managed-source",
-                  () => managed.feed(calendar, timeMin, timeMax, timeZone, this.agentId(), signal),
+                  () =>
+                    managed.feed(
+                      calendar,
+                      timeMin,
+                      timeMax,
+                      timeZone,
+                      this.agentId(),
+                      signal,
+                    ),
                   { provider: calendar.provider },
                 ),
               };
