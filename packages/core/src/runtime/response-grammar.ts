@@ -1380,6 +1380,10 @@ function emitActionParamsRule(
  * `properties` emit a nested rule via this function, capped at
  * `MAX_NESTED_OBJECT_DEPTH` so accidental schema cycles can't blow up the
  * generated grammar.
+ *
+ * Undeclared keys: when `additionalProperties` is `true` or a schema (an
+ * action with `allowAdditionalParameters`), each one is one more optional
+ * alternative, as `validateToolArgs` accepts them.
  */
 function emitObjectRule(
 	builder: GbnfBuilder,
@@ -1393,7 +1397,13 @@ function emitObjectRule(
 		((schema as { required?: unknown }).required as string[] | undefined) ?? [];
 	const required = new Set(requiredList);
 	const propertyNames = Object.keys(properties);
-	if (propertyNames.length === 0) {
+	const additionalRuleName = emitAdditionalPropertyRule(
+		builder,
+		ruleName,
+		schema,
+		depth,
+	);
+	if (propertyNames.length === 0 && additionalRuleName === null) {
 		builder.rule(ruleName, gbnfLiteral("{}"));
 		return;
 	}
@@ -1427,8 +1437,10 @@ function emitObjectRule(
 			parts.push(propertyTokens[requiredKeys[i]]);
 		}
 	}
-	if (optionalKeys.length > 0) {
-		const optionalAlt = optionalKeys.map((k) => propertyTokens[k]).join(" | ");
+	const optionalTokens = optionalKeys.map((k) => propertyTokens[k]);
+	if (additionalRuleName !== null) optionalTokens.push(additionalRuleName);
+	if (optionalTokens.length > 0) {
+		const optionalAlt = optionalTokens.join(" | ");
 		const leadingComma = requiredKeys.length > 0;
 		const optionalGroup = leadingComma
 			? `( ${gbnfLiteral(",")} ( ${optionalAlt} ) )*`
@@ -1437,6 +1449,43 @@ function emitObjectRule(
 	}
 	parts.push(gbnfLiteral("}"));
 	builder.rule(ruleName, parts.join(" "));
+}
+
+/**
+ * Emit the rule for one undeclared `"key":value` pair of an object schema, or
+ * return null when the schema does not allow undeclared keys. The `--` in the
+ * name keeps it apart from the per-property rules: a sanitized key never
+ * starts with `-`.
+ */
+function emitAdditionalPropertyRule(
+	builder: GbnfBuilder,
+	ruleName: string,
+	schema: JSONSchema,
+	depth: number,
+): string | null {
+	const additional = (schema as { additionalProperties?: unknown })
+		.additionalProperties;
+	const additionalRuleName = `${ruleName}--additional`;
+	let valueExpr: string;
+	if (additional === true) {
+		builder.useShared("jsonvalue");
+		valueExpr = "jsonvalue";
+	} else if (typeof additional === "object" && additional !== null) {
+		valueExpr = propertyValueGbnf(
+			builder,
+			additional as JSONSchema,
+			additionalRuleName,
+			depth,
+		);
+	} else {
+		return null;
+	}
+	builder.useShared("jsonstring");
+	builder.rule(
+		additionalRuleName,
+		`jsonstring ${gbnfLiteral(":")} ${valueExpr}`,
+	);
+	return additionalRuleName;
 }
 
 /**
