@@ -32,8 +32,23 @@ describe("strict planner grammar for pattern strings", () => {
 		);
 	});
 
+	it("quotes a class that cannot match a character JSON escapes", () => {
+		expect(valueRule("^[a-z]+$")).toBe(
+			'paramsofaction-OWNER-HEALTH-p-date ::= "\\"date\\":" "\\"" [a-z]+ "\\""',
+		);
+	});
+
 	it("keeps jsonstring when the pattern can match a character JSON escapes", () => {
-		for (const pattern of ['^a"b$', "^a\\\\b$", "^\\s+$", "^[\\t ]+$"]) {
+		for (const pattern of [
+			'^a"b$',
+			"^a\\\\b$",
+			"^\\s+$",
+			"^[\\t ]+$",
+			// Ranges that span a quote or a backslash without naming either.
+			"^[ -~]+$",
+			"^[!-#]+$",
+			"^[Z-^]+$",
+		]) {
 			expect(valueRule(pattern)).toBe(
 				'paramsofaction-OWNER-HEALTH-p-date ::= "\\"date\\":" jsonstring',
 			);

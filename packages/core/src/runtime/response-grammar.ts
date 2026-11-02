@@ -144,7 +144,8 @@ type SimpleRegexQuantifier =
 
 type SimpleRegexAtom =
 	| { kind: "literal"; value: string }
-	| { kind: "class"; value: string }
+	/** `jsonEscaped`: the class can match a character JSON escapes. */
+	| { kind: "class"; value: string; jsonEscaped: boolean }
 	| { kind: "group"; value: SimpleRegexNode };
 
 interface SimpleRegexTerm {
@@ -167,7 +168,7 @@ export const MAX_SIMPLE_REGEX_REPEAT = 32;
 const MAX_SIMPLE_REGEX_PATTERN_LENGTH = 4_096;
 const MAX_SIMPLE_REGEX_GBNF_LENGTH = 4_096;
 
-function compileSimplePatternToGbnf(pattern: string): string | null {
+function parseSimplePattern(pattern: string): SimpleRegexNode | null {
 	if (
 		pattern.length < 2 ||
 		pattern.length > MAX_SIMPLE_REGEX_PATTERN_LENGTH ||
@@ -185,24 +186,44 @@ function compileSimplePatternToGbnf(pattern: string): string | null {
 	const parsed = parseSimpleRegexSequence(state, false);
 	if (parsed === null || state.index !== state.end) return null;
 	if (estimateSimpleRegexNodeLength(parsed) === null) return null;
-	return compileSimpleRegexNode(parsed);
+	return parsed;
 }
 
 /**
  * Compile a string `pattern` to a JSON string value: the compiled body between
  * quote literals. The body matches raw characters, so a pattern that can match
  * a quote, a backslash or a control character (JSON escapes all three) returns
- * `null` and the caller keeps `jsonstring`.
+ * `null` and the caller keeps `jsonstring`. The check reads the parsed pattern,
+ * not its text: a class range such as `[ -~]` spans `"` and `\` without
+ * naming either.
  */
 function compileJsonStringPatternToGbnf(pattern: string): string | null {
-	if (/"|\\[\\stnrfvxu]/.test(pattern)) return null;
-	for (const ch of pattern) {
-		if ((ch.codePointAt(0) ?? 0) < 0x20) return null;
-	}
-	const body = compileSimplePatternToGbnf(pattern);
-	if (body === null) return null;
+	const parsed = parseSimplePattern(pattern);
+	if (parsed === null || simpleRegexMatchesJsonEscaped(parsed)) return null;
 	const quote = gbnfLiteral('"');
-	return `${quote} ${body} ${quote}`;
+	return `${quote} ${compileSimpleRegexNode(parsed)} ${quote}`;
+}
+
+function simpleRegexMatchesJsonEscaped(node: SimpleRegexNode): boolean {
+	if (node.kind === "alternation") {
+		return node.branches.some((branch) =>
+			simpleRegexMatchesJsonEscaped(branch),
+		);
+	}
+	return node.terms.some(({ atom }) => {
+		if (atom.kind === "group") return simpleRegexMatchesJsonEscaped(atom.value);
+		if (atom.kind === "class") return atom.jsonEscaped;
+		return [...atom.value].some((ch) => spansJsonEscapedChar(ch, ch));
+	});
+}
+
+/** Whether the code points from `first` to `last` include one JSON escapes. */
+function spansJsonEscapedChar(first: string, last: string): boolean {
+	const from = first.codePointAt(0) ?? 0;
+	const to = last.codePointAt(0) ?? 0;
+	return (
+		from < 0x20 || (from <= 0x22 && to >= 0x22) || (from <= 0x5c && to >= 0x5c)
+	);
 }
 
 function addEstimatedLength(left: number, right: number): number | null {
@@ -423,11 +444,11 @@ function parseSimpleRegexEscape(
 
 	switch (escaped) {
 		case "d":
-			return { kind: "class", value: "0-9" };
+			return { kind: "class", value: "0-9", jsonEscaped: false };
 		case "w":
-			return { kind: "class", value: "A-Za-z0-9_" };
+			return { kind: "class", value: "A-Za-z0-9_", jsonEscaped: false };
 		case "s":
-			return { kind: "class", value: " \\t\\n\\r" };
+			return { kind: "class", value: " \\t\\n\\r", jsonEscaped: true };
 		case "t":
 			return { kind: "literal", value: "\t" };
 		case "n":
@@ -470,13 +491,14 @@ function parseSimpleRegexClass(
 	if (state.source[state.index] === "^") return null;
 
 	let content = "";
+	let jsonEscaped = false;
 	let first = true;
 	while (state.index < state.end) {
 		const ch = state.source[state.index];
 		if (ch === "]" && !first) {
 			state.index += 1;
 			if (content.length === 0) return null;
-			return { kind: "class", value: content };
+			return { kind: "class", value: content, jsonEscaped };
 		}
 
 		const literal = parseSimpleRegexClassUnit(state);
@@ -495,6 +517,7 @@ function parseSimpleRegexClass(
 				content += `${escapeGbnfClassChar(literal.value)}-${escapeGbnfClassChar(
 					rangeEnd.value,
 				)}`;
+				jsonEscaped ||= spansJsonEscapedChar(literal.value, rangeEnd.value);
 				first = false;
 				continue;
 			}
@@ -502,15 +525,22 @@ function parseSimpleRegexClass(
 		}
 
 		content += escapeGbnfClassChar(literal.value);
+		jsonEscaped ||= literal.single
+			? spansJsonEscapedChar(literal.value, literal.value)
+			: literal.jsonEscaped;
 		first = false;
 	}
 
 	return null;
 }
 
+type SimpleRegexClassUnit =
+	| { value: string; single: true }
+	| { value: string; single: false; jsonEscaped: boolean };
+
 function parseSimpleRegexClassUnit(
 	state: SimpleRegexParserState,
-): { value: string; single: boolean } | null {
+): SimpleRegexClassUnit | null {
 	const ch = state.source[state.index];
 	if (ch === undefined || ch === "]") return null;
 
@@ -521,11 +551,11 @@ function parseSimpleRegexClassUnit(
 		state.index += 1;
 		switch (escaped) {
 			case "d":
-				return { value: "0-9", single: false };
+				return { value: "0-9", single: false, jsonEscaped: false };
 			case "w":
-				return { value: "A-Za-z0-9_", single: false };
+				return { value: "A-Za-z0-9_", single: false, jsonEscaped: false };
 			case "s":
-				return { value: " \\t\\n\\r", single: false };
+				return { value: " \\t\\n\\r", single: false, jsonEscaped: true };
 			case "t":
 				return { value: "\t", single: true };
 			case "n":
@@ -555,7 +585,7 @@ function parseSimpleRegexClassUnit(
 function parseSimpleRegexHexUnit(
 	state: SimpleRegexParserState,
 	digits: number,
-): { value: string; single: boolean } | null {
+): SimpleRegexClassUnit | null {
 	if (state.index + digits > state.end) return null;
 	const raw = state.source.slice(state.index, state.index + digits);
 	if (!/^[0-9A-Fa-f]+$/.test(raw)) return null;
