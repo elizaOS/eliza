@@ -46,11 +46,7 @@ afterEach(async () => {
 function cases<T>(
   kind: string,
   value: T,
-  read: (
-    key: string,
-    loader: () => Promise<T>,
-    options: PricingCacheReadOptions,
-  ) => Promise<T>,
+  read: (key: string, loader: () => Promise<T>, options: PricingCacheReadOptions) => Promise<T>,
 ) {
   test(`${kind}: first legitimate cold request consumes authoritative rates`, async () => {
     let loads = 0;
@@ -89,10 +85,7 @@ function cases<T>(
       loads++;
       return gate;
     };
-    const results = Promise.all([
-      read(kind, loader, options()),
-      read(kind, loader, options()),
-    ]);
+    const results = Promise.all([read(kind, loader, options()), read(kind, loader, options())]);
     void results.catch(() => {});
     await Bun.sleep(0);
     expect(loads).toBe(1);
@@ -115,9 +108,9 @@ function cases<T>(
   });
   test(`${kind}: cache outage remains unavailable even if the loader can resolve`, async () => {
     cacheOutcome = "unavailable";
-    await expect(
-      read(kind, async () => value, options()),
-    ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
+    await expect(read(kind, async () => value, options())).rejects.toBeInstanceOf(
+      AiPricingCacheUnavailableError,
+    );
   });
   test(`${kind}: missing execution context never starts a cold load`, async () => {
     let loads = 0;
@@ -181,11 +174,7 @@ test("cold wait is bounded while waitUntil retains the original load", async () 
 
 test("invalid canonical prices cannot be used for billing", async () => {
   await expect(
-    getCachedFlatPricingEntry(
-      "invalid-flat",
-      async () => ({ ...flat, unitPrice: 0 }),
-      options(),
-    ),
+    getCachedFlatPricingEntry("invalid-flat", async () => ({ ...flat, unitPrice: 0 }), options()),
   ).rejects.toBeInstanceOf(AiPricingCacheUnavailableError);
   await expect(
     getCachedTextPricingRates(
