@@ -22,6 +22,13 @@ import {
 export interface PricingCacheReadOptions {
   cacheOnly?: boolean;
   executionCtx?: { waitUntil(promise: Promise<unknown>): void };
+  /**
+   * Keep-warm callers only, never a request path: hydrate through the same
+   * loader and await the Worker-cache write, with the key and TTL that
+   * `cacheOnly` reads use. An entry this isolate wrote within the fresh window
+   * is not written again.
+   */
+  warmWorkerCache?: boolean;
 }
 
 export class AiPricingCacheWarmingError extends Error {
@@ -211,6 +218,11 @@ const flatPricingPersistenceInFlight = new Map<
   Promise<PreparedPricingEntry>
 >();
 const flatPricingFailures = new Map<string, number>();
+/**
+ * L1 records known to be in the Worker cache: this isolate wrote them there or
+ * read them from there. Keep-warm skips them while fresh.
+ */
+const workerCacheRecords = new WeakSet<CachedTextPricingRates | CachedFlatPricingEntry>();
 
 function durableTextPricingKey(cacheKey: string): string {
   return `iac:pricing:${cacheKey}:v1`;
@@ -284,13 +296,15 @@ function observePricingCacheWrite(
       TEXT_PRICING_HARD_TTL_SECONDS,
     )
     .then((outcome) => {
-      if (outcome.kind !== "written") {
-        logger.warn("[AI Pricing] canonical rate cache write was not durable", {
-          cacheKey,
-          outcome: outcome.kind,
-          backend: outcome.backend,
-        });
+      if (outcome.kind === "written") {
+        workerCacheRecords.add(record);
+        return;
       }
+      logger.warn("[AI Pricing] canonical rate cache write was not durable", {
+        cacheKey,
+        outcome: outcome.kind,
+        backend: outcome.backend,
+      });
     });
 }
 
@@ -412,6 +426,10 @@ export async function getCachedTextPricingRates(
   options: PricingCacheReadOptions = {},
 ): Promise<TokenPricingRates> {
   const local = readLocalTextPricingRates(cacheKey, required);
+  if (options.warmWorkerCache) {
+    if (local && !local.stale && workerCacheRecords.has(local.record)) return local.record.rates;
+    return await persistTextPricingRates(cacheKey, required, loader);
+  }
   if (local && !local.stale) {
     return local.record.rates;
   }
@@ -441,6 +459,7 @@ export async function getCachedTextPricingRates(
     Date.now() - outcome.value.cachedAt < TEXT_PRICING_HARD_TTL_MS
   ) {
     textPricingCache.set(cacheKey, outcome.value);
+    workerCacheRecords.add(outcome.value);
     if (Date.now() - outcome.value.cachedAt >= TEXT_PRICING_FRESH_TTL_MS) {
       scheduleTextPricingHydration(
         cacheKey,
@@ -556,6 +575,7 @@ function persistFlatPricingEntry(
       if (outcome.kind !== "written") {
         throw new AiPricingCacheUnavailableError();
       }
+      workerCacheRecords.add(record);
       flatPricingFailures.delete(cacheKey);
       return entry;
     },
@@ -611,6 +631,12 @@ export async function getCachedFlatPricingEntry(
   const localAge = local
     ? Date.now() - local.cachedAt
     : Number.POSITIVE_INFINITY;
+  if (options.warmWorkerCache) {
+    if (local && localAge < TEXT_PRICING_FRESH_TTL_MS && workerCacheRecords.has(local)) {
+      return local.entry;
+    }
+    return await persistFlatPricingEntry(cacheKey, loader);
+  }
   if (local && localAge < TEXT_PRICING_FRESH_TTL_MS) return local.entry;
   if (!options.cacheOnly) return await loadFlatPricingEntry(cacheKey, loader);
   if (!options.executionCtx) throw new AiPricingCacheUnavailableError();
@@ -630,6 +656,7 @@ export async function getCachedFlatPricingEntry(
     Date.now() - outcome.value.cachedAt < TEXT_PRICING_HARD_TTL_MS
   ) {
     flatPricingCache.set(cacheKey, outcome.value);
+    workerCacheRecords.add(outcome.value);
     if (Date.now() - outcome.value.cachedAt >= TEXT_PRICING_FRESH_TTL_MS) {
       scheduleFlatPricingHydration(cacheKey, loader, options.executionCtx);
     }
