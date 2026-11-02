@@ -254,10 +254,14 @@ export function parseMeetingUrl(raw: string): ParsedMeetingUrl | null {
 	}
 	const zoom = ZOOM_URL_RE.exec(url);
 	if (zoom) {
-		// The web client join URL; preserves ?pwd= and other params.
+		// The web client join URL; keeps the passcode (pwd) and the registrant
+		// token (tk) a registration-required meeting or webinar admits by.
 		const parsed = new URL(url);
-		const pwd = parsed.searchParams.get("pwd");
-		const joinUrl = `https://app.zoom.us/wc/${zoom[1]}/join${pwd ? `?pwd=${encodeURIComponent(pwd)}` : ""}`;
+		const query = ["pwd", "tk"].flatMap((key) => {
+			const value = parsed.searchParams.get(key);
+			return value ? [`${key}=${encodeURIComponent(value)}`] : [];
+		});
+		const joinUrl = `https://app.zoom.us/wc/${zoom[1]}/join${query.length > 0 ? `?${query.join("&")}` : ""}`;
 		return { platform: "zoom", meetingUrl: joinUrl, nativeMeetingId: zoom[1] };
 	}
 	const teamsShort = TEAMS_SHORT_RE.exec(url);
