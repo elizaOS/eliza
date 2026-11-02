@@ -14,6 +14,7 @@ import {
   type createMessageMemory,
   executePlannedToolCall,
   ModelType,
+  parseJsonObject,
 } from "@elizaos/core";
 import { extractCompatTextContent } from "./compat-utils.ts";
 
@@ -24,7 +25,7 @@ export type FallbackParsedAction = {
 
 type RuntimeActionLike = Action;
 
-async function rewriteFallbackActionText(args: {
+export async function rewriteFallbackActionText(args: {
   runtime: AgentRuntime;
   actionName: string;
   text: string;
@@ -77,8 +78,12 @@ async function rewriteFallbackActionText(args: {
       signal: args.abortSignal,
       providerOptions: { eliza: { thinking: "off" } },
     });
-    const parsed = JSON.parse(String(raw).trim()) as { response?: unknown };
-    return typeof parsed.response === "string" && parsed.response.trim()
+    // Read the reply with the shared tolerant object reader: a bare
+    // JSON.parse throws when the model wraps the object in prose or a
+    // fence, and the catch below then replaces the action's actual
+    // result with the generic fallback text.
+    const parsed = parseJsonObject<{ response?: unknown }>(String(raw));
+    return typeof parsed?.response === "string" && parsed.response.trim()
       ? parsed.response.trim()
       : fallback();
   } catch (err) {
