@@ -9,7 +9,8 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Simulate a write that dies after the first half of the bytes reached disk.
-const crash = { next: false };
+// vi.hoisted keeps the flag initialized before the hoisted vi.mock factory.
+const crash = vi.hoisted(() => ({ next: false }));
 vi.mock("node:fs", async (importOriginal) => {
   const actual = await importOriginal<typeof import("node:fs")>();
   const writeFileSync = ((
