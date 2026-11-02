@@ -12,7 +12,12 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { ElizaError, getActionReplyOwner, Semaphore } from "@elizaos/core";
+import {
+  ElizaError,
+  getActionReplyOwner,
+  getUserMessageText,
+  Semaphore,
+} from "@elizaos/core";
 import {
   type ScheduledTask,
   type ScheduledTaskTrigger,
@@ -185,7 +190,13 @@ function sourceRefFromMessage(message: Memory): ThreadSourceRef {
 }
 
 function looksLikeThreadLifecycleIntent(message: Memory): boolean {
-  const text = String(message.content.text ?? "").toLowerCase();
+  // Read the user's words, not the raw rendered text: under document
+  // augmentation, content.text carries the preamble, the recalled documents
+  // and the real request wrapped in <user_request>, so a document phrase
+  // such as "mark this done" would offer this action for a request with no
+  // lifecycle intent. getUserMessageText also prefers a connector's
+  // currentMessageText over its envelope prefix.
+  const text = getUserMessageText(message).toLowerCase();
   return /\b(thread|conversation|workstream|follow-?up|keep working|continue this|stop this|pause this|merge (?:these|this)|combine (?:these|this)|mark (?:this )?(?:done|complete)|schedule (?:a )?follow-?up)\b/.test(
     text,
   );
