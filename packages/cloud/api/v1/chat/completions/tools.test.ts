@@ -16,23 +16,19 @@ function tools(flags: Array<boolean | undefined>): ChatCompletionTool[] {
   } }));
 }
 async function wire(input: ChatCompletionTool[] | undefined, streaming: boolean) {
-  const bodies: Record<string, any>[] = [];
-  const fetchSpy = spyOn(globalThis, "fetch").mockImplementation(async (_url, init) => {
-    bodies.push(JSON.parse(String(init?.body)));
-    if (streaming) return new Response(
-      'data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
-      'data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' + 'data: [DONE]\n\n',
-      { headers: { "Content-Type": "text/event-stream" } },
-    );
-    return Response.json({ id: "test", object: "chat.completion", created: 0, model: "test", choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
-  });
+  const response = streaming ? new Response(
+    'data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n' +
+    'data: {"id":"test","object":"chat.completion.chunk","created":0,"model":"test","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n' + 'data: [DONE]\n\n',
+    { headers: { "Content-Type": "text/event-stream" } },
+  ) : Response.json({ id: "test", object: "chat.completion", created: 0, model: "test", choices: [{ index: 0, message: { role: "assistant", content: "ok" }, finish_reason: "stop" }], usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } });
+  const fetchSpy = spyOn(globalThis, "fetch").mockResolvedValue(response);
   try {
   const provider = createOpenAI({ apiKey: "test-not-a-real-key", baseURL: "https://provider.invalid/v1", fetch: globalThis.fetch });
   const options = { model: provider.chat("qwen-3.8-27b"), prompt: "test", tools: convertTools(input), maxRetries: 0 };
   if (streaming) await streamText(options).text;
   else await generateText(options);
-  expect(bodies).toHaveLength(1);
-  return bodies[0];
+  expect(fetchSpy).toHaveBeenCalledTimes(1);
+  return JSON.parse(String(fetchSpy.mock.calls[0]?.[1]?.body));
   } finally { fetchSpy.mockRestore(); }
 }
 describe("tool strictness through the actual OpenAI chat adapter fetch body", () => {
