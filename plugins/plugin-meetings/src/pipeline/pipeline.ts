@@ -188,7 +188,11 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
 
   // ── MeetingAudioSink ─────────────────────────────────────────
 
-  pushSpeakerAudio(speakerKey: string, samples: Float32Array): void {
+  pushSpeakerAudio(
+    speakerKey: string,
+    samples: Float32Array,
+    capturedAtMs?: number,
+  ): void {
     if (this.finalized || samples.length === 0) return;
 
     // Copy once: adapters may reuse their capture buffers, and the copy is
@@ -201,8 +205,15 @@ class MeetingPipeline implements MeetingTranscriptionPipeline {
     this.manager.feedAudio(speakerKey, chunk);
 
     if (this.options.retainAudio) {
+      // Place the chunk at its capture time: a batch drained in one call
+      // (Teams caption routing) would otherwise share one offset and be
+      // summed on top of itself.
+      const atMs = Math.max(
+        0,
+        (capturedAtMs ?? Date.now()) - this.sessionEpochMs,
+      );
       const offsetSamples = Math.round(
-        ((Date.now() - this.sessionEpochMs) / 1000) * MEETING_AUDIO_SAMPLE_RATE,
+        (atMs / 1000) * MEETING_AUDIO_SAMPLE_RATE,
       );
       this.retained.push({ offsetSamples, samples: chunk });
       this.retainedTotalSamples = Math.max(
