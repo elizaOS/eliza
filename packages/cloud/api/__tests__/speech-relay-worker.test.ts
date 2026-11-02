@@ -5,10 +5,11 @@
 
 import { afterAll, beforeAll, expect, test } from "bun:test";
 import { fileURLToPath } from "node:url";
-import { Miniflare, createFetchMock } from "miniflare";
+import { Miniflare } from "miniflare";
 import { CARTESIA_PUBLISHED_USD_PER_CREDIT } from "../v1/voice/stt/cartesia-pricing";
 
 let worker: Miniflare;
+let outboundAttempts = 0;
 const common = `const stats=()=>globalThis.__speechStats??={};
 const bootstrap=(name)=>{const s=stats();if(s.locked)throw Error('DB/auth/admission on live speech path');s[name]=(s[name]??0)+1;};`;
 beforeAll(async () => {
@@ -110,10 +111,11 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
   });
   if (!result.success)
     throw new AggregateError(result.logs, "Speech worker build failed");
-  const fetchMock = createFetchMock();
-  fetchMock.disableNetConnect();
   worker = new Miniflare({
-    fetchMock,
+    outboundService() {
+      outboundAttempts++;
+      throw new Error("Unexpected outbound request in speech fixture");
+    },
     modules: true,
     script: await result.outputs[0].text(),
     compatibilityDate: "2026-04-01",
@@ -140,6 +142,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
 });
 afterAll(async () => {
   await worker?.dispose();
+  expect(outboundAttempts).toBe(0);
 });
 const account = {
   id: "11111111-1111-4111-8111-111111111111",
