@@ -16,7 +16,8 @@ mock.module("./speech-relay-admission", () => ({ reserveSpeechRelayAdmission: as
   for (const kind of ["stt", "tts"] as const) await input.onProgress?.(kind, { state: "settled_actual", requestId: `speech:${input.sessionId}:${kind}`, amountUsd: "0" });
   return {};
 } }));
-mock.module("@elizaos/host/voice/speech-relay-session", () => ({ SPEECH_RELAY_BUDGET: { durationMs: 60000 }, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
+const { parseSpeechRelayControl, SPEECH_RELAY_BUDGET } = await import("@elizaos/host/voice/speech-relay-session");
+mock.module("@elizaos/host/voice/speech-relay-session", () => ({ parseSpeechRelayControl, SPEECH_RELAY_BUDGET, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
   control.opens++;
   const handle = { async close() { control.closes++; if (control.closeFails) throw Error("unknown cleanup"); }, async retryRetirement() { return this.close(); }, evidence: () => ({ stt: "gracefully_drained", tts: "transport_closed", accounting: "settled_actual" }) };
   ports.registerRetirement(handle); await ports.reserveCredits(); await control.wait;
