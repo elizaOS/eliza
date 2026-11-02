@@ -6,9 +6,12 @@ mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientC
 mock.module("@elizaos/cloud-shared/lib/services/voice-usage-meter", () => ({ createDurableVoiceUsageStore: () => ({}) }));
 mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({ logger: { info() {}, error() {} } }));
 mock.module("@elizaos/cloud-shared/lib/voice-session/config", () => ({ resolveVoiceUsageLimits: () => ({}) }));
-mock.module("@elizaos/host/voice/cartesia-ink", () => ({ createCartesiaInkRealtimeSession() {} }));
-mock.module("@elizaos/host/voice/cartesia-sonic-tts", () => ({ CartesiaSonicTtsAdapter: class { close() {} async closeAndConfirm() { return "transport_closed"; } } }));
-mock.module("../v1/voice/session/lib/provider-socket-factory", () => ({ createWorkerCartesiaFactory: () => () => {}, createWorkerCartesiaInkFactory: () => () => {} }));
+const actualCartesiaInk = { ...await import("@elizaos/host/voice/cartesia-ink") };
+mock.module("@elizaos/host/voice/cartesia-ink", () => ({ ...actualCartesiaInk, createCartesiaInkRealtimeSession() {} }));
+const actualCartesiaSonic = { ...await import("@elizaos/host/voice/cartesia-sonic-tts") };
+mock.module("@elizaos/host/voice/cartesia-sonic-tts", () => ({ ...actualCartesiaSonic, CartesiaSonicTtsAdapter: class { close() {} async closeAndConfirm() { return "transport_closed"; } } }));
+const actualSocketFactories = { ...await import("../v1/voice/session/lib/provider-socket-factory") };
+mock.module("../v1/voice/session/lib/provider-socket-factory", () => ({ ...actualSocketFactories, createWorkerCartesiaFactory: () => () => {}, createWorkerCartesiaInkFactory: () => () => {} }));
 mock.module("../v1/voice/stt/cartesia-pricing", () => ({ parseCartesiaUsdPerCredit: () => 0.001 }));
 mock.module("../v1/voice/tts/provider-selection", () => ({ resolveCartesiaVoiceId: () => "voice" }));
 mock.module("./speech-revocation-subscription", () => ({ subscribeSpeechRevocation: async () => { control.subscribed++; await control.subscriptionWait; return () => { control.unsubscribed++; }; } }));
@@ -16,8 +19,8 @@ mock.module("./speech-relay-admission", () => ({ reserveSpeechRelayAdmission: as
   for (const kind of ["stt", "tts"] as const) await input.onProgress?.(kind, { state: "settled_actual", requestId: `speech:${input.sessionId}:${kind}`, amountUsd: "0" });
   return {};
 } }));
-const { parseSpeechRelayControl, SPEECH_RELAY_BUDGET } = await import("@elizaos/host/voice/speech-relay-session");
-mock.module("@elizaos/host/voice/speech-relay-session", () => ({ parseSpeechRelayControl, SPEECH_RELAY_BUDGET, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
+const actualSpeechRelaySession = { ...await import("@elizaos/host/voice/speech-relay-session") };
+mock.module("@elizaos/host/voice/speech-relay-session", () => ({ ...actualSpeechRelaySession, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
   control.opens++;
   const handle = { async close() { control.closes++; if (control.closeFails) throw Error("unknown cleanup"); }, async retryRetirement() { return this.close(); }, evidence: () => ({ stt: "gracefully_drained", tts: "transport_closed", accounting: "settled_actual" }) };
   ports.registerRetirement(handle); await ports.reserveCredits(); await control.wait;
