@@ -2033,6 +2033,16 @@ describe("replyClaimsInProgressWork", () => {
 
 describe("replyIsClaimSafeAcknowledgment", () => {
   it.each([
+    // The actual Direct voice cue, plus equivalent bounded lookup syntax.
+    "On it — checking your notes and today's calendar.",
+    "On it—checking your notes and today’s calendar.",
+    "On it – checking today's calendar and your notes.",
+    "On it - checking your calendar and tomorrow's notes.",
+    "One sec: checking tonight's schedule.",
+    "Just a moment; looking through yesterday's messages.",
+    "Let me check your today's calendar.",
+    "I'll read tomorrow's notes and your reminders.",
+    "Checking your notes, tomorrow's calendar and today's reminders.",
     // The live acceptance acknowledgements and short progress cues.
     "Let me have a look.",
     "Checking both.",
@@ -2099,6 +2109,19 @@ describe("replyIsClaimSafeAcknowledgment", () => {
   });
 
   it.each([
+    // New separators and relative scopes still cannot carry results or private data.
+    "On it — your calendar is clear today.",
+    "On it: checking today's calendar — your appointment starts soon.",
+    "On it; checking tomorrow's notes, your test results are back.",
+    "One sec - checking your notes and today's calendar: no events.",
+    "On it — checking Bob's calendar.",
+    "On it — checking today's calendar with Bob.",
+    "Checking today's calendar and your SSN is 123-45-6789.",
+    "Checking today's calendar and today's salary is high.",
+    "Checking November's calendar.",
+    "Checking Monday's schedule.",
+    "On it — saved today's note.",
+    "On it — checking today's calendar. You have no notes.",
     // Completed effects.
     "Sent.",
     "All set.",

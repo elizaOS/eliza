@@ -931,13 +931,15 @@ const ACKNOWLEDGMENT_DATA_TOKEN =
 // open a reply whose next sentence names the work after a lead.
 const ACKNOWLEDGMENT_WAIT_CUE =
   "(?:on it|(?:one|just a) (?:sec|second|moment))";
-// The owner's own containers, which exist whatever the tools find. "Your" is
-// required: "the files" can be someone else's ("What's taking Sam so long with
-// the files?") and a bare noun can be a compound ("Checking account."). Nouns
-// join with "and" or commas ("your calendar, notes and reminders").
+// Owner-bound containers or a relative-day scope exist regardless of lookup
+// results. An unqualified "the files" can be someone else's ("What's taking Sam
+// so long with the files?") and a bare noun can be a compound ("Checking account.").
+// Nouns join with "and" or commas ("your calendar, notes and reminders").
 const ACKNOWLEDGMENT_CONTAINER_NOUN =
   "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)";
-const ACKNOWLEDGMENT_CONTAINERS = `(?:your ${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather)(?:(?:,|,? and) (?:(?:your )?${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather))*`;
+// A relative-day possessive scopes the intended lookup; it reports no result.
+const ACKNOWLEDGMENT_RELATIVE_DAY = "(?:today|tomorrow|yesterday|tonight)'s";
+const ACKNOWLEDGMENT_CONTAINERS = `(?:(?:your(?: ${ACKNOWLEDGMENT_RELATIVE_DAY})?|${ACKNOWLEDGMENT_RELATIVE_DAY}) ${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather)(?:(?:,|,? and) (?:(?:your )?(?:${ACKNOWLEDGMENT_RELATIVE_DAY} )?${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather))*`;
 // "It", "that", "this" and "both" stand for the request, so only a verb that
 // checks whether something is so may take them: a verb that retrieves or
 // changes an item says the item exists or is missing ("Pulling it up now",
@@ -1011,7 +1013,7 @@ const ACKNOWLEDGMENT_LEAD_FORM = `${ACKNOWLEDGMENT_LEAD} (?:${[...ACKNOWLEDGMENT
 // first?").
 const ACKNOWLEDGMENT_TAIL = "(?:,? (?:now|for you|real quick|quickly)){0,2}";
 const ACKNOWLEDGMENT_PROGRESS = new RegExp(
-  `^(?:${ACKNOWLEDGMENT_WAIT_CUE}, )?` +
+  `^(?:${ACKNOWLEDGMENT_WAIT_CUE}(?:, | ?[—–:;] ?| - ))?` +
     `(?:${ACKNOWLEDGMENT_LEAD_FORM}` +
     `|(?:i(?:'m| am) )?(?:${ACKNOWLEDGMENT_VERBS.map((verb) => verb[1]).join("|")}))` +
     `${ACKNOWLEDGMENT_TAIL}$`,
@@ -1035,7 +1037,7 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * the final . ! or …, the whole reply must be one to three sentences (split
  * at . ! or … before a space), each either:
  * - a wait cue: on it, one/just a sec/second/moment; or
- * - progress: an optional wait cue and a comma, then a lead (let me, I'll, I
+ * - progress: an optional wait cue and comma, dash, colon or semicolon, then a lead (let me, I'll, I
  *   will, I'm going to, give me a sec to, one sec while I) and a look-up verb
  *   or intent in base form, or an optional "I'm" and a look-up verb's gerund
  *   ("Checking…"), then up to two of now, for you, real quick, quickly.
@@ -1050,7 +1052,8 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * A gerund always has its object ("Checking both."), except "taking/having a
  * look". A container list is "your" with calendar, schedule, agenda, notes,
  * inbox, email(s), messages, texts, reminders, tasks, todos, files, photos,
- * contacts, workflows, settings or account, or "the weather", joined by "and"
+ * contacts, workflows, settings or account, optionally scoped by a relative-day
+ * possessive (today's, tomorrow's, yesterday's or tonight's), or "the weather", joined by "and"
  * or commas ("your calendar, notes and reminders").
  *
  * Intents, only after a lead and never as a gerund:
@@ -1069,7 +1072,8 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * Other assent (okay, got it, no problem), other write verbs, "it" or an
  * indefinite object after an intent, dates outside the question, "first" and
  * "then" each answer a question in some context, so they are not listed. Any
- * other word, name, emoji, dash, colon or bracket drops the acknowledgement.
+ * other word, name, emoji, punctuation outside the wait-cue separator or bracket
+ * drops the acknowledgement.
  * The whole reply also has no digits, clock times,
  * spelled counts, ordinals, quantity words or question marks, is at most 120
  * characters, and passes the completed-effect and empty-state detectors.
