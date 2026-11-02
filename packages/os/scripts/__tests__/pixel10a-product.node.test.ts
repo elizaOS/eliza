@@ -106,7 +106,13 @@ for (const listener of [false, true]) {
       .split("\n");
     assert.ok(packages.split(" ").includes("ElizaOsUpdater"));
     assert.equal(policy, "vendor/alphaphone/updater/sepolicy/private");
-    assert.ok(fs.existsSync(path.join(root, policy, "updater.te")));
+    for (const name of [
+      "keys.conf",
+      "mac_permissions.xml",
+      "seapp_contexts",
+      "updater.te",
+    ])
+      assert.ok(fs.existsSync(path.join(root, policy, name)));
   });
 }
 

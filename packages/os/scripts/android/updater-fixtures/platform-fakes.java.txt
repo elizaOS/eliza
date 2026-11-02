@@ -20,6 +20,11 @@ public final class Device {
     public static final Map<Class<?>, Object> services = new HashMap<>();
     public static final Map<Integer, String> strings = new HashMap<>();
     public static final Map<String, Object> stored = new HashMap<>();
+    /** What a power cut leaves of `stored`: only commit() reaches the disk. */
+    public static final Map<String, Object> durable = new HashMap<>();
+    public static boolean commitFails;
+    /** Run when a fetch starts and when a commit has returned to disk: where a test lands a job stop. */
+    public static Runnable fetching, committed;
     public static final Set<String> callerPermissions = new HashSet<>();
     public static final List<Notification> notifications = new ArrayList<>();
     public static final List<String> fetched = new ArrayList<>();
@@ -27,6 +32,8 @@ public final class Device {
     public static final LinkedBlockingQueue<Boolean> finished = new LinkedBlockingQueue<>();
     public static int audioMode;
     public static boolean inCall;
+    /** READ_PHONE_STATE and its app-op, which also decide what isInCall does. */
+    public static boolean phoneStateGranted, phoneStateOpAllowed;
     public static final List<String> reboots = new ArrayList<>();
     public static final Network network = new Network();
     public static final SharedPreferences store = new SharedPreferences() {
@@ -34,13 +41,27 @@ public final class Device {
         @Override public long getLong(String key, long fallback) { return stored.containsKey(key) ? (Long) stored.get(key) : fallback; }
         @Override public Editor edit() {
             return new Editor() {
-                @Override public Editor putString(String key, String value) { stored.put(key, value); return this; }
-                @Override public Editor putLong(String key, long value) { stored.put(key, value); return this; }
-                @Override public void apply() {}
+                private final Map<String, Object> pending = new HashMap<>();
+                @Override public Editor putString(String key, String value) { pending.put(key, value); return this; }
+                @Override public Editor putLong(String key, long value) { pending.put(key, value); return this; }
+                @Override public void apply() { stored.putAll(pending); }
+                @Override public boolean commit() {
+                    stored.putAll(pending);
+                    if (commitFails) return false;
+                    durable.putAll(pending);
+                    // As on the platform, an interrupted thread gets false even though the write landed.
+                    boolean returned = !Thread.interrupted();
+                    if (committed != null) committed.run();
+                    return returned;
+                }
             };
         }
     };
 }
+
+// file: android/Manifest.java
+package android;
+public final class Manifest { public static final class permission { public static final String READ_PHONE_STATE = "android.permission.READ_PHONE_STATE"; } }
 
 // file: android/R.java
 package android;
@@ -49,6 +70,16 @@ public final class R { public static final class drawable { public static final 
 // file: ai/elizaos/updater/R.java
 package ai.elizaos.updater;
 public final class R { public static final class string { public static final int channel = 1, channel_manifest_url = 2, channel_key = 3; } }
+
+// file: android/app/AppOpsManager.java
+package android.app;
+public class AppOpsManager {
+    public static final int MODE_ALLOWED = 0, MODE_IGNORED = 1;
+    public static final String OPSTR_READ_PHONE_STATE = "android:read_phone_state";
+    public int checkOpNoThrow(String op, int uid, String packageName) {
+        return OPSTR_READ_PHONE_STATE.equals(op) && android.Device.phoneStateOpAllowed ? MODE_ALLOWED : MODE_IGNORED;
+    }
+}
 
 // file: android/app/Notification.java
 package android.app;
@@ -175,6 +206,11 @@ public class Context {
     public final <T> T getSystemService(Class<T> type) { return type.cast(android.Device.services.get(type)); }
     public SharedPreferences getSharedPreferences(String name, int mode) { return android.Device.store; }
     public final String getString(int id) { return android.Device.strings.get(id); }
+    public String getPackageName() { return "ai.elizaos.updater"; }
+    public int checkSelfPermission(String permission) {
+        return android.Manifest.permission.READ_PHONE_STATE.equals(permission) && android.Device.phoneStateGranted
+                ? android.content.pm.PackageManager.PERMISSION_GRANTED : android.content.pm.PackageManager.PERMISSION_DENIED;
+    }
     public void enforceCallingPermission(String permission, String message) { if (!android.Device.callerPermissions.contains(permission)) throw new SecurityException(message); }
 }
 
@@ -188,6 +224,10 @@ public class Intent {
     public Intent setClass(Context context, Class<?> target) { return this; }
 }
 
+// file: android/content/pm/PackageManager.java
+package android.content.pm;
+public class PackageManager { public static final int PERMISSION_GRANTED = 0, PERMISSION_DENIED = -1; }
+
 // file: android/content/SharedPreferences.java
 package android.content;
 public interface SharedPreferences {
@@ -198,6 +238,7 @@ public interface SharedPreferences {
         Editor putString(String key, String value);
         Editor putLong(String key, long value);
         void apply();
+        boolean commit();
     }
 }
 
@@ -214,13 +255,20 @@ public class AudioManager {
 
 // file: android/telecom/TelecomManager.java
 package android.telecom;
-public class TelecomManager { public boolean isInCall() { return android.Device.inCall; } }
+public class TelecomManager {
+    /** TelecomServiceImpl.canReadPhoneState: no permission throws, a refused app-op reads as no call. */
+    public boolean isInCall() {
+        if (!android.Device.phoneStateGranted) throw new SecurityException("isInCall");
+        return android.Device.phoneStateOpAllowed && android.Device.inCall;
+    }
+}
 
 // file: android/net/Network.java
 package android.net;
 public class Network {
     public long getNetworkHandle() { return 123456789L; }
     public java.net.URLConnection openConnection(java.net.URL url) throws java.io.IOException {
+        if (android.Device.fetching != null) android.Device.fetching.run();
         android.Device.fetched.add(url.toString());
         byte[] body = android.Device.channel.get(url.toString());
         if (body == null) throw new java.io.FileNotFoundException(url.toString());
@@ -251,6 +299,10 @@ public class Bundle {
     public String getString(String key) { return values.get(key); }
 }
 
+// file: android/os/Process.java
+package android.os;
+public class Process { public static int myUid() { return 10123; } }
+
 // file: android/os/PowerManager.java
 package android.os;
 public class PowerManager { public void reboot(String reason) { android.Device.reboots.add(String.valueOf(reason)); } }
@@ -271,6 +323,8 @@ public class UpdateEngine {
     /** The work's result, delivered as soon as there is work; null leaves the test to deliver it. */
     public static Integer outcome;
     public static volatile UpdateEngineCallback callback;
+    /** Run as a payload is taken; this file's SDK build has no Device to read. */
+    public static Runnable applying;
     public UpdateEngine() { if (denied) throw new IllegalStateException("Failed to find update_engine"); }
     public boolean bind(UpdateEngineCallback bound) {
         bound.onStatusUpdate(status, 0f);
@@ -281,6 +335,7 @@ public class UpdateEngine {
     public boolean unbind() { unbinds++; return true; }
     public void applyPayload(String url, long offset, long size, String[] headers) {
         if (applyFailure != null) throw applyFailure;
+        if (applying != null) applying.run();
         applied.add(new Object[] {url, offset, size, headers});
         if (outcome != null) callback.onPayloadApplicationComplete(outcome);
     }

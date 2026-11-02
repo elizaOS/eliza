@@ -5,8 +5,8 @@ brand composes the same product from `android/products/pixel10a-<brand>.json`
 (`stage-pixel10a-product.ts`): a nonprivileged launcher on `/product`, the separately
 admitted Sense listener as a privileged package (exactly `CAPTURE_AUDIO_HOTWORD`
 and `START_ACTIVITIES_FROM_BACKGROUND`), the optional `android/updater` update client
-as the one other privileged package (exactly `REBOOT` and
-`READ_PRIVILEGED_PHONE_STATE`), the reviewed
+as the one other privileged package (exactly `REBOOT`, in its own `eliza_updater`
+SELinux domain, the only added path to `update_engine`), the reviewed
 stallion `BoardConfig.mk`, enforcing SELinux with the reviewed device policy, the hash-pinned
 generated vendor tree and VINTF manifests, role provisioning for HOME, assistant and
 Autofill, and the system Clock (`DeskClock`). Stock recovery stays reachable.

@@ -23,6 +23,7 @@ const updater = fileURLToPath(
 const fixtures = fileURLToPath(
   new URL("../android/updater-fixtures/", import.meta.url),
 );
+const read = (name) => fs.readFileSync(path.join(updater, name), "utf8");
 const source = path.join(updater, "src/ai/elizaos/updater");
 const sources = fs.readdirSync(source).map((name) => path.join(source, name));
 const java = (name) =>
@@ -165,27 +166,97 @@ test("a signed channel-manifest.mjs output reaches ChannelManifest", async (t) =
 });
 
 test("the privileged allowlist is exactly the privileged permissions the client requests", () => {
-  const read = (name) => fs.readFileSync(path.join(updater, name), "utf8");
   const requested = [
     ...read("AndroidManifest.xml").matchAll(
       /<uses-permission android:name="([^"]+)"/g,
     ),
   ].map((row) => row[1]);
-  const privileged = [
-    "android.permission.READ_PRIVILEGED_PHONE_STATE",
-    "android.permission.REBOOT",
+  const privileged = ["android.permission.REBOOT"];
+  const runtime = [
+    "android.permission.POST_NOTIFICATIONS",
+    "android.permission.READ_PHONE_STATE",
   ];
   // Under privapp enforcement a requested privileged permission with no entry stops system_server,
   // so a new permission here must be a deliberate change to this list.
   assert.deepEqual(requested.toSorted(), [
     "android.permission.ACCESS_NETWORK_STATE",
     "android.permission.INTERNET",
-    "android.permission.POST_NOTIFICATIONS",
+    ...runtime,
     ...privileged,
     "android.permission.RECEIVE_BOOT_COMPLETED",
   ]);
   assert.deepEqual(
     privappPermissions(read("privapp-permissions.xml"), "ai.elizaos.updater"),
     privileged,
+  );
+  // The app has no screen to ask from, so each runtime permission comes from the image.
+  assert.deepEqual(
+    [
+      ...read("default-permissions.xml").matchAll(
+        /<permission name="([^"]+)" fixed="false" \/>/g,
+      ),
+    ].map((row) => row[1]),
+    runtime,
+  );
+});
+
+test("update_engine belongs to the updater's own domain, and other privileged apps stay out", () => {
+  const policy = (name) => read(`sepolicy/private/${name}`);
+  const rules = policy("updater.te")
+    .split("\n")
+    .filter((line) => line && !line.startsWith("#"));
+  const grants = rules.filter((line) => !line.startsWith("neverallow"));
+  assert.deepEqual(
+    grants.filter((line) => line.includes("update_engine")),
+    [
+      "allow eliza_updater update_engine_service:service_manager find;",
+      "binder_call(eliza_updater, update_engine)",
+      "binder_call(update_engine, eliza_updater)",
+    ],
+  );
+  assert.deepEqual(
+    grants.filter((line) => /\bpriv_app|platform_app|system_app/.test(line)),
+    [],
+  );
+  assert.deepEqual(
+    rules.filter((line) => line.startsWith("neverallow")),
+    [
+      "neverallow priv_app_all update_engine_service:service_manager find;",
+      "neverallow priv_app_all update_engine:binder call;",
+    ],
+  );
+
+  const contexts = policy("seapp_contexts")
+    .split("\n")
+    .filter((line) => line && !line.startsWith("#"));
+  assert.equal(contexts.length, 1);
+  assert.deepEqual(
+    Object.fromEntries(
+      contexts[0].split(" ").map((selector) => selector.split("=")),
+    ),
+    {
+      user: "_app",
+      seinfo: "eliza_updater",
+      isPrivApp: "true",
+      name: /package="([^"]+)"/.exec(read("AndroidManifest.xml"))[1],
+      domain: "eliza_updater",
+      type: "privapp_data_file",
+      levelFrom: "all",
+    },
+  );
+
+  // The seinfo goes to one package under one signer, never to everything that signer signs.
+  const signers = [
+    ...policy("mac_permissions.xml").matchAll(
+      /<signer signature="(@[A-Z_]+)">\s*<package name="ai\.elizaos\.updater">\s*<seinfo value="eliza_updater" \/>\s*<\/package>\s*<\/signer>/g,
+    ),
+  ];
+  assert.equal(signers.length, 1);
+  assert.equal(policy("mac_permissions.xml").match(/<seinfo/g).length, 1);
+  const certificate = /certificate: "([^"]+)"/.exec(read("Android.bp"))[1];
+  assert.ok(
+    policy("keys.conf").includes(
+      `[${signers[0][1]}]\nALL : $DEFAULT_SYSTEM_DEV_CERTIFICATE/${certificate}.x509.pem\n`,
+    ),
   );
 });

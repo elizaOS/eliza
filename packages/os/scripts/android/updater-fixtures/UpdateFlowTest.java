@@ -1,6 +1,7 @@
 package ai.elizaos.updater;
 
 import android.Device;
+import android.app.AppOpsManager;
 import android.app.NotificationManager;
 import android.app.job.JobInfo;
 import android.app.job.JobParameters;
@@ -22,6 +23,8 @@ import java.security.KeyPairGenerator;
 import java.security.Signature;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 /** The real job, receiver and provider on a fake platform: what each update_engine status leads to. */
@@ -33,6 +36,8 @@ public final class UpdateFlowTest {
     private static final long BUILT = 1_793_000_000L;
     private static int checks;
     private static KeyPair keys;
+    /** What was on disk when update_engine took the payload. */
+    private static Map<String, Object> durableAtApply;
 
     private static void check(boolean value) {
         if (!value) throw new AssertionError("Check " + checks);
@@ -64,6 +69,10 @@ public final class UpdateFlowTest {
 
     private static void reset() throws Exception {
         Device.stored.clear();
+        Device.durable.clear();
+        Device.commitFails = false;
+        Device.fetching = null;
+        Device.committed = null;
         Device.notifications.clear();
         Device.fetched.clear();
         UpdateEngine.applied.clear();
@@ -76,10 +85,15 @@ public final class UpdateFlowTest {
         UpdateEngine.unbinds = 0;
         UpdateEngine.outcome = ErrorCodeConstants.ERROR;
         UpdateEngine.callback = null;
+        UpdateEngine.applying = () -> durableAtApply = new HashMap<>(Device.durable);
+        durableAtApply = null;
         Device.audioMode = AudioManager.MODE_NORMAL;
         Device.inCall = false;
+        Device.phoneStateGranted = true;
+        Device.phoneStateOpAllowed = true;
         Device.services.put(JobScheduler.class, new JobScheduler());
         Device.services.put(NotificationManager.class, new NotificationManager());
+        Device.services.put(AppOpsManager.class, new AppOpsManager());
         Device.services.put(AudioManager.class, new AudioManager());
         Device.services.put(TelecomManager.class, new TelecomManager());
         Device.services.put(PowerManager.class, new PowerManager());
@@ -126,6 +140,7 @@ public final class UpdateFlowTest {
         check(Arrays.equals((String[]) call[3], new String[] {"FILE_HASH=aA==", "FILE_SIZE=1000", "METADATA_HASH=bQ==", "METADATA_SIZE=12", "NETWORK_ID=123456789"}));
         check("downloading".equals(state()));
         check(Device.stored.get("sequence.beta").equals(5L) && Device.notifications.isEmpty() && UpdateEngine.unbinds == 1);
+        check(durableAtApply.get("sequence.beta").equals(5L));
 
         String installId = (String) Device.stored.get("installId");
         check(installId != null);
@@ -180,6 +195,25 @@ public final class UpdateFlowTest {
         check(Device.notifications.isEmpty() && UpdateEngine.unbinds == 1);
     }
 
+    /** A stop does not end socket I/O, so the check runs on; it must not start update_engine, and the next run does. */
+    private static void stopped() throws Exception {
+        for (boolean duringFetch : new boolean[] {true, false}) {
+            reset();
+            UpdateJob job = new UpdateJob();
+            JobParameters params = new JobParameters();
+            Runnable stop = () -> job.onStopJob(params);
+            if (duringFetch) Device.fetching = stop;
+            else Device.committed = stop;
+            check(job.onStartJob(params));
+            check(Device.finished.poll(10, TimeUnit.SECONDS) != null);
+            check(UpdateEngine.applied.isEmpty() && Device.notifications.isEmpty() && UpdateEngine.unbinds == 1);
+            Device.fetching = null;
+            Device.committed = null;
+            check(run());
+            check(UpdateEngine.applied.size() == 1);
+        }
+    }
+
     private static void ready() throws Exception {
         reset();
         UpdateEngine.status = UpdateStatusConstants.UPDATED_NEED_REBOOT;
@@ -203,6 +237,10 @@ public final class UpdateFlowTest {
         quietFailure(run());
         check(!Device.stored.containsKey("sequence.beta"));
         reset();
+        Device.commitFails = true;
+        quietFailure(run());
+        check(!Device.durable.containsKey("sequence.beta"));
+        reset();
         publishSized(ChannelManifest.MAX_BYTES + 1);
         quietFailure(run());
         reset();
@@ -224,6 +262,9 @@ public final class UpdateFlowTest {
         publish(manifest(8, 0, BUILT + 1));
         check(!run());
         check(UpdateEngine.applied.isEmpty() && "up-to-date".equals(state()) && Device.stored.get("sequence.beta").equals(8L));
+        // A power cut right after the halt: only what reached the disk comes back.
+        Device.stored.clear();
+        Device.stored.putAll(Device.durable);
         publish(manifest(5, 100, BUILT + 1));
         quietReplay();
         publish(manifest(9, 100, BUILT + 1));
@@ -236,26 +277,47 @@ public final class UpdateFlowTest {
         check(UpdateEngine.applied.isEmpty() && Device.notifications.isEmpty() && Device.stored.get("sequence.beta").equals(8L));
     }
 
+    private static void tapRestart() {
+        new UpdateReceiver().onReceive(new Context(), new Intent(UpdateReceiver.ACTION_RESTART));
+    }
+
+    /** "Update ready" is up and Restart is tapped: nothing restarts and the notification stays. */
+    private static void restartRefused() throws Exception {
+        UpdateEngine.status = UpdateStatusConstants.UPDATED_NEED_REBOOT;
+        run();
+        tapRestart();
+        check(Device.reboots.isEmpty() && Device.notifications.size() == 1 && "ready".equals(state()));
+    }
+
     private static void restart() throws Exception {
         reset();
-        new UpdateReceiver().onReceive(new Context(), new Intent(UpdateReceiver.ACTION_RESTART));
+        tapRestart();
         check(Device.reboots.equals(java.util.List.of("null")));
         for (int mode : new int[] {AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL, AudioManager.MODE_IN_COMMUNICATION,
                 AudioManager.MODE_CALL_SCREENING, AudioManager.MODE_CALL_REDIRECT, AudioManager.MODE_COMMUNICATION_REDIRECT}) {
             reset();
             Device.audioMode = mode;
-            UpdateEngine.status = UpdateStatusConstants.UPDATED_NEED_REBOOT;
-            run();
-            new UpdateReceiver().onReceive(new Context(), new Intent(UpdateReceiver.ACTION_RESTART));
-            check(Device.reboots.isEmpty() && Device.notifications.size() == 1 && "ready".equals(state()));
+            restartRefused();
         }
-        // Silent, vibrating or Do Not Disturb: the call rings and the mode stays normal.
+        // Silent, vibrating or Do Not Disturb: the call rings and the mode stays normal. Once it ends, Restart works.
         reset();
         Device.inCall = true;
-        UpdateEngine.status = UpdateStatusConstants.UPDATED_NEED_REBOOT;
-        run();
-        new UpdateReceiver().onReceive(new Context(), new Intent(UpdateReceiver.ACTION_RESTART));
-        check(Device.reboots.isEmpty() && Device.notifications.size() == 1 && "ready".equals(state()));
+        restartRefused();
+        Device.inCall = false;
+        tapRestart();
+        check(Device.reboots.equals(java.util.List.of("null")));
+        // The same ring with its app-op refused: isInCall reads false, so that answer must never be read.
+        reset();
+        Device.inCall = true;
+        Device.phoneStateOpAllowed = false;
+        restartRefused();
+        // The permission revoked: isInCall throws.
+        reset();
+        Device.phoneStateGranted = false;
+        restartRefused();
+        reset();
+        Device.services.remove(TelecomManager.class);
+        restartRefused();
     }
 
     private static void status() throws Exception {
@@ -295,6 +357,7 @@ public final class UpdateFlowTest {
         working();
         merging();
         held();
+        stopped();
         ready();
         failures();
         halt();

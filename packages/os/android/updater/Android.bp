@@ -3,6 +3,8 @@ android_app {
     srcs: ["src/**/*.java"],
     resource_dirs: ["res"],
     sdk_version: "system_current",
+    // sepolicy/private/keys.conf names this certificate, which selects the app's SELinux domain.
+    certificate: "testkey",
     privileged: true,
     system_ext_specific: true,
     privapp_allowlist: "privapp-permissions.xml",

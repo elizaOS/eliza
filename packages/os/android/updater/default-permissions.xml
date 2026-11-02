@@ -2,5 +2,6 @@
 <exceptions>
     <exception package="ai.elizaos.updater">
         <permission name="android.permission.POST_NOTIFICATIONS" fixed="false" />
+        <permission name="android.permission.READ_PHONE_STATE" fixed="false" />
     </exception>
 </exceptions>

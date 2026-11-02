@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <permissions>
     <privapp-permissions package="ai.elizaos.updater">
-        <permission name="android.permission.READ_PRIVILEGED_PHONE_STATE" />
         <permission name="android.permission.REBOOT" />
     </privapp-permissions>
 </permissions>

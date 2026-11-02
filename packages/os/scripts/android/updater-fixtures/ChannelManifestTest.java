@@ -51,7 +51,10 @@ public final class ChannelManifestTest {
         String fingerprint = NEXT;
         long date = BUILT + 1;
         int rollout = 100;
+        String from = "null";
         String fullUrl = "https://updates.example/ota.zip";
+        long offset = 41;
+        long size = 1000;
         String properties = PROPERTIES;
         String incremental = "";
 
@@ -60,8 +63,8 @@ public final class ChannelManifestTest {
                 + "\",\n  \"version\": \"" + version + "\",\n  \"sequence\": " + sequence
                 + ",\n  \"buildFingerprint\": \"" + fingerprint + "\",\n  \"buildDateUtc\": " + date
                 + ",\n  \"securityPatch\": null,\n  \"rolloutPercent\": " + rollout + ",\n  \"updates\": ["
-                + "{\"from\": null, \"url\": \"" + fullUrl + "\", \"sha256\": \"aa\", \"sizeBytes\": 2000,"
-                + " \"payload\": {\"offset\": 41, \"size\": 1000, \"properties\": [" + properties + "]}}"
+                + "{\"from\": " + from + ", \"url\": \"" + fullUrl + "\", \"sha256\": \"aa\", \"sizeBytes\": 2000,"
+                + " \"payload\": {\"offset\": " + offset + ", \"size\": " + size + ", \"properties\": [" + properties + "]}}"
                 + incremental + "]\n}\n").getBytes(StandardCharsets.UTF_8);
         }
 
@@ -81,7 +84,7 @@ public final class ChannelManifestTest {
 
     private static String incremental(String from) {
         return ",{\"from\": \"" + from + "\", \"url\": \"https://updates.example/delta.zip\", \"sha256\": \"bb\", \"sizeBytes\": 200,"
-            + " \"payload\": {\"offset\": 99, \"size\": 100, \"properties\": [" + PROPERTIES + "]}}";
+            + " \"payload\": {\"offset\": 99, \"size\": 100, \"properties\": [" + PROPERTIES.replace("FILE_SIZE=1000", "FILE_SIZE=100") + "]}}";
     }
 
     private static void check(boolean value) {
@@ -181,6 +184,29 @@ public final class ChannelManifestTest {
         Row missing = row();
         missing.properties = "\"FILE_HASH=aGFzaA==\"";
         refused(missing::offer);
+
+        // Properly signed and malformed: what channel-manifest.mjs would never write.
+        for (int rollout : new int[] {-1, 101}) {
+            Row outOfRange = row();
+            outOfRange.rollout = rollout;
+            refused(outOfRange::offer);
+        }
+        Row before = row();
+        before.offset = -1;
+        refused(before::offer);
+        Row empty = row();
+        empty.size = 0;
+        empty.properties = PROPERTIES.replace("FILE_SIZE=1000", "FILE_SIZE=0");
+        refused(empty::offer);
+        Row sized = row();
+        sized.size = 999;
+        refused(sized::offer);
+        Row blank = row();
+        blank.properties = PROPERTIES.replace("METADATA_HASH=bWV0YQ==", "METADATA_HASH=");
+        refused(blank::offer);
+        Row incrementalOnly = row();
+        incrementalOnly.from = "\"" + NEXT.replace("20261103.1", "20261101.1") + "\"";
+        refused(incrementalOnly::offer);
     }
 
     /** Prints what `verify` and `offer` decide for files written by channel-manifest.mjs. */

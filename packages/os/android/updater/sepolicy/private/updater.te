@@ -1,5 +1,15 @@
-# android.os.UpdateEngine from a privileged app. Stock policy allows it only for gmscore_app,
-# system_app (the stable service) and system_server, and update_engine checks no caller itself.
-# A dedicated domain replaces this grant before release keys.
-allow priv_app update_engine_service:service_manager find;
-binder_call(priv_app, update_engine)
+# The update client's own domain. update_engine checks no caller itself, so reaching it is the whole
+# authority: seapp_contexts assigns this domain to the one package and signer mac_permissions.xml names.
+type eliza_updater, domain, coredomain;
+app_domain(eliza_updater)
+net_domain(eliza_updater)
+
+allow eliza_updater app_api_service:service_manager find;
+allow eliza_updater update_engine_service:service_manager find;
+binder_call(eliza_updater, update_engine)
+# Status and results reach the client's callback; update_engine fails bind() when this is refused.
+binder_call(update_engine, eliza_updater)
+
+# Checked at every image build by sepolicy_neverallows: other privileged apps stay out.
+neverallow priv_app_all update_engine_service:service_manager find;
+neverallow priv_app_all update_engine:binder call;

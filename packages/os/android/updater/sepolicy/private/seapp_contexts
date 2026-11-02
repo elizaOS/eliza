@@ -1,0 +1,2 @@
+# The update client alone: its name, and the seinfo mac_permissions.xml gives only its signer.
+user=_app seinfo=eliza_updater isPrivApp=true name=ai.elizaos.updater domain=eliza_updater type=privapp_data_file levelFrom=all

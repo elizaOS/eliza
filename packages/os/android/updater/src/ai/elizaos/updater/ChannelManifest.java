@@ -45,7 +45,9 @@ final class ChannelManifest {
         if (body.getInt("schema") != 1
                 || !channel.equals(body.getString("channel"))
                 || !device.equals(body.getString("device"))
-                || body.getLong("sequence") < highestSequence)
+                || body.getLong("sequence") < highestSequence
+                || body.getInt("rolloutPercent") < 0
+                || body.getInt("rolloutPercent") > 100)
             throw new GeneralSecurityException("Channel manifest is not for this image");
         return new ChannelManifest(body);
     }
@@ -63,6 +65,7 @@ final class ChannelManifest {
             if (update.isNull("from")) full = update;
             else if (fingerprint.equals(update.getString("from"))) return new Update(update);
         }
+        if (full == null) throw new GeneralSecurityException("Channel manifest has no full package");
         return new Update(full);
     }
 
@@ -89,13 +92,15 @@ final class ChannelManifest {
             offset = payload.getLong("offset");
             size = payload.getLong("size");
             JSONArray listed = payload.getJSONArray("properties");
-            if (!url.startsWith("https://") || listed.length() != PROPERTIES.length)
+            if (!url.startsWith("https://") || offset < 0 || size <= 0 || listed.length() != PROPERTIES.length)
                 throw new GeneralSecurityException("Channel package is not streamable");
             properties = new String[PROPERTIES.length];
             for (int i = 0; i < PROPERTIES.length; i++) {
                 properties[i] = listed.getString(i);
-                if (!properties[i].startsWith(PROPERTIES[i])) throw new GeneralSecurityException("Channel package is not streamable");
+                if (!properties[i].startsWith(PROPERTIES[i]) || properties[i].length() == PROPERTIES[i].length())
+                    throw new GeneralSecurityException("Channel package is not streamable");
             }
+            if (!properties[1].equals(PROPERTIES[1] + size)) throw new GeneralSecurityException("Channel package is not streamable");
         }
 
         /** The manifest's four properties and the network the job runs on, which keeps the transfer on it. */

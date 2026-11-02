@@ -119,12 +119,15 @@ public final class UpdateJob extends JobService {
         SharedPreferences store = store(this);
         ChannelManifest manifest = ChannelManifest.verify(fetch(network, url), fetch(network, url + ".sig"),
                 getString(R.string.channel_key), channel, Build.DEVICE, store.getLong(sequenceKey, 0));
-        store.edit().putLong(sequenceKey, manifest.sequence).apply();
+        // On disk before anything acts on this manifest: a halt read once outlives a power cut.
+        if (!store.edit().putLong(sequenceKey, manifest.sequence).commit()) throw new IOException("Channel sequence was not saved");
         ChannelManifest.Update update = manifest.offer(Build.FINGERPRINT, Build.TIME, installId(store));
         if (update == null) {
             store.edit().putString(STATE, "up-to-date").apply();
             return false;
         }
+        // A stop does not end socket I/O, so a stopped job can get here; its next run starts the work.
+        if (Thread.interrupted()) throw new InterruptedException();
         engine.applyPayload(update.url, update.offset, update.size, update.headers(network.getNetworkHandle()));
         store.edit().putString(STATE, "downloading").apply();
         return true;
