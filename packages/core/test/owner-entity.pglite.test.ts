@@ -1,8 +1,9 @@
 /**
  * resolveOwnerEntityId must agree with resolveOwnerEntityIdOrDefault when the
  * configured or world-recorded owner id is not a UUID, so owner routing never
- * passes a connector platform id into UUID-typed queries. Drives a real
- * AgentRuntime on an in-memory PGlite database (plugin-sql).
+ * passes a connector platform id into UUID-typed queries, and when a world
+ * records the agent itself as its owner. Drives a real AgentRuntime on an
+ * in-memory PGlite database (plugin-sql).
  */
 
 import pluginSql from "@elizaos/plugin-sql";
@@ -90,6 +91,20 @@ it("falls back to the default owner when the configured owner id is not a UUID",
 
 it("returns a UUID owner id recorded on a world", async () => {
 	const runtime = await createRuntime();
+	await seedOwnedWorld(runtime, "owned", WORLD_OWNER);
+
+	expect(await resolveOwnerEntityId(runtime)).toBe(WORLD_OWNER);
+});
+
+it("never resolves the agent as its own owner from a world the agent owns", async () => {
+	const runtime = await createRuntime();
+	// The memory routes record the agent as the owner of the world that holds its notes.
+	await seedOwnedWorld(runtime, "agent-notes", runtime.agentId);
+
+	expect(await resolveOwnerEntityId(runtime)).toBe(
+		resolveOwnerEntityIdOrDefault(runtime),
+	);
+
 	await seedOwnedWorld(runtime, "owned", WORLD_OWNER);
 
 	expect(await resolveOwnerEntityId(runtime)).toBe(WORLD_OWNER);

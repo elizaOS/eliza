@@ -51,7 +51,11 @@ export async function resolveOwnerEntityId(
 			const metadata = (world?.metadata ?? {}) as WorldMetadataShape;
 			// Connector worlds may store a platform identifier rather than an entity UUID.
 			const candidateOwnerId = validateUuid(metadata.ownership?.ownerId);
-			if (candidateOwnerId) return candidateOwnerId;
+			// The memory routes record the agent as the owner of its notes world;
+			// the agent is never its own owner.
+			if (candidateOwnerId && candidateOwnerId !== runtime.agentId) {
+				return candidateOwnerId;
+			}
 		}
 	} catch (cause) {
 		// error-policy:J2 an unreadable earlier world cannot establish owner precedence or absence.
