@@ -347,7 +347,7 @@ function formatSummary(summary: {
     : `- Sleep: ${summary.sleepHours.toFixed(1)}h`;
   const parts: string[] = [
     `${summary.date} (${summary.source}):`,
-    `- Steps: ${summary.steps.toLocaleString()}`,
+    `- Steps: ${summary.steps.toLocaleString("en-US")}`,
     `- Active minutes: ${summary.activeMinutes}`,
     sleepLine,
   ];
@@ -374,7 +374,7 @@ function formatConnectorDailySummary(
 ): string {
   const parts = [`${summary.date} (${summary.provider}):`];
   if (reportedMetrics.has("steps")) {
-    parts.push(`- Steps: ${Math.round(summary.steps).toLocaleString()}`);
+    parts.push(`- Steps: ${Math.round(summary.steps).toLocaleString("en-US")}`);
   }
   if (reportedMetrics.has("active_minutes")) {
     parts.push(`- Active minutes: ${Math.round(summary.activeMinutes)}`);
