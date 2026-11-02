@@ -475,6 +475,7 @@ interface ChatRequest {
       name: string;
       description?: string;
       parameters?: Record<string, unknown>;
+      strict?: boolean;
     };
   }>;
   tool_choice?:
@@ -770,6 +771,9 @@ function convertTools(tools: ChatRequest["tools"]) {
           type: "object",
           additionalProperties: true,
         }),
+        ...(tool.function.strict != null
+          ? { strict: tool.function.strict }
+          : {}),
       },
     ]),
   );
