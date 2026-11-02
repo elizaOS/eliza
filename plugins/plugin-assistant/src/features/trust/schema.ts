@@ -94,7 +94,14 @@ export const behavioralProfiles = trustSchema.table("behavioral_profiles", {
   activeHours: jsonb("active_hours").default("[]"), // JSON array of 24 hour counts
   commonPhrases: jsonb("common_phrases").default("[]"), // JSON array of common phrases
   interactionPatterns: jsonb("interaction_patterns").default("{}"), // JSON map of interaction types
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  // `upsertBehavioralProfile` inserts without this column (column default) and
+  // updates it with a JS `Date`, which Postgres receives as a UTC ISO string.
+  // A bare `now()` would keep the session's local wall clock for inserts while
+  // updates store UTC, so one column would carry two clocks and a freshly
+  // created row would read hours away from a freshly updated one.
+  updatedAt: timestamp("updated_at")
+    .default(sql`(now() AT TIME ZONE 'UTC')`)
+    .notNull(),
 });
 
 /**
