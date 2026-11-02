@@ -466,7 +466,9 @@ export class MeetingService extends Service {
   }
   listSessions(options?: { active?: boolean }): MeetingSession[] {
     const sessions = options?.active
-      ? [...this.sessions.values()].filter((s) => !TERMINAL_STATUSES.has(s.status))
+      ? [...this.sessions.values()].filter(
+          (s) => !TERMINAL_STATUSES.has(s.status),
+        )
       : [...this.sessions.values()];
     const live = sessions.map((s) => this.toDto(s));
     const all = options?.active ? live : [...live, ...this.terminated.values()];
