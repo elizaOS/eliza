@@ -59,13 +59,23 @@ export function normalizedLookup(value: string): string {
     .replace(/\s+/gu, " ");
 }
 
+// Han/Kana/Hangul letters do not delimit words, so they are not word characters
+// for this boundary: a title written in those scripts can abut a particle or the
+// rest of the sentence ("회의록을", "帮我更新一下会议记录"). Treating them as word
+// characters made a note named inside a CJK sentence impossible to match, while
+// `queryMatches` below already keeps a substring tier "for scripts without
+// spaces". Same boundary rule as `includesWholePhrase` in the personal
+// assistant's app-block action.
+const SPACED_WORD_CHAR_SOURCE =
+  "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+
 function titleAppearsAsNamedPhrase(text: string, title: string): boolean {
   const normalizedText = normalizedLookup(text);
   const normalizedTitle = normalizedLookup(title);
   if (!normalizedText || !normalizedTitle) return false;
   const escapedTitle = normalizedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(
-    `(?:^|[^\\p{L}\\p{N}\\p{M}])${escapedTitle}(?=$|[^\\p{L}\\p{N}\\p{M}])`,
+    `(?<!${SPACED_WORD_CHAR_SOURCE})${escapedTitle}(?!${SPACED_WORD_CHAR_SOURCE})`,
     "u",
   ).test(normalizedText);
 }
