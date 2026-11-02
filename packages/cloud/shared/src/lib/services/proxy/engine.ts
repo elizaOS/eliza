@@ -53,14 +53,16 @@ interface ProxyResolvedAuth {
 
 /**
  * Carries the route boundary's single caller-standing decision into the proxy
- * engine. Worker requests use the combined snapshot and durable admission;
+ * engine. Worker requests use durable admission, from the combined snapshot
+ * when the caller carries one;
  * local compatibility callers remain explicitly pre-resolved and therefore
  * never trigger a second authentication read inside the engine.
  */
 export type ProxyCombinedAdmission =
   | (ProxyResolvedAuth & {
       mode: "combined";
-      admissionSnapshot: InferenceAdmissionSnapshot;
+      /** Absent when the caller was authorized authoritatively; admission then reads the primary. */
+      admissionSnapshot?: InferenceAdmissionSnapshot;
       executionCtx: { waitUntil(promise: Promise<unknown>): void };
       credential?: InferenceCredentialCheck;
       credentialForAdmission?: () => InferenceCredentialCheck | undefined;
