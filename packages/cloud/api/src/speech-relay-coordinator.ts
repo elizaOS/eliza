@@ -34,6 +34,14 @@ export interface SpeechRelayBootstrap {
   expiresAt: number;
   caller: GenerativeRouteCaller;
 }
+/** Server-side bootstrap spans. Workers clocks advance on I/O, so these are I/O waits. */
+type SpeechRelayBootstrapPhase =
+  | "claimMs"
+  | "revocationMs"
+  | "admissionMs"
+  | "relayMs"
+  | "activateMs"
+  | "openMs";
 type Ledger = SpeechRelayBootstrap & {
   phase: "minted" | "starting" | "active" | "closed";
 };
@@ -228,7 +236,7 @@ export class SpeechRelayCoordinator {
               this.socket = server;
               // The durable claim precedes admission/provider creation. A crash or
               // a second socket can never reuse the consumed session capability.
-              void this.open(ledger).then(() => {
+              void this.open(ledger, hello.timings === true).then(() => {
                 authenticated = true;
                 opening = false;
               }, fail);
@@ -289,9 +297,12 @@ export class SpeechRelayCoordinator {
     );
   }
 
-  private async open(ledger: Ledger) {
+  private async open(ledger: Ledger, reportTimings = false) {
     const startedAt = performance.now();
+    const elapsed = (from: number) => Math.round(performance.now() - from);
+    const phases: Partial<Record<SpeechRelayBootstrapPhase, number>> = {};
     await this.save({ ...ledger, phase: "starting" });
+    phases.claimMs = elapsed(startedAt);
     await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
       runWithDbCacheAsync(async () => {
         const key = this.env.CARTESIA_API_KEY?.trim(),
@@ -308,7 +319,11 @@ export class SpeechRelayCoordinator {
         let retireSpeech = () => {
           void this.close();
         };
-        this.unsubscribeRevocation = await subscribeSpeechRevocation(
+        // The revocation fence and paid admission are independent round trips.
+        // Start the fence now and join it before any provider opens, so a
+        // provider still never starts without a live revocation subscription.
+        const fenceStartedAt = performance.now();
+        const fence = subscribeSpeechRevocation(
           this.env,
           ledger.caller,
           ledger.expiresAt,
@@ -318,8 +333,13 @@ export class SpeechRelayCoordinator {
             } catch {}
             retireSpeech();
           },
-        );
-        this.current();
+        ).then((unsubscribe) => {
+          phases.revocationMs = elapsed(fenceStartedAt);
+          if (this.stopped) unsubscribe();
+          else this.unsubscribeRevocation = unsubscribe;
+        });
+        // A fence failure is observed when it is joined below.
+        void fence.catch(() => {});
         let ready = false;
         const events: unknown[] = [];
         this.tts = new CartesiaSonicTtsAdapter({
@@ -337,6 +357,7 @@ export class SpeechRelayCoordinator {
             events.push(value);
           }
         };
+        const relayStartedAt = performance.now();
         this.relay = await createSpeechRelaySession(
           {
             organizationId: ledger.caller.user.organization_id,
@@ -351,26 +372,53 @@ export class SpeechRelayCoordinator {
             usageStore,
             usageLimits: resolveVoiceUsageLimits(this.env),
             reserveCredits: async () => {
-              const reservation = await reserveSpeechRelayAdmission({
-                caller: ledger.caller,
-                sessionId: ledger.sessionId,
-                usdPerCredit: price,
-                executionCtx: {
-                  waitUntil: (task) => this.state.waitUntil(task),
-                },
-              });
-              return {
-                ...reservation,
-                // Provider/socket callbacks can close the relay after its opening
-                // request context has ended. Settlement needs this DO's bindings
-                // and a fresh request-scoped DB cache at its invocation boundary.
-                settle: (details) =>
-                  runWithCloudBindingsAsync(
-                    this.env as Record<string, unknown>,
-                    () =>
-                      runWithDbCacheAsync(() => reservation.settle(details)),
-                  ),
-              };
+              const admissionStartedAt = performance.now();
+              const [fenced, admitted] = await Promise.allSettled([
+                fence,
+                reserveSpeechRelayAdmission({
+                  caller: ledger.caller,
+                  sessionId: ledger.sessionId,
+                  usdPerCredit: price,
+                  executionCtx: {
+                    waitUntil: (task) => this.state.waitUntil(task),
+                  },
+                }).finally(() => {
+                  phases.admissionMs = elapsed(admissionStartedAt);
+                }),
+              ]);
+              const reserved =
+                admitted.status === "fulfilled"
+                  ? {
+                      ...admitted.value,
+                      // Provider/socket callbacks can close the relay after its
+                      // opening request context has ended. Settlement needs this
+                      // DO's bindings and a fresh request-scoped DB cache at its
+                      // invocation boundary.
+                      settle: (
+                        details: Parameters<typeof admitted.value.settle>[0],
+                      ) =>
+                        runWithCloudBindingsAsync(
+                          this.env as Record<string, unknown>,
+                          () =>
+                            runWithDbCacheAsync(() =>
+                              admitted.value.settle(details),
+                            ),
+                        ),
+                    }
+                  : undefined;
+              if (fenced.status === "rejected") {
+                // No provider opened: release any lease this bootstrap took.
+                if (reserved)
+                  await reserved.settle({
+                    pcmBytes: 0,
+                    ttsCharacters: 0,
+                    providerMayHaveStarted: false,
+                    dispatched: { stt: false, tts: false },
+                  });
+                throw fenced.reason;
+              }
+              if (admitted.status === "rejected") throw admitted.reason;
+              return reserved!;
             },
             // The internal organization-DO socket closes on revocation or loss.
             // Its callback stops this session; no per-frame identity read occurs.
@@ -417,8 +465,12 @@ export class SpeechRelayCoordinator {
             },
           },
         );
+        phases.relayMs = elapsed(relayStartedAt);
         this.current();
+        const activeStartedAt = performance.now();
         await this.save({ ...ledger, phase: "active" });
+        phases.activateMs = elapsed(activeStartedAt);
+        phases.openMs = elapsed(startedAt);
         ready = true;
         this.send({
           t: "ready",
@@ -427,9 +479,13 @@ export class SpeechRelayCoordinator {
           channels: 1,
           expiresAt: new Date(ledger.expiresAt).toISOString(),
         });
+        // Durations only, and only for a staging client that asked in hello.
+        if (reportTimings && this.env.ENVIRONMENT === "staging")
+          this.send({ t: "timings", ...phases });
         logger.info("[SpeechRelay] bootstrap ready", {
-          durationMs: Math.round(performance.now() - startedAt),
+          durationMs: phases.openMs,
           budgetMs: SPEECH_RELAY_BUDGET.durationMs,
+          ...phases,
         });
         for (const event of events) this.send(event);
       }),
