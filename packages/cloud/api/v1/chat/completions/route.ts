@@ -4,11 +4,11 @@ import { failureResponse } from "@elizaos/cloud-shared/lib/api/cloud-worker-erro
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
 import type { AppEnv } from "@elizaos/cloud-shared/types/cloud-worker-env";
 import { Hono } from "hono";
-import { convertTools, type ChatCompletionTool } from "./tools";
 import {
   resolveInferenceAuthStandingDenial,
   resolveInferenceCredentialAdmissionDenial,
 } from "@/api-app/lib/generative-route-auth";
+import { type ChatCompletionTool, convertTools } from "./tools";
 
 /**
  * OpenAI-compatible chat completions endpoint.
@@ -747,7 +747,6 @@ function convertToModelMessagesFromOpenAI(
 
   return modelMessages;
 }
-
 
 function mapToolChoice(
   toolChoice: ChatRequest["tool_choice"],

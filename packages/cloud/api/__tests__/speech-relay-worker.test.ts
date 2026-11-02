@@ -124,7 +124,9 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
     },
     bindings: {
       VOICE_SPEECH_RELAY_ENABLED: "true",
-      HYPERDRIVE: { connectionString: "postgres://boundary-test.invalid/not-used" },
+      HYPERDRIVE: {
+        connectionString: "postgres://boundary-test.invalid/not-used",
+      },
       INFERENCE_STRONG_REVOCATION_ENABLED: "false",
       CARTESIA_API_KEY: "test-provider-boundary",
       VOICE_REALTIME_CARTESIA_VOICE_ID: "test",
@@ -785,62 +787,117 @@ test("the Cloud client's prepare-first frames speak, finish silently and cancel 
   expect(after.ttsCancels).toBe(settled.ttsCancels);
 });
 
-
 test("socket Stop settles with the DO bindings and a fresh DB context before a later revoke", async () => {
   const sessionName = "stop-settlement-context";
-  const scopedCall = (path: string, body?: unknown) => worker.dispatchFetch(
-    `https://speech-relay.internal${path}`,
-    { method: body === undefined ? "GET" : "POST",
-      headers: { "x-test-session": sessionName, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+  const scopedCall = (path: string, body?: unknown) =>
+    worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+      method: body === undefined ? "GET" : "POST",
+      headers: {
+        "x-test-session": sessionName,
+        ...(body === undefined ? {} : { "Content-Type": "application/json" }),
+      },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-    },
-  );
+    });
   await scopedCall("/test-allow-admission");
   const token = "stop-boundary-test-token";
   const digest = new Bun.CryptoHasher("sha256").update(token).digest("hex");
-  expect((await scopedCall("/initialize", {
-    sessionId: "44444444-4444-4444-8444-444444444444", tokenDigest: digest,
-    expiresAt: Date.now() + 60000,
-    caller: { user: account, apiKeyId: null, authSource: "combined_cache", appScopeId: null,
-      credential: { kind: "api_key", credentialId: "test-key", userId: account.id } },
-  })).status).toBe(200);
-  const response = await worker.dispatchFetch("https://speech-relay.internal/ws", {
-    headers: { Upgrade: "websocket", "x-test-session": sessionName },
-  });
+  expect(
+    (
+      await scopedCall("/initialize", {
+        sessionId: "44444444-4444-4444-8444-444444444444",
+        tokenDigest: digest,
+        expiresAt: Date.now() + 60000,
+        caller: {
+          user: account,
+          apiKeyId: null,
+          authSource: "combined_cache",
+          appScopeId: null,
+          credential: {
+            kind: "api_key",
+            credentialId: "test-key",
+            userId: account.id,
+          },
+        },
+      })
+    ).status,
+  ).toBe(200);
+  const response = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    {
+      headers: { Upgrade: "websocket", "x-test-session": sessionName },
+    },
+  );
   expect(response.status).toBe(101);
   const socket = response.webSocket!;
   socket.accept();
   const ready = next(socket as any, (frame) => frame.t === "ready");
   socket.send(JSON.stringify({ t: "hello", token }));
   await ready;
-  const before = await (await scopedCall("/test-lock-bootstrap")).json() as Record<string, any>;
+  const before = (await (
+    await scopedCall("/test-lock-bootstrap")
+  ).json()) as Record<string, any>;
   const transcript = next(socket as any, (frame) => frame.t === "stt");
   socket.send(new Uint8Array(3200));
   await transcript;
-  const streaming = await (await scopedCall("/test-stats")).json() as Record<string, any>;
+  const streaming = (await (await scopedCall("/test-stats")).json()) as Record<
+    string,
+    any
+  >;
   expect(streaming.dbContexts).toBe(before.dbContexts);
   expect(streaming.admissions).toBe(before.admissions);
   expect(streaming.settlements ?? 0).toBe(before.settlements ?? 0);
   await scopedCall("/test-allow-settlement");
   const closed = new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => reject(Error("Stop did not close the relay")), 5000);
-    socket.addEventListener("close", () => { clearTimeout(timeout); resolve(); }, { once: true });
+    const timeout = setTimeout(
+      () => reject(Error("Stop did not close the relay")),
+      5000,
+    );
+    socket.addEventListener(
+      "close",
+      () => {
+        clearTimeout(timeout);
+        resolve();
+      },
+      { once: true },
+    );
   });
   socket.send(JSON.stringify({ t: "stop" }));
   await closed;
   // The real coordinator's revoke awaits its retained close promise. It must
   // succeed even though socket Stop initiated settlement in another callback.
-  expect((await scopedCall("/revoke", { userId: account.id, organizationId: account.organization_id })).status).toBe(200);
-  const after = await (await scopedCall("/test-stats")).json() as Record<string, any>;
+  expect(
+    (
+      await scopedCall("/revoke", {
+        userId: account.id,
+        organizationId: account.organization_id,
+      })
+    ).status,
+  ).toBe(200);
+  const after = (await (await scopedCall("/test-stats")).json()) as Record<
+    string,
+    any
+  >;
   expect(after.settlements - (before.settlements ?? 0)).toBe(2);
-  const contexts = after.settlementContexts.slice((before.settlementContexts ?? []).length);
+  const contexts = after.settlementContexts.slice(
+    (before.settlementContexts ?? []).length,
+  );
   expect(contexts).toHaveLength(2);
   for (const context of contexts) {
     expect(context.hasHyperdrive).toBe(true);
     expect(context.settledIn).not.toBe(context.openedIn);
   }
   const settled = after.settlements;
-  expect((await scopedCall("/revoke", { userId: account.id, organizationId: account.organization_id })).status).toBe(200);
-  const repeated = await (await scopedCall("/test-stats")).json() as Record<string, any>;
+  expect(
+    (
+      await scopedCall("/revoke", {
+        userId: account.id,
+        organizationId: account.organization_id,
+      })
+    ).status,
+  ).toBe(200);
+  const repeated = (await (await scopedCall("/test-stats")).json()) as Record<
+    string,
+    any
+  >;
   expect(repeated.settlements).toBe(settled);
 });
