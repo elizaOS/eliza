@@ -3,7 +3,12 @@
  * assistant, and PGlite runtime. Deterministic model fixtures and captured
  * Telegraf send calls replace external services; polling and Telegram are not run.
  */
-import { type Content, ModelType } from "@elizaos/core";
+import {
+  type Content,
+  createUniqueUuid,
+  type Memory,
+  ModelType,
+} from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { MessageManager } from "@elizaos/plugin-telegram";
 import type { DeterministicModelFixture } from "@elizaos/testing/models";
@@ -47,6 +52,9 @@ async function driveTelegramTurn(options: {
   delivered: DeliveredTelegramMessage[];
   photos: Array<{ chatId: number | string; filename?: string }>;
   chatId: number;
+  /** The agent's stored message rows in the inbound chat's room. */
+  agentRows: () => Promise<Memory[]>;
+  manager: MessageManager;
 }> {
   const harness = track(
     await createTestRuntimeWithModelProvider({
@@ -127,7 +135,16 @@ async function driveTelegramTurn(options: {
   }
   await manager.handleMessage(ctx, { forceReply: true });
 
-  return { delivered, photos, chatId: chat.id };
+  const roomId = createUniqueUuid(harness.runtime, chat.id.toString());
+  const agentRows = async () =>
+    (
+      await harness.runtime.getMemories({
+        tableName: "messages",
+        roomId,
+        count: 50,
+      })
+    ).filter((memory) => memory.entityId === harness.runtime.agentId);
+  return { delivered, photos, chatId: chat.id, agentRows, manager };
 }
 
 describe("telegram connector loop (keyless)", () => {
@@ -163,6 +180,39 @@ describe("telegram connector loop (keyless)", () => {
       delivered[0]?.chatId,
       "the reply went back to the inbound chat",
     ).toBe(chatId);
+  }, 60_000);
+
+  it("stores a delivered reply once in the chat's room", async () => {
+    // No MarkdownV2-escapable characters, so wire and stored text match.
+    const replyText = "Hello from the deterministic model provider";
+    const { delivered, agentRows, manager, chatId } = await driveTelegramTurn({
+      inboundText: "Hello agent, please reply.",
+      fixtures: [
+        {
+          name: "telegram-reply-once",
+          match: { modelType: ModelType.RESPONSE_HANDLER },
+          response: {
+            contexts: ["simple"],
+            intents: [],
+            replyText,
+            candidateActionNames: [],
+          },
+        },
+      ],
+    });
+    expect(delivered.map((message) => message.text)).toEqual([replyText]);
+    // The message service stores the reply under its responseId; the
+    // delivery must land on that row rather than add a second one, or every
+    // later turn's transcript shows the reply twice.
+    const rows = await agentRows();
+    expect(rows.map((memory) => memory.content.text)).toEqual([replyText]);
+    expect(
+      (rows[0]?.metadata as Record<string, unknown> | undefined)
+        ?.telegramMessageIds,
+    ).toEqual(["1"]);
+    // A reply-to, reaction or edit of the delivered Telegram message resolves
+    // to that one stored row.
+    expect(await manager.resolveMessageMemoryId(chatId, 1)).toBe(rows[0]?.id);
   }, 60_000);
 
   it("delivers escaped Markdown and adjacent emphasis without changing visible characters", async () => {

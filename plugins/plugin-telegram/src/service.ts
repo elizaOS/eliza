@@ -3517,9 +3517,13 @@ export class TelegramService extends Service {
       );
       // Return the stored message with the new text, so the caller updates the
       // agent's memory of it like the Slack and Discord edits do.
-      const storedId = messageManager.messageMemoryId(chatId, params.messageId);
+      let storedId = messageManager.messageMemoryId(chatId, params.messageId);
       let stored: Memory | null;
       try {
+        storedId = await messageManager.resolveMessageMemoryId(
+          chatId,
+          params.messageId,
+        );
         stored = await runtime.getMemoryById(storedId);
       } catch (error) {
         // error-policy:J4 the Telegram edit already happened; a failed lookup
