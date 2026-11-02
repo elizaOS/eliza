@@ -12,6 +12,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  getUserMessageText,
   ModelType,
   parseJsonModelRecord,
   requireConfirmation,
@@ -118,7 +119,10 @@ type WebsiteBlockConversationTurn = {
 };
 
 function getMessageText(message: Memory): string {
-  return typeof message.content.text === "string" ? message.content.text : "";
+  // Read the user's words, not the document-augmentation envelope: a
+  // retrieved document fragment (for example, hostnames mentioned in a
+  // focus note) must not add hosts to the block draft.
+  return getUserMessageText(message);
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
