@@ -36,10 +36,20 @@ function fixture() {
   const env = { VOICE_SPEECH_RELAY_ENABLED: "true", CARTESIA_API_KEY: "synthetic", VOICE_REALTIME_CARTESIA_VOICE_ID: "voice" } as never;
   const make = () => new SpeechRelayCoordinator(state, env);
   const c = make();
+  const frames: unknown[] = [];
+  // This unit fixture enters open() below the public Hello handshake.
+  // Supply that handshake's socket boundary and observe the real ready frame.
+  (c as any).socket = {
+    send(value: string | Uint8Array) { frames.push(typeof value === "string" ? JSON.parse(value) : value); },
+    close() {},
+  };
   const input = { sessionId: id, tokenDigest: "a".repeat(64), expiresAt: Date.now() + 60000, caller: { user: { id: owner, organization_id: org } }, proofVersion: 1 };
   const post = (coordinator: InstanceType<typeof SpeechRelayCoordinator>, path: string, data: unknown) => coordinator.fetch(new Request(`https://speech-relay.internal/${path}`, { method: "POST", body: JSON.stringify(data) }));
   const revoke = (coordinator = c) => post(coordinator, "revoke", { userId: owner, organizationId: org, proofVersion: 1 });
-  const open = async () => { const task = (c as any).open(structuredClone(row)); (c as any).openingTask = task; await task; };
+  const open = async () => {
+    const task = (c as any).open(structuredClone(row)); (c as any).openingTask = task; await task;
+    expect(frames).toContainEqual({ t: "ready", version: 1, sampleRate: 16000, channels: 1, expiresAt: new Date(input.expiresAt).toISOString() });
+  };
   return { c, make, input, post, revoke, open, failNextProof() { failProof = true; }, get row() { return row; } };
 }
 beforeEach(() => Object.assign(control, { closeFails: false, opens: 0, closes: 0, wait: undefined, subscriptionWait: undefined, subscribed: 0, unsubscribed: 0 }));
