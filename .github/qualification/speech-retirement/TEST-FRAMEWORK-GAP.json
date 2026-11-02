@@ -1,0 +1,14 @@
+{
+  "state": "STATIC_FRAMEWORK_COMPATIBILITY_GAP_NOT_EXECUTED",
+  "launcher": "packages/cloud/api/test/run-unit-isolated.mjs",
+  "launcherCommand": [
+    "bun",
+    "test",
+    "FILE",
+    "--timeout",
+    "60000"
+  ],
+  "newAPITestsImport": "vitest",
+  "workerdTestImport": "bun:test",
+  "implication": "Do not promote targeted Vitest pass to canonical API-unit pass. Convert tests or deliberately route framework in canonical runner before full integration claim."
+}

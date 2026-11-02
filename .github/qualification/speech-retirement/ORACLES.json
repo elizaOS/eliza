@@ -1,0 +1,27 @@
+{
+  "workerdPassedNames": [
+    "authoritative org, API-key and session-cutoff revocations stop active speech through the internal socket",
+    "socket Stop settles with the DO bindings and a fresh DB context before a later revoke",
+    "pre-hello revoke closes the public socket and late hello cannot open providers"
+  ],
+  "workerdSkippedNames": [
+    "ready speech streams PCM and multiple TTS contexts without another DB/auth/admission operation",
+    "a refused credit reservation preserves the allowlisted recovery reason before providers open",
+    "legacy speech clients receive no unnegotiated billing reason",
+    "barge-in settles only the submitted TTS characters across contexts, not the full reserved monthly allowance",
+    "the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context"
+  ],
+  "unitCountsByFile": {
+    "packages/cloud/api/src/speech-relay-admission.retirement.test.ts": 5,
+    "packages/cloud/api/src/speech-retirement-coordinator.test.ts": 13,
+    "packages/cloud/api/src/speech-retirement-route.test.ts": 5,
+    "packages/cloud/api/src/speech-retirement-state.test.ts": 16,
+    "packages/cloud/api/v1/voice/session/lib/provider-retirement.test.ts": 1,
+    "packages/host/src/voice/cartesia-sonic-retirement.test.ts": 8,
+    "packages/host/src/voice/speech-retirement-session.test.ts": 6
+  },
+  "unitPassedTotal": 54,
+  "unitFailed": 0,
+  "unitSkipped": 0,
+  "unitTodo": 0
+}
