@@ -708,6 +708,9 @@ export async function createV5MessageContextObject(args: {
       roomId: args.message.roomId,
       messageId: args.message.id,
       actorId: args.message.entityId,
+      ...(args.message.content?.channelType === "VOICE_DM"
+        ? { responseChannel: "VOICE_DM" }
+        : {}),
       ...(displayTimeZone ? { displayTimeZone } : {}),
       selectedContexts: [...(args.selectedContexts ?? [])],
       ...(args.actionSurface

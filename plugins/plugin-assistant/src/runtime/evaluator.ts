@@ -1746,6 +1746,20 @@ function renderEvaluatorModelInput(params: {
   const renderedContext = renderContextObject(
     projectEvaluatorContext(deferred.context),
   );
+  // Host-built channel policy owns the final user-visible turn. Place it after
+  // generic evaluator instructions, rather than losing priority in the prefix.
+  const voicePolicy =
+    deferred.context.metadata?.responseChannel === "VOICE_DM"
+      ? deferred.context.staticPrefix?.staticProviders?.find(
+          (segment) => segment.id === "voice-response-style",
+        )
+      : undefined;
+  if (voicePolicy) {
+    renderedContext.promptSegments = renderedContext.promptSegments.filter(
+      (segment) => segment.id !== voicePolicy.id,
+    );
+  }
+
   renderedContext.promptSegments = orderHistoryFirst(
     deferred.context,
     renderedContext.promptSegments,
@@ -1776,9 +1790,10 @@ function renderEvaluatorModelInput(params: {
     });
   }
   const template = params.template ?? evaluatorTemplateForQueue(true);
-  const instructions = (
-    template.split("context_object:")[0] ?? template
-  ).trim();
+  const instructions = [
+    (template.split("context_object:")[0] ?? template).trim(),
+    ...(voicePolicy ? [voicePolicy.content] : []),
+  ].join("\n\n");
   const completeStepMessages =
     params.trajectory.modelHistory ??
     trajectoryStepsToMessages(
@@ -3105,22 +3120,56 @@ export function calendarReadCoverage(
       if (binding.operation === "search_events") {
         let details = step.toolCall.params?.details;
         if (typeof details === "string") {
-          try { details = JSON.parse(details); } catch { return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED"); }
+          try {
+            details = JSON.parse(details);
+          } catch {
+            return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED");
+          }
         }
         const filters = binding.filterEvidence;
-        const values = [step.toolCall.params?.query,
-          ...(Array.isArray(step.toolCall.params?.queries) ? step.toolCall.params.queries : []),
-          ...(isObjectRecord(details) ? [details.query, ...(Array.isArray(details.queries) ? details.queries : [])] : []),
+        const values = [
+          step.toolCall.params?.query,
+          ...(Array.isArray(step.toolCall.params?.queries)
+            ? step.toolCall.params.queries
+            : []),
+          ...(isObjectRecord(details)
+            ? [
+                details.query,
+                ...(Array.isArray(details.queries) ? details.queries : []),
+              ]
+            : []),
         ].filter((v): v is string => typeof v === "string" && !!v.trim());
         const scope = reply.context;
-        if (!Array.isArray(filters) || !filters.length || !values.length ||
-            !filters.every(e => isObjectRecord(e) && typeof e.query === "string" && typeof e.quote === "string" && e.query === e.quote.trim() &&
+        if (
+          !Array.isArray(filters) ||
+          !filters.length ||
+          !values.length ||
+          !filters.every(
+            (e) =>
+              isObjectRecord(e) &&
+              typeof e.query === "string" &&
+              typeof e.quote === "string" &&
+              e.query === e.quote.trim() &&
               (e.origin === "current" || e.origin === "referent") &&
-              (e.origin !== "current" || (e.sourceMessageId === binding.sourceMessageId && e.sourceActorId === binding.actorId && e.sourceCreatedAt === binding.requestedAt)) &&
-              e.sourceRoomId === binding.roomId && !!e.sourceMessageId && !!e.sourceActorId &&
-              Number.isFinite(e.sourceCreatedAt) && e.sourceCreatedAt <= binding.requestedAt) ||
-            !values.every(q => filters.some(e => e.query.toLowerCase() === q.trim().toLowerCase())) ||
-            !isObjectRecord(scope) || scope.selection !== "filtered_search" || scope.contentFilterApplied !== true)
+              (e.origin !== "current" ||
+                (e.sourceMessageId === binding.sourceMessageId &&
+                  e.sourceActorId === binding.actorId &&
+                  e.sourceCreatedAt === binding.requestedAt)) &&
+              e.sourceRoomId === binding.roomId &&
+              !!e.sourceMessageId &&
+              !!e.sourceActorId &&
+              Number.isFinite(e.sourceCreatedAt) &&
+              e.sourceCreatedAt <= binding.requestedAt,
+          ) ||
+          !values.every((q) =>
+            filters.some(
+              (e) => e.query.toLowerCase() === q.trim().toLowerCase(),
+            ),
+          ) ||
+          !isObjectRecord(scope) ||
+          scope.selection !== "filtered_search" ||
+          scope.contentFilterApplied !== true
+        )
           return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED");
         return reply.scenario === "search_results";
       }
