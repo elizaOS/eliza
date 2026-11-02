@@ -38,6 +38,7 @@ import {
 } from "../../../../packages/agent/src/triggers/scheduling.ts";
 import { createAssistantPlugin } from "../index.ts";
 import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
+import { replyTextFieldEvaluator } from "../runtime/builtin-field-evaluators.ts";
 import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
 import {
   DefaultMessageService,
@@ -1047,6 +1048,144 @@ describe("planning progress delivery boundaries", () => {
       expect(progress).toEqual(spoken ? [draft] : []);
       expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
       expect(await h.storedReplies()).toHaveLength(1);
+    },
+  );
+  // Preserved tj-07e59cec6d1728: with earlier dialogue Stage 1 offers the
+  // source-part replyText schema, which lacked the acknowledgement rule the
+  // first-turn field carries, so "what's going on today in the news?" routed
+  // to web with replyText [] and nothing was spoken while the search ran. The
+  // controlled pair tj-389b296cdde582 (plain field, "Let me check.") and
+  // tj-0d4f4cfab3db0b (source parts, []) is the stand-in model below: it
+  // acknowledges pending work only when its replyText schema carries the
+  // rule. The unchanged closed grammar decides what is spoken; the runtime
+  // never supplies an acknowledgement.
+  it.each([
+    { draft: "Let me check.", pending: true },
+    { draft: "", pending: true },
+    { draft: "It's Sunday.", pending: false },
+  ])(
+    "speaks a history-turn acknowledgement only as the model wrote it: '$draft' (pending $pending)",
+    async ({ draft, pending }) => {
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.text = pending
+        ? "Um, what's going on today in the news?"
+        : "What day is it?";
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      for (const [entityId, text, createdAt] of [
+        [turn.entityId, "Can you open notes?", Date.now() - 2000],
+        [h.runtime.agentId, "Notes.", Date.now() - 1000],
+      ] as const)
+        await h.runtime.createMemory(
+          {
+            id: asUUID(v4()),
+            entityId,
+            agentId: h.runtime.agentId,
+            roomId: h.roomId,
+            content: { text, source: "test", channelType: ChannelType.DM },
+            createdAt,
+          },
+          "messages",
+        );
+      let searches = 0;
+      h.runtime.registerAction({
+        name: "TEST_WEB_SEARCH",
+        description: "Search the web for current news",
+        contexts: ["web"],
+        validate: async () => true,
+        handler: async () => {
+          searches++;
+          return {
+            success: true,
+            text: "Top story: a test headline.",
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            data: { readOnlyOperation: true },
+          };
+        },
+      });
+      const final = pending ? "One test headline today." : draft;
+      let replySchema: { type?: string; description?: string } | undefined;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async (_rt, params) => {
+          if (replySchema)
+            return JSON.stringify({
+              success: true,
+              decision: "FINISH",
+              thought: "The search supplies the news.",
+              messageToUser: final,
+              replyEffectStatus: "none",
+            });
+          replySchema = params.tools?.find(
+            (tool) => tool.name === "HANDLE_RESPONSE",
+          )?.parameters?.properties?.replyText as typeof replySchema;
+          const ruled =
+            replySchema?.description?.startsWith(ACKNOWLEDGMENT_RULE);
+          const response = stage1DirectReply(
+            pending && !ruled ? "" : draft,
+            true,
+          );
+          Object.assign(
+            response.toolCalls[0].arguments,
+            pending
+              ? {
+                  contexts: ["web"],
+                  intents: ["Summarize today's top news"],
+                  candidateActionNames: ["TEST_WEB_SEARCH"],
+                  requiresTool: true,
+                  replyEffectStatus: "pending",
+                }
+              : { replyEffectStatus: "none" },
+          );
+          return response;
+        },
+        "pending-work-acknowledgement",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "current-search",
+              name: "TEST_WEB_SEARCH",
+              arguments: { eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+        "pending-work-acknowledgement",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            expect(searches).toBe(0);
+            progress.push(text);
+          },
+        },
+      );
+      expect(searches).toBe(pending ? 1 : 0);
+      expect(progress).toEqual(draft && pending ? [draft] : []);
+      expect(delivered.map((content) => content.text)).toEqual([final]);
+      expect(replySchema?.type).toBe("array");
+      expect(replySchema?.description?.startsWith(ACKNOWLEDGMENT_RULE)).toBe(
+        true,
+      );
+      expect(
+        replyTextFieldEvaluator.schema.description?.startsWith(
+          ACKNOWLEDGMENT_RULE,
+        ),
+      ).toBe(true);
     },
   );
 });

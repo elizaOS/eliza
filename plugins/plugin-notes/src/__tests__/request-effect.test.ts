@@ -15,6 +15,7 @@ import {
   isMatchingNotesMutationCompletion,
   isObjectRecord,
   type Memory,
+  normalizeEffectReceipt,
   type RequestOperationIssuer,
   ResponseHandlerFieldRegistry,
   readNotesMutationCompletion,
@@ -43,9 +44,18 @@ import {
 } from "../../../../packages/core/src/actions/task-extraction-context.ts";
 import { executePlannedToolCall as sourceExecutePlannedToolCall } from "../../../../packages/core/src/runtime/execute-planned-tool-call.ts";
 import {
+  applyHistoryRetentionReview,
+  prepareHistoryRetention,
+} from "../../../plugin-assistant/src/runtime/history-retention.ts";
+import {
   actionResultToPlannerToolResult,
   runPlannerLoop,
 } from "../../../plugin-assistant/src/runtime/planner-loop.ts";
+import {
+  projectBackgroundHistory,
+  projectReviewedHistory,
+  withBackgroundHistory,
+} from "../../../plugin-assistant/src/services/message/history-discovery.ts";
 import { resolveNotesRequestHostRestriction } from "../../../plugin-assistant/src/services/message/notes-request-issuer.ts";
 import { executeV5PlannedToolCall } from "../../../plugin-assistant/src/services/message/planned-tool.ts";
 import { messageHandlerFromFieldResult } from "../../../plugin-assistant/src/services/message/stage1-output.ts";
@@ -527,6 +537,168 @@ describe("request-bound Notes negative constraints", () => {
       await f.service.stop();
     }
   });
+
+  // tj-09ade5745f5f37: a long voice room whose background review deferred a
+  // settled calendar receipt with its request. The requested create was
+  // refused as ACTION_REQUEST_RESTRICTION_INVALID because the projection
+  // mismatch dropped the request binding, and with it the operation attempt.
+  it.each([
+    [{ classification: "mutation_requested", operations: ["create"] }, true],
+    [
+      { classification: "read_only", operations: ["list"] },
+      "REQUEST_OPERATION_RESTRICTED",
+    ],
+    [
+      { classification: "unresolved", operations: [] },
+      "REQUEST_OPERATION_UNRESOLVED",
+    ],
+  ])(
+    "keeps the current request bound when background history defers a settled effect (%j)",
+    async (notesField, expected) => {
+      const f = await fixture(notesField, "Can you make a note for that?");
+      const scope = {
+        agentId: f.runtime.agentId,
+        roomId: String(f.message.roomId),
+        entityId: String(f.message.entityId),
+        roles: ["OWNER"],
+      };
+      const observedAt = "2026-11-01T00:00:00.000Z";
+      const settled = normalizeEffectReceipt({
+        receiptId: "coffee",
+        operation: "calendar.event.create",
+        resource: { kind: "calendar.event", id: "coffee" },
+        artifacts: [],
+        idempotency: { key: "coffee", replayed: false },
+        observedAt,
+        outcome: "applied",
+        commit: { kind: "durable", id: "coffee", committedAt: observedAt },
+      });
+      const original = {
+        ...f.context,
+        events: [
+          ...Array.from({ length: 16 }, (_, i) => ({
+            id: `history:${i}`,
+            type: "segment",
+            source: "prior-dialogue",
+            segment: {
+              id: `history:${i}`,
+              label: i % 2 ? "prior_message:agent" : "prior_message:user",
+              content: `Earlier exchange ${i}`,
+              stable: false,
+              metadata: {
+                roomId: scope.roomId,
+                entityId: i % 2 ? scope.agentId : scope.entityId,
+              },
+            },
+          })),
+          {
+            id: "effect:0",
+            type: "segment",
+            source: "message-service",
+            segment: {
+              id: "effect:0",
+              label: "runtime:historical_effects",
+              content: JSON.stringify({
+                requestSourceEventId: "history:0",
+                scope: "Past outcomes, not new permission.",
+                outcomes: [
+                  {
+                    actionName: "CALENDAR_CREATE_EVENT",
+                    success: true,
+                    receipt: settled,
+                  },
+                ],
+              }),
+              stable: false,
+            },
+          },
+          ...f.context.events.map((event) =>
+            event.type === "message_handler" &&
+            isObjectRecord(event.metadata?.plan)
+              ? {
+                  ...event,
+                  metadata: {
+                    ...event.metadata,
+                    plan: { ...event.metadata.plan, contexts: ["general"] },
+                  },
+                }
+              : event,
+          ),
+        ],
+      } as ContextObject;
+      const prepared = prepareHistoryRetention(
+        original,
+        scope,
+        null,
+        "evidence",
+        6,
+      );
+      const plannerContext = withBackgroundHistory(
+        original,
+        projectReviewedHistory(
+          original,
+          scope,
+          applyHistoryRetentionReview(prepared, {
+            sourceSetId: prepared.sourceSetId,
+            complete: true,
+            retainSourceIds: [],
+            deferSourceIds: prepared.candidates.map((source) => source.id),
+            uncertainSourceIds: [],
+            dependencyGroups: [],
+          }),
+        ),
+      );
+      const background = projectBackgroundHistory(plannerContext);
+      expect(background.applied).toBe(true);
+      expect(
+        background.context.events.some((event) => event.id === "effect:0"),
+      ).toBe(false);
+      try {
+        const result = await executeV5PlannedToolCall({
+          runtime: f.runtime,
+          toolCall: {
+            name: "NOTES_CREATE",
+            params: { content: "News summary for Nov 1" },
+          },
+          plannerContext,
+          executorCtx: {
+            message: f.message,
+            state: f.state,
+            userRoles: ["OWNER"],
+            activeContexts: ["general"],
+            replyOwner: "planner",
+          },
+          plannerRuntime: {
+            useModel: async () => {
+              throw new Error("The registered create needs no sub-planner");
+            },
+          },
+        });
+        if (expected === true) {
+          expect(actionDiagnostic(result)).toMatchObject({
+            success: true,
+            receipts: 1,
+          });
+          expect(f.writes).toHaveBeenCalledTimes(1);
+          expect(readNotesMutationCompletion(result, f.issuer)).toMatchObject({
+            requested: true,
+            status: "current",
+          });
+        } else {
+          expect(actionDiagnostic(result)).toMatchObject({
+            success: false,
+            code: expected,
+            executed: false,
+            notStarted: true,
+            receipts: 0,
+          });
+          expect(f.writes).not.toHaveBeenCalled();
+        }
+      } finally {
+        await f.service.stop();
+      }
+    },
+  );
 
   it("confirms an explicit update completed by the registered Notes patch edit", async () => {
     const f = await fixture(
