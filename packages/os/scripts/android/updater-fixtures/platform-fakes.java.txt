@@ -1,0 +1,361 @@
+// The small part of the Android platform and org.json the updater touches, for host tests that run
+// the real updater classes. The node test splits this at each "// file:" line. Device holds the state
+// the fakes share with UpdateFlowTest. These prove the client's logic, never Android behaviour.
+
+// file: android/Device.java
+package android;
+
+import android.app.Notification;
+import android.content.SharedPreferences;
+import android.net.Network;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.LinkedBlockingQueue;
+
+public final class Device {
+    public static final Map<Class<?>, Object> services = new HashMap<>();
+    public static final Map<Integer, String> strings = new HashMap<>();
+    public static final Map<String, Object> stored = new HashMap<>();
+    public static final Set<String> callerPermissions = new HashSet<>();
+    public static final List<Notification> notifications = new ArrayList<>();
+    public static final List<String> fetched = new ArrayList<>();
+    public static final Map<String, byte[]> channel = new HashMap<>();
+    public static final LinkedBlockingQueue<Boolean> finished = new LinkedBlockingQueue<>();
+    public static int audioMode;
+    public static final List<String> reboots = new ArrayList<>();
+    public static final Network network = new Network();
+    public static final SharedPreferences store = new SharedPreferences() {
+        @Override public String getString(String key, String fallback) { return stored.containsKey(key) ? (String) stored.get(key) : fallback; }
+        @Override public long getLong(String key, long fallback) { return stored.containsKey(key) ? (Long) stored.get(key) : fallback; }
+        @Override public Editor edit() {
+            return new Editor() {
+                @Override public Editor putString(String key, String value) { stored.put(key, value); return this; }
+                @Override public Editor putLong(String key, long value) { stored.put(key, value); return this; }
+                @Override public void apply() {}
+            };
+        }
+    };
+}
+
+// file: android/R.java
+package android;
+public final class R { public static final class drawable { public static final int stat_sys_download_done = 1; } }
+
+// file: ai/elizaos/updater/R.java
+package ai.elizaos.updater;
+public final class R { public static final class string { public static final int channel = 1, channel_manifest_url = 2, channel_key = 3; } }
+
+// file: android/app/Notification.java
+package android.app;
+public class Notification {
+    public CharSequence title;
+    public final java.util.List<Action> actions = new java.util.ArrayList<>();
+    public static class Action {
+        public CharSequence title;
+        public PendingIntent intent;
+        public static class Builder {
+            private final Action action = new Action();
+            public Builder(android.graphics.drawable.Icon icon, CharSequence title, PendingIntent intent) { action.title = title; action.intent = intent; }
+            public Action build() { return action; }
+        }
+    }
+    public static class Builder {
+        private final Notification notification = new Notification();
+        public Builder(android.content.Context context, String channel) {}
+        public Builder setSmallIcon(int icon) { return this; }
+        public Builder setContentTitle(CharSequence title) { notification.title = title; return this; }
+        public Builder addAction(Action action) { notification.actions.add(action); return this; }
+        public Notification build() { return notification; }
+    }
+}
+
+// file: android/graphics/drawable/Icon.java
+package android.graphics.drawable;
+public class Icon {}
+
+// file: android/app/NotificationChannel.java
+package android.app;
+public class NotificationChannel { public final int importance; public NotificationChannel(String id, CharSequence name, int importance) { this.importance = importance; } }
+
+// file: android/app/NotificationManager.java
+package android.app;
+public class NotificationManager {
+    public static final int IMPORTANCE_LOW = 2;
+    public NotificationChannel channel;
+    public void createNotificationChannel(NotificationChannel channel) { this.channel = channel; }
+    public void notify(int id, Notification notification) { android.Device.notifications.add(notification); }
+}
+
+// file: android/app/PendingIntent.java
+package android.app;
+public class PendingIntent {
+    public static final int FLAG_IMMUTABLE = 1 << 26;
+    public android.content.Intent intent;
+    public static PendingIntent getBroadcast(android.content.Context context, int code, android.content.Intent intent, int flags) {
+        PendingIntent pending = new PendingIntent();
+        pending.intent = intent;
+        return pending;
+    }
+}
+
+// file: android/app/job/JobInfo.java
+package android.app.job;
+public class JobInfo {
+    public static final int NETWORK_TYPE_UNMETERED = 2, BACKOFF_POLICY_LINEAR = 0;
+    public int id, networkType, backoffPolicy;
+    public boolean persisted, batteryNotLow;
+    public long period, flex, backoff;
+    public static final class Builder {
+        private final JobInfo job = new JobInfo();
+        public Builder(int id, android.content.ComponentName service) { job.id = id; }
+        public Builder setPersisted(boolean value) { job.persisted = value; return this; }
+        public Builder setRequiredNetworkType(int value) { job.networkType = value; return this; }
+        public Builder setRequiresBatteryNotLow(boolean value) { job.batteryNotLow = value; return this; }
+        public Builder setPeriodic(long period, long flex) { job.period = period; job.flex = flex; return this; }
+        public Builder setBackoffCriteria(long backoff, int policy) { job.backoff = backoff; job.backoffPolicy = policy; return this; }
+        public JobInfo build() { return job; }
+    }
+}
+
+// file: android/app/job/JobParameters.java
+package android.app.job;
+public class JobParameters { public android.net.Network getNetwork() { return android.Device.network; } }
+
+// file: android/app/job/JobScheduler.java
+package android.app.job;
+public class JobScheduler {
+    public final java.util.Map<Integer, JobInfo> pending = new java.util.HashMap<>();
+    public int schedules;
+    public JobInfo getPendingJob(int id) { return pending.get(id); }
+    public int schedule(JobInfo job) { pending.put(job.id, job); schedules++; return 1; }
+}
+
+// file: android/app/job/JobService.java
+package android.app.job;
+public abstract class JobService extends android.content.Context {
+    public abstract boolean onStartJob(JobParameters params);
+    public abstract boolean onStopJob(JobParameters params);
+    public final void jobFinished(JobParameters params, boolean reschedule) { android.Device.finished.add(reschedule); }
+}
+
+// file: android/content/BroadcastReceiver.java
+package android.content;
+public abstract class BroadcastReceiver { public abstract void onReceive(Context context, Intent intent); }
+
+// file: android/content/ComponentName.java
+package android.content;
+public class ComponentName { public ComponentName(Context context, Class<?> target) {} }
+
+// file: android/content/ContentProvider.java
+package android.content;
+public abstract class ContentProvider {
+    public final Context getContext() { return new Context(); }
+    public abstract boolean onCreate();
+    public android.os.Bundle call(String method, String arg, android.os.Bundle extras) { return null; }
+    public abstract android.database.Cursor query(android.net.Uri uri, String[] projection, String selection, String[] args, String order);
+    public abstract String getType(android.net.Uri uri);
+    public abstract android.net.Uri insert(android.net.Uri uri, ContentValues values);
+    public abstract int delete(android.net.Uri uri, String selection, String[] args);
+    public abstract int update(android.net.Uri uri, ContentValues values, String selection, String[] args);
+}
+
+// file: android/content/ContentValues.java
+package android.content;
+public class ContentValues {}
+
+// file: android/content/Context.java
+package android.content;
+public class Context {
+    public static final int MODE_PRIVATE = 0;
+    public final <T> T getSystemService(Class<T> type) { return type.cast(android.Device.services.get(type)); }
+    public SharedPreferences getSharedPreferences(String name, int mode) { return android.Device.store; }
+    public final String getString(int id) { return android.Device.strings.get(id); }
+    public void enforceCallingPermission(String permission, String message) { if (!android.Device.callerPermissions.contains(permission)) throw new SecurityException(message); }
+}
+
+// file: android/content/Intent.java
+package android.content;
+public class Intent {
+    public static final String ACTION_BOOT_COMPLETED = "android.intent.action.BOOT_COMPLETED";
+    private final String action;
+    public Intent(String action) { this.action = action; }
+    public String getAction() { return action; }
+    public Intent setClass(Context context, Class<?> target) { return this; }
+}
+
+// file: android/content/SharedPreferences.java
+package android.content;
+public interface SharedPreferences {
+    String getString(String key, String fallback);
+    long getLong(String key, long fallback);
+    Editor edit();
+    interface Editor {
+        Editor putString(String key, String value);
+        Editor putLong(String key, long value);
+        void apply();
+    }
+}
+
+// file: android/database/Cursor.java
+package android.database;
+public interface Cursor {}
+
+// file: android/media/AudioManager.java
+package android.media;
+public class AudioManager {
+    public static final int MODE_NORMAL = 0, MODE_RINGTONE = 1, MODE_IN_CALL = 2, MODE_IN_COMMUNICATION = 3, MODE_CALL_SCREENING = 4, MODE_CALL_REDIRECT = 5, MODE_COMMUNICATION_REDIRECT = 6;
+    public int getMode() { return android.Device.audioMode; }
+}
+
+// file: android/net/Network.java
+package android.net;
+public class Network {
+    public long getNetworkHandle() { return 123456789L; }
+    public java.net.URLConnection openConnection(java.net.URL url) throws java.io.IOException {
+        android.Device.fetched.add(url.toString());
+        byte[] body = android.Device.channel.get(url.toString());
+        if (body == null) throw new java.io.FileNotFoundException(url.toString());
+        return new java.net.URLConnection(url) {
+            @Override public void connect() {}
+            @Override public java.io.InputStream getInputStream() { return new java.io.ByteArrayInputStream(body); }
+        };
+    }
+}
+
+// file: android/net/Uri.java
+package android.net;
+public class Uri {}
+
+// file: android/os/Build.java
+package android.os;
+public class Build {
+    public static String DEVICE, FINGERPRINT;
+    public static long TIME;
+    public static class VERSION { public static String INCREMENTAL; }
+}
+
+// file: android/os/Bundle.java
+package android.os;
+public class Bundle {
+    private final java.util.Map<String, String> values = new java.util.HashMap<>();
+    public void putString(String key, String value) { values.put(key, value); }
+    public String getString(String key) { return values.get(key); }
+}
+
+// file: android/os/PowerManager.java
+package android.os;
+public class PowerManager { public void reboot(String reason) { android.Device.reboots.add(String.valueOf(reason)); } }
+
+// file: android/os/ServiceSpecificException.java
+package android.os;
+public class ServiceSpecificException extends RuntimeException { public ServiceSpecificException(int code) { super(String.valueOf(code)); } }
+
+// file: android/os/UpdateEngine.java
+package android.os;
+public class UpdateEngine {
+    public static final class UpdateStatusConstants { public static final int IDLE = 0, DOWNLOADING = 3, VERIFYING = 4, FINALIZING = 5, UPDATED_NEED_REBOOT = 6; }
+    public static final java.util.List<Object[]> applied = new java.util.ArrayList<>();
+    public static int status, unbinds;
+    public static boolean denied;
+    public static RuntimeException applyFailure;
+    public UpdateEngine() { if (denied) throw new IllegalStateException("Failed to find update_engine"); }
+    public boolean bind(UpdateEngineCallback callback) { callback.onStatusUpdate(status, 0f); return true; }
+    public boolean unbind() { unbinds++; return true; }
+    public void applyPayload(String url, long offset, long size, String[] headers) {
+        if (applyFailure != null) throw applyFailure;
+        applied.add(new Object[] {url, offset, size, headers});
+    }
+}
+
+// file: android/os/UpdateEngineCallback.java
+package android.os;
+public abstract class UpdateEngineCallback {
+    public abstract void onStatusUpdate(int status, float percent);
+    public abstract void onPayloadApplicationComplete(int errorCode);
+}
+
+// file: android/util/Log.java
+package android.util;
+public class Log { public static int w(String tag, String message, Throwable failure) { return 0; } }
+
+// file: org/json/JSONException.java
+package org.json;
+public class JSONException extends Exception { public JSONException(String message) { super(message); } }
+
+// file: org/json/JSONArray.java
+package org.json;
+public class JSONArray {
+    final java.util.List<Object> values = new java.util.ArrayList<>();
+    public int length() { return values.size(); }
+    public String getString(int index) throws JSONException { return JSONObject.typed(values.get(index), String.class); }
+    public JSONObject getJSONObject(int index) throws JSONException { return JSONObject.typed(values.get(index), JSONObject.class); }
+}
+
+// file: org/json/JSONObject.java
+package org.json;
+public class JSONObject {
+    private final java.util.Map<String, Object> values = new java.util.HashMap<>();
+    private String text;
+    private int at;
+    private JSONObject() {}
+    public JSONObject(String source) throws JSONException {
+        text = source;
+        if (space() != '{') throw new JSONException("Expected an object");
+        JSONObject parsed = (JSONObject) value();
+        if (at != text.length() && space() != 0) throw new JSONException("Trailing data");
+        values.putAll(parsed.values);
+    }
+    static <T> T typed(Object value, Class<T> type) throws JSONException {
+        if (!type.isInstance(value)) throw new JSONException("Expected " + type.getSimpleName());
+        return type.cast(value);
+    }
+    public boolean isNull(String key) { return values.get(key) == null; }
+    public String getString(String key) throws JSONException { return typed(values.get(key), String.class); }
+    public long getLong(String key) throws JSONException { return typed(values.get(key), Long.class); }
+    public int getInt(String key) throws JSONException { return (int) getLong(key); }
+    public JSONObject getJSONObject(String key) throws JSONException { return typed(values.get(key), JSONObject.class); }
+    public JSONArray getJSONArray(String key) throws JSONException { return typed(values.get(key), JSONArray.class); }
+    private char space() { while (at < text.length() && Character.isWhitespace(text.charAt(at))) at++; return at < text.length() ? text.charAt(at) : 0; }
+    private void expect(char wanted) throws JSONException { if (space() != wanted) throw new JSONException("Expected " + wanted + " at " + at); at++; }
+    private Object value() throws JSONException {
+        char first = space();
+        if (first == '{') {
+            at++;
+            JSONObject object = new JSONObject();
+            while (space() != '}') {
+                if (!object.values.isEmpty()) expect(',');
+                String key = (String) value();
+                expect(':');
+                object.values.put(key, value());
+            }
+            at++;
+            return object;
+        }
+        if (first == '[') {
+            at++;
+            JSONArray array = new JSONArray();
+            while (space() != ']') {
+                if (array.length() > 0) expect(',');
+                array.values.add(value());
+            }
+            at++;
+            return array;
+        }
+        if (first == '"') {
+            int end = text.indexOf('"', at + 1);
+            if (end < 0) throw new JSONException("Unterminated string");
+            String value = text.substring(at + 1, end);
+            at = end + 1;
+            return value;
+        }
+        int start = at;
+        while (at < text.length() && ",]} \n".indexOf(text.charAt(at)) < 0) at++;
+        String token = text.substring(start, at);
+        if (token.equals("null")) return null;
+        try { return Long.valueOf(token); } catch (NumberFormatException failure) { throw new JSONException("Bad token " + token); }
+    }
+}

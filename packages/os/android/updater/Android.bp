@@ -1,0 +1,28 @@
+android_app {
+    name: "ElizaOsUpdater",
+    srcs: ["src/**/*.java"],
+    resource_dirs: ["res"],
+    sdk_version: "system_current",
+    privileged: true,
+    system_ext_specific: true,
+    privapp_allowlist: "privapp-permissions.xml",
+    required: [
+        "default-permissions-ai.elizaos.updater.xml",
+        "ElizaOsUpdater-sysconfig.xml",
+    ],
+    optimize: { enabled: false },
+}
+
+prebuilt_etc {
+    name: "default-permissions-ai.elizaos.updater.xml",
+    src: "default-permissions.xml",
+    sub_dir: "default-permissions",
+    system_ext_specific: true,
+}
+
+prebuilt_etc {
+    name: "ElizaOsUpdater-sysconfig.xml",
+    src: "sysconfig.xml",
+    sub_dir: "sysconfig",
+    system_ext_specific: true,
+}

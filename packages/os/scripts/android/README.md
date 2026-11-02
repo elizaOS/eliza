@@ -31,8 +31,8 @@ source-lock profile, pinned host packages and reviewed signer. A downstream
 product may use the shared reviewed `cuttlefish` profile in
 `android/aosp.lock.json` when its brand config inherits only that profile's
 required device trees. The launcher stays nonprivileged and the listener is the
-only privileged package, as in the Pixel 10a composition. It admits inputs
-only, never an image build or boot.
+only privileged package, as in a Pixel 10a composition without an `updater`
+block. It admits inputs only, never an image build or boot.
 
 `secure-camera.mjs` keeps capture over Keyguard with the stock AOSP Camera2
 `SecureCameraActivity` and the SystemUI power gesture for every brand: it
@@ -65,9 +65,13 @@ row (open-source licence flags never block) and compares an in-place APK update
 (signer-equal, higher versionCode, per-domain data readback). A product passes its
 signer and licence policy as data.
 
-`update-channel-client.mjs` is a read-only, default-off client: it verifies the signed
-contract a `publish-update-manifest.ts` manifest embeds for the booted device and compares
-it with the booted fingerprint. It never downloads, stages or applies an update.
+`channel-manifest.mjs` writes the channel manifest for A/B OS updates: the URL, payload
+offset and size, and `payload_properties.txt` lines of each OTA package. The update
+client `android/updater` reads it, after a detached Ed25519 signature check, and starts
+`update_engine`. A product turns the client on with an `updater` block (`channel`,
+`manifestUrl`, `channelKey`); `composePixel10aProduct` then stages it as a second narrowly
+privileged package, built from source. `publish-update-manifest.ts` stays the factory-image
+install index and is not an update channel.
 
 Physical writes and publication require a signed v2 contract. Run contract tests
 with `bun run --cwd packages/os test:release` from the repository root.

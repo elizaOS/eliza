@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import crypto, { createHash } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -46,6 +46,80 @@ function fixture(t, brand) {
     sourceEvidence: { fixture: true, releaseQualified: false },
   };
 }
+
+const updaterBlock = () => ({
+  channel: "beta",
+  manifestUrl:
+    "https://github.com/eliza-research/alphaphone/releases/download/os-channel/stallion-beta.json",
+  channelKey: crypto
+    .generateKeyPairSync("ed25519")
+    .publicKey.export({ format: "der", type: "spki" })
+    .toString("base64"),
+});
+
+test("a product with an updater block stages the client with its channel and launcher signer", (t) => {
+  const f = fixture(t, "alpha");
+  f.product.updater = updaterBlock();
+  const result = composePixel10aProduct({ ...f, production: false });
+  assert.deepEqual(result.updater, f.product.updater);
+  const stage = path.join(f.output, "updater");
+  assert.equal(
+    fs.readFileSync(path.join(stage, "res/values/channel.xml"), "utf8"),
+    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="channel" translatable="false">beta</string>\n    <string name="channel_manifest_url" translatable="false">${f.product.updater.manifestUrl}</string>\n    <string name="channel_key" translatable="false">${f.product.updater.channelKey}</string>\n    <string name="launcher_certificate" translatable="false">${"b".repeat(64)}</string>\n</resources>\n`,
+  );
+  assert.ok(fs.existsSync(path.join(stage, "Android.bp")));
+  assert.ok(fs.existsSync(path.join(stage, "sepolicy/private/updater.te")));
+  assert.match(
+    fs.readFileSync(path.join(stage, "updater.mk"), "utf8"),
+    /PRODUCT_PACKAGES \+= ElizaOsUpdater\nSYSTEM_EXT_PRIVATE_SEPOLICY_DIRS \+= \$\(updater_dir\)\/sepolicy\/private\n/,
+  );
+  assert.match(
+    fs.readFileSync(path.join(f.output, "product.mk"), "utf8"),
+    /\/updater\/updater\.mk\n/,
+  );
+});
+
+test("a product without an updater block stages no client", (t) => {
+  const f = fixture(t, "eliza");
+  const result = composePixel10aProduct({ ...f, production: false });
+  assert.equal(result.updater, null);
+  assert.equal(fs.existsSync(path.join(f.output, "updater")), false);
+  assert.doesNotMatch(
+    fs.readFileSync(path.join(f.output, "product.mk"), "utf8"),
+    /updater/,
+  );
+});
+
+test("the updater block refuses an unusable channel, URL or key", (t) => {
+  const { product } = fixture(t, "alpha");
+  const rsa = crypto
+    .generateKeyPairSync("rsa", { modulusLength: 2048 })
+    .publicKey.export({ format: "der", type: "spki" })
+    .toString("base64");
+  for (const [change, problem] of [
+    [{ channel: "nightly" }, /release channel/],
+    [{ manifestUrl: "http://updates.example/beta.json" }, /https manifestUrl/],
+    [
+      { manifestUrl: "https://updates.example/a.json?b=<c>" },
+      /https manifestUrl/,
+    ],
+    [{ channelKey: "not base64!" }, /canonical base64/],
+    [{ channelKey: rsa }, /Ed25519/],
+  ])
+    assert.throws(
+      () =>
+        validatePixel10aProduct({
+          ...product,
+          updater: { ...updaterBlock(), ...change },
+        }),
+      problem,
+    );
+  assert.equal(
+    validatePixel10aProduct({ ...product, updater: updaterBlock() }).updater
+      .channel,
+    "beta",
+  );
+});
 
 for (const brand of ["alpha", "eliza"]) {
   test(`${brand} composes the same Pixel 10a hardware with a nonprivileged launcher`, (t) => {

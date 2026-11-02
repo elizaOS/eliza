@@ -1,0 +1,5 @@
+# android.os.UpdateEngine from a privileged app. Stock policy allows it only for gmscore_app,
+# system_app (the stable service) and system_server, and update_engine checks no caller itself.
+# A dedicated domain replaces this grant before release keys.
+allow priv_app update_engine_service:service_manager find;
+binder_call(priv_app, update_engine)

@@ -1,0 +1,3 @@
+<config>
+ <install-in-user-type package="ai.elizaos.updater"><install-in user-type="android.os.usertype.full.SYSTEM" /></install-in-user-type>
+</config>

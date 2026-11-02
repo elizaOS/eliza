@@ -1,8 +1,10 @@
-import { createHash } from "node:crypto";
+import { createHash, createPublicKey } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { canonicalBase64 } from "../release-key-policy.ts";
 import { requireClockProduct } from "./aosp-clock-handlers.mjs";
+import { CHANNELS } from "./channel-manifest.mjs";
 import {
   renderImageProvisioningOverlay,
   stagedImageFeature,
@@ -72,6 +74,23 @@ export function validatePixel10aProduct(value) {
       throw new Error(`Invalid Pixel 10a ${name}`);
   }
   validateBrandAssets(value.brandAssets);
+  if (value.updater !== undefined) {
+    const { channel, manifestUrl, channelKey } = value.updater;
+    if (
+      !CHANNELS.includes(channel) ||
+      !/^https:\/\/[A-Za-z0-9.-]+(\/[A-Za-z0-9._~%-]+)+$/.test(manifestUrl)
+    )
+      throw new Error(
+        "updater needs a release channel and an https manifestUrl",
+      );
+    const key = createPublicKey({
+      key: canonicalBase64(channelKey, "updater.channelKey"),
+      format: "der",
+      type: "spki",
+    });
+    if (key.asymmetricKeyType !== "ed25519")
+      throw new Error("updater.channelKey must be an Ed25519 public key");
+  }
   return value;
 }
 
@@ -87,7 +106,7 @@ export function enforceLauncherLockScreenPolicy(product, xmltree) {
   return assertNoLockScreenSurface(xmltree, { brand: product.brand });
 }
 
-/** The only privileged package in this product is its separately admitted listener. */
+/** The listener's grants; the updater module carries its own exact allowlist. */
 export function renderSensePermissions(appId) {
   if (!packageName.test(appId))
     throw new Error("Invalid listener application identity");
@@ -122,6 +141,38 @@ function checkListenerPolicy(output, appId) {
     throw new Error(
       "Pixel 10a listener grants must remain the exact minimal Sense permissions",
     );
+}
+
+/**
+ * The source-built A/B update client. Staging writes the product's channel and
+ * the admitted launcher signer, which alone may read the updater's status.
+ */
+function stageUpdater(output, updater, launcherCertificate) {
+  const target = path.join(output, "updater");
+  fs.cpSync(
+    fileURLToPath(new URL("../../android/updater/", import.meta.url)),
+    target,
+    {
+      recursive: true,
+      errorOnExist: true,
+      force: false,
+    },
+  );
+  fs.mkdirSync(path.join(target, "res/values"), { recursive: true });
+  fs.writeFileSync(
+    path.join(target, "res/values/channel.xml"),
+    `<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="channel" translatable="false">${updater.channel}</string>\n    <string name="channel_manifest_url" translatable="false">${updater.manifestUrl}</string>\n    <string name="channel_key" translatable="false">${updater.channelKey}</string>\n    <string name="launcher_certificate" translatable="false">${launcherCertificate}</string>\n</resources>\n`,
+    { flag: "wx" },
+  );
+  fs.writeFileSync(
+    path.join(target, "updater.mk"),
+    "updater_dir := $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))\nPRODUCT_PACKAGES += ElizaOsUpdater\nSYSTEM_EXT_PRIVATE_SEPOLICY_DIRS += $(updater_dir)/sepolicy/private\n",
+    { flag: "wx" },
+  );
+  fs.appendFileSync(
+    path.join(output, "product.mk"),
+    "\ninclude $(patsubst %/,%,$(dir $(lastword $(MAKEFILE_LIST))))/updater/updater.mk\n",
+  );
 }
 
 function verifyNativeStaging(output, launcher, evidence) {
@@ -234,6 +285,7 @@ export function composePixel10aProduct({
     `${product.productName}.mk`,
     "stallion",
     "brand",
+    "updater",
     "physical-product.json",
   ])
     if (fs.existsSync(path.join(output, name)))
@@ -270,6 +322,8 @@ export function composePixel10aProduct({
   if (!stagedImageFeature(output, launcher.packageName))
     writeImageCapability(output, launcher.packageName);
   const imageFeature = stagedImageFeature(output, launcher.packageName);
+  if (product.updater)
+    stageUpdater(output, product.updater, launcher.certificateSha256);
   // A presigned launcher that reads an overlayable provisioning resource
   // (launcher.imageProvisioning) gets it set by a product RRO in production
   // images only; development images leave the APK's false default.
@@ -300,6 +354,7 @@ export function composePixel10aProduct({
     vendorApi,
     imageFeature,
     imageProvisioning,
+    updater: product.updater ?? null,
     imageBuilt: false,
     imageSigned: false,
     releaseQualified: false,

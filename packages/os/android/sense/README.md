@@ -2,8 +2,8 @@
 
 The Alpha and Eliza Pixel 10a product descriptors select one shared listener
 implementation. Their main APKs remain nonprivileged. The only privileged app
-is their separately signed Sense APK, with exactly CAPTURE_AUDIO_HOTWORD and
-START_ACTIVITIES_FROM_BACKGROUND. RECORD_AUDIO and notifications require the
+with microphone access is their separately signed Sense APK, with exactly
+CAPTURE_AUDIO_HOTWORD and START_ACTIVITIES_FROM_BACKGROUND. RECORD_AUDIO and notifications require the
 user's consent; no network, background-capture bypass, power exemption or
 indicator-exempt role is granted.
 

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+ The A/B OS update client. update_engine downloads and applies; this app only checks the signed
+ channel, starts update_engine and offers the restart. res/values/channel.xml is written at staging.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="ai.elizaos.updater" android:versionCode="1" android:versionName="1">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- signature|privileged: granted only through privapp-permissions.xml. -->
+    <uses-permission android:name="android.permission.REBOOT" />
+
+    <!-- Held by the launcher: its signer is not the build's, so knownSigner names it. -->
+    <permission android:name="ai.elizaos.updater.permission.READ_STATUS"
+        android:protectionLevel="signature|knownSigner"
+        android:knownCerts="@string/launcher_certificate" />
+
+    <application android:label="System updates" android:allowBackup="false"
+        android:usesCleartextTraffic="false">
+        <service android:name=".UpdateJob" android:exported="false"
+            android:permission="android.permission.BIND_JOB_SERVICE" />
+        <receiver android:name=".UpdateReceiver" android:exported="false">
+            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+        </receiver>
+        <provider android:name=".StatusProvider" android:exported="true"
+            android:authorities="ai.elizaos.updater.status"
+            android:permission="ai.elizaos.updater.permission.READ_STATUS" />
+    </application>
+</manifest>
