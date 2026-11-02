@@ -995,6 +995,17 @@ async function runEvaluatorWithSelectedModel(
     ),
   };
   const responseSchema = structuredClone(evaluatorSchema);
+  const finalContext = params.trajectory.modelBaseContext ?? params.context;
+  const voicePolicy =
+    finalContext.metadata?.responseChannel === "VOICE_DM"
+      ? finalContext.staticPrefix?.staticProviders?.find(
+          (segment) => segment.id === "voice-response-style",
+        )
+      : undefined;
+  if (voicePolicy && responseSchema.properties?.messageToUser) {
+    responseSchema.properties.messageToUser.description = `${responseSchema.properties.messageToUser.description ?? ""}\n${voicePolicy.content}`;
+  }
+
   if (params.typedReadReply) {
     if (!responseSchema.properties)
       throw new ElizaError("Typed read evaluator schema has no properties", {
@@ -1031,6 +1042,7 @@ async function runEvaluatorWithSelectedModel(
     ? evaluatorBudgetOptions(budgetResolution.contextWindowTokens)
     : {};
   const renderArgs = {
+    responseSchema,
     ...(params.typedReadReply ? { typedReadReply: params.typedReadReply } : {}),
     context: params.context,
     trajectory: params.trajectory,
@@ -1721,6 +1733,7 @@ function evaluatorRestorableContext(
 }
 
 function renderEvaluatorModelInput(params: {
+  responseSchema: JSONSchema;
   context: ContextObject;
   trajectory: PlannerTrajectory;
   template?: string;
@@ -1746,8 +1759,8 @@ function renderEvaluatorModelInput(params: {
   const renderedContext = renderContextObject(
     projectEvaluatorContext(deferred.context),
   );
-  // Host-built channel policy owns the final user-visible turn. Place it after
-  // generic evaluator instructions, rather than losing priority in the prefix.
+  // The final generation field owns voice policy. Remove its earlier prompt
+  // copy so it is supplied once, in responseSchema.messageToUser.description.
   const voicePolicy =
     deferred.context.metadata?.responseChannel === "VOICE_DM"
       ? deferred.context.staticPrefix?.staticProviders?.find(
@@ -1790,10 +1803,9 @@ function renderEvaluatorModelInput(params: {
     });
   }
   const template = params.template ?? evaluatorTemplateForQueue(true);
-  const instructions = [
-    (template.split("context_object:")[0] ?? template).trim(),
-    ...(voicePolicy ? [voicePolicy.content] : []),
-  ].join("\n\n");
+  const instructions = (
+    template.split("context_object:")[0] ?? template
+  ).trim();
   const completeStepMessages =
     params.trajectory.modelHistory ??
     trajectoryStepsToMessages(
@@ -1850,17 +1862,7 @@ ${typedReadCorrectionDraft.get(params.trajectory) ? `Correct only the final answ
     { content: `evaluator_stage:\n${instructions}`, stable: true },
     // Hash the native response contract without duplicating it in model text.
     {
-      content: JSON.stringify(
-        params.typedReadReply
-          ? {
-              ...evaluatorSchema,
-              properties: {
-                ...evaluatorSchema.properties,
-                typedReadParts: typedReadPartsSchema,
-              },
-            }
-          : evaluatorSchema,
-      ),
+      content: JSON.stringify(params.responseSchema),
       stable: true,
     },
   ]);

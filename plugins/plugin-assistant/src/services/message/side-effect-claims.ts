@@ -1106,7 +1106,8 @@ export function replyIsClaimSafeAcknowledgment(reply: string): boolean {
     sentences.every(
       (sentence) =>
         ACKNOWLEDGMENT_WAIT_SENTENCE.test(sentence) ||
-        ACKNOWLEDGMENT_PROGRESS.test(sentence),
+        ACKNOWLEDGMENT_PROGRESS.test(sentence) ||
+        /^(?:let me|i'll) pull the latest$/u.test(sentence),
     ) &&
     !replyClaimsCompletedSideEffect(text, { pendingWork: true }) &&
     !replyClaimsEmptyTrackedWorkState(text)

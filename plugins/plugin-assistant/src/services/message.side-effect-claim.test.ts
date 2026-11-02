@@ -2033,6 +2033,9 @@ describe("replyClaimsInProgressWork", () => {
 
 describe("replyIsClaimSafeAcknowledgment", () => {
   it.each([
+    "Let me pull the latest.",
+    "I’ll pull the latest.",
+    "On it. Let me pull the latest.",
     "Let me pull up the latest headlines.",
     "Checking the latest news.",
     "On it — searching the latest headlines.",
@@ -2121,6 +2124,10 @@ describe("replyIsClaimSafeAcknowledgment", () => {
   });
 
   it.each([
+    "Let me pull the latest: the president resigned.",
+    "I’ll pull the latest private diagnosis.",
+    "Let me pull the latest. Your results are back.",
+    "Let me pull the latest from Alice.",
     "Let me pull up the latest headlines: the president resigned.",
     "Checking the latest news about Alice's diagnosis.",
     "Searching the latest headlines and your password is secret.",

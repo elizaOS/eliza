@@ -46,7 +46,7 @@ it("constructs the voice marker from the current channel, not user prose", async
   }
 });
 for (const voice of [true, false]) {
-  it(`places final voice policy once after evaluator rules, voice=${voice}`, async () => {
+  it(`binds final voice policy once to the generation field, voice=${voice}`, async () => {
     const request = "Give me a detailed account, with exact quoted text.";
     const context: ContextObject = {
       id: "voice-policy-test",
@@ -82,6 +82,7 @@ for (const voice of [true, false]) {
     } as unknown as PlannerTrajectory;
     let calls = 0;
     let captured = "";
+    let fieldDescription = "";
     const reply = "The exact requested reply stays unchanged.";
     const result = await runEvaluator({
       context,
@@ -90,6 +91,9 @@ for (const voice of [true, false]) {
         useModel: async (_type, input) => {
           calls++;
           captured = JSON.stringify(input.messages);
+          fieldDescription = String(
+            input.responseSchema?.properties?.messageToUser?.description ?? "",
+          );
           return JSON.stringify({
             success: true,
             decision: "FINISH",
@@ -101,10 +105,13 @@ for (const voice of [true, false]) {
     });
     expect(calls).toBe(1);
     expect(captured).toContain(request);
-    expect(captured.split("voice_response_style:")).toHaveLength(voice ? 2 : 1);
+    expect(captured).not.toContain("voice_response_style:");
+    expect(fieldDescription.split("voice_response_style:")).toHaveLength(
+      voice ? 2 : 1,
+    );
     if (voice)
-      expect(captured.indexOf("voice_response_style:")).toBeGreaterThan(
-        captured.indexOf("evaluator_stage:"),
+      expect(fieldDescription).toContain(
+        "unless the user explicitly asks for detail",
       );
     expect(context.staticPrefix?.staticProviders?.[0]?.content).toBe(
       voice ? policy : undefined,
