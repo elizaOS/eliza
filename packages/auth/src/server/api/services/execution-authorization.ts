@@ -94,7 +94,9 @@ export async function policyRevisionHashForAgent(
         config: row.config,
         updatedAt: row.updatedAt.toISOString(),
       }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
+      // Code-unit order, not localeCompare: ICU collation is
+      // locale-dependent, and this array order is a hash input.
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   );
 }
 
@@ -109,7 +111,9 @@ export function policyRevisionHashForPolicySet(
         enabled: policy.enabled,
         config: policy.config,
       }))
-      .sort((a, b) => a.id.localeCompare(b.id)),
+      // Code-unit order, not localeCompare: ICU collation is
+      // locale-dependent, and this array order is a hash input.
+      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
   );
 }
 
