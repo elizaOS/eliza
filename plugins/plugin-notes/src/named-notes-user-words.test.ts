@@ -26,12 +26,16 @@ const runtimes: AgentRuntime[] = [];
 afterEach(async () => {
   await Promise.all(runtimes.splice(0).map((r) => r.stop()));
   await Promise.all(
-    directories.splice(0).map((d) => fs.rm(d, { recursive: true, force: true })),
+    directories
+      .splice(0)
+      .map((d) => fs.rm(d, { recursive: true, force: true })),
   );
 });
 
 async function fixture() {
-  const directory = await fs.mkdtemp(path.join(os.tmpdir(), "notes-user-words-"));
+  const directory = await fs.mkdtemp(
+    path.join(os.tmpdir(), "notes-user-words-"),
+  );
   directories.push(directory);
   const service = new NotesService(undefined, {
     store: new NotesStore({ filePath: path.join(directory, "state.json") }),
