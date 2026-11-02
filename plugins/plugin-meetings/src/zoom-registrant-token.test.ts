@@ -18,9 +18,9 @@ import { MeetingService } from "./service.js";
 import { ScriptedAdapter } from "./test-support.js";
 import { readTranscriptRow } from "./transcripts/meeting-transcript-writer.js";
 
-const TOKEN = "Ab3-x_Yz.DQMAAAAUq9Pc0hY";
-const REGISTRANT_LINK = `https://us02web.zoom.us/w/84512339087?tk=${TOKEN}&pwd=Pass9`;
-const JOIN_URL = `https://app.zoom.us/wc/84512339087/join?pwd=Pass9&tk=${TOKEN}`;
+const REGISTRANT_TK = "Ab3-x_Yz.DQMAAAAUq9Pc0hY";
+const REGISTRANT_LINK = `https://us02web.zoom.us/w/84512339087?tk=${REGISTRANT_TK}&pwd=Pass9`;
+const JOIN_URL = `https://app.zoom.us/wc/84512339087/join?pwd=Pass9&tk=${REGISTRANT_TK}`;
 const STORED_URL = "https://app.zoom.us/wc/84512339087/join?pwd=Pass9";
 
 it("gives the Zoom registrant token to the bot only", async () => {
