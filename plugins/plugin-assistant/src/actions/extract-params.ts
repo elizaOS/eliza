@@ -5,12 +5,14 @@
  */
 import {
   type ActionParameterSchema,
+  extractUserText,
   getRecentMessagesData,
   type IAgentRuntime,
   logger,
   type Memory,
   ModelType,
   type State,
+  unwrapUserMessageText,
 } from "@elizaos/core";
 import { parseJSONObjectFromText } from "@elizaos/core/protocol";
 import { composePrompt } from "../text/template-rendering.js";
@@ -96,8 +98,12 @@ export async function extractActionParamsViaLlm<
   if (missing.length === 0) {
     return existingParams;
   }
-  const currentMessageText =
-    typeof message.content.text === "string" ? message.content.text.trim() : "";
+  // Read the user's request, not the document-augmentation envelope (or the
+  // external-content armor): on an augmented turn content.text carries the
+  // recalled documents first, and feeding it raw lets a document supply the
+  // missing parameters. unwrapUserMessageText returns "" for envelope debris,
+  // which is the safe direction — the model then reports the field null.
+  const currentMessageText = extractUserText(unwrapUserMessageText(message));
   const recentConversation = collectRecentConversation(state);
   const prompt = buildExtractionPrompt({
     actionName,

@@ -15,14 +15,20 @@ const DOCUMENT_AUGMENTATION_PREFIX =
 // super-linear match time) on long whitespace runs such as pasted logs. The
 // wrapper trims its capture explicitly; the suffix relies on the caller's
 // trailing `.trim()` to drop the newlines the former leading `\n*` matched.
-const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/i;
+// Global on purpose: the envelope builder appends the real request as the
+// LAST <user_request> block, after the recalled documents, and fragment text
+// is inserted without markup escaping — so a fragment quoting a
+// <user_request> block must not win over the real request. Taking the last
+// match keeps single-block behavior identical.
+const USER_REQUEST_WRAPPER = /<user_request>([\s\S]*?)<\/user_request>/gi;
 const LANGUAGE_INSTRUCTION_SUFFIX = /\[language instruction:[^\]]*\]\s*$/i;
 
 export function extractUserText(raw: string): string {
 	let text = raw;
 	if (text.trimStart().startsWith(DOCUMENT_AUGMENTATION_PREFIX)) {
-		const match = text.match(USER_REQUEST_WRAPPER);
-		const captured = match?.[1]?.trim();
+		const captured = [...text.matchAll(USER_REQUEST_WRAPPER)]
+			.at(-1)?.[1]
+			?.trim();
 		if (captured) {
 			text = captured;
 		}
