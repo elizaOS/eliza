@@ -2033,6 +2033,15 @@ describe("replyClaimsInProgressWork", () => {
 
 describe("replyIsClaimSafeAcknowledgment", () => {
   it.each([
+    // Public-news lookup intent, including the exact live pending cue.
+    "pulling up today's headlines",
+    "Pulling up today’s headlines.",
+    "Checking the news.",
+    "Let me look through latest headlines.",
+    "On it — checking today's news.",
+    "One sec, searching news.",
+    "Let me check the weather and latest headlines.",
+    "I'll look at headlines and your calendar.",
     // The actual Direct voice cue, plus equivalent bounded lookup syntax.
     "On it — checking your notes and today's calendar.",
     "On it—checking your notes and today’s calendar.",
@@ -2109,6 +2118,16 @@ describe("replyIsClaimSafeAcknowledgment", () => {
   });
 
   it.each([
+    "Pulling up today's headlines: the president resigned.",
+    "Checking the news, the market crashed.",
+    "Latest headlines say your flight is cancelled.",
+    "Checking Bob's news.",
+    "Pulling up your private headlines.",
+    "Checking today's headline about Alice's diagnosis.",
+    "Checking headlines with three deaths.",
+    "On it — today's news is good.",
+    "Checking latest headlines. Your test results are back.",
+    "Reading the news and your password is secret.",
     // New separators and relative scopes still cannot carry results or private data.
     "On it — your calendar is clear today.",
     "On it: checking today's calendar — your appointment starts soon.",

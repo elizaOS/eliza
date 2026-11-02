@@ -939,7 +939,9 @@ const ACKNOWLEDGMENT_CONTAINER_NOUN =
   "(?:calendar|schedule|agenda|notes|inbox|emails?|messages|texts|reminders|tasks|todos|files|photos|contacts|workflows|settings|account)";
 // A relative-day possessive scopes the intended lookup; it reports no result.
 const ACKNOWLEDGMENT_RELATIVE_DAY = "(?:today|tomorrow|yesterday|tonight)'s";
-const ACKNOWLEDGMENT_CONTAINERS = `(?:(?:your(?: ${ACKNOWLEDGMENT_RELATIVE_DAY})?|${ACKNOWLEDGMENT_RELATIVE_DAY}) ${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather)(?:(?:,|,? and) (?:(?:your )?(?:${ACKNOWLEDGMENT_RELATIVE_DAY} )?${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather))*`;
+// Public news topics identify a lookup, not private source data or a headline result.
+const ACKNOWLEDGMENT_PUBLIC_NEWS = `(?:(?:the|latest|${ACKNOWLEDGMENT_RELATIVE_DAY}) )?(?:news|headlines)`;
+const ACKNOWLEDGMENT_CONTAINERS = `(?:(?:your(?: ${ACKNOWLEDGMENT_RELATIVE_DAY})?|${ACKNOWLEDGMENT_RELATIVE_DAY}) ${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather|${ACKNOWLEDGMENT_PUBLIC_NEWS})(?:(?:,|,? and) (?:(?:your )?(?:${ACKNOWLEDGMENT_RELATIVE_DAY} )?${ACKNOWLEDGMENT_CONTAINER_NOUN}|the weather|${ACKNOWLEDGMENT_PUBLIC_NEWS}))*`;
 // "It", "that", "this" and "both" stand for the request, so only a verb that
 // checks whether something is so may take them: a verb that retrieves or
 // changes an item says the item exists or is missing ("Pulling it up now",
@@ -1053,7 +1055,8 @@ const ACKNOWLEDGMENT_WAIT_SENTENCE = new RegExp(
  * look". A container list is "your" with calendar, schedule, agenda, notes,
  * inbox, email(s), messages, texts, reminders, tasks, todos, files, photos,
  * contacts, workflows, settings or account, optionally scoped by a relative-day
- * possessive (today's, tomorrow's, yesterday's or tonight's), or "the weather", joined by "and"
+ * possessive (today's, tomorrow's, yesterday's or tonight's), or "the weather"
+ * and public news/headlines (optionally the, latest or a relative-day possessive), joined by "and"
  * or commas ("your calendar, notes and reminders").
  *
  * Intents, only after a lead and never as a gerund:
