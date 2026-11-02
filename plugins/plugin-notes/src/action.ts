@@ -20,6 +20,7 @@ import {
   type Action,
   type ActionResult,
   ElizaError,
+  getUserMessageText,
   type HandlerCallback,
   type HandlerOptions,
   type IAgentRuntime,
@@ -252,7 +253,13 @@ function updateNoteFromChatReference(
   patch: unknown,
   expectedRevision?: unknown,
 ): ReturnType<NotesService["updateNoteWithCommit"]> {
-  const text = message.content.text ?? "";
+  // Match titles against the user's own words, not the rendered message
+  // text: on a document-augmented turn the rendered text also holds the
+  // retrieved documents, so a title named only inside a document would
+  // reroute an exact-id edit through the title lookup — where duplicate
+  // titles turn it into an ambiguity failure instead of the edit the
+  // planner already targeted.
+  const text = getUserMessageText(message);
   if (!text.includes(noteId)) {
     const named = service
       .findNotesNamedInText(text)
