@@ -2770,12 +2770,13 @@ function isCalendarReadCall(
  * A call that names no zone asks for local days in the owner's Calendar zone,
  * which the producer states as the read's timeZone. Live 2026-10-31, an
  * Eliza-only "this week" read with no zone in its call became the partial
- * caveat (tj-413f7f38d569e7). A call without bounds, or with bounds that do
- * not resolve, proves no window. */
+ * caveat (tj-413f7f38d569e7). Absent arguments require a current-request-bound
+ * canonical producer window; otherwise missing or unresolved bounds prove nothing. */
 function feedReadCoversRequestedWindow(
   params: PlannerToolCall["params"],
   data: Record<string, unknown>,
   readTimeZone: unknown,
+  binding?: CalendarReadBinding,
 ): boolean {
   let details = params?.details;
   if (typeof details === "string") {
@@ -2785,6 +2786,22 @@ function feedReadCoversRequestedWindow(
       // error-policy:J3 untrusted model arguments; unparseable bounds prove nothing
       return false;
     }
+  }
+  // The canonical handler may resolve the owner's stated day when the model
+  // omits details entirely. Only that current request's bound producer window
+  // can replace absent arguments; malformed or explicit bounds never fall back.
+  if (details === undefined && binding) {
+    const proof = data.requestWindow;
+    if (
+      !isObjectRecord(proof) ||
+      proof.kind !== "calendar.request-window.v1" ||
+      proof.sourceMessageId !== binding.sourceMessageId ||
+      proof.roomId !== binding.roomId ||
+      proof.actorId !== binding.actorId ||
+      proof.requestedAt !== binding.requestedAt ||
+      typeof proof.timeZone !== "string" || proof.timeZone !== readTimeZone
+    ) return false;
+    details = { timeMin: proof.timeMin, timeMax: proof.timeMax };
   }
   if (!isObjectRecord(details)) return false;
   const read = [data.timeMin, data.timeMax].map((bound) =>
@@ -2848,6 +2865,7 @@ function feedReadCoversRequestedWindow(
 function feedReadAnswersRequest(
   binding: CalendarReadBinding,
   step: PlannerTrajectory["steps"][number],
+  allowResolvedWindow = false,
 ): "complete" | "google-unavailable" | undefined {
   const result = step.result,
     data = result?.data,
@@ -2874,6 +2892,7 @@ function feedReadAnswersRequest(
       step.toolCall?.params,
       data,
       read.timeZone,
+      allowResolvedWindow ? binding : undefined,
     ) ||
     // calendar-handler.ts sets this in a device-owned Calendar turn, where a
     // connected-provider read must not stand in for the unread app Calendar.
@@ -2960,7 +2979,7 @@ function requestBoundFeedRead(
         !step.terminalOnly &&
         isCalendarReadCall(step.toolCall, "feed"),
     )
-    .map(([id, step]) => [id, feedReadAnswersRequest(binding, step)] as const);
+    .map(([id, step]) => [id, feedReadAnswersRequest(binding, step, true)] as const);
   const soleLast = (bound: typeof calls) =>
     bound.length === 1 && bound[0] === calls.at(-1) ? bound[0][0] : undefined;
   return (
@@ -3122,7 +3141,10 @@ export function calendarReadCoverage(
         // where the same read, uncited, would not. A read of the phone
         // Calendar alone verifies only when the reply can take the caveat
         // and no complete read is also cited.
-        const answer = feedReadAnswersRequest(binding, step);
+        const answer = feedReadAnswersRequest(
+          binding, step,
+          bindings.filter((other) => isObjectRecord(other) && other.operation === "feed").length === 1,
+        );
         if (answer === "google-unavailable" && phoneOnlyAccepted)
           phoneOnly = true;
         else if (answer !== "complete")

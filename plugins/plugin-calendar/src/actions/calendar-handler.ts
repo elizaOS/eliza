@@ -7514,7 +7514,19 @@ export function createCalendarActionRunner(
             operation: "calendar.feed.read",
             discriminator: label,
           }),
-          data: toActionData(feed),
+          data: toActionData({
+            ...feed,
+            requestWindow: {
+              kind: "calendar.request-window.v1",
+              sourceMessageId: message.id,
+              roomId: message.roomId,
+              actorId: message.entityId,
+              requestedAt: Date.parse(calendarMessageObservedAt(message)),
+              timeZone: planningTimeZone,
+              timeMin: request.timeMin,
+              timeMax: request.timeMax,
+            },
+          }),
         });
       } catch (error) {
         // error-policy:J1 Source and local-time rejections require user input before dispatch.

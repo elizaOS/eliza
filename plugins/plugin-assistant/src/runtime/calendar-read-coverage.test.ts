@@ -2070,6 +2070,14 @@ function liveMoveFixture() {
   const bindings = f.context.metadata
     ?.calendarReadBindings as CalendarReadBinding[];
   bindings[0].operation = "search_events";
+  // The recorded owner request names coffee with Sam; retain the current
+  // quoted filter proof required by the canonical search admission contract.
+  bindings[0].filterEvidence = [{
+    query: "coffee with Sam", quote: "coffee with Sam", origin: "current",
+    sourceMessageId: bindings[0].sourceMessageId,
+    sourceActorId: bindings[0].actorId, sourceRoomId: bindings[0].roomId,
+    sourceCreatedAt: bindings[0].requestedAt,
+  }];
   const id = "agent:eliza:owner:grant:eliza-calendar:calendar:primary:event-1";
   const before = {
     id,
@@ -2095,12 +2103,15 @@ function liveMoveFixture() {
   f.trajectory.steps = [
     {
       iteration: 1,
-      toolCall: { id: "search", name: "CALENDAR_SEARCH_EVENTS", params: {} },
+      toolCall: { id: "search", name: "CALENDAR_SEARCH_EVENTS", params: { query: "coffee with Sam" } },
       result: {
         success: true,
         data: {
           events: [before],
-          replyContext: { domain: "calendar", scenario: "search_results" },
+          replyContext: {
+            domain: "calendar", scenario: "search_results",
+            context: { selection: "filtered_search", contentFilterApplied: true },
+          },
         },
       },
     },
@@ -3109,4 +3120,79 @@ it.each(["partial","owner","stale","window"])("still rejects recorded feed with 
  if(fault==="window")data.timeMax="2026-11-02T07:00:00.000Z";
  const parsed=parseEvaluatorOutput(JSON.stringify(f.output));
  expect(calendarReadCoverage(parsed,f.context,f.trajectory).verified).toBe(false);
+});
+
+/** Live step-1793620054396-442pij: typed feed, no details, one complete owner day. */
+describe("owner-bound producer-resolved Calendar window", () => {
+  async function actualImplicitFeed() {
+    const f = fixture();
+    const time = Date.parse("2026-11-02T11:47:40.000Z");
+    const asOf = "2026-11-02T11:47:44.157Z";
+    const message = {
+      id: "00000000-0000-0000-0000-000000000701",
+      entityId: "00000000-0000-0000-0000-000000000702",
+      roomId: "00000000-0000-0000-0000-000000000703",
+      createdAt: time,
+      content: { text: "What is on my calendar today, Monday November 2, 2026?" },
+    } as Memory;
+    const binding = f.context.metadata!.calendarReadBindings![0] as CalendarReadBinding;
+    Object.assign(binding, { operation: "feed", sourceMessageId: message.id, actorId: message.entityId, roomId: message.roomId, requestedAt: time });
+    Object.assign(f.context.metadata!, { messageId: message.id, actorId: message.entityId, roomId: message.roomId });
+    f.trajectory.outcomeIntents = [message.content.text!];
+    vi.useFakeTimers({ toFake: ["Date"] }); vi.setSystemTime(new Date(asOf));
+    try {
+      const runtime = new AgentRuntime({ character: { name: "Implicit day regression", bio: [] }, logLevel: "fatal" });
+      message.agentId = runtime.agentId;
+      registerCalendarTimeZoneResolver(runtime, async () => "America/Los_Angeles");
+      const service = new CalendarService(runtime);
+      const feed = {
+        calendarId: "all", events: [], source: "synced", state: "complete",
+        timeMin: "2026-11-02T08:00:00.000Z", timeMax: "2026-11-03T08:00:00.000Z", syncedAt: asOf,
+        sources: [
+          { ...ELIZA_CALENDAR_SOURCE, syncedAt: asOf },
+          { ...ELIZA_CALENDAR_SOURCE, key: { ...ELIZA_CALENDAR_SOURCE.key, provider: "google", grantId: "qa-google" }, syncedAt: asOf },
+        ],
+      };
+      const read = vi.spyOn(service, "getCalendarFeed").mockResolvedValue(feed as unknown as LifeOpsCalendarFeed);
+      runtime.services.set(CalendarService.serviceType, [service]);
+      const noModel = async () => { throw new Error("No model call allowed in producer regression"); };
+      const result = await createCalendarActionRunner({ runTextModel: noModel, runJsonModel: noModel, recentConversationTexts: async () => [] }).handler(runtime, message, undefined, { parameters: { subaction: "feed" } });
+      expect(read).toHaveBeenCalledOnce();
+      expect(read.mock.calls[0][1]).toMatchObject({ timeMin: feed.timeMin, timeMax: feed.timeMax });
+      if (!result || typeof result !== "object") throw new Error("Expected real Calendar result");
+      expect(result.success).toBe(true);
+      f.trajectory.steps = [{ iteration: 1, toolCall: { id: "implicit-owner-day", name: "CALENDAR_FEED", params: { subaction: "feed" } }, result: structuredClone(result) }];
+      Object.assign(f.output, { messageToUser: "Your calendar is clear for today, Monday, November 2, 2026.", replyEffectStatus: "none", requestFullyCovered: true });
+      return f;
+    } finally { vi.useRealTimers(); vi.restoreAllMocks(); }
+  }
+  it("accepts the real producer's current owner-bound day without model-supplied details", async () => {
+    const f = await actualImplicitFeed();
+    const coverage = calendarReadCoverage(f.output, f.context, f.trajectory);
+    expect(coverage.verified).toBe(true);
+    expect(coverage).toEqual({ verified: true, unverifiedIntentIds: [] });
+    expect(f.trajectory.steps[0].result?.data?.requestWindow).toMatchObject({ kind: "calendar.request-window.v1", timeMin: "2026-11-02T08:00:00.000Z", timeMax: "2026-11-03T08:00:00.000Z" });
+  });
+  it.each(["missing", "other-request", "other-owner", "other-room", "other-time", "source-owner", "zone", "stale", "replayed", "partial", "short-window", "explicit-window", "multiple-bindings"])("does not bypass %s evidence", async fault => {
+    const f = await actualImplicitFeed();
+    const step = f.trajectory.steps[0]; const data = step.result!.data as Record<string, any>;
+    if (fault === "missing") delete data.requestWindow;
+    if (fault === "other-request") data.requestWindow.sourceMessageId = "other";
+    if (fault === "other-owner") data.requestWindow.actorId = "other";
+    if (fault === "other-room") data.requestWindow.roomId = "other";
+    if (fault === "other-time") data.requestWindow.requestedAt -= 1;
+    if (fault === "source-owner") data.sources[0].key.side = "agent";
+    if (fault === "zone") data.requestWindow.timeZone = "UTC";
+    if (fault === "stale") data.replyContext.context.asOf = "2026-11-02T10:00:00Z";
+    if (fault === "replayed") step.result!.effectReceipts![0].idempotency.replayed = true;
+    if (fault === "partial") data.state = "partial";
+    if (fault === "short-window") data.timeMax = "2026-11-03T07:00:00Z";
+    if (fault === "explicit-window") step.toolCall!.params.details = { date: "2026-11-04", timeZone: "America/Los_Angeles" };
+    if (fault === "multiple-bindings") {
+      const bindings = f.context.metadata!.calendarReadBindings as CalendarReadBinding[];
+      bindings.push({ ...bindings[0], intentId: "intent:2" }); f.trajectory.outcomeIntents.push("Read another day");
+      f.output.outcomeCoverage!.push({ ...f.output.outcomeCoverage![0], intentId: "intent:2" });
+    }
+    expect(calendarReadCoverage(f.output, f.context, f.trajectory).verified).toBe(false);
+  });
 });
