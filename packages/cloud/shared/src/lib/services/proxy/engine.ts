@@ -12,7 +12,6 @@ import { withRateLimit } from "../../middleware/rate-limit";
 import { logger } from "../../utils/logger";
 import { reserveAllowanceEligibleCredits } from "../allowance-first-credits";
 import { InsufficientCreditsError } from "../credits";
-import { isInferenceAdmissionGateWarmingError } from "../inference-admission-gate";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
 import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
 import {
@@ -555,24 +554,16 @@ export function createHandler(
         error instanceof InferenceBalanceCacheWarmingError ||
         error instanceof InferenceCredentialRevocationUnavailableError
       ) {
-        // A cold organization gate refuses the combined lease and dispatch
-        // before recording either. After any acknowledgement-ambiguous attempt
-        // the refusal stays generic, so only this proven pre-dispatch case is
-        // typed as warming.
-        const gateWarming = isInferenceAdmissionGateWarmingError(error);
         logger.warn("[Proxy Engine] Combined admission unavailable", {
           serviceId: config.id,
           requestId: combinedAdmission?.requestId,
           error: error.name,
-          gateWarming,
         });
         return Response.json(
           {
             success: false,
-            error: gateWarming
-              ? "Provider admission is warming; retry shortly"
-              : "Provider admission is unavailable; retry shortly",
-            code: gateWarming ? "inference_admission_cache_warming" : "service_unavailable",
+            error: "Provider admission is unavailable; retry shortly",
+            code: "service_unavailable",
             details: { retryable: true, retryAfterSeconds: 1 },
           },
           { status: 503, headers: { "Retry-After": "1" } },
