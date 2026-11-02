@@ -129,10 +129,16 @@ test("concurrent revokes share one cleanup and persisted proof", async () => {
   expect(await a.text()).toBe(await b.text()); expect(control.closes).toBe(1);
 });
 
-test("zero-resource configuration failure stays unconfirmed and cannot invent drain", async () => {
+test("live zero-resource configuration failure confirms no dispatch", async () => {
   const f = fixture(); await f.post(f.c, "initialize", f.input);
   (f.c as any).env.CARTESIA_API_KEY = "";
   await expect(f.open()).rejects.toThrow();
-  expect((await f.revoke()).status).toBe(409);
+  const result = await f.revoke(); expect(result.status).toBe(200);
+  expect((await result.json()).retirement).toMatchObject({ state: "confirmed", mode: "not_dispatched", accounting: "not_started" });
   expect(control.opens).toBe(0);
+});
+
+test("recreated zero-resource failure does not inherit live opening evidence", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); (f.c as any).env.CARTESIA_API_KEY = "";
+  await expect(f.open()).rejects.toThrow(); expect((await f.revoke(f.make())).status).toBe(409);
 });

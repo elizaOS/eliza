@@ -76,7 +76,8 @@ export function recordSpeechSettlement<T extends SpeechLifecycleRecord>(record: 
   return { ...record, retirement: { ...record.retirement,
     progress: { ...record.retirement.progress, [kind]: progress } } };
 }
-export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(record: T, token: { generation?: number; attempt?: number }, evidence: SpeechRetirementEvidence | undefined, now: number, confirmedAllowed = true): T {
+export interface LiveSpeechOpeningCompletion { claim: string; generation: number; settled: true }
+export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(record: T, token: { generation?: number; attempt?: number }, evidence: SpeechRetirementEvidence | undefined, now: number, confirmedAllowed = true, liveOpening?: LiveSpeechOpeningCompletion): T {
   const state = record.retirement;
   if (record.proofVersion === 1 && state?.proof?.state === "confirmed") return record;
   if (record.proofVersion !== 1 || !state) return { ...record, phase: "closed" };
@@ -85,9 +86,19 @@ export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(record
   const base = { version: 1 as const, sessionId: record.sessionId };
   const none = Object.values(state.progress).every(value => value.state === "not_reserved");
   const actual = Object.values(state.progress).every(value => value.state === "settled_actual");
+  const liveOwner = liveOpening?.settled === true && liveOpening.claim === state.openingClaim &&
+    liveOpening.generation === state.openingGeneration;
+  const zeroReservations = Object.values(state.progress).every(value =>
+    value.state === "not_reserved" || (value.state === "settled_actual" && value.amountUsd === "0"));
+  const noProviderDispatch = evidence?.stt === "not_dispatched" && evidence.tts === "not_dispatched" &&
+    (evidence.accounting === "not_started" || evidence.accounting === "settled_actual");
   let proof: SpeechRetirementProof;
   if (confirmedAllowed && state.acquisition === "never_started" && none && now >= state.initializedAt) {
     proof = { ...base, state: "confirmed", mode: "never_started", stt: "not_dispatched", tts: "not_dispatched", accounting: "not_started", completedAt: new Date(now).toISOString() };
+  } else if (confirmedAllowed && liveOwner && noProviderDispatch && zeroReservations && now >= state.initializedAt) {
+    const settledAny = Object.values(state.progress).some(value => value.state === "settled_actual");
+    proof = { ...base, state: "confirmed", mode: "not_dispatched", stt: "not_dispatched", tts: "not_dispatched",
+      accounting: settledAny ? "settled_actual" : "not_started", completedAt: new Date(now).toISOString() };
   } else if (confirmedAllowed && evidence && evidence.stt !== "unknown" && evidence.tts !== "unknown" &&
       evidence.accounting === "settled_actual" && actual && now >= state.initializedAt) {
     proof = { ...base, state: "confirmed", mode: "retired", stt: evidence.stt, tts: evidence.tts,

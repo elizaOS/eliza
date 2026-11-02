@@ -55,3 +55,12 @@ test("completed failed attempt gets a new token while pending joins keep theirs"
   expect(retry.retirement!.attempt).toBeGreaterThan(first.retirement!.attempt);
   expect(() => completeSpeechRetirement(retry, first.retirement!, undefined, 3)).toThrow("generation changed");
 });
+
+test("live opening completion can confirm no dispatch but recreation cannot", () => {
+  const opening = current(); const retiring = beginSpeechRetirement(opening);
+  const evidence = { stt: "not_dispatched", tts: "not_dispatched", accounting: "not_started" } as const;
+  expect(completeSpeechRetirement(retiring, retiring.retirement!, evidence, 1).retirement!.proof!.state).toBe("unconfirmed");
+  const live = { claim: "claim", generation: opening.retirement!.openingGeneration!, settled: true } as const;
+  expect(completeSpeechRetirement(retiring, retiring.retirement!, evidence, 1, true, live).retirement!.proof).toMatchObject({ state: "confirmed", mode: "not_dispatched" });
+  expect(completeSpeechRetirement(retiring, retiring.retirement!, evidence, 1, true, { ...live, claim: "wrong" }).retirement!.proof!.state).toBe("unconfirmed");
+});

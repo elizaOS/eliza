@@ -213,7 +213,9 @@ export async function createSpeechRelaySession(
     closing: Promise<void> | undefined;
   let preparation: Promise<void> | undefined;
   let closeFailed = false;
+  let closingSettled = false;
   let retirementEvidence: SpeechRetirementEvidence | undefined;
+  let confirmedSttDrain: CartesiaInkDrainReceipt | undefined;
   const streams = new Map<string, ReturnType<SpeechRelayPorts["openTts"]>>(),
     usedIds = new Set<string>(),
     finishedIds = new Set<string>(),
@@ -226,6 +228,7 @@ export async function createSpeechRelaySession(
     uplink.flush();
     if (streams.size) ttsUncertain = true;
     if (timer) clearTimeout(timer);
+    closingSettled = false;
     closing = Promise.resolve().then(async () => {
       const failures: unknown[] = [];
       // Admission can still be returning a reservation when shutdown wins.
@@ -249,7 +252,9 @@ export async function createSpeechRelaySession(
       streams.clear();
       let sttDrained = false;
       let sttDrain: CartesiaInkDrainReceipt | undefined;
-      if (stt?.drain) {
+      if (confirmedSttDrain) {
+        sttDrained = true; sttDrain = confirmedSttDrain;
+      } else if (stt?.drain) {
         try {
           const receipt = await stt.drain(2000);
           sttDrained =
@@ -260,7 +265,7 @@ export async function createSpeechRelaySession(
             receipt.encoding === "pcm_s16le";
           if (!sttDrained)
             throw Error("STT drain receipt does not match admitted audio");
-          sttDrain = receipt;
+          sttDrain = receipt; confirmedSttDrain = receipt;
         } catch (error) {
           failures.push(error);
           try {
@@ -282,14 +287,16 @@ export async function createSpeechRelaySession(
         } catch (error) {
           failures.push(error);
         }
+      const ttsStopped = await ttsClosing;
+      if (ttsStopped === "unknown") failures.push(Error("TTS transport retirement remains unconfirmed"));
       let accounting: void | SpeechSettlementOutcome = undefined;
       try {
-        if (credits)
+        if (credits && ttsStopped !== "unknown")
           accounting = await credits.settle({
             pcmBytes,
-            ttsCharacters,
+            ttsCharacters: ttsStopped === "not_dispatched" ? 0 : ttsCharacters,
             providerMayHaveStarted,
-            dispatched,
+            dispatched: { ...dispatched, tts: ttsStopped !== "not_dispatched" && dispatched.tts },
             ...(sttDrain ? { sttDrain } : {}),
             outcome,
             outcomes: {
@@ -300,10 +307,9 @@ export async function createSpeechRelaySession(
       } catch (error) {
         failures.push(error);
       }
-      const ttsStopped = await ttsClosing;
       retirementEvidence = {
         stt: !dispatched.stt ? "not_dispatched" : sttDrained ? "gracefully_drained" : "unknown",
-        tts: !dispatched.tts ? "not_dispatched" : ttsStopped === "transport_closed" ? "transport_closed" : "unknown",
+        tts: !dispatched.tts || ttsStopped === "not_dispatched" ? "not_dispatched" : ttsStopped === "transport_closed" ? "transport_closed" : "unknown",
         accounting: accounting?.stt.state === "actual" && accounting.tts.state === "actual"
           ? "settled_actual" : !credits && !providerMayHaveStarted ? "not_started" : "unknown",
       };
@@ -322,13 +328,18 @@ export async function createSpeechRelaySession(
         );
     });
     const attempt = closing;
-    void attempt.catch(() => { if (closing === attempt) closeFailed = true; });
+    void attempt.then(
+      () => { if (closing === attempt) closingSettled = true; },
+      () => { if (closing === attempt) { closingSettled = true; closeFailed = true; } },
+    );
     return attempt;
   };
   const retirement: SpeechRelayRetirementHandle = {
     close,
     retryRetirement() {
-      if (closeFailed) { closeFailed = false; closing = undefined; }
+      if (closing && closingSettled && (closeFailed || !retirementEvidence || retirementEvidence.stt === "unknown" || retirementEvidence.tts === "unknown" || retirementEvidence.accounting === "unknown")) {
+        closeFailed = false; closing = undefined;
+      }
       return close();
     },
     evidence: () => retirementEvidence,

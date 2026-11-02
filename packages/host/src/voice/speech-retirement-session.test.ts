@@ -50,8 +50,11 @@ test("shutdown waits pending credit admission and settles undispatched work", as
 test("TTS context completion without transport confirmation is not proof", async () => {
   const p = ports(); p.value.confirmTtsTransportStopped = async () => "unknown";
   const session = await createSpeechRelaySession(identity, "consent", p.value);
-  await session.control({ t: "prepare", id: "context" }); await session.close();
-  expect(p.handle.evidence()?.tts).toBe("unknown");
+  await session.control({ t: "prepare", id: "context" }); await expect(session.close()).rejects.toThrow("unconfirmed");
+  expect(p.handle.evidence()?.tts).toBe("unknown"); expect(p.money).toBe(0);
+  p.value.confirmTtsTransportStopped = async () => "transport_closed";
+  await p.handle.retryRetirement();
+  expect(p.handle.evidence()?.tts).toBe("transport_closed"); expect(p.money).toBe(1);
 });
 test("shutdown waits pending quota and does not dispatch a provider", async () => {
   const p = ports(); let release!: () => void, entered!: () => void;
@@ -60,4 +63,23 @@ test("shutdown waits pending quota and does not dispatch a provider", async () =
   const opening = createSpeechRelaySession(identity, "consent", p.value); void opening.catch(() => {}); await started;
   const closing = p.handle.close(); release(); await opening.catch(() => {}); await closing;
   expect(p.money).toBe(0); expect(p.handle.evidence()?.stt).toBe("not_dispatched");
+});
+
+test("confirmed never-bound TTS cancels queued text at zero cost", async () => {
+  const p = ports(); p.value.confirmTtsTransportStopped = async () => "not_dispatched";
+  const reserve = p.value.reserveCredits; let settled: any;
+  p.value.reserveCredits = async (...args) => { const value = await reserve(...args); return { ...value, settle: async details => { settled = details; return value.settle(details); } }; };
+  const session = await createSpeechRelaySession(identity, "consent", p.value);
+  await session.control({ t: "tts", id: "queued", text: "hello" }); await session.close();
+  expect(settled.ttsCharacters).toBe(0); expect(settled.dispatched.tts).toBe(false);
+  expect(p.handle.evidence()?.tts).toBe("not_dispatched");
+});
+
+test("a concurrent retry joins the first pending retirement", async () => {
+  const p = ports(); let release!: () => void, closes = 0;
+  const waiting = new Promise<void>(resolve => { release = resolve; });
+  p.value.confirmTtsTransportStopped = async () => { closes++; await waiting; return "transport_closed"; };
+  const session = await createSpeechRelaySession(identity, "consent", p.value); await session.control({ t: "prepare", id: "pending" });
+  const first = session.close(); const retry = p.handle.retryRetirement(); expect(retry).toBe(first);
+  release(); await first; expect(closes).toBe(1); expect(p.money).toBe(1);
 });

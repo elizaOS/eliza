@@ -4,6 +4,7 @@
  * No per-frame database or funding work occurs.
  */
 import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/cloud-shared/lib/pricing-constants";
+import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
 import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/host/voice/cartesia-sonic-tts";
 import type { SpeechRelayCreditReservation } from "@elizaos/host/voice/speech-relay-session";
@@ -36,8 +37,10 @@ export async function reserveSpeechRelayAdmission(input: {
     "stt" | "tts",
     Awaited<ReturnType<typeof admitOrganizationInference>>
   >();
+  let reservingKind: "stt" | "tts" | undefined;
   try {
     for (const kind of ["stt", "tts"] as const) {
+      reservingKind = kind;
       const requestId = `speech:${sessionId}:${kind}`;
       await input.onProgress?.(kind, { state: "reserving", requestId });
       const base = rates[kind] * maxima[kind];
@@ -70,6 +73,7 @@ export async function reserveSpeechRelayAdmission(input: {
         }),
       );
       await input.onProgress?.(kind, { state: "reserved", requestId });
+      reservingKind = undefined;
     }
     // Arm both bounded leases once, before opening any provider. In the event
     // of a crash the existing admission alarm retains the full uncertain cost.
@@ -77,6 +81,10 @@ export async function reserveSpeechRelayAdmission(input: {
     for (const admission of admissions.values())
       await admission.markProviderDispatched?.();
   } catch (error) {
+    // Only a typed authoritative refusal proves this reservation never existed.
+    // Generic transport/ack failures remain reserving and therefore unconfirmed.
+    if (reservingKind && !admissions.has(reservingKind) && error instanceof InsufficientCreditsError)
+      await input.onProgress?.(reservingKind, { state: "not_reserved" });
     // Keep each successful zero settlement even if another rollback fails.
     const rollback = await Promise.allSettled([...admissions].map(async ([kind, admission]) => {
       const requestId = `speech:${sessionId}:${kind}`;

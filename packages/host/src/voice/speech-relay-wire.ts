@@ -128,6 +128,8 @@ export function decodeSpeechRelayAudio(frame: Uint8Array): {
 /** Opt-in retirement contract. Legacy revocation booleans are not drain proof. */
 export const SPEECH_RETIREMENT_HEADER = "X-Eliza-Speech-Retirement-Version";
 export const SPEECH_RETIREMENT_VERSION = 1 as const;
+export const SPEECH_MINT_INTENT_HEADER = "X-Eliza-Speech-Mint-Intent";
+export const SPEECH_ADMISSION_OUTCOME_HEADER = "X-Eliza-Speech-Admission-Outcome";
 export type ConfirmedSpeechRetirement = Readonly<{
   version: 1;
   sessionId: string;
@@ -135,6 +137,7 @@ export type ConfirmedSpeechRetirement = Readonly<{
   completedAt: string;
 } & (
   | { mode: "never_started"; stt: "not_dispatched"; tts: "not_dispatched"; accounting: "not_started" }
+  | { mode: "not_dispatched"; stt: "not_dispatched"; tts: "not_dispatched"; accounting: "not_started" | "settled_actual" }
   | { mode: "retired"; stt: "not_dispatched" | "gracefully_drained"; tts: "not_dispatched" | "transport_closed"; accounting: "settled_actual" }
 )>;
 export type UnconfirmedSpeechRetirement = Readonly<{
@@ -171,6 +174,9 @@ export function readConfirmedSpeechRetirement(
   if (!Number.isFinite(at) || new Date(at).toISOString() !== proof.completedAt || at > now + 30_000) return null;
   if (proof.mode === "never_started") {
     if (proof.stt !== "not_dispatched" || proof.tts !== "not_dispatched" || proof.accounting !== "not_started") return null;
+  } else if (proof.mode === "not_dispatched") {
+    if (proof.stt !== "not_dispatched" || proof.tts !== "not_dispatched" ||
+        !["not_started", "settled_actual"].includes(String(proof.accounting))) return null;
   } else if (proof.mode === "retired") {
     if (typeof proof.stt !== "string" || typeof proof.tts !== "string" ||
         !["not_dispatched", "gracefully_drained"].includes(proof.stt) ||

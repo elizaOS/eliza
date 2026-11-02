@@ -1,5 +1,5 @@
 /** Authenticated bootstrap for a speech-only capability; no hosted agent is created. */
-import { SPEECH_RETIREMENT_HEADER } from "@elizaos/host/voice/speech-relay-wire";
+import { SPEECH_RETIREMENT_HEADER, SPEECH_MINT_INTENT_HEADER, SPEECH_ADMISSION_OUTCOME_HEADER } from "@elizaos/host/voice/speech-relay-wire";
 import { requireUserOrApiKeyWithOrg } from "@elizaos/cloud-shared/auth";
 import { randomBytes } from "node:crypto";
 import {
@@ -14,6 +14,13 @@ import { speechTokenDigest } from "../../../src/speech-relay-coordinator";
 const app = new Hono<AppEnv>();
 const UUID = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 app.use("*", async (c, next) => {
+  // This attestation is present only while no initialize request has begun.
+  // Bind it to the caller's one-use consent intent to reject stale replies.
+  const intent = c.req.header(SPEECH_MINT_INTENT_HEADER);
+  if (c.req.method === "POST" && /\/session$/.test(c.req.path) && c.req.header(SPEECH_RETIREMENT_HEADER) === "1" && intent && UUID.test(intent)) {
+    c.header("Cache-Control", "no-store");
+    c.header(SPEECH_ADMISSION_OUTCOME_HEADER, `not-created-v1:${intent}`);
+  }
   if (
     !c.env.SPEECH_RELAY_SESSIONS ||
     (c.env.VOICE_SPEECH_RELAY_ENABLED !== "true" &&
@@ -33,7 +40,9 @@ app.post("/consent", async (c) => {
   });
   const consent = await issueConsentNonce(caller.user.id);
   if (!consent) return c.json({ error: "speech_consent_unavailable" }, 503);
-  return c.json({ consentNonce: consent.nonce, expiresAt: consent.expiresAt });
+  return c.json({ consentNonce: consent.nonce, expiresAt: consent.expiresAt,
+    ...(c.req.header(SPEECH_RETIREMENT_HEADER) === "1" ? { retirementProofVersion: 1 } : {}),
+  });
 });
 app.post("/session", async (c) => {
   const proofVersion = c.req.header(SPEECH_RETIREMENT_HEADER) === "1" ? 1 as const : undefined;
@@ -72,6 +81,8 @@ app.post("/session", async (c) => {
         ? caller.credential.expiresAt
         : Number.POSITIVE_INFINITY,
     );
+  // From this boundary onward an object may exist even if its response is lost.
+  c.header(SPEECH_ADMISSION_OUTCOME_HEADER, undefined);
   const result = await c.env
     .SPEECH_RELAY_SESSIONS!.getByName(sessionId)
     .fetch("https://speech-relay.internal/initialize", {

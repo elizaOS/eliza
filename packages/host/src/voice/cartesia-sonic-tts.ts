@@ -158,6 +158,7 @@ export type CartesiaWebSocketFactory = (
 
 export interface CartesiaWebSocketLike {
   readonly readyState: number;
+  retirementState?(): "pending" | "not_dispatched" | "transport_closed" | "unknown";
   send(data: string): void;
   close(code?: number, reason?: string): void;
   addEventListener(type: "open", listener: () => void): void;
@@ -292,7 +293,8 @@ export class CartesiaSonicTtsAdapter {
   private socketGeneration = 0;
   private readonly transportClosures: Array<{
     socket: CartesiaWebSocketLike; generation: number;
-    state: "pending" | "closed" | "unknown";
+    state: "pending" | "closed" | "not_dispatched";
+    refresh(): void;
     done: Promise<void>; resolve(): void;
   }> = [];
 
@@ -352,19 +354,23 @@ export class CartesiaSonicTtsAdapter {
     this.retiring = true;
     if (!this.transportClosures.length) return this.failedSocketCreation ? "unknown" : "not_dispatched";
     const records = [...this.transportClosures];
-    const timeout = setTimeout(() => {
-      for (const record of records) if (record.state === "pending") { record.state = "unknown"; record.resolve(); }
-    }, timeoutMs);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       for (const record of records) {
-        if (record.socket.readyState === 0 || record.socket.readyState === 1) {
-          try { record.socket.close(1000, "Speech retirement"); }
-          catch { record.state = "unknown"; record.resolve(); }
+        record.refresh();
+        if (record.state === "pending" && (record.socket.readyState === 0 || record.socket.readyState === 1)) {
+          try { record.socket.close(1000, "Speech retirement"); } catch { /* Await real evidence or return unknown. */ }
         }
+        record.refresh();
       }
-      await Promise.all(records.map(record => record.done));
-      return !this.failedSocketCreation && records.every(record => record.state === "closed") ? "transport_closed" : "unknown";
-    } finally { clearTimeout(timeout); }
+      await Promise.race([
+        Promise.all(records.map(record => record.done)),
+        new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs); }),
+      ]);
+      for (const record of records) record.refresh();
+      if (this.failedSocketCreation || records.some(record => record.state === "pending")) return "unknown";
+      return records.every(record => record.state === "not_dispatched") ? "not_dispatched" : "transport_closed";
+    } finally { if (timer) clearTimeout(timer); }
   }
 
   private sharedSocket(): { socket: CartesiaWebSocketLike; reused: boolean } {
@@ -380,17 +386,22 @@ export class CartesiaSonicTtsAdapter {
       });
     } catch (error) { this.failedSocketCreation = true; throw error; }
     let resolve!: () => void;
-    const record = { socket, generation: ++this.socketGeneration, state: "pending" as "pending" | "closed" | "unknown",
-      done: new Promise<void>(yes => { resolve = yes; }), resolve: () => resolve() };
+    const record = { socket, generation: ++this.socketGeneration, state: "pending" as "pending" | "closed" | "not_dispatched",
+      done: new Promise<void>(yes => { resolve = yes; }), resolve: () => resolve(), refresh: () => {} };
+    record.refresh = () => {
+      const state = socket.retirementState?.();
+      if (state === "transport_closed") record.state = "closed";
+      else if (state === "not_dispatched") record.state = "not_dispatched";
+      if (record.state !== "pending") record.resolve();
+    };
     this.transportClosures.push(record);
     // Install before any close is initiated. A prior generation cannot settle this record.
-    socket.addEventListener("close", event => {
-      if (record.state !== "pending") return;
-      record.state = event.code === 1000 && event.wasClean === true ? "closed" : "unknown";
-      record.resolve();
+    socket.addEventListener("close", () => {
+      if (socket.retirementState) record.refresh();
+      else { record.state = "closed"; record.resolve(); }
     });
     socket.addEventListener("error", () => {
-      if (record.state === "pending") { record.state = "unknown"; record.resolve(); }
+      record.refresh(); // An error alone is not proof of transport closure.
     });
     this.socket = socket;
     socket.addEventListener("close", () => {

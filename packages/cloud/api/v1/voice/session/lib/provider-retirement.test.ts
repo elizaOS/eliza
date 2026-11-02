@@ -16,3 +16,21 @@ test("pre-bind cancellation aborts fetch, drops queued sends, and still observes
   for (let i = 0; i < 20; i++) await Promise.resolve();
   expect(closed).toBe(1); expect(sent).toHaveLength(0);
 });
+
+test("unbound cancellation stays pending until the upgrade actually settles", async () => {
+  let reject!: (error: unknown) => void;
+  globalThis.fetch = (() => new Promise((_resolve, no) => { reject = no; })) as typeof fetch;
+  const socket = createWorkerCartesiaFactory()("wss://provider.invalid", { headers: {} }) as any;
+  socket.close(1000, "stop"); expect(socket.retirementState()).toBe("pending");
+  reject(new DOMException("cancelled", "AbortError"));
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  expect(socket.retirementState()).toBe("not_dispatched");
+});
+test("a generic failed upgrade never fabricates no-dispatch proof", async () => {
+  let reject!: (error: unknown) => void;
+  globalThis.fetch = (() => new Promise((_resolve, no) => { reject = no; })) as typeof fetch;
+  const socket = createWorkerCartesiaFactory()("wss://provider.invalid", { headers: {} }) as any;
+  socket.close(1000, "stop"); reject(Error("unknown transport failure"));
+  for (let i = 0; i < 20; i++) await Promise.resolve();
+  expect(socket.retirementState()).toBe("unknown");
+});

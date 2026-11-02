@@ -36,12 +36,18 @@ test("old generation cannot confirm current socket", async () => {
   const done = adapter.closeAndConfirm(5); sockets[0].emit("close", { code: 1000, wasClean: true });
   await vi.advanceTimersByTimeAsync(5); expect(await done).toBe("unknown");
 });
-test.each([{ code: 1006, wasClean: false }, { code: 1000, wasClean: false }])("abnormal close is unknown: %j", async event => {
+test.each([{ code: 1006, wasClean: false }, { code: 1000, wasClean: false }])("actual transport close is observable regardless of close code: %j", async event => {
   const { adapter, sockets } = setup(); adapter.createStream({ contextId: "a" }, {});
-  const done = adapter.closeAndConfirm(); sockets[0].emit("close", event); expect(await done).toBe("unknown");
+  const done = adapter.closeAndConfirm(); sockets[0].emit("close", event); expect(await done).toBe("transport_closed");
 });
-test("late close cannot upgrade timed-out generation", async () => {
+test("late actual close can confirm a previously timed-out generation", async () => {
   vi.useFakeTimers(); const { adapter, sockets } = setup(); adapter.createStream({ contextId: "a" }, {});
   const done = adapter.closeAndConfirm(5); await vi.advanceTimersByTimeAsync(5); expect(await done).toBe("unknown");
-  sockets[0].emit("close", { code: 1000, wasClean: true }); expect(await adapter.closeAndConfirm(5)).toBe("unknown");
+  sockets[0].emit("close", { code: 1000, wasClean: true }); expect(await adapter.closeAndConfirm(5)).toBe("transport_closed");
+});
+
+test("an error event is not closure and does not suppress a later real close", async () => {
+  vi.useFakeTimers(); const { adapter, sockets } = setup(); adapter.createStream({ contextId: "a" }, {});
+  sockets[0].emit("error", {}); const first = adapter.closeAndConfirm(5); await vi.advanceTimersByTimeAsync(5); expect(await first).toBe("unknown");
+  sockets[0].emit("close", { code: 1006, wasClean: false }); expect(await adapter.closeAndConfirm(5)).toBe("transport_closed");
 });

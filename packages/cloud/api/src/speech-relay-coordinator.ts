@@ -58,6 +58,7 @@ export class SpeechRelayCoordinator {
   private closeTask?: Promise<void>;
   private closeFailed = false;
   private openingTask?: Promise<void>;
+  private openingOwner?: { claim: string; generation: number; settled: boolean };
   private retirementHandle?: SpeechRelayRetirementHandle;
   private tts?: CartesiaSonicTtsAdapter;
   private stopped = false;
@@ -125,10 +126,17 @@ export class SpeechRelayCoordinator {
         try { stop(); } catch (error) { failure ??= error; }
       }
       this.unsubscribeRevocation = undefined;
-      const evidence = failure ? undefined : handle?.evidence();
+      let evidence = failure ? undefined : handle?.evidence();
+      const liveOpening = this.openingOwner?.settled
+        ? { claim: this.openingOwner.claim, generation: this.openingOwner.generation, settled: true as const }
+        : undefined;
+      if (!failure && !handle && liveOpening) {
+        const stopped = this.tts ? await this.tts.closeAndConfirm(2000) : "not_dispatched";
+        if (stopped === "not_dispatched") evidence = { stt: "not_dispatched", tts: "not_dispatched", accounting: "not_started" };
+      }
       await this.update(record => {
         if (!record) throw Error("Speech session missing");
-        return completeSpeechRetirement(record, token, evidence, Date.now(), !failure);
+        return completeSpeechRetirement(record, token, evidence, Date.now(), !failure, liveOpening);
       });
       await this.state.storage.deleteAlarm();
       if (failure) throw failure;
@@ -350,6 +358,9 @@ export class SpeechRelayCoordinator {
       return claimSpeechOpening(record, claim);
     });
     const generation = ledger.retirement?.generation;
+    const openingOwner = generation === undefined ? undefined : { claim, generation, settled: false };
+    this.openingOwner = openingOwner;
+    try {
     await runWithCloudBindingsAsync(this.env as Record<string, unknown>, () =>
       runWithDbCacheAsync(async () => {
         const key = this.env.CARTESIA_API_KEY?.trim(),
@@ -504,5 +515,8 @@ export class SpeechRelayCoordinator {
         for (const event of events) this.send(event);
       }),
     );
+    } finally {
+      if (openingOwner) openingOwner.settled = true;
+    }
   }
 }

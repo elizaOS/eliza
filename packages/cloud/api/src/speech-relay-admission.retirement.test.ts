@@ -1,4 +1,6 @@
 import { beforeEach, expect, test, mock } from "bun:test";
+class InsufficientCreditsError extends Error {}
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError }));
 const state = { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0 };
 mock.module("@elizaos/cloud-shared/lib/pricing-constants", () => ({ PLATFORM_MARKUP_MULTIPLIER: 1.2 }));
 mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission", () => ({
