@@ -24,7 +24,7 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
-import { logger } from "@elizaos/core";
+import { extractUserText, logger, unwrapUserMessageText } from "@elizaos/core";
 import { hasOwnerAccess } from "../security/access.ts";
 import {
   type OwnerBindConnector,
@@ -128,8 +128,7 @@ export const pairOwnerAccountAction: Action = {
     _state?: State,
     _options?: HandlerOptions,
   ): Promise<boolean> => {
-    const text =
-      typeof message.content.text === "string" ? message.content.text : "";
+    const text = extractUserText(unwrapUserMessageText(message));
     if (!text.trim()) return false;
     return messageWantsOwnerPairing(text);
   },
@@ -152,8 +151,7 @@ export const pairOwnerAccountAction: Action = {
       return failure(text, "NOT_OWNER");
     }
 
-    const messageText =
-      typeof message.content.text === "string" ? message.content.text : "";
+    const messageText = extractUserText(unwrapUserMessageText(message));
     const target = resolveRequestedPairConnector(messageText);
     if (!target) {
       const names = PAIRABLE_CONNECTORS.map((c) => c.displayName).join(" or ");
