@@ -102,3 +102,34 @@ describe("calendar read projection", () => {
     ).toEqual({});
   });
 });
+
+
+describe("one Calendar model view", () => {
+  const source = (status = "fresh") => ({
+    summary: "private-source-label", accountEmail: "private-source-email",
+    status, visibility: "details", error: status === "fresh" ? null : { code: "READ_UNAVAILABLE" },
+  });
+  it("projects empty and single-event reads without source display inventory, keeping canonical evidence intact", () => {
+    for (const events of [[], [{ ...stored("one", "Appointment", 18), calendarSummary: "private-source-label", accountEmail: "private-source-email" }]]) {
+      const data = { state: "complete", sources: [source()], events, timeMin: "start", timeMax: "end", replyContext: { facts: "private-source-label", userFacingFacts: "private-source-email", context: { selection: "bounded_agenda", completionBoundary: "this window" } } };
+      const before = JSON.stringify(data);
+      const result = calendarReadPromptProjection(data);
+      expect(result.promptDataMode).toBe("replace-data");
+      expect(JSON.stringify(result.promptData)).not.toContain("private-source-label");
+      expect(JSON.stringify(result.promptData)).not.toContain("private-source-email");
+      expect(result.promptData?.calendarView).toMatchObject({ name: "Calendar", state: "complete" });
+      expect(result.promptData?.replyContext).toMatchObject({ context: data.replyContext.context });
+      if (events.length) expect(result.promptData?.events).toMatchObject([{ id: events[0].id, grantId: events[0].grantId, metadata: events[0].metadata }]);
+      expect(JSON.stringify(data)).toBe(before);
+    }
+  });
+  it("retains partial source health and non-exhaustive next-event scope", () => {
+    const data = { state: "partial", calendarSources: [source(), source("unavailable")], event: { ...stored("next", "Next event", 18), calendarSummary: "private-source-label", accountEmail: "private-source-email" }, readScope: { selection: "next_event", exhaustive: false, timeMin: "start", timeMax: "end" } };
+    const result = calendarReadPromptProjection(data);
+    expect(result.promptData?.calendarView).toMatchObject({ state: "partial", sourceIssues: [{ status: "unavailable", errorCode: "READ_UNAVAILABLE" }] });
+    expect(result.promptData?.readScope).toEqual(data.readScope);
+    expect(result.promptData?.event).toMatchObject({ id: data.event.id, grantId: data.event.grantId, metadata: data.event.metadata });
+    expect(JSON.stringify(result.promptData)).not.toContain("private-source-label");
+    expect(JSON.stringify(result.promptData)).not.toContain("private-source-email");
+  });
+});
