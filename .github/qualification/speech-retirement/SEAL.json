@@ -1,0 +1,19 @@
+{
+  "files": {
+    "PLAN.json": "d368938d5cb493ca85e995f186bd7a346979fd429ebd3f8dbf45f9b1d5574454",
+    "SOURCE-MANIFEST.json": "1e1b9056eeb888d3b1206bf9d19da9aea6c39766b405cbb35eeccb87ffecd5b1",
+    "BUN-IMAGE.json": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664",
+    "NODE-IMAGE.json": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de",
+    "Dockerfile": "a61c63efd512a231cebd7c43b8aa23978eab11e23739a97665d8446f52f68b18",
+    "backend.config.mts": "95a233654d820801312d5d72e88ff5502bc8facc225ea888f437fbe9cb459ab3",
+    "run.py": "f67767fb9a96856d76fc3b0d068be5c74adbf1a4f743e4b9a9550e2eebba0843",
+    "cloud-tests.yml": "ce7ebc9837f6c0eb03ecaebec2c053b2fd1924e4469f9cafb43a6019160f4584",
+    "TEST-FRAMEWORK-GAP.json": "8b7b995607e534adb030089a406ef29a840a19e61a5d254cb6ce9763b8d0d6f7",
+    "ORACLES.json": "d641281165fe7b10ada2aa3144497b145977fa2a9bc4df7e0574e4ac7943701c",
+    "check_source.py": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5",
+    "POLICY.json": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf",
+    "FIXTURE-RCA.json": "f4312d6acd8de77769ee882cf36cf048bb606a1bd6708cdc9391bd2a2aa3ad69"
+  },
+  "sourceCommit": "f2d3b70cce60d7eda8b195fecf58876ef3ad4f79",
+  "state": "SOURCE_ONLY_NOT_PUBLISHED_OR_DISPATCHED"
+}
