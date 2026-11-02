@@ -461,20 +461,23 @@ export async function loadSessionSummaryContentLedger(
 }
 function chunksFor(
   records: SessionSummaryContentRecord[],
+  firstPosition: number,
 ): SessionSummaryContentRecord[][] {
   const chunks: SessionSummaryContentRecord[][] = [];
   let current: SessionSummaryContentRecord[] = [];
   for (const record of records) {
     const candidate = [...current, record];
+    // Measure the shard as stored: its real position and, as for every shard
+    // but a room's first, a successor id and digest that validateShard counts.
     const byteLength = (values: SessionSummaryContentRecord[]) =>
       new TextEncoder().encode(
         JSON.stringify({
           schemaVersion: 1,
-          position: 0,
+          position: firstPosition + chunks.length,
           publicationDigest: "0".repeat(64),
           records: values,
-          nextShardId: null,
-          nextShardDigest: null,
+          nextShardId: "00000000-0000-0000-0000-000000000000",
+          nextShardDigest: "0".repeat(64),
         }),
       ).byteLength;
     if (
@@ -522,7 +525,7 @@ export async function publishSessionSummaryContentManifests(
       priorRecords = prior.records;
     }
     const allRecords = [...priorRecords, ...incoming];
-    const chunks = chunksFor(incoming);
+    const chunks = chunksFor(incoming, priorHead?.shardCount ?? 0);
     let nextShardId: UUID | null = priorHead?.firstShardId ?? null;
     let nextShardDigest: string | null = priorHead?.firstShardDigest ?? null;
     const dependencies: Array<{ memory: Memory; tableName: string }> = [];
