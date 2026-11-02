@@ -15,6 +15,7 @@ import type {
 import {
   createUnavailableGroundedActionReply,
   ElizaError,
+  extractUserText,
   getActionReplyOwner,
   isModelProviderError,
   ModelType,
@@ -58,6 +59,18 @@ function stringifyPromptValue(value: unknown): string {
       cause: error,
     });
   }
+}
+
+/**
+ * The message the reply prompt labels as the current user message. On a
+ * document-augmented turn content.text is the envelope (documents first,
+ * request last), not the user's words; extractUserText recovers the request
+ * and leaves a plain message unchanged.
+ */
+function currentUserMessageText(message: Memory): string {
+  return extractUserText(
+    typeof message.content.text === "string" ? message.content.text : "",
+  );
 }
 
 function invalidReplyShape(raw: string): string | undefined {
@@ -218,9 +231,7 @@ async function renderGroundedActionReplyText(
     `Domain: ${args.domain}`,
     `Scenario: ${args.scenario}`,
     `Current user message: ${JSON.stringify(
-      typeof args.message.content.text === "string"
-        ? args.message.content.text
-        : "",
+      currentUserMessageText(args.message),
     )}`,
     `Resolved intent: ${JSON.stringify(args.intent)}`,
     `Complete conversation: ${JSON.stringify(recentConversation)}`,
@@ -277,7 +288,7 @@ export async function renderGroundedActionReply(
         grounding: stringifyPromptValue({
           domain: args.domain,
           scenario: args.scenario,
-          currentUserMessage: args.message.content.text ?? "",
+          currentUserMessage: currentUserMessageText(args.message),
           intent: args.intent,
           instructions: groundedReplyInstructions(
             args,
