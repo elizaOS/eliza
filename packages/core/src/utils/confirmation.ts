@@ -58,12 +58,13 @@ interface PendingConfirmation {
 	readonly ttlMs: number;
 	readonly metadata?: Record<string, unknown>;
 	/**
-	 * Id of the user message that asked for the operation. Only a LATER
-	 * message may confirm or cancel: a planner can run the same action twice
-	 * inside one turn with the same message, and that message must not count
-	 * as the owner's reply to the prompt it triggered.
+	 * Turn fingerprint of the user message that asked for the operation: the
+	 * message id when set, else its `createdAt` tag. Only a LATER message may
+	 * confirm or cancel: a planner can run the same action twice inside one
+	 * turn with the same message, and that message must not count as the
+	 * owner's reply to the prompt it triggered.
 	 */
-	readonly requestMessageId?: string;
+	readonly requestTurnKey?: string;
 }
 
 export interface RequireConfirmationArgs {
@@ -141,6 +142,21 @@ export function isAffirmativeConfirmationReply(
  *
  * Expired pending records (older than ttlMs) are treated as fresh first calls.
  */
+/**
+ * Stable same-turn identity for the requesting message. Id-bearing messages
+ * (every persisted turn) fingerprint by id; id-less programmatic messages
+ * fall back to their `createdAt` tag, so replaying the same id-less memory
+ * inside one turn still resolves to the same fingerprint while a genuinely
+ * later reply does not.
+ */
+function requestTurnFingerprint(message: Memory): string | undefined {
+	if (message.id) return String(message.id);
+	return typeof message.createdAt === "number" &&
+		Number.isFinite(message.createdAt)
+		? `created:${message.createdAt}`
+		: undefined;
+}
+
 export async function requireConfirmation(
 	args: RequireConfirmationArgs,
 ): Promise<ConfirmationDecision> {
@@ -153,6 +169,7 @@ export async function requireConfirmation(
 	const confirmRegex = args.confirmRegex ?? DEFAULT_CONFIRM_REGEX;
 	const userId = String(args.message.entityId);
 	const cacheKey = buildCacheKey(userId, args.actionName, args.pendingKey);
+	const turnKey = requestTurnFingerprint(args.message);
 
 	const existing = await args.runtime.getCache<PendingConfirmation>(cacheKey);
 	const fresh = !existing || Date.now() - existing.createdAt > existing.ttlMs;
@@ -165,7 +182,7 @@ export async function requireConfirmation(
 			createdAt: Date.now(),
 			ttlMs,
 			metadata: args.metadata,
-			...(args.message.id ? { requestMessageId: String(args.message.id) } : {}),
+			...(turnKey ? { requestTurnKey: turnKey } : {}),
 		};
 		await args.runtime.setCache(cacheKey, record);
 		if (args.callback) {
@@ -178,11 +195,13 @@ export async function requireConfirmation(
 	}
 
 	// The message that asked for the operation is not a reply to its prompt:
-	// keep waiting for the next user message.
+	// keep waiting for the next user message. An id-less message fingerprints
+	// by its createdAt tag, so replaying the same turn's memory cannot pass
+	// this guard and self-confirm the prompt it triggered.
 	const sameMessage =
-		existing.requestMessageId !== undefined &&
-		args.message.id !== undefined &&
-		String(args.message.id) === existing.requestMessageId;
+		existing.requestTurnKey !== undefined &&
+		turnKey !== undefined &&
+		existing.requestTurnKey === turnKey;
 	if (sameMessage) {
 		return { status: "pending" };
 	}
