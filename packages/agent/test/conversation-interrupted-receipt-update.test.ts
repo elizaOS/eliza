@@ -1,8 +1,8 @@
 /**
  * A Stop returns before the stream route saves the interrupted receipt of
  * the stopped turn. Real HTTP route and SQLite memory: the route announces
- * `conversation-updated` once that receipt is saved, so an open view can read
- * it, and a completed reply announces nothing new.
+ * `conversation-updated` only once that receipt is saved, and a completed
+ * reply announces nothing new.
  */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm } from "node:fs/promises";
@@ -25,7 +25,9 @@ import {
   handleConversationRoutes,
 } from "../src/api/conversation-routes.ts";
 
+const PROMPT = "What time is it?";
 const REPLY = "It is nine o'clock.";
+type ConversationUpdate = { conversationId: string; rows: Promise<Memory[]> };
 
 async function withRoute(
   turn: "stopped" | "completed",
@@ -33,7 +35,7 @@ async function withRoute(
     runtime: AgentRuntime;
     origin: string;
     started: Promise<void>;
-    updates: Array<{ conversationId: string; rows: Promise<Memory[]> }>;
+    updates: ConversationUpdate[];
   }) => Promise<void>,
 ): Promise<void> {
   const directory = await mkdtemp(join(tmpdir(), "interrupted-receipt-"));
@@ -51,8 +53,7 @@ async function withRoute(
     ),
   );
   const started = Promise.withResolvers<void>();
-  const updates: Array<{ conversationId: string; rows: Promise<Memory[]> }> =
-    [];
+  const updates: ConversationUpdate[] = [];
   let server: http.Server | undefined;
   try {
     await runtime.init();
@@ -144,7 +145,7 @@ async function withRoute(
           ok: true,
           role: "OWNER",
           identityId: "fixture-owner",
-        } as never,
+        },
         readJsonBody: async (request) => {
           let body = "";
           for await (const chunk of request) body += chunk;
@@ -165,7 +166,7 @@ async function withRoute(
     await new Promise<void>((resolve) => route.listen(0, "127.0.0.1", resolve));
     const address = route.address();
     if (!address || typeof address === "string")
-      throw Error("Missing route address");
+      throw new Error("Missing route address");
     await run({
       runtime,
       origin: `http://127.0.0.1:${address.port}`,
@@ -203,7 +204,7 @@ function sendStream(origin: string, conversationId: string) {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        text: "What time is it?",
+        text: PROMPT,
         clientMessageId: randomUUID(),
       }),
     },
@@ -251,8 +252,8 @@ it("announces nothing new for a completed reply", async () => {
       await (await sendStream(origin, conversation.id)).text(),
     );
     const done = events.find((event) => event.type === "done");
-    expect(done?.fullText ?? done?.text).toBe(REPLY);
-    expect(done?.interrupted).toBeUndefined();
+    expect(done).toMatchObject({ type: "done", fullText: REPLY });
+    expect(done).not.toHaveProperty("interrupted");
     expect(updates).toHaveLength(0);
     const rows = await runtime.getMemories({
       roomId: conversation.roomId,
@@ -260,7 +261,7 @@ it("announces nothing new for a completed reply", async () => {
       count: 20,
     });
     expect(rows.map((row) => row.content.text).sort()).toEqual(
-      [REPLY, "What time is it?"].sort(),
+      [REPLY, PROMPT].sort(),
     );
   });
 }, 60_000);

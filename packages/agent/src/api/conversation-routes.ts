@@ -6184,8 +6184,7 @@ async function streamConversationMessage(
                 assertLocalVoiceTurnFence,
               );
               conv.updatedAt = new Date().toISOString();
-              // A Stop returns before this save; an open view learns of the
-              // receipt here, as it does of truncate, delete and heard.
+              // Stop returns before this save; announce the saved receipt.
               state.broadcastWs?.({
                 type: "conversation-updated",
                 conversation: conv,
