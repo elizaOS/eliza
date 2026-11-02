@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { createCloudSpeechRelayPorts } from "./cloud-speech-relay-client";
+import { CloudSpeechRelayClientError, createCloudSpeechRelayPorts } from "./cloud-speech-relay-client";
 
 test("HTTP availability is transport, not authorization, and never retries consent or mint", async () => {
   for (const failedPath of ["/consent", "/session"])
@@ -30,8 +30,7 @@ test("HTTP availability is transport, not authorization, and never retries conse
           expiresAt: new Date(Date.now() + 300000).toISOString(),
         });
       };
-      await expect(
-        createCloudSpeechRelayPorts({
+      const startup = createCloudSpeechRelayPorts({
           enabled: true,
           origin: "https://api-staging.eliza.app",
           credential: async () => "fixture-only",
@@ -40,8 +39,20 @@ test("HTTP availability is transport, not authorization, and never retries conse
           websocket() {
             throw Error("must not open socket");
           },
-        }),
-      ).rejects.toMatchObject({ code });
+        });
+      await expect(startup).rejects.toMatchObject({ code });
+      if (failedPath === "/session") {
+        const failure = await startup.catch((error: unknown) => error);
+        expect(failure).toBeInstanceOf(CloudSpeechRelayClientError);
+        const cause = (failure as Error).cause;
+        expect(cause).toBeInstanceOf(AggregateError);
+        expect((cause as AggregateError).errors).toHaveLength(2);
+        expect((cause as AggregateError).errors[0]).toMatchObject({ code });
+        expect((cause as AggregateError).errors[1]).toMatchObject({
+          code: "protocol",
+          message: "Cloud speech admission remains unconfirmed",
+        });
+      }
       expect(paths).toEqual(
         failedPath === "/consent"
           ? ["/api/v1/voice/speech/consent"]

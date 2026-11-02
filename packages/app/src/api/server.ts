@@ -1292,8 +1292,17 @@ export async function startApiServer(
   server.close = async () => {
     compatState.stoppedAuthRuntime = null;
     closeStandaloneSpeech(compatState);
-    await voiceHost.close();
-    await originalClose();
+    let retirementError: unknown;
+    try { await voiceHost.close(); }
+    catch (error) { retirementError = error; }
+    finally {
+      try { await originalClose(); }
+      catch (error) {
+        if (retirementError) throw new AggregateError([retirementError, error], "Server closed with unconfirmed voice retirement");
+        throw error;
+      }
+    }
+    if (retirementError) throw retirementError;
   };
   return server;
 }

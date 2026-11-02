@@ -976,10 +976,10 @@ it("actual relay startup cleanup failure blocks shutdown and unlinked replacemen
   if(path.endsWith("/consent"))return Response.json({consentNonce:randomUUID(),expiresAt:new Date(Date.now()+60000).toISOString()});
   if(path.endsWith("/revoke")){
    const id=path.split("/").at(-2)!;expect(admitted.has(id)).toBe(true);
-   return Response.json({revoked:allowRetirement},{status:allowRetirement?200:503});
+   return Response.json(allowRetirement ? {revoked:true,retirement:{version:1,sessionId:id,state:"confirmed",mode:"retired",stt:"gracefully_drained",tts:"transport_closed",accounting:"settled_actual",completedAt:new Date().toISOString()}} : {revoked:false},{status:allowRetirement?200:503});
   }
   const id=randomUUID();mints++;admitted.add(id);const expiresAt=new Date(Date.now()+60000).toISOString();expiries.set(id,expiresAt);
-  return Response.json({sessionId:id,token:"remote-one-use",expiresAt,version:1,wsUrl:remote.url.origin.replace("http:","ws:")+"/api/v1/voice/speech/ws?sessionId="+id});
+  return Response.json({sessionId:id,token:"remote-one-use",expiresAt,version:1,retirementProofVersion:1,wsUrl:remote.url.origin.replace("http:","ws:")+"/api/v1/voice/speech/ws?sessionId="+id});
  },request=>new URL(request.url).pathname==="/api/v1/voice/speech/ws");
  remote.sockets.on("connection",(ws,request)=>{const expiresAt=expiries.get(new URL(request.url!,remote.url).searchParams.get("sessionId")!);providerStarts++;ws.on("message",data=>{const frame=JSON.parse(String(data));if(frame.t!=="hello")return;if(failStartup){ws.send(JSON.stringify({t:"error",code:"unavailable"}));return;}ws.send(JSON.stringify({t:"ready",version:1,sampleRate:16000,channels:1,expiresAt}));ws.send(JSON.stringify({t:"stt",event:{type:"connected"}}));});});
  const options:SelfHostedVoiceOptions={...hostOptions,createCloudSpeechPorts:opts=>createCloudSpeechRelayPorts({...opts,origin:remote.url.origin,allowInsecureLoopback:true,logger:{warn(){}}})};
@@ -992,4 +992,80 @@ it("actual relay startup cleanup failure blocks shutdown and unlinked replacemen
   allowRetirement=true;await host.close();failStartup=false;host=createSelfHostedVoice(state,options);
   const third=await mint();const ready=await connect(third);expect(ready.frame.t).toBe("ready");expect(providerStarts).toBe(2);ready.ws.close();
  } finally {allowRetirement=true;await host.close();await remote.close();}
+});
+
+async function stopIntentHost() {
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1");
+  vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account");
+  vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  let opened = 0;
+  await host.close();
+  host = createSelfHostedVoice(state, { ...hostOptions, createCloudSpeechPorts: async () => {
+    opened++;
+    return { sessionId: randomUUID(), expiresAt: clock + 60000, close: async () => {}, speechPorts: { openStt: () => ({ sendAudioChunk() {}, close() {}, cancel() {} }), tts: { createStream() { throw Error("No TTS expected"); }, close() {} } } };
+  } });
+  const first = await mint(); const live = await connect(first);
+  const response = await request("", { agentId, conversationId, transport: "websocket", consentNonce: await nonce(), predecessorSessionId: first.sessionId });
+  expect(response.status).toBe(200); const second = await response.json();
+  return { first, second, live, opened: () => opened };
+}
+it("public normal Stop cancels its prepared successor", async () => {
+  const f = await stopIntentHost(); const closed = once(f.live.ws, "close");
+  f.live.ws.send(JSON.stringify({ t: "bye", intent: { version: 1, kind: "user_stop", generation: f.first.sessionId } }));
+  await closed;
+  expect((await request(`/${f.second.sessionId}/revoke`, {})).status).toBe(404);
+  expect(f.opened()).toBe(1);
+});
+it("public budget rotation preserves only the named successor", async () => {
+  const f = await stopIntentHost(); const closed = once(f.live.ws, "close");
+  f.live.ws.send(JSON.stringify({ t: "bye", intent: { version: 1, kind: "budget_rotation", generation: f.first.sessionId, successorSessionId: f.second.sessionId } }));
+  await closed; const next = await connect(f.second); expect(next.frame.t).toBe("ready"); expect(f.opened()).toBe(2); next.ws.close();
+});
+it("stale generation does not execute Stop", async () => {
+  const f = await stopIntentHost(); const response = once(f.live.ws, "message");
+  f.live.ws.send(JSON.stringify({ t: "bye", intent: { version: 1, kind: "user_stop", generation: randomUUID() } }));
+  expect(JSON.parse(String((await response)[0])).code).toBe("bye_intent_invalid");
+  expect(f.live.ws.readyState).toBe(WebSocket.OPEN); expect(f.opened()).toBe(1);
+  expect((await request(`/${f.second.sessionId}/revoke`, {})).status).toBe(200); f.live.ws.close();
+});
+it("legacy bare bye makes no prepared cancellation claim", async () => {
+  const f = await stopIntentHost(); const closed = once(f.live.ws, "close"); f.live.ws.send(JSON.stringify({ t: "bye" })); await closed;
+  expect((await request(`/${f.second.sessionId}/revoke`, {})).status).toBe(200); expect(f.opened()).toBe(1);
+});
+
+it("concurrent unlinked admissions reserve one conversation before any factory await", async () => {
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1"); vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account"); vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  let entered = 0, active = 0, maximum = 0, release!: () => void, notify!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; }), firstEntered = new Promise<void>(resolve => { notify = resolve; });
+  await host.close(); host = createSelfHostedVoice(state, { ...hostOptions, createCloudSpeechPorts: async () => {
+    const attempt = ++entered; if (attempt === 1) { notify(); await held; }
+    active++; maximum = Math.max(maximum, active); let closing: Promise<void> | undefined;
+    return { sessionId: randomUUID(), expiresAt: clock + 60000, close: () => closing ??= Promise.resolve().then(() => { active--; }), speechPorts: { openStt: () => ({ sendAudioChunk() {}, close() {}, cancel() {} }), tts: { createStream() { throw Error("No TTS expected"); }, close() {} } } };
+  } });
+  const first = await mint(), second = await mint();
+  const sockets: WebSocket[] = [];
+  const begin = async (ticket: Awaited<ReturnType<typeof mint>>) => {
+    const ws = new WebSocket(ticket.wsUrl); sockets.push(ws); await once(ws, "open");
+    ws.send(JSON.stringify({ t: "hello", token: ticket.token, protocol: 1, uplinkCodec: "pcm16", downlinkCodec: "pcm16", sampleRate: 16000 })); return ws;
+  };
+  const a = await begin(first); await firstEntered; const b = await begin(second);
+  const bReady = once(b, "message"); await new Promise(resolve => setTimeout(resolve, 20)); expect(entered).toBe(1); expect(active).toBe(0);
+  release(); expect(JSON.parse(String((await bReady)[0])).t).toBe("ready"); expect(entered).toBe(2); expect(maximum).toBe(1);
+  await host.close(); for (const ws of sockets) ws.close();
+});
+
+it("concurrent queued admission cannot bypass failed acquisition retirement", async () => {
+  vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED", "1"); vi.stubEnv("ELIZAOS_CLOUD_API_KEY", "private-cloud-account"); vi.stubEnv("ELIZAOS_CLOUD_BASE_URL", "https://api-staging.eliza.app/api/v1");
+  let entered = 0, allowCleanup = false, release!: () => void, notify!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; }), firstEntered = new Promise<void>(resolve => { notify = resolve; });
+  await host.close(); host = createSelfHostedVoice(state, { ...hostOptions, createCloudSpeechPorts: async options => {
+    entered++;
+    options.registerRetirement?.({ close: async () => { if (!allowCleanup) throw Error("unconfirmed acquisition"); }, retryRetirement: async () => { if (!allowCleanup) throw Error("unconfirmed acquisition"); } });
+    notify(); await held; throw Error("acquisition failed");
+  } });
+  const a = await mint(), b = await mint(); const first = connect(a, a.token, false); await firstEntered;
+  const second = connect(b, b.token, false); await new Promise(resolve => setTimeout(resolve, 20)); release();
+  const failed = await Promise.all([first, second]); expect(entered).toBe(1);
+  for (const item of failed) { expect(item.frame.t).not.toBe("ready"); item.ws.close(); }
+  allowCleanup = true; await host.close();
 });

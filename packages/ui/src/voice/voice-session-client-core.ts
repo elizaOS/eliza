@@ -996,7 +996,10 @@ export function createVoiceSessionClient(
     clearRotationTimer();
     if (recoveryOptions?.cleanBye) {
       try {
-        socket.send(encodeClientControl({ t: "bye" }));
+        socket.send(encodeClientControl({ t: "bye", ...(rotationOffer?.stopIntentVersion === 1 && rotationOffer.stopIntentGeneration === rotationOffer.sessionId ? { intent: {
+          version: 1 as const, kind: "budget_rotation" as const, generation: rotationOffer.stopIntentGeneration,
+          ...(recoveryOptions?.preparedMint ? { successorSessionId: recoveryOptions.preparedMint.sessionId } : {}),
+        } } : {}) }));
       } catch (ignoredError) {
         // error-policy:J6 the bye frame is a courtesy on a socket being rotated away.
         void ignoredError;
@@ -1163,6 +1166,7 @@ export function createVoiceSessionClient(
     lifecycleAbort?.abort();
     lifecycleAbort = null;
     clearRotationTimer();
+    const stoppedOffer = rotationOffer;
     rotationDeadlineMs = null;
     rotationPreparation = null;
     rotationOffer = null;
@@ -1180,7 +1184,9 @@ export function createVoiceSessionClient(
     if (socket && connPhase === "open") {
       // Send directly after detaching the socket from asynchronous callbacks.
       try {
-        socket.send(encodeClientControl({ t: "bye" }));
+        socket.send(encodeClientControl({ t: "bye", ...(stoppedOffer?.stopIntentVersion === 1 && stoppedOffer.stopIntentGeneration === stoppedOffer.sessionId ? { intent: {
+          version: 1 as const, kind: "user_stop" as const, generation: stoppedOffer.stopIntentGeneration,
+        } } : {}) }));
       } catch (ignoredError) {
         // error-policy:J6 the bye frame is a courtesy on a socket being torn down.
         void ignoredError;
