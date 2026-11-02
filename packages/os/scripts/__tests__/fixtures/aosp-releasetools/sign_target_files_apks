@@ -6,8 +6,10 @@ tool's output: apkcerts.txt rows point at the mapped release keys, nested APK/AP
 entries carry a CERT entry holding the digest of the certificate the mapped release
 key would sign with, re-signed APEXes carry the release payload key, and IMAGES/
 holds minimal AVB vbmeta structs (header and chain-partition descriptors only, no
-signature) with the configured rollback index. mock.json can skip a package, keep an
-APEX's test payload key or set the rollback index.
+signature) with the configured rollback index. *mac_permissions.xml certificates are
+rewritten as ReplaceCerts does: each development certificate is opened relative to
+the working directory and a missing one is skipped. mock.json can skip a package,
+keep an APEX's test payload key or set the rollback index.
 """
 import base64
 import hashlib
@@ -40,10 +42,25 @@ DEFAULT = {'testkey': 'releasekey', 'devkey': 'releasekey', 'platform': 'platfor
            'media': 'media', 'networkstack': 'networkstack', 'sdk_sandbox': 'sdk_sandbox'}
 
 
+def der(file):
+    pem = open(file).read()
+    return base64.b64decode(''.join(line for line in pem.splitlines() if not line.startswith('-----')))
+
+
 def digest(name):
-    pem = open(os.path.join(keys, name + '.x509.pem')).read()
-    der = base64.b64decode(''.join(line for line in pem.splitlines() if not line.startswith('-----')))
-    return hashlib.sha256(der).hexdigest()
+    return hashlib.sha256(der(os.path.join(keys, name + '.x509.pem'))).hexdigest()
+
+
+def replace_certs(text):
+    sources = {os.path.join(DEV, name): key for name, key in DEFAULT.items()}
+    sources.update(kmap)
+    for source, key in sources.items():
+        try:
+            old = der(source + '.x509.pem').hex()
+        except FileNotFoundError:
+            continue
+        text = text.replace(old, der(os.path.join(keys, key + '.x509.pem')).hex())
+    return text
 
 
 def key_for(cert):
@@ -99,6 +116,8 @@ with zipfile.ZipFile(src) as source, zipfile.ZipFile(dst, 'w') as target:
             if not cfg.get('keepApexKey'):
                 changes['apex_pubkey'] = open(payload[base][:-4] + '.avbpubkey', 'rb').read()
             data = repack(data, changes)
+        elif name.endswith('mac_permissions.xml'):
+            data = replace_certs(data.decode()).encode()
         target.writestr(name, data)
     chained = sorted(key[4:-9] for key, value in misc.items()
                      if key.startswith('avb_') and key.endswith('_key_path') and key != 'avb_vbmeta_key_path' and value)

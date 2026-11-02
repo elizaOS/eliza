@@ -16,11 +16,12 @@
  * runs it reads the unsigned target-files' META/misc_info.txt, apkcerts.txt and
  * apexkeys.txt, and refuses an APK certificate it does not map to a release key, a
  * chained AVB partition without its own key mapping, or a missing APEX key. It then
- * runs `sign_target_files_apks -o -d KEYS` (plus -k for bluetooth, nfc and mapped
- * sources, --extra_apex_payload_key/--extra_apks for every non-presigned APEX, and
- * the `avb` key for vbmeta and each chained partition), verifies with apksigner that
- * every non-presigned APK and APEX in the signed target-files carries a release
- * certificate and every APEX the release payload key, and only then runs
+ * runs `sign_target_files_apks -o -d KEYS` from the otatools root (plus -k for
+ * bluetooth, nfc and mapped sources, --extra_apex_payload_key/--extra_apks for every
+ * non-presigned APEX, and the `avb` key for vbmeta and each chained partition),
+ * verifies with apksigner that every non-presigned APK and APEX in the signed
+ * target-files carries a release certificate and every APEX the release payload key,
+ * refuses a development certificate left in any *mac_permissions.xml, and only then runs
  * `ota_from_target_files -k KEYS/releasekey` and writes release-record.json
  * (aosp-release-record.mjs) and the public avb_pkmd.bin for avb_custom_key enrollment.
  *
@@ -100,6 +101,38 @@ export const EXPLICIT_KEYS = Object.freeze(["bluetooth", "nfc"]);
 const DEV_KEY_DIRS = Object.freeze([
   "build/make/target/product/security",
   "build/target/product/security",
+]);
+/**
+ * AOSP's public development certificates by SHA-256 (android-17.0.0_r1). Pinned, not read
+ * from otatools, because a certificate missing there is the failure this has to see.
+ */
+const DEV_CERTIFICATES = new Map([
+  [
+    "a40da80a59d170caa950cf15c18c454d47a39b26989d8b640ecd745ba71bf5dc",
+    "testkey",
+  ],
+  [
+    "c8a2e9bccf597c2fb6dc66bee293fc13f2fc47ec77bc6b2b0d52c11f51192ab8",
+    "platform",
+  ],
+  [
+    "28bbfe4a7b97e74681dc55c2fbb6ccb8d6c74963733f6af6ae74d8c3a6e879fd",
+    "shared",
+  ],
+  ["465983f7791f2abeb43ea2cbdc7f21a8260b72bc08a55c839fc1a43bc741a81e", "media"],
+  [
+    "e1dbadce60dc080d15b58a014b0dcf9400e24de23fa00b287a5a982bfebda2ee",
+    "networkstack",
+  ],
+  [
+    "abf21f9e2af1d881cc673fddcefa6ed9c269a437bd64b279cf45844cfd589126",
+    "sdk_sandbox",
+  ],
+  [
+    "a6ccc500ff0e7421200eb66a7fe174ef1b00e52ca91727070cbedf061ff76c35",
+    "bluetooth",
+  ],
+  ["fae9122a8721d6e2a196d2224dffcf773c9127e2bb956cbddb40b009192ffdfd", "nfc"],
 ]);
 /** One APEX container key pair and one APEX payload key (android/signing/key-manifest.json). */
 export const APEX_KEYS = Object.freeze({
@@ -577,11 +610,16 @@ export function signingCommands({
   managed = null,
 }) {
   const keys = keysDir,
-    tools = path.resolve(releasetools);
+    tools = path.resolve(releasetools),
+    otatools = path.dirname(tools),
+    output = path.resolve(out);
   const algorithm = product.avb.algorithm,
     avbKey = path.join(keys, product.avb.vbmetaKey);
-  const signed = path.join(out, "signed-target_files.zip"),
-    ota = path.join(out, incrementalFrom ? "incremental-ota.zip" : "ota.zip");
+  const signed = path.join(output, "signed-target_files.zip"),
+    ota = path.join(
+      output,
+      incrementalFrom ? "incremental-ota.zip" : "ota.zip",
+    );
   const explicit = [
     ...EXPLICIT_KEYS.map((name) => [`${DEV_KEY_DIRS[0]}/${name}`, name]),
     ...Object.entries(keyMap),
@@ -640,12 +678,14 @@ export function signingCommands({
     commands: [
       // --package_key and the payload signer also re-sign any embedded boot OTA
       // (boot_otas/*.zip); without them sign_target_files_apks would use the build's
-      // development certificate.
+      // development certificate. Its *mac_permissions.xml rewrite opens the development
+      // certificates relative to its working directory and skips any it cannot find.
       {
         tool: path.join(tools, "sign_target_files_apks"),
+        cwd: otatools,
         args: [
           "-p",
-          path.dirname(tools),
+          otatools,
           ...token,
           "-o",
           "-d",
@@ -665,7 +705,7 @@ export function signingCommands({
         tool: path.join(tools, "ota_from_target_files"),
         args: [
           "-p",
-          path.dirname(tools),
+          otatools,
           ...token,
           "-k",
           path.join(keys, "releasekey"),
@@ -698,7 +738,9 @@ function signerDigests(apksigner, file) {
  * target-files that is not presigned must be signed only by a release certificate
  * from the key directory, and every re-signed APEX must carry the release payload
  * public key. A remaining test or development certificate (or any unknown one) is
- * refused.
+ * refused, and so is an AOSP development certificate left in any *mac_permissions.xml,
+ * where it would keep apps from their SELinux domains. Other signers stay: a vendor
+ * file names certificates this job never re-signs.
  */
 export function signedTargetFilesProblems({
   signed,
@@ -722,6 +764,7 @@ export function signedTargetFilesProblems({
     ),
   );
   const inspection = inspectTargetFiles(signed);
+  const packaged = entries(signed);
   const presigned = new Set([
     ...inspection.apkcerts
       .filter((row) => !sourceKey(row.certificate))
@@ -740,15 +783,27 @@ export function signedTargetFilesProblems({
         `signed apkcerts.txt still names ${row.certificate} for ${row.name}`,
       );
   }
+  for (const name of packaged.filter((item) =>
+    item.endsWith("mac_permissions.xml"),
+  ))
+    for (const [, signature] of entry(signed, name)
+      .toString("utf8")
+      .matchAll(/signature="([0-9a-fA-F]+)"/g)) {
+      const certificate = DEV_CERTIFICATES.get(
+        sha256(Buffer.from(signature, "hex")),
+      );
+      if (certificate)
+        problems.push(
+          `${name} still holds the development certificate ${certificate}; sign_target_files_apks did not find ${certificate}.x509.pem under the otatools root`,
+        );
+    }
   const payloadFile = path.join(keysDir, `${APEX_KEYS.payload}.avbpubkey`);
   const payload = fs.existsSync(payloadFile)
     ? fs.readFileSync(payloadFile)
     : null;
   const work = fs.mkdtempSync(path.join(os.tmpdir(), "aosp-signed-check-"));
   try {
-    for (const name of entries(signed).filter((item) =>
-      /\.(apk|apex)$/.test(item),
-    )) {
+    for (const name of packaged.filter((item) => /\.(apk|apex)$/.test(item))) {
       const base = path.posix.basename(name);
       if (presigned.has(base)) continue;
       if (!listed.has(base)) {
@@ -1017,7 +1072,7 @@ export async function signRelease(options) {
     PATH: `${path.resolve(options.releasetools)}${path.delimiter}${process.env.PATH ?? ""}`,
   };
   const [sign, makeOta] = plan.commands;
-  execFileSync(sign.tool, sign.args, { stdio: "inherit", env });
+  execFileSync(sign.tool, sign.args, { stdio: "inherit", env, cwd: sign.cwd });
   // No OTA is built from target-files that still carry a test, development or unknown certificate.
   const remaining = signedTargetFilesProblems({
     signed: plan.signed,

@@ -5,7 +5,7 @@
 // rollback or recovery drill.
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { createHash, createPublicKey } from "node:crypto";
+import { createHash, createPublicKey, X509Certificate } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -41,6 +41,10 @@ const LOCK = "android/sources/pixel10a-stallion.json";
 const read = (rel) =>
   JSON.parse(fs.readFileSync(path.join(osRoot, rel), "utf8"));
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+/** AOSP's public development certificates (android-17.0.0_r1), DER in hex by key name. */
+const DEV_CERTIFICATES = JSON.parse(
+  fs.readFileSync(path.join(fixtures, "dev-certificates.json"), "utf8"),
+);
 const FINGERPRINT =
   "elizaOS/eliza_stallion_phone/stallion:17/CP2A.261005.001/42:user/release-keys";
 const DEV = "build/make/target/product/security";
@@ -187,8 +191,15 @@ function completeRoot(t, { platform, releasekey, apex, avb }) {
 
 /** A fresh copy of the releasetools test doubles with their own call log. */
 function releasetools(t) {
-  const bin = path.join(temporary(t, "otatools-"), "bin");
+  const root = temporary(t, "otatools-"),
+    bin = path.join(root, "bin");
   fs.mkdirSync(bin);
+  fs.mkdirSync(path.join(root, DEV), { recursive: true });
+  for (const [name, certificate] of Object.entries(DEV_CERTIFICATES))
+    fs.writeFileSync(
+      path.join(root, DEV, `${name}.x509.pem`),
+      new X509Certificate(Buffer.from(certificate, "hex")).toString(),
+    );
   for (const name of [
     "sign_target_files_apks",
     "ota_from_target_files",
@@ -198,6 +209,7 @@ function releasetools(t) {
     fs.chmodSync(path.join(bin, name), 0o755);
   }
   return {
+    root,
     bin,
     configure: (value) =>
       fs.writeFileSync(path.join(bin, "mock.json"), JSON.stringify(value)),
@@ -374,6 +386,7 @@ test("signing commands follow the releasetools job with keys only as runtime pat
     commands.map((command) => path.basename(command.tool)),
     ["sign_target_files_apks", "ota_from_target_files"],
   );
+  assert.equal(commands[0].cwd, "/otatools");
   assert.deepEqual(commands[0].args.slice(0, 5), [
     "-p",
     "/otatools",
@@ -846,6 +859,90 @@ test("a test, development or unknown certificate left after signing is refused b
     missing.options,
     /an executable apksigner is required/,
   );
+});
+
+const macPermissions = (...signatures) =>
+  `<policy>${signatures.map((signature) => `<signer signature="${signature}"><seinfo value="any"/></signer>`).join("")}</policy>`;
+
+test("the sign step rewrites development certificates in mac_permissions.xml from otatools and keeps other signers", async (t) => {
+  const vendor = macPermissions("ab".repeat(64));
+  const fixture = setup(t, {
+    files: {
+      "SYSTEM/etc/selinux/plat_mac_permissions.xml": macPermissions(
+        DEV_CERTIFICATES.platform,
+        DEV_CERTIFICATES.nfc,
+      ),
+      "SYSTEM_EXT/etc/selinux/system_ext_mac_permissions.xml": macPermissions(
+        DEV_CERTIFICATES.testkey,
+      ),
+      "VENDOR/etc/selinux/vendor_mac_permissions.xml": vendor,
+    },
+  });
+  await signRelease(fixture.options);
+  const signed = path.join(fixture.out, "signed-target_files.zip");
+  const release = (name) =>
+    new X509Certificate(
+      fs.readFileSync(path.join(fixture.key.keys, `${name}.x509.pem`)),
+    ).raw.toString("hex");
+  assert.equal(
+    unzipEntry(
+      signed,
+      "SYSTEM/etc/selinux/plat_mac_permissions.xml",
+    ).toString(),
+    macPermissions(release("platform"), release("nfc")),
+  );
+  assert.equal(
+    unzipEntry(
+      signed,
+      "SYSTEM_EXT/etc/selinux/system_ext_mac_permissions.xml",
+    ).toString(),
+    macPermissions(release("releasekey")),
+  );
+  assert.equal(
+    unzipEntry(
+      signed,
+      "VENDOR/etc/selinux/vendor_mac_permissions.xml",
+    ).toString(),
+    vendor,
+  );
+  assert.ok(fs.existsSync(path.join(fixture.out, "ota.zip")));
+});
+
+test("a development certificate left in mac_permissions.xml is refused before any OTA is built", async (t) => {
+  const fixture = setup(t, {
+    files: {
+      "SYSTEM/etc/selinux/plat_mac_permissions.xml": macPermissions(
+        ...Object.values(DEV_CERTIFICATES),
+      ),
+    },
+  });
+  fs.rmSync(path.join(fixture.ota.root, "build"), { recursive: true });
+  await assert.rejects(signRelease(fixture.options), (error) => {
+    for (const name of Object.keys(DEV_CERTIFICATES))
+      assert.match(
+        error.message,
+        new RegExp(
+          `plat_mac_permissions\\.xml still holds the development certificate ${name};`,
+        ),
+      );
+    return true;
+  });
+  assert.equal(Object.keys(DEV_CERTIFICATES).length, 8);
+  assert.deepEqual(
+    fixture.ota.calls().map((call) => call[0]),
+    ["sign_target_files_apks"],
+  );
+  assert.equal(fs.existsSync(path.join(fixture.out, "ota.zip")), false);
+});
+
+test("a relative --out holds the outputs although the sign step runs from the otatools root", async (t) => {
+  const fixture = setup(t);
+  await signRelease({
+    ...fixture.options,
+    out: path.relative(process.cwd(), fixture.out),
+  });
+  for (const name of ["signed-target_files.zip", "ota.zip"])
+    assert.ok(fs.existsSync(path.join(fixture.out, name)), name);
 });
 
 test("chained AVB partitions come from the target-files and each needs a mapped key before signing", async (t) => {

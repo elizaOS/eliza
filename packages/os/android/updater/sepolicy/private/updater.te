@@ -1,5 +1,6 @@
 # The update client's own domain. update_engine checks no caller itself, so reaching it is the whole
-# authority: seapp_contexts assigns this domain to the one package and signer mac_permissions.xml names.
+# authority: seapp_contexts assigns this domain to one package, by name, privilege and the seinfo
+# mac_permissions.xml gives its signer.
 type eliza_updater, domain, coredomain;
 app_domain(eliza_updater)
 net_domain(eliza_updater)
@@ -10,6 +11,7 @@ binder_call(eliza_updater, update_engine)
 # Status and results reach the client's callback; update_engine fails bind() when this is refused.
 binder_call(update_engine, eliza_updater)
 
-# Checked at every image build by sepolicy_neverallows: other privileged apps stay out.
+# Checked at every image build by sepolicy_neverallows: priv_app stays out. Stock domains outside
+# priv_app_all keep their own paths, rilextensionservice_app among them.
 neverallow priv_app_all update_engine_service:service_manager find;
 neverallow priv_app_all update_engine:binder call;

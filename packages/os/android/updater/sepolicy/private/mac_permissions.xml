@@ -2,8 +2,6 @@
 <policy>
     <!-- sign_target_files_apks rewrites this certificate along with the APK's. -->
     <signer signature="@ELIZA_UPDATER">
-        <package name="ai.elizaos.updater">
-            <seinfo value="eliza_updater" />
-        </package>
+        <seinfo value="eliza_updater" />
     </signer>
 </policy>

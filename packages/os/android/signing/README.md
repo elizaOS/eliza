@@ -94,7 +94,8 @@ Run on an ephemeral machine with no external IP, gated by required reviewers.
    [`aosp-release-signing.mjs`](../../scripts/android/aosp-release-signing.mjs)
    (Eliza: `sign-pixel10a-release.mjs`; see [releases/](../releases/README.md)): it
    refuses unmapped or unreviewed keys, verifies the signed packages and writes the
-   compatibility record. The underlying releasetools steps are:
+   compatibility record. The underlying releasetools steps, run from the otatools
+   root so `sign_target_files_apks` finds the development certificates, are:
    ```sh
    sign_target_files_apks -o -d /dev/shm/keys \
      --avb_vbmeta_key /dev/shm/keys/avb.pem --avb_vbmeta_algorithm SHA256_RSA4096 \

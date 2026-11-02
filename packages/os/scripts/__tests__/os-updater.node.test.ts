@@ -200,7 +200,7 @@ test("the privileged allowlist is exactly the privileged permissions the client 
   );
 });
 
-test("update_engine belongs to the updater's own domain, and other privileged apps stay out", () => {
+test("update_engine belongs to the updater's own domain, and priv_app stays out", () => {
   const policy = (name) => read(`sepolicy/private/${name}`);
   const rules = policy("updater.te")
     .split("\n")
@@ -245,10 +245,10 @@ test("update_engine belongs to the updater's own domain, and other privileged ap
     },
   );
 
-  // The seinfo goes to one package under one signer, never to everything that signer signs.
+  // Everything this signer signs carries the seinfo; only the seapp row above turns it into the domain.
   const signers = [
     ...policy("mac_permissions.xml").matchAll(
-      /<signer signature="(@[A-Z_]+)">\s*<package name="ai\.elizaos\.updater">\s*<seinfo value="eliza_updater" \/>\s*<\/package>\s*<\/signer>/g,
+      /<signer signature="(@[A-Z_]+)">\s*<seinfo value="eliza_updater" \/>\s*<\/signer>/g,
     ),
   ];
   assert.equal(signers.length, 1);
