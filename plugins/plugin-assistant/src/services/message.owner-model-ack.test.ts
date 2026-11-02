@@ -27,6 +27,7 @@ async function ownerModelAcknowledgment(
     abortDuringRevalidation = false,
     acknowledgment = "Let me check.",
     toolCategories = [] as string[],
+    toolName = "LOOKUP",
     guestInRoom = false,
     duringActivityRevalidation = undefined as
       | "guest-joins"
@@ -129,7 +130,7 @@ async function ownerModelAcknowledgment(
           category.split("+"),
         ),
       )
-    : [lookup("LOOKUP", "tool")];
+    : [lookup(toolName, "tool")];
   for (const tool of tools) runtime.registerAction(tool);
   const readParticipants = runtime.getParticipantsForRoom.bind(runtime);
   if (
@@ -362,6 +363,29 @@ describe("awaited owner model acknowledgments", () => {
     ]);
     expect(JSON.stringify(result.statuses)).not.toMatch(/private/u);
     expect(result.chunks).toEqual([]);
+  });
+
+  // An action that declares no category takes its catalog entry. Web search
+  // names Web first and keeps its personal document and browser categories.
+  it.each([
+    ["WEB_SEARCH", "Using Web"],
+    ["SEARCH_WEB", "Using Web"],
+    ["SEARCH", "Using Documents"],
+  ])(
+    "labels an uncategorized %s from its catalog entry",
+    async (toolName, label) => {
+      const result = await ownerModelAcknowledgment(true, { toolName });
+      expect(result.statuses).toEqual([{ actionName: toolName, label }]);
+    },
+  );
+
+  it("keeps an uncategorized web search status from a shared room", async () => {
+    const result = await ownerModelAcknowledgment(false, {
+      toolName: "WEB_SEARCH",
+      guestInRoom: true,
+    });
+    expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
+    expect(result.statuses).toEqual([]);
   });
 
   it("keeps a private category from a shared room and still shows a public one", async () => {
