@@ -1059,3 +1059,182 @@ test("socket Stop settles with the DO bindings and a fresh DB context before a l
   >;
   expect(repeated.settlements).toBe(settled);
 });
+
+test("an extending client keeps one live session past its minted end with a fresh fence and reservation", async () => {
+  const token = "extend-capability";
+  const session = { "x-test-session": "native-extend" };
+  await worker.dispatchFetch(
+    "https://speech-relay.internal/test-allow-admission",
+    { headers: session },
+  );
+  const before = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Renewal is due 10 s before the end, so it starts almost immediately.
+  const mintedEnd = Date.now() + 10_400;
+  await worker.dispatchFetch("https://speech-relay.internal/initialize", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "88888888-8888-4888-8888-888888888888",
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: mintedEnd,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
+      },
+    }),
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...session, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const ready = next(socket as any, (value) => value.t === "ready");
+  const extended = next(socket as any, (value) => value.t === "extended");
+  socket.send(JSON.stringify({ t: "hello", token, extend: true }));
+  await ready;
+  const renewal = await extended;
+  expect(Date.parse(renewal.expiresAt)).toBeGreaterThan(mintedEnd);
+  expect(Date.parse(renewal.expiresAt)).toBeLessThanOrEqual(
+    Date.now() + 60_000,
+  );
+  const after = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Two admissions (STT + TTS) per window: bootstrap and one renewal.
+  expect(after.admissions - (before.admissions ?? 0)).toBe(4);
+  const audio = next(
+    socket as any,
+    (value) =>
+      typeof value !== "object" ||
+      value instanceof ArrayBuffer ||
+      ArrayBuffer.isView(value),
+  );
+  socket.send(
+    JSON.stringify({
+      t: "tts",
+      id: "turn-1",
+      text: "Still here.",
+      flush: true,
+    }),
+  );
+  expect((await audio).byteLength).toBeGreaterThan(4);
+  await worker.dispatchFetch("https://speech-relay.internal/revoke", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: account.id,
+      organizationId: account.organization_id,
+    }),
+  });
+  const closed = (await (
+    await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+      headers: session,
+    })
+  ).json()) as Record<string, number>;
+  // Every lease of both windows is settled exactly once.
+  expect(
+    (closed.settlements ?? 0) +
+      (closed.unknown ?? 0) -
+      (before.settlements ?? 0) -
+      (before.unknown ?? 0),
+  ).toBe(4);
+});
+
+test("a declined renewal keeps the minted end and holds no lease for it", async () => {
+  const token = "declined-extend-capability";
+  const session = { "x-test-session": "native-extend-declined" };
+  await worker.dispatchFetch(
+    "https://speech-relay.internal/test-allow-admission",
+    { headers: session },
+  );
+  const stats = async () =>
+    (await (
+      await worker.dispatchFetch("https://speech-relay.internal/test-stats", {
+        headers: session,
+      })
+    ).json()) as Record<string, number>;
+  const before = await stats();
+  const mintedEnd = Date.now() + 10_800;
+  await worker.dispatchFetch("https://speech-relay.internal/initialize", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      sessionId: "88888888-8888-4888-8888-888888888889",
+      tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"),
+      expiresAt: mintedEnd,
+      caller: {
+        user: account,
+        apiKeyId: null,
+        authSource: "combined_cache",
+        appScopeId: null,
+        credential: {
+          kind: "api_key",
+          credentialId: "test-key",
+          userId: account.id,
+        },
+      },
+    }),
+  });
+  const upgraded = await worker.dispatchFetch(
+    "https://speech-relay.internal/ws",
+    { headers: { ...session, Upgrade: "websocket" } },
+  );
+  const socket = upgraded.webSocket!;
+  socket.accept();
+  const frames: any[] = [];
+  socket.addEventListener("message", (event) => {
+    if (typeof event.data === "string") frames.push(JSON.parse(event.data));
+  });
+  const ready = next(socket as any, (value) => value.t === "ready");
+  socket.send(JSON.stringify({ t: "hello", token, extend: true }));
+  await ready;
+  // The account runs out of credit before the renewal is due.
+  await worker.dispatchFetch("https://speech-relay.internal/test-decline", {
+    headers: session,
+  });
+  try {
+    for (let n = 0; n < 100; n++) {
+      if ((await stats()).admissions - (before.admissions ?? 0) >= 4) break;
+      await Bun.sleep(20);
+    }
+    await Bun.sleep(50);
+    expect((await stats()).admissions - (before.admissions ?? 0)).toBe(4);
+    expect(frames.some((value) => value.t === "extended")).toBe(false);
+    expect(frames.some((value) => value.t === "error")).toBe(false);
+  } finally {
+    await worker.dispatchFetch(
+      "https://speech-relay.internal/test-allow-admission",
+      { headers: session },
+    );
+  }
+  await worker.dispatchFetch("https://speech-relay.internal/revoke", {
+    method: "POST",
+    headers: { ...session, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      userId: account.id,
+      organizationId: account.organization_id,
+    }),
+  });
+  const closed = await stats();
+  // Only the bootstrap window's two leases existed, and each settled once.
+  expect(
+    (closed.settlements ?? 0) +
+      (closed.unknown ?? 0) -
+      (before.settlements ?? 0) -
+      (before.unknown ?? 0),
+  ).toBe(2);
+});

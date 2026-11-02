@@ -27,12 +27,21 @@ export interface SpeechRelayConsent {
   expiresAt: string;
 }
 
+/**
+ * Response header on a minted session when the relay renews windows for a
+ * client that sends `extend` in its hello. Relays that predate renewal refuse
+ * an unknown hello key, so a client sends `extend` only after this offer.
+ */
+export const SPEECH_RELAY_EXTEND_HEADER = "X-Eliza-Speech-Extend";
+export const SPEECH_RELAY_EXTEND_OFFER = "1";
 export type SpeechRelayHello = {
   t: "hello";
   token: string;
   errorReasons?: true;
   /** Staging diagnostics: request one numeric `timings` frame after `ready`. */
   timings?: true;
+  /** The client applies `extended` frames, so the relay may renew its window. */
+  extend?: true;
 };
 export type SpeechRelayServerControl =
   | {
@@ -62,16 +71,14 @@ export function parseSpeechRelayJson(
     value.t === "hello"
   ) {
     const hello = value as Record<string, unknown>;
+    const flags = ["errorReasons", "timings", "extend"] as const;
     if (
-      Object.keys(hello).length !==
-        2 +
-          Number(Object.hasOwn(hello, "errorReasons")) +
-          Number(Object.hasOwn(hello, "timings")) ||
       Object.keys(hello).some(
-        (key) => !["t", "token", "errorReasons", "timings"].includes(key),
+        (key) => !["t", "token", ...flags].includes(key),
       ) ||
-      (Object.hasOwn(hello, "errorReasons") && hello.errorReasons !== true) ||
-      (Object.hasOwn(hello, "timings") && hello.timings !== true) ||
+      flags.some(
+        (flag) => Object.hasOwn(hello, flag) && hello[flag] !== true,
+      ) ||
       typeof hello.token !== "string" ||
       hello.token.length > 6144 ||
       !hello.token
@@ -82,6 +89,7 @@ export function parseSpeechRelayJson(
       token: hello.token,
       ...(hello.errorReasons === true ? { errorReasons: true as const } : {}),
       ...(hello.timings === true ? { timings: true as const } : {}),
+      ...(hello.extend === true ? { extend: true as const } : {}),
     };
   }
   return parseSpeechRelayControl(value);
