@@ -42,6 +42,7 @@ import {
   type ImageDescriptionResult,
   logger,
   ModelType,
+  parseJsonObject,
 } from "@elizaos/core";
 import type { DisplayCapture } from "../platform/capture.js";
 import { frameDhash, hamming, pngDimensions } from "../scene/dhash.js";
@@ -523,52 +524,22 @@ export function brainPromptFor(
   ].join("\n");
 }
 
-function extractFencedBrainBody(value: string): string | null {
-  const opener = value.indexOf("```");
-  if (opener < 0) return null;
-  let bodyStart = opener + 3;
-  if (value.slice(bodyStart, bodyStart + 4).toLowerCase() === "json") {
-    bodyStart += 4;
-  }
-  while (bodyStart < value.length && value[bodyStart]?.trim() === "") {
-    bodyStart += 1;
-  }
-  const closer = value.indexOf("```", bodyStart);
-  if (closer < 0) return null;
-  let bodyEnd = closer;
-  while (bodyEnd > bodyStart && value[bodyEnd - 1]?.trim() === "") {
-    bodyEnd -= 1;
-  }
-  return value.slice(bodyStart, bodyEnd);
-}
-
 export function parseBrainOutput(raw: string): BrainOutput {
-  const trimmed = raw.trim();
-  let body = trimmed;
-  const fencedBody = extractFencedBrainBody(trimmed);
-  if (fencedBody !== null) {
-    body = fencedBody.trim();
-  }
-  // Allow a leading prose paragraph by snipping to the first `{`.
-  const firstBrace = body.indexOf("{");
-  if (firstBrace > 0) body = body.slice(firstBrace);
-  const lastBrace = body.lastIndexOf("}");
-  if (lastBrace !== -1 && lastBrace < body.length - 1) {
-    body = body.slice(0, lastBrace + 1);
-  }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body);
-  } catch (err) {
+  // Read the reply with the shared tolerant object reader. Snipping to
+  // the first `{` and last `}` here corrupted the slice whenever the
+  // prose around the object carried a brace of its own — a braced word
+  // before the object, a `{` the prose never closes, or one after it —
+  // so a reply holding a complete, valid object failed to parse. The
+  // reader finds the first object region that is JSON; the schema
+  // checks below still reject anything that is not a BrainOutput.
+  const parsed = parseJsonObject<Record<string, unknown>>(raw);
+  if (!parsed) {
     throw new BrainParseError(
-      `Brain response was not valid JSON: ${err instanceof Error ? err.message : String(err)}`,
+      "Brain response was not valid JSON: the reply did not contain a parseable JSON object",
       raw,
     );
   }
-  if (!parsed || typeof parsed !== "object") {
-    throw new BrainParseError("Brain response is not an object", raw);
-  }
-  const obj = parsed as Record<string, unknown>;
+  const obj = parsed;
   if (typeof obj.scene_summary !== "string") {
     throw new BrainParseError(
       "Brain response scene_summary must be a string",
