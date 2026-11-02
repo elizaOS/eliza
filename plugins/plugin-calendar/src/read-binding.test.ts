@@ -27,7 +27,7 @@ describe("Calendar operation bindings", () => {
       throw new Error("Expected binding object schema");
     expect(item.properties?.intentId).toEqual({ type: "string" });
     expect(item.additionalProperties).toBe(false);
-    expect(item.required).toEqual(["intentId", "operation", "execution"]);
+    expect(item.required).toEqual(["intentId", "operation", "execution", "purpose", "filterEvidence"]);
     const context = {} as Parameters<
       NonNullable<typeof calendarReadBindingField.parse>
     >[1];
@@ -424,7 +424,7 @@ describe("Calendar operation bindings", () => {
         turnSignal: new AbortController().signal,
       };
       const value = calendarReadBindingField.parse?.(
-        [{ intentId: "intent:1", operation, execution: "required" }],
+        [{ intentId: "intent:1", operation, execution: "required", ...(operation === "search_events" ? {filterEvidence:[{query:"Meet with Shaw",quote:"Meet with Shaw",origin:"current"}]} : {}) }],
         context,
       );
       if (!value) throw new Error("Binding rejected");
@@ -441,6 +441,7 @@ describe("Calendar operation bindings", () => {
           intentId: "intent:1",
           operation,
           execution: "required",
+          ...(operation === "search_events" ? {filterEvidence:[{query:"Meet with Shaw",quote:"Meet with Shaw",origin:"current",sourceMessageId:message.id,sourceActorId:message.entityId,sourceRoomId:message.roomId,sourceCreatedAt:1000}]} : {}),
           sourceMessageId: message.id,
           roomId: message.roomId,
           actorId: message.entityId,

@@ -3102,8 +3102,28 @@ export function calendarReadCoverage(
           rejectEvidence("CALENDAR_READ_COVERAGE_INCOMPLETE");
         return answer === "complete";
       }
-      if (binding.operation === "search_events")
+      if (binding.operation === "search_events") {
+        let details = step.toolCall.params?.details;
+        if (typeof details === "string") {
+          try { details = JSON.parse(details); } catch { return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED"); }
+        }
+        const filters = binding.filterEvidence;
+        const values = [step.toolCall.params?.query,
+          ...(Array.isArray(step.toolCall.params?.queries) ? step.toolCall.params.queries : []),
+          ...(isObjectRecord(details) ? [details.query, ...(Array.isArray(details.queries) ? details.queries : [])] : []),
+        ].filter((v): v is string => typeof v === "string" && !!v.trim());
+        const scope = reply.context;
+        if (!Array.isArray(filters) || !filters.length || !values.length ||
+            !filters.every(e => isObjectRecord(e) && typeof e.query === "string" && typeof e.quote === "string" && e.query === e.quote.trim() &&
+              (e.origin === "current" || e.origin === "referent") &&
+              (e.origin !== "current" || (e.sourceMessageId === binding.sourceMessageId && e.sourceActorId === binding.actorId && e.sourceCreatedAt === binding.requestedAt)) &&
+              e.sourceRoomId === binding.roomId && !!e.sourceMessageId && !!e.sourceActorId &&
+              Number.isFinite(e.sourceCreatedAt) && e.sourceCreatedAt <= binding.requestedAt) ||
+            !values.every(q => filters.some(e => e.query.toLowerCase() === q.trim().toLowerCase())) ||
+            !isObjectRecord(scope) || scope.selection !== "filtered_search" || scope.contentFilterApplied !== true)
+          return rejectEvidence("CALENDAR_READ_EVIDENCE_REJECTED");
         return reply.scenario === "search_results";
+      }
       if (binding.operation !== "next_event" || reply.scenario !== "next_event")
         return false;
       const scope = data.readScope;
