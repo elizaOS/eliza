@@ -125,10 +125,21 @@ function normalizeLookup(value: string): string {
  */
 const SPACED_WORD_CHAR =
   "(?:(?![\\p{Script=Han}\\p{Script=Hiragana}\\p{Script=Katakana}\\p{Script=Hangul}])[\\p{L}\\p{M}\\p{N}])";
+// One Han/kana/Hangul character is a whole syllable and also a substring of
+// longer names ("李" inside "李雷"), so it cannot stand in for a word boundary
+// on its own. The spaced boundary applies from two such characters up; a
+// one-character name keeps the strict boundary it had before.
+const STRICT_WORD_CHAR = "[\\p{L}\\p{M}\\p{N}]";
+const CJK_CHAR =
+  /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/gu;
 
 function wholePartRegExp(value: string): RegExp {
+  const wordChar =
+    (value.match(CJK_CHAR)?.length ?? 0) >= 2
+      ? SPACED_WORD_CHAR
+      : STRICT_WORD_CHAR;
   return new RegExp(
-    `(?<!${SPACED_WORD_CHAR})${escapeRegExp(value)}(?!${SPACED_WORD_CHAR})`,
+    `(?<!${wordChar})${escapeRegExp(value)}(?!${wordChar})`,
     "u",
   );
 }
