@@ -42,6 +42,7 @@ import {
   extractUserText,
   getActionReplyOwner,
   getTrajectoryContext,
+  getUserMessageText,
   logger,
   ModelType,
   resolveOptimizedPromptForRuntime,
@@ -808,11 +809,6 @@ function newBriefingId(): string {
   return `brief-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function messageText(message: Memory): string {
-  const value = message.content.text;
-  return typeof value === "string" ? value : "";
-}
-
 function resolveBriefOptimizationTask(args: {
   params: BriefActionParameters;
   message: Memory;
@@ -824,7 +820,10 @@ function resolveBriefOptimizationTask(args: {
     return "morning_brief";
   }
 
-  const text = messageText(args.message).toLowerCase();
+  // Read the user's words, not the document-augmentation envelope: a
+  // retrieved document fragment (for example, "prep for the board meeting")
+  // must not flip a plain morning brief to the meeting_prep task.
+  const text = getUserMessageText(args.message).toLowerCase();
   const asksForMeetingPrep =
     /\b(prep|prebrief|brief me|dossier|agenda|risk register)\b/u.test(text) &&
     /\b(meeting|board|client|call|agenda|presentation|interview)\b/u.test(text);
