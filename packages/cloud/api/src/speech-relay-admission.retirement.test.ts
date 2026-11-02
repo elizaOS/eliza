@@ -1,7 +1,7 @@
-import { beforeEach, expect, test, vi } from "vitest";
-const state = vi.hoisted(() => ({ attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0 }));
-vi.mock("@elizaos/cloud-shared/lib/pricing-constants", () => ({ PLATFORM_MARKUP_MULTIPLIER: 1.2 }));
-vi.mock("@elizaos/cloud-shared/lib/services/organization-inference-admission", () => ({
+import { beforeEach, expect, test, mock } from "bun:test";
+const state = { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0 };
+mock.module("@elizaos/cloud-shared/lib/pricing-constants", () => ({ PLATFORM_MARKUP_MULTIPLIER: 1.2 }));
+mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission", () => ({
   admitOrganizationInference: async () => {
     const index = state.index++;
     return {
@@ -15,7 +15,7 @@ vi.mock("@elizaos/cloud-shared/lib/services/organization-inference-admission", (
     };
   },
 }));
-import { reserveSpeechRelayAdmission } from "./speech-relay-admission";
+const { reserveSpeechRelayAdmission } = await import("./speech-relay-admission");
 beforeEach(() => Object.assign(state, { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0 }));
 const caller = { user: { id: "owner", organization_id: "org" }, credential: {} } as never;
 const details = () => ({ pcmBytes: 32000, ttsCharacters: 3, providerMayHaveStarted: true, outcomes: { stt: "complete", tts: "complete" } as const, dispatched: { stt: true, tts: true } });

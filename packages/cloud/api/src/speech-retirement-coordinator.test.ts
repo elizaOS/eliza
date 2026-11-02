@@ -1,28 +1,28 @@
-import { beforeEach, expect, test, vi } from "vitest";
-const control = vi.hoisted(() => ({ closeFails: false, opens: 0, closes: 0, wait: undefined as Promise<void> | undefined, subscriptionWait: undefined as Promise<void> | undefined, subscribed: 0, unsubscribed: 0 }));
-vi.mock("@elizaos/cloud-shared/db/client", () => ({ runWithDbCacheAsync: (fn: () => unknown) => fn() }));
-vi.mock("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({ runWithCloudBindingsAsync: (_env: unknown, fn: () => unknown) => fn() }));
-vi.mock("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError: class extends Error {} }));
-vi.mock("@elizaos/cloud-shared/lib/services/voice-usage-meter", () => ({ createDurableVoiceUsageStore: () => ({}) }));
-vi.mock("@elizaos/cloud-shared/lib/utils/logger", () => ({ logger: { info() {}, error() {} } }));
-vi.mock("@elizaos/cloud-shared/lib/voice-session/config", () => ({ resolveVoiceUsageLimits: () => ({}) }));
-vi.mock("@elizaos/host/voice/cartesia-ink", () => ({ createCartesiaInkRealtimeSession() {} }));
-vi.mock("@elizaos/host/voice/cartesia-sonic-tts", () => ({ CartesiaSonicTtsAdapter: class { close() {} async closeAndConfirm() { return "transport_closed"; } } }));
-vi.mock("../v1/voice/session/lib/provider-socket-factory", () => ({ createWorkerCartesiaFactory: () => () => {}, createWorkerCartesiaInkFactory: () => () => {} }));
-vi.mock("../v1/voice/stt/cartesia-pricing", () => ({ parseCartesiaUsdPerCredit: () => 0.001 }));
-vi.mock("../v1/voice/tts/provider-selection", () => ({ resolveCartesiaVoiceId: () => "voice" }));
-vi.mock("./speech-revocation-subscription", () => ({ subscribeSpeechRevocation: async () => { control.subscribed++; await control.subscriptionWait; return () => { control.unsubscribed++; }; } }));
-vi.mock("./speech-relay-admission", () => ({ reserveSpeechRelayAdmission: async (input: any) => {
+import { beforeEach, expect, test, mock } from "bun:test";
+const control = { closeFails: false, opens: 0, closes: 0, wait: undefined as Promise<void> | undefined, subscriptionWait: undefined as Promise<void> | undefined, subscribed: 0, unsubscribed: 0 };
+mock.module("@elizaos/cloud-shared/db/client", () => ({ runWithDbCacheAsync: (fn: () => unknown) => fn() }));
+mock.module("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({ runWithCloudBindingsAsync: (_env: unknown, fn: () => unknown) => fn() }));
+mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError: class extends Error {} }));
+mock.module("@elizaos/cloud-shared/lib/services/voice-usage-meter", () => ({ createDurableVoiceUsageStore: () => ({}) }));
+mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({ logger: { info() {}, error() {} } }));
+mock.module("@elizaos/cloud-shared/lib/voice-session/config", () => ({ resolveVoiceUsageLimits: () => ({}) }));
+mock.module("@elizaos/host/voice/cartesia-ink", () => ({ createCartesiaInkRealtimeSession() {} }));
+mock.module("@elizaos/host/voice/cartesia-sonic-tts", () => ({ CartesiaSonicTtsAdapter: class { close() {} async closeAndConfirm() { return "transport_closed"; } } }));
+mock.module("../v1/voice/session/lib/provider-socket-factory", () => ({ createWorkerCartesiaFactory: () => () => {}, createWorkerCartesiaInkFactory: () => () => {} }));
+mock.module("../v1/voice/stt/cartesia-pricing", () => ({ parseCartesiaUsdPerCredit: () => 0.001 }));
+mock.module("../v1/voice/tts/provider-selection", () => ({ resolveCartesiaVoiceId: () => "voice" }));
+mock.module("./speech-revocation-subscription", () => ({ subscribeSpeechRevocation: async () => { control.subscribed++; await control.subscriptionWait; return () => { control.unsubscribed++; }; } }));
+mock.module("./speech-relay-admission", () => ({ reserveSpeechRelayAdmission: async (input: any) => {
   for (const kind of ["stt", "tts"] as const) await input.onProgress?.(kind, { state: "settled_actual", requestId: `speech:${input.sessionId}:${kind}`, amountUsd: "0" });
   return {};
 } }));
-vi.mock("@elizaos/host/voice/speech-relay-session", () => ({ SPEECH_RELAY_BUDGET: { durationMs: 60000 }, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
+mock.module("@elizaos/host/voice/speech-relay-session", () => ({ SPEECH_RELAY_BUDGET: { durationMs: 60000 }, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
   control.opens++;
   const handle = { async close() { control.closes++; if (control.closeFails) throw Error("unknown cleanup"); }, async retryRetirement() { return this.close(); }, evidence: () => ({ stt: "gracefully_drained", tts: "transport_closed", accounting: "settled_actual" }) };
   ports.registerRetirement(handle); await ports.reserveCredits(); await control.wait;
   return { retirement: handle, close: () => handle.close() };
 } }));
-import { SpeechRelayCoordinator } from "./speech-relay-coordinator";
+const { SpeechRelayCoordinator } = await import("./speech-relay-coordinator");
 const id = "00000000-0000-4000-8000-000000000001", owner = "00000000-0000-4000-8000-000000000002", org = "00000000-0000-4000-8000-000000000003";
 function fixture() {
   let row: any, queue = Promise.resolve(), failProof = false;
@@ -36,7 +36,7 @@ function fixture() {
   const make = () => new SpeechRelayCoordinator(state, env);
   const c = make();
   const input = { sessionId: id, tokenDigest: "a".repeat(64), expiresAt: Date.now() + 60000, caller: { user: { id: owner, organization_id: org } }, proofVersion: 1 };
-  const post = (coordinator: SpeechRelayCoordinator, path: string, data: unknown) => coordinator.fetch(new Request(`https://speech-relay.internal/${path}`, { method: "POST", body: JSON.stringify(data) }));
+  const post = (coordinator: InstanceType<typeof SpeechRelayCoordinator>, path: string, data: unknown) => coordinator.fetch(new Request(`https://speech-relay.internal/${path}`, { method: "POST", body: JSON.stringify(data) }));
   const revoke = (coordinator = c) => post(coordinator, "revoke", { userId: owner, organizationId: org, proofVersion: 1 });
   const open = async () => { const task = (c as any).open(structuredClone(row)); (c as any).openingTask = task; await task; };
   return { c, make, input, post, revoke, open, failNextProof() { failProof = true; }, get row() { return row; } };

@@ -1,4 +1,4 @@
-import { expect, test } from "vitest";
+import { expect, test } from "bun:test";
 import { initializeSpeechRecord, claimSpeechOpening, markSpeechOwned, beginSpeechRetirement, recordSpeechSettlement, completeSpeechRetirement, type SpeechLifecycleRecord } from "./speech-retirement-state";
 const input = (): SpeechLifecycleRecord => ({ sessionId: "session", tokenDigest: "digest", expiresAt: 60000, caller: { user: { id: "owner", organization_id: "org" } }, proofVersion: 1, phase: "minted" });
 const init = () => initializeSpeechRecord(undefined, input(), 0);

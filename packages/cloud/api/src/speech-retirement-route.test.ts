@@ -1,10 +1,10 @@
-import { beforeEach, expect, test, vi } from "vitest";
-const data = vi.hoisted(() => ({ generated: 0, owner: 0, calls: [] as any[] }));
-vi.mock("@elizaos/cloud-shared/auth", () => ({ requireUserOrApiKeyWithOrg: async () => { data.owner++; return { id: "owner", organization_id: "org" }; } }));
-vi.mock("./lib/generative-route-auth", () => ({ requireGenerativeRouteCaller: async () => { data.generated++; return { user: { id: "owner", organization_id: "org" }, credential: { kind: "api_key" } }; } }));
-vi.mock("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({ issueConsentNonce: async () => ({ nonce: "00000000-0000-4000-8000-000000000001", expiresAt: new Date(Date.now() + 60000).toISOString() }), consumeConsentNonce: async () => true }));
-vi.mock("./speech-relay-coordinator", () => ({ speechTokenDigest: () => "a".repeat(64) }));
-import app from "../v1/voice/speech/route";
+import { beforeEach, expect, test, mock } from "bun:test";
+const data = { generated: 0, owner: 0, calls: [] as any[] };
+mock.module("@elizaos/cloud-shared/auth", () => ({ requireUserOrApiKeyWithOrg: async () => { data.owner++; return { id: "owner", organization_id: "org" }; } }));
+mock.module("./lib/generative-route-auth", () => ({ requireGenerativeRouteCaller: async () => { data.generated++; return { user: { id: "owner", organization_id: "org" }, credential: { kind: "api_key" } }; } }));
+mock.module("@elizaos/cloud-shared/lib/voice-session/consent-nonce", () => ({ issueConsentNonce: async () => ({ nonce: "00000000-0000-4000-8000-000000000001", expiresAt: new Date(Date.now() + 60000).toISOString() }), consumeConsentNonce: async () => true }));
+mock.module("./speech-relay-coordinator", () => ({ speechTokenDigest: () => "a".repeat(64) }));
+const { default: app } = await import("../v1/voice/speech/route");
 const nonce = "00000000-0000-4000-8000-000000000001";
 const env = (enabled = true, proof = true) => ({ VOICE_SPEECH_RELAY_ENABLED: String(enabled), VOICE_SPEECH_RETIREMENT_PROOF_ENABLED: String(proof), SPEECH_RELAY_SESSIONS: { getByName: () => ({ fetch: async (url: unknown, init: any) => { data.calls.push({ url, body: JSON.parse(init.body) }); return Response.json({ initialized: true }); } }) } });
 beforeEach(() => { data.generated = 0; data.owner = 0; data.calls = []; });
