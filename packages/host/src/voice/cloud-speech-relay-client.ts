@@ -63,6 +63,10 @@ export interface CloudSpeechRelayTransportDiagnostic {
   wireCode?: Extract<SpeechRelayServerControl, { t: "error" }>["code"];
 }
 
+export interface CloudSpeechRelayRetirement {
+  close(): Promise<void>;
+  retryRetirement?(): Promise<void>;
+}
 export interface CloudSpeechRelayClientOptions {
   enabled?: boolean;
   /** Exact reviewed API origin, without a path/query. Never taken from a renderer request. */
@@ -73,6 +77,8 @@ export interface CloudSpeechRelayClientOptions {
   /** Pin owner/credential revision and local agent generation for this whole session. */
   assertCurrent(): void;
   signal?: AbortSignal;
+  /** Register cleanup before remote admission; remains usable if acquisition rejects. */
+  registerRetirement?(retirement: CloudSpeechRelayRetirement): void;
   fetch?: typeof fetch;
   websocket?: (url: string) => WebSocket;
   /** Safe structured diagnostics only; logger failure cannot alter transport lifecycle. */
@@ -161,6 +167,8 @@ export async function createCloudSpeechRelayPorts(
 ): Promise<{
   speechPorts: VoiceSessionSpeechPorts;
   close(): Promise<void>;
+  /** Explicitly retry only a failed retirement of this captured session. */
+  retryRetirement?(): Promise<void>;
   sessionId: string;
   expiresAt: number;
 }> {
@@ -200,6 +208,7 @@ export async function createCloudSpeechRelayPorts(
   let relayReady = false;
   let closed = false,
     closePromise: Promise<void> | undefined,
+    retirementFailed = false,
     socket: WebSocket | undefined,
     expiryTimer: ReturnType<typeof setTimeout> | undefined,
     sessionId: string | undefined,
@@ -559,14 +568,28 @@ export async function createCloudSpeechRelayPorts(
       requireValue(result.revoked === true);
       retirementDeadline.throwIfAborted();
     })();
-    return closePromise;
+    const attempt = closePromise;
+    void attempt.catch(() => {
+      // Retry only the same captured session's authenticated retirement.
+      // Transport stays closed; this cannot reopen a provider or admit audio.
+      if (closePromise === attempt) retirementFailed = true;
+    });
+    return attempt;
   };
   const aborted = () =>
     terminate(
       new CloudSpeechRelayClientError("closed", "Cloud speech was cancelled"),
     );
   options.signal?.addEventListener("abort", aborted, { once: true });
+  const retirement: CloudSpeechRelayRetirement = {
+    close,
+    retryRetirement() {
+      if (retirementFailed) { retirementFailed = false; closePromise = undefined; }
+      return close();
+    },
+  };
   try {
+    options.registerRetirement?.(retirement);
     const consent = await request(SPEECH_RELAY_ROUTES.consent, {});
     exact(consent, ["consentNonce", "expiresAt"]);
     requireValue(
@@ -810,7 +833,12 @@ export async function createCloudSpeechRelayPorts(
     );
   } catch (error) {
     terminate();
-    if (sessionId) await close().catch(() => {});
+    if (sessionId) {
+      try { await close(); }
+      catch (cleanupError) {
+        throw new AggregateError([error, cleanupError], "Cloud speech startup failed with unconfirmed retirement");
+      }
+    }
     throw error;
   }
   function handleControl(input: SpeechRelayServerControl) {
@@ -1086,5 +1114,5 @@ export async function createCloudSpeechRelayPorts(
     },
   };
   requireValue(sessionId);
-  return { speechPorts, close, sessionId, expiresAt: expiry };
+  return { speechPorts, ...retirement, sessionId, expiresAt: expiry };
 }

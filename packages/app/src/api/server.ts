@@ -1238,8 +1238,8 @@ export async function startApiServer(
     configureServer: async (httpServer) => {
       await callerOptions?.configureServer?.(httpServer);
     },
-  }).catch((error: unknown) => {
-    voiceHost.close();
+  }).catch(async (error: unknown) => {
+    await voiceHost.close();
     throw error;
   });
   logger.info(
@@ -1292,7 +1292,7 @@ export async function startApiServer(
   server.close = async () => {
     compatState.stoppedAuthRuntime = null;
     closeStandaloneSpeech(compatState);
-    voiceHost.close();
+    await voiceHost.close();
     await originalClose();
   };
   return server;

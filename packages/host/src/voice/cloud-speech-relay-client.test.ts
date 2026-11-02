@@ -1070,3 +1070,14 @@ test("negotiated insufficient credits stop before PCM with a public billing reas
   expect(f.pcm).toHaveLength(0);
   expect(f.connections).toBe(1);
 });
+
+test("explicit retirement retry preserves close idempotency and never opens a provider",async()=>{
+ const f=await fixture();let attempts=0;
+ const client=await createCloudSpeechRelayPorts({...f.options,fetch:Object.assign(async(input:Parameters<typeof fetch>[0],init?:Parameters<typeof fetch>[1])=>{
+  if(new URL(String(input)).pathname.endsWith("/revoke")){attempts++;if(attempts===1)return Response.json({revoked:false},{status:503});}
+  return fetch(input,init);
+ },{preconnect:fetch.preconnect})});
+ const first=client.close();await expect(first).rejects.toThrow("retirement was not confirmed");expect(client.close()).toBe(first);expect(attempts).toBe(1);
+ const retry=client.retryRetirement!();expect(client.retryRetirement!()).toBe(retry);await retry;
+ expect(attempts).toBe(2);expect(f.connections).toBe(1);expect(f.pcm).toHaveLength(0);
+});

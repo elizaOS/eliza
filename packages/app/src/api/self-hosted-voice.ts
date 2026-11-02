@@ -8,7 +8,7 @@ import type { Duplex } from "node:stream";
 import { isAllowedHost, isCredentialedCorsOrigin } from "@elizaos/agent";
 import { type AgentRuntime, logger } from "@elizaos/core";
 import type { CartesiaWebSocketFactory } from "@elizaos/host/voice/cartesia-sonic-tts";
-import { createCloudSpeechRelayPorts } from "@elizaos/host/voice/cloud-speech-relay-client";
+import { createCloudSpeechRelayPorts, type CloudSpeechRelayRetirement } from "@elizaos/host/voice/cloud-speech-relay-client";
 import { createLocalRuntimeConversationFetch } from "@elizaos/host/voice/local-runtime-conversation-fetch";
 import {
   VoiceSession,
@@ -69,7 +69,13 @@ interface Ticket extends Binding {
   expiresAt: number;
   claimed: boolean;
   origin: string;
+  predecessor?: Ticket;
+  successorId?: string;
+  retire?: () => Promise<void>;
 }
+// Retained across host recreation in this process; only confirmed retirement removes an entry.
+const retiringCloudTickets = new Set<Ticket>();
+
 type Configuration =
   | { route: "direct"; apiKey: string; voiceId: string }
   | { route: "cloud"; apiKey: string; origin: string };
@@ -160,6 +166,9 @@ export function createSelfHostedVoice(
     perMessageDeflate: false,
   });
   let closed = false;
+  const activeCloudTickets = new Set<Ticket>();
+  const pendingCloudAcquisitions = new Set<Promise<Awaited<ReturnType<typeof createCloudSpeechRelayPorts>>>>();
+  let closing: Promise<void> | undefined;
   const batchRequests = new Set<AbortController>();
 
   function prune() {
@@ -438,10 +447,23 @@ export function createSelfHostedVoice(
           origin,
           body.conversationId,
         );
+        let predecessor: Ticket | undefined;
+        if (body.predecessorSessionId !== undefined) {
+          const id = body.predecessorSessionId;
+          predecessor = typeof id === "string" ? tickets.get(id) : undefined;
+          if (configured.route !== "cloud" || !predecessor?.claimed ||
+              !predecessor.retire || predecessor.successorId || predecessor.expiresAt <= now() ||
+              predecessor.identityId !== binding.identityId ||
+              predecessor.sessionId !== binding.sessionId ||
+              predecessor.runtime !== binding.runtime ||
+              predecessor.claims.conversationId !== conversationId)
+            throw new VoiceAdmissionError(403, "voice_predecessor_mismatch");
+        }
         if (tickets.size >= MAX_PENDING)
           throw new VoiceAdmissionError(429, "voice_at_capacity");
         const sessionId = randomUUID();
         const token = randomBytes(32).toString("base64url");
+        if (predecessor) predecessor.successorId = sessionId;
         // The canonical browser client rotates at an idle boundary ten seconds
         // before this advertised deadline. Match the Cloud speech budget
         // without adding a second provider-remint loop or extending its limit.
@@ -465,6 +487,7 @@ export function createSelfHostedVoice(
           expiresAt,
           claimed: false,
           origin,
+          ...(predecessor ? { predecessor } : {}),
         });
         const publicUrl = new URL(`${BASE}/ws`, `http://${req.headers.host}`);
         publicUrl.protocol = "ws:";
@@ -477,6 +500,8 @@ export function createSelfHostedVoice(
           uplink: { codecs: ["pcm16"] },
           downlink: { codecs: ["pcm16"] },
           iceServers: null,
+          ...(configured.route === "cloud"
+            ? { rotationPreparation: "retire-before-open-v1" } : {}),
         });
       } else throw new VoiceAdmissionError(404, "voice_route_not_found");
     } catch (error) {
@@ -578,14 +603,67 @@ export function createSelfHostedVoice(
             let relay:
               | Awaited<ReturnType<typeof createCloudSpeechRelayPorts>>
               | undefined;
+            let session: VoiceSessionLike | undefined;
+            let cleanup: CloudSpeechRelayRetirement | undefined;
+            let retirementAttempted = false;
+            let retirement: Promise<void> | undefined;
+            const retire = (): Promise<void> => {
+              // Reset can race an acquisition that has not returned a handle.
+              // Do not cache an empty retirement that could hide the late relay.
+              const handle = cleanup ?? relay;
+              if (!handle) return Promise.resolve();
+              if (!retirement) {
+                retiringCloudTickets.add(ticket);
+                const retry = retirementAttempted;
+                retirementAttempted = true;
+                const attempt = (async () => {
+                  await (retry ? (handle.retryRetirement?.() ?? handle.close()) : handle.close());
+                  activeCloudTickets.delete(ticket);
+                  retiringCloudTickets.delete(ticket);
+                  tickets.delete(claims.sessionId);
+                })();
+                retirement = attempt;
+                void attempt.catch(() => {
+                  // A later admission may retry exact cleanup, never skip it.
+                  if (retirement === attempt) retirement = undefined;
+                });
+              }
+              return retirement;
+            };
+            ticket.retire = async () => {
+              try { session?.bye(); }
+              finally { await retire(); }
+            };
             if (config.route === "cloud") {
-              relay = await (
+              // A prefetched ticket has no provider. Retire its exact bound
+              // predecessor and await the Cloud cleanup receipt before opening.
+              if (ticket.predecessor) {
+                const retirePredecessor = ticket.predecessor.retire;
+                if (!retirePredecessor) throw new VoiceAdmissionError(409, "voice_predecessor_unavailable");
+                await retirePredecessor();
+                if (!(await active(ticket)) || providerLifetime.signal.aborted ||
+                    tickets.get(ticket.claims.sessionId) !== ticket ||
+                    ticket.expiresAt <= now())
+                  throw new VoiceAdmissionError(401, "voice_session_revoked");
+              }
+              for (const pending of retiringCloudTickets) {
+                if (!pending.retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
+                await pending.retire();
+              }
+              if (!(await active(ticket)) || providerLifetime.signal.aborted ||
+                  tickets.get(ticket.claims.sessionId) !== ticket || ticket.expiresAt <= now())
+                throw new VoiceAdmissionError(401, "voice_session_revoked");
+              const acquisition = (
                 options.createCloudSpeechPorts ?? createCloudSpeechRelayPorts
               )({
                 enabled: true,
                 origin: config.origin,
                 credential: async () => config.apiKey,
                 signal: providerLifetime.signal,
+                registerRetirement: (handle) => {
+                  cleanup = handle;
+                  activeCloudTickets.add(ticket);
+                },
                 assertCurrent: () => {
                   const current = cloudSpeechConfiguration(ticket.runtime);
                   if (
@@ -605,9 +683,23 @@ export function createSelfHostedVoice(
                     );
                 },
               });
-              if (!(await active(ticket)) || providerLifetime.signal.aborted) {
-                await relay.close();
-                throw new VoiceAdmissionError(401, "voice_session_revoked");
+              pendingCloudAcquisitions.add(acquisition);
+              try {
+                relay = await acquisition;
+                // Track before another await or owner/Stop validation can fail.
+                activeCloudTickets.add(ticket);
+              } catch (error) {
+                await retire();
+                throw error;
+              } finally {
+                pendingCloudAcquisitions.delete(acquisition);
+              }
+              try {
+                if (!(await active(ticket)) || providerLifetime.signal.aborted)
+                  throw new VoiceAdmissionError(401, "voice_session_revoked");
+              } catch (error) {
+                await retire();
+                throw error;
               }
               try {
                 logger.info(
@@ -674,13 +766,7 @@ export function createSelfHostedVoice(
               isRevoked: async () =>
                 tickets.get(claims.sessionId) !== ticket ||
                 !(await active(ticket)),
-              onTeardown: async () => {
-                try {
-                  await relay?.close();
-                } finally {
-                  tickets.delete(claims.sessionId);
-                }
-              },
+              onTeardown: retire,
             };
             let sessionConfig: VoiceSessionConfig;
             if (config.route === "cloud") {
@@ -710,11 +796,12 @@ export function createSelfHostedVoice(
               };
             }
             try {
-              return options.buildSession
+              session = options.buildSession
                 ? options.buildSession(sessionConfig)
                 : new VoiceSession(sessionConfig);
+              return session;
             } catch (error) {
-              await relay?.close();
+              await retire();
               throw error;
             }
           },
@@ -731,11 +818,29 @@ export function createSelfHostedVoice(
     consent.clear();
     for (const id of tickets.keys()) revoke(id);
     for (const client of wss.clients) client.terminate();
+    for (const ticket of activeCloudTickets) {
+      // Reset is synchronous; the retained barrier owns failures until a later
+      // authenticated attempt or awaited shutdown confirms exact retirement.
+      void ticket.retire?.().catch(() => {});
+    }
   }
-  function close() {
+  function close(): Promise<void> {
+    if (closing) return closing;
     closed = true;
     reset();
-    wss.close();
+    const attempt = (async () => {
+      await Promise.allSettled([...pendingCloudAcquisitions]);
+      const results = await Promise.allSettled([...new Set([...activeCloudTickets, ...retiringCloudTickets])].map(ticket => {
+        if (!ticket.retire) throw new Error("Cloud retirement is unavailable");
+        return ticket.retire();
+      }));
+      wss.close();
+      const failures = results.filter((result): result is PromiseRejectedResult => result.status === "rejected");
+      if (failures.length) throw new AggregateError(failures.map(result => result.reason), "Cloud retirement was not confirmed");
+    })();
+    closing = attempt;
+    void attempt.catch(() => { if (closing === attempt) closing = undefined; });
+    return attempt;
   }
   return { handleRequest, handleUpgrade, reset, close };
 }
