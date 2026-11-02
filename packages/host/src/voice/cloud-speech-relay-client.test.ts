@@ -1126,7 +1126,7 @@ test("auth-cache warming retries consent and mint before admission with identica
   await client.close();
 });
 
-test("the retryable generative warming envelope is retried like the auth-cache code", async () => {
+test("a nested pre-admission cache warming code is retried like the auth-cache code", async () => {
   const f = await fixture();
   const warmed = new Set<string>();
   let refusals = 0;
@@ -1139,12 +1139,7 @@ test("the retryable generative warming envelope is retried like the auth-cache c
           warmed.add(path);
           refusals++;
           return Response.json(
-            {
-              success: false,
-              error: "Authorization cache is warming; retry shortly",
-              code: "service_unavailable",
-              details: { retryable: true, retryAfterSeconds: 1 },
-            },
+            { error: { code: "rate_limit_cache_warming" } },
             { status: 503, headers: { "Retry-After": "1" } },
           );
         }
@@ -1193,6 +1188,21 @@ test("auth-cache retry is bounded and never treats unrelated refusals or failure
     {
       status: 503,
       body: { code: "billing_cache_warming" },
+      wait: "0",
+      expected: 1,
+    },
+    {
+      status: 503,
+      body: {
+        code: "service_unavailable",
+        details: { retryable: true, retryAfterSeconds: 1 },
+      },
+      wait: "0",
+      expected: 1,
+    },
+    {
+      status: 503,
+      body: { error: { code: "unknown_cache_warming" } },
       wait: "0",
       expected: 1,
     },
@@ -1256,11 +1266,16 @@ test("cancellation and owner replacement during warming prevent another auth req
         { preconnect() {} },
       ),
     });
-    const rejected = expect(opening).rejects.toBeDefined();
+    // Observe the rejection without asserting yet: Bun's `rejects` matcher
+    // settles the promise eagerly, which would run every warming retry first.
+    const settled = opening.then(
+      () => false,
+      () => true,
+    );
     await until(() => calls === 1);
     if (change === "abort") controller.abort();
     else f.changeOwner();
-    await rejected;
+    expect(await settled).toBe(true);
     expect(calls).toBe(1);
     expect(f.connections).toBe(0);
   }

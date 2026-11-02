@@ -86,13 +86,10 @@ maybe(
           .json()
           .catch(() => null)) as Record<string, unknown> | null;
         const nested = refusal?.error as Record<string, unknown> | undefined;
-        const details = refusal?.details as Record<string, unknown> | undefined;
         const warming =
           (typeof nested?.code === "string" &&
             nested.code.endsWith("_cache_warming")) ||
-          refusal?.code === "auth_cache_warming" ||
-          (refusal?.code === "service_unavailable" &&
-            details?.retryable === true);
+          refusal?.code === "auth_cache_warming";
         if (!warming) break;
         await new Promise((resolve) => setTimeout(resolve, 1_000));
       }
