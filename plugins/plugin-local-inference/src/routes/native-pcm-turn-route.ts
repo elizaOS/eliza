@@ -15,6 +15,13 @@ import type { VoicePipelineEvents } from "../services/voice/pipeline";
 
 const ROUTE_PATH = "/api/voice/native-pcm-turn";
 const MAX_PCM_BYTES = 20 * 1024 * 1024;
+// `{ pcm }` JSON carries the same PCM bound as raw bytes: base64 grows it
+// by 4/3, plus room for the JSON wrapper — mirroring the ASR route's
+// MAX_LOCAL_ASR_JSON_BODY_BYTES. Capping the JSON at MAX_PCM_BYTES + 4096
+// refused every turn over ~15.0 MiB of PCM (about 93 s at 48 kHz) with 413
+// before the handler ran, even though decodeFloat32Base64 allows up to
+// MAX_PCM_BYTES. The decode check below stays the PCM enforcer.
+const MAX_PCM_JSON_BODY_BYTES = Math.ceil(MAX_PCM_BYTES / 3) * 4 + 4096;
 const DEFAULT_SAMPLE_RATE = 16000;
 type NativePcmTurnBody = {
 	turnId?: unknown;
@@ -83,7 +90,7 @@ export async function handleNativePcmTurnRoute(
 	const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
 	if (method !== "POST" || pathname !== ROUTE_PATH) return false;
 	const body = await readJsonBody<NativePcmTurnBody>(req, res, {
-		maxBytes: MAX_PCM_BYTES + 4096,
+		maxBytes: MAX_PCM_JSON_BODY_BYTES,
 	});
 	if (!body) return true;
 	const pcm = decodeFloat32Base64(body.pcm);
