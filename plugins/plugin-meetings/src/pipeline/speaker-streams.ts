@@ -629,12 +629,22 @@ export class SpeakerStreamManager {
       );
       return;
     }
+    // The window ends where its audio ends, not when the ASR result lands
+    // (an idle submit returns more than idleTimeoutSec after the speaker
+    // stopped). Capture drops silence, so a pause inside the window puts
+    // the last audio later than the samples alone reach.
+    const audioMs = Math.floor(
+      (this.unconfirmedSamples(buffer) / this.sampleRate) * 1000,
+    );
     this.onSegmentConfirmed({
       speakerKey: buffer.speakerKey,
       speakerName: buffer.speakerName,
       text,
       startMs: buffer.windowStartMs,
-      endMs: this.now(),
+      endMs: Math.max(
+        buffer.windowStartMs + audioMs,
+        buffer.lastAudioTimestampMs,
+      ),
       seq: buffer.sequenceNumber,
       words,
     });
