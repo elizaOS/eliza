@@ -6022,8 +6022,11 @@ export class CalendarService extends Service {
     }
     // Provider synchronization can update or delete the linked local event.
     // Read local snapshots afterwards so this response reflects that change.
+    // A managed feed is a broker read that writes no local record.
     const maySyncLinkedLocalRecords = calendars.some(
-      (calendar) => calendar.provider !== ELIZA_CALENDAR_PROVIDER,
+      (calendar) =>
+        calendar.provider !== ELIZA_CALENDAR_PROVIDER &&
+        !managed?.owns(calendar),
     );
     for (const source of sources) {
       if (
