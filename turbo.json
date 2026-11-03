@@ -204,7 +204,11 @@
         "@elizaos/plugin-assistant#build",
         "@elizaos/plugin-sqlite#build",
         "@elizaos/plugin-web-search#build",
-        "@elizaos/plugin-wallet#build"
+        "@elizaos/plugin-wallet#build",
+        "@elizaos/plugin-mcp#build",
+        "@elizaos/plugin-native-inference#build",
+        "@elizaos/plugin-google-workspace#build",
+        "@elizaos/plugin-coding-tools#build"
       ]
     },
     "@elizaos/cloud-shared#typecheck": {
