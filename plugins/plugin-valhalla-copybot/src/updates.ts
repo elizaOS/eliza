@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-export const DESK_VERSION = "0.1.2";
+export const DESK_VERSION = "0.2.0";
 export const VERSION_URL =
   "https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/version.json";
 

@@ -261,10 +261,10 @@ export default function App() {
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1, backgroundColor: "#050507" },
+  page: { flex: 1, backgroundColor: "#07080b" },
   wrap: { padding: 24 },
   kicker: { color: "#ffb347", letterSpacing: 3, fontWeight: "700", marginBottom: 12 },
-  title: { color: "#f4ecdf", fontSize: 32, fontWeight: "700", marginBottom: 12 },
+  title: { color: "#ffb347", fontSize: 32, fontWeight: "700", marginBottom: 12, letterSpacing: 1 },
   body: { color: "#cfc6b6", fontSize: 16, marginBottom: 12 },
   ad: {
     minHeight: 50,

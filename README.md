@@ -26,6 +26,14 @@
 - [Download for Android](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-phone.apk) (`valhalla-phone.apk`)
 - [Add to Chrome](https://valhalla-app.xyz/extension/) (install steps until `CHROME_WEB_STORE_URL` is set)
 - [Checksums](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/SHA256SUMS.txt)
+- [Chrome extension zip](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip)
+- [Chrome store zip](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-extension-store.zip)
+
+Release v0.2.0.
+
+<img src="docs/valhalla/ui-desk.png" alt="Valhalla desk" width="100%" />
+
+<img src="docs/valhalla/ui-extension.png" alt="Valhalla extension" width="360" />
 
 Windows may say the publisher is unknown while the file is unsigned. Choose More info, then Run anyway.
 
@@ -57,7 +65,7 @@ This fork adds the Valhalla desk. TokenJunction LLC publishes Valhalla. It is th
 
 ### Safety
 
-The desk and the phone have no send or withdraw control. Wallet keys stay on the PC, encrypted, and are never put on the phone. Trading is read-only until you arm live on the PC. The test APK uses Google's public AdMob test IDs only.
+The desk and the phone have no send or withdraw control. Wallet keys stay on the PC, encrypted, and are never put on the phone. Trading is read-only until you arm live on the PC. Ad units come from the signed monetization file.
 
 See [CHANGELOG.md](CHANGELOG.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
 
