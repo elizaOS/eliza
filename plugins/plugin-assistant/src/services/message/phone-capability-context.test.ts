@@ -370,7 +370,8 @@ describe("model acknowledgment authoring grammar", () => {
     expect(ACKNOWLEDGMENT_RULE).toContain(
       "These references work for any topic",
     );
-    expect(ACKNOWLEDGMENT_RULE).toContain('not "pull the latest"');
+    expect(ACKNOWLEDGMENT_RULE).toContain("a complete lookup phrase");
+    expect(ACKNOWLEDGMENT_RULE).toContain("Do not invent other forms or synonyms");
     expect(ACKNOWLEDGMENT_RULE).toContain(
       "leave it empty and still do authorized work",
     );

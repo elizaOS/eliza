@@ -1072,7 +1072,7 @@ describe("planning progress delivery boundaries", () => {
   it.each([
     { draft: "Let me check.", pending: true },
     { draft: "", pending: true },
-    { draft: "It's Sunday.", pending: false },
+    { draft: "Hello.", pending: false },
   ])(
     "speaks a history-turn acknowledgement only as the model wrote it: '$draft' (pending $pending)",
     async ({ draft, pending }) => {
@@ -1080,7 +1080,7 @@ describe("planning progress delivery boundaries", () => {
       const turn = h.makeMessage();
       turn.content.text = pending
         ? "Um, what's going on today in the news?"
-        : "What day is it?";
+        : "Reply with the word hello.";
       h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
       for (const [entityId, text, createdAt] of [
         [turn.entityId, "Can you open notes?", Date.now() - 2000],
