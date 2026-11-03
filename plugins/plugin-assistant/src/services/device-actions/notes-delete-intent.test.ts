@@ -36,4 +36,15 @@ describe("originalRequestsNotesDeletion", () => {
       ),
     ).toBe(false);
   });
+
+  it("declines read or show instead with other word order or punctuation", () => {
+    const requests = [
+      "Delete the note about groceries, instead please read it",
+      "Delete the note about groceries, instead, read it",
+      "Delete the note about groceries; please read it instead",
+      "Delete the note about groceries and show it instead",
+      "Delete the note about groceries, read it to me instead",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
+  });
 });
