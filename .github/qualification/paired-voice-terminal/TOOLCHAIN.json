@@ -1,0 +1,13 @@
+{
+  "state": "SOURCE_REVIEWED_PINNED_TOOLCHAIN_ACTUAL_RECEIPTS_PENDING",
+  "expectedTools": {
+    "node": "24.15.0",
+    "bun": "1.4.2",
+    "bunSHA256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+    "nodeSHA256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+  },
+  "nodeImageDigest": "sha256:da81deb96d49fc84c9813bc4f16dfdb1d4d7e3671b74cd54fd944428f1444afe",
+  "bunImageDigest": "sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2",
+  "expectedDockerServerVersion": "28.0.4",
+  "GitNpmPolicy": "Additional Git/npm actual binary/version/library records must bind pinned image+same-run actual container; this source draft is not an independent installed-binary witness."
+}

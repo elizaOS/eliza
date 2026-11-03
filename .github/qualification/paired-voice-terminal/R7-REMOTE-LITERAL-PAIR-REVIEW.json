@@ -1,0 +1,61 @@
+{
+  "atUTC": "2026-11-03T21:53:06.754928+00:00",
+  "state": "INDEPENDENT_REMOTE_R7_INCLUDE_AND_PAIRED_PINS_LITERAL_SOURCE_PASS",
+  "lanes": {
+    "SDK": {
+      "repository": "elizaOS/eliza",
+      "commit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+      "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b",
+      "soleParent": "dba60b3583d24be32e8982282e9ef48c6a0ea3f4",
+      "branch": "codex/voice-terminal-owning-include-r7-20261103",
+      "remoteRefMatches": true,
+      "exactChangedPaths": [
+        "packages/ui/vitest.config.ts"
+      ],
+      "allOtherParentLeavesUnchanged": 29568,
+      "files": [
+        {
+          "path": "packages/ui/vitest.config.ts",
+          "gitBlob": "431e375474d8fc74b0ada744c0ba8c5ac8200d44",
+          "SHA256": "1cfa1c70b0ecc6214f1ff0e0a7d8cb45c0c41865955e25d3083965ec242db5e9",
+          "bytes": 11223
+        }
+      ]
+    },
+    "AlphaPaired": {
+      "repository": "eliza-research/alphaphone",
+      "commit": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+      "tree": "55df13f5a9bc313918a1e46c1fae00f786730804",
+      "soleParent": "80d595da058f8318d78f64f067266d78c03cff65",
+      "branch": "codex/alpha-voice-terminal-owning-r7-20261103",
+      "remoteRefMatches": true,
+      "exactChangedPaths": [
+        "patches/eliza/cloud-speech-client-manifest.json",
+        "upstream.lock.json",
+        "vendor/eliza"
+      ],
+      "allOtherParentLeavesUnchanged": 3483,
+      "files": [
+        {
+          "path": "patches/eliza/cloud-speech-client-manifest.json",
+          "gitBlob": "4291ccfe4526c99591eedabb088b31b4f448796b",
+          "SHA256": "3b7af74f171440bb71435bd93a1a11c0600b4b40569533f7d1bfbbeca47fe539",
+          "bytes": 679
+        },
+        {
+          "path": "upstream.lock.json",
+          "gitBlob": "32a29ce96d8918a6573d217ad28f8766db7e8a95",
+          "SHA256": "17100944239b664496f9f5f562e08647a07d6e2b7482ff64c1351825d32a0176",
+          "bytes": 224
+        }
+      ]
+    }
+  },
+  "localSourceReviewSHA256": "9a3305a399cb7d52f0dd3b5d661cf78814628f96e67809c622ef329cb52b2b70",
+  "publicationReceiptSHA256": "786a44dabf40a86d5252b498460000079e7c103449e609e2c2c828b20f0f2096",
+  "limits": [
+    "Read-only GitHub source ref/commit/tree/content API verification only; no tests, type/module import, build, workflow dispatch, source or runtime intake, provider/device/merge action.",
+    "Remote commit author is not pusher proof. Alpha separately records same-captured-credential authenticated actor before/immediately before/after publication; this review does not read/persist credential or credential digests.",
+    "Source literal PASS is not normal case registration/execution, paired dependency census, normal Host\u2192Contracts resolution or projection qualification. Final recipe must bind actual e232/918ac pins and truthful new projection/source identities."
+  ]
+}

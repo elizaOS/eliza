@@ -1,0 +1,66 @@
+{
+  "atUTC": "2026-11-03T23:28:35.150Z",
+  "state": "COMBINED_V8_MODULE_PROJECTION_AND_CONTROLLER_SOURCE_REVIEW_PASS_NOT_READY_OR_GO",
+  "directory": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/controller-draft-v8",
+  "frozenManifestSHA256": "bcacc024bbcd05c1d5b4aef1c322eaae2d22abd4e5a94887226243a0f313eaaf",
+  "sealProposalSHA256": "ba5e606ebf24c650f3c4b8770a403816a58576a0a46adb124d1652fb5b9a787f",
+  "all28FrozenFileHashesMatched": true,
+  "candidates": {
+    "SDK": {
+      "commit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+      "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b"
+    },
+    "Alpha": {
+      "commit": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+      "tree": "55df13f5a9bc313918a1e46c1fae00f786730804",
+      "sdkGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928"
+    }
+  },
+  "scope": "Sole final source reviewer for module/projection helper internals and coupling. Reuses completed v4controller/observer and v5/v7ancestry review; primary predecessor handoff says no prior final helper PASS. No candidate code evaluated.",
+  "sourceCustody": {
+    "alphaHookClosure": {
+      "manifestSHA256": "df6a9dcb4fae8bb6729331d1c8b097b02291c8e8400ee5bcab65067dd01e48ff",
+      "files": 53,
+      "bytes": 327210,
+      "allHashesAndPhysicalExecutionManifestBindingsMatched": true
+    },
+    "sdkDirectBoundaryManifestSHA256": "a03fae385ae315da8a7dd5c7249a07936ff4b9d96042268859d0623881be63a1",
+    "sdkTransitiveBoundaryManifestSHA256": "fbb74cee73883ce1e75cb9d6ec39d5cb9b04a54d35b60efd6f5665ba23aba9a0",
+    "sdkInitializerBoundaryManifestSHA256": "1b07e2ecf90677eac6ec2f83fa7f9e4c730d453da8b3d23b2645d41aa044ce38",
+    "uniqueSDKBoundaryFiles": 10,
+    "all10HashesAndExecutionManifestBindingsMatched": true,
+    "alphaViteConfigSHA256": "13443772f409e300309612751a73d284f8f0a8682f1c06fce05c2ab1b71ae10c",
+    "frozen28includesActualCompleteSDKGuardAndRootDispositionAndRemoteLiteralSupport": true
+  },
+  "findings": [],
+  "resolvedFindings": [
+    "lstat then unbounded path read replaced by shared anchored sameFD nofollow bounded source reader/inventory",
+    "Actual Alpha config uses Alpha cwd and trueapps/app root, no inline root alias override",
+    "SDKSSR source resolution and actual__vitest__ HostContracts value resolution both checked; uses publicproject.import, no inventedrunner",
+    "PID1-derived cross-container request collision replaced by explicit baseline/post requestnames and exclusive writes",
+    "Post verifier requires prior baseline; outercontroller keeps baseline SHA outside containers and requires unchangedbaseline+accepted exactpin/stampphase post receipt before familyPASS",
+    "Potential Vite externalization overclaim corrected: sourceBytesBoundedReadHashed separated from viteFetchKind/transformedBodyReturned/sourceExecutionClaimfalse",
+    "StaticrawSDK importclosure missing2 supplied; eagerattachmentwrapper supplied and verified only returnsfunction, doesnotreviewbytes/callprovider atinit"
+  ],
+  "checks": {
+    "fdCustody": "Linuxonly absolute paths<=4096/<=128components/no dot,parent,NUL; anchored open directorychain O_DIRECTORY/O_NOFOLLOW/O_NONBLOCK, each link inode/mode checked before/after; leaf lstat->NOFOLLOW FD->boundedmax+1 read->sameFD fullidentity/size+samepath check, allFDs reverse/finally close. Hash uses exactly bounded returned bytes. No filepath reopen after check for content.",
+    "inventory": "Recursive FDanchored nofollowregularonly projection: depth64/entries20000/files10000/perfile8MiB/total64MiB. Directory identity stable before/after enumeration; file mode/bytes/hash from sameFD. Root .source.json separately bounded+hashed, allotherleaves stamped exactly, no extra/symlink/special leaf.",
+    "projection": "Actual raw SDK HEAD exacte232; raw339canonical+25extra disjoint364 requested paths; Gitls-tree regular mode/OIDs exactset, bounded64MiBcatfilebatch reply8MiBperframe SHA1Gitblob framing+SHA256 fully checked includingtrailing bytes. Canonical normalpreparer hash6c9b, stamp baseCommit/version12 and339rawSHA map exact. Physicalgenerated inventory files+hashes exactly equalstamp. No qualifier output reconstruction/borrowedDTS/substitute source or hardcodedoutputhash.",
+    "projectionCoupling": "Only canonical preparer phase maywrite own projection. Both Alpha.eliza and results/projection aliases readonly thereafter, SDK +Alpha vendor alias readonly. Baseline/post distinct exclusive requestfiles andreceiptfiles; post compares fullraw/files/modes+stamphash toexistingbaseline. Parentcontroller storesbaselineSHA afterbaselineCIDclose, verifies unchanged afterpost, requires acceptedpost phase plus exactbothsourcepins+stamphash before all12familyoutcomePASS. PID1 identity no longer used for filenames.",
+    "normalModuleConditions": "All13 productionentry/config hashes bound; normalowning App/Host/UI/Voice configurations retained, canonicalVite/Vitest APIs, normal conditions observed rather than overwritten. Eachsource entry boundedhashed then actual normalfetch path matched toexpectedsource, noDTS substitution; actual literal import edges resolved under owningenvironment. Fetch evidence accurately labels transformedbody versus normalexternalization and neverclaims sourceexecution for all13. No forced imports/qualifier modulealias/filters/stubs.",
+    "actualValueScope": "Only newHostContracts values imported with public project.import under actual__vitest__ plusSSR supplier agreement; exactsourceindex/chathashes andtwofunctionexports. Alpha normalbrowseralias andSSR generatedclient resolution matched/stamped; normalSSR client valueexports checked. Browser execution/audio/live inference not claimed bySSR import.",
+    "alphaHooks": "Exactcfg134437 top-level checkCloudDeployment and publicconfig reads are readonly; producer/deployment CLI mainguards do not run when imported byoperator. localOcrAssets configureServer loads staticassets/license buffers, browserPdfAssets lists staticassets, browserFullReload snapshots sourcehashes. No OCRinference/nativeGoogle/resident launch factory called bythese hooks. Localagent configureServer returnsunlessVITE_LOCAL_AGENT1; Cloudbridge returnsunlessmock/resident/private flags. Preflight explicitlyforbids enablingflags+credential/profile env beforecreateServer and refuses root/app .env files; actualcontainer env whitelist suppliesnone. MiddlewareMode/HMRfalse/watchnull are operational overrides, not alone a no-effects proof.",
+    "initializers": "53Alpha sources checked for actualinitialization andhook factorycalls, notjustimport names. Rawprivate-runtime-launch->private-runtime-json andimmutable-workspace->committed-source import chains declarefunctions/classes withstdlibonly; no eager runtime/provider launch. attachments refusingAttachmentReviewer eagerly constructs anasyncwrapper only; upstream byte reviewer not called. Other observedtop-level effects are publicJSONread/validation/constantsets/classes. Generatedcanonical29edges remain normalproducer source provenance plus bounded actualruntime/module gates, not a universal no-effects/malware audit.",
+    "contexts": "EachSDKcontext andAlphaServer closed infinally andcwd restored before acceptedpreflight is written; earlyfetch/value/config/import/close failure cannotproduce accepted5owners13entries receipt. Controller checks accepted owners5 andexpectedHosttwoexports, guardedsource checks anddual dependency finalcensus andfull projectionpost before familyPASS.",
+    "intakeAndBounds": "v5reviewa3e08 ancestry scope preserved; v7 adds explicitno-prune/noprune-tags +exactactualofflineSDKguard/Rootdisposition/remoteliteralhash bindings andsharedFDpathcaps. FreshRootflagallowPinnedGitBootstrapBeforeAlphaAncestry claim/run bound. ExactfixedpublicURL/SHAunshallow onlyownAlpha.gitRW, refsunchanged/fullproductguard beforeinstall/source/module/test. Prior2GiB/4GiB memory=swap/CPU2/PID256/1536heap/phasecaps/1200whole/8MiBlog/diskfloors +exactPGID/CID/resource/finalcleanupfailgates retained.",
+    "observerAndCases": "v4a2bc source review carried without repeatedimplementation changes:12 exactfullfilecommands,252sourceparents+2reviewednestedexpected only; actualunique Vitest registration/taskIDs/results andJSONcoupling, normalNode summaries/9adapter parents+diagnostics.59 formattedtitles require actualrunner; no inherited1121counts/manualwaiver. SDK135 andAlpha1root fullbytecensuses retained."
+  },
+  "remaining": [
+    "CurrentPLAN DRAFT andoracleproposal intentionallynotReady; finalreviewedreadystates+exactSEAL/publication andindependentliteralreadback required, not grantedhere",
+    "FreshRootfiniteGO/oneuseclaim withexplicitbootstrap flag andresource/sourceadmission",
+    "Actual hosted tools,Alpha ancestry,normalconfig/module APIs,raw364/projectionbaseline/post,12normalfileactualregistration/results,depcensus,allCID/PGID/FDclosure receipts",
+    "NormalTypes/runtimeadoption and realbrowserCalendar+voice calls/tokens/speed/persistededit remain separate; schedulerbackgroundcalls separately counted"
+  ],
+  "limits": "Source review of declared effects/custody and resolved findings, not observedAPIcompatibility/projection/testsuccess, universalabsenceofallSDK/dependencytop-level effects, generalmalwareclearance or live acceptance. Any actual import/module/normalproducer mismatch is terminal qualification evidence, not permission to weaken guards/retry.",
+  "actions": "fs/crypto static read/hash/JSON parsing and this exactreviewreceipt only. No Gitbatch/object reads,CLI/import/probe/collection/compiler/build/test/image/CI/nonce/GO/controller/provider/browser/device/deploy/merge."
+}

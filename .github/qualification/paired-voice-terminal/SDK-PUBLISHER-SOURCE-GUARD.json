@@ -1,0 +1,16 @@
+{
+  "result": "PASS",
+  "repo": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/revision7/source",
+  "kind": "sdk",
+  "head": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "expectedHead": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "ancestryComplete": true,
+  "knownInjectedAncestors": [],
+  "trackedChangedFiles": [],
+  "failures": [],
+  "limitations": [
+    "Known-incident guard, not a general malware audit or sandbox"
+  ],
+  "sourceCodeExecuted": false,
+  "networkAccess": false
+}

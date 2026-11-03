@@ -1,0 +1,1184 @@
+{
+  "state": "SOURCE_REVIEWED_NORMAL_PREFLIGHT_ACTUAL_MODULES_PENDING",
+  "SDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "Alpha": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+  "projects": [
+    {
+      "name": "App",
+      "root": "packages/app",
+      "config": "vitest.host.config.ts",
+      "configSHA256": "409f5f8633669ba1cc9ab144a6db29a3308553f5bee8bc5c16e2e2362c6b4ab7",
+      "entries": [
+        {
+          "path": "packages/app/src/api/self-hosted-voice.ts",
+          "sha256": "590be27d3e19374f60412deb1e2d957880ef015fec51853e84b5ed6ac3558c17",
+          "literalModuleEdges": [
+            {
+              "kind": "import",
+              "specifier": "../services/auth-store",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./auth",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./auth/session-sockets",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./auth/sessions",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./compat-route-shared",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./response",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./self-hosted-read-aloud.js",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./self-hosted-transcription.js",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./voice-websocket-transport",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/agent",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/cartesia-sonic-tts",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/cloud-speech-relay-client",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/local-runtime-conversation-fetch",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/session-registry",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/session-token",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/session",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/speech-relay-session",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/usage",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/ws-handler",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/plugin-elizacloud/cloud-config/base-url",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/plugin-elizacloud/cloud-config/cloud-secrets",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/plugin-elizacloud/cloud-config/dev-cloud-env-authority",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "node:crypto",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "node:fs/promises",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "node:http",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "node:net",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "node:stream",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "ws",
+              "typeOnly": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Host",
+      "root": "packages/host",
+      "config": "vitest.config.ts",
+      "configSHA256": "edc25dd14907d23d1c54aec92397be5f4138ad3be36fb963fa4eb31066743259",
+      "entries": [
+        {
+          "path": "packages/host/src/voice/eliza-sse-bridge.ts",
+          "sha256": "448e446a140abea6c51c46482d0abb0da757694f5c607b7b0354ddc485dada90",
+          "literalModuleEdges": [
+            {
+              "kind": "import",
+              "specifier": "../protocol",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/contracts",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core/protocol",
+              "typeOnly": false
+            }
+          ]
+        },
+        {
+          "path": "packages/host/src/voice/protocol.ts",
+          "sha256": "58603263fef1471d59b81e030bd58f06fca2e6aa41d47df8b1c8e5ec67199254",
+          "literalModuleEdges": [
+            {
+              "kind": "import",
+              "specifier": "../protocol",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core/protocol",
+              "typeOnly": true
+            }
+          ]
+        },
+        {
+          "path": "packages/host/src/voice/session.ts",
+          "sha256": "988ff5b6c52ef31b6c231ab1c0e22dff8d1650d062f7ef0e479fe2faf1b9f797",
+          "literalModuleEdges": [
+            {
+              "kind": "export",
+              "specifier": "./ws-handler",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "../protocol",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "./cartesia-ink",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./cartesia-sonic-tts",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./eliza-sse-bridge",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./fish-audio-tts",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./phrase-aggregator",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./protocol",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "./session-registry",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./uplink-reframer",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./usage",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "./ws-handler",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core",
+              "typeOnly": false
+            }
+          ]
+        },
+        {
+          "path": "packages/host/src/voice/ws-handler.ts",
+          "sha256": "4142fdc82c6b28b3dfbef6b26204834893c32e3d3c7c8ea75c6dc30b49d1501d",
+          "literalModuleEdges": [
+            {
+              "kind": "import",
+              "specifier": "../protocol",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "./protocol",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./protocol",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "./session-token",
+              "typeOnly": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "UI",
+      "root": "packages/ui",
+      "config": "vitest.config.ts",
+      "configSHA256": "1cfa1c70b0ecc6214f1ff0e0a7d8cb45c0c41865955e25d3083965ec242db5e9",
+      "entries": [
+        {
+          "path": "packages/ui/src/voice/voice-session-client-core.ts",
+          "sha256": "72eb827f3a23459d41247a2217e931e6f8b5107296963e086911710cd9fd9996",
+          "literalModuleEdges": [
+            {
+              "kind": "export",
+              "specifier": "./voice-session-status",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "./voice-session-mic-capture",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./voice-session-ownership",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./voice-session-playback",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./voice-session-protocol",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./voice-session-state",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./voice-session-status",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/ui-context",
+              "typeOnly": false
+            }
+          ]
+        },
+        {
+          "path": "packages/ui/src/voice/voice-session-protocol.ts",
+          "sha256": "18331eee06a535e367c7365867ef085673ca508205a4483e29435b9da23de66e",
+          "literalModuleEdges": [
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core/view-interaction",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/host/voice/ui-context",
+              "typeOnly": true
+            }
+          ]
+        },
+        {
+          "path": "packages/ui/src/voice/voice-session-state.ts",
+          "sha256": "cc0592cc773a5fa995cf94ee175662c67389e77740e8a4fc1ee668227bac1273",
+          "literalModuleEdges": [
+            {
+              "kind": "import",
+              "specifier": "./voice-session-protocol",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "./voice-session-status",
+              "typeOnly": true
+            }
+          ]
+        },
+        {
+          "path": "packages/ui/src/components/shell/useShellController.ts",
+          "sha256": "5cc9282030790e173535f486ad7ccfa0a714847e0d16c33e00d1f9d6ab8f382f",
+          "literalModuleEdges": [
+            {
+              "kind": "export",
+              "specifier": "./conversation-nav",
+              "typeOnly": false
+            },
+            {
+              "kind": "export",
+              "specifier": "./conversation-nav",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "../../api/client-types-chat",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "../../api/client-types-config",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "../../bridge/electrobun-rpc",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../bridge/electrobun-runtime",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../events",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../hooks/useAuthStatus",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../hooks/useRealtimeVoiceMint",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../hooks/useRealtimeVoiceSession",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../hooks/useViewEvent",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/app-store",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/AppContext.hooks",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/ChatComposerContext.hooks",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/ChatTurnStatusContext.hooks",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/cloud-login-launch",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/ConversationMessagesContext.hooks",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/persistence",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/shell-surface-store",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../state/types",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../utils/desktop-workspace",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../utils/voice-capture-debug",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/batch-conversation",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/end-of-turn",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/local-asr-capture",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/transcript-session",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/transcription-exit",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/useWakeListenWindow",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/voice-capture-factory",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/voice-chat-types",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/voice-provider-defaults",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/voice-session-protocol",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "../../voice/wake-name-match",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../local-inference/home-model-status",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "../local-inference/useHomeModelStatus",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./conversation-nav",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./shell-auth-gate",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./shell-state",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "./useShellAuthGate",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "./useShellVoiceOutput",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/contracts",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core/protocol",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/core/protocol",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "@elizaos/voice",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "react",
+              "typeOnly": false
+            }
+          ]
+        },
+        {
+          "path": "packages/ui/src/hooks/useRealtimeVoiceSession.ts",
+          "sha256": "2a26aa3d845b0612f6b718f4d1d11aadf5766e6abe695b0e0b73f0101730ac6b",
+          "literalModuleEdges": [
+            {
+              "kind": "import",
+              "specifier": "../api/client",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../navigation",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../platform/browser-surface",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../voice/voice-chat-types",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "../voice/voice-session-client",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../voice/voice-session-mic-capture",
+              "typeOnly": false
+            },
+            {
+              "kind": "import",
+              "specifier": "../voice/voice-session-protocol",
+              "typeOnly": true
+            },
+            {
+              "kind": "import",
+              "specifier": "react",
+              "typeOnly": false
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Voice",
+      "root": "packages/voice",
+      "config": "vitest.config.ts",
+      "configSHA256": "746c2b90c0c1b02d1d529ed8aa7767f2c9e9385f5c74231e18854d59b0448455",
+      "entries": [
+        {
+          "path": "packages/voice/src/realtime-voice-timing.ts",
+          "sha256": "642893333016aff97ff5cb8abbacef591ba4898c275ae692a4c4cf0a4a0f1fc8",
+          "literalModuleEdges": []
+        }
+      ]
+    }
+  ],
+  "AlphaProjection": {
+    "config": "vite.config.ts",
+    "configSHA256": "13443772f409e300309612751a73d284f8f0a8682f1c06fce05c2ab1b71ae10c",
+    "entries": [
+      {
+        "path": "apps/app/src/runtime/connection-ui.tsx",
+        "sha256": "135e6f343cc173d4de8df8faa457ca69dc0b3b527556bb0d297529f2377fbdf3",
+        "literalModuleEdges": [
+          {
+            "kind": "dynamic-import",
+            "specifier": "./mock-admission",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../.eliza/client-features/packages/auth/src/auth/cloud-resident-binding.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../.eliza/client-features/packages/contracts/src/calendar.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../.eliza/client-features/packages/core/src/types/effects.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../.eliza/client-features/packages/ui/src/api/conversation-turn-controller.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../.eliza/client-features/plugins/plugin-assistant/src/services/device-actions/camera-contract.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../vendor/eliza/packages/core/src/utils/uuid",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/dev-profile",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/development-actions",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/development-agent-document",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/development-cloud-ui",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/development-cloud",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/development-connection",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/development-digest-document",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/development-execution-document",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/development-identity",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/device-preferences",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/domain-recovery",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../build-flags",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../daily",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../icon-style",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../maps/resident-relay.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../native",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../platform-plugins",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./abort-signal",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./action-message-presentation",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./alpha-client",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./alpha-client",
+            "typeOnly": true
+          },
+          {
+            "kind": "import",
+            "specifier": "./alpha-client",
+            "typeOnly": true
+          },
+          {
+            "kind": "import",
+            "specifier": "./aosp-image",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./app-record-completion",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./app-record-route-policy",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./automation-completion",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./automations-route-policy.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./browser-cloud-resident",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./calendar-approval",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./client-observation-support",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./clock-agent-review",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./clock-contract",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-deployment.generated.ts",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-environment-selection",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-membership-ui",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-personal-intent",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-personal-protocol",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-personal-setup",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-protocol",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-sign-in-ui",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./cloud-sign-in",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./connection-ui.css",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./conversation-selection",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./crash-log",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./development-cloud-agents",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./device-actions",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./device-actions",
+            "typeOnly": true
+          },
+          {
+            "kind": "import",
+            "specifier": "./device-record-presentation",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./device-view-profile",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./hosted-background",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./local-agent-storage",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./local-agent",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./modal-inert",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./native-connection",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./owner-reminder-notification-protocol",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./phone-context",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./phone-dial-contract",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./remote-protocol",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./remote-protocol",
+            "typeOnly": true
+          },
+          {
+            "kind": "import",
+            "specifier": "./resident-recovery",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./sms-agent-contract",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./subscription-entitlement",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./view-navigation",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./workflow-device-contract",
+            "typeOnly": true
+          },
+          {
+            "kind": "import",
+            "specifier": "./workflow-presentation",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./workflow-protocol",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "@capacitor/core",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "@elizaos/core/read-memo",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "react",
+            "typeOnly": false
+          }
+        ]
+      },
+      {
+        "path": "apps/app/src/runtime/development-cartesia-conversation.ts",
+        "sha256": "bea5bccfb9a382198abc7b5d4237955b849258addaeb539b8f9299428f9fa8a3",
+        "literalModuleEdges": [
+          {
+            "kind": "dynamic-import",
+            "specifier": "@elizaos/ui/voice/voice-session-client",
+            "typeOnly": false
+          },
+          {
+            "kind": "export",
+            "specifier": "./development-cartesia-flag",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../.eliza/client-features/packages/voice/src/realtime-voice-timing.ts",
+            "typeOnly": true
+          },
+          {
+            "kind": "import",
+            "specifier": "../../../../vendor/eliza/packages/core/src/utils/uuid",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "../browser/device-preferences",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./alpha-client",
+            "typeOnly": true
+          },
+          {
+            "kind": "import",
+            "specifier": "./connection-ui",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./development-cartesia-flag",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./development-cloud-voice",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "./device-actions",
+            "typeOnly": true
+          },
+          {
+            "kind": "import",
+            "specifier": "./voice-timing",
+            "typeOnly": false
+          },
+          {
+            "kind": "import",
+            "specifier": "@elizaos/core/view-interaction",
+            "typeOnly": true
+          }
+        ]
+      }
+    ],
+    "consumer": "apps/app/src/runtime/development-cartesia-conversation.ts",
+    "specifier": "@elizaos/ui/voice/voice-session-client",
+    "expectedGeneratedTarget": ".eliza/client-features/packages/ui/src/voice/voice-session-client-core.ts",
+    "requiredExports": [
+      "createVoiceSessionClient"
+    ]
+  },
+  "HostContracts": {
+    "importer": "packages/host/src/voice/eliza-sse-bridge.ts",
+    "specifier": "@elizaos/contracts",
+    "expectedTarget": "packages/contracts/src/index.ts",
+    "targetSHA256": "b1bf136d138446ad712e8a09cb1bf9ad099a0c671167e8ffa0ced09b9da9861b",
+    "leaf": "packages/contracts/src/contracts/chat.ts",
+    "leafSHA256": "89bfca6d9c7a6f861a67ac441ecb2e6281aca6b55665493b5be0d7543cdc4cba",
+    "requiredExports": [
+      "parseChatFailureKind",
+      "parseChatTerminalFailure"
+    ]
+  },
+  "additionalSourceInputs": {
+    "SDK:packages/contracts/src/index.ts": "b1bf136d138446ad712e8a09cb1bf9ad099a0c671167e8ffa0ced09b9da9861b",
+    "SDK:packages/contracts/src/contracts/chat.ts": "89bfca6d9c7a6f861a67ac441ecb2e6281aca6b55665493b5be0d7543cdc4cba",
+    "Alpha:vite.config.ts": "13443772f409e300309612751a73d284f8f0a8682f1c06fce05c2ab1b71ae10c",
+    "Alpha:scripts/upstream-native-source.mjs": "1eb9de7dc42713aad1c6aae1c786c4c2d6d2979087b108ebe35c0574208679ca",
+    "Alpha:scripts/client-speech-patch.mjs": "d88747f54893f09341ac442f81039f2c3b37c78076951f35aabf4be0e346d630"
+  },
+  "conditionPolicy": "Load actual own configs unchanged. Host explicitly declares source/default SSR conditions; App/UI do not declare eliza-source conditions and must not inherit the old assistant/host-only blanket assertion. Record observed conditions/source aliases and reject dist/DTS substitutions for required source entries.",
+  "scope": "Actual normal config/resolver/fetch plus Host Contracts and Alpha generated-client value imports; no tests/model/provider/voice/capture started; full owning tests/types/runtime acceptance separate."
+}
