@@ -1,8 +1,10 @@
 import { timingSafeEqual } from "node:crypto";
 import { createReadStream } from "node:fs";
+import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { adsenseSnippet } from "./adsense.ts";
 import { companionResponse, isLoopback, phoneMayCall } from "./companion.ts";
 import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
@@ -222,6 +224,19 @@ async function handle(
   res.writeHead(200, { "content-type": type, "cache-control": "no-store" });
   if (req.method === "HEAD") {
     res.end();
+    return;
+  }
+  if (full.endsWith(".html")) {
+    try {
+      let html = await readFile(full, "utf8");
+      if (full.endsWith(`${path.sep}index.html`)) {
+        html = html.replace("<!-- valhalla-adsense -->", adsenseSnippet());
+      }
+      res.end(html);
+    } catch {
+      if (!res.headersSent) send(res, 404, "not found", "text/plain");
+      else res.end();
+    }
     return;
   }
   createReadStream(full)

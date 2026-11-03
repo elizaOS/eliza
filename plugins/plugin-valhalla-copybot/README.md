@@ -18,7 +18,7 @@ The desk opens at `http://127.0.0.1:8787`. It stays on this PC unless you set `V
 
 Install the APK from this repository's Releases page when a build is published. That is the normal path. The phone does not need Android Studio.
 
-On the phone, allow installs from unknown sources, then open the file. The app opens on the last screen you used. The first time, that screen is pairing. It does not crash if the PC desk is off. It shows the last known status instead. The ads are Google test ads.
+On the phone, allow installs from unknown sources, then open the file. The app opens on the last screen you used. The first time, that screen is pairing. It does not crash if the PC desk is off. It shows the last known status instead.
 
 The phone does not store a wallet key. It has no send or withdraw control. Create and fund the bot wallet on the PC desk. Write down a new wallet's backup there. It is shown once.
 
@@ -39,6 +39,43 @@ There is no send or withdraw button. Move SOL with your own wallet app.
 Chat on the desk answers status, positions, and P&L. It refuses transfer and "turn off safety" requests. Gemini uses Google AI Studio, not Vertex.
 
 A log is written to `data/agent.log` and `data/audit.jsonl`. The log panel shows the same lines. Keys are not written there.
+
+## Ads
+
+The phone uses Google AdMob, not AdSense. A new build uses Google's sample ad IDs, so the ads are test ads until you set your own. Nothing in the app source stores a live ad unit ID.
+
+Set these when you build the phone app. Use the environment, or `android/local.properties`. Do not commit the real IDs.
+
+- `ADS_ENABLED` is `true` by default. Set it to `false` to turn every ad off.
+- `ADMOB_APP_ID`
+- `ADMOB_BANNER_ID`
+- `ADMOB_INTERSTITIAL_ID`
+- `ADMOB_REWARDED_ID`
+- `HOUSE_ADS_URL` is an optional https JSON feed for your own messages. If you leave it empty, the app uses `android/app/src/main/assets/house-ads.json`.
+- `PRIVACY_POLICY_URL` is the https page you publish from `android/PRIVACY_POLICY.md`.
+
+The banner and the optional ad buttons are on the pairing screen and the error log only. They are hidden on status, chat, Recover agent, and settings confirm. A short ad and a break ad start only when you tap those buttons. A reward does not change trading.
+
+Before the first third-party ad, the app runs Google's consent form for GDPR and CCPA.
+
+Your own messages are a title, a line of text, and an optional https link. The feed looks like this:
+
+```json
+{ "ads": [{ "title": "Valhalla desk", "text": "Trading stays on the PC.", "url": "" }] }
+```
+
+To be paid by AdMob:
+
+1. Create an AdMob account at https://admob.google.com and add a payment profile.
+2. Register the Android app and copy the app ID into `ADMOB_APP_ID`.
+3. Create a banner, an interstitial, and a rewarded ad unit. Copy each ID into the matching setting.
+4. Publish `android/PRIVACY_POLICY.md` on your site and set `PRIVACY_POLICY_URL`.
+5. Publish `android/app-ads.txt.example` as `https://YOUR-DOMAIN/app-ads.txt` after you replace the publisher ID.
+6. Build the app again. Until those IDs are set, the app keeps Google's sample IDs.
+
+Google's policies restrict financial and crypto products. AdMob and the Play Store can reject a crypto trading app, or ask for a license or an extra declaration in some countries. Read the current AdMob program policies and Play policy before you turn on paid ads. Test ads do not pay.
+
+The PC desk does not show web ads unless you opt in. AdSense does not belong on a localhost desk. Set `ADSENSE_ENABLED=true` and `ADSENSE_CLIENT_ID=ca-pub-` plus 16 digits in `.env` only for a public site. `ADSENSE_SLOT` is optional. Leave both unset on your own computer.
 
 ## Settings
 

@@ -7,28 +7,24 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.TextView;
+import androidx.appcompat.app.AlertDialog;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
-import com.google.android.gms.ads.AdRequest;
-import com.google.android.gms.ads.AdSize;
-import com.google.android.gms.ads.AdView;
-import com.google.android.gms.ads.MobileAds;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import org.json.JSONObject;
 
 /** Phone companion. It never stores a wallet key and has no send or withdraw control. */
 public class MainActivity extends AppCompatActivity {
-    static final String TEST_BANNER = "ca-app-pub-3940256099942544/6300978111";
-
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+    private AdController ads;
     private SessionStore store;
     private ErrorLog errors;
     private DeskClient client;
@@ -69,10 +65,11 @@ public class MainActivity extends AppCompatActivity {
         errors = new ErrorLog(this);
         client = new DeskClient(store, errors);
         bindViews();
+        ads = new AdController(this);
+        ads.start();
         deskUrl.setText(store.deskUrl());
         accessCode.setText(store.accessCode());
         chatLog.setText(store.chatLog());
-        loadTestAd();
         askForNotifications();
         String screen = store.lastScreen();
         if (store.deskUrl().isEmpty()) screen = SessionStore.SCREEN_PAIRING;
@@ -99,6 +96,7 @@ public class MainActivity extends AppCompatActivity {
         chatInput = findViewById(R.id.chatInput);
         confirmSuggestion = findViewById(R.id.confirmSuggestion);
         findViewById(R.id.connect).setOnClickListener(v -> pair());
+        findViewById(R.id.privacyPolicy).setOnClickListener(v -> openPrivacy());
         findViewById(R.id.recover).setOnClickListener(v -> recover());
         findViewById(R.id.openChat).setOnClickListener(v -> showScreen(SessionStore.SCREEN_CHAT));
         findViewById(R.id.openErrors).setOnClickListener(v -> {
@@ -273,6 +271,20 @@ public class MainActivity extends AppCompatActivity {
         errorBlock.setVisibility(SessionStore.SCREEN_ERRORS.equals(screen) ? View.VISIBLE : View.GONE);
         if (SessionStore.SCREEN_CHAT.equals(screen)) chatLog.setText(store.chatLog());
         if (SessionStore.SCREEN_ERRORS.equals(screen)) renderErrors();
+        if (ads != null) ads.onScreen(screen);
+    }
+
+    private void openPrivacy() {
+        String url = BuildConfig.PRIVACY_POLICY_URL == null ? "" : BuildConfig.PRIVACY_POLICY_URL.trim();
+        if (url.startsWith("https://")) {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+            return;
+        }
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.privacy_policy)
+                .setMessage(R.string.privacy_fallback)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private void startWatch() {
@@ -289,20 +301,6 @@ public class MainActivity extends AppCompatActivity {
         ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.POST_NOTIFICATIONS}, 41);
     }
 
-    private void loadTestAd() {
-        try {
-            MobileAds.initialize(this);
-            AdView ad = new AdView(this);
-            ad.setAdUnitId(TEST_BANNER);
-            ad.setAdSize(AdSize.BANNER);
-            FrameLayout slot = findViewById(R.id.adSlot);
-            slot.addView(ad);
-            ad.loadAd(new AdRequest.Builder().build());
-        } catch (Throwable ignored) {
-            status.setText(getString(R.string.status_idle));
-        }
-    }
-
     private static String summarize(String json) {
         try {
             JSONObject settings = new JSONObject(json);
@@ -316,6 +314,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        if (ads != null) ads.destroy();
         io.shutdownNow();
         super.onDestroy();
     }
