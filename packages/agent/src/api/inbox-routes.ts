@@ -1417,7 +1417,14 @@ async function resolveDiscordMessageAuthorProfile(
         ).messages.fetch
       : null;
   if (!fetchMessage) {
-    writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+    // A null `channel` means the channel lookup itself did not succeed (a 429,
+    // a 5xx, a network error, or no Discord client). That says nothing about
+    // this author, and memoizing it hid the sender for the whole TTL after one
+    // transient failure. Only a real channel object that has no message
+    // history is durable evidence worth remembering.
+    if (channel) {
+      writeCachedValue(discordMessageAuthorProfileCache, cacheKey, null);
+    }
     return null;
   }
   try {
