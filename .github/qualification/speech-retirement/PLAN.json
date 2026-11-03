@@ -14,13 +14,13 @@
     "stopFreeBytes": 8589934592
   },
   "reviewedRunner": {
-    "ImageVersion": "20261026.354.1",
     "ImageOS": "ubuntu24",
     "dockerServer": "28.0.4",
     "evidenceRun": 41504810728,
     "evidenceAttempt": 1,
     "evidenceArtifact": 13169763764,
-    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90",
+    "scope": "Docker and ImageOS pins only; image admission uses the sealed finite allowlist plus same-run capabilities."
   },
   "normalGroups": [
     {
@@ -190,5 +190,40 @@
       "total": 6
     }
   ],
-  "unitConfiguration": "Use exactowningpackageconfig/resolver/setup/pluginsincludingUIReactdedupe; overrideONLY fullfileinclude/root/cache/workers/timeouts/heap1536MiB. Explicitincludeassignment avoidsarraymergeexpansion. Ignore-scriptsdependencyinstall stillNOTnormalnativehookproof."
+  "unitConfiguration": "Use exactowningpackageconfig/resolver/setup/pluginsincludingUIReactdedupe; overrideONLY fullfileinclude/root/cache/workers/timeouts/heap1536MiB. Explicitincludeassignment avoidsarraymergeexpansion. Ignore-scriptsdependencyinstall stillNOTnormalnativehookproof.",
+  "hostEnvironment": {
+    "allowedImageVersions": [
+      "20261018.96.1",
+      "20261026.354.1"
+    ],
+    "ImageOS": "ubuntu24",
+    "architecture": "x86_64",
+    "cleanupPaths": [
+      "/usr/local/lib/android/sdk",
+      "/usr/share/dotnet"
+    ],
+    "cleanupSecondsPerPath": 60,
+    "cleanupBeforeMinimumDiskAdmission": true,
+    "cleanupOnlyWhenBelowEntryFloor": true,
+    "hostPythonRange": "3.12 <= version < 3.16",
+    "capabilities": [
+      "Linux /proc",
+      "waitid WNOWAIT preserves child identity before reap",
+      "session PGID identity",
+      "Docker linux/amd64",
+      "Docker server exact28.0.4"
+    ],
+    "priorSingleCohortReview": {
+      "ImageVersion": "20261026.354.1",
+      "ImageOS": "ubuntu24",
+      "dockerServer": "28.0.4",
+      "evidenceRun": 41504810728,
+      "evidenceAttempt": 1,
+      "evidenceArtifact": 13169763764,
+      "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+    },
+    "provenanceLimit": "20261018.96.1 authenticated GitHub job setup provenance retained; its upstream release/tag now404, not claimed independently resolved. Same-run capabilities are required. New versions fail closed.",
+    "noMacExecutionOrDeletion": true,
+    "normalSDKLifecycleStillFalse": true
+  }
 }

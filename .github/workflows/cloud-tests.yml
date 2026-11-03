@@ -16,10 +16,6 @@ on:
         description: Exact reviewed qualification workflow commit
         required: true
         type: string
-      expected_runner_image:
-        description: Reviewed GitHub hosted ImageVersion (qualification only)
-        required: false
-        type: string
       expected_docker_server:
         description: Reviewed Docker server version (qualification only)
         required: false
@@ -82,7 +78,6 @@ jobs:
           ROOT_GO_JSON: ${{ runner.temp }}/speech-root-go.json
           QUALIFICATION_RECIPE: unit
           EXPECTED_WORKFLOW_SHA: ${{ inputs.expected_workflow_sha }}
-          EXPECTED_RUNNER_IMAGE: ${{ inputs.expected_runner_image }}
           EXPECTED_DOCKER_SERVER: ${{ inputs.expected_docker_server }}
           QUALIFICATION_MODE: ${{ inputs.mode }}
           EXPIRES_EPOCH: ${{ inputs.expires_epoch }}

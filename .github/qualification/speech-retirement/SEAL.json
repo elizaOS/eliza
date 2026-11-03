@@ -2,10 +2,10 @@
   "files": {
     "SOURCE-MANIFEST.json": "6ba8d90729059e45ed7b16b9313028445facfa7124cc18536a52146df63660e4",
     "POLICY.json": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf",
-    "run.py": "0a7464746b3a845d94e4de00f26598346f01708afabfc18a4d21b6770a336de0",
+    "run.py": "f2e75535c389d4aa988339cf77305968e28a0a798625eabffbe4127b7c0abdb1",
     "normal-0.config.mts": "b1bada0d0ed9ff487963e8c791b017733e6c7414498cae6c39bdcd03fdd829f2",
     "unit-calendar.config.mts": "3c85f16e362a8b649d5f5c26e527971a9cacec68667f2ed20f39633fad4d11fe",
-    "PLAN.json": "42f2ce4ded73f7eb90ab5e804bf565a4df6bbbf1bb8df7bc4b83617a374b90ea",
+    "PLAN.json": "f094e3c3d5ba8cbc04b19679a99106ce306598ffddf669118206cc3edc0381be",
     "NORMAL-CONFIG-CLOSURE.json": "563488ddd5c07bfb9f9daa95c806c75299d6ca557cca141f936c57a6b83caa82",
     "Dockerfile": "a61c63efd512a231cebd7c43b8aa23978eab11e23739a97665d8446f52f68b18",
     "normal-2.config.mts": "4361b5d34f5ca5166a15707295f64aab7c4f7e5160b31fd34e38a0149acd9970",
@@ -22,6 +22,7 @@
     "unit-ui-refusal.config.mts": "568b5532b69b8c52685ad989f2dd42b9ed0042eb2aa62f52201310918f380e8d",
     "cloud-tests.yml": "1e2d76bd3c7a2fab76ee651f3d584d850d6fde6e2290138dc3040e63e0ed5561",
     "normal-3.config.mts": "8f90e811eb67b7259997be359e7f620aeee489d8e327bb48dcb63a9a2713e3e4",
-    "ORACLES.json": "51113bdbbb91c44682a2b278fd22b648171080220e24ee692691885189ecc632"
+    "ORACLES.json": "51113bdbbb91c44682a2b278fd22b648171080220e24ee692691885189ecc632",
+    "host_environment.py": "4084a37e5bc4aebff82aa879f15a33b8c357d99ccaa8b52ece901cb6a4b6b6f8"
   }
 }

@@ -203,9 +203,13 @@ try:
   status='METADATA_ONLY_NO_PULL_NO_SOURCE_EXECUTION'
  else:
   assert manifest.get('executionReady') is True and go['sourceCommit']==manifest['commit'] and go['sourceTree']==manifest['tree'], 'Fixture source revision is not yet bound for execution'
-  assert os.environ['ImageVersion']==os.environ['EXPECTED_RUNNER_IMAGE']==plan['reviewedRunner']['ImageVersion']
   assert daemon==os.environ['EXPECTED_DOCKER_SERVER']==plan['reviewedRunner']['dockerServer']
-  assert os.environ.get('ImageOS')==plan['reviewedRunner']['ImageOS']
+  import importlib.util
+  spec=importlib.util.spec_from_file_location('sealed_host_environment',P/'host_environment.py')
+  host_environment=importlib.util.module_from_spec(spec);spec.loader.exec_module(host_environment)
+  host_environment.prepare_host(plan,source,out,phase,metadata_only=False)
+  # Cleanup is before admission; account all subsequent growth from the actual post-cleanup baseline.
+  free_start=shutil.disk_usage(out).free
   assert free_start>=plan['resourceBounds']['minimumStartFreeBytes']
   # Execute the independently reviewed guard, not any source repository script.
   guard,_=phase('known-incident-source-guard',[sys.executable,'-I','-B',str(P/'check_source.py'),'--repo',str(source),'--kind','sdk','--expected-head',manifest['commit']],65)
