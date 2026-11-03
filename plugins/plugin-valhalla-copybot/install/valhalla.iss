@@ -7,6 +7,7 @@
 #define MyAppURL "https://valhalla-app.xyz/"
 
 [Setup]
+SetupIconFile=valhalla.ico
 AppId={{7C3E9A10-4B2D-4F61-9C0A-202611030001}
 AppName={#MyAppName}
 AppVersion={#MyAppVersion}

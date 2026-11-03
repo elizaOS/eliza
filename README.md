@@ -12,6 +12,8 @@
 
 ## Valhalla / ACCELERATION
 
+<img src="brand/png/lockup-1600.png" alt="Valhalla" width="480" />
+
 [![Download test APK](https://img.shields.io/badge/download-phone%20APK-ffb347)](https://github.com/TokenJunction/eliza-valhalla/releases/download/v0.1.1-phone/valhalla-phone.apk)
 
 This fork adds the Valhalla desk. TokenJunction LLC publishes Valhalla. It is the ACCELERATION command center for a small Solana copy bot. The test phone build is a sideload APK, not a Play Store app.

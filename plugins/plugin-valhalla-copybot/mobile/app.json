@@ -3,7 +3,13 @@
     "name": "Valhalla",
     "slug": "valhalla",
     "version": "0.1.1",
+    "icon": "./icon.png",
     "orientation": "portrait",
+    "splash": {
+      "image": "./icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#07080B"
+    },
     "userInterfaceStyle": "dark",
     "ios": {
       "bundleIdentifier": "ai.tokenjunction.valhalla",
