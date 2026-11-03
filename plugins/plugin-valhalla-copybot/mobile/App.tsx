@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   Linking,
   Pressable,
@@ -39,19 +39,7 @@ const DEMO = {
 
 export default function App() {
   const [step, setStep] = useState<Step>("age");
-  const [banner, setBanner] = useState<Offer[]>(bannerOffers(catalog.offers as Offer[]));
-  useEffect(() => {
-    let stop = false;
-    fetch("https://valhalla-app.xyz/offers.json")
-      .then((res) => (res.ok ? res.json() : null))
-      .then((doc: { offers?: Offer[] } | null) => {
-        if (!stop && doc && Array.isArray(doc.offers)) setBanner(bannerOffers(doc.offers));
-      })
-      .catch(() => {});
-    return () => {
-      stop = true;
-    };
-  }, []);
+  const banner = bannerOffers(catalog.offers as Offer[]);
   const [back, setBack] = useState<Step>("age");
   const [url, setUrl] = useState("http://127.0.0.1:8787");
   const [note, setNote] = useState("");
@@ -244,9 +232,8 @@ export default function App() {
                   <>
                     <Text style={styles.adLabel}>Advertisement</Text>
                     <Text style={styles.body}>
-                      Test AdMob adaptive banner. iOS ca-app-pub-3940256099942544/2934735716.
-                      Android ca-app-pub-3940256099942544/6300978111. Replace these when the real
-                      units exist.
+                      Advertisement. The AdMob unit comes from the signed monetization file. Until
+                      that unit is set, this space stays empty. Not a promise of profit.
                     </Text>
                   </>
                 )}
@@ -255,7 +242,7 @@ export default function App() {
             <Text style={styles.body}>{licenseNote}</Text>
             {!licenseNote.includes("Pro is on") ? (
               <Text style={styles.body}>
-                Rewarded test unit: ca-app-pub-3940256099942544/1712485313. It is optional.
+                A rewarded ad stays off until its signed unit id is set. It is optional.
               </Text>
             ) : null}
             <Pressable style={styles.secondary} onPress={() => setStep("age")}>

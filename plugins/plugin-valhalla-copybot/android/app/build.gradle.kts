@@ -4,12 +4,8 @@ plugins {
     id("com.android.application")
 }
 
-// Google's published sample IDs. They never serve a paid ad.
-// Replace them at build time with ADMOB_* from the environment or local.properties.
-val sampleAppId = "ca-app-pub-3940256099942544~3347511713"
-val sampleBannerId = "ca-app-pub-3940256099942544/6300978111"
-val sampleInterstitialId = "ca-app-pub-3940256099942544/1033173712"
-val sampleRewardedId = "ca-app-pub-3940256099942544/5224354917"
+// Ad unit IDs come from the signed monetization.json. Release builds do not
+// accept an environment override. Empty units mean AdMob stays off.
 
 fun buildValue(name: String, fallback: String): String {
     val fromEnv = System.getenv(name)?.trim().orEmpty()
@@ -28,12 +24,17 @@ fun quote(value: String): String {
     return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""
 }
 
+val moneyText = rootProject.file("../monetization.json").takeIf { it.exists() }?.readText().orEmpty()
+fun moneyField(name: String): String {
+    val match = Regex(""""$name"\s*:\s*"([^"]*)"""").find(moneyText)
+    return match?.groupValues?.get(1) ?: ""
+}
 val adsEnabled = buildValue("ADS_ENABLED", "true").equals("true", ignoreCase = true)
-val admobAppId = buildValue("ADMOB_APP_ID", sampleAppId)
-val admobBannerId = buildValue("ADMOB_BANNER_ID", sampleBannerId)
-val admobInterstitialId = buildValue("ADMOB_INTERSTITIAL_ID", sampleInterstitialId)
-val admobRewardedId = buildValue("ADMOB_REWARDED_ID", sampleRewardedId)
-val houseAdsUrl = buildValue("HOUSE_ADS_URL", "https://valhalla-app.xyz/offers.json")
+val admobAppId = moneyField("admobAppId").ifEmpty { "ca-app-pub-6504655762357230~0000000000" }
+val admobBannerId = moneyField("admobBannerAndroid")
+val admobInterstitialId = moneyField("admobInterstitialAndroid")
+val admobRewardedId = moneyField("admobRewardedAndroid")
+val houseAdsUrl = ""
 val offerClickUrl = buildValue("OFFER_CLICK_URL", "")
 val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "https://valhalla-app.xyz/privacy-policy.md")
 val storeBilling = buildValue("STORE_BILLING", "false")

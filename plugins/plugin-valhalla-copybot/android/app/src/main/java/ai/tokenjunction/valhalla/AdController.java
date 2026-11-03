@@ -130,6 +130,7 @@ final class AdController {
 
     private void startAdMob() {
         if (admobStarted) return;
+        if (BuildConfig.ADMOB_BANNER_ID == null || BuildConfig.ADMOB_BANNER_ID.isEmpty()) return;
         admobStarted = true;
         MobileAds.initialize(activity);
         banner = new AdView(activity);

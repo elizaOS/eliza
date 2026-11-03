@@ -4,9 +4,9 @@ Name: Valhalla
 
 Short description (132 characters or fewer):
 
-Read-only status for your Valhalla desk. No wallet. No send or withdraw.
+Read-only desk status, a Solana address, and 100 free Pro trades. No send.
 
-The line above is 70 characters.
+The line above is 74 characters.
 
 ## Full description
 
@@ -16,11 +16,13 @@ The extension is read-only. It cannot send, withdraw, or move funds. It does not
 
 You can:
 
+- Paste a Solana address, or connect Phantom or Solflare with a read-only sign-in
+- Read a public SOL balance
 - Point it at the desk on this computer
 - Read status, P&L, and open positions
-- See that the desk did not answer
+- See a Pro preview and 100 free Pro trades
 
-TokenJunction LLC publishes Valhalla. Crypto is risky. This is not financial advice. Pro on the website includes a 15 day free trial.
+TokenJunction LLC publishes Valhalla. Crypto is risky. This is not financial advice. The extension cannot send or withdraw. Pro on the website is $9.99/mo launch price and includes a 15 day free trial. 100 free Pro trades come first. They are not a promise of profit.
 
 Chrome on Android cannot install extensions. This listing is for desktop Chrome.
 

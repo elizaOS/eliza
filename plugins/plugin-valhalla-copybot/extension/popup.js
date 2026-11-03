@@ -1,37 +1,210 @@
 const desk = document.getElementById("desk");
 const code = document.getElementById("code");
 const status = document.getElementById("status");
+const RPC = "https://api.mainnet-beta.solana.com";
+const TOKEN_PROGRAM = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA";
+let proTradesLeft = 100;
+let proAllowance = 100;
+let balanceTimer = 0;
 
 function say(text) {
   if (status) status.textContent = text;
 }
 
-chrome.storage.local.get(["desk", "token"], (saved) => {
-  if (saved.desk && desk) desk.value = saved.desk;
-  if (saved.token && saved.desk) loadState(saved.desk, saved.token);
-});
-
-function walletHref(which) {
-  const page = (desk && desk.value.trim()) || "https://valhalla-app.xyz/";
-  if (which === "phantom") {
-    return "https://phantom.app/ul/browse/" + encodeURIComponent(page) + "?ref=valhalla";
-  }
-  return "https://solflare.com/ul/v1/browse/" + encodeURIComponent(page);
+function tail(address) {
+  return `…${String(address).slice(-4)}`;
 }
-document.getElementById("open-phantom")?.addEventListener("click", (event) => {
-  event.preventDefault();
-  window.open(walletHref("phantom"));
-});
-document.getElementById("open-solflare")?.addEventListener("click", (event) => {
-  event.preventDefault();
-  window.open(walletHref("solflare"));
-});
 
-async function allowDesk(base) {
-  const origin = new URL(base).origin + "/*";
+function showChoice(on) {
+  const choice = document.getElementById("connect-choice");
+  const watch = document.getElementById("watch");
+  if (choice) choice.hidden = !on;
+  if (watch) watch.hidden = on;
+}
+
+async function allowOrigin(origin) {
   const already = await chrome.permissions.contains({ origins: [origin] });
   if (already) return true;
   return chrome.permissions.request({ origins: [origin] });
+}
+
+function openConnect(which) {
+  const ext = chrome.runtime.id;
+  const site = `https://valhalla-app.xyz/connect/?wallet=${which}&ext=${encodeURIComponent(ext)}`;
+  chrome.tabs.create({ url: site }, () => {
+    if (chrome.runtime.lastError) {
+      chrome.tabs.create({ url: chrome.runtime.getURL(`connect.html?wallet=${which}`) });
+    }
+  });
+}
+
+document.getElementById("use-paste")?.addEventListener("click", () => {
+  const panel = document.getElementById("paste-panel");
+  if (panel) panel.hidden = false;
+});
+document.getElementById("use-phantom")?.addEventListener("click", () => openConnect("phantom"));
+document.getElementById("use-solflare")?.addEventListener("click", () => openConnect("solflare"));
+
+async function saveAddress(address) {
+  if (!ValhallaConnect.isPubkey(address)) {
+    const error = document.getElementById("address-error");
+    if (error) error.textContent = "That is not a Solana address.";
+    return;
+  }
+  const allowed = await allowOrigin(`${RPC}/*`);
+  if (!allowed) {
+    const error = document.getElementById("address-error");
+    if (error) error.textContent = "Chrome did not allow the balance lookup. The address was not saved.";
+    return;
+  }
+  await chrome.storage.local.set({ watchAddress: address, siwsSession: null });
+  await showWatch(address);
+}
+
+document.getElementById("save-address")?.addEventListener("click", () => {
+  const input = document.getElementById("address");
+  saveAddress(input ? input.value.trim() : "");
+});
+
+document.getElementById("change")?.addEventListener("click", () => {
+  showChoice(true);
+  const panel = document.getElementById("paste-panel");
+  if (panel) panel.hidden = false;
+});
+
+document.getElementById("remove")?.addEventListener("click", async () => {
+  await chrome.storage.local.remove(["watchAddress", "siwsSession"]);
+  showChoice(true);
+  const balances = document.getElementById("balances");
+  if (balances) balances.textContent = "";
+});
+
+async function showWatch(address) {
+  showChoice(false);
+  const node = document.getElementById("tail");
+  if (node) node.textContent = tail(address);
+  await loadBalances(address);
+}
+
+async function rpc(method, params) {
+  const response = await fetch(RPC, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  if (!response.ok) throw new Error("The balance lookup did not answer.");
+  const body = await response.json();
+  if (body.error) throw new Error("The balance lookup did not answer.");
+  return body.result;
+}
+
+async function loadBalances(address) {
+  const balances = document.getElementById("balances");
+  const updated = document.getElementById("updated");
+  const allowed = await chrome.permissions.contains({ origins: [`${RPC}/*`] });
+  if (!allowed) {
+    if (balances) balances.textContent = "Allow the public RPC to load balances. Nothing is sent.";
+    return;
+  }
+  try {
+    const lamports = await rpc("getBalance", [address]);
+    const sol = Number(lamports && lamports.value) / 1_000_000_000;
+    const tokens = await rpc("getTokenAccountsByOwner", [
+      address,
+      { programId: TOKEN_PROGRAM },
+      { encoding: "jsonParsed" },
+    ]);
+    const rows = [`SOL ${Number.isFinite(sol) ? sol.toFixed(4) : "0"}`];
+    const list = (tokens && tokens.value) || [];
+    for (const row of list.slice(0, 6)) {
+      const info = row.account && row.account.data && row.account.data.parsed && row.account.data.parsed.info;
+      const amount = info && info.tokenAmount;
+      const mint = info && info.mint ? String(info.mint).slice(0, 4) : "coin";
+      rows.push(`${mint} ${amount && amount.uiAmountString ? amount.uiAmountString : "0"}`);
+    }
+    if (balances) balances.textContent = rows.join("\n");
+    if (updated) {
+      updated.textContent = `Last updated ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} ET`;
+    }
+  } catch {
+    if (balances) balances.textContent = "Balances did not load. The address is saved. Nothing was sent.";
+  }
+}
+
+document.getElementById("refresh-balances")?.addEventListener("click", async () => {
+  const saved = await chrome.storage.local.get(["watchAddress"]);
+  if (!saved.watchAddress) return;
+  const allowed = await allowOrigin(`${RPC}/*`);
+  if (!allowed) {
+    const balances = document.getElementById("balances");
+    if (balances) balances.textContent = "Chrome did not allow the balance lookup.";
+    return;
+  }
+  await loadBalances(saved.watchAddress);
+});
+
+function paintAllowance(left, allowance) {
+  proTradesLeft = left;
+  proAllowance = allowance;
+  const node = document.getElementById("pro-left");
+  if (node) node.textContent = `Pro trades left: ${left}/${allowance}`;
+  const preview = document.getElementById("pro-preview");
+  const upsell = document.getElementById("upsell");
+  const spent = left <= 0;
+  if (preview) preview.classList.toggle("spent", spent);
+  if (upsell) upsell.hidden = !spent;
+}
+
+async function loadAllowance() {
+  let left = 100;
+  let allowance = 100;
+  try {
+    const file = await fetch(chrome.runtime.getURL("monetization.json")).then((res) => res.json());
+    const signed = ValhallaTrust.verifyMonetization(nacl, file);
+    if (!signed) {
+      paintAllowance(0, 0);
+      reportTamper("extension");
+      return;
+    }
+    allowance = Number(signed.proTradeAllowance);
+    const go = document.getElementById("go-pro");
+    if (go && signed.checkoutUrl) go.href = signed.checkoutUrl;
+    left = allowance;
+  } catch {
+    paintAllowance(0, 0);
+    return;
+  }
+  const saved = await chrome.storage.local.get(["desk", "proSigned"]);
+  if (saved.proSigned && acceptCounter(saved.proSigned, allowance)) left = Number(saved.proSigned.remaining);
+  if (saved.desk) {
+    try {
+      const response = await fetch(`${saved.desk.replace(/\/$/, "")}/api/pro-trades`);
+      if (response.ok) {
+        const body = await response.json();
+        if (acceptCounter(body, allowance)) {
+          left = Number(body.remaining);
+          await chrome.storage.local.set({ proSigned: body });
+        } else if (Number.isFinite(Number(body.remaining))) {
+          left = Math.min(allowance, Math.max(0, Number(body.remaining)));
+        }
+      }
+    } catch {
+      // The desk did not answer. Keep the signed allowance.
+    }
+  }
+  paintAllowance(left, allowance);
+}
+
+function acceptCounter(body, allowance) {
+  if (!body || !body.signature || !body.identity) return false;
+  if (Number(body.allowance) !== allowance) return false;
+  const message = ValhallaTrust.counterMessage(body);
+  return ValhallaTrust.verify(nacl, message, body.signature);
+}
+
+async function allowDesk(base) {
+  const origin = `${new URL(base).origin}/*`;
+  return allowOrigin(origin);
 }
 
 document.getElementById("pair")?.addEventListener("click", async () => {
@@ -60,6 +233,7 @@ document.getElementById("pair")?.addEventListener("click", async () => {
     await chrome.storage.local.set({ desk: base, token: body.token });
     code.value = "";
     await loadState(base, body.token);
+    await loadAllowance();
   } catch {
     say("The desk did not answer. It may be off. Nothing was sent.");
   }
@@ -98,9 +272,28 @@ document.getElementById("score")?.addEventListener("click", async () => {
   if (local.score <= 40) showHouseAd("risk-score");
 });
 
+function reportTamper(surface) {
+  const event = { event: "monetization-tamper", surface };
+  console.error(JSON.stringify(event));
+}
+
+async function signedOffers() {
+  const doc = await fetch(chrome.runtime.getURL("offers.json")).then((res) => res.json());
+  const offers = ValhallaTrust.verifyOffers(nacl, doc);
+  if (!offers) {
+    reportTamper("extension-offers");
+    return [];
+  }
+  return offers;
+}
+
 async function showHouseAd(placement) {
   const box = document.getElementById("house-ad");
   if (!box) return;
+  if (proTradesLeft > 0) {
+    box.hidden = true;
+    return;
+  }
   try {
     const saved = await chrome.storage.local.get(["desk"]);
     if (saved.desk) {
@@ -108,7 +301,7 @@ async function showHouseAd(placement) {
         const plan = await fetch(`${saved.desk.replace(/\/$/, "")}/api/plan`);
         if (plan.ok) {
           const body = await plan.json();
-          if (body.tier === "pro" || body.tier === "trial") {
+          if (body.tier === "pro" || body.tier === "trial" || body.lifetime === true) {
             box.hidden = true;
             return;
           }
@@ -117,8 +310,7 @@ async function showHouseAd(placement) {
         // The desk did not answer. Keep the free house banner.
       }
     }
-    const offerDoc = await fetch(chrome.runtime.getURL("offers.json")).then((res) => res.json());
-    const offers = Array.isArray(offerDoc.offers) ? offerDoc.offers : [];
+    const offers = await signedOffers();
     const spot = placement || "extension";
     const live = offers.filter(
       (row) => String(row.url || "").startsWith("https://") && (row.placements || []).includes(spot)
@@ -156,7 +348,6 @@ async function showHouseAd(placement) {
     box.hidden = true;
   }
 }
-showHouseAd();
 
 async function loadState(base, token) {
   const response = await fetch(`${base}/api/companion/state`, {
@@ -173,3 +364,18 @@ async function loadState(base, token) {
   );
   await showHouseAd();
 }
+
+async function boot() {
+  const saved = await chrome.storage.local.get(["desk", "token", "watchAddress"]);
+  if (saved.desk && desk) desk.value = saved.desk;
+  if (saved.watchAddress && ValhallaConnect.isPubkey(saved.watchAddress)) await showWatch(saved.watchAddress);
+  await loadAllowance();
+  await showHouseAd();
+  if (saved.token && saved.desk) await loadState(saved.desk, saved.token);
+  balanceTimer = window.setInterval(async () => {
+    const current = await chrome.storage.local.get(["watchAddress"]);
+    if (current.watchAddress) await loadBalances(current.watchAddress);
+  }, 30000);
+}
+
+boot();

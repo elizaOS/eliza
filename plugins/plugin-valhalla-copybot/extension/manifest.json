@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Valhalla",
-  "version": "0.1.4",
-  "description": "Read-only status for your Valhalla desk. No wallet. No send or withdraw.",
+  "version": "0.1.5",
+  "description": "Read-only status for your Valhalla desk. No send or withdraw.",
   "author": "TokenJunction LLC",
   "homepage_url": "https://valhalla-app.xyz/extension",
   "action": {
@@ -25,7 +25,14 @@
     "service_worker": "background.js"
   },
   "permissions": ["storage"],
-  "optional_host_permissions": ["http://127.0.0.1/*", "http://localhost/*"],
+  "optional_host_permissions": [
+    "http://127.0.0.1/*",
+    "http://localhost/*",
+    "https://api.mainnet-beta.solana.com/*"
+  ],
+  "externally_connectable": {
+    "matches": ["https://valhalla-app.xyz/*", "https://www.valhalla-app.xyz/*"]
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline'"
   }

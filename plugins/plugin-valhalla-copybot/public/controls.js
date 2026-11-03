@@ -504,8 +504,22 @@ function refreshOffer() {
     slot.hidden = true;
   });
 }
+function refreshProTrades() {
+  const node = document.getElementById("proTrades");
+  if (!node) return;
+  api("/api/pro-trades")
+    .then((data) => {
+      const left = Number(data.remaining);
+      const allowance = Number(data.allowance) || 100;
+      node.textContent = `Pro trades left: ${Number.isFinite(left) ? left : allowance}/${allowance}`;
+    })
+    .catch(() => {
+      node.textContent = "Pro trades left: 100/100";
+    });
+}
 refreshDeskAd();
 refreshOffer();
+refreshProTrades();
 watchUpdates();
 setInterval(watchUpdates, 6 * 60 * 60 * 1000);
 document.getElementById("btnQueue").onclick = () =>

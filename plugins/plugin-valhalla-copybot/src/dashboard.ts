@@ -26,6 +26,7 @@ import { AFFILIATE_LABEL, contextForReport, contextForScore, offersFor } from ".
 import { pollTelegramTools } from "./outside-read.ts";
 import { comparisonRows, PLAN_PRICES, paywallCopy, TRIAL_MS, tierFor } from "./plan.ts";
 import { confirmRepair, proposeFix } from "./self-repair.ts";
+import { proTradeView } from "./pro-allowance.ts";
 import { signalScore } from "./signal-score.ts";
 import {
   checkDesktopUpdate,
@@ -274,6 +275,11 @@ async function handle(
       }).catch(() => undefined);
     }
     send(res, 200, { ok: true });
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/pro-trades") {
+    const view = await proTradeView(engine.dataDir);
+    send(res, 200, { ok: true, ...view, lifetime: false });
     return;
   }
   if (req.method === "GET" && pathname === "/api/plan") {

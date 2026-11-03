@@ -1,6 +1,4 @@
 {
-  "note": "An offer stays off until url starts with https://. Paste the affiliate URL into url. Do not put a script, a pixel, or a wallet address here.",
-  "label": "Affiliate link · we may earn a commission",
   "offers": [
     {
       "id": "ledger",
@@ -9,7 +7,15 @@
       "blurb": "A hardware wallet keeps the signing key off the trading PC.",
       "url": "",
       "image": "",
-      "placements": ["tools", "footer", "app-banner", "extension", "portal", "telegram", "risk-score"],
+      "placements": [
+        "tools",
+        "footer",
+        "app-banner",
+        "extension",
+        "portal",
+        "telegram",
+        "risk-score"
+      ],
       "tier": "free",
       "category": "hardware-wallet",
       "disclosure": "Affiliate link · we may earn a commission"
@@ -21,7 +27,13 @@
       "blurb": "A second hardware wallet option for the same safety idea.",
       "url": "",
       "image": "",
-      "placements": ["tools", "app-banner", "extension", "telegram", "risk-score"],
+      "placements": [
+        "tools",
+        "app-banner",
+        "extension",
+        "telegram",
+        "risk-score"
+      ],
       "tier": "free",
       "category": "hardware-wallet",
       "disclosure": "Affiliate link · we may earn a commission"
@@ -33,7 +45,11 @@
       "blurb": "A named exchange. Valhalla does not connect your keys to it.",
       "url": "",
       "image": "",
-      "placements": ["tools", "footer", "telegram"],
+      "placements": [
+        "tools",
+        "footer",
+        "telegram"
+      ],
       "tier": "free",
       "category": "exchange",
       "disclosure": "Affiliate link · we may earn a commission"
@@ -45,7 +61,11 @@
       "blurb": "A named exchange. This is not a rating and not a trade.",
       "url": "",
       "image": "",
-      "placements": ["tools", "footer", "telegram"],
+      "placements": [
+        "tools",
+        "footer",
+        "telegram"
+      ],
       "tier": "free",
       "category": "exchange",
       "disclosure": "Affiliate link · we may earn a commission"
@@ -57,7 +77,13 @@
       "blurb": "Charts are a tool. They are not a promise of profit.",
       "url": "",
       "image": "",
-      "placements": ["tools", "portal", "extension", "telegram", "report-card"],
+      "placements": [
+        "tools",
+        "portal",
+        "extension",
+        "telegram",
+        "report-card"
+      ],
       "tier": "free",
       "category": "charts",
       "disclosure": "Affiliate link · we may earn a commission"
@@ -69,7 +95,11 @@
       "blurb": "Gear for the desk. This is not a trading signal.",
       "url": "",
       "image": "",
-      "placements": ["tools", "app-banner", "telegram"],
+      "placements": [
+        "tools",
+        "app-banner",
+        "telegram"
+      ],
       "tier": "free",
       "category": "desk",
       "disclosure": "Affiliate link · we may earn a commission"
@@ -81,7 +111,11 @@
       "blurb": "Low-cost desk gear. This is not a trading signal.",
       "url": "",
       "image": "",
-      "placements": ["tools", "app-banner", "telegram"],
+      "placements": [
+        "tools",
+        "app-banner",
+        "telegram"
+      ],
       "tier": "free",
       "category": "desk",
       "disclosure": "Affiliate link · we may earn a commission"
@@ -93,7 +127,12 @@
       "blurb": "A network privacy tool. It does not hold a wallet key.",
       "url": "",
       "image": "",
-      "placements": ["tools", "footer", "portal", "telegram"],
+      "placements": [
+        "tools",
+        "footer",
+        "portal",
+        "telegram"
+      ],
       "tier": "free",
       "category": "privacy",
       "disclosure": "Affiliate link · we may earn a commission"
@@ -105,10 +144,14 @@
       "blurb": "A Solana read API. Valhalla still does not send or withdraw.",
       "url": "",
       "image": "",
-      "placements": ["tools", "telegram"],
+      "placements": [
+        "tools",
+        "telegram"
+      ],
       "tier": "free",
       "category": "rpc",
       "disclosure": "Affiliate link · we may earn a commission"
     }
-  ]
+  ],
+  "signature": "DUMMdVR0oZyI7YVagIscAei8D0jyTxVA+7bqEODEVwG365FPyuDdjrN+VdoGeill6iCmqAhbDYrBCQ2ahVeSAA=="
 }

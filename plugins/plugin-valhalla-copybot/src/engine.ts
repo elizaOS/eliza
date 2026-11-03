@@ -22,6 +22,7 @@ import { LIMITS, type Limits } from "./limits.ts";
 import { fetchMarkPrice, loadCoinSnapshot, type RpcClient, rpcEndpoints } from "./market-data.ts";
 import { netTimeoutMs, redactSecrets, tail4, withTimeout } from "./net.ts";
 import { realizedFromExit, summarizePnl } from "./pnl.ts";
+import { liveTradeBlocked, proTradeView, recordLiveTrade } from "./pro-allowance.ts";
 import { liveTradingEnabled } from "./safety-gate.ts";
 import {
   crashRecoveryAllowed,
@@ -656,6 +657,10 @@ export class AgentEngine {
     evaluation: Evaluation
   ): Promise<string> {
     if (this.liveReady()) {
+      const allowance = await proTradeView(this.dataDir);
+      if (liveTradeBlocked(allowance)) {
+        return "Free Pro trades are used up. Go Pro for more live trades. Paper mode still runs. Not a promise of profit.";
+      }
       const { executeLiveSwap } = await import("./live-swap.ts");
       const fill = await this.track(
         withTimeout(
@@ -674,6 +679,7 @@ export class AgentEngine {
       position.paper = false;
       position.signature = fill.signature;
       position.rawAmount = fill.outAmount;
+      await recordLiveTrade(this.dataDir, fill.signature);
       this.lastActions.Copier = `bought ${tail4(snapshot.mint)}`;
       this.note(`BUY ${snapshot.symbol ?? tail4(snapshot.mint)}`, tail4(fill.signature));
       return `Live buy ${tail4(snapshot.mint)} ${evaluation.sizeSol} SOL. Tx ${tail4(fill.signature)}.`;
@@ -718,6 +724,7 @@ export class AgentEngine {
         )
       );
       pos.signature = fill.signature;
+      await recordLiveTrade(this.dataDir, fill.signature);
     }
     this.bookClose(pos, reason);
     this.lastActions.Risk = `${reason} ${tail4(pos.mint)}`;

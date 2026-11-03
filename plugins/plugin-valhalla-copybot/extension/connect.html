@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Sign in to Valhalla</title>
+  <style>
+    body { margin: 0; font: 16px/1.45 system-ui, sans-serif; background: #07080b; color: #e7eef8; }
+    main { max-width: 440px; margin: 0 auto; padding: 32px 16px; }
+    h1 { color: #e8b65a; font-size: 22px; letter-spacing: .08em; }
+    button, a.btn { display: block; width: 100%; min-height: 44px; margin: 12px 0; background: #e8b65a; color: #07080b; border: 0; font-weight: 700; text-align: center; text-decoration: none; line-height: 44px; }
+    .note { color: #93a4ba; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>VALHALLA</h1>
+    <p class="note">Read-only sign-in. Valhalla asks the wallet to connect, then to sign a login message. There is no fee and no transaction. Valhalla never asks for a seed phrase.</p>
+    <p id="status" role="status">Looking for the wallet.</p>
+    <button id="go" type="button">Continue</button>
+    <p id="missing" class="note" hidden>The wallet was not detected in this tab.</p>
+    <a id="download" class="btn" href="https://phantom.app/download" hidden>Install the wallet</a>
+  </main>
+  <script src="vendor/nacl.min.js"></script>
+  <script src="connect-core.js"></script>
+  <script src="connect-page.js"></script>
+</body>
+</html>
