@@ -1,0 +1,142 @@
+{
+  "sourceCommit": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+  "failedRun": 41625051003,
+  "failedIntent": "f8fbdd6420a0f01b8846a370abb4d7d4",
+  "failedRunUnchanged": true,
+  "testsCollectedInFailedRun": 0,
+  "installedLinkRows": [
+    {
+      "kind": "symlink",
+      "path": "packages/agent/node_modules/@elizaos/host",
+      "target": "../../../host"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/app/node_modules/@elizaos/agent",
+      "target": "../../../agent"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/app/node_modules/@elizaos/plugin-assistant",
+      "target": "../../../../plugins/plugin-assistant"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/host/node_modules/@elizaos/core",
+      "target": "../../../core"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/testing/node_modules/@elizaos/core",
+      "target": "../../../core"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/testing/node_modules/@elizaos/host",
+      "target": "../../../host"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/testing/node_modules/@elizaos/plugin-sqlite",
+      "target": "../../../../plugins/plugin-sqlite"
+    },
+    {
+      "kind": "symlink",
+      "path": "plugins/plugin-assistant/node_modules/@elizaos/core",
+      "target": "../../../../packages/core"
+    },
+    {
+      "kind": "symlink",
+      "path": "plugins/plugin-assistant/node_modules/@elizaos/plugin-sql",
+      "target": "../../../plugin-sql"
+    },
+    {
+      "kind": "symlink",
+      "path": "plugins/plugin-assistant/node_modules/@elizaos/testing",
+      "target": "../../../../packages/testing"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/testing/node_modules/@elizaos/contracts",
+      "target": "../../../contracts"
+    }
+  ],
+  "linkEvidenceScope": "Historical actual failed-run normal frozen install. Fresh full census remains mandatory; no inherited current install acceptance.",
+  "cause": "One abstract package list was resolved from an importer that never declared those source edges. Bun isolated links correctly did not supply Agent to Assistant or Assistant to Host.",
+  "selectedGraphChains": [
+    {
+      "importer": "packages/testing/src/runtime.ts",
+      "importerSHA256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff",
+      "specifier": "./sqlite-adapter.ts",
+      "target": "@elizaos/plugin-sqlite",
+      "scope": "barrel reexports SQLite adapter; terminal target separately checked"
+    },
+    {
+      "importer": "packages/testing/src/runtime.ts",
+      "importerSHA256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff",
+      "specifier": "./live-provider.ts",
+      "target": "@elizaos/host/protocol",
+      "scope": "barrel reexports live-provider; terminal target separately checked"
+    },
+    {
+      "importer": "plugins/plugin-assistant/src/index.ts",
+      "importerSHA256": "6ce562f017b602b31995acede473ab6358230b7ec4b70a63b9e8b894f3a0bd56",
+      "specifier": "./services/approval/index.ts",
+      "target": "@elizaos/plugin-sql",
+      "scope": "barrel -> approval"
+    },
+    {
+      "importer": "plugins/plugin-assistant/src/services/approval/index.ts",
+      "importerSHA256": "2220dd0f61a1e9a4a921d2c8db0e398bd73ed539b32d4c6941f9024c48058a2f",
+      "specifier": "./store.ts",
+      "target": "@elizaos/plugin-sql",
+      "scope": "approval barrel -> store"
+    },
+    {
+      "importer": "plugins/plugin-assistant/src/services/approval/store.ts",
+      "importerSHA256": "6528b2c8146b75a673705e4542d5bdaf8d7961714766d8074814ffbb3da84b99",
+      "specifier": "./sql.ts",
+      "target": "@elizaos/plugin-sql",
+      "scope": "approval store -> sql"
+    },
+    {
+      "importer": "packages/testing/src/runtime.ts",
+      "importerSHA256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff",
+      "specifier": "./computer-use-conformance.ts",
+      "target": "@elizaos/contracts/node",
+      "scope": "barrel reexports computer-use-conformance; terminal Contracts node separately checked"
+    }
+  ],
+  "broaderSupplierEdgesNotExecuted": [
+    {
+      "importer": "packages/app/src/api/self-hosted-voice.ts",
+      "importerSHA256": "b8fa610d77488cdb2685a3430be65c4c15541e19007a5ddad0d3eecbd660cbcd",
+      "specifier": "@elizaos/agent",
+      "target": "@elizaos/agent",
+      "scope": "separate App supplier, not selected test graph"
+    },
+    {
+      "importer": "packages/app/src/api/credential-tunnel-routes.ts",
+      "importerSHA256": "b5f76f0dddd1718c927e015791becbdb319b2174f20ae5e3a755d08cf772901a",
+      "specifier": "@elizaos/plugin-assistant",
+      "target": "@elizaos/plugin-assistant",
+      "scope": "separate App supplier, not Host selected test import"
+    },
+    {
+      "importer": "packages/agent/src/actions/runtime.ts",
+      "importerSHA256": "9c9a52b63e8995093f29a03d78016321a38d2c1dd2c085b1bcae2dcf2588b1f0",
+      "specifier": "@elizaos/host",
+      "target": "@elizaos/host",
+      "scope": "separate Agent supplier, not Host test self import"
+    }
+  ],
+  "unchanged": "c63 source and seven whole files,1122/1121/1 oracle,all caps,source hashes,normal configs,SSR conditions,normal+bare resolution,context closure,census,claim/intent protocol and cleanup.",
+  "noChange": "No dependency,alias,dist,source/test/assertion/config changes. No run or nonce creation.",
+  "additionalContractsEdge": {
+    "importer": "packages/testing/src/computer-use-conformance.ts",
+    "importerSHA256": "0964cc61374235c76fde4a33155103c2d0bf18fed905123fed54d7337c235e4e",
+    "specifier": "@elizaos/contracts/node",
+    "target": "@elizaos/contracts/node",
+    "scope": "Testing runtime barrel -> computer-use-conformance value imports; real Contracts node supplier"
+  }
+}

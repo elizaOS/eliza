@@ -1,0 +1,26 @@
+{
+  "changedBeforeThisRecord": [
+    "IMPORTER-CORRECTION-EVIDENCE.json",
+    "PREFLIGHT-DEFINITION.json",
+    "PREPARED.json",
+    "SOURCE-MANIFEST.json",
+    "owning-preflight.mjs",
+    "source-inputs/packages/agent/src/actions/runtime.ts",
+    "source-inputs/packages/app/package.json",
+    "source-inputs/packages/app/src/api/credential-tunnel-routes.ts",
+    "source-inputs/packages/app/src/api/self-hosted-voice.ts",
+    "source-inputs/packages/host/src/protocol.ts",
+    "source-inputs/packages/host/src/voice/session.ts",
+    "source-inputs/packages/testing/src/live-provider.ts",
+    "source-inputs/packages/testing/src/sqlite-adapter.ts",
+    "source-inputs/plugins/plugin-assistant/src/services/approval/index.ts",
+    "source-inputs/plugins/plugin-assistant/src/services/approval/sql.ts",
+    "source-inputs/plugins/plugin-assistant/src/services/approval/store.ts",
+    "source-inputs/plugins/plugin-sqlite/index.ts",
+    "source-inputs/plugins/plugin-sqlite/package.json"
+  ],
+  "sourceTestsConfigsCapsOraclesUnchanged": true,
+  "testsExecuted": false,
+  "sourceModulesImported": false,
+  "priorOperatorSealSHA256": "e27175a3dc4ce96153dc6a031d6c9adc73781b38e1a3e19dcb898299f0cfddfd"
+}

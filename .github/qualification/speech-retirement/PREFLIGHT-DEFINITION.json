@@ -23,30 +23,177 @@
     "@elizaos/testing/runtime": {
       "path": "packages/testing/src/runtime.ts",
       "sha256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff"
+    },
+    "@elizaos/plugin-sqlite": {
+      "path": "plugins/plugin-sqlite/index.ts",
+      "sha256": "571827cd3781cc292468efe4df1cb9b3ab1f427f3c2ee8b7cb21ad6f292885db"
+    },
+    "@elizaos/host/protocol": {
+      "path": "packages/host/src/protocol.ts",
+      "sha256": "dc243401a04e4e48305fc6db1de8a70db6febbdc59becc7ef756bcc975ba185a"
+    },
+    "host-session": {
+      "path": "packages/host/src/voice/session.ts",
+      "sha256": "8ec44304b36a73c84f9399e0c5fd0ab162fc0c0698f31bf97b82b7de731cecfd"
+    },
+    "@elizaos/contracts/node": {
+      "path": "packages/contracts/src/node.ts",
+      "sha256": "14aedf26ee7cfa16e6ede077371c6da9881c8e2832d4f6ee629edb59496cbc0e"
     }
   },
   "projects": [
     {
       "name": "assistant",
       "root": "plugins/plugin-assistant",
-      "importer": "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
-      "imports": [
-        "@elizaos/core",
-        "@elizaos/agent",
-        "@elizaos/plugin-assistant",
-        "@elizaos/plugin-sql",
-        "@elizaos/testing/runtime"
+      "edges": [
+        {
+          "importer": "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
+          "importerSHA256": "d32d60805db42942a0ffe031645a3132cb852709542d138f1831ca1aea90e0a4",
+          "specifier": "@elizaos/core",
+          "target": "@elizaos/core",
+          "scope": "selected test direct import"
+        },
+        {
+          "importer": "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
+          "importerSHA256": "d32d60805db42942a0ffe031645a3132cb852709542d138f1831ca1aea90e0a4",
+          "specifier": "@elizaos/testing/runtime",
+          "target": "@elizaos/testing/runtime",
+          "scope": "selected test direct import"
+        },
+        {
+          "importer": "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
+          "importerSHA256": "d32d60805db42942a0ffe031645a3132cb852709542d138f1831ca1aea90e0a4",
+          "specifier": "../index.ts",
+          "target": "@elizaos/plugin-assistant",
+          "scope": "selected test relative import; not synthetic bare self import"
+        },
+        {
+          "importer": "packages/testing/src/sqlite-adapter.ts",
+          "importerSHA256": "d75ef28893fe1594b5347a4c949f26107f99b6d43390c8406471059dbbb5d7f2",
+          "specifier": "@elizaos/core",
+          "target": "@elizaos/core",
+          "scope": "runtime barrel -> sqlite-adapter"
+        },
+        {
+          "importer": "packages/testing/src/sqlite-adapter.ts",
+          "importerSHA256": "d75ef28893fe1594b5347a4c949f26107f99b6d43390c8406471059dbbb5d7f2",
+          "specifier": "@elizaos/plugin-sqlite",
+          "target": "@elizaos/plugin-sqlite",
+          "scope": "runtime barrel -> sqlite-adapter actual SQLite supplier"
+        },
+        {
+          "importer": "packages/testing/src/live-provider.ts",
+          "importerSHA256": "bb9d49aab513dfe77681b35003b4a1657ed1748e9effec4df41faabd02ae3bcd",
+          "specifier": "@elizaos/host/protocol",
+          "target": "@elizaos/host/protocol",
+          "scope": "runtime barrel -> live-provider; no provider operation"
+        },
+        {
+          "importer": "plugins/plugin-assistant/src/services/approval/sql.ts",
+          "importerSHA256": "0df70f4a24f2b26b6b0a4a37cec58146f39148b03fccbc196fbca1bef62c359d",
+          "specifier": "@elizaos/plugin-sql",
+          "target": "@elizaos/plugin-sql",
+          "scope": "assistant index -> approval/index -> store -> sql"
+        },
+        {
+          "importer": "packages/testing/src/computer-use-conformance.ts",
+          "importerSHA256": "0964cc61374235c76fde4a33155103c2d0bf18fed905123fed54d7337c235e4e",
+          "specifier": "@elizaos/contracts/node",
+          "target": "@elizaos/contracts/node",
+          "scope": "Testing runtime barrel -> computer-use-conformance value imports; real Contracts node supplier"
+        }
       ]
     },
     {
       "name": "host",
       "root": "packages/host",
-      "importer": "packages/host/src/voice/session-speech-ports.test.ts",
-      "imports": [
-        "@elizaos/core",
-        "@elizaos/host",
-        "@elizaos/plugin-assistant"
+      "edges": [
+        {
+          "importer": "packages/host/src/voice/session-speech-ports.test.ts",
+          "importerSHA256": "4ab52518fb560c1dfcafdacaa48a12d0f2283d2fbe53d0064d27831946dfad50",
+          "specifier": "./session",
+          "target": "host-session",
+          "scope": "selected test relative import"
+        },
+        {
+          "importer": "packages/host/src/voice/session.ts",
+          "importerSHA256": "8ec44304b36a73c84f9399e0c5fd0ab162fc0c0698f31bf97b82b7de731cecfd",
+          "specifier": "@elizaos/core",
+          "target": "@elizaos/core",
+          "scope": "selected test -> session runtime logger import"
+        }
       ]
+    }
+  ],
+  "broaderSuppliers": {
+    "executed": false,
+    "reason": "Source-declared supplier identities retained separately; not part of selected-test gate or a public runtime acceptance claim. No unrelated App/Agent checks run in this finite selected-file qualification.",
+    "edges": [
+      {
+        "importer": "packages/app/src/api/self-hosted-voice.ts",
+        "importerSHA256": "b8fa610d77488cdb2685a3430be65c4c15541e19007a5ddad0d3eecbd660cbcd",
+        "specifier": "@elizaos/agent",
+        "target": "@elizaos/agent",
+        "scope": "separate App supplier, not selected test graph"
+      },
+      {
+        "importer": "packages/app/src/api/credential-tunnel-routes.ts",
+        "importerSHA256": "b5f76f0dddd1718c927e015791becbdb319b2174f20ae5e3a755d08cf772901a",
+        "specifier": "@elizaos/plugin-assistant",
+        "target": "@elizaos/plugin-assistant",
+        "scope": "separate App supplier, not Host selected test import"
+      },
+      {
+        "importer": "packages/agent/src/actions/runtime.ts",
+        "importerSHA256": "9c9a52b63e8995093f29a03d78016321a38d2c1dd2c085b1bcae2dcf2588b1f0",
+        "specifier": "@elizaos/host",
+        "target": "@elizaos/host",
+        "scope": "separate Agent supplier, not Host test self import"
+      }
+    ]
+  },
+  "selectedGraphEvidence": [
+    {
+      "importer": "packages/testing/src/runtime.ts",
+      "importerSHA256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff",
+      "specifier": "./sqlite-adapter.ts",
+      "target": "@elizaos/plugin-sqlite",
+      "scope": "barrel reexports SQLite adapter; terminal target separately checked"
+    },
+    {
+      "importer": "packages/testing/src/runtime.ts",
+      "importerSHA256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff",
+      "specifier": "./live-provider.ts",
+      "target": "@elizaos/host/protocol",
+      "scope": "barrel reexports live-provider; terminal target separately checked"
+    },
+    {
+      "importer": "plugins/plugin-assistant/src/index.ts",
+      "importerSHA256": "6ce562f017b602b31995acede473ab6358230b7ec4b70a63b9e8b894f3a0bd56",
+      "specifier": "./services/approval/index.ts",
+      "target": "@elizaos/plugin-sql",
+      "scope": "barrel -> approval"
+    },
+    {
+      "importer": "plugins/plugin-assistant/src/services/approval/index.ts",
+      "importerSHA256": "2220dd0f61a1e9a4a921d2c8db0e398bd73ed539b32d4c6941f9024c48058a2f",
+      "specifier": "./store.ts",
+      "target": "@elizaos/plugin-sql",
+      "scope": "approval barrel -> store"
+    },
+    {
+      "importer": "plugins/plugin-assistant/src/services/approval/store.ts",
+      "importerSHA256": "6528b2c8146b75a673705e4542d5bdaf8d7961714766d8074814ffbb3da84b99",
+      "specifier": "./sql.ts",
+      "target": "@elizaos/plugin-sql",
+      "scope": "approval store -> sql"
+    },
+    {
+      "importer": "packages/testing/src/runtime.ts",
+      "importerSHA256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff",
+      "specifier": "./computer-use-conformance.ts",
+      "target": "@elizaos/contracts/node",
+      "scope": "barrel reexports computer-use-conformance; terminal Contracts node separately checked"
     }
   ]
 }

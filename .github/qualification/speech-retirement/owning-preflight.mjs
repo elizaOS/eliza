@@ -25,17 +25,28 @@ for (const projectDefinition of definition.projects) {
     if (server.config.configFile !== root + "/" + projectDefinition.root + "/vitest.config.ts") throw new Error("Wrong owning config file");
     if (!ssr.config.resolve.conditions.includes("eliza-source") || !ssr.config.resolve.externalConditions.includes("eliza-source") || !ssr.config.resolve.externalConditions.includes("module-sync")) throw new Error("Missing owning source/default external conditions");
     const imports = [];
-    for (const name of projectDefinition.imports) {
-      const target = definition.targets[name];
+    for (const edge of projectDefinition.edges) {
+      const name = edge.specifier;
+      const target = definition.targets[edge.target];
       const expected = root + "/" + target.path;
-      const importer = root + "/" + projectDefinition.importer;
+      const importer = root + "/" + edge.importer;
+      const importerDigest = createHash("sha256").update(fs.readFileSync(importer)).digest("hex");
+      if (importerDigest !== edge.importerSHA256) throw new Error("Declaring importer bytes changed: " + edge.importer);
       const resolved = await ssr.pluginContainer.resolveId(name, importer);
       if (!resolved || resolved.id.split("?")[0] !== expected) throw new Error("Wrong normal source resolution: " + name);
-      const fetched = await ssr.fetchModule(name, importer);
-      if (fetched.externalize && new URL(fetched.externalize).pathname !== expected) throw new Error("Wrong bare external source resolution: " + name);
+      // Vite fetchModule only honors importer for bare package specifiers.
+      // Relative source edges must fetch the module ID resolved above.
+      const relative = name.startsWith(".");
+      const fetchId = relative ? resolved.id : name;
+      const fetched = await ssr.fetchModule(fetchId, importer);
+      if (relative) {
+        if (fetched.externalize || fetched.file !== expected || fetched.id?.split("?")[0] !== expected) throw new Error("Wrong relative source transform: " + name);
+      } else {
+        if (!fetched.externalize || new URL(fetched.externalize).pathname !== expected) throw new Error("Wrong bare external source resolution: " + name);
+      }
       const digest = createHash("sha256").update(fs.readFileSync(expected)).digest("hex");
       if (digest !== target.sha256) throw new Error("Owning entry bytes changed: " + name);
-      imports.push({ name, importer, resolved: resolved.id, externalize: fetched.externalize ?? null, sha256: digest });
+      imports.push({ name, importer, importerSHA256: importerDigest, scope: edge.scope, target: edge.target, fetchId, fetchedFile: fetched.file ?? null, fetchedId: fetched.id ?? null, resolved: resolved.id, externalize: fetched.externalize ?? null, sha256: digest });
     }
     records.push({ name: projectDefinition.name, config: server.config.configFile,
       conditions: ssr.config.resolve.conditions, externalConditions: ssr.config.resolve.externalConditions,
@@ -47,5 +58,5 @@ for (const projectDefinition of definition.projects) {
     }
   }
 }
-fs.writeFileSync("/results/OWNING-PREFLIGHT.json", JSON.stringify({ records,
+fs.writeFileSync("/results/OWNING-PREFLIGHT.json", JSON.stringify({ records, broaderSuppliersExecuted: false,
   scope: "Actual config load/normal+bare source resolver and context closure only; no test/runtime/provider/voice acceptance" }, null, 2) + "\n");

@@ -1,0 +1,11 @@
+{
+  "priorV3SealSHA256": "6477c559cc22add029443169b8eed676ceb9ab416e52a56708f86b2436abd741",
+  "source": "/Users/nubs/.bun/install/cache/vite@8.3.3@@@1/dist/node/chunks/node.js",
+  "sha256": "ea101c5708452f6288a10669ae06bf1a8332b1ab889a1851e08465cb429e23ac",
+  "version": "8.3.3",
+  "range": "36061-36125",
+  "finding": "Raw relative names bypass the importer-based tryNodeResolve branch; ensureEntryFromUrl and transformRequest receive url without importer. Resolve first using actual declaring source, fetch resolved module ID, assert returned file/id. Bare source check remains bare+actual importer.",
+  "sourceReadOnly": true,
+  "frameworkImportedOrExecuted": false,
+  "owningRuntimeOrTestsExecuted": false
+}
