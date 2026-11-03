@@ -1,0 +1,61 @@
+{
+  "sourceCommit": "cc15ae6bd65f632a606934023c5b6b71c6e65610",
+  "sourceTree": "f8d82d14841323a7a0e953108205a702270f160e",
+  "canonicalContexts": [
+    {
+      "name": "vitest/node",
+      "context": "Canonical root node_modules/vitest/vitest.mjs selected explicitly by packages/scripts/run-vitest.ts",
+      "declaringOwner": "Root eliza package devDependencies.vitest",
+      "evidenceSourceSHA256": "6a571b43b4539c68094d447aa98736d6c25744fa06da0897e2bb9d16b679e0a3"
+    },
+    {
+      "name": "vitest/config",
+      "context": "packages/host/vitest.config.ts Node package resolution",
+      "declaringOwner": "@elizaos/host package devDependencies.vitest",
+      "evidenceSourceSHA256": "6c3852deb3899a4c23032b7baf9d11c55f18ad5dd71a488eeedf168740d874b4"
+    },
+    {
+      "name": "vite",
+      "context": "packages/host/vitest.config.ts Node package resolution, rootdeclared exact8.3.3 inheritednormally",
+      "declaringOwner": "Root eliza package devDependencies.vite",
+      "evidenceSourceSHA256": "fd04e2ad8574cd0055627138466b8eec77404863e2bc546a866bace10c6d732b"
+    },
+    {
+      "name": "miniflare",
+      "context": "packages/cloud/api/package.json (actual Bun test importing API-owned dependency)",
+      "declaringOwner": "@elizaos/cloud-api package devDependencies.miniflare exact4.20260730.0",
+      "evidenceSourceSHA256": "51d7316b403b7ec3ba14dde43c3394ec9bb51e2ecd12c1e5992a076dff2b231e"
+    },
+    {
+      "name": "workerd",
+      "context": "Actual resolved Miniflare entrypoint and its own package manifest",
+      "declaringOwner": "Miniflare dependencies.workerd exact1.20260730.1 from frozen lock",
+      "evidence": "Actualfullcensus installedminiflareentry+packagehash and canonical bun.lock miniflare dependency row8354; no rootworkerd addition."
+    }
+  ],
+  "actualInstalledOwnerLinksFromComplete135RootArtifact": [
+    {
+      "kind": "symlink",
+      "path": "node_modules/vite",
+      "target": ".bun/vite@8.3.3+19b3b7e867f1394f/node_modules/vite"
+    },
+    {
+      "kind": "symlink",
+      "path": "node_modules/vitest",
+      "target": ".bun/vitest@5.0.5+4a595839745b642d/node_modules/vitest"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/cloud/api/node_modules/miniflare",
+      "target": "../../../../node_modules/.bun/miniflare@4.20260730.0+4789783d1fa00420/node_modules/miniflare"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/host/node_modules/vitest",
+      "target": "../../../node_modules/.bun/vitest@5.0.5+4a595839745b642d/node_modules/vitest"
+    }
+  ],
+  "missingLogicalRootMiniflare": "Not present inactualcompleteproof; APIlinkexists andphysicalMiniflare bytesexist. RootcreateRequire failure is wrongcontext, not missing package.",
+  "guards": "Owner manifest identity+declared dependency, existingnormalimporter, resolvedNPMpackage identity/origin; exactversion declarations matched directly, rangedversions tiedtoalreadyverifiedfrozenlock; VitestCLI/config actualversionsmustmatch. No packageentrypoint execution.",
+  "noAliasDependencyOrConfigChange": true
+}

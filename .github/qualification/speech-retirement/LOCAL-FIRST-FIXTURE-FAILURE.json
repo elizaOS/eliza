@@ -1,0 +1,11 @@
+{
+  "state": "SMALL_LAYOUT_FIXTURE_PATH_EXPECTATION_MISMATCH_RETAINED",
+  "toolChunk": "7cd1fa",
+  "cases": 12,
+  "passed": 11,
+  "failed": 1,
+  "scope": "Positive inspection completed, fixture expected /var path while realpath correctly emitted /private/var on macOS. Not a production/bootstrap dependency failure.",
+  "testSourceSHA256": "881dbba8762c91c9295af44002b9be5b55e6230c523ff19067e8690d1b0ada3a",
+  "bootstrapSourceSHA256": "12977d2f687ce3f68eb937fa0076868a71fff077de9c86f58b09e69d21557419",
+  "correction": "Canonicalize only newly created temporary fixture base via realpathSync; production bootstrap unchanged and exact owner/path assertions retained."
+}

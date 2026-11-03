@@ -1,29 +1,25 @@
 {
-  "state": "CENSUS_ONLY_V2_CLEANUP_CORRECTION_SMALL_FIXTURES_PASS_PENDING_DELTA_REVIEW",
+  "state": "BOOTSTRAP_OWNER_ONLY_SOURCE_CORRECTION_SMALL_LAYOUT_TESTS_PASS_PENDING_REVIEW",
   "sourceCommit": "cc15ae6bd65f632a606934023c5b6b71c6e65610",
   "sourceTree": "f8d82d14841323a7a0e953108205a702270f160e",
-  "priorTemplate": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-owning-final-v1",
-  "priorFailedRun": 41604472920,
-  "priorFailurePreserved": "C/backend-cc15-owning145-once-20261103/cloud-owner-monitor/CURRENT-RESULT.json; claim/archives untouched.",
-  "changedRuntimeHelper": "inventory_dependencies.py",
-  "beforeSHA256": "2eb34936cad20e48e53be691e280c8863a9e0cfd5ae053e80a6a195a5b2a4bb9",
-  "afterSHA256": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1",
-  "unchanged": "Actualsourcecc15/145fullcaseoracles/lock/135declaredroots/run.py/claim/workflow/bootstrap/config/probes/alllimits byteunchanged.",
-  "boundsUnchanged": {
-    "internalSeconds": 85,
-    "phaseSeconds": 90,
-    "proofBytes": 134217728,
-    "wholeSeconds": 1200
-  },
-  "safety": "All135rootstates and allfile/link rows; strictsym/rootescape/errorreject; stableanchoredFDproof acrossopens/hashes/directories; withinpasssamephysicalidentityonlyhashreuse/no contentassumption/crossrun cache; completecapture-v-verify content+set equivalence.",
-  "actualFixtureResult": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-census-repair-v2/FIXTURE-TEST-RESULT.json",
-  "actualFixtureCases": 15,
-  "actualFixtureScope": "Smallsyntheticfilesystemonly, no product/dependencyimports/realMac5GBwalk/install.",
-  "smallCostMeasurement": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-census-repair-v2/SMALL-FIXTURE-COST-RESULT.json",
-  "noFullHostedSpeedupClaim": true,
-  "newArtifacts": "tests/reference/measurement/cost/receipt areinertsource/testproof, no newcontroller or candidatehostedexecution.",
-  "noRerunNonceDispatchSourcePublicationHere": true,
-  "priorV1": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-census-repair-v1",
-  "V1SourceReviewSHA256": "45c6e4fdf140b372e56c23c3aa9b3a72d34bb065c86ff13269baa4c80e6f4d83",
-  "V2Correction": "Move initialsourceFDfstat inside existing try/finally; initialfstaterror nowclosesFD. ExistingFDcleanup owningfixture extendedwiththaterror. No controller/coverage/caps/walkpolicy change."
+  "priorOperator": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-census-repair-v2",
+  "priorFailedRuns": [
+    41604472920,
+    41608637534
+  ],
+  "priorSpentIntents": [
+    "3e2964cd326f37e48dd2a3dc67f686af",
+    "b85dedeaac4e0d231f1c093cbacf6dbd"
+  ],
+  "changedRuntimeHelper": "bootstrap.mjs",
+  "beforeSHA256": "45500652fb7b8572a8c3af344738526ceb76cdd220c8d55d49312a2aa809a1d7",
+  "afterSHA256": "12977d2f687ce3f68eb937fa0076868a71fff077de9c86f58b09e69d21557419",
+  "actualOwnerMap": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-bootstrap-owner-v1/BOOTSTRAP-OWNER-MAP.json",
+  "fix": "CheckEVERYdependencyatactualcanonicalownercontext: fixedrootVitestCLIselfcontext; HostconfigVitest/config andViteimports; API-ownedMiniflare; Miniflare-ownedWorkerd. Ownerdecl/identity +physicalorigin/packageidentity/exactpins+CLI/configversionconsistency recorded; no newresolveralias/dependency/install/contextflags.",
+  "unchanged": "Samecc15source/145ORACLES/lock/Hostconfig/censusprovenfull135/85-90-128MiB-1200caps/run/claim/workflow/hostpreflight byteunchanged.",
+  "smallFixtureReceipt": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-bootstrap-owner-v1/BOOTSTRAP-FIXTURE-TEST-RESULT.json",
+  "smallFixtureCases": 12,
+  "priorActualCensusAcceptedScope": "416086 full135roots/272403files/14666links capture27.8966s/freshverify9.3534s underoriginalcaps; no newcensuswalkdonehere.",
+  "nextRuntimeGate": "After independentdelta+publicationliteralreview/freshRootGO: actualnormalownerbootstrap, HostSSR then145; thissourcefixture doesnotqualifyrealpackages/SSR/145.",
+  "noRerunNewNonceSourcePublicationOrLiveChangesHere": true
 }

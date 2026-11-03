@@ -1,0 +1,22 @@
+{
+  "state": "ACTUAL_SMALL_MODULE_LAYOUT_FIXTURES_PASS_NOT_REAL_DEPENDENCY_OR_HOSTED_ACCEPTANCE",
+  "atUTC": "2026-11-03T09:22:43.325654+00:00",
+  "toolChunk": "d9e9a7",
+  "command": [
+    "/Users/nubs/.local/share/eliza-ios-toolchains/node-v24.15.0-darwin-arm64/bin/node",
+    "--test",
+    "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-bootstrap-owner-v1/test_bootstrap_owner.mjs"
+  ],
+  "observedExit": 0,
+  "cases": 12,
+  "passed": 12,
+  "failed": 0,
+  "skipped": 0,
+  "cancelled": 0,
+  "todo": 0,
+  "reportedDurationMs": 164.82575,
+  "bootstrapSHA256": "12977d2f687ce3f68eb937fa0076868a71fff077de9c86f58b09e69d21557419",
+  "testSourceSHA256": "2372080192a9b7f8feb8bc72fe8699aa7fc8c73a7d5f5510e5117db9c36d8b3e",
+  "scope": "Node24.15 actualresolver over tinytemporaryfakepackage layouts only. Entryfile bodies deliberatelythrow ifexecuted; positiveownerinspection succeeds withoutentrypoint execution. No realMacdepwalk/import/install/SSR/API/Hosttests/provider/network.",
+  "initialFixtureExpectationFailureRetained": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-bootstrap-owner-v1/LOCAL-FIRST-FIXTURE-FAILURE.json"
+}
