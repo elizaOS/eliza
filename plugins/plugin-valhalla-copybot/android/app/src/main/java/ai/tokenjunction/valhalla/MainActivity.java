@@ -19,6 +19,8 @@ import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import com.google.zxing.integration.android.IntentIntegrator;
+import com.google.zxing.integration.android.IntentResult;
 import org.json.JSONObject;
 
 /** Phone companion. It never stores a wallet key and has no send or withdraw control. */
@@ -45,6 +47,7 @@ public class MainActivity extends AppCompatActivity {
     private EditText accessCode;
     private EditText chatInput;
     private Button confirmSuggestion;
+    private String visibleScreen = SessionStore.SCREEN_PAIRING;
 
     private final BroadcastReceiver updates = new BroadcastReceiver() {
         @Override
@@ -96,7 +99,9 @@ public class MainActivity extends AppCompatActivity {
         chatInput = findViewById(R.id.chatInput);
         confirmSuggestion = findViewById(R.id.confirmSuggestion);
         findViewById(R.id.connect).setOnClickListener(v -> pair());
+        findViewById(R.id.scanQr).setOnClickListener(v -> scanQr());
         findViewById(R.id.privacyPolicy).setOnClickListener(v -> openPrivacy());
+        findViewById(R.id.deleteData).setOnClickListener(v -> deletePhoneData());
         findViewById(R.id.recover).setOnClickListener(v -> recover());
         findViewById(R.id.openChat).setOnClickListener(v -> showScreen(SessionStore.SCREEN_CHAT));
         findViewById(R.id.openErrors).setOnClickListener(v -> {
@@ -253,6 +258,16 @@ public class MainActivity extends AppCompatActivity {
             liveStatus.setText(state.optString("status", "Last known status"));
             pnl.setText(state.optString("pnl", ""));
             positions.setText(state.optString("positions", ""));
+            org.json.JSONArray links = state.optJSONArray("connections");
+            if (links != null) {
+                StringBuilder lines = new StringBuilder(positions.getText());
+                for (int i = 0; i < links.length(); i++) {
+                    org.json.JSONObject row = links.optJSONObject(i);
+                    if (row == null) continue;
+                    lines.append("\n").append(row.optString("label")).append(" ").append(row.optString("state"));
+                }
+                positions.setText(lines.toString());
+            }
         } catch (Exception err) {
             liveStatus.setText("The saved state could not be read.");
             errors.add(liveStatus.getText().toString());
@@ -264,6 +279,9 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showScreen(String screen) {
+        boolean leftErrors = SessionStore.SCREEN_ERRORS.equals(visibleScreen)
+                && !SessionStore.SCREEN_ERRORS.equals(screen);
+        visibleScreen = screen;
         store.saveScreen(screen);
         pairingBlock.setVisibility(SessionStore.SCREEN_PAIRING.equals(screen) ? View.VISIBLE : View.GONE);
         statusBlock.setVisibility(SessionStore.SCREEN_STATUS.equals(screen) ? View.VISIBLE : View.GONE);
@@ -271,7 +289,65 @@ public class MainActivity extends AppCompatActivity {
         errorBlock.setVisibility(SessionStore.SCREEN_ERRORS.equals(screen) ? View.VISIBLE : View.GONE);
         if (SessionStore.SCREEN_CHAT.equals(screen)) chatLog.setText(store.chatLog());
         if (SessionStore.SCREEN_ERRORS.equals(screen)) renderErrors();
-        if (ads != null) ads.onScreen(screen);
+        if (ads != null) {
+            ads.onScreen(screen);
+            if (leftErrors) ads.onNaturalBreak(offline);
+        }
+    }
+
+    private void scanQr() {
+        if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            ActivityCompat.requestPermissions(this, new String[] {Manifest.permission.CAMERA}, 42);
+            return;
+        }
+        IntentIntegrator integrator = new IntentIntegrator(this);
+        integrator.setDesiredBarcodeFormats(IntentIntegrator.QR_CODE);
+        integrator.setPrompt("Point at the desk address QR. Not a wallet key.");
+        integrator.setBeepEnabled(false);
+        integrator.setOrientationLocked(false);
+        integrator.initiateScan();
+    }
+
+    @Override
+    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        IntentResult result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data);
+        if (result != null) {
+            if (result.getContents() != null) applyQr(result.getContents());
+            return;
+        }
+        super.onActivityResult(requestCode, resultCode, data);
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
+        if (requestCode == 42 && grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+            scanQr();
+        }
+    }
+
+    private void applyQr(String raw) {
+        String text = raw == null ? "" : raw.trim();
+        if (!(text.startsWith("http://") || text.startsWith("https://")) || text.length() > 200) {
+            status.setText("That QR is not a desk address. The phone does not accept a wallet key.");
+            errors.add("Rejected a QR that was not a desk address.");
+            return;
+        }
+        deskUrl.setText(text);
+        status.setText("Desk address read from the QR. Pair when you are ready.");
+    }
+
+    private void deletePhoneData() {
+        store.clearPhoneData();
+        errors.clear();
+        stopService(new Intent(this, CompanionService.class));
+        deskUrl.setText("");
+        accessCode.setText("");
+        chatLog.setText("");
+        offline = false;
+        visibleScreen = SessionStore.SCREEN_PAIRING;
+        showScreen(SessionStore.SCREEN_PAIRING);
+        status.setText(getString(R.string.status_idle));
     }
 
     private void openPrivacy() {

@@ -4,8 +4,17 @@ import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { adsenseSnippet } from "./adsense.ts";
+import { loadAdReport } from "./ad-report.ts";
+import { adsenseSnippet, adsTxt } from "./adsense.ts";
 import { companionResponse, isLoopback, phoneMayCall } from "./companion.ts";
+import {
+  connectionView,
+  connectLink,
+  csvFor,
+  disconnectLink,
+  setAlertToggles,
+  testLink,
+} from "./connection-routes.ts";
 import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
 import { tail4 } from "./net.ts";
@@ -130,6 +139,15 @@ async function handle(
     send(res, 404, { ok: false, error: "This desk has no send or withdraw path." });
     return;
   }
+  if (req.method === "GET" && pathname === "/ads.txt") {
+    const body = adsTxt();
+    if (!body) {
+      send(res, 404, "not found", "text/plain");
+      return;
+    }
+    send(res, 200, body, "text/plain");
+    return;
+  }
   if (pathname.startsWith("/api/companion/")) {
     const result = await companionResponse(engine, req, pathname, accessCode);
     send(res, result.status, result.body);
@@ -159,6 +177,18 @@ async function handle(
   const gated = Boolean(password || accessCode);
   if (gated && pathname.startsWith("/api/") && !sessions.has(cookie(req))) {
     send(res, 401, { ok: false, error: "Sign in on this PC first.", login: true });
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/ads/report") {
+    send(res, 200, await loadAdReport(process.env));
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/connections") {
+    send(res, 200, { ok: true, connections: connectionView(engine) });
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/pnl.csv") {
+    send(res, 200, csvFor(engine), "text/csv");
     return;
   }
   if (req.method === "GET" && pathname === "/api/state") {
@@ -345,6 +375,22 @@ async function post(
             settings: await engine.usePreset(body.preset as "safe" | "balanced" | "aggressive"),
           },
         };
+      case "/api/connections/connect":
+        return {
+          status: 200,
+          body: await connectLink(
+            engine,
+            String(body.id ?? ""),
+            String(body.secret ?? ""),
+            String(body.password ?? "")
+          ),
+        };
+      case "/api/connections/test":
+        return { status: 200, body: await testLink(engine, String(body.id ?? "")) };
+      case "/api/connections/disconnect":
+        return { status: 200, body: await disconnectLink(engine, String(body.id ?? "")) };
+      case "/api/connections/alerts":
+        return { status: 200, body: { ok: true, toggles: setAlertToggles(engine, body as never) } };
       case "/api/chat":
         return {
           status: 200,

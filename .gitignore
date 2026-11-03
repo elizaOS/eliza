@@ -628,6 +628,7 @@ reports/
 !packages/cloud/api/v1/reports/**
 docs/*
 !docs/ROADMAP.md
+!docs/CONNECTIONS.md
 !docs/valhalla/
 !docs/valhalla/**
 !docs/ELIZA_1_BUNDLE_EXTRAS.json

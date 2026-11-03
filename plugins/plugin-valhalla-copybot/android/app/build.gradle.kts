@@ -38,14 +38,14 @@ val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "")
 
 android {
     namespace = "ai.tokenjunction.valhalla"
-    compileSdk = 34
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "ai.tokenjunction.valhalla"
-        minSdk = 24
-        targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0-test"
+        minSdk = 26
+        targetSdk = 36
+        versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
+        versionName = System.getenv("VERSION_NAME")?.trim().takeUnless { it.isNullOrEmpty() } ?: "0.1.0"
         manifestPlaceholders["admobAppId"] = admobAppId
         buildConfigField("boolean", "ADS_ENABLED", adsEnabled.toString())
         buildConfigField("String", "ADMOB_APP_ID", quote(admobAppId))
@@ -54,6 +54,21 @@ android {
         buildConfigField("String", "ADMOB_REWARDED_ID", quote(admobRewardedId))
         buildConfigField("String", "HOUSE_ADS_URL", quote(houseAdsUrl))
         buildConfigField("String", "PRIVACY_POLICY_URL", quote(privacyPolicyUrl))
+        ndk {
+            abiFilters += listOf("arm64-v8a", "x86_64")
+        }
+    }
+
+    val keystorePath = System.getenv("VALHALLA_KEYSTORE")?.trim().orEmpty()
+    signingConfigs {
+        if (keystorePath.isNotEmpty()) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("VALHALLA_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("VALHALLA_KEY_ALIAS")
+                keyPassword = System.getenv("VALHALLA_KEY_PASSWORD")
+            }
+        }
     }
 
     buildFeatures {
@@ -63,6 +78,23 @@ android {
     buildTypes {
         debug {
             isMinifyEnabled = false
+        }
+        release {
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(
+                getDefaultProguardFile("proguard-android-optimize.txt"),
+                "proguard-rules.pro",
+            )
+            if (keystorePath.isNotEmpty()) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+        }
+    }
+
+    packaging {
+        jniLibs {
+            excludes += setOf("**/armeabi-v7a/**", "**/x86/**")
         }
     }
 
@@ -77,4 +109,9 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.google.android.gms:play-services-ads:23.6.0")
     implementation("com.google.android.ump:user-messaging-platform:3.1.0")
+    implementation("com.journeyapps:zxing-android-embedded:4.3.0")
 }
+
+// Mediation adapters stay off until you enable one in the AdMob console.
+// Add the adapter line from android/ad-mediation.json here when you turn it on.
+// Do not add an adapter you have not configured. Extra SDKs collect more data.

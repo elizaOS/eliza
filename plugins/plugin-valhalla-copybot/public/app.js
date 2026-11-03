@@ -572,3 +572,26 @@ setInterval(load, 3000);
     } catch (_) {}
   }, 8000);
 })();
+
+(function () {
+  const box = document.getElementById("adReport");
+  if (!box) return;
+  async function paint() {
+    try {
+      const report = await fetch("/api/ads/report").then((r) => r.json());
+      if (!report || report.enabled !== true) {
+        box.textContent = "Ad reporting is off. It stays off until the AdMob report keys are set on this PC.";
+        return;
+      }
+      if (report.error) {
+        box.textContent = "Ad report: " + report.error;
+        return;
+      }
+      box.textContent = "Last 7 days: " + report.impressions + " impressions, " + report.clicks + " clicks, $" + report.earnings;
+    } catch (err) {
+      box.textContent = "Ad reporting is off.";
+    }
+  }
+  paint();
+  setInterval(paint, 60000);
+})();

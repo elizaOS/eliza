@@ -27,6 +27,7 @@ import {
   rugRiskPct,
   top10ExLp,
 } from "./manipulation.ts";
+import { extraSafetyGate } from "./safety-score.ts";
 import { applyMultipliers, chooseSize } from "./sizing.ts";
 import { computeTicketSol } from "./slots.ts";
 
@@ -103,6 +104,11 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
   if (snapshot.mintAuthority) return fail("mint authority live", checks, laneIn);
   if (snapshot.freezeAuthority) return fail("freeze authority on", checks, laneIn);
   checks.push("authorities");
+  if (snapshot.rug) {
+    const gate = extraSafetyGate(snapshot.rug);
+    if (!gate.ok) return fail(gate.reason, checks, laneIn);
+    checks.push("connection-safety");
+  }
   if (snapshot.transferHook) return fail("transfer hook blocks sells", checks, laneIn);
   checks.push("transfer-hook");
   if (snapshot.alreadyHeld) return fail("no average down", checks, laneIn);

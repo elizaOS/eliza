@@ -75,4 +75,32 @@ final class SessionStore {
     void saveSuggestion(String json) {
         prefs.edit().putString("suggestion", json == null ? "" : json).apply();
     }
+
+    int houseImpressions() {
+        return prefs.getInt("house_impressions", 0);
+    }
+
+    int houseClicks() {
+        return prefs.getInt("house_clicks", 0);
+    }
+
+    void countHouseImpression() {
+        prefs.edit().putInt("house_impressions", houseImpressions() + 1).apply();
+    }
+
+    void countHouseClick() {
+        prefs.edit().putInt("house_clicks", houseClicks() + 1).apply();
+    }
+
+    long lastBreakAt() {
+        return prefs.getLong("last_break_at", 0L);
+    }
+
+    void markBreak() {
+        prefs.edit().putLong("last_break_at", System.currentTimeMillis()).apply();
+    }
+
+    void clearPhoneData() {
+        prefs.edit().clear().apply();
+    }
 }

@@ -34,6 +34,7 @@ async function bootGate() {
     }
     if (meta.needsSetup) openWizard(meta);
     else fillSettings(meta);
+    loadConnections();
   } catch {
     document.getElementById("gate").hidden = false;
   }
@@ -48,10 +49,53 @@ document.getElementById("gateForm").addEventListener("submit", async (event) => 
     });
     document.getElementById("gate").hidden = true;
     bootGate();
+    loadConnections();
   } catch (err) {
     document.getElementById("gateErr").textContent = err.message;
   }
 });
+
+async function loadConnections() {
+  const host = document.getElementById("connectionsPanel");
+  if (!host) return;
+  const data = await api("/api/connections");
+  host.innerHTML = (data.connections || []).map((row) => {
+    return "<div style=\"margin-top:8px\"><b>" + row.label + "</b> · " + row.state +
+      "<div class=\"rowbtns\">" +
+      (row.needsKey ? "<input id=\"key-" + row.id + "\" type=\"password\" autocomplete=\"off\" placeholder=\"key\"/>" : "") +
+      "<input id=\"pw-" + row.id + "\" type=\"password\" autocomplete=\"off\" placeholder=\"PC password\"/>" +
+      "<button type=\"button\" data-connect=\"" + row.id + "\">CONNECT</button>" +
+      "<button type=\"button\" data-test=\"" + row.id + "\">TEST</button>" +
+      "<button type=\"button\" data-off=\"" + row.id + "\">DISCONNECT</button>" +
+      "</div><div style=\"color:#7a7468\">" + (row.lastMessage || "") + "</div></div>";
+  }).join("");
+  host.querySelectorAll("[data-connect]").forEach((button) => {
+    button.onclick = async () => {
+      const id = button.getAttribute("data-connect");
+      const secretEl = document.getElementById("key-" + id);
+      await api("/api/connections/connect", {
+        id,
+        secret: secretEl ? secretEl.value : "",
+        password: document.getElementById("pw-" + id).value,
+      });
+      if (secretEl) secretEl.value = "";
+      loadConnections();
+    };
+  });
+  host.querySelectorAll("[data-test]").forEach((button) => {
+    button.onclick = async () => {
+      const result = await api("/api/connections/test", { id: button.getAttribute("data-test") });
+      say(result.message);
+      loadConnections();
+    };
+  });
+  host.querySelectorAll("[data-off]").forEach((button) => {
+    button.onclick = async () => {
+      await api("/api/connections/disconnect", { id: button.getAttribute("data-off") });
+      loadConnections();
+    };
+  });
+}
 
 function fillSettings(meta) {
   const host = document.getElementById("settingsPanel");

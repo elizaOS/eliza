@@ -1,6 +1,7 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { refusesUnsafe } from "./chat.ts";
+import { connectionView } from "./connection-routes.ts";
 import { pnlView, stateView } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
 import { tail4 } from "./net.ts";
@@ -66,6 +67,11 @@ export function phoneState(engine: AgentEngine): Record<string, unknown> {
     losses: pnl.losses,
     openCount: engine.book.positions.length,
     wallet: tail4(engine.activePubkey()),
+    connections: connectionView(engine).map((row) => ({
+      label: row.label,
+      state: row.state,
+      ok: row.lastOk,
+    })),
     settings: engine.settings,
     pendingSettings: engine.pendingSettings != null,
   };

@@ -28,6 +28,12 @@ final class ErrorLog {
         trim();
     }
 
+    synchronized void clear() {
+        if (file.exists() && !file.delete()) {
+            add("The error log could not be deleted.");
+        }
+    }
+
     synchronized String text() {
         if (!file.exists()) return "No errors yet.";
         try (RandomAccessFile in = new RandomAccessFile(file, "r")) {

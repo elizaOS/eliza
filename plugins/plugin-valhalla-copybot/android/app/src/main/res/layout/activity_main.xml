@@ -93,7 +93,15 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
+                    android:minHeight="48dp"
                     android:text="@string/connect" />
+
+                <Button
+                    android:id="@+id/scanQr"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/scan_qr" />
 
                 <Button
                     android:id="@+id/privacyPolicy"
@@ -236,7 +244,15 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
+                    android:minHeight="48dp"
                     android:text="@string/back" />
+
+                <Button
+                    android:id="@+id/deleteData"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/delete_data" />
             </LinearLayout>
         </LinearLayout>
     </ScrollView>
@@ -280,17 +296,20 @@
             android:text="@string/house_link"
             android:visibility="gone" />
 
+        <TextView
+            android:id="@+id/houseCount"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textColor="@color/muted"
+            android:textSize="11sp"
+            android:visibility="gone" />
+
         <Button
             android:id="@+id/rewardedAd"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:minHeight="48dp"
             android:text="@string/rewarded_ad" />
-
-        <Button
-            android:id="@+id/interstitialAd"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="@string/interstitial_ad" />
 
         <TextView
             android:id="@+id/adNote"

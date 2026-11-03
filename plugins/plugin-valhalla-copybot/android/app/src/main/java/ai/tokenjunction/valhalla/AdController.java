@@ -40,9 +40,10 @@ final class AdController {
     private final TextView houseText;
     private final Button houseLink;
     private final Button rewardedButton;
-    private final Button interstitialButton;
     private final FrameLayout bannerSlot;
     private final TextView note;
+    private final TextView houseCount;
+    private final SessionStore store;
     private AdView banner;
     private RewardedAd rewarded;
     private InterstitialAd interstitial;
@@ -55,11 +56,11 @@ final class AdController {
         houseText = activity.findViewById(R.id.houseText);
         houseLink = activity.findViewById(R.id.houseLink);
         rewardedButton = activity.findViewById(R.id.rewardedAd);
-        interstitialButton = activity.findViewById(R.id.interstitialAd);
         bannerSlot = activity.findViewById(R.id.adSlot);
         note = activity.findViewById(R.id.adNote);
+        houseCount = activity.findViewById(R.id.houseCount);
+        store = new SessionStore(activity);
         rewardedButton.setOnClickListener(v -> showRewarded());
-        interstitialButton.setOnClickListener(v -> showInterstitial());
     }
 
     void start() {
@@ -85,6 +86,15 @@ final class AdController {
                     if (consent.canRequestAds()) startAdMob();
                 }),
                 formError -> note.setText(activity.getString(R.string.ad_consent_unavailable)));
+    }
+
+    /** A break ad after the error log. Never while a stall or offline alert is showing. */
+    void onNaturalBreak(boolean alertShowing) {
+        if (!BuildConfig.ADS_ENABLED || alertShowing || interstitial == null) return;
+        long now = System.currentTimeMillis();
+        if (now - store.lastBreakAt() < 10 * 60 * 1000L) return;
+        store.markBreak();
+        interstitial.show(activity);
     }
 
     void onScreen(String screen) {
@@ -162,14 +172,6 @@ final class AdController {
         });
     }
 
-    private void showInterstitial() {
-        if (interstitial == null) {
-            note.setText(activity.getString(R.string.ad_not_ready));
-            return;
-        }
-        interstitial.show(activity);
-    }
-
     private void loadHouseAds() {
         new Thread(() -> {
             String raw = readFeed();
@@ -222,10 +224,17 @@ final class AdController {
             houseText.setText(ad.optString("text", ""));
             houseTitle.setVisibility(View.VISIBLE);
             houseText.setVisibility(View.VISIBLE);
+            store.countHouseImpression();
+            houseCount.setText(activity.getString(R.string.house_count, store.houseImpressions(), store.houseClicks()));
+            houseCount.setVisibility(View.VISIBLE);
             String url = ad.optString("url", "").trim();
             if (url.startsWith("https://")) {
                 houseLink.setVisibility(View.VISIBLE);
-                houseLink.setOnClickListener(v -> activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url))));
+                houseLink.setOnClickListener(v -> {
+                    store.countHouseClick();
+                    houseCount.setText(activity.getString(R.string.house_count, store.houseImpressions(), store.houseClicks()));
+                    activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+                });
             }
         } catch (Exception ignored) {
             houseTitle.setVisibility(View.GONE);

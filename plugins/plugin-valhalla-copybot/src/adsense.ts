@@ -1,3 +1,12 @@
+/** ads.txt line for the developer site. Empty until AdSense is explicitly on. */
+export function adsTxt(env: Record<string, string | undefined> = process.env): string {
+  if (env.ADSENSE_ENABLED !== "true") return "";
+  const client = env.ADSENSE_CLIENT_ID?.trim() ?? "";
+  const pub = client.startsWith("ca-") ? client.slice(3) : "";
+  if (!/^pub-\d{16}$/.test(pub)) return "";
+  return `google.com, ${pub}, DIRECT, f08c47fec0942fa0\n`;
+}
+
 /** Web AdSense markup. Off unless the owner turns the flag on and sets a client id. */
 export function adsenseSnippet(env: Record<string, string | undefined> = process.env): string {
   if (env.ADSENSE_ENABLED !== "true") return "";
