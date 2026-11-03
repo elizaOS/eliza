@@ -64,6 +64,8 @@ export default defineConfig({
     },
   },
   resolve: {
+    // Unaliased workspace packages expose their real source under this condition.
+    conditions: ["eliza-source"],
     alias: [
       {
         find: /^@elizaos\/contracts\/client-turn-observation$/,
