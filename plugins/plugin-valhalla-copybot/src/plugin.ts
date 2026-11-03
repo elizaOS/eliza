@@ -10,18 +10,18 @@ const env = process.env;
 async function geminiText(
   runtime: IAgentRuntime,
   params: GenerateTextParams | string | null | undefined,
-  tier: "small" | "large",
+  tier: "small" | "large"
 ): Promise<string> {
   const apiKey = String(
-    runtime.getSetting("GOOGLE_GENERATIVE_AI_API_KEY") || env.GOOGLE_GENERATIVE_AI_API_KEY || "",
+    runtime.getSetting("GOOGLE_GENERATIVE_AI_API_KEY") || env.GOOGLE_GENERATIVE_AI_API_KEY || ""
   );
   const small = String(
-    runtime.getSetting("VALHALLA_GEMINI_MODEL") || env.VALHALLA_GEMINI_MODEL || "gemini-2.5-flash",
+    runtime.getSetting("VALHALLA_GEMINI_MODEL") || env.VALHALLA_GEMINI_MODEL || "gemini-2.5-flash"
   );
   const large = String(
     runtime.getSetting("VALHALLA_GEMINI_LARGE_MODEL") ||
       env.VALHALLA_GEMINI_LARGE_MODEL ||
-      "gemini-2.5-pro",
+      "gemini-2.5-pro"
   );
   const prompt = promptOf(params);
   const maxTokens = typeof params === "object" && params ? params.maxTokens : undefined;

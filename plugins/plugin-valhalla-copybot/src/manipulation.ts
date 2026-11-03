@@ -43,12 +43,13 @@ export function judgeEarlyBuyers(
     topHolders?: HolderRow[];
     failClosed?: boolean;
   },
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): EarlyScanResult {
   const failClosed = input.failClosed !== false && limits.manipFailClosed;
   const txs = input.txs.filter((tx) => tx.slot != null && !tx.err);
   if (txs.length === 0) {
-    if (failClosed) return { ok: false, reason: "manip scan fail — no early signatures", ran: true };
+    if (failClosed)
+      return { ok: false, reason: "manip scan fail — no early signatures", ran: true };
     return { ok: true, reason: null, ran: false };
   }
   const ordered = [...txs].sort((a, b) => Number(a.slot) - Number(b.slot));
@@ -66,7 +67,10 @@ export function judgeEarlyBuyers(
     parsed += 1;
     for (const inc of tx.increases) {
       if (!(inc.after > inc.before) || !inc.owner) continue;
-      const row = earlyBuyers.get(inc.owner) ?? { slots: new Set<number>(), funders: new Set<string>() };
+      const row = earlyBuyers.get(inc.owner) ?? {
+        slots: new Set<number>(),
+        funders: new Set<string>(),
+      };
       row.slots.add(tx.slot);
       if (tx.feePayer && tx.feePayer !== inc.owner) row.funders.add(tx.feePayer);
       earlyBuyers.set(inc.owner, row);
@@ -162,12 +166,15 @@ export function judgeEarlyBuyers(
 
 export function rugRiskPct(
   risks: Array<{ name?: string | null; value?: number | null; pct?: number | null }> | undefined,
-  kind: "sniper" | "bundle",
+  kind: "sniper" | "bundle"
 ): number {
   let max = 0;
   for (const risk of risks ?? []) {
     const name = (risk.name ?? "").toLowerCase();
-    const match = kind === "sniper" ? name.includes("sniper") : name.includes("bundle") || name.includes("bundl");
+    const match =
+      kind === "sniper"
+        ? name.includes("sniper")
+        : name.includes("bundle") || name.includes("bundl");
     if (!match) continue;
     const value = Number(risk.value ?? risk.pct ?? 0);
     const pct = value > 1.5 ? value / 100 : value;
@@ -176,14 +183,17 @@ export function rugRiskPct(
   return max;
 }
 
-export function top10ExLp(holders: HolderRow[], limits: Limits = LIMITS): { pct: number; over: boolean } {
+export function top10ExLp(
+  holders: HolderRow[],
+  limits: Limits = LIMITS
+): { pct: number; over: boolean } {
   const pct = holders.slice(0, 10).reduce((sum, holder) => sum + pctOf(holder), 0);
   return { pct, over: pct > limits.maxTop10Pct };
 }
 
 export function badActorHit(
   addresses: Array<string | null | undefined>,
-  badActors: ReadonlyMap<string, string> | Readonly<Record<string, string>>,
+  badActors: ReadonlyMap<string, string> | Readonly<Record<string, string>>
 ): string | null {
   const lookup = badActors instanceof Map ? badActors : new Map(Object.entries(badActors));
   for (const addr of addresses) {
@@ -194,7 +204,10 @@ export function badActorHit(
   return null;
 }
 
-export function devHoldReject(creator: string | null | undefined, holders: HolderRow[]): string | null {
+export function devHoldReject(
+  creator: string | null | undefined,
+  holders: HolderRow[]
+): string | null {
   if (!creator) return null;
   const row = holders.find((holder) => holderAddr(holder) === creator);
   const pct = row ? pctOf(row) : 0;

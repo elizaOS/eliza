@@ -1,5 +1,5 @@
-import { LIMITS, type Lane, type Limits } from "./limits.ts";
 import { pairAgeMs } from "./filters.ts";
+import { type Lane, LIMITS, type Limits } from "./limits.ts";
 
 export interface PositionView {
   id: string;
@@ -103,7 +103,10 @@ export function legFeeSol(limits: Limits = LIMITS): number {
   return Math.max(limits.priorityFeeSol, 0.0001) + 0.000005;
 }
 
-export function solIn(pos: Pick<PositionView, "costSol" | "originalCostSol">, limits: Limits = LIMITS): number {
+export function solIn(
+  pos: Pick<PositionView, "costSol" | "originalCostSol">,
+  limits: Limits = LIMITS
+): number {
   const cost = Number(pos.costSol) || 0;
   const orig = Number(pos.originalCostSol) || cost;
   const share = orig > 0 ? Math.min(1, cost / orig) : 1;
@@ -118,7 +121,7 @@ function sellTax(pos: Pick<PositionView, "transferTaxBps">): number {
 export function netFromOutSol(
   pos: Pick<PositionView, "costSol" | "originalCostSol" | "transferTaxBps">,
   outSol: number,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): number | null {
   const input = solIn(pos, limits);
   if (!(input > 0) || !(outSol > 0)) return null;
@@ -128,7 +131,7 @@ export function netFromOutSol(
 export function markOutSol(
   pos: Pick<PositionView, "costSol" | "entryPriceUsd" | "lane">,
   priceUsd: number,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): number | null {
   if (!(priceUsd > 0) || !(pos.entryPriceUsd > 0)) return null;
   const cfg = tpNetConfig(pos.lane, limits);
@@ -137,9 +140,12 @@ export function markOutSol(
 }
 
 export function netFromMark(
-  pos: Pick<PositionView, "costSol" | "originalCostSol" | "entryPriceUsd" | "transferTaxBps" | "lane">,
+  pos: Pick<
+    PositionView,
+    "costSol" | "originalCostSol" | "entryPriceUsd" | "transferTaxBps" | "lane"
+  >,
   priceUsd: number,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): number | null {
   const out = markOutSol(pos, priceUsd, limits);
   return out == null ? null : netFromOutSol(pos, out, limits);
@@ -148,7 +154,7 @@ export function netFromMark(
 export function partialFraction(
   pos: Pick<PositionView, "costSol" | "originalCostSol" | "lane">,
   outSolFull: number,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): { frac: number; dust: boolean } {
   const cfg = tpNetConfig(pos.lane, limits);
   if (cfg.partialFrac >= 0.999) return { frac: 1, dust: false };
@@ -175,7 +181,13 @@ export function adaptiveTier(ageMs: number | null, mcap: number): AdaptiveTier {
   const midMc = mcap >= 150_000 && mcap <= 1_000_000;
   const bigMc = mcap > 1_000_000;
   if (young || small) {
-    return { tier: "fresh", windowMs: 6 * 60 * 1000, tpPct: 0.18, slPct: -0.07, repairMinPct: 0.03 };
+    return {
+      tier: "fresh",
+      windowMs: 6 * 60 * 1000,
+      tpPct: 0.18,
+      slPct: -0.07,
+      repairMinPct: 0.03,
+    };
   }
   if (midAge || midMc || (!oldAge && !bigMc)) {
     return { tier: "mid", windowMs: 12 * 60 * 1000, tpPct: 0.14, slPct: -0.08, repairMinPct: 0.03 };
@@ -200,7 +212,9 @@ export function quoteAwareStopHit(input: {
   quoteOk: boolean;
 }): { hit: boolean; via: "quote" | "mark" | null } {
   const markHit =
-    (input.stopPriceUsd > 0 && input.markPriceUsd > 0 && input.markPriceUsd <= input.stopPriceUsd) ||
+    (input.stopPriceUsd > 0 &&
+      input.markPriceUsd > 0 &&
+      input.markPriceUsd <= input.stopPriceUsd) ||
     (input.markPnlPct != null && input.markPnlPct <= input.stopPct);
   if (input.quoteOk && input.quoteNetPct != null && input.quoteNetPct <= input.stopPct) {
     return { hit: true, via: "quote" };
@@ -222,7 +236,7 @@ export function decideExit(
     quoteOutSol?: number | null;
     quoteOk?: boolean;
   } = {},
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): ExitDecision {
   if (pos.hold || pos.status === "CLOSED") return hold("not open");
   const now = input.now ?? Date.now();
@@ -231,7 +245,8 @@ export function decideExit(
     pos.entryPriceUsd > 0 && pos.markPriceUsd > 0 ? pos.markPriceUsd / pos.entryPriceUsd - 1 : null;
   const markNet = pos.markPriceUsd > 0 ? netFromMark(pos, pos.markPriceUsd, limits) : null;
   const quoteOk = input.quoteOk === true && (input.quoteOutSol ?? 0) > 0;
-  const quoteNet = quoteOk && input.quoteOutSol != null ? netFromOutSol(pos, input.quoteOutSol, limits) : null;
+  const quoteNet =
+    quoteOk && input.quoteOutSol != null ? netFromOutSol(pos, input.quoteOutSol, limits) : null;
   const stopPct = laneStopPct(pos.lane, limits);
   const stopPrice = pos.entryPriceUsd > 0 ? pos.entryPriceUsd * (1 + stopPct) : 0;
   const stop = quoteAwareStopHit({
@@ -284,27 +299,40 @@ export function decideExit(
       quoteOk && input.quoteOutSol != null
         ? netFromOutSol(
             floorView,
-            input.quoteOutSol * ((pos.originalCostSol || pos.costSol) / Math.max(pos.costSol, 1e-12)),
-            limits,
+            input.quoteOutSol *
+              ((pos.originalCostSol || pos.costSol) / Math.max(pos.costSol, 1e-12)),
+            limits
           )
         : null;
-    if ((floorMark != null && floorMark <= cfg.floor) || (floorQuote != null && floorQuote <= cfg.floor)) {
+    if (
+      (floorMark != null && floorMark <= cfg.floor) ||
+      (floorQuote != null && floorQuote <= cfg.floor)
+    ) {
       return close("tp_floor", `tp floor ${cfg.floor} net`);
     }
-    if (pos.peakPriceUsd > 0 && pos.markPriceUsd <= pos.peakPriceUsd * (1 - laneTrailPct(pos.lane, limits))) {
+    if (
+      pos.peakPriceUsd > 0 &&
+      pos.markPriceUsd <= pos.peakPriceUsd * (1 - laneTrailPct(pos.lane, limits))
+    ) {
       return close("trail", `trail ${laneTrailPct(pos.lane, limits)} from peak`);
     }
     return hold("armed remainder");
   }
-  if (!pos.tpNet10Taken && quoteNet != null && quoteNet >= cfg.threshold - 1e-12 && input.quoteOutSol != null) {
+  if (
+    !pos.tpNet10Taken &&
+    quoteNet != null &&
+    quoteNet >= cfg.threshold - 1e-12 &&
+    input.quoteOutSol != null
+  ) {
     const part = partialFraction(pos, input.quoteOutSol, limits);
     return close(
       part.frac >= 0.999 ? "tp_net_full" : "tp_net_partial",
       `net ${(quoteNet * 100).toFixed(2)}% >= ${(cfg.threshold * 100).toFixed(0)}%`,
-      part.frac,
+      part.frac
     );
   }
-  if (cfg.suppressLaneTp) return hold(quoteNet == null ? "tp needs a sell quote" : "below net target");
+  if (cfg.suppressLaneTp)
+    return hold(quoteNet == null ? "tp needs a sell quote" : "below net target");
   if (pos.lane === "risk") {
     if (!pos.riskTp1Taken && (markPnl ?? -1) >= limits.riskTp1Pct && quoteOk) {
       return close("risk_tp1", `risk +${limits.riskTp1Pct * 100}%`, limits.riskTp1Frac);

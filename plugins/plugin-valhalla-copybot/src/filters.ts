@@ -20,7 +20,7 @@ export function stableRejectReason(
   mint: string,
   symbol?: string | null,
   name?: string | null,
-  pair?: { h1?: number | null; h6?: number | null; h24?: number | null } | null,
+  pair?: { h1?: number | null; h6?: number | null; h24?: number | null } | null
 ): string | null {
   if (BLOCKED_MINTS.has(mint)) return `stablecoin blocklist (${symbol || mint.slice(0, 8)})`;
   const sym = String(symbol ?? "").trim();
@@ -49,8 +49,14 @@ export interface McapClass {
 
 export function classifyMcap(
   mcap: number,
-  input: { change5m?: number; change1h?: number; vol1h?: number; vol24?: number; early?: boolean } = {},
-  limits: Limits = LIMITS,
+  input: {
+    change5m?: number;
+    change1h?: number;
+    vol1h?: number;
+    vol24?: number;
+    early?: boolean;
+  } = {},
+  limits: Limits = LIMITS
 ): McapClass {
   const mc = Number(mcap) || 0;
   const early = input.early === true;
@@ -64,7 +70,13 @@ export function classifyMcap(
   const vol1h = input.vol1h ?? 0;
   const vol24 = input.vol24 ?? 0;
   if (mc > 0 && mc < min) {
-    return { ok: false, band: "below_min", sizeFrac: 0, reason: `mcap $${Math.round(mc)} < min $${min}`, mcap: mc };
+    return {
+      ok: false,
+      band: "below_min",
+      sizeFrac: 0,
+      reason: `mcap $${Math.round(mc)} < min $${min}`,
+      mcap: mc,
+    };
   }
   if (mc > max) {
     return {
@@ -77,16 +89,40 @@ export function classifyMcap(
   }
   if (!mc) {
     if (early) {
-      return { ok: true, band: "early_unknown", sizeFrac: half, reason: "early/bonding mcap unknown", mcap: 0 };
+      return {
+        ok: true,
+        band: "early_unknown",
+        sizeFrac: half,
+        reason: "early/bonding mcap unknown",
+        mcap: 0,
+      };
     }
     const strong = change5m > 5 || change1h > 15 || vol24 > 50_000;
     if (!strong) {
-      return { ok: false, band: "unknown", sizeFrac: 0, reason: "mcap unknown + weak momentum", mcap: 0 };
+      return {
+        ok: false,
+        band: "unknown",
+        sizeFrac: 0,
+        reason: "mcap unknown + weak momentum",
+        mcap: 0,
+      };
     }
-    return { ok: true, band: "low", sizeFrac: half, reason: "mcap unknown, strong momentum half-size", mcap: 0 };
+    return {
+      ok: true,
+      band: "low",
+      sizeFrac: half,
+      reason: "mcap unknown, strong momentum half-size",
+      mcap: 0,
+    };
   }
   if (early && mc >= min && mc < prefMin) {
-    return { ok: true, band: "early_small", sizeFrac: half, reason: `early small mcap $${Math.round(mc)}`, mcap: mc };
+    return {
+      ok: true,
+      band: "early_small",
+      sizeFrac: half,
+      reason: `early small mcap $${Math.round(mc)}`,
+      mcap: mc,
+    };
   }
   if (mc >= prefMin && mc <= prefMax) {
     return { ok: true, band: "preferred", sizeFrac: 1, reason: "preferred band", mcap: mc };
@@ -102,16 +138,31 @@ export function classifyMcap(
         mcap: mc,
       };
     }
-    return { ok: true, band: "low", sizeFrac: half, reason: "low band half-size + momentum", mcap: mc };
+    return {
+      ok: true,
+      band: "low",
+      sizeFrac: half,
+      reason: "low band half-size + momentum",
+      mcap: mc,
+    };
   }
   const strong = change5m >= 5 || change1h >= 20 || (vol1h > 0 && vol1h / mc >= 0.08);
   if (!strong) {
-    return { ok: false, band: "large", sizeFrac: 0, reason: `mcap $${Math.round(mc)} needs strong momentum`, mcap: mc };
+    return {
+      ok: false,
+      band: "large",
+      sizeFrac: 0,
+      reason: `mcap $${Math.round(mc)} needs strong momentum`,
+      mcap: mc,
+    };
   }
   return { ok: true, band: "large", sizeFrac: half, reason: "large band half-size", mcap: mc };
 }
 
-export function pairAgeMs(pairCreatedAt: number | string | null | undefined, now = Date.now()): number | null {
+export function pairAgeMs(
+  pairCreatedAt: number | string | null | undefined,
+  now = Date.now()
+): number | null {
   if (pairCreatedAt == null || pairCreatedAt === "") return null;
   const parsed =
     typeof pairCreatedAt === "number"
@@ -140,7 +191,7 @@ export function scoreRecency(
     change1h?: number;
     now?: number;
   },
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): RecencyScore {
   const now = input.now ?? Date.now();
   const age = pairAgeMs(input.pairCreatedAt, now);
@@ -184,8 +235,12 @@ export function scoreRecency(
   return { score, reject, reason, pairAge: age };
 }
 
-export function buySellRatio(buys: number | null | undefined, sells: number | null | undefined): number | null {
-  if (buys == null || sells == null || !Number.isFinite(buys) || !Number.isFinite(sells)) return null;
+export function buySellRatio(
+  buys: number | null | undefined,
+  sells: number | null | undefined
+): number | null {
+  if (buys == null || sells == null || !Number.isFinite(buys) || !Number.isFinite(sells))
+    return null;
   if (sells === 0) return buys > 0 ? Number.POSITIVE_INFINITY : 0;
   return buys / sells;
 }
@@ -198,12 +253,23 @@ export interface RugSummary {
   score?: number | null;
   mintAuthority?: string | null;
   freezeAuthority?: string | null;
-  risks?: Array<{ level?: string | null; name?: string | null; value?: number | null; pct?: number | null }>;
+  risks?: Array<{
+    level?: string | null;
+    name?: string | null;
+    value?: number | null;
+    pct?: number | null;
+  }>;
   topHolders?: Array<{ pct?: number | null; address?: string | null; owner?: string | null }>;
   markets?: Array<{ lp?: { lpLockedPct?: number | null } | null }>;
   rugged?: boolean;
   creator?: string | null;
-  creatorTokens?: Array<{ mint?: string; rugged?: boolean; marketCap?: number; mcap?: number; createdAt?: string }>;
+  creatorTokens?: Array<{
+    mint?: string;
+    rugged?: boolean;
+    marketCap?: number;
+    mcap?: number;
+    createdAt?: string;
+  }>;
 }
 
 export interface MrRow {
@@ -213,7 +279,11 @@ export interface MrRow {
   found?: boolean;
 }
 
-export function judgeRugcheck(report: RugSummary | null, mint: string, limits: Limits = LIMITS): { ok: boolean; reason: string } {
+export function judgeRugcheck(
+  report: RugSummary | null,
+  mint: string,
+  limits: Limits = LIMITS
+): { ok: boolean; reason: string } {
   if (!report) return { ok: false, reason: "unavailable" };
   if (report.mintAuthority) return { ok: false, reason: "mint authority" };
   if (report.freezeAuthority) return { ok: false, reason: "freeze authority" };
@@ -224,9 +294,17 @@ export function judgeRugcheck(report: RugSummary | null, mint: string, limits: L
     return level === "danger" || name.includes("danger");
   });
   if (danger.length > 0) {
-    return { ok: false, reason: `danger: ${danger.map((risk) => risk.name).slice(0, 3).join(",")}` };
+    return {
+      ok: false,
+      reason: `danger: ${danger
+        .map((risk) => risk.name)
+        .slice(0, 3)
+        .join(",")}`,
+    };
   }
-  const top = (report.topHolders ?? []).slice(0, 10).reduce((sum, holder) => sum + Number(holder.pct ?? 0), 0);
+  const top = (report.topHolders ?? [])
+    .slice(0, 10)
+    .reduce((sum, holder) => sum + Number(holder.pct ?? 0), 0);
   const topPct = top > 1.5 ? top / 100 : top;
   if (topPct > 0.4) return { ok: false, reason: `top10 ${(topPct * 100).toFixed(0)}%` };
   const score = Number(report.score ?? 0);
@@ -237,17 +315,22 @@ export function judgeRugcheck(report: RugSummary | null, mint: string, limits: L
   const locked = lp?.lp?.lpLockedPct;
   if (lp && locked != null && Number(locked) < 5 && !/pump/i.test(mint)) {
     const names = risks.map((risk) => (risk.name ?? "").toLowerCase()).join(" ");
-    if (names.includes("lp") || names.includes("liquidity")) return { ok: false, reason: "LP not locked" };
+    if (names.includes("lp") || names.includes("liquidity"))
+      return { ok: false, reason: "LP not locked" };
   }
   return { ok: true, reason: `score=${score}` };
 }
 
-export function judgeMemeRunners(row: MrRow | null, limits: Limits = LIMITS): { ok: boolean; reason: string } {
+export function judgeMemeRunners(
+  row: MrRow | null,
+  limits: Limits = LIMITS
+): { ok: boolean; reason: string } {
   if (!row || row.found === false) return { ok: false, reason: "not scanned" };
   if (row.blacklisted) return { ok: false, reason: "blacklisted" };
   const safety = Number(row.safetyScore ?? 0);
   if (safety < limits.prebuyMrMinSafety) return { ok: false, reason: `safety ${safety}` };
-  if (String(row.bundleRisk ?? "").toLowerCase() === "high") return { ok: false, reason: "bundle high" };
+  if (String(row.bundleRisk ?? "").toLowerCase() === "high")
+    return { ok: false, reason: "bundle high" };
   return { ok: true, reason: `safety=${safety}` };
 }
 
@@ -256,27 +339,32 @@ export function judgePrebuy(
   mint: string,
   rug: RugSummary | null,
   mr: MrRow | null,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): { ok: boolean; passedVia: "rugcheck" | "mr" | null; reason: string } {
   const rugJudgement = judgeRugcheck(rug, mint, limits);
   const mrJudgement = judgeMemeRunners(mr, limits);
   if (rugJudgement.ok) return { ok: true, passedVia: "rugcheck", reason: rugJudgement.reason };
   if (mrJudgement.ok) return { ok: true, passedVia: "mr", reason: mrJudgement.reason };
-  return { ok: false, passedVia: null, reason: `rug:${rugJudgement.reason} mr:${mrJudgement.reason}` };
+  return {
+    ok: false,
+    passedVia: null,
+    reason: `rug:${rugJudgement.reason} mr:${mrJudgement.reason}`,
+  };
 }
 
 export function isRuggedPrior(
   token: { mint?: string; rugged?: boolean; marketCap?: number; mcap?: number; createdAt?: string },
   currentMint: string,
   now = Date.now(),
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): boolean {
   if (!token.mint || token.mint === currentMint) return false;
   if (token.rugged === true) return true;
   const mcap = Number(token.marketCap ?? token.mcap ?? 0);
   const created = token.createdAt ? Date.parse(token.createdAt) : 0;
   const ageMs = created ? now - created : 0;
-  if (ageMs >= 24 * 60 * 60 * 1000 && mcap > 0 && mcap < limits.creatorPriorRugMcapMaxUsd) return true;
+  if (ageMs >= 24 * 60 * 60 * 1000 && mcap > 0 && mcap < limits.creatorPriorRugMcapMaxUsd)
+    return true;
   if (ageMs >= 24 * 60 * 60 * 1000 && mcap === 0) return true;
   return false;
 }
@@ -285,15 +373,18 @@ export function creatorRugReason(
   mint: string,
   report: RugSummary | null,
   now = Date.now(),
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): string | null {
   if (report?.rugged === true) return "token marked rugged on RugCheck";
   const risks = (report?.risks ?? [])
     .map((risk) => `${risk.name ?? ""}`)
     .join(" ")
     .toLowerCase();
-  if (/rugged creator|creator.*rug|previous.*rug/i.test(risks)) return "creator rug history (RugCheck risk)";
-  const priors = (report?.creatorTokens ?? []).filter((token) => isRuggedPrior(token, mint, now, limits));
+  if (/rugged creator|creator.*rug|previous.*rug/i.test(risks))
+    return "creator rug history (RugCheck risk)";
+  const priors = (report?.creatorTokens ?? []).filter((token) =>
+    isRuggedPrior(token, mint, now, limits)
+  );
   if (priors.length >= 1) return `creator has ${priors.length} prior low-mcap/rugged token(s)`;
   return null;
 }
@@ -319,7 +410,7 @@ export function shouldRejectForSlippage(
     liquidityUsd?: number | null;
     solUsd?: number | null;
   },
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): { reject: boolean; reason: string | null; expectedRealizedPct: number } {
   const costs = computeCosts(
     {
@@ -329,7 +420,7 @@ export function shouldRejectForSlippage(
       liquidityUsd: input.liquidityUsd,
       solUsd: input.solUsd,
     },
-    limits,
+    limits
   );
   const est = expectedStopRealized({
     slPct: input.slPct,
@@ -350,7 +441,7 @@ export function shouldRejectForSlippage(
 export function windowNetGate(
   ticketSol: number,
   costs: { allInRtPct: number },
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): { reject: boolean; reason: string | null } {
   const netAtTp = limits.windowsMinTpPct - costs.allInRtPct;
   if (netAtTp + 1e-12 < limits.windowsMinNetAtTpPct) {
@@ -370,14 +461,18 @@ export function bankLamports(freeSol: number, openCostSol: number): number {
 export function bankFloorBlocks(
   freeSol: number | null | undefined,
   openCostSol: number,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): boolean {
   if (!Number.isFinite(limits.bankFloorLamports) || limits.bankFloorLamports <= 0) return false;
   if (freeSol == null) return true;
   return bankLamports(freeSol, openCostSol) <= limits.bankFloorLamports;
 }
 
-export function dailyLossTripped(equitySol: number, dayStartEquitySol: number, limits: Limits = LIMITS): boolean {
+export function dailyLossTripped(
+  equitySol: number,
+  dayStartEquitySol: number,
+  limits: Limits = LIMITS
+): boolean {
   if (!(dayStartEquitySol > 0) || !(equitySol > 0)) return false;
   return equitySol <= dayStartEquitySol * (1 - limits.dailyLossCapPct);
 }
@@ -385,7 +480,7 @@ export function dailyLossTripped(equitySol: number, dayStartEquitySol: number, l
 export function walletWinRateReject(
   winRate: number | null | undefined,
   closedTrades: number | null | undefined,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): string | null {
   if (winRate == null && closedTrades == null) return null;
   const trades = Number(closedTrades ?? 0);

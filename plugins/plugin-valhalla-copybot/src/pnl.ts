@@ -10,7 +10,11 @@ export interface ClosedLeg {
   reason: string;
 }
 
-export function realizedFromExit(exitSol: number, costSol: number, solUsd: number): {
+export function realizedFromExit(
+  exitSol: number,
+  costSol: number,
+  solUsd: number
+): {
   exitSol: number;
   pnlSol: number;
   pnlUsd: number;

@@ -17,10 +17,10 @@ export function chooseSize(
     steps?: readonly number[];
     rtCheck?: (
       ticketSol: number,
-      ctx: { buyImpactPct: number },
+      ctx: { buyImpactPct: number }
     ) => { blocked: boolean; pct: number };
   },
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): SizeChoice {
   const maxSol = Number(input.maxSol) || 0;
   const minSol = input.minSol != null ? Number(input.minSol) : limits.dynMinTicketSol;
@@ -35,7 +35,7 @@ export function chooseSize(
       ? Math.max(0, Number(input.sellImpactPct))
       : null;
   const steps = (input.steps ?? limits.dynSizeSteps).filter(
-    (step) => step <= maxSol + 1e-12 && step >= minSol - 1e-12,
+    (step) => step <= maxSol + 1e-12 && step >= minSol - 1e-12
   );
   if (maxSol > 0 && !steps.some((step) => Math.abs(step - maxSol) < 1e-12) && maxSol >= minSol) {
     steps.unshift(maxSol);
@@ -82,7 +82,7 @@ export function chooseSize(
 export function applyMultipliers(
   size: number,
   mults: Array<{ name: string; frac: number }>,
-  minSol: number = LIMITS.dynMinTicketSol,
+  minSol: number = LIMITS.dynMinTicketSol
 ): { size: number; applied: string[]; skipped: string | null } {
   let next = size;
   const applied: string[] = [];

@@ -1,6 +1,6 @@
-import { logger, Service, type IAgentRuntime } from "@elizaos/core";
+import { type IAgentRuntime, logger, Service } from "@elizaos/core";
 import { startDashboard } from "./dashboard.ts";
-import { getEngine, type AgentEngine } from "./engine.ts";
+import { type AgentEngine, getEngine } from "./engine.ts";
 import type { CoinSnapshot, Evaluation } from "./evaluate.ts";
 import { liveTradingEnabled } from "./safety-gate.ts";
 
@@ -53,13 +53,28 @@ export class ValhallaTradingService extends Service {
 
   async evaluateMint(mint: string): Promise<Evaluation> {
     const message = await this.engine().queueMint(mint);
-    return { ok: !message.startsWith("Blocked") && !message.startsWith("Scan"), reason: message, lane: "main", sizeSol: 0, checks: [] };
+    return {
+      ok: !message.startsWith("Blocked") && !message.startsWith("Scan"),
+      reason: message,
+      lane: "main",
+      sizeSol: 0,
+      checks: [],
+    };
   }
 
-  async evaluateSnapshot(snapshot: CoinSnapshot): Promise<{ ok: boolean; reason: string; evaluation: Evaluation; position: null }> {
+  async evaluateSnapshot(
+    snapshot: CoinSnapshot
+  ): Promise<{ ok: boolean; reason: string; evaluation: Evaluation; position: null }> {
     const message = await this.engine().evaluateProvided(snapshot);
-    const ok = message.startsWith("Paper") || message.startsWith("Live") || message.startsWith("Pass");
-    const evaluation: Evaluation = { ok, reason: message, lane: snapshot.lane ?? "main", sizeSol: 0, checks: [] };
+    const ok =
+      message.startsWith("Paper") || message.startsWith("Live") || message.startsWith("Pass");
+    const evaluation: Evaluation = {
+      ok,
+      reason: message,
+      lane: snapshot.lane ?? "main",
+      sizeSol: 0,
+      checks: [],
+    };
     return { ok, reason: message, evaluation, position: null };
   }
 

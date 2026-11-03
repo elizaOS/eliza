@@ -85,32 +85,72 @@ function bound(name: string, value: number, min: number, max: number, errors: st
 }
 
 /** Reject out-of-range controls. Rug and manipulation checks are not settings. */
-export function parseSettings(input: unknown, current: UserSettings = DEFAULT_SETTINGS): UserSettings | SettingsError {
+export function parseSettings(
+  input: unknown,
+  current: UserSettings = DEFAULT_SETTINGS
+): UserSettings | SettingsError {
   const src = input && typeof input === "object" ? (input as Record<string, unknown>) : {};
   const errors: string[] = [];
   const presetRaw = String(src.preset ?? current.preset);
   const preset: PresetName =
-    presetRaw === "safe" || presetRaw === "aggressive" || presetRaw === "balanced" ? presetRaw : current.preset;
-  if (src.preset != null && presetRaw !== "safe" && presetRaw !== "balanced" && presetRaw !== "aggressive") {
+    presetRaw === "safe" || presetRaw === "aggressive" || presetRaw === "balanced"
+      ? presetRaw
+      : current.preset;
+  if (
+    src.preset != null &&
+    presetRaw !== "safe" &&
+    presetRaw !== "balanced" &&
+    presetRaw !== "aggressive"
+  ) {
     errors.push("preset must be safe, balanced, or aggressive");
   }
   const base = { ...current, ...PRESETS[preset] };
-  const ticketMinSol = bound("min buy", num(src.ticketMinSol, base.ticketMinSol), 0.0125, 0.05, errors);
-  let ticketMaxSol = bound("max buy", num(src.ticketMaxSol, base.ticketMaxSol), 0.0125, 0.1, errors);
+  const ticketMinSol = bound(
+    "min buy",
+    num(src.ticketMinSol, base.ticketMinSol),
+    0.0125,
+    0.05,
+    errors
+  );
+  let ticketMaxSol = bound(
+    "max buy",
+    num(src.ticketMaxSol, base.ticketMaxSol),
+    0.0125,
+    0.1,
+    errors
+  );
   if (ticketMaxSol < ticketMinSol) {
     errors.push("max buy must be at least the min buy");
     ticketMaxSol = ticketMinSol;
   }
-  const stopLossPct = bound("stop-loss", num(src.stopLossPct, base.stopLossPct), -0.25, -0.05, errors);
-  const takeProfitPct = bound("take-profit", num(src.takeProfitPct, base.takeProfitPct), 0.06, 0.5, errors);
+  const stopLossPct = bound(
+    "stop-loss",
+    num(src.stopLossPct, base.stopLossPct),
+    -0.25,
+    -0.05,
+    errors
+  );
+  const takeProfitPct = bound(
+    "take-profit",
+    num(src.takeProfitPct, base.takeProfitPct),
+    0.06,
+    0.5,
+    errors
+  );
   const takeProfitPartial = bound(
     "take-profit sell fraction",
     num(src.takeProfitPartial, base.takeProfitPartial),
     0.25,
     1,
-    errors,
+    errors
   );
-  let takeProfitFloor = bound("profit floor", num(src.takeProfitFloor, base.takeProfitFloor), 0.01, 0.2, errors);
+  let takeProfitFloor = bound(
+    "profit floor",
+    num(src.takeProfitFloor, base.takeProfitFloor),
+    0.01,
+    0.2,
+    errors
+  );
   if (!(takeProfitFloor < takeProfitPct)) {
     errors.push("profit floor must be below the take-profit");
     takeProfitFloor = Math.min(takeProfitFloor, takeProfitPct / 2);
@@ -123,10 +163,22 @@ export function parseSettings(input: unknown, current: UserSettings = DEFAULT_SE
     else runUntil = new Date(t).toISOString();
   }
   const lanes = Math.round(bound("lanes", num(src.lanes, base.lanes), 1, 8, errors));
-  const maxHoldMin = Math.round(bound("max hold minutes", num(src.maxHoldMin, base.maxHoldMin), 5, 60, errors));
-  const cooldownMin = Math.round(bound("cooldown minutes", num(src.cooldownMin, base.cooldownMin), 1, 1440, errors));
-  const dailyLossPct = bound("daily loss limit", num(src.dailyLossPct, base.dailyLossPct), 0.05, 0.25, errors);
-  const autoLockMin = Math.round(bound("auto-lock minutes", num(src.autoLockMin, base.autoLockMin), 1, 120, errors));
+  const maxHoldMin = Math.round(
+    bound("max hold minutes", num(src.maxHoldMin, base.maxHoldMin), 5, 60, errors)
+  );
+  const cooldownMin = Math.round(
+    bound("cooldown minutes", num(src.cooldownMin, base.cooldownMin), 1, 1440, errors)
+  );
+  const dailyLossPct = bound(
+    "daily loss limit",
+    num(src.dailyLossPct, base.dailyLossPct),
+    0.05,
+    0.25,
+    errors
+  );
+  const autoLockMin = Math.round(
+    bound("auto-lock minutes", num(src.autoLockMin, base.autoLockMin), 1, 120, errors)
+  );
   if (errors.length) return { ok: false, errors };
   return {
     preset,
@@ -146,7 +198,10 @@ export function parseSettings(input: unknown, current: UserSettings = DEFAULT_SE
   };
 }
 
-export function applyPreset(name: PresetName, current: UserSettings = DEFAULT_SETTINGS): UserSettings {
+export function applyPreset(
+  name: PresetName,
+  current: UserSettings = DEFAULT_SETTINGS
+): UserSettings {
   const next = parseSettings({ ...current, ...PRESETS[name], preset: name }, current);
   if ("ok" in next) return current;
   return next;

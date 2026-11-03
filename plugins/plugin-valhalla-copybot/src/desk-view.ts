@@ -1,19 +1,22 @@
 import type { AgentEngine } from "./engine.ts";
 import { laneMaxHoldMs, laneStopPct, tpNetConfig } from "./exits.ts";
+import { tail4 } from "./net.ts";
 import { summarizePnl } from "./pnl.ts";
 import { recomputeSlots } from "./slots.ts";
-import { tail4 } from "./net.ts";
 
 export function stateView(engine: AgentEngine) {
   const book = engine.book;
   const limits = engine.limits();
-  const slots = recomputeSlots({
-    equitySol: book.equitySol,
-    freeSol: book.freeSol,
-    reserveSol: book.reserveSol,
-    netSol: book.netSol,
-    openPositions: book.positions.length,
-  }, limits);
+  const slots = recomputeSlots(
+    {
+      equitySol: book.equitySol,
+      freeSol: book.freeSol,
+      reserveSol: book.reserveSol,
+      netSol: book.netSol,
+      openPositions: book.positions.length,
+    },
+    limits
+  );
   const pnl = summarizePnl(book.closed);
   return {
     live: engine.liveReady(),
@@ -41,9 +44,8 @@ export function stateView(engine: AgentEngine) {
     popups: engine.pops,
     positions: book.positions.map((pos) => {
       const pnlPct = pos.entryPriceUsd > 0 ? pos.markPriceUsd / pos.entryPriceUsd - 1 : 0;
-      const pnlUsd = (pos.markPriceUsd > 0 && pos.entryPriceUsd > 0
-        ? pos.costSol * pnlPct
-        : 0) * book.solUsd;
+      const pnlUsd =
+        (pos.markPriceUsd > 0 && pos.entryPriceUsd > 0 ? pos.costSol * pnlPct : 0) * book.solUsd;
       const cfg = tpNetConfig(pos.lane, limits);
       return {
         id: pos.id,
@@ -124,7 +126,14 @@ export function pnlView(engine: AgentEngine) {
     return sum + pos.costSol * pct;
   }, 0);
   const tradingPnlSol = pnl.pnlSol + openSol;
-  const color = pnl.wins + pnl.losses === 0 ? "yellow" : pnl.wins / (pnl.wins + pnl.losses) >= 0.65 ? "green" : pnl.wins / (pnl.wins + pnl.losses) < 0.25 ? "red" : "yellow";
+  const color =
+    pnl.wins + pnl.losses === 0
+      ? "yellow"
+      : pnl.wins / (pnl.wins + pnl.losses) >= 0.65
+        ? "green"
+        : pnl.wins / (pnl.wins + pnl.losses) < 0.25
+          ? "red"
+          : "yellow";
   return {
     pnlPending: false,
     tradingPnlSol,
@@ -147,12 +156,17 @@ export function pnlView(engine: AgentEngine) {
   };
 }
 
-export function walletDots(): { count: number; wallets: Array<{ cluster: string; winRate: number; trades: number }> } {
+export function walletDots(): {
+  count: number;
+  wallets: Array<{ cluster: string; winRate: number; trades: number }>;
+} {
   const wallets = Array.from({ length: 48 }, (_, index) => {
-    const cluster = index % 11 === 0 ? "paused" : index % 5 === 0 ? "watch" : index % 3 === 0 ? "elite" : "good";
+    const cluster =
+      index % 11 === 0 ? "paused" : index % 5 === 0 ? "watch" : index % 3 === 0 ? "elite" : "good";
     return {
       cluster,
-      winRate: cluster === "elite" ? 0.8 : cluster === "good" ? 0.6 : cluster === "paused" ? 0.3 : 0.45,
+      winRate:
+        cluster === "elite" ? 0.8 : cluster === "good" ? 0.6 : cluster === "paused" ? 0.3 : 0.45,
       trades: 4 + (index % 17),
     };
   });

@@ -41,7 +41,7 @@ export async function answerChat(engine: ChatHost, text: string): Promise<string
         prompt: `${engine.statusLine()}\n${engine.positionsLine()}\n${engine.pnlLine()}\n\nUser: ${question}`,
       }),
       netTimeoutMs(),
-      "Gemini chat",
+      "Gemini chat"
     );
     return redactSecrets(reply);
   } catch (err) {

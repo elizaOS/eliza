@@ -1,5 +1,5 @@
-import { createReadStream } from "node:fs";
 import { timingSafeEqual } from "node:crypto";
+import { createReadStream } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -75,7 +75,10 @@ export interface DashboardOptions {
   openBrowser?: boolean;
 }
 
-export function startDashboard(engine: AgentEngine, options: DashboardOptions = {}): Promise<{ port: number; close: () => Promise<void> }> {
+export function startDashboard(
+  engine: AgentEngine,
+  options: DashboardOptions = {}
+): Promise<{ port: number; close: () => Promise<void> }> {
   const port = options.port ?? Number(process.env.VALHALLA_DASHBOARD_PORT || 8787);
   const password = options.password ?? process.env.VALHALLA_DASHBOARD_PASSWORD ?? "";
   const accessCode = options.accessCode ?? process.env.VALHALLA_ACCESS_CODE ?? "";
@@ -83,7 +86,8 @@ export function startDashboard(engine: AgentEngine, options: DashboardOptions = 
     void handle(engine, req, res, password, accessCode).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : "error";
       engine.log("desk", message);
-      if (!res.headersSent) send(res, 500, { ok: false, error: "The desk hit an error. See the log panel." });
+      if (!res.headersSent)
+        send(res, 500, { ok: false, error: "The desk hit an error. See the log panel." });
     });
   });
   const host = "127.0.0.1";
@@ -108,7 +112,7 @@ async function handle(
   req: IncomingMessage,
   res: ServerResponse,
   password: string,
-  accessCode: string,
+  accessCode: string
 ): Promise<void> {
   const url = new URL(req.url ?? "/", `http://${HOST}`);
   const pathname = url.pathname;
@@ -142,7 +146,11 @@ async function handle(
     return;
   }
   if (req.method === "GET" && pathname === "/api/meta") {
-    send(res, 200, { ...metaView(engine), accessRequired: Boolean(accessCode), passwordRequired: Boolean(password) });
+    send(res, 200, {
+      ...metaView(engine),
+      accessRequired: Boolean(accessCode),
+      passwordRequired: Boolean(password),
+    });
     return;
   }
   if (req.method === "GET" && pathname === "/api/pnl") {
@@ -198,13 +206,19 @@ async function handle(
     res.end();
     return;
   }
-  createReadStream(full).on("error", () => {
-    if (!res.headersSent) send(res, 404, "not found", "text/plain");
-    else res.end();
-  }).pipe(res);
+  createReadStream(full)
+    .on("error", () => {
+      if (!res.headersSent) send(res, 404, "not found", "text/plain");
+      else res.end();
+    })
+    .pipe(res);
 }
 
-async function post(engine: AgentEngine, pathname: string, body: Record<string, unknown>): Promise<{ status: number; body: unknown }> {
+async function post(
+  engine: AgentEngine,
+  pathname: string,
+  body: Record<string, unknown>
+): Promise<{ status: number; body: unknown }> {
   try {
     switch (pathname) {
       case "/api/start":
@@ -216,59 +230,130 @@ async function post(engine: AgentEngine, pathname: string, body: Record<string, 
       case "/api/resume":
         return { status: 200, body: { ok: true, message: engine.setPause(false) } };
       case "/api/queue":
-        return { status: 200, body: { ok: true, message: await engine.queueMint(String(body.mint ?? "")) } };
+        return {
+          status: 200,
+          body: { ok: true, message: await engine.queueMint(String(body.mint ?? "")) },
+        };
       case "/api/watch":
-        return { status: 200, body: { ok: true, message: await engine.setWatch(String(body.address ?? "")) } };
+        return {
+          status: 200,
+          body: { ok: true, message: await engine.setWatch(String(body.address ?? "")) },
+        };
       case "/api/wallet/create": {
         const created = await engine.importOrCreate(String(body.password ?? ""));
-        return { status: 200, body: { ok: true, message: created.message, backupOnce: created.backupOnce, publicKey: created.publicKey } };
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            message: created.message,
+            backupOnce: created.backupOnce,
+            publicKey: created.publicKey,
+          },
+        };
       }
       case "/api/wallet/import": {
-        const created = await engine.importOrCreate(String(body.password ?? ""), String(body.secret ?? ""));
-        return { status: 200, body: { ok: true, message: created.message, backupOnce: null, publicKey: created.publicKey } };
+        const created = await engine.importOrCreate(
+          String(body.password ?? ""),
+          String(body.secret ?? "")
+        );
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            message: created.message,
+            backupOnce: null,
+            publicKey: created.publicKey,
+          },
+        };
       }
       case "/api/wallet/unlock":
-        return { status: 200, body: { ok: true, message: await engine.unlock(String(body.password ?? "")) } };
+        return {
+          status: 200,
+          body: { ok: true, message: await engine.unlock(String(body.password ?? "")) },
+        };
       case "/api/wallet/lock":
         return { status: 200, body: { ok: true, message: engine.lock() } };
       case "/api/wallet/password":
-        return { status: 200, body: { ok: true, message: await engine.changePassword(String(body.password ?? "")) } };
+        return {
+          status: 200,
+          body: { ok: true, message: await engine.changePassword(String(body.password ?? "")) },
+        };
       case "/api/live":
         return {
           status: 200,
           body: {
             ok: true,
-            message: body.enabled === false ? engine.disarmLive() : engine.confirmLive(String(body.confirm ?? "")),
+            message:
+              body.enabled === false
+                ? engine.disarmLive()
+                : engine.confirmLive(String(body.confirm ?? "")),
           },
         };
       case "/api/sell":
-        return { status: 200, body: { ok: true, message: await engine.sellOne(String(body.id ?? "")) } };
+        return {
+          status: 200,
+          body: { ok: true, message: await engine.sellOne(String(body.id ?? "")) },
+        };
       case "/api/sell-all":
-        return { status: 200, body: { ok: true, message: await engine.sellAll(String(body.confirm ?? "")) } };
+        return {
+          status: 200,
+          body: { ok: true, message: await engine.sellAll(String(body.confirm ?? "")) },
+        };
       case "/api/settings":
-        return { status: 200, body: await engine.saveSettings(body.settings ?? body, body.confirmNow === true) };
+        return {
+          status: 200,
+          body: await engine.saveSettings(body.settings ?? body, body.confirmNow === true),
+        };
       case "/api/preset":
-        return { status: 200, body: { ok: true, settings: await engine.usePreset(body.preset as "safe" | "balanced" | "aggressive") } };
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            settings: await engine.usePreset(body.preset as "safe" | "balanced" | "aggressive"),
+          },
+        };
       case "/api/chat":
-        return { status: 200, body: { ok: true, message: await engine.chat(String(body.text ?? "")) } };
+        return {
+          status: 200,
+          body: { ok: true, message: await engine.chat(String(body.text ?? "")) },
+        };
       case "/api/keys":
-        return { status: 200, body: { ok: true, message: await engine.setApiKey(String(body.name ?? ""), String(body.value ?? "")) } };
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            message: await engine.setApiKey(String(body.name ?? ""), String(body.value ?? "")),
+          },
+        };
       case "/api/backup":
-        return { status: 200, body: await engine.exportBackup(body.includeEncryptedWallet === true) };
+        return {
+          status: 200,
+          body: await engine.exportBackup(body.includeEncryptedWallet === true),
+        };
       case "/api/restore":
-        return { status: 200, body: { ok: true, message: await engine.restoreBackup(body.backup ?? body) } };
+        return {
+          status: 200,
+          body: { ok: true, message: await engine.restoreBackup(body.backup ?? body) },
+        };
       default:
         return { status: 404, body: { ok: false, error: "Unknown action." } };
     }
   } catch (err) {
-    return { status: 400, body: { ok: false, error: err instanceof Error ? err.message : "request failed" } };
+    return {
+      status: 400,
+      body: { ok: false, error: err instanceof Error ? err.message : "request failed" },
+    };
   }
 }
 
 async function qrSvg(text: string): Promise<string> {
   try {
     const QR = await import("qrcode");
-    return QR.toString(text, { type: "svg", margin: 1, color: { dark: "#f2ead8", light: "#050507" } });
+    return QR.toString(text, {
+      type: "svg",
+      margin: 1,
+      color: { dark: "#f2ead8", light: "#050507" },
+    });
   } catch {
     return "";
   }

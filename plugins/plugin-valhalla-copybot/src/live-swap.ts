@@ -40,7 +40,9 @@ export interface LiveSwapRequest {
   sendRaw: (base64: string) => Promise<string>;
 }
 
-export async function executeLiveSwap(request: LiveSwapRequest): Promise<{ signature: string; outAmount: string }> {
+export async function executeLiveSwap(
+  request: LiveSwapRequest
+): Promise<{ signature: string; outAmount: string }> {
   if (!liveTradingEnabled(request.env)) {
     throw new Error("Live trading is off. No swap was sent.");
   }

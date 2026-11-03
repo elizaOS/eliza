@@ -1,8 +1,8 @@
+import type { CoinSnapshot } from "./evaluate.ts";
 import type { RugSummary } from "./filters.ts";
-import { withTimeout, netTimeoutMs } from "./net.ts";
 import { LIMITS } from "./limits.ts";
 import type { ParsedEarlyTx } from "./manipulation.ts";
-import type { CoinSnapshot } from "./evaluate.ts";
+import { netTimeoutMs, withTimeout } from "./net.ts";
 
 export interface RpcClient {
   call(method: string, params: unknown[]): Promise<unknown>;
@@ -78,8 +78,16 @@ interface RpcTx {
   slot?: number;
   meta?: {
     err?: unknown;
-    preTokenBalances?: Array<{ mint?: string; owner?: string; uiTokenAmount?: { uiAmount?: number | null } }>;
-    postTokenBalances?: Array<{ mint?: string; owner?: string; uiTokenAmount?: { uiAmount?: number | null } }>;
+    preTokenBalances?: Array<{
+      mint?: string;
+      owner?: string;
+      uiTokenAmount?: { uiAmount?: number | null };
+    }>;
+    postTokenBalances?: Array<{
+      mint?: string;
+      owner?: string;
+      uiTokenAmount?: { uiAmount?: number | null };
+    }>;
   };
   transaction?: { message?: { accountKeys?: Array<string | { pubkey?: string }> } };
 }
@@ -87,10 +95,11 @@ interface RpcTx {
 export function earlyTxFromRpc(tx: RpcTx, signature: string, mint: string): ParsedEarlyTx {
   const keys = tx.transaction?.message?.accountKeys ?? [];
   const first = keys[0];
-  const feePayer = typeof first === "string" ? first : first?.pubkey ?? null;
+  const feePayer = typeof first === "string" ? first : (first?.pubkey ?? null);
   const pre = new Map<string, number>();
   for (const bal of tx.meta?.preTokenBalances ?? []) {
-    if (bal.mint === mint && bal.owner) pre.set(bal.owner, Number(bal.uiTokenAmount?.uiAmount ?? 0));
+    if (bal.mint === mint && bal.owner)
+      pre.set(bal.owner, Number(bal.uiTokenAmount?.uiAmount ?? 0));
   }
   const increases: ParsedEarlyTx["increases"] = [];
   for (const bal of tx.meta?.postTokenBalances ?? []) {
@@ -109,7 +118,9 @@ export function earlyTxFromRpc(tx: RpcTx, signature: string, mint: string): Pars
 }
 
 export async function loadEarlyTxs(mint: string, rpc: RpcClient): Promise<ParsedEarlyTx[]> {
-  const sigs = (await rpc.call("getSignaturesForAddress", [mint, { limit: 40 }])) as RpcSig[] | null;
+  const sigs = (await rpc.call("getSignaturesForAddress", [mint, { limit: 40 }])) as
+    | RpcSig[]
+    | null;
   if (!Array.isArray(sigs)) return [];
   const out: ParsedEarlyTx[] = [];
   for (const sig of sigs.slice(0, 25)) {
@@ -146,12 +157,12 @@ export function rugFromReport(body: unknown): RugSummary | null {
 export async function fetchMarkPrice(
   mint: string,
   env: Record<string, string | undefined>,
-  fetchImpl: typeof fetch = fetch,
+  fetchImpl: typeof fetch = fetch
 ): Promise<number | null> {
   try {
     const body = await httpJson(
       `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`,
-      fetchImpl,
+      fetchImpl
     );
     const pairs = (body as { pairs?: Array<{ priceUsd?: string }> } | null)?.pairs ?? [];
     const price = Number(pairs[0]?.priceUsd);
@@ -163,7 +174,7 @@ export async function fetchMarkPrice(
   if (!key) return null;
   const response = await fetchImpl(
     `https://public-api.birdeye.so/defi/price?address=${encodeURIComponent(mint)}`,
-    { headers: { accept: "application/json", "X-API-KEY": key } },
+    { headers: { accept: "application/json", "X-API-KEY": key } }
   );
   if (!response.ok) return null;
   const payload = (await response.json()) as { data?: { value?: number } };
@@ -175,7 +186,7 @@ export async function httpJson(url: string, fetchImpl: typeof fetch = fetch): Pr
   const response = await withTimeout(
     fetchImpl(url, { headers: { accept: "application/json" } }),
     netTimeoutMs(),
-    "price feed",
+    "price feed"
   );
   if (!response.ok) throw new Error(`HTTP ${response.status} ${redactUrl(url)}`);
   return response.json() as Promise<unknown>;
@@ -183,15 +194,21 @@ export async function httpJson(url: string, fetchImpl: typeof fetch = fetch): Pr
 
 export async function loadCoinSnapshot(
   mint: string,
-  deps: { fetchImpl?: typeof fetch; rpc: RpcClient },
+  deps: { fetchImpl?: typeof fetch; rpc: RpcClient }
 ): Promise<CoinSnapshot> {
   const fetchImpl = deps.fetchImpl ?? fetch;
-  const dex = await httpJson(`https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`, fetchImpl);
+  const dex = await httpJson(
+    `https://api.dexscreener.com/latest/dex/tokens/${encodeURIComponent(mint)}`,
+    fetchImpl
+  );
   const partial = snapshotFromDex(mint, dex);
   let rug: RugSummary | null = null;
   try {
     rug = rugFromReport(
-      await httpJson(`https://api.rugcheck.xyz/v1/tokens/${encodeURIComponent(mint)}/report`, fetchImpl),
+      await httpJson(
+        `https://api.rugcheck.xyz/v1/tokens/${encodeURIComponent(mint)}/report`,
+        fetchImpl
+      )
     );
   } catch {
     rug = null;

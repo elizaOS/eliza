@@ -1,7 +1,7 @@
-import { evaluateCoin, type CoinSnapshot, type Evaluation } from "./evaluate.ts";
-import { decideExit, markOutSol, type ExitDecision, type PositionView } from "./exits.ts";
-import { LIMITS, type Lane, type Limits } from "./limits.ts";
-import { realizedFromExit, summarizePnl, type ClosedLeg } from "./pnl.ts";
+import { type CoinSnapshot, type Evaluation, evaluateCoin } from "./evaluate.ts";
+import { decideExit, type ExitDecision, markOutSol, type PositionView } from "./exits.ts";
+import { type Lane, LIMITS, type Limits } from "./limits.ts";
+import { type ClosedLeg, realizedFromExit, summarizePnl } from "./pnl.ts";
 import { recomputeSlots, splitWaveProfit } from "./slots.ts";
 
 export interface OpenPosition extends PositionView {
@@ -28,7 +28,9 @@ export interface BookState {
   sessionStartedAt: number;
 }
 
-export function createBook(input: { equitySol?: number; solUsd?: number; now?: number } = {}): BookState {
+export function createBook(
+  input: { equitySol?: number; solUsd?: number; now?: number } = {}
+): BookState {
   const equity = input.equitySol ?? 0.27;
   return {
     equitySol: equity,
@@ -61,7 +63,7 @@ export function statusText(book: BookState, live: boolean, limits: Limits = LIMI
       pendingReinvestSol: book.pendingReinvestSol,
       openPositions: book.positions.length,
     },
-    limits,
+    limits
   );
   const pnl = summarizePnl(book.closed);
   const lines = [
@@ -72,7 +74,7 @@ export function statusText(book: BookState, live: boolean, limits: Limits = LIMI
   ];
   for (const pos of book.positions) {
     lines.push(
-      `open ${pos.symbol} ${pos.mint.slice(0, 6)}… lane=${pos.lane} cost=${pos.costSol} mark=${pos.markPriceUsd} paper=${pos.paper}`,
+      `open ${pos.symbol} ${pos.mint.slice(0, 6)}… lane=${pos.lane} cost=${pos.costSol} mark=${pos.markPriceUsd} paper=${pos.paper}`
     );
   }
   return lines.join("\n");
@@ -88,7 +90,7 @@ export interface EntryResult {
 export function considerEntry(
   book: BookState,
   snapshot: CoinSnapshot,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): { evaluation: Evaluation; slotsLeft: boolean } {
   const slots = recomputeSlots(
     {
@@ -99,7 +101,7 @@ export function considerEntry(
       pendingReinvestSol: book.pendingReinvestSol,
       openPositions: book.positions.length,
     },
-    limits,
+    limits
   );
   const lane: Lane = snapshot.lane ?? "main";
   const used = book.positions.filter((pos) => pos.lane === lane || lane === "main").length;
@@ -116,7 +118,7 @@ export function considerEntry(
       solUsd: snapshot.solUsd ?? book.solUsd,
       now: snapshot.now ?? Date.now(),
     },
-    limits,
+    limits
   );
   return { evaluation, slotsLeft: used < cap };
 }
@@ -125,7 +127,7 @@ export function openPaper(
   book: BookState,
   snapshot: CoinSnapshot,
   evaluation: Evaluation,
-  now = Date.now(),
+  now = Date.now()
 ): OpenPosition {
   const entry = snapshot.marketCapUsd && snapshot.marketCapUsd > 0 ? snapshot.marketCapUsd : 1;
   const position: OpenPosition = {
@@ -171,7 +173,7 @@ export function applyMarks(
   book: BookState,
   marks: MarkUpdate[],
   now = Date.now(),
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): ExitDecision[] {
   const decisions: ExitDecision[] = [];
   const markByMint = new Map(marks.map((mark) => [mark.mint, mark]));
@@ -193,7 +195,7 @@ export function applyMarks(
         quoteOutSol: mark?.quoteOutSol,
         quoteOk: mark?.quoteOk,
       },
-      limits,
+      limits
     );
     decisions.push(decision);
     if (decision.action === "hold") {
@@ -224,7 +226,8 @@ export function applyMarks(
       stillOpen.push(pos);
     } else {
       pos.status = "CLOSED";
-      book.cooldowns[pos.mint] = now + (decision.label === "hard_stop" ? limits.rebuyCooldownMs : limits.rebuyCooldownMs);
+      book.cooldowns[pos.mint] =
+        now + (decision.label === "hard_stop" ? limits.rebuyCooldownMs : limits.rebuyCooldownMs);
       const split = splitWaveProfit(book.wavePnlSol, book.equitySol, limits);
       book.pendingReinvestSol += split.reinvest;
       book.reserveSol += split.reserve;
@@ -233,7 +236,10 @@ export function applyMarks(
     }
   }
   book.positions = stillOpen;
-  const marked = book.positions.reduce((sum, pos) => sum + (markOutSol(pos, pos.markPriceUsd, limits) ?? pos.costSol), 0);
+  const marked = book.positions.reduce(
+    (sum, pos) => sum + (markOutSol(pos, pos.markPriceUsd, limits) ?? pos.costSol),
+    0
+  );
   book.equitySol = book.freeSol + book.reserveSol + book.netSol + marked;
   return decisions;
 }

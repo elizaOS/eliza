@@ -12,7 +12,7 @@ export interface GeminiRequest {
 
 function assertStudioModel(model: string): string {
   const name = model.trim();
-  if (!/^gemini-[a-z0-9.\-]+$/i.test(name)) {
+  if (!/^gemini-[a-z0-9.-]+$/i.test(name)) {
     throw new Error("Gemini model name must be an AI Studio model id such as gemini-2.5-flash.");
   }
   return name;
@@ -58,16 +58,21 @@ export async function generateWithGemini(request: GeminiRequest): Promise<string
   const payload = (await response.json()) as {
     candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
   };
-  const text = payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
+  const text =
+    payload.candidates?.[0]?.content?.parts?.map((part) => part.text ?? "").join("") ?? "";
   if (!text.trim()) throw new Error("Gemini returned no text.");
   return text;
 }
 
-export function promptOf(params: { prompt?: string; system?: string } | string | null | undefined): {
+export function promptOf(
+  params: { prompt?: string; system?: string } | string | null | undefined
+): {
   prompt: string;
   system?: string;
 } {
   if (typeof params === "string") return { prompt: params };
   if (!params) return { prompt: "" };
-  return params.system ? { prompt: params.prompt ?? "", system: params.system } : { prompt: params.prompt ?? "" };
+  return params.system
+    ? { prompt: params.prompt ?? "", system: params.system }
+    : { prompt: params.prompt ?? "" };
 }

@@ -18,7 +18,7 @@ export function loadWalletSecret(env: Record<string, string | undefined>): strin
   const secret = env[WALLET_SECRET_ENV]?.trim() ?? "";
   if (!secret) {
     throw new Error(
-      "Set VALHALLA_WALLET_SECRET_KEY to a base58 secret. The plugin does not read key files.",
+      "Set VALHALLA_WALLET_SECRET_KEY to a base58 secret. The plugin does not read key files."
     );
   }
   if (
@@ -28,7 +28,9 @@ export function loadWalletSecret(env: Record<string, string | undefined>): strin
     secret.startsWith("file:") ||
     secret.startsWith("wallet")
   ) {
-    throw new Error("Refusing a file path. Pass the secret only through VALHALLA_WALLET_SECRET_KEY.");
+    throw new Error(
+      "Refusing a file path. Pass the secret only through VALHALLA_WALLET_SECRET_KEY."
+    );
   }
   return secret;
 }

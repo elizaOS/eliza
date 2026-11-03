@@ -2,11 +2,11 @@ import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import {
   applyMarks,
+  type BookState,
   considerEntry,
   createBook,
-  openPaper,
-  type BookState,
   type OpenPosition,
+  openPaper,
 } from "./book.ts";
 import { answerChat } from "./chat.ts";
 import type { CoinSnapshot, Evaluation } from "./evaluate.ts";
@@ -15,11 +15,11 @@ import { dailyLossTripped } from "./filters.ts";
 import {
   createTradingKeystore,
   decryptSecret,
-  readKeystore,
   type KeystoreFile,
+  readKeystore,
 } from "./keystore.ts";
 import { LIMITS, type Limits } from "./limits.ts";
-import { fetchMarkPrice, loadCoinSnapshot, rpcEndpoints, type RpcClient } from "./market-data.ts";
+import { fetchMarkPrice, loadCoinSnapshot, type RpcClient, rpcEndpoints } from "./market-data.ts";
 import { netTimeoutMs, redactSecrets, tail4, withTimeout } from "./net.ts";
 import { realizedFromExit, summarizePnl } from "./pnl.ts";
 import { liveTradingEnabled } from "./safety-gate.ts";
@@ -27,8 +27,8 @@ import {
   applyPreset,
   DEFAULT_SETTINGS,
   limitsFromSettings,
-  parseSettings,
   type PresetName,
+  parseSettings,
   type UserSettings,
 } from "./user-settings.ts";
 
@@ -106,7 +106,10 @@ export class AgentEngine {
     this.keystore = await readKeystore(this.dataDir);
     if (this.keystore) this.walletMode = "locked";
     await this.loadLocalEnv();
-    this.log("boot", "Valhalla desk ready. Read-only until you unlock a bot wallet and confirm live trading.");
+    this.log(
+      "boot",
+      "Valhalla desk ready. Read-only until you unlock a bot wallet and confirm live trading."
+    );
     this.audit("boot", "desk ready");
   }
 
@@ -114,7 +117,10 @@ export class AgentEngine {
     try {
       const raw = await readFile(path.join(this.dataDir, "local.env"), "utf8");
       for (const line of raw.split("\n")) {
-        const match = /^(GOOGLE_GENERATIVE_AI_API_KEY|HELIUS_API_KEY|BIRDEYE_API_KEY|VALHALLA_ACCESS_CODE)=(.*)$/.exec(line.trim());
+        const match =
+          /^(GOOGLE_GENERATIVE_AI_API_KEY|HELIUS_API_KEY|BIRDEYE_API_KEY|VALHALLA_ACCESS_CODE)=(.*)$/.exec(
+            line.trim()
+          );
         if (!match) continue;
         const key = match[1];
         if (!key || process.env[key]) continue;
@@ -126,7 +132,11 @@ export class AgentEngine {
   }
 
   audit(action: string, detail: string): void {
-    const line = JSON.stringify({ t: new Date().toISOString(), action, detail: redactSecrets(detail) });
+    const line = JSON.stringify({
+      t: new Date().toISOString(),
+      action,
+      detail: redactSecrets(detail),
+    });
     void appendFile(path.join(this.dataDir, "audit.jsonl"), `${line}\n`).catch(() => undefined);
   }
 
@@ -167,10 +177,17 @@ export class AgentEngine {
   liveArmed = false;
 
   log(kind: string, text: string): void {
-    const row: LogRow = { t: new Date().toISOString(), kind, text: redactSecrets(text).slice(0, 400) };
+    const row: LogRow = {
+      t: new Date().toISOString(),
+      kind,
+      text: redactSecrets(text).slice(0, 400),
+    };
     this.logs.unshift(row);
     if (this.logs.length > 200) this.logs.length = 200;
-    void appendFile(path.join(this.dataDir, "agent.log"), `${row.t} ${row.kind} ${row.text}\n`).catch(() => undefined);
+    void appendFile(
+      path.join(this.dataDir, "agent.log"),
+      `${row.t} ${row.kind} ${row.text}\n`
+    ).catch(() => undefined);
   }
 
   statusLine(): string {
@@ -229,11 +246,16 @@ export class AgentEngine {
 
   async saveSettings(
     input: unknown,
-    confirmNow = false,
+    confirmNow = false
   ): Promise<{ ok: boolean; message: string; settings: UserSettings; pending: boolean }> {
     const parsed = parseSettings(input, this.settings);
     if ("ok" in parsed) {
-      return { ok: false, message: parsed.errors.join(" "), settings: this.settings, pending: false };
+      return {
+        ok: false,
+        message: parsed.errors.join(" "),
+        settings: this.settings,
+        pending: false,
+      };
     }
     if (this.book.positions.length > 0 && !confirmNow) {
       this.pendingSettings = parsed;
@@ -242,7 +264,8 @@ export class AgentEngine {
         ok: true,
         pending: true,
         settings: this.settings,
-        message: "Open positions are still on. The new settings apply at the next idle moment, or confirm to apply now.",
+        message:
+          "Open positions are still on. The new settings apply at the next idle moment, or confirm to apply now.",
       };
     }
     this.settings = parsed;
@@ -250,7 +273,12 @@ export class AgentEngine {
     await this.writeSettings();
     this.audit("settings", `applied preset ${parsed.preset}`);
     this.log("settings", `Saved preset ${this.settings.preset}. Safety checks stay on.`);
-    return { ok: true, pending: false, message: "Settings saved. Rug and manipulation checks stay on.", settings: this.settings };
+    return {
+      ok: true,
+      pending: false,
+      message: "Settings saved. Rug and manipulation checks stay on.",
+      settings: this.settings,
+    };
   }
 
   private applyPendingSettings(): void {
@@ -264,7 +292,10 @@ export class AgentEngine {
 
   private async writeSettings(): Promise<void> {
     await mkdir(this.dataDir, { recursive: true });
-    await writeFile(path.join(this.dataDir, "settings.json"), JSON.stringify(this.settings, null, 2));
+    await writeFile(
+      path.join(this.dataDir, "settings.json"),
+      JSON.stringify(this.settings, null, 2)
+    );
   }
 
   async setApiKey(name: string, value: string): Promise<string> {
@@ -301,7 +332,10 @@ export class AgentEngine {
 
   async exportBackup(includeEncryptedWallet: boolean): Promise<Record<string, unknown>> {
     const keystore = includeEncryptedWallet ? await readKeystore(this.dataDir) : null;
-    this.audit("backup", includeEncryptedWallet ? "exported settings and encrypted wallet" : "exported settings");
+    this.audit(
+      "backup",
+      includeEncryptedWallet ? "exported settings and encrypted wallet" : "exported settings"
+    );
     return {
       kind: "valhalla-backup",
       version: 1,
@@ -319,7 +353,8 @@ export class AgentEngine {
     const keystore = src.keystore;
     if (keystore && typeof keystore === "object") {
       const file = keystore as { version?: number; publicKey?: string; ciphertext?: string };
-      if (file.version !== 1 || !file.publicKey || !file.ciphertext) throw new Error("Encrypted wallet backup is not valid.");
+      if (file.version !== 1 || !file.publicKey || !file.ciphertext)
+        throw new Error("Encrypted wallet backup is not valid.");
       const { writeKeystore } = await import("./keystore.ts");
       await writeKeystore(this.dataDir, keystore as never);
       this.keystore = await readKeystore(this.dataDir);
@@ -378,7 +413,8 @@ export class AgentEngine {
 
   async setWatch(address: string): Promise<string> {
     const trimmed = address.trim();
-    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed)) throw new Error("That is not a Solana address.");
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(trimmed))
+      throw new Error("That is not a Solana address.");
     this.watchPubkey = trimmed;
     if (!this.keystore) this.walletMode = "watch";
     await mkdir(this.dataDir, { recursive: true });
@@ -387,7 +423,10 @@ export class AgentEngine {
     return `Watching ${tail4(trimmed)}. This address cannot trade.`;
   }
 
-  async importOrCreate(password: string, secret?: string): Promise<{ message: string; backupOnce: string | null; publicKey: string }> {
+  async importOrCreate(
+    password: string,
+    secret?: string
+  ): Promise<{ message: string; backupOnce: string | null; publicKey: string }> {
     const created = await createTradingKeystore(this.dataDir, password, secret);
     this.keystore = await readKeystore(this.dataDir);
     this.secret = secret ? secret.trim() : created.backupOnce;
@@ -428,9 +467,11 @@ export class AgentEngine {
   }
 
   confirmLive(confirm: string): string {
-    if (this.envBlocksLive()) return "VALHALLA_LIVE_TRADING=false in .env. The desk stays read-only.";
+    if (this.envBlocksLive())
+      return "VALHALLA_LIVE_TRADING=false in .env. The desk stays read-only.";
     if (confirm.trim() !== "CONFIRM LIVE") return "Type CONFIRM LIVE to allow swaps.";
-    if (this.walletMode !== "unlocked" || !this.secret) return "Unlock the bot wallet first. A watch-only address cannot trade.";
+    if (this.walletMode !== "unlocked" || !this.secret)
+      return "Unlock the bot wallet first. A watch-only address cannot trade.";
     this.liveArmed = true;
     this.log("risk", "Live swaps armed for the unlocked bot wallet.");
     return "Live swaps are armed. The desk still cannot send SOL to another address.";
@@ -450,7 +491,8 @@ export class AgentEngine {
       this.audit("filter", evaluation.reason);
       return `Blocked ${tail4(snapshot.mint)}: ${evaluation.reason}`;
     }
-    if (!this.book.running) return `Pass ${tail4(snapshot.mint)} ${evaluation.lane} ${evaluation.sizeSol} SOL. Loop is stopped, so nothing was bought.`;
+    if (!this.book.running)
+      return `Pass ${tail4(snapshot.mint)} ${evaluation.lane} ${evaluation.sizeSol} SOL. Loop is stopped, so nothing was bought.`;
     if (this.buysPaused) return `Pass ${tail4(snapshot.mint)}. New buys are paused.`;
     if (!slotsLeft) return `Pass ${tail4(snapshot.mint)}. No open slot.`;
     return this.openFromEvaluation(snapshot, evaluation);
@@ -469,7 +511,11 @@ export class AgentEngine {
   private async evaluateQueued(mint: string): Promise<string> {
     let snapshot: CoinSnapshot;
     try {
-      snapshot = await withTimeout(loadCoinSnapshot(mint, { rpc: this.rpc() }), netTimeoutMs(), "coin scan");
+      snapshot = await withTimeout(
+        loadCoinSnapshot(mint, { rpc: this.rpc() }),
+        netTimeoutMs(),
+        "coin scan"
+      );
     } catch (err) {
       this.killsByAgent.Scout += 1;
       const message = err instanceof Error ? err.message : "scan failed";
@@ -481,20 +527,26 @@ export class AgentEngine {
     }
     const { evaluation, slotsLeft } = considerEntry(this.book, snapshot, this.limits());
     this.lastActions.Filter = evaluation.ok ? `pass ${tail4(mint)}` : evaluation.reason;
-    this.lastActions.Analyst = evaluation.ok ? `${evaluation.lane} ${evaluation.sizeSol} SOL` : "blocked";
+    this.lastActions.Analyst = evaluation.ok
+      ? `${evaluation.lane} ${evaluation.sizeSol} SOL`
+      : "blocked";
     if (!evaluation.ok) {
       this.killsByRule[evaluation.reason] = (this.killsByRule[evaluation.reason] ?? 0) + 1;
       this.killsByAgent.Filter += 1;
       return `Blocked ${tail4(mint)}: ${evaluation.reason}`;
     }
-    if (!this.book.running) return `Pass ${tail4(mint)} ${evaluation.lane} ${evaluation.sizeSol} SOL. Loop is stopped, so nothing was bought.`;
+    if (!this.book.running)
+      return `Pass ${tail4(mint)} ${evaluation.lane} ${evaluation.sizeSol} SOL. Loop is stopped, so nothing was bought.`;
     if (this.buysPaused) return `Pass ${tail4(mint)}. New buys are paused.`;
     if (!slotsLeft) return `Pass ${tail4(mint)}. No open slot.`;
     if (this.pastRunTimer()) return `Pass ${tail4(mint)}. Run timer has ended.`;
     return this.openFromEvaluation(snapshot, evaluation);
   }
 
-  private async openFromEvaluation(snapshot: CoinSnapshot, evaluation: Evaluation): Promise<string> {
+  private async openFromEvaluation(
+    snapshot: CoinSnapshot,
+    evaluation: Evaluation
+  ): Promise<string> {
     if (this.liveReady()) {
       const { executeLiveSwap } = await import("./live-swap.ts");
       const fill = await this.track(
@@ -507,8 +559,8 @@ export class AgentEngine {
             sendRaw: (raw) => this.sendRaw(raw),
           }),
           netTimeoutMs(),
-          "live buy",
-        ),
+          "live buy"
+        )
       );
       const position = openPaper(this.book, snapshot, evaluation);
       position.paper = false;
@@ -541,7 +593,8 @@ export class AgentEngine {
 
   private async exitPosition(pos: OpenPosition, reason: string): Promise<void> {
     if (!pos.paper) {
-      if (!this.liveReady()) throw new Error("Unlock the bot wallet and confirm live trading before an on-chain sell.");
+      if (!this.liveReady())
+        throw new Error("Unlock the bot wallet and confirm live trading before an on-chain sell.");
       const { executeLiveSwap } = await import("./live-swap.ts");
       const fill = await this.track(
         withTimeout(
@@ -553,8 +606,8 @@ export class AgentEngine {
             sendRaw: (raw) => this.sendRaw(raw),
           }),
           netTimeoutMs(),
-          "live sell",
-        ),
+          "live sell"
+        )
       );
       pos.signature = fill.signature;
     }
@@ -595,7 +648,12 @@ export class AgentEngine {
 
   private note(title: string, subtitle: string): void {
     if (!this.settings.alerts) return;
-    this.pops.unshift({ id: `${Date.now()}-${title}`, type: title, title, subtitle: redactSecrets(subtitle) });
+    this.pops.unshift({
+      id: `${Date.now()}-${title}`,
+      type: title,
+      title,
+      subtitle: redactSecrets(subtitle),
+    });
     if (this.pops.length > 20) this.pops.length = 20;
   }
 
@@ -623,7 +681,11 @@ export class AgentEngine {
       if (!this.book.running || this.book.positions.length === 0) return;
       for (const pos of this.book.positions) {
         try {
-          const price = await withTimeout(fetchMarkPrice(pos.mint, this.publicEnv()), netTimeoutMs(), "mark");
+          const price = await withTimeout(
+            fetchMarkPrice(pos.mint, this.publicEnv()),
+            netTimeoutMs(),
+            "mark"
+          );
           if (price && price > 0) {
             pos.markPriceUsd = price;
             pos.markAt = Date.now();
@@ -638,15 +700,19 @@ export class AgentEngine {
       this.book.positions = this.book.positions.filter((pos) => pos.paper);
       applyMarks(
         this.book,
-        this.book.positions.map((pos) => ({ mint: pos.mint, priceUsd: pos.markPriceUsd, quoteOk: false })),
+        this.book.positions.map((pos) => ({
+          mint: pos.mint,
+          priceUsd: pos.markPriceUsd,
+          quoteOk: false,
+        })),
         Date.now(),
-        limits,
+        limits
       );
       for (const pos of live) {
         const decision = decideExit(
           pos,
           { now: Date.now(), sessionStartedAt: this.book.sessionStartedAt, quoteOk: false },
-          limits,
+          limits
         );
         if (decision.action === "hold") {
           this.book.positions.push(pos);
@@ -678,7 +744,7 @@ export class AgentEngine {
       const result = await withTimeout(
         this.rpc().call("getBalance", [owner]),
         netTimeoutMs(),
-        "balance",
+        "balance"
       );
       const value = (result as { value?: number } | null)?.value;
       return typeof value === "number" ? value / 1e9 : null;
@@ -714,9 +780,12 @@ export class AgentEngine {
               body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
             }),
             netTimeoutMs(),
-            method,
+            method
           );
-          const body = (await response.json()) as { result?: unknown; error?: { message?: string } };
+          const body = (await response.json()) as {
+            result?: unknown;
+            error?: { message?: string };
+          };
           if (!body.error) return body.result;
           last = body.error.message ?? last;
         }
@@ -740,7 +809,7 @@ export class AgentEngine {
           }),
         }),
         netTimeoutMs(),
-        "sendTransaction",
+        "sendTransaction"
       );
       const body = (await response.json()) as { result?: string; error?: { message?: string } };
       if (body.result) return body.result;

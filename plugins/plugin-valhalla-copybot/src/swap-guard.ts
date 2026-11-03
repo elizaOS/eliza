@@ -20,19 +20,13 @@ export function assertNoValueTransfer(instructions: readonly DecodedInstruction[
     const tag = ix.data[0];
     if (tag === TRANSFER || tag === TRANSFER_WITH_SEED || tag === WITHDRAW_NONCE) {
       throw new Error(
-        "Refusing a System Program transfer or withdraw. The plugin has no send path.",
+        "Refusing a System Program transfer or withdraw. The plugin has no send path."
       );
     }
   }
 }
 
-export const FORBIDDEN_ACTION_NAMES = [
-  "TRANSFER",
-  "SEND",
-  "WITHDRAW",
-  "SWEEP",
-  "AIRDROP",
-] as const;
+export const FORBIDDEN_ACTION_NAMES = ["TRANSFER", "SEND", "WITHDRAW", "SWEEP", "AIRDROP"] as const;
 
 export function isForbiddenActionName(name: string): boolean {
   const upper = name.toUpperCase();

@@ -33,7 +33,7 @@ export function estimateRoundTrip(
     sellImpactPct?: number | null;
     newAta?: boolean;
   },
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): RoundTripEstimate {
   const ticket = Math.max(1e-9, Number(input.ticketSol) || 0);
   const prioritySol = prioritySolForTicket(ticket, limits);
@@ -62,7 +62,7 @@ export function estimateRoundTrip(
 export function exceedsRoundTripCap(
   ticketSol: number,
   opts: { buyImpactPct?: number | null; sellImpactPct?: number | null; newAta?: boolean } = {},
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): { blocked: boolean; maxPct: number } & RoundTripEstimate {
   const est = estimateRoundTrip({ ticketSol, ...opts }, limits);
   return {

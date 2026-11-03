@@ -8,24 +8,24 @@ import {
   dailyLossTripped,
   judgePrebuy,
   liquidityFloorUsd,
+  type MrRow,
   pairAgeMs,
+  type RugSummary,
   scoreRecency,
   shouldRejectForSlippage,
   stableRejectReason,
   walletWinRateReject,
   windowNetGate,
-  type MrRow,
-  type RugSummary,
 } from "./filters.ts";
-import { LIMITS, type Lane, type Limits } from "./limits.ts";
+import { type Lane, LIMITS, type Limits } from "./limits.ts";
 import {
   badActorHit,
   devHoldReject,
+  type HolderRow,
   judgeEarlyBuyers,
+  type ParsedEarlyTx,
   rugRiskPct,
   top10ExLp,
-  type HolderRow,
-  type ParsedEarlyTx,
 } from "./manipulation.ts";
 import { applyMultipliers, chooseSize } from "./sizing.ts";
 import { computeTicketSol } from "./slots.ts";
@@ -109,21 +109,29 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
   const age = pairAgeMs(snapshot.pairCreatedAt, now);
   const early = snapshot.bondingCurve === true || (age != null && age < limits.burnerMaxAgeMs);
   const liquidity = snapshot.liquidityUsd;
-  if (liquidity == null || !Number.isFinite(liquidity)) return fail("liquidity unknown", checks, laneIn);
+  if (liquidity == null || !Number.isFinite(liquidity))
+    return fail("liquidity unknown", checks, laneIn);
   const liqFloor = liquidityFloorUsd(snapshot.bondingCurve === true, limits);
-  if (liquidity < liqFloor) return fail(`liquidity $${Math.round(liquidity)} < $${liqFloor}`, checks, laneIn);
+  if (liquidity < liqFloor)
+    return fail(`liquidity $${Math.round(liquidity)} < $${liqFloor}`, checks, laneIn);
   checks.push("liquidity");
   const vol24 = snapshot.volume24hUsd ?? 0;
   const vol5 = snapshot.volume5mUsd;
   const vol1h = snapshot.volume1hUsd ?? 0;
   if (early) {
     if (vol5 == null || vol5 < limits.earlyMinVolume5mUsd) {
-      return fail(`early 5m volume ${vol5 ?? "unknown"} < $${limits.earlyMinVolume5mUsd}`, checks, laneIn);
+      return fail(
+        `early 5m volume ${vol5 ?? "unknown"} < $${limits.earlyMinVolume5mUsd}`,
+        checks,
+        laneIn
+      );
     }
   } else {
     const vol24Floor = laneIn === "pump" ? limits.pumpMinVolume24hUsd : limits.minVolume24hUsd;
-    if (vol24 < vol24Floor) return fail(`24h volume $${Math.round(vol24)} < $${vol24Floor}`, checks, laneIn);
-    if (vol1h < limits.minVolume1hUsd) return fail(`1h volume $${Math.round(vol1h)} < $${limits.minVolume1hUsd}`, checks, laneIn);
+    if (vol24 < vol24Floor)
+      return fail(`24h volume $${Math.round(vol24)} < $${vol24Floor}`, checks, laneIn);
+    if (vol1h < limits.minVolume1hUsd)
+      return fail(`1h volume $${Math.round(vol1h)} < $${limits.minVolume1hUsd}`, checks, laneIn);
     if (vol5 == null || vol5 < limits.minVolume5mUsd) {
       return fail(`5m volume ${vol5 ?? "unknown"} < $${limits.minVolume5mUsd}`, checks, laneIn);
     }
@@ -137,12 +145,14 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
   checks.push("buy-pressure");
   const change5m = snapshot.change5mPct ?? 0;
   const change1h = snapshot.change1hPct ?? 0;
-  if (change1h >= limits.max1hPumpPct) return fail(`1h pump ${change1h}% >= ${limits.max1hPumpPct}%`, checks, laneIn);
+  if (change1h >= limits.max1hPumpPct)
+    return fail(`1h pump ${change1h}% >= ${limits.max1hPumpPct}%`, checks, laneIn);
   checks.push("pump-cap");
   let lane = laneIn;
   const mults: Array<{ name: string; frac: number }> = [];
   if (change5m >= limits.max5mPumpPct) {
-    if (!limits.surgeLaneEnabled) return fail(`5m pump ${change5m}% and surge lane off`, checks, laneIn);
+    if (!limits.surgeLaneEnabled)
+      return fail(`5m pump ${change5m}% and surge lane off`, checks, laneIn);
     const pullback = snapshot.pullbackFromHighPct;
     const typical5m = vol1h > 0 ? vol1h / 12 : 0;
     const spikeOk = typical5m > 0 && (vol5 ?? 0) >= limits.surgeVolSpikeMult * typical5m;
@@ -160,12 +170,13 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
   const mcap = classifyMcap(
     snapshot.marketCapUsd ?? 0,
     { change5m, change1h, vol1h, vol24, early },
-    limits,
+    limits
   );
   if (!mcap.ok) return fail(mcap.reason, checks, lane);
   if (mcap.sizeFrac > 0 && mcap.sizeFrac < 1) mults.push({ name: "mcap", frac: mcap.sizeFrac });
   checks.push("mcap");
-  if (early && limits.earlyTicketFrac < 1) mults.push({ name: "early", frac: limits.earlyTicketFrac });
+  if (early && limits.earlyTicketFrac < 1)
+    mults.push({ name: "early", frac: limits.earlyTicketFrac });
   const recency = scoreRecency(
     {
       pairCreatedAt: snapshot.pairCreatedAt,
@@ -176,12 +187,16 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
       change1h,
       now,
     },
-    limits,
+    limits
   );
   if (recency.reject) return fail(recency.reason, checks, lane);
   checks.push("recency");
   if (snapshot.signalAgeMs != null && snapshot.signalAgeMs > limits.earlyMaxLatencyMs && early) {
-    return fail(`signal age ${snapshot.signalAgeMs}ms > ${limits.earlyMaxLatencyMs}ms`, checks, lane);
+    return fail(
+      `signal age ${snapshot.signalAgeMs}ms > ${limits.earlyMaxLatencyMs}ms`,
+      checks,
+      lane
+    );
   }
   const holders = snapshot.holders ?? [];
   const creatorPct = snapshot.creator
@@ -190,11 +205,20 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
   const creatorHold = Number(creatorPct?.pct ?? creatorPct?.percentage ?? 0);
   const creatorHoldPct = creatorHold > 1.5 ? creatorHold / 100 : creatorHold;
   if (snapshot.creator && creatorHoldPct > limits.maxCreatorPct) {
-    return fail(`creator holds ${(creatorHoldPct * 100).toFixed(1)}% > ${(limits.maxCreatorPct * 100).toFixed(0)}%`, checks, lane);
+    return fail(
+      `creator holds ${(creatorHoldPct * 100).toFixed(1)}% > ${(limits.maxCreatorPct * 100).toFixed(0)}%`,
+      checks,
+      lane
+    );
   }
   const dev = devHoldReject(snapshot.creator, holders);
   if (dev) return fail(dev, checks, lane);
-  if (!snapshot.creator && limits.manipFailClosed && /pump$/i.test(snapshot.mint) && snapshot.allowCreatorUnknown !== true) {
+  if (
+    !snapshot.creator &&
+    limits.manipFailClosed &&
+    /pump$/i.test(snapshot.mint) &&
+    snapshot.allowCreatorUnknown !== true
+  ) {
     return fail("manip scan fail — creator unknown", checks, lane);
   }
   if (!snapshot.creator && snapshot.allowCreatorUnknown && lane === "x") {
@@ -205,14 +229,21 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
   if (rugReason) return fail(rugReason, checks, lane);
   checks.push("creator-rug");
   const actor = badActorHit(
-    [snapshot.creator, ...holders.slice(0, 20).map((holder) => holder.address || holder.owner || null)],
-    snapshot.badActors ?? {},
+    [
+      snapshot.creator,
+      ...holders.slice(0, 20).map((holder) => holder.address || holder.owner || null),
+    ],
+    snapshot.badActors ?? {}
   );
   if (actor) return fail(actor, checks, lane);
   checks.push("bad-actor");
   const top = top10ExLp(holders, limits);
   if (holders.length > 0 && top.over) {
-    return fail(`top-10 holders ${(top.pct * 100).toFixed(0)}% > ${(limits.maxTop10Pct * 100).toFixed(0)}%`, checks, lane);
+    return fail(
+      `top-10 holders ${(top.pct * 100).toFixed(0)}% > ${(limits.maxTop10Pct * 100).toFixed(0)}%`,
+      checks,
+      lane
+    );
   }
   checks.push("top10");
   const bundlePct = rugRiskPct(snapshot.rug?.risks, "bundle");
@@ -223,7 +254,8 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
   if (sniperPct > limits.sniperMaxPct) {
     return fail(`snipers hold ${(sniperPct * 100).toFixed(0)}% > 15% (rugcheck)`, checks, lane);
   }
-  if (snapshot.earlyTxs == null) return fail("manip scan fail — early transactions missing", checks, lane);
+  if (snapshot.earlyTxs == null)
+    return fail("manip scan fail — early transactions missing", checks, lane);
   const earlyScan = judgeEarlyBuyers({ txs: snapshot.earlyTxs, topHolders: holders }, limits);
   if (!earlyScan.ok) return fail(earlyScan.reason ?? "manip scan fail", checks, lane);
   checks.push("manip");
@@ -256,9 +288,13 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
       buyImpactPct: snapshot.buyImpactPct,
       sellImpactPct: snapshot.sellImpactPct,
       rtCheck: (ticketSol, ctx) =>
-        exceedsRoundTripCap(ticketSol, { buyImpactPct: ctx.buyImpactPct, sellImpactPct: snapshot.sellImpactPct }, limits),
+        exceedsRoundTripCap(
+          ticketSol,
+          { buyImpactPct: ctx.buyImpactPct, sellImpactPct: snapshot.sellImpactPct },
+          limits
+        ),
     },
-    limits,
+    limits
   );
   if (!(sized.size > 0)) return fail(sized.reason, checks, lane);
   const scaled = applyMultipliers(sized.size, mults, limits.dynMinTicketSol);
@@ -271,18 +307,25 @@ export function evaluateCoin(snapshot: CoinSnapshot, limits: Limits = LIMITS): E
       liquidityUsd: liquidity,
       solUsd: snapshot.solUsd,
     },
-    limits,
+    limits
   );
   const slip = shouldRejectForSlippage(
     {
-      slPct: lane === "surge" ? limits.surgeSlPct : lane === "risk" ? limits.riskSlPct : lane === "main" ? limits.stopLossPct : limits.pumpSlPct,
+      slPct:
+        lane === "surge"
+          ? limits.surgeSlPct
+          : lane === "risk"
+            ? limits.riskSlPct
+            : lane === "main"
+              ? limits.stopLossPct
+              : limits.pumpSlPct,
       sellImpactPct: snapshot.sellImpactPct,
       buyImpactPct: snapshot.buyImpactPct,
       ticketSol: scaled.size,
       liquidityUsd: liquidity,
       solUsd: snapshot.solUsd,
     },
-    limits,
+    limits
   );
   if (slip.reject) return fail(slip.reason ?? "slippage stop", checks, lane);
   const windowGate = windowNetGate(scaled.size, costs, limits);

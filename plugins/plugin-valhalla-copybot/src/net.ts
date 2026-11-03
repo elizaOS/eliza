@@ -18,7 +18,7 @@ export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): 
       (err: unknown) => {
         clearTimeout(timer);
         reject(err);
-      },
+      }
     );
   });
 }

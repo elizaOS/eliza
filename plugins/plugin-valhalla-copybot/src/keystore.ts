@@ -1,9 +1,4 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  randomBytes,
-  scrypt as scryptCb,
-} from "node:crypto";
+import { createCipheriv, createDecipheriv, randomBytes, scrypt as scryptCb } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
@@ -26,7 +21,10 @@ async function keyFromPassword(password: string, salt: Buffer): Promise<Buffer> 
   return (await scrypt(password, salt, 32, { N: 16384, r: 8, p: 1 })) as Buffer;
 }
 
-export async function encryptSecret(secret: string, password: string): Promise<Omit<KeystoreFile, "version" | "publicKey">> {
+export async function encryptSecret(
+  secret: string,
+  password: string
+): Promise<Omit<KeystoreFile, "version" | "publicKey">> {
   if (password.trim().length < 8) throw new Error("Password must be at least 8 characters.");
   const salt = randomBytes(16);
   const iv = randomBytes(12);
@@ -86,7 +84,7 @@ export function keypairFromSecret(secret: string): Keypair {
 export async function createTradingKeystore(
   dataDir: string,
   password: string,
-  secret?: string,
+  secret?: string
 ): Promise<{ publicKey: string; backupOnce: string | null }> {
   const keypair = secret ? keypairFromSecret(secret) : Keypair.generate();
   const encoded = secretFromKeypair(keypair);

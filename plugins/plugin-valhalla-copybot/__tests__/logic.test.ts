@@ -1,21 +1,28 @@
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { ComputeBudgetProgram, Keypair, PublicKey, SystemProgram, TransactionMessage, VersionedTransaction } from "@solana/web3.js";
+import {
+  ComputeBudgetProgram,
+  Keypair,
+  PublicKey,
+  SystemProgram,
+  TransactionMessage,
+  VersionedTransaction,
+} from "@solana/web3.js";
 import bs58 from "bs58";
 import { describe, expect, it } from "vitest";
+import { evaluateCoinAction, pnlAction, tradingControlAction } from "../src/actions.ts";
 import { createBook, openPaper } from "../src/book.ts";
-import { evaluateCoin, type CoinSnapshot } from "../src/evaluate.ts";
+import { type CoinSnapshot, evaluateCoin } from "../src/evaluate.ts";
 import { decideExit, type PositionView } from "../src/exits.ts";
-import { generateWithGemini, geminiGenerateUrl } from "../src/gemini.ts";
 import { classifyMcap, dailyLossTripped, stableRejectReason } from "../src/filters.ts";
+import { geminiGenerateUrl, generateWithGemini } from "../src/gemini.ts";
 import { executeLiveSwap } from "../src/live-swap.ts";
 import { judgeEarlyBuyers } from "../src/manipulation.ts";
 import { liveTradingEnabled, loadWalletSecret } from "../src/safety-gate.ts";
 import { applyMultipliers, chooseSize } from "../src/sizing.ts";
 import { recomputeSlots, splitWaveProfit } from "../src/slots.ts";
 import { assertNoValueTransfer } from "../src/swap-guard.ts";
-import { evaluateCoinAction, pnlAction, tradingControlAction } from "../src/actions.ts";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const srcDir = path.resolve(here, "../src");
@@ -60,7 +67,12 @@ function baseCoin(now: number): CoinSnapshot {
     freezeAuthority: null,
     transferHook: false,
     holders,
-    rug: { score: 20, risks: [], topHolders: holders, creator: "Creatorxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
+    rug: {
+      score: 20,
+      risks: [],
+      topHolders: holders,
+      creator: "Creatorxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+    },
     mr: null,
     earlyTxs: [
       {
@@ -80,7 +92,9 @@ function baseCoin(now: number): CoinSnapshot {
   };
 }
 
-function position(partial: Partial<PositionView> & Pick<PositionView, "openedAt" | "markPriceUsd">): PositionView {
+function position(
+  partial: Partial<PositionView> & Pick<PositionView, "openedAt" | "markPriceUsd">
+): PositionView {
   return {
     id: "p1",
     mint: "mint",
@@ -127,7 +141,9 @@ describe("sizing", () => {
 
 describe("filters", () => {
   it("blocks stables, thin liquidity, and a bundled early slot", () => {
-    expect(stableRejectReason("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "USDC", "USD Coin")).toMatch(/stable/);
+    expect(
+      stableRejectReason("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "USDC", "USD Coin")
+    ).toMatch(/stable/);
     const now = Date.parse("2026-11-03T15:00:00Z");
     const thin = evaluateCoin({ ...baseCoin(now), liquidityUsd: 2_000 });
     expect(thin.ok).toBe(false);
@@ -175,12 +191,14 @@ describe("exits", () => {
   const now = Date.parse("2026-11-03T15:00:00Z");
 
   it("fires the hard stop, the max hold, and the stale exit", () => {
-    expect(decideExit(position({ openedAt: now - 60_000, markPriceUsd: 0.9 }), { now }).label).toBe("hard_stop");
+    expect(decideExit(position({ openedAt: now - 60_000, markPriceUsd: 0.9 }), { now }).label).toBe(
+      "hard_stop"
+    );
     expect(
-      decideExit(position({ openedAt: now - 21 * 60_000, markPriceUsd: 1.01 }), { now }).label,
+      decideExit(position({ openedAt: now - 21 * 60_000, markPriceUsd: 1.01 }), { now }).label
     ).toBe("max_hold");
     expect(
-      decideExit(position({ openedAt: now - 9 * 60_000, markPriceUsd: 1.01 }), { now }).label,
+      decideExit(position({ openedAt: now - 9 * 60_000, markPriceUsd: 1.01 }), { now }).label
     ).toBe("stale");
   });
 
@@ -206,11 +224,11 @@ describe("slots and safety", () => {
   it("does not read a wallet secret unless live trading is exactly true", () => {
     expect(liveTradingEnabled({})).toBe(false);
     expect(liveTradingEnabled({ VALHALLA_LIVE_TRADING: "false" })).toBe(false);
-    expect(() => loadWalletSecret({ VALHALLA_LIVE_TRADING: "false", VALHALLA_WALLET_SECRET_KEY: "abc" })).toThrow(
-      /not read/,
-    );
     expect(() =>
-      loadWalletSecret({ VALHALLA_LIVE_TRADING: "true", VALHALLA_WALLET_SECRET_KEY: "wallet.json" }),
+      loadWalletSecret({ VALHALLA_LIVE_TRADING: "false", VALHALLA_WALLET_SECRET_KEY: "abc" })
+    ).toThrow(/not read/);
+    expect(() =>
+      loadWalletSecret({ VALHALLA_LIVE_TRADING: "true", VALHALLA_WALLET_SECRET_KEY: "wallet.json" })
     ).toThrow(/file path/);
   });
 
@@ -220,7 +238,7 @@ describe("slots and safety", () => {
     expect(() =>
       assertNoValueTransfer([
         { programId: "11111111111111111111111111111111", data: Uint8Array.of(2, 0, 0, 0) },
-      ]),
+      ])
     ).toThrow(/transfer or withdraw/);
   });
 });
@@ -237,9 +255,12 @@ describe("gemini and live swap gate", () => {
       prompt: "status",
       fetchImpl: async (input) => {
         seen = String(input);
-        return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }), {
-          status: 200,
-        });
+        return new Response(
+          JSON.stringify({ candidates: [{ content: { parts: [{ text: "ok" }] } }] }),
+          {
+            status: 200,
+          }
+        );
       },
     });
     expect(text).toBe("ok");
@@ -262,7 +283,7 @@ describe("gemini and live swap gate", () => {
           calls += 1;
           return "sig";
         },
-      }),
+      })
     ).rejects.toThrow(/off/);
     expect(calls).toBe(0);
 
@@ -291,14 +312,15 @@ describe("gemini and live swap gate", () => {
         sol: 0.02,
         fetchImpl: async (input) => {
           const url = String(input);
-          if (url.includes("/quote")) return new Response(JSON.stringify({ outAmount: "1" }), { status: 200 });
+          if (url.includes("/quote"))
+            return new Response(JSON.stringify({ outAmount: "1" }), { status: 200 });
           return new Response(JSON.stringify({ swapTransaction: bad }), { status: 200 });
         },
         sendRaw: async () => {
           sent += 1;
           return "sig";
         },
-      }),
+      })
     ).rejects.toThrow(/transfer or withdraw/);
     expect(sent).toBe(0);
   });
@@ -324,7 +346,8 @@ describe("gemini and live swap gate", () => {
       sol: 0.02,
       fetchImpl: async (input) => {
         const url = String(input);
-        if (url.includes("/quote")) return new Response(JSON.stringify({ outAmount: "10" }), { status: 200 });
+        if (url.includes("/quote"))
+          return new Response(JSON.stringify({ outAmount: "10" }), { status: 200 });
         return new Response(JSON.stringify({ swapTransaction: ok }), { status: 200 });
       },
       sendRaw: async (raw) => {
@@ -339,7 +362,9 @@ describe("gemini and live swap gate", () => {
 
 describe("source scan", () => {
   it("does not commit the sweep address, a wallet file read, or a private key", () => {
-    const text = walk(srcDir).map((file) => readFileSync(file, "utf8")).join("\n");
+    const text = walk(srcDir)
+      .map((file) => readFileSync(file, "utf8"))
+      .join("\n");
     const dummySweepPubkey = Keypair.generate().publicKey.toBase58();
     expect(text).not.toContain(dummySweepPubkey);
     expect(text).not.toContain("eyJhbGci");

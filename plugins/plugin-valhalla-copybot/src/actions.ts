@@ -5,7 +5,12 @@ import { getValhallaService } from "./service.ts";
 
 function messageText(message: Memory): string {
   const content = message.content;
-  if (content && typeof content === "object" && "text" in content && typeof content.text === "string") {
+  if (
+    content &&
+    typeof content === "object" &&
+    "text" in content &&
+    typeof content.text === "string"
+  ) {
     return content.text;
   }
   return "";

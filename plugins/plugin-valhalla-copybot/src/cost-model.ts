@@ -31,13 +31,10 @@ export function computeCosts(
     solUsd?: number | null;
     newAta?: boolean;
   },
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): CostBreakdown {
   const ticket = Math.max(1e-9, Number(input.ticketSol) || 0);
-  const est = estimateRoundTrip(
-    { ticketSol: ticket, newAta: input.newAta !== false },
-    limits,
-  );
+  const est = estimateRoundTrip({ ticketSol: ticket, newAta: input.newAta !== false }, limits);
   const feeEstSol = est.feeRt + est.ataPad;
   const feeSol = Math.max(feeEstSol, limits.costFeeFloorSol);
   const feePct = feeSol / ticket;
@@ -64,8 +61,7 @@ export function computeCosts(
     }
   }
   const exitFeePct = (est.prioritySol + est.tipSol + 0.000005) / ticket;
-  const legacyFriction =
-    quotedImpactPct > 0 ? quotedImpactPct : limits.rtDefaultFrictionPct;
+  const legacyFriction = quotedImpactPct > 0 ? quotedImpactPct : limits.rtDefaultFrictionPct;
   return {
     ticketSol: ticket,
     feeEstSol,

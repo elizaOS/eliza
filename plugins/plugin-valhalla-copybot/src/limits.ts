@@ -153,13 +153,4 @@ export type Limits = {
   userTpFloor?: number;
 };
 
-export type Lane =
-  | "main"
-  | "pump"
-  | "x"
-  | "grad"
-  | "mr"
-  | "jup"
-  | "wave"
-  | "risk"
-  | "surge";
+export type Lane = "main" | "pump" | "x" | "grad" | "mr" | "jup" | "wave" | "risk" | "surge";

@@ -1,10 +1,10 @@
-import { LIMITS, type Lane, type Limits } from "./limits.ts";
+import { type Lane, LIMITS, type Limits } from "./limits.ts";
 
 export function tradeableSol(
   freeSol: number,
   reserveSol: number,
   netSol: number,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): number {
   return Math.max(0, freeSol - reserveSol - netSol - limits.feeReserveSol);
 }
@@ -13,10 +13,13 @@ export function computeTicketSol(
   equitySol: number,
   pendingReinvestSol = 0,
   halfTickets = false,
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): number {
   const equity = Math.max(0, Number(equitySol) || 0);
-  const feeFloor = limits.maxFeeDragPct > 0 ? limits.feeEstOneWaySol / limits.maxFeeDragPct : limits.ticketSolFloor;
+  const feeFloor =
+    limits.maxFeeDragPct > 0
+      ? limits.feeEstOneWaySol / limits.maxFeeDragPct
+      : limits.ticketSolFloor;
   let ticket = Math.max(limits.ticketSolFloor, equity * limits.ticketEquityPct, feeFloor);
   if (equity >= limits.principalSol && pendingReinvestSol > 0) {
     ticket += pendingReinvestSol / Math.max(1, limits.compoundSplitBuys);
@@ -43,18 +46,23 @@ export function recomputeSlots(
     halfTickets?: boolean;
     openPositions?: number;
   },
-  limits: Limits = LIMITS,
+  limits: Limits = LIMITS
 ): SlotPlan {
   const equity = Math.max(0, input.equitySol);
   const free = Math.max(0, input.freeSol);
   const spendable = tradeableSol(free, input.reserveSol ?? 0, input.netSol ?? 0, limits);
-  const ticket = computeTicketSol(equity, input.pendingReinvestSol ?? 0, input.halfTickets === true, limits);
+  const ticket = computeTicketSol(
+    equity,
+    input.pendingReinvestSol ?? 0,
+    input.halfTickets === true,
+    limits
+  );
   const funded = ticket > 0 ? Math.floor(spendable / ticket) : 0;
   const byEquity = ticket > 0 ? Math.floor(equity / ticket) : 0;
   const open = input.openPositions ?? 0;
   const slots = Math.min(
     limits.maxOpenPositionsCap,
-    Math.max(limits.minOpenPositions, Math.max(funded, Math.min(byEquity, funded + open))),
+    Math.max(limits.minOpenPositions, Math.max(funded, Math.min(byEquity, funded + open)))
   );
   const maxOpenSlots = Math.max(1, slots);
   const laneFloor = (frac: number) => Math.max(frac > 0 ? 1 : 0, Math.floor(maxOpenSlots * frac));
@@ -81,7 +89,11 @@ export interface WaveSplit {
 }
 
 /** Winning-wave split stays in the same wallet. A losing wave banks nothing. */
-export function splitWaveProfit(wavePnlSol: number, equitySol: number, limits: Limits = LIMITS): WaveSplit {
+export function splitWaveProfit(
+  wavePnlSol: number,
+  equitySol: number,
+  limits: Limits = LIMITS
+): WaveSplit {
   if (!(wavePnlSol > 0)) return { reinvest: 0, reserve: 0, net: 0, mode: "flat" };
   if (equitySol < limits.principalSol) {
     return {
