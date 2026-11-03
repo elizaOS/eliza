@@ -1,0 +1,28 @@
+name: Valhalla Chrome extension
+
+on:
+  pull_request:
+    paths:
+      - plugins/plugin-valhalla-copybot/extension/**
+      - .github/workflows/valhalla-extension.yml
+  push:
+    branches:
+      - cursor/valhalla-android-companion-d28f
+    paths:
+      - plugins/plugin-valhalla-copybot/extension/**
+      - .github/workflows/valhalla-extension.yml
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24.15.0"
+      - name: Install Chromium
+        working-directory: plugins/plugin-valhalla-copybot
+        run: npm install playwright@1.49.1 && npx playwright install --with-deps chromium
+      - name: Load the unpacked extension
+        working-directory: plugins/plugin-valhalla-copybot
+        run: xvfb-run -a node scripts/check-extension.mjs

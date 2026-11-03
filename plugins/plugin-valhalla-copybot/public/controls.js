@@ -90,6 +90,8 @@ document.getElementById("btnApiSave")?.addEventListener("click", async () => {
     ["BIRDEYE_API_KEY", "apiBirdeye"],
     ["TELEGRAM_BOT_TOKEN", "apiTelegram"],
     ["GOOGLE_GENERATIVE_AI_API_KEY", "apiBrain"],
+    ["VALHALLA_BRAIN_URL", "apiBrainUrl"],
+    ["VALHALLA_BRAIN_KEY", "apiBrainKey"],
   ];
   for (const [name, id] of pairs) {
     const value = document.getElementById(id).value.trim();
@@ -406,6 +408,17 @@ document.getElementById("btnSellAll").onclick = () => {
 };
 document.getElementById("btnQueue").onclick = () =>
   api("/api/queue", { mint: document.getElementById("mintInput").value }).then((r) => say(r.message));
+document.getElementById("btnSignal")?.addEventListener("click", async () => {
+  const mint = document.getElementById("mintInput").value.trim();
+  const out = document.getElementById("signalOut");
+  try {
+    const data = await api("/api/signal?mint=" + encodeURIComponent(mint));
+    const flags = (data.flags || []).join(", ");
+    if (out) out.textContent = "Score " + data.score + ". " + flags + ". " + (data.disclaimer || "");
+  } catch (err) {
+    if (out) out.textContent = err instanceof Error ? err.message : "Score failed. Nothing was sent.";
+  }
+});
 document.getElementById("btnChat").onclick = async () => {
   const text = document.getElementById("chatInput").value;
   document.getElementById("chatInput").value = "";

@@ -40,7 +40,10 @@ jobs:
           cd "$STAGE"
           bun install --ignore-scripts
           mkdir -p install/dist/public
-          bun build --compile --target=bun src/standalone.ts --outfile install/dist/valhalla-desk.exe
+          ls -la src/standalone.ts
+          ENTRY="$(cygpath -w "$STAGE/src/standalone.ts")"
+          OUT="$(cygpath -w "$STAGE/install/dist/valhalla-desk.exe")"
+          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' bun build --compile --target=bun "$ENTRY" --outfile "$OUT"
           cp -r public/. install/dist/public/
           echo "$STAGE" > "$RUNNER_TEMP/stage-path.txt"
       - name: Install installer tools
@@ -85,7 +88,7 @@ jobs:
           cd "$STAGE/install/Output"
           curl -fsSL -o valhalla-phone.apk "https://github.com/TokenJunction/eliza-valhalla/releases/download/v0.1.1-phone/valhalla-phone.apk"
           EXT="$GITHUB_WORKSPACE/plugins/plugin-valhalla-copybot/extension"
-          (cd "$EXT" && zip -r "$STAGE/install/Output/Valhalla-Chrome-Extension.zip" manifest.json popup.html popup.js icons)
+          (cd "$EXT" && zip -r "$STAGE/install/Output/Valhalla-Chrome-Extension.zip" manifest.json popup.html popup.js background.js icons)
           sha256sum Valhalla-Setup-x64.exe Valhalla-Setup-x64.msi valhalla-phone.apk Valhalla-Chrome-Extension.zip > SHA256SUMS.txt
           notes=$(cat <<'EOF'
           Download for Windows / Android
@@ -93,11 +96,12 @@ jobs:
           Windows: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.exe
           Windows MSI: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.msi
           Android: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-phone.apk
-          Chrome: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip
+          Chrome steps: https://valhalla-app.xyz/chrome/
+          Chrome folder: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip
 
           Windows may say the publisher is unknown while this file is unsigned. Choose More info, then Run anyway.
 
-          Chrome on a computer: unzip the file, open chrome://extensions, turn on Developer mode, then Load unpacked. Chrome on Android cannot install extensions.
+          Chrome does not install this zip when you click it. Open the three pictured steps, unzip the folder, turn on Developer mode, then Load unpacked. One-click Add to Chrome waits on the Chrome Web Store. Chrome on Android cannot install extensions.
 
           TokenJunction LLC publishes Valhalla. The desk stays read-only until you arm live on the PC. There is no send or withdraw.
           EOF

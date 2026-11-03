@@ -127,7 +127,7 @@ export class AgentEngine {
       const raw = await readFile(path.join(this.dataDir, "local.env"), "utf8");
       for (const line of raw.split("\n")) {
         const match =
-          /^(GOOGLE_GENERATIVE_AI_API_KEY|HELIUS_API_KEY|BIRDEYE_API_KEY|VALHALLA_ACCESS_CODE)=(.*)$/.exec(
+          /^(GOOGLE_GENERATIVE_AI_API_KEY|HELIUS_API_KEY|BIRDEYE_API_KEY|VALHALLA_ACCESS_CODE|TELEGRAM_BOT_TOKEN|VALHALLA_BRAIN_URL|VALHALLA_BRAIN_KEY)=(.*)$/.exec(
             line.trim()
           );
         if (!match) continue;
@@ -313,6 +313,8 @@ export class AgentEngine {
       "HELIUS_API_KEY",
       "BIRDEYE_API_KEY",
       "TELEGRAM_BOT_TOKEN",
+      "VALHALLA_BRAIN_URL",
+      "VALHALLA_BRAIN_KEY",
     ]);
     if (!allowed.has(name)) throw new Error("That key is not editable here.");
     const trimmed = value.trim();

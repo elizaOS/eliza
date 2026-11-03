@@ -18,11 +18,12 @@ import {
 } from "./connection-routes.ts";
 import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
-import { fetchLiveSol, publicRpcUrl } from "./live-balance.ts";
 import { LicenseStore } from "./license.ts";
-import { comparisonRows, paywallCopy, PLAN_PRICES, tierFor, TRIAL_MS } from "./plan.ts";
+import { fetchLiveSol, publicRpcUrl } from "./live-balance.ts";
 import { tail4 } from "./net.ts";
+import { comparisonRows, PLAN_PRICES, paywallCopy, TRIAL_MS, tierFor } from "./plan.ts";
 import { confirmRepair, proposeFix } from "./self-repair.ts";
+import { signalScore } from "./signal-score.ts";
 import { checkDesktopUpdate, DESK_VERSION, WHATS_NEW } from "./updates.ts";
 
 function resolvePublicDir(): string {
@@ -243,6 +244,15 @@ async function handle(
       notes: WHATS_NEW.join(" "),
     }));
     send(res, 200, { ok: true, version: DESK_VERSION, notes: WHATS_NEW, ...update });
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/signal") {
+    const mint = url.searchParams.get("mint") ?? "";
+    const result = await signalScore(mint, {
+      url: process.env.VALHALLA_BRAIN_URL,
+      key: process.env.VALHALLA_BRAIN_KEY,
+    });
+    send(res, 200, { ok: true, mint, ...result });
     return;
   }
   if (req.method === "GET" && pathname === "/api/brain") {

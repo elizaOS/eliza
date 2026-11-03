@@ -6,9 +6,13 @@ function say(text) {
   status.textContent = text;
 }
 
-chrome.storage.local.get(["desk", "token"], (saved) => {
+chrome.storage.local.get(["desk", "token", "brainApi", "brainKey"], (saved) => {
   if (saved.desk) desk.value = saved.desk;
   if (saved.token) loadState(saved.desk, saved.token);
+  const brainApi = document.getElementById("brain-api");
+  const brainKey = document.getElementById("brain-key");
+  if (brainApi && saved.brainApi) brainApi.value = saved.brainApi;
+  if (brainKey && saved.brainKey) brainKey.value = saved.brainKey;
 });
 
 function walletLink(which) {
@@ -18,8 +22,8 @@ function walletLink(which) {
     : "https://solflare.com/ul/v1/browse/" + encodeURIComponent(page);
   chrome.tabs.create({ url });
 }
-document.getElementById("open-phantom").addEventListener("click", () => walletLink("phantom"));
-document.getElementById("open-solflare").addEventListener("click", () => walletLink("solflare"));
+document.getElementById("open-phantom")?.addEventListener("click", () => walletLink("phantom"));
+document.getElementById("open-solflare")?.addEventListener("click", () => walletLink("solflare"));
 
 document.getElementById("pair").addEventListener("click", async () => {
   const base = desk.value.trim().replace(/\/$/, "");
@@ -45,6 +49,54 @@ document.getElementById("pair").addEventListener("click", async () => {
   } catch {
     say("The desk did not answer. It may be off. Nothing was sent.");
   }
+});
+
+function localScore(mint) {
+  const flags = ["local fallback", "not financial advice"];
+  let score = 40;
+  if (mint.length >= 32 && mint.length <= 44) score = 55;
+  else flags.push("unexpected address length");
+  return { score, flags };
+}
+
+document.getElementById("score")?.addEventListener("click", async () => {
+  const mint = document.getElementById("mint").value.trim();
+  const out = document.getElementById("score-out");
+  const brainApi = document.getElementById("brain-api").value.trim();
+  const brainKey = document.getElementById("brain-key").value.trim();
+  await chrome.storage.local.set({ brainApi, brainKey });
+  const saved = await chrome.storage.local.get(["desk", "token"]);
+  if (saved.desk) {
+    try {
+      const response = await fetch(`${saved.desk.replace(/\/$/, "")}/api/signal?mint=${encodeURIComponent(mint)}`);
+      if (response.ok) {
+        const body = await response.json();
+        out.textContent = `Score ${body.score}. ${(body.flags || []).join(", ")}. ${body.disclaimer || "Not financial advice."}`;
+        return;
+      }
+    } catch {
+      // The desk did not answer. Try the Brain API, then the local score.
+    }
+  }
+  if (brainApi.startsWith("https://") && brainKey) {
+    try {
+      const origin = new URL(brainApi).origin + "/*";
+      const allowed = await chrome.permissions.contains({ origins: [origin] });
+      if (!allowed) await chrome.permissions.request({ origins: [origin] });
+      const response = await fetch(`${brainApi.replace(/\/$/, "")}/v1/score/${encodeURIComponent(mint)}`, {
+        headers: { authorization: `Bearer ${brainKey}` },
+      });
+      if (response.ok) {
+        const body = await response.json();
+        out.textContent = `Score ${body.score}. ${(body.flags || []).join(", ")}. Not financial advice.`;
+        return;
+      }
+    } catch {
+      // The API did not answer. Use the local score.
+    }
+  }
+  const local = localScore(mint);
+  out.textContent = `Score ${local.score}. ${local.flags.join(", ")}.`;
 });
 
 async function loadState(base, token) {

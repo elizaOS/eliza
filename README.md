@@ -17,34 +17,35 @@
 <p>
   <a href="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.exe"><img alt="Download for Windows" src="https://img.shields.io/badge/Download%20for%20Windows-Valhalla%20Setup%20x64-E8B65A?style=for-the-badge&logo=windows&logoColor=07080B"></a>
   <a href="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-phone.apk"><img alt="Download for Android" src="https://img.shields.io/badge/Download%20for%20Android-valhalla--phone.apk-8EB7FF?style=for-the-badge&logo=android&logoColor=07080B"></a>
-  <a href="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip"><img alt="Get the Chrome extension" src="https://img.shields.io/badge/Get%20the%20Chrome%20extension-Load%20unpacked-E8B65A?style=for-the-badge&logo=googlechrome&logoColor=07080B"></a>
+  <a href="https://valhalla-app.xyz/chrome/"><img alt="Add to Chrome" src="https://img.shields.io/badge/Add%20to%20Chrome-install%20steps-E8B65A?style=for-the-badge&logo=googlechrome&logoColor=07080B"></a>
 </p>
 
 ### Downloads
 
 - [Download for Windows](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.exe) (`Valhalla-Setup-x64.exe`)
 - [Download for Android](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-phone.apk) (`valhalla-phone.apk`)
-- [Get the Chrome extension](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip) (`Valhalla-Chrome-Extension.zip`)
+- [Add to Chrome](https://valhalla-app.xyz/chrome/) (install steps until `CHROME_WEB_STORE_URL` is set)
 - [Checksums](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/SHA256SUMS.txt)
 
 Windows may say the publisher is unknown while the file is unsigned. Choose More info, then Run anyway.
 
 ### Chrome extension
 
+The Add to Chrome button opens three pictured steps. It does not download a file. One-click install waits on the Chrome Web Store. Until that review, set `CHROME_WEB_STORE_URL` and the button stays on [the install page](https://valhalla-app.xyz/chrome/).
+
 Chrome on Android cannot install extensions. Use desktop Chrome.
 
-1. Download and unzip `Valhalla-Chrome-Extension.zip`.
-2. Open `chrome://extensions`.
-3. Turn on Developer mode.
-4. Choose Load unpacked and select the unzipped folder.
+1. Open `chrome://extensions`.
+2. Turn on Developer mode.
+3. Unzip `Valhalla-Chrome-Extension.zip` and choose Load unpacked.
 
-The extension is read-only. It cannot send or withdraw. The Chrome Web Store pack is in `store/chrome/` after you pay Google's one-time developer fee.
+The extension is read-only. It cannot send or withdraw. The Chrome Web Store pack is in `store/chrome/`.
 
 This fork adds the Valhalla desk. TokenJunction LLC publishes Valhalla. It is the ACCELERATION command center for a small Solana copy bot. The test phone build is a sideload APK, not a Play Store app.
 
 **Site:** [valhalla-app.xyz](https://valhalla-app.xyz/)
 
-**Download:** [Windows](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.exe) · [Android](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-phone.apk) · [Chrome](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip)
+**Download:** [Windows](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.exe) · [Android](https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-phone.apk) · [Add to Chrome](https://valhalla-app.xyz/chrome/)
 
 ### Quick start
 
