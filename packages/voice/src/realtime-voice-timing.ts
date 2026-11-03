@@ -6,7 +6,14 @@ const turnMarks = ["stt-final-received", "llm-first-text-received", "speaking-st
 const outcomes = ["active", "server-terminal-observed", "interrupted", "error", "stopped", "superseded"];
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export type RealtimeTimingRoute = "direct-cartesia" | "cloud-cartesia";
-type Row = {version:1; id:string; recordedAt:number; route:RealtimeTimingRoute; kind:"session"|"turn"; basis:"client-start"|"accepted-stt-final-received"; cold:boolean; coldBasis:"client-session-order"; marks:Record<string,number>; outcome:string; firstAudioKind:"unknown"};
+const cancellationCauses = [
+ "foreground-check-failed", "owned-navigation-unconfirmed", "renderer-closed",
+ "binding-check-failed", "notes-left-unowned", "shell-navigation-unowned",
+ "component-unmounted", "document-hidden", "page-hidden", "connection-opened",
+ "account-changed",
+] as const;
+export type RealtimeCancellationCause = (typeof cancellationCauses)[number];
+type Row = {version:1; id:string; recordedAt:number; route:RealtimeTimingRoute; kind:"session"|"turn"; basis:"client-start"|"accepted-stt-final-received"; cold:boolean; coldBasis:"client-session-order"; marks:Record<string,number>; outcome:string; firstAudioKind:"unknown"; cancellationCause?:RealtimeCancellationCause};
 type Store = {getItem(key:string):string|null;setItem(key:string,value:string):void};
 const object = (v:unknown):v is Record<string,unknown> => !!v && typeof v === "object" && !Array.isArray(v);
 const bytes = (v:string) => new TextEncoder().encode(v).byteLength;
@@ -22,7 +29,8 @@ export function sanitizeRealtimeTiming(raw:unknown):{format:typeof REALTIME_TIMI
    if(!object(row)||row.version!==1||typeof row.id!=="string"||!uuid.test(row.id)||ids.has(row.id)||!Number.isSafeInteger(row.recordedAt)||(row.recordedAt as number)<0||(row.recordedAt as number)>8640000000000000||(typeof row.route!=="string"||!["direct-cartesia","cloud-cartesia"].includes(row.route))||(typeof row.kind!=="string"||!["session","turn"].includes(row.kind))||row.basis!==(row.kind==="session"?"client-start":"accepted-stt-final-received")||typeof row.cold!=="boolean"||row.coldBasis!=="client-session-order"||(typeof row.outcome!=="string"||!outcomes.includes(row.outcome))||row.firstAudioKind!=="unknown"||!object(row.marks))continue;
    const marks:Record<string,number>={};
    for(const key of row.kind==="session"?sessionMarks:turnMarks){const at=row.marks[key];if(typeof at==="number"&&Number.isFinite(at)&&at>=0&&at<3600000)marks[key]=Math.min(3599999,Math.round(at));}
-   ids.add(row.id);records.push({version:1,id:row.id,recordedAt:row.recordedAt as number,route:row.route as RealtimeTimingRoute,kind:row.kind as Row["kind"],basis:row.basis as Row["basis"],cold:row.cold,coldBasis:"client-session-order",marks,outcome:row.outcome as string,firstAudioKind:"unknown"});
+   const cancellationCause=typeof row.cancellationCause==="string"&&cancellationCauses.includes(row.cancellationCause as RealtimeCancellationCause)?row.cancellationCause as RealtimeCancellationCause:undefined;
+   ids.add(row.id);records.push({version:1,id:row.id,recordedAt:row.recordedAt as number,route:row.route as RealtimeTimingRoute,kind:row.kind as Row["kind"],basis:row.basis as Row["basis"],cold:row.cold,coldBasis:"client-session-order",marks,outcome:row.outcome as string,firstAudioKind:"unknown",...(cancellationCause?{cancellationCause}:{})});
   }
   return {...empty(),records};
  }catch{return empty();}
@@ -38,6 +46,13 @@ export function createRealtimeVoiceTiming(options:{storageKey:string;storage:()=
   const mark=(r:Row|undefined,key:string,base:number)=>{if(!r||r.marks[key]!==undefined)return;const at=now()-base;if(!Number.isFinite(at)||at<0||at>=3600000)return;r.marks[key]=Math.min(3599999,Math.round(at));save(r);};
   safely(()=>{sessionBase=now();session=row("session",true);mark(session,"client-start",sessionBase);});
   return {
+   /** First valid cause for each owned active row. Existing writes persist it; this never saves. */
+   noteCancellation(cause:RealtimeCancellationCause){
+    if(!open||!cancellationCauses.includes(cause))return;
+    for(const current of [session,turn]){
+     if(current?.outcome==="active"&&current.cancellationCause===undefined)current.cancellationCause=cause;
+    }
+   },
    acceptedFinal(trace:string){safely(()=>{if(!open||!trace||trace.length>160||seen.has(trace)||seen.size>=32)return;if(turn&&turn.outcome==="active"){turn.outcome="superseded";save(turn);}seen.add(trace);activeTrace=trace;turnBase=now();turn=row("turn",seen.size===1);mark(turn,"stt-final-received",turnBase);});},
    trace(name:string,trace:string|null){safely(()=>{if(!open)return;if(name==="hello_sent"||name==="ready"){if(turn&&activeTrace){if(turn.outcome==="active"){turn.outcome="superseded";save(turn);}activeTrace=undefined;}mark(session,name==="ready"?"ready-received":"hello-sent",sessionBase);return;}if(!trace||trace!==activeTrace)return;const keys:Record<string,string>={llm_first_text:"llm-first-text-received",speaking_start:"speaking-start-received",downlink_audio:"first-downlink-pcm-received",speaking_end:"speaking-end-received"};if(keys[name])mark(turn,keys[name],turnBase);});},
    control(name:string,trace?:string){safely(()=>{if(!open||!turn||!trace||trace!==activeTrace)return;const key=name==="reply_complete"?"reply-complete-received":name==="usage"?"usage-received":name==="interrupted"?"interrupted":name==="fatal-error"?"fatal-error":undefined;if(!key)return;mark(turn,key,turnBase);turn.outcome=name==="interrupted"?"interrupted":name==="fatal-error"?"error":"server-terminal-observed";save(turn);if(name==="interrupted"||name==="fatal-error")activeTrace=undefined;});},
