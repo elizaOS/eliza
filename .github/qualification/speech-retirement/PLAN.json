@@ -1,0 +1,126 @@
+{
+  "resourceBounds": {
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "maxDiskGrowthBytes": 12884901888,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592
+  },
+  "reviewedRunner": {
+    "ImageOS": "ubuntu24",
+    "dockerServer": "28.0.4",
+    "evidenceRun": 41504810728,
+    "evidenceAttempt": 1,
+    "evidenceArtifact": 13169763764,
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90",
+    "scope": "Docker and ImageOS pins only; image admission uses the sealed finite allowlist plus same-run capabilities."
+  },
+  "hostEnvironment": {
+    "allowedImageVersions": [
+      "20261018.96.1",
+      "20261026.354.1"
+    ],
+    "ImageOS": "ubuntu24",
+    "architecture": "x86_64",
+    "cleanupPaths": [],
+    "cleanupSecondsPerPath": 60,
+    "cleanupBeforeMinimumDiskAdmission": false,
+    "cleanupOnlyWhenBelowEntryFloor": false,
+    "hostPythonRange": "3.12 <= version < 3.16",
+    "capabilities": [
+      "Linux /proc",
+      "waitid WNOWAIT preserves child identity before reap",
+      "session PGID identity",
+      "Docker linux/amd64",
+      "Docker server exact28.0.4"
+    ],
+    "priorSingleCohortReview": {
+      "ImageVersion": "20261026.354.1",
+      "ImageOS": "ubuntu24",
+      "dockerServer": "28.0.4",
+      "evidenceRun": 41504810728,
+      "evidenceAttempt": 1,
+      "evidenceArtifact": 13169763764,
+      "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+    },
+    "provenanceLimit": "20261018.96.1 authenticated GitHub job setup provenance retained; its upstream release/tag now404, not claimed independently resolved. Same-run capabilities are required. New versions fail closed.",
+    "noMacExecutionOrDeletion": true,
+    "normalSDKLifecycleStillFalse": true
+  },
+  "state": "CALENDAR_F3_NORMAL_EXECUTABLE_SOURCE_PREPARATION_NO_GO",
+  "sourceCommit": "fe501113d5f933fb5ed81be183567fc9b1bb4643",
+  "sourceTree": "51e9bfc32e5fb16221ef752505b73b9ada88c9db",
+  "recipe": "calendar-f3-fullfile",
+  "sourceExportCondition": "eliza-source",
+  "normalSDKLifecycle": false,
+  "fullFiles": [
+    "plugins/plugin-calendar/test/aggregate-local-reread.test.ts"
+  ],
+  "expectedTools": {
+    "node": "24.15.0",
+    "bun": "1.4.2",
+    "bunSHA256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+    "nodeSHA256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+  },
+  "network": "Hostedfrozenignore-scriptsinstall isonlynetwork=bridge/readwritesourceexception. Versions/framework/CalendarSSRpreflight/fullCalendar6testcontainers are network=none/read-onlysource. Nohostports/Docker socket/GH/provider/prodcredentials/hostHOME passed. No SDKcleanup scope.",
+  "forbiddenActions": [
+    "Macinstall",
+    "MacDockerpull",
+    "nativehooks",
+    "broadsourcebuild",
+    "newaliases",
+    "skipconfig",
+    "borroweddist",
+    "liveproviders",
+    "financial",
+    "typescopes"
+  ],
+  "fullFileTimeouts": "NormalVitestcanonical60000ms defaulttest/hook timeouts andexplicitowningtesttimeouts unchanged. Perfullfileprocessphase90s/whole1200s remainstrict; exhaustion incomplete, noautomaticraise.",
+  "dependencyAdmission": "HOSTED ONLY actual canonical frozen-lock scripts-disabled install produces bounded complete physical dependency/tool/source receipts, then stage-gates all fixtures on verified fresh receipts. Not retained/prequalified dependency bytes or normal native lifecycle.",
+  "hostedSetupBounds": {
+    "eachPinnedImagePullSeconds": 120,
+    "toolchainAssemblySeconds": 90,
+    "installSeconds": 600,
+    "installMemory": "4g",
+    "dependencyInventorySeconds": 90,
+    "dependencyInventoryBytes": 134217728,
+    "sameWholeBudgetSeconds": 1200
+  },
+  "sourceConfigCorrection": "ActualunchangedCalendarconfig4492a450atfe501/b60 withcanonicalaliases/SSRnormal+externaleliza-source/defaultmodule-sync; nooverlay/newalias/borroweddist.",
+  "expectedRegistrations": 6,
+  "expectedPassed": 6,
+  "expectedManualUnexecuted": 0,
+  "normalGroups": [
+    {
+      "name": "owning-0",
+      "file": "plugins/plugin-calendar/test/aggregate-local-reread.test.ts",
+      "cwd": "/workspace/plugins/plugin-calendar",
+      "relative": "test/aggregate-local-reread.test.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "config": "vitest.config.ts",
+      "report": "owning-0.json",
+      "sourceRegistrations": 6,
+      "expectedSkippedNames": [],
+      "phaseSeconds": 90
+    }
+  ],
+  "sourceTargets": {},
+  "manualTracePolicy": {
+    "policy": "none",
+    "expectedManualUnexecuted": 0
+  },
+  "scope": "ONEcompleteCalendarF3sixcaseowningTSfile under actualcanonicalCalendarVitestconfig. NoBunreplacement/filter/overlay/skip/todo/manualwaiver; noAPI/Host/Workerd/native/types/provider/model/voice/livequalification.",
+  "expectedFrameworks": {
+    "vitest": "5.0.5",
+    "vite": "8.3.3"
+  },
+  "resourcePolicyFile": "TEST-RESOURCE-POLICY.json",
+  "resourcePolicySHA256": "a4c392e4a76c9e0f1969c04b927897900a54ea373628d5c721fdbbc84feac621",
+  "oracleSHA256": "0ff9718ac2b946ceb7b8a973d1d532d779666235c8648386394169daef6594f7",
+  "sourceInventoryCorrection": "Sixliteral/primitive-string-%s names from sourceAST; zero skip/todo/manual; sourcefile unchanged.",
+  "resourceOnlySuccessor": "No resourceexception: completeCalendarfile2GiB/1536, install4GiB/1536, alloriginalcaps/source/depcensus/ordinarynonOOM/closure unchanged.",
+  "normalCommandScope": "SinglefullCalendarF3VitestTSfile only; no siblingfiles/types/MJS/native/provider/model/voice qualification."
+}

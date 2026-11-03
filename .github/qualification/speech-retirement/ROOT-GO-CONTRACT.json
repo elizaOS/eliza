@@ -1,0 +1,23 @@
+{
+  "state": "CALENDAR_F3_ROOT_GO_SCHEMA_ONLY_NOT_ISSUED",
+  "action": "ONE_EXACT_QUALIFICATION_RUN",
+  "recipe": "calendar-f3-fullfile",
+  "mode": "qualify",
+  "allowHostedFrozenLockSetup": true,
+  "sourceCommit": "fe501113d5f933fb5ed81be183567fc9b1bb4643",
+  "sourceTree": "51e9bfc32e5fb16221ef752505b73b9ada88c9db",
+  "expectedRegistrations": 6,
+  "expectedPassed": 6,
+  "expectedManualUnexecuted": 0,
+  "manualTracePolicy": "none",
+  "workflowCommit": "Rootbindsexactreviewedpublishedworkflowsha",
+  "operatorSealSHA256": "Rootbindsexactfinalpublishedseal",
+  "intentId": "Rootfresh128bitlowercasehex; neveroldspentscope",
+  "issuedEpoch": "Rootfresh",
+  "expiresEpoch": "Rootfinite <=issued+1200",
+  "output": "ActualRUNNER_TEMP/speech-retirement-results",
+  "noNonceOrGoHere": true,
+  "resourcePolicySHA256": "a4c392e4a76c9e0f1969c04b927897900a54ea373628d5c721fdbbc84feac621",
+  "oracleSHA256": "0ff9718ac2b946ceb7b8a973d1d532d779666235c8648386394169daef6594f7",
+  "allowHostedUnusedAndroidCleanup": false
+}

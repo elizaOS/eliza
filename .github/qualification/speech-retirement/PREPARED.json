@@ -1,0 +1,52 @@
+{
+  "state": "F3_ONLY_FINITE_NORMAL_EXECUTABLE_V2_OWNER_ENV_GUARD_CORRECTED_PENDING_REVIEW",
+  "sourceCommit": "fe501113d5f933fb5ed81be183567fc9b1bb4643",
+  "sourceTree": "51e9bfc32e5fb16221ef752505b73b9ada88c9db",
+  "sourceParent": "b60a34b62025a1736e1a09723002feed2d8114fe",
+  "existingInputPacket": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-managed-reread-fe501-prep-v1",
+  "fullFile": "plugins/plugin-calendar/test/aggregate-local-reread.test.ts",
+  "registrations": 6,
+  "expectedExecutedPassed": 6,
+  "expectedManualUnexecuted": 0,
+  "canonicalConfig": "plugins/plugin-calendar/vitest.config.ts",
+  "canonicalConfigSHA256": "4492a450407e7ccdf3b17c797bda4662a54c78b24d5e3316e1cbe4f5b8703674",
+  "normalCommand": "Node24.15actualrootVitest5run test/aggregate-local-reread.test.ts withunchangedCalendarconfig/configLoader runner/forks/maxWorkers1/no casefilter/nooverlay/noBunsubstitute",
+  "preflight": "Actual10declaringedges, relative.js source IDs throughnormalresolve+fetch exactfile/id, rawbares+actualimporter external-sourceconditions/defaultmodule-sync, oneactualCalendarcontextclosed. TestContractsistype-only; realmanagedreaderContractsvalueedge separate.",
+  "resources": {
+    "version": 1,
+    "scope": "One complete Calendar F3 six-case file only; no resource exception or hosted SDK cleanup authority.",
+    "defaultTest": {
+      "memory": "2g",
+      "memoryBytes": 2147483648,
+      "nodeOldSpaceMiB": 1536
+    },
+    "wholeFileOverride": null,
+    "memorySwapEqualsMemory": true,
+    "unchanged": {
+      "cpu": 2,
+      "pids": 256,
+      "phaseSeconds": 90,
+      "wholeSeconds": 1200,
+      "jobTimeoutMinutes": 22,
+      "logBytesPerPhase": 8388608,
+      "minimumStartFreeBytes": 17179869184,
+      "stopFreeBytes": 8589934592,
+      "maxDiskGrowthBytes": 12884901888,
+      "installMemory": "4g",
+      "installNodeOldSpaceMiB": 1536,
+      "pool": "forks",
+      "maxWorkers": 1,
+      "maxConcurrency": 1,
+      "fileParallelism": false
+    }
+  },
+  "resourcePolicySHA256": "a4c392e4a76c9e0f1969c04b927897900a54ea373628d5c721fdbbc84feac621",
+  "oracleSHA256": "0ff9718ac2b946ceb7b8a973d1d532d779666235c8648386394169daef6594f7",
+  "dependencyCustody": "SamefrozenBun1.4.2ignore-scriptsinstall/Node24.15/toolhashes/full135rootphysicalfilecensus+initialandfinalfreshverify/sourceGuard+trackedbytes/ordinarynonOOM/PGCIDclosure. No SDKbuild/nativehooks/borroweddist/source/cache cleanup.",
+  "reusedQualifiedControllerFiles": "REUSED-INPUTS.json logicalname->existingexactbyte references; no copiedsourcepacket or heavyMacoperation.",
+  "noExecution": "No SDK/config/test import, Macbuild/install/copy/test, dispatch/newnonce/Go, provider/model/voice/live/F4F5/adoption/deploy/merge. PureASTsource-data inventory only.",
+  "publication": "Notpublished; frozenindependentreview+separatesourcepublication/literal/RootfreshfiniteGO required.",
+  "priorV1": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1",
+  "priorV1SealSHA256": "fe928cead824a41084f0cf588df361cce3b0ff012c60be12192a486288a8d865",
+  "V2Correction": "Add actualCalendarowningdirectory to mandatorysource envguard; retain upstreamAssistant/Host/root scans; coverstandardVitemodespecific.localfiles anddanglingsymlinks. CorrectonlystaleManifest.scope/PLAN.scope/network prose. NoSDK/test/config/oracle/resource/claim/preflight/census change."
+}

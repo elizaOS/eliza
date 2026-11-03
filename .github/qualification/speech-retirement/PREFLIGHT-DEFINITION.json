@@ -1,0 +1,118 @@
+{
+  "targets": {
+    "core": {
+      "path": "packages/core/src/index.ts",
+      "sha256": "c493450f40b45c44692a748dec11dab4fced2af84fd7b361708948293fd57002"
+    },
+    "service": {
+      "path": "plugins/plugin-calendar/src/service/CalendarService.ts",
+      "sha256": "fbf03506d69799fc7d749c3e5dfaffb0544fcf954e73abfefca17c55b0afe8a5"
+    },
+    "managed": {
+      "path": "plugins/plugin-calendar/src/service/managed-calendar-read.ts",
+      "sha256": "d1f7f7cc39528a1c6d49938a8a568cdf0bb89e87434f554d485a64956a33b884"
+    },
+    "internal": {
+      "path": "plugins/plugin-calendar/src/internal/eliza-calendar.ts",
+      "sha256": "3aa67338011e3e2ea2c902f456db57cb217be9c0ab311bdb0a62f92055390eda"
+    },
+    "assistant": {
+      "path": "plugins/plugin-assistant/src/index.ts",
+      "sha256": "6ce562f017b602b31995acede473ab6358230b7ec4b70a63b9e8b894f3a0bd56"
+    },
+    "google-calendar": {
+      "path": "plugins/plugin-google-workspace/src/calendar.ts",
+      "sha256": "2df330d8cdcd76f4d1d7d40ab2dbe5641e96b9be392ca17287846cc70f6938b3"
+    },
+    "scheduling": {
+      "path": "plugins/plugin-scheduling/src/index.ts",
+      "sha256": "d4dbbffb57c0bd3672a3b203b05d8ee97620f6dd28b7ab4b3118fbaedaba92ea"
+    },
+    "contracts": {
+      "path": "packages/contracts/src/index.ts",
+      "sha256": "b1bf136d138446ad712e8a09cb1bf9ad099a0c671167e8ffa0ced09b9da9861b"
+    }
+  },
+  "projects": [
+    {
+      "name": "calendar",
+      "root": "plugins/plugin-calendar",
+      "edges": [
+        {
+          "importer": "plugins/plugin-calendar/test/aggregate-local-reread.test.ts",
+          "importerSHA256": "899d0da5b123c4af8b3127799f0e25f90bfc4143b99db242d1180ca5f36b636e",
+          "specifier": "@elizaos/core",
+          "target": "core",
+          "scope": "Actualtest runtimeSemaphore import"
+        },
+        {
+          "importer": "plugins/plugin-calendar/test/aggregate-local-reread.test.ts",
+          "importerSHA256": "899d0da5b123c4af8b3127799f0e25f90bfc4143b99db242d1180ca5f36b636e",
+          "specifier": "../src/service/CalendarService.js",
+          "target": "service",
+          "scope": "Actualrelativewholeclass .js->.ts source import"
+        },
+        {
+          "importer": "plugins/plugin-calendar/test/aggregate-local-reread.test.ts",
+          "importerSHA256": "899d0da5b123c4af8b3127799f0e25f90bfc4143b99db242d1180ca5f36b636e",
+          "specifier": "../src/service/managed-calendar-read.js",
+          "target": "managed",
+          "scope": "Actualrelativemanagedreader .js->.ts source import"
+        },
+        {
+          "importer": "plugins/plugin-calendar/test/aggregate-local-reread.test.ts",
+          "importerSHA256": "899d0da5b123c4af8b3127799f0e25f90bfc4143b99db242d1180ca5f36b636e",
+          "specifier": "../src/internal/eliza-calendar.js",
+          "target": "internal",
+          "scope": "Actualrelativebuiltinidentity .js->.ts source import"
+        },
+        {
+          "importer": "plugins/plugin-calendar/src/service/CalendarService.ts",
+          "importerSHA256": "fbf03506d69799fc7d749c3e5dfaffb0544fcf954e73abfefca17c55b0afe8a5",
+          "specifier": "@elizaos/core",
+          "target": "core",
+          "scope": "ActualCalendarService runtime import"
+        },
+        {
+          "importer": "plugins/plugin-calendar/src/service/CalendarService.ts",
+          "importerSHA256": "fbf03506d69799fc7d749c3e5dfaffb0544fcf954e73abfefca17c55b0afe8a5",
+          "specifier": "@elizaos/plugin-assistant",
+          "target": "assistant",
+          "scope": "ActualCalendarService secret-handle helpers"
+        },
+        {
+          "importer": "plugins/plugin-calendar/src/service/CalendarService.ts",
+          "importerSHA256": "fbf03506d69799fc7d749c3e5dfaffb0544fcf954e73abfefca17c55b0afe8a5",
+          "specifier": "@elizaos/plugin-google-workspace/calendar",
+          "target": "google-calendar",
+          "scope": "Actualdependency-light GoogleCalendar error subpath, notproviderroot type import"
+        },
+        {
+          "importer": "plugins/plugin-calendar/src/service/CalendarService.ts",
+          "importerSHA256": "fbf03506d69799fc7d749c3e5dfaffb0544fcf954e73abfefca17c55b0afe8a5",
+          "specifier": "@elizaos/plugin-scheduling",
+          "target": "scheduling",
+          "scope": "ActualCalendarService runtime scheduler helper"
+        },
+        {
+          "importer": "plugins/plugin-calendar/src/service/managed-calendar-read.ts",
+          "importerSHA256": "d1f7f7cc39528a1c6d49938a8a568cdf0bb89e87434f554d485a64956a33b884",
+          "specifier": "@elizaos/contracts",
+          "target": "contracts",
+          "scope": "Actualmanagedreader value calendarReadBrokerDiagnosticHeader; testContracts import istype-onlyandexcluded"
+        },
+        {
+          "importer": "plugins/plugin-calendar/src/service/managed-calendar-read.ts",
+          "importerSHA256": "d1f7f7cc39528a1c6d49938a8a568cdf0bb89e87434f554d485a64956a33b884",
+          "specifier": "@elizaos/core",
+          "target": "core",
+          "scope": "Actualmanagedreader ElizaError runtime import"
+        }
+      ]
+    }
+  ],
+  "broaderSuppliers": {
+    "executed": false,
+    "reason": "No syntheticbareCalendarselfimport or testtype-onlyContracts edge; full owningtest loads realgraph. Thispreflight is selected actual workspace/source edges, not allpublicruntimeproof."
+  }
+}

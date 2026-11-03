@@ -1,0 +1,29 @@
+{
+  "commit": "fe501113d5f933fb5ed81be183567fc9b1bb4643",
+  "tree": "51e9bfc32e5fb16221ef752505b73b9ada88c9db",
+  "files": {
+    "bun.lock": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
+    "bunfig.toml": "eec98c76b5f98631cb0e417a4945e154476e3cfa963bf3d95c1a32d64afe3fe6",
+    "package.json": "fd04e2ad8574cd0055627138466b8eec77404863e2bc546a866bace10c6d732b",
+    "packages/contracts/package.json": "f4e8a312510ab9f72ac27e597d7f1268202b162ac04e86db5fd060885ee7838c",
+    "packages/contracts/src/index.ts": "b1bf136d138446ad712e8a09cb1bf9ad099a0c671167e8ffa0ced09b9da9861b",
+    "packages/core/package.json": "7e4d5fbca377e9095b414f9fcc9e955288f1bf499839564ba85e15bfd8f1babd",
+    "packages/core/src/index.ts": "c493450f40b45c44692a748dec11dab4fced2af84fd7b361708948293fd57002",
+    "plugins/plugin-assistant/package.json": "752eec2de728333bfeba957d993023c01289d86e8b9d89f8f58469b755156712",
+    "plugins/plugin-assistant/src/index.ts": "6ce562f017b602b31995acede473ab6358230b7ec4b70a63b9e8b894f3a0bd56",
+    "plugins/plugin-calendar/package.json": "82e090d56b024122268efbd7d872a702729ce24e16171e3eea4e63ab55d3fca2",
+    "plugins/plugin-calendar/src/internal/eliza-calendar.ts": "3aa67338011e3e2ea2c902f456db57cb217be9c0ab311bdb0a62f92055390eda",
+    "plugins/plugin-calendar/src/service/CalendarService.ts": "fbf03506d69799fc7d749c3e5dfaffb0544fcf954e73abfefca17c55b0afe8a5",
+    "plugins/plugin-calendar/src/service/managed-calendar-read.ts": "d1f7f7cc39528a1c6d49938a8a568cdf0bb89e87434f554d485a64956a33b884",
+    "plugins/plugin-calendar/test/aggregate-local-reread.test.ts": "899d0da5b123c4af8b3127799f0e25f90bfc4143b99db242d1180ca5f36b636e",
+    "plugins/plugin-calendar/vitest.config.ts": "4492a450407e7ccdf3b17c797bda4662a54c78b24d5e3316e1cbe4f5b8703674",
+    "plugins/plugin-google-workspace/package.json": "3821a6c6b2f0040535c6c45ded1f3d579fad9f046c60183f1a0337a99466f523",
+    "plugins/plugin-google-workspace/src/calendar.ts": "2df330d8cdcd76f4d1d7d40ab2dbe5641e96b9be392ca17287846cc70f6938b3",
+    "plugins/plugin-scheduling/package.json": "2183b393e3bac9f14cddc4620240b35f12f375ca7ed15ae815ecdaba4406fe5f",
+    "plugins/plugin-scheduling/src/index.ts": "d4dbbffb57c0bd3672a3b203b05d8ee97620f6dd28b7ab4b3118fbaedaba92ea",
+    "tsconfig.json": "41acc142aab04535ae7ced0827b159b8d7fbefe0096f96282085d47682e57576"
+  },
+  "bunLockSHA256": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
+  "executionReady": false,
+  "scope": "Exactfe501F3subject: selectedwholeCalendar6test/service/config and actualframework/sourceentryhashes. Onlyservicepredicate+newtest differfromb60; no c63ACK/F4/F5/otherheadadoption."
+}

@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "scope": "One complete Calendar F3 six-case file only; no resource exception or hosted SDK cleanup authority.",
+  "defaultTest": {
+    "memory": "2g",
+    "memoryBytes": 2147483648,
+    "nodeOldSpaceMiB": 1536
+  },
+  "wholeFileOverride": null,
+  "memorySwapEqualsMemory": true,
+  "unchanged": {
+    "cpu": 2,
+    "pids": 256,
+    "phaseSeconds": 90,
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "logBytesPerPhase": 8388608,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592,
+    "maxDiskGrowthBytes": 12884901888,
+    "installMemory": "4g",
+    "installNodeOldSpaceMiB": 1536,
+    "pool": "forks",
+    "maxWorkers": 1,
+    "maxConcurrency": 1,
+    "fileParallelism": false
+  }
+}

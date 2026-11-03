@@ -1,0 +1,470 @@
+{
+  "imports": {
+    "test": [
+      {
+        "specifier": "@elizaos/contracts",
+        "typeOnly": true,
+        "symbols": [
+          "LifeOpsCalendarEvent",
+          "LifeOpsCalendarFeed",
+          "LifeOpsCalendarSummary"
+        ]
+      },
+      {
+        "specifier": "@elizaos/core",
+        "typeOnly": false,
+        "symbols": [
+          "Semaphore"
+        ]
+      },
+      {
+        "specifier": "vitest",
+        "typeOnly": false,
+        "symbols": [
+          "describe",
+          "expect",
+          "it"
+        ]
+      },
+      {
+        "specifier": "../src/internal/eliza-calendar.js",
+        "typeOnly": false,
+        "symbols": [
+          "elizaCalendarSummary"
+        ]
+      },
+      {
+        "specifier": "../src/service/CalendarService.js",
+        "typeOnly": false,
+        "symbols": [
+          "CalendarService"
+        ]
+      },
+      {
+        "specifier": "../src/service/managed-calendar-read.js",
+        "typeOnly": false,
+        "symbols": [
+          "createManagedCalendarRead",
+          "managedCalendarPlaceholder"
+        ]
+      }
+    ],
+    "service": [
+      {
+        "specifier": "../mutations/managed.js",
+        "typeOnly": false,
+        "symbols": [
+          "createManagedCalendarMutationPort"
+        ]
+      },
+      {
+        "specifier": "node:crypto",
+        "typeOnly": false,
+        "symbols": [
+          "createHash"
+        ]
+      },
+      {
+        "specifier": "@elizaos/contracts",
+        "typeOnly": true,
+        "symbols": [
+          "CalendarNoteSourceReference",
+          "CreateLifeOpsCalendarEventAttendee",
+          "CreateLifeOpsCalendarEventRequest",
+          "CreateLifeOpsCalendarEventResponse",
+          "CreateLifeOpsIcsCalendarSourceRequest",
+          "CreateLifeOpsLinkedCalendarLinkRequest",
+          "DisconnectLifeOpsLinkedCalendarRequest",
+          "FeatureResult",
+          "GetLifeOpsCalendarFeedRequest",
+          "LifeOpsCalendarAllDayRange",
+          "LifeOpsCalendarEvent",
+          "LifeOpsCalendarFeed",
+          "LifeOpsCalendarImportedDataPurgeReceipt",
+          "LifeOpsCalendarProvider",
+          "LifeOpsCalendarRecurrenceScope",
+          "LifeOpsCalendarSeedReceipt",
+          "LifeOpsCalendarSourceError",
+          "LifeOpsCalendarSourceHealth",
+          "LifeOpsCalendarSourceKey",
+          "LifeOpsCalendarSummary",
+          "LifeOpsConnectorGrant",
+          "LifeOpsConnectorMode",
+          "LifeOpsConnectorSide",
+          "LifeOpsIcsCalendarSource",
+          "LifeOpsIcsCalendarSyncResponse",
+          "LifeOpsLinkedCalendarControl",
+          "LifeOpsLinkedCalendarControlMutationResult",
+          "LifeOpsLinkedCalendarEventView",
+          "LifeOpsLinkedCalendarLink",
+          "LifeOpsLinkedCalendarMutationResponse",
+          "LifeOpsNextCalendarEventContext",
+          "ListLifeOpsCalendarsRequest",
+          "PurgeLifeOpsCalendarImportedDataRequest",
+          "RebindLifeOpsLinkedCalendarRequest",
+          "RebindLifeOpsLinkedCalendarResponse",
+          "ResolveLifeOpsLinkedCalendarConflictRequest",
+          "RunLifeOpsLinkedCalendarReconciliationRequest",
+          "SeedLifeOpsCalendarRequest",
+          "SetLifeOpsCalendarIncludedRequest",
+          "SetLifeOpsCalendarIncludedResponse",
+          "UpdateLifeOpsIcsCalendarSourceRequest",
+          "UpdateLifeOpsLinkedCalendarControlRequest"
+        ]
+      },
+      {
+        "specifier": "@elizaos/core",
+        "typeOnly": false,
+        "symbols": [
+          "ElizaError",
+          "getStreamingContext",
+          "logger",
+          "Semaphore",
+          "Service",
+          "SsrfBlockedError",
+          "stableStringify",
+          "timeInferenceSpan",
+          "toWellFormedUnicode",
+          "truncateWellFormed"
+        ]
+      },
+      {
+        "specifier": "@elizaos/plugin-assistant",
+        "typeOnly": false,
+        "symbols": [
+          "isSerializedSecretHandle",
+          "SECRETS_SERVICE_TYPE"
+        ]
+      },
+      {
+        "specifier": "@elizaos/plugin-google-workspace",
+        "typeOnly": true,
+        "symbols": [
+          "GoogleCalendarEvent",
+          "IGoogleWorkspaceService"
+        ]
+      },
+      {
+        "specifier": "@elizaos/plugin-google-workspace/calendar",
+        "typeOnly": false,
+        "symbols": [
+          "GoogleCalendarMutationError",
+          "GoogleCalendarSyncTokenExpiredError"
+        ]
+      },
+      {
+        "specifier": "@elizaos/plugin-scheduling",
+        "typeOnly": false,
+        "symbols": [
+          "waitForScheduledTaskRunnerService"
+        ]
+      },
+      {
+        "specifier": "../apple-calendar.js",
+        "typeOnly": false,
+        "symbols": [
+          "APPLE_CALENDAR_ACCOUNT_LABEL",
+          "APPLE_CALENDAR_GRANT_ID",
+          "APPLE_CALENDAR_PROVIDER",
+          "createNativeAppleCalendarEvent",
+          "deleteNativeAppleCalendarEvent",
+          "getNativeAppleCalendarFeed",
+          "getNativeAppleCalendarPermissionStatus",
+          "isAppleCalendarGrant",
+          "listNativeAppleCalendars",
+          "subscribeNativeAppleCalendarChanges",
+          "updateNativeAppleCalendarEvent"
+        ]
+      },
+      {
+        "specifier": "../google-watch/index.js",
+        "typeOnly": false,
+        "symbols": [
+          "GoogleCalendarWatchLifecycle"
+        ]
+      },
+      {
+        "specifier": "../ics/fetch.js",
+        "typeOnly": false,
+        "symbols": [
+          "fetchIcsFeed",
+          "fingerprintIcsSourceUrl",
+          "normalizeIcsSourceUrl"
+        ]
+      },
+      {
+        "specifier": "../ics/parser.js",
+        "typeOnly": false,
+        "symbols": [
+          "parseIcsCalendar"
+        ]
+      },
+      {
+        "specifier": "../ics/source.js",
+        "typeOnly": false,
+        "symbols": [
+          "expandIcsCalendarEvents",
+          "icsCalendarSummary",
+          "lifeOpsCalendarEventFromIcs",
+          "newestIcsEventPerIdentity",
+          "publicIcsCalendarSource"
+        ]
+      },
+      {
+        "specifier": "../internal/availability-metadata.js",
+        "typeOnly": false,
+        "symbols": [
+          "availabilityReservationParentEventId",
+          "createCalendarAvailabilityReservation",
+          "isLocallyManagedAvailabilityEvent"
+        ]
+      },
+      {
+        "specifier": "../internal/calendar-normalize.js",
+        "typeOnly": false,
+        "symbols": [
+          "buildNextCalendarEventContext",
+          "normalizeCalendarAttendees",
+          "normalizeCalendarDateTimeInTimeZone",
+          "normalizeCalendarId",
+          "normalizeCalendarTimeZone",
+          "resolveCalendarEventRange",
+          "resolveCalendarWindow",
+          "resolveNextCalendarEventWindow"
+        ]
+      },
+      {
+        "specifier": "../internal/calendar-record-policy.js",
+        "typeOnly": false,
+        "symbols": [
+          "assertCalendarRecordsAllowed",
+          "calendarRecordPolicyFailure"
+        ]
+      },
+      {
+        "specifier": "../internal/constants.js",
+        "typeOnly": false,
+        "symbols": [
+          "DEFAULT_CALENDAR_REMINDER_STEPS"
+        ]
+      },
+      {
+        "specifier": "../internal/eliza-calendar.js",
+        "typeOnly": false,
+        "symbols": [
+          "createElizaCalendarEvent",
+          "ELIZA_CALENDAR_GRANT_ID",
+          "ELIZA_CALENDAR_ID",
+          "ELIZA_CALENDAR_PROVIDER",
+          "elizaCalendarSummary",
+          "isElizaCalendarEventId",
+          "isElizaCalendarGrant",
+          "updateElizaCalendarEvent"
+        ]
+      },
+      {
+        "specifier": "../internal/errors.js",
+        "typeOnly": false,
+        "symbols": [
+          "CalendarServiceError",
+          "fail"
+        ]
+      },
+      {
+        "specifier": "../internal/google-delegates.js",
+        "typeOnly": false,
+        "symbols": [
+          "accountIdForGrant",
+          "googleAccountIdFromGrantId",
+          "googleCalendarEventInput",
+          "googleCalendarEventPatchInput",
+          "lifeOpsCalendarEventFromGoogle",
+          "lifeOpsCalendarSummaryFromGoogle",
+          "requireGoogleServiceMethod"
+        ]
+      },
+      {
+        "specifier": "../internal/normalize.js",
+        "typeOnly": false,
+        "symbols": [
+          "normalizeOptionalBoolean",
+          "normalizeOptionalConnectorMode",
+          "normalizeOptionalConnectorSide",
+          "normalizeOptionalString",
+          "requireNonEmptyString"
+        ]
+      },
+      {
+        "specifier": "../internal/note-source.js",
+        "typeOnly": false,
+        "symbols": [
+          "parseCalendarNoteSource"
+        ]
+      },
+      {
+        "specifier": "../internal/recurrence.js",
+        "typeOnly": false,
+        "symbols": [
+          "assertRecurrenceStartMatchesRule",
+          "buildRecurrenceSplitPlan",
+          "normalizeRecurrence",
+          "normalizeRecurrenceScope",
+          "recurrenceLinesFrom",
+          "recurrenceOriginalStartAtFrom",
+          "recurringEventIdFrom"
+        ]
+      },
+      {
+        "specifier": "../internal/time.js",
+        "typeOnly": false,
+        "symbols": [
+          "addDaysToLocalDate",
+          "buildUtcDateFromLocalParts",
+          "getZonedDateParts"
+        ]
+      },
+      {
+        "specifier": "../meetings/auto-join.js",
+        "typeOnly": false,
+        "symbols": [
+          "cancelAllMeetingAutoJoinTasks",
+          "reconcileMeetingAutoJoin",
+          "restoreMeetingAutoJoinAnchors"
+        ]
+      },
+      {
+        "specifier": "../meetings/auto-join-settings.js",
+        "typeOnly": false,
+        "symbols": [
+          "isMeetingAutoJoinPolicy",
+          "readMeetingAutoJoinSettings",
+          "writeMeetingAutoJoinPolicy"
+        ]
+      },
+      {
+        "specifier": "../microsoft/index.js",
+        "typeOnly": false,
+        "symbols": [
+          "DefaultMicrosoftGraphCalendarPort",
+          "isMicrosoftCalendarGrantId",
+          "MICROSOFT_CALENDAR_PROVIDER",
+          "MicrosoftGraphDeltaExpiredError"
+        ]
+      },
+      {
+        "specifier": "../mutations/managed-gate.js",
+        "typeOnly": false,
+        "symbols": [
+          "managedCalendarDeleteEnabled"
+        ]
+      },
+      {
+        "specifier": "./availability.js",
+        "typeOnly": true,
+        "symbols": [
+          "CalendarAvailabilitySource"
+        ]
+      },
+      {
+        "specifier": "./CalendarRepository.js",
+        "typeOnly": false,
+        "symbols": [
+          "CalendarRepository",
+          "createLifeOpsCalendarSyncState"
+        ]
+      },
+      {
+        "specifier": "./feed-preferences.js",
+        "typeOnly": false,
+        "symbols": [
+          "calendarFeedPreferenceKey",
+          "ensureCalendarFeedIncludes",
+          "setCalendarFeedIncluded"
+        ]
+      },
+      {
+        "specifier": "./gate.js",
+        "typeOnly": false,
+        "symbols": [
+          "CALENDAR_GUEST_AVAILABILITY_PURPOSE",
+          "createDefaultCalendarHostGate",
+          "createLifeOpsAuditEvent",
+          "createLifeOpsReminderPlan"
+        ]
+      },
+      {
+        "specifier": "./linked-calendar-control.js",
+        "typeOnly": false,
+        "symbols": [
+          "LinkedCalendarControlRepository"
+        ]
+      },
+      {
+        "specifier": "./linked-calendar-sync.js",
+        "typeOnly": false,
+        "symbols": [
+          "GoogleLinkedCalendarProviderPort",
+          "LinkedCalendarReconciler",
+          "LinkedCalendarRepository"
+        ]
+      },
+      {
+        "specifier": "./managed-calendar-read.js",
+        "typeOnly": false,
+        "symbols": [
+          "attachManagedCalendarReadDiagnostic",
+          "createManagedCalendarRead",
+          "managedCalendarPlaceholder"
+        ]
+      },
+      {
+        "specifier": "./managed-linked-calendar.js",
+        "typeOnly": false,
+        "symbols": [
+          "ManagedLinkedCalendarProviderPort"
+        ]
+      }
+    ],
+    "managed": [
+      {
+        "specifier": "@elizaos/contracts",
+        "typeOnly": true,
+        "symbols": [
+          "CalendarReadBrokerDiagnostic",
+          "LifeOpsCalendarFeed",
+          "LifeOpsCalendarSourceError",
+          "LifeOpsCalendarSummary"
+        ]
+      },
+      {
+        "specifier": "@elizaos/contracts",
+        "typeOnly": false,
+        "symbols": [
+          "calendarReadBrokerDiagnosticHeader"
+        ]
+      },
+      {
+        "specifier": "@elizaos/core",
+        "typeOnly": false,
+        "symbols": [
+          "ElizaError"
+        ]
+      },
+      {
+        "specifier": "zod",
+        "typeOnly": false,
+        "symbols": [
+          "z"
+        ]
+      }
+    ]
+  },
+  "names": [
+    "reads the local window once beside only a managed feed (Eliza then managed)",
+    "reads the local window once beside only a managed feed (managed then Eliza)",
+    "re-reads the local window after a native provider sync and returns that snapshot",
+    "still re-reads when a native provider sits beside a managed feed",
+    "still re-reads when an ICS subscription is selected",
+    "reads the local window once when it is the only calendar"
+  ]
+}

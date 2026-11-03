@@ -1,0 +1,20 @@
+{
+  "sourceCommit": "fe501113d5f933fb5ed81be183567fc9b1bb4643",
+  "sourceTree": "51e9bfc32e5fb16221ef752505b73b9ada88c9db",
+  "fullFileNames": {
+    "plugins/plugin-calendar/test/aggregate-local-reread.test.ts": [
+      "reads the local window once beside only a managed feed (Eliza then managed)",
+      "reads the local window once beside only a managed feed (managed then Eliza)",
+      "re-reads the local window after a native provider sync and returns that snapshot",
+      "still re-reads when a native provider sits beside a managed feed",
+      "still re-reads when an ICS subscription is selected",
+      "reads the local window once when it is the only calendar"
+    ]
+  },
+  "registrationTotal": 6,
+  "expectedPassed": 6,
+  "expectedManualUnexecuted": 0,
+  "manualTraceConditional": null,
+  "formatterSource": "Same pinnedVitest5primitive %s string behavior; sourceAST firstcolumn literal expansion; no runtime report input",
+  "scope": "One complete unchanged owning Calendar F3 six-case file, no filter/skip/todo/manual cases/authorBuncount or previous50case inheritance."
+}

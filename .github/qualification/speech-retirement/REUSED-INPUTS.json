@@ -1,0 +1,74 @@
+{
+  "BUN-IMAGE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/BUN-IMAGE.json",
+    "sha256": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664"
+  },
+  "NODE-IMAGE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/NODE-IMAGE.json",
+    "sha256": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de"
+  },
+  "Dockerfile": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/Dockerfile",
+    "sha256": "a61c63efd512a231cebd7c43b8aa23978eab11e23739a97665d8446f52f68b18"
+  },
+  "check_source.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/check_source.py",
+    "sha256": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5"
+  },
+  "inventory_dependencies.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/inventory_dependencies.py",
+    "sha256": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1"
+  },
+  "WORKSPACE-DEPENDENCY-ROOTS.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/WORKSPACE-DEPENDENCY-ROOTS.json",
+    "sha256": "84af9a343cc0df03adda407196a6b9ee15340900173b091ae8f6035e403af33a"
+  },
+  "POLICY.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/POLICY.json",
+    "sha256": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf"
+  },
+  "TITLE-FORMATTER-PROVENANCE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/TITLE-FORMATTER-PROVENANCE.json",
+    "sha256": "ebdedfaac96a053439e79e183c4578608f22aadf3df2e0f17a2d4810191b8396"
+  },
+  "workflow.yml": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/workflow.yml",
+    "sha256": "5dd5b2128e0ad570ec902f73b06da81236de5e1cc8881f2b1bedcb6ea9c9d683"
+  },
+  "owning-preflight.mjs": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/owning-preflight.mjs",
+    "sha256": "9b9173833574573eadb01ea43a6e68e9bd0581481b9b0bd85cae9735ae31f11b"
+  },
+  "SOURCE-AST-INVENTORY.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/SOURCE-AST-INVENTORY.json",
+    "sha256": "7600d72dc4bee5650aba5949f6b30eba62ff6089fc7a78780aad890ae361cc17"
+  },
+  "ROOT-GO-CONTRACT.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/ROOT-GO-CONTRACT.json",
+    "sha256": "0f95727ea6d46ea7fe39ed43d439a11b408a1a712e08d65aa81665a15143ab41"
+  },
+  "claim.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/claim.py",
+    "sha256": "397ec27f90291902b5747fea67dcde83a414c858a0e651d9f5e7c654788cd9b5"
+  },
+  "TEST-RESOURCE-POLICY.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/TEST-RESOURCE-POLICY.json",
+    "sha256": "a4c392e4a76c9e0f1969c04b927897900a54ea373628d5c721fdbbc84feac621"
+  },
+  "SOURCE-AND-REUSE-PROVENANCE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/SOURCE-AND-REUSE-PROVENANCE.json",
+    "sha256": "da61e592272e767ebb961bd4a372bc2d5d24e5e23d334185a87e9a5418286c2b"
+  },
+  "PREFLIGHT-DEFINITION.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/PREFLIGHT-DEFINITION.json",
+    "sha256": "ec09a15bf664ff5b0b41010ac4918f4e847ac17acce46e82e02ab83bf845bf06"
+  },
+  "bootstrap.mjs": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/bootstrap.mjs",
+    "sha256": "bb3497f0304dad80b2662bd7c434698f299e4daefbacb8210858f33fd1829df4"
+  },
+  "ORACLES.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-normal-executable-v1/ORACLES.json",
+    "sha256": "0ff9718ac2b946ceb7b8a973d1d532d779666235c8648386394169daef6594f7"
+  }
+}

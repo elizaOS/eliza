@@ -1,0 +1,50 @@
+{
+  "existingF3SourcePacket": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/calendar-f3-managed-reread-fe501-prep-v1",
+  "existingPREPAREDSHA256": "78bcbc4f38f8ff5b47a03bd03dbe342bc644e0bc905f6ffcecf9573bb6702807",
+  "existingSEALSHA256": "1542675b3d3329955e99308420089224622a2b8069d979c934b7635314372551",
+  "existingSourceLiteralReviewSHA256": "879348c7fa6ba67336ac74bcfff6670fc18e86977b384afcdac88dc4d365659f",
+  "changedSourcePaths": [
+    "plugins/plugin-calendar/src/service/CalendarService.ts",
+    "plugins/plugin-calendar/test/aggregate-local-reread.test.ts"
+  ],
+  "unchangedSources": "Read only existingb60Gitblobs, authenticatedfe5012pathliteralreviewpreservesallother29568leaves; no newsource/Gitcopies/fetch/historyrepair. fe501tree notavailableinlocalcarrier; no inventedobjectserialization. Runtimefuturecheckoutmustproveexactfe501/tree+allmanifesthashes.",
+  "existingInputPacketUnchanged": true,
+  "noDuplicatedInputSourceFiles": true,
+  "qualifiedControllerPattern": "ACKactual41635671907/V8normalowningfunctions+source/depcensus/PGCID/resource/immutableclaims; no previouspassinheritance",
+  "reusedFilesNotCopied": {
+    "BUN-IMAGE.json": {
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/BUN-IMAGE.json",
+      "sha256": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664"
+    },
+    "NODE-IMAGE.json": {
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/NODE-IMAGE.json",
+      "sha256": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de"
+    },
+    "Dockerfile": {
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/Dockerfile",
+      "sha256": "a61c63efd512a231cebd7c43b8aa23978eab11e23739a97665d8446f52f68b18"
+    },
+    "check_source.py": {
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/check_source.py",
+      "sha256": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5"
+    },
+    "inventory_dependencies.py": {
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/inventory_dependencies.py",
+      "sha256": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1"
+    },
+    "WORKSPACE-DEPENDENCY-ROOTS.json": {
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/WORKSPACE-DEPENDENCY-ROOTS.json",
+      "sha256": "84af9a343cc0df03adda407196a6b9ee15340900173b091ae8f6035e403af33a"
+    },
+    "POLICY.json": {
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/POLICY.json",
+      "sha256": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf"
+    },
+    "TITLE-FORMATTER-PROVENANCE.json": {
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/TITLE-FORMATTER-PROVENANCE.json",
+      "sha256": "ebdedfaac96a053439e79e183c4578608f22aadf3df2e0f17a2d4810191b8396"
+    }
+  },
+  "publicationRequirement": "Materialize logicalreusedfilesdirectlyfromtheseexactexistingbytes ifseparatelyauthorized; runtimeSEALexpectsalllogicalfilespresent. No localinput/sourcecopy inthispreparation.",
+  "claims": "RealCalendarServiceprototypeaggregate+realmanagedreaddecoderwithIOfreeports. Nativefixturefreshcache/nextlocalsnapshot isNOTactualprovider-sync acceptance; no7.46s/livespeedup/model/billing claim. F4/F5/token/writes/wholehead held."
+}
