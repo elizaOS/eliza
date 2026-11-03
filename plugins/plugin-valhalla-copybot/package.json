@@ -35,7 +35,12 @@
   },
   "sideEffects": false,
   "dependencies": {
+    "@solana-mobile/wallet-adapter-mobile": "2.2.5",
+    "@solana/wallet-adapter-base": "0.9.27",
+    "@solana/wallet-adapter-phantom": "0.9.27",
+    "@solana/wallet-adapter-solflare": "0.6.32",
     "@solana/web3.js": "1.98.4",
+    "@wallet-standard/app": "1.1.0",
     "bs58": "5.0.0",
     "qrcode": "1.5.4"
   },

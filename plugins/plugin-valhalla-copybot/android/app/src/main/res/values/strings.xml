@@ -6,6 +6,9 @@
     <string name="hint">PC desk address, for example http://192.168.1.20:8787</string>
     <string name="access_hint">Access code, if the PC asks for one</string>
     <string name="connect">Pair with the PC</string>
+    <string name="connect_phantom">Connect Phantom</string>
+    <string name="connect_solflare">Connect Solflare</string>
+    <string name="connect_apis">Connect your own APIs</string>
     <string name="status_idle">The phone starts here. Pairing is optional. Nothing is sent.</string>
     <string name="cached">Showing the last known state. The PC agent is not connected.</string>
     <string name="recover">Recover agent</string>

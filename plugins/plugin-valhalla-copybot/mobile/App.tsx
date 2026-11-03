@@ -1,6 +1,7 @@
 import { StatusBar } from "expo-status-bar";
 import { useState } from "react";
 import {
+  Linking,
   Pressable,
   SafeAreaView,
   ScrollView,
@@ -9,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { proPurchaseMessage } from "./billing";
+import { activateLicense, proPurchaseMessage } from "./billing";
 
 type Step = "age" | "advice" | "intro" | "pair" | "demo" | "done" | "about";
 
@@ -24,6 +25,8 @@ export default function App() {
   const [back, setBack] = useState<Step>("age");
   const [url, setUrl] = useState("http://127.0.0.1:8787");
   const [note, setNote] = useState("");
+  const [licenseKey, setLicenseKey] = useState("");
+  const [licenseNote, setLicenseNote] = useState("");
 
   function openAbout() {
     setBack(step);
@@ -74,6 +77,27 @@ export default function App() {
         {step === "pair" && (
           <View>
             <Text style={styles.title}>Desk address</Text>
+            <Text style={styles.body}>
+              Phantom and Solflare connect is read-only. The app cannot send or withdraw.
+            </Text>
+            <Pressable
+              style={styles.secondary}
+              onPress={() =>
+                void Linking.openURL(
+                  "https://phantom.app/ul/browse/" + encodeURIComponent(url) + "?ref=valhalla"
+                )
+              }
+            >
+              <Text style={styles.btnText}>Connect Phantom</Text>
+            </Pressable>
+            <Pressable
+              style={styles.secondary}
+              onPress={() =>
+                void Linking.openURL("https://solflare.com/ul/v1/browse/" + encodeURIComponent(url))
+              }
+            >
+              <Text style={styles.btnText}>Connect Solflare</Text>
+            </Pressable>
             <TextInput
               style={styles.input}
               value={url}
@@ -134,6 +158,27 @@ export default function App() {
             </Text>
             <Text style={styles.body}>What's new: self-repair, Brain advice, and this setup.</Text>
             <Text style={styles.body}>{proPurchaseMessage()}</Text>
+            <TextInput
+              style={styles.input}
+              value={licenseKey}
+              onChangeText={setLicenseKey}
+              placeholder="License key"
+              autoCapitalize="none"
+              autoCorrect={false}
+              secureTextEntry
+            />
+            <Pressable
+              style={styles.secondary}
+              onPress={() => {
+                void activateLicense(licenseKey).then((message) => {
+                  setLicenseKey("");
+                  setLicenseNote(message);
+                });
+              }}
+            >
+              <Text style={styles.btnText}>Activate Pro</Text>
+            </Pressable>
+            <Text style={styles.body}>{licenseNote}</Text>
             <Pressable style={styles.secondary} onPress={() => setStep("age")}>
               <Text style={styles.btnText}>Delete this setup</Text>
             </Pressable>

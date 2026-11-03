@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.os.Build;
+import android.text.InputType;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.View;
@@ -160,9 +161,12 @@ public class MainActivity extends AppCompatActivity {
         chatInput = findViewById(R.id.chatInput);
         confirmSuggestion = findViewById(R.id.confirmSuggestion);
         findViewById(R.id.connect).setOnClickListener(v -> pair());
+        findViewById(R.id.phantom).setOnClickListener(v -> openWallet("phantom"));
+        findViewById(R.id.solflare).setOnClickListener(v -> openWallet("solflare"));
         findViewById(R.id.scanQr).setOnClickListener(v -> scanQr());
         findViewById(R.id.privacyPolicy).setOnClickListener(v -> openPrivacy());
         findViewById(R.id.about).setOnClickListener(v -> showAbout());
+        findViewById(R.id.proLicense).setOnClickListener(v -> showPro());
         findViewById(R.id.deleteData).setOnClickListener(v -> deletePhoneData());
         findViewById(R.id.recover).setOnClickListener(v -> recover());
         findViewById(R.id.openChat).setOnClickListener(v -> showScreen(SessionStore.SCREEN_CHAT));
@@ -412,6 +416,53 @@ public class MainActivity extends AppCompatActivity {
         visibleScreen = SessionStore.SCREEN_PAIRING;
         showScreen(SessionStore.SCREEN_PAIRING);
         status.setText(getString(R.string.status_idle));
+    }
+
+    private void openWallet(String which) {
+        String page = store.deskUrl().isEmpty() ? "https://valhalla-app.xyz/" : store.deskUrl();
+        String link = "phantom".equals(which)
+                ? "https://phantom.app/ul/browse/" + Uri.encode(page) + "?ref=valhalla"
+                : "https://solflare.com/ul/v1/browse/" + Uri.encode(page);
+        startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(link)));
+        status.setText("Opened " + which + ". Connect is read-only. The app cannot send or withdraw.");
+    }
+
+    private void showPro() {
+        if (BuildConfig.STORE_BILLING) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Pro")
+                    .setMessage(R.string.pro_store)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+            return;
+        }
+        final EditText input = new EditText(this);
+        input.setHint("License key");
+        input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        new AlertDialog.Builder(this)
+                .setTitle("Pro")
+                .setMessage(R.string.pro_hint)
+                .setView(input)
+                .setPositiveButton("Activate", (dialog, which) -> activatePro(input.getText().toString().trim()))
+                .setNegativeButton("Cancel", null)
+                .show();
+    }
+
+    private void activatePro(String key) {
+        io.execute(() -> {
+            LicenseClient.Result result = LicenseClient.activate(key);
+            long grace = 7L * 24 * 60 * 60 * 1000;
+            runOnUiThread(() -> {
+                if (result.ok) {
+                    store.saveLicense(key, result.instanceId);
+                    status.setText("Pro is on. This is not a promise of profit. The phone still cannot send or withdraw.");
+                } else if (result.down && store.proInGrace(grace)) {
+                    status.setText("The license service is offline. Pro stays on during the grace window.");
+                } else {
+                    status.setText(result.down ? "The license service could not be reached." : "That license was not accepted.");
+                }
+            });
+        });
     }
 
     private void showAbout() {

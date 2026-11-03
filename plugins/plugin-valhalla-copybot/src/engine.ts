@@ -308,7 +308,12 @@ export class AgentEngine {
   }
 
   async setApiKey(name: string, value: string): Promise<string> {
-    const allowed = new Set(["GOOGLE_GENERATIVE_AI_API_KEY", "HELIUS_API_KEY", "BIRDEYE_API_KEY"]);
+    const allowed = new Set([
+      "GOOGLE_GENERATIVE_AI_API_KEY",
+      "HELIUS_API_KEY",
+      "BIRDEYE_API_KEY",
+      "TELEGRAM_BOT_TOKEN",
+    ]);
     if (!allowed.has(name)) throw new Error("That key is not editable here.");
     const trimmed = value.trim();
     if (trimmed.length < 8) throw new Error("Key looks too short.");

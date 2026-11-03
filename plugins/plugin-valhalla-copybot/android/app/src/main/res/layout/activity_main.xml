@@ -44,6 +44,13 @@
                 android:minHeight="48dp"
                 android:text="@string/about" />
 
+            <Button
+                android:id="@+id/proLicense"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/pro_license" />
+
             <TextView
                 android:id="@+id/cacheBanner"
                 android:layout_width="match_parent"
@@ -102,6 +109,20 @@
                     android:layout_marginTop="12dp"
                     android:minHeight="48dp"
                     android:text="@string/connect" />
+
+                <Button
+                    android:id="@+id/phantom"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/connect_phantom" />
+
+                <Button
+                    android:id="@+id/solflare"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:minHeight="48dp"
+                    android:text="@string/connect_solflare" />
 
                 <Button
                     android:id="@+id/scanQr"

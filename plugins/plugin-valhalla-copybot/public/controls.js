@@ -20,6 +20,86 @@ function say(text) {
   log.prepend(line);
 }
 
+let liveTimer = 0;
+let liveAddress = "";
+let liveAt = 0;
+
+async function refreshLive() {
+  const badge = document.getElementById("liveBadge");
+  if (!badge) return;
+  if (!liveAddress) {
+    badge.textContent = "Connect Phantom or Solflare for a live balance";
+    return;
+  }
+  try {
+    const data = await api("/api/live-balance?address=" + encodeURIComponent(liveAddress));
+    liveAt = Date.now();
+    const equity = document.getElementById("equity");
+    if (data.ok && equity) equity.textContent = Number(data.sol).toFixed(4) + " SOL";
+    badge.textContent = data.ok
+      ? "live · updated 0s ago · " + data.short
+      : "live balance unavailable";
+  } catch {
+    badge.textContent = "live balance unavailable";
+  }
+}
+
+function tickLiveBadge() {
+  const badge = document.getElementById("liveBadge");
+  if (!badge || !liveAt) return;
+  const seconds = Math.max(0, Math.round((Date.now() - liveAt) / 1000));
+  if (badge.textContent.startsWith("live ·")) {
+    badge.textContent = badge.textContent.replace(/updated \d+s ago/, "updated " + seconds + "s ago");
+  }
+}
+
+async function connectChoice(choice) {
+  if (!window.ValhallaWallet) {
+    say("The wallet script did not load.");
+    return;
+  }
+  const linked = await window.ValhallaWallet.connect(choice);
+  liveAddress = linked.address;
+  document.getElementById("walletPanel").textContent = "Connected " + linked.short + ". Read-only.";
+  await api("/api/watch", { address: linked.address });
+  await refreshLive();
+}
+
+document.getElementById("btnPhantom")?.addEventListener("click", () => connectChoice("phantom").catch((err) => say(err.message)));
+document.getElementById("btnSolflare")?.addEventListener("click", () => connectChoice("solflare").catch((err) => say(err.message)));
+document.getElementById("btnDisconnect")?.addEventListener("click", async () => {
+  liveAddress = "";
+  liveAt = 0;
+  document.getElementById("walletPanel").textContent = "Disconnected.";
+  const equity = document.getElementById("equity");
+  if (equity) equity.textContent = "—";
+  await refreshLive();
+});
+setInterval(() => {
+  tickLiveBadge();
+  if (liveAddress && document.visibilityState !== "hidden") refreshLive();
+}, 5000);
+window.addEventListener("focus", () => refreshLive());
+
+document.getElementById("btnApiTest")?.addEventListener("click", () => {
+  say("Test stays on this PC. Keys are not sent to TokenJunction.");
+});
+document.getElementById("btnApiSave")?.addEventListener("click", async () => {
+  const pairs = [
+    ["HELIUS_API_KEY", "apiHelius"],
+    ["BIRDEYE_API_KEY", "apiBirdeye"],
+    ["TELEGRAM_BOT_TOKEN", "apiTelegram"],
+    ["GOOGLE_GENERATIVE_AI_API_KEY", "apiBrain"],
+  ];
+  for (const [name, id] of pairs) {
+    const value = document.getElementById(id).value.trim();
+    if (!value) continue;
+    await api("/api/keys", { name, value });
+    document.getElementById(id).value = "";
+  }
+  say("Saved on this PC. You can skip any key.");
+});
+
 document.getElementById("controlsBtn").addEventListener("click", () => {
   const drawer = document.getElementById("drawer");
   drawer.hidden = !drawer.hidden;
@@ -37,6 +117,7 @@ async function bootGate() {
     loadConnections();
     loadRepair();
     loadBrain();
+    loadPro();
   } catch {
     document.getElementById("gate").hidden = false;
   }
@@ -56,6 +137,28 @@ document.getElementById("gateForm").addEventListener("submit", async (event) => 
     document.getElementById("gateErr").textContent = err.message;
   }
 });
+
+async function loadPro() {
+  const host = document.getElementById("proPanel");
+  if (!host) return;
+  const data = await api("/api/license");
+  host.innerHTML = "<div>" + (data.pro ? "Pro is on." : "Pro is off.") + " " + data.price + "</div>" +
+    "<div>" + (data.tail || "No license key saved.") + "</div>" +
+    "<div>" + data.note + "</div>" +
+    "<label>License key</label><input id=\"licenseKey\" type=\"password\" autocomplete=\"off\"/>" +
+    "<button type=\"button\" id=\"btnLicense\">Activate Pro</button>";
+  document.getElementById("btnLicense").addEventListener("click", async () => {
+    const key = document.getElementById("licenseKey").value;
+    document.getElementById("licenseKey").value = "";
+    try {
+      const saved = await api("/api/license/activate", { key, instanceName: "valhalla-desk" });
+      say(saved.pro ? "Pro is on. The desk still cannot send or withdraw." : "Pro stayed off.");
+    } catch (err) {
+      say(err instanceof Error ? err.message : "License was not accepted.");
+    }
+    loadPro();
+  });
+}
 
 async function loadBrain() {
   const host = document.getElementById("brainPanel");

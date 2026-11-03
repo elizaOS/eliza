@@ -18,6 +18,7 @@ import {
 } from "./connection-routes.ts";
 import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
+import { fetchLiveSol, publicRpcUrl } from "./live-balance.ts";
 import { LicenseStore } from "./license.ts";
 import { comparisonRows, paywallCopy, PLAN_PRICES, tierFor, TRIAL_MS } from "./plan.ts";
 import { tail4 } from "./net.ts";
@@ -193,6 +194,17 @@ async function handle(
   }
   if (req.method === "GET" && pathname === "/api/ads/report") {
     send(res, 200, await loadAdReport(process.env));
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/live-balance") {
+    const address = url.searchParams.get("address") || engine.watchPubkey || "";
+    try {
+      const live = await fetchLiveSol(address, publicRpcUrl(engine.publicEnv()));
+      send(res, 200, { ok: true, sol: live.sol, at: Date.now(), short: tail4(address) });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "balance failed";
+      send(res, 200, { ok: false, error: message });
+    }
     return;
   }
   if (req.method === "GET" && pathname === "/api/plan") {

@@ -186,7 +186,8 @@
               <div class="wallet-lbl">LIVE WALLET BALANCE · on-chain SOL + live positions at mark</div>
               <div class="wallet-num" id="walletBal">$—<span class="wallet-sol" id="walletSol"></span></div>
               <div class="tpnl-lbl">TRADING P&amp;L · vs books baseline (deposits − withdrawals/sweeps)</div>
-              <div class="tpnl-num equity-num" id="equity">$0.00</div>
+              <div class="tpnl-num equity-num" id="equity">—</div>
+              <div id="liveBadge" style="font-size:11px;color:#7a7468">Connect Phantom or Solflare for a live balance</div>
             </div>
             <div class="pnl" id="pnl">—</div>
             <div class="pnl-sub" id="pnlSub"></div>
@@ -242,7 +243,21 @@
 </div>
 <aside id="drawer" hidden>
     <h3>06 WALLET</h3>
+    <p style="font-size:10px;color:#7a7468">Read-only. Phantom or Solflare share a public key only. Shown as the last 4 characters.</p>
+    <div class="rowbtns">
+      <button type="button" id="btnPhantom">Phantom</button>
+      <button type="button" id="btnSolflare">Solflare</button>
+      <button type="button" id="btnDisconnect">Disconnect</button>
+    </div>
     <div id="walletPanel"></div>
+    <h3>06b YOUR APIS</h3>
+    <p style="font-size:10px;color:#7a7468">Optional. Saved on this PC only. Never sent to TokenJunction. You can skip this.</p>
+    <label>Helius RPC key</label><input id="apiHelius" type="password" autocomplete="off"/>
+    <label>Birdeye key</label><input id="apiBirdeye" type="password" autocomplete="off"/>
+    <label>Telegram bot token</label><input id="apiTelegram" type="password" autocomplete="off"/>
+    <label>Brain API key</label><input id="apiBrain" type="password" autocomplete="off"/>
+    <button type="button" id="btnApiTest">Test</button>
+    <button type="button" id="btnApiSave">Save on this PC</button>
     <h3>07 CONTROLS</h3>
     <div class="rowbtns">
       <button type="button" id="btnStart">START</button>
@@ -256,6 +271,9 @@
     <label>Queue a mint</label>
     <input id="mintInput" placeholder="mint address" autocomplete="off"/>
     <button type="button" id="btnQueue">EVALUATE</button>
+    <h3>07 PRO</h3>
+    <p style="font-size:10px;color:#7a7468">Paid plan. Not a promise of profit. No send or withdraw.</p>
+    <div id="proPanel" style="font-size:12px"></div>
     <h3>07a BRAIN</h3>
     <div id="brainPanel" style="font-size:12px"></div>
     <h3>07b SELF-REPAIR</h3>
@@ -295,6 +313,7 @@
       <p id="gateErr" style="color:#ff3b4a;font-size:12px"></p>
     </form>
   </div>
+<script src="/vendor/wallet-connect.js"></script>
 <script src="/app.js"></script>
 <script src="/controls.js"></script>
 <!-- valhalla-adsense -->

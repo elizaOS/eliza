@@ -11,6 +11,16 @@ chrome.storage.local.get(["desk", "token"], (saved) => {
   if (saved.token) loadState(saved.desk, saved.token);
 });
 
+function walletLink(which) {
+  const page = desk.value.trim() || "https://valhalla-app.xyz/";
+  const url = which === "phantom"
+    ? "https://phantom.app/ul/browse/" + encodeURIComponent(page) + "?ref=valhalla"
+    : "https://solflare.com/ul/v1/browse/" + encodeURIComponent(page);
+  chrome.tabs.create({ url });
+}
+document.getElementById("open-phantom").addEventListener("click", () => walletLink("phantom"));
+document.getElementById("open-solflare").addEventListener("click", () => walletLink("solflare"));
+
 document.getElementById("pair").addEventListener("click", async () => {
   const base = desk.value.trim().replace(/\/$/, "");
   if (!base.startsWith("http://127.0.0.1") && !base.startsWith("http://localhost")) {
