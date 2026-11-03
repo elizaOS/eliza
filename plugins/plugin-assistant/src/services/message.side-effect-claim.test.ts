@@ -2600,6 +2600,31 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 
+  // The open form names only the listed apps, bare. For a view outside that
+  // list, or with an article, the open form is dropped whole (silence until
+  // the final reply) while the lookup form of the same view is admitted. The
+  // planned-view rule steers toward the open form, so this pins the trade-off
+  // instead of growing the grammar.
+  it.each([
+    { open: "Let me open Messages.", lookup: "Let me check your messages." },
+    { open: "Let me open Reminders.", lookup: "Let me check your reminders." },
+    {
+      open: "Let me open the calendar.",
+      lookup: "Let me pull up your calendar.",
+    },
+  ])("drops $open but admits $lookup", ({ open, lookup }) => {
+    expect(replyIsClaimSafeAcknowledgment(open)).toBe(false);
+    expect(replyIsClaimSafeAcknowledgment(lookup)).toBe(true);
+    expect(
+      evaluatePlannedReplyEgress({
+        reply: lookup,
+        pendingWork: true,
+        actionResults: [],
+        actions: [],
+      }).verdict,
+    ).not.toBe("reject");
+  });
+
   // Natural wording outside the closed grammar is dropped as well; the final
   // reply still answers. Possessive or titled names, an appointment with a
   // date, other embedded questions, a second verb, "as well", "certainly" and
