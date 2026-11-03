@@ -14,11 +14,15 @@ final class PlayUpdate {
         manager.getAppUpdateInfo().addOnSuccessListener(info -> {
             if (info.updateAvailability() == UpdateAvailability.UPDATE_AVAILABLE
                     && info.isUpdateTypeAllowed(AppUpdateType.FLEXIBLE)) {
-                manager.startUpdateFlowForResult(
-                        info,
-                        activity,
-                        AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build(),
-                        9101);
+                try {
+                    manager.startUpdateFlowForResult(
+                            info,
+                            activity,
+                            AppUpdateOptions.newBuilder(AppUpdateType.FLEXIBLE).build(),
+                            9101);
+                } catch (Exception ignored) {
+                    // Play may refuse the update sheet. The app keeps running.
+                }
             }
         });
     }

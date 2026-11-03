@@ -5,6 +5,8 @@ on:
   push:
     branches:
       - cursor/valhalla-android-companion-d28f
+      - cursor/valhalla-ui-020-d28f
+      - develop
     paths:
       - .github/workflows/valhalla-windows.yml
       - plugins/plugin-valhalla-copybot/install/**
@@ -59,7 +61,7 @@ jobs:
           cat > Product.wxs <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
-            <Product Id="*" Name="Valhalla" Language="1033" Version="0.1.2.0" Manufacturer="TokenJunction LLC" UpgradeCode="7C3E9A10-4B2D-4F61-9C0A-202611030002">
+            <Product Id="*" Name="Valhalla" Language="1033" Version="0.2.0.0" Manufacturer="TokenJunction LLC" UpgradeCode="7C3E9A10-4B2D-4F61-9C0A-202611030002">
               <Package InstallerVersion="500" Compressed="yes" InstallScope="perUser" />
               <MediaTemplate EmbedCab="yes" />
               <Directory Id="TARGETDIR" Name="SourceDir">
@@ -91,7 +93,7 @@ jobs:
           files="Valhalla-Setup-x64.exe valhalla-phone.apk Valhalla-Chrome-Extension.zip"
           if [ -f Valhalla-Setup-x64.msi ]; then files="$files Valhalla-Setup-x64.msi"; fi
           sha256sum $files > SHA256SUMS.txt
-          node -e 'const fs=require("fs"); const rows=fs.readFileSync("SHA256SUMS.txt","utf8").trim().split(/\n/); const map={}; for (const row of rows){ const [hash,name]=row.split(/\s+/); map[name]=hash; } const version="0.1.2"; const base="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/"; const doc={version, notes:"Update ready, restart", windows: map["Valhalla-Setup-x64.exe"]?{url:base+"Valhalla-Setup-x64.exe", sha256:map["Valhalla-Setup-x64.exe"]}:undefined, android: map["valhalla-phone.apk"]?{url:base+"valhalla-phone.apk", sha256:map["valhalla-phone.apk"]}:undefined}; fs.writeFileSync("version.json", JSON.stringify(doc,null,2));'
+          node -e 'const fs=require("fs"); const rows=fs.readFileSync("SHA256SUMS.txt","utf8").trim().split(/\n/); const map={}; for (const row of rows){ const [hash,name]=row.split(/\s+/); map[name]=hash; } const version="0.2.0"; const base="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/"; const doc={version, notes:"Update ready, restart", windows: map["Valhalla-Setup-x64.exe"]?{url:base+"Valhalla-Setup-x64.exe", sha256:map["Valhalla-Setup-x64.exe"]}:undefined, android: map["valhalla-phone.apk"]?{url:base+"valhalla-phone.apk", sha256:map["valhalla-phone.apk"]}:undefined}; fs.writeFileSync("version.json", JSON.stringify(doc,null,2));'
           notes=$(cat <<'EOF'
           Download for Windows / Android
 
@@ -108,9 +110,9 @@ jobs:
           TokenJunction LLC publishes Valhalla. The desk stays read-only until you arm live on the PC. There is no send or withdraw.
           EOF
           )
-          if gh release view v0.1.2 >/dev/null 2>&1; then
-            gh release edit v0.1.2 --title "Valhalla 0.1.2" --notes "$notes" --latest --prerelease=false
+          if gh release view v0.2.0 >/dev/null 2>&1; then
+            gh release edit v0.2.0 --title "Valhalla 0.2.0" --notes "$notes" --latest --prerelease=false
           else
-            gh release create v0.1.2 --title "Valhalla 0.1.2" --notes "$notes" --latest
+            gh release create v0.2.0 --title "Valhalla 0.2.0" --notes "$notes" --latest
           fi
-          gh release upload v0.1.2 $files version.json SHA256SUMS.txt --clobber
+          gh release upload v0.2.0 $files version.json SHA256SUMS.txt --clobber

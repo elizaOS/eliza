@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Valhalla",
-  "version": "0.1.5",
+  "version": "0.2.0",
   "description": "Read-only status for your Valhalla desk. No send or withdraw.",
   "author": "TokenJunction LLC",
   "homepage_url": "https://valhalla-app.xyz/extension",

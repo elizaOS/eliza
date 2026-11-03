@@ -48,7 +48,7 @@ android {
         minSdk = 26
         targetSdk = 36
         versionCode = System.getenv("VERSION_CODE")?.toIntOrNull() ?: 1
-        versionName = System.getenv("VERSION_NAME")?.trim().takeUnless { it.isNullOrEmpty() } ?: "0.1.0"
+        versionName = System.getenv("VERSION_NAME")?.trim().takeUnless { it.isNullOrEmpty() } ?: "0.2.0"
         manifestPlaceholders["admobAppId"] = admobAppId
         buildConfigField("boolean", "ADS_ENABLED", adsEnabled.toString())
         buildConfigField("String", "ADMOB_APP_ID", quote(admobAppId))
