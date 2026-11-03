@@ -562,6 +562,10 @@ describe("awaited owner model acknowledgments", () => {
     });
 
     it.each([
+      "Let me pull the latest.",
+      "I'll pull the latest.",
+      "I’ll pull the latest!",
+      "On it. Let me pull the latest.",
       "Let me open Calendar and take another shot at the rename.",
       "Let me open Calendar only if you confirm.",
       "Let me open Calendar? No, I won't.",
