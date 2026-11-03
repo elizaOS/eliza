@@ -29,6 +29,7 @@ import {
   resolveActionArgs,
   runWithTrajectoryPurpose,
   type SubactionsMap,
+  extractUserText,
   stableStringify,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -106,16 +107,6 @@ import {
   prepareCrossChannelSend,
 } from "./lib/messaging-helpers.js";
 import { formatPromptValue } from "./lib/prompt-format.js";
-
-/**
- * If the incoming message text carries a document-augmentation envelope that
- * wraps the actual user request in <user_request> tags, extract the inner text
- * so the resolution prompt never sees retrieved document noise.
- */
-function extractUserRequestText(rawText: string): string {
-  const envelopeMatch = rawText.match(/<user_request>([\s\S]*?)<\/user_request>/);
-  return envelopeMatch ? envelopeMatch[1].trim() : rawText;
-}
 
 const ACTION_NAME = "RESOLVE_REQUEST";
 
@@ -2312,7 +2303,7 @@ async function resolveApprovalRequest(
   );
   const userText =
     typeof message.content.text === "string"
-      ? extractUserRequestText(message.content.text)
+      ? extractUserText(message.content.text)
       : "";
   const explicitRequestId =
     typeof params.requestId === "string" && params.requestId.trim().length > 0
