@@ -107,8 +107,7 @@ class IsomorphicVfsGitService implements VfsGitService {
   private async clone(request: PostWorkbenchVfsGitRequest) {
     const url = requireUrl(request.url);
     // isomorphic-git removes `<dir>/.git` when a clone fails, so cloning over
-    // an existing repository would delete its history. Refuse it, as git does
-    // for a destination that already exists.
+    // an existing repository would delete its history. Refuse it.
     if (await pathExists(path.join(this.vfs.filesRoot, ".git"))) {
       throw new VfsGitError(
         "VFS project already has a Git repository",
@@ -125,7 +124,17 @@ class IsomorphicVfsGitService implements VfsGitService {
       ref: request.ref ?? request.branch,
       onAuth: authCallback(request),
     });
-    await rejectAndRemoveSymlinks(this.vfs.filesRoot);
+    try {
+      await rejectAndRemoveSymlinks(this.vfs.filesRoot);
+    } catch (error) {
+      // Drop the repository of a rejected clone, as isomorphic-git does for a
+      // clone that fails, or the check above refuses every later clone.
+      await fsp.rm(path.join(this.vfs.filesRoot, ".git"), {
+        recursive: true,
+        force: true,
+      });
+      throw error;
+    }
     return {
       action: "clone",
       url: redactGitUrl(url),
