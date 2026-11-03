@@ -1,0 +1,31 @@
+{
+  "files": {
+    "BUN-IMAGE.json": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664",
+    "Dockerfile": "a61c63efd512a231cebd7c43b8aa23978eab11e23739a97665d8446f52f68b18",
+    "EXPECTED-GRAPH.json": "c594d7380376c63a57e3f74e13a0abc290f7229b3d279a6a0141c29db57fa287",
+    "HISTORICAL-TOOL-REFERENCE.json": "6ec3611c598142d5cd9b30993c2619af632200c3bbd7f2b22667c98796f68ae7",
+    "NODE-IMAGE.json": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de",
+    "NORMAL-API-POLICY.json": "ec5bda0a49d486df97981b125877ec4a3ea5f16f44c9cf6d3a18f8385a6e795e",
+    "PLAN.json": "f560b0f510826c87db5d71afbdc452ad152670848e1168c731ecafb05dde0cf7",
+    "POLICY.json": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf",
+    "PREPARED.json": "12cf1381d0142cfe691887bea76cfc4bd362df78a049309e187d315a333c739a",
+    "RESOURCE-GRAPHS.json": "deeebd324eeaa16f19a4386da8b0c13c3210b4b820b74cad913805d3a868a765",
+    "REUSED-INPUTS.json": "bae6f48c0c1f830bff7810b4947ca96e0c8f196e870192774db2692f7ec64b01",
+    "ROLLUP-OWNER-CONTRACT.json": "f350706bf2fcd733aeee387a662da7a2d700bad8115eef6191e276b29c6ebab4",
+    "ROOT-GO-CONTRACT.json": "6ce54cca7edc8649a1b35a831aecd4483c28e761fc8df487fe2cb4816ee5c47f",
+    "SOURCE-CUSTODY.json": "c618454d2b08db4b4f40dfc411aff3b5e2c0835fe62daeeda4b6a3880bb14bac",
+    "SOURCE-MANIFEST.json": "4b0acb71d2553647c759fd38a6365140f9df2675a0316b930d2e8519b1eb912e",
+    "TURBO-NODE-OPTIONS-SOURCE-PROOF.json": "6b1d351d0b83c044cb97fc3c0b8c1fde268f187715b43c31c87ddc19a2dc7ea3",
+    "WORKSPACE-DEPENDENCY-ROOTS.json": "84af9a343cc0df03adda407196a6b9ee15340900173b091ae8f6035e403af33a",
+    "api-stage-recorder.cjs": "dc360b777d26e1a9af1b08458bfb92d2a9e2e3e4b1dcb006cb315b8f485025a8",
+    "capture-turbo-graph.mjs": "aa16e25cab47638a64186a5d6febe1a6d40b85f4169c9cfe7d409034e7902c1c",
+    "check_source.py": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5",
+    "claim.py": "811f1dc59a3dc68da6f7be1ee123a45279d9f5c60d4c2c7a57d049043fd089c3",
+    "compiler-bootstrap.mjs": "b57e0a613661702458f071e89df0a29243e4e2db9061ea3dead6dac691e85ccf",
+    "host-memory-admission.py": "ced1b75a6a8c01448cc41ebd4023cfaf2d26177884d4af59bd053e3067f7a5f7",
+    "inventory_dependencies.py": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1",
+    "output-custody.mjs": "64c42d31881a0939f02e38d233ca9846e615e0f2645c3903aeae6d606dc79983",
+    "run.py": "fdcdcbfa8408acdbc6155b43eefdb55af5d781c5ed58389660474b97402f10a9",
+    "workflow.yml": "9cb2e208a0b7d0e5cacf8aad74cb1337c14529eb37f9838b72f5bd060e8cccae"
+  }
+}

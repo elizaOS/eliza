@@ -1,0 +1,55 @@
+{
+  "state": "NORMAL_API_V4_CANONICAL_ROLLUP_GUARD_WITH_ACTIONABLE_PARTIAL_METADATA_PENDING_REVIEW",
+  "sourceCommit": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "sourceTree": "cd96bb6da937deb3419930432c1d2b35374d74a8",
+  "existing39Assessment": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-preparation-20261103/PREPARED.json",
+  "existing39AssessmentSHA256": "e4fa96a855d820d7b3ca8c21ab812a4e86c8b56234fd6c93a5f6b7ed60826cc1",
+  "sourceUnderstanding": [
+    "Source-derived134workspace49task/18runnable/31transit/170edges graph independentlyreviewed451e1cb1; futureactualTurbo metadata mustmatchbeforebuild",
+    "ActualnormalRootwrapper/filter/APIpackagecommandunchanged; --force/local-onlycache/summarize flagspreventborrowedcacheacceptance withouttask/script/configchanges",
+    "NormalAPI tsc=declaredaliasTypeScript7.0.2; realemitters/compat tsc6=@typescript/typescript6@6.0.2; TS6.0.3libraryisnotnormaltsc. Freshsame-b93PATH-owner/package/hashproof required",
+    "Allrealnormal16producerbuildtasks +Sharedtypecheck+APIchain required, includingJS/realUI/views/rollup/declarationemit, no manualtasksubstitution",
+    "NormalCore tsc6--noCheck output isnotCoretypecheckPASS; actualAPItsc6compatlegnotincluded",
+    "Source/tree39originalhashes/134manifests/19producer-helpertreepins/18extrahelperblobpins; newsourcepool/rawinput copies0"
+  ],
+  "sourceGraphReviewSHA256": "451e1cb1972cf615442f2d7ac5153b28897369b4fb2cbe7f2fff2e554ff8a15e",
+  "resourceGraphReviewSHA256": "472737b3544598c3d136ab7f1e309ce2c0007b74eeffdaadf5ac082e0615cb79",
+  "resourceProposal": "8GiBhard/noadditionalSwap/Node4096/CPU2PID256/concurrency1/normal900clampedwhole1200/job22/log8MiB/disk16entry8stop12growth. Freshphysicalhost+actuallocalDocker+effectivecgroupceilings gatebefore8GiBcreate; actualCgroupParent system.slice/resources beforeafter sameCID. FitUNMEASURED.",
+  "normalApiPolicySHA256": "ec5bda0a49d486df97981b125877ec4a3ea5f16f44c9cf6d3a18f8385a6e795e",
+  "producerGraphSHA256": "c594d7380376c63a57e3f74e13a0abc290f7229b3d279a6a0141c29db57fa287",
+  "sourceCustodySHA256": "c618454d2b08db4b4f40dfc411aff3b5e2c0835fe62daeeda4b6a3880bb14bac",
+  "stageEvidence": "Read-onlyNodepreload recordsactualAPIcompiler/router/WranglerDRYRUNPID+exit/argv/hash; noSDK/moduleimport/argv/config/exitchange. Metadatafailures separatelyinvalidatequalifier; no event-onlyPASS. Needfullindependentreviewofpass-throughsemantics/normalTurboenvinheritance.",
+  "ownership": "Freshsameb93outputsinitiallyempty, realnormalproducers+fulloutputhashes+allinput/dependencyfreshprepostchecks; no borrowedCore.d.ts/stubs/newaliases/configskip",
+  "excluded": [
+    "APItsc6compatibilityleg",
+    "baseline5006execution",
+    "Core semantic typecheckPASSfromnoCheckemit",
+    "publicD1/provider-money/production/nativeSDK/device/model/voice",
+    "sourcealiases/stubs/filters/skippedconfigs/hostcleanup"
+  ],
+  "reusedInputs": "REUSED-INPUTS.json referencesexactalreadyqualifiedhelpers/imagesandoriginalassessmentmetadata; no copies. Futurepubrequiresmaterializedlogicalfiles/exactliteralpeer review.",
+  "noExecution": "NoMacdependency/sourcepoolcopy/install/build/typecheck/test/Turbodryrun/module/configimport/CI/Go/nonce/provider/financial/deploy/live. Source/AST/JSONanalysisonly.",
+  "notReadyUntilReview": [
+    "FullV2sourceunderstanding/producerorder/envsourceproof/effectiveendpoint/bufferpass-throughreview",
+    "Actualfreshb93host/tool/graph/producer/type/outputfitunproved; unknownschema orresource failsbeforebuild/no substitutes",
+    "No sourcebranchpub before reviewedauthority"
+  ],
+  "priorV1": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v1",
+  "priorV1SealSHA256": "60aa23b4d765afce63c4c98b33f83a2e9d5117ac0c4ceecae0b543a2809ab728",
+  "V2Corrections": [
+    "ActualTurboexecutabledependencyclosure/ordercomparedthroughobservedtransitnodes beforeheavybuild",
+    "FixtureNODE_ENV=testremoved fromnormalcompiler/producers/metadata, normalCIenvpreserved",
+    "PinnedTurbo2.11.10registrydistlock-integrity/provenance-reportedimmutableRustbuiltinsource listsNODE_OPTIONS; no strict-env/configchange, actualstageNodeOptionsstillchecked",
+    "Dockerremote/context/TLS/config/APIoverridesrejected andallCLIcalls pinnedactualreviewedunixsocket/emptyownedconfig",
+    "Graphcaptureoverflowstopsbuffering/flagsfailureevenexit0; outerownedtimeout/cleanupremain",
+    "StalefixturePLANdescriptions removed"
+  ],
+  "priorV2": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v2",
+  "priorV2SealSHA256": "a8c475462f60bb6fb8f7d0ed09ee1decaad4cb2d9fcb51415a6b3c954cc96e4f",
+  "V3Correction": "OnlymetadataRollupsource-derivedsuppliername+exact4.64.9 percanonicalrootoverride/frozenlock, notobservedallowlist; writeeachresolvedtoolpartialdiagnostics beforelaterprobeerror. No fiveotherownercontract/qualifier/graph/resource/source/alias/lock/config policy change.",
+  "failedRunPreserved": 41651443800,
+  "spentIntentPreserved": "eccb90c892823d9fb621033c553bdbcb",
+  "priorV3": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v3",
+  "priorV3SealSHA256": "d320d8f1527bbfe8f07be2e1b4fe98edf581457de08491310340517bd071fe98",
+  "V4DiagnosticCorrection": "Retain same expected/observed owner evidence through outerprobe catch; no overwriting detailedmismatchwith genericmessage. Previous owners survive into failure partialrecord, finalCOMPILER-OWNERS onlyall-toolscomplete."
+}
