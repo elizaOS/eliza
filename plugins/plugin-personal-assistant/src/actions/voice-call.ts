@@ -9,6 +9,7 @@ import {
   type ActionExample,
   type ActionResult,
   type IAgentRuntime,
+  getUserMessageText,
   logger,
   type Memory,
   requireConfirmation,
@@ -117,7 +118,12 @@ function containsTokenRun(
 }
 
 function messageText(message: Memory): string {
-  return typeof message.content.text === "string" ? message.content.text : "";
+  // Read the user's words, not the raw rendered text: under document
+  // augmentation, content.text carries the preamble, the recalled documents
+  // and the real request wrapped in <user_request>, so searching it for a
+  // saved contact would let a document-only name make the call ambiguous
+  // or pick the wrong contact when the planner supplies no recipient.
+  return getUserMessageText(message);
 }
 
 function readOwnerNumber(
