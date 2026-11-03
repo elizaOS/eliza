@@ -3948,7 +3948,7 @@ export class OrchestratorTaskService extends Service {
       pausedWithActiveWork: _pausedWithActiveWork,
       pausedAt: _pausedAt,
       ...nextMetadata
-    } = doc.task.metadata;
+    } = doc.task.metadata ?? {};
     // Keep the pause metadata until the fresh sub-agent is spawned: if the
     // spawn fails, a retried resume must still re-engage instead of a no-op.
     const updated = await this.store.updateTask(taskId, {
@@ -3993,7 +3993,7 @@ export class OrchestratorTaskService extends Service {
         pausedWithActiveWork: _pausedWithActiveWork,
         pausedAt: _pausedAt,
         ...metadata
-      } = spawned.task.metadata;
+      } = spawned.task.metadata ?? {};
       await this.store.updateTask(taskId, { metadata });
     };
     // A task interrupted mid-work (pausedWithActiveWork) had its subprocesses
