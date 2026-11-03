@@ -1,0 +1,10 @@
+{
+  "name": "@valhalla/brain-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Read-only Valhalla Brain signal API. Not financial advice.",
+  "scripts": {
+    "test": "bun test ./src/score.test.ts"
+  }
+}

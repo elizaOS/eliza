@@ -1,0 +1,27 @@
+name = "valhalla-brain-api"
+main = "src/worker.ts"
+compatibility_date = "2026-11-03"
+
+# TODO: TJ creates a free Cloudflare account, runs `wrangler login`,
+# then `wrangler d1 create valhalla-brain` and `wrangler kv namespace create VALHALLA_KV`.
+# Paste the ids below. Do not commit Helius, Birdeye, or API key secrets.
+# Set them with `wrangler secret put HELIUS_API_KEY` and `wrangler secret put BIRDEYE_API_KEY`.
+# Also set SESSION_SECRET, GOOGLE_CLIENT_ID, and ADMIN_EMAILS.
+# ADMIN_EMAILS is a comma-separated list of Google emails. Do not commit a real address.
+# Optional: LEMONSQUEEZY_API_KEY for admin MRR, LEMONSQUEEZY_PORTAL_URL for Manage billing.
+# Crypto checkout polls Solana with HELIUS_API_KEY. If that secret is empty, the worker uses the public RPC.
+# The receive address is read from the signed monetization.json. There is no wallet private key.
+# Point app.valhalla-app.xyz at this worker so the login cookie stays on that host.
+# TODO: TJ creates the free Cloudflare account and the DNS CNAME.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "valhalla-brain"
+database_id = "TODO-TJ-FREE-ACCOUNT"
+
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[kv_namespaces]]
+binding = "KV"
+id = "TODO-TJ-FREE-ACCOUNT"

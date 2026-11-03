@@ -1,0 +1,78 @@
+openapi: 3.0.3
+info:
+  title: Valhalla Brain API
+  version: 0.1.0
+  description: Read-only signal scores. Informational only. Not financial advice. No profit promise.
+paths:
+  /v1/health:
+    get:
+      summary: Service health
+      responses:
+        "200":
+          description: OK
+  /v1/score/{mint}:
+    get:
+      summary: Signal score and risk flags for one mint
+      parameters:
+        - in: path
+          name: mint
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Score
+        "401":
+          description: Missing or unknown API key
+  /v1/score/batch:
+    post:
+      summary: Score up to 20 mints
+      responses:
+        "200":
+          description: Scores
+  /v1/wallet/{pubkey}/summary:
+    get:
+      summary: Public wallet summary
+      parameters:
+        - in: path
+          name: pubkey
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Public data only
+  /v1/trending:
+    get:
+      summary: Trending list when an upstream key is configured
+      responses:
+        "200":
+          description: List
+  /v1/usage:
+    get:
+      summary: Calls used today for this key. This read does not count as a call.
+      responses:
+        "200":
+          description: Usage
+        "429":
+          description: Daily plan limit reached
+  /v1/billing/lemon:
+    post:
+      summary: Lemon Squeezy webhook. Updates the plan for a hashed key. Does not trade.
+      parameters:
+        - in: header
+          name: X-Signature
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Plan updated
+        "401":
+          description: Bad signature
+        "404":
+          description: Signing secret is not set
+components:
+  securitySchemes:
+    apiKey:
+      type: http
+      scheme: bearer
+security:
+  - apiKey: []

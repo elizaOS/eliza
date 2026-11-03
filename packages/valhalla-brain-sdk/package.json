@@ -1,0 +1,8 @@
+{
+  "name": "@valhalla/brain-sdk",
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Client for the read-only Valhalla Brain API.",
+  "main": "src/index.ts",
+  "types": "src/index.ts"
+}
