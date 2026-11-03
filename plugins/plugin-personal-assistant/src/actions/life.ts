@@ -47,6 +47,7 @@ import {
   applyGroundedActionReply,
   ElizaError,
   extractUserText,
+  getUserMessageText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
@@ -6227,7 +6228,7 @@ async function runLifeOperationHandlerInner(
     if (internalOp === "create_goal") {
       const goalCreateConfirmed =
         createConfirmed &&
-        isExplicitLifeCreateConfirmation(messageText(message));
+        isExplicitLifeCreateConfirmation(getUserMessageText(message));
       const deferredGoalDraft =
         reuseDeferredDraft && deferredDraft?.operation === "create_goal"
           ? deferredDraft
