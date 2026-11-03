@@ -94,3 +94,25 @@ export async function listActivityEvents(
     .map(mapRow)
     .filter((row): row is ActivityEventRow => row !== null);
 }
+
+/**
+ * The newest event strictly before `beforeIso`. A report window reads it to
+ * learn which app was already in front when the window opened.
+ */
+export async function getLatestActivityEventBefore(
+  runtime: IAgentRuntime,
+  agentId: string,
+  beforeIso: string,
+): Promise<ActivityEventRow | null> {
+  const rows = await executeRawSql(
+    runtime,
+    `SELECT id, agent_id, observed_at, event_kind, bundle_id, app_name, window_title
+     FROM app_lifeops.life_activity_events
+     WHERE agent_id = ${sqlQuote(agentId)}
+       AND observed_at < ${sqlQuote(beforeIso)}
+     ORDER BY observed_at DESC
+     LIMIT 1`,
+  );
+  const row = rows[0];
+  return row ? mapRow(row) : null;
+}
