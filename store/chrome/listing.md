@@ -26,8 +26,8 @@ Chrome on Android cannot install extensions. This listing is for desktop Chrome.
 
 ## How to install before the store review
 
-The website button says Add to Chrome. Until `CHROME_WEB_STORE_URL` is set, that button opens https://valhalla-app.xyz/chrome/ with three pictured steps. It does not download the zip by itself.
+The website button says Add to Chrome. Until `CHROME_WEB_STORE_URL` is set, that button opens https://valhalla-app.xyz/extension/ with a pictured guide. It does not download a file by itself.
 
-1. Open chrome://extensions.
-2. Turn on Developer mode.
-3. Unzip Valhalla-Chrome-Extension.zip and choose Load unpacked.
+1. Download the folder. Open it until you see manifest.json.
+2. Open chrome://extensions and turn on Developer mode.
+3. Choose Load unpacked and select that folder. Do not select the zip.

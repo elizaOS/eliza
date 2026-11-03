@@ -11,8 +11,8 @@
     main { padding: 0 12px 12px; }
     p, label { margin: 8px 0; }
     .note { color: #93a4ba; }
-    input, button { width: 100%; min-height: 36px; box-sizing: border-box; }
-    button { background: #e8b65a; color: #07080b; border: 0; font-weight: 700; }
+    input, button, a.btn { width: 100%; min-height: 36px; box-sizing: border-box; }
+    button, a.btn { display: block; margin: 8px 0; background: #e8b65a; color: #07080b; border: 0; font-weight: 700; text-align: center; text-decoration: none; line-height: 36px; }
     #status { white-space: pre-wrap; }
   </style>
 </head>
@@ -26,15 +26,13 @@
     <label>Desk address <input id="desk" value="http://127.0.0.1:8787" autocomplete="off"></label>
     <label>Access code, if the desk asks <input id="code" type="password" autocomplete="off"></label>
     <button id="pair" type="button">Show status</button>
-    <button id="open-phantom" type="button">Connect Phantom</button>
-    <button id="open-solflare" type="button">Connect Solflare</button>
-    <p id="status" role="status">Not paired. Demo data is not shown until the desk answers.</p>
-    <label>Brain API URL <input id="brain-api" placeholder="https://" autocomplete="off"></label>
-    <label>Brain API key <input id="brain-key" type="password" autocomplete="off"></label>
+    <a id="open-phantom" class="btn" href="https://phantom.app/" target="_blank" rel="noopener">Connect Phantom</a>
+    <a id="open-solflare" class="btn" href="https://solflare.com/" target="_blank" rel="noopener">Connect Solflare</a>
+    <p id="status" role="status">Not paired. The desk on this computer has to answer before status is shown.</p>
     <label>Brain score for a mint <input id="mint" autocomplete="off"></label>
     <button id="score" type="button">Score</button>
     <p id="score-out" class="note"></p>
-    <button id="go-pro" type="button">Go Pro</button>
+    <a id="go-pro" class="btn" href="https://valhalla.lemonsqueezy.com/checkout/buy/4f959b69-81ca-45ca-8c3d-c80347b6b439?checkout%5Bcustom%5D%5Bsource%5D=extension" target="_blank" rel="noopener">Go Pro</a>
     <p class="note">$9.99/mo launch price. Not a promise of profit.</p>
     <p class="note">Not financial advice. Crypto is risky.</p>
   </main>

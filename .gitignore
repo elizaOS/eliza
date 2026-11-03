@@ -298,6 +298,7 @@ packages/inference/omnivoice.cpp/
 
 # Archive files
 *.zip
+!store/chrome/valhalla-extension-store.zip
 *.tar
 *.tar.gz
 *.tgz

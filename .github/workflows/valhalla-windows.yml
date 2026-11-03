@@ -96,7 +96,7 @@ jobs:
           Windows: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.exe
           Windows MSI: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.msi
           Android: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-phone.apk
-          Chrome steps: https://valhalla-app.xyz/chrome/
+          Chrome steps: https://valhalla-app.xyz/extension/
           Chrome folder: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip
 
           Windows may say the publisher is unknown while this file is unsigned. Choose More info, then Run anyway.

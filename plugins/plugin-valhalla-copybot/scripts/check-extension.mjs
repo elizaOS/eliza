@@ -30,6 +30,13 @@ execFileSync("unzip", ["-q", packed, "-d", unpacked]);
 
 const manifest = JSON.parse(await readFile(path.join(unpacked, "manifest.json"), "utf8"));
 if (manifest.manifest_version !== 3) fail("manifest is not MV3");
+const permissions = manifest.permissions || [];
+if (permissions.some((name) => name !== "storage")) fail("permissions are wider than storage");
+const hosts = manifest.host_permissions || [];
+if (hosts.some((host) => !/^http:\/\/(127\.0\.0\.1|localhost)\//.test(host))) {
+  fail("host permission is not limited to this computer");
+}
+if (manifest.optional_host_permissions) fail("optional host permissions are set");
 if (manifest.background?.service_worker !== "background.js") fail("service worker missing");
 if (manifest.action?.default_popup !== "popup.html") fail("popup missing");
 const popupHtml = await readFile(path.join(unpacked, "popup.html"), "utf8");
@@ -66,6 +73,12 @@ if (!response || !response.ok()) fail("Popup did not load");
 await popup.waitForSelector("h1");
 const title = await popup.locator("h1").innerText();
 if (!title.includes("VALHALLA")) fail("Popup title missing");
+if (process.env.SAVE_SHOTS) {
+  const shotDir = path.resolve(extensionDir, "..", "..", "..", "store", "chrome");
+  const popupShot = path.join(shotDir, "popup-raw.png");
+  await popup.screenshot({ path: popupShot });
+  console.log("Saved popup", popupShot);
+}
 const csp = response.headers()["content-security-policy"] ?? "";
 if (csp && /script-src[^;]*unsafe-eval/.test(csp)) fail("popup CSP allows unsafe-eval");
 if (errors.length) fail(errors.join("\n"));
