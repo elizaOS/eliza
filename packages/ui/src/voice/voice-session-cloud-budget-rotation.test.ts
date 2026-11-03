@@ -1,6 +1,7 @@
 import { afterEach, expect, test, vi } from "vitest";
 import {
   createVoiceSessionClient,
+  VoiceSessionRefusedError,
   type VoiceSessionClient,
   type VoiceWebSocketLike,
 } from "./voice-session-client";
@@ -726,3 +727,23 @@ test("hard loss marks unsettled turn unknown without replaying it",async()=>{
 test("normal Stop carries explicit current generation",async()=>{const h=harness(false,undefined,true);await h.client.start();await h.settle();await h.client.stop();expect(h.sockets[0].sent.find((v)=>(v as any).t==="bye")).toMatchObject({intent:{version:1,kind:"user_stop",generation:"session-1"}});});
 test("budget rotation names only its exact prepared successor",async()=>{const h=harness(false,undefined,true);await h.client.start();await h.settle();await h.advance(50000);expect(h.sockets[0].sent.find((v)=>(v as any).t==="bye")).toMatchObject({intent:{version:1,kind:"budget_rotation",generation:"session-1",successorSessionId:"session-2"}});});
 test("legacy host Stop stays bare and makes no typed cancellation claim",async()=>{const h=harness();await h.client.start();await h.settle();await h.client.stop();expect(h.sockets[0].sent.find((v)=>(v as any).t==="bye")).toEqual({t:"bye"});});
+
+test("pre-live retirement refusal has no capture, then a later explicit start works", async () => {
+  const h = harness(); h.holdReady(); await h.client.start(); await h.settle();
+  h.sockets[0].frame({ t: "error", code: "voice_retirement_unconfirmed", retryable: false }); await h.settle();
+  expect(h.errors[0]).toBeInstanceOf(VoiceSessionRefusedError); expect(h.captures).toBe(0); expect(h.mints).toBe(1);
+  await (h.errors[0] as VoiceSessionRefusedError).captureReleased;
+  h.releaseReady(); await h.client.start(); await h.settle();
+  expect(h.mints).toBe(2); expect(h.activeCaptures).toBe(1);
+});
+test("a live retirement refusal recovers with the existing bounded reconnect path", async () => {
+  const h = harness(); await h.client.start(); await h.settle(); expect(h.activeCaptures).toBe(1);
+  h.holdReady(); h.sockets[0].close(); await h.settle(); await h.advance(1000);
+  const refused = h.sockets.at(-1)!;
+  refused.frame({ t: "error", code: "voice_retirement_unconfirmed", retryable: false }); await h.settle();
+  h.releaseReady(); await h.advance(5000); await h.settle();
+  expect(h.mints).toBeGreaterThan(2); expect(h.activeCaptures).toBe(1); expect(h.maxCaptures).toBe(1);
+  expect(h.errors).toHaveLength(0);
+  refused.frame({ t: "error", code: "voice_retirement_unconfirmed", retryable: false }); await h.settle();
+  expect(h.activeCaptures).toBe(1); // A stale socket cannot stop the recovered capture.
+});

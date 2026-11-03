@@ -928,7 +928,8 @@ for(const fault of ["retire-reject","stop","owner","expiry","runtime"] as const)
   release();if(fault!=="stop"){const message=JSON.parse(String((await ended)[0]));expect(message.t).not.toBe("ready");}else await new Promise(resolve=>setTimeout(resolve,20));
   expect(opened).toBe(1);
   if(fault==="retire-reject"){
-   const unlinked=await mint();const blocked=await connect(unlinked,unlinked.token,false);expect(blocked.frame.t).not.toBe("ready");expect(opened).toBe(1);blocked.ws.close();
+   expect(JSON.parse(String((await ended)[0])).code).toBe("voice_retirement_unconfirmed");
+   const unlinked=await mint();const blocked=await connect(unlinked,unlinked.token,false);expect(blocked.frame.t).not.toBe("ready");expect(blocked.frame.code).toBe("voice_retirement_unconfirmed");expect(opened).toBe(1);blocked.ws.close();
   }
   rejectRetirement=false;await host.close();
   old.ws.close();ws.close();

@@ -72,6 +72,7 @@ export type RealtimeVoiceStartOutcome =
       message?: string;
     }
   | { kind: "error"; error: RealtimeVoiceError }
+  | { kind: "refused"; code: "voice_retirement_unconfirmed" }
   | { kind: "unavailable" };
 
 export type RealtimeVoiceFallbackReason =
@@ -141,6 +142,10 @@ export interface UseRealtimeVoiceSessionState {
    * This is not proof that a mint has succeeded.
    */
   available: boolean;
+  /** Terminal quiet refusal; callers must clear voice intent, never batch. */
+  refused: boolean;
+  /** Explicit mode gesture only; does not release a pending teardown fence. */
+  resetRefusal: () => void;
   /**
    * True only while the session is genuinely live: socket open, server `ready`
    * received, and the mic actually capturing. Never true merely because
@@ -301,6 +306,9 @@ export function useRealtimeVoiceSession(
     speaker,
   } = options;
 
+  const [refused, setRefused] = useState(false);
+  const refusedRef = useRef(false);
+  const resetRefusal = useCallback(() => { refusedRef.current = false; setRefused(false); }, []);
   const [status, setStatus] = useState<VoiceContinuousStatus>("idle");
   const [progressText, setProgressText] = useState<string>();
   const [transcriptPartial, setTranscriptPartial] = useState("");
@@ -472,6 +480,7 @@ export function useRealtimeVoiceSession(
     const { agentId: aId, conversationId: cId } = idsRef.current;
     if (!aId || !cId) return { kind: "unavailable" };
 
+    resetRefusal();
     startingRef.current = true;
     micOwnedRef.current = false;
     setMicrophoneMuted(false);
@@ -543,6 +552,9 @@ export function useRealtimeVoiceSession(
     const settleQuietRefusal = (refusal: VoiceSessionRefusedError): Promise<void> => {
       if (teardownRef.current) return teardownRef.current;
       clearReadyTimer();
+      refusedRef.current = true;
+      setRefused(true);
+      identityRestartPendingRef.current = false;
       setError(null);
       setConnecting(false);
       setNeedsUnlock(false);
@@ -552,13 +564,13 @@ export function useRealtimeVoiceSession(
           if (teardownRef.current === pending) teardownRef.current = null;
           if (isCurrent()) {
             setActive(false);
-            resolveStartOutcome(gen, { kind: "unavailable" });
+            resolveStartOutcome(gen, { kind: "refused", code: "voice_retirement_unconfirmed" });
           }
         },
         (error) => {
           // Failed shutdown is not release evidence. Keep both references so
           // another Talk, Stop, or identity change cannot bypass this fence.
-          if (isCurrent()) resolveStartOutcome(gen, { kind: "unavailable" });
+          if (isCurrent()) resolveStartOutcome(gen, { kind: "refused", code: "voice_retirement_unconfirmed" });
           throw error;
         },
       );
@@ -752,6 +764,7 @@ export function useRealtimeVoiceSession(
     applyServerEventToTranscript,
     clearReadyTimer,
     flagEnabled,
+    resetRefusal,
     resolveStartOutcome,
   ]);
 
@@ -844,7 +857,7 @@ export function useRealtimeVoiceSession(
       const { agentId: nextAgentId, conversationId: nextConversationId } =
         idsRef.current;
       identityRestartPendingRef.current = false;
-      if (flagEnabled && nextAgentId && nextConversationId) {
+      if (!refusedRef.current && flagEnabled && nextAgentId && nextConversationId) {
         await start();
       }
     })();
@@ -856,6 +869,8 @@ export function useRealtimeVoiceSession(
   return useMemo<UseRealtimeVoiceSessionState>(
     () => ({
       available,
+      refused,
+      resetRefusal,
       active,
       connecting,
       status,
@@ -878,6 +893,8 @@ export function useRealtimeVoiceSession(
     }),
     [
       available,
+      refused,
+      resetRefusal,
       active,
       connecting,
       status,

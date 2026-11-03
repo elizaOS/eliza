@@ -693,6 +693,11 @@ export function createSelfHostedVoice(
               finally { await retire(); }
             };
             try {
+              const awaitRetirement = async (retire: (() => Promise<void>) | undefined) => {
+                if (!retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
+                try { await retire(); }
+                catch (cause) { throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed", { cause }); }
+              };
               if (acquisitionGate) {
                 await acquisitionGate.previous;
                 if (!(await active(ticket)) || providerLifetime.signal.aborted || ticket.expiresAt <= now())
@@ -700,7 +705,7 @@ export function createSelfHostedVoice(
                 const prior = acquisitionGate.slot.current;
                 if (prior && prior !== ticket) {
                   if (!prior.retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
-                  await prior.retire();
+                  await awaitRetirement(prior.retire);
                 }
                 if (!(await active(ticket)) || providerLifetime.signal.aborted || ticket.expiresAt <= now())
                   throw new VoiceAdmissionError(401, "voice_session_revoked");
@@ -714,7 +719,7 @@ export function createSelfHostedVoice(
                 if (!retirePredecessor) throw new VoiceAdmissionError(409, "voice_predecessor_unavailable");
                 if (ticket.predecessor.admissionClosed || ticket.predecessor.successorId !== ticket.claims.sessionId)
                   throw new VoiceAdmissionError(403, "voice_rotation_successor_mismatch");
-                await retirePredecessor();
+                await awaitRetirement(retirePredecessor);
                 ticket.predecessor = undefined;
                 if (!(await active(ticket)) || providerLifetime.signal.aborted ||
                     tickets.get(ticket.claims.sessionId) !== ticket ||
@@ -730,12 +735,12 @@ export function createSelfHostedVoice(
                   if (!previous.retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
                   previous.admissionClosed = true;
                   if (previous.successorId && previous.successorId !== ticket.claims.sessionId) revoke(previous.successorId);
-                  await previous.retire();
+                  await awaitRetirement(previous.retire);
                 }
               }
               for (const pending of retiringCloudTickets) {
                 if (!pending.retire) throw new VoiceAdmissionError(503, "voice_retirement_unconfirmed");
-                await pending.retire();
+                await awaitRetirement(pending.retire);
               }
               if (!(await active(ticket)) || providerLifetime.signal.aborted ||
                   tickets.get(ticket.claims.sessionId) !== ticket || ticket.expiresAt <= now())

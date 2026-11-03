@@ -324,6 +324,7 @@ export function createVoiceSessionClient(
   // Whether THIS lifecycle (since start()) ever reached server `ready` —
   // selects the pre-live vs live reconnect budget.
   let everLiveThisLifecycle = false;
+  let retirementBlocked = false;
   let rotationTimer: ReturnType<typeof setTimeout> | null = null;
   // Epoch expiry of the CURRENT minted token; rotation never fires past it
   // (the server has already severed — the reactive recovery path owns it).
@@ -638,6 +639,7 @@ export function createVoiceSessionClient(
     if (!isLifecycleCurrent(generation) || ws !== socket) return;
     switch (event.t) {
       case "ready":
+        retirementBlocked = false;
         uiContextSupported = event.uiContext === true;
         playbackCompletionSupported = event.playbackCompletion === true;
         lastUiContext = undefined;
@@ -705,6 +707,13 @@ export function createVoiceSessionClient(
         break;
       case "error":
         if (!event.retryable) {
+          if (event.code === "voice_retirement_unconfirmed" && everLiveThisLifecycle) {
+            // Recovery and rotation can retry the same cleanup barrier without
+            // opening providers until it confirms. Retain the live budget.
+            retirementBlocked = true;
+            requestRecovery("retirement_unconfirmed", generation, socket);
+            break;
+          }
           if (NON_RECOVERABLE_SERVER_ERROR_CODES.has(event.code)) {
             // Re-minting cannot help (quota) or would defeat the server's
             // intent (revoke). Surface the terminal cause and stop cleanly.
@@ -713,7 +722,11 @@ export function createVoiceSessionClient(
             // typed refusal carries teardown completion so idle is not handed
             // back to the caller while the old capture is still retiring.
             const captureReleased = stop();
-            emitError(new VoiceSessionRefusedError(event.code, captureReleased));
+            emitError(event.code === "voice_retirement_unconfirmed"
+              ? new VoiceSessionRefusedError(event.code, captureReleased)
+              : new Error(event.code === "insufficient_credits"
+                ? "Voice needs more Eliza Cloud credits. Add credits, then try again."
+                : `voice session ended: ${event.code}`));
             void captureReleased.catch(() => {});
             break;
           }
@@ -987,6 +1000,16 @@ export function createVoiceSessionClient(
     if (!isLifecycleCurrent(generation) || intentionalClose || ws !== socket) {
       return;
     }
+    if (recoveryPromise) {
+      // A new socket can refuse before the previous recovery task unwinds.
+      // Keep its identity and retry after that task; do not drop the refusal.
+      const pending = recoveryPromise;
+      void pending.then(() => {
+        if (recoveryPromise === pending) recoveryPromise = null;
+        requestRecovery(reason, generation, socket, recoveryOptions);
+      });
+      return;
+    }
     // Detach first. A fatal server frame commonly causes the same socket to
     // emit `close`; its later callback then fails the identity check and cannot
     // consume a second reconnect attempt.
@@ -1075,8 +1098,11 @@ export function createVoiceSessionClient(
           `not_reached(reconnect_exhausted:${currentReason})`,
           state.traceId,
         );
-        emitError(new Error(`voice session lost: ${currentReason}`));
-        await stop();
+        const captureReleased = stop();
+        emitError(retirementBlocked
+          ? new VoiceSessionRefusedError("voice_retirement_unconfirmed", captureReleased)
+          : new Error(`voice session lost: ${currentReason}`));
+        await captureReleased;
         return;
       }
       if (budgeted) reconnectsUsed += 1;
@@ -1122,10 +1148,11 @@ export function createVoiceSessionClient(
         // Give-up on the recovery path is always transport-shaped: the session
         // was live, so the caller's mic control must stay armed for retry
         // rather than latching realtime off on a mint/consent error subtype.
-        emitError(
-          new Error(`voice session lost: ${currentReason}`, { cause: err }),
-        );
-        await stop();
+        const captureReleased = stop();
+        emitError(retirementBlocked
+          ? new VoiceSessionRefusedError("voice_retirement_unconfirmed", captureReleased)
+          : new Error(`voice session lost: ${currentReason}`, { cause: err }));
+        await captureReleased;
         return;
       }
     }
@@ -1233,6 +1260,7 @@ export function createVoiceSessionClient(
       reconnectsUsed = 0;
       lastLiveAtMs = null;
       everLiveThisLifecycle = false;
+      retirementBlocked = false;
       microphoneMuted = false;
       setState({ ...INITIAL_VOICE_SESSION_STATE, phase: "connecting" });
       // Create playback up front so an early user-gesture unlock is possible and
