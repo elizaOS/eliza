@@ -35,9 +35,10 @@ describe("Calendar discovery timing-only spans",()=>{
     const failure=Error("private source failure");const {service,calls}=fixture(failure);
     const timer=new InferenceTurnTimer({turnId:"diagnostic-failure",label:"test"});
     await expect(runWithInferenceTiming(timer,()=>service.discoverCalendars(url,request))).rejects.toBe(failure);
-    expect(calls).toEqual(["google"]);
+    // Probes start together; the first failure in probe order still decides.
+    expect(calls).toEqual(["google","microsoft"]);
     const spans=timer.summary().spans.filter(s=>s.name.startsWith("calendar:discovery:"));
-    expect(spans.map(s=>s.name)).toEqual(["calendar:discovery:google-accounts"]);
+    expect(spans.map(s=>s.name)).toEqual(["calendar:discovery:google-accounts","calendar:discovery:microsoft-accounts"]);
     expect(JSON.stringify(spans)).not.toContain("private source failure");
   });
 });

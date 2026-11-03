@@ -3779,19 +3779,6 @@ export class CalendarService extends Service {
       isMicrosoftCalendarGrantId(request?.grantId) ||
       isAppleCalendarGrant(request?.grantId) ||
       isElizaCalendarGrant(request?.grantId);
-    const statuses = targetsNonGoogleProvider
-      ? []
-      : await timeInferenceSpan("calendar:discovery:google-accounts", () =>
-          this.gate.getGoogleConnectorAccounts(requestUrl, side),
-        );
-    const grants = statuses
-      .filter(hasGoogleConnectorGrant)
-      .map((status) => status.grant)
-      .filter((grant) =>
-        request?.grantId ? grant.id === request.grantId : true,
-      )
-      .filter((grant) => (mode ? grant.mode === mode : true))
-      .filter((grant) => grant.capabilities.includes("google.calendar.read"));
     const summaries: LifeOpsCalendarSummary[] = [];
     const failures: LifeOpsCalendarSourceHealth[] = [];
     if (isElizaCalendarGrant(request?.grantId)) assertCalendarRecordsAllowed();
@@ -3801,33 +3788,100 @@ export class CalendarService extends Service {
     ) {
       summaries.push(elizaCalendarSummary());
     }
-    if (grants.length > 0) {
-      const listCalendars = requireGoogleServiceMethod(
-        this.runtime,
-        "listCalendars",
-      );
-      for (const grant of grants) {
+    // Cost: the five source probes start together (at most five in flight)
+    // and make the same calls as before; accounts inside a probe stay serial.
+    // Each settles alone into its own lists, taken afterwards in this order,
+    // so sources, failures and the first uncaught error keep the serial order.
+    const probe = async (
+      read: (
+        found: LifeOpsCalendarSummary[],
+        failed: LifeOpsCalendarSourceHealth[],
+      ) => Promise<void>,
+    ) => {
+      const found: LifeOpsCalendarSummary[] = [];
+      const failed: LifeOpsCalendarSourceHealth[] = [];
+      await read(found, failed);
+      return { found, failed };
+    };
+    for (const result of await Promise.allSettled([
+      probe(async (found, failed) => {
+        const statuses = targetsNonGoogleProvider
+          ? []
+          : await timeInferenceSpan("calendar:discovery:google-accounts", () =>
+              this.gate.getGoogleConnectorAccounts(requestUrl, side),
+            );
+        const grants = statuses
+          .filter(hasGoogleConnectorGrant)
+          .map((status) => status.grant)
+          .filter((grant) =>
+            request?.grantId ? grant.id === request.grantId : true,
+          )
+          .filter((grant) => (mode ? grant.mode === mode : true))
+          .filter((grant) =>
+            grant.capabilities.includes("google.calendar.read"),
+          );
+        if (grants.length === 0) return;
+        const listCalendars = requireGoogleServiceMethod(
+          this.runtime,
+          "listCalendars",
+        );
+        for (const grant of grants) {
+          try {
+            const entries = await timeInferenceSpan(
+              "calendar:discovery:google-calendars",
+              () =>
+                listCalendars({
+                  accountId: accountIdForGrant(grant),
+                }),
+            );
+            found.push(
+              ...entries.map((entry) =>
+                lifeOpsCalendarSummaryFromGoogle({ entry, grant }),
+              ),
+            );
+          } catch (error) {
+            // error-policy:J4 Feed discovery retains the failed source so a
+            // working second account is presented as partial, never complete.
+            const calendar = googleCalendarPlaceholderSummary(grant);
+            this.runtime.reportError("calendar:list-source", error, {
+              source: calendarSourceKey(calendar),
+            });
+            failed.push(
+              calendarSourceHealth({
+                calendar,
+                status: "error",
+                syncedAt: null,
+                error: calendarSourceError(error),
+              }),
+            );
+          }
+        }
+      }),
+      probe(async (found, failed) => {
+        if (
+          !shouldIncludeMicrosoftCalendar({ mode, grantId: request?.grantId })
+        )
+          return;
+        let microsoftAccounts: MicrosoftCalendarAccount[] = [];
         try {
-          const entries = await timeInferenceSpan(
-            "calendar:discovery:google-calendars",
+          microsoftAccounts = await timeInferenceSpan(
+            "calendar:discovery:microsoft-accounts",
             () =>
-              listCalendars({
-                accountId: accountIdForGrant(grant),
+              this.microsoftPort.listAccounts({
+                side,
+                grantId: request?.grantId,
               }),
           );
-          summaries.push(
-            ...entries.map((entry) =>
-              lifeOpsCalendarSummaryFromGoogle({ entry, grant }),
-            ),
-          );
         } catch (error) {
-          // error-policy:J4 Feed discovery retains the failed source so a
-          // working second account is presented as partial, never complete.
-          const calendar = googleCalendarPlaceholderSummary(grant);
-          this.runtime.reportError("calendar:list-source", error, {
+          // error-policy:J4 Microsoft discovery remains an explicit failed
+          // source so healthy Google/Apple accounts still produce a partial feed.
+          const calendar = microsoftDiscoveryPlaceholderSummary(
+            request?.grantId,
+          );
+          this.runtime.reportError("calendar:list-microsoft-accounts", error, {
             source: calendarSourceKey(calendar),
           });
-          failures.push(
+          failed.push(
             calendarSourceHealth({
               calendar,
               status: "error",
@@ -3836,211 +3890,205 @@ export class CalendarService extends Service {
             }),
           );
         }
-      }
-    }
-    if (shouldIncludeMicrosoftCalendar({ mode, grantId: request?.grantId })) {
-      let microsoftAccounts: MicrosoftCalendarAccount[] = [];
-      try {
-        microsoftAccounts = await timeInferenceSpan(
-          "calendar:discovery:microsoft-accounts",
-          () =>
-            this.microsoftPort.listAccounts({
-              side,
-              grantId: request?.grantId,
-            }),
-        );
-      } catch (error) {
-        // error-policy:J4 Microsoft discovery remains an explicit failed
-        // source so healthy Google/Apple accounts still produce a partial feed.
-        const calendar = microsoftDiscoveryPlaceholderSummary(request?.grantId);
-        this.runtime.reportError("calendar:list-microsoft-accounts", error, {
-          source: calendarSourceKey(calendar),
-        });
-        failures.push(
-          calendarSourceHealth({
-            calendar,
-            status: "error",
-            syncedAt: null,
-            error: calendarSourceError(error),
-          }),
-        );
-      }
-      if (
-        microsoftAccounts.length === 0 &&
-        isMicrosoftCalendarGrantId(request?.grantId)
-      ) {
-        const calendar = microsoftDiscoveryPlaceholderSummary(request?.grantId);
-        failures.push(
-          calendarSourceHealth({
-            calendar,
-            status: "disconnected",
-            syncedAt: null,
-            error: {
-              code: "MICROSOFT_CALENDAR_DISCONNECTED",
-              message:
-                "The selected Microsoft calendar account is not connected.",
-              retryable: true,
-            },
-          }),
-        );
-      }
-      for (const account of microsoftAccounts) {
         if (
-          !account.grant.capabilities.includes("microsoft.calendar.read_basic")
+          microsoftAccounts.length === 0 &&
+          isMicrosoftCalendarGrantId(request?.grantId)
         ) {
-          const calendar = microsoftCalendarPlaceholderSummary(account);
-          failures.push(
+          const calendar = microsoftDiscoveryPlaceholderSummary(
+            request?.grantId,
+          );
+          failed.push(
             calendarSourceHealth({
               calendar,
-              status: "error",
+              status: "disconnected",
               syncedAt: null,
               error: {
-                code: "MICROSOFT_CALENDAR_PERMISSION_MISSING",
+                code: "MICROSOFT_CALENDAR_DISCONNECTED",
                 message:
-                  "Microsoft Calendar discovery requires delegated Calendars.ReadBasic permission.",
-                retryable: false,
+                  "The selected Microsoft calendar account is not connected.",
+                retryable: true,
               },
             }),
           );
-          continue;
         }
-        try {
-          const calendars = await timeInferenceSpan(
-            "calendar:discovery:microsoft-calendars",
-            () => this.microsoftPort.listCalendars(account),
+        for (const account of microsoftAccounts) {
+          if (
+            !account.grant.capabilities.includes(
+              "microsoft.calendar.read_basic",
+            )
+          ) {
+            const calendar = microsoftCalendarPlaceholderSummary(account);
+            failed.push(
+              calendarSourceHealth({
+                calendar,
+                status: "error",
+                syncedAt: null,
+                error: {
+                  code: "MICROSOFT_CALENDAR_PERMISSION_MISSING",
+                  message:
+                    "Microsoft Calendar discovery requires delegated Calendars.ReadBasic permission.",
+                  retryable: false,
+                },
+              }),
+            );
+            continue;
+          }
+          try {
+            const calendars = await timeInferenceSpan(
+              "calendar:discovery:microsoft-calendars",
+              () => this.microsoftPort.listCalendars(account),
+            );
+            found.push(
+              ...calendars.map((calendar) =>
+                lifeOpsCalendarSummaryFromMicrosoft({ account, calendar }),
+              ),
+            );
+          } catch (error) {
+            // error-policy:J4 Per-account discovery failure remains visible and
+            // cannot turn another account's success into a complete feed.
+            const calendar = microsoftCalendarPlaceholderSummary(account);
+            this.runtime.reportError("calendar:list-microsoft-source", error, {
+              source: calendarSourceKey(calendar),
+            });
+            failed.push(
+              calendarSourceHealth({
+                calendar,
+                status: "error",
+                syncedAt: null,
+                error: calendarSourceError(error),
+              }),
+            );
+          }
+        }
+      }),
+      probe(async (found, failed) => {
+        if (
+          !shouldIncludeAppleCalendar({ mode, side, grantId: request?.grantId })
+        )
+          return;
+        const appleCalendars = await timeInferenceSpan(
+          "calendar:discovery:apple-calendars",
+          () =>
+            listNativeAppleCalendars({
+              agentId: this.agentId(),
+              side: "owner",
+              runtime: this.runtime,
+            }),
+        );
+        if (appleCalendars.ok) {
+          found.push(...appleCalendars.data);
+        } else if (
+          appleCalendars.reason === "native_error" ||
+          isAppleCalendarGrant(request?.grantId)
+        ) {
+          const calendar = appleCalendarPlaceholderSummary({
+            calendarId: "all",
+            side,
+          });
+          failed.push(
+            calendarSourceHealth({
+              calendar,
+              status:
+                appleCalendars.reason === "not_supported"
+                  ? "disconnected"
+                  : "error",
+              syncedAt: null,
+              error: {
+                code:
+                  appleCalendars.reason === "permission"
+                    ? "CALENDAR_PERMISSION_REQUIRED"
+                    : appleCalendars.reason === "not_supported"
+                      ? CALENDAR_SOURCE_UNSUPPORTED
+                      : "CALENDAR_SOURCE_ERROR",
+                message:
+                  appleCalendars.reason === "not_supported"
+                    ? `Apple Calendar is unavailable on ${appleCalendars.platform}.`
+                    : appleCalendars.reason === "permission"
+                      ? "Apple Calendar permission is required."
+                      : appleCalendars.message,
+                retryable: appleCalendars.reason !== "not_supported",
+              },
+            }),
           );
-          summaries.push(
-            ...calendars.map((calendar) =>
-              lifeOpsCalendarSummaryFromMicrosoft({ account, calendar }),
+        }
+      }),
+      probe(async (found) => {
+        if (
+          !shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })
+        )
+          return;
+        const icsSources = await timeInferenceSpan(
+          "calendar:discovery:ics-sources",
+          () => this.repo.listIcsCalendarSources(this.agentId()),
+        );
+        found.push(
+          ...icsSources
+            .filter((source) =>
+              request?.grantId ? source.id === request.grantId : true,
+            )
+            .map(icsCalendarSummary),
+        );
+      }),
+      probe(async (found, failed) => {
+        if (
+          !this.managedCalendar?.acceptsGrantId(request?.grantId) ||
+          side === "agent" ||
+          (mode && mode !== "cloud_managed")
+        )
+          return;
+        try {
+          signal?.throwIfAborted();
+          const managed = await timeInferenceSpan(
+            "calendar:discovery:managed-sources",
+            () => this.managedCalendar.sources(signal),
+          );
+          found.push(
+            ...managed.filter(
+              (calendar) =>
+                !request?.grantId || calendar.grantId === request.grantId,
             ),
           );
         } catch (error) {
-          // error-policy:J4 Per-account discovery failure remains visible and
-          // cannot turn another account's success into a complete feed.
-          const calendar = microsoftCalendarPlaceholderSummary(account);
-          this.runtime.reportError("calendar:list-microsoft-source", error, {
+          signal?.throwIfAborted();
+          const calendar = managedCalendarPlaceholder(request?.grantId);
+          const sourceError = calendarSourceError(error);
+          let diagnosticOnly = false;
+          try {
+            if (
+              error instanceof ElizaError &&
+              sourceError.code === "MANAGED_CALENDAR_READ_UNAVAILABLE"
+            ) {
+              const severity = Object.getOwnPropertyDescriptor(
+                error,
+                "severity",
+              );
+              diagnosticOnly =
+                !!severity &&
+                Object.hasOwn(severity, "value") &&
+                (severity.value === undefined ||
+                  severity.value === "ephemeral");
+            }
+          } catch {
+            // Unreadable classification stays on the normal reporting path.
+          }
+          this.runtime.reportError("calendar:list-managed-source", error, {
             source: calendarSourceKey(calendar),
+            ...(diagnosticOnly ? { diagnosticOnly: true } : {}),
           });
-          failures.push(
+          failed.push(
             calendarSourceHealth({
               calendar,
               status: "error",
               syncedAt: null,
-              error: calendarSourceError(error),
+              error: sourceError,
             }),
           );
         }
-      }
-    }
-    if (shouldIncludeAppleCalendar({ mode, side, grantId: request?.grantId })) {
-      const appleCalendars = await timeInferenceSpan(
-        "calendar:discovery:apple-calendars",
-        () =>
-          listNativeAppleCalendars({
-            agentId: this.agentId(),
-            side: "owner",
-            runtime: this.runtime,
-          }),
-      );
-      if (appleCalendars.ok) {
-        summaries.push(...appleCalendars.data);
-      } else if (
-        appleCalendars.reason === "native_error" ||
-        isAppleCalendarGrant(request?.grantId)
-      ) {
-        const calendar = appleCalendarPlaceholderSummary({
-          calendarId: "all",
-          side,
-        });
-        failures.push(
-          calendarSourceHealth({
-            calendar,
-            status:
-              appleCalendars.reason === "not_supported"
-                ? "disconnected"
-                : "error",
-            syncedAt: null,
-            error: {
-              code:
-                appleCalendars.reason === "permission"
-                  ? "CALENDAR_PERMISSION_REQUIRED"
-                  : appleCalendars.reason === "not_supported"
-                    ? CALENDAR_SOURCE_UNSUPPORTED
-                    : "CALENDAR_SOURCE_ERROR",
-              message:
-                appleCalendars.reason === "not_supported"
-                  ? `Apple Calendar is unavailable on ${appleCalendars.platform}.`
-                  : appleCalendars.reason === "permission"
-                    ? "Apple Calendar permission is required."
-                    : appleCalendars.message,
-              retryable: appleCalendars.reason !== "not_supported",
-            },
-          }),
-        );
-      }
-    }
-    if (shouldIncludeIcsCalendars({ mode, side, grantId: request?.grantId })) {
-      const icsSources = await timeInferenceSpan(
-        "calendar:discovery:ics-sources",
-        () => this.repo.listIcsCalendarSources(this.agentId()),
-      );
-      summaries.push(
-        ...icsSources
-          .filter((source) =>
-            request?.grantId ? source.id === request.grantId : true,
-          )
-          .map(icsCalendarSummary),
-      );
-    }
-    if (
-      this.managedCalendar?.acceptsGrantId(request?.grantId) &&
-      side !== "agent" &&
-      (!mode || mode === "cloud_managed")
-    ) {
-      try {
-        signal?.throwIfAborted();
-        const managed = await timeInferenceSpan(
-          "calendar:discovery:managed-sources",
-          () => this.managedCalendar.sources(signal),
-        );
-        summaries.push(
-          ...managed.filter(
-            (calendar) =>
-              !request?.grantId || calendar.grantId === request.grantId,
-          ),
-        );
-      } catch (error) {
-        signal?.throwIfAborted();
-        const calendar = managedCalendarPlaceholder(request?.grantId);
-        const sourceError = calendarSourceError(error);
-        let diagnosticOnly = false;
-        try {
-          if (
-            error instanceof ElizaError &&
-            sourceError.code === "MANAGED_CALENDAR_READ_UNAVAILABLE"
-          ) {
-            const severity = Object.getOwnPropertyDescriptor(error, "severity");
-            diagnosticOnly =
-              !!severity &&
-              Object.hasOwn(severity, "value") &&
-              (severity.value === undefined || severity.value === "ephemeral");
-          }
-        } catch {
-          // Unreadable classification stays on the normal reporting path.
-        }
-        this.runtime.reportError("calendar:list-managed-source", error, {
-          source: calendarSourceKey(calendar),
-          ...(diagnosticOnly ? { diagnosticOnly: true } : {}),
-        });
-        failures.push(
-          calendarSourceHealth({
-            calendar,
-            status: "error",
-            syncedAt: null,
-            error: sourceError,
-          }),
-        );
-      }
+      }),
+    ])) {
+      if (result.status === "rejected") throw result.reason;
+      summaries.push(...result.value.found);
+      failures.push(...result.value.failed);
     }
     signal?.throwIfAborted();
     const preferences = await timeInferenceSpan(
