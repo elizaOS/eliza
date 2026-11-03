@@ -44,6 +44,9 @@ describe("originalRequestsNotesDeletion", () => {
       "Delete the note about groceries; please read it instead",
       "Delete the note about groceries and show it instead",
       "Delete the note about groceries, read it to me instead",
+      "Delete the note about groceries, or rather read it to me instead",
+      "Delete the note about groceries, actually could you show it to me instead",
+      "Delete the note about groceries instead I'd like you to read it aloud",
     ];
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
   });
@@ -54,5 +57,15 @@ describe("originalRequestsNotesDeletion", () => {
       "Delete the note about groceries and show it to me, with every attached receipt and every revision kept for the yearly compliance audit, instead",
     ];
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
+  });
+
+  it("admits a contrastive deletion whose wording only mentions read or show", () => {
+    const requests = [
+      "Delete the note about show times instead of keeping the draft",
+      "Delete the note I already read instead of archiving it",
+      "Delete the note about read receipts instead of the backup",
+      "Delete the note I just read instead of the old one",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
   });
 });
