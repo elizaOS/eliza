@@ -2640,6 +2640,76 @@ describe("Stage 1 response format", () => {
     },
   );
 
+  // A withheld pending acknowledgment draft is logged by gate only, never
+  // with its text, and only on a turn that takes an acknowledgment.
+  const viewPlusWorkDraft =
+    "Let me open Calendar and take another shot at the rename.";
+  it.each([
+    {
+      replyText: viewPlusWorkDraft,
+      replyEffectStatus: "pending",
+      acknowledgmentTurn: true,
+      gates: ["ack-grammar"],
+    },
+    {
+      replyText: "Let me open Calendar.",
+      replyEffectStatus: "pending",
+      acknowledgmentTurn: true,
+      gates: [],
+    },
+    {
+      replyText: viewPlusWorkDraft,
+      replyEffectStatus: "pending",
+      acknowledgmentTurn: false,
+      gates: [],
+    },
+    {
+      replyText: viewPlusWorkDraft,
+      replyEffectStatus: "none",
+      acknowledgmentTurn: true,
+      gates: [],
+    },
+  ])(
+    "logs a withheld acknowledgment by gate only: $replyText ($replyEffectStatus, acknowledgment turn $acknowledgmentTurn)",
+    async ({ replyText, replyEffectStatus, acknowledgmentTurn, gates }) => {
+      const runtime = makeRuntime([
+        stage1Response({
+          contexts: ["general"],
+          replyText,
+          extra: { requiresTool: true, replyEffectStatus },
+        }),
+        JSON.stringify({
+          thought: "Finished the check.",
+          toolCalls: [],
+          messageToUser: "I checked the request.",
+        }),
+      ]);
+      const message = makeMessage();
+      await runV5MessageRuntimeStage1({
+        runtime,
+        message,
+        state: makeState(),
+        responseId: "00000000-0000-0000-0000-000000000005" as UUID,
+        ...(acknowledgmentTurn
+          ? { onPlanningAcknowledgment: vi.fn() }
+          : { onResponseHandlerEarlyReply: vi.fn() }),
+      });
+      const withheld = (
+        runtime.logger.info as ReturnType<typeof vi.fn>
+      ).mock.calls.filter(
+        ([, text]) => text === "[message] Planning acknowledgment withheld",
+      );
+      expect(withheld.map(([fields]) => fields)).toEqual(
+        gates.map((gate) => ({
+          src: "service:message",
+          messageId: message.id,
+          gate,
+        })),
+      );
+      expect(JSON.stringify(withheld)).not.toMatch(/calendar|rename/iu);
+    },
+  );
+
   it.each([
     { text: "Hi!", replyEffectStatus: "none" },
     {

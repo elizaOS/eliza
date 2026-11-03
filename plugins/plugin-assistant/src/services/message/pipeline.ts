@@ -1052,6 +1052,12 @@ export async function runV5MessageRuntimeStage1(
       const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
       earlyReplyText =
         visibleProgress.kind === "text" ? visibleProgress.text : "";
+      // A withheld acknowledgment draft is logged by gate only, never with
+      // its text, so a silent early turn can be explained from the log.
+      const pendingAcknowledgmentDraft =
+        Boolean(args.onPlanningAcknowledgment) &&
+        prePatchStageOneReplyEffectStatus === "pending" &&
+        earlyReplyText.trim().length > 0;
       // A pending draft is not a read result. The transient acknowledgement
       // keeps the model's forward-looking wording; the durable early reply
       // stays whole-reply progress. Answer-like text (including progress plus
@@ -1063,8 +1069,18 @@ export async function runV5MessageRuntimeStage1(
             ? replyIsClaimSafeAcknowledgment
             : replyClaimsInProgressWork
         )(earlyReplyText)
-      )
+      ) {
+        if (pendingAcknowledgmentDraft)
+          args.runtime.logger?.info?.(
+            {
+              src: "service:message",
+              messageId: args.message.id,
+              gate: "ack-grammar",
+            },
+            "[message] Planning acknowledgment withheld",
+          );
         earlyReplyText = "";
+      }
       const earlyReplyEgressDecision = evaluatePlannedReplyEgress({
         currentScope: {
           agentId: args.runtime.agentId,
@@ -1084,6 +1100,16 @@ export async function runV5MessageRuntimeStage1(
         // cannot ship. Drop the early reply entirely — the delivery floor
         // must not manufacture a substitute ack; the planner's final reply
         // (or the final-path ack fallback) owns this turn's delivery.
+        if (pendingAcknowledgmentDraft && earlyReplyText.length > 0)
+          args.runtime.logger?.info?.(
+            {
+              src: "service:message",
+              messageId: args.message.id,
+              gate: "ack-egress",
+              kind: earlyReplyEgressDecision.kind,
+            },
+            "[message] Planning acknowledgment withheld",
+          );
         earlyReplyText = "";
       }
     }
