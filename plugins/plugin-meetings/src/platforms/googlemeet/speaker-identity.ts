@@ -103,6 +103,14 @@ export class VoteLockTable {
     this.locked.delete(track);
   }
 
+  /** Drop every vote for `name` (participant left before their track locked). */
+  forgetName(name: string): void {
+    for (const [track, byName] of this.votes) {
+      byName.delete(name);
+      if (byName.size === 0) this.votes.delete(track);
+    }
+  }
+
   clear(): void {
     this.votes.clear();
     this.locked.clear();
@@ -199,7 +207,10 @@ export class GoogleSpeakerIdentity {
   private roster = new Map<string, RosterEntry>();
   private rosterTimer: ReturnType<typeof setInterval> | null = null;
   private readonly startedAt = Date.now();
-  /** First audio of each unmapped track: the start of its fallback window. */
+  /**
+   * First audio of each unmapped track since the last departure: the start of
+   * its fallback window.
+   */
   private readonly unmappedSinceMs = new Map<number, number>();
 
   constructor(
@@ -292,10 +303,13 @@ export class GoogleSpeakerIdentity {
       if (!next.has(id)) {
         this.sink.participantLeft(id, nowMs);
         // A departed participant frees their track mapping for reuse.
-        for (const track of this.tracksNamed(id)) {
-          this.table.invalidate(track);
-          this.unmappedSinceMs.delete(track);
-        }
+        for (const track of this.tracksNamed(id)) this.table.invalidate(track);
+        // They may also have left from a track that never locked, and an
+        // unlocked track does not say whose it was: drop their votes and start
+        // every fallback window again, so the next speaker on a freed track
+        // gets the full window.
+        this.table.forgetName(id);
+        this.unmappedSinceMs.clear();
       }
     }
     this.roster = next;

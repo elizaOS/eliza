@@ -78,6 +78,38 @@ function makeService(
   return { fake, service, pipelines, pipelineOptions, adapters };
 }
 
+/**
+ * Join a Google Meet session and run its speaker identity against a scripted
+ * call page under fake timers. `chunkAt` delivers an audio chunk on a track at
+ * a time since the start; the roster poll runs every 3 s in between.
+ */
+async function startMeetSpeakerIdentity(names: string[]) {
+  const adapter = new ScriptedAdapter("google_meet");
+  const { service, pipelines } = makeService([adapter]);
+  await service.requestJoin({ platform: "google_meet", meetingUrl: MEET_URL });
+  const botSession = await adapter.started;
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+  const start = Date.now();
+  const call = { names, speaking: [] as string[] };
+  const page = {
+    evaluate: async () => ({ names: call.names, speaking: call.speaking }),
+  } as unknown as Page;
+  const identity = new GoogleSpeakerIdentity(page, botSession.sink, "Eliza");
+  identity.start();
+  return {
+    call,
+    named: pipelines[0].named,
+    chunkAt: async (track: string, atMs: number) => {
+      await vi.advanceTimersByTimeAsync(start + atMs - Date.now());
+      await identity.observeAudio(track);
+    },
+    stop: () => {
+      identity.stop();
+      vi.useRealTimers();
+    },
+  };
+}
+
 describe("MeetingService.requestJoin — validation", () => {
   it("rejects unrecognizable URLs", async () => {
     const { service } = makeService();
@@ -761,6 +793,42 @@ describe("MeetingService — roster, transcripts, listing", () => {
       expect(pipelines[0].named.get("1")).toBe("Carol");
     } finally {
       vi.useRealTimers();
+    }
+  });
+
+  it("gives a Google Meet track freed before it locked a new fallback window", async () => {
+    const meet = await startMeetSpeakerIdentity(["Alice", "Bob"]);
+    try {
+      // Bob says one word on track 1 with no ring and leaves; Carol joins.
+      await meet.chunkAt("1", 20_000);
+      meet.call.names = ["Alice", "Carol"];
+      // Carol talks on the freed track 20 s later. Her ring lights after
+      // her first two audio chunks.
+      await meet.chunkAt("1", 40_000);
+      await meet.chunkAt("1", 40_900);
+      meet.call.speaking = ["Carol"];
+      await meet.chunkAt("1", 41_800);
+      await meet.chunkAt("1", 42_700);
+      expect(meet.named.get("1")).toBe("Carol");
+    } finally {
+      meet.stop();
+    }
+  });
+
+  it("forgets a departed Google Meet speaker's vote on a track that never locked", async () => {
+    const meet = await startMeetSpeakerIdentity(["Alice", "Dave"]);
+    try {
+      // Dave's ring lights for his one chunk on track 2, then he leaves.
+      meet.call.speaking = ["Dave"];
+      await meet.chunkAt("2", 20_000);
+      expect(meet.named.get("2")).toBe("Dave");
+      meet.call.names = ["Alice", "Erin"];
+      // Erin talks on the freed track with her ring lit.
+      meet.call.speaking = ["Erin"];
+      await meet.chunkAt("2", 30_000);
+      expect(meet.named.get("2")).toBe("Erin");
+    } finally {
+      meet.stop();
     }
   });
 
