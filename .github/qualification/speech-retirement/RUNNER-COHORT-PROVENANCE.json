@@ -1,0 +1,50 @@
+{
+  "state": "EXACT_NEW_COHORT_PRIMARY_SOURCE_REVIEW_ONLY_RUNTIME_CAPABILITIES_UNPROVED",
+  "atUTC": "2026-11-03T20:34:15.669004+00:00",
+  "job": {
+    "runId": 41712076556,
+    "jobId": 126182436209,
+    "actualReportedImage": "ubuntu-24.04",
+    "actualReportedImageVersion": "20261101.360.1",
+    "actualReportedOS": "Ubuntu24.04.5",
+    "actualRunnerVersion": "2.338.2",
+    "setupHeaderPath": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-once-20261103/cloud-owner-monitor/RUNNER-PROVENANCE.log",
+    "setupHeaderSHA256": "30c5b9ed6aa24d11a7577856ff7f1567c08056d8dfb564d3f1581c734ed5e690",
+    "guardFailureSHA256": "c26beec64a2b59c114674a68f3339cc1c78d50c2b1e1cdc445056aa4a196fc42"
+  },
+  "officialSource": {
+    "repository": "actions/runner-images",
+    "tag": "ubuntu24/20261101.360",
+    "resolvedCommit": "add4380b0d6685806e9192c33c37359ee0aa4023",
+    "tagRefSHA256": "a6335026a298a1ce9b308d2ac81ce5e9fcdc9027b55f21c081f856b5cca8cec1",
+    "tagRefPath": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-once-20261103/runner-cohort-source-review/TAG-REF.json",
+    "releasePublishedAt": "2026-11-02T13:32:48Z",
+    "releaseURL": "https://github.com/actions/runner-images/releases/tag/ubuntu24/20261101.360",
+    "releaseMetadataSHA256": "b28e5a877c8abad5f79bc0427512f265f00790f3398be37d08aba91ac2b53dab",
+    "releaseMetadataPath": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-once-20261103/runner-cohort-source-review/RELEASE.json",
+    "readmePath": "images/ubuntu/Ubuntu2404-Readme.md",
+    "immutableReadmeURL": "https://github.com/actions/runner-images/blob/add4380b0d6685806e9192c33c37359ee0aa4023/images/ubuntu/Ubuntu2404-Readme.md",
+    "readmeSHA256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124"
+  },
+  "documentedInventoryNotRuntimeObservation": {
+    "OS": "24.04.5LTS",
+    "kernel": "7.0.0-1017-azure",
+    "imageVersion": "20261101.360.1",
+    "systemd": "255.4-1ubuntu8.18",
+    "Python": "3.12.3",
+    "DockerClient": "28.0.4",
+    "DockerServer": "28.0.4",
+    "Git": "2.56.0"
+  },
+  "policyChange": "Addexact20261101.360.1 to finitecohortlist only; no wildcard/removeguard/runtimecodechange. DocumentedDocker28.0.4matchesalreadysealedexpectedpin, so noDockerpinchange.",
+  "capabilitiesOnNewCohort": "ActualDocker/RAM/cgroup/namespace/timer/FD/nativecollector UNMEASURED; nooldcohortcapabilitypasscarryover",
+  "existingFreshRuntimeGatesRetained": [
+    "Linux/x86_64/ImageOS/finiteImageVersion beforeoutput/setup",
+    "ActualDockerexact28.0.4/platform/proc/WNOWAIT supervisedphase beforeimagepull/install",
+    "Freshcurrenthost/localengine/effectivecgroup8GiBadmissionbeforenormal8GiBcreate",
+    "ExactactualCIDresources+labels+hard8GiB/noextraswap/4096/CPU2PID256",
+    "CollectoractualFD/inode/proc/namespace/nativeELF binding or faildiagnostic beforeclaimingmeasurementcoverage"
+  ],
+  "preflightModeDecision": "No newmodeorversionwaiverproposed: sameexistingdiagnosticrecipe withallfreshguards; noactualexecutionadmittedbythissourceupdate. Ifa guardfails, stop/preserveintent; separateRootfiniteadmissionstillrequired.",
+  "noObserverCompilerTypesFitOrReleaseClaim": true
+}

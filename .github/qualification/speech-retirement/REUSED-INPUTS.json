@@ -1,0 +1,114 @@
+{
+  "BUN-IMAGE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/BUN-IMAGE.json",
+    "sha256": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664"
+  },
+  "BUNX-ENTRY-CONTRACT.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v10/BUNX-ENTRY-CONTRACT.json",
+    "sha256": "3dc19f5433d5bbb0c4cb2199929a6074f24a0e30cbfb211756995d5f7825752c"
+  },
+  "BUNX-VENDOR-PROOF.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v9/BUNX-VENDOR-PROOF.json",
+    "sha256": "7c99c33451eb71e270e3d8a1ea164cd1bda583cda186afc6871af4cec0e0ed3c"
+  },
+  "Dockerfile": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v9/Dockerfile",
+    "sha256": "cfd2927330e52a999c9b1ea5a58506ddbf71437d397ffddf8d42dec94e2f24f4"
+  },
+  "HISTORICAL-TOOL-REFERENCE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-preparation-20261103/HISTORICAL-LINUX-COMPILER-BIN-METADATA.json",
+    "sha256": "6ec3611c598142d5cd9b30993c2619af632200c3bbd7f2b22667c98796f68ae7"
+  },
+  "NATIVE-COMPILER-SOURCE-SHAPE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-executable-v1/NATIVE-COMPILER-SOURCE-SHAPE.json",
+    "sha256": "de2a84d548736f5a8c0e3291232925581e5abf599373742d7d08a2dda55a040b"
+  },
+  "NATIVE-MEMORY-RESOURCE-GRAPH.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-executable-v1/NATIVE-MEMORY-RESOURCE-GRAPH.json",
+    "sha256": "040e23460f4ff12db8e1a4ba085bcfa51bcd6cc84cba718972d30159a7216158"
+  },
+  "NATIVE-RESOURCE-ACTOR-BUDGET.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v1/NATIVE-RESOURCE-ACTOR-BUDGET.json",
+    "sha256": "bac0d208b0d966432a44683c6976ac8a572af8b41cc704059a262e0f13e5d3b6"
+  },
+  "NATIVE-RESOURCE-RUNTIME-SUPPORT.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v2/NATIVE-RESOURCE-RUNTIME-SUPPORT.json",
+    "sha256": "e3b95125ffe4570cff984925f527270188a21922c3c3dbe0aa3512056e3c6552"
+  },
+  "NODE-IMAGE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/NODE-IMAGE.json",
+    "sha256": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de"
+  },
+  "POLICY.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/POLICY.json",
+    "sha256": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf"
+  },
+  "REFERENCE-Go126-buildinfo.go": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v2/REFERENCE-Go126-buildinfo.go",
+    "sha256": "cbc672615b67d47a32ddb5b193edd31603bf6c5e30b3497e9d33c91760f2a003"
+  },
+  "REFERENCE-Go127-debug-garbage.go": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v2/REFERENCE-Go127-debug-garbage.go",
+    "sha256": "2dec941ce92f4caba204e511f41a9be2a104dab503bb7515acc57c94a489de49"
+  },
+  "REFERENCE-Go127-mgcpacer.go": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v2/REFERENCE-Go127-mgcpacer.go",
+    "sha256": "7ec384f9fed18e54efa9b4ac2759102715125f1ee664cfe71f4ac81147c785c1"
+  },
+  "RUNNER-COHORT-PROVENANCE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-executable-v2/RUNNER-COHORT-PROVENANCE.json",
+    "sha256": "b632e2087f81a3405c27c1277aeccb242a66485e4ad07051f311279975983167"
+  },
+  "RUNNER-IMAGE-README.md": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-executable-v2/RUNNER-IMAGE-README.md",
+    "sha256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124"
+  },
+  "TRANSPORT-CAPTURE-CONTRACT.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v7/TRANSPORT-CAPTURE-CONTRACT.json",
+    "sha256": "f15478bc41bd702f5acacb0726bcaf0bd68aac87644b250ddadbf0ad030f04fb"
+  },
+  "TURBO-ARGV-CACHE-SOURCE-PROOF.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v6/TURBO-ARGV-CACHE-SOURCE-PROOF.json",
+    "sha256": "961e11f3ebe1f53ddac73018f15307d5ea52b508f74c0a29fb3a98882a352ca6"
+  },
+  "TURBO-ENV-CONSUMER-PROOF.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v1/TURBO-ENV-CONSUMER-PROOF.json",
+    "sha256": "68dddd2a08fc849a193f419cc61f47faa27dcf490eba95515e46e94f368d41d5"
+  },
+  "TURBO-NODE-OPTIONS-SOURCE-PROOF.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v2/TURBO-NODE-OPTIONS-SOURCE-PROOF.json",
+    "sha256": "6b1d351d0b83c044cb97fc3c0b8c1fde268f187715b43c31c87ddc19a2dc7ea3"
+  },
+  "WORKSPACE-DEPENDENCY-ROOTS.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/WORKSPACE-DEPENDENCY-ROOTS.json",
+    "sha256": "84af9a343cc0df03adda407196a6b9ee15340900173b091ae8f6035e403af33a"
+  },
+  "capture-turbo-graph.mjs": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v7/capture-turbo-graph.mjs",
+    "sha256": "961479ea1d4b7a2070f4368e4f5b1527a7b01e9eb8f2edf2a41fc6e6853fe892"
+  },
+  "check_source.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/check_source.py",
+    "sha256": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5"
+  },
+  "compiler-bootstrap.mjs": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v2/compiler-bootstrap.mjs",
+    "sha256": "247d46b53794ccbfb9a3f07ece0e9f47e839aae9ba77e9c283be4504151aede2"
+  },
+  "go-buildinfo.mjs": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v2/go-buildinfo.mjs",
+    "sha256": "7847642a55f6dbd52850eb637902b2b60308f082130d3125a84a60efda72d26b"
+  },
+  "host-memory-admission.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v2/host-memory-admission.py",
+    "sha256": "ced1b75a6a8c01448cc41ebd4023cfaf2d26177884d4af59bd053e3067f7a5f7"
+  },
+  "inventory_dependencies.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/inventory_dependencies.py",
+    "sha256": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1"
+  },
+  "native_memory_observer.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v2/native_memory_observer.py",
+    "sha256": "a85c5533fb55fbe5c1cd1bb80478136fda8e9a31673a2dfd9cfb790737a4c0c5"
+  }
+}

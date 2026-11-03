@@ -1,0 +1,183 @@
+{
+  "resourceBounds": {
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "maxDiskGrowthBytes": 12884901888,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592
+  },
+  "reviewedRunner": {
+    "ImageOS": "ubuntu24",
+    "dockerServer": "28.0.4",
+    "evidenceRun": 41504810728,
+    "evidenceAttempt": 1,
+    "evidenceArtifact": 13169763764,
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90",
+    "scope": "Docker and ImageOS pins only; image admission uses the sealed finite allowlist plus same-run capabilities."
+  },
+  "hostEnvironment": {
+    "allowedImageVersions": [
+      "20261018.96.1",
+      "20261026.354.1",
+      "20261101.360.1"
+    ],
+    "ImageOS": "ubuntu24",
+    "architecture": "x86_64",
+    "cleanupPaths": [],
+    "cleanupSecondsPerPath": 60,
+    "cleanupBeforeMinimumDiskAdmission": false,
+    "cleanupOnlyWhenBelowEntryFloor": false,
+    "hostPythonRange": "3.12 <= version < 3.16",
+    "capabilities": [
+      "Linux /proc",
+      "waitid WNOWAIT preserves child identity before reap",
+      "session PGID identity",
+      "Docker linux/amd64",
+      "Docker server exact28.0.4"
+    ],
+    "priorSingleCohortReview": {
+      "ImageVersion": "20261026.354.1",
+      "ImageOS": "ubuntu24",
+      "dockerServer": "28.0.4",
+      "evidenceRun": 41504810728,
+      "evidenceAttempt": 1,
+      "evidenceArtifact": 13169763764,
+      "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+    },
+    "provenanceLimit": "20261018.96.1 authenticated GitHub job setup provenance retained; its upstream release/tag now404, not claimed independently resolved. Same-run capabilities are required. New versions fail closed.",
+    "noMacExecutionOrDeletion": true,
+    "normalSDKLifecycleStillFalse": true,
+    "newExactCohortSourceReview": {
+      "cohort": "20261101.360.1",
+      "provenanceSHA256": "b632e2087f81a3405c27c1277aeccb242a66485e4ad07051f311279975983167",
+      "readmeSHA256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124",
+      "runtimeCapabilities": "UNKNOWN_REQUIRE_SAME_RUN_GATES",
+      "noWildcardOrDockerPinChange": true
+    }
+  },
+  "state": "FULL_NORMAL_22_TASK_QUALIFICATION_EVIDENCE_SOURCE_ONLY_PENDING_REVIEW",
+  "sourceCommit": "76d6dc464d7bb98da52aa59775364b82097295ac",
+  "sourceTree": "f6beb2558210e14bab464420b124336b8c05c44c",
+  "recipe": "normal-api-owning-typecheck",
+  "normalSDKLifecycle": false,
+  "expectedTools": {
+    "node": "24.15.0",
+    "bun": "1.4.2",
+    "bunSHA256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+    "nodeSHA256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+  },
+  "network": "Frozen ignore-scripts install is sole bridge-network stage. Canonical graph/type/producer stages are network=none, actualinput/outputsourcewrites admitted only to same fresh76d6source; no credentials/socket/HOME forwarded. No NODE_ENV=test fixtureoverride fornormalstages. No hostcleanup/nativeSDK/provider/deploy.",
+  "forbiddenActions": [
+    "Macexecution/install/sourcepoolcopy",
+    "borroweddeclarations/outputs",
+    "stubs/aliases/skippedconfigs",
+    "manualproducerflattening",
+    "nativeSDKbuild",
+    "provider/financial/deploy",
+    "APItsc6compat/baseline",
+    "hostcleanup"
+  ],
+  "dependencyAdmission": "HOSTED ONLY actual canonical frozen-lock scripts-disabled install produces bounded complete physical dependency/tool/source receipts, then stage-gates all fixtures on verified fresh receipts. Not retained/prequalified dependency bytes or normal native lifecycle.",
+  "hostedSetupBounds": {
+    "eachPinnedImagePullSeconds": 120,
+    "toolchainAssemblySeconds": 90,
+    "installSeconds": 600,
+    "installMemory": "4g",
+    "dependencyInventorySeconds": 90,
+    "dependencyInventoryBytes": 134217728,
+    "sameWholeBudgetSeconds": 1200
+  },
+  "sameLockPriorActual": {
+    "run": 41576211167,
+    "bunLockSHA256": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
+    "installSeconds": 30.146350580999993,
+    "allOwnedGroupsClosed": true,
+    "ignoreScripts": true,
+    "notCurrentInstallAcceptance": true
+  },
+  "scope": "Fresh canonical22 runnable/53 nodes188edges pipeline; unchanged normal argv/config/resources apart from published four real producer prerequisite edges. Native-only6GiB resource measurement scope requires fresh GO. No automatic Types/production adoption.",
+  "normalApiPolicySHA256": "8596bc4e5c24b6fcdc83790f8e4bbcca7ddbc394aff88ed1aa53922fd20477c3",
+  "normalEntryTimeouts": "900s clamped by Rootabsolute1200; allsetup/postcensus/cleanup must fitoriginalfinitewindow, no autoexpansion",
+  "metadataTransport": {
+    "contractSHA256": "f15478bc41bd702f5acacb0726bcaf0bd68aac87644b250ddadbf0ad030f04fb",
+    "hardFileSizeBytes": 8388608,
+    "scope": "normal-api-graph only; regular FD stdout; same-CID HostConfig and /proc exact limit required; cap boundary/nonzero/signal/unknown fail; no normal entry change"
+  },
+  "opaqueArtifactMembers": [
+    "TURBO-GRAPH.stdout.json"
+  ],
+  "bunxEntrypoint": {
+    "contractSHA256": "3dc19f5433d5bbb0c4cb2199929a6074f24a0e30cbfb211756995d5f7825752c",
+    "vendorLayoutProofSHA256": "7c99c33451eb71e270e3d8a1ea164cd1bda583cda186afc6871af4cec0e0ed3c",
+    "scope": "Restore exact official Bun multicall symlink in isolated toolchain and validate same executable before normal producers; canonicalSDKcommand unchanged"
+  },
+  "nativeMemoryDiagnostic": {
+    "measurementOnly": true,
+    "typeAcceptance": "NOT_ISSUED_BY_MEASUREMENT_CONTROLLER",
+    "sourceEvidenceContractSHA256": "156122e73dbfafb1fbbbcce20ad996d3f5aa4acad0bb2dde290d475351d06a8f",
+    "sourceShapeSHA256": "de2a84d548736f5a8c0e3291232925581e5abf599373742d7d08a2dda55a040b",
+    "resourceGraphSHA256": "040e23460f4ff12db8e1a4ba085bcfa51bcd6cc84cba718972d30159a7216158",
+    "observerSHA256": "a85c5533fb55fbe5c1cd1bb80478136fda8e9a31673a2dfd9cfb790737a4c0c5",
+    "newDiagnosticBytesMaximum": 212992,
+    "requiredRootGOFlags": {
+      "allowNativeSoftMemoryBudgetActuation": true,
+      "nativeBudgetStage": "api-normal-tsc",
+      "nativeResourceKey": "GOMEMLIMIT",
+      "nativeGoSoftMemoryLimitBytes": 6442450944,
+      "nativeGoSoftMemoryLimitEnv": "6GiB",
+      "measurementOnly": true,
+      "allowNativeCompilerMeasurement": true,
+      "normalQualificationEvidenceOnly": true
+    },
+    "freshNativeLinuxIdentityBeforeEntry": true,
+    "nativeCompletion": "No fabricatednativeexit; missingNodeexitafterexecve isunobserved, notTypeScripterror",
+    "same8GiBNormalCommandProfile": true
+  },
+  "nativeResourceExperiment": {
+    "candidateOnly": true,
+    "allowedKey": "GOMEMLIMIT",
+    "candidateLiteral": "6GiB",
+    "candidateBytes": 6442450944,
+    "stage": "api-normal-tsc",
+    "newRole": "EXPLICIT_PRELOAD_API_ONLY_RESOURCE_ACTUATOR_AFTER_TURBO_FILTER",
+    "bothDiagnosticFlagsRequired": true,
+    "allOutcomesTypes": "NOT_ISSUED",
+    "contractSHA256": "156122e73dbfafb1fbbbcce20ad996d3f5aa4acad0bb2dde290d475351d06a8f",
+    "runtimeSupportSHA256": "e3b95125ffe4570cff984925f527270188a21922c3c3dbe0aa3512056e3c6552",
+    "actorBudgetSHA256": "bac0d208b0d966432a44683c6976ac8a572af8b41cc704059a262e0f13e5d3b6",
+    "turboConsumerProofSHA256": "68dddd2a08fc849a193f419cc61f47faa27dcf490eba95515e46e94f368d41d5",
+    "noSDKEnvModeConfigScriptArgvChange": true,
+    "noCurrentRuntimePolicySelectedOrApplied": true
+  },
+  "newByteCaps": {
+    "MEMORY-CGROUP.jsonl": 65536,
+    "MEMORY-PROCESS-SUMMARY.json": 90112,
+    "MEMORY-OBSERVATION.json": 8192,
+    "MEMORY-FINALIZATION.json": 8192,
+    "API-STAGE-EVIDENCE.json": 16384,
+    "privateReadonlyControlInput": 8192,
+    "NATIVE-RESOURCE-CONTEXT.json": 8192,
+    "NATIVE-RESOURCE-APPLIED.json": 4096,
+    "RESULT-resource-addition": 4096
+  },
+  "newTotalBytes": 212992,
+  "normalAcceptance": {
+    "automaticTypes": false,
+    "freshTasks": 22,
+    "sourceGraphNodes": 53,
+    "sourceGraphEdges": 188,
+    "requiredExportCount": 13,
+    "nativeExit": "Raw native exit unobserved; zero only control-flow-derived from canonical && reaching subsequent router/worker and ordinary pipeline zero",
+    "required": [
+      "cold graph and zero cached tasks",
+      "same-run all22 ordinary tasks successful",
+      "source/dependencies before and after",
+      "all normal producer and worker outputs hashed,13 required exports present",
+      "resource witness/complete collection and all CID/group/FD closure",
+      "independent raw acceptance; no17 prior pass carryover"
+    ]
+  }
+}

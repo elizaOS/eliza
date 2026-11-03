@@ -1,0 +1,71 @@
+{
+  "state": "PINNED_TURBO_SOURCE_AND_STATIC_EXACT_ARGV_CONTRACT_ONLY_NOT_RUNTIME_PASS",
+  "vendorSourceCommit": "aaf5a3afdc7f1f3142ec13b6665ef099b3fb3528",
+  "package": "turbo@2.11.10",
+  "provenanceLink": "SamefrozenNPMdistintegrity/registryDSSEsourcecommit proof retainedinTURBO-NODE-OPTIONS-SOURCE-PROOF.json; noSigstorecrypto claim",
+  "vendorFiles": {
+    "crates/turborepo-cli/src/cli/args.rs": {
+      "sha256": "7042937f6edc69ff240f13faf68ddae5d3f4b1b545af782e0c6f6ba78e0e431f",
+      "url": "https://github.com/vercel/turborepo/blob/aaf5a3afdc7f1f3142ec13b6665ef099b3fb3528/crates/turborepo-cli/src/cli/args.rs"
+    },
+    "crates/turborepo-cache/src/config.rs": {
+      "sha256": "6aa1bdb4e3863bb162392cc780db44ba5ee503d02a40184db343374d1d247f54",
+      "url": "https://github.com/vercel/turborepo/blob/aaf5a3afdc7f1f3142ec13b6665ef099b3fb3528/crates/turborepo-cache/src/config.rs"
+    }
+  },
+  "cliConflictExcerpt": "pub struct RunArgs {\n    /// Set the cache behavior for this run. Pass a list of comma-separated key,\n    /// value pairs to enable reading and writing to either the local or\n    /// remote cache.\n    #[usage(long, conflicts = &[\"force\", \"remote_only\", \"remote_cache_read_only\", \"no_cache\"])]\n    pub cache: Option<String>,\n    /// Ignore the existing cache (to force execution). Equivalent to\n    /// `--cache=local:w,remote:w`\n    #[usage(long, default_missing = \"true\")]\n    pub force: Option<Option<bool>>,\n    /// Ignore the local filesystem cache for all tasks. Only\n    /// allow reading and caching artifacts using the remote cache.\n    /// Equivalent to `--cache=remote:rw`\n    #[usage(long, default_missing = \"true\")]\n    pub remote_only: Option<Option<bool>>,\n    /// Treat remote cache as read only. Equivalent to\n    /// `--cache=remote:r;local:rw`\n    #[usage(long, default_missing = \"true\")]\n    pub remote_cache_read_only: Option<Option<bool>>,\n    /// Avoid saving task results to the cache. Useful for development/watch\n    /// tasks. Equivalent to `--cache=local:r,remote:r`\n    #[usage(long)]\n    pub no_cache: bool,\n\n    /// Set the number of concurrent cache operations (default 10)\n    #[usage(long, default_value_t = DEFAULT_CACHE_WORKERS, default = \"10\")]\n    pub cache_workers: u32,\n    #[usage(alias = \"dry\", long = \"dry-run\", num_args = 0..=1, default_missing = \"text\")]\n    pub dry_run: Option<DryRunModeArg>,\n    /// Generate a graph of the task execution and output to a file when a\n    /// filename is specified (.svg, .html, .mermaid, .dot). Outputs dot graph\n    /// to stdout when no filename is provided.\n    /// [DEPRECATED formats: .png, .jpg, .pdf, .json -- will be removed in 3.0]\n    #[usage(long, num_args = 0..=1, default_missing = \"\")]\n    pub graph: Option<GraphOutput>,\n    // Explicit negation flags such as --daemon and --no-daemon remain separate\n    // so we need to use a group to enforce that only one of them is set.\n    // -----------------------\n    /// [DEPRECATED] The daemon is no longer used for `turbo run`.\n    /// This flag will be remove",
+  "cacheParserExcerpt": "impl FromStr for CacheConfig {\n    type Err = Error;\n    fn from_str(s: &str) -> Result<Self, Self::Err> {\n        let mut cache = CacheConfig {\n            local: CacheActions {\n                read: false,\n                write: false,\n            },\n            remote: CacheActions {\n                read: false,\n                write: false,\n            },\n        };\n\n        if s.is_empty() {\n            return Ok(cache);\n        }\n\n        let mut seen_local = false;\n        let mut seen_remote = false;\n        let mut idx = 0;\n\n        for action in s.split(',') {\n            let (key, value) = action\n                .split_once(':')\n                .ok_or(Error::InvalidCacheTypeAndAction {\n                    text: s.to_string(),\n                    pair: action.to_string(),\n                    span: Some(SourceSpan::new(idx.into(), action.len())),\n                })?;\n\n            match key {\n                \"local\" => {\n                    if seen_local {\n                        return Err(Error::DuplicateKeys {\n                            text: s.to_string(),\n                            key: \"local\",\n                            span: Some(SourceSpan::new(idx.into(), key.len())),\n                        });\n                    }\n\n                    seen_local = true;\n                    cache.local = CacheActions::from_str(value).map_err(|err| {\n                        err.add_text(s)\n                            .add_span(SourceSpan::new((idx + key.len() + 1).into(), key.len()))\n                    })?;\n                }\n                \"remote\" => {\n                    if seen_remote {\n                        return Err(Error::DuplicateKeys {\n                            text: s.to_string(),\n                            key: \"remote\",\n                            span: Some(SourceSpan::new(idx.into(), key.len())),\n                        });\n                    }\n\n                    seen_remote = true;\n                    cache.remote = CacheActions::from_str(value).map_err(|err| {\n                        err.add_text(s)\n                            .add_span(SourceSpan::new((idx + key.len() + 1).into(), value.len()))\n                    })?\n                }\n                ty => {\n                    return Err(Error::InvalidCacheType {\n                        text: s.to_string(),\n                        s: ty.to_string(),\n                        span: Some(SourceSpan::new(idx.into(), ty.len())),\n                    });\n                }\n            }\n\n            idx += action.len() + 1;\n        }\n        Ok(cache)\n    }\n}\n\n",
+  "cacheActionsExcerpt": "impl FromStr for CacheActions {\n    type Err = Error;\n    fn from_str(s: &str) -> Result<Self, Self::Err> {\n        let mut cache = CacheActions {\n            read: false,\n            write: false,\n        };\n\n        for c in s.chars() {\n            match c {\n                'r' => {\n                    if cache.read {\n                        return Err(Error::DuplicateActions {\n                            text: s.to_string(),\n                            action: \"r (read)\",\n                            span: None,\n                        });\n                    }\n                    cache.read = true;\n                }\n\n                'w' => {\n                    if cache.write {\n                        return Err(Error::DuplicateActions {\n                            text: s.to_string(),\n                            action: \"w (write)\",\n                            span: None,\n                        });\n                    }\n                    cache.write = true;\n                }\n                _ => {\n                    return Err(Error::InvalidCacheAction {\n                        c,\n                        text: String::new(),\n                        span: None,\n                    });\n                }\n            }\n        }\n\n        Ok(cache)\n    }\n}\n\n",
+  "normalWrapperPath": "packages/scripts/run-turbo.ts",
+  "normalWrapperSHA256": "ba80bd8f05a9f7b9eb8868f70937225fe4d8fc4e91ec286a481ee0db7aa39b5a",
+  "wrapperSourceBehavior": "Onlyadds--ui=stream/--log-order=stream andconfiguredRUN_TURBO_CONCURRENCY=1; doesNOTinjectforce/cache. ConflictwasOURqualifierpair, notcanonicalwrapper.",
+  "metadataWrapperArgv": [
+    "run",
+    "typecheck",
+    "--filter=@elizaos/cloud-api",
+    "--dry=json"
+  ],
+  "metadataExactTurboArgv": [
+    "--ui=stream",
+    "run",
+    "--concurrency=1",
+    "--log-order=stream",
+    "typecheck",
+    "--filter=@elizaos/cloud-api",
+    "--dry=json"
+  ],
+  "normalWrapperArgv": [
+    "run",
+    "typecheck",
+    "--filter=@elizaos/cloud-api"
+  ],
+  "normalExactTurboArgv": [
+    "--ui=stream",
+    "run",
+    "--concurrency=1",
+    "--log-order=stream",
+    "typecheck",
+    "--filter=@elizaos/cloud-api"
+  ],
+  "cacheMeaning": {
+    "qualifierForceCacheOverrides": "NONE; restoreexactcanonicalnormalentry",
+    "canonicalCacheConfigurationUnchanged": true,
+    "coldScope": "Freshisolatedsame-source defaultcache empty andallownedoutputs empty; networknone+no remote cachecredential/config/no hostHOME; no borrowedcache/output",
+    "sourceConflictOnly": "PinnedCLI cacheOption explicitlyconflictswithforce. Botharequalifier-added, notcanonicalwrapper. Removingbothcannottriggerthatconflict; no newcache/mode overrides."
+  },
+  "coldExecutionMandatory": [
+    "Freshsameb93source/emptyinitialproducerdist+workerout",
+    "Defaultsource.turbo/cache absentorempty BEFOREmetadata andagainBEFOREentry; no cache-dir/env override; no external-cache/HOME mounts",
+    "NoTURBO token/team/API/cache config orcredentials passed/available; networknone entiregraph/entry; remotereadsunavailable",
+    "Actualnormalrunnable18graph/order andallownedoutputs fresh-produced; APIcompiler/router/dryrunstagesmustactuallyrunandexit0; no job/event-onlyPASS",
+    "No wrappers/tasks/config/env-mode/SDKsource edits or dependency/profile changes"
+  ],
+  "sourceOnlyNoToolOrSDKModuleExecuted": true,
+  "vendorDefaultCache": {
+    "path": "crates/turborepo-config/src/lib.rs",
+    "sha256": "4676bbe69975d06a48760a3e59fcd01119be02af4f0038eb601de765aa921781",
+    "defaultExcerpt": "/// The default cache directory path (relative to repo root).\n    pub const DEFAULT_CACHE_DIR: &'static str = if cfg!(windows) {\n        \".turbo\\\\cache\"\n    } else {\n        \".turbo/cache\"\n    };\n\n    /// Returns the configured cache directory path without worktree resolution.\n    /// Use `resolve_cache_dir()` for full worktree-aware resolution.\n    pub fn cache_dir(&self) -> &Utf8Path {\n        self.cache_dir\n            .as_deref()\n            .unwrap_or_else(|| Utf8Path::new(Self::DEFAULT_CACHE_DIR))\n    }\n\n",
+    "worktreeCaution": "    /// Resolves the cache directory, taking Git worktrees into account.\n    ///\n    /// If no explicit `cacheDir` is configured and we're in a linked Git\n    /// worktree, this returns the cache directory from the main worktree to\n    /// enable cache sharing.\n    ///\n    /// # Arguments\n    ///\n    /// * `repo_root` - The root of the current repository/worktree\n    ///\n    /// # Returns\n    ///\n    /// A `CacheDirResult` containing:\n    /// - `path`: The resolved cache directory path\n    /// - `is_shared_worktree`: True if using shared cache from main worktree\n",
+    "runtimeGuard": "Require/workspace/.git ordinarydirectory andcanonicalrootTurbo.cacheDir absent; rejectlinked/source/cache/config/env/home credential sharing; checkdefault.turbo/cache emptybeforemetadata+entry"
+  }
+}

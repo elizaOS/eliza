@@ -1,0 +1,39 @@
+{
+  "state": "REVIEWED_SOURCE_TRANSPORT_CONTRACT_NOT_LINUX_EXECUTION",
+  "baseV6SealSHA256": "6bc7e2abc0fe82374db432a4e81e5c8750649c6ab327a4b14548939fbfdbc333",
+  "proposalDesignReview": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-independent-review-20261102/LUNA-B93-REGULAR-FD-TRANSPORT-PROPOSAL-REVIEW.json",
+    "sha256": "4b21fdd3e9e3541eab3cd31f7635128a0f85bb094a745894ed6756beb11d1d0d"
+  },
+  "failedRawRunReview": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-independent-review-20261102/LUNA-B93-41694966564-RAW-TRANSPORT-FAILURE-REVIEW.json",
+    "sha256": "2562e33d2a91af98ab8b022c1978ac2cb51b6a295975942b269d1c0b246dd32d"
+  },
+  "artificialMacFourCases": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-canonical-once-20261103/transport-regression/RESULT.json",
+    "sha256": "2ad059f122974d164eb150f648f15674d1c3689c5c6b79251535df954a3df176",
+    "scope": "Mechanism only; pipe zeroexit lost bytes, regularfile complete; nonzero/overlimit reject. No Linux/Turbo/kernel enforcement proof. Authorization spent; no repeated cases."
+  },
+  "pinnedVendorShim": {
+    "sourceCommit": "aaf5a3afdc7f1f3142ec13b6665ef099b3fb3528",
+    "path": "packages/turbo/bin/turbo",
+    "sha256": "6cf417655a0d9791781554f986435e71dc4a3d1e9d0c1fc7db0b2679550af946",
+    "sameRunInstalledToolHashMatched": true,
+    "behavior": "Inherits actual binary stdout. Canonical source wrapper forwards via process.stdout.write then immediate process.exit, risking outer async pipe truncation; original failed raw stdout absent, exact original discard location inferred."
+  },
+  "runtimeScope": "normal-api-graph container ONLY",
+  "stdout": "Exclusive nofollow regular file descriptor inherited by unchanged canonical Node wrapper",
+  "hardFileSizeBytes": 8388608,
+  "stderrCaptureBytes": 1048576,
+  "hostVerification": "Actual same-CID HostConfig.Ulimits exact fsize soft/hard 8388608 before start and cleanup; no default fallback",
+  "processVerification": "Actual /proc/self/limits exact soft/hard Max file size before canonical spawn",
+  "failurePolicy": "Any >=hard boundary, nonzero, signal, unknown, invalid UTF8/JSON/schema fails; no salvage, strip, filter or parser relaxation",
+  "diagnostics": "Retain opaque raw stdout plus byte count/SHA256 and exit/signal/error CAPTURE diagnostic before parsing; synchronous and asynchronous launch failure/null stderr guarded, parent FD always closed",
+  "opaqueArtifactMembers": [
+    "TURBO-GRAPH.stdout.json"
+  ],
+  "strictGraphTaskOrderSourceColdCacheAndStagesUnchanged": true,
+  "normal8GiBEntryProfileUnchanged": true,
+  "actualLinuxCapGraphCompilerAndFit": "UNRUN_UNPROVEN",
+  "noAdditionalMechanismRunIncluded": true
+}

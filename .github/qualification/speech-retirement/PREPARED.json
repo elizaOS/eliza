@@ -1,0 +1,53 @@
+{
+  "state": "SOURCE_ONLY_CONCRETE_NEW_PIN_FULL_NORMAL_QUALIFIER_PENDING_INDEPENDENT_REVIEW",
+  "sourceCommit": "76d6dc464d7bb98da52aa59775364b82097295ac",
+  "sourceTree": "f6beb2558210e14bab464420b124336b8c05c44c",
+  "sourceBranch": "codex/fix-cloud-api-producer-prerequisites-20261103",
+  "sourceReviewSHA256": "f299242bbc417f65a0428a8001e2c4c0dcb16d785899eb0b869ea62ac4a864d8",
+  "sourcePublication": "/Users/nubs/.local/state/eliza-five-lane-coordination/publication-canonical-api-producers-20261103/PUBLISHED.json",
+  "baseController": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-resource-experiment-executable-v3",
+  "baseControllerSealSHA256": "b8431d162a79c6e8051734309222b6e45cf69cc0e887299f9a80249aad725fa2",
+  "normalApiPolicySHA256": "8596bc4e5c24b6fcdc83790f8e4bbcca7ddbc394aff88ed1aa53922fd20477c3",
+  "producerGraphSHA256": "40e7a873acf6109f9e081a73965ac8d37695984718e0a7c21b889db251d35de1",
+  "sourceCustodySHA256": "18f2eb616e0e1658a9c82221e90ad9c03e4b74584a55dd2c71642d857074279b",
+  "planSHA256": "5732f7a0626683d21a17977ac93880f2625aad16804a51b2953e2a5c2a09abfc",
+  "expectedGraph": {
+    "nodes": 53,
+    "edges": 188,
+    "runnable": 22
+  },
+  "normalCommand": [
+    "/usr/local/bin/node",
+    "packages/scripts/run-turbo.ts",
+    "run",
+    "typecheck",
+    "--filter=@elizaos/cloud-api"
+  ],
+  "profile": {
+    "hardMemoryBytes": 8589934592,
+    "memorySwapBytes": 8589934592,
+    "apiOnlyGOMEMLIMIT": "6GiB",
+    "NodeOldSpaceMiB": 4096,
+    "CPU": 2,
+    "PIDs": 256,
+    "concurrency": 1
+  },
+  "acceptance": {
+    "automaticTypes": false,
+    "freshTasks": 22,
+    "sourceGraphNodes": 53,
+    "sourceGraphEdges": 188,
+    "requiredExportCount": 13,
+    "nativeExit": "Raw native exit unobserved; zero only control-flow-derived from canonical && reaching subsequent router/worker and ordinary pipeline zero",
+    "required": [
+      "cold graph and zero cached tasks",
+      "same-run all22 ordinary tasks successful",
+      "source/dependencies before and after",
+      "all normal producer and worker outputs hashed,13 required exports present",
+      "resource witness/complete collection and all CID/group/FD closure",
+      "independent raw acceptance; no17 prior pass carryover"
+    ]
+  },
+  "scopeDistinction": "Outer run collects full normal qualification evidence. Native actuator remains explicitly measurement-only. Controller emits no Types; independent exact raw acceptance required. No prior17 task result reused.",
+  "preparationOnly": "No controller/module import, CLI/probe/build/test/install/CI/nonce/GO/provider/deploy/merge."
+}

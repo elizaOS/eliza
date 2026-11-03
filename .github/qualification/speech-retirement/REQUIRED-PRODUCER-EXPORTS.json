@@ -1,0 +1,20 @@
+{
+  "sourceCommit": "76d6dc464d7bb98da52aa59775364b82097295ac",
+  "sourceTree": "f6beb2558210e14bab464420b124336b8c05c44c",
+  "requiredOutputs": [
+    "plugins/plugin-coding-tools/dist/edge.js",
+    "plugins/plugin-google-workspace/dist/gmail-attachments.js",
+    "plugins/plugin-google-workspace/dist/gmail-mime-parts.js",
+    "plugins/plugin-google-workspace/dist/gmail-source-link.js",
+    "plugins/plugin-mcp/dist/protocol-utils/action-naming.js",
+    "plugins/plugin-mcp/dist/protocol-utils/index.js",
+    "plugins/plugin-mcp/dist/protocol-utils/json.js",
+    "plugins/plugin-mcp/dist/protocol-utils/model-provider.js",
+    "plugins/plugin-mcp/dist/protocol-utils/prompts.js",
+    "plugins/plugin-mcp/dist/protocol-utils/provider-projection.js",
+    "plugins/plugin-mcp/dist/protocol-utils/resource-selection.js",
+    "plugins/plugin-mcp/dist/protocol-utils/schema-converter.js",
+    "plugins/plugin-native-inference/dist/model-catalog/bge-input.js"
+  ],
+  "proofScope": "Presence and hashes after ordinary full pipeline; no outputs manufactured by qualifier."
+}
