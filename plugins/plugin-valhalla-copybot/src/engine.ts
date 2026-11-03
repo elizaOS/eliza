@@ -24,6 +24,12 @@ import { netTimeoutMs, redactSecrets, tail4, withTimeout } from "./net.ts";
 import { realizedFromExit, summarizePnl } from "./pnl.ts";
 import { liveTradingEnabled } from "./safety-gate.ts";
 import {
+  crashRecoveryAllowed,
+  healthScore,
+  IncidentLog,
+  type RepairProposal,
+} from "./self-repair.ts";
+import {
   applyPreset,
   DEFAULT_SETTINGS,
   limitsFromSettings,
@@ -78,6 +84,9 @@ export class AgentEngine {
   private lastTickStart = 0;
   private watchdog: ReturnType<typeof setInterval> | null = null;
   pendingSettings: UserSettings | null = null;
+  readonly repairLog = new IncidentLog();
+  repairProposal: RepairProposal | null = null;
+  repairTimeoutMs = 8_000;
 
   constructor(dataDir?: string) {
     this.dataDir = dataDir ?? process.env.VALHALLA_DATA_DIR ?? path.join(process.cwd(), "data");
@@ -379,26 +388,54 @@ export class AgentEngine {
   private recoverStall(): void {
     if (!this.book.running || !this.ticking) return;
     if (Date.now() - this.lastTickStart < 30_000) return;
-    if (this.book.positions.length > 0) {
-      this.log("watchdog", "Loop is slow. Open positions stay put.");
+    const before = this.healthNow().score;
+    const allowed = crashRecoveryAllowed(this.book.positions.length, this.inflight);
+    if (!allowed.ok) {
+      this.log("watchdog", allowed.reason);
+      this.repairLog.add({
+        title: allowed.reason,
+        before,
+        after: before,
+        layer: 1,
+        applied: false,
+      });
       return;
     }
     this.ticking = false;
     this.log("watchdog", "Recovered a stalled loop. No positions were open.");
     this.audit("watchdog", "recovered stalled loop");
+    this.repairLog.add({
+      title: "Watchdog recovered a stalled loop.",
+      before,
+      after: this.healthNow().score,
+      layer: 1,
+      applied: true,
+    });
   }
 
   /**
    * Phone request for the safe watchdog recovery.
    * The loop is restarted only when no position is open.
    */
+  healthNow(now = Date.now()): { score: number; label: "healthy" | "degraded" | "critical" } {
+    const beat = this.heartbeat(now);
+    return healthScore({
+      stalled: beat.stalled,
+      breakerOpen: false,
+      unknownBalance: false,
+      mismatch: false,
+      providerFails: 0,
+    });
+  }
+
   recoverFromPhone(now = Date.now()): { restarted: boolean; message: string } {
-    if (this.book.positions.length > 0) {
+    const allowed = crashRecoveryAllowed(this.book.positions.length, this.inflight);
+    if (!allowed.ok) {
       this.log("watchdog", "Recovery refused. Open positions stay put.");
       this.audit("watchdog", "phone recovery refused while positions are open");
       return {
         restarted: false,
-        message: "Open positions stay put. The loop was not restarted.",
+        message: allowed.reason,
       };
     }
     const age = this.lastTickStart > 0 ? now - this.lastTickStart : Number.POSITIVE_INFINITY;

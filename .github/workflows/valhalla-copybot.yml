@@ -28,3 +28,5 @@ jobs:
         run: bun run --cwd plugins/plugin-valhalla-copybot lint:check
       - name: Test
         run: bun run --cwd plugins/plugin-valhalla-copybot test
+      - name: Self-repair suite
+        run: bun run --cwd plugins/plugin-valhalla-copybot test __tests__/self-repair.test.ts

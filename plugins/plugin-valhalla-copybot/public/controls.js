@@ -35,6 +35,7 @@ async function bootGate() {
     if (meta.needsSetup) openWizard(meta);
     else fillSettings(meta);
     loadConnections();
+    loadRepair();
   } catch {
     document.getElementById("gate").hidden = false;
   }
@@ -54,6 +55,26 @@ document.getElementById("gateForm").addEventListener("submit", async (event) => 
     document.getElementById("gateErr").textContent = err.message;
   }
 });
+
+async function loadRepair() {
+  const host = document.getElementById("repairPanel");
+  if (!host) return;
+  const data = await api("/api/self-repair");
+  const health = data.health || {};
+  const lines = (data.events || []).slice(0, 6).map((row) =>
+    row.title + " · " + row.before + " → " + row.after
+  ).join("<br>");
+  host.innerHTML = "<div>Health " + (health.score ?? "—") + " " + (health.label || "") + "</div>" +
+    "<div style=\"color:#7a7468;margin-top:6px\">" + (lines || "No incidents yet.") + "</div>" +
+    "<div style=\"margin-top:6px\">" + ((data.proposal && data.proposal.summary) || "") + "</div>" +
+    "<button type=\"button\" id=\"confirmRepair\">CONFIRM REPAIR</button>";
+  const button = document.getElementById("confirmRepair");
+  if (button) button.onclick = async () => {
+    const result = await api("/api/self-repair/confirm", { confirm: true });
+    say(result.message);
+    loadRepair();
+  };
+}
 
 async function loadConnections() {
   const host = document.getElementById("connectionsPanel");

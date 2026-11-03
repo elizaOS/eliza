@@ -18,6 +18,7 @@ import {
 import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
 import { tail4 } from "./net.ts";
+import { confirmRepair, proposeFix } from "./self-repair.ts";
 
 const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
 const HOST = "127.0.0.1";
@@ -181,6 +182,17 @@ async function handle(
   }
   if (req.method === "GET" && pathname === "/api/ads/report") {
     send(res, 200, await loadAdReport(process.env));
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/self-repair") {
+    const proposal = proposeFix(engine.logs.map((row) => row.text));
+    engine.repairProposal = proposal;
+    send(res, 200, {
+      ok: true,
+      health: engine.healthNow(),
+      events: engine.repairLog.events,
+      proposal,
+    });
     return;
   }
   if (req.method === "GET" && pathname === "/api/connections") {
@@ -375,6 +387,25 @@ async function post(
             settings: await engine.usePreset(body.preset as "safe" | "balanced" | "aggressive"),
           },
         };
+      case "/api/self-repair/confirm": {
+        const proposal = engine.repairProposal ?? proposeFix(engine.logs.map((row) => row.text));
+        const before = engine.healthNow().score;
+        const result = confirmRepair(
+          proposal,
+          body.confirm === true,
+          engine.book.positions.length,
+          0
+        );
+        if (result.applied && proposal.timeoutMs) engine.repairTimeoutMs = proposal.timeoutMs;
+        engine.repairLog.add({
+          title: result.reason,
+          before,
+          after: engine.healthNow().score,
+          layer: 2,
+          applied: result.applied,
+        });
+        return { status: 200, body: { ok: result.applied, message: result.reason } };
+      }
       case "/api/connections/connect":
         return {
           status: 200,

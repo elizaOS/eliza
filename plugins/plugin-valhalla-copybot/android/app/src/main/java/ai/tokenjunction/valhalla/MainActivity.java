@@ -255,7 +255,9 @@ public class MainActivity extends AppCompatActivity {
         }
         try {
             JSONObject state = new JSONObject(raw);
-            liveStatus.setText(state.optString("status", "Last known status"));
+            org.json.JSONObject health = state.optJSONObject("health");
+            String healthLine = health == null ? "" : " Health " + health.optInt("score") + " " + health.optString("label") + ".";
+            liveStatus.setText(state.optString("status", "Last known status") + healthLine);
             pnl.setText(state.optString("pnl", ""));
             positions.setText(state.optString("positions", ""));
             org.json.JSONArray links = state.optJSONArray("connections");

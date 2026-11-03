@@ -4,6 +4,10 @@ This is the Valhalla desk. It looks like the ACCELERATION command center. It run
 
 The repository is public. An access code, if you set one, only opens the app. It does not hide the code.
 
+## Self-repair
+
+The agent watches itself. Hung calls time out. The next data provider is used. A failed balance is unknown, not zero. A send that lands late is not sent again. A restart runs only when no position is open and nothing is in flight. The desk shows a health score and a Self-Repair Log. A suggested fix waits for your confirm tap. A code change is never applied by the agent. Details are in [docs/SELF_REPAIR.md](../../docs/SELF_REPAIR.md).
+
 ## Run your own agent
 
 1. Install [Bun](https://bun.sh) (or use the copy that ships with this repo).
@@ -39,6 +43,10 @@ There is no send or withdraw button. Move SOL with your own wallet app.
 Chat on the desk answers status, positions, and P&L. It refuses transfer and "turn off safety" requests. Gemini uses Google AI Studio, not Vertex.
 
 A log is written to `data/agent.log` and `data/audit.jsonl`. The log panel shows the same lines. Keys are not written there.
+
+## Play Store
+
+The steps to publish the phone app are in [docs/PLAY_STORE.md](../../docs/PLAY_STORE.md). You still need a Play Console account, the upload key, and the closed test. The repository does not contain those secrets.
 
 ## Ads
 

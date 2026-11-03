@@ -72,6 +72,8 @@ export function phoneState(engine: AgentEngine): Record<string, unknown> {
       state: row.state,
       ok: row.lastOk,
     })),
+    health: engine.healthNow(),
+    repair: engine.repairLog.events[0] ?? null,
     settings: engine.settings,
     pendingSettings: engine.pendingSettings != null,
   };
