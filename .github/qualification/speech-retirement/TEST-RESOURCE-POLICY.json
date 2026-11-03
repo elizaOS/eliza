@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "scope": "One complete seven-file normal ACK qualification; claims-only resource exception. No automatic retry/expansion.",
+  "defaultTest": {
+    "memory": "2g",
+    "memoryBytes": 2147483648,
+    "nodeOldSpaceMiB": 1536
+  },
+  "wholeFileOverride": {
+    "file": "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+    "phase": "owning-4",
+    "memory": "4g",
+    "memoryBytes": 4294967296,
+    "nodeOldSpaceMiB": 1024
+  },
+  "memorySwapEqualsMemory": true,
+  "unchanged": {
+    "cpu": 2,
+    "pids": 256,
+    "phaseSeconds": 90,
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "logBytesPerPhase": 8388608,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592,
+    "maxDiskGrowthBytes": 12884901888,
+    "installMemory": "4g",
+    "installNodeOldSpaceMiB": 1536,
+    "pool": "forks",
+    "maxWorkers": 1,
+    "maxConcurrency": 1,
+    "fileParallelism": false
+  },
+  "measurementLimit": "Old-space is not RSS or WASM/native memory. Real DockerOOM previously observed; exact allocation cause unknown. Proposed 4GiB is a bounded qualification experiment, not a success claim."
+}

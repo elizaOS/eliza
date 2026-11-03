@@ -1226,73 +1226,113 @@
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers clean progress on DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 0
+            "parameterRowIndex": 0,
+            "parameterRow": {
+              "channelType": "DM",
+              "kind": "clean"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers private progress on DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 1
+            "parameterRowIndex": 1,
+            "parameterRow": {
+              "channelType": "DM",
+              "kind": "private"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers revoked progress on DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 2
+            "parameterRowIndex": 2,
+            "parameterRow": {
+              "channelType": "DM",
+              "kind": "revoked"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers lookup_failed progress on DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 3
+            "parameterRowIndex": 3,
+            "parameterRow": {
+              "channelType": "DM",
+              "kind": "lookup_failed"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers envelope progress on DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 4
+            "parameterRowIndex": 4,
+            "parameterRow": {
+              "channelType": "DM",
+              "kind": "envelope"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers clean progress on VOICE_DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 5
+            "parameterRowIndex": 5,
+            "parameterRow": {
+              "channelType": "VOICE_DM",
+              "kind": "clean"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers private progress on VOICE_DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 6
+            "parameterRowIndex": 6,
+            "parameterRow": {
+              "channelType": "VOICE_DM",
+              "kind": "private"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers revoked progress on VOICE_DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 7
+            "parameterRowIndex": 7,
+            "parameterRow": {
+              "channelType": "VOICE_DM",
+              "kind": "revoked"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers lookup_failed progress on VOICE_DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 8
+            "parameterRowIndex": 8,
+            "parameterRow": {
+              "channelType": "VOICE_DM",
+              "kind": "lookup_failed"
+            }
           },
           {
             "line": 837,
-            "name": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+            "name": "delivers envelope progress on VOICE_DM only to a revalidated audience without consuming final delivery",
             "mode": "it",
             "sourceTitlePattern": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-            "parameterRowIndex": 9
+            "parameterRowIndex": 9,
+            "parameterRow": {
+              "channelType": "VOICE_DM",
+              "kind": "envelope"
+            }
           },
           {
             "line": 949,
@@ -2391,7 +2431,7 @@
                 null
               ],
               "receiptIds": [
-                null
+                "receipt-reminder-1"
               ]
             }
           },
@@ -2407,7 +2447,7 @@
                 null
               ],
               "receiptIds": [
-                null
+                "receipt-reminder-1"
               ]
             }
           },
@@ -2423,7 +2463,7 @@
                 null
               ],
               "receiptIds": [
-                null
+                "receipt-reminder-1"
               ]
             }
           },

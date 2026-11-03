@@ -1,0 +1,88 @@
+{
+  "state": "PROPOSED_RESOURCE_ONLY_BOUNDED_SUCCESSOR_NO_EXECUTION",
+  "sourceCommit": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+  "file": "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+  "observed": {
+    "run": 41628377665,
+    "phase": "owning-4",
+    "elapsedSeconds": 27.418510374999983,
+    "containerMemoryMiB": 2048,
+    "swapAdditionalMiB": 0,
+    "nodeOldSpaceMiBPerProcess": 1536,
+    "actualDockerOOMKilled": true,
+    "exitCode": 1,
+    "registrations": 826,
+    "recordedPassed": 0,
+    "recordedStatuses": {
+      "pending": 826
+    },
+    "memoryPeakOrExactAllocatorMeasured": false,
+    "noSyntheticPendingAcceptance": true
+  },
+  "currentStaticGraph": [
+    {
+      "from": "docker container 2GiB/no swap",
+      "to": "Node24 Vitest main",
+      "budget": "NODE_OPTIONS old-space1536MiB; includes coordinator/module graph; exactRSS unmeasured"
+    },
+    {
+      "from": "Vitest main",
+      "to": "one forks-pool Node worker",
+      "budget": "maxWorkers1/maxConcurrency1/no file parallel; inherits old-space1536MiB; separate runtime/module graph"
+    },
+    {
+      "from": "worker test module",
+      "to": "beforeAll createTestRuntime()",
+      "budget": "one shared real AgentRuntime/PGLite graph; native/WASM/external-memory not bounded by V8 old-space; actualallocationunmeasured"
+    },
+    {
+      "from": "shared runtime",
+      "to": "826 unchanged cases + afterAll cleanup",
+      "budget": "whole file; zero cases recorded completed beforememorykill"
+    }
+  ],
+  "proposedBudgetGraph": [
+    {
+      "from": "docker container",
+      "to": "same main + at most one worker + same PGLite graph",
+      "budget": "4096MiB hard memory/memory-swap same =>no additional swap; ONLY owning-4 wholefile"
+    },
+    {
+      "from": "container NODE_OPTIONS",
+      "to": "each inherited Node main/worker",
+      "budget": "--max-old-space-size=1024 MiB per Node; 2GiB combined old-space ceiling for main+oneworker, remainingphysicalroomforWASM/native/code/etc is not guaranteed"
+    },
+    {
+      "from": "qualification controller",
+      "to": "all other6 files and setup/preflight",
+      "budget": "prior2GiB/old-space1536 unchanged; install4GiB unchanged; serial file processes"
+    },
+    {
+      "from": "same seven files",
+      "to": "fresh complete pre/post dependency census + strictreports+closedPG/CID",
+      "budget": "1122registrations/1121executedpasses+oneexactmanualunexecuted; ordinarynonOOM only"
+    }
+  ],
+  "unchangedBounds": {
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "filePhaseSeconds": 90,
+    "wholeSeconds": 1200,
+    "jobMinutes": 22,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592,
+    "maxDiskGrowthBytes": 12884901888,
+    "pool": "forks",
+    "maxWorkers": 1,
+    "maxConcurrency": 1,
+    "fileParallelism": false
+  },
+  "diff": [
+    "owning-4 only container2GiB->4GiB",
+    "owning-4 only perNodeoldspace1536->1024MiB",
+    "capture/enforceexactresourceidentity+claimpolicybinding; allotherresourcecapsunchanged"
+  ],
+  "costNote": "One fresh hosted whole-seven-file qualification only after independent review/sourcepub/literal/freshRootGO. Claims phase physical hard ceiling grows2GiB and perNode old-space ceiling shrinks512MiB; serial concurrencyunchanged. No new network/provider/model calls; no performance or memory-success claim until same graph remeasured. No automaticretry/capgrowth.",
+  "limits": "DockerOOM proves exceededphysicalbudget butnotexactallocator/retainedmemorycause. Pending826 notpassed. Source test beforeAll creates realPGLite; never swapbackend/pool/split/filter/stub. Failedruns/intentsspent immutable; no reclassification/fulljobPASS."
+}

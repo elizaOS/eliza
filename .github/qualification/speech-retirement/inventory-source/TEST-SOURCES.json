@@ -1,0 +1,36 @@
+{
+  "ack": {
+    "commit": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+    "tree": "b7ee023afcd3202f63dbdadc26bd844d2f73c915",
+    "files": [
+      {
+        "path": "packages/host/src/voice/session-speech-ports.test.ts",
+        "sha256": "4ab52518fb560c1dfcafdacaa48a12d0f2283d2fbe53d0064d27831946dfad50"
+      },
+      {
+        "path": "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts",
+        "sha256": "e2a348e2258cf1b93dcff16308cde3ed3c143d169511f57a808ba6a4f9528062"
+      },
+      {
+        "path": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+        "sha256": "b8006f532dc0ee35b9014c5079e044b3bb9221ca47b643c3f278e5b9df5461df"
+      },
+      {
+        "path": "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
+        "sha256": "d32d60805db42942a0ffe031645a3132cb852709542d138f1831ca1aea90e0a4"
+      },
+      {
+        "path": "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+        "sha256": "aa671114c061d615cfa2e1062049dadabde895aad16f284260be0c61227f6525"
+      },
+      {
+        "path": "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts",
+        "sha256": "8b9e18e9765da8cd92646a7086432bed46f4f25c0c928a97f609c2a178a51522"
+      },
+      {
+        "path": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+        "sha256": "5c734cb57250899e7d061d2635f565b01dcd28bb4fe8f2d8daa0a3af7a19b878"
+      }
+    ]
+  }
+}

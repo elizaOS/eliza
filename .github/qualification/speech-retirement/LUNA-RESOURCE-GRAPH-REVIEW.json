@@ -1,0 +1,29 @@
+{
+  "atUTC": "2026-11-03T11:48:04.306206+00:00",
+  "state": "SOURCE_ONLY_BOUNDED_RESOURCE_PROPOSAL_PASS_NOT_CONTROLLER_OR_RUN_GO",
+  "resourceGraphSHA256": "a1cb1ef7cfe0d242be48c1b79709bd4ebb8e93d7aa7e38b1b154dadfbc3fbf7c",
+  "observedRun": 41628377665,
+  "source": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+  "targetFile": "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+  "reviewMethod": "resource-optimization-manifesto currentstatic/dynamicgraph +idealbudgetdiff +costnote; samegraphmustberemeasuredbeforeclaimsuccess",
+  "checks": [
+    "Observedgraph matchesindependentrawreceipt:2GiB/noadditionalswap/oldspace1536perNode/oneforkworker/27.419sDockerOOM/0of826executed; exactallocator/peak notmeasured",
+    "ProposedONLYclaimswholefile hardmemory4GiB withmemory-swap equalmemory(noextra swap), perNodeoldspace1024; other6files2GiB1536 andsetup/preflight2GiB1536/install4GiB unchanged",
+    "Samebackend/PGLite/beforeAll/poolforks/maxWorkers1/cases/source/configs/CPU2/PIDs256/file90/whole1200/log8MiB/diskfloors/growth/network/providerexclusions retained",
+    "Serialwhole7filepre/postfreshcensus+strict1122source/1121executed+1manual scope preserved; no partialmetadata/fullPASSpromotion",
+    "Costnote limitedonefreshwhole7qualificationpendingpeer/pub/literal/freshRootGO; no newmodel/provider/networkcalls besidesalreadyadmittedfreshsetup; oldfailedrun/intentimmutable"
+  ],
+  "memoryInterpretationLimits": [
+    "1024MiB oldspaceisnotper-processRSS cap; native/WASM/code/buffers/younggeneration andotherhelpers remainchargedto4GiBcontainer",
+    "Main+oneforkaccounting=2GiBdeclaredoldspaceceilings forspecified2processes ONLY, notguaranteedtotalJS/RSS/allocatorcause orsuccessful4GiBfit",
+    "DockerOOM recordsmemorykillunderpolicy, doesnotmeasurewhichallocation/retainedstatecausedit; no claimPGLitebug/optimization/speedup fromcurrentdata"
+  ],
+  "requiredFinalControllerChecks": [
+    "Freezeper-filephysical-memory/swap/Nodeoldspacepolicy keyedexactclaimsfilepath/sourcehash/phase; do notraiseglobaldefault orother6files",
+    "ExactRootGO+producerconsumerclaim bindresourcepolicy/hash andcounts/manualpolicy; newintentonlyafterpub/literal\u2014proposalnotexecutionauthority",
+    "CaptureandenforceactualDockerMemory/MemorySwap andselectedNODE_OPTIONS resourceidentity, notjustdescriptiveplan; ordinarynonOOMexit andfreshsamegraphmetrics required",
+    "Regenerate1122sourceidentitieswithlexicalShorthandPropertyAssignment support only, boundactualsource/ChannelType/pinnedformatter; independentlyprove10titlecorrection/allother1112unchanged, noobservednamecopy or oldoraclewrite",
+    "Reviewfrozenactualrun/claim/workflow/caps/cleanupdelta; RootmustissuefreshfiniteGO. AnyOOM/heapOOM/missing/failure/unacceptedskip/todo remainsFAILED/INCOMPLETE, noautomaticcapgrowth/retry"
+  ],
+  "actions": "JSON/source/resource-graphdataread only; no controller/test/import/memoryprobe/install/build/CI/newnonce/retry/live."
+}

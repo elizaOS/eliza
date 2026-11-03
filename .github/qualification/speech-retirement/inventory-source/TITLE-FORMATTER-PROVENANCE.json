@@ -1,0 +1,19 @@
+{
+  "state": "PINNED_VITEST5_TITLE_MATERIALIZATION_SOURCE_DATA_ONLY",
+  "inputs": [
+    {
+      "path": "/Users/nubs/.bun/install/cache/vitest@5.0.5@@@1/dist/chunks/run.BPv-BBRv.js",
+      "sha256": "6353810fdd2b6370386dfb80ec4d1415b2a12d83e00f3ebee83cc0304d6e4c6b"
+    },
+    {
+      "path": "/Users/nubs/.bun/install/cache/vitest@5.0.5@@@1/dist/chunks/display.BlTmubjj.js",
+      "sha256": "ffb73158b5f09d4896ee5a11f4ec847b27c8651b67872f02edd30c78d4700180"
+    },
+    {
+      "path": "/Users/nubs/.bun/install/cache/vitest@5.0.5@@@1/dist/config.cjs",
+      "sha256": "1f2504b35ea70c2b248b27daec09e470c4ace58fecc295910d5109cedbceadb4"
+    }
+  ],
+  "actualRule": "formatTitle named$fields useactualfirstobject/arrayindex, strings truncate40UTF16 withsurrogatesafeellipsis; ChannelTypeenum fromexactcurrentcoreprimitives. Primitive%s/%j/%i/%d/%f supported. Pinned5.0.5formatRegExp containsNO%p, so%p remainsliteral andcollisionmultiplicity retained. No borrowedBunrendering/observedreportnamecopy.",
+  "scope": "StaticASTdata only; no test callbacks/vendor runner import/actualcollection/pass. Unsupportedtitleobjectformats failclosed; fullorderednames/source-row tablemetadata retained. Independentreview +actualnormalreport comparison stillrequired."
+}

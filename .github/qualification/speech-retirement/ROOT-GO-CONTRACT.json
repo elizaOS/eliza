@@ -1,5 +1,5 @@
 {
-  "state": "NORMAL_ACK_ROOT_GO_SCHEMA_ONLY_NOT_ISSUED",
+  "state": "RESOURCE_SUCCESSOR_ROOT_GO_SCHEMA_ONLY_NOT_ISSUED",
   "action": "ONE_EXACT_QUALIFICATION_RUN",
   "recipe": "ack-normal-fullfiles",
   "mode": "qualify",
@@ -16,5 +16,7 @@
   "issuedEpoch": "Rootfresh",
   "expiresEpoch": "Rootfinite <=issued+1200",
   "output": "ActualRUNNER_TEMP/speech-retirement-results",
-  "noNonceOrGoHere": true
+  "noNonceOrGoHere": true,
+  "resourcePolicySHA256": "548d41e431294e7f91cada9fdd38c2d04729ba086d53f84431ae405eb00dc3fa",
+  "oracleSHA256": "3fb4f419c0a4ab508ce971d4cb68f589a5cb9ae8891fdcfd6f9931cc6bcc660b"
 }

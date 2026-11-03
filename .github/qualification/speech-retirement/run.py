@@ -5,6 +5,13 @@ assert len(sys.argv)==3
 source=pathlib.Path(sys.argv[1]).resolve();out=pathlib.Path(sys.argv[2]).resolve()
 plan=json.loads((P/'PLAN.json').read_text());manifest=json.loads((P/'SOURCE-MANIFEST.json').read_text());oracle=json.loads((P/'ORACLES.json').read_text())
 sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+resource_policy=json.loads((P/'TEST-RESOURCE-POLICY.json').read_text())
+resource_sha=sha(P/'TEST-RESOURCE-POLICY.json');oracle_sha=sha(P/'ORACLES.json')
+assert resource_sha==plan['resourcePolicySHA256'] and oracle_sha==plan['oracleSHA256']
+assert resource_policy['defaultTest']=={'memory':'2g','memoryBytes':2147483648,'nodeOldSpaceMiB':1536}
+assert resource_policy['wholeFileOverride']=={'file':'plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts','phase':'owning-4','memory':'4g','memoryBytes':4294967296,'nodeOldSpaceMiB':1024}
+assert resource_policy['memorySwapEqualsMemory'] is True
+
 for name,want in json.loads((P/'SEAL.json').read_text())['files'].items():assert sha(P/name)==want,name
 go_path=pathlib.Path(os.environ['ROOT_GO_JSON']).resolve();go=json.loads(go_path.read_text())
 assert go['action']=='ONE_EXACT_QUALIFICATION_RUN' and go['recipe']=='ack-normal-fullfiles' and go['mode']=='qualify'
@@ -16,6 +23,7 @@ assert re.fullmatch('[a-f0-9]{32}',go['intentId'])
 assert go['workflowCommit']==os.environ['GITHUB_SHA']==os.environ['EXPECTED_WORKFLOW_SHA']
 assert go['sourceCommit']==manifest['commit'] and go['sourceTree']==manifest['tree']
 assert go['operatorSealSHA256']==sha(P/'SEAL.json')
+assert go['resourcePolicySHA256']==resource_sha and go['oracleSHA256']==oracle_sha
 assert 0<go['issuedEpoch']<=time.time()<go['expiresEpoch']<=go['issuedEpoch']+1200
 assert os.environ['GITHUB_RUN_ATTEMPT']=='1' and os.environ['RUNNER_ENVIRONMENT']=='github-hosted'
 assert sys.platform=='linux' and (3,12)<=sys.version_info[:2]<(3,16)
@@ -28,7 +36,7 @@ claim=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'speech-intent-claim.j
 assert claim['intentId']==go['intentId'] and claim['actualRunId']==os.environ['GITHUB_RUN_ID']
 assert claim['workflowCommit']==go['workflowCommit'] and claim['operatorSealSHA256']==go['operatorSealSHA256']
 assert claim['attempt']==int(os.environ['GITHUB_RUN_ATTEMPT'])==1
-for key in ['sourceCommit','sourceTree','mode','recipe','output','allowHostedFrozenLockSetup','expectedRegistrations','expectedPassed','expectedManualUnexecuted','manualTracePolicy','issuedEpoch','expiresEpoch']:assert claim[key]==go[key], 'Claim scope mismatch'
+for key in ['sourceCommit','sourceTree','mode','recipe','output','allowHostedFrozenLockSetup','expectedRegistrations','expectedPassed','expectedManualUnexecuted','manualTracePolicy','issuedEpoch','expiresEpoch','resourcePolicySHA256','oracleSHA256']:assert claim[key]==go[key], 'Claim scope mismatch'
 assert claim['rootGOsha256']==sha(go_path), 'Claim does not bind exact Root GO input bytes'
 # Same reviewed repository-wide immutable artifact claim protocol; no token enters containers.
 import urllib.request
@@ -119,8 +127,9 @@ def phase(name,args,timeout,accepted=(0,),cleanup=False):
   if not empty:raise RuntimeError('Unclosed owned process group')
  return log.read_text(),code
 inspect_format='{"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}}}'
-def inspect_container(key,label,cleanup=False):
- text,code=phase(label,['docker','container','inspect','--format',inspect_format,key],10,accepted=(0,1),cleanup=cleanup)
+resource_inspect_format='{"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}},"Resources":{"memoryBytes":{{json .HostConfig.Memory}},"memorySwapBytes":{{json .HostConfig.MemorySwap}},"nanoCpus":{{json .HostConfig.NanoCpus}},"pidsLimit":{{json .HostConfig.PidsLimit}},"nodeOptions":{{$nodeOptions := ""}}{{range .Config.Env}}{{if eq (printf "%.13s" .) "NODE_OPTIONS="}}{{$nodeOptions = .}}{{end}}{{end}}{{json $nodeOptions}}}}'
+def inspect_container(key,label,cleanup=False,resources=False):
+ text,code=phase(label,['docker','container','inspect','--format',resource_inspect_format if resources else inspect_format,key],10,accepted=(0,1),cleanup=cleanup)
  if code==1:
   assert 'No such object' in text or 'No such container' in text,'Container lookup failed ambiguously'
   return None
@@ -129,34 +138,56 @@ def check_container(value,item):
  assert re.fullmatch('[a-f0-9]{64}',value['Id']) and value['Name']=='/'+item['name']
  if item['cid'] is not None:assert value['Id']==item['cid']
  assert value['Labels']['org.eliza.qualification-run']==runid and value['Labels']['org.eliza.qualification-kind']=='speech-retirement'
+
+class ResourcePolicyError(RuntimeError):
+ pass
+def check_resources(value,item,label):
+ actual=value.get('Resources')
+ if actual!=item['resources']:
+  item.setdefault('resourcePolicyFailures',[]).append({'where':label,'expected':item['resources'],'actual':actual})
+  raise ResourcePolicyError('Actual Docker resource/Node heap policy mismatch')
 def cleanup_container(item,label):
- key=item['cid'] or item['name']
- value=inspect_container(key,label+'-identity',cleanup=True)
+ key=item['cid'] or item['name'];policy_failure=None
+ try:
+  value=inspect_container(key,label+'-identity',cleanup=True,resources=True)
+ except BaseException as exc:
+  # A failed resource probe must not prevent custody-only owned cleanup.
+  item.setdefault('resourcePolicyFailures',[]).append({'where':label,'resourceInspectionError':type(exc).__name__+': '+str(exc)})
+  policy_failure=ResourcePolicyError('Resource inspection failed during owned cleanup')
+  value=inspect_container(key,label+'-owner-only-identity',cleanup=True)
  if value:
   check_container(value,item);item['cid']=value['Id']
+  if policy_failure is None:
+   try:check_resources(value,item,label)
+   except ResourcePolicyError as exc:policy_failure=exc
   phase(label+'-remove',['docker','rm','-f',item['cid']],10,cleanup=True)
   assert inspect_container(item['cid'],label+'-absence',cleanup=True) is None
  elif not item['createCompleted']:
   raise RuntimeError('Container creation outcome unknown; no matching container observed')
  item['closed']=True
+ if policy_failure:raise policy_failure
 
-def container_phase(name,network,memory,command,timeout,rw=False,test_family=False,cwd="/workspace"):
+def container_phase(name,network,memory,command,timeout,rw=False,test_family=False,cwd="/workspace",node_old_space_mib=None):
  assert (name=="install" and network=="bridge" and rw) or (name!="install" and network=="none" and not rw)
+ if node_old_space_mib is None:node_old_space_mib=resource_policy['defaultTest']['nodeOldSpaceMiB']
+ assert memory in ('2g','4g') and node_old_space_mib in (1024,1536)
+ memory_bytes=int(memory[:-1])*1024**3
+ resources={'memoryBytes':memory_bytes,'memorySwapBytes':memory_bytes,'nanoCpus':2000000000,'pidsLimit':256,'nodeOptions':'NODE_OPTIONS=--max-old-space-size='+str(node_old_space_mib)}
  cname=prefix+'-'+name
  assert inspect_container(cname,name+'-absence') is None,'Preexisting container name; no mutation'
- args=['docker','create','--pull=never','--name',cname,'--label','org.eliza.qualification-run='+runid,'--label','org.eliza.qualification-kind=speech-retirement','--network',network,'--cpus','2','--memory',memory,'--memory-swap',memory,'--pids-limit','256','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--user',str(os.getuid())+':'+str(os.getgid()),'--tmpfs','/tmp:rw,nosuid,size=536870912','--mount','type=bind,src='+str(source)+',dst=/workspace'+('' if rw else ',readonly'),'--mount','type=bind,src='+str(out)+',dst=/results','--workdir',cwd,'--env','HOME=/tmp/home','--env','TMPDIR=/tmp','--env','CI=true','--env','NODE_ENV=test','--env','NODE_OPTIONS=--max-old-space-size=1536','--env','ELIZA_VAULT_DISABLE_KEYCHAIN=1','--env','ELIZA_LIVE_TEST=0','--env','BUN_INSTALL_CACHE_DIR='+('/workspace/.cache/qualification-bun' if name=='install' else '/tmp/bun-cache'),'--env','BUN_CONFIG_NO_AUTO_INSTALL=true','--env','VITEST_FS_MODULE_CACHE_PATH=/results/fs-module-cache','--entrypoint',command[0],image,*command[1:]]
+ args=['docker','create','--pull=never','--name',cname,'--label','org.eliza.qualification-run='+runid,'--label','org.eliza.qualification-kind=speech-retirement','--network',network,'--cpus','2','--memory',memory,'--memory-swap',memory,'--pids-limit','256','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--user',str(os.getuid())+':'+str(os.getgid()),'--tmpfs','/tmp:rw,nosuid,size=536870912','--mount','type=bind,src='+str(source)+',dst=/workspace'+('' if rw else ',readonly'),'--mount','type=bind,src='+str(out)+',dst=/results','--workdir',cwd,'--env','HOME=/tmp/home','--env','TMPDIR=/tmp','--env','CI=true','--env','NODE_ENV=test','--env',resources['nodeOptions'],'--env','ELIZA_VAULT_DISABLE_KEYCHAIN=1','--env','ELIZA_LIVE_TEST=0','--env','BUN_INSTALL_CACHE_DIR='+('/workspace/.cache/qualification-bun' if name=='install' else '/tmp/bun-cache'),'--env','BUN_CONFIG_NO_AUTO_INSTALL=true','--env','VITEST_FS_MODULE_CACHE_PATH=/results/fs-module-cache','--entrypoint',command[0],image,*command[1:]]
  # Register intent before the daemon can create anything. A lost CLI reply
  # is reconciled by exact name AND run labels, never removed by name alone.
- item={'cid':None,'name':cname,'createCompleted':False};owned.append(item)
+ item={'cid':None,'name':cname,'createCompleted':False,'resources':resources};owned.append(item)
  text,_=phase(name+'-create',args,20);cid=text.strip();assert re.fullmatch('[a-f0-9]{64}',cid)
  item['cid']=cid;item['createCompleted']=True
- check_container(inspect_container(cid,name+'-identity'),item)
+ value=inspect_container(cid,name+'-identity',resources=True);check_container(value,item);check_resources(value,item,name+'-identity')
  failure=None
  try:phase(name,['docker','start','--attach',cid],timeout)
  except PhaseExitError as exc:
   if not test_family or exc.phase_name!=name:raise
   failure=exc
- value=inspect_container(cid,name+'-postidentity');check_container(value,item)
+ value=inspect_container(cid,name+'-postidentity',resources=True);check_container(value,item);check_resources(value,item,name+'-postidentity')
  state=value['State']
  if state['Running'] or state['Status']!='exited' or state['OOMKilled'] or state['Error']:
   raise RuntimeError('Container did not reach an ordinary non-OOM exited state')
@@ -259,7 +290,10 @@ try:
  for group in plan['normalGroups']:
   report=out/group['report'];assert not report.exists()
   command=['/usr/local/bin/node',group['runner'],'run',group['relative'],'--config',group['config'],'--configLoader','runner','--pool','forks','--maxWorkers','1','--maxConcurrency','1','--no-file-parallelism','--no-cache','--fsModuleCachePath','/results/module-cache-'+group['name'],'--reporter=json','--outputFile=/results/'+group['report']]
-  failure=container_phase(group['name'],'none','2g',command,group['phaseSeconds'],test_family=True,cwd=group['cwd'])
+  override=resource_policy['wholeFileOverride']
+  resources=override if group['file']==override['file'] else resource_policy['defaultTest']
+  if resources is override:assert group['name']==override['phase']
+  failure=container_phase(group['name'],'none',resources['memory'],command,group['phaseSeconds'],test_family=True,cwd=group['cwd'],node_old_space_mib=resources['nodeOldSpaceMiB'])
   judge_normal(group,failure,report);verify_source()
  verify_dependencies()
  assert set(family_results)==set(oracle['fullFileNames']) and len(family_results)==7
@@ -271,7 +305,9 @@ except BaseException as exc:run_error=type(exc).__name__+': '+str(exc)
 finally:
  for index,item in enumerate(owned):
   try:cleanup_container(item,'cleanup-'+str(index))
+  except ResourcePolicyError:pass # Retained resource failures below still force non-PASS after owned closure.
   except BaseException as exc:cleanup_errors.append({'cid':item['cid'],'error':str(exc)})
- result={'state':status if not cleanup_errors else 'CLEANUP_FAILED','error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'seconds':time.monotonic()-start,'families':family_results,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'imagePulls':[x['phase'] for x in records if x['phase'].startswith('pull-') and x['exit']==0],'installStarted':any(x['phase']=='install' for x in records),'toolchainAssembly':any(x['phase']=='toolchain-assembly' for x in records),'broadSDKBuild':False,'normalCommandScope':'SelectedsevenactualAssistant/HostVitestfiles_only; mjs/type/native tails excluded','normalTypes':False,'normalSDKLifecycle':False,'providerFinancialOrDeviceAcceptance':False,'actualModelVoiceOrDeploymentAcceptance':False,'manualTraceExpectedUnexecuted':plan['manualTracePolicy']}
+ resource_errors=[{'cid':item['cid'],**error}for item in owned for error in item.get('resourcePolicyFailures',[])]
+ result={'state':'CLEANUP_FAILED' if cleanup_errors else 'RESOURCE_POLICY_FAILED' if resource_errors else status,'error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'resourcePolicyErrors':resource_errors,'seconds':time.monotonic()-start,'families':family_results,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'resourcePolicySHA256':resource_sha,'oracleSHA256':oracle_sha,'imagePulls':[x['phase'] for x in records if x['phase'].startswith('pull-') and x['exit']==0],'installStarted':any(x['phase']=='install' for x in records),'toolchainAssembly':any(x['phase']=='toolchain-assembly' for x in records),'broadSDKBuild':False,'normalCommandScope':'SelectedsevenactualAssistant/HostVitestfiles_only; mjs/type/native tails excluded','normalTypes':False,'normalSDKLifecycle':False,'providerFinancialOrDeviceAcceptance':False,'actualModelVoiceOrDeploymentAcceptance':False,'manualTraceExpectedUnexecuted':plan['manualTracePolicy']}
  (out/'RESULT.json').write_text(json.dumps(result,indent=2)+'\n')
-raise SystemExit(0 if status=='PASS_NORMAL_ACK_SELECTED_FILES_MANUAL_CAPTURE_UNEXECUTED_NOT_LIVE' and not run_error and not cleanup_errors else 1)
+raise SystemExit(0 if status=='PASS_NORMAL_ACK_SELECTED_FILES_MANUAL_CAPTURE_UNEXECUTED_NOT_LIVE' and not run_error and not cleanup_errors and not resource_errors else 1)

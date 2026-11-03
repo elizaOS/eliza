@@ -15,6 +15,8 @@ assert go['mode']==os.environ['QUALIFICATION_MODE']
 assert go['workflowCommit']==os.environ['GITHUB_SHA']
 assert go['sourceCommit']==manifest['commit'] and go['sourceTree']==manifest['tree']
 plan=json.loads((P/'PLAN.json').read_text())
+assert go['resourcePolicySHA256']==plan['resourcePolicySHA256']==hashlib.sha256((P/'TEST-RESOURCE-POLICY.json').read_bytes()).hexdigest()
+assert go['oracleSHA256']==plan['oracleSHA256']==hashlib.sha256((P/'ORACLES.json').read_bytes()).hexdigest()
 assert go['expectedRegistrations']==1122 and go['expectedPassed']==1121 and go['expectedManualUnexecuted']==1
 assert go['manualTracePolicy']=='unexecuted-no-inputs'
 assert go['operatorSealSHA256']==hashlib.sha256((P/'SEAL.json').read_bytes()).hexdigest()
@@ -35,6 +37,6 @@ with go_path.open('x',encoding='utf-8',newline='') as f:f.write(text)
 claim={'intentId':go['intentId'],'actualRunId':os.environ['GITHUB_RUN_ID'],'attempt':1,
  'workflowCommit':os.environ['GITHUB_SHA'],'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],
  'operatorSealSHA256':go['operatorSealSHA256'],'rootGOsha256':hashlib.sha256(text.encode()).hexdigest(),
- 'claimedEpoch':now,'expiresEpoch':go['expiresEpoch'],'mode':go['mode'],'recipe':go['recipe'],'output':go['output'],'allowHostedFrozenLockSetup':go['allowHostedFrozenLockSetup'],'issuedEpoch':go['issuedEpoch'],'expectedRegistrations':go['expectedRegistrations'],'expectedPassed':go['expectedPassed'],'expectedManualUnexecuted':go['expectedManualUnexecuted'],'manualTracePolicy':go['manualTracePolicy']}
+ 'claimedEpoch':now,'expiresEpoch':go['expiresEpoch'],'mode':go['mode'],'recipe':go['recipe'],'output':go['output'],'allowHostedFrozenLockSetup':go['allowHostedFrozenLockSetup'],'issuedEpoch':go['issuedEpoch'],'expectedRegistrations':go['expectedRegistrations'],'expectedPassed':go['expectedPassed'],'expectedManualUnexecuted':go['expectedManualUnexecuted'],'manualTracePolicy':go['manualTracePolicy'],'resourcePolicySHA256':go['resourcePolicySHA256'],'oracleSHA256':go['oracleSHA256']}
 with (temp/'speech-intent-claim.json').open('x') as f:json.dump(claim,f,indent=2)
 with pathlib.Path(os.environ['GITHUB_OUTPUT']).open('a') as f:f.write('intent_id='+go['intentId']+'\n')

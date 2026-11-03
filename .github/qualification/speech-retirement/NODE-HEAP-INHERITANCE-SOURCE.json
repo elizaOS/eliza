@@ -1,0 +1,14 @@
+{
+  "frameworkVersion": "vitest5.0.5",
+  "file": "/Users/nubs/.bun/install/cache/vitest@5.0.5@@@1/dist/chunks/index.1TqnEahn.js",
+  "sha256": "4e311af8b4db378a5c3d4e768b5210b0779d2ae0d0ec05f81a72378dbaf25412",
+  "ranges": [
+    "5448-5486 ForksPoolWorker stores options.env then fork(env:this.env,execArgv:this.execArgv)",
+    "6090-6157 pool env merges process.env then options/env config; task passes env unchanged",
+    "6197-6215 resolveOptions execArgv includes profiling/conditions/suppresswarnings; no old-space override"
+  ],
+  "owningAssistantConfigSHA256": "b6380d4acf6a763e1fa0587ca8eb6e4cc557bd21bd563d51a6f096aba9f046b4",
+  "owningConfigHasNoNodeOptionsOrExecArgvOverride": true,
+  "conclusion": "Configured container NODE_OPTIONS inherited by normal Vitestmain and canonical forks worker; no configured competing old-space CLI/env override. Static guarantee, not measured RSS/peak.",
+  "sourceReadAsDataOnly": true
+}

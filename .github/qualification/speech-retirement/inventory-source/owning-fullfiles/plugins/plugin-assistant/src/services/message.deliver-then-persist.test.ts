@@ -1,0 +1,1201 @@
+/**
+ * Reply delivery and durable storage on the simple fast path run concurrently,
+ * so connector latency and the response-memory write do not add serially. Both
+ * still settle before handleMessage resolves: a callback failure never loses
+ * the memory, a persist failure reaches the boundary, and a same-room follow-up
+ * fired off delivery is barred from composing until the reply row is stored
+ * while other rooms stay unblocked.
+ * Real AgentRuntime + SQLiteDatabaseAdapter end to end; only the Stage-1
+ * model surface is a deterministic registered handler (no live model, no
+ * network). The runtime wrapper observes/faults/holds persistence before the
+ * adapter transaction begins, and delegates real writes to the real adapter.
+ */
+
+import type { Content, Memory } from "@elizaos/core";
+import {
+  AgentRuntime,
+  asUUID,
+  attestDeliveryAudienceFromCanonicalRoom,
+  authorizeOwnerExclusiveDisclosure,
+  ChannelType,
+  createCharacter,
+  EventType,
+  inferenceTimingRegistry,
+  ModelType,
+  PRIVACY_DENIED_TEXT,
+  type UUID,
+} from "@elizaos/core";
+import { SQLiteDatabaseAdapter } from "@elizaos/testing/runtime";
+import { v4 } from "uuid";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ServerState } from "../../../../packages/agent/src/api/server-types.ts";
+import { registerClientChatSendHandler } from "../../../../packages/agent/src/services/client-chat-sender.ts";
+import { executeTriggerTask } from "../../../../packages/agent/src/triggers/runtime.ts";
+import {
+  buildTriggerConfig,
+  buildTriggerMetadata,
+  normalizeTriggerDraft,
+} from "../../../../packages/agent/src/triggers/scheduling.ts";
+import { createAssistantPlugin } from "../index.ts";
+import { ACKNOWLEDGMENT_RULE } from "../prompts/acknowledgment.ts";
+import { replyTextFieldEvaluator } from "../runtime/builtin-field-evaluators.ts";
+import { replyIsClaimSafeAcknowledgment } from "./message/side-effect-claims.ts";
+import {
+  DefaultMessageService,
+  enforceTrustedDeliveryAudienceOnResult,
+  evaluatePlannedReplyEgress,
+} from "./message.ts";
+
+/** The Stage-1 HANDLE_RESPONSE tool-call envelope a live model emits. */
+function stage1DirectReply(replyText: string, nativeParts = false) {
+  return {
+    text: "",
+    toolCalls: [
+      {
+        id: "handle-response-1",
+        name: "HANDLE_RESPONSE",
+        arguments: {
+          shouldRespond: "RESPOND",
+          thought: "Direct answer.",
+          contexts: ["simple"],
+          intents: [],
+          candidateActionNames: [],
+          replyText: nativeParts
+            ? [{ kind: "text", value: replyText }]
+            : replyText,
+          facts: [],
+          relationships: [],
+          addressedTo: [],
+        },
+      },
+    ],
+    finishReason: "tool_calls",
+  };
+}
+
+const activeRuntimes: AgentRuntime[] = [];
+const releasePersistenceGates: Array<() => void> = [];
+
+afterEach(async () => {
+  vi.unstubAllEnvs();
+  for (const release of releasePersistenceGates.splice(0)) release();
+  await Promise.all(
+    activeRuntimes.splice(0).map(async (runtime) => {
+      await runtime.stop();
+      await runtime.close();
+    }),
+  );
+});
+
+interface HarnessOptions {
+  /** Artificial latency injected on the agent-reply row write only. */
+  persistDelayMs?: number;
+  /** Fail the agent-reply row write only (incoming-message write succeeds). */
+  failReplyPersist?: boolean;
+  /**
+   * Hold the FIRST agent-reply row write open until `releaseReplyPersist()`
+   * is called — a deterministic, sleep-free window for the compose-vs-persist
+   * race tests. Later reply writes (follow-up turns) are never held.
+   */
+  holdReplyPersist?: boolean;
+  /** Deterministic interleaving point after Stage-1 reads state, before egress. */
+  beforeStage1Return?: (runtime: AgentRuntime) => Promise<void>;
+}
+
+async function createHarness(opts: HarnessOptions = {}) {
+  const replyText = `the build finished clean, all green. probe-${v4()}`;
+  const followUpReplyText = `and the tests passed too. probe-${v4()}`;
+  const runtime = new AgentRuntime({
+    plugins: [createAssistantPlugin()],
+    character: createCharacter({
+      name: `DeliverThenPersist${v4().slice(0, 8)}`,
+    }),
+
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  const adapter = SQLiteDatabaseAdapter.create(":memory:", runtime.agentId);
+  runtime.registerDatabaseAdapter(adapter);
+  activeRuntimes.push(runtime);
+  await runtime.initialize();
+  // Interleaving trace shared by the model handler and the storage seam.
+  const order: string[] = [];
+  // Serialized `messages` model input per Stage-1 invocation — lets tests
+  // assert what a turn's composed prompt actually contained.
+  const stage1Invocations: string[] = [];
+  runtime.registerModel(
+    ModelType.RESPONSE_HANDLER,
+    async (_rt, params) => {
+      const invocation = stage1Invocations.length + 1;
+      stage1Invocations.push(
+        JSON.stringify((params as { messages?: unknown }).messages ?? null),
+      );
+      order.push(`stage1:${invocation}`);
+      await opts.beforeStage1Return?.(runtime);
+      return stage1DirectReply(
+        invocation === 1 ? replyText : followUpReplyText,
+        params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+          ?.parameters?.properties?.replyText?.type === "array",
+      );
+    },
+    "deterministic-test",
+  );
+
+  const roomId = asUUID(v4());
+  const entityId = asUUID(v4());
+  await runtime.ensureConnection({
+    entityId,
+    roomId,
+    worldId: asUUID(v4()),
+    userName: "tester",
+    name: "tester",
+    source: "test",
+    type: ChannelType.DM,
+  });
+
+  // Observation-only storage seam: records when the agent-reply row write
+  // COMPLETES relative to the delivery callback, and optionally injects
+  // latency, a hold-open gate, or a fault for the failure/race tests. Real
+  // writes always reach the real SQLite adapter.
+  let releaseReplyPersist: () => void = () => {};
+  const replyPersistGate = new Promise<void>((resolve) => {
+    releaseReplyPersist = resolve;
+  });
+  releasePersistenceGates.push(releaseReplyPersist);
+  // Hold before SQLite's transaction queue so unrelated rooms can still write.
+  const realCreateMessageMemory = runtime.createMessageMemory.bind(runtime);
+  runtime.createMessageMemory = async (memory, unique) => {
+    const isReplyWrite =
+      memory.entityId === runtime.agentId && memory.content?.text === replyText;
+    if (isReplyWrite && opts.persistDelayMs) {
+      await new Promise((resolve) => setTimeout(resolve, opts.persistDelayMs));
+    }
+    if (isReplyWrite && opts.holdReplyPersist) {
+      await replyPersistGate;
+    }
+    if (isReplyWrite && opts.failReplyPersist) {
+      throw new Error("injected reply-persist failure");
+    }
+    const id = await realCreateMessageMemory(memory, unique);
+    if (isReplyWrite) {
+      order.push("persist:reply");
+    }
+    return id;
+  };
+
+  const makeMessage = (): Memory => ({
+    id: asUUID(v4()),
+    entityId,
+    agentId: runtime.agentId,
+    roomId,
+    content: {
+      text: "how did the build go?",
+      source: "test",
+      channelType: ChannelType.DM,
+    },
+    createdAt: Date.now(),
+  });
+
+  const makeFollowUp = (): Memory => ({
+    id: asUUID(v4()),
+    entityId,
+    agentId: runtime.agentId,
+    roomId,
+    content: {
+      text: "nice — and did the tests pass?",
+      source: "test",
+      channelType: ChannelType.DM,
+    },
+    createdAt: Date.now(),
+  });
+
+  /** A second, unrelated room on the same runtime (cross-room isolation). */
+  const createSecondRoom = async () => {
+    const otherRoomId = asUUID(v4());
+    const otherEntityId = asUUID(v4());
+    await runtime.ensureConnection({
+      entityId: otherEntityId,
+      roomId: otherRoomId,
+      worldId: asUUID(v4()),
+      userName: "tester-b",
+      name: "tester-b",
+      source: "test",
+      type: ChannelType.DM,
+    });
+    const makeRoomBMessage = (): Memory => ({
+      id: asUUID(v4()),
+      entityId: otherEntityId,
+      agentId: runtime.agentId,
+      roomId: otherRoomId,
+      content: {
+        text: "unrelated question from another room",
+        source: "test",
+        channelType: ChannelType.DM,
+      },
+      createdAt: Date.now(),
+    });
+    return { roomId: otherRoomId, makeRoomBMessage };
+  };
+
+  const storedReplies = async (): Promise<Memory[]> => {
+    const memories = await runtime.getMemories({
+      roomId,
+      tableName: "messages",
+      count: 100,
+    });
+    return memories.filter(
+      (m) => m.entityId === runtime.agentId && m.content.text === replyText,
+    );
+  };
+
+  const service = new DefaultMessageService();
+  return {
+    runtime,
+    service,
+    roomId,
+    replyText,
+    followUpReplyText,
+    order,
+    stage1Invocations,
+    makeMessage,
+    makeFollowUp,
+    createSecondRoom,
+    releaseReplyPersist,
+    storedReplies,
+  };
+}
+
+describe("simple-path deliver-then-persist ordering", () => {
+  it.each([false, true])(
+    "trigger callback preserves one canonical reply and reports persist failure (%s)",
+    async (failReplyPersist) => {
+      const h = await createHarness({
+        holdReplyPersist: !failReplyPersist,
+        failReplyPersist,
+      });
+      h.runtime.messageService = h.service;
+      const canonicalWrites: Memory[] = [];
+      const publish = h.runtime.createMessageMemory.bind(h.runtime);
+      h.runtime.createMessageMemory = async (memory, unique) => {
+        if (
+          memory.entityId === h.runtime.agentId &&
+          memory.content.text === h.replyText
+        )
+          canonicalWrites.push(structuredClone(memory));
+        return publish(memory, unique);
+      };
+      const room = await h.runtime.getRoom(h.roomId);
+      if (!room) throw new Error("Missing harness room");
+      await h.runtime.updateRoom({ ...room, source: "client_chat" });
+      const broadcastWs = vi.fn(() => h.releaseReplyPersist());
+      const state = {
+        conversations: new Map([
+          [
+            "origin",
+            { id: "origin", roomId: h.roomId, updatedAt: "2026-01-01" },
+          ],
+        ]),
+        activeConversationId: null,
+        broadcastWs,
+      } as unknown as ServerState;
+      registerClientChatSendHandler(h.runtime, state);
+      const sent = vi.fn();
+      h.runtime.registerEvent(EventType.MESSAGE_SENT, sent);
+      const send = vi.spyOn(h.runtime, "sendMessageToTarget");
+      const normalized = normalizeTriggerDraft({
+        input: {
+          kind: "prompt",
+          triggerType: "once",
+          scheduledAtIso: new Date(Date.now() + 60_000).toISOString(),
+        },
+        fallback: {
+          displayName: "Delivery identity",
+          instructions: "Give the short reply",
+          triggerType: "once",
+          wakeMode: "inject_now",
+          enabled: true,
+          createdBy: "test",
+        },
+      });
+      if (!normalized.draft) throw new Error(normalized.error);
+      const trigger = buildTriggerConfig({
+        draft: normalized.draft,
+        triggerId: asUUID(v4()),
+      });
+      const metadata = buildTriggerMetadata({ trigger, nowMs: Date.now() });
+      if (!metadata) throw new Error("Missing trigger metadata");
+      const taskId = await h.runtime.createTask({
+        name: "identity-trigger",
+        agentId: h.runtime.agentId,
+        roomId: h.roomId,
+        tags: ["trigger"],
+        metadata,
+      });
+      const task = await h.runtime.getTask(taskId);
+      if (!task) throw new Error("Missing trigger task");
+      const outcome = await executeTriggerTask(h.runtime, task, {
+        source: "manual",
+        force: true,
+      });
+      expect(send).toHaveBeenCalledTimes(1);
+      const [target, content] = send.mock.calls[0];
+      const replies = await h.storedReplies();
+      expect(replies).toHaveLength(failReplyPersist ? 0 : 1);
+      expect(target.responseMemoryId).toBe(content.responseId);
+      expect(content.simple).toBe(true);
+      expect(broadcastWs).toHaveBeenCalledTimes(1);
+      expect(broadcastWs.mock.calls[0]?.[0].message.id).toBe(
+        content.responseId,
+      );
+      if (failReplyPersist) {
+        expect(outcome.status).toBe("error");
+        expect(outcome.error).toContain("injected reply-persist failure");
+        expect(replies).toHaveLength(0);
+        expect(sent).not.toHaveBeenCalled();
+      } else {
+        expect(outcome.status).toBe("success");
+        expect(replies).toHaveLength(1);
+        expect(replies[0].id).toBe(content.responseId);
+        expect(canonicalWrites).toHaveLength(1);
+        expect(replies[0].content).toEqual(canonicalWrites[0].content);
+        expect(replies[0].createdAt).toBe(canonicalWrites[0].createdAt);
+        expect(replies[0].metadata ?? {}).toEqual(
+          canonicalWrites[0].metadata ?? {},
+        );
+        expect(h.order.filter((x) => x === "persist:reply")).toHaveLength(1);
+        expect(sent).toHaveBeenCalledTimes(1);
+      }
+    },
+  );
+
+  it.each([
+    ["1", "analysis"],
+    ["0", "analysis"],
+    ["1", "as you were"],
+    ["0", "as you were"],
+  ])(
+    "handles ordinary text with retired analysis gate %s: %s",
+    async (gate, text) => {
+      vi.stubEnv("ELIZA_ENABLE_ANALYSIS_MODE", gate);
+      const h = await createHarness();
+      const message = h.makeMessage();
+      message.content.text = text;
+      const delivered: string[] = [];
+      const result = await h.service.handleMessage(
+        h.runtime,
+        message,
+        async (content) => {
+          if (content.text) delivered.push(content.text);
+          return [];
+        },
+      );
+      expect(h.stage1Invocations).toHaveLength(1);
+      expect(h.stage1Invocations[0]).toContain(text);
+      expect(result.didRespond).toBe(true);
+      expect(delivered).toContain(h.replyText);
+      expect(await h.storedReplies()).toHaveLength(1);
+      if (!message.id) throw new Error("Fixture message requires an ID");
+      expect((await h.runtime.getMemoryById(message.id))?.content.text).toBe(
+        text,
+      );
+    },
+  );
+
+  it("fires the delivery callback before the reply persist completes, then still persists it", async () => {
+    const h = await createHarness({ holdReplyPersist: true });
+    let orderAtDelivery: string[] | undefined;
+    let deliveryActionName: string | undefined;
+
+    const result = await h.service.handleMessage(
+      h.runtime,
+      h.makeMessage(),
+      async (_content, actionName) => {
+        h.order.push("callback");
+        deliveryActionName = actionName;
+        // Hold the real storage boundary until delivery enters. This proves
+        // a slow write cannot block delivery without assuming asynchronous
+        // privacy checks and an immediate in-memory write settle in order.
+        orderAtDelivery = [...h.order];
+        h.releaseReplyPersist();
+        return [];
+      },
+    );
+
+    expect(result.didRespond).toBe(true);
+    expect(result.mode).toBe("simple");
+    expect(result.responseContent?.text).toBe(h.replyText);
+    expect(deliveryActionName).toBeUndefined();
+    expect(orderAtDelivery).toEqual(["stage1:1", "callback"]);
+    expect(h.order).toEqual(["stage1:1", "callback", "persist:reply"]);
+    expect(result.persistedResponseMessageIds).toHaveLength(1);
+
+    // The persist completed before handleMessage resolved: an immediate
+    // next-turn-style read sees exactly one stored reply — no drop, no
+    // double-persist.
+    const replies = await h.storedReplies();
+    expect(replies).toHaveLength(1);
+    expect(replies[0].content.text).toBe(h.replyText);
+  });
+
+  it("replaces private callback, persistence, event, and returned content when membership changes", async () => {
+    const guest = asUUID(v4());
+    let privateRoomId: UUID | undefined;
+    const h = await createHarness({
+      beforeStage1Return: async (runtime) => {
+        if (!privateRoomId) throw new Error("private room not initialized");
+        await runtime.addParticipant(guest, privateRoomId);
+      },
+    });
+    privateRoomId = h.roomId;
+    const turn = h.makeMessage();
+    h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+    h.runtime.registerProvider({
+      name: "userPersonalityPreferences",
+      override: true,
+      disclosureGate: { require: "owner_exclusive" },
+      alwaysInResponseState: true,
+      get: async () => ({ text: "OWNER_PRIVATE_PROVIDER_CANARY" }),
+    });
+    await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+
+    const delivered: Content[] = [];
+    const messageSentContents: Content[] = [];
+    const emitEvent = h.runtime.emitEvent.bind(h.runtime);
+    h.runtime.emitEvent = (async (event, payload) => {
+      if (event === EventType.MESSAGE_SENT) {
+        const sentMessage = (payload as { message?: Memory }).message;
+        if (sentMessage) messageSentContents.push(sentMessage.content);
+      }
+      return emitEvent(event, payload);
+    }) as AgentRuntime["emitEvent"];
+
+    const result = await h.service.handleMessage(
+      h.runtime,
+      turn,
+      async (content) => {
+        delivered.push(content);
+        return [];
+      },
+    );
+    const stored = await h.runtime.getMemories({
+      roomId: h.roomId,
+      tableName: "messages",
+      count: 100,
+    });
+    const observable = JSON.stringify({
+      delivered,
+      messageSentContents,
+      responseContent: result.responseContent,
+      responseMessages: result.responseMessages.map((memory) => memory.content),
+      stored: stored.filter((memory) => memory.entityId === h.runtime.agentId),
+    });
+
+    expect(observable).not.toContain(h.replyText);
+    expect(observable).not.toContain("OWNER_PRIVATE_PROVIDER_CANARY");
+    expect(delivered).toEqual([
+      expect.objectContaining({ text: PRIVACY_DENIED_TEXT }),
+    ]);
+    expect(result.responseContent?.text).toBe(PRIVACY_DENIED_TEXT);
+    expect(
+      stored.some(
+        (memory) =>
+          memory.entityId === h.runtime.agentId &&
+          memory.content.text === PRIVACY_DENIED_TEXT,
+      ),
+    ).toBe(true);
+  });
+
+  it("rewrites every actions-mode response memory after the audience changes", async () => {
+    const h = await createHarness();
+    const turn = h.makeMessage();
+    h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+    await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+    expect(
+      await authorizeOwnerExclusiveDisclosure(h.runtime, turn),
+    ).toMatchObject({ allowed: true });
+    await h.runtime.addParticipant(asUUID(v4()), h.roomId);
+
+    const actionCanary = "OWNER_PRIVATE_ACTION_RESULT_CANARY";
+    const responseMessages: Memory[] = ["first", "second"].map(
+      (label, index) => ({
+        id: asUUID(v4()),
+        entityId: h.runtime.agentId,
+        agentId: h.runtime.agentId,
+        roomId: h.roomId,
+        createdAt: Date.now() + index,
+        content: {
+          text: `${label}: ${actionCanary}`,
+          data: { actionCanary },
+        },
+      }),
+    );
+
+    const result = await enforceTrustedDeliveryAudienceOnResult(
+      h.runtime,
+      turn,
+      {
+        text: `top-level: ${actionCanary}`,
+        data: { actionCanary },
+      },
+      responseMessages,
+    );
+
+    expect(JSON.stringify(result)).not.toContain(actionCanary);
+    expect(result.responseContent?.text).toBe(PRIVACY_DENIED_TEXT);
+    expect(result.responseMessages).toHaveLength(2);
+    expect(
+      result.responseMessages.every(
+        (memory) => memory.content.text === PRIVACY_DENIED_TEXT,
+      ),
+    ).toBe(true);
+  });
+
+  it("still persists the reply when the delivery callback throws, then rethrows that exact error", async () => {
+    const h = await createHarness({ holdReplyPersist: true });
+    const boom = new Error("connector send failed");
+
+    await expect(
+      h.service.handleMessage(h.runtime, h.makeMessage(), async () => {
+        h.order.push("callback-throw");
+        h.releaseReplyPersist();
+        throw boom;
+      }),
+    ).rejects.toBe(boom);
+
+    // The memory was persisted despite the delivery failure, and the error
+    // surfaced identity-preserved at the handleMessage boundary.
+    expect(h.order).toEqual(["stage1:1", "callback-throw", "persist:reply"]);
+    expect(await h.storedReplies()).toHaveLength(1);
+  });
+
+  it("propagates a reply-persist failure to the handleMessage boundary after the user got the reply", async () => {
+    const h = await createHarness({ failReplyPersist: true });
+    const delivered: Content[] = [];
+
+    await expect(
+      h.service.handleMessage(h.runtime, h.makeMessage(), async (content) => {
+        delivered.push(content);
+        return [];
+      }),
+    ).rejects.toThrow("injected reply-persist failure");
+
+    // Delivery happened first; the persist failure was NOT swallowed.
+    expect(delivered).toHaveLength(1);
+    expect(delivered[0].text).toBe(h.replyText);
+  });
+
+  it("keeps both failures observable when the callback AND the persist fail", async () => {
+    const h = await createHarness({ failReplyPersist: true });
+    const reported: unknown[] = [];
+    const realReportError = h.runtime.reportError.bind(h.runtime);
+    h.runtime.reportError = ((scope, error, context) => {
+      if (scope === "MessageService.simpleDeliveryCallback") {
+        reported.push(error);
+      }
+      return realReportError(scope, error, context);
+    }) as AgentRuntime["reportError"];
+    const boom = new Error("connector send failed");
+
+    // The persist failure propagates (data loss outranks delivery failure);
+    // the held delivery failure is reported, never silently superseded.
+    await expect(
+      h.service.handleMessage(h.runtime, h.makeMessage(), async () => {
+        throw boom;
+      }),
+    ).rejects.toThrow("injected reply-persist failure");
+    expect(reported).toEqual([boom]);
+  });
+
+  it("overlaps reply delivery with persistence and records reply time independently", async () => {
+    const h = await createHarness({ persistDelayMs: 150 });
+    let observedTurnId: string | undefined;
+
+    await h.service.handleMessage(
+      h.runtime,
+      h.makeMessage(),
+      async () => {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        return [];
+      },
+      {
+        onInferenceTimingSummary: (summary) => {
+          observedTurnId = summary.turnId;
+        },
+      },
+    );
+
+    const turn = inferenceTimingRegistry.recentTurns(1)[0];
+    expect(turn).toBeDefined();
+    expect(observedTurnId).toBe(turn.turnId);
+    const callbackSpan = turn.spans.find(
+      (s) => s.name === "message:delivery:callback",
+    );
+    const persistSpan = turn.spans.find(
+      (s) => s.name === "message:delivery:persistence",
+    );
+    expect(callbackSpan).toBeDefined();
+    expect(persistSpan).toBeDefined();
+    if (!callbackSpan || !persistSpan) return;
+
+    // Both operations are in flight together, while the reply mark follows
+    // the callback rather than waiting for the slower durable write.
+    expect(persistSpan.startMs).toBeLessThanOrEqual(callbackSpan.endMs);
+    expect(persistSpan.durationMs).toBeGreaterThanOrEqual(140);
+    expect(turn.timeToReplyMs).not.toBeNull();
+    expect(turn.timeToReplyMs as number).toBeLessThanOrEqual(persistSpan.endMs);
+  });
+
+  it("bars a same-room follow-up fired from the delivery callback from composing until the reply persist completes", async () => {
+    // THE race deliver-then-persist opens up: the client reacts to the
+    // delivered reply while the reply row is still being written. The
+    // follow-up's compose must wait for the persist barrier, or its
+    // RECENT_MESSAGES omits the very reply it is answering. The persist is
+    // held open by a gate (no timing games): if the barrier did not work,
+    // the follow-up's Stage-1 would run while the gate is still closed.
+    const h = await createHarness({ holdReplyPersist: true });
+    let followUpTurn: Promise<unknown> | null = null;
+
+    const firstTurn = h.service.handleMessage(
+      h.runtime,
+      h.makeMessage(),
+      async () => {
+        h.order.push("callback");
+        // Fire-and-forget, exactly like a real client reacting to the
+        // delivered reply. A callback must never AWAIT a same-room turn
+        // to completion (documented on registerPendingReplyPersist).
+        followUpTurn = h.service.handleMessage(
+          h.runtime,
+          h.makeFollowUp(),
+          async () => [],
+        );
+        return [];
+      },
+    );
+
+    // Give the follow-up every opportunity to (incorrectly) reach Stage-1
+    // while the first reply's persist is still held open.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(h.order).toContain("callback");
+    expect(h.order).not.toContain("stage1:2");
+
+    h.releaseReplyPersist();
+    await firstTurn;
+    expect(followUpTurn).not.toBeNull();
+    await followUpTurn;
+
+    // Stage-1 for the follow-up ran only after the reply row was stored…
+    expect(h.order.indexOf("persist:reply")).toBeGreaterThan(-1);
+    expect(h.order.indexOf("stage1:2")).toBeGreaterThan(
+      h.order.indexOf("persist:reply"),
+    );
+    // …and its composed model input actually contains the delivered reply.
+    expect(h.stage1Invocations).toHaveLength(2);
+    expect(h.stage1Invocations[1]).toContain(h.replyText);
+  });
+
+  it("lets a different room proceed while another room's reply persist is still pending", async () => {
+    // The barrier is per-room: holding room A's reply persist open must not
+    // serialize room B behind it.
+    const h = await createHarness({ holdReplyPersist: true });
+    const roomB = await h.createSecondRoom();
+
+    let roomADelivered: () => void = () => {};
+    const delivered = new Promise<void>((resolve) => {
+      roomADelivered = resolve;
+    });
+    const turnA = h.service.handleMessage(
+      h.runtime,
+      h.makeMessage(),
+      async () => {
+        roomADelivered();
+        return [];
+      },
+    );
+
+    // Room A's reply is delivered and its persist is now held open.
+    await delivered;
+    const resultB = await h.service.handleMessage(
+      h.runtime,
+      roomB.makeRoomBMessage(),
+      async () => [],
+    );
+
+    // Room B ran to completion while room A's persist never finished.
+    expect(resultB.didRespond).toBe(true);
+    expect(h.order).not.toContain("persist:reply");
+
+    h.releaseReplyPersist();
+    await turnA;
+    expect(h.order).toContain("persist:reply");
+  });
+});
+
+describe("planning progress delivery boundaries", () => {
+  it.each([
+    'Notes is open. Your latest note is "QA handoff September 24." Your next saved event is "QA handoff September 25," today from 10:00 to 10:15 AM PDT. Nothing was created, edited, or deleted.',
+    "Checking now. Your next saved event is at 10:00 AM.",
+    "Checking that now.",
+  ])(
+    "holds ungrounded read answers while permitting only genuine progress: %s",
+    async (draft) => {
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.text =
+        "Read my next saved calendar event. Do not create, edit, or delete anything.";
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      const final =
+        "Your next saved event is QA selected, today from 10:15 to 10:30 AM PDT.";
+      let reads = 0;
+      h.runtime.registerAction({
+        name: "TEST_CALENDAR_READ",
+        description: "Read the next saved calendar event",
+        contexts: ["general"],
+        validate: async () => true,
+        handler: async () => {
+          reads++;
+          return {
+            success: true,
+            text: JSON.stringify({
+              title: "QA selected",
+              start: "10:15",
+              end: "10:30",
+            }),
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            data: { readOnlyOperation: true },
+          };
+        },
+      });
+      let responses = 0;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async () => {
+          responses++;
+          if (responses > 1) {
+            expect(reads).toBe(1);
+            return JSON.stringify({
+              success: true,
+              decision: "FINISH",
+              thought: "The current read supplies the event.",
+              messageToUser: final,
+              replyEffectStatus: "none",
+            });
+          }
+          const response = stage1DirectReply(draft);
+          Object.assign(response.toolCalls[0].arguments, {
+            contexts: ["general"],
+            intents: ["Read the next saved calendar event"],
+            candidateActionNames: ["TEST_CALENDAR_READ"],
+            requiresTool: true,
+            replyEffectStatus: "pending",
+          });
+          return response;
+        },
+        "planned-read-proof",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async (_runtime, params) => {
+          expect(
+            JSON.stringify((params as { tools?: unknown }).tools),
+          ).toContain("TEST_CALENDAR_READ");
+          return {
+            text: "",
+            toolCalls: [
+              {
+                id: "current-read",
+                name: "TEST_CALENDAR_READ",
+                arguments: { eliza_turn_scope: "final" },
+              },
+            ],
+          };
+        },
+        "planned-read-proof",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            expect(reads).toBe(0);
+            progress.push(text);
+          },
+        },
+      );
+      expect(reads).toBe(1);
+      expect(progress).toEqual(draft === "Checking that now." ? [draft] : []);
+      expect(delivered.map((content) => content.text)).toEqual([final]);
+    },
+  );
+  // Owner-only progress is spoken only after its audience revalidates; a
+  // changed room or a failed lookup fails closed. Progress never consumes the
+  // final reply's own delivery.
+  it.each(
+    [ChannelType.DM, ChannelType.VOICE_DM].flatMap((channelType) =>
+      (
+        ["clean", "private", "revoked", "lookup_failed", "envelope"] as const
+      ).map((kind) => ({
+        channelType,
+        kind,
+      })),
+    ),
+  )(
+    "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+    async ({ kind, channelType }) => {
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.channelType = channelType;
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      const ownerOnly =
+        kind === "private" || kind === "revoked" || kind === "lookup_failed";
+      let failNextAudienceRead = false;
+      if (ownerOnly) {
+        h.runtime.registerProvider({
+          name: "userPersonalityPreferences",
+          override: true,
+          disclosureGate: { require: "owner_exclusive" },
+          alwaysInResponseState: true,
+          get: async () => ({ text: "PRIVATE_CONTEXT_TEST_VALUE" }),
+        });
+        await attestDeliveryAudienceFromCanonicalRoom(h.runtime, turn);
+        const readParticipants = h.runtime.getParticipantsForRoom.bind(
+          h.runtime,
+        );
+        vi.spyOn(h.runtime, "getParticipantsForRoom").mockImplementation(
+          async (roomId) => {
+            if (failNextAudienceRead) {
+              failNextAudienceRead = false;
+              throw new Error("injected audience lookup failure");
+            }
+            return readParticipants(roomId);
+          },
+        );
+      }
+      // Owner-only rows speak an acknowledgement the gate admits, so only
+      // audience revalidation can drop it.
+      const progressText =
+        kind === "envelope"
+          ? "Checking <<<EXTERNAL_UNTRUSTED_CONTENT>>> now."
+          : kind === "clean"
+            ? "Checking that now."
+            : "Let me check your notes.";
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async (_rt, params) => {
+          if (kind === "revoked")
+            await h.runtime.addParticipant(asUUID(v4()), h.roomId);
+          if (kind === "lookup_failed") failNextAudienceRead = true;
+          const response = stage1DirectReply(
+            progressText,
+            params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+              ?.parameters?.properties?.replyText?.type === "array",
+          );
+          Object.assign(response.toolCalls[0].arguments, {
+            contexts: ["general"],
+            requiresTool: true,
+            replyEffectStatus: "pending",
+          });
+          return response;
+        },
+        "progress-boundary",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () =>
+          JSON.stringify({
+            thought: "The request is resolved.",
+            toolCalls: [],
+            messageToUser: h.replyText,
+          }),
+        "progress-boundary",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            progress.push(text);
+          },
+        },
+      );
+      expect(progress).toEqual(
+        kind === "clean" || kind === "private" ? [progressText] : [],
+      );
+      expect(delivered).toHaveLength(1);
+      if (kind !== "revoked") {
+        expect(delivered[0].text).toBe(h.replyText);
+        expect(await h.storedReplies()).toHaveLength(1);
+      } else
+        expect(JSON.stringify(delivered)).not.toContain(
+          "PRIVATE_CONTEXT_TEST_VALUE",
+        );
+    },
+  );
+  // The acknowledgement rule teaches the model to acknowledge a view planned
+  // with other work only as opening it, in the rule's navigation form, and
+  // quotes no utterance. That form is guidance the unchanged closed grammar
+  // and egress already admit, never a substitute: the owner's live draft
+  // (tj-6ae578d9ff0774) is still dropped and nothing is spoken in its place.
+  it.each([
+    { draft: "Let me open Calendar.", spoken: true },
+    // The rule's other lead, with its curly apostrophe, is spoken unchanged.
+    { draft: "I’ll open Calendar.", spoken: true },
+    {
+      draft: "Calendar. Killing coffee and putting a launch at noon.",
+      spoken: false,
+    },
+    // #743 (step-1793690771434-bnctbd): work named after the view drops the
+    // whole draft; no truncated "Let me open Calendar" is spoken instead.
+    {
+      draft: "Let me open Calendar and take another shot at the rename.",
+      spoken: false,
+    },
+    { draft: "Let me open Calendar again.", spoken: false },
+  ])(
+    "speaks a planned-view acknowledgement only as the model wrote it: $draft",
+    async ({ draft, spoken }) => {
+      const sentence =
+        "When a view opens alongside other planned work, acknowledge only opening that view, in the navigation form above; never name items, times or effects.";
+      // A draft in the navigation form: "Let me" plus open and the app name.
+      const example = "Let me open Calendar.";
+      const request =
+        "Can you open the calendar and delete the coffee event and create a new event to have a launch at noon?";
+      expect(ACKNOWLEDGMENT_RULE.endsWith(` ${sentence}`)).toBe(true);
+      expect(replyIsClaimSafeAcknowledgment(example)).toBe(true);
+      expect(
+        evaluatePlannedReplyEgress({
+          reply: example,
+          pendingWork: true,
+          request,
+          providers: {
+            VIEW_NAVIGATION: {
+              data: {
+                views: [{ id: "calendar", label: "Calendar" }],
+                currentViewId: "chat",
+              },
+            },
+          } as never,
+          actionResults: [],
+          actions: [],
+        }).verdict,
+      ).toBe("allow");
+      expect(replyIsClaimSafeAcknowledgment(draft)).toBe(spoken);
+
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.text = request;
+      turn.content.channelType = ChannelType.VOICE_DM;
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      const stage1Calls: string[] = [];
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async (_rt, params) => {
+          stage1Calls.push(JSON.stringify(params.tools));
+          const response = stage1DirectReply(
+            draft,
+            params.tools?.find((tool) => tool.name === "HANDLE_RESPONSE")
+              ?.parameters?.properties?.replyText?.type === "array",
+          );
+          Object.assign(response.toolCalls[0].arguments, {
+            contexts: ["general"],
+            intents: [
+              "Open the Calendar view",
+              "Delete the coffee event",
+              "Create a launch event at noon",
+            ],
+            requiresTool: true,
+            replyEffectStatus: "pending",
+          });
+          return response;
+        },
+        "planned-view-acknowledgement",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () =>
+          JSON.stringify({
+            thought: "The request is resolved.",
+            toolCalls: [],
+            messageToUser: h.replyText,
+          }),
+        "planned-view-acknowledgement",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            progress.push(text);
+          },
+        },
+      );
+      expect(stage1Calls).toHaveLength(1);
+      expect(stage1Calls[0]).toContain(JSON.stringify(sentence).slice(1, -1));
+      expect(progress).toEqual(spoken ? [draft] : []);
+      expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
+      expect(await h.storedReplies()).toHaveLength(1);
+    },
+  );
+  // Preserved tj-07e59cec6d1728: with earlier dialogue Stage 1 offers the
+  // source-part replyText schema, which lacked the acknowledgement rule the
+  // first-turn field carries, so "what's going on today in the news?" routed
+  // to web with replyText [] and nothing was spoken while the search ran. The
+  // controlled pair tj-389b296cdde582 (plain field, "Let me check.") and
+  // tj-0d4f4cfab3db0b (source parts, []) is the stand-in model below: it
+  // acknowledges pending work only when its replyText schema carries the
+  // rule. The unchanged closed grammar decides what is spoken; the runtime
+  // never supplies an acknowledgement.
+  it.each([
+    { draft: "Let me check.", pending: true },
+    { draft: "", pending: true },
+    { draft: "Hello.", pending: false },
+  ])(
+    "speaks a history-turn acknowledgement only as the model wrote it: '$draft' (pending $pending)",
+    async ({ draft, pending }) => {
+      const h = await createHarness();
+      const turn = h.makeMessage();
+      turn.content.text = pending
+        ? "Um, what's going on today in the news?"
+        : "Reply with the word hello.";
+      h.runtime.setSetting("ELIZA_ADMIN_ENTITY_ID", turn.entityId);
+      for (const [entityId, text, createdAt] of [
+        [turn.entityId, "Can you open notes?", Date.now() - 2000],
+        [h.runtime.agentId, "Notes.", Date.now() - 1000],
+      ] as const)
+        await h.runtime.createMemory(
+          {
+            id: asUUID(v4()),
+            entityId,
+            agentId: h.runtime.agentId,
+            roomId: h.roomId,
+            content: { text, source: "test", channelType: ChannelType.DM },
+            createdAt,
+          },
+          "messages",
+        );
+      let searches = 0;
+      h.runtime.registerAction({
+        name: "TEST_WEB_SEARCH",
+        description: "Search the web for current news",
+        contexts: ["web"],
+        validate: async () => true,
+        handler: async () => {
+          searches++;
+          return {
+            success: true,
+            text: "Top story: a test headline.",
+            transcriptVisibility: "internal",
+            modelReplyRequired: true,
+            data: { readOnlyOperation: true },
+          };
+        },
+      });
+      const final = pending ? "One test headline today." : draft;
+      let replySchema: { type?: string; description?: string } | undefined;
+      h.runtime.registerModel(
+        ModelType.RESPONSE_HANDLER,
+        async (_rt, params) => {
+          if (replySchema)
+            return JSON.stringify({
+              success: true,
+              decision: "FINISH",
+              thought: "The search supplies the news.",
+              messageToUser: final,
+              replyEffectStatus: "none",
+            });
+          replySchema = params.tools?.find(
+            (tool) => tool.name === "HANDLE_RESPONSE",
+          )?.parameters?.properties?.replyText as typeof replySchema;
+          const ruled =
+            replySchema?.description?.startsWith(ACKNOWLEDGMENT_RULE);
+          const response = stage1DirectReply(
+            pending && !ruled ? "" : draft,
+            true,
+          );
+          Object.assign(
+            response.toolCalls[0].arguments,
+            pending
+              ? {
+                  contexts: ["web"],
+                  intents: ["Summarize today's top news"],
+                  candidateActionNames: ["TEST_WEB_SEARCH"],
+                  requiresTool: true,
+                  replyEffectStatus: "pending",
+                }
+              : { replyEffectStatus: "none" },
+          );
+          return response;
+        },
+        "pending-work-acknowledgement",
+        100,
+      );
+      h.runtime.registerModel(
+        ModelType.ACTION_PLANNER,
+        async () => ({
+          text: "",
+          toolCalls: [
+            {
+              id: "current-search",
+              name: "TEST_WEB_SEARCH",
+              arguments: { eliza_turn_scope: "final" },
+            },
+          ],
+        }),
+        "pending-work-acknowledgement",
+        100,
+      );
+      const progress: string[] = [];
+      const delivered: Content[] = [];
+      await h.service.handleMessage(
+        h.runtime,
+        turn,
+        async (content) => {
+          delivered.push(content);
+          return [];
+        },
+        {
+          onPlanningAcknowledgment: (text) => {
+            expect(searches).toBe(0);
+            progress.push(text);
+          },
+        },
+      );
+      expect(searches).toBe(pending ? 1 : 0);
+      expect(progress).toEqual(draft && pending ? [draft] : []);
+      expect(delivered.map((content) => content.text)).toEqual([final]);
+      expect(replySchema?.type).toBe("array");
+      expect(replySchema?.description?.startsWith(ACKNOWLEDGMENT_RULE)).toBe(
+        true,
+      );
+      expect(
+        replyTextFieldEvaluator.schema.description?.startsWith(
+          ACKNOWLEDGMENT_RULE,
+        ),
+      ).toBe(true);
+    },
+  );
+});

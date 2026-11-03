@@ -172,16 +172,16 @@
       "holds ungrounded read answers while permitting only genuine progress: Notes is open. Your latest note is \"QA handoff September 24.\" Your next saved event is \"QA handoff September 25,\" today from 10:00 to 10:15 AM PDT. Nothing was created, edited, or deleted.",
       "holds ungrounded read answers while permitting only genuine progress: Checking now. Your next saved event is at 10:00 AM.",
       "holds ungrounded read answers while permitting only genuine progress: Checking that now.",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
-      "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "delivers clean progress on DM only to a revalidated audience without consuming final delivery",
+      "delivers private progress on DM only to a revalidated audience without consuming final delivery",
+      "delivers revoked progress on DM only to a revalidated audience without consuming final delivery",
+      "delivers lookup_failed progress on DM only to a revalidated audience without consuming final delivery",
+      "delivers envelope progress on DM only to a revalidated audience without consuming final delivery",
+      "delivers clean progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "delivers private progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "delivers revoked progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "delivers lookup_failed progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "delivers envelope progress on VOICE_DM only to a revalidated audience without consuming final delivery",
       "speaks a planned-view acknowledgement only as the model wrote it: Let me open Calendar.",
       "speaks a planned-view acknowledgement only as the model wrote it: I\u2019ll open Calendar.",
       "speaks a planned-view acknowledgement only as the model wrote it: Calendar. Killing coffee and putting a \u2026",
@@ -1168,5 +1168,5 @@
     "actualRule": "formatTitle named$fields useactualfirstobject/arrayindex, strings truncate40UTF16 withsurrogatesafeellipsis; ChannelTypeenum fromexactcurrentcoreprimitives. Primitive%s/%j/%i/%d/%f supported. Pinned5.0.5formatRegExp containsNO%p, so%p remainsliteral andcollisionmultiplicity retained. No borrowedBunrendering/observedreportnamecopy.",
     "scope": "StaticASTdata only; no test callbacks/vendor runner import/actualcollection/pass. Unsupportedtitleobjectformats failclosed; fullorderednames/source-row tablemetadata retained. Independentreview +actualnormalreport comparison stillrequired."
   },
-  "scope": "Exactsource-derivedexpandednormalVitest5names/collisionmultiplicity; no observedreportnamecopy orauthorBunlabels"
+  "scope": "Exactsource-derivedexpandednormalVitest5names/collisionmultiplicity; no observedreportnamecopy orauthorBunlabels Source-only ShorthandPropertyAssignment evaluator correction: lexical bindings regenerate10deliverytitles; allother1112orderednames unchanged. No observed-report titles used."
 }

@@ -233,5 +233,10 @@
   "expectedFrameworks": {
     "vitest": "5.0.5",
     "vite": "8.3.3"
-  }
+  },
+  "resourcePolicyFile": "TEST-RESOURCE-POLICY.json",
+  "resourcePolicySHA256": "548d41e431294e7f91cada9fdd38c2d04729ba086d53f84431ae405eb00dc3fa",
+  "oracleSHA256": "3fb4f419c0a4ab508ce971d4cb68f589a5cb9ae8891fdcfd6f9931cc6bcc660b",
+  "sourceInventoryCorrection": "Only AST lexical ShorthandPropertyAssignment handling; all1122 ordered titles regenerated from c63/pinnedformatter;10 delivery names corrected/1112 unchanged. All case assertions/counts/manualpolicy unchanged. No raw report used as oracle input.",
+  "resourceOnlySuccessor": "Claims owning-4 wholefile only4GiB/Nodeoldspace1024; other6 remain2GiB/1536. Fresh full pre/post dependency census required; previous partial passes not inherited as current-run acceptance."
 }

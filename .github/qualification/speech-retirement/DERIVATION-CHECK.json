@@ -1,0 +1,155 @@
+{
+  "state": "ALL1122_NAMES_REGENERATED_FROM_C63_DATA_ONLY_SHORTHAND_CORRECTION",
+  "sourceCommit": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+  "sourceTree": "b7ee023afcd3202f63dbdadc26bd844d2f73c915",
+  "changes": [
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 18,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers clean progress on DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "DM",
+        "kind": "clean"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 19,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers private progress on DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "DM",
+        "kind": "private"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 20,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers revoked progress on DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "DM",
+        "kind": "revoked"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 21,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers lookup_failed progress on DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "DM",
+        "kind": "lookup_failed"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 22,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers envelope progress on DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "DM",
+        "kind": "envelope"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 23,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers clean progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "VOICE_DM",
+        "kind": "clean"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 24,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers private progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "VOICE_DM",
+        "kind": "private"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 25,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers revoked progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "VOICE_DM",
+        "kind": "revoked"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 26,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers lookup_failed progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "VOICE_DM",
+        "kind": "lookup_failed"
+      }
+    },
+    {
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "index": 27,
+      "before": "delivers $kind progress on $channelType only to a revalidated audience without consuming final delivery",
+      "after": "delivers envelope progress on VOICE_DM only to a revalidated audience without consuming final delivery",
+      "sourceParameterRow": {
+        "channelType": "VOICE_DM",
+        "kind": "envelope"
+      }
+    }
+  ],
+  "unchangedOrderedNames": 1112,
+  "registered": 1122,
+  "expectedPassed": 1121,
+  "manualUnexecuted": 1,
+  "multiplicities": {
+    "packages/host/src/voice/session-speech-ports.test.ts": {
+      "registrations": 21,
+      "uniqueNames": 21,
+      "duplicateExtraInstances": 0
+    },
+    "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts": {
+      "registrations": 126,
+      "uniqueNames": 125,
+      "duplicateExtraInstances": 1
+    },
+    "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts": {
+      "registrations": 36,
+      "uniqueNames": 36,
+      "duplicateExtraInstances": 0
+    },
+    "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts": {
+      "registrations": 65,
+      "uniqueNames": 65,
+      "duplicateExtraInstances": 0
+    },
+    "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts": {
+      "registrations": 826,
+      "uniqueNames": 708,
+      "duplicateExtraInstances": 118
+    },
+    "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts": {
+      "registrations": 31,
+      "uniqueNames": 31,
+      "duplicateExtraInstances": 0
+    },
+    "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts": {
+      "registrations": 17,
+      "uniqueNames": 17,
+      "duplicateExtraInstances": 0
+    }
+  },
+  "allOtherOracleFieldsEqual": true,
+  "sourceFilesOrTestsChanged": false,
+  "observedReportsReadAsOracleInput": false,
+  "parserExecutedRepositoryModules": false,
+  "parserSHA256": "643fef77aecce67b548438f918eac92e78365d6b631e4c94d3f625ca0c0ca5be",
+  "formatterProvenanceSHA256": "ebdedfaac96a053439e79e183c4578608f22aadf3df2e0f17a2d4810191b8396",
+  "oracleSHA256": "3fb4f419c0a4ab508ce971d4cb68f589a5cb9ae8891fdcfd6f9931cc6bcc660b"
+}
