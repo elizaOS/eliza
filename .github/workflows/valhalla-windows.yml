@@ -26,7 +26,7 @@ jobs:
         shell: bash
         run: |
           set -eu
-          STAGE="$RUNNER_TEMP/valhalla-stage"
+          STAGE="$(cygpath -u "$RUNNER_TEMP")/valhalla-stage"
           export STAGE
           rm -rf "$STAGE"
           mkdir -p "$STAGE/src" "$STAGE/public" "$STAGE/install"
