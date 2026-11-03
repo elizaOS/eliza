@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Valhalla",
+    "slug": "valhalla",
+    "version": "0.1.1",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "ai.tokenjunction.valhalla",
+      "supportsTablet": false,
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "ai.tokenjunction.valhalla"
+    },
+    "extra": {
+      "proProductId": "valhalla_pro_monthly"
+    }
+  }
+}

@@ -103,4 +103,28 @@ final class SessionStore {
     void clearPhoneData() {
         prefs.edit().clear().apply();
     }
+
+    boolean acceptedAge() {
+        return prefs.getBoolean("age_18", false);
+    }
+
+    void setAge(boolean accepted) {
+        prefs.edit().putBoolean("age_18", accepted).apply();
+    }
+
+    boolean acceptedAdvice() {
+        return prefs.getBoolean("not_advice", false);
+    }
+
+    void setAdvice(boolean accepted) {
+        prefs.edit().putBoolean("not_advice", accepted).apply();
+    }
+
+    boolean finishedWizard() {
+        return prefs.getBoolean("wizard_done", false);
+    }
+
+    void setWizard(boolean done) {
+        prefs.edit().putBoolean("wizard_done", done).apply();
+    }
 }

@@ -74,11 +74,72 @@ public class MainActivity extends AppCompatActivity {
         accessCode.setText(store.accessCode());
         chatLog.setText(store.chatLog());
         askForNotifications();
+        beginSetup();
+    }
+
+    private void beginSetup() {
+        if (!store.acceptedAge()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("18 or older")
+                    .setMessage("Valhalla is for adults. Crypto can lose money. This is not financial advice.")
+                    .setCancelable(false)
+                    .setNegativeButton("Leave", (dialog, which) -> finish())
+                    .setPositiveButton("I am 18 or older", (dialog, which) -> {
+                        store.setAge(true);
+                        beginSetup();
+                    })
+                    .show();
+            return;
+        }
+        if (!store.acceptedAdvice()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("Not financial advice")
+                    .setMessage("The app does not promise profit. It cannot send or withdraw. Keys stay on your computer.")
+                    .setCancelable(false)
+                    .setPositiveButton("I understand", (dialog, which) -> {
+                        store.setAdvice(true);
+                        beginSetup();
+                    })
+                    .show();
+            return;
+        }
+        if (!store.finishedWizard()) {
+            new AlertDialog.Builder(this)
+                    .setTitle("About three minutes")
+                    .setMessage("Start the desk on your PC. Then pair this phone, or try the demo. No wallet is required.")
+                    .setCancelable(false)
+                    .setNegativeButton("Try demo", (dialog, which) -> {
+                        store.setWizard(true);
+                        showDemo();
+                    })
+                    .setPositiveButton("Pair", (dialog, which) -> {
+                        store.setWizard(true);
+                        openDeskScreen();
+                    })
+                    .show();
+            return;
+        }
+        openDeskScreen();
+    }
+
+    private void showDemo() {
+        showScreen(SessionStore.SCREEN_STATUS);
+        liveStatus.setText("DEMO. Sample data only. No wallet is connected.");
+        pnl.setText("Demo P&L: +0.00 SOL");
+        positions.setText("No open positions.");
+    }
+
+    private void openDeskScreen() {
         String screen = store.lastScreen();
         if (store.deskUrl().isEmpty()) screen = SessionStore.SCREEN_PAIRING;
         showScreen(screen);
         renderState();
         if (!store.deskUrl().isEmpty()) startWatch();
+        new AlertDialog.Builder(this)
+                .setTitle("What's new")
+                .setMessage("Self-repair, Valhalla Brain, and a demo before any wallet. Pro will use Google Play Billing, product valhalla_pro_monthly.")
+                .setPositiveButton("OK", null)
+                .show();
     }
 
     private void bindViews() {

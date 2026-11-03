@@ -4,6 +4,12 @@ This is the Valhalla desk. It looks like the ACCELERATION command center. It run
 
 The repository is public. An access code, if you set one, only opens the app. It does not hide the code.
 
+## Phone and iOS
+
+The sideload Android app is the Gradle project in `android/`. The same screens also exist as an Expo app in `mobile/` so an iOS simulator build can be made without an Apple account. GitHub Actions workflow `Valhalla iOS simulator` builds that unsigned simulator app. Device signing and the App Store need an Apple Developer membership later. Pro on the phone uses Google Play Billing or Apple In-App Purchase, product `valhalla_pro_monthly`. The website keeps Lemon Squeezy.
+
+The first launch asks for age 18+, shows that this is not financial advice, then offers pairing or a demo. Delete phone data clears the setup.
+
 ## Valhalla Brain
 
 Brain is the advisory model layer. Gemini is the default. You can also pick OpenAI, Anthropic, Grok, OpenRouter, or local Ollama. Keys stay encrypted on this PC. A monthly cap stops extra model calls. The analyst can only make a pass fail. It cannot approve a coin the rules already blocked. A strategy tweak waits for your tap and can be rolled back. Details are in [docs/AI.md](../../docs/AI.md).

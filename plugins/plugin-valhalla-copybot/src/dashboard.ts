@@ -20,6 +20,7 @@ import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-
 import type { AgentEngine } from "./engine.ts";
 import { tail4 } from "./net.ts";
 import { confirmRepair, proposeFix } from "./self-repair.ts";
+import { checkDesktopUpdate, DESK_VERSION, WHATS_NEW } from "./updates.ts";
 
 const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
 const HOST = "127.0.0.1";
@@ -183,6 +184,15 @@ async function handle(
   }
   if (req.method === "GET" && pathname === "/api/ads/report") {
     send(res, 200, await loadAdReport(process.env));
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/whats-new") {
+    const update = await checkDesktopUpdate(DESK_VERSION).catch(() => ({
+      update: false,
+      latest: DESK_VERSION,
+      notes: WHATS_NEW.join(" "),
+    }));
+    send(res, 200, { ok: true, version: DESK_VERSION, notes: WHATS_NEW, ...update });
     return;
   }
   if (req.method === "GET" && pathname === "/api/brain") {
