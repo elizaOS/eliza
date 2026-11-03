@@ -75,6 +75,7 @@
     "@elizaos/plugin-telegram",
     "@elizaos/plugin-todos",
     "@elizaos/plugin-trajectory-logger",
+    "@elizaos/plugin-valhalla-copybot",
     "@elizaos/plugin-video",
     "@elizaos/plugin-vision",
     "@elizaos/plugin-wallet",

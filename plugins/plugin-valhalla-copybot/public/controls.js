@@ -1,0 +1,227 @@
+async function api(path, body) {
+  const res = await fetch(path, {
+    method: body ? "POST" : "GET",
+    headers: body ? { "content-type": "application/json" } : undefined,
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && data.login) {
+    document.getElementById("gate").hidden = false;
+  }
+  if (!res.ok) throw new Error(data.error || data.message || "request failed");
+  return data;
+}
+
+function say(text) {
+  const log = document.getElementById("chatLog");
+  if (!log) return;
+  const line = document.createElement("div");
+  line.textContent = "> " + text;
+  log.prepend(line);
+}
+
+document.getElementById("controlsBtn").addEventListener("click", () => {
+  const drawer = document.getElementById("drawer");
+  drawer.hidden = !drawer.hidden;
+});
+
+async function bootGate() {
+  try {
+    const meta = await fetch("/api/meta").then((r) => r.json());
+    if (meta.login) {
+      document.getElementById("gate").hidden = false;
+      return;
+    }
+    if (meta.needsSetup) openWizard(meta);
+    else fillSettings(meta);
+  } catch {
+    document.getElementById("gate").hidden = false;
+  }
+}
+
+document.getElementById("gateForm").addEventListener("submit", async (event) => {
+  event.preventDefault();
+  try {
+    await api("/api/login", {
+      accessCode: document.getElementById("gateCode").value,
+      password: document.getElementById("gatePass").value,
+    });
+    document.getElementById("gate").hidden = true;
+    bootGate();
+  } catch (err) {
+    document.getElementById("gateErr").textContent = err.message;
+  }
+});
+
+function fillSettings(meta) {
+  const host = document.getElementById("settingsPanel");
+  const s = meta.settings || {};
+  host.innerHTML =
+    "<label>Preset</label><select id=\"preset\"><option>safe</option><option>balanced</option><option>aggressive</option></select>" +
+    "<label>Min buy SOL</label><input id=\"ticketMinSol\" value=\"" + (s.ticketMinSol ?? "") + "\"/>" +
+    "<label>Max buy SOL</label><input id=\"ticketMaxSol\" value=\"" + (s.ticketMaxSol ?? "") + "\"/>" +
+    "<label>Lanes</label><input id=\"lanes\" value=\"" + (s.lanes ?? "") + "\"/>" +
+    "<label>Stop-loss (fraction, e.g. -0.08)</label><input id=\"stopLossPct\" value=\"" + (s.stopLossPct ?? "") + "\"/>" +
+    "<label>Take-profit fraction</label><input id=\"takeProfitPct\" value=\"" + (s.takeProfitPct ?? "") + "\"/>" +
+    "<label>Max hold minutes</label><input id=\"maxHoldMin\" value=\"" + (s.maxHoldMin ?? "") + "\"/>" +
+    "<label>Cooldown minutes</label><input id=\"cooldownMin\" value=\"" + (s.cooldownMin ?? "") + "\"/>" +
+    "<label>Daily loss fraction</label><input id=\"dailyLossPct\" value=\"" + (s.dailyLossPct ?? "") + "\"/>" +
+    "<label>Run until (ISO time or blank)</label><input id=\"runUntil\" value=\"" + (s.runUntil || "") + "\"/>" +
+    "<div class=\"rowbtns\"><button type=\"button\" id=\"saveSettings\">SAVE</button></div>" +
+    "<label>Google AI Studio key</label><input id=\"googleKey\" type=\"password\" autocomplete=\"off\" placeholder=\"" + (meta.keys && meta.keys.google ? "saved" : "not set") + "\"/>" +
+    "<label>Helius key</label><input id=\"heliusKey\" type=\"password\" autocomplete=\"off\" placeholder=\"" + (meta.keys && meta.keys.helius ? "saved" : "not set") + "\"/>" +
+    "<div class=\"rowbtns\"><button type=\"button\" id=\"saveKeys\">SAVE KEYS</button><button type=\"button\" id=\"btnBackup\">BACKUP</button></div>" +
+    "<label>Restore backup JSON</label><textarea id=\"restoreBox\" rows=\"3\"></textarea>" +
+    "<button type=\"button\" id=\"btnRestore\">RESTORE</button>";
+  document.getElementById("preset").value = s.preset || "balanced";
+  document.getElementById("saveSettings").onclick = saveSettings;
+  document.getElementById("saveKeys").onclick = saveKeys;
+  document.getElementById("btnBackup").onclick = backup;
+  document.getElementById("btnRestore").onclick = restore;
+  const wallet = document.getElementById("walletPanel");
+  wallet.innerHTML =
+    "<div>mode " + (meta.walletMode || "none") + " · " + (meta.pubkey || "—") + "</div>" +
+    "<div class=\"rowbtns\"><button type=\"button\" id=\"btnLock\">LOCK</button><button type=\"button\" id=\"btnUnlock\">UNLOCK</button></div>" +
+    "<label>Wallet password</label><input id=\"walletPass\" type=\"password\" autocomplete=\"off\"/>" +
+    "<label>New password</label><input id=\"newPass\" type=\"password\" autocomplete=\"off\"/>" +
+    "<button type=\"button\" id=\"btnPass\">CHANGE PASSWORD</button>" +
+    "<div id=\"qrbox\" class=\"qrbox\"></div>";
+  document.getElementById("btnLock").onclick = () => api("/api/wallet/lock", {}).then((r) => say(r.message));
+  document.getElementById("btnUnlock").onclick = () =>
+    api("/api/wallet/unlock", { password: document.getElementById("walletPass").value }).then((r) => say(r.message));
+  document.getElementById("btnPass").onclick = () =>
+    api("/api/wallet/password", { password: document.getElementById("newPass").value }).then((r) => say(r.message));
+  fetch("/api/qr").then((r) => r.json()).then((qr) => {
+    const box = document.getElementById("qrbox");
+    if (!box) return;
+    box.innerHTML = (qr.svg || "") + "<div style=\"font-size:11px;word-break:break-all\">" + (qr.address || "Create a wallet to fund it.") + "</div>";
+  }).catch(() => undefined);
+}
+
+async function saveSettings() {
+  const settings = {
+    preset: document.getElementById("preset").value,
+    ticketMinSol: Number(document.getElementById("ticketMinSol").value),
+    ticketMaxSol: Number(document.getElementById("ticketMaxSol").value),
+    lanes: Number(document.getElementById("lanes").value),
+    stopLossPct: Number(document.getElementById("stopLossPct").value),
+    takeProfitPct: Number(document.getElementById("takeProfitPct").value),
+    maxHoldMin: Number(document.getElementById("maxHoldMin").value),
+    cooldownMin: Number(document.getElementById("cooldownMin").value),
+    dailyLossPct: Number(document.getElementById("dailyLossPct").value),
+    runUntil: document.getElementById("runUntil").value || null,
+  };
+  let result = await api("/api/settings", { settings });
+  if (result.pending && confirm("Positions are open. Apply the new settings now?")) {
+    result = await api("/api/settings", { settings, confirmNow: true });
+  }
+  say(result.message || "saved");
+}
+
+async function saveKeys() {
+  const google = document.getElementById("googleKey").value.trim();
+  const helius = document.getElementById("heliusKey").value.trim();
+  if (google) say((await api("/api/keys", { name: "GOOGLE_GENERATIVE_AI_API_KEY", value: google })).message);
+  if (helius) say((await api("/api/keys", { name: "HELIUS_API_KEY", value: helius })).message);
+  document.getElementById("googleKey").value = "";
+  document.getElementById("heliusKey").value = "";
+}
+
+async function backup() {
+  const data = await api("/api/backup", { includeEncryptedWallet: confirm("Include the encrypted wallet file? The key stays encrypted.") });
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "valhalla-backup.json";
+  a.click();
+}
+
+async function restore() {
+  const backup = JSON.parse(document.getElementById("restoreBox").value);
+  say((await api("/api/restore", { backup })).message);
+}
+
+function openWizard() {
+  const wiz = document.getElementById("wizard");
+  wiz.hidden = false;
+  const body = document.getElementById("wizBody");
+  body.innerHTML =
+    "<p class=\"warn\">Back up the secret once. This desk cannot show it again. There is no withdraw button.</p>" +
+    "<label>Password (8+ characters)</label><input id=\"wizPass\" type=\"password\" style=\"width:100%;margin:6px 0;background:#050507;color:#f2ead8;border:1px solid #1c1a16;padding:8px\"/>" +
+    "<div class=\"rowbtns\"><button type=\"button\" id=\"wizCreate\">CREATE BOT WALLET</button></div>" +
+    "<label>Or paste a private key</label><input id=\"wizSecret\" type=\"password\" autocomplete=\"off\" style=\"width:100%;margin:6px 0;background:#050507;color:#f2ead8;border:1px solid #1c1a16;padding:8px\"/>" +
+    "<button type=\"button\" id=\"wizImport\">IMPORT</button>" +
+    "<div id=\"wizOut\"></div>";
+  document.getElementById("wizCreate").onclick = async () => {
+    const created = await api("/api/wallet/create", { password: document.getElementById("wizPass").value });
+    showBackup(created);
+  };
+  document.getElementById("wizImport").onclick = async () => {
+    const created = await api("/api/wallet/import", {
+      password: document.getElementById("wizPass").value,
+      secret: document.getElementById("wizSecret").value,
+    });
+    document.getElementById("wizSecret").value = "";
+    showBackup(created);
+  };
+}
+
+function showBackup(created) {
+  const out = document.getElementById("wizOut");
+  const secret = created.backupOnce
+    ? "<p class=\"warn\">Write this down now. It will not be shown again.</p><textarea readonly rows=\"3\" style=\"width:100%\">" + created.backupOnce + "</textarea>"
+    : "<p>Imported. The key is encrypted and hidden.</p>";
+  out.innerHTML = secret +
+    "<p>Fund this address from your own wallet app:</p><div style=\"word-break:break-all\">" + created.publicKey + "</div>" +
+    "<div id=\"wizQr\" class=\"qrbox\"></div>" +
+    "<label>Preset</label><select id=\"wizPreset\"><option>safe</option><option selected>balanced</option><option>aggressive</option></select>" +
+    "<button type=\"button\" id=\"wizGo\">GO</button>";
+  fetch("/api/qr").then((r) => r.json()).then((qr) => {
+    const box = document.getElementById("wizQr");
+    if (box) box.innerHTML = qr.svg || "";
+  }).catch(() => undefined);
+  document.getElementById("wizGo").onclick = async () => {
+    await api("/api/preset", { preset: document.getElementById("wizPreset").value });
+    document.getElementById("wizard").hidden = true;
+    say("Desk is read-only. Arm live only when you mean it.");
+  };
+}
+
+document.getElementById("btnStart").onclick = () => api("/api/start", {}).then((r) => say(r.message));
+document.getElementById("btnStop").onclick = () => api("/api/stop", {}).then((r) => say(r.message));
+document.getElementById("btnPause").onclick = () => api("/api/pause", {}).then((r) => say(r.message));
+document.getElementById("btnResume").onclick = () => api("/api/resume", {}).then((r) => say(r.message));
+document.getElementById("btnLive").onclick = () => {
+  const confirmText = prompt("Type CONFIRM LIVE to allow swaps from the bot wallet.");
+  if (!confirmText) return;
+  api("/api/live", { enabled: true, confirm: confirmText }).then((r) => say(r.message));
+};
+document.getElementById("btnRead").onclick = () => api("/api/live", { enabled: false }).then((r) => say(r.message));
+document.getElementById("btnSellAll").onclick = () => {
+  const confirmText = prompt("Type SELL ALL to close every open position back to SOL in this wallet.");
+  if (!confirmText) return;
+  api("/api/sell-all", { confirm: confirmText }).then((r) => say(r.message));
+};
+document.getElementById("btnQueue").onclick = () =>
+  api("/api/queue", { mint: document.getElementById("mintInput").value }).then((r) => say(r.message));
+document.getElementById("btnChat").onclick = async () => {
+  const text = document.getElementById("chatInput").value;
+  document.getElementById("chatInput").value = "";
+  say((await api("/api/chat", { text })).message);
+};
+document.body.addEventListener("click", (event) => {
+  const button = event.target.closest(".sell-one");
+  if (!button) return;
+  if (!confirm("Sell this position back to SOL in the bot wallet?")) return;
+  api("/api/sell", { id: button.getAttribute("data-id") }).then((r) => say(r.message));
+});
+
+setInterval(() => {
+  fetch("/api/log").then((r) => r.json()).then((data) => {
+    const box = document.getElementById("crashLog");
+    if (!box || !data.rows) return;
+    box.textContent = data.rows.slice(0, 12).map((row) => row.t.slice(11, 19) + " " + row.text).join("\n");
+  }).catch(() => undefined);
+}, 4000);
+
+bootGate();

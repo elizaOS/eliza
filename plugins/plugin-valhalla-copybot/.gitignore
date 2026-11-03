@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+wallet*.json
+*.wallet.json
+data/
+local.env
+keystore.json
+audit.jsonl
+agent.log

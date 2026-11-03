@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Valhalla</string>
+    <string name="title">ACCELERATION</string>
+    <string name="subtitle">Valhalla test desk · not paired</string>
+    <string name="hint">PC desk address, for example http://192.168.1.20:8787</string>
+    <string name="connect">Check desk</string>
+    <string name="status_idle">The phone starts here. Pairing is optional. Nothing is sent.</string>
+    <string name="ad_label">Test ad</string>
+    <string name="safety">No send or withdraw. Keys stay on the PC. Read-only until you arm live on the desk.</string>
+</resources>

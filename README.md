@@ -10,6 +10,32 @@
   </p>
 </div>
 
+## Valhalla / ACCELERATION
+
+[![Download test APK](https://img.shields.io/badge/download-v0.1.0--test%20APK-ffb347)](https://github.com/TokenJunction/eliza-Vallahla/releases/download/v0.1.0-test/valhalla-0.1.0-test.apk)
+
+This fork adds the Valhalla desk. It is the ACCELERATION command center for a small Solana copy bot. The test phone build is a sideload APK, not a Play Store app.
+
+**Download:** [v0.1.0-test APK](https://github.com/TokenJunction/eliza-Vallahla/releases/download/v0.1.0-test/valhalla-0.1.0-test.apk) · [release notes](https://github.com/TokenJunction/eliza-Vallahla/releases/tag/v0.1.0-test)
+
+### Quick start
+
+1. On a PC, open `plugins/plugin-valhalla-copybot`.
+2. Copy `.env.example` to `.env` and add a Google AI Studio key. Leave live trading false.
+3. Double-click `start.bat` (Windows) or run `./start.sh` (Mac or Linux).
+4. The desk opens at `http://127.0.0.1:8787`.
+5. On a phone, install the test APK. Allow installs from unknown sources. The app opens on the pairing screen even if the PC is off.
+
+### Safety
+
+The desk and the phone have no send or withdraw control. Wallet keys stay on the PC, encrypted, and are never put on the phone. Trading is read-only until you arm live on the PC. The test APK uses Google's public AdMob test IDs only.
+
+See [CHANGELOG.md](CHANGELOG.md) and [docs/ROADMAP.md](docs/ROADMAP.md).
+
+<img src="docs/valhalla/acceleration.png" alt="ACCELERATION desk" width="100%" />
+
+<img src="docs/valhalla/acceleration-night.png" alt="ACCELERATION night desk" width="100%" />
+
 elizaOS is an open-source TypeScript framework and product stack for autonomous
 AI agents. This monorepo contains the core runtime, the Eliza app, the CLI,
 cloud services, native bridges, and first-party plugins. Linux and Android
