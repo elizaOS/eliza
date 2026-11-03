@@ -16,6 +16,7 @@ import {
 import { mergeAnthropicCotProviderOptions } from "../providers/anthropic-thinking";
 import { getLanguageModel } from "../providers/language-model";
 import type { PostContent, SocialPlatform } from "../types/social-media";
+import { parseAiJsonObject } from "../utils/ai-json-parse";
 import { extractErrorMessage } from "../utils/error-handling";
 import { logger } from "../utils/logger";
 import { advertisingService } from "./advertising";
@@ -296,33 +297,13 @@ Return ONLY valid JSON, no markdown.`;
         });
         const { text } = result;
 
-        const extracted = text.trim();
-        let jsonText = extracted;
-
-        // Extract JSON from markdown code blocks if present
-        const fenceMatch = extracted.match(/```(?:json)?\s*([\s\S]*?)```/);
-        if (fenceMatch) jsonText = fenceMatch[1].trim();
-
-        // Find JSON boundaries
-        const jsonStart = jsonText.search(/[{[]/);
-        const lastBrace = jsonText.lastIndexOf("}");
-        const lastBracket = jsonText.lastIndexOf("]");
-        const jsonEnd = Math.max(lastBrace, lastBracket);
-
-        if (jsonStart === -1 || jsonEnd === -1) {
-          throw new Error("No JSON found in AI response for promotional content");
-        }
-
-        const jsonString = jsonText.slice(jsonStart, jsonEnd + 1);
-
         let parsed: unknown;
         try {
-          parsed = JSON.parse(jsonString);
+          parsed = parseAiJsonObject(text, "promotional content");
         } catch (parseError) {
           logger.error("[AppPromotion] Failed to parse AI response JSON", {
             appId: app.id,
             error: parseError instanceof Error ? parseError.message : "Unknown error",
-            jsonString: jsonString.substring(0, 500),
           });
           throw new Error("Failed to parse promotional content JSON");
         }
