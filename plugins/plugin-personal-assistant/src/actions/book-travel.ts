@@ -15,6 +15,7 @@ import type {
 import {
   recentConversationTexts as collectRecentConversationTexts,
   ElizaError,
+  getUserMessageText,
   ModelType,
   parseJsonModelRecord,
   runWithTrajectoryPurpose,
@@ -216,7 +217,11 @@ function getParams(options: HandlerOptions | undefined): BookTravelParameters {
 }
 
 function messageText(message: Memory): string {
-  return typeof message.content.text === "string" ? message.content.text : "";
+  // Read the user's words, not the raw rendered text: under document
+  // augmentation, content.text carries the preamble, the recalled documents
+  // and the real request wrapped in <user_request>, so the extraction model
+  // could take a document-only airport or date as the trip.
+  return getUserMessageText(message);
 }
 
 async function extractBookTravelPlanWithLlm(args: {
