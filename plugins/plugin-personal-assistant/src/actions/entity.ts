@@ -30,6 +30,7 @@ import {
   applyGroundedActionReply,
   recentConversationTexts as collectRecentConversationTexts,
   ElizaError,
+  getUserMessageText,
   ModelType,
 } from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
@@ -91,7 +92,9 @@ function requestedIdentityMutation(
 }
 
 function messageBodyText(message: Memory): string {
-  return (message.content.text ?? "").toString();
+  // Planner input only: the resolved intent must come from the user's own
+  // words, not the document-augmentation envelope wrapping them.
+  return getUserMessageText(message);
 }
 
 function normalizedNonEmpty(value: string | null | undefined): string | null {
@@ -419,10 +422,10 @@ async function resolveEntityPlanWithLlm(args: {
       state: args.state,
     })
   ).join("\n");
-  const currentMessage =
-    typeof args.message.content.text === "string"
-      ? args.message.content.text
-      : "";
+  // Read the user's words, not the document-augmentation envelope: a person
+  // named only in a recalled document must not reach the planner as part of
+  // the current request.
+  const currentMessage = getUserMessageText(args.message);
   const prompt = [
     "Plan the ENTITY (people / relationships) action for this request.",
     "The user may speak in any language.",
