@@ -38,6 +38,7 @@ import type {
   State,
 } from "@elizaos/core";
 import {
+  getUserMessageText,
   resolveScheduledAtIsoInTimeZone,
   stableStringify,
 } from "@elizaos/core";
@@ -52,7 +53,6 @@ import {
   lifeOpsFailedEffect,
   lifeOpsNoopEffect,
 } from "../lifeops/action-effect-result.js";
-import { messageText } from "../lifeops/google/format-helpers.js";
 import { LifeOpsRepository } from "../lifeops/repository.js";
 import {
   bindScheduledTaskToInboundChat,
@@ -638,8 +638,14 @@ async function completeScheduledTaskResult(args: {
   );
 }
 
-function isExplicitLifeDraftConfirmation(message: Memory): boolean {
-  const normalized = messageText(message)
+/**
+ * Whether the owner explicitly confirmed a deferred life draft. Reads only
+ * the user's own words: confirmation or negation words inside contextual
+ * documents must not confirm (or veto) a draft the user never confirmed.
+ * Exported for unit tests.
+ */
+export function isExplicitLifeDraftConfirmation(message: Memory): boolean {
+  const normalized = getUserMessageText(message)
     .toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, " ")
     .trim();
