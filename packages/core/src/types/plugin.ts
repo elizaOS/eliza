@@ -804,6 +804,7 @@ export interface PluginOwnership {
 	chatPreHandlerIds: string[];
 	responseHandlerEvaluatorNames: string[];
 	responseHandlerFieldEvaluatorNames: string[];
+	pipelineHookIds: string[];
 	registeredAt: number;
 }
 
