@@ -80,6 +80,26 @@ describe("originalRequestsNotesDeletion", () => {
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
   });
 
+  it("admits a contrastive deletion whose topic joins words before read or show", () => {
+    const requests = [
+      "Delete the note about groceries and show times instead of the draft",
+      "Delete the note about groceries or show times instead of keeping both",
+      "Delete the note about groceries then show times instead of the draft",
+      "Delete the note about reading lists and show schedules instead of the draft",
+      "Delete the note about invoices and read receipts instead of the backup",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
+  });
+
+  it("declines read or show after a joining word when it names the note or replaces the deletion", () => {
+    const requests = [
+      "Delete the note about groceries and show it to me instead",
+      "Delete the note about groceries and show it to me instead of the draft",
+      "Delete the note about rent or just show instead of deleting it",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
+  });
+
   it("declines when the owner asks to read the note instead of deleting it", () => {
     const requests = [
       "Delete the note, I'd like you to read it instead of deleting it",

@@ -8,11 +8,18 @@ import {
   looksLikeActionExplanationRequest,
 } from "../message/direct-action-heuristics.ts";
 
-// The owner's own read/show request at a clause start (after punctuation or a joining word,
-// optionally after "please", "just" or "could you"). A note title ("show times") or
+// The owner's own read/show request at a clause start (after punctuation, "instead" or
+// "rather", optionally after "please", "just" or "could you"). A note title ("show times") or
 // "I already read" is not a request to read the note.
 const READ_OR_SHOW_AT_CLAUSE_START =
-  /(?:[\n,;:.!?—–]|\s-|\b(?:and|or|but|so|then|instead|rather)\b)\s*(?:(?:please|just|only|simply|actually|now|(?:can|could|would|will)\s+you)\s+)*(?:read|show)\b/iu;
+  /(?:[\n,;:.!?—–]|\s-|\b(?:instead|rather)\b)\s*(?:(?:please|just|only|simply|actually|now|(?:can|could|would|will)\s+you)\s+)*(?:read|show)\b/iu;
+// Read/show after "and", "or", "but", "so" or "then". A topic joins words the same way
+// ("groceries and show times"), so this counts only with the note as its object
+// ("and show it") or when "instead" replaces the deletion.
+const READ_OR_SHOW_AFTER_JOINER =
+  /\b(?:and|or|but|so|then)\s+(?:(?:please|just|only|simply|actually|now|(?:can|could|would|will)\s+you)\s+)*(?:read|show)\b/iu;
+const READ_OR_SHOW_NOTE_AFTER_JOINER =
+  /\b(?:and|or|but|so|then)\s+(?:(?:please|just|only|simply|actually|now|(?:can|could|would|will)\s+you)\s+)*(?:read|show)\s+(?:it|this|that|them|me|us|aloud|out|(?:the|my)\s+note)\b/iu;
 // Read/show with the note as its object ("read it", "show me"). A note title can hold the same
 // words ("the note titled read me"), so this counts only when "instead" replaces the deletion.
 const READ_OR_SHOW_NOTE =
@@ -50,8 +57,10 @@ export function originalRequestsNotesDeletion(
   if (
     /\binstead\b/iu.test(original) &&
     (READ_OR_SHOW_AT_CLAUSE_START.test(original) ||
+      READ_OR_SHOW_NOTE_AFTER_JOINER.test(original) ||
       (INSTEAD_REPLACES_DELETION.test(original) &&
-        READ_OR_SHOW_NOTE.test(original)))
+        (READ_OR_SHOW_NOTE.test(original) ||
+          READ_OR_SHOW_AFTER_JOINER.test(original))))
   )
     return false;
   return !intentClauses(original).some((clause) =>
