@@ -6,15 +6,15 @@ TokenJunction LLC publishes Valhalla. TokenJunction LLC owns Valhalla. This poli
 
 This policy is not financial advice. Valhalla does not promise profit. Crypto is risky. You can lose money.
 
-This page does not include a tax id or a street address.
+This page does not include an EIN or a street address.
 
-## What we do not do with user data
+## Chrome Web Store Limited Use
 
-These statements apply to every Valhalla app listed above, including the Chrome extension.
+These are the Limited Use statements for user data. They apply to the Chrome extension and to every other Valhalla app in this policy.
 
 - We do not sell user data.
-- We do not transfer user data to third parties except as needed to provide the service, or as required by law. The processors we use are named below.
-- We do not use or transfer user data for purposes that are unrelated to the single purpose of the item.
+- We do not transfer user data to third parties except as needed to provide the service, or as required by law. The named processors are Lemon Squeezy for payments, Google for sign-in and AdMob, Cloudflare for hosting, and Solana RPC providers for public balances.
+- We do not use or transfer user data for purposes unrelated to the item's single purpose.
 - We do not use or transfer user data to determine creditworthiness or for lending.
 - Humans do not read user data except with your consent, for security, or when the law requires it.
 
