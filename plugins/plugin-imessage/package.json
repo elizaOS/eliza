@@ -36,6 +36,7 @@
     "build": "bun run build.ts",
     "test": "vitest run --config vitest.config.ts",
     "test:watch": "vitest --config vitest.config.ts",
+    "test:real-runtime": "bunx vitest run --config vitest.real-runtime.config.ts",
     "lint": "bunx @biomejs/biome check --write --unsafe .",
     "lint:check": "bunx @biomejs/biome check .",
     "format": "bunx @biomejs/biome format --write .",
