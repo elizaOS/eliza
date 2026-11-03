@@ -171,11 +171,19 @@ export function isHostOnlyElizaCredentialKey(key: string): boolean {
  * through this so a spawn request cannot inject a secret (connector bot token,
  * vault passphrase, a host step-up token) the deny-list exists to keep out of
  * sub-agents.
+ *
+ * The owner's Cloud credentials (`ELIZAOS_CLOUD*` and the `ELIZA_CLOUD_*`
+ * credential aliases) are denied unless `forwardCloudKey` is set, so the
+ * broker-first opt-in gates every intake, not only process.env forwarding.
  */
-export function isDeniedSubAgentEnvKey(key: string): boolean {
+export function isDeniedSubAgentEnvKey(
+  key: string,
+  forwardCloudKey = false,
+): boolean {
   return (
     isHostExecutionToolchainEnvKey(key) ||
     isHostOnlyElizaCredentialKey(key) ||
+    (!forwardCloudKey && isForwardedCloudCredentialKey(key)) ||
     DENY_ENV_PATTERNS.some((pattern) => pattern.test(key))
   );
 }
@@ -185,9 +193,12 @@ export function isDeniedSubAgentEnvKey(key: string): boolean {
  * rule as {@link isDeniedSubAgentEnvKey}, except for the credentials the
  * spawner mints per child.
  */
-export function isDeniedSpawnEnvKey(key: string): boolean {
+export function isDeniedSpawnEnvKey(
+  key: string,
+  forwardCloudKey = false,
+): boolean {
   return (
-    isDeniedSubAgentEnvKey(key) &&
+    isDeniedSubAgentEnvKey(key, forwardCloudKey) &&
     !SPAWNER_MINTED_ELIZA_CREDENTIALS.has(key.toUpperCase())
   );
 }
@@ -348,7 +359,7 @@ export function isEnvForwardableToSubAgent(
   key: string,
   forwardCloudKey = false,
 ): boolean {
-  if (isDeniedSubAgentEnvKey(key)) return false;
+  if (isDeniedSubAgentEnvKey(key, forwardCloudKey)) return false;
   return shouldForwardEnv(key, forwardCloudKey);
 }
 

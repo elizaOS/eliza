@@ -75,6 +75,25 @@ describe("sub-agent env: host-only ELIZA_* credentials", () => {
     expect(isDeniedSpawnEnvKey("ELIZA_WALLET_EXPORT_TOKEN")).toBe(true);
     expect(isDeniedSpawnEnvKey("ELIZA_ACP_WARM_CLAIM_TOKEN")).toBe(true);
   });
+
+  it("gates the owner's Cloud credentials on the caller paths with the same opt-in", () => {
+    for (const key of [
+      ...Object.keys(CLOUD_ALIASES),
+      "ELIZA_CLOUD_CLIENT_ADDRESS_KEY",
+      "ELIZAOS_CLOUD_API_KEY",
+    ]) {
+      expect(isDeniedSubAgentEnvKey(key)).toBe(true);
+      expect(isDeniedSpawnEnvKey(key)).toBe(true);
+      expect(isDeniedSubAgentEnvKey(key, true)).toBe(false);
+      expect(isDeniedSpawnEnvKey(key, true)).toBe(false);
+    }
+    // Non-credential Cloud settings are not owner credentials.
+    expect(isDeniedSubAgentEnvKey("ELIZA_CLOUD_BASE_URL")).toBe(false);
+    // The opt-in does not reopen any other host-only secret.
+    expect(isDeniedSubAgentEnvKey("ELIZA_WALLET_EXPORT_TOKEN", true)).toBe(
+      true,
+    );
+  });
 });
 
 describe("AcpService child env: minted credentials reach the child, host secrets do not", () => {
@@ -137,5 +156,78 @@ describe("AcpService child env: minted credentials reach the child, host secrets
     );
     expect(again.ELIZA_CREDENTIAL_BRIDGE_TOKEN).toBe("minted-bridge");
     expect(again.ELIZA_PI_ROUTE_API_KEY).toBe("minted-route");
+  });
+
+  const CALLER_CLOUD = {
+    ELIZA_CLOUD_API_KEY: "caller-cloud-bearer",
+    ELIZA_CLOUD_CLIENT_ADDRESS_KEY: "caller-signing-key",
+    ELIZAOS_CLOUD_API_KEY: "caller-canonical-bearer",
+  };
+
+  function cloudService(warnings: string[]) {
+    const service = new AcpService({
+      agentId: "00000000-0000-4000-8000-000000024098",
+      character: { name: "Env policy tester" },
+      getSetting: () => undefined,
+      logger: {
+        debug() {},
+        info() {},
+        warn(message: string) {
+          warnings.push(message);
+        },
+        error() {},
+      },
+      reportError() {},
+      getService: () => null,
+    } as never);
+    return (
+      service as unknown as {
+        buildEnv: (
+          extra: Record<string, string>,
+          customCredentials: Record<string, string>,
+          model: string | undefined,
+          agentType: string,
+        ) => NodeJS.ProcessEnv;
+      }
+    ).buildEnv.bind(service);
+  }
+
+  it("does not let customCredentials or the spawn env carry an owner Cloud key without the opt-in", () => {
+    vi.stubEnv("ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS", "");
+    const warnings: string[] = [];
+    const buildEnv = cloudService(warnings);
+    for (const [extra, custom] of [
+      [CALLER_CLOUD, {}],
+      [{}, CALLER_CLOUD],
+    ] as const) {
+      const env = buildEnv(
+        { ...extra, ELIZA_CLOUD_BASE_URL: "https://cloud.example" },
+        { ...custom },
+        undefined,
+        "codex",
+      );
+      for (const key of Object.keys(CALLER_CLOUD)) {
+        expect(env[key]).toBeUndefined();
+      }
+      expect(env.ELIZA_CLOUD_BASE_URL).toBe("https://cloud.example");
+    }
+    expect(
+      warnings.some((w) => w.includes("ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS")),
+    ).toBe(false);
+  });
+
+  it("with the opt-in, admits a caller's Cloud key and warns about it", () => {
+    vi.stubEnv("ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS", "1");
+    const warnings: string[] = [];
+    const buildEnv = cloudService(warnings);
+    const env = buildEnv({}, { ...CALLER_CLOUD }, undefined, "codex");
+    for (const [key, value] of Object.entries(CALLER_CLOUD)) {
+      expect(env[key]).toBe(value);
+    }
+    // The key arrived only through customCredentials, so the warning must be
+    // computed on the merged env, not on the process.env projection.
+    expect(
+      warnings.some((w) => w.includes("ELIZA_FORWARD_CLOUD_KEY_TO_SUBAGENTS")),
+    ).toBe(true);
   });
 });
