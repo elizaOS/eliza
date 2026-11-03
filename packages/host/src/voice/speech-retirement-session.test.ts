@@ -26,7 +26,7 @@ function ports() {
 const identity = { organizationId: "org", userId: "owner", cloudSessionId: "session" };
 test("trusted STT drain and actual settlement yield explicit evidence", async () => {
   const p = ports(); const session = await createSpeechRelaySession(identity, "consent", p.value); await session.close();
-  expect(p.handle.evidence()).toEqual({ stt: "gracefully_drained", tts: "not_dispatched", accounting: "settled_actual" });
+  expect(p.handle.evidence()).toEqual({ stt: "gracefully_drained", tts: "not_dispatched", accounting: "settled_actual", moneyTerminal: true });
 });
 test("unknown drain remains unknown even when conservative settlement completes", async () => {
   const p = ports(); const session = await createSpeechRelaySession(identity, "consent", p.value); p.failDrain();
