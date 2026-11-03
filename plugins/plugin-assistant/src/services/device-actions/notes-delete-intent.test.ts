@@ -91,6 +91,28 @@ describe("originalRequestsNotesDeletion", () => {
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
   });
 
+  it("admits a contrastive deletion whose topic puts punctuation before read or show", () => {
+    const requests = [
+      "Delete the note about Agenda: show times instead of the draft",
+      "Delete the note about Q3; show schedules instead of the draft",
+      "Delete the note about groceries, show times instead of the draft",
+      "Delete the note about groceries - show times instead of the draft",
+      "Delete the note about wait—show times instead of the draft",
+      "Delete the note about groceries. Show times instead of the draft",
+      "Delete the note titled Show: read aloud tips instead of the draft",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
+  });
+
+  it("declines read or show after punctuation when it names the note or replaces the deletion", () => {
+    const requests = [
+      "Delete the note about groceries, show it to me instead of the draft",
+      "Delete the note about rent; just show the summary instead",
+      "Delete the note about rent. Read the list instead of deleting it",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
+  });
+
   it("declines read or show after a joining word when it names the note or replaces the deletion", () => {
     const requests = [
       "Delete the note about groceries and show it to me instead",
