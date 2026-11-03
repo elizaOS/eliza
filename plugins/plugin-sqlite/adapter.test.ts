@@ -2605,6 +2605,20 @@ it("returns messages from the requested world and treats limit 0 as empty", asyn
     },
   ]);
 
+  // A restored or shared file can keep another agent's memory in this
+  // agent's room. The room resolves the world, but the memory stays foreign.
+  const foreignId = id();
+  const storage = await adapter.getConnection();
+  await storage.set("memories", foreignId, {
+    id: foreignId,
+    agentId: id(),
+    entityId,
+    roomId: worldRoomId,
+    tableName: "messages",
+    content: { text: "foreign" },
+    createdAt: Date.now(),
+  });
+
   const found = await adapter.getMemoriesByWorldId({ worldId });
   expect(found.map((memory) => memory.id)).toEqual([homeId]);
   expect(await adapter.getMemoriesByWorldId({ worldIds: [worldId] })).toEqual(
