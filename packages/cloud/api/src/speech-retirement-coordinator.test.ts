@@ -134,7 +134,7 @@ test("live zero-resource configuration failure confirms no dispatch", async () =
   (f.c as any).env.CARTESIA_API_KEY = "";
   await expect(f.open()).rejects.toThrow();
   const result = await f.revoke(); expect(result.status).toBe(200);
-  expect((await result.json()).retirement).toMatchObject({ state: "confirmed", mode: "not_dispatched", accounting: "not_started" });
+  expect((await retirementFrom(result))).toMatchObject({ state: "confirmed", mode: "not_dispatched", accounting: "not_started" });
   expect(control.opens).toBe(0);
 });
 
@@ -196,3 +196,11 @@ test("live-holder deadline exhaustion finalizes its frozen counter without a thi
     expect(f.row.retirement.proof.state).toBe("unconfirmed");
   } finally { Date.now = realNow; }
 });
+
+const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+async function retirementFrom(response: Response): Promise<Record<string, unknown>> {
+  const value: unknown = await response.json();
+  if (!isJsonRecord(value) || !isJsonRecord(value.retirement)) throw Error("Expected retirement response object");
+  return value.retirement;
+}

@@ -27,7 +27,9 @@ test("settlement fence replays after a lost acknowledgement and recreation", asy
   expect(settled.status).toBe(200); // Caller discards this acknowledgement.
   const before = JSON.stringify(f.rows().get("ledger"));
   const replay = await f.post(f.make(), "/settlement-fence", { requestId: f.id, estimatedCostUsd: 1 });
-  expect(replay.status).toBe(200); expect(await replay.json()).toEqual({ settlementFenced: true, estimatedCostUsd: 1, duplicate: true });
+  expect(replay.status).toBe(200); const body: unknown = await replay.json();
+  if (!isSettlementFenceReply(body)) throw Error("Expected settlement fence response object");
+  expect(body).toEqual({ settlementFenced: true, estimatedCostUsd: 1, duplicate: true });
   expect(JSON.stringify(f.rows().get("ledger"))).toBe(before);
 });
 test("settled fence refuses changed target and legacy missing evidence", async () => {
@@ -55,3 +57,11 @@ test("long non-speech settlement IDs do not duplicate into fence metadata", asyn
   expect(Object.keys(ledger.settledFenceEstimates ?? {})).toHaveLength(0);
   expect(new TextEncoder().encode(JSON.stringify(ledger)).length).toBeLessThan(512 * 1024);
 });
+
+type SettlementFenceReply = { settlementFenced: boolean; estimatedCostUsd: number; duplicate: boolean };
+function isSettlementFenceReply(value: unknown): value is SettlementFenceReply {
+  return !!value && typeof value === "object" && !Array.isArray(value) &&
+    "settlementFenced" in value && typeof value.settlementFenced === "boolean" &&
+    "estimatedCostUsd" in value && typeof value.estimatedCostUsd === "number" &&
+    "duplicate" in value && typeof value.duplicate === "boolean";
+}

@@ -334,8 +334,16 @@ function attachInferenceAdmissionLease(
     const selected = choice;
     const current = (async () => {
       if (selected.kind === "actual" && selected.actualCostUsd === 0 && !lease.providerDispatched) {
-        await settleInferenceAdmissionLease(lease, 0, 0, settledBalance?.());
-        return null;
+        let terminalZero = false;
+        await settleInferenceAdmissionLease(lease, 0, 0, settledBalance?.(), receipt => {
+          terminalZero = receipt.version === 1 &&
+            receipt.organizationId === params.context.organizationId && receipt.requestId === params.context.requestId &&
+            (receipt.state === "not_reserved" || receipt.state === "released_zero");
+        });
+        // A lost/absent release acknowledgement must not turn a resolved void into money proof.
+        // The ordinary public wrapper attaches the exact canonical receipt to this explicit result.
+        return terminalZero ? { reservedAmount: 0, actualCost: 0, collectedAmount: 0,
+          settlementTransactionIds: [], adjustmentType: "none" as const } : null;
       }
       if (selected.kind === "unknown" || selected.actualCostUsd > 0) {
         await markProviderDispatched();

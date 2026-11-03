@@ -5,8 +5,8 @@
  */
 import { PLATFORM_MARKUP_MULTIPLIER } from "@elizaos/cloud-shared/lib/pricing-constants";
 import { InferenceBalanceCacheWarmingError } from "@elizaos/cloud-shared/lib/services/inference-billing-fast-path";
-import { InsufficientCreditsError } from "@elizaos/cloud-shared/lib/services/credits";
-import { admitOrganizationInference } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
+import { InsufficientCreditsError, type CreditReconciliationResult } from "@elizaos/cloud-shared/lib/services/credits";
+import { admitOrganizationInference, type OrganizationInferenceAdmission } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/host/voice/cartesia-sonic-tts";
 import type { SpeechRelayCreditReservation } from "@elizaos/host/voice/speech-relay-session";
 import { SPEECH_RELAY_BUDGET } from "@elizaos/host/voice/speech-relay-session";
@@ -38,6 +38,14 @@ export async function reserveSpeechRelayAdmission(input: {
     "stt" | "tts",
     Awaited<ReturnType<typeof admitOrganizationInference>>
   >();
+  const terminalReceiptMatches = (result: CreditReconciliationResult | null,
+    admission: OrganizationInferenceAdmission, requestId: string, amount: number) => {
+    const receipt = result?.terminalReceipt;
+    return receipt?.version === 1 && receipt.status === "canonical_completed" &&
+      receipt.organizationId === caller.user.organization_id && receipt.requestId === requestId &&
+      receipt.amountUsd === amount.toFixed(6) && receipt.mode === admission.mode &&
+      receipt.mode !== "durable_object_funded_budget";
+  };
   let reservingKind: "stt" | "tts" | undefined;
   let refusedBeforeReservation = false;
   try {
@@ -97,8 +105,10 @@ export async function reserveSpeechRelayAdmission(input: {
     // Keep each successful zero settlement even if another rollback fails.
     const rollback = await Promise.allSettled([...admissions].map(async ([kind, admission]) => {
       const requestId = `speech:${sessionId}:${kind}`;
-      await admission.settle(0);
-      await input.onProgress?.(kind, { state: "settled_actual", requestId, amountUsd: "0" });
+      const result = await admission.settle(0);
+      const terminal = terminalReceiptMatches(result, admission, requestId, 0);
+      await input.onProgress?.(kind, { state: terminal ? "settled_actual" : "unconfirmed", requestId, amountUsd: "0" });
+      if (!terminal) throw Error("Speech reservation zero rollback receipt is unconfirmed");
     }));
     const failures = rollback.filter((item): item is PromiseRejectedResult => item.status === "rejected");
     if (failures.length || proofFailures.length) throw new AggregateError([error, ...proofFailures, ...failures.map(item => item.reason)], "Speech reservation rollback unconfirmed");
@@ -143,11 +153,7 @@ export async function reserveSpeechRelayAdmission(input: {
             const admission = admissions.get(kind)!;
             const reconciliation = choice.state === "conservative" && !choice.basis
               ? await admission.settleUnknown() : await admission.settle(choice.amount);
-            const receipt = reconciliation?.terminalReceipt;
-            const terminal = receipt?.version === 1 && receipt.status === "canonical_completed" &&
-              receipt.organizationId === caller.user.organization_id && receipt.requestId === requestId &&
-              receipt.amountUsd === choice.amount.toFixed(6) && receipt.mode === admission.mode &&
-              receipt.mode !== "durable_object_funded_budget";
+            const terminal = terminalReceiptMatches(reconciliation, admission, requestId, choice.amount);
             outcomes[kind] = { requestId, state: choice.state, amountUsd: String(choice.amount), ...(terminal ? { terminal: true as const } : {}), ...(choice.basis ? { basis: choice.basis } : {}) };
           }
           const outcome = outcomes[kind]!;

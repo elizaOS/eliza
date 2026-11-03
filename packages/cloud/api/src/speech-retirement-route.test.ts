@@ -12,11 +12,11 @@ const env = (enabled = true, proof = true) => ({ VOICE_SPEECH_RELAY_ENABLED: Str
 beforeEach(() => { data.generated = 0; data.owner = 0; data.calls = []; data.authStatus = undefined; data.initializeStatus = 200; data.initializeThrows = false; });
 test("legacy mint shape is unchanged without opt-in", async () => {
   const res = await app.request("/session", { method: "POST", body: JSON.stringify({ consentNonce: nonce }) }, env() as never);
-  expect(res.status).toBe(200); expect((await res.json()).retirementProofVersion).toBeUndefined(); expect(data.calls[0].body.proofVersion).toBeUndefined();
+  expect(res.status).toBe(200); expect((await responseObject(res)).retirementProofVersion).toBeUndefined(); expect(data.calls[0].body.proofVersion).toBeUndefined();
 });
 test("new mint persists and acknowledges requested proof version", async () => {
   const res = await app.request("/session", { method: "POST", headers: { "X-Eliza-Speech-Retirement-Version": "1" }, body: JSON.stringify({ consentNonce: nonce }) }, env() as never);
-  expect((await res.json()).retirementProofVersion).toBe(1); expect(data.calls[0].body.proofVersion).toBe(1);
+  expect((await responseObject(res)).retirementProofVersion).toBe(1); expect(data.calls[0].body.proofVersion).toBe(1);
 });
 test("unsupported proof is refused before admission", async () => {
   const res = await app.request("/session", { method: "POST", headers: { "X-Eliza-Speech-Retirement-Version": "1" } }, env(true, false) as never);
@@ -47,3 +47,11 @@ test("initialization failure cannot carry a no-allocation attestation", async ()
   const response = await app.request("/session", { method: "POST", headers: requested, body: JSON.stringify({ consentNonce: nonce }) }, env() as never);
   expect(response.status).toBe(503); expect(response.headers.get(SPEECH_ADMISSION_OUTCOME_HEADER)).toBeNull(); expect(data.calls).toHaveLength(1);
 });
+
+const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+async function responseObject(response: Response): Promise<Record<string, unknown>> {
+  const value: unknown = await response.json();
+  if (!isJsonRecord(value)) throw Error("Expected speech route response object");
+  return value;
+}

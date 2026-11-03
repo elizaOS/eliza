@@ -124,7 +124,18 @@ export class SpeechRelayCoordinator {
         return { ...next, retirement: { ...next.retirement,
           retryDeadlineAt: next.retirement.retryDeadlineAt ?? Date.now() + 10000 } };
       });
-      if (!admitted) return;
+      if (!admitted) {
+        const handle = this.retirementHandle ?? this.relay?.retirement;
+        try {
+          if (started.retirement?.proof?.state !== "confirmed" && handle?.evidence()?.tts === "unknown")
+            await handle.finalizeUnknownTtsAccounting?.();
+        } finally {
+          // A terminal automatic attempt must not silently skip its frozen-counter finalizer.
+          // No new provider attempt or retry alarm is admitted here.
+          await this.state.storage.deleteAlarm();
+        }
+        return;
+      }
       let failure: unknown;
       for (const pending of this.pendingPublicSockets) {
         try { pending.close(1000, "Speech session retired"); } catch (error) { failure ??= error; }
@@ -448,6 +459,25 @@ export class SpeechRelayCoordinator {
             consumeConsent: async () => true,
             usageStore,
             usageLimits: resolveVoiceUsageLimits(this.env),
+            noDispatchMoneyProof: identity => {
+              const current = this.ledger;
+              if (!current?.retirement || current.sessionId !== identity.cloudSessionId ||
+                  current.caller.user.id !== identity.userId || current.caller.user.organization_id !== identity.organizationId)
+                return undefined;
+              const progressByKind = current.retirement.progress;
+              const terminal = (kind: "stt" | "tts") => {
+                const progress = progressByKind[kind];
+                // Initial never-attempted state or a typed pre-reservation refusal is terminal.
+                // A reserving/lost-ack/unconfirmed state is never promoted from absence.
+                if (progress.state === "not_reserved")
+                  return { requestId: `speech:${current.sessionId}:${kind}`, state: "not_reserved" as const };
+                if (progress.state === "settled_actual" && progress.requestId === `speech:${current.sessionId}:${kind}` && progress.amountUsd === "0")
+                  return { requestId: progress.requestId, state: "settled_actual_zero" as const };
+                return undefined;
+              };
+              const stt = terminal("stt"), tts = terminal("tts");
+              return stt && tts ? { version: 1 as const, ...identity, stt, tts } : undefined;
+            },
             reserveCredits: async () => {
               const reservation = await reserveSpeechRelayAdmission({
                 caller: ledger.caller,

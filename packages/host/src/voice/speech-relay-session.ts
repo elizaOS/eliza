@@ -29,6 +29,12 @@ export type SpeechRelayBudget = typeof SPEECH_RELAY_BUDGET;
 export interface SpeechRelayIdentity extends VoiceUsageIdentity {
   cloudSessionId: string;
 }
+/** Supplied only from the owning coordinator's acknowledged per-kind ledger. */
+export interface SpeechRelayNoDispatchMoneyProof extends SpeechRelayIdentity {
+  version: 1;
+  stt: { requestId: string; state: "not_reserved" | "settled_actual_zero" };
+  tts: { requestId: string; state: "not_reserved" | "settled_actual_zero" };
+}
 export type SpeechRelayControl =
   | { t: "prepare"; id: string }
   | { t: "tts"; id: string; text: string; flush?: boolean }
@@ -93,6 +99,7 @@ export interface SpeechRelayPorts {
     identity: Readonly<SpeechRelayIdentity>,
     budget: typeof SPEECH_RELAY_BUDGET,
   ): Promise<SpeechRelayCreditReservation>;
+  noDispatchMoneyProof?(identity: Readonly<SpeechRelayIdentity>): SpeechRelayNoDispatchMoneyProof | undefined;
   subscribeRevoked(
     identity: Readonly<SpeechRelayIdentity>,
     revoke: () => void,
@@ -333,13 +340,23 @@ export async function createSpeechRelaySession(
         } catch (error) { failures.push(error); }
       }
       const accounting = completedAccounting;
-      const canonicalMoneyTerminal = accounting.stt?.terminal === true && accounting.tts?.terminal === true &&
-        accounting.stt.state === "actual" && accounting.tts.state === "actual";
+      const canonicalActualMoney = accounting.stt?.terminal === true && accounting.tts?.terminal === true &&
+        accounting.stt.requestId === `speech:${scope.cloudSessionId}:stt` &&
+        accounting.tts.requestId === `speech:${scope.cloudSessionId}:tts` &&
+        accounting.stt.state === "actual" && (accounting.tts.state === "actual" ||
+          accounting.tts.state === "conservative" && accounting.tts.basis === "submitted_counter_provider_unconfirmed" && ttsStopped === "transport_closed");
+      const noDispatchProof = !credits && !providerMayHaveStarted ? ports.noDispatchMoneyProof?.(scope) : undefined;
+      const neverDispatchedMoneyTerminal = noDispatchProof?.version === 1 &&
+        noDispatchProof.organizationId === scope.organizationId && noDispatchProof.userId === scope.userId &&
+        noDispatchProof.cloudSessionId === scope.cloudSessionId &&
+        (["stt", "tts"] as const).every(kind => noDispatchProof[kind]?.requestId === `speech:${scope.cloudSessionId}:${kind}` &&
+          (noDispatchProof[kind].state === "not_reserved" || noDispatchProof[kind].state === "settled_actual_zero"));
+      const canonicalMoneyTerminal = canonicalActualMoney || neverDispatchedMoneyTerminal;
       retirementEvidence = {
         ...(quotaRelease ? { quotaRelease: "unknown" as const } : {}),
         stt: !dispatched.stt ? "not_dispatched" : sttDrained ? "gracefully_drained" : "unknown",
         tts: !dispatched.tts || ttsStopped === "not_dispatched" ? "not_dispatched" : ttsStopped === "transport_closed" ? "transport_closed" : "unknown",
-        accounting: canonicalMoneyTerminal
+        accounting: canonicalActualMoney
           ? "settled_actual" : !credits && !providerMayHaveStarted ? "not_started" : "unknown",
         ...(canonicalMoneyTerminal ? { moneyTerminal: true as const } : {}),
       };

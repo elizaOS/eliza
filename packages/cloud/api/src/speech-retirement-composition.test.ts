@@ -37,13 +37,13 @@ function fixture() {
   return { coordinator, make, input, post, async start() { await post(coordinator, "initialize", input); const task = (coordinator as any).open(structuredClone(row)); (coordinator as any).openingTask = task; await expect(task).rejects.toBeInstanceOf(Error); }, revoke(c = coordinator) { return post(c, "revoke", { userId: "33333333-3333-4333-8333-333333333333", organizationId: "44444444-4444-4444-8444-444444444444", proofVersion: 1 }); } };
 }
 test("real composition confirms a live zero-reservation quota refusal", async () => {
-  control.quota = false; const f = fixture(); await f.start(); const response = await f.revoke(); expect(response.status).toBe(200); expect((await response.json()).retirement).toMatchObject({ state: "confirmed", mode: "not_dispatched", accounting: "not_started" }); expect(control.providerFetches).toBe(0);
+  control.quota = false; const f = fixture(); await f.start(); const response = await f.revoke(); expect(response.status).toBe(200); expect((await retirementFrom(response))).toMatchObject({ state: "confirmed", mode: "not_dispatched", accounting: "not_started" }); expect(control.providerFetches).toBe(0);
 });
 test("real composition confirms a typed first-credit refusal without provider dispatch", async () => {
   control.failAt = 1; const f = fixture(); await f.start(); expect((await f.revoke()).status).toBe(200); expect(control.providerFetches).toBe(0); expect(control.zeroSettlements).toEqual([]);
 });
 test("real composition requires actual-zero rollback for partial reservations", async () => {
-  control.failAt = 2; const f = fixture(); await f.start(); const response = await f.revoke(); expect(response.status).toBe(200); expect((await response.json()).retirement.accounting).toBe("settled_actual"); expect(control.zeroSettlements).toEqual([0]); expect(control.providerFetches).toBe(0);
+  control.failAt = 2; const f = fixture(); await f.start(); const response = await f.revoke(); expect(response.status).toBe(200); expect((await retirementFrom(response)).accounting).toBe("settled_actual"); expect(control.zeroSettlements).toEqual([0]); expect(control.providerFetches).toBe(0);
 });
 test("real composition keeps ambiguous reservation refusal unconfirmed", async () => {
   control.failAt = 1; control.ambiguous = true; const f = fixture(); await f.start(); expect((await f.revoke()).status).toBe(409); expect(control.providerFetches).toBe(0);
@@ -56,3 +56,11 @@ test("real composition reconciles zero work after a dispatch-mark refusal", asyn
   control.dispatchFail = true; const f = fixture(); await f.start(); expect((await f.revoke()).status).toBe(200);
   expect(control.zeroSettlements).toEqual([0, 0]); expect(control.providerFetches).toBe(0);
 });
+
+const isJsonRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+async function retirementFrom(response: Response): Promise<Record<string, unknown>> {
+  const value: unknown = await response.json();
+  if (!isJsonRecord(value) || !isJsonRecord(value.retirement)) throw Error("Expected retirement response object");
+  return value.retirement;
+}

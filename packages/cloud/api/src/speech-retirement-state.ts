@@ -90,7 +90,12 @@ export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(record
     throw Error("Speech retirement generation changed");
   const base = { version: 1 as const, sessionId: record.sessionId };
   const none = Object.values(state.progress).every(value => value.state === "not_reserved");
-  const actual = Object.values(state.progress).every(value => value.state === "settled_actual");
+  const frozenTts = state.progress.tts;
+  const closedFrozenCounter = frozenTts.state === "settled_conservative" &&
+    frozenTts.basis === "submitted_counter_provider_unconfirmed" &&
+    evidence?.tts === "transport_closed" && evidence.moneyTerminal === true;
+  const actual = state.progress.stt.state === "settled_actual" &&
+    (frozenTts.state === "settled_actual" || closedFrozenCounter);
   const liveOwner = liveOpening?.settled === true && liveOpening.claim === state.openingClaim &&
     liveOpening.generation === state.openingGeneration;
   const zeroReservations = Object.values(state.progress).every(value =>
