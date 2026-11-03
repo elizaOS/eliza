@@ -1,0 +1,288 @@
+{
+  "apiBunByFile": {
+    "packages/cloud/api/__tests__/a2a-auth-refusal.test.ts": {
+      "count": 1,
+      "names": [
+        "A2A preserves only the pre-admission auth warming marker and retry delay"
+      ]
+    },
+    "packages/cloud/api/__tests__/e2e-cache-warming-policy.test.ts": {
+      "count": 2,
+      "names": [
+        "only explicit pre-admission cache refusals permit E2E retries",
+        "raw E2E fetch retries stay bounded and never replay a generic refusal"
+      ]
+    },
+    "packages/cloud/api/__tests__/inference-dispatch-deadline.test.ts": {
+      "count": 14,
+      "names": [
+        "allows delayed handler entry once within the existing total budget",
+        "fast transport failure retries only the remaining budget",
+        "an ambiguous committed response reuses exactly one request and capability",
+        "exhaustion never starts a third attempt or loses the ambiguous cancellation capability",
+        "a confirmed cold gate rejects before dispatch and remains identifiable through wrappers",
+        "a cold response after transport never erases possible prior dispatch",
+        "a cold response after invalid-ack never erases possible prior dispatch",
+        "a cold response after unknown-503 never erases possible prior dispatch",
+        "three immediate failures retain the existing attempt limit",
+        "terminal 402 remains a single attempt with no dispatch",
+        "terminal 403 remains a single attempt with no dispatch",
+        "terminal 409 remains a single attempt with no dispatch",
+        "proxy exposes cold admission only with no earlier ambiguous attempt (false)",
+        "proxy exposes cold admission only with no earlier ambiguous attempt (true)"
+      ]
+    },
+    "packages/cloud/api/__tests__/speech-retirement-config.test.ts": {
+      "count": 2,
+      "names": [
+        "retirement proof has an explicit deployment gate in staging",
+        "retirement proof has an explicit deployment gate in production"
+      ]
+    },
+    "packages/cloud/api/__tests__/voice-speech-rate-limit.pglite.test.ts": {
+      "count": 9,
+      "names": [
+        "cold STT, TTS and relay bootstrap expose a retryable auth code before dispatch",
+        "STT and TTS take one Durable Object decision and no Redis round trip",
+        "a request over the key's cap is refused before provider work",
+        "an inactive or deleted key is refused before any limiter work",
+        "a key row owned by another organization fails closed",
+        "each organization is counted only in its own window",
+        "an unreachable limiter refuses the request",
+        "Worker turn media and the speech routes count in one window",
+        "media without an execution context keeps the Redis window"
+      ]
+    },
+    "packages/cloud/api/src/inference-settlement-replay.test.ts": {
+      "count": 3,
+      "names": [
+        "settlement fence replays after a lost acknowledgement and recreation",
+        "settled fence refuses changed target and legacy missing evidence",
+        "long non-speech settlement IDs do not duplicate into fence metadata"
+      ]
+    },
+    "packages/cloud/api/src/speech-relay-admission.retirement.test.ts": {
+      "count": 17,
+      "names": [
+        "partial settlement retry does not repeat successful STT money",
+        "reserved but not dispatched reconciles both kinds to actual zero",
+        "proof-write failure retries persistence without repeating money",
+        "conservative STT remains explicitly different from actual",
+        "changed settlement target is refused on retry",
+        "proven STT settles while unknown TTS keeps its target undecided",
+        "pre-lease warming records no reservation",
+        "failed no-reservation proof cannot skip rollback or hide its primary cause",
+        "a warming-shaped progress error cannot claim no reservation",
+        "a fixed conservative STT target does not block later TTS settlement",
+        "real session and admission preserve conservative STT after lost progress ack",
+        "unknown-provider submitted TTS counter settles once without becoming actual evidence",
+        "canonical matched speech receipts are terminal after actual settlement",
+        "a mismatched canonical owner receipt is not terminal speech evidence",
+        "a mismatched canonical request receipt is not terminal speech evidence",
+        "a mismatched canonical amount receipt is not terminal speech evidence",
+        "a mismatched canonical mode receipt is not terminal speech evidence"
+      ]
+    },
+    "packages/cloud/api/src/speech-retirement-composition.test.ts": {
+      "count": 6,
+      "names": [
+        "real composition confirms a live zero-reservation quota refusal",
+        "real composition confirms a typed first-credit refusal without provider dispatch",
+        "real composition requires actual-zero rollback for partial reservations",
+        "real composition keeps ambiguous reservation refusal unconfirmed",
+        "recreated coordinator cannot manufacture live zero-dispatch evidence",
+        "real composition reconciles zero work after a dispatch-mark refusal"
+      ]
+    },
+    "packages/cloud/api/src/speech-retirement-coordinator.test.ts": {
+      "count": 23,
+      "names": [
+        "duplicate initialize cannot reset an opened record",
+        "confirmed proof survives recreation and replays byte-equivalently",
+        "failed cleanup followed by recreation cannot manufacture success",
+        "legacy closed record is not a strong receipt",
+        "pending opening cannot resurrect active state after revoke",
+        "proof-write failure never acknowledges before a durable commit",
+        "late subscription after retirement is released exactly once",
+        "mismatched initializer cannot rebind owner or proof version",
+        "strong records require matching proof negotiation and owner",
+        "concurrent opening attempts have one durable winner",
+        "restored active record without a live capability remains unconfirmed",
+        "concurrent revokes share one cleanup and persisted proof",
+        "live zero-resource configuration failure confirms no dispatch",
+        "recreated zero-resource failure does not inherit live opening evidence",
+        "alarm retries an existing live holder and preserves unknown until success",
+        "automatic unknown cleanup is bounded, never confirmed by exhaustion",
+        "recreated exhausted retry alarm never resets durable retirement",
+        "recreated expired retry alarm never resets durable retirement",
+        "recreated missing-holder retry alarm never resets durable retirement",
+        "live holder obeys persisted exhausted retry limit",
+        "live holder obeys persisted expired retry limit",
+        "an intervening revoke count cannot lend the alarm another attempt",
+        "live-holder deadline exhaustion finalizes its frozen counter without a third cleanup"
+      ]
+    },
+    "packages/cloud/api/src/speech-retirement-route.test.ts": {
+      "count": 8,
+      "names": [
+        "legacy mint shape is unchanged without opt-in",
+        "new mint persists and acknowledges requested proof version",
+        "unsupported proof is refused before admission",
+        "flag-off revoke uses current owner auth rather than paid admission",
+        "bad requested version is not treated as legacy",
+        "pre-initialize rejection is bound to the exact request intent",
+        "auth rejection before initialization retains the no-allocation attestation",
+        "initialization failure cannot carry a no-allocation attestation"
+      ]
+    },
+    "packages/cloud/api/src/speech-retirement-state.test.ts": {
+      "count": 17,
+      "names": [
+        "duplicate initialization never resets starting",
+        "duplicate initialization never resets retiring",
+        "duplicate initialization never resets closed",
+        "rejects changed immutable sessionId",
+        "rejects changed immutable tokenDigest",
+        "rejects changed immutable expiresAt",
+        "rejects changed immutable proofVersion",
+        "late owned completion cannot overwrite revoke generation",
+        "concurrent revoke joins generation and attempt",
+        "restored active without evidence is unconfirmed",
+        "confirmed proof persists and initialization/revoke replay does not alter it",
+        "conservative settlement never becomes actual or confirmed",
+        "valid never-started closes admission with no reservation",
+        "initializer cannot change caller id",
+        "initializer cannot change caller organization_id",
+        "completed failed attempt gets a new token while pending joins keep theirs",
+        "live opening completion can confirm no dispatch but recreation cannot"
+      ]
+    },
+    "packages/cloud/api/v1/voice/session/lib/provider-retirement.test.ts": {
+      "count": 10,
+      "names": [
+        "pre-bind cancellation aborts fetch, drops queued sends, and still observes late real close",
+        "local abort stays unknown after the issued upgrade settles",
+        "a generic failed upgrade never fabricates no-dispatch proof",
+        "bound provider close needs a verified normal handshake: {\"code\":1006,\"wasClean\":false}",
+        "bound provider close needs a verified normal handshake: {\"code\":1000,\"wasClean\":false}",
+        "bound provider close needs a verified normal handshake: {\"code\":1000}",
+        "HTTP 401 without a provider allocation contract remains unknown",
+        "HTTP 403 without a provider allocation contract remains unknown",
+        "HTTP 429 without a provider allocation contract remains unknown",
+        "HTTP 500 without a provider allocation contract remains unknown"
+      ]
+    },
+    "packages/cloud/shared/src/lib/services/ai-pricing/cache.test.ts": {
+      "count": 13,
+      "names": [
+        "text: first legitimate cold request consumes authoritative rates",
+        "text: concurrent cold callers share one load and one persistence",
+        "text: loader failure remains unavailable with no fabricated rate",
+        "text: cache outage remains unavailable even if the loader can resolve",
+        "text: missing execution context never starts a cold load",
+        "flat: first legitimate cold request consumes authoritative rates",
+        "flat: concurrent cold callers share one load and one persistence",
+        "flat: loader failure remains unavailable with no fabricated rate",
+        "flat: cache outage remains unavailable even if the loader can resolve",
+        "flat: missing execution context never starts a cold load",
+        "cold wait is bounded while waitUntil retains the original load",
+        "invalid canonical prices cannot be used for billing",
+        "cold response does not await durable cache persistence"
+      ]
+    },
+    "packages/cloud/shared/src/lib/services/inference-settlement-receipt.test.ts": {
+      "count": 9,
+      "names": [
+        "exact canonical collected outcome supplies owner/request/target receipt",
+        "null sweep claims and incomplete or uncollected outcomes cannot attest terminal money: null",
+        "null sweep claims and incomplete or uncollected outcomes cannot attest terminal money: {\"reservedAmount\":1,\"actualCost\":1,\"adjustmentType\":\"uncollected_overage\",\"settlementTransactionIds\":[]}",
+        "null sweep claims and incomplete or uncollected outcomes cannot attest terminal money: {\"reservedAmount\":0,\"actualCost\":1,\"collectedAmount\":0,\"adjustmentType\":\"none\",\"settlementTransactionIds\":[\"wrong-collection\"]}",
+        "null sweep claims and incomplete or uncollected outcomes cannot attest terminal money: {\"reservedAmount\":1,\"actualCost\":2,\"adjustmentType\":\"none\",\"settlementTransactionIds\":[\"wrong-target\"]}",
+        "null sweep claims and incomplete or uncollected outcomes cannot attest terminal money: {\"reservedAmount\":1,\"actualCost\":1,\"adjustmentType\":\"none\",\"settlementTransactionIds\":[]}",
+        "funded-budget completion without persistence acknowledgement stays unattested",
+        "an explicit canonical zero result can attest zero, while null cannot",
+        "an existing receipt cannot be rebound to another owner or request"
+      ]
+    },
+    ".qualification/non-speech-receipt-compat.test.ts": {
+      "count": 1,
+      "names": [
+        "non-speech receipt decoration preserves every canonical call and economic result"
+      ]
+    }
+  },
+  "workerdPassedNames": [
+    "ready speech streams PCM and multiple TTS contexts without another DB/auth/admission operation",
+    "a refused credit reservation preserves the allowlisted recovery reason before providers open",
+    "legacy speech clients receive no unnegotiated billing reason",
+    "authoritative org, API-key and session-cutoff revocations stop active speech through the internal socket",
+    "barge-in settles only the submitted TTS characters across contexts, not the full reserved monthly allowance",
+    "the Cloud client's prepare-first frames speak, finish silently and cancel with one tts_prepared per context",
+    "socket Stop settles with the DO bindings and a fresh DB context before a later revoke",
+    "pre-hello revoke closes the public socket and late hello cannot open providers",
+    "real coordinator forwards STT-only selection and bounds unknown TTS money without confirming proof"
+  ],
+  "workerdSkippedNames": [],
+  "unitCountsByFile": {
+    "packages/host/src/voice/cartesia-sonic-retirement.test.ts": 10,
+    "packages/host/src/voice/speech-relay-session.test.ts": 23,
+    "packages/host/src/voice/speech-retirement-session.test.ts": 15
+  },
+  "unitNamesByFile": {
+    "packages/host/src/voice/cartesia-sonic-retirement.test.ts": [
+      "no socket and no dispatch is not-dispatched",
+      "actual clean close from captured generation is confirmed",
+      "context completion is not transport closure",
+      "clean close before waiter is remembered",
+      "old generation cannot confirm current socket",
+      "unclean or unverified close remains unknown: {\"code\":1006,\"wasClean\":false}",
+      "unclean or unverified close remains unknown: {\"code\":1000,\"wasClean\":false}",
+      "unclean or unverified close remains unknown: {\"code\":1000}",
+      "late actual close can confirm a previously timed-out generation",
+      "an error event is not closure and does not suppress a later real close"
+    ],
+    "packages/host/src/voice/speech-relay-session.test.ts": [
+      "disabled by default; no auth, consent, quota, credit or provider side effect",
+      "account-bound consent and credits finish before either provider opens; no agent row exists",
+      "consent rejection, quota exhaustion and credit rejection never dispatch a provider",
+      "replacement during asynchronous credit reservation settles without provider dispatch",
+      "strict controls reject account, provider URL, model, record parameters and extra keys",
+      "invalid PCM shape, oversized frame and excessive observed byte rate retire before forwarding",
+      "raw provider metadata is not emitted; streaming audio is immediate and cancelled contexts drop late frames",
+      "revocation cancels STT and TTS, settles once and drops all late frames; no replay",
+      "expiry and owner replacement reject audio before dispatch and retain ambiguous provider admission",
+      "provider factory ambiguity settles as possibly dispatched; cleanup failures are observable",
+      "the existing atomic quota store allows only one concurrent session within a one-minute limit",
+      "server-observed text and audio-output ceilings stop work without dispatching a bonus phrase",
+      "missing or extra account identity fields fail before consent or admission",
+      "a durable dispatch marker blocks the provider factory and revocation drops a queued TTS phrase",
+      "actual counter settlement needs a trusted shutdown acknowledgement, and failed confirmation stays unknown",
+      "canonical Ink semantic events pass with safe fields and one Sonic context accepts phrases, flush and explicit finish",
+      "each phrase reaches Sonic with only the paid dispatch marker before it",
+      "a cancelled context never dispatches its later phrases",
+      "a prepare opens one Sonic context before text; its phrases, audio and finish reuse it",
+      "a prepare then finish with no text completes cleanly and spends no text budget",
+      "cancel or stop after a prepare cancels the idle context and drops its late frames",
+      "a prepare follows the existing context id rules and limits",
+      "a durable dispatch marker blocks the prepared provider factory and revocation drops it"
+    ],
+    "packages/host/src/voice/speech-retirement-session.test.ts": [
+      "trusted STT drain and actual settlement yield explicit evidence",
+      "unknown drain remains unknown even when conservative settlement completes",
+      "settlement failure is explicit and only an explicit retry reattempts it",
+      "shutdown waits pending credit admission and settles undispatched work",
+      "TTS context completion without transport confirmation is not proof",
+      "shutdown waits pending quota and does not dispatch a provider",
+      "confirmed never-bound TTS cancels queued text at zero cost",
+      "a concurrent retry joins the first pending retirement",
+      "ambiguous quota release is not repeated by a cleanup retry",
+      "a successful quota release is not repeated after another cleanup failure",
+      "late STT evidence retains its conservative charge while TTS settles once",
+      "a lost settlement acknowledgement retries the original per-kind evidence",
+      "final bounded retry settles the frozen submitted counter but leaves provider unknown",
+      "unknown quota acknowledgement preserves separate provider/money proof, committed=false",
+      "unknown quota acknowledgement preserves separate provider/money proof, committed=true"
+    ]
+  },
+  "unitPassedTotal": 48
+}

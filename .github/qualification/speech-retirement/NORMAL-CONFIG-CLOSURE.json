@@ -1,0 +1,4766 @@
+{
+  "tree": "f4df35d8e5dd74ca054c3fd6eef8e79aa6a5931b",
+  "files": [
+    {
+      "path": "bun.lock",
+      "blob": "1cc61ff8862fd52607467743370879b575050d4d",
+      "mode": "100644"
+    },
+    {
+      "path": "bunfig.toml",
+      "blob": "5d661db6ee1566438af9f5657b1a5b9c97ecb5f5",
+      "mode": "100644"
+    },
+    {
+      "path": "package.json",
+      "blob": "29ceae5d8e57d8e7ea10dbf94e62ff893f5d53e5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/agent/package.json",
+      "blob": "0e38bcccbf347784499612daf81be0c9266aad76",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/agent/scripts/run-vitest-batches.ts",
+      "blob": "4a83f2b732b135842fbc171727acb69affc93ac6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/agent/tsconfig.build.json",
+      "blob": "8aa59d555f20d66e75e9a1ecc88843eaf4d138ba",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/agent/tsconfig.bundle.json",
+      "blob": "c26d0ddadbddadcc051c800e0afa3a9c0f9072fe",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/agent/tsconfig.json",
+      "blob": "30a0ff2864fa1ae8f87cf2528a5758cc39717329",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/agent/vitest.config.ts",
+      "blob": "eccc0f15bd5d7d828d555be9f222f3fb86888291",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/deploy/cloud-agent-template/package.json",
+      "blob": "203acdf176b46d5e2ce54f0bcf44fd36e6f2f9de",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/deploy/tsx-runtime-tsconfig.json",
+      "blob": "11464b364dc7ad8b221050d14394326e5d4c6096",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/e2e/accounts-ui/tsconfig.e2e-paths.json",
+      "blob": "e4981a281df18d2a0edf614a3bff246200b45509",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/package.json",
+      "blob": "4cf363f3cc1779091bd2fcae830fe1a396fd6e9b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/platforms/electrobun/package.json",
+      "blob": "6e20a067df04e68735e10afe4c27bd4c5cac46ac",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/platforms/electrobun/tsconfig.json",
+      "blob": "542ff7767bb6b69da95b8f29309a8b3763deb2d9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/platforms/electrobun/vitest.electrobun.config.ts",
+      "blob": "a2a653a4739439157ac7cc88aa854b489ba5b9e6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/scripts/tsconfig.consumer-build.json",
+      "blob": "fa5bbe0590f5b54bf5a4e6fc46e9335cf754cc47",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/test/source-repair-http.vitest.config.ts",
+      "blob": "ab0c5b3c270728046da40f79f5c6eadf306a35ad",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/tsconfig.base.json",
+      "blob": "feadb21aaa7f39d653172daf070ee41ad379684d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/tsconfig.build.json",
+      "blob": "a94c5f522a315600a1bc8029c45268c7c343436b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/tsconfig.host.json",
+      "blob": "f8a6fe151a9baa2a8244dab1021e671b3b34f5a6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/tsconfig.json",
+      "blob": "d6300b588079a7e33944c5bccb5e0ca60e5d75e0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/tsconfig.typecheck.json",
+      "blob": "e895d2e809d16f9b53461791c13d53255ec0651c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/vitest.app-real-e2e.config.ts",
+      "blob": "5740ac243b0240cb38e058f2b610173c619f038b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/vitest.config.ts",
+      "blob": "9e635a394a7061ae9046334ade697fc54aab01c1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/vitest.e2e.config.ts",
+      "blob": "9bdb31ef574258c42bcd95679fec25e07d4579e7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/vitest.harvest-live-agent.config.ts",
+      "blob": "b38fa7d0c5220b0d281930d9fb3d5c7edcfc8d93",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/app/vitest.host.config.ts",
+      "blob": "e70ae49f79ca67532934f75543827e4c32a8a118",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/auth/cloudflare/tsconfig.json",
+      "blob": "cdf91257b42905ff653e5953e2c23efda8849461",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/auth/package.json",
+      "blob": "8614d40bd537a4632fa7dcca09f5a6213cee5252",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/auth/test/vitest-assertion-shim.ts",
+      "blob": "df5b6616dd88531ec0f5795f1a2e915ae8e3d4ac",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/auth/tsconfig.build.json",
+      "blob": "1022cf6908b9162f5a6160223f33ddf5166bd28b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/auth/tsconfig.json",
+      "blob": "7678eaccf7a059ecccc33abaa8964c7b686370a5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/auth/tsconfig.login.json",
+      "blob": "f7f88c1248777b0c97bfd5506674f982f2335254",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/auth/tsconfig.vault.json",
+      "blob": "e38f15ff0c3d152768019a34b4c83e56a820bcff",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/auth/vitest.config.ts",
+      "blob": "90446956c838593dc665920fab70c6355e03c160",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/framework/typescript/package.json",
+      "blob": "83edf9900103bdcbd60981aa34661b55839844b3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/framework/typescript/tsconfig.json",
+      "blob": "3780b886c42dae4dba70b49ff3c33b7a394b5f9f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/harnesses/eliza/runner/package.json",
+      "blob": "d7c9e85826d2f4afb4450ae5f834b0463988b7e7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/harnesses/eliza/runner/tsconfig.json",
+      "blob": "ac0536d32039459a65456447bd19df86e74a0995",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/harnesses/eliza/runner/vitest.config.ts",
+      "blob": "0a9fcf5782c36cc9871b647871e789a7d5f5c2b3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/harnesses/transports/claude-subscription-gateway/package.json",
+      "blob": "395ccecc257cd40bf601393d426495c952e21a74",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/harnesses/transports/claude-subscription-gateway/tsconfig.json",
+      "blob": "a226560de356dc8cfde68a10b52459b5998c0000",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/package.json",
+      "blob": "04a704c3f6a36797fc22667fd7fc6ab227b1a7fa",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/plugin-benchmarks/package.json",
+      "blob": "b65940573d3ae632b17f33377bc2f7d93aab09fc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/plugin-benchmarks/tsconfig.build.json",
+      "blob": "b814d58f2803cf475b271c56798e5e2d773c458c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/plugin-benchmarks/tsconfig.json",
+      "blob": "0c7be20e535b4980d0b0c3a68bbf9dcfb4cfeb52",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/plugin-benchmarks/vitest.config.ts",
+      "blob": "89110951974c05df76864fbe674506f38e4715f1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/scripts/eliza-benchmark-scripts/package.json",
+      "blob": "c74ec628e3c0a37cbf373795942fdf5e3244643a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/configbench/package.json",
+      "blob": "85b63020ce6748876781bd28bb79c5db1890799d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/configbench/tsconfig.json",
+      "blob": "9d709f182b3ee8fbdcdae8b24f14b1e645afdedc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/content-context/tsconfig.json",
+      "blob": "2fe716207ab64fcbf6e52eb64fdfb4292d25722f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/content-context/vitest.config.ts",
+      "blob": "fffa1644fb52c00bc7219f862415fb97eb0af67b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/eliza-1/package.json",
+      "blob": "f4ef68e4ae501f12089062ecad6e79f1f9a22439",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/eliza-1/tsconfig.json",
+      "blob": "9755e30435cfad07e1c6da72acb8ab0d7e9d9edb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/eliza-1/vision-cua-e2e/package.json",
+      "blob": "0812a873448a5669af17c0f38c43ea08ab5e6294",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/eliza-1/vision-cua-e2e/tsconfig.json",
+      "blob": "2029190126db4b99b315a9b6cda5d005af759316",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/entity-voice-bench/package.json",
+      "blob": "6d8f913807ea902b16224b55bb5d142e1a3f102e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/gauntlet/sdk/typescript/package.json",
+      "blob": "52230fe1a51ab21099544f4b88d245e6ff946685",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/gauntlet/sdk/typescript/tsconfig.json",
+      "blob": "ae1a0d2f03248a454eece431684be6e824f921d8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/interrupt-bench/package.json",
+      "blob": "a613eebad047e8eaea9b996e6e9b2f28ab181ff8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/interrupt-bench/tsconfig.json",
+      "blob": "690ae1f0caf228bfd11370246a900e143c3821ee",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/lifeops-bench/quality/package.json",
+      "blob": "f09e469963caef02a365cc7cb3ed42a158133188",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/lifeops-bench/quality/vitest.gate.config.ts",
+      "blob": "6bae9d6f8745c0e221e0c91b6b8a70dee3ac1411",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/lifeops-bench/quality/vitest.unit.config.ts",
+      "blob": "3c086e81a10944391fb1dd53972e909888b4fd5c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/lifeops-bench/runner/package.json",
+      "blob": "1484e1e9d93ac74c8045805e418a23e188dbf964",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/lifeops-bench/runner/tsconfig.json",
+      "blob": "e2e28b07b04a86bd60f75a1ecfdf528dc3496434",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/memperf/package.json",
+      "blob": "28ef2b5e319e2af41d0fc3572f178746f5fab7e5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/memperf/tsconfig.check.json",
+      "blob": "9326ab3cb51d69093da6824e2590c31b5932ac25",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/personality-bench/package.json",
+      "blob": "b7055503993848a7d76c4f8ca508aaa793aa2e65",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/personality-bench/tsconfig.json",
+      "blob": "3f0f2a41390baa07ad88c20af9b0af34e0db5b4a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/personality-bench/vitest.config.ts",
+      "blob": "afc31a95b63720d4a9750c1c12429a5046db0f3c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/planner-optimization/tsconfig.json",
+      "blob": "d877f220fe6c99656b3c2ece33f49a080153e67c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/planner-optimization/vitest.config.ts",
+      "blob": "2fe6113fe4df12b6fc968c62a4ffb45c81897fcf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/planner-optimization/vitest.gepa.config.ts",
+      "blob": "0e78dac40ea10a0377f5d9af9d1bc33c81b362c3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/recall-bench/package.json",
+      "blob": "293c01d3db7b7fa4058e973117c77aa4d892531e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/searchbench/package.json",
+      "blob": "792e6a1e928c6e2b5a0baa26122c4f0e635a76ea",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/searchbench/tsconfig.check.json",
+      "blob": "4e02f413c90eef9c6d55b6f571c0ba0417406aa6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/terminal-bench/tasks/npm-conflict-resolution/client/task-deps/package.json",
+      "blob": "43cc232789de3f58f71bb6af05fb01de54443ffb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/three-agent-dialogue/package.json",
+      "blob": "597216d4629eeb11315056aaa528245c1cab338c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/three-agent-dialogue/tsconfig.json",
+      "blob": "ed8721714a439dd425ac40bb2a844bf461a1e32e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/view-bundle-size/tsconfig.check.json",
+      "blob": "69cfa413817ad922a8aff7bc49a985eae96c3c8a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/vision-language/package.json",
+      "blob": "8d933629e4c7e527f318a4e824ebe317c96d0585",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/vision-language/tsconfig.json",
+      "blob": "e4b1bbd0ec120c604137adae412d2cecf4af8d0f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/voice-rtt/package.json",
+      "blob": "b1749cf99069acc1aebadb4d83a219bcf3037abb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/voice-rtt/tsconfig.json",
+      "blob": "a477bfba16f444a27c860f9f8a9edded00e65237",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/benchmarks/suites/voicebench/package.json",
+      "blob": "e33c337a37f30f47c84525c101e1712cd5c76a4f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/api/package.json",
+      "blob": "c6f644e74063d1a66683778c72c2460db050cab4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/api/tsconfig.json",
+      "blob": "6ec3577e098f81e6f1de4af64a72c2416d12de39",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/e2e/package.json",
+      "blob": "eb4f0ae2e1042942ed924636b9b5cb53111b65d6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/e2e/tsconfig.json",
+      "blob": "efb512cf90b2c1cff8c92cec0c02466e84ce61ba",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/infra/package.json",
+      "blob": "f98240a860f5f4d80fd9fd84948688dbaebba295",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/routing/package.json",
+      "blob": "54dcdc288426ff370287ec28e4d8e46d678e67a3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/routing/tsconfig.build.json",
+      "blob": "af8cdbbc6d9b60787aa39aba5224bdc711230925",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/routing/tsconfig.json",
+      "blob": "a1529765f5bf2b60f5aecdfb4912ade7934aa892",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/scripts/package.json",
+      "blob": "205a648121838a603064ad857df05bcad325b1d0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/sdk/native-host/tsconfig.json",
+      "blob": "919b66b1d14079475e8df6f850b865394f57f214",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/sdk/package.json",
+      "blob": "13bd7bb680829361281645f61743e09272a903eb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/sdk/tsconfig.build.json",
+      "blob": "1d3c29ba7a0f84907c8498b1bb88b08c9addf694",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/sdk/tsconfig.json",
+      "blob": "a1529765f5bf2b60f5aecdfb4912ade7934aa892",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/sdk/vitest.live.config.ts",
+      "blob": "6869f059af793c8ba1c9d00361980135d42328df",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/_common/package.json",
+      "blob": "3f9bd795928b65fd142e7141a447cfb61ad94600",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/_common/tsconfig.json",
+      "blob": "a52ac7fabad06dcd56d5039b6a02d5ecd92d4481",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/agent-server-container/package.json",
+      "blob": "fe5cbf14e61eef8a0451fb768fcf3c5d6124faee",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/agent-server-container/tsconfig.json",
+      "blob": "ce0d0abe66c8fc3d75ce5e45513bf7a84a921d8a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/agent-server/package.json",
+      "blob": "07826579ed81a6e82928361bc14196c67592d5df",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/agent-server/tsconfig.json",
+      "blob": "d95e6b78012c1e02fc4bcfa0cfaf8905310d94e2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/coding-remote-runner/package.json",
+      "blob": "4076447631b82701105708e1d6ba3b9a4a47dad5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/coding-remote-runner/tsconfig.json",
+      "blob": "93e09e2f822beeab6b390da009e41acc3004c3ba",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/container-control-plane/package.json",
+      "blob": "e7bbc830aae394ad11e016d81d26fb2a82bef36b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/container-control-plane/tsconfig.json",
+      "blob": "d135c721650d9050c37142175034d147e296fa6f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/gateway-container/package.json",
+      "blob": "5420f7a93a089f5a1dcac4ea424f8eadf292919e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/gateway-container/tsconfig.json",
+      "blob": "4f44a74599cad74c4eea1d8e6d8ecdfe8cc1c1a8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/gateway-discord/package.json",
+      "blob": "3173e0ce3473446370aa697818b601986a38a12b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/gateway-discord/tsconfig.json",
+      "blob": "a52ac7fabad06dcd56d5039b6a02d5ecd92d4481",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/gateway-webhook/package.json",
+      "blob": "14d6f57d0ae4bba920e3ae808a2c4dc751320f2e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/gateway-webhook/tsconfig.json",
+      "blob": "a83065683c0388a3e53bbb9b1087a3fe9c3797fa",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/operator/package.json",
+      "blob": "9417f6a90123cc67553f1bcb71a59ebc7c4d5449",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/operator/tsconfig.json",
+      "blob": "87e360349b7fb29527f1acaf6b7d92187ba60aee",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/provisioning-worker/package.json",
+      "blob": "2f642c4addfee3a4ae4c31fce1065e148577d68c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/provisioning-worker/tsconfig.json",
+      "blob": "f2a89e5f49cf669b2add3fbc6ea45ed42b51ba45",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/redis-rest/package.json",
+      "blob": "60103b497aedf917901241e75f5779ea1de3330d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/redis-rest/tsconfig.json",
+      "blob": "ce0d0abe66c8fc3d75ce5e45513bf7a84a921d8a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/tunnel-proxy/package.json",
+      "blob": "3eb2b5489c5e528fbf8e2e2e3bfb7541c9630e35",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/services/tunnel-proxy/tsconfig.json",
+      "blob": "ce0d0abe66c8fc3d75ce5e45513bf7a84a921d8a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/shared/package.json",
+      "blob": "55a0bf37836115eea5ca306247e15d3b363609d9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/shared/tsconfig.json",
+      "blob": "00c75eda2c76ff0ef6e3fd3d79aa7f41311c0a17",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/test-mocks/package.json",
+      "blob": "db8181c62b91b8fa5a8c646256cadc7c83aff07d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/cloud/test-mocks/tsconfig.json",
+      "blob": "e5e540df688007269ade6f63befce271286df9a9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/contracts/package.json",
+      "blob": "81e17f20303c0ef8fb1b49a3f0f2bf4e16026df5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/contracts/tsconfig.emit.json",
+      "blob": "7812ac00224e3ac84981fca03a0452af9d3865be",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/contracts/tsconfig.json",
+      "blob": "59902e810b4e75dc87fffc5167b5d997379c27d0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/core/package.json",
+      "blob": "45e27aa04a688f04a8d54bbbd5bd900ca4edc41a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/core/tsconfig.emit.json",
+      "blob": "d33fd4240700dc1b5e338db1cd4798821f867f28",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/core/tsconfig.json",
+      "blob": "201ce82f0f10739dfc45e193699e9e81707b92b0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/core/tsconfig.tooling.json",
+      "blob": "62ffb01691f62abc0e5d38ceee1829a0579b9c71",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/core/vitest.config.ts",
+      "blob": "3a5eff8e51cc6348074733d1c2ff307822f54520",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/host/package.json",
+      "blob": "a39c5ef2ee510895e2a810eb5af0dd43a712593f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/host/tsconfig.emit.json",
+      "blob": "e4621656e9a116b957a3ffcc2d408bc4e88e158e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/host/tsconfig.json",
+      "blob": "100d8a8f0a241e2ca866ca08af38a7d605c8f3b8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/host/vitest.config.ts",
+      "blob": "8a497a91bf178a87e25cf5c3e1657a097f6f1cde",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/browser/tsconfig.json",
+      "blob": "ae2c40f2d8ce55c5c495a217c2e2f8e23283930a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/linux/installer/package.json",
+      "blob": "baeb1b3c91b8ad2a654f94365af2f6568b6e3306",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/linux/installer/tsconfig.json",
+      "blob": "2f4ebdd08430b452fb142e77b85f9318e9b8c8f5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/package.json",
+      "blob": "d7899ba1c8cd7ae38c30f8bee342fa60d023c30e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/setup/package.json",
+      "blob": "10edc7ad5bca19a6d945c7fd55641bfeef7e721e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/setup/tsconfig.json",
+      "blob": "f3051733b1f11f02cdf693d8706a03e79ebb83bf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/setup/tsconfig.main.json",
+      "blob": "8895d42991f8c0299af47ea6ed20e72dada384f8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/setup/vitest.config.ts",
+      "blob": "b2436ebc9e93d83cc8ab8275bace00d0dfffcd59",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/tsconfig.json",
+      "blob": "1b1e6a9f150bc6e4d3053ee6626c14f33a969275",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/usb-installer/package.json",
+      "blob": "f81b1dde0ccf589912c7a65d0c424d1436f02e68",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/usb-installer/tsconfig.json",
+      "blob": "a69c718a8583b2fff531293fbc780b3fb3003ddb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/os/usb-installer/vitest.config.ts",
+      "blob": "f26243c2643903ac2d553d4eb9db673ab3c19cf8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/README.md",
+      "blob": "73738f8af06e44e3eed6ff45e7ab2b4e494d9a9b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/agent-batch-evidence.test.ts",
+      "blob": "0dfe892d1afc7972c816e5b0d06ee98c848c1c2a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/agent-package-boundary.test.ts",
+      "blob": "ada8de566a477e830fd681ba72414c5cdd3ef72a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/audit-focused-skipped-tests-discovery.test.ts",
+      "blob": "85ed00ab212ef3fe89df4d164151c9c687004c5a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/audit-test-lane-membership.test.ts",
+      "blob": "0b14167bd76853140833706fe6632183611807f0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/avatar-preparation.test.ts",
+      "blob": "2dd9b0086c02d4380f90bab9cc3d0aaa9dc9230d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/biome-version-consistency.test.ts",
+      "blob": "ab59f96567b3333df42960bd427bbbbc90785526",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/check-prompt-secrets.test.ts",
+      "blob": "3f40c00e967c984d06aaa91a726fbab5d5f3ce05",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/check-required-playwright-results.test.ts",
+      "blob": "3a9535cffed8c560fe82062780abea1e9d4e5738",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/ci-bun-version-contract.test.ts",
+      "blob": "203b7c5d3257445d65e0ba4dd4a6f276b63bffbc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/ci-fused-inference-setup-contract.test.ts",
+      "blob": "863e584d0ecca9f5e0fbe74d052ad368f5c116b7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/cloud-cf-checkout-auth.test.ts",
+      "blob": "cbf69ca587c3c41573030c6be76306e9aa37dd5c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/copy-package-assets.test.ts",
+      "blob": "eb5ee9f1969c6db524facb7126be03f577e6bd14",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/dev-all-service-startup-timeout.test.ts",
+      "blob": "2bb2903fb4ed6931ed21ab463ad1cac2b2190fbb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/dev-health-check.test.ts",
+      "blob": "6fe5d6dc09e72d93806cb763b4ca506fdfd84fb2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/develop-effect-ledger.test.ts",
+      "blob": "03bc4a19a86495274908d58e6605b3c6936056fb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/e2e-ports.test.ts",
+      "blob": "f9612bc70db81bb8fd2a6ac5c43f1addd4e92877",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/electrobun-browser-window-partition.test.ts",
+      "blob": "923741d62434cae8827b8e52985242bcf797ba2d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/emit-script-artifacts.test.ts",
+      "blob": "a63a0fce84fbd65d0648f320e439a8702fef44ab",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/ensure-plugin-test-conventions.test.ts",
+      "blob": "fc250fc755b958005e2cfb8aa675c95a81de76c9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/existing-runner-observer-routing.node.test.ts",
+      "blob": "917ccea11a25d634d6b7f8c4acb53e2e91635ca3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/fetch-archive-artifacts.test.ts",
+      "blob": "20301d47a1f1736e03f6b9399a4de03d8a35d053",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/fixtures/release-lock-worker.ts",
+      "blob": "197866cdca5a7637143c8a9133fbb2e71d8c7825",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/install-build-freshness.test.ts",
+      "blob": "411a3ee0f1eaac9934e4de290b07b13f7ff5b0e0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/mobile-workflow-discovery.test.ts",
+      "blob": "8b75cbfd516e1563bbf98968549cc3f02c601315",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/os-aosp-manifest-workflow.node.test.ts",
+      "blob": "8d68ec917725bd397bca2aabd2f57718abe33d9e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/os-apt-workflow.node.test.ts",
+      "blob": "7a5107299a6c89cab7f85489513303cef85458aa",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/os-cuttlefish-workflow.node.test.ts",
+      "blob": "efefc270437dc8d0f2db1903787339f696cbf1cf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/os-debian-workflow.node.test.ts",
+      "blob": "a03597e3f66fe2c2d75930a79ace49e94fc88cdf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/os-manifest-recovery-workflow.node.test.ts",
+      "blob": "152488baa16a9c6291ddbc3d2f5c727082a2c138",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/os-mkosi-workflow.node.test.ts",
+      "blob": "f78b8fe3bd9befadaae0acedd7d2db3e18cb5e4d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/os-usb-release-workflow.node.test.ts",
+      "blob": "55184d4e2a79081052692892f54eea0552d0f960",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/package-paths.test.ts",
+      "blob": "4b964a7debc6efa5b055aca47bd50ca82ee4c232",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/plugin-build.test.ts",
+      "blob": "83d33eabcc1ef6d991ad556a34b2179f071e5032",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/plugin-discovery-zero-edit.test.ts",
+      "blob": "85d54b5bf9fe720c211c687c97c22106eb71e8cf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/plugin-view-operations.test.ts",
+      "blob": "24f11cfa64fc0fb792865387cc04d79385061f7f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/pr-core-build-scope.test.ts",
+      "blob": "352c3cd854393971d42345d58261e5c6805fadf0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/prepare-package-dist.test.ts",
+      "blob": "c8b7503c598a371943fc7cd4b525e5b64ca24cd6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/produce-content-context-e2e.test.ts",
+      "blob": "f160730164ea6bd1e155fa1100eef609717bc9b4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/produce-content-context-live-trajectories.test.ts",
+      "blob": "855b2c08f6ae035136cc601bd963212d84b3be7e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/produce-content-context.test.ts",
+      "blob": "66f25756e10956a950e7da17865f3e26e95c0878",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/prune-turbo-cache.test.ts",
+      "blob": "9696fa8cf33c83a93e619ae23656b1965c8ef0cd",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/raw-sql-source.test.ts",
+      "blob": "ca4f2475aa6128cd13997a9b96ccd553e8eea17b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/release-candidate.test.ts",
+      "blob": "ab66bceb4fa090cc386476ee072c6cc9036ba7f8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/release-git.integration.test.ts",
+      "blob": "23343ab078a7b06583ce60a9b152ed8c3c82e216",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/release-verdaccio.integration.test.ts",
+      "blob": "0f90b984d8b4b7e44539a43555491f18158703e4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/report-artifact-path.test.ts",
+      "blob": "b996136438f5b56ea22d28af3bdd3483cef94063",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/rewrite-dist-relative-imports-node-esm.test.ts",
+      "blob": "345566485f10ba0cb652dbff4113275d0cb4e907",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/root-vitest-boundaries.test.ts",
+      "blob": "087a11952ee46474ac327d8ce55d7cb5da0cd98a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-all-tests-captured-output.test.ts",
+      "blob": "1da37581eaf20d781f95c10574f7f430b64ed36e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-all-tests-concurrency-usage.test.ts",
+      "blob": "2bdad09d946409bd90e10ecf25bf73939995237e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-all-tests-result-ledger.test.ts",
+      "blob": "adf947439c993271e63b02723eb8dce0f947f51b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-all-tests-vacuous-green-guard.test.ts",
+      "blob": "b24d494773e4e3e14d6759286e2af9a015aa7547",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-content-context-soak.test.ts",
+      "blob": "359af08095e401f45182a6a46e029db5d9da84d7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-content-context.test.ts",
+      "blob": "0b9dbed76c58600b05b9adc4cc410fbff8fab503",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-live-test-with-artifacts.test.ts",
+      "blob": "46e83a39f24cc5fa3d48aa08161d98fa9b54e124",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-progressive-content-benchmark.test.ts",
+      "blob": "ae693d9645e5ef3418006e043ea3371d7fc7265b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-script-test-files.test.ts",
+      "blob": "a465496b6f283217deef52e98a9b57dcb9090cbe",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-with-deadline.test.ts",
+      "blob": "642aa410711ba4978fad52c5df1c1c4de309ac9c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/run-with-flake-retry.test.ts",
+      "blob": "559d649a44554d2c1a88aaf53e2a84c004b1dbf2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/seed-message-corpus.test.ts",
+      "blob": "7b8c997e332e6ea551a04fe3948798c0d15e635a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/staging-launch-gate.test.ts",
+      "blob": "03f662283d52ff8d12d2f67d2f210aa9def2c066",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/terraform-plan-envelope.test.ts",
+      "blob": "62d9fa04c2e3232ea16b3a9c93143d2ad7326865",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/test-cloud-run.test.ts",
+      "blob": "a157e67bde1ad474b3889116bc35ced4620fccd2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/test-task-pool.test.ts",
+      "blob": "1daba99949c3e5ef877009059a21ebd1ca1b13a8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/trajectory-list.test.ts",
+      "blob": "5f775831674367fccf40ce871e61d6455d71b21b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/tsup-plugin-packages-shared.test.ts",
+      "blob": "26d0f9975e2715ede0e9adf6de639903999afe17",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/validate-terraform-pages-domain-state.test.ts",
+      "blob": "ca6ac8d6d3d54897392b4e89e6364785446bfa32",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/validate-terraform-state-address.test.ts",
+      "blob": "07deb105806ab491e0d9cae61eb588167deefcb5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/verify-publish-graph.test.ts",
+      "blob": "76c3e84fd5d3d204c08d1260548166faa79f4254",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/view-bundle-import-guard.test.ts",
+      "blob": "92cde9d4dcbd5b69317ff0e90cced4933eb19fb2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/__tests__/with-package-build-lock.test.ts",
+      "blob": "0f5c2b8e02f97063588554b629f9809a423e3252",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ai-qa/review-lib.ts",
+      "blob": "19322338d033d48cf300269cc9ee6376f0d975a2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ai-qa/review-screenshots.ts",
+      "blob": "e8e819d9aa711c3028c7888e61009abd978a222f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ai-qa/review-walkthrough.ts",
+      "blob": "235e34dc3de6901a107c275d1af519ab05009aaa",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ai-qa/reviewer-args.ts",
+      "blob": "67d28082391cad33231ea64aa6495576ebf05779",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ai-qa/reviewer-preflight.ts",
+      "blob": "fc0c98951e087ddc12d9f01a50f4f99a35edb124",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ai-qa/route-catalog.ts",
+      "blob": "39e85cd66fed517c546c2995ebf1db270bdf5a1a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/alias-read-guard.ts",
+      "blob": "27fe5348be2e36c98bf7d27032935c4c783e196a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/assert-comment-only-diff.ts",
+      "blob": "efe7e1c89fc209f20eebb968df634c177e909d37",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-ai-workflow-output.test.ts",
+      "blob": "82e28f88343d5812e0164a48a203480ccce1371e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-ai-workflow-output.ts",
+      "blob": "c64c702b9cb1a600571eea132321aad6419e908a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-bin-export-subpaths.ts",
+      "blob": "7e746e2d5b5271ba561e6ccb0acb12dd9a751cb8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-build-typecheck.test.ts",
+      "blob": "5da8a2392c95f5b1524548077a091f93fd09a895",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-build-typecheck.ts",
+      "blob": "4d87cb70853f77a7bf1db4db2c46a944ce41b9ea",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-focused-skipped-tests.ts",
+      "blob": "e4e08ed3d870b78068e86df65828a503726be34c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-plugin-view-inventory.ts",
+      "blob": "7441205c94e083071d39efd081d6f7c91ad3e0f9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-scripts-inventory.ts",
+      "blob": "0948c95a67e0f260cb0c2928155f848bfcc5e5f0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-scripts.self-test.ts",
+      "blob": "004b9dca70e99419d5e65cc7d8c2509419f48d32",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-scripts.ts",
+      "blob": "ba6a1f5beace487444509e6a72fd9b04ca5e7e1e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-tee-secret-leak.ts",
+      "blob": "d125bd8a042372363d14456144cd59be14156f94",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-test-lane-membership.ts",
+      "blob": "dfadd4d0ecf9ff1c54ed5f3befe1f8059aa65ac4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-tsconfig-workspace-resolution.test.ts",
+      "blob": "ca948f34db348bc1bfc11352e91548a474014f45",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-tsconfig-workspace-resolution.ts",
+      "blob": "581d3a86b9f69014e28aa1f931932c913e60369f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-turbo-build-deps.self-test.ts",
+      "blob": "9c375db0d1d23ffa9452f07c0c5e69863ec5080b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-turbo-build-deps.ts",
+      "blob": "21aa5d799819ace43acc733ef090c71104711172",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/audit-view-bundle-inventory.ts",
+      "blob": "ad3b1ba647bb773784e7e3947b2626a896af66e3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/bootstrap-linux-dev.sh",
+      "blob": "0d712da91bd212d6d80f5f68b84d9a901d12b8cf",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/bootstrap-linux-dev.test.ts",
+      "blob": "0c9463ceb0109c75fe4bee7274473b1e32c753e4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/build-core.ts",
+      "blob": "b49e4d27ec471074d82264ce1131118766b9da11",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/build-private-workspace-packages.ts",
+      "blob": "e563122e0ba5274072e36673a6874b8a3a894488",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/build-views.ts",
+      "blob": "6f0206af85b8cc1f7859c8e1966d439c9f9bc42e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/bunfig.script-tests.toml",
+      "blob": "36dff5591f2d1e1ea8bcce8d511b3812b3959a18",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-agent-comment-attribution.test.ts",
+      "blob": "2f1cc25d1c12f88eae26c89a00b14647fdada399",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-agent-comment-attribution.ts",
+      "blob": "dbf6d7e1bd1b606b63df8da4337be0610b9577f9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-biome-version-consistency.ts",
+      "blob": "5ec920153bc9d23a60c9967d5853cd27210d1749",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-generated-system-files.ts",
+      "blob": "069c15bb2bef2fdeca8265d9091e175f79e0f755",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-markdown-links.test.ts",
+      "blob": "2a078f2d05df934d171355930e3a34d661579b14",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-markdown-links.ts",
+      "blob": "783cf1f528885f9a13dac343912e7657947bd7b3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-pr-evidence.test.ts",
+      "blob": "bdc864eb45eaa2c96681ee42606e3914789673a0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-pr-evidence.ts",
+      "blob": "d74f4b4e040c2eb177eaf440c50d5f050e70a1b1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-prompt-secrets.ts",
+      "blob": "f34031ade7b686b5725e773784291c37785eb25b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-required-playwright-results.ts",
+      "blob": "fa7b17d436eb74e713bd19c68b5e7cc7cb59d0af",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/check-secret-hygiene.ts",
+      "blob": "5cc414016bd8087e34389e2f807ad0be29212bd8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ci-affected.integration.test.ts",
+      "blob": "890baf669f776939f8e677a287a9b142ac20a55b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ci-affected.ts",
+      "blob": "9afe06e3eb6be08e026eeb5e1a5122f1b7ee25d6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ci-await-bun-release-server.ts",
+      "blob": "da98d30d73a41e8b5209e77439cc569c9a2e279b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ci-bun-version-contract.ts",
+      "blob": "194bf1e30a411705491144fc6c95eb205b2ed06a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ci-capacity-dashboard.ts",
+      "blob": "24452dc01dc27b6e7e6195e7a9ae60c6a46742f1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ci-fetch-bun-release.ts",
+      "blob": "1e3820f4b0f818b0b132e83e667154075cfdb9f7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ci-turbo-cache-contract.ts",
+      "blob": "979095963643670ad11a837c72acda7c7df3aaba",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/clean-repo.test.ts",
+      "blob": "3d1cb99ed0cd6daf40350f214f955ee31df39c5b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/clean-repo.ts",
+      "blob": "d6d7dfe7794e5de00474fc4dea3c95d1fa5605e7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/clean-stray-dts.ts",
+      "blob": "c9c02702fbd1e7971ad1c4f460ec17dbf5cec4be",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/__tests__/e2e-agent-cleanup.test.ts",
+      "blob": "b913d13f4ad1f9f500ed1cc3a810a6fbcf822ac6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/__tests__/mock-stack-up.test.ts",
+      "blob": "6d8cc9ded3b4f8e713b07c26b1efe1e124663486",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/diagnose-subscription-catalog.test.ts",
+      "blob": "d54851e9f82e486f447d84fc0204cd2ffdac334e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/diagnose-subscription-catalog.ts",
+      "blob": "69a654fd7788cca48e6fe96e31d5400185fc8267",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/inventory-mobile-app-auth.test.mjs",
+      "blob": "f5e165c8a4b70337fe364f36b9e6ce3dcccb7fd3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/inventory-mobile-app-auth.ts",
+      "blob": "325998adab6a32c32ee43111c96f896d2408a5c5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/isolate-mobile-app-auth-registration.test.mjs",
+      "blob": "49d0a0929989656f6e27126091688fddae7a4d0c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/isolate-mobile-app-auth-registration.ts",
+      "blob": "33cf1354e8f4f0c9632d6d9825e4f91f3bf0b71a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/plan-mobile-client-addition.test.mjs",
+      "blob": "2dd351a5e41ecdbca39bf981f47fd928e1e420a1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/plan-mobile-client-addition.ts",
+      "blob": "8e505fe2d46508b20569b1c2cca846e4b304d07f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/registered-mobile-app-auth-registration.test.ts",
+      "blob": "54edc1d9520a1e4604bca05d44948b8458bcfc6c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/repair-mobile-app-auth-registration.ts",
+      "blob": "9728dd60b4446a2394794ef4aeab4c4afd0488ce",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/verify-mobile-app-auth-registration.test.ts",
+      "blob": "7074c25cf5fd142fd0bd019fccc324a6c8323e53",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/verify-mobile-app-auth-registration.ts",
+      "blob": "53e46ba703e5c643e747f31be42383ee5deb34e3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/admin/verify-mobile-app-auth-url.test.mjs",
+      "blob": "5836923611311ffcda9c7ef229fb813d299e36ea",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/e2e-agent-cleanup-lib.ts",
+      "blob": "4552ebc37b7f36b64f06ebf8587e2513ef1fcbd1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/e2e-agent-cleanup.ts",
+      "blob": "d9ce02cdefd56e1209e63703436eb823a67f962f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/mock-stack-up.ts",
+      "blob": "f41099485c1a22c92b38474f5d3bdb511501ec0e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/cloud/siwe-test-login.ts",
+      "blob": "3d810f0d35270cd351ce4ffd04fd7db0057e5531",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/config-templates/native-plugin.tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/config-templates/native-view-plugin.tsconfig.json",
+      "blob": "442aae6b74662cfbe87e353f0918fbcd68eeabd7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/config-templates/plugin-build.tsconfig.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/config-templates/workspace-connector.biome.json",
+      "blob": "ccd95f364d7cb12f4d27067cc35a39d9648c0683",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/config-templates/workspace-connector.tsconfig.json",
+      "blob": "ed858109b0bec3ad7665e42edb92459aafed2e48",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/copy-package-assets.ts",
+      "blob": "7eca0e080aac12f3f05d025116c36a21228a3138",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/desktop-clean-install-state.test.ts",
+      "blob": "56dcb56579ec9973784c3c8332595131d6983515",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/desktop-clean-install-state.ts",
+      "blob": "76bed6b6db8f92c8df1aaac54d92a5be3acd01d4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/dev-agent-watch.ts",
+      "blob": "56246a8839627ebe2cfbff2106802e0711c3e00e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/dev-all.ts",
+      "blob": "d02c249cb54f2c047c6ed727a4d2313f3700b049",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/dev-harness.ts",
+      "blob": "6c3bf0e8a8b79cb6e818076cd2392300fde7135f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/dev-health-check.ts",
+      "blob": "6da16ade70d77a74d26ff474d40da2ee285e4342",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/develop-effect-ledger.ts",
+      "blob": "610117d54483fc12dc438b0f0623649ab427f654",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/develop-impact-evidence.ts",
+      "blob": "ff0d33e05c36cc6a122de87a7b3dd2bb987e839f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-coverage/README.md",
+      "blob": "c1b9c060dd109697d602c217afd7b56ccbb5e5a9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-coverage/inventory.ts",
+      "blob": "8244a9c39503a29acf03cd7e1a29c207ec64f40b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-coverage/manifest.ts",
+      "blob": "d2b64193004c559af80a91727c19ae62c364df3c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-coverage/write-coverage-matrix-report.ts",
+      "blob": "1ee56530552cb3bf0d501ccb8bce19ac7fdf8147",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-ports.ts",
+      "blob": "f1d7146fa065f44e1a399e15dc21b61b4a270ec9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/agent-surface-recording-contract.test.ts",
+      "blob": "e60c547b15e6e9849ba00bd1bc011c22c00df444",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/audit-ui-coverage.ts",
+      "blob": "2097ce93730cf77ac283741c5b20607e7e4595bf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/capture-android-emu.ts",
+      "blob": "a925fa233cc3a9ee9b366d00812e161f80b82acc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/capture-ios-sim.ts",
+      "blob": "2aa0b690a4d1adf4d72d7601c0c6ee324f64814f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/generate-contact-sheets.ts",
+      "blob": "90664985f8f18fbd35ca4ed2768d6682be1d64ef",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/generate-viewer.ts",
+      "blob": "86fa42b67c8a38821ec1c714fdc1007677980c32",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/native-capture-common.ts",
+      "blob": "8c9692e9c2889cb00d610692ae8813d91b380a32",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/run-all-require-evidence.test.ts",
+      "blob": "72448cf018d5fd13e8906aeed3f8da718445cf0e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/run-all.ts",
+      "blob": "01cc6a9b2b643bc0b47179b358b73837d8aa8e7c",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/e2e-recordings/suites.ts",
+      "blob": "a79a538a4fde46b0ab52eeadbfdb289e1ec78a9a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/electrobun-release-identity.ts",
+      "blob": "4d96c2adbd3a8447d312fa7e089e05fbddad3adb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/emit-script-artifacts.ts",
+      "blob": "8fde4aea1406dd7d4f86af58fa3be8a8aa909267",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ensure-plugin-test-conventions.ts",
+      "blob": "57b40c0a0c6396212f003abe71b37e3bdab2e28c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ensure-tsc-nested-output-dir.ts",
+      "blob": "a0cd86ac9b901a12d605628e9e22c7ee5dfa0443",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/ensure-workspace-symlinks.ts",
+      "blob": "9655f2fabe8e941a9769d91f9237929ef7efb49a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-doctor.test.ts",
+      "blob": "91892e0bde27173c2310f6156a910c64e2e25995",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-doctor.ts",
+      "blob": "e19bd1a04493c64c02c86f2cd1d395d5bd741b3e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-install-tools.test.ts",
+      "blob": "981d776ff3355759b975b596d7bc4c028c75d776",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-install-tools.ts",
+      "blob": "c93d0edd9b504befce365f371b1f66c7ac5852af",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-review/README.md",
+      "blob": "0289cbc7470e52a3fd1c951118f89f677fbbf6c3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-review/evidence-review.test.ts",
+      "blob": "f6559bc7bec68d0b87d7ad369d8cbb74e199a250",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-review/generate.ts",
+      "blob": "6d3eef57af815a1e2d25bd01fa0f28f01e1cbfa5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-review/lib.ts",
+      "blob": "819480144fe971a5e5eed07f5271cc4cd58e7c81",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-review/reporter.ts",
+      "blob": "1ab133ecaf5f0b69e91a0bd36e551198aaebc69a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/evidence-review/run-matrix.ts",
+      "blob": "4ccaa3cf89b332d9c54d8b0df136be3603873acc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/fetch-archive-artifacts.ts",
+      "blob": "f18fd3df874ffd270b6045afd906332a0764ba86",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/fix-workspace-deps.ts",
+      "blob": "e6a3051b080252c0cea9d264f6886b82c29051a4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/flatten-tsc-package-output.ts",
+      "blob": "0a23c70ef364c975da63c3e2288507a4baac9b26",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/generate-view-heroes.test.ts",
+      "blob": "f8fa50d59848df680ea9994b2809de3f7f81f7c6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/generate-view-heroes.ts",
+      "blob": "18af8e3fa573b3c0b797d990cbf6043cf66a4b83",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/generated-system-files.manifest.json",
+      "blob": "dbbc3336505d9fccc27103aa418f53ae7c9587ae",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/generated/static-asset-manifest.json",
+      "blob": "875950bd1be203bbff6774a2d10cb240efcf5853",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/gh-check-run-triage.ts",
+      "blob": "05d8659a5374dec84a40113705c81c08771bb1bf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/github-actions-approval.ts",
+      "blob": "1a05b380b6a656c80e20e613c2dc6d140f9939fd",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/github/android-device-e2e/native-plugin-android-test.sh",
+      "blob": "7ca8a9bd5cfda9f3d3bee31bc23af019f06168c3",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/github/android-device-e2e/pr-device-smoke.sh",
+      "blob": "11ebdc45fbac9577132efb53e0d7a933d3613efd",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/github/android-device-e2e/route-coverage.sh",
+      "blob": "fe6dafb3ae5c35479ad3242c94ab52447b907a56",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/github/device-e2e/arm64-local-preflight.sh",
+      "blob": "81b68d5842a23fb1447e21cbac4628f3b1fce6e6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/github/install-apt-packages.sh",
+      "blob": "e3c5cef6d8f7474edef1f0d7c7fbad891d87fadc",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/github/install-apt-packages.test.ts",
+      "blob": "57a7483142afbb18586e40dcccf46d4c1a9275fb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/github/install-gitleaks.sh",
+      "blob": "cc775ae9a0a7a4967ce13cda43460928e401f0ce",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/github/install-playwright-browsers.sh",
+      "blob": "f46bae5d9d905111d3e5fb7beb0cde376b26f2b8",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/github/install-workflow-linters.sh",
+      "blob": "0b07150d83d30f29e6ed6061f7cfd9fd6204ca76",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/gpu-vision/README.md",
+      "blob": "c601b877258758e535d9d10f1a28a71b0b447c32",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/gpu-vision/gpu-vision.test.ts",
+      "blob": "36cb04d00dfd193ae7fd1125f00e337a2a432cb9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/gpu-vision/lib.ts",
+      "blob": "8af4abe28360f67da28970f356e4d907a810f93c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/gpu-vision/models.lock.json",
+      "blob": "562fe99d29b5a49795d5ede936cbb39f963cb25d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/gpu-vision/serve.ts",
+      "blob": "58b833a199adc8ca5d3970e94d86c474b75dc54a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/gpu-vision/setup.ts",
+      "blob": "b74dac33d9c06f8aeaba4a8cfc25ff011cf53ba4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/gpu-vision/smoke.ts",
+      "blob": "70607eff45dabc70bd7c4d2fad159d9c3b0cc11c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/hetzner-fleet-routing-contract.ts",
+      "blob": "51295f516d9894201c7837daff88389de519f2bf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/hitl/hitl-manifest.ts",
+      "blob": "f5581d7a1f556085cbd0f4b16438b40b1d551d57",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/hitl/run-hitl.ts",
+      "blob": "69d5838c8059763491e989a6fbae681789d7f0d2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/launch-gate-receipt.ts",
+      "blob": "d176ff009aadcad31613ba458fa50c92097fac13",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/launch-qa/check-docs.test.ts",
+      "blob": "df593f140cf489fc695bae20d84381b84dc5c5c1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/launch-qa/check-docs.ts",
+      "blob": "10e026e7bbad47512120cdb50507ecde7bbf5a33",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/launch-qa/check-mobile-artifacts.test.ts",
+      "blob": "1fa924fcaee5cf8a1f4fd1a1309c6364f5bad094",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/launch-qa/check-mobile-artifacts.ts",
+      "blob": "d3ccf519d61493feca95dff0f397f2acd92f1cd7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/launch-qa/check-model-data.test.ts",
+      "blob": "482eca06f645b0b9a22fcd2a18b1265ce18b5604",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/launch-qa/check-model-data.ts",
+      "blob": "c7f09ec1ad639473f80472403390d41511774382",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/launch-qa/run.ts",
+      "blob": "a2b40bd6e48444970b532b98b5e688bf31ffdc57",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/captured-test-output.ts",
+      "blob": "d41c9148f2ebc834cbc5fb8c7ed6ccc9c5e2f72d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/cli-numbers.ts",
+      "blob": "6b494b5cf5b423ec31fc57aae3de1662cca57402",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/compound-test-evidence.test.ts",
+      "blob": "05caa41858db5e0cfe10b0e9fd33a718d6526646",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/compound-test-evidence.ts",
+      "blob": "a56e3908444ade169af434a71e552fb04237ad15",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/cost-table.ts",
+      "blob": "49005e977a8c6f5f1d518e56eba4b3663c4a35c2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/electrobun-browser-window-entrypoints.ts",
+      "blob": "4974d56579110c130bc20f4d67e5b1b01481c9d6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/electrobun-browser-window-partition.ts",
+      "blob": "8b4fd9f41949c971c93eac8615b08511b533147c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/index.ts",
+      "blob": "9508eeeb1274cd097edb6859f1893945d69b28e2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/junit-summary.ts",
+      "blob": "8cc9534b4b0fbd0b3a219b55d7a890ec54cf7eb2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/package-paths.ts",
+      "blob": "e3b89cddb23fab148638fb6c1972f8e81db8977b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/packed-consumer.ts",
+      "blob": "c92117106782dca6314d7c6190ecbb1f2359f4a7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/plugin-view-inventory.ts",
+      "blob": "1c521ed620a19a57ca9ccc43d498b535a0cd2b05",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/png-metadata.ts",
+      "blob": "0852e4cb2467bd4fdba005a6cec79b974f7015b5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/progressive-content-deterministic-helpers.ts",
+      "blob": "89af3bcc3f9b794024bdb3b57ce77ce4f09e281c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/progressive-content-production-targets.ts",
+      "blob": "f82b2f455ce9d0f3f9dd6a745f0f784672dafcdf",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/real-live-suites.ts",
+      "blob": "e22ef4ff066b45bd8ac083f73a99afbd844dc072",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/release-candidate.ts",
+      "blob": "0793b3130f4da8ebad8f8486b0fb2072f6c25ed3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/release-contract.ts",
+      "blob": "126a496cbb441f015634cb8698320c69e44324ae",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/release-git.ts",
+      "blob": "1b5719a2cfc78367bbf1c73537341c779f2343a2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/release-github.ts",
+      "blob": "3556de03ffe15c5aa9350bcb8dfcf4c7f23a8900",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/release-registry.ts",
+      "blob": "dfbd353fcb8907e07f8d90d6f72068221b0d18d2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/release-workflow.ts",
+      "blob": "3910bf25f5978adbe174c3e4da45653876bd1fb2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/repo-root.ts",
+      "blob": "4ca2b4a7b894b9e1c07ab0fa569c3cd7abdcfdc3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/report-artifact-path.ts",
+      "blob": "80454ecffe82b6a9453bc06714da06e665ae52c4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/repository-file-integrity.ts",
+      "blob": "b0c841f57efcb154b1c1264a096b53af72e22755",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/rewrite-module-specifiers.ts",
+      "blob": "3452f63622c4459cb9691979aa6727f54779aed2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/script-metadata.ts",
+      "blob": "3e3cd3c600cb9c97470ac37b231c405a88c77ece",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/script-test-inventory.ts",
+      "blob": "461b2522a0294a2e1ece19943eca7104ee9a69c6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/spawn-sync-captured.ts",
+      "blob": "26bb95c654346652df4088b93a8343c50e53e006",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/store-release-credentials.ts",
+      "blob": "db588131b96a07e3ee010b99f73f1f3470f6d391",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/test-output.test.ts",
+      "blob": "aa8c2615782293932cb6b7c0073373b64ac8cd84",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/test-output.ts",
+      "blob": "cc63904dbdf902be8f02b9efd8fa68339569360a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/test-runtime.test.ts",
+      "blob": "19ba647c2e8d01347fdacb756452666360d54afe",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/test-runtime.ts",
+      "blob": "a77e86cae8914780d5e58e594638e4146b11973c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/test-task-pool.ts",
+      "blob": "d6a1314774dbe8e669f21b83bbd761b2097c87da",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/trajectory-validate.ts",
+      "blob": "3715d6fa86b357f65e1c4084c6ee918053ca8e43",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/view-bundle-inventory.ts",
+      "blob": "1adcfe02f1d64f04a43d0a5a207498057aebae85",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/vitest-batches.ts",
+      "blob": "be3fd6991d522f8962350cec95e237556abf0b3d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lib/workspaces.ts",
+      "blob": "b747486e28d81b4d5332795c7e508a3903909fce",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/connector-paths.ts",
+      "blob": "c3ba48c4382e44a0d2fe2e3537bdd367df8b31c0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/credential-probes.ts",
+      "blob": "f6ccc8061a00144273d59d56ef714f86cafc3aeb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/discord-oauth-login.ts",
+      "blob": "727c47a5bbc4a32b0ecf0dfddd12507043f9ecd7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/env-layers.test.ts",
+      "blob": "ab9f007c8c82b6f6492fb92cb11c0439ab415448",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/env-layers.ts",
+      "blob": "d2fbff154fa9c0cc439bdf7bb60f84715c4744d1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/github-device-login.ts",
+      "blob": "23c113204f304ebd20fb5f0ef73ba2bbce11d5da",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/hitl-credential-dashboard.test.ts",
+      "blob": "f07d0b1a9c21b6913a83cf1022301f29e0d0de2c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/hitl-credential-dashboard.ts",
+      "blob": "8864be6dc55481c3055dc606e33cb323f2e76403",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/hitl-ledger.ts",
+      "blob": "0cd82924e96254c7f8b28aaeee433ef310eee18e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lifeops/module-roots.test.ts",
+      "blob": "e16bc2df62645dd442ec3c427b3ee6d8732e32bc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/lint-no-vi-mocks.ts",
+      "blob": "b09b4867bff049dcd555498e193e5675f94319e9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/linux-dev-doctor.ts",
+      "blob": "e051e428a31c74a34836ea421dd2ba2c47b145ce",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/markdown-table-cell.ts",
+      "blob": "a4c56a6ca5dd75c2c0ee0bc124bfcdf37697f0b9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/microsoft-store-submission.ts",
+      "blob": "f62fb0729518d8b146b8d574ecb25c66424002e0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/native-capacitor-scaffold.json",
+      "blob": "cbed905fab44d2bc6cce3cd0363d6d3569af0dd6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/native-capacitor-scaffold.ts",
+      "blob": "08a07246df3c810004dc681bbbbc8b3c9cdf9d62",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/package.json",
+      "blob": "417eadcacb58ef1a6b59b819fe26f8967bb619a2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/patch-electrobun-linux-cef-profile.ts",
+      "blob": "3e6a7e68e019680ae7ae91d3d091989e138b25bc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/patch-llama-cpp-capacitor.test.ts",
+      "blob": "d1f10a590dcfc31b05bf72b3857b5edf11df4e1e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/patch-llama-cpp-capacitor.ts",
+      "blob": "dcec62e4f605a9e08686a990f289ca1cc2b0bb35",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/patch-punycode-deprecation.ts",
+      "blob": "af97e04e397c4c22b4818e4d588ab74057336c6f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-agent-orchestrator/check-account-readiness.ts",
+      "blob": "6cd36aaff226fb1b1083c51607035c6e8a6fca99",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-agent-orchestrator/compose-multi-account-e2e.ts",
+      "blob": "1dbc688ce259eb74aeddfb4588c57e1db11f6e6c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-agent-orchestrator/export-ci-account-secrets.ts",
+      "blob": "8b51ba9d77600d3fdebc29120a970898f2ce96b0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-agent-orchestrator/live-multi-account-e2e.ts",
+      "blob": "db977733397a5dc138dec94e32610b7c0786a5d0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-agent-orchestrator/live-pi-linked-account.ts",
+      "blob": "3c87837a7617caf8ae8bbe5e0663103bc93391b9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-coding-tools/file-reference-read-child.ts",
+      "blob": "178c56962d45838160d44957dc2c3cef1fcb7878",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-coding-tools/progressive-read-benchmark.ts",
+      "blob": "257bad62b93d105e979c35e241c16132393c880b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-coding-tools/shell-capture-memory-child.ts",
+      "blob": "73a7defbb6babdbcbcaa8e0391d494c27efb55ba",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-computeruse/capture-linux-desktop-evidence.ts",
+      "blob": "961746ef00bad49b3529172ae89af7e97e2a60f3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-computeruse/capture-macos-desktop-evidence.ts",
+      "blob": "1e0a84f0c5401af966ab600b772009d915105208",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-computeruse/capture-windows-desktop-evidence.ts",
+      "blob": "a98858f25eecec8a072fea253d1ab891e0d94f6f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-computeruse/ensure-platform-deps.ts",
+      "blob": "5f00af8a1452c8aba56b4e3499fbf2059c3eca0c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-computeruse/record-windows-cua-input.ts",
+      "blob": "77b0ac760be1af0cf83bf59ec0cd2f23146fc995",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-computeruse/validate-ios-device-evidence.ts",
+      "blob": "ad261dc9d7729acc53f4d32876c01391d394eb77",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-computeruse/validate-platform-evidence.ts",
+      "blob": "a45c31e63392147c70a99e7af5197fb19a8cba2b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-elizacloud/verify-built-package.ts",
+      "blob": "a8ae29fd171cf3e45223fdd05046fa7cf470cee4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/asr-real-smoke.ts",
+      "blob": "b406b3274ae87ee61251a0b7f8ea1d73ab14b65b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/echo-aec-evidence.ts",
+      "blob": "9dc87213264d9ed07e994415f3478254091e1618",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/generate-voice-corpus.ts",
+      "blob": "190ffd7104afa68eb3c5da7246ca2522645fff8c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/kokoro-real-smoke.ts",
+      "blob": "980d90fc236a3f81475c572aebf28c1c5177920c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/local-inference-ablation.config.json",
+      "blob": "7c37f218626c1bf948fb717cf0701ba396e786a6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/local-inference-ablation.ts",
+      "blob": "2839fd1653e9e1ce5c5ceae1fed367364ed3ffab",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/local-inference-attest.test.ts",
+      "blob": "26da06957d29a3fc05b94398b54a49ec6f9b8ea9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/local-inference-attest.ts",
+      "blob": "2b4cefdf45e28db554d2d1389a2d363a49895edf",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/local-inference-performance-check.ts",
+      "blob": "ab5fdcd7ca5daf369687d5646e3ecd1519543bbb",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/local-inference-performance-policy.json",
+      "blob": "e7fdbfd5caeae5805507bd427136b9fee66c30c7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/local-model-lifecycle-matrix.ts",
+      "blob": "0b2d6dd90cb2000a36a9b103f17e56f7a9029f0b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/meeting-acoustic-stress-real.ts",
+      "blob": "b8ff179aec8cb27b2f89dc3f129a38c5dfd68794",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/memory-benchmark.ts",
+      "blob": "0201de046923dc1f3ca576b2548c6f514465337e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/mixed-real-roundtrip.ts",
+      "blob": "2c087851eb4035163b839fb528500a870a6785b6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/polarquant-cpu/gen_centroids.py",
+      "blob": "7bf786c40d67faa9c5909f4e71af72169bf8e4a0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/polarquant-cpu/polarquant_to_gguf.py",
+      "blob": "64fb148f532bf96633152cb9efdb741e3ac568e0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/polarquant-cpu/test_converter.py",
+      "blob": "1265a81bd45cd7761f7bfd182055660d3a45344f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/qjl-cpu/gen_fixtures.py",
+      "blob": "9f50242406499d0cab46e018ec3806159b031de2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/silero-vad-cpp/silero_vad_to_gguf.py",
+      "blob": "b74769077a7ced06fce1af32c89705a1f3eed3fe",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/turboquant-cpu/turboquant_to_gguf.py",
+      "blob": "082f92c3b6afe5b5e119e58077ee1377d0f41f6a",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/voice-bench/generate-fixtures.ts",
+      "blob": "61ed8a804ce2ae86862e406ad72649adf735bd90",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_diarizer_to_gguf.py",
+      "blob": "979f5ebcd4c7b7d9f547d315cee7be34595ec592",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_emotion_to_gguf.py",
+      "blob": "dbf5aef920afb7900fb67cc54738ab13c157c09e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_eot_to_gguf.py",
+      "blob": "c4e9d50023c4c8b5683b9bb01ecbd64039e6e429",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/voice-classifier-cpp/voice_speaker_to_gguf.py",
+      "blob": "b9da66824dc9983057f238eadf37fdbc944e8d64",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/native/wakeword-cpp/wakeword_to_gguf.py",
+      "blob": "a6411a5aa423537f05af7fb8794a301a0a920af2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/noise-rejection-real.ts",
+      "blob": "24114b834e8e0aa8bfaeccb76c9b5b382d85af96",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/probe-sd-cpp.ts",
+      "blob": "4d2914778679789733ccb111b15c39fe415c48e3",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/real-agent-voice-overlap.ts",
+      "blob": "12cc86352f0699b0078a7978712cf46c18266561",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/real-robustness-asr.ts",
+      "blob": "1098496bd3d04b88ffe642a3d61b2569cc8746a5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/real-voice-stack.ts",
+      "blob": "1204f8e1f7d6e05659b1a576b56c4f41e5564437",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/speaker-isolation-real.ts",
+      "blob": "ba7410e0a7a0f5ea853854d240fd7ed713a44096",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/stt-quant-bench-real.ts",
+      "blob": "77a839565a82ce9a87c59ff97ef37dd99f099acc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/voice-bench-shared.ts",
+      "blob": "e120c85ff228c36b6c41b4c1164a0cc3ea2cc207",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/voice-bench-synth-worker.ts",
+      "blob": "498e24df11743e9c9674661cfbd4797bda26dc92",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-local-inference/voice-workbench.ts",
+      "blob": "ba52303a3297d7017694d78045ad7f89eb57ec05",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-meetings/headless-capture-e2e.test.ts",
+      "blob": "d8e5d961bd920697c15075bd68690cc37c0cc1dc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-bun-runtime/engine/build-ios-bun-engine.ts",
+      "blob": "5b3e95c5a6f0daaa445237d94a2f95ab3ba653a3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-bun-runtime/engine/check-upstream-support.ts",
+      "blob": "1cd03ae0b952e6843874068a49a49c784cdc9e1e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-bun-runtime/engine/engine-paths.ts",
+      "blob": "1541468aed4f12a2080e52739f477ee436d598ae",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-bun-runtime/engine/ios-app-store-runtime-policy.ts",
+      "blob": "b05a10d496a42e8d849e172999cbffa6efbc79a8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-bun-runtime/engine/script-utils.ts",
+      "blob": "aea6c6ad576aef76c080a46cfd76e941354a7032",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-bun-runtime/engine/smoke-ios-bun-engine.ts",
+      "blob": "d52cbe0961aa4f1cbc4cb367047b1c8580044673",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-bun-runtime/engine/verify-ios-app-store.test.ts",
+      "blob": "582b7f99468ede2c56adcfbb6cb4f83f93a06bcc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-bun-runtime/engine/verify-ios-app-store.ts",
+      "blob": "a02f43a301e900225b6839119afc51560f5714c4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-inference/check-android-manifest.ts",
+      "blob": "8a73fb985611d24d60a7fb75d4196a0d51038d42",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-mobile-signals/validate-ios-screen-time.test.ts",
+      "blob": "390244614313454c21e8c658855c26a49105e141",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-native-mobile-signals/validate-ios-screen-time.ts",
+      "blob": "6e471bf3983869a0c097528190532b621be67ec1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-personal-assistant/lint-default-packs.ts",
+      "blob": "9a7d56cd298cdda9ce8a43cb7c4ef7949e6fd5c2",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-personal-assistant/migrate-seed-routines.ts",
+      "blob": "09f6d646498057560334104045e8e4280cf33166",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-personal-assistant/run-cerebras-journey-eval.ts",
+      "blob": "444178b28cea0232732374b2b9f73fa2b3f5e132",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-personal-assistant/translate-action-examples.ts",
+      "blob": "90b00161c3d8414cfef0846b748581e395a16103",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-personal-assistant/verify-cerebras-wiring.ts",
+      "blob": "3b9c090978e95d356ce025745d97d9e0934c8a2e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-personal-assistant/verify-live-schedule-data.ts",
+      "blob": "89ca0a7da2ad655b3bd4e27711d08808d6d32049",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-personal-assistant/work-thread-benchmark.ts",
+      "blob": "1a120a1e540138713298ffca771664dbfd07075c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-sql/init-test-db.sql",
+      "blob": "933a2deb4a4654a24c463c43ac9373cc0b1e4351",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-sql/progressive-content-scale-child.ts",
+      "blob": "fdec70fad103f39399a9ff09c00604bdb1298b81",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-sql/run-integration-tests.sh",
+      "blob": "e0244a831ed50e0064e4347d4fe2e75e6f4190ac",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-vision/native/doctr-cpp/doctr_to_gguf.py",
+      "blob": "a70746c6ad34105e8853fcc894996d2b0b12340f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-vision/native/doctr.cpp/convert.py",
+      "blob": "86e524a88669cec8e1df49e1fc7776aa4c285749",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-vision/native/face-cpp/blazeface_to_gguf.py",
+      "blob": "b80b5b056028a76172c73ba72886b708147264b4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-vision/native/face-cpp/face_embed_to_gguf.py",
+      "blob": "3188a476e45391f59c0d2de388363b61ec20c271",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-vision/native/yolo.cpp/convert.py",
+      "blob": "f8b9126f1940c72b6a93f3da2fa991aab0653be3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-vision/vendor-tesseract-linux.ts",
+      "blob": "d19b80c03dec180aea12c783ca8f0033dc9f721d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-workflow/build-workflow-artifact.integration.test.ts",
+      "blob": "10cf00b927e4cd9cbac51117b7ed5572e7ae881c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-workflow/build-workflow-artifact.ts",
+      "blob": "e45119579e44e80210a4a983b85ca064a35565ac",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-workflow/build-workflow-compiler.mjs",
+      "blob": "a9654401ab456dd11d06fc1079e7f1336ec9f2f8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-workflow/run-isolated-tests.test.ts",
+      "blob": "3d39509b099607450ca80972dd931d1513037f94",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/plugins/plugin-workflow/run-isolated-tests.ts",
+      "blob": "590c2a5e1fd8129a11d07df2a58cb3398765f257",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/portable-linux-fused-inference.test.ts",
+      "blob": "d6b601b4ae75d2f6d7f519210043a956347e3bda",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/portable-linux-fused-inference.ts",
+      "blob": "26ff478f86ca6b35977aea9e73f5ee1f18a5ee83",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/post-merge-secrets.txt",
+      "blob": "51062e34cfaa692409dbbb0092434e2f9cef6812",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/pr-core-build-scope.ts",
+      "blob": "29294031e7258594627904e2e4ca19ac14fc8a83",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/pr-evidence.test.ts",
+      "blob": "e1cefc1da59cd9b7961b050511c1d0576017e657",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/pr-evidence.ts",
+      "blob": "5df1cf3b333d1aca60681d9c6056385327f7471d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/pre-commit-lint.ts",
+      "blob": "1258dc3510750baf638b121f8c4f89704d750223",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/prepare-package-dist.ts",
+      "blob": "fb27d6608dc82626e118c1f48ec0b93596f02594",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/produce-content-context-deterministic.ts",
+      "blob": "c33b47bdec20fe7c9016f609fd4db3ae0b6a3ed7",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/produce-content-context-e2e.ts",
+      "blob": "25c684fc8c0c29f4c43b829e0fbf308c29a5e317",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/produce-content-context-live-trajectories.ts",
+      "blob": "ed18573e523e05eca91fc42899a7fa179f70bcdc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/produce-content-context-postgres.ts",
+      "blob": "5cf0a680c8d7496fd2484190fbc290f504a2d6fc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/produce-content-context.ts",
+      "blob": "f7f6cd39ef0721734d740464f100341572d46597",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/provider-smokes/live-smoke.test.ts",
+      "blob": "a2f776546589bb476470565480b86217143be242",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/provider-smokes/real-llm-attachment-smoke.ts",
+      "blob": "edcb81093cba29230cfe24af35bfaeded51a749c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/provider-smokes/real-service-audio-roundtrip.ts",
+      "blob": "0a55d510fab67facad10f291de7f945e7ae84d4f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/provider-smokes/real-service-voice-e2e.ts",
+      "blob": "6e1e465fde864aff93159bf9e3206ce764dc0923",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/prune-turbo-cache.ts",
+      "blob": "74fbd22f33ed5b067e21a9ae89ef6ee41e740b83",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/registered-action-inventory.ts",
+      "blob": "c561fb2acafd35ac689a24688f3a08c83142bd79",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/release-candidate.ts",
+      "blob": "9b1ed55e14635d476e7a84e8b86d78e6a651f43c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/release-cohort.json",
+      "blob": "63adf0e711e2282c84fb5e93741635ac43705bc8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/relink-workspace-packages-to-dist.ts",
+      "blob": "cd744cfb9b99a2cb70ef93b80df55f4377138486",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/reviewed-branch-promotion.ts",
+      "blob": "0231a3755c1a498e6be0a00a80545325b6d43c7b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/rewrite-dist-relative-imports-node-esm.ts",
+      "blob": "8e296e0113b1136d72fd329861fb30139e703520",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/rm-path-recursive.ts",
+      "blob": "c52599459c9f4bbf4769f1c54b9ac9871673544d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-all-tests.ts",
+      "blob": "c02611cb1dd780d164d9bc58625e95f7945203f5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-bash-darwin-only.ts",
+      "blob": "26bd474b55b6c992d641b79978ea62c7006979fc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-biome-typescript.ts",
+      "blob": "599a670192190395f67d5fbe4391a8deb153ed62",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-content-context-soak.ts",
+      "blob": "594cd5f82ea3772bc13905f40aae1144c2e4f840",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-content-context.ts",
+      "blob": "32a2574eefff8690e91ebac3bee9ea7ee94fb9b5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-heavy-e2e.ts",
+      "blob": "32b1bffd07697ad75d813d4b4cf0b01ffce86a91",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-live-scenarios.ts",
+      "blob": "c1212effc6803afa1cde5657b9358be77d02d464",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-live-test-with-artifacts.ts",
+      "blob": "8d3893a65892ee95d0935ffd124d61ff85f8fd70",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-progressive-content-benchmark.ts",
+      "blob": "99413758f4c4b32d922665a85ac3e624cccf200a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-python.ts",
+      "blob": "d42de1d309decfbec6bb9bc5ec5dc4d849fcd64a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-scenario-benchmark.ts",
+      "blob": "c460392ce5bd4705e316bb1eeda1ff1696f289fe",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-scenarios-isolated.ts",
+      "blob": "759ed15d81ed204498d1d9910e22352ddd5d1d02",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/run-script-test-files.ts",
+      "blob": "2697e9f85651e20dfcf39a023ba5301155254f89",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-script-tests.ts",
+      "blob": "aca17bb68149328fb0e73b6da5a0caa6319aa2e5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-turbo.self-test.ts",
+      "blob": "1eac27aee7935a3478bec378444f4ff7164904eb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-turbo.ts",
+      "blob": "9af92124bfe418a20236bfa5a7f66029cb53c664",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-vitest.ts",
+      "blob": "d3811e38dd955b2562aecd8c62fad14afb77657f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-with-deadline-windows.ps1",
+      "blob": "25f289461404a6a9c614404160e0fca6883df931",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-with-deadline.test.ts",
+      "blob": "c2722986853190377a8654ba64b6eb6bb272411d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-with-deadline.ts",
+      "blob": "3a4aad065a8293c0eec475f37437b5742517ff1b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/run-with-flake-retry.ts",
+      "blob": "49041bad82767191dc29d9d6604d113c478e8cb6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/script-plugin-coupling.allowlist.json",
+      "blob": "d56118daa6ad3328de94ff8e384a126a0f69b1f1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/script-test-isolation.test.ts",
+      "blob": "dc1572b51f0f0570951333890daa0531a14ff439",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/security/apply-branch-protection.sh",
+      "blob": "d7896c109fd45b3fd03477d030479c137c4d8522",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/security/audit-workflow-permissions.sh",
+      "blob": "48b1d19da01615e44c8f80d46a2a8f7f90ce528b",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/security/pin-action-shas.sh",
+      "blob": "830b6c812c933fa86b9f042b1799df4b656277b3",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/security/security-advisory-gate.test.ts",
+      "blob": "8f49d2ca0223de22a7d786119b333f4a467e7e95",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/security/security-advisory-gate.ts",
+      "blob": "b4392a0391cc2ff6f8fa8956403467ab5e46236b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/security/verify-patches.sh",
+      "blob": "ce1909404a7b519a75853fb0ef08c2e9af75bc17",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/seed-message-corpus.ts",
+      "blob": "2396e2c64a202d36940ef6632d1dbbc251229d91",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/store-release-credential-preflight.ts",
+      "blob": "bcf0918c9a697369373cd2fea0f78bf403c59a57",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/store-release-plan.ts",
+      "blob": "7d37eadc5f3afe3253275f8974f4169a327efaf2",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/terraform-plan-envelope.ts",
+      "blob": "10970a5dc8570d69c4417342408558d7514fbef4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-cloud-run-flush.self-test.ts",
+      "blob": "49b40b31407065273b4d47e047a5e158efd259d6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-cloud-run-helpers.self-test.ts",
+      "blob": "ac1d3ca0c36a7d99f994413fc14110cd05201372",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-cloud-run-helpers.ts",
+      "blob": "d4f074a585e1b9bd8ee8ffbdba9d3791f9ab37c0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-cloud-run-shards.self-test.ts",
+      "blob": "51a56e6aefaad8892a5ecb94cc64499b4b5d6d83",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-cloud-run-watchdog.self-test.ts",
+      "blob": "e703a19905b73ce59cd2e12982e06e61ea852064",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-cloud-run.ts",
+      "blob": "c3a336595d4fdc08147ef73aedf8c4323172fd1b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/README.md",
+      "blob": "b5622c5a0d111b01a3f144caf817cd1438b1d566",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/lib/connections.ts",
+      "blob": "66f6e5c2ae43693e433730abba05037de8ce8048",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/lib/oauth.ts",
+      "blob": "628ca08a25219cdbf127d4864616c034930fb85b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/lib/registry.ts",
+      "blob": "206e1511e80059a725261b7156832397d6caf257",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/lib/runner.ts",
+      "blob": "2914966a99deb8c4adfb4a35f94195cf20062173",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/lib/store.ts",
+      "blob": "31140f815e23f6c0ba684c43b01b7b3350cacabb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/lib/verify.ts",
+      "blob": "006b4069886fb5f93498ef1b1620a48fd038301d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/server.ts",
+      "blob": "babbeb1ed31c26799eb35550892553bcfebb19bc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-console/ui/index.html",
+      "blob": "41a624f2db65fd533229bcf743b2318fef19388d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/test-env.ts",
+      "blob": "420e19590ec0d664d55ffba4fa39424583da3f0a",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/training-harvest/README.md",
+      "blob": "410a1c6cdb8b8cd8f7801230ef75b7fdf0f96dd6",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/training-harvest/bench-e2e-harvest-runner.test.ts",
+      "blob": "2150e2a5bab02ce9a9a2b9ad0930a5d705f1b288",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/training-harvest/bench-e2e-harvest-runner.ts",
+      "blob": "0ca2c828d8143b2bf1c72b19ed9ac1dc0cb00bea",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/training-harvest/build-manifest.ts",
+      "blob": "d5664ded63cb6e13203acdb44305e687ee24b31d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/training-harvest/harvest-runner.test.ts",
+      "blob": "2fdcc997a3630f28c90a9a14630eced3b616c8ec",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/training-harvest/harvest-runner.ts",
+      "blob": "4501d60d7eb9145845da016f9b1f0a01bf2da829",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/training-harvest/manifest.json",
+      "blob": "e15a96f3990e53930e463d30e64929430dc34314",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/training-harvest/s1-provider.example.json",
+      "blob": "d6a036b3dd8f97b291bed673e417cc91348ec395",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/trajectory.ts",
+      "blob": "ef5b4fdff65ee3f4aafd1bd957a2978eb046ba25",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/turbo-cache-key.ts",
+      "blob": "c34a02737691d5b1fa43c87d808200c4102c45dc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/type-duplication-audit.allowlist.json",
+      "blob": "577490cd69c89048cc1b58321a5f5d7d5b18ab82",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/type-duplication-audit.ts",
+      "blob": "9244753221bfa04d74ad6e1b84535ced687db4de",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/validate-group-chat-eval-report.ts",
+      "blob": "bb0684083a0bb63ad23cf42a81a6c045f4f6c4e8",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/validate-terraform-canonical-edge-additive-plan.ts",
+      "blob": "b36b41aee15f2a3195367903c63a277396d66fab",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/validate-terraform-pages-domain-state.ts",
+      "blob": "fd65af3194de405ecaaae5e5c99bfdf04fe05f30",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/validate-terraform-state-address.ts",
+      "blob": "380362e94b487150af3d510d01fa2828181574ad",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vast/Dockerfile.gpu",
+      "blob": "d378e0d8b67eb2e5752944041cc932c7265ba936",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vast/README.md",
+      "blob": "9257211d199e84a3587ed3be44263ecb371f0e1c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vast/certification-image.test.ts",
+      "blob": "c59b626f15d72607101e082c4583911b62b4c959",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vast/local-certify.ts",
+      "blob": "e77a64a0d69963f6b12f35ef94d406d4b4418f36",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vast/run-certification.ts",
+      "blob": "2dd5ae058490177dfb13b07109ab47cfe4cd70cb",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/verify-ghcr-anonymous-manifest.ts",
+      "blob": "33bd0de21f63753aa5adc73b954bd1b3fcced70a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/verify-package-runtime-exports.ts",
+      "blob": "1ed62c8387345db031cafd6c8077d42fe60bd990",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/verify-publish-graph.ts",
+      "blob": "db639a6ba4f8d70ae37a70ff1cb9a6f7d8046d62",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/verify-voice-product-release.test.ts",
+      "blob": "69968a0cbc498af1b744c82d4945b8d4e5dc25b0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/verify-voice-product-release.ts",
+      "blob": "41517598220ce4ecb0494d780a6b901ab47c4810",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/view-bundle-import-guard.ts",
+      "blob": "99f443d3fd6b3cac60eebdf43225170a2f46cb2d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/view-bundle-vite.config.ts",
+      "blob": "65c998565c5750cc286270245fba9d3af99a4fb1",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest.node.config.ts",
+      "blob": "303348e0e2dec60e5fa0b7ab68d5e75d5f932273",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/default.config.ts",
+      "blob": "141df972a0b5fef57257dbede932f1e49b296c5f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/dependency-sourcemap-logger.ts",
+      "blob": "813b31485a23ec8b6a25c1cccdc68133231861bc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/e2e.config.ts",
+      "blob": "7981ade7da3da3f130499ef0a839ec56b37232bd",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/fail-on-silent-skip.setup.ts",
+      "blob": "e746f5aa95cf4eb5c41500fc75380610ec2233df",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/integration.config.ts",
+      "blob": "114aabda54f7f4d948cd3aac23062baa3bcb4b77",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/live-e2e.config.ts",
+      "blob": "92c74425ebc16cbdc7cb16a911d1cdac1e55687a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/plugin-real-runtime.config.ts",
+      "blob": "90e57ebbfb83f25a7cc5a39256157c10333cc815",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/real.config.ts",
+      "blob": "5b6069e4692e33668249e5b31f5dd91c48b5634f",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/repo-root.ts",
+      "blob": "cf5f1579771c71ea1bc451faf79a36032af31532",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/source-aliases.test.ts",
+      "blob": "467f81b68288f9eb5c208f8acc73a74392ce4af3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/source-aliases.ts",
+      "blob": "5485e5a87a53a7010e316339d67dfafbe86fca1d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/tsconfig.json",
+      "blob": "a9e6f2025fe9d5a4c2ba556f1a3cf44685025c1b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/unit.config.ts",
+      "blob": "a0dfd29baec987e75c504e0070fdc26bdf31b5b5",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/vitest/workspace-aliases.ts",
+      "blob": "0cafcc763f2e756dbe5f42b24daf2209d0977d4b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/with-package-build-lock.ts",
+      "blob": "6b3620f119e406027071a3bae8525e50ea546e5c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/with-test-runtime.ts",
+      "blob": "e452da2a2d24fc2dfa05311c7957740b7057c35b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/workflow-trigger-policy.ts",
+      "blob": "a412499b45aca05523674a14e7f3b7e0d2e9bd3a",
+      "mode": "100755"
+    },
+    {
+      "path": "packages/scripts/write-build-info.ts",
+      "blob": "6fe7364b5ab4210a2b62ea5610d182f5a36a68f4",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/scripts/write-staging-cloud-receipt.ts",
+      "blob": "32441166669c05fe048be39274f0db287c5090fc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/package.json",
+      "blob": "34e4b3a3042695bc5a17991af410e6993034904d",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/scenario-runner/tsconfig.json",
+      "blob": "b5293d1d2ab854ae3cac994185410cbef637e36b",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/scenario-runner/vitest.config.ts",
+      "blob": "f1887177bdf6ba1ed57c40a39fb44a5e4f495bcc",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/scenarios/tsconfig.json",
+      "blob": "86ed741f34aebc5643b112112d1db8e07af2c5ad",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/synthetic-world/tsconfig.cloud-integration.json",
+      "blob": "7f58f1c58349bd7eef66bf16043a9f1a265fa1aa",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/synthetic-world/tsconfig.json",
+      "blob": "5f9ab0a4fbe9469fc802134e12ece3d255cd6b75",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/tsconfig.evidence.json",
+      "blob": "a9f38709a9f2333a8882d4da9f4b118d4b7d68fa",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/tsconfig.json",
+      "blob": "cd136e377e289eb30fbba0a2fa248a87ecb9878a",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/tsconfig.workspace.json",
+      "blob": "09627714841f59563be58398295568e003d61b54",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/vitest.config.ts",
+      "blob": "583c6b9f53a051b74b2104a561a0b55dc7f0ab5e",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/testing/vitest.evidence.config.ts",
+      "blob": "0748a839e8f5dd772dc45ed57378df6a907fee66",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/ui/package.json",
+      "blob": "40d67942baa38387fce3dea9af7a6c4069c76cca",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/ui/stories/tsconfig.json",
+      "blob": "2701e7b24a42f4bb1f194c4f6157e92c804274d9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/ui/tsconfig.build.json",
+      "blob": "719a0736b2d29611b8847be89ddcca24eb723da9",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/ui/tsconfig.json",
+      "blob": "41eb99b957733a700b18e6f88819a8df63df863c",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/ui/vitest.config.ts",
+      "blob": "43f86be9c3ac0814af9ca6734641cc1174f19018",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/ui/vitest.setup.ts",
+      "blob": "57db4c3d44abf69e201adddd97e976222a59da86",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/voice/package.json",
+      "blob": "155556f95ecc5d8bf3f13524f2eaad2ba921cea3",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/voice/tsconfig.emit.json",
+      "blob": "7812ac00224e3ac84981fca03a0452af9d3865be",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/voice/tsconfig.json",
+      "blob": "59902e810b4e75dc87fffc5167b5d997379c27d0",
+      "mode": "100644"
+    },
+    {
+      "path": "packages/voice/vitest.config.ts",
+      "blob": "68a62102e52296c26bef843610f8dda7e4a35ca4",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/package.json",
+      "blob": "617e3f64108a57a6159ced91dcfa36e9eb30099e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/tsconfig.build.json",
+      "blob": "94577ab03d01fad768c029308395883d436fe0b2",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/tsconfig.json",
+      "blob": "5254639ccdb0f04932a164822be3aed09ab7fa36",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/tsconfig.live-harness.json",
+      "blob": "6d084c4a6a3593017e7170da99d40002ccffb23f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/ui/tsconfig.build.json",
+      "blob": "eca93b42d8a386d48c81cd45a5f299a435cc1cd0",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/ui/tsconfig.json",
+      "blob": "bbf8fa8302bf5e91dde30dca637a8a9e4fd33c0f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/ui/vitest.e2e.config.ts",
+      "blob": "17143c526cfeef453a75e8bd819e9435019a5f3d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/ui/vitest.live.config.ts",
+      "blob": "f75533d9d03c618864bf06037fcd858a5a554a72",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-agent-orchestrator/vitest.config.ts",
+      "blob": "629695b6ac394471a7288470d0c0409111b4a110",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-anthropic/package.json",
+      "blob": "857db07700cf6eb533f21736c1a6795f4ec04268",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-anthropic/tsconfig.build.json",
+      "blob": "88537323cccbfa52d9efee36565609c3d9030858",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-anthropic/tsconfig.json",
+      "blob": "c4491a26c4f0948731662f7571e016655bff419f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-anthropic/vitest.config.ts",
+      "blob": "084cb2943b8f3b9c7742f27fffc7d47fecd844bf",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-anthropic/vitest.live.config.ts",
+      "blob": "cbdffab40dcc2e22d9477460c9452278b669f521",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-anthropic/vitest.real-runtime.config.ts",
+      "blob": "98400f7c3ddec5ea9615d48169d95f35e65aa052",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-assistant/package.json",
+      "blob": "7b2a6b469a3b51bd0549ac01432df0e9e7cc2d84",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-assistant/tsconfig.build.json",
+      "blob": "f93323e1f6334a4168218c8edb2697b2a4cd4cac",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-assistant/tsconfig.json",
+      "blob": "1de1d944e02cd02dc4bfc6738f037c16924e33bd",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-assistant/vitest.clock-review.config.ts",
+      "blob": "7578b6d14210397d92ca4658a4dfeed36439c038",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-assistant/vitest.config.ts",
+      "blob": "5c5429e22d465671d56a5493307999ef5c525eb1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-assistant/vitest.device-actions.config.ts",
+      "blob": "44c3fc207cc1050def47e52d203521bb145bd9b5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-blocker/package.json",
+      "blob": "ab7d09703c643e1f4869b780c18f247f32447759",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-blocker/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-blocker/tsconfig.json",
+      "blob": "a76b8d2a327728ada6b9a82a4532a8d2d92db08e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-blocker/vitest.config.ts",
+      "blob": "ca384807291804e069deb8ed38edd7ec14cd128a",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-browser/package.json",
+      "blob": "e093d3fc5eed0abdc4f18d3ccebcd04242d6a539",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-browser/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-browser/tsconfig.json",
+      "blob": "316fe8ea88355118d6d64da2218fd1b33fcedb77",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-browser/vitest.config.ts",
+      "blob": "0ea2a0b8bd487992e40bbc63b04887047adbe984",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-calendar/package.json",
+      "blob": "c88066c9e969bf7d4b851759a85736ade6987143",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-calendar/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-calendar/tsconfig.json",
+      "blob": "0b64b9e51b1c822b8f83d76345b3c5316ae1b0b8",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-calendar/vitest.config.ts",
+      "blob": "bf3d30bd93f9feabc08af04eeff2bcd54a1fa578",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-coding-tools/package.json",
+      "blob": "0548f35ea1e83ce7fe7301d47a5372d0953587d4",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-coding-tools/tsconfig.build.json",
+      "blob": "db428f99f4cdc98a9ab2bbbca5b6518fd8bf1f74",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-coding-tools/tsconfig.json",
+      "blob": "a49398fcb228106e1e61240599f21cc1af9e1199",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-coding-tools/vitest.config.ts",
+      "blob": "c42ca1b587171ad43ca6b4501ac24013c5ada81d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-coding-tools/vitest.setup.ts",
+      "blob": "edd8cd2ba0705dacaf6da39c37b1a32472270389",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-computeruse/package.json",
+      "blob": "6a4f694f841db70f283d6be191afd2ec8840ebd3",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-computeruse/tsconfig.build.json",
+      "blob": "1cca573bb05ffd7340776f343bb74d927a66c90c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-computeruse/tsconfig.json",
+      "blob": "6059ab3db466ec5f8ce757e995741648468761f3",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-computeruse/vitest.browser-fixture.config.ts",
+      "blob": "704742343de165e5d2911a8d8bcc41faabbb65b7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-computeruse/vitest.cerebras-browser-fixture.config.ts",
+      "blob": "ffbe143e6b8d12844d1c90b353a59144809ec0de",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-computeruse/vitest.config.ts",
+      "blob": "739b5c72f94dd936977ea274edc4756a5a2bec3c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-discord/package.json",
+      "blob": "92e137636763ac1c71e370b1fc02cd84d772a307",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-discord/tsconfig.build.json",
+      "blob": "24163ca39e66e45541a70c3cf1d64a2ea8767636",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-discord/tsconfig.json",
+      "blob": "1bc4370f04ac5dead0b99336447c2c09c37dd70e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-discord/vitest.config.ts",
+      "blob": "07175ee05018fcf4caeca3e43cecbd23a3bbe102",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-discord/vitest.real-runtime.config.ts",
+      "blob": "98400f7c3ddec5ea9615d48169d95f35e65aa052",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-elizacloud/package.json",
+      "blob": "1b69f8e7cfc6b9d868cc08b5919c59ed9c531a5a",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-elizacloud/tsconfig.build.json",
+      "blob": "aea852f5be6766ea1f063d4b85d3ea0e04cc461a",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-elizacloud/tsconfig.json",
+      "blob": "990cd54f87e831e3f19540e25c6201e9ce148af4",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-elizacloud/vitest.cloud-delegation.config.ts",
+      "blob": "13c91e150c51f8e8496e7bc3a5ce55454b661437",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-elizacloud/vitest.config.ts",
+      "blob": "51c9af1f40f8804cafc47d4be6a99104f7afc5b2",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-embeddings/package.json",
+      "blob": "f0c9d23db0910120519fbbccc42583f4506ef585",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-embeddings/tsconfig.build.json",
+      "blob": "d12c8b1a82bf713bd206826fb9e1e9cffc8d6ea1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-embeddings/tsconfig.json",
+      "blob": "08fa86a8dd3a8d88d8aeb0ffdb5e19b751c8549f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-embeddings/vitest.config.ts",
+      "blob": "296d31ee965a1af34fbde977df1b146f7d20ff00",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-files/package.json",
+      "blob": "bd5a381df82923453435aac7e161a6326dbf6bb4",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-files/tsconfig.build.json",
+      "blob": "0f6bbd34cdb30449de54b753a806804cf8df8618",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-files/tsconfig.json",
+      "blob": "2f1c3920df0c4a21893213b5b34a69130f0f9e3f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-form/package.json",
+      "blob": "5d064405dfc05dfa6b45c96a7f7a02ae4fa100f1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-form/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-form/tsconfig.json",
+      "blob": "8522e6934b30b37311372eb94b3843eba80b8aeb",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-form/vitest.config.ts",
+      "blob": "07ca06599e8bfa043cad787a6c8b6fb24111bd2a",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-github/package.json",
+      "blob": "e0eab0b070d17e8e1d5b134fc98d123760cdd616",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-github/tsconfig.json",
+      "blob": "84cde92d4d7d54243ba4a48f63ef37d39cecdcf8",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-github/vitest.config.ts",
+      "blob": "de9f25d7a184c4fa19b5381b95010b2487f757db",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-goals/package.json",
+      "blob": "519520363a278f8996ea0c0514c062f90f987656",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-goals/tsconfig.build.json",
+      "blob": "6ec5cd8c59317e954231a57fcc7c12d71025bfd5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-goals/tsconfig.json",
+      "blob": "6cafa7224cf248f48185fbb969b170491ea4c0ca",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-goals/vitest.config.ts",
+      "blob": "6ebc297dbf7ee3d0e1c77dfe315163799a77d752",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-goals/vitest.real-runtime.config.ts",
+      "blob": "40fb8402d93c8b7e882f0a2bd917e1ac73304347",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-google-workspace/package.json",
+      "blob": "6ed4d4d8d40212bdd735bed3eb81b2ed5edf88e7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-google-workspace/tsconfig.json",
+      "blob": "ed858109b0bec3ad7665e42edb92459aafed2e48",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-google-workspace/vitest.config.ts",
+      "blob": "7632dff6c898c110f56e649f4aee665b6161872e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-health/package.json",
+      "blob": "e07e164bf5c32846f7e9da6f62efbef0c48f0319",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-health/tsconfig.build.json",
+      "blob": "b68fa61203993ebf4158947cd58b6ac9c9c6f478",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-health/tsconfig.json",
+      "blob": "7b02a554f5ba06b8a1eac9ae505739828ddcb105",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-health/vitest.config.ts",
+      "blob": "f7d3be094facdb0aa9b09f54d81b80e955e3ac12",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-imessage/package.json",
+      "blob": "7e289ad6db610294a666cf49c78f258f619de049",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-imessage/tsconfig.json",
+      "blob": "f2131e683baef7d6ffb8d85c8d864d24e3129fe0",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-imessage/vitest.config.ts",
+      "blob": "d72387eb3600acbfaa588eef9b31bae150f38220",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-inbox/package.json",
+      "blob": "fe380b462a167e70b69afc2a938b02a27115015d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-inbox/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-inbox/tsconfig.json",
+      "blob": "b9f189f8fd976ba3459ea2c3362080031313a235",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-inbox/vitest.config.ts",
+      "blob": "6ac40f47562e390bd4f719a47fd26220e91f753e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-knowledge/package.json",
+      "blob": "590fcd57a4617bac3cb05413b564c285cad1e245",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-knowledge/tsconfig.build.json",
+      "blob": "1be68785fdf1973646044e7b0b1544fb59d7b19c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-knowledge/tsconfig.json",
+      "blob": "fd244453700ba9b9674e81859a3b5c4f7cb5f534",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-knowledge/vitest.config.ts",
+      "blob": "16e433959fca3e91c0bc45eb6fccd9c07da29f9e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-local-inference/native/tsconfig.json",
+      "blob": "5eb54f884248a0ed668cfc7fb8616da08fbedad9",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-local-inference/native/voice-bench/package.json",
+      "blob": "58d7ff0a6c0ab366279aacba3c616ebfca7b5fc5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-local-inference/native/voice-bench/tsconfig.json",
+      "blob": "0d1aa6b94ae23c12d46ac642a77c9c4fcec8d70c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-local-inference/package.json",
+      "blob": "87a0bd47ce9bc7b634af39c9ef929a44ec63b138",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-local-inference/tsconfig.build.json",
+      "blob": "cc9bc4f848f34083a80122f97bf70bfcb9972b18",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-local-inference/tsconfig.json",
+      "blob": "ad685a5bb7d22db2dc68b27c81c58f74796c10cd",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-local-inference/vitest.audit.config.ts",
+      "blob": "dd448c7f3e8a4e8e0b36a577e33b255df6c8027b",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-local-inference/vitest.config.ts",
+      "blob": "4010cc062de0ee6e03e44dc4ae5725fbb74ff074",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-maps/package.json",
+      "blob": "2245362cec8bc4dedbcf32435956283fdeee74e5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-maps/src/client/tsconfig.json",
+      "blob": "e426a40dc0b12ffb85ba8be6e176b18ee79aab92",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-maps/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-maps/tsconfig.json",
+      "blob": "2088856d287f9093a140e134abf88e14d7dcdb27",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-maps/vitest.config.ts",
+      "blob": "bccb0c11b95e2c7ea8f96c471b76b9ee3767f41b",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-mcp/package.json",
+      "blob": "038100869457ae05090d78e887fff74880109778",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-mcp/tsconfig.build.json",
+      "blob": "b9a2df9422fecbf0bb58eca7a2925f7922e081b7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-mcp/tsconfig.json",
+      "blob": "39f66cc01cfcb4c64ad801da1fdc1283e2135723",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-mcp/vitest.config.ts",
+      "blob": "fe46f9aec43bf9dba4ac80984761ff733ec3cdf3",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-meetings/package.json",
+      "blob": "53587edc37cf4d4121aeed6c728ebc59c086499c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-meetings/tsconfig.json",
+      "blob": "ba9ddc576a03605ef743b06427cd62f53f16858d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-meetings/vitest.config.ts",
+      "blob": "15afecd20fb221d756216e5d8d9ee0ea0372f5c2",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-action-journal/package.json",
+      "blob": "c97c5c2fff7bdb10444668057a775bba5e20ee63",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-action-journal/tsconfig.json",
+      "blob": "9a74fc8c04a82c530ce0d72bf8da321d7cf6fd6f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-activity-tracker/package.json",
+      "blob": "fa3b8cc3981ae90d1945e3993be0411183a43579",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-activity-tracker/tsconfig.json",
+      "blob": "bae1025ff151803523e60a58c333c3a56fab9a10",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-agent/package.json",
+      "blob": "01e1a0da389df4d18122fca00a7e827938ca6211",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-agent/tsconfig.json",
+      "blob": "e9f1c8630e8e669bfda432c93643441b5c405d95",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-appblocker/package.json",
+      "blob": "650661863d3790766eefb7820c8a0e6966c83bf8",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-appblocker/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-browser-surface/package.json",
+      "blob": "24869da4f4d3fed14ccaca7b0bb83d25d45a0821",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-browser-surface/tsconfig.json",
+      "blob": "04f6a0fd0346a313ab9e7720d6191d03ad765a4d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-browser-surface/vitest.config.ts",
+      "blob": "bb0c96f63ef005c09418c8a679d5fe639c72b7b0",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-bun-runtime/package.json",
+      "blob": "ec0bcf3c3cb3d884fcc13862d09345c548f895a7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-bun-runtime/tsconfig.json",
+      "blob": "e9f1c8630e8e669bfda432c93643441b5c405d95",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-bun-runtime/vitest.config.ts",
+      "blob": "0f80e2cd8a67e80453769dc6bc0aa3211537af94",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-calendar/package.json",
+      "blob": "aa7ef32ccfabb7952e8a9fee5c2552af41c95a8f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-calendar/tsconfig.json",
+      "blob": "d976e047914c433d5c613cee123a63e0d3b49553",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-camera/package.json",
+      "blob": "b63afa6d39af77a7d8f63d2d0a4494b6bd2825a0",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-camera/tsconfig.json",
+      "blob": "04f6a0fd0346a313ab9e7720d6191d03ad765a4d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-canvas/package.json",
+      "blob": "a70dae3185d46959578701633541899436dfa8de",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-canvas/tsconfig.json",
+      "blob": "442aae6b74662cfbe87e353f0918fbcd68eeabd7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-contacts/package.json",
+      "blob": "c84dc4ed5808e442e64a21895d894609520f91f7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-contacts/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-contacts/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-desktop/package.json",
+      "blob": "13240ab5b3addd90458372cc4acaf378680ea329",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-desktop/tsconfig.json",
+      "blob": "8d7b299984b58d090e79c1551347a5873dbe9c2d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-eliza-tasks/package.json",
+      "blob": "a79337ca6b7d7015f0ec8e8f42691b480a2602db",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-eliza-tasks/tsconfig.json",
+      "blob": "442aae6b74662cfbe87e353f0918fbcd68eeabd7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-filesystem/package.json",
+      "blob": "d75ae45cef8370be0df409c81f17fc988879a30d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-filesystem/tsconfig.build.json",
+      "blob": "4767571a89a195d933a1a0d78d68de57d67debfa",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-filesystem/tsconfig.json",
+      "blob": "5f97a769ffa2aa3d776ff1f52474dbc0d3ef7252",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-filesystem/vitest.config.ts",
+      "blob": "d3f9fa3dec491333e990ac6495082289be795672",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-gateway/package.json",
+      "blob": "3892ed49c2090e725daf28e46e75bf3a7c590d2b",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-gateway/tsconfig.json",
+      "blob": "782033cefd6715e1f927351cd56cb545012187c2",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-inference/package.json",
+      "blob": "8af2956cf8058b8b80047d0f2f6bc850cab809be",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-inference/tsconfig.build.json",
+      "blob": "9cc4d864d7bc529bd621a1469387c201dd4de9c5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-inference/tsconfig.json",
+      "blob": "076e4552876e059f044e3bd538e44e6149a0bee2",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-inference/vitest.config.ts",
+      "blob": "f9b8aa21bf45ad15c9a43ec411c52f7d2fb8e11c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-location/package.json",
+      "blob": "bd09a8988b85e82cdf0f23b3645c749d7794ca43",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-location/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-media/package.json",
+      "blob": "caf2521f44b7c6fc191b2a5ed29fa4158e05ff15",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-media/tsconfig.json",
+      "blob": "41e560c45d29b45c15ea7fd25271e5a162930512",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-messages/package.json",
+      "blob": "bb49beb0a867b311b3355d69e0ddbfc438577585",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-messages/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-messages/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-messages/vitest.config.ts",
+      "blob": "3fc99f9986eefceb818659ae780c31464648938a",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-mobile-signals/package.json",
+      "blob": "74aec432b3fe8b892d3b5281827c4b3842cd8dd2",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-mobile-signals/tsconfig.json",
+      "blob": "442aae6b74662cfbe87e353f0918fbcd68eeabd7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-network-policy/package.json",
+      "blob": "ae7e483070217cf01c28f04d3800d90a590c1a2d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-network-policy/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-notifications/package.json",
+      "blob": "5c3bf47ec869bac1b3534e29ce7f7053e32206e0",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-notifications/tsconfig.json",
+      "blob": "41e560c45d29b45c15ea7fd25271e5a162930512",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-passwords/package.json",
+      "blob": "6fbea55832e1d9e5a2a071f9a98420f3f6e28bab",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-passwords/tsconfig.json",
+      "blob": "d976e047914c433d5c613cee123a63e0d3b49553",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-phone/package.json",
+      "blob": "fcd9df1cc122a6253f0cc7f35f2938730773c850",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-phone/tsconfig.build.json",
+      "blob": "b68fa61203993ebf4158947cd58b6ac9c9c6f478",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-phone/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-reminders/package.json",
+      "blob": "a7642bea0c753eedd7e9f16f53e8a0735d81a634",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-reminders/tsconfig.json",
+      "blob": "5d1a19106b4a6bf0ae85e78cce73ef1ca1987d0d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-secure-store/package.json",
+      "blob": "97b85cd8e821d16e38c0674aee78b73dc62580cf",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-secure-store/tsconfig.json",
+      "blob": "d976e047914c433d5c613cee123a63e0d3b49553",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-settings/package.json",
+      "blob": "93b13fe41c4fcdc92450403dc874936bf7b7e96c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-settings/tsconfig.build.json",
+      "blob": "30f3179402433c191f3efb01b1c4746e785e5ba4",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-settings/tsconfig.json",
+      "blob": "bfcdde14b07cf7485d9c4e885d2ab960bc04c5e4",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-shared-types/package.json",
+      "blob": "ad5f1f6c37b9eba7787f66b5c8ee810f4940f425",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-shared-types/tsconfig.json",
+      "blob": "348dc5e32b4f2ffca75d8b379ccab2dd6acb8243",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-swabble/package.json",
+      "blob": "eaaf9ab4d6fe971250e9375e8c2330db45c77caa",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-swabble/tsconfig.json",
+      "blob": "442aae6b74662cfbe87e353f0918fbcd68eeabd7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-system/package.json",
+      "blob": "a11372c933b12e48c4e2cb3841ad097e3c418b40",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-system/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-talkmode/package.json",
+      "blob": "46f56a70067d0e998db440e2b7f71dc90f2e47d6",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-talkmode/tsconfig.json",
+      "blob": "83618f7d4dbd7d9630162f56be6039d1c3a9a70e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-websiteblocker/package.json",
+      "blob": "cb88266432b4919523bc53bb60805bdc3034953c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-websiteblocker/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-wifi/package.json",
+      "blob": "e31e756b00e2db6fd52ac6855455e3fce9a2515d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-wifi/tsconfig.build.json",
+      "blob": "c810ea355d0c4924153f51f96a4b97a87dbd2c5d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-native-wifi/tsconfig.json",
+      "blob": "9532a1107ed4aca64fa0546a82a388736a1a85a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-network/package.json",
+      "blob": "98168a584e96cdd7ad8e0b8c555486734df96b40",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-network/tsconfig.build.json",
+      "blob": "8059ef79a4e61751e00fd270bf578afbb1d4ddb5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-network/tsconfig.json",
+      "blob": "de260e1a72d061334d8c703d271cfd11c58d16ba",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-notes/package.json",
+      "blob": "b3ae9f846be5407c859daadc4254d0d0ef3b8761",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-notes/tsconfig.build.json",
+      "blob": "0f6bbd34cdb30449de54b753a806804cf8df8618",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-notes/tsconfig.json",
+      "blob": "caab06aaec0f211c0fc0102adca1c5cab10c69c3",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-notes/vitest.config.ts",
+      "blob": "d9c7d1466a543603d743eaf3a3a4dadeb7de290a",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-openai/package.json",
+      "blob": "0cab494a84ff1a8d23ae86b574509f41eab9376b",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-openai/tsconfig.build.json",
+      "blob": "dd89ec7899870381566606ea17744881410d6a48",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-openai/tsconfig.json",
+      "blob": "5b7bb2e034af2939627d92ffda50fce81069848a",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-openai/vitest.config.ts",
+      "blob": "87d5ad2cc6d96bac71750195eaaafd1640059d71",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-openai/vitest.live.config.ts",
+      "blob": "84da72112f5a6342d36c20b7d8cdf24effd180e6",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-openai/vitest.real-runtime.config.ts",
+      "blob": "98400f7c3ddec5ea9615d48169d95f35e65aa052",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-pdf/package.json",
+      "blob": "32adb3f4b1f5ea0498122df8955e0b1f75d26c29",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-pdf/tsconfig.build.json",
+      "blob": "ca60e905fd55dca5cf34c6cc808f7818ffa69498",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-pdf/tsconfig.json",
+      "blob": "1e73891c996c042d51fa8b73d2deac169fa682ef",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-pdf/vitest.config.ts",
+      "blob": "ea316c3e3e994c267dc2087d56071b50e351644f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-personal-assistant/package.json",
+      "blob": "9f97d73119158f86b2fcbe43b1fbd9c97163a1d5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-personal-assistant/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-personal-assistant/vitest.background-real.config.ts",
+      "blob": "ef4570b71325a96a87eb1d2036ef28c8eaf6d320",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-personal-assistant/vitest.config.ts",
+      "blob": "864c200a52b6de36899622a0ab521d1f9bf2d66f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-personal-assistant/vitest.src-integration.config.ts",
+      "blob": "e2b703e3aa3939c88187c99551e1c4d51a5b83c5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-pty/package.json",
+      "blob": "7bd2e80590e18979bf6db2c655f6fe4090bd174e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-pty/tsconfig.build.json",
+      "blob": "8e1920fa24fddddbe1932aa5ce4b73762df32d78",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-pty/tsconfig.json",
+      "blob": "f1a2a68348904a4f916884b3aef90df43c3fb072",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-relationships/package.json",
+      "blob": "514ee85e2f22b2e7d7bb37ddd8932b689ea09428",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-relationships/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-relationships/tsconfig.json",
+      "blob": "f7f3ad93f69fb1e79c28d18b935d64146f5ee4a7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-relationships/vitest.config.ts",
+      "blob": "02c47afe3d3b040bc8b41ae8c59efc598377e1c6",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-reminders/package.json",
+      "blob": "550068281db35b0e22e512be2c476112c767f102",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-reminders/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-reminders/tsconfig.json",
+      "blob": "1cb0c4c64e1ab7d93f25eced7492302c86b003b4",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-reminders/vitest.config.ts",
+      "blob": "95b55dfe65200b44a3038574d3e603c82943e32b",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-scheduling/package.json",
+      "blob": "47de087dc92f5871609d461411135a4bc4cc8607",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-scheduling/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-scheduling/tsconfig.json",
+      "blob": "7f9fa37423ba7ab1d90df14b9582af11e1341afa",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-scheduling/vitest.config.ts",
+      "blob": "1f2cc34805fa32da7a8ee5112d0839aee8d0cc60",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-slack/package.json",
+      "blob": "81626fa735e0fa11b00d07af32566325f8e659b2",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-slack/tsconfig.build.json",
+      "blob": "e557965d7cb4ffb8f96f7f6834c089d7be88241c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-slack/tsconfig.json",
+      "blob": "f28c752d08cef3c5334356fc4a058fcfef5ca8a0",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-slack/vitest.config.ts",
+      "blob": "fbb9ea7b4c83563ac5e3b3ecf9c98a0806b61522",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-slack/vitest.real-runtime.config.ts",
+      "blob": "6bee9b2b50e9044c0a3cbb9db4c56b6404f59269",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sql/package.json",
+      "blob": "c24994d4f818a552bc13494e3270246e2f8dae91",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sql/src/tsconfig.json",
+      "blob": "a6d7ffbd05f908fa347ae6c979ad4ccb66c75bab",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sql/src/tsconfig.typecheck.json",
+      "blob": "2ba590a36543a1b091b6ff600bae2085227071a8",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sql/src/vitest.config.ts",
+      "blob": "7fa26a8e2649730ab677b103be830cca556a5ff1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sql/src/vitest.real.config.ts",
+      "blob": "39b0e1e333d653a69d99b23b0c8fc1b77d68fd0f",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sql/tsconfig.build.json",
+      "blob": "d9e37753221a51782428403dfb10e5a2909435cc",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sqlite/package.json",
+      "blob": "7326ed2e2fed5c0c111250d9f0cb65809239f708",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sqlite/tsconfig.build.json",
+      "blob": "ecaa68c12ab51a5120d4b3beb51a011ec0ec51e0",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sqlite/tsconfig.json",
+      "blob": "d7f2ce2fc2c03c898afca6cb20f4c9ac6e519641",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sqlite/tsconfig.validation.json",
+      "blob": "086df2014a25bc95aef5c78e7b5aebf346792ba3",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-sqlite/vitest.config.ts",
+      "blob": "ac3b38814f433aacee45221dd913a70745143083",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-telegram/package.json",
+      "blob": "23c5a96b0fb04d9ec8e4099243033067b43de279",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-telegram/tsconfig.build.json",
+      "blob": "3452101180ceaff1b0c03b73464e5c5825bc7f61",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-telegram/tsconfig.json",
+      "blob": "bc6ec05150598296111676042d650abbdf8dee3b",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-telegram/vitest.config.ts",
+      "blob": "f4401543878706ab4f46ca21ac845be1655b5a13",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-telegram/vitest.real-runtime.config.ts",
+      "blob": "98400f7c3ddec5ea9615d48169d95f35e65aa052",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-todos/package.json",
+      "blob": "ad90ed20b1129571faa1fb94b1fb549b917577e5",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-todos/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-todos/tsconfig.json",
+      "blob": "4424698c0c74469d32c7e9b0658eab585f449d68",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-todos/vitest.config.ts",
+      "blob": "24ef09aa60e0bc7de99924ce9f23aad0b424bdd7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-trajectory-logger/package.json",
+      "blob": "7789ebf7f575c0391e1538617a6d640b523f2a94",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-trajectory-logger/tsconfig.build.json",
+      "blob": "26b3ddc966790679fa31e38972fa6ec0a18fe956",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-trajectory-logger/tsconfig.json",
+      "blob": "889369c92554428d527af109a7568c43668c2068",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-trajectory-logger/vitest.config.ts",
+      "blob": "9ef02a94ee70996a6ec56e3683a5184174501c77",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-video/package.json",
+      "blob": "e388442aaf87fdc9cfc3f74bd9a73df2b04810db",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-video/tsconfig.json",
+      "blob": "1fac578ebaea529467a8f574924afc65ab50ef7d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-video/vitest.config.ts",
+      "blob": "7af653b79f85fb0669d573943379cf1d113b4c47",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-vision/package.json",
+      "blob": "d7c1632c4a0f7a81fedfd5d6eadf23328edff679",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-vision/tsconfig.build.json",
+      "blob": "20c4c5ca631f0810197e92a8b5f7f1b4c17210ee",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-vision/tsconfig.json",
+      "blob": "209f609351e1718b4bab35fbd153aa4ab13385bd",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-vision/vitest.config.ts",
+      "blob": "c3130cc8b8046215c52da56f5d4d284d97f0dc0b",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/package.json",
+      "blob": "a5af7cf13d444ae6e405a19622ef6770993796c2",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/src/__tests__/core-vitest-mock.ts",
+      "blob": "08e52296b534385814c8371c8ac7a0291bac2833",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/src/chains/evm/tsconfig.build.json",
+      "blob": "25c64c00a13545142d31eb721ae7510c4e525244",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/src/chains/evm/tsconfig.json",
+      "blob": "7d269768816de999b18b7d1aa452709193694169",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/src/chains/solana/tsconfig.build.json",
+      "blob": "03f49ac670da75a04f88b40e8f499ffe589f8330",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/src/chains/solana/tsconfig.json",
+      "blob": "7d269768816de999b18b7d1aa452709193694169",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/src/chains/solana/tsconfig.typecheck.json",
+      "blob": "724a917b313e50acefdc8a9356997126e4e53d33",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/src/chains/solana/vitest.config.ts",
+      "blob": "151b3edbe12da33866e2c69ab7955e3aff52a99c",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/tsconfig.build.json",
+      "blob": "c7fbb0261f1b67c1c15fdeeee5d79204b12c8971",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/tsconfig.json",
+      "blob": "b1a9a921caa2e3946708ab7e5fc511e7c2aa03f9",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/tsconfig.ui.json",
+      "blob": "d046c3753593cddb0a048890c852201998a81cf9",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-wallet/vitest.config.ts",
+      "blob": "ba24fbcbf4a482508db5df80601a82d9512bd965",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-web-search/package.json",
+      "blob": "c7f34ed546f927f8f5410a4fc181a00a93cabd9d",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-web-search/tsconfig.json",
+      "blob": "4c40aaccda0867764e062f75199e0c5db67f05ed",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-web-search/vitest.config.ts",
+      "blob": "f1d57213652a7cc4a6193aafee89a426314bc572",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-workflow/package.json",
+      "blob": "66920c04f68f7a9d0adc154bd5c6af10c41011c4",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-workflow/tsconfig.json",
+      "blob": "2858be0b737bb34ec1d6387330968762c8cf9e57",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-workflow/tsconfig.typecheck.json",
+      "blob": "e25f76fe7ccbfc6b851a3e45fe82f514ae6739d7",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-workflow/vitest.hosted-digests.config.ts",
+      "blob": "903deb686d65f7d64bb4c8952ebf39bcfbb7b98e",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-workflow/vitest.hosted-live-google.config.ts",
+      "blob": "846ad15cc93680c8ea0536e77afcdbd09dd93124",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-x/package.json",
+      "blob": "e32325bf178885b20f71ca76b6fc9f5cf5f161a1",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-x/tsconfig.build.json",
+      "blob": "625391d02b20d7d43117869dbef97e5edcda0a99",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-x/tsconfig.json",
+      "blob": "8e5e15d81dee6b8fa85fc98b4a128128f37da777",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/plugin-x/vitest.config.ts",
+      "blob": "180211d520e394c0ed625150f9d0885ee9f65152",
+      "mode": "100644"
+    },
+    {
+      "path": "plugins/tsconfig.build.shared.json",
+      "blob": "a188aa5cfe816d4ec2c7a3bfab7a12e57a11c021",
+      "mode": "100644"
+    },
+    {
+      "path": "tsconfig.base.json",
+      "blob": "41ca37dcc0c6d9cbe9347e64314074c71be610cf",
+      "mode": "100644"
+    },
+    {
+      "path": "tsconfig.json",
+      "blob": "82ed0d74f4b77d2283bc81e9acee1423c311793d",
+      "mode": "100644"
+    },
+    {
+      "path": "vitest.config.ts",
+      "blob": "1379727f371cbe8607cf6ca18ff1c9853a1ac83a",
+      "mode": "100644"
+    }
+  ],
+  "scope": "Complete tracked config/helper identity, not installed dependencies"
+}

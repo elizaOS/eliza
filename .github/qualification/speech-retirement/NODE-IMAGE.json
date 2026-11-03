@@ -1,0 +1,11 @@
+{
+  "tag": "docker.io/library/node:24.15.0-bookworm-slim",
+  "indexDigest": "sha256:4e6b70dd6cbfc88c8157ba19aa3d9f9cce6ba4703576d55459e45efcbc9c5f5d",
+  "selectedDigest": "sha256:152aceace5c03e2597988763165ee33e3fd3633636db0fc983cd2e126b02cfde",
+  "platform": {
+    "architecture": "amd64",
+    "os": "linux"
+  },
+  "configDigest": "sha256:3880cf501a3b54bacc5e53dc327478ba723084863fa252cceb43f75aadcab12b",
+  "layerBytes": 79621150
+}

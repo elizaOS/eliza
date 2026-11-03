@@ -1,0 +1,85 @@
+{
+  "state": "FRESH_BACKEND_UNIT_WORKERD_PREP_REVIEW_REQUIRED_NO_GO",
+  "target": "backend",
+  "sourceCommit": "2e9d9572bdc728844c10408fb84a74c638e0178d",
+  "sourceTree": "f4df35d8e5dd74ca054c3fd6eef8e79aa6a5931b",
+  "resourceBounds": {
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "maxDiskGrowthBytes": 12884901888,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592
+  },
+  "reviewedRunner": {
+    "ImageVersion": "20261026.354.1",
+    "ImageOS": "ubuntu24",
+    "dockerServer": "28.0.4",
+    "evidenceRun": 41504810728,
+    "evidenceAttempt": 1,
+    "evidenceArtifact": 13169763764,
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+  },
+  "normalGroups": [
+    {
+      "name": "normal-0",
+      "config": "normal-0.config.mts",
+      "counts": {
+        "packages/host/src/voice/cartesia-sonic-retirement.test.ts": 10,
+        "packages/host/src/voice/speech-relay-session.test.ts": 23,
+        "packages/host/src/voice/speech-retirement-session.test.ts": 15
+      },
+      "total": 48
+    }
+  ],
+  "typeCommands": [
+    [
+      "/usr/local/bin/node",
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "-p",
+      "packages/cloud/api/tsconfig.json"
+    ],
+    [
+      "/usr/local/bin/node",
+      "packages/cloud/api/test/_router-contract.mjs"
+    ],
+    [
+      "/usr/local/bin/bun",
+      "run",
+      "--cwd",
+      "packages/cloud/api",
+      "check:worker-bundle"
+    ]
+  ],
+  "workerdFile": "packages/cloud/api/__tests__/speech-relay-worker.test.ts",
+  "priorR8": {
+    "source": "6bcd17251657a641ca877591f0cc10d200dc74df",
+    "resultsNotTransferred": true
+  },
+  "normalExecutionReady": false,
+  "normalBlocker": "Await exact complete installed dependency/native-hook inventory and independently accepted compiler/runtime provenance; one-file receipt or boolean is insufficient",
+  "normalInstallRequirement": "Separate hash-bound Linux/x86_64 successful normal install/native-hook receipt; ignore-scripts never qualifies this path",
+  "network": "All test/type containers network none. Only fixture loopback permitted. Installation bridge access is not claimed registry-only.",
+  "limits": "Existing R8 host limits unchanged; all phases share wholeSeconds. Exhaustion is incomplete, never implicit budget growth. Mac local floor remains53GiB entry/50GiB stop; this operator is Linux hosted only.",
+  "requiredPostRun": [
+    "All full files and exact collected counts pass, zero skip/todo",
+    "Normal-config and type results separate from ignore-scripts unit recipe",
+    "All source hashes unchanged; all owned groups/CIDs closed",
+    "No provider/money/runtime/browser/device claim"
+  ],
+  "executionScope": "Hosted ignore-scripts unit + real local Workerd fake-provider recipe only. Normal mode stays hard disabled.",
+  "approval": "No ROOT_GO_JSON exists; no dispatch. Workflow template exact source pin, new dedicated operator commit must be reviewed before Root GO.",
+  "counts": {
+    "sourceFileCases": 191,
+    "supplementalCompatibilityCases": 1,
+    "compatibilityEconomicObservations": 112
+  },
+  "intentProtocol": "Pre-dispatch128bitnonce boundsource/tree/operator/workflow/issued+expiry; concurrency serializes sameintent repositorywide; existing immutable claim artifact blocks replay; actualrunID recorded afterlaunch; runner verifiesownclaimartifact beforepull/test. Authenticatedactionsmetadataread only, no tokenpassedcontainers.",
+  "knownLimit": "Replay protection depends on immutableclaimartifact remaining available during20minuteGO; deletion/privilegedtampering invalidates custody and is outside admittedoperation. No deletion authorized.",
+  "previous148NotTransferred": true,
+  "qualificationLimit": "Source18fullfiles +one supplemental112observation pureattestationcompat test. Notfullnon-speechDB/DO monetaryeffect/replay acceptance; that remainsseparate.",
+  "previousV4Fixture": "Corrected exactevidence assertion includesmoneyTerminal:true, reviewedtest-onlyfollowup; oldad162operator remainsheld"
+}
