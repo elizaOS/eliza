@@ -82,4 +82,28 @@ describe("weather MCP geocoding failures", () => {
     expect(isError).toBe(false);
     expect(JSON.parse(text)).toEqual({ results: [] });
   });
+
+  // `get_current_weather` reaches the same geocoder through a separate call
+  // site, so pin both halves of the distinction there too: a provider fault is
+  // an error, while a genuine no-match keeps saying "No results for".
+  test("reports a throttled geocoder instead of 'No results for'", async () => {
+    stubFetch(429, "rate limited");
+    const { isError, text } = await callWeatherTool("get_current_weather", {
+      location: "Berlin",
+    });
+    // Before the fix this was `No results for: Berlin` — a provider fault
+    // reported to the model as a place that does not exist.
+    expect(isError).toBe(true);
+    expect(text).toContain("429");
+    expect(text).not.toContain("No results for");
+  });
+
+  test("still says 'No results for' when the geocoder has no match", async () => {
+    stubFetch(200, JSON.stringify({ results: [] }));
+    const { isError, text } = await callWeatherTool("get_current_weather", {
+      location: "Xyzzy",
+    });
+    expect(isError).toBe(true);
+    expect(text).toContain("No results for: Xyzzy");
+  });
 });
