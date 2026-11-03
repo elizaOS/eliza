@@ -1,0 +1,66 @@
+{
+  "BUN-IMAGE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/BUN-IMAGE.json",
+    "sha256": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664"
+  },
+  "NODE-IMAGE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/NODE-IMAGE.json",
+    "sha256": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de"
+  },
+  "Dockerfile": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/Dockerfile",
+    "sha256": "a61c63efd512a231cebd7c43b8aa23978eab11e23739a97665d8446f52f68b18"
+  },
+  "check_source.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/check_source.py",
+    "sha256": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5"
+  },
+  "inventory_dependencies.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/inventory_dependencies.py",
+    "sha256": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1"
+  },
+  "WORKSPACE-DEPENDENCY-ROOTS.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/WORKSPACE-DEPENDENCY-ROOTS.json",
+    "sha256": "84af9a343cc0df03adda407196a6b9ee15340900173b091ae8f6035e403af33a"
+  },
+  "POLICY.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/POLICY.json",
+    "sha256": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf"
+  },
+  "EXPECTED-GRAPH.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-preparation-20261103/STATIC-PRODUCER-GRAPH.json",
+    "sha256": "c594d7380376c63a57e3f74e13a0abc290f7229b3d279a6a0141c29db57fa287"
+  },
+  "HISTORICAL-TOOL-REFERENCE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-preparation-20261103/HISTORICAL-LINUX-COMPILER-BIN-METADATA.json",
+    "sha256": "6ec3611c598142d5cd9b30993c2619af632200c3bbd7f2b22667c98796f68ae7"
+  },
+  "RESOURCE-GRAPHS.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v1/RESOURCE-GRAPHS.json",
+    "sha256": "deeebd324eeaa16f19a4386da8b0c13c3210b4b820b74cad913805d3a868a765"
+  },
+  "SOURCE-CUSTODY.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v1/SOURCE-CUSTODY.json",
+    "sha256": "c618454d2b08db4b4f40dfc411aff3b5e2c0835fe62daeeda4b6a3880bb14bac"
+  },
+  "SOURCE-MANIFEST.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v1/SOURCE-MANIFEST.json",
+    "sha256": "4b0acb71d2553647c759fd38a6365140f9df2675a0316b930d2e8519b1eb912e"
+  },
+  "claim.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v1/claim.py",
+    "sha256": "811f1dc59a3dc68da6f7be1ee123a45279d9f5c60d4c2c7a57d049043fd089c3"
+  },
+  "compiler-bootstrap.mjs": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v1/compiler-bootstrap.mjs",
+    "sha256": "f3d0b6cb2df5d925bfa669b52002052a6c702db8d0bf23a5923d94c108cb7554"
+  },
+  "output-custody.mjs": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v1/output-custody.mjs",
+    "sha256": "64c42d31881a0939f02e38d233ca9846e615e0f2645c3903aeae6d606dc79983"
+  },
+  "workflow.yml": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v1/workflow.yml",
+    "sha256": "9cb2e208a0b7d0e5cacf8aad74cb1337c14529eb37f9838b72f5bd060e8cccae"
+  }
+}
