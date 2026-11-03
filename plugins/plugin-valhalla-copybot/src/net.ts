@@ -33,6 +33,16 @@ export function tail4(value: string | null | undefined): string {
 const SECRET_RE = /[1-9A-HJ-NP-Za-km-z]{32,}/g;
 
 /** Drop long keys and base58 blobs before a line is stored or shown. */
+export function redactUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    if (parsed.searchParams.has("api-key")) parsed.searchParams.set("api-key", "[redacted]");
+    return parsed.toString();
+  } catch {
+    return url.replace(/api-key=[^&]+/g, "api-key=[redacted]");
+  }
+}
+
 export function redactSecrets(text: string): string {
   return text.replace(SECRET_RE, (match) => `…${match.slice(-4)}`);
 }

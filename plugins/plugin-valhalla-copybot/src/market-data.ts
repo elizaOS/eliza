@@ -4,6 +4,8 @@ import { LIMITS } from "./limits.ts";
 import type { ParsedEarlyTx } from "./manipulation.ts";
 import { netTimeoutMs, withTimeout } from "./net.ts";
 
+export { redactUrl } from "./net.ts";
+
 export interface RpcClient {
   call(method: string, params: unknown[]): Promise<unknown>;
 }
@@ -16,16 +18,6 @@ export function rpcEndpoints(env: Record<string, string | undefined>): string[] 
   const urls = [...PUBLIC_RPC];
   if (key) urls.unshift(`https://mainnet.helius-rpc.com/?api-key=${encodeURIComponent(key)}`);
   return urls;
-}
-
-export function redactUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    if (parsed.searchParams.has("api-key")) parsed.searchParams.set("api-key", "[redacted]");
-    return parsed.toString();
-  } catch {
-    return url.replace(/api-key=[^&]+/g, "api-key=[redacted]");
-  }
 }
 
 interface DexPair {

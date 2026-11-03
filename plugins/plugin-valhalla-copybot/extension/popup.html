@@ -4,15 +4,31 @@
   <meta charset="utf-8">
   <title>Valhalla</title>
   <style>
-    body { font: 14px sans-serif; margin: 16px; width: 280px; color: #1a1208; }
+    body { font: 14px/1.4 system-ui, sans-serif; margin: 0; width: 320px; color: #e7eef8; background: #07080b; }
+    header { display: flex; gap: 8px; align-items: center; padding: 12px; }
+    header img { width: 28px; height: 28px; }
+    h1 { font-size: 16px; margin: 0; letter-spacing: .12em; color: #e8b65a; }
+    main { padding: 0 12px 12px; }
+    p, label { margin: 8px 0; }
+    .note { color: #93a4ba; }
+    input, button { width: 100%; min-height: 36px; box-sizing: border-box; }
+    button { background: #e8b65a; color: #07080b; border: 0; font-weight: 700; }
+    #status { white-space: pre-wrap; }
   </style>
 </head>
 <body>
-  <h1>Valhalla</h1>
-  <p>Published by TokenJunction LLC. TokenJunction LLC is a private company and the owner of Valhalla.</p>
-  <p>This is not financial advice. The phone and this extension do not hold a wallet key. There is no send or withdraw.</p>
-  <p><a href="https://valhalla-app.xyz/">valhalla-app.xyz</a></p>
-  <p>Support: hello@valhalla-app.xyz</p>
-  <p>© 2026 TokenJunction LLC</p>
+  <header>
+    <img src="icons/icon-32.png" alt="">
+    <h1>VALHALLA</h1>
+  </header>
+  <main>
+    <p class="note">Read-only. This extension cannot send or withdraw. It never asks for a seed phrase.</p>
+    <label>Desk address <input id="desk" value="http://127.0.0.1:8787" autocomplete="off"></label>
+    <label>Access code, if the desk asks <input id="code" type="password" autocomplete="off"></label>
+    <button id="pair" type="button">Show status</button>
+    <p id="status" role="status">Not paired. Demo data is not shown until the desk answers.</p>
+    <p class="note">Not financial advice. Crypto is risky.</p>
+  </main>
+  <script src="popup.js"></script>
 </body>
 </html>

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Valhalla",
-  "version": "0.1.1",
-  "description": "Valhalla desk companion. Published by TokenJunction LLC. No wallet key.",
+  "version": "0.1.2",
+  "description": "Read-only Valhalla desk status. No wallet. No send or withdraw.",
   "author": "TokenJunction LLC",
   "homepage_url": "https://valhalla-app.xyz/",
   "action": {
@@ -20,5 +20,7 @@
     "32": "icons/icon-32.png",
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
-  }
+  },
+  "permissions": ["storage"],
+  "host_permissions": ["http://127.0.0.1/*", "http://localhost/*"]
 }

@@ -1,0 +1,73 @@
+name: Valhalla Windows installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cursor/valhalla-android-companion-d28f
+    paths:
+      - .github/workflows/valhalla-windows.yml
+      - plugins/plugin-valhalla-copybot/install/**
+      - plugins/plugin-valhalla-copybot/src/**
+      - plugins/plugin-valhalla-copybot/public/**
+
+permissions:
+  contents: write
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.4.2
+      - name: Compile the desk
+        working-directory: plugins/plugin-valhalla-copybot
+        shell: bash
+        run: |
+          bun install
+          mkdir -p install/dist/public
+          bun build --compile src/standalone.ts --outfile install/dist/valhalla-desk.exe
+          cp -r public/. install/dist/public/
+      - name: Install Inno Setup
+        run: choco install innosetup -y
+      - name: Build the setup exe
+        working-directory: plugins/plugin-valhalla-copybot/install
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" valhalla.iss'
+      - name: Name the assets and add the phone APK
+        working-directory: plugins/plugin-valhalla-copybot/install/Output
+        shell: bash
+        run: |
+          mv valhalla-setup.exe Valhalla-Setup-x64.exe
+          curl -fsSL -o valhalla-phone.apk "https://github.com/TokenJunction/eliza-valhalla/releases/download/v0.1.1-phone/valhalla-phone.apk"
+          OUT="$PWD"
+          EXT="$GITHUB_WORKSPACE/plugins/plugin-valhalla-copybot/extension"
+          (cd "$EXT" && zip -r "$OUT/Valhalla-Chrome-Extension.zip" manifest.json popup.html popup.js icons)
+          sha256sum Valhalla-Setup-x64.exe valhalla-phone.apk Valhalla-Chrome-Extension.zip | tee SHA256SUMS.txt
+      - name: Publish the latest release
+        working-directory: plugins/plugin-valhalla-copybot/install/Output
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes=$(cat <<'EOF'
+          Download for Windows / Android
+
+          Windows: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Setup-x64.exe
+          Android: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/valhalla-phone.apk
+          Chrome: https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/Valhalla-Chrome-Extension.zip
+
+          Windows may say the publisher is unknown while this file is unsigned. Choose More info, then Run anyway.
+
+          Chrome on a computer: unzip the file, open chrome://extensions, turn on Developer mode, then Load unpacked. Chrome on Android cannot install extensions.
+
+          TokenJunction LLC publishes Valhalla. The desk stays read-only until you arm live on the PC. There is no send or withdraw.
+          EOF
+          )
+          if gh release view v0.1.2 >/dev/null 2>&1; then
+            gh release edit v0.1.2 --title "Valhalla 0.1.2" --notes "$notes" --latest --prerelease=false
+          else
+            gh release create v0.1.2 --title "Valhalla 0.1.2" --notes "$notes" --latest
+          fi
+          gh release upload v0.1.2 Valhalla-Setup-x64.exe valhalla-phone.apk Valhalla-Chrome-Extension.zip SHA256SUMS.txt --clobber

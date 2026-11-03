@@ -1,5 +1,5 @@
 import { timingSafeEqual } from "node:crypto";
-import { createReadStream } from "node:fs";
+import { createReadStream, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
@@ -18,11 +18,19 @@ import {
 } from "./connection-routes.ts";
 import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
+import { LicenseStore } from "./license.ts";
 import { tail4 } from "./net.ts";
 import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { checkDesktopUpdate, DESK_VERSION, WHATS_NEW } from "./updates.ts";
 
-const PUBLIC_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
+function resolvePublicDir(): string {
+  if (process.env.VALHALLA_PUBLIC_DIR) return path.resolve(process.env.VALHALLA_PUBLIC_DIR);
+  const fromSource = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../public");
+  if (existsSync(fromSource)) return fromSource;
+  return path.resolve(path.dirname(process.execPath), "public");
+}
+
+const PUBLIC_DIR = resolvePublicDir();
 const HOST = "127.0.0.1";
 
 const sessions = new Set<string>();
@@ -184,6 +192,16 @@ async function handle(
   }
   if (req.method === "GET" && pathname === "/api/ads/report") {
     send(res, 200, await loadAdReport(process.env));
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/license") {
+    const store = new LicenseStore(engine.dataDir);
+    const record = await store.read();
+    const graceMs = store.config.offlineGraceDays * 24 * 60 * 60 * 1000;
+    const pro = record
+      ? record.status === "active" && Date.now() - record.validatedAt <= graceMs
+      : false;
+    send(res, 200, store.view(record, pro));
     return;
   }
   if (req.method === "GET" && pathname === "/api/whats-new") {
@@ -419,7 +437,30 @@ async function post(
         const answer = await brainFor(engine.dataDir).complete("chat", String(body.text ?? ""));
         return { status: 200, body: { ok: true, message: answer } };
       }
+      case "/api/license/activate": {
+        const store = new LicenseStore(engine.dataDir);
+        const result = await store.activate(
+          String(body.key ?? ""),
+          String(body.instanceName ?? "valhalla-desk")
+        );
+        return { status: result.ok === false ? 400 : 200, body: result };
+      }
+      case "/api/license/validate": {
+        const store = new LicenseStore(engine.dataDir);
+        return { status: 200, body: await store.validate() };
+      }
       case "/api/brain/tune": {
+        const licensed = new LicenseStore(engine.dataDir);
+        const current = await licensed.validate();
+        if (current.pro !== true) {
+          return {
+            status: 402,
+            body: {
+              ok: false,
+              message: `Pro unlocks the strategy tuner. Price ${licensed.config.PRO_PRICE}. This is not a promise of profit.`,
+            },
+          };
+        }
         const store = brainFor(engine.dataDir);
         const proposed = { ticketMaxSol: Math.max(0.0125, engine.settings.ticketMaxSol * 0.8) };
         const judged = tightenOnly(engine.settings, proposed);

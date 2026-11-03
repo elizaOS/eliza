@@ -16,15 +16,18 @@ AppPublisherURL={#MyAppURL}
 AppCopyright=Copyright 2026 TokenJunction LLC
 DefaultDirName={autopf}\Valhalla
 DefaultGroupName=Valhalla
-OutputBaseFilename=Valhalla-Setup
+OutputBaseFilename=valhalla-setup
 Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=lowest
 WizardStyle=modern
 
 [Files]
-; Point Source at the built desk when you compile this script on your PC.
-; Do not commit a wallet, a key, or the bot token.
+Source: "dist\valhalla-desk.exe"; DestDir: "{app}"; Flags: ignoreversion
+Source: "dist\public\*"; DestDir: "{app}\public"; Flags: ignoreversion recursesubdirs
+Source: "start-valhalla.bat"; DestDir: "{app}"; Flags: ignoreversion
+Source: "valhalla.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Valhalla"; Filename: "{app}\Valhalla.exe"; Comment: "Published by TokenJunction LLC"
+Name: "{group}\Valhalla"; Filename: "{app}\start-valhalla.bat"; Comment: "Published by TokenJunction LLC"
+Name: "{autodesktop}\Valhalla"; Filename: "{app}\start-valhalla.bat"; Comment: "Published by TokenJunction LLC"
