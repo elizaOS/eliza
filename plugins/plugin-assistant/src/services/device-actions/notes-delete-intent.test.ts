@@ -118,6 +118,21 @@ describe("originalRequestsNotesDeletion", () => {
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
   });
 
+  it("admits a deletion whose topic or title starts with read or show it before an adverbial instead or instead of deleting", () => {
+    const requests = [
+      "Delete the note called show it to clients instead",
+      "Delete the note about read it twice tips instead",
+      "Delete the note about show it weekly instead",
+      "Delete the note called show it to clients instead of deleting the backup",
+      "Delete the note about read it twice tips instead of deleting the old FAQ",
+      "Delete the note about show it weekly instead of removing the daily one",
+      "Delete the note titled read it later instead",
+      'Delete the note titled "read it later" instead of deleting the draft',
+      "Delete the note named ‘show them around’ instead",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
+  });
+
   it("declines read or show after punctuation when it names the note", () => {
     const requests = [
       "Delete the note about groceries, show it to me instead of the draft",
@@ -140,6 +155,8 @@ describe("originalRequestsNotesDeletion", () => {
     const requests = [
       "Delete the note, I'd like you to read it instead of deleting it",
       "Delete the note about groceries, I want you to show it to me instead of removing it",
+      "Delete the note called show it to clients, I'd like you to read it instead of deleting it",
+      "Delete the note about show it weekly, read it to me instead",
     ];
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
   });

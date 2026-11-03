@@ -20,9 +20,9 @@ const READ_OR_SHOW_NOTE_AT_CLAUSE_START =
   /(?:[\n,;:.!?—–]|\s-|\b(?:and|or|but|so|then)\b)\s*(?:(?:please|just|only|simply|actually|now|(?:can|could|would|will)\s+you)\s+)*(?:read|show)\s+(?:it|this|that|them|(?:the|my)\s+note)\b/iu;
 // Read/show with the note as its object ("read it", "show the note"). A note title can hold the
 // same words ("the note titled read it later"), so this counts only when "instead" replaces the
-// deletion.
+// deletion, and never right where a topic or title starts ("the note called show it to clients").
 const READ_OR_SHOW_NOTE =
-  /\b(?:read|show)\s+(?:it|this|that|them|(?:the|my)\s+note)\b/iu;
+  /(?<!\b(?:about|titled|called|named)\s+["'“‘]?)\b(?:read|show)\s+(?:it|this|that|them|(?:the|my)\s+note)\b/iu;
 // "instead" that replaces the deletion: adverbial ("read it instead") or set against the deletion
 // itself ("instead of deleting it"), not a contrast with another note ("instead of the draft").
 const INSTEAD_REPLACES_DELETION =
