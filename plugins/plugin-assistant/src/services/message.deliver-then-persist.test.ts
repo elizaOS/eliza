@@ -1053,6 +1053,7 @@ describe("planning progress delivery boundaries", () => {
           },
         },
       );
+      expect(stage1Calls).toHaveLength(1);
       expect(stage1Calls[0]).toContain(JSON.stringify(sentence).slice(1, -1));
       expect(progress).toEqual(spoken ? [draft] : []);
       expect(delivered.map((content) => content.text)).toEqual([h.replyText]);
