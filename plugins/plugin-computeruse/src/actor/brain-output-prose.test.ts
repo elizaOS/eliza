@@ -63,6 +63,17 @@ describe("parseBrainOutput prose handling", () => {
     );
   });
 
+  it("prefers a fenced answer over a JSON snippet quoted in the prose", () => {
+    expectWaitAction(
+      [
+        'The status badge reads {"ok": true}.',
+        "```json",
+        OBJECT,
+        "```",
+      ].join("\n"),
+    );
+  });
+
   it("still rejects a reply with no JSON object", () => {
     expect(() => parseBrainOutput("I cannot decide what to do.")).toThrow(
       BrainParseError,

@@ -524,6 +524,26 @@ export function brainPromptFor(
   ].join("\n");
 }
 
+/** The body of the first fenced block, or null when the reply has none. */
+function extractFencedBrainBody(value: string): string | null {
+  const opener = value.indexOf("```");
+  if (opener < 0) return null;
+  let bodyStart = opener + 3;
+  if (value.slice(bodyStart, bodyStart + 4).toLowerCase() === "json") {
+    bodyStart += 4;
+  }
+  while (bodyStart < value.length && value[bodyStart]?.trim() === "") {
+    bodyStart += 1;
+  }
+  const closer = value.indexOf("```", bodyStart);
+  if (closer < 0) return null;
+  let bodyEnd = closer;
+  while (bodyEnd > bodyStart && value[bodyEnd - 1]?.trim() === "") {
+    bodyEnd -= 1;
+  }
+  return value.slice(bodyStart, bodyEnd);
+}
+
 export function parseBrainOutput(raw: string): BrainOutput {
   // Read the reply with the shared tolerant object reader. Snipping to
   // the first `{` and last `}` here corrupted the slice whenever the
@@ -532,7 +552,18 @@ export function parseBrainOutput(raw: string): BrainOutput {
   // so a reply holding a complete, valid object failed to parse. The
   // reader finds the first object region that is JSON; the schema
   // checks below still reject anything that is not a BrainOutput.
-  const parsed = parseJsonObject<Record<string, unknown>>(raw);
+  //
+  // A fenced block still wins over that first region: when the prose
+  // before the fence quotes a JSON snippet, the first region is the
+  // snippet, not the answer, so reading it first regressed fenced
+  // replies that the previous fenced-first reader handled. Only when
+  // the fenced body itself does not parse do we fall back to the
+  // tolerant reader over the whole reply.
+  const fencedBody = extractFencedBrainBody(raw.trim());
+  const parsed =
+    (fencedBody !== null
+      ? parseJsonObject<Record<string, unknown>>(fencedBody)
+      : null) ?? parseJsonObject<Record<string, unknown>>(raw);
   if (!parsed) {
     throw new BrainParseError(
       "Brain response was not valid JSON: the reply did not contain a parseable JSON object",
