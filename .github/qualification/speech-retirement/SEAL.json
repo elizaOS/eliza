@@ -1,6 +1,8 @@
 {
   "files": {
     "BUN-IMAGE.json": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664",
+    "CAPACITY-RECOVERY-POLICY.json": "1bdc264b01412cddc0cccf1644823d630de9fc5e951e5eda19dd7bd97aac142e",
+    "CI-CAPACITY-GRAPHS-V2.json": "50acec1a8220b0be960784c76abca8a3b11b8ce1d493d67ea59a28763c18aae1",
     "DERIVATION-CHECK.json": "77a56e8603363c1526d42900b053841638c244a828a180c28fe51abd128044a5",
     "Dockerfile": "a61c63efd512a231cebd7c43b8aa23978eab11e23739a97665d8446f52f68b18",
     "IMPORTER-CORRECTION-EVIDENCE.json": "4e8c80e792a2d1ed885a2f91f456a622ae9f7840e60c72791effe4711df25c94",
@@ -10,12 +12,12 @@
     "NODE-IMAGE.json": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de",
     "NORMAL-QUALIFICATION-RECIPE.json": "cd1d0f69010fbc536380baa3844144d1e59be7933fc069ba4cc7ec0f6741750d",
     "ORACLES.json": "3fb4f419c0a4ab508ce971d4cb68f589a5cb9ae8891fdcfd6f9931cc6bcc660b",
-    "PLAN.json": "45e33ccbcb1c67ce3cbe3676f9fe065d5d1c6b09113ac2609929ebc8dbee2528",
+    "PLAN.json": "5f45454ac0f8396a446295e2e053699fba4e9a77614556ed16452b787547412d",
     "POLICY.json": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf",
     "PREFLIGHT-DEFINITION.json": "92209fa7b05d3966ca735e6bacc48c7a6de6ee358dd6e02b059211382c4611cd",
-    "PREPARED.json": "6b8de6d56e049e6450587813dc61f8f5384f59e53a7f09559dd79a6e897149e3",
+    "PREPARED.json": "2ff9019970389c0160efda8ef23eb75045ddd10732567c2c47184e3dbd4e25f6",
     "RESOURCE-GRAPHS.json": "a1cb1ef7cfe0d242be48c1b79709bd4ebb8e93d7aa7e38b1b154dadfbc3fbf7c",
-    "ROOT-GO-CONTRACT.json": "25977329bc83e0c45f240571a46787a16d7d4e82cc08263cb326ca7c8aa7bb5f",
+    "ROOT-GO-CONTRACT.json": "bf92baa2dc270a4ef9bfb75148c1e508a7069654b65b24c858032078e0519cbb",
     "RUNNER-PROVENANCE.json": "6ae53f332cdc6968415cb141a268121e9611b03b1ef50e7241b7e01049421344",
     "SOURCE-IDENTITY-REVIEW.json": "fc72fe45223ee1adde3b55bba5151a200e03d2ba6af58a53b3765ea0096e585c",
     "SOURCE-MANIFEST.json": "2b012a43ab3d65e3d68516772c0e3b85d3536f3006fff446a77fe551bc2f643b",
@@ -23,12 +25,15 @@
     "STATIC-TEST-INVENTORY.json": "0b545f5636a7a1410c0a24694f438f742fbc73ad22117e96f4f0178bc81500a9",
     "TEST-RESOURCE-POLICY.json": "548d41e431294e7f91cada9fdd38c2d04729ba086d53f84431ae405eb00dc3fa",
     "TITLE-FORMATTER-PROVENANCE.json": "ebdedfaac96a053439e79e183c4578608f22aadf3df2e0f17a2d4810191b8396",
+    "UPSTREAM-INSTALL-ANDROID-SDK.sh.txt": "17c5823f6e9696a99bad3b3550808e858293d1d793c5df259b6cc3b7c17cdfe9",
+    "UPSTREAM-LAYOUT-PROVENANCE.json": "4fcd7f48ab43ac85e8682ddb0a9ec2443f2311df074559214bd149cbc7efe083",
     "V3-CHANGE-SCOPE.json": "846253ca85facd1e1208e695f7c4a06b6c7319fe9f414c899171d24e3d1a4a1d",
     "V4-RELATIVE-FETCH-FRAMEWORK-EVIDENCE.json": "14ddd63ce35a8af41375c124ffdab49e0676dbdc92361625a93a50eb034e4808",
     "WORKSPACE-DEPENDENCY-ROOTS.json": "84af9a343cc0df03adda407196a6b9ee15340900173b091ae8f6035e403af33a",
     "bootstrap.mjs": "d44c89530d1eb045eb12d4e8638988364cab15e07f97849f8765ae2e53f667ca",
+    "capacity_recovery.py": "ef5c647d2401d85f71292db1f68dff5c75f0396077e8f861bd8f4c91fb3a4a23",
     "check_source.py": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5",
-    "claim.py": "00748200fd8aa6b0bd738cf1ca51da7181d2ebd918cf0616b69af8192f2a36a7",
+    "claim.py": "880f10b6dbcf9c21f44738382239b1b6217fc36f16178c328691014d91966265",
     "inventory-source/TEST-SOURCES.json": "63bfa22fa0048fec47bb83a7921566aee9bc61c84924327b6e543099678515fc",
     "inventory-source/TITLE-FORMATTER-PROVENANCE.json": "ebdedfaac96a053439e79e183c4578608f22aadf3df2e0f17a2d4810191b8396",
     "inventory-source/inputs/packages/core/src/types/primitives.ts": "76e6e42f2210decd68f57431ce34def5e058267a1b25fe95607ebda92d6eab06",
@@ -42,7 +47,7 @@
     "inventory-source/owning-fullfiles/plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts": "aa671114c061d615cfa2e1062049dadabde895aad16f284260be0c61227f6525",
     "inventory_dependencies.py": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1",
     "owning-preflight.mjs": "9b9173833574573eadb01ea43a6e68e9bd0581481b9b0bd85cae9735ae31f11b",
-    "run.py": "915a9b412df11742c457fee836db01e77c0bbd5e6af2aa1eb61474e1f9dbc45d",
+    "run.py": "4e9f9584b6a9da9890fd3dbd653d663eed8a5059cd08a2734ef091a9bf4dd191",
     "source-inputs/bun.lock": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
     "source-inputs/bunfig.toml": "eec98c76b5f98631cb0e417a4945e154476e3cfa963bf3d95c1a32d64afe3fe6",
     "source-inputs/package.json": "fd04e2ad8574cd0055627138466b8eec77404863e2bc546a866bace10c6d732b",
@@ -91,6 +96,6 @@
     "source-inputs/plugins/plugin-sqlite/index.ts": "571827cd3781cc292468efe4df1cb9b3ab1f427f3c2ee8b7cb21ad6f292885db",
     "source-inputs/plugins/plugin-sqlite/package.json": "2c67fd9839277c0f50427134a4897ebf1d1ed15b564c454c3c23ca7a1de931d9",
     "source-inputs/tsconfig.json": "41acc142aab04535ae7ced0827b159b8d7fbefe0096f96282085d47682e57576",
-    "workflow.yml": "64567cae3b105af53fb93dc6bb6618962217e8cd67e6852fecff7ef87d1546bd"
+    "workflow.yml": "d41cf54770af7c20141b36e342ac39764ae4035483884d230872169494d0a3ed"
   }
 }

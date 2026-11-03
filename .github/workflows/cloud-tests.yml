@@ -71,8 +71,29 @@ jobs:
           fetch-depth: 1
           submodules: false
           persist-credentials: false
+      - name: Recover capacity only from fixed unused hosted Android SDK payload
+        id: capacity
+        timeout-minutes: 3
+        env:
+          CLAIM_ARTIFACT_ID: ${{ steps.claim_artifact.outputs.artifact-id }}
+          GH_TOKEN: ${{ github.token }}
+          ROOT_GO_JSON: ${{ runner.temp }}/speech-root-go.json
+          EXPECTED_WORKFLOW_SHA: ${{ inputs.expected_workflow_sha }}
+        run: python3 -I -B operator/.github/qualification/speech-retirement/capacity_recovery.py
+      - name: Persist capacity evidence before setup or tests
+        id: capacity_artifact
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: ack-capacity-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/speech-capacity-results/*.json
+            ${{ runner.temp }}/speech-capacity-results/*.log
       - name: Isolated dependency installation and offline tests
         env:
+          CAPACITY_ARTIFACT_ID: ${{ steps.capacity_artifact.outputs.artifact-id }}
           CLAIM_ARTIFACT_ID: ${{ steps.claim_artifact.outputs.artifact-id }}
           GH_TOKEN: ${{ github.token }}
           ROOT_GO_JSON: ${{ runner.temp }}/speech-root-go.json

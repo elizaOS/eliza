@@ -1,0 +1,47 @@
+{
+  "state": "CI_ONLY_FIXED_UNUSED_ANDROID_PAYLOAD_PROPOSAL_V2_NO_EXECUTION",
+  "observed": {
+    "run": 41631981363,
+    "availableBytes": 13362499584,
+    "requiredEntryBytes": 17179869184,
+    "shortfallBytes": 3817369600,
+    "setupOrTestsStarted": false,
+    "image": "20261018.96.1"
+  },
+  "currentGraph": [
+    "Exactclaim persisted -> sourcecheckout -> measure entrycapacity12.44GiB -> fail16GiBfloor -> zero setup/tests"
+  ],
+  "proposedGraph": [
+    "ExactRootGO/immutableclaim -> exactsourcecheckout -> newCI-onlycapacityguard -> ifactualfree>=16GiB skip deletion and enforcefloor",
+    "If8GiB<=free<16GiB: actualhostedubuntu24+jobmetadata/Go+claim+source validated; fixedSDKparentroot-owned/nonwritable/nonlink, SDKstubrootowned/runnerwritable+samefs/preinstalledlayout; decodeactualmountinfo and rejectANYmountat/belowtarget, even same-devicebinds",
+    "OneUNPRIVILEGEDfixed/usr/bin/find -P /usr/local/lib/android/sdk -xdev -depth -mindepth 1 -delete; no sudo/privilege/mount/permission changes/shell/globs/exec; sameownedPG60s/8MiBlog/absoluteGOexpiry",
+    "RequireactualGNUfindversion/hash/path, emptydiagnostics+ordinaryexit0; record pre/postcapacity+source/host/path/mount/closure; prove SAME SDKstubdev/ino/type/uid/gid and FD-scandirempty payload; failclosedifanyproofunknownevenfree>=floor",
+    "Persistcapacityartifactbeforemain; mainverifyexactcapacityclaim/policy/script/digests/proof and reenforceoriginal16GiB entry -> unchangedinstall+initialcensus/preflight/all7/finalcensus/closure"
+  ],
+  "placement": "AfterexactsourcecheckoutbeforeanyDocker/setup. A precheckout-onlycheckcouldskipwith>=16GiBthencheckoutdropexactentrybelowfloor, so recoverychecksactualadmissionpoint. Immutableclaim remains beforeanysource/cleanup.",
+  "fixedTarget": "/usr/local/lib/android/sdk",
+  "forbidden": [
+    "Mac/selfhosted",
+    "source/workspaces/home/node_modules",
+    "Docker data/images",
+    "arbitrarycaches/SDKs/userfiles",
+    "variableglob/target",
+    "followlinks/crossfilesystem",
+    "lowerfloor/retry/newnonce/extraresourcegrowth"
+  ],
+  "unchangedV7": {
+    "entryBytes": 17179869184,
+    "stopBytes": 8589934592,
+    "diskGrowthBytes": 12884901888,
+    "wholeSeconds": 1200,
+    "testFileSeconds": 90,
+    "cpu": 2,
+    "pids": 256,
+    "resourcePolicySHA256": "548d41e431294e7f91cada9fdd38c2d04729ba086d53f84431ae405eb00dc3fa",
+    "oracleSHA256": "3fb4f419c0a4ab508ce971d4cb68f589a5cb9ae8891fdcfd6f9931cc6bcc660b"
+  },
+  "newCostNote": "Onlybelowentryfloor: boundedfixedmetadata/layout/mountinfo checks + one unprivileged fixed SDKpayload deletion O(entries), countunknown. Three20sGitHubmetadatareads, two10sGitidentityreads, one10sGNUfindversion, one60sownedcleanup PG (zero subprocesses fromfind,no -exec); capacitystep3min, originalRootabsolute1200/job22 andallV7resource/disk/testcapsunchanged. No SDKcodeexecution/network/model/provider calls, no source/cache/Docker/userSDK deletion. Recoveredbytesunknownuntilactualrun.",
+  "rootGO": "New policySHA+scriptSHA+explicitallowHostedUnusedAndroidCleanup bound inclaim/consumer/immutableartifact; no GO/nonce here.",
+  "priorGraphSHA256": "cd7410a6269858847f6f4bc391885947b200cf96a2a2f2f00f26f09a5271ce84",
+  "safetyLimits": "No guarantee against adversarial concurrent privileged host mount changes; actual current mountinfo/namespace rechecked immediately before and after operation, fixed root-owned protected parent pins target, unprivileged find has no capability to change mounts. Unknown/mismatched layout/permissions/mount/partialcleanup failclosed; no chmod/sudo/escalation."
+}

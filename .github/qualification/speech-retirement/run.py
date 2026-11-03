@@ -24,6 +24,9 @@ assert go['workflowCommit']==os.environ['GITHUB_SHA']==os.environ['EXPECTED_WORK
 assert go['sourceCommit']==manifest['commit'] and go['sourceTree']==manifest['tree']
 assert go['operatorSealSHA256']==sha(P/'SEAL.json')
 assert go['resourcePolicySHA256']==resource_sha and go['oracleSHA256']==oracle_sha
+assert go['allowHostedUnusedAndroidCleanup'] is True
+assert go['capacityRecoveryPolicySHA256']==plan['capacityRecoveryPolicySHA256']==sha(P/'CAPACITY-RECOVERY-POLICY.json')
+assert go['capacityRecoveryScriptSHA256']==plan['capacityRecoveryScriptSHA256']==sha(P/'capacity_recovery.py')
 assert 0<go['issuedEpoch']<=time.time()<go['expiresEpoch']<=go['issuedEpoch']+1200
 assert os.environ['GITHUB_RUN_ATTEMPT']=='1' and os.environ['RUNNER_ENVIRONMENT']=='github-hosted'
 assert sys.platform=='linux' and (3,12)<=sys.version_info[:2]<(3,16)
@@ -36,7 +39,7 @@ claim=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'speech-intent-claim.j
 assert claim['intentId']==go['intentId'] and claim['actualRunId']==os.environ['GITHUB_RUN_ID']
 assert claim['workflowCommit']==go['workflowCommit'] and claim['operatorSealSHA256']==go['operatorSealSHA256']
 assert claim['attempt']==int(os.environ['GITHUB_RUN_ATTEMPT'])==1
-for key in ['sourceCommit','sourceTree','mode','recipe','output','allowHostedFrozenLockSetup','expectedRegistrations','expectedPassed','expectedManualUnexecuted','manualTracePolicy','issuedEpoch','expiresEpoch','resourcePolicySHA256','oracleSHA256']:assert claim[key]==go[key], 'Claim scope mismatch'
+for key in ['sourceCommit','sourceTree','mode','recipe','output','allowHostedFrozenLockSetup','expectedRegistrations','expectedPassed','expectedManualUnexecuted','manualTracePolicy','issuedEpoch','expiresEpoch','resourcePolicySHA256','oracleSHA256','allowHostedUnusedAndroidCleanup','capacityRecoveryPolicySHA256','capacityRecoveryScriptSHA256']:assert claim[key]==go[key], 'Claim scope mismatch'
 assert claim['rootGOsha256']==sha(go_path), 'Claim does not bind exact Root GO input bytes'
 # Same reviewed repository-wide immutable artifact claim protocol; no token enters containers.
 import urllib.request
@@ -44,6 +47,26 @@ artifact_id=os.environ['CLAIM_ARTIFACT_ID'];assert artifact_id.isdigit()
 request=urllib.request.Request('https://api.github.com/repos/elizaOS/eliza/actions/artifacts/'+artifact_id,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
 with urllib.request.urlopen(request,timeout=20) as response:artifact=json.load(response)
 assert artifact['name']=='speech-intent-'+go['intentId'] and artifact['workflow_run']['id']==int(os.environ['GITHUB_RUN_ID']) and artifact['expired'] is False
+# CI capacity receipt was persisted before this unchanged main/setup stage.
+capacity_path=pathlib.Path(os.environ['RUNNER_TEMP']).resolve()/'speech-capacity-results/CAPACITY-RECOVERY.json'
+capacity=json.loads(capacity_path.read_text())
+assert capacity['state'] in ('SKIPPED_CAPACITY_SUFFICIENT','RECOVERED_FIXED_UNUSED_ANDROID_PAYLOAD')
+assert capacity['error'] is None and capacity['allOwnedGroupsEmpty'] is True and capacity['hostedMetadataVerified'] is True
+assert capacity['runId']==os.environ['GITHUB_RUN_ID'] and capacity['attempt']==1 and capacity['rootGOsha256']==sha(go_path)
+for key in ['intentId','workflowCommit','sourceCommit','sourceTree','operatorSealSHA256','resourcePolicySHA256','oracleSHA256','capacityRecoveryPolicySHA256','capacityRecoveryScriptSHA256']:assert capacity[key]==go[key]
+assert capacity['target']=='/usr/local/lib/android/sdk' and capacity['entryFloorBytes']==plan['resourceBounds']['minimumStartFreeBytes']
+assert capacity['afterAvailableBytes']>=plan['resourceBounds']['minimumStartFreeBytes']
+assert all(row['ownedGroupEmpty'] and row['acceptedExit'] and row['exit']==0 and not row['error'] for row in capacity['phases'])
+if capacity['state']=='RECOVERED_FIXED_UNUSED_ANDROID_PAYLOAD':
+ assert capacity['beforeAvailableBytes']<plan['resourceBounds']['minimumStartFreeBytes'] and capacity['targetPayloadEmptyAfter'] is True
+ assert capacity['targetStubAfter']['type']=='directory' and capacity['targetStubAfter']['uid']==capacity['targetStubAfter']['gid']==0
+ assert capacity['targetStubAfter']['device']==capacity['pathIdentity'][-1]['device'] and capacity['targetStubAfter']['inode']==capacity['pathIdentity'][-1]['inode']
+ assert len(capacity['mountChecks'])==3 and all(not row['sdkMountpoints'] for row in capacity['mountChecks'])
+else:assert capacity['action']=='SKIPPED' and capacity['beforeAvailableBytes']>=plan['resourceBounds']['minimumStartFreeBytes']
+capacity_artifact_id=os.environ['CAPACITY_ARTIFACT_ID'];assert capacity_artifact_id.isdigit()
+request=urllib.request.Request('https://api.github.com/repos/elizaOS/eliza/actions/artifacts/'+capacity_artifact_id,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
+with urllib.request.urlopen(request,timeout=20) as response:capacity_artifact=json.load(response)
+assert capacity_artifact['name']=='ack-capacity-'+os.environ['GITHUB_RUN_ID']+'-1' and capacity_artifact['workflow_run']['id']==int(os.environ['GITHUB_RUN_ID']) and capacity_artifact['expired'] is False
 with go_path.with_suffix('.consumed').open('x') as f:f.write('consumed')
 out.mkdir();start=time.monotonic();free_start=shutil.disk_usage(out).free
 records=[];owned=[];status='FAILED';run_error=None;cleanup_errors=[];family_results={}
@@ -308,6 +331,6 @@ finally:
   except ResourcePolicyError:pass # Retained resource failures below still force non-PASS after owned closure.
   except BaseException as exc:cleanup_errors.append({'cid':item['cid'],'error':str(exc)})
  resource_errors=[{'cid':item['cid'],**error}for item in owned for error in item.get('resourcePolicyFailures',[])]
- result={'state':'CLEANUP_FAILED' if cleanup_errors else 'RESOURCE_POLICY_FAILED' if resource_errors else status,'error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'resourcePolicyErrors':resource_errors,'seconds':time.monotonic()-start,'families':family_results,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'resourcePolicySHA256':resource_sha,'oracleSHA256':oracle_sha,'imagePulls':[x['phase'] for x in records if x['phase'].startswith('pull-') and x['exit']==0],'installStarted':any(x['phase']=='install' for x in records),'toolchainAssembly':any(x['phase']=='toolchain-assembly' for x in records),'broadSDKBuild':False,'normalCommandScope':'SelectedsevenactualAssistant/HostVitestfiles_only; mjs/type/native tails excluded','normalTypes':False,'normalSDKLifecycle':False,'providerFinancialOrDeviceAcceptance':False,'actualModelVoiceOrDeploymentAcceptance':False,'manualTraceExpectedUnexecuted':plan['manualTracePolicy']}
+ result={'state':'CLEANUP_FAILED' if cleanup_errors else 'RESOURCE_POLICY_FAILED' if resource_errors else status,'error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'resourcePolicyErrors':resource_errors,'seconds':time.monotonic()-start,'families':family_results,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'resourcePolicySHA256':resource_sha,'oracleSHA256':oracle_sha,'capacityRecoveryPolicySHA256':go['capacityRecoveryPolicySHA256'],'capacityRecoveryScriptSHA256':go['capacityRecoveryScriptSHA256'],'capacityReceiptSHA256':sha(capacity_path),'capacityArtifactId':int(capacity_artifact_id),'imagePulls':[x['phase'] for x in records if x['phase'].startswith('pull-') and x['exit']==0],'installStarted':any(x['phase']=='install' for x in records),'toolchainAssembly':any(x['phase']=='toolchain-assembly' for x in records),'broadSDKBuild':False,'normalCommandScope':'SelectedsevenactualAssistant/HostVitestfiles_only; mjs/type/native tails excluded','normalTypes':False,'normalSDKLifecycle':False,'providerFinancialOrDeviceAcceptance':False,'actualModelVoiceOrDeploymentAcceptance':False,'manualTraceExpectedUnexecuted':plan['manualTracePolicy']}
  (out/'RESULT.json').write_text(json.dumps(result,indent=2)+'\n')
 raise SystemExit(0 if status=='PASS_NORMAL_ACK_SELECTED_FILES_MANUAL_CAPTURE_UNEXECUTED_NOT_LIVE' and not run_error and not cleanup_errors and not resource_errors else 1)

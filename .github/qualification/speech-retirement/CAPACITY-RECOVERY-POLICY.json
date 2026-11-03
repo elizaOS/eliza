@@ -1,0 +1,39 @@
+{
+  "version": 1,
+  "scope": "CI-only conditional recovery of fixed unused preinstalled Android SDK payload on actual GitHub-hosted Ubuntu24 runner. Never macOS/selfhosted/source/userSDK/workspace/cache/Docker cleanup.",
+  "target": "/usr/local/lib/android/sdk",
+  "retainOriginalRootStub": true,
+  "scriptSHA256": "ef5c647d2401d85f71292db1f68dff5c75f0396077e8f861bd8f4c91fb3a4a23",
+  "fixedCommand": [
+    "/usr/bin/find",
+    "-P",
+    "/usr/local/lib/android/sdk",
+    "-xdev",
+    "-depth",
+    "-mindepth",
+    "1",
+    "-delete"
+  ],
+  "gnuFindVersionPattern": "^find \\(GNU findutils\\) (4\\.[0-9]+\\.[0-9]+)(?:\\n|$)",
+  "rootGoFlag": "allowHostedUnusedAndroidCleanup",
+  "minimumStartFreeBytes": 17179869184,
+  "stopFreeBytes": 8589934592,
+  "maxDiskGrowthBytes": 12884901888,
+  "ownedCleanupSeconds": 60,
+  "capacityStepMinutes": 3,
+  "logBytesPerPhase": 8388608,
+  "rootAbsoluteExpiryMaximumSeconds": 1200,
+  "jobMinutesUnchanged": 22,
+  "placement": "After immutable intent artifact and exact source checkout, before any Docker/setup; evaluate original actual entry point.",
+  "guards": [
+    "Actual GitHub-hosted metadata/job group0 labelsubuntu24/attempt1 plus localLinuxUbuntu24/x86_64/allowedImageVersion/nonroot",
+    "Exact RootGO/claim/workflow/source/script/policy/seal/resource/oracle identities, immutableclaimartifact persisted before cleanup",
+    "Fixed rootowned/nonsymlink parent chain/nonwritable parent modes/same filesystem as output; rootowned runnerwritable expectedSDKlayout and ANDROID_HOME/SDK_ROOT match",
+    "Actual mountinfo escapedpath decode; reject ALL mounts at or under SDK including same-devicebinds; namespace stable/recheck beforeafter",
+    "Actual GNUfind protectedbinary/path/version/hash; fixed literal no-shell/noexec/no glob/no-follow -P/onefs-xdev; no sudo/chmod/mount changes",
+    "Only actualfree below16GiB and notbelow8GiB, sufficient finiteRootwindow; otherwise skip or failclosed",
+    "Ordinaryexit0/emptydiagnostics/ownedPGempty; same rootstubdev/ino/type/uid/gid and no-follow FD-scandirempty; postfree>=original16GiB",
+    "Any unknown/mismatch/timeout/partialcleanup/stillinsufficient fails before main; never accept recoveredbytesalone or automatically retry"
+  ],
+  "noExecutionOrGoHere": true
+}

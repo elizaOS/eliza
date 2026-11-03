@@ -1,5 +1,5 @@
 {
-  "state": "RESOURCE_SUCCESSOR_ROOT_GO_SCHEMA_ONLY_NOT_ISSUED",
+  "state": "CI_ONLY_CAPACITY_SUCCESSOR_ROOT_GO_SCHEMA_NOT_ISSUED",
   "action": "ONE_EXACT_QUALIFICATION_RUN",
   "recipe": "ack-normal-fullfiles",
   "mode": "qualify",
@@ -18,5 +18,8 @@
   "output": "ActualRUNNER_TEMP/speech-retirement-results",
   "noNonceOrGoHere": true,
   "resourcePolicySHA256": "548d41e431294e7f91cada9fdd38c2d04729ba086d53f84431ae405eb00dc3fa",
-  "oracleSHA256": "3fb4f419c0a4ab508ce971d4cb68f589a5cb9ae8891fdcfd6f9931cc6bcc660b"
+  "oracleSHA256": "3fb4f419c0a4ab508ce971d4cb68f589a5cb9ae8891fdcfd6f9931cc6bcc660b",
+  "allowHostedUnusedAndroidCleanup": true,
+  "capacityRecoveryPolicySHA256": "1bdc264b01412cddc0cccf1644823d630de9fc5e951e5eda19dd7bd97aac142e",
+  "capacityRecoveryScriptSHA256": "ef5c647d2401d85f71292db1f68dff5c75f0396077e8f861bd8f4c91fb3a4a23"
 }

@@ -25,10 +25,12 @@
     ],
     "ImageOS": "ubuntu24",
     "architecture": "x86_64",
-    "cleanupPaths": [],
+    "cleanupPaths": [
+      "/usr/local/lib/android/sdk"
+    ],
     "cleanupSecondsPerPath": 60,
-    "cleanupBeforeMinimumDiskAdmission": false,
-    "cleanupOnlyWhenBelowEntryFloor": false,
+    "cleanupBeforeMinimumDiskAdmission": true,
+    "cleanupOnlyWhenBelowEntryFloor": true,
     "hostPythonRange": "3.12 <= version < 3.16",
     "capabilities": [
       "Linux /proc",
@@ -238,5 +240,8 @@
   "resourcePolicySHA256": "548d41e431294e7f91cada9fdd38c2d04729ba086d53f84431ae405eb00dc3fa",
   "oracleSHA256": "3fb4f419c0a4ab508ce971d4cb68f589a5cb9ae8891fdcfd6f9931cc6bcc660b",
   "sourceInventoryCorrection": "Only AST lexical ShorthandPropertyAssignment handling; all1122 ordered titles regenerated from c63/pinnedformatter;10 delivery names corrected/1112 unchanged. All case assertions/counts/manualpolicy unchanged. No raw report used as oracle input.",
-  "resourceOnlySuccessor": "Claims owning-4 wholefile only4GiB/Nodeoldspace1024; other6 remain2GiB/1536. Fresh full pre/post dependency census required; previous partial passes not inherited as current-run acceptance."
+  "resourceOnlySuccessor": "Claims owning-4 wholefile only4GiB/Nodeoldspace1024; other6 remain2GiB/1536. Fresh full pre/post dependency census required; previous partial passes not inherited as current-run acceptance.",
+  "capacityRecoveryPolicySHA256": "1bdc264b01412cddc0cccf1644823d630de9fc5e951e5eda19dd7bd97aac142e",
+  "capacityRecoveryScriptSHA256": "ef5c647d2401d85f71292db1f68dff5c75f0396077e8f861bd8f4c91fb3a4a23",
+  "capacityRecoveryScope": "CI-only fixed preinstalledSDKpayload clears via unprivileged fixedGNUfind; original root stub retained. All original entry/stop/growth/CPU/PID/memory/file/whole budgets preserved. New3minstage still bounded by original Rootabsoluteexpiry/job22."
 }

@@ -1,0 +1,14 @@
+{
+  "url": "https://api.github.com/repos/actions/runner-images/git/blobs/78de3d6cb6bb95b8a0b504ed381d2795b3eeb1a1",
+  "repository": "actions/runner-images",
+  "path": "images/ubuntu/scripts/build/install-android-sdk.sh",
+  "blob": "78de3d6cb6bb95b8a0b504ed381d2795b3eeb1a1",
+  "sha256": "17c5823f6e9696a99bad3b3550808e858293d1d793c5df259b6cc3b7c17cdfe9",
+  "facts": [
+    "Official installer fixes ANDROID_ROOT=/usr/local/lib/android and SDK child/sdk",
+    "Creates command-line-tools/latest,platform-tools,platforms,build-tools,NDK and acceptslicenses",
+    "chmod -R a+rwx SDK child; sdkroot writebits therefore not a parent safety guarantee"
+  ],
+  "limit": "Current official source data supports a conservative expected layout; not authenticated exact installed image bytes/ownership. Actual fixedpath/device/owner/nonlink/layout must be checked on admitted runner before any deletion. Source read only; never executed.",
+  "humanSourceURL": "https://github.com/actions/runner-images/blob/main/images/ubuntu/scripts/build/install-android-sdk.sh"
+}
