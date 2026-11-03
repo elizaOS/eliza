@@ -26,27 +26,21 @@ jobs:
         shell: bash
         run: |
           set -eu
-          STAGE="$(cygpath -u "$RUNNER_TEMP")/valhalla-stage"
-          export STAGE
+          STAGE="plugins/plugin-valhalla-copybot/.windows-stage"
           rm -rf "$STAGE"
-          mkdir -p "$STAGE/src" "$STAGE/public" "$STAGE/install"
-          cp -r plugins/plugin-valhalla-copybot/src/. "$STAGE/src/"
+          mkdir -p "$STAGE/src" "$STAGE/public" "$STAGE/install/dist/public"
+          cp -a plugins/plugin-valhalla-copybot/src/. "$STAGE/src/"
+          cp -a plugins/plugin-valhalla-copybot/public/. "$STAGE/public/"
+          cp -a plugins/plugin-valhalla-copybot/product.config.json "$STAGE/product.config.json"
+          cp -a plugins/plugin-valhalla-copybot/install/valhalla.iss "$STAGE/install/valhalla.iss"
+          cp -a plugins/plugin-valhalla-copybot/install/start-valhalla.bat "$STAGE/install/start-valhalla.bat"
+          cp -a plugins/plugin-valhalla-copybot/install/valhalla.ico "$STAGE/install/valhalla.ico"
+          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("plugins/plugin-valhalla-copybot/package.json","utf8")); delete p.devDependencies; delete p.peerDependencies; delete p.elizaos; p.dependencies=Object.fromEntries(Object.entries(p.dependencies||{}).filter(([,v])=>!String(v).startsWith("workspace:"))); fs.writeFileSync("plugins/plugin-valhalla-copybot/.windows-stage/package.json", JSON.stringify(p,null,2));'
           test -f "$STAGE/src/standalone.ts"
-          cp -r plugins/plugin-valhalla-copybot/public/. "$STAGE/public/"
-          cp plugins/plugin-valhalla-copybot/product.config.json "$STAGE/product.config.json"
-          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("plugins/plugin-valhalla-copybot/package.json","utf8")); delete p.devDependencies; delete p.peerDependencies; delete p.elizaos; p.dependencies=Object.fromEntries(Object.entries(p.dependencies||{}).filter(([,v])=>!String(v).startsWith("workspace:"))); fs.writeFileSync(process.env.STAGE+"/package.json", JSON.stringify(p,null,2));' 
-          cp plugins/plugin-valhalla-copybot/install/valhalla.iss "$STAGE/install/valhalla.iss"
-          cp plugins/plugin-valhalla-copybot/install/start-valhalla.bat "$STAGE/install/start-valhalla.bat"
-          cp plugins/plugin-valhalla-copybot/install/valhalla.ico "$STAGE/install/valhalla.ico"
-          cd "$STAGE"
-          bun install --ignore-scripts
-          mkdir -p install/dist/public
-          test -f src/standalone.ts
-          WINSTAGE="$(cygpath -w "$STAGE")"
-          # bun.exe keeps the Windows current directory, not the Git Bash one.
-          cmd.exe //c "cd /d ${WINSTAGE} && bun build --compile --target=bun src\\standalone.ts --outfile install\\dist\\valhalla-desk.exe"
-          test -f install/dist/valhalla-desk.exe
-          cp -r public/. install/dist/public/
+          bun --cwd "$STAGE" install --ignore-scripts
+          bun --cwd "$STAGE" build --compile --target=bun src/standalone.ts --outfile install/dist/valhalla-desk.exe
+          test -f "$STAGE/install/dist/valhalla-desk.exe"
+          cp -a "$STAGE/public/." "$STAGE/install/dist/public/"
           echo "$STAGE" > "$RUNNER_TEMP/stage-path.txt"
       - name: Install installer tools
         run: choco install innosetup wixtoolset -y
