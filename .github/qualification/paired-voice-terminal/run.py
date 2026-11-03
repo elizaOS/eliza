@@ -37,14 +37,20 @@ go_path=pathlib.Path(os.environ['ROOT_GO_JSON']).resolve();go=json.loads(go_path
 assert go['action']=='ONE_EXACT_QUALIFICATION_RUN' and go['recipe']=='paired-voice-terminal-normal-v2' and go['mode']=='qualify'
 assert go['sources']==plan['candidates'] and go['allowHostedFrozenLockSetup'] is True
 assert go['allowPinnedGitBootstrapBeforeAlphaAncestry'] is True
-for key,filename in [('operatorSealSHA256','SEAL.json'),('oracleSHA256','ORACLES.json'),('sourceManifestSHA256','SOURCE-MANIFEST.json'),('resourcePolicySHA256','TEST-RESOURCE-POLICY.json'),('toolchainSHA256','TOOLCHAIN.json')]:assert go[key]==sha(P/filename)
+for key,filename in [('operatorSealSHA256','SEAL.json'),('oracleSHA256','ORACLES.json'),('sourceManifestSHA256','SOURCE-MANIFEST.json'),('resourcePolicySHA256','TEST-RESOURCE-POLICY.json'),('toolchainSHA256','TOOLCHAIN.json'),('hostCohortsSHA256','HOST-COHORTS.json')]:assert go[key]==sha(P/filename)
 assert re.fullmatch('[a-f0-9]{32}',go['intentId'])
 assert 0<go['issuedEpoch']<=time.time()<go['expiresEpoch']<=go['issuedEpoch']+1200
 assert go['workflowCommit']==os.environ['GITHUB_SHA']==os.environ['EXPECTED_WORKFLOW_SHA']
 assert os.environ['GITHUB_RUN_ATTEMPT']=='1' and os.environ['RUNNER_ENVIRONMENT']=='github-hosted'
 assert os.environ['GITHUB_REPOSITORY']=='elizaOS/eliza' and os.environ['GITHUB_EVENT_NAME']=='workflow_dispatch'
 assert sys.platform=='linux' and os.uname().machine=='x86_64' and (3,12)<=sys.version_info[:2]<(3,16)
-assert os.environ['ImageOS']=='ubuntu24' and os.environ['ImageVersion']=='20261101.360.1'
+host_policy=json.loads((P/'HOST-COHORTS.json').read_text())
+runner_metadata={}
+for key,spec in host_policy['metadataFields'].items():
+ value=os.environ.get(spec['environment']);runner_metadata[key]=value if value is None or len(value)<=spec['maxChars'] else {'overBound':True,'length':len(value)}
+metadata_line=json.dumps({'state':'OBSERVED_RUNNER_METADATA_NOT_ADMISSION','fields':runner_metadata},separators=(',',':'));assert len(metadata_line.encode())<=4096
+print(metadata_line,flush=True)
+assert os.environ.get('ImageOS')==host_policy['ImageOS'] and os.environ.get('ImageVersion')in host_policy['allowedImageVersions']
 assert 'ALPHA_PRIVATE_CARTESIA_TEST_CASE' not in os.environ
 workspace=pathlib.Path(os.environ['GITHUB_WORKSPACE']).resolve()
 roots={'SDK':workspace/'source-sdk','Alpha':workspace/'source-alpha'}
@@ -53,7 +59,7 @@ out=pathlib.Path(sys.argv[1]).resolve();assert out==pathlib.Path(os.environ['RUN
 claim_path=pathlib.Path(os.environ['RUNNER_TEMP'])/'speech-intent-claim.json';claim=json.loads(claim_path.read_text())
 assert claim['rootGOsha256']==sha(go_path) and claim['actualRunId']==os.environ['GITHUB_RUN_ID'] and claim['attempt']==1
 assert isinstance(claim['diskAvailableBytesAtClaim'],int) and claim['diskAvailableBytesAtClaim']>=17179869184
-for key in ['intentId','sources','workflowCommit','operatorSealSHA256','oracleSHA256','sourceManifestSHA256','resourcePolicySHA256','toolchainSHA256','issuedEpoch','expiresEpoch','output','recipe','mode','allowHostedFrozenLockSetup','allowPinnedGitBootstrapBeforeAlphaAncestry']:assert claim[key]==go[key]
+for key in ['intentId','sources','workflowCommit','operatorSealSHA256','oracleSHA256','sourceManifestSHA256','resourcePolicySHA256','toolchainSHA256','hostCohortsSHA256','issuedEpoch','expiresEpoch','output','recipe','mode','allowHostedFrozenLockSetup','allowPinnedGitBootstrapBeforeAlphaAncestry']:assert claim[key]==go[key]
 artifact_id=os.environ['CLAIM_ARTIFACT_ID'];assert artifact_id.isdigit()
 request=urllib.request.Request('https://api.github.com/repos/elizaOS/eliza/actions/artifacts/'+artifact_id,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','X-GitHub-Api-Version':'2022-11-28'})
 with urllib.request.urlopen(request,timeout=20) as response:artifact=json.load(response)
@@ -62,7 +68,7 @@ assert shutil.disk_usage(out.parent).free>=17179869184
 with go_path.with_suffix('.consumed').open('x') as f:f.write('consumed')
 out.mkdir()
 seal=json.loads((P/'SEAL.json').read_text())['files']
-required={'run.py','PLAN.json','SOURCE-MANIFEST.json','ORACLES.json','TEST-RESOURCE-POLICY.json','TOOLCHAIN.json','Dockerfile','verify-host.py','check_source.py','POLICY.json','SOURCE-ADMISSION.json','SDK-PUBLISHER-SOURCE-GUARD.json','R7-REMOTE-LITERAL-PAIR-REVIEW.json','ROOT-SOURCE-ADMISSION-DISPOSITION.json'}|set(plan['containerHelperFiles'])
+required={'run.py','PLAN.json','SOURCE-MANIFEST.json','ORACLES.json','TEST-RESOURCE-POLICY.json','TOOLCHAIN.json','Dockerfile','verify-host.py','check_source.py','POLICY.json','HOST-COHORTS.json','SOURCE-ADMISSION.json','SDK-PUBLISHER-SOURCE-GUARD.json','R7-REMOTE-LITERAL-PAIR-REVIEW.json','ROOT-SOURCE-ADMISSION-DISPOSITION.json'}|set(plan['containerHelperFiles'])
 for label in roots:
  required|={f'dependency-census/{label}/inventory_dependencies.py',f'dependency-census/{label}/WORKSPACE-DEPENDENCY-ROOTS.json'}
 assert required.issubset(seal)

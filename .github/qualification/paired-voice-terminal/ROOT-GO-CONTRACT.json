@@ -1,5 +1,5 @@
 {
-  "state": "NOT_ISSUED_ROOT_TEMPLATE_NOT_EXECUTION_AUTHORITY",
+  "state": "NOT_ISSUED_REVIEWED_COHORT_ROOT_TEMPLATE",
   "action": "ONE_EXACT_QUALIFICATION_RUN",
   "recipe": "paired-voice-terminal-normal-v2",
   "mode": "qualify",
@@ -27,5 +27,17 @@
   "resourcePolicySHA256": "45da415ba1eddddaa66e0005fbb0cce6bdc12d17b2345f9beae272b2e154b93d",
   "toolchainSHA256": "2f62c07d10891282c9f038bd9bceb82b2ae670d184223bbff4f89ae6ec0bf32c",
   "normalTypes": "HELD_SEPARATE_NOT_WAIVED",
-  "noRootGoOrNonceIssuedHere": true
+  "noRootGoOrNonceIssuedHere": true,
+  "hostCohortsSHA256": "fbb3b272dbd7ef65ea21ac3c659296bd45f377802654fb1e8e5d3b00d3f9c007",
+  "hostProvenanceDisclosure": {
+    "20261025.353.1": "Exactauthenticated41741039106setup+explicitRootsourceexception; independentofficialtag/readmeprovenancegapOPEN, notcapabilitywaiver.",
+    "20261026.354.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": false
+    },
+    "20261101.360.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": true
+    }
+  }
 }

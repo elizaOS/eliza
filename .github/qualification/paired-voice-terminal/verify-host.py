@@ -3,7 +3,8 @@ import json,os,pathlib,shutil,stat,subprocess,sys
 assert sys.platform=="linux" and os.uname().machine=="x86_64"
 assert (3,12)<=sys.version_info[:2]<(3,16) and hasattr(os,"waitid") and hasattr(os,"WNOWAIT")
 assert pathlib.Path("/proc/self/stat").is_file()
-assert os.environ["ImageOS"]=="ubuntu24" and os.environ["ImageVersion"]=="20261101.360.1"
+host_policy=json.loads((pathlib.Path(__file__).parent/"HOST-COHORTS.json").read_text())
+assert os.environ.get("ImageOS")==host_policy["ImageOS"] and os.environ.get("ImageVersion")in host_policy["allowedImageVersions"]
 assert not any(os.environ.get(name)for name in ["DOCKER_HOST","DOCKER_CONTEXT","DOCKER_TLS_VERIFY","DOCKER_CERT_PATH"])
 assert stat.S_ISSOCK(pathlib.Path("/var/run/docker.sock").stat().st_mode)
 def docker(*args):return subprocess.check_output(["docker",*args],text=True,timeout=10).strip()

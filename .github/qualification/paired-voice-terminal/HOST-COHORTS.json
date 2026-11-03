@@ -1,0 +1,93 @@
+{
+  "state": "SOURCE_REVIEWED_FINITE_HOST_COHORTS_ACTUAL_CAPABILITIES_PENDING",
+  "ImageOS": "ubuntu24",
+  "setupImageLabel": "ubuntu-24.04",
+  "allowedImageVersions": [
+    "20261025.353.1",
+    "20261026.354.1",
+    "20261101.360.1"
+  ],
+  "officialSources": [
+    {
+      "tag": "ubuntu24/20261101.360",
+      "runtimeVersion": "20261101.360.1",
+      "state": "EXACT_OFFICIAL_TAG_COMMIT_README_RELEASE_METADATA",
+      "commit": "add4380b0d6685806e9192c33c37359ee0aa4023",
+      "tree": "57776617096f623ccfe0b0940cd35da20f5a27d8",
+      "readmeBlob": "707d839e521e51c4e9b7dabd4511890be83b0fc2",
+      "readmeSHA256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124",
+      "publishedAt": "2026-11-02T13:32:48Z",
+      "readmeContainsRuntimeVersion": true,
+      "releaseURL": "https://github.com/actions/runner-images/releases/tag/ubuntu24/20261101.360",
+      "proofFiles": {
+        "cohort-provenance/20261101.360/REF.json": "a6335026a298a1ce9b308d2ac81ce5e9fcdc9027b55f21c081f856b5cca8cec1",
+        "cohort-provenance/20261101.360/COMMIT.json": "693218a54559ca5e1d2d8d2ee79d7079877b467caaab06c86b7667dbc297dcd4",
+        "cohort-provenance/20261101.360/README-CONTENTS.json": "c3ee82ea8137a5f5ec16236d25ebe25f1e774a30aa5bbe7cd8314608aa4b6282",
+        "cohort-provenance/20261101.360/Ubuntu2404-Readme.md": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124",
+        "cohort-provenance/20261101.360/RELEASE.json": "057aad77520f99d6d83a8d54f0212d72664d950124cd1a49c827b25f99a2d5f3"
+      },
+      "officialReleasePrerelease": true,
+      "officialReleaseDraft": false
+    },
+    {
+      "tag": "ubuntu24/20261026.354",
+      "runtimeVersion": "20261026.354.1",
+      "state": "EXACT_OFFICIAL_TAG_COMMIT_README_RELEASE_METADATA",
+      "commit": "ac85c71971895cd6234578d6b11f49f7c27ff0c4",
+      "tree": "391b7668418e339e7762a8f9f824c5f2a48952a0",
+      "readmeBlob": "97e7ec74186bddefe5bb53c8d3e573955364d89c",
+      "readmeSHA256": "433ac9525040ccec39fc6b1fbcbeb457cba1acd6414317f940e1ea2d9bea73c9",
+      "publishedAt": "2026-10-26T21:36:30Z",
+      "readmeContainsRuntimeVersion": true,
+      "releaseURL": "https://github.com/actions/runner-images/releases/tag/ubuntu24/20261026.354",
+      "proofFiles": {
+        "cohort-provenance/20261026.354/REF.json": "a0bd3fc8b3a6411dc8165da7a20628314ed92e9cf1ce61567d263ecca4a19420",
+        "cohort-provenance/20261026.354/COMMIT.json": "21d812ff3fffa35d4687440fb5551f1199e97dab0a9d7c83426fa80590cc7484",
+        "cohort-provenance/20261026.354/README-CONTENTS.json": "44bfeda8df79a77eb3c7a93245546891e0752970f30c54c13af369ac4f2a7f1e",
+        "cohort-provenance/20261026.354/Ubuntu2404-Readme.md": "433ac9525040ccec39fc6b1fbcbeb457cba1acd6414317f940e1ea2d9bea73c9",
+        "cohort-provenance/20261026.354/RELEASE.json": "953e254cead03dcbb6456a6e3cbc81de7a702976402a995e1b670079f1484213"
+      },
+      "officialReleasePrerelease": false,
+      "officialReleaseDraft": false
+    }
+  ],
+  "rejectedOrPending": [
+    {
+      "ImageVersion": "20261018.96.1",
+      "reason": "Not included: no independently bound current primarysource receipts."
+    }
+  ],
+  "metadataFields": {
+    "ImageOS": {
+      "environment": "ImageOS",
+      "maxChars": 32
+    },
+    "ImageVersion": {
+      "environment": "ImageVersion",
+      "maxChars": 64
+    },
+    "runId": {
+      "environment": "GITHUB_RUN_ID",
+      "maxChars": 24
+    },
+    "attempt": {
+      "environment": "GITHUB_RUN_ATTEMPT",
+      "maxChars": 8
+    },
+    "workflowCommit": {
+      "environment": "GITHUB_SHA",
+      "maxChars": 64
+    }
+  },
+  "capabilityGuards": "All existing actualDocker28.0.4/localendpoint/Linuxx86/PythonWNOWAIT/disk/source/tool/cgroup/PGID/CID/expiry/normal/source-projection guards unchanged; finite sourcecohort only, no wildcard/latest/physicalcapacity acceptance.",
+  "observedRootDispositionCohorts": [
+    {
+      "runtimeVersion": "20261025.353.1",
+      "kind": "authenticatedGitHubjobattestation+explicitRootsourceDispositionWithPrimaryGap",
+      "provenanceFile": "cohort-provenance/20261025.353/PROVENANCE-LIMITATION.json",
+      "provenanceSHA256": "265d02b096d4dfbdb4057fd33229a12603bb941a7c789d700c1161f319eb1e78",
+      "setupLogSHA256": "984474fe24a855bff34e6d47f1b3a233ff47d79718b014910b71c6110a09d63d",
+      "runMetadataSHA256": "d88ddc7957df9501cbbbfcf3b12e39aab30c06ecd413bc453f0cac52e03f206a"
+    }
+  ]
+}

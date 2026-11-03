@@ -33,6 +33,8 @@
     "os": "ubuntu24",
     "architecture": "x86_64",
     "ImageVersion": [
+      "20261025.353.1",
+      "20261026.354.1",
       "20261101.360.1"
     ],
     "capabilityCheck": "fresh actual Docker/PGID/WNOWAIT/imageOS/imageVersion evidence; no prior receipt substitutes same-run facts",
@@ -589,5 +591,6 @@
     "sourceScope": "Only own Alpha .git metadata RW; worktree/SDK/operator readonly; publicHTTPS918 exact URL/SHA",
     "requiresExplicitRootGOField": "allowPinnedGitBootstrapBeforeAlphaAncestry",
     "maxSeconds": 120
-  }
+  },
+  "hostCohortPolicy": "HOST-COHORTS.json"
 }

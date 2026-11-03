@@ -55,7 +55,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: speech-intent-${{ steps.claim.outputs.intent_id }}
-          path: ${{ runner.temp }}/speech-intent-claim.json
+          path: |
+            ${{ runner.temp }}/speech-intent-claim.json
+            ${{ runner.temp }}/paired-voice-admission.json
           retention-days: 7
           if-no-files-found: error
       - name: Checkout exact admitted SDK source
