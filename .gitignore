@@ -624,6 +624,7 @@ reports/
 !packages/cloud/api/v1/reports/
 !packages/cloud/api/v1/reports/**
 docs/*
+!docs/privacy-policy.md
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
 !docs/automation-glossary.md
 !docs/design/
