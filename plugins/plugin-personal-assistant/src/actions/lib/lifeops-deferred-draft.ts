@@ -23,6 +23,7 @@ import type {
 } from "@elizaos/core";
 import {
   getRecentMessagesData,
+  getUserMessageText,
   ModelType,
   parseJsonModelRecord,
   recentConversationTexts,
@@ -687,10 +688,13 @@ export const deferredOwnerTodoRoutingEvaluator: ResponseHandlerEvaluator = {
     "Routes owner consent or an applied completion claim for a pending Todo draft through OWNER_TODOS before completion text can reach the user.",
   priority: 25,
   async shouldRun(context) {
-    const messageBody =
-      typeof context.message.content.text === "string"
-        ? context.message.content.text
-        : "";
+    // Read the owner's words, not the raw envelope: under document
+    // augmentation content.text carries the recalled documents plus the real
+    // request, so a document-only "yes, save it" (or undated-todo decline)
+    // would otherwise count as owner consent and force this pending draft
+    // through OWNER_TODOS. getUserMessageText unwraps <user_request> and
+    // prefers a connector's currentMessageText; a plain message is unchanged.
+    const messageBody = getUserMessageText(context.message);
     const ownerConfirmedDraft = isExplicitLifeCreateConfirmation(messageBody);
     const declinedSchedule = isExplicitScheduleDecline(messageBody);
     if (
