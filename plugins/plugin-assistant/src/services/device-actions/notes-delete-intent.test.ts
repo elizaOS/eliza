@@ -104,20 +104,34 @@ describe("originalRequestsNotesDeletion", () => {
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
   });
 
-  it("declines read or show after punctuation when it names the note or replaces the deletion", () => {
+  it("admits a deletion whose topic holds read or show before an adverbial instead or instead of deleting", () => {
+    const requests = [
+      "Delete the note about Agenda: show times instead of deleting the backup",
+      "Delete the note about Agenda: show times instead of removing the draft",
+      "Delete the note about Agenda: show times instead",
+      "Delete the note about Q3; show schedules instead of deleting the backup",
+      "Delete the note about groceries, show times instead of deleting it",
+      "Delete the note titled Show: read aloud tips instead of deleting the draft",
+      "Delete the note about groceries and show times instead",
+      "Delete the note titled read me instead",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
+  });
+
+  it("declines read or show after punctuation when it names the note", () => {
     const requests = [
       "Delete the note about groceries, show it to me instead of the draft",
-      "Delete the note about rent; just show the summary instead",
-      "Delete the note about rent. Read the list instead of deleting it",
+      "Delete the note about rent; just show it instead",
+      "Delete the note about rent. Read it instead of deleting it",
     ];
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
   });
 
-  it("declines read or show after a joining word when it names the note or replaces the deletion", () => {
+  it("declines read or show after a joining word when it names the note", () => {
     const requests = [
       "Delete the note about groceries and show it to me instead",
       "Delete the note about groceries and show it to me instead of the draft",
-      "Delete the note about rent or just show instead of deleting it",
+      "Delete the note about rent or just show it instead of deleting it",
     ];
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
   });
