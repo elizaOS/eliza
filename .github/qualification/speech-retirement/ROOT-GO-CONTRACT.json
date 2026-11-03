@@ -1,0 +1,20 @@
+{
+  "state": "ROOT_GO_SCHEMA_ONLY_NO_NONCE_OR_EXECUTION",
+  "action": "ONE_EXACT_QUALIFICATION_RUN",
+  "recipe": "zero-receipt-nine-only",
+  "mode": "qualify",
+  "allowHostedFrozenLockSetup": false,
+  "sourceCommit": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "sourceTree": "cd96bb6da937deb3419930432c1d2b35374d74a8",
+  "caseFile": "packages/cloud/api/src/inference-zero-receipt.test.ts",
+  "expectedCases": 9,
+  "retained136ReceiptSHA256": "ed21202a57ed9cdf9582fc8df3a5dfc1d2de6e9276e6cde501626c7ef2cf63bf",
+  "workflowCommit": "Root binds exact independently reviewed published workflow commit",
+  "operatorSealSHA256": "Root binds exact final published SEAL SHA256",
+  "intentId": "Root generates NEW128bithex only after publication/literalreview; never3spentintents",
+  "issuedEpoch": "Root fresh issuance",
+  "expiresEpoch": "Root finite expiry <=issued+600seconds",
+  "output": "Actual RUNNER_TEMP/speech-retirement-results",
+  "claimBinding": "Exact UTF8 RootGO bytes plus all source/workflow/seal/recipe/mode/setupfalse/case/9/136scope/issued/expiry/output fields, actualrun/attempt1; repositorywideimmutableartifactclaim uploadedbeforeSourcecheckout/image/test.",
+  "noGoHere": true
+}

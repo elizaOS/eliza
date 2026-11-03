@@ -1,0 +1,42 @@
+{
+  "state": "STATIC_EXACT_TWO_SOURCE_FILE_PRIVATE_UNIT_RUNTIME_CLOSURE_NO_EXECUTION",
+  "sourceCommit": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "sourceTree": "cd96bb6da937deb3419930432c1d2b35374d74a8",
+  "rows": [
+    {
+      "file": "packages/cloud/api/src/inference-zero-receipt.test.ts",
+      "sha256": "ccb4e90201aed2acf2d23e999da5ae7dc83b73171f3516df8ea663d5ff5314ef",
+      "imports": [
+        {
+          "specifier": "bun:test",
+          "typeOnly": false
+        },
+        {
+          "specifier": "../../shared/src/lib/services/inference-settlement-receipt",
+          "typeOnly": false
+        },
+        {
+          "specifier": "@elizaos/cloud-shared/lib/services/organization-inference-admission",
+          "typeOnly": true
+        }
+      ],
+      "dynamicRuntimeLoaders": []
+    },
+    {
+      "file": "packages/cloud/shared/src/lib/services/inference-settlement-receipt.ts",
+      "sha256": "fe3351e677ead3ab98878a69a3fdb3e6e46c396f4533100114481bfecd3e109c",
+      "imports": [
+        {
+          "specifier": "./organization-inference-admission",
+          "typeOnly": true
+        }
+      ],
+      "dynamicRuntimeLoaders": []
+    }
+  ],
+  "normalConfig": "Same canonical root bunfig and owningAPI/Shared package/tsconfig hashes; no preloads or local overrideconfigs, no config/devnull/QAaliases.",
+  "ordinaryResolution": "Actual pinned Bun.resolveSync normal source-relative path must match exacthelper path+SHA before tests; probe neverevaluateshelper. Fullninecase ordinary Bun test then proves builtin+privatehelper linkage.",
+  "typeOnlyLimits": "Type-only organization admission symbols erased by normalBun TS transpilation; this is not TypeScript compiler acceptance or publicadmissionchain coverage.",
+  "noNpmNeeded": "All runtime package imports are builtin bun:test; no runtime imports inactualhelper. Fresh source has no installednode_modules atany135normalworkspace root; no-install+networknone/read-only preventautoinstall. Existing unrelatednpm/Host/census work omitted, not fixtureproof fields skipped.",
+  "excluded": "No provider/money/native/types/prod/device acceptance; retained136separate."
+}

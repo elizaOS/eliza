@@ -1,25 +1,19 @@
 {
-  "state": "BOOTSTRAP_OWNER_ONLY_SOURCE_CORRECTION_SMALL_LAYOUT_TESTS_PASS_PENDING_REVIEW",
-  "sourceCommit": "cc15ae6bd65f632a606934023c5b6b71c6e65610",
-  "sourceTree": "f8d82d14841323a7a0e953108205a702270f160e",
-  "priorOperator": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-census-repair-v2",
-  "priorFailedRuns": [
-    41604472920,
-    41608637534
+  "state": "SOURCE_PREPARATION_NINE_ONLY_NORMAL_BUN_CONTRACT_PENDING_REVIEW_NO_EXECUTION",
+  "sourceCommit": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "sourceTree": "cd96bb6da937deb3419930432c1d2b35374d74a8",
+  "intendedScope": "Only actualprivatehelperconstructor/validator fullnine-casefile; preserveall136unchangedfamilyreceipts, no fullsingle145jobclaim/publicadmitOrg-privateattachchain proof.",
+  "sourceClosureProof": "STATIC-RUNTIME-CLOSURE.json hashes runtime2sources, allruntimeimports builtinbun:test+ordinaryprivateRelativehelper; type-onlyinterfaceimports erased, no dynamicloaders. Exactowning/rootconfigs pinned/no preloads/localoverrides, all135node_modules roots absent.",
+  "actualBunResolutionRequired": "TrustedBunbuiltinsonlyprobe verifiesLinuxx64/1.4.2/binarySHA+ordinaryBun.resolveSync relativehelper EXACTpath+fe3351sourcehash beforefull9Buntest; probe doesnot evaluateproductsource.",
+  "pinnedImage": "BUN-IMAGE.json exactamd64OCI296a79... andconfig8165c7..., noNodeImage/npm/build/census/Host work needed for thisclosedunit graph.",
+  "normalCommand": "PLAN.normalBunCommand: unchangedrootBunfig, APIcwd, --no-install --conditions=eliza-source/fullfile/default60000timeout/JUnit. No configdevnull/QAalias/skip/casenamefilter.",
+  "claimsCleanup": "ExistingreviewedPGIDbirth/WNOWAIT+exactlabelCIDcleanup+finalreceipt pattern, stricterwhole600s/growth1GiB, CPU2/RAM2GiB/PIDs256/log8MiB/floor16GiB-stop8GiB; allcontainersnetworknone/readOnlysource/nohostHOME/tokens/socket.",
+  "notExecuted": "No sourceimports/purehelpertest/configload/probe/OCI pull/CI/nonce/newRootGO yet; source/data parsing only.",
+  "priorEvidence": "136actualfullfilecaseproof ed21202a... (7files) retained+peer rawvalidation; b93onlychangesprivate9import andallothercc15leavesliteralverified. Failedrun416110keptfailed.",
+  "held": [
+    "Normalcompiler/APItypes",
+    "D1publicorganizationadmission/privateattachconsumer",
+    "ProviderMoney/prod/physical/normalSDKnative"
   ],
-  "priorSpentIntents": [
-    "3e2964cd326f37e48dd2a3dc67f686af",
-    "b85dedeaac4e0d231f1c093cbacf6dbd"
-  ],
-  "changedRuntimeHelper": "bootstrap.mjs",
-  "beforeSHA256": "45500652fb7b8572a8c3af344738526ceb76cdd220c8d55d49312a2aa809a1d7",
-  "afterSHA256": "12977d2f687ce3f68eb937fa0076868a71fff077de9c86f58b09e69d21557419",
-  "actualOwnerMap": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-bootstrap-owner-v1/BOOTSTRAP-OWNER-MAP.json",
-  "fix": "CheckEVERYdependencyatactualcanonicalownercontext: fixedrootVitestCLIselfcontext; HostconfigVitest/config andViteimports; API-ownedMiniflare; Miniflare-ownedWorkerd. Ownerdecl/identity +physicalorigin/packageidentity/exactpins+CLI/configversionconsistency recorded; no newresolveralias/dependency/install/contextflags.",
-  "unchanged": "Samecc15source/145ORACLES/lock/Hostconfig/censusprovenfull135/85-90-128MiB-1200caps/run/claim/workflow/hostpreflight byteunchanged.",
-  "smallFixtureReceipt": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-bootstrap-owner-v1/BOOTSTRAP-FIXTURE-TEST-RESULT.json",
-  "smallFixtureCases": 12,
-  "priorActualCensusAcceptedScope": "416086 full135roots/272403files/14666links capture27.8966s/freshverify9.3534s underoriginalcaps; no newcensuswalkdonehere.",
-  "nextRuntimeGate": "After independentdelta+publicationliteralreview/freshRootGO: actualnormalownerbootstrap, HostSSR then145; thissourcefixture doesnotqualifyrealpackages/SSR/145.",
-  "noRerunNewNonceSourcePublicationOrLiveChangesHere": true
+  "next": "Independentexactminimallegsource review; authorizedsourcebranchpublication+literalreadback, thenRootfreshfinite9onlyGO. No executionpermissionfromsourcePASS."
 }

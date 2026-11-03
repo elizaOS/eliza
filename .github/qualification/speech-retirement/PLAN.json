@@ -1,22 +1,22 @@
 {
+  "state": "MINIMAL_NINE_ONLY_HOSTED_SOURCE_PREPARATION_NO_GO",
+  "recipe": "zero-receipt-nine-only",
+  "sourceCommit": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "sourceTree": "cd96bb6da937deb3419930432c1d2b35374d74a8",
+  "caseFile": "packages/cloud/api/src/inference-zero-receipt.test.ts",
+  "expectedCases": 9,
   "resourceBounds": {
-    "wholeSeconds": 1200,
-    "jobTimeoutMinutes": 22,
+    "wholeSeconds": 600,
+    "jobTimeoutMinutes": 12,
     "cpu": 2,
     "pids": 256,
+    "memoryBytes": 2147483648,
     "logBytesPerPhase": 8388608,
-    "maxDiskGrowthBytes": 12884901888,
+    "maxDiskGrowthBytes": 1073741824,
     "minimumStartFreeBytes": 17179869184,
-    "stopFreeBytes": 8589934592
-  },
-  "reviewedRunner": {
-    "ImageOS": "ubuntu24",
-    "dockerServer": "28.0.4",
-    "evidenceRun": 41504810728,
-    "evidenceAttempt": 1,
-    "evidenceArtifact": 13169763764,
-    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90",
-    "scope": "Docker and ImageOS pins only; image admission uses the sealed finite allowlist plus same-run capabilities."
+    "stopFreeBytes": 8589934592,
+    "imagePullSeconds": 120,
+    "testPhaseSeconds": 60
   },
   "hostEnvironment": {
     "allowedImageVersions": [
@@ -50,62 +50,42 @@
     "noMacExecutionOrDeletion": true,
     "normalSDKLifecycleStillFalse": true
   },
-  "state": "FINAL_ONCE_REBOUND_HOSTED_SETUP_AND_FULL145_PROPOSAL",
-  "sourceCommit": "cc15ae6bd65f632a606934023c5b6b71c6e65610",
-  "sourceTree": "f8d82d14841323a7a0e953108205a702270f160e",
-  "recipe": "owning",
-  "sourceExportCondition": "eliza-source",
-  "normalSDKLifecycle": false,
-  "fullFiles": [
-    "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
-    "packages/cloud/api/src/inference-settlement-replay.test.ts",
-    "packages/cloud/api/src/inference-zero-receipt.test.ts",
-    "packages/cloud/api/src/speech-relay-admission.retirement.test.ts",
-    "packages/cloud/api/src/speech-retirement-composition.test.ts",
-    "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
-    "packages/cloud/api/src/speech-retirement-state.test.ts",
-    "packages/host/src/voice/speech-retirement-session.test.ts"
+  "reviewedRunner": {
+    "ImageOS": "ubuntu24",
+    "dockerServer": "28.0.4",
+    "evidenceRun": 41504810728,
+    "evidenceAttempt": 1,
+    "evidenceArtifact": 13169763764,
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90",
+    "scope": "Docker and ImageOS pins only; image admission uses the sealed finite allowlist plus same-run capabilities."
+  },
+  "expectedBun": {
+    "version": "1.4.2",
+    "sha256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+    "platform": "linux",
+    "arch": "x64"
+  },
+  "normalBunCommand": [
+    "/usr/local/bin/bun",
+    "--no-install",
+    "--conditions=eliza-source",
+    "test",
+    "./src/inference-zero-receipt.test.ts",
+    "--timeout=60000",
+    "--reporter=junit",
+    "--reporter-outfile=/results/nine.xml"
   ],
-  "cases": 145,
-  "expectedTools": {
-    "node": "24.15.0",
-    "bun": "1.4.2",
-    "bunSHA256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
-    "nodeSHA256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
-  },
-  "network": "HOSTED setup install is sole network=bridge/read-write source exception. Pinned OCI pulls occur on hosted runner. Every versions/bootstrap/config-preflight/API/Host test container uses network=none and read-only source, with in-container loopback permitted for actual Workerd/Miniflare fixture. No host ports, Docker socket, GitHub token, prod/provider credentials or inherited host environment passed into containers.",
-  "forbiddenActions": [
-    "Macinstall",
-    "MacDockerpull",
-    "nativehooks",
-    "broadsourcebuild",
-    "newaliases",
-    "skipconfig",
-    "borroweddist",
-    "liveproviders",
-    "financial",
-    "typescopes"
+  "cwd": "/workspace/packages/cloud/api",
+  "network": "Host maypullonlyexactqualifiedBunOCI; allcontainers networknone/sourceReadonly/nohostcredentials/socket/home, no dependencyinstall/build/census/Hostwork.",
+  "runtimeClosure": "Onlytwoactualsourcefiles+bun:testbuiltin; helper/testotherimports type-only erased. Rootandowningconfigs exactunchanged; no externalruntimeNPM deps. ActualBunordinaryrelative resolution+absenceofall135node_modulesroots checkedbeforetest.",
+  "excluded": [
+    "npm",
+    "census",
+    "Hostpreflight",
+    "passed136rerun",
+    "compiler/types",
+    "provider/financial/prod/device",
+    "publicadmitOrg-privateattachchain"
   ],
-  "APIFilePhaseSeconds": 90,
-  "hostPhaseSeconds": 90,
-  "fullFileTimeouts": "Keep explicit owning120s testtimeouts; defaultBun60000. Container90s is tighter existingbound and yields incompleteifexhausted, never widened automatically.",
-  "dependencyAdmission": "HOSTED ONLY actual canonical frozen-lock scripts-disabled install produces bounded complete physical dependency/tool/source receipts, then stage-gates all fixtures on verified fresh receipts. Not retained/prequalified dependency bytes or normal native lifecycle.",
-  "hostedSetupBounds": {
-    "eachPinnedImagePullSeconds": 120,
-    "toolchainAssemblySeconds": 90,
-    "installSeconds": 600,
-    "installMemory": "4g",
-    "dependencyInventorySeconds": 90,
-    "dependencyInventoryBytes": 134217728,
-    "sameWholeBudgetSeconds": 1200
-  },
-  "sameLockPriorActual": {
-    "run": 41576211167,
-    "bunLockSHA256": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
-    "installSeconds": 30.146350580999993,
-    "allOwnedGroupsClosed": true,
-    "ignoreScripts": true,
-    "notCurrentInstallAcceptance": true
-  },
-  "sourceConfigCorrection": "Published cc15 canonical Host SSR conditions; root aliases/includes/timeouts and all145tests/lock unchanged, literal GitHubverified. ActualSSR gate remainsrequired."
+  "priorFailuresAndClaims": "416044/416086/416110andallspentintentsremainimmutable; noautomaticretry"
 }

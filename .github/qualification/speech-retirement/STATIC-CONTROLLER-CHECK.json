@@ -1,0 +1,5 @@
+{
+  "scope": "PythonASTparse/namesdataonly, no controller execution",
+  "undefinedLexicalNames": [],
+  "runtimeSourceImportsExecuted": false
+}

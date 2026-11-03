@@ -7,13 +7,15 @@ plan=json.loads((P/'PLAN.json').read_text());manifest=json.loads((P/'SOURCE-MANI
 sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
 for name,want in json.loads((P/'SEAL.json').read_text())['files'].items():assert sha(P/name)==want,name
 go_path=pathlib.Path(os.environ['ROOT_GO_JSON']).resolve();go=json.loads(go_path.read_text())
-assert go['action']=='ONE_EXACT_QUALIFICATION_RUN' and go['recipe']=='owning-setup-and-fixtures' and go['mode']=='qualify'
-assert go['allowHostedFrozenLockSetup'] is True
+assert go['action']=='ONE_EXACT_QUALIFICATION_RUN' and go['recipe']=='zero-receipt-nine-only' and go['mode']=='qualify'
+assert go['allowHostedFrozenLockSetup'] is False
+assert go['caseFile']==manifest['caseFile'] and go['expectedCases']==manifest['expectedCases']==9
+assert go['retained136ReceiptSHA256']==oracle['retained136ProofSHA256']
 assert re.fullmatch('[a-f0-9]{32}',go['intentId'])
 assert go['workflowCommit']==os.environ['GITHUB_SHA']==os.environ['EXPECTED_WORKFLOW_SHA']
 assert go['sourceCommit']==manifest['commit'] and go['sourceTree']==manifest['tree']
 assert go['operatorSealSHA256']==sha(P/'SEAL.json')
-assert 0<go['issuedEpoch']<=time.time()<go['expiresEpoch']<=go['issuedEpoch']+1200
+assert 0<go['issuedEpoch']<=time.time()<go['expiresEpoch']<=go['issuedEpoch']+600
 assert os.environ['GITHUB_RUN_ATTEMPT']=='1' and os.environ['RUNNER_ENVIRONMENT']=='github-hosted'
 assert sys.platform=='linux' and (3,12)<=sys.version_info[:2]<(3,16)
 assert os.environ['GITHUB_REPOSITORY'].lower()=='elizaos/eliza' and os.environ['GITHUB_EVENT_NAME']=='workflow_dispatch'
@@ -25,7 +27,7 @@ claim=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'speech-intent-claim.j
 assert claim['intentId']==go['intentId'] and claim['actualRunId']==os.environ['GITHUB_RUN_ID']
 assert claim['workflowCommit']==go['workflowCommit'] and claim['operatorSealSHA256']==go['operatorSealSHA256']
 assert claim['attempt']==int(os.environ['GITHUB_RUN_ATTEMPT'])==1
-for key in ['sourceCommit','sourceTree','mode','recipe','output','allowHostedFrozenLockSetup','issuedEpoch','expiresEpoch']:assert claim[key]==go[key], 'Claim scope mismatch'
+for key in ['sourceCommit','sourceTree','mode','recipe','output','allowHostedFrozenLockSetup','caseFile','expectedCases','retained136ReceiptSHA256','issuedEpoch','expiresEpoch']:assert claim[key]==go[key], 'Claim scope mismatch'
 assert claim['rootGOsha256']==sha(go_path), 'Claim does not bind exact Root GO input bytes'
 # Same reviewed repository-wide immutable artifact claim protocol; no token enters containers.
 import urllib.request
@@ -36,7 +38,7 @@ assert artifact['name']=='speech-intent-'+go['intentId'] and artifact['workflow_
 with go_path.with_suffix('.consumed').open('x') as f:f.write('consumed')
 out.mkdir();start=time.monotonic();free_start=shutil.disk_usage(out).free
 records=[];owned=[];status='FAILED';run_error=None;cleanup_errors=[];family_results={}
-runid=os.environ['GITHUB_RUN_ID'];assert runid.isdigit();prefix='speech-retirement-'+runid+'-1-owning'
+runid=os.environ['GITHUB_RUN_ID'];assert runid.isdigit();prefix='speech-retirement-'+runid+'-1-nine'
 class PhaseExitError(RuntimeError):
  def __init__(self,phase_name,code):
   super().__init__(f'{phase_name} exited {code}');self.phase_name=phase_name;self.code=code
@@ -63,7 +65,7 @@ def phase(name,args,timeout,accepted=(0,),cleanup=False):
    assert time.time()<go['expiresEpoch'], 'Root GO expired'
    free=shutil.disk_usage(out).free
    if free<plan['resourceBounds']['stopFreeBytes'] or free_start-free>plan['resourceBounds']['maxDiskGrowthBytes']:raise RuntimeError('disk bound before launch')
-   if time.monotonic()-start>1200:raise RuntimeError('whole-job wall bound before launch')
+   if time.monotonic()-start>600:raise RuntimeError('whole-job wall bound before launch')
   proc=subprocess.Popen(args,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,start_new_session=True)
   first=identity(proc.pid);assert first and first['pgid']==proc.pid;birth=first['birth']
   os.set_blocking(proc.stdout.fileno(),False);sel=selectors.DefaultSelector();sel.register(proc.stdout,selectors.EVENT_READ)
@@ -83,7 +85,7 @@ def phase(name,args,timeout,accepted=(0,),cleanup=False):
      assert time.time()<go['expiresEpoch'], 'Root GO expired'
      free=shutil.disk_usage(out).free
      if free<plan['resourceBounds']['stopFreeBytes'] or free_start-free>plan['resourceBounds']['maxDiskGrowthBytes']:raise RuntimeError('disk bound')
-     if time.monotonic()-start>1200:raise RuntimeError('whole-job wall bound')
+     if time.monotonic()-start>600:raise RuntimeError('whole-job wall bound')
     # WNOWAIT deliberately retains the leader identity until its group is empty.
     if os.waitid(os.P_PID,proc.pid,os.WEXITED|os.WNOHANG|os.WNOWAIT):
      deadline=time.monotonic()+1
@@ -138,10 +140,10 @@ def cleanup_container(item,label):
  item['closed']=True
 
 def container_phase(name,network,memory,command,timeout,rw=False,test_family=False,cwd="/workspace"):
- assert (name=="install" and network=="bridge" and rw) or (name!="install" and network=="none" and not rw)
+ assert network=="none" and not rw
  cname=prefix+'-'+name
  assert inspect_container(cname,name+'-absence') is None,'Preexisting container name; no mutation'
- args=['docker','create','--pull=never','--name',cname,'--label','org.eliza.qualification-run='+runid,'--label','org.eliza.qualification-kind=speech-retirement','--network',network,'--cpus','2','--memory',memory,'--memory-swap',memory,'--pids-limit','256','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--user',str(os.getuid())+':'+str(os.getgid()),'--tmpfs','/tmp:rw,nosuid,size=536870912','--mount','type=bind,src='+str(source)+',dst=/workspace'+('' if rw else ',readonly'),'--mount','type=bind,src='+str(out)+',dst=/results','--workdir',cwd,'--env','HOME=/tmp/home','--env','TMPDIR=/tmp','--env','CI=true','--env','NODE_ENV=test','--env','NODE_OPTIONS=--max-old-space-size=1536','--env','ELIZA_VAULT_DISABLE_KEYCHAIN=1','--env','ELIZA_LIVE_TEST=0','--env','BUN_INSTALL_CACHE_DIR='+('/workspace/.cache/qualification-bun' if name=='install' else '/tmp/bun-cache'),'--env','BUN_CONFIG_NO_AUTO_INSTALL=true','--env','VITEST_FS_MODULE_CACHE_PATH=/results/fs-module-cache','--entrypoint',command[0],image,*command[1:]]
+ args=['docker','create','--pull=never','--name',cname,'--label','org.eliza.qualification-run='+runid,'--label','org.eliza.qualification-kind=speech-retirement','--network',network,'--cpus','2','--memory',memory,'--memory-swap',memory,'--pids-limit','256','--read-only','--cap-drop=ALL','--security-opt=no-new-privileges','--user',str(os.getuid())+':'+str(os.getgid()),'--tmpfs','/tmp:rw,nosuid,size=536870912','--mount','type=bind,src='+str(source)+',dst=/workspace'+('' if rw else ',readonly'),'--mount','type=bind,src='+str(out)+',dst=/results','--workdir',cwd,'--env','HOME=/tmp/home','--env','TMPDIR=/tmp','--env','CI=true','--env','NODE_ENV=test','--env','NODE_OPTIONS=--max-old-space-size=1536','--env','ELIZA_VAULT_DISABLE_KEYCHAIN=1','--env','ELIZA_LIVE_TEST=0','--env','BUN_INSTALL_CACHE_DIR=/tmp/bun-cache','--env','BUN_CONFIG_NO_AUTO_INSTALL=true','--entrypoint',command[0],image,*command[1:]]
  # Register intent before the daemon can create anything. A lost CLI reply
  # is reconciled by exact name AND run labels, never removed by name alone.
  item={'cid':None,'name':cname,'createCompleted':False};owned.append(item)
@@ -192,7 +194,7 @@ def verify_source():
  for name,want in manifest['files'].items():assert sha(source/name)==want,name
  env=dict(os.environ,GIT_NO_LAZY_FETCH='1',GIT_NO_REPLACE_OBJECTS='1',GIT_OPTIONAL_LOCKS='0')
  def git(*args,allowed=(0,)):
-  remaining=min(10.0,go['expiresEpoch']-time.time(),1200-(time.monotonic()-start))
+  remaining=min(10.0,go['expiresEpoch']-time.time(),600-(time.monotonic()-start))
   assert remaining>0,'No remaining finite source-metadata window'
   result=subprocess.run(['git','-c','core.hooksPath=/dev/null','-c','core.fsmonitor=false','-C',str(source),*args],env=env,text=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=remaining)
   assert result.returncode in allowed,'Source metadata read failed'
@@ -203,72 +205,54 @@ def verify_source():
  assert not git('diff','--no-ext-diff','--name-only','HEAD')
  assert not git('ls-files','--others','--exclude-standard'), 'Untracked source overlay'
  assert not any(x.startswith('S ') or x[:1].islower() for x in git('ls-files','-v').splitlines())
- for directory in [source,source/'packages/cloud/api',source/'packages/host']:
+ for directory in [source,source/'packages/cloud/api',source/'packages/cloud/shared']:
   for name in ['.env','.env.local','.env.production','.env.test','.dev.vars']:
    assert not (directory/name).exists(), 'Credential-bearing environment file not admitted'
 
-def verify_dependencies():
- receipt=out/'DEPENDENCY-INVENTORY.json';d=json.loads(receipt.read_text())
- assert d['sourceCommit']==manifest['commit'] and d['sourceTree']==manifest['tree']
- assert d['bunLockSHA256']==manifest['bunLockSHA256'] and d['ignoreScripts'] is True and d['nativeHooksExecuted'] is False
- assert d['files']>0 and d['sourceRoot']==str(source) and d['platform']=='linux-x64'
- assert sha(out/'dependency-files.jsonl')==d['inventorySHA256']
- phase('verify-installed-dependencies'+('-final' if 'host' in [x['phase'] for x in records] else ''),[sys.executable,'-I','-B',str(P/'inventory_dependencies.py'),'verify',str(source),str(out),manifest['commit'],manifest['tree'],manifest['bunLockSHA256']],90)
- return {'receiptSHA256':sha(receipt),'inventorySHA256':d['inventorySHA256'],'fileCount':d['files'],'normalNativeLifecycle':False}
-
-def judge_host(failure):
- d=json.loads((out/'host.json').read_text());rows=d['testResults'];assert len(rows)==1
- file='packages/host/src/voice/speech-retirement-session.test.ts';r=rows[0];cases=r['assertionResults'];names=[x['title'] for x in cases]
- reportfile=normalized_report_file(r.get('name'),'packages/host')
- valid=failure is None and reportfile==file and r['status']=='passed' and all(x['status']=='passed' for x in cases) and names==oracle['fullFileNames'][file]
- valid=valid and d['numTotalTests']==d['numPassedTests']==len(names)==15 and d['numFailedTests']==0 and d.get('numPendingTests',0)==0 and d.get('numTodoTests',0)==0
- family_results[file]={'outcome':'passed' if valid else 'failed','observedNames':names,'reportFile':reportfile,'counts':{'total':d['numTotalTests'],'passed':d['numPassedTests'],'failed':d['numFailedTests']},'cleanlyClosed':True}
+ for relative in json.loads((P/'WORKSPACE-DEPENDENCY-ROOTS.json').read_text()):
+  candidate=source/relative
+  assert not candidate.exists() and not candidate.is_symlink(),'No installed dependency tree admitted to pure unit leg'
+ for directory in [source/'packages/cloud/api',source/'packages/cloud/shared']:
+  for name in ['bunfig.toml','.bunfig.toml']:
+   assert not (directory/name).exists(),'Unexpected local Bun config outside pinned normal root config'
 
 try:
- (out/'runner.json').write_text(json.dumps({'ImageVersion':os.environ['ImageVersion'],'ImageOS':os.environ['ImageOS'],'architecture':os.uname().machine,'platform':sys.platform,'python':list(sys.version_info[:3]),'repository':os.environ['GITHUB_REPOSITORY'],'event':os.environ['GITHUB_EVENT_NAME'],'runId':runid,'attempt':os.environ['GITHUB_RUN_ATTEMPT'],'freeStartBytes':free_start,'phase':'pre-setup-no-pulls-or-install-yet'},indent=2)+'\n')
+ (out/'runner.json').write_text(json.dumps({'ImageVersion':os.environ['ImageVersion'],'ImageOS':os.environ['ImageOS'],'architecture':os.uname().machine,'platform':sys.platform,'python':list(sys.version_info[:3]),'repository':os.environ['GITHUB_REPOSITORY'],'event':os.environ['GITHUB_EVENT_NAME'],'runId':runid,'attempt':os.environ['GITHUB_RUN_ATTEMPT'],'freeStartBytes':free_start,'phase':'nine-only-no-installs-or-tests-yet'},indent=2)+'\n')
  assert free_start>=plan['resourceBounds']['minimumStartFreeBytes']
  text,_=phase('docker-version',['docker','version','--format','{{.Server.Version}}'],10)
  assert text.strip()==plan['reviewedRunner']['dockerServer']
  text,_=phase('docker-platform',['docker','info','--format','{{.OSType}}/{{.Architecture}}'],10)
  assert text.strip()=='linux/x86_64'
- # Read-only host bootstrap/custody capability; no toolchain purge or host cleanup.
  phase('host-capability',[sys.executable,'-I','-B','-c',"import os; assert hasattr(os,'waitid') and hasattr(os,'WNOWAIT'); assert os.path.isdir('/proc'); print('linux-waitid-WNOWAIT-present')"],10)
  guard,_=phase('known-incident-source-guard',[sys.executable,'-I','-B',str(P/'check_source.py'),'--kind','sdk','--repo',str(source),'--expected-head',manifest['commit']],65)
  assert json.loads(guard)['result']=='PASS'
  verify_source()
- for name,filename,repo in [('bun','BUN-IMAGE.json','oven/bun'),('node','NODE-IMAGE.json','library/node')]:
-  digest=json.loads((P/filename).read_text())['selectedDigest'];phase('pull-'+name,['docker','pull',repo+'@'+digest],120)
- phase('toolchain-assembly',['docker','build','--network=none','--pull=false','-t',prefix+'-tools','-f',str(P/'Dockerfile'),str(P)],90)
- text,_=phase('toolchain-image',['docker','image','inspect',prefix+'-tools','--format','{{.Id}}'],10);image=text.strip();assert re.fullmatch('sha256:[a-f0-9]{64}',image)
- toolcode="const c=require('node:child_process'),f=require('node:fs'),h=require('node:crypto');const x={node:process.versions.node,bun:c.execFileSync('/usr/local/bin/bun',['--version'],{encoding:'utf8'}).trim(),bunSHA256:h.createHash('sha256').update(f.readFileSync('/usr/local/bin/bun')).digest('hex'),nodeSHA256:h.createHash('sha256').update(f.readFileSync('/usr/local/bin/node')).digest('hex')};console.log(JSON.stringify(x));"
- container_phase('versions','none','2g',['/usr/local/bin/node','-e',toolcode],20)
- versions=json.loads((out/'versions.log').read_text());assert versions==plan['expectedTools']
- assert not (source/'.cache/qualification-bun').exists(), 'Fresh owned install cache required'
- container_phase('install','bridge','4g',['/usr/local/bin/bun','install','--frozen-lockfile','--ignore-scripts','--no-progress'],600,rw=True)
+ image_info=json.loads((P/'BUN-IMAGE.json').read_text());image='oven/bun@'+image_info['selectedDigest']
+ phase('pull-bun',['docker','pull',image],120)
+ text,_=phase('image-identity',['docker','image','inspect',image,'--format','{{json .}}'],10);actual_image=json.loads(text)
+ assert actual_image['Id']==image_info['configDigest'] and actual_image['Os']=='linux' and actual_image['Architecture']=='amd64'
+ (out/'IMAGE-IDENTITY.json').write_text(json.dumps({'requested':image,'Id':actual_image['Id'],'Os':actual_image['Os'],'Architecture':actual_image['Architecture'],'RepoDigests':actual_image.get('RepoDigests',[])},indent=2)+'\n')
+ probe=(P/'runtime-resolution.mjs').read_text()
+ container_phase('runtime-resolution','none','2g',['/usr/local/bin/bun','--no-install','--conditions=eliza-source','--eval',probe],20,cwd='/workspace/packages/cloud/api')
+ resolved=json.loads((out/'runtime-resolution.log').read_text())
+ assert resolved['version']==plan['expectedBun']['version'] and resolved['bunSHA256']==plan['expectedBun']['sha256']
+ assert resolved['platform']=='linux' and resolved['arch']=='x64'
+ assert resolved['importer']=='/workspace/packages/cloud/api/src' and resolved['specifier']=='../../shared/src/lib/services/inference-settlement-receipt'
+ assert resolved['resolved']=='/workspace/packages/cloud/shared/src/lib/services/inference-settlement-receipt.ts'
+ assert resolved['resolvedSHA256']==manifest['files']['packages/cloud/shared/src/lib/services/inference-settlement-receipt.ts']
+ (out/'RUNTIME-RESOLUTION.json').write_text(json.dumps(resolved,indent=2)+'\n')
  verify_source()
- phase('inventory-installed-dependencies',[sys.executable,'-I','-B',str(P/'inventory_dependencies.py'),'capture',str(source),str(out),manifest['commit'],manifest['tree'],manifest['bunLockSHA256']],90)
- deps=verify_dependencies();(out/'DEPENDENCY-ADMISSION.json').write_text(json.dumps(deps,indent=2)+'\n')
- # Own metadata/probe scripts never replace canonical package code or configs.
- for name in ['bootstrap.mjs','host-preflight.mjs']:(out/name).write_bytes((P/name).read_bytes())
- container_phase('bootstrap','none','2g',['/usr/local/bin/node','/results/bootstrap.mjs'],30)
- container_phase('host-preflight','none','2g',['/usr/local/bin/node','/results/host-preflight.mjs'],60,cwd='/workspace/packages/host')
+ assert not (out/'nine.xml').exists()
+ failure=container_phase('nine','none','2g',plan['normalBunCommand'],60,test_family=True,cwd=plan['cwd'])
+ file=manifest['caseFile'];judge_junit(file,failure,out/'nine.xml',oracle['fullFileNames'][file])
  verify_source()
- for index,(file,names) in enumerate(oracle['fullFileNames'].items()):
-  if not file.startswith('packages/cloud/api/'):continue
-  relative='./'+str(pathlib.PurePosixPath(file).relative_to('packages/cloud/api'))
-  report=f'api-{index}.xml';assert not (out/report).exists()
-  failure=container_phase('api-'+str(index),'none','2g',['/usr/local/bin/bun','--no-install','--conditions=eliza-source','test',relative,'--timeout=60000','--reporter=junit','--reporter-outfile=/results/'+report],plan['APIFilePhaseSeconds'],test_family=True,cwd='/workspace/packages/cloud/api')
-  judge_junit(file,failure,out/report,names);verify_source()
- assert not (out/'host.json').exists()
- failure=container_phase('host','none','2g',['/usr/local/bin/node','/workspace/packages/scripts/run-vitest.ts','run','src/voice/speech-retirement-session.test.ts','--config','vitest.config.ts','--configLoader','runner','--pool','forks','--maxWorkers','1','--maxConcurrency','1','--no-file-parallelism','--no-cache','--fsModuleCachePath','/results/host-module-cache','--reporter=json','--outputFile=/results/host.json'],plan['hostPhaseSeconds'],test_family=True,cwd='/workspace/packages/host')
- judge_host(failure);verify_source();verify_dependencies()
- assert set(family_results)==set(oracle['fullFileNames']) and len(family_results)==8
- status='PASS_SCOPED_OWNING_NOT_TYPES_MONEY_OR_LIVE' if all(x['outcome']=='passed' for x in family_results.values()) else 'FAILED_REQUIRED_FAMILY'
+ assert len(family_results)==1
+ status='PASS_NINE_PRIVATE_UNIT_ONLY_NOT_SINGLE145_JOB' if family_results[file]['outcome']=='passed' else 'FAILED_NINE_REQUIRED_FAMILY'
 except BaseException as exc:run_error=type(exc).__name__+': '+str(exc)
 finally:
  for index,item in enumerate(owned):
   try:cleanup_container(item,'cleanup-'+str(index))
   except BaseException as exc:cleanup_errors.append({'cid':item['cid'],'error':str(exc)})
- result={'state':status if not cleanup_errors else 'CLEANUP_FAILED','error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'seconds':time.monotonic()-start,'families':family_results,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'imagePulls':[x['phase'] for x in records if x['phase'].startswith('pull-') and x['exit']==0],'installStarted':any(x['phase']=='install' for x in records),'toolchainAssembly':any(x['phase']=='toolchain-assembly' for x in records),'broadSDKBuild':False,'fixtureWorkerBundle':'Actual owning Miniflare test uses Bun.build for its real DO fixture; not full SDK build/native lifecycle','normalTypes':False,'normalSDKLifecycle':False,'providerFinancialOrDeviceAcceptance':False,'fullPublicAdmissionCanonicalReceiptChain':False}
+ result={'state':status if not cleanup_errors else 'CLEANUP_FAILED','error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'seconds':time.monotonic()-start,'families':family_results,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'scope':'Only fullnineprivatehelperunitfile; retained136remainseparateactualevidence','retained136ReceiptSHA256':oracle['retained136ProofSHA256'],'npmInstall':False,'dependencyCensus':False,'HostWork':False,'compilerTypes':False,'providerFinancialProdDeviceAcceptance':False,'publicAdmitOrgPrivateAttachChain':False,'single145GreenRun':False}
  (out/'RESULT.json').write_text(json.dumps(result,indent=2)+'\n')
-raise SystemExit(0 if status=='PASS_SCOPED_OWNING_NOT_TYPES_MONEY_OR_LIVE' and not run_error and not cleanup_errors else 1)
+raise SystemExit(0 if status=='PASS_NINE_PRIVATE_UNIT_ONLY_NOT_SINGLE145_JOB' and not run_error and not cleanup_errors else 1)
