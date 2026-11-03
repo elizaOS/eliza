@@ -26,11 +26,11 @@ import type {
   Memory,
   State,
 } from "@elizaos/core";
+import { getUserMessageText } from "@elizaos/core";
 import { resolvePendingPromptsStore } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { gatherImplicitReferentCandidates } from "../lifeops/implicit-referents/candidate-sources.js";
 import { resolveImplicitReferent } from "../lifeops/implicit-referents/index.js";
-import { messageText } from "../lifeops/voice/grounded-reply.js";
 
 /**
  * Markers a bare ask carries when it points at prior context rather than naming
@@ -75,7 +75,7 @@ export const resolveReferentAction: Action & {
   roleGate: { minRole: "OWNER" },
   suppressPostActionContinuation: true,
   validate: async (_runtime: IAgentRuntime, message: Memory) =>
-    isImplicitAsk(messageText(message)),
+    isImplicitAsk(getUserMessageText(message)),
   handler: async (
     runtime: IAgentRuntime,
     message: Memory,
@@ -89,7 +89,7 @@ export const resolveReferentAction: Action & {
       return { text, success: false, data: { error: "PERMISSION_DENIED" } };
     }
 
-    const ask = messageText(message).trim();
+    const ask = getUserMessageText(message).trim();
     const candidates = await gatherImplicitReferentCandidates(runtime);
     const resolution = resolveImplicitReferent({
       ask,
