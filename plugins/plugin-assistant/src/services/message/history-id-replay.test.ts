@@ -1,3 +1,4 @@
+import {decodeNativeContextReads, nativeContextReadsSchema, assertNativeContextReadToolBudget} from "./native-context-read.ts";
 /** Replays the 2026-10-18 Discord turns whose READ_CONTEXT calls used the bare
  * hN IDs the runtime prints. Bound IDs read as history:hN; unbound IDs still
  * fail closed. Recorded tool calls only; no model is called. */
@@ -9,6 +10,7 @@ import {
   type Memory,
   ResponseHandlerFieldRegistry,
   type State,
+  type ToolDefinition,
   type UUID,
 } from "@elizaos/core";
 import { describe, expect, it, vi } from "vitest";
@@ -25,6 +27,7 @@ import { resolveStage1SenderRole } from "./addressing.ts";
 import { createV5MessageContextObject } from "./context-assembly.ts";
 import {
   historyReferenceNotice,
+  nativeHistoryReadBinding,
   loadedHistorySegments,
   loadHistoryReferences,
   projectReviewedHistory,
@@ -65,11 +68,11 @@ const message: Memory = {
   },
   createdAt: 10_000,
 };
-const state = (): State => ({
+const state = (memories: Memory[] = prior): State => ({
   values: {},
   text: "",
   data: {
-    providers: { RECENT_MESSAGES: { data: { recentMessages: prior } } },
+    providers: { RECENT_MESSAGES: { data: { recentMessages: memories } } },
   },
 });
 
@@ -110,10 +113,12 @@ const pullLogs = {
   addressedTo: ["Sam"],
 };
 
-async function fixture(responses: unknown[]) {
+async function fixture(responses: unknown[], memories: Memory[] = prior) {
+  const turnMessage={...message,content:{...message.content}};
   const fields = new ResponseHandlerFieldRegistry();
   for (const field of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS)
     fields.register(field);
+  const dispatch = vi.spyOn(fields,"dispatch");
   const useModel = vi.fn(async () => {
     if (!responses.length) throw new Error("Unbounded model retry");
     return responses.shift();
@@ -133,7 +138,7 @@ async function fixture(responses: unknown[]) {
     getModelRegistrations: vi.fn(() => []),
     getSetting: vi.fn(),
     getCache: vi.fn(),
-    composeState: vi.fn(async () => state()),
+    composeState: vi.fn(async () => state(memories)),
     useModel,
     runActionsByMode: vi.fn(async () => undefined),
     emitEvent: vi.fn(async () => undefined),
@@ -154,21 +159,21 @@ async function fixture(responses: unknown[]) {
   // The background review deferred everything except the latest exchange.
   const context = await createV5MessageContextObject({
     runtime,
-    message,
-    state: state(),
+    message:turnMessage,
+    state: state(memories),
   });
   const scope = {
     agentId,
-    roomId,
-    entityId: userId,
-    roles: [await resolveStage1SenderRole(runtime, message)],
+    roomId:turnMessage.roomId,
+    entityId:turnMessage.entityId,
+    roles: [await resolveStage1SenderRole(runtime, turnMessage)],
   };
   const prepared = prepareHistoryRetention(
     context,
     scope,
     null,
     "evidence",
-    prior.length,
+    memories.length,
   );
   const sourceIds = prepared.candidates.map((source) => source.id);
   const progressState = applyHistoryRetentionReview(prepared, {
@@ -195,16 +200,104 @@ async function fixture(responses: unknown[]) {
   const run = () =>
     runV5MessageRuntimeStage1({
       runtime,
-      state: state(),
-      message,
+      state: state(memories),
+      message:turnMessage,
       responseId: "00000000-0000-4000-8000-000000000005" as UUID,
       stage1DecisionOnly: true,
     });
   const prompt = (index: number) => JSON.stringify(useModel.mock.calls[index]);
-  return { context, history, run, useModel, prompt };
+  return { context, history, run, useModel, prompt, runtime, dispatch, message:turnMessage };
 }
 
 describe("history ID grammar", () => {
+  it.each(["source","search","all"] as const)("reads typed history %s through the real Stage 1 read barrier", async kind=>{
+    const responses:unknown[]=[];const f=await fixture(responses);
+    const sourceSetId=f.history.sourceSetId;
+    const selector=kind==="source"?{kind:"history-source",sourceSetId,sourceOrdinals:[541,550,551]}
+      :kind==="search"?{kind:"history-search",sourceSetId,speaker:"all",query:IMAGE_REPLY}
+      :{kind:"history-all",sourceSetId};
+    const ordinals=kind==="all"?Array.from({length:551},(_,index)=>index+1):[541,550,551];
+    const selected={mode:"relevant_prior_dialogue",sourceSetId:"current_request",complete:true,relevantSourceIds:ordinals,constraintSourceIds:[],referentSourceIds:[],pendingIntentSourceIds:[]};
+    responses.push({text:"",toolCalls:[{name:"READ_CONTEXT",arguments:{reads:[selector],acknowledgment:""}}]},handle({replyText:"found it.",...(kind==="all"?{completionContext:selected}:{})}));
+    expect((await f.run()).kind).toBe("decision");expect(f.useModel).toHaveBeenCalledTimes(2);
+    expect(f.dispatch).toHaveBeenCalledTimes(1);
+    if(kind==="all"){
+      expect(f.dispatch.mock.calls[0]![0].rawParsed.completionContext).toEqual({...selected,sourceSetId,relevantSourceIds:ordinals.map(ordinal=>`h${ordinal}`)});
+      const second=f.useModel.mock.calls[1] as unknown as [unknown,{tools:Array<{name:string}>}];
+      expect(second[1].tools.some(tool=>tool.name==="READ_CONTEXT")).toBe(false);
+    }
+    expect(f.prompt(1)).toContain("context_read_result");expect(f.prompt(1)).not.toContain("context_read_repair");
+    expect(f.prompt(1)).toContain(IMAGE_REPLY);
+    const first=f.useModel.mock.calls[0] as unknown as [unknown,{tools:Array<{name:string;parameters:unknown}>}];
+    assertNativeContextReadToolBudget(first[1].tools as ToolDefinition[]);
+    expect(first[1].tools.map(tool=>tool.name)).toEqual(expect.arrayContaining(["HANDLE_RESPONSE","READ_CONTEXT"]));
+  });
+  it("repairs one stale typed history source identity without reading it",async()=>{
+    const responses:unknown[]=[];const f=await fixture(responses);
+    const response=(sourceSetId:string)=>({text:"",toolCalls:[{name:"READ_CONTEXT",arguments:{reads:[{kind:"history-source",sourceSetId,sourceOrdinals:[541]}],acknowledgment:""}}]});
+    responses.push(response("stale"),response(f.history.sourceSetId),handle({replyText:"found it."}));
+    expect((await f.run()).kind).toBe("decision");expect(f.useModel).toHaveBeenCalledTimes(3);
+    expect(f.prompt(1)).toContain("context_read_repair");expect(f.prompt(2)).toContain("context_read_result");
+  });
+  it.each(["role","namespace"] as const)("cancels typed history before body reads when %s changes during the model call",async mode=>{
+    const responses:unknown[]=[];const f=await fixture(responses);
+    f.useModel.mockImplementationOnce(async()=>{
+      if(mode==="role")f.message.content.source="client_chat";
+      else f.runtime.providers.push({name:"history:custom",get:vi.fn()});
+      return {text:"",toolCalls:[{name:"READ_CONTEXT",arguments:{reads:[{kind:"history-source",sourceSetId:f.history.sourceSetId,sourceOrdinals:[541]}],acknowledgment:""}}]};
+    });
+    await expect(f.run()).rejects.toThrow("Context read authorization changed");
+    expect(f.useModel).toHaveBeenCalledTimes(1);expect(f.runtime.composeState).not.toHaveBeenCalled();
+    expect(f.runtime.runActionsByMode).not.toHaveBeenCalled();
+  });
+  it.each(["role","namespace","agent","room","entity","message"] as const)("cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",async mode=>{
+    const f=await fixture([]);const sourceSetId=f.history.sourceSetId;
+    f.useModel.mockImplementationOnce(async()=>({text:"",toolCalls:[{name:"READ_CONTEXT",arguments:{reads:[{kind:"history-all",sourceSetId}],acknowledgment:""}}]}));
+    f.useModel.mockImplementationOnce(async()=>{
+      if(mode==="role")f.message.content.source="client_chat";
+      if(mode==="agent")f.runtime.agentId="00000000-0000-4000-8000-000000000099" as UUID;
+      if(mode==="room")f.message.roomId="00000000-0000-4000-8000-000000000098" as UUID;
+      if(mode==="entity")f.message.entityId="00000000-0000-4000-8000-000000000097" as UUID;
+      if(mode==="message")f.message.id="00000000-0000-4000-8000-000000000096" as UUID;
+      if(mode==="namespace")f.runtime.providers.push({name:"history:late",get:vi.fn()});
+      return handle({replyText:"found it.",completionContext:{mode:"relevant_prior_dialogue",sourceSetId:"current_request",complete:true,relevantSourceIds:[551],constraintSourceIds:[],referentSourceIds:[],pendingIntentSourceIds:[]}});
+    });
+    await expect(f.run()).rejects.toThrow("Context read authorization changed");
+    expect(f.useModel).toHaveBeenCalledTimes(2);expect(f.dispatch).not.toHaveBeenCalled();expect(f.runtime.runActionsByMode).not.toHaveBeenCalled();
+  });
+  it("encodes all 551 bound sources without a 551-value native enum and never fills an offered hole", async () => {
+    const {context,history}=await fixture([]);const scope=history.scope;
+    const all=new Set(["history:all",...completionContextSources(context).sources.map(source=>`history:${source.id}`)]);
+    const full=nativeHistoryReadBinding(context,history,all,scope)!;
+    expect(full.sources.size).toBe(551);
+    const schema=nativeContextReadsSchema({providers:new Set(),history:full})!;
+    expect(JSON.stringify(schema)).not.toContain('"pattern"');
+    assertNativeContextReadToolBudget([{type:"function",name:"READ_CONTEXT",strict:true,description:"fixture",parameters:{type:"object",properties:{reads:schema},required:["reads"],additionalProperties:false}}]);
+    const holes=nativeHistoryReadBinding(context,history,new Set(["history:all","history:h1","history:h3","history:h551"]),scope)!;
+    expect(()=>decodeNativeContextReads([{kind:"history-source",sourceSetId:holes.sourceSetId,sourceOrdinals:[2]}],{providers:new Set(),history:holes})).toThrowError(expect.objectContaining({code:"CONTEXT_DISCOVERY_INVALID_READ"}));
+    expect(decodeNativeContextReads([{kind:"history-source",sourceSetId:holes.sourceSetId,sourceOrdinals:[551,3]}],{providers:new Set(),history:holes})).toEqual(["history:h551","history:h3"]);
+    expect(nativeHistoryReadBinding(context,history,all,{...scope,roles:["WRONG_ROLE"]})).toBeUndefined();
+    expect(nativeHistoryReadBinding(context,{...history,sourceSetId:"stale"},all,scope)).toBeUndefined();
+  });
+
+  it("requires the canonical offered read before admitting a bare alias and preserves provider precedence", async () => {
+    const {context, history} = await fixture([]);
+    expect(() => readHistoryContextRequests(context, history, {contextRequests:["h541"]}, new Set()))
+      .toThrowError(expect.objectContaining({code:"CONTEXT_DISCOVERY_INVALID_REQUEST"}));
+    expect(readHistoryContextRequests(context, history, {contextRequests:["h541"]}, new Set(["history:h541"])))
+      .toEqual(["history:h541"]);
+    expect(readHistoryContextRequests(context, history, {contextRequests:["h541"]}, new Set(["h541", "history:h541"])))
+      .toEqual(["h541"]);
+    expect(() => readHistoryContextRequests(context, {...history, sourceSetId:"stale"}, {contextRequests:["h541"]}, new Set(["history:h541"])))
+      .toThrowError(expect.objectContaining({code:"CONTEXT_DISCOVERY_INVALID_REQUEST"}));
+  });
+  it("does not reinterpret unadvertised numeric spellings from the failed public sequence", async () => {
+    const {context, history} = await fixture([]);
+    const requested = ["history:15", "history:34", "history:35", "history:38"];
+    expect(() => readHistoryContextRequests(context, history, {contextRequests:requested}, new Set(["history:h15", "history:h34", "history:h35", "history:h38"])))
+      .toThrowError(expect.objectContaining({code:"CONTEXT_DISCOVERY_INVALID_REQUEST",context:{rejected:requested}}));
+  });
+
   it("reads a bound bare ID as history:hN and still rejects an unbound one", async () => {
     const { context, history } = await fixture([]);
     const available = new Set(["ENTITIES", "history:all", "history:h541"]);

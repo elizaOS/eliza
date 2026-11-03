@@ -25,6 +25,7 @@ import {
 } from "../../runtime/history-retention.ts";
 import { readContextRequests } from "./context-discovery.ts";
 import { labelHistorySources } from "./history-wire.ts";
+import type { NativeHistoryReadBinding } from "./native-context-read.ts";
 
 import {
   readSourceReplyReferences,
@@ -308,6 +309,45 @@ export function historyReferences(
   ]);
 }
 
+/** Snapshot only the already offered canonical reads. No numeric string alias is added. */
+export function nativeHistoryReadBinding(
+  context: ContextObject,
+  projection: HistoryDiscovery | undefined,
+  available: ReadonlySet<string>,
+  scope: HistoryRetentionScope,
+): NativeHistoryReadBinding | undefined {
+  if (!projection) return undefined;
+  const bound = completionContextSources(context);
+  const sameScope = () => projection.scope.agentId === scope.agentId &&
+    projection.scope.roomId === scope.roomId && projection.scope.entityId === scope.entityId &&
+    projection.scope.roles.length === scope.roles.length && projection.scope.roles.every((role, index) => role === scope.roles[index]);
+  if (projection.sourceSetId !== bound.sourceSetId || !sameScope()) return undefined;
+  const sources = new Map<number, string>();
+  bound.sources.forEach(({id}, index) => {
+    const canonical = `${HISTORY_REFERENCE_PREFIX}${id}`;
+    if (id === `h${index + 1}` && available.has(canonical)) sources.set(index + 1, canonical);
+  });
+  return {
+    sourceSetId: bound.sourceSetId,
+    sources,
+    ...(available.has(ALL_HISTORY_REFERENCE) ? {all: ALL_HISTORY_REFERENCE} : {}),
+    assertCurrent() {
+      if (!sameScope() || projection.sourceSetId !== completionContextSources(context).sourceSetId) {
+        throw new ElizaError("The history read source identity changed.", {code: "CONTEXT_DISCOVERY_INVALID_READ"});
+      }
+    },
+    search(speaker, query) {
+      const prefix = speaker === "user" ? HISTORY_USER_SEARCH_PREFIX
+        : speaker === "assistant" ? HISTORY_ASSISTANT_SEARCH_PREFIX : HISTORY_SEARCH_PREFIX;
+      const reference = prefix + query;
+      if (!historySearchRequest(reference)) {
+        throw new ElizaError("A history search needs a nonblank literal query.", {code: "CONTEXT_DISCOVERY_INVALID_READ"});
+      }
+      return reference;
+    },
+  };
+}
+
 /** Admit literal queries, bare bound source IDs (hN, the form history labels
  * print) and exact bound source event IDs (history:<message id>, the
  * requestSourceEventId historical receipts print) only while the optional
@@ -328,7 +368,8 @@ export function readHistoryContextRequests(
     if (projection.sourceSetId === bound.sourceSetId) {
       for (const { id, event } of bound.sources) {
         const canonical = `${HISTORY_REFERENCE_PREFIX}${id}`;
-        if (!available.has(id)) aliases.set(id, canonical);
+        if (!available.has(id) && available.has(canonical))
+          aliases.set(id, canonical);
         if (!available.has(event.id) && available.has(canonical))
           aliases.set(event.id, canonical);
       }

@@ -1,3 +1,8 @@
+import {withReviewedHistorySelection} from "../../plugin-assistant/src/services/message/history-discovery.ts";
+import {createSourceSelectionBinding} from "../../plugin-assistant/src/services/message/source-selection-binding.ts";
+import {BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS} from "../../plugin-assistant/src/runtime/builtin-field-evaluators.ts";
+import {createContextReadTool, withAvailableContextRequests} from "../../plugin-assistant/src/services/message/context-discovery.ts";
+import {assertNativeContextReadToolBudget} from "../../plugin-assistant/src/services/message/native-context-read.ts";
 /**
  * Exercises response schemas and generation controls through the real AI SDK
  * and provider client against a loopback HTTP endpoint. No live provider is
@@ -11,7 +16,7 @@ import type {
   PlannerTrajectory,
   ToolDefinition,
 } from "@elizaos/core";
-import { buildPlannerToolsFromActions, ModelType, parseAndValidate } from "@elizaos/core";
+import { buildPlannerToolsFromActions, createHandleResponseTool, ResponseHandlerFieldRegistry, completionContextSources, withRequiredCompletionSourceIdentity, ModelType, parseAndValidate } from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { jsonSchema, Output } from "ai";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -1116,4 +1121,60 @@ describe("Qwen3.8 response-schema wire contract", () => {
     expect(parseAndValidate(JSON.stringify(result), schema).valid).toBe(true);
     expect(schema).toEqual(original);
   });
+});
+
+
+it("serializes the structural READ_CONTEXT contract with supported Cerebras keywords and no pattern or allOf", async () => {
+  vi.stubEnv("ELIZA_PROVIDER","cerebras");
+  const schema={type:"object",properties:{contextRequests:{type:"array",items:{type:"string"}}},required:["contextRequests"]};
+  const tool=createContextReadTool(schema,true,{providers:new Set(["VISIBLE"]),history:{sourceSetId:"a".repeat(64),sources:new Map([[1,"history:h1"],[3,"history:h3"],[551,"history:h551"]]),all:"history:all",assertCurrent(){},search(_scope,query){return "history:search:"+query;}}})!;
+  assertNativeContextReadToolBudget([tool]);
+  replyToolCall={id:"native-read-fixture",type:"function",function:{name:"READ_CONTEXT",arguments:JSON.stringify({reads:[{kind:"provider",references:["VISIBLE"]}],acknowledgment:""})}};
+  await invoke({tools:[tool],responseHandler:true});expect(requests).toHaveLength(1);
+  expect(requests[0].tools).toEqual([expect.objectContaining({type:"function",function:expect.objectContaining({name:"READ_CONTEXT",strict:true,parameters:tool.parameters})})]);
+  expect(JSON.stringify(requests[0].tools)).not.toContain('"pattern"');expect(JSON.stringify(requests[0].tools)).not.toContain('"allOf"');
+});
+
+
+function actualBuiltinReadTools(count:number){
+  const fields=new ResponseHandlerFieldRegistry();
+  for(const field of BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS)fields.register(field);
+  const canonical=fields.composeSchema();
+  const context={id:"wire-turn",metadata:{roomId:"wire-room",messageId:"wire-turn"},events:Array.from({length:count},(_,index)=>({id:`prior-${index+1}`,type:"segment" as const,source:"prior-dialogue",segment:{id:`prior-${index+1}`,label:"prior_message:user",content:`Synthetic original ${index+1}.`,stable:false}}))};
+  const snapshot=completionContextSources(context);
+  const contract={providers:new Set(["VISIBLE"]),history:{sourceSetId:snapshot.sourceSetId,sources:new Map(snapshot.sources.map((source,index)=>[index+1,`history:${source.id}`])),all:"history:all",assertCurrent(){},search(_scope:"all"|"user"|"assistant",query:string){return "history:search:"+query;}}};
+  // Use the same production selection/identity/binding transforms as Stage 1;
+  // raw canonical completion schemas intentionally retain legacy regexes.
+  const restricted=withReviewedHistorySelection(withAvailableContextRequests(canonical,contract.providers),true);
+  const parameters=withRequiredCompletionSourceIdentity(restricted,context);
+  const bound=createSourceSelectionBinding(parameters,context,{sourceOrdinals:true,assertCurrent(){}})!;
+  return {contract,tools:[createHandleResponseTool({directMessage:true,parameters:bound.parameters}),createContextReadTool(canonical,true,contract)!]};
+}
+
+it.each([12,551] as const)("serializes the complete production-bound HANDLE_RESPONSE plus typed history tools for %s originals through the provider serializer",async count=>{
+  vi.stubEnv("ELIZA_PROVIDER","cerebras");
+  const {contract,tools}=actualBuiltinReadTools(count);assertNativeContextReadToolBudget(tools);
+  const sourceSetId=contract.history.sourceSetId;
+  const selector={kind:"history-all",sourceSetId};
+  const argumentsValue={reads:[selector],acknowledgment:""};
+  replyToolCall={id:"paired-native-read",type:"function",function:{name:"READ_CONTEXT",arguments:JSON.stringify(argumentsValue)}};
+  await invoke({tools,responseHandler:true});expect(requests).toHaveLength(1);
+  const wire=requests[0].tools as Array<{type:string;function:{name:string;strict:boolean;parameters:Record<string,unknown>}}>;
+  expect(wire.map(tool=>tool.function.name)).toEqual(["HANDLE_RESPONSE","READ_CONTEXT"]);
+  expect(wire.every(tool=>tool.function.strict===true)).toBe(true);
+  const read=wire.find(tool=>tool.function.name==="READ_CONTEXT")!;
+  expect(parseAndValidate(JSON.stringify(argumentsValue),read.function.parameters).valid).toBe(true);
+  expect(JSON.stringify(wire)).not.toContain('"pattern"');expect(JSON.stringify(wire)).not.toContain('"allOf"');
+});
+
+it("offers every one of551 completion ordinals within the complete pair budget without string enums",()=>{
+  const {contract,tools}=actualBuiltinReadTools(551);
+  expect(contract.history.sources.size).toBe(551);expect(()=>assertNativeContextReadToolBudget(tools)).not.toThrow();
+  const handler=tools.find(tool=>tool.name==="HANDLE_RESPONSE")!;
+  const selection=handler.parameters!.properties!.completionContext!;
+  for(const name of ["relevantSourceIds","constraintSourceIds","referentSourceIds","pendingIntentSourceIds"]){
+    const items=selection.properties![name]!.items;
+    expect(items).toMatchObject({type:"integer",anyOf:[{type:"integer",minimum:1,maximum:551}]});
+  }
+  expect(requests).toHaveLength(0);
 });
