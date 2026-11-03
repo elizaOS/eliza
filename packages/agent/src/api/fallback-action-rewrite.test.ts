@@ -57,6 +57,19 @@ describe("rewriteFallbackActionText reply reading", () => {
     ).resolves.toBe(VOICED);
   });
 
+  it("uses the fenced response when prose quotes a JSON payload first", async () => {
+    await expect(
+      rewrite(
+        [
+          'Result payload {"id":"abc-123","status":"scheduled"} — rewritten:',
+          "```json",
+          JSON.stringify({ response: VOICED }),
+          "```",
+        ].join("\n"),
+      ),
+    ).resolves.toBe(VOICED);
+  });
+
   it("falls back when the reply holds no JSON object", async () => {
     await expect(rewrite("no json at all")).resolves.toBe(GENERIC);
   });

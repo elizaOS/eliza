@@ -13,6 +13,7 @@ import {
   type Content,
   type createMessageMemory,
   executePlannedToolCall,
+  extractJsonObjectSpans,
   ModelType,
   parseJsonObject,
 } from "@elizaos/core";
@@ -24,6 +25,27 @@ export type FallbackParsedAction = {
 };
 
 type RuntimeActionLike = Action;
+
+/**
+ * First object span in the reply carrying a non-empty `response` string,
+ * or null when no span does. Each span is read through the tolerant
+ * object reader, so string-escape repairs still apply inside a span.
+ */
+function firstResponseObject(raw: string): { response?: unknown } | null {
+  for (const { start, end } of extractJsonObjectSpans(raw)) {
+    const candidate = parseJsonObject<{ response?: unknown }>(
+      raw.slice(start, end),
+    );
+    if (
+      candidate &&
+      typeof candidate.response === "string" &&
+      candidate.response.trim()
+    ) {
+      return candidate;
+    }
+  }
+  return null;
+}
 
 export async function rewriteFallbackActionText(args: {
   runtime: AgentRuntime;
@@ -81,8 +103,11 @@ export async function rewriteFallbackActionText(args: {
     // Read the reply with the shared tolerant object reader: a bare
     // JSON.parse throws when the model wraps the object in prose or a
     // fence, and the catch below then replaces the action's actual
-    // result with the generic fallback text.
-    const parsed = parseJsonObject<{ response?: unknown }>(String(raw));
+    // result with the generic fallback text. The prose may itself quote
+    // a JSON payload before the fenced answer, so the first object
+    // region is not necessarily the rewrite — scan every span for the
+    // first object carrying a non-empty `response` string.
+    const parsed = firstResponseObject(String(raw));
     return typeof parsed?.response === "string" && parsed.response.trim()
       ? parsed.response.trim()
       : fallback();
