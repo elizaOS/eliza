@@ -68,4 +68,23 @@ describe("originalRequestsNotesDeletion", () => {
     ];
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
   });
+
+  it("admits a contrastive deletion whose note title reads like a read or show request", () => {
+    const requests = [
+      "Delete the note titled read me instead of the draft",
+      "Delete the note about read it twice tips instead of the old FAQ",
+      "Delete the note called show it to clients instead of the internal draft",
+      "Delete the note named show me the money instead of keeping the joke",
+      "Delete the note about show it weekly instead of the daily one",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
+  });
+
+  it("declines when the owner asks to read the note instead of deleting it", () => {
+    const requests = [
+      "Delete the note, I'd like you to read it instead of deleting it",
+      "Delete the note about groceries, I want you to show it to me instead of removing it",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
+  });
 });
