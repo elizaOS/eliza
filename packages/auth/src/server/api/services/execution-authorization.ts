@@ -113,7 +113,14 @@ export function policyRevisionHashForPolicySet(
       }))
       // Code-unit order, not localeCompare: ICU collation is
       // locale-dependent, and this array order is a hash input.
-      .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0)),
+      // Equal ids fall back to the entries' canonical JSON, so the
+      // order — and the hash — never depends on caller input order.
+      .sort((a, b) => {
+        if (a.id !== b.id) return a.id < b.id ? -1 : 1;
+        const aJson = canonicalJsonStringify(a);
+        const bJson = canonicalJsonStringify(b);
+        return aJson < bJson ? -1 : aJson > bJson ? 1 : 0;
+      }),
   );
 }
 

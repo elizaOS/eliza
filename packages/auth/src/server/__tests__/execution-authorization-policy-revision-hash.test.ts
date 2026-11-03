@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { PolicyRule } from "../../shared/index";
-import { policyRevisionHashForPolicySet } from "../api/services/execution-authorization";
+import { policyRevisionHashForPolicySet } from "../api/services/execution-authorization.ts";
+import type { PolicyRule } from "../shared/index.ts";
 
 // Policy ids are caller-chosen (tenant defaultPolicies, per-agent policy
 // creation) with no charset constraint, so mixed-case and "aa"-initial ids
@@ -44,6 +44,24 @@ describe("policyRevisionHashForPolicySet", () => {
     const shuffled = [POLICIES[2], POLICIES[0], POLICIES[3], POLICIES[1]];
     expect(policyRevisionHashForPolicySet(shuffled)).toBe(
       CODE_UNIT_ORDER_DIGEST,
+    );
+  });
+
+  test("does not depend on input order when two entries share an id", () => {
+    const first: PolicyRule = {
+      id: "dup-limit",
+      type: "spending-limit",
+      enabled: true,
+      config: { maxPerDay: "100" },
+    };
+    const second: PolicyRule = {
+      id: "dup-limit",
+      type: "spending-limit",
+      enabled: false,
+      config: { maxPerDay: "200" },
+    };
+    expect(policyRevisionHashForPolicySet([first, second])).toBe(
+      policyRevisionHashForPolicySet([second, first]),
     );
   });
 });
