@@ -1,0 +1,101 @@
+name: SDK17deb full-file qualification (isolated)
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Metadata preflight or separately approved qualification
+        required: true
+        default: metadata
+        type: choice
+        options: [metadata, qualify]
+      root_go_json:
+        description: Exact Root-issued one-run JSON bound to this target and operator seal
+        required: true
+        type: string
+      expected_workflow_sha:
+        description: Exact reviewed qualification workflow commit
+        required: true
+        type: string
+      expected_runner_image:
+        description: Reviewed GitHub hosted ImageVersion (qualification only)
+        required: false
+        type: string
+      expected_docker_server:
+        description: Reviewed Docker server version (qualification only)
+        required: false
+        type: string
+      expires_epoch:
+        description: Root-issued one-run expiration, at most 20 minutes away
+        required: true
+        type: string
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: speech-retirement-intent-${{ fromJSON(inputs.root_go_json).intentId }}
+  cancel-in-progress: false
+jobs:
+  qualify:
+    if: github.run_attempt == 1
+    runs-on: ubuntu-24.04
+    timeout-minutes: 22
+    steps:
+      - name: Checkout reviewed operator only
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: operator
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+          sparse-checkout: .github/qualification/speech-retirement
+      - name: Validate and reserve exact Root intent
+        id: claim
+        env:
+          ROOT_GO_TEXT: ${{ inputs.root_go_json }}
+          EXPECTED_WORKFLOW_SHA: ${{ inputs.expected_workflow_sha }}
+          QUALIFICATION_MODE: ${{ inputs.mode }}
+          EXPIRES_EPOCH: ${{ inputs.expires_epoch }}
+          GH_TOKEN: ${{ github.token }}
+        run: python3 -I -B operator/.github/qualification/speech-retirement/claim.py
+      - name: Persist one-use intent before source or tests
+        id: claim_artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: speech-intent-${{ steps.claim.outputs.intent_id }}
+          path: ${{ runner.temp }}/speech-intent-claim.json
+          retention-days: 7
+          if-no-files-found: error
+      - name: Checkout exact SDK source
+        if: inputs.mode == 'qualify'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 17debabcff07ae645e3e906904238cdb6b875945
+          path: source
+          fetch-depth: 1
+          submodules: false
+          persist-credentials: false
+      - name: Isolated dependency installation and offline tests
+        env:
+          CLAIM_ARTIFACT_ID: ${{ steps.claim_artifact.outputs.artifact-id }}
+          GH_TOKEN: ${{ github.token }}
+          ROOT_GO_JSON: ${{ runner.temp }}/speech-root-go.json
+          QUALIFICATION_RECIPE: unit
+          EXPECTED_WORKFLOW_SHA: ${{ inputs.expected_workflow_sha }}
+          EXPECTED_RUNNER_IMAGE: ${{ inputs.expected_runner_image }}
+          EXPECTED_DOCKER_SERVER: ${{ inputs.expected_docker_server }}
+          QUALIFICATION_MODE: ${{ inputs.mode }}
+          EXPIRES_EPOCH: ${{ inputs.expires_epoch }}
+        run: |
+          python3 -I -B operator/.github/qualification/speech-retirement/run.py "$QUALIFICATION_MODE" "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/speech-retirement-results"
+      - name: Retain bounded non-secret qualification receipts
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: speech-retirement-${{ github.run_id }}-${{ github.run_attempt }}
+          retention-days: 7
+          if-no-files-found: warn
+          path: |
+            ${{ runner.temp }}/speech-retirement-results/*.json
+            ${{ runner.temp }}/speech-retirement-results/*.log
+            ${{ runner.temp }}/speech-retirement-results/*.xml

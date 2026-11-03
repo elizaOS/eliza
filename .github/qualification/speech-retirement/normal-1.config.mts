@@ -1,0 +1,3 @@
+import { mergeConfig } from 'vitest/config';
+import base from '/workspace/packages/host/vitest.config.ts';
+export default mergeConfig(base,{root:'/workspace/packages/host',cacheDir:'/results/cache/normal-1',test:{include:["src/voice/cloud-speech-relay-client.test.ts", "src/voice/cloud-speech-relay-http-status.test.ts", "src/voice/cloud-speech-relay-phase-deadline.test.ts", "src/voice/cloud-speech-relay-startup-deadline.test.ts", "src/voice/cloud-speech-retirement-recovery.test.ts", "src/voice/speech-no-dispatch-proof.test.ts", "src/voice/speech-retirement-proof.test.ts", "src/voice/voice-stop-intent.test.ts"],pool:'forks',maxWorkers:1,fileParallelism:false,testTimeout:15000,hookTimeout:20000}});

@@ -1,0 +1,194 @@
+{
+  "state": "SDK17DEB_EXACT_UNIT_PREPARATION_NO_GO",
+  "target": "sdk17deb",
+  "sourceCommit": "17debabcff07ae645e3e906904238cdb6b875945",
+  "sourceTree": "4161c3932dd884a6bb73777bed84a1fdf558581c",
+  "resourceBounds": {
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "maxDiskGrowthBytes": 12884901888,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592
+  },
+  "reviewedRunner": {
+    "ImageVersion": "20261026.354.1",
+    "ImageOS": "ubuntu24",
+    "dockerServer": "28.0.4",
+    "evidenceRun": 41504810728,
+    "evidenceAttempt": 1,
+    "evidenceArtifact": 13169763764,
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+  },
+  "normalGroups": [
+    {
+      "name": "normal-0",
+      "config": "normal-0.config.mts",
+      "counts": {
+        "packages/app/src/api/self-hosted-voice.test.ts": 40
+      },
+      "total": 40
+    },
+    {
+      "name": "normal-1",
+      "config": "normal-1.config.mts",
+      "counts": {
+        "packages/host/src/voice/cloud-speech-relay-client.test.ts": 32,
+        "packages/host/src/voice/cloud-speech-relay-http-status.test.ts": 1,
+        "packages/host/src/voice/cloud-speech-relay-phase-deadline.test.ts": 3,
+        "packages/host/src/voice/cloud-speech-relay-startup-deadline.test.ts": 2,
+        "packages/host/src/voice/cloud-speech-retirement-recovery.test.ts": 16,
+        "packages/host/src/voice/speech-no-dispatch-proof.test.ts": 2,
+        "packages/host/src/voice/speech-retirement-proof.test.ts": 14,
+        "packages/host/src/voice/voice-stop-intent.test.ts": 8
+      },
+      "total": 78
+    },
+    {
+      "name": "normal-2",
+      "config": "normal-2.config.mts",
+      "counts": {
+        "packages/ui/src/hooks/useRealtimeVoiceSession.refusal.test.tsx": 4,
+        "packages/ui/src/voice/voice-session-cloud-budget-rotation.test.ts": 26
+      },
+      "total": 30
+    },
+    {
+      "name": "normal-3",
+      "config": "normal-3.config.mts",
+      "counts": {
+        "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts": 124,
+        "plugins/plugin-assistant/src/runtime/calendar-read-coverage.test.ts": 211,
+        "plugins/plugin-assistant/src/services/message/reply-quality.verbatim.test.ts": 6
+      },
+      "total": 341
+    }
+  ],
+  "typeCommands": [
+    [
+      "/usr/local/bin/node",
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "-p",
+      "packages/host/tsconfig.json"
+    ],
+    [
+      "/usr/local/bin/node",
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "-p",
+      "packages/ui/tsconfig.json"
+    ],
+    [
+      "/usr/local/bin/node",
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "-p",
+      "plugins/plugin-assistant/tsconfig.json"
+    ],
+    [
+      "/usr/local/bin/node",
+      "node_modules/typescript/bin/tsc",
+      "--noEmit",
+      "-p",
+      "plugins/plugin-calendar/tsconfig.json"
+    ],
+    [
+      "/usr/local/bin/bun",
+      "run",
+      "--cwd",
+      "packages/app",
+      "typecheck"
+    ]
+  ],
+  "workerdFile": null,
+  "priorR8": {
+    "source": "6bcd17251657a641ca877591f0cc10d200dc74df",
+    "resultsNotTransferred": true
+  },
+  "normalExecutionReady": false,
+  "normalBlocker": "Await exact complete installed dependency/native-hook inventory and independently accepted compiler/runtime provenance; one-file receipt or boolean is insufficient",
+  "normalInstallRequirement": "Separate hash-bound Linux/x86_64 successful normal install/native-hook receipt; ignore-scripts never qualifies this path",
+  "network": "All test/type containers network none. Only fixture loopback permitted. Installation bridge access is not claimed registry-only.",
+  "limits": "Existing R8 host limits unchanged; all phases share wholeSeconds. Exhaustion is incomplete, never implicit budget growth. Mac local floor remains53GiB entry/50GiB stop; this operator is Linux hosted only.",
+  "requiredPostRun": [
+    "All full files and exact collected counts pass, zero skip/todo",
+    "Normal-config and type results separate from ignore-scripts unit recipe",
+    "All source hashes unchanged; all owned groups/CIDs closed",
+    "No provider/money/runtime/browser/device claim"
+  ],
+  "executionScope": "Hosted ignore-scripts SDK full owning files only; no backendWorkerd/native/normaltype/provider acceptance. Backendmetadata41555903522 is separate and not replayed.",
+  "approval": "No ROOT_GO_JSON exists; no dispatch. Workflow template exact source pin, new dedicated operator commit must be reviewed before Root GO.",
+  "counts": {
+    "staticTests": 489,
+    "wholeFiles": 14,
+    "voiceRefusalCases": 148,
+    "CalendarCases": 211,
+    "literalOwningCases": 130
+  },
+  "intentProtocol": "Pre-dispatch128bitnonce boundsource/tree/operator/workflow/issued+expiry; concurrency serializes sameintent repositorywide; existing immutable claim artifact blocks replay; actualrunID recorded afterlaunch; runner verifiesownclaimartifact beforepull/test. Authenticatedactionsmetadataread only, no tokenpassedcontainers.",
+  "knownLimit": "Replay protection depends on immutableclaimartifact remaining available during20minuteGO; deletion/privilegedtampering invalidates custody and is outside admittedoperation. No deletion authorized.",
+  "old359NotTransferred": true,
+  "selected9LiteralFixture": "Historical scoped normal479-module result only; cannot replace fullowning130cases or combined489casequalification.",
+  "unitGroups": [
+    {
+      "name": "unit-app-host",
+      "config": "unit-app-host.config.mts",
+      "counts": {
+        "packages/app/src/api/self-hosted-voice.test.ts": 40
+      },
+      "total": 40
+    },
+    {
+      "name": "unit-host-voice",
+      "config": "unit-host-voice.config.mts",
+      "counts": {
+        "packages/host/src/voice/cloud-speech-relay-client.test.ts": 32,
+        "packages/host/src/voice/cloud-speech-relay-http-status.test.ts": 1,
+        "packages/host/src/voice/cloud-speech-relay-phase-deadline.test.ts": 3,
+        "packages/host/src/voice/cloud-speech-relay-startup-deadline.test.ts": 2,
+        "packages/host/src/voice/cloud-speech-retirement-recovery.test.ts": 16,
+        "packages/host/src/voice/speech-no-dispatch-proof.test.ts": 2,
+        "packages/host/src/voice/speech-retirement-proof.test.ts": 14,
+        "packages/host/src/voice/voice-stop-intent.test.ts": 8
+      },
+      "total": 78
+    },
+    {
+      "name": "unit-ui-refusal",
+      "config": "unit-ui-refusal.config.mts",
+      "counts": {
+        "packages/ui/src/hooks/useRealtimeVoiceSession.refusal.test.tsx": 4,
+        "packages/ui/src/voice/voice-session-cloud-budget-rotation.test.ts": 26
+      },
+      "total": 30
+    },
+    {
+      "name": "unit-stage1-full",
+      "config": "unit-stage1-full.config.mts",
+      "counts": {
+        "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts": 124
+      },
+      "total": 124
+    },
+    {
+      "name": "unit-calendar",
+      "config": "unit-calendar.config.mts",
+      "counts": {
+        "plugins/plugin-assistant/src/runtime/calendar-read-coverage.test.ts": 211
+      },
+      "total": 211
+    },
+    {
+      "name": "unit-literal-full",
+      "config": "unit-literal-full.config.mts",
+      "counts": {
+        "plugins/plugin-assistant/src/services/message/reply-quality.verbatim.test.ts": 6
+      },
+      "total": 6
+    }
+  ],
+  "unitConfiguration": "Use exactowningpackageconfig/resolver/setup/pluginsincludingUIReactdedupe; overrideONLY fullfileinclude/root/cache/workers/timeouts/heap1536MiB. Explicitincludeassignment avoidsarraymergeexpansion. Ignore-scriptsdependencyinstall stillNOTnormalnativehookproof."
+}
