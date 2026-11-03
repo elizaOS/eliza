@@ -239,6 +239,57 @@ it("keeps the latest contact time and platform when an older interaction arrives
   });
 });
 
+it("keeps the newest contact's platform with its time when contacts merge on PostgreSQL", async () => {
+  const entities = graph.getEntityStore();
+  const contact = (entityId: string) =>
+    entities.upsert({
+      entityId,
+      type: "person",
+      preferredName: "Merged contact",
+      identities: [],
+      tags: [],
+      visibility: "owner_only",
+      state: {},
+    });
+  const inbound = (platform: string, occurredAt: string) => ({
+    platform,
+    direction: "inbound" as const,
+    summary: "synthetic",
+    occurredAt,
+  });
+  const older = "2026-07-01T09:00:00.000Z";
+  const newer = "2026-11-02T18:00:00.000Z";
+
+  // The source holds the newer interaction.
+  await contact("merge-target-old");
+  await contact("merge-source-new");
+  await entities.recordInteraction("merge-target-old", inbound("gmail", older));
+  await entities.recordInteraction(
+    "merge-source-new",
+    inbound("telegram", newer),
+  );
+  await entities.merge("merge-target-old", ["merge-source-new"]);
+  expect((await entities.get("merge-target-old"))?.state).toMatchObject({
+    lastObservedAt: newer,
+    lastInboundAt: newer,
+    lastInteractionPlatform: "telegram",
+  });
+
+  // The target holds the newer interaction.
+  await contact("merge-target-new");
+  await contact("merge-source-old");
+  await entities.recordInteraction(
+    "merge-target-new",
+    inbound("telegram", newer),
+  );
+  await entities.recordInteraction("merge-source-old", inbound("gmail", older));
+  await entities.merge("merge-target-new", ["merge-source-old"]);
+  expect((await entities.get("merge-target-new"))?.state).toMatchObject({
+    lastObservedAt: newer,
+    lastInteractionPlatform: "telegram",
+  });
+});
+
 it("filters entities by an exact tag, not a LIKE pattern", async () => {
   const entities = graph.getEntityStore();
   const input = {
