@@ -19,6 +19,7 @@ import {
 import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
 import { LicenseStore } from "./license.ts";
+import { comparisonRows, paywallCopy, PLAN_PRICES, tierFor, TRIAL_MS } from "./plan.ts";
 import { tail4 } from "./net.ts";
 import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { checkDesktopUpdate, DESK_VERSION, WHATS_NEW } from "./updates.ts";
@@ -192,6 +193,25 @@ async function handle(
   }
   if (req.method === "GET" && pathname === "/api/ads/report") {
     send(res, 200, await loadAdReport(process.env));
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/plan") {
+    const store = new LicenseStore(engine.dataDir);
+    const record = await store.read();
+    const graceMs = store.config.offlineGraceDays * 24 * 60 * 60 * 1000;
+    const pro = record
+      ? record.status === "active" && Date.now() - record.validatedAt <= graceMs
+      : false;
+    const tier = tierFor({ pro, trialStartedAt: null, now: Date.now() });
+    send(res, 200, {
+      ok: true,
+      tier,
+      prices: PLAN_PRICES,
+      paywall: paywallCopy(PLAN_PRICES),
+      rows: comparisonRows(),
+      ads: tier === "free",
+      trialDays: TRIAL_MS / 86400000,
+    });
     return;
   }
   if (req.method === "GET" && pathname === "/api/license") {

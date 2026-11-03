@@ -48,4 +48,6 @@ async function loadState(base, token) {
   }
   const row = body.state || {};
   say(`${row.status || "Desk answered."}\n${row.pnl || ""}\n${row.positions || ""}\nRead-only. No send or withdraw.`);
+  const house = document.getElementById("house");
+  if (house) house.hidden = false;
 }

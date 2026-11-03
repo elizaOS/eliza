@@ -1,5 +1,8 @@
 {
   "PRO_PRICE": "$19/month",
+  "PRO_YEAR_PRICE": "$149/year",
+  "PRO_LAUNCH_PRICE": "$9.99/month",
+  "PRO_LAUNCH_SLOTS": 100,
   "LEMONSQUEEZY_CHECKOUT_URL": "",
   "offlineGraceDays": 7,
   "proMonthlyCapUsd": 20

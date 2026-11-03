@@ -7,6 +7,9 @@ export const VALIDATE_URL = "https://api.lemonsqueezy.com/v1/licenses/validate";
 
 export interface ProductConfig {
   PRO_PRICE: string;
+  PRO_YEAR_PRICE: string;
+  PRO_LAUNCH_PRICE: string;
+  PRO_LAUNCH_SLOTS: number;
   LEMONSQUEEZY_CHECKOUT_URL: string;
   offlineGraceDays: number;
   proMonthlyCapUsd: number;
@@ -14,6 +17,9 @@ export interface ProductConfig {
 
 export const DEFAULT_PRODUCT: ProductConfig = {
   PRO_PRICE: "$19/month",
+  PRO_YEAR_PRICE: "$149/year",
+  PRO_LAUNCH_PRICE: "$9.99/month",
+  PRO_LAUNCH_SLOTS: 100,
   LEMONSQUEEZY_CHECKOUT_URL: "",
   offlineGraceDays: 7,
   proMonthlyCapUsd: 20,
@@ -36,6 +42,9 @@ export function loadProductConfig(
     const parsed = JSON.parse(readFileSync(file, "utf8")) as Partial<ProductConfig>;
     return {
       PRO_PRICE: String(parsed.PRO_PRICE || DEFAULT_PRODUCT.PRO_PRICE),
+      PRO_YEAR_PRICE: String(parsed.PRO_YEAR_PRICE || DEFAULT_PRODUCT.PRO_YEAR_PRICE),
+      PRO_LAUNCH_PRICE: String(parsed.PRO_LAUNCH_PRICE || DEFAULT_PRODUCT.PRO_LAUNCH_PRICE),
+      PRO_LAUNCH_SLOTS: Number(parsed.PRO_LAUNCH_SLOTS) || DEFAULT_PRODUCT.PRO_LAUNCH_SLOTS,
       LEMONSQUEEZY_CHECKOUT_URL: String(parsed.LEMONSQUEEZY_CHECKOUT_URL ?? "").trim(),
       offlineGraceDays: Number(parsed.offlineGraceDays) || DEFAULT_PRODUCT.offlineGraceDays,
       proMonthlyCapUsd: Number(parsed.proMonthlyCapUsd) || DEFAULT_PRODUCT.proMonthlyCapUsd,

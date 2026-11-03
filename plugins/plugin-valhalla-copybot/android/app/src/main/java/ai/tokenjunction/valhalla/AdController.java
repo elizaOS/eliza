@@ -102,8 +102,9 @@ final class AdController {
             column.setVisibility(View.GONE);
             return;
         }
-        boolean quiet = SessionStore.SCREEN_PAIRING.equals(screen) || SessionStore.SCREEN_ERRORS.equals(screen);
-        column.setVisibility(quiet ? View.VISIBLE : View.GONE);
+        // No ads on wallet connect (pairing) or the error/settings log. No interstitial on open.
+        boolean show = SessionStore.SCREEN_STATUS.equals(screen);
+        column.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
     void destroy() {

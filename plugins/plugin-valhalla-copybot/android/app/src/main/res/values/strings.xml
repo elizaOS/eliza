@@ -17,13 +17,16 @@
     <string name="confirm_suggestion">Confirm this settings change</string>
     <string name="back">Back to status</string>
     <string name="ad_label">Advertisement. Optional. It does not cover trading controls.</string>
-    <string name="rewarded_ad">Optional short ad</string>
+    <string name="rewarded_ad">Watch an ad for 1 extra Brain score</string>
     <string name="scan_qr">Scan desk QR</string>
     <string name="delete_data">Delete phone data</string>
     <string name="house_count">Shown %1$d times on this phone. Opened %2$d times.</string>
     <string name="house_link">Open this message</string>
     <string name="privacy_policy">Privacy policy</string>
     <string name="about">About</string>
+    <string name="pro_license">Pro license</string>
+    <string name="pro_store">This store build uses Google Play Billing, product valhalla_pro_monthly. It does not use a Lemon Squeezy key.</string>
+    <string name="pro_hint">Paste the license key from your receipt. This is not a wallet key. Pro is not a promise of profit.</string>
     <string name="about_title">About Valhalla</string>
     <string name="about_body">TokenJunction LLC publishes Valhalla. TokenJunction LLC is a private company. It owns Valhalla.\n\nThis is not financial advice. Crypto can lose money. The phone does not hold a wallet key. There is no send or withdraw.\n\nSite: https://valhalla-app.xyz\nSupport: hello@valhalla-app.xyz\n\n© 2026 TokenJunction LLC</string>
     <string name="advice_body">TokenJunction LLC publishes Valhalla. This is not financial advice. The app does not promise profit. It cannot send or withdraw. Keys stay on your computer.</string>
