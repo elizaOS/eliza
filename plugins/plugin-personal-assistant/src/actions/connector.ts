@@ -21,6 +21,7 @@ import type {
   MessageConnector,
   State,
 } from "@elizaos/core";
+import { getUserMessageText } from "@elizaos/core";
 import { extractActionParamsViaLlm } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { getConnectorRegistry } from "../lifeops/connectors/index.js";
@@ -1408,7 +1409,7 @@ export const connectorAction: Action & {
   validate: async (_runtime, message) => {
     // Exclude CONNECTOR from selection for calendar-feed connect phrasing so
     // the planner must use CALENDAR_SOURCES instead of CONNECT_GOOGLE.
-    return !isCalendarFeedConnectPhrase(messageText(message));
+    return !isCalendarFeedConnectPhrase(getUserMessageText(message));
   },
 
   handler: async (
@@ -1425,7 +1426,7 @@ export const connectorAction: Action & {
       };
     }
 
-    if (isCalendarFeedConnectPhrase(messageText(message))) {
+    if (isCalendarFeedConnectPhrase(getUserMessageText(message))) {
       return {
         success: false,
         text: "Calendar feed connection uses CALENDAR_SOURCES, not CONNECTOR. Call CALENDAR_SOURCES with operation=connect and provider=google|microsoft|apple_calendar.",
