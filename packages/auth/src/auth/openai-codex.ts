@@ -12,6 +12,8 @@ import {
   refreshOpenAICodexToken,
 } from "./vendor/pi-oauth/openai-codex-login.ts";
 
+export { OpenAICodexRefreshRejectedError } from "./vendor/pi-oauth/openai-codex-login.ts";
+
 export interface CodexFlow {
   authUrl: string;
   state: string;

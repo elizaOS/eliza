@@ -127,7 +127,12 @@ type TokenSuccess = {
    * account's CODEX_HOME to authenticate. */
   idToken?: string;
 };
-type TokenFailure = { type: "failed"; reason: string };
+type TokenFailure = {
+  type: "failed";
+  reason: string;
+  /** HTTP status of a token endpoint rejection; absent for transport/parse failures. */
+  status?: number;
+};
 type TokenResult = TokenSuccess | TokenFailure;
 
 type TokenResponseContext =
@@ -142,8 +147,34 @@ function isNonBlankString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function failedTokenResponse(reason: string): TokenFailure {
-  return { type: "failed", reason };
+function failedTokenResponse(reason: string, status?: number): TokenFailure {
+  return status === undefined
+    ? { type: "failed", reason }
+    : { type: "failed", reason, status };
+}
+
+/**
+ * Statuses with which the OAuth token endpoint refuses the refresh grant
+ * itself (RFC 6749 section 5.2: `invalid_grant` and friends answer 400; a
+ * revoked or reused token may answer 401/403). Retrying cannot succeed; only
+ * a new sign-in can.
+ */
+const REJECTED_REFRESH_STATUSES = new Set([400, 401, 403]);
+
+/**
+ * The token endpoint refused the stored refresh token, so the account needs a
+ * new sign-in. Thrown instead of a generic failure so credential callers can
+ * classify it as an auth failure rather than a transient outage.
+ */
+export class OpenAICodexRefreshRejectedError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(
+      `OpenAI Codex rejected the refresh token (HTTP ${status}); sign in again`,
+    );
+    this.name = "OpenAICodexRefreshRejectedError";
+    this.status = status;
+  }
 }
 
 async function releaseRejectedResponse(response: Response): Promise<void> {
@@ -306,7 +337,10 @@ async function refreshAccessToken(
         { mode: "refresh", status: response.status },
         "[openai-codex] Token request returned a non-success status",
       );
-      return failedTokenResponse("provider returned a non-success status");
+      return failedTokenResponse(
+        "provider returned a non-success status",
+        response.status,
+      );
     }
     return readTokenResponse(response, {
       mode: "refresh",
@@ -537,7 +571,16 @@ export async function refreshOpenAICodexToken(
 ): Promise<OpenAiCodexOAuthCredentials> {
   const result = await refreshAccessToken(refreshToken);
   if (result.type !== "success") {
-    throw new Error("Failed to refresh OpenAI Codex token");
+    if (
+      result.status !== undefined &&
+      REJECTED_REFRESH_STATUSES.has(result.status)
+    )
+      throw new OpenAICodexRefreshRejectedError(result.status);
+    throw new Error(
+      result.status === undefined
+        ? "Failed to refresh OpenAI Codex token"
+        : `Failed to refresh OpenAI Codex token (HTTP ${result.status})`,
+    );
   }
   const accountId = getAccountId(result.access);
   if (!accountId) {

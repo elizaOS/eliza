@@ -42,7 +42,10 @@ import {
   updateAccountCredentialsIfUnchanged,
 } from "./account-storage.ts";
 import { refreshAnthropicToken } from "./anthropic.ts";
-import { refreshCodexToken } from "./openai-codex.ts";
+import {
+  OpenAICodexRefreshRejectedError,
+  refreshCodexToken,
+} from "./openai-codex.ts";
 import { accountRefreshMutex } from "./refresh-mutex.ts";
 import { ensureBuiltinSubscriptionAuthProviders } from "./subscription-auth/builtin-providers.ts";
 import { getSubscriptionAuthProvider } from "./subscription-auth/registry.ts";
@@ -117,6 +120,9 @@ function tokenFailure(
   };
 }
 function classifyRefreshError(err: unknown): AccessTokenFailureKind {
+  // The Codex endpoint's body is never surfaced, so its typed rejection is
+  // the only signal that the refresh token itself was refused.
+  if (err instanceof OpenAICodexRefreshRejectedError) return "auth";
   const message = err instanceof Error ? err.message : String(err);
   if (
     /\b(?:401|403|invalid[_ ]?grant|invalid[_ ]?token|unauthor|forbidden|re-?auth|revoked|(?:access |refresh |oauth |jwt |session |credential )?token (?:has |is )?expired|expired[_ ]?(?:access[_ ]?|refresh[_ ]?|oauth[_ ]?|jwt[_ ]?)?token|(?:credential|jwt|session) (?:has |is )?expired)\b/i.test(
