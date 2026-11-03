@@ -16,6 +16,7 @@
  */
 
 import { type EventPayload, type IAgentRuntime, logger } from "@elizaos/core";
+import { scheduledOverrideAtMs } from "./due.js";
 import type {
   ScheduledTaskFireResult,
   ScheduledTaskRunnerHandle,
@@ -85,7 +86,8 @@ export interface EventTriggeredFireOutcome {
 }
 
 /**
- * Fire every `scheduled` task whose trigger matches the emitted event.
+ * Fire every `scheduled` task whose trigger matches the emitted event and is
+ * not parked on a scheduled override.
  * Per-task errors are collected (and logged by the installer's handler) so
  * one broken row cannot starve the other listeners of the same event.
  */
@@ -98,6 +100,9 @@ export async function fireEventTriggeredTasks(
     if (task.trigger.kind !== "event") continue;
     if (task.trigger.eventKind !== args.eventKind) continue;
     if (!eventFilterMatches(task.trigger.filter, args.payload)) continue;
+    // A snoozed, deferred or retry-parked task already holds its occurrence:
+    // the tick fires it at the parked time.
+    if (scheduledOverrideAtMs(task) !== null) continue;
     try {
       const result = await args.runner.fireWithResult(task.taskId, {
         cause: "automatic",

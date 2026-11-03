@@ -121,12 +121,21 @@ function metadataCreatedAtMs(task: ScheduledTask): number | null {
   );
 }
 
+/**
+ * The instant a `scheduled` row is parked at (owner snooze, gate defer,
+ * dispatch retry or advance), or null when it is not parked. The tick fires
+ * a parked row at that instant.
+ */
+export function scheduledOverrideAtMs(task: ScheduledTask): number | null {
+  if (task.state.status !== "scheduled") return null;
+  return parseIsoMs(task.state.firedAt);
+}
+
 function scheduledOverrideDue(
   task: ScheduledTask,
   nowMs: number,
 ): ScheduledTaskDueDecision | null {
-  if (task.state.status !== "scheduled") return null;
-  const fireAtMs = parseIsoMs(task.state.firedAt);
+  const fireAtMs = scheduledOverrideAtMs(task);
   if (fireAtMs === null) return null;
   if (fireAtMs > nowMs) {
     return { due: false, reason: "scheduled_override_pending" };
