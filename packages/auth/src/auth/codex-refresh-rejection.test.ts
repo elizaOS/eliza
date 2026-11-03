@@ -110,6 +110,20 @@ describe("OpenAI Codex refresh failure classification", () => {
       JSON.stringify({ error: "temporarily_unavailable" }),
       "application/json",
     ],
+    // Client-level answers describe the shared OAuth client, not this
+    // account's refresh token; parking would take every pooled account.
+    [
+      "a client authentication failure (HTTP 400 invalid_client)",
+      400,
+      JSON.stringify({ error: "invalid_client" }),
+      "application/json",
+    ],
+    [
+      "a client grant-type refusal (HTTP 403 unauthorized_client)",
+      403,
+      JSON.stringify({ error: { code: "unauthorized_client" } }),
+      "application/json",
+    ],
   ])("keeps %s transient", async (_label, status, body, contentType) => {
     vi.stubGlobal(
       "fetch",

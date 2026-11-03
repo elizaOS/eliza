@@ -163,15 +163,18 @@ function failedTokenResponse(
 }
 
 /**
- * OAuth error codes with which the token endpoint refuses the refresh grant
- * itself: RFC 6749 section 5.2, plus the refresh-token codes the Codex CLI
- * treats as a required sign-in. Retrying cannot succeed; only a new sign-in
- * can.
+ * OAuth error codes with which the token endpoint refuses this account's
+ * refresh grant: RFC 6749 section 5.2 `invalid_grant`, plus `access_denied`
+ * and the refresh-token codes the Codex CLI treats as a required sign-in.
+ * Retrying cannot succeed; only a new sign-in can.
+ *
+ * `invalid_client` and `unauthorized_client` are not here: they describe the
+ * OAuth client, and every pooled account sends the same `CLIENT_ID`, so one
+ * such answer would park the whole pool, and a new sign-in (same client)
+ * could not fix it. They stay transient and the next sweep retries.
  */
 const PERMANENT_REFRESH_ERROR_CODES: ReadonlySet<string> = new Set([
   "invalid_grant",
-  "invalid_client",
-  "unauthorized_client",
   "access_denied",
   "refresh_token_expired",
   "refresh_token_reused",
