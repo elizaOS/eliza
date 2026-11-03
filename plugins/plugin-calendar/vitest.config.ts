@@ -1,6 +1,7 @@
 /** Vitest config for the calendar plugin test suite. */
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { defaultExternalConditions, defaultServerConditions } from "vite";
 import { defineConfig } from "vitest/config";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -61,6 +62,14 @@ export default defineConfig({
         // via Node's native resolver to bypass Vite's transform pipeline.
         external: [/@elizaos\/agent/],
       },
+    },
+  },
+  // Vitest on Vite 6+ uses SSR conditions for transformed imports and worker flags.
+  // Bare/external module resolution has its own condition list; preserve both defaults.
+  ssr: {
+    resolve: {
+      conditions: ["eliza-source", ...defaultServerConditions.filter((condition) => condition !== "module")],
+      externalConditions: ["eliza-source", ...defaultExternalConditions],
     },
   },
   resolve: {
