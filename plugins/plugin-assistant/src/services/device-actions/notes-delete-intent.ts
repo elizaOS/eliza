@@ -32,12 +32,8 @@ export function originalRequestsNotesDeletion(
   // Keep a later cancellation/read-only instruction authoritative, even after a command prefix.
   // Declining this optimized continuation is safe; the existing planner can clarify.
   // intentClauses splits on "instead" and drops the word, so check it on the whole request,
-  // with read/show on either side ("instead, read it", "show it instead").
-  if (
-    /\binstead\b[\s\S]{0,80}\b(?:read|show)\b|\b(?:read|show)\b[\s\S]{0,80}\binstead\b/iu.test(
-      original,
-    )
-  )
+  // with read/show anywhere on either side ("instead, read it", "show it instead").
+  if (/\binstead\b/iu.test(original) && /\b(?:read|show)\b/iu.test(original))
     return false;
   return !intentClauses(original).some((clause) =>
     /\b(?:do\s+not|don['’]?t|never|without)\b[\s\S]{0,80}\b(?:delet|remov|eras|chang)|\b(?:never\s+mind|cancel\s+(?:it|that|this|the\s+(?:request|deletion))|forget\s+(?:it|that)|read[- ]only)\b/iu.test(

@@ -47,4 +47,12 @@ describe("originalRequestsNotesDeletion", () => {
     ];
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
   });
+
+  it("declines read or show instead when a long clause separates them", () => {
+    const requests = [
+      "Delete the note about groceries, instead of archiving every attached receipt and every revision for compliance, please just read it aloud to me",
+      "Delete the note about groceries and show it to me, with every attached receipt and every revision kept for the yearly compliance audit, instead",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
+  });
 });
