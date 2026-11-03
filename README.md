@@ -12,11 +12,13 @@
 
 ## Valhalla / ACCELERATION
 
-[![Download test APK](https://img.shields.io/badge/download-v0.1.0--test%20APK-ffb347)](https://github.com/TokenJunction/eliza-Vallahla/releases/download/v0.1.0-test/valhalla-0.1.0-test.apk)
+[![Download test APK](https://img.shields.io/badge/download-phone%20APK-ffb347)](https://github.com/TokenJunction/eliza-valhalla/releases/download/v0.1.1-phone/valhalla-phone.apk)
 
 This fork adds the Valhalla desk. It is the ACCELERATION command center for a small Solana copy bot. The test phone build is a sideload APK, not a Play Store app.
 
-**Download:** [v0.1.0-test APK](https://github.com/TokenJunction/eliza-Vallahla/releases/download/v0.1.0-test/valhalla-0.1.0-test.apk) · [release notes](https://github.com/TokenJunction/eliza-Vallahla/releases/tag/v0.1.0-test)
+**Site:** [tokenjunction.github.io/eliza-valhalla](https://tokenjunction.github.io/eliza-valhalla/)
+
+**Download:** [phone APK](https://github.com/TokenJunction/eliza-valhalla/releases/download/v0.1.1-phone/valhalla-phone.apk) · [release notes](https://github.com/TokenJunction/eliza-valhalla/releases/tag/v0.1.1-phone)
 
 ### Quick start
 

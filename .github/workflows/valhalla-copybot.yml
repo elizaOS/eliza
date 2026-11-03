@@ -20,6 +20,8 @@ jobs:
           bun-version: 1.4.2
       - name: Forbidden wallets
         run: bun plugins/plugin-valhalla-copybot/scripts/forbid-wallets.ts
+      - name: Valhalla spelling
+        run: bun plugins/plugin-valhalla-copybot/scripts/spell-valhalla.ts
       - name: Install
         run: bun install --ignore-scripts
       - name: Lint
