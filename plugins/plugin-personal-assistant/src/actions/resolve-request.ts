@@ -29,6 +29,7 @@ import {
   resolveActionArgs,
   runWithTrajectoryPurpose,
   type SubactionsMap,
+  extractUserText,
   stableStringify,
   toWellFormedUnicode,
   truncateWellFormed,
@@ -2301,7 +2302,9 @@ async function resolveApprovalRequest(
       all.findIndex((candidate) => candidate.id === request.id) === index,
   );
   const userText =
-    typeof message.content.text === "string" ? message.content.text : "";
+    typeof message.content.text === "string"
+      ? extractUserText(message.content.text)
+      : "";
   const explicitRequestId =
     typeof params.requestId === "string" && params.requestId.trim().length > 0
       ? params.requestId.trim()
