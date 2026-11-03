@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, mock } from "bun:test";
-const control = { ttsUnknown: false, finalized: 0, afterClose: undefined as (() => void) | undefined, closeFails: false, opens: 0, closes: 0, wait: undefined as Promise<void> | undefined, subscriptionWait: undefined as Promise<void> | undefined, subscribed: 0, unsubscribed: 0 };
+const control = { ttsUnknown: false, finalized: 0, afterClose: undefined as (() => void) | undefined, closeFails: false, opens: 0, closes: 0, wait: undefined as Promise<void> | undefined, subscriptionWait: undefined as Promise<void> | undefined, subscribed: 0, unsubscribed: 0, adapterCloses: 0, finalizerFailure: undefined as Error | undefined };
 mock.module("@elizaos/cloud-shared/db/client", () => ({ runWithDbCacheAsync: (fn: () => unknown) => fn() }));
 mock.module("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({ runWithCloudBindingsAsync: (_env: unknown, fn: () => unknown) => fn() }));
 mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError: class extends Error {} }));
@@ -9,7 +9,7 @@ mock.module("@elizaos/cloud-shared/lib/voice-session/config", () => ({ resolveVo
 const actualCartesiaInk = { ...await import("@elizaos/host/voice/cartesia-ink") };
 mock.module("@elizaos/host/voice/cartesia-ink", () => ({ ...actualCartesiaInk, createCartesiaInkRealtimeSession() {} }));
 const actualCartesiaSonic = { ...await import("@elizaos/host/voice/cartesia-sonic-tts") };
-mock.module("@elizaos/host/voice/cartesia-sonic-tts", () => ({ ...actualCartesiaSonic, CartesiaSonicTtsAdapter: class { close() {} async closeAndConfirm() { return "transport_closed"; } } }));
+mock.module("@elizaos/host/voice/cartesia-sonic-tts", () => ({ ...actualCartesiaSonic, CartesiaSonicTtsAdapter: class { close() { control.adapterCloses++; } async closeAndConfirm() { return "transport_closed"; } } }));
 const actualSocketFactories = { ...await import("../v1/voice/session/lib/provider-socket-factory") };
 mock.module("../v1/voice/session/lib/provider-socket-factory", () => ({ ...actualSocketFactories, createWorkerCartesiaFactory: () => () => {}, createWorkerCartesiaInkFactory: () => () => {} }));
 mock.module("../v1/voice/stt/cartesia-pricing", () => ({ parseCartesiaUsdPerCredit: () => 0.001 }));
@@ -22,7 +22,7 @@ mock.module("./speech-relay-admission", () => ({ reserveSpeechRelayAdmission: as
 const actualSpeechRelaySession = { ...await import("@elizaos/host/voice/speech-relay-session") };
 mock.module("@elizaos/host/voice/speech-relay-session", () => ({ ...actualSpeechRelaySession, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
   control.opens++;
-  const handle = { async close() { control.closes++; control.afterClose?.(); if (control.closeFails) throw Error("unknown cleanup"); }, async retryRetirement() { return this.close(); }, async finalizeUnknownTtsAccounting() { control.finalized++; }, evidence: () => ({ stt: "gracefully_drained", tts: control.ttsUnknown ? "unknown" : "transport_closed", accounting: "settled_actual" }) };
+  const handle = { async close() { control.closes++; control.afterClose?.(); if (control.closeFails) throw Error("unknown cleanup"); }, async retryRetirement() { return this.close(); }, async finalizeUnknownTtsAccounting() { control.finalized++; if (control.finalizerFailure) throw control.finalizerFailure; }, evidence: () => ({ stt: "gracefully_drained", tts: control.ttsUnknown ? "unknown" : "transport_closed", accounting: "settled_actual" }) };
   ports.registerRetirement(handle); await ports.reserveCredits(); await control.wait;
   return { retirement: handle, close: () => handle.close() };
 } }));
@@ -30,9 +30,10 @@ const { SpeechRelayCoordinator } = await import("./speech-relay-coordinator");
 const id = "00000000-0000-4000-8000-000000000001", owner = "00000000-0000-4000-8000-000000000002", org = "00000000-0000-4000-8000-000000000003";
 function fixture() {
   let row: any, queue = Promise.resolve(), failProof = false, beforeTransaction: (() => void) | undefined;
+  let alarmSets = 0, alarmDeletes = 0;
   const storage = {
     async get() { return structuredClone(row); }, async put(_key: string, value: any) { if (failProof && value.retirement?.proof?.state === "confirmed") { failProof = false; throw Error("proof storage failed"); } row = structuredClone(value); },
-    async setAlarm() {}, async deleteAlarm() {},
+    async setAlarm() { alarmSets++; }, async deleteAlarm() { alarmDeletes++; },
     transaction(fn: (tx: unknown) => Promise<unknown>) { const next = queue.then(() => { const before = beforeTransaction; beforeTransaction = undefined; before?.(); return fn(storage); }); queue = next.then(() => {}, () => {}); return next; },
   };
   const state = { storage, waitUntil(p: Promise<unknown>) { void p.catch(() => {}); } } as never;
@@ -53,9 +54,9 @@ function fixture() {
     const task = (c as any).open(structuredClone(row)); (c as any).openingTask = task; await task;
     expect(frames).toContainEqual({ t: "ready", version: 1, sampleRate: 16000, channels: 1, expiresAt: new Date(input.expiresAt).toISOString() });
   };
-  return { c, make, input, post, revoke, open, beforeNextTransaction(fn: () => void) { beforeTransaction = fn; }, failNextProof() { failProof = true; }, get row() { return row; } };
+  return { c, make, input, post, revoke, open, alarms: () => ({ sets: alarmSets, deletes: alarmDeletes }), beforeNextTransaction(fn: () => void) { beforeTransaction = fn; }, failNextProof() { failProof = true; }, get row() { return row; } };
 }
-beforeEach(() => Object.assign(control, { ttsUnknown: false, finalized: 0, afterClose: undefined, closeFails: false, opens: 0, closes: 0, wait: undefined, subscriptionWait: undefined, subscribed: 0, unsubscribed: 0 }));
+beforeEach(() => Object.assign(control, { ttsUnknown: false, finalized: 0, afterClose: undefined, closeFails: false, opens: 0, closes: 0, wait: undefined, subscriptionWait: undefined, subscribed: 0, unsubscribed: 0, adapterCloses: 0, finalizerFailure: undefined }));
 test("duplicate initialize cannot reset an opened record", async () => {
   const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
   const before = structuredClone(f.row); await f.post(f.c, "initialize", f.input);
@@ -204,3 +205,51 @@ async function retirementFrom(response: Response): Promise<Record<string, unknow
   if (!isJsonRecord(value) || !isJsonRecord(value.retirement)) throw Error("Expected retirement response object");
   return value.retirement;
 }
+
+
+test("D2 expired automatic alarm finalizes the live unknown holder without another provider cleanup", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
+  control.ttsUnknown = true; control.closeFails = true;
+  expect((await f.revoke()).status).toBe(409);
+  f.row.retirement.retryDeadlineAt = Date.now() - 1;
+  const before = structuredClone(f.row), alarms = f.alarms();
+  const closes = control.closes, adapters = control.adapterCloses;
+  await f.c.alarm();
+  expect(control.finalized).toBe(1);
+  expect(control.closes).toBe(closes); expect(control.adapterCloses).toBe(adapters);
+  expect(control.opens).toBe(1); expect(f.row).toEqual(before);
+  expect(f.alarms()).toEqual({ sets: alarms.sets, deletes: alarms.deletes + 1 });
+  expect(f.row.retirement.proof.state).toBe("unconfirmed");
+});
+
+test("D2 capped automatic alarm never grants another attempt or fabricates an evicted holder", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
+  control.ttsUnknown = true; control.closeFails = true;
+  expect((await f.revoke()).status).toBe(409);
+  f.row.retirement.attempt = 3;
+  const before = structuredClone(f.row), alarms = f.alarms();
+  const closes = control.closes, adapters = control.adapterCloses;
+  await f.c.alarm();
+  expect(control.finalized).toBe(1); expect(f.row).toEqual(before);
+  expect(control.closes).toBe(closes); expect(control.adapterCloses).toBe(adapters);
+  await f.make().alarm(); // Recreation has storage, not the original live capability.
+  expect(control.finalized).toBe(1); expect(control.opens).toBe(1);
+  expect(f.row).toEqual(before);
+  expect(f.alarms()).toEqual({ sets: alarms.sets, deletes: alarms.deletes + 2 });
+});
+
+test("D2 finalizer rejection remains observable and removes the alarm without changing proof or target", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
+  control.ttsUnknown = true; control.closeFails = true;
+  expect((await f.revoke()).status).toBe(409);
+  f.row.retirement.retryDeadlineAt = Date.now() - 1;
+  const failure = new Error("canonical frozen settlement acknowledgement unavailable");
+  control.finalizerFailure = failure;
+  const before = structuredClone(f.row), alarms = f.alarms();
+  const closes = control.closes, adapters = control.adapterCloses;
+  await expect(f.c.alarm()).rejects.toBe(failure);
+  expect(control.finalized).toBe(1); expect(f.row).toEqual(before);
+  expect(f.row.retirement.proof.state).toBe("unconfirmed");
+  expect(control.closes).toBe(closes); expect(control.adapterCloses).toBe(adapters);
+  expect(f.alarms()).toEqual({ sets: alarms.sets, deletes: alarms.deletes + 1 });
+});

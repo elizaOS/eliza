@@ -9,6 +9,9 @@ import { runWithCloudBindings } from "@elizaos/cloud-shared/lib/runtime/cloud-bi
 import {
   type InferenceAdmissionLease,
   markInferenceAdmissionLeaseDispatched,
+  releaseInferenceAdmissionLease,
+  settleInferenceAdmissionLease,
+  type InferenceAdmissionZeroReleaseReceipt,
   wakeInferenceAdmissionGate,
 } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { Miniflare } from "miniflare";
@@ -1409,5 +1412,138 @@ describe("Miniflare Durable Object integration", () => {
     expect(replies[0].availableUsd).toBe(9);
     expect(replies[1]).toMatchObject({ availableUsd: 9, duplicate: true });
     expect(lease.preProviderCancellationToken).toBeUndefined();
+  }, 120_000);
+
+  // Production release/settlement functions and the production DO run here.
+  // Only the transport acknowledgement is controllable; no database, provider,
+  // collected-money result or canonical receipt is fabricated by this fixture.
+  function isZeroGateRequest(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === "object" && !Array.isArray(value);
+  }
+  async function zeroReleaseFixture(name: string) {
+    const gateName = `d1-zero-${name}`, requestId = `speech:d1-${name}:stt`;
+    expect((await post("/hydrate", { balanceUsd: 10, balanceRevision: "1" }, gateName)).status).toBe(200);
+    const recovery = { version: 1, kind: "organization", organizationId: "org-miniflare",
+      requestId, userId: "d1-owner", model: "test-model", provider: "test-provider",
+      billingSource: "test", description: "Zero-release evidence fixture", accounting: { kind: "direct_debit" } };
+    expect((await post("/lease", { organizationId: "org-miniflare", requestId,
+      balanceUsd: 10, balanceRevision: "1", estimatedCostUsd: 1, recovery }, gateName)).status).toBe(200);
+    let calls = 0;
+    let acknowledge = async (response: Response): Promise<Response> => response;
+    const lease: InferenceAdmissionLease = { organizationId: "org-miniflare", requestId,
+      estimatedCostUsd: 1, providerDispatched: false, gate: {
+        fetch: async (input, init) => {
+          calls++;
+          const request = new Request(input, init);
+          const body: unknown = await request.json();
+          if (!isZeroGateRequest(body)) throw new Error("Expected gate request object");
+          const response = await post(new URL(request.url).pathname, body, gateName);
+          return acknowledge(new Response(await response.text(), { status: response.status }));
+        },
+      } };
+    return { lease, requestId, get calls() { return calls; },
+      setAcknowledge(fn: typeof acknowledge) { acknowledge = fn; },
+      async fullCapacityAvailable() {
+        const nextId = `${requestId}:after`;
+        return (await post("/lease", { organizationId: "org-miniflare", requestId: nextId,
+          balanceUsd: 10, balanceRevision: "1", estimatedCostUsd: 10,
+          recovery: { ...recovery, requestId: nextId } }, gateName)).status;
+      } };
+  }
+
+  test("actual DO zero release emits exact identity only after its explicit acknowledgement", async () => {
+    const f = await zeroReleaseFixture("acknowledged");
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    expect(await releaseInferenceAdmissionLease(f.lease, receipt => receipts.push(receipt))).toBeUndefined();
+    expect(f.calls).toBe(1);
+    expect(receipts).toEqual([{ version: 1, organizationId: "org-miniflare", requestId: f.requestId, state: "released_zero" }]);
+    expect(await f.fullCapacityAvailable()).toBe(200);
+  }, 120_000);
+
+  test.each(["prepared", "rejected"] as const)(
+    "known %s dispatch emits never-reserved identity without a gate call",
+    async state => {
+      let calls = 0;
+      const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+      const lease: InferenceAdmissionLease = { organizationId: "org-prepared", requestId: `speech:${state}:tts`,
+        estimatedCostUsd: 1, providerDispatched: false, preProviderCancellationToken: "unused-capability",
+        preparedDispatch: { path: "/lease-dispatched", body: {}, state },
+        gate: { fetch: async () => { calls++; throw new Error("Prepared release must not call gate"); } } };
+      expect(await releaseInferenceAdmissionLease(lease, receipt => receipts.push(receipt))).toBeUndefined();
+      expect(calls).toBe(0);
+      expect(receipts).toEqual([{ version: 1, organizationId: "org-prepared", requestId: `speech:${state}:tts`, state: "not_reserved" }]);
+      expect(lease.preparedDispatch).toBeUndefined();
+      expect(lease.preProviderCancellationToken).toBeUndefined();
+    },
+  );
+
+  test("a lost release acknowledgement cannot emit zero proof despite the real DO releasing its hold", async () => {
+    const f = await zeroReleaseFixture("lost-ack");
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    f.setAcknowledge(async response => {
+      expect(response.status).toBe(200);
+      throw new Error("Lost acknowledgement after actual release");
+    });
+    await expect(releaseInferenceAdmissionLease(f.lease, receipt => receipts.push(receipt))).rejects.toBeInstanceOf(Error);
+    expect(receipts).toEqual([]);
+    expect(f.calls).toBe(1);
+    expect(await f.fullCapacityAvailable()).toBe(200);
+  }, 120_000);
+
+  test.each(["false", "wrong-state", "invalid-json", "404", "timeout"])(
+    "a %s release acknowledgement cannot emit zero proof",
+    async fault => {
+      const f = await zeroReleaseFixture(`invalid-${fault}`);
+      const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+      f.setAcknowledge(async () => {
+        if (fault === "timeout") throw new DOMException("Acknowledgement timed out", "TimeoutError");
+        if (fault === "404") return new Response(null, { status: 404 });
+        if (fault === "invalid-json") return new Response("{");
+        return Response.json(fault === "false" ? { released: false } : { dispatched: true });
+      });
+      await expect(releaseInferenceAdmissionLease(f.lease, receipt => receipts.push(receipt))).rejects.toBeInstanceOf(Error);
+      expect(receipts).toEqual([]);
+      expect(f.calls).toBe(1);
+    }, 120_000,
+  );
+
+  test("ambiguous not-found cleanup retains legacy void without authoritative zero proof", async () => {
+    const f = await zeroReleaseFixture("ambiguous-not-found");
+    f.lease.preparedDispatch = { path: "/lease-dispatched", body: {}, state: "ambiguous" };
+    f.setAcknowledge(async () => Response.json({ code: "inference_admission_lease_not_found" }, { status: 409 }));
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    expect(await releaseInferenceAdmissionLease(f.lease, receipt => receipts.push(receipt))).toBeUndefined();
+    expect(receipts).toEqual([]);
+    expect(f.calls).toBe(1);
+  }, 120_000);
+
+  test("zero settlement forwards the real observer while ordinary callers retain Promise<void>", async () => {
+    const observed = await zeroReleaseFixture("settle-observed");
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    expect(await settleInferenceAdmissionLease(observed.lease, 0, 0, undefined, receipt => receipts.push(receipt))).toBeUndefined();
+    expect(receipts).toEqual([{ version: 1, organizationId: "org-miniflare", requestId: observed.requestId, state: "released_zero" }]);
+    const legacy = await zeroReleaseFixture("settle-legacy");
+    expect(await settleInferenceAdmissionLease(legacy.lease, 0, 0)).toBeUndefined();
+    expect(legacy.calls).toBe(1);
+    expect(await legacy.fullCapacityAvailable()).toBe(200);
+  }, 120_000);
+
+  test("release evidence keeps the exact entry identity if a caller mutates its lease while acknowledgement is pending", async () => {
+    const f = await zeroReleaseFixture("identity-snapshot");
+    let acknowledge: () => void = () => { throw new Error("Acknowledgement not armed"); };
+    let entered: () => void = () => {};
+    const waiting = new Promise<void>(resolve => { entered = resolve; });
+    f.setAcknowledge(async response => {
+      entered();
+      await new Promise<void>(resolve => { acknowledge = resolve; });
+      return response;
+    });
+    const receipts: Readonly<InferenceAdmissionZeroReleaseReceipt>[] = [];
+    const release = releaseInferenceAdmissionLease(f.lease, receipt => receipts.push(receipt));
+    await waiting;
+    f.lease.organizationId = "wrong-org"; f.lease.requestId = "wrong-request";
+    acknowledge(); await release;
+    expect(receipts).toEqual([{ version: 1, organizationId: "org-miniflare", requestId: f.requestId, state: "released_zero" }]);
+    expect(f.calls).toBe(1);
   }, 120_000);
 });

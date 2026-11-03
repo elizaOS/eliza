@@ -9,10 +9,10 @@ function ports() {
     usageStore: { checkAndRecord: async () => ({ allowed: true }), release: async () => {} } as never,
     usageLimits: {} as never, subscribeRevoked: () => () => {},
     registerRetirement: value => { handle = value; },
-    reserveCredits: async () => ({ supportsPerKindSettlement: true, beforeProviderDispatch: async () => {}, settle: async (details, kinds = ["stt", "tts"]) => {
+    reserveCredits: async (scope) => ({ supportsPerKindSettlement: true, beforeProviderDispatch: async () => {}, settle: async (details, kinds = ["stt", "tts"]) => {
       if (settlementFails) { settlementFails = false; throw Error("settlement failed"); }
       money++;
-      return { ...(kinds.includes("stt") && { stt: { state: details.dispatched?.stt !== true || details.outcomes?.stt === "complete" ? "actual" as const : "conservative" as const, requestId: "stt", amountUsd: "0", terminal: true as const } }), ...(kinds.includes("tts") && { tts: { state: details.ttsAccountingBasis ? "conservative" as const : "actual" as const, requestId: "tts", amountUsd: "0", terminal: true as const, ...(details.ttsAccountingBasis ? { basis: details.ttsAccountingBasis } : {}) } }) };
+      return { ...(kinds.includes("stt") && { stt: { state: details.dispatched?.stt !== true || details.outcomes?.stt === "complete" ? "actual" as const : "conservative" as const, requestId: `speech:${scope.cloudSessionId}:stt`, amountUsd: "0", terminal: true as const } }), ...(kinds.includes("tts") && { tts: { state: details.ttsAccountingBasis ? "conservative" as const : "actual" as const, requestId: `speech:${scope.cloudSessionId}:tts`, amountUsd: "0", terminal: true as const, ...(details.ttsAccountingBasis ? { basis: details.ttsAccountingBasis } : {}) } }) };
     } }),
     openStt: () => ({ sendAudioChunk() {}, cancel() {}, drain: async () => {
       if (unknownDrain) throw Error("no trusted drain");
@@ -27,6 +27,21 @@ const identity = { organizationId: "org", userId: "owner", cloudSessionId: "sess
 test("trusted STT drain and actual settlement yield explicit evidence", async () => {
   const p = ports(); const session = await createSpeechRelaySession(identity, "consent", p.value); await session.close();
   expect(p.handle.evidence()).toEqual({ stt: "gracefully_drained", tts: "not_dispatched", accounting: "settled_actual", moneyTerminal: true });
+  // A legacy fixture's bare kind IDs are NOT the identity-bound private credit contract.
+  const mismatched = ports(), reserve = mismatched.value.reserveCredits;
+  mismatched.value.reserveCredits = async (...args) => {
+    const admission = await reserve(...args);
+    return { ...admission, settle: async (details, kinds) => {
+      const result = await admission.settle(details, kinds);
+      if (result?.stt) result.stt.requestId = "stt";
+      if (result?.tts) result.tts.requestId = "tts";
+      return result;
+    } };
+  };
+  const other = await createSpeechRelaySession(identity, "consent", mismatched.value);
+  await other.close();
+  expect(mismatched.handle.evidence()?.accounting).toBe("unknown");
+  expect(mismatched.handle.evidence()?.moneyTerminal).toBeUndefined();
 });
 test("unknown drain remains unknown even when conservative settlement completes", async () => {
   const p = ports(); const session = await createSpeechRelaySession(identity, "consent", p.value); p.failDrain();

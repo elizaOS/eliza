@@ -64,3 +64,38 @@ test("live opening completion can confirm no dispatch but recreation cannot", ()
   expect(completeSpeechRetirement(retiring, retiring.retirement!, evidence, 1, true, live).retirement!.proof).toMatchObject({ state: "confirmed", mode: "not_dispatched" });
   expect(completeSpeechRetirement(retiring, retiring.retirement!, evidence, 1, true, { ...live, claim: "wrong" }).retirement!.proof!.state).toBe("unconfirmed");
 });
+
+
+test("D3 late closure requires both terminal money and unchanged frozen kind and generation evidence", () => {
+  let value = beginSpeechRetirement(current());
+  value = actual(value, "stt");
+  value = recordSpeechSettlement(value, "tts", { state: "settled_conservative", requestId: "speech:session:tts", amountUsd: "0.006", basis: "submitted_counter_provider_unconfirmed" });
+  const evidence: NonNullable<Parameters<typeof completeSpeechRetirement>[2]> = {
+    stt: "gracefully_drained", tts: "transport_closed", accounting: "settled_actual", moneyTerminal: true,
+  };
+  const originalProgress = structuredClone(value.retirement!.progress);
+  for (const fault of ["provider", "receipt", "basis", "stt-conservative", "pending", "quota-only", "time"]) {
+    const changed = structuredClone(value), observed = { ...evidence };
+    let at = 10;
+    if (fault === "provider") observed.tts = "unknown";
+    if (fault === "receipt") delete observed.moneyTerminal;
+    if (fault === "basis") {
+      const tts = changed.retirement!.progress.tts;
+      if (tts.state === "settled_conservative") delete tts.basis;
+    }
+    if (fault === "stt-conservative") changed.retirement!.progress.stt = { state: "settled_conservative", requestId: "speech:session:stt", amountUsd: "0.01" };
+    if (fault === "pending") changed.retirement!.progress.stt = { state: "reserved", requestId: "speech:session:stt" };
+    if (fault === "quota-only") { delete observed.moneyTerminal; observed.quotaRelease = "released"; observed.tts = "unknown"; }
+    if (fault === "time") at = -1;
+    expect(completeSpeechRetirement(changed, changed.retirement!, observed, at).retirement!.proof!.state).toBe("unconfirmed");
+  }
+  for (const requestId of ["speech:another-session:tts", "speech:session:stt"])
+    expect(() => recordSpeechSettlement(value, "tts", { state: "settled_conservative", requestId, amountUsd: "0.006", basis: "submitted_counter_provider_unconfirmed" })).toThrow("identity mismatch");
+  const newer = beginSpeechRetirement(value, true);
+  expect(() => completeSpeechRetirement(newer, value.retirement!, evidence, 10)).toThrow("generation changed");
+  const completed = completeSpeechRetirement(value, value.retirement!, evidence, 10);
+  expect(completed.retirement!.proof).toMatchObject({ state: "confirmed", mode: "retired", accounting: "settled_actual" });
+  expect(completed.retirement!.progress).toEqual(originalProgress);
+  expect(completed.retirement!.progress.tts.state).toBe("settled_conservative");
+  expect(completeSpeechRetirement(completed, { generation: 0, attempt: 0 }, undefined, 100000)).toBe(completed);
+});

@@ -65,3 +65,16 @@ function isSettlementFenceReply(value: unknown): value is SettlementFenceReply {
     "estimatedCostUsd" in value && typeof value.estimatedCostUsd === "number" &&
     "duplicate" in value && typeof value.duplicate === "boolean";
 }
+
+
+test("D5 typed fence fixture guards retain the real response and reject malformed unknown bodies", async () => {
+  const f = fixture();
+  const response = await f.post(f.make(), "/settlement-fence", { requestId: f.id, estimatedCostUsd: 1 });
+  expect(response.status).toBe(200);
+  const value: unknown = await response.json();
+  expect(isSettlementFenceReply(value)).toBe(true);
+  if (!isSettlementFenceReply(value)) throw Error("Real gate response failed its owning typed fixture guard");
+  expect(value).toMatchObject({ settlementFenced: true, estimatedCostUsd: 1, duplicate: true });
+  for (const malformed of [null, [], {}, { ...value, settlementFenced: "true" }, { ...value, estimatedCostUsd: "1" }, { ...value, duplicate: "false" }])
+    expect(isSettlementFenceReply(malformed)).toBe(false);
+});

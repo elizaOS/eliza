@@ -1,33 +1,37 @@
 import { beforeEach, expect, test, mock } from "bun:test";
+import { InMemoryVoiceUsageStore } from "@elizaos/host/voice/usage";
 class InsufficientCreditsError extends Error {}
 class InferenceBalanceCacheWarmingError extends Error {}
 mock.module("@elizaos/cloud-shared/lib/services/inference-billing-fast-path", () => ({ InferenceBalanceCacheWarmingError }));
 mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError }));
-const state = { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0, failAt: -1, failure: undefined as Error | undefined, receiptFault: "" };
+const state = { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0, failAt: -1, failure: undefined as Error | undefined, receiptFault: "", dispatchMarks: 0 };
 mock.module("@elizaos/cloud-shared/lib/pricing-constants", () => ({ PLATFORM_MARKUP_MULTIPLIER: 1.2 }));
 mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission", () => ({
   admitOrganizationInference: async (input: any) => {
     const index = state.index++;
     if (index === state.failAt) throw state.failure;
     return {
-      mode: "durable_object_debit",
+      mode: state.receiptFault === "funded" ? "durable_object_funded_budget" : "durable_object_debit",
       async settle(value: number) {
         state.attempts[index]++;
         if (index === 1 && state.failTts) { state.failTts = false; throw Error("TTS settlement unavailable"); }
         state.effects[index]++; state.amounts[index] = value;
+        if (state.receiptFault === "null") return null;
+        if (state.receiptFault === "void") return;
         return { terminalReceipt: { version: 1,
           organizationId: state.receiptFault === "owner" ? "another-org" : input.context.organizationId,
           requestId: state.receiptFault === "request" ? "another-request" : input.context.requestId,
           amountUsd: state.receiptFault === "amount" ? "999.000000" : value.toFixed(6),
-          mode: state.receiptFault === "mode" ? "synchronous_db_ledger" : "durable_object_debit", status: "canonical_completed" } };
+          mode: state.receiptFault === "mode" ? "synchronous_db_ledger" : state.receiptFault === "funded" ? "durable_object_funded_budget" : "durable_object_debit", status: "canonical_completed" } };
       },
       async settleUnknown() { state.unknown[index]++; },
-      async markProviderDispatched() {},
+      async markProviderDispatched() { state.dispatchMarks++; },
     };
   },
 }));
 const { reserveSpeechRelayAdmission } = await import("./speech-relay-admission");
-beforeEach(() => Object.assign(state, { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0, failAt: -1, failure: undefined, receiptFault: "" }));
+const resetAdmissionFixture = () => Object.assign(state, { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0, failAt: -1, failure: undefined, receiptFault: "", dispatchMarks: 0 });
+beforeEach(resetAdmissionFixture);
 const caller = { user: { id: "owner", organization_id: "org" }, credential: {} } as never;
 const details = () => ({ pcmBytes: 32000, ttsCharacters: 3, providerMayHaveStarted: true, outcomes: { stt: "complete", tts: "complete" } as const, dispatched: { stt: true, tts: true } });
 const reserve = (onProgress?: Parameters<typeof reserveSpeechRelayAdmission>[0]["onProgress"]) => reserveSpeechRelayAdmission({ caller, sessionId: "session", usdPerCredit: 0.001, executionCtx: { waitUntil() {} }, onProgress });
@@ -146,4 +150,107 @@ test.each(["owner", "request", "amount", "mode"])("a mismatched canonical %s rec
   state.receiptFault = fault;
   const result = await (await reserve()).settle(details());
   expect(result?.stt?.terminal).toBeUndefined(); expect(result?.tts?.terminal).toBeUndefined();
+});
+
+
+// Controlled financial IO below stays the existing fixture boundary, not canonical SQL acceptance.
+test("D1 matched zero rollback is required after a typed second-kind refusal", async () => {
+  const refusal = new InsufficientCreditsError("TTS refused before reservation");
+  state.failAt = 1; state.failure = refusal;
+  const progress: { kind: string; state: string; requestId?: string; amountUsd?: string }[] = [];
+  await expect(reserve(async (kind, value) => { progress.push({ kind, ...value }); })).rejects.toBe(refusal);
+  expect(state.effects).toEqual([1, 0]);
+  expect(state.amounts).toEqual([0, 0]);
+  expect(state.dispatchMarks).toBe(0);
+  expect(progress).toContainEqual({ kind: "tts", state: "not_reserved" });
+  expect(progress).toContainEqual({ kind: "stt", state: "settled_actual", requestId: "speech:session:stt", amountUsd: "0" });
+  expect(state.unknown).toEqual([0, 0]);
+});
+
+test("D1 ambiguous zero rollback preserves the original refusal and unconfirmed money", async () => {
+  for (const fault of ["owner", "request", "amount", "mode", "funded", "null", "void"]) {
+    resetAdmissionFixture();
+    const refusal = new InsufficientCreditsError(`primary refusal ${fault}`);
+    state.failAt = 1; state.failure = refusal; state.receiptFault = fault;
+    const progress: string[] = [];
+    const failure = await reserve(async (_kind, value) => { progress.push(value.state); }).catch(error => error);
+    expect(failure).toBeInstanceOf(AggregateError);
+    if (!(failure instanceof AggregateError)) throw Error("Expected aggregate rollback refusal");
+    expect(failure.errors).toContain(refusal);
+    expect(progress).toContain("unconfirmed");
+    expect(progress).not.toContain("settled_actual");
+    expect(state.effects).toEqual([1, 0]);
+    expect(state.dispatchMarks).toBe(0);
+  }
+});
+
+test("D1 zero settlement retries lost progress acknowledgement without a second monetary effect", async () => {
+  let fail = true;
+  const written: string[] = [];
+  const admission = await reserve(async (kind, value) => {
+    if (kind === "stt" && value.state === "settled_actual" && fail) { fail = false; throw Error("zero progress ACK lost"); }
+    written.push(`${kind}:${value.state}`);
+  });
+  const zero = { ...details(), dispatched: { stt: false, tts: false } };
+  await expect(admission.settle(zero)).rejects.toThrow("zero progress ACK lost");
+  const result = await admission.settle(zero);
+  expect(result).toMatchObject({ stt: { state: "actual", terminal: true, amountUsd: "0" }, tts: { state: "actual", terminal: true, amountUsd: "0" } });
+  expect(state.attempts).toEqual([1, 1]); expect(state.effects).toEqual([1, 1]);
+  expect(written).toContain("stt:settled_actual");
+  await expect(admission.settle({ ...zero, dispatched: { stt: true, tts: false } })).rejects.toThrow("target changed");
+  expect(state.effects).toEqual([1, 1]);
+});
+
+test("D3 late proven TTS close confirms the same frozen charge without another settlement", async () => {
+  const { createSpeechRelaySession } = await import("@elizaos/host/voice/speech-relay-session");
+  let handle: import("@elizaos/host/voice/speech-relay-session").SpeechRelayRetirementHandle | undefined;
+  let closed = false, sttOpens = 0, ttsOpens = 0;
+  const progress: unknown[] = []; let loseConservativeAck = true;
+  const admission = await reserve(async (kind, value) => {
+    if (kind === "tts" && value.state === "settled_conservative" && loseConservativeAck) {
+      loseConservativeAck = false; throw Error("conservative progress ACK lost");
+    }
+    if (kind === "tts") progress.push(structuredClone(value));
+  });
+  const session = await createSpeechRelaySession({ organizationId: "org", userId: "owner", cloudSessionId: "session" }, "consent", {
+    enabled: true, assertCurrent() {}, consumeConsent: async () => true,
+    usageStore: new InMemoryVoiceUsageStore(),
+    usageLimits: { organizationDailyMinutes: 10, userDailyMinutes: 10 }, subscribeRevoked: () => () => {}, registerRetirement(value) { handle = value; },
+    reserveCredits: async () => admission,
+    openStt: () => { sttOpens++; return { sendAudioChunk() {}, cancel() {}, drain: async () => ({ source: "provider-graceful-close", audioBytes: 0, sampleRate: 16000, channels: 1, encoding: "pcm_s16le" } as const) }; },
+    openTts: () => { ttsOpens++; return { sendPhrase() {}, finish() {}, cancel() {} }; },
+    confirmTtsTransportStopped: async () => closed ? "transport_closed" : "unknown",
+    emit() {}, onClosed(value) { void value.catch(() => {}); },
+  });
+  await session.control({ t: "tts", id: "frozen", text: "hello" });
+  await expect(session.close()).rejects.toThrow();
+  if (!handle?.finalizeUnknownTtsAccounting) throw Error("Missing registered real retirement handle");
+  await expect(handle.finalizeUnknownTtsAccounting()).rejects.toThrow("conservative progress ACK lost");
+  expect(state.effects).toEqual([1, 1]);
+  await handle.finalizeUnknownTtsAccounting();
+  expect(state.attempts).toEqual([1, 1]);
+  expect(handle.evidence()).toMatchObject({ tts: "unknown", accounting: "unknown" });
+  expect(state.effects).toEqual([1, 1]); expect(state.amounts).toEqual([0, 0.006]);
+  const before = JSON.stringify(progress);
+  closed = true;
+  await handle.retryRetirement();
+  expect(handle.evidence()).toMatchObject({ stt: "gracefully_drained", tts: "transport_closed", accounting: "settled_actual", moneyTerminal: true });
+  expect(state.effects).toEqual([1, 1]); expect(state.attempts).toEqual([1, 1]);
+  expect(JSON.stringify(progress)).toBe(before);
+  expect(progress).toContainEqual({ state: "settled_conservative", requestId: "speech:session:tts", amountUsd: "0.006", basis: "submitted_counter_provider_unconfirmed" });
+  expect([sttOpens, ttsOpens]).toEqual([1, 1]);
+});
+
+test("D3 frozen TTS target cannot change count basis or dispatch state after finalization", async () => {
+  const admission = await reserve();
+  const frozen = { ...details(), ttsCharacters: 5, ttsAccountingBasis: "submitted_counter_provider_unconfirmed" as const };
+  await admission.settle(frozen, ["tts"]);
+  for (const changed of [
+    { ...frozen, ttsCharacters: 6 },
+    { ...frozen, ttsAccountingBasis: undefined },
+    { ...frozen, dispatched: { stt: true, tts: false } },
+    { ...frozen, outcomes: { stt: "complete" as const, tts: "unknown" as const } },
+  ]) await expect(admission.settle(changed, ["tts"])).rejects.toThrow("target changed");
+  await admission.settle(frozen, ["tts"]);
+  expect(state.effects).toEqual([0, 1]); expect(state.amounts[1]).toBe(0.006);
 });
