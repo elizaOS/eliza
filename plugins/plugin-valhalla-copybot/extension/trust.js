@@ -4,7 +4,7 @@
   else root.ValhallaTrust = api;
 })(typeof globalThis !== "undefined" ? globalThis : this, function () {
   /** Public key only. The private key is not in this repo. */
-  const PUBLIC_KEY_B64 = "3Y25V3M5MkK354P3Ghw2BnA8locVlep3q86GTOD/EKU=";
+  const PUBLIC_KEY_B64 = "GasF+x9XzQvsO07cTOCMoA5Vf314gd4gmf8gYGJWZ68=";
   const ADSENSE_CLIENT = "ca-pub-6504655762357230";
 
   function b64(value) {
@@ -46,6 +46,11 @@
       checkoutUrl: String(doc.checkoutUrl || ""),
       checkoutYearlyUrl: String(doc.checkoutYearlyUrl || ""),
       checkoutLifetimeUrl: String(doc.checkoutLifetimeUrl || ""),
+      cryptoReceiveAddress: String(doc.cryptoReceiveAddress || ""),
+      usdcMint: String(doc.usdcMint || ""),
+      priceMonthlyUsd: Number(doc.priceMonthlyUsd),
+      priceYearlyUsd: Number(doc.priceYearlyUsd),
+      priceLifetimeUsd: Number(doc.priceLifetimeUsd),
       proTradeAllowance: Number(doc.proTradeAllowance),
       trialDays: Number(doc.trialDays),
       offers: (doc.offers || []).map(offerRow),

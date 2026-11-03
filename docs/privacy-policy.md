@@ -68,6 +68,10 @@ Google's policy is at https://policies.google.com/privacy. Cookies from ads are 
 
 The free plan and the Recommended tools page can also show affiliate links. Each link is labeled "Affiliate link · we may earn a commission." The link is not trading advice. Pro does not show these links in the apps. The public tools page still lists them. If you open a link, that site receives the visit. We do not send them your account, email, or wallet. A click count stores the offer id and the placement only. It does not store a name, email, wallet, or ad id. See https://valhalla-app.xyz/disclosure.
 
+## Crypto payments
+
+If you pay with crypto, you approve a transfer in your own wallet. Valhalla does not hold a wallet key and does not sign that transfer. The payment is public on Solana. We store the transaction signature with the license so we can tell that the invoice was paid. The receipt export uses a hash of the email, not the email itself. Refunds are manual.
+
 ## How long we keep data
 
 We keep account data while the account is open. We keep a license record while the plan is active and for a short time after, so we can restore a purchase. Local data on a phone, a computer, or in the extension stays until you delete it. Server logs are kept only as long as needed for security.
