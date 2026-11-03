@@ -12,7 +12,7 @@ import type {
   SetLifeOpsReminderPreferenceRequest,
 } from "@elizaos/contracts";
 import type { ActionResult, IAgentRuntime, Memory } from "@elizaos/core";
-import { toWellFormedUnicode } from "@elizaos/core";
+import { getUserMessageText, toWellFormedUnicode } from "@elizaos/core";
 import {
   type OwnerFactProvenance,
   type ReminderIntensity,
@@ -106,10 +106,7 @@ export async function applyOwnerPolicySetReminder(
 ): Promise<ActionResult> {
   const details = detailRecord(args.details);
   const intent =
-    args.intent.trim() ||
-    (typeof args.message.content.text === "string"
-      ? args.message.content.text.trim()
-      : "");
+    args.intent.trim() || getUserMessageText(args.message);
 
   let intensity: ReminderIntensity | "unknown" = args.intensity ?? "unknown";
   if (intensity === "unknown") {
@@ -171,10 +168,7 @@ export async function applyOwnerPolicyConfigureEscalation(
   const details = detailRecord(args.details);
   const service = new LifeOpsService(args.runtime);
   const domain = detailString(details, "domain") as LifeOpsDomain | undefined;
-  const intent =
-    typeof args.message.content.text === "string"
-      ? args.message.content.text
-      : "";
+  const intent = getUserMessageText(args.message);
 
   if (!args.target) {
     const timeoutMinutes =
