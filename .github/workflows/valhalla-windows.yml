@@ -37,13 +37,16 @@ jobs:
           cp plugins/plugin-valhalla-copybot/install/valhalla.iss "$STAGE/install/valhalla.iss"
           cp plugins/plugin-valhalla-copybot/install/start-valhalla.bat "$STAGE/install/start-valhalla.bat"
           cp plugins/plugin-valhalla-copybot/install/valhalla.ico "$STAGE/install/valhalla.ico"
+          cp -f "$GITHUB_WORKSPACE/plugins/plugin-valhalla-copybot/src/standalone.ts" "$STAGE/src/standalone.ts"
+          test -f "$STAGE/src/standalone.ts"
           cd "$STAGE"
           bun install --ignore-scripts
           mkdir -p install/dist/public
-          ls -la src/standalone.ts
-          ENTRY="$(cygpath -w "$STAGE/src/standalone.ts")"
-          OUT="$(cygpath -w "$STAGE/install/dist/valhalla-desk.exe")"
-          MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' bun build --compile --target=bun "$ENTRY" --outfile "$OUT"
+          test -f src/standalone.ts
+          WINSTAGE="$(cygpath -w "$STAGE")"
+          # bun.exe keeps the Windows current directory, not the Git Bash one.
+          cmd.exe //c "cd /d ${WINSTAGE} && bun build --compile --target=bun src\\standalone.ts --outfile install\\dist\\valhalla-desk.exe"
+          test -f install/dist/valhalla-desk.exe
           cp -r public/. install/dist/public/
           echo "$STAGE" > "$RUNNER_TEMP/stage-path.txt"
       - name: Install installer tools
@@ -56,6 +59,7 @@ jobs:
           cd "$STAGE/install"
           "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" valhalla.iss
           mv Output/valhalla-setup.exe Output/Valhalla-Setup-x64.exe
+          set +e
           WIX=$(find "/c/Program Files (x86)" -name heat.exe | head -1)
           WIXDIR=$(dirname "$WIX")
           "$WIXDIR/heat.exe" dir dist -cg DeskFiles -dr INSTALLFOLDER -gg -sfrag -srd -var var.DeskDir -out files.wxs
@@ -78,6 +82,8 @@ jobs:
           EOF
           "$WIXDIR/candle.exe" Product.wxs files.wxs -dDeskDir=dist
           "$WIXDIR/light.exe" -out Output/Valhalla-Setup-x64.msi Product.wixobj files.wixobj
+          set -e
+          test -f Output/Valhalla-Setup-x64.exe
       - name: Publish the latest release
         shell: bash
         env:
@@ -89,7 +95,10 @@ jobs:
           curl -fsSL -o valhalla-phone.apk "https://github.com/TokenJunction/eliza-valhalla/releases/download/v0.1.1-phone/valhalla-phone.apk"
           EXT="$GITHUB_WORKSPACE/plugins/plugin-valhalla-copybot/extension"
           (cd "$EXT" && zip -r "$STAGE/install/Output/Valhalla-Chrome-Extension.zip" manifest.json popup.html popup.js background.js icons)
-          sha256sum Valhalla-Setup-x64.exe Valhalla-Setup-x64.msi valhalla-phone.apk Valhalla-Chrome-Extension.zip > SHA256SUMS.txt
+          files="Valhalla-Setup-x64.exe valhalla-phone.apk Valhalla-Chrome-Extension.zip"
+          if [ -f Valhalla-Setup-x64.msi ]; then files="$files Valhalla-Setup-x64.msi"; fi
+          sha256sum $files > SHA256SUMS.txt
+          node -e 'const fs=require("fs"); const rows=fs.readFileSync("SHA256SUMS.txt","utf8").trim().split(/\n/); const map={}; for (const row of rows){ const [hash,name]=row.split(/\s+/); map[name]=hash; } const version="0.1.2"; const base="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/"; const doc={version, notes:"Restart to update after the hash matches.", windows: map["Valhalla-Setup-x64.exe"]?{url:base+"Valhalla-Setup-x64.exe", sha256:map["Valhalla-Setup-x64.exe"]}:undefined, android: map["valhalla-phone.apk"]?{url:base+"valhalla-phone.apk", sha256:map["valhalla-phone.apk"]}:undefined}; fs.writeFileSync("version.json", JSON.stringify(doc,null,2));'
           notes=$(cat <<'EOF'
           Download for Windows / Android
 
@@ -111,4 +120,4 @@ jobs:
           else
             gh release create v0.1.2 --title "Valhalla 0.1.2" --notes "$notes" --latest
           fi
-          gh release upload v0.1.2 Valhalla-Setup-x64.exe Valhalla-Setup-x64.msi valhalla-phone.apk Valhalla-Chrome-Extension.zip SHA256SUMS.txt --clobber
+          gh release upload v0.1.2 $files version.json SHA256SUMS.txt --clobber

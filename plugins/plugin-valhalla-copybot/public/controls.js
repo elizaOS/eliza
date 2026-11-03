@@ -424,6 +424,28 @@ document.getElementById("btnSellAll").onclick = () => {
   if (!confirmText) return;
   api("/api/sell-all", { confirm: confirmText }).then((r) => say(r.message));
 };
+async function watchUpdates() {
+  const banner = document.getElementById("updateBanner");
+  if (!banner) return;
+  try {
+    const info = await api("/api/update");
+    banner.hidden = !info.update;
+    if (info.update) banner.textContent = info.prompt || "Restart to update";
+  } catch {
+    banner.hidden = true;
+  }
+}
+document.getElementById("updateBanner")?.addEventListener("click", async () => {
+  const banner = document.getElementById("updateBanner");
+  if (banner) banner.textContent = "Checking the hash.";
+  try {
+    await api("/api/update/install", {});
+  } catch (err) {
+    if (banner) banner.textContent = err instanceof Error ? err.message : "Update stopped.";
+  }
+});
+watchUpdates();
+setInterval(watchUpdates, 60 * 60 * 1000);
 document.getElementById("btnQueue").onclick = () =>
   api("/api/queue", { mint: document.getElementById("mintInput").value }).then((r) => say(r.message));
 document.getElementById("btnSignal")?.addEventListener("click", async () => {

@@ -1,0 +1,2 @@
+json_key_file(ENV["PLAY_SERVICE_ACCOUNT_JSON"])
+package_name("ai.tokenjunction.valhalla")

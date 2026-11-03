@@ -1,0 +1,5 @@
+{
+  "primary": "admob",
+  "note": "Turn extra networks on in the AdMob console first. Then add that network's Android adapter to app/build.gradle.kts. Leave this list empty until then.",
+  "adapters": []
+}

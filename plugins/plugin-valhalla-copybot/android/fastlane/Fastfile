@@ -1,0 +1,16 @@
+default_platform(:android)
+
+platform :android do
+  desc "Upload the signed bundle to the internal testing track"
+  lane :internal do
+    supply(
+      aab: ENV.fetch("VALHALLA_AAB"),
+      track: "internal",
+      json_key: ENV.fetch("PLAY_SERVICE_ACCOUNT_JSON"),
+      skip_upload_apk: true,
+      skip_upload_metadata: true,
+      skip_upload_images: true,
+      skip_upload_screenshots: true
+    )
+  end
+end

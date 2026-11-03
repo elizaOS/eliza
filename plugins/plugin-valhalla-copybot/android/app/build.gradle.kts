@@ -94,6 +94,12 @@ android {
         }
     }
 
+    sourceSets {
+        if (storeBilling) {
+            getByName("release").manifest.srcFile("src/store/AndroidManifest.xml")
+        }
+    }
+
     packaging {
         jniLibs {
             excludes += setOf("**/armeabi-v7a/**", "**/x86/**")
@@ -112,6 +118,7 @@ dependencies {
     implementation("com.google.android.gms:play-services-ads:23.6.0")
     implementation("com.google.android.ump:user-messaging-platform:3.1.0")
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
+    implementation("com.google.android.play:app-update:2.1.0")
 }
 
 // Mediation adapters stay off until you enable one in the AdMob console.

@@ -149,6 +149,7 @@ public class MainActivity extends AppCompatActivity {
         chatBlock = findViewById(R.id.chatBlock);
         errorBlock = findViewById(R.id.errorBlock);
         cacheBanner = findViewById(R.id.cacheBanner);
+        io.execute(this::checkAppUpdate);
         status = findViewById(R.id.status);
         liveStatus = findViewById(R.id.liveStatus);
         pnl = findViewById(R.id.pnl);
@@ -416,6 +417,25 @@ public class MainActivity extends AppCompatActivity {
         visibleScreen = SessionStore.SCREEN_PAIRING;
         showScreen(SessionStore.SCREEN_PAIRING);
         status.setText(getString(R.string.status_idle));
+    }
+
+    private void checkAppUpdate() {
+        if (BuildConfig.STORE_BILLING) {
+            runOnUiThread(() -> PlayUpdate.check(this));
+            return;
+        }
+        SideloadUpdate.Offer offer = SideloadUpdate.newer(BuildConfig.VERSION_NAME);
+        if (offer == null) return;
+        runOnUiThread(() -> {
+            TextView banner = findViewById(R.id.updateBanner);
+            if (banner == null) return;
+            banner.setVisibility(View.VISIBLE);
+            banner.setText("New version available");
+            banner.setOnClickListener(view -> io.execute(() -> {
+                boolean started = SideloadUpdate.install(this, offer);
+                if (!started) runOnUiThread(() -> banner.setText("The update hash did not match."));
+            }));
+        });
     }
 
     private void openWallet(String which) {

@@ -61,6 +61,17 @@
                 android:textSize="13sp"
                 android:visibility="gone" />
 
+            <TextView
+                android:id="@+id/updateBanner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:minHeight="48dp"
+                android:text="New version available"
+                android:textColor="@color/amber"
+                android:textSize="15sp"
+                android:visibility="gone" />
+
             <LinearLayout
                 android:id="@+id/pairingBlock"
                 android:layout_width="match_parent"

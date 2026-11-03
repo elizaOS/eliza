@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { timingSafeEqual } from "node:crypto";
 import { createReadStream, existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
@@ -24,7 +25,14 @@ import { tail4 } from "./net.ts";
 import { comparisonRows, PLAN_PRICES, paywallCopy, TRIAL_MS, tierFor } from "./plan.ts";
 import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { signalScore } from "./signal-score.ts";
-import { checkDesktopUpdate, DESK_VERSION, WHATS_NEW } from "./updates.ts";
+import {
+  checkDesktopUpdate,
+  DESK_VERSION,
+  fetchVersionManifest,
+  stageVerifiedDownload,
+  UPDATE_PROMPT,
+  WHATS_NEW,
+} from "./updates.ts";
 
 function resolvePublicDir(): string {
   if (process.env.VALHALLA_PUBLIC_DIR) return path.resolve(process.env.VALHALLA_PUBLIC_DIR);
@@ -237,11 +245,22 @@ async function handle(
     send(res, 200, store.view(record, pro));
     return;
   }
+  if (req.method === "GET" && pathname === "/api/update") {
+    const info = await checkDesktopUpdate(DESK_VERSION).catch(() => ({
+      update: false,
+      latest: DESK_VERSION,
+      notes: WHATS_NEW.join(" "),
+      prompt: UPDATE_PROMPT,
+    }));
+    send(res, 200, { ok: true, version: DESK_VERSION, ...info });
+    return;
+  }
   if (req.method === "GET" && pathname === "/api/whats-new") {
     const update = await checkDesktopUpdate(DESK_VERSION).catch(() => ({
       update: false,
       latest: DESK_VERSION,
       notes: WHATS_NEW.join(" "),
+      prompt: UPDATE_PROMPT,
     }));
     send(res, 200, { ok: true, version: DESK_VERSION, notes: WHATS_NEW, ...update });
     return;
@@ -574,6 +593,29 @@ async function post(
           status: 200,
           body: { ok: true, message: await engine.chat(String(body.text ?? "")) },
         };
+      case "/api/update/install": {
+        const manifest = await fetchVersionManifest();
+        const asset = manifest?.windows;
+        if (
+          !asset?.sha256 ||
+          !asset.url.startsWith("https://github.com/TokenJunction/eliza-valhalla/")
+        ) {
+          return {
+            status: 409,
+            body: { ok: false, error: "No signed Windows update is published." },
+          };
+        }
+        const dest = path.join(engine.dataDir, "update", "Valhalla-Setup-x64.exe");
+        const ok = await stageVerifiedDownload(asset, dest);
+        if (!ok)
+          return {
+            status: 400,
+            body: { ok: false, error: "The update hash did not match. Nothing was started." },
+          };
+        spawn(dest, [], { detached: true, stdio: "ignore" }).unref();
+        setTimeout(() => process.exit(0), 400);
+        return { status: 200, body: { ok: true, prompt: UPDATE_PROMPT } };
+      }
       case "/api/keys":
         return {
           status: 200,

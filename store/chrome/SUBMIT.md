@@ -38,6 +38,8 @@ This item has one purpose: show read-only status from the user's Valhalla desk o
 
 It does not trade, send, withdraw, or hold a wallet key. A status line is not financial advice.
 
+The Chrome Web Store updates this extension by itself after it is published. You do not download a new zip for each version. Until the store link is set, load the unpacked folder again when you want a new build.
+
 ## Permission justifications
 
 storage: The extension saves the desk address and the pairing token in chrome.storage.local on this browser. Those values stay on the device. They are not sent to TokenJunction.
