@@ -23,6 +23,7 @@ import {
   appendInteractionBlock,
   type ChoiceInteraction,
   ElizaError,
+  getUserMessageText,
   hasRoleAccess,
   logger,
   ModelType,
@@ -2300,8 +2301,10 @@ async function resolveApprovalRequest(
     (request, index, all) =>
       all.findIndex((candidate) => candidate.id === request.id) === index,
   );
-  const userText =
-    typeof message.content.text === "string" ? message.content.text : "";
+  // The approval-row selection prompt must read the owner's own words, not
+  // the document-augmentation envelope: retrieved document text naming a
+  // different pending request would otherwise steer which request is settled.
+  const userText = getUserMessageText(message);
   const explicitRequestId =
     typeof params.requestId === "string" && params.requestId.trim().length > 0
       ? params.requestId.trim()
