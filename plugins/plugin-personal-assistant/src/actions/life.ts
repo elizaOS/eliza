@@ -47,6 +47,7 @@ import {
   applyGroundedActionReply,
   ElizaError,
   extractUserText,
+  getUserMessageText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
@@ -4886,7 +4887,7 @@ async function runLifeOperationHandlerInner(
     (latestDeferredLifeDraftIsInvalidated(state) ||
       cachedDeferredDraftState.kind === "invalidated");
   const explicitCreateConfirmation =
-    isExplicitLifeCreateConfirmation(currentText);
+    isExplicitLifeCreateConfirmation(getUserMessageText(message));
   const currentMessageId =
     message.id !== undefined && message.id !== null ? String(message.id) : "";
   const draftSourceMessageId = deferredDraft?.sourceMessageId?.trim() ?? "";
