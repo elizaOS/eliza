@@ -67,7 +67,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="8dp"
                 android:minHeight="48dp"
-                android:text="New version available"
+                android:text="Update available"
                 android:textColor="@color/amber"
                 android:textSize="15sp"
                 android:visibility="gone" />

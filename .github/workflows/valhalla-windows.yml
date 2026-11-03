@@ -97,7 +97,7 @@ jobs:
           files="Valhalla-Setup-x64.exe valhalla-phone.apk Valhalla-Chrome-Extension.zip"
           if [ -f Valhalla-Setup-x64.msi ]; then files="$files Valhalla-Setup-x64.msi"; fi
           sha256sum $files > SHA256SUMS.txt
-          node -e 'const fs=require("fs"); const rows=fs.readFileSync("SHA256SUMS.txt","utf8").trim().split(/\n/); const map={}; for (const row of rows){ const [hash,name]=row.split(/\s+/); map[name]=hash; } const version="0.1.2"; const base="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/"; const doc={version, notes:"Restart to update after the hash matches.", windows: map["Valhalla-Setup-x64.exe"]?{url:base+"Valhalla-Setup-x64.exe", sha256:map["Valhalla-Setup-x64.exe"]}:undefined, android: map["valhalla-phone.apk"]?{url:base+"valhalla-phone.apk", sha256:map["valhalla-phone.apk"]}:undefined}; fs.writeFileSync("version.json", JSON.stringify(doc,null,2));'
+          node -e 'const fs=require("fs"); const rows=fs.readFileSync("SHA256SUMS.txt","utf8").trim().split(/\n/); const map={}; for (const row of rows){ const [hash,name]=row.split(/\s+/); map[name]=hash; } const version="0.1.2"; const base="https://github.com/TokenJunction/eliza-valhalla/releases/latest/download/"; const doc={version, notes:"Update ready, restart", windows: map["Valhalla-Setup-x64.exe"]?{url:base+"Valhalla-Setup-x64.exe", sha256:map["Valhalla-Setup-x64.exe"]}:undefined, android: map["valhalla-phone.apk"]?{url:base+"valhalla-phone.apk", sha256:map["valhalla-phone.apk"]}:undefined}; fs.writeFileSync("version.json", JSON.stringify(doc,null,2));'
           notes=$(cat <<'EOF'
           Download for Windows / Android
 

@@ -1,11 +1,11 @@
 package ai.tokenjunction.valhalla;
 
 import android.app.Activity;
+import android.app.PendingIntent;
 import android.content.Intent;
-import android.net.Uri;
-import androidx.core.content.FileProvider;
-import java.io.File;
-import java.io.FileOutputStream;
+import android.content.pm.PackageInstaller;
+import android.os.Build;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.security.MessageDigest;
@@ -29,6 +29,7 @@ final class SideloadUpdate {
     }
 
     static Offer newer(String current) {
+        if (BuildConfig.STORE_BILLING) return null;
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(VERSION_URL).openConnection();
             conn.setConnectTimeout(8000);
@@ -50,25 +51,29 @@ final class SideloadUpdate {
     }
 
     static boolean install(Activity activity, Offer offer) {
+        if (BuildConfig.STORE_BILLING) return false;
         try {
             HttpURLConnection conn = (HttpURLConnection) new URL(offer.url).openConnection();
             conn.setConnectTimeout(15000);
             conn.setReadTimeout(60000);
             if (conn.getResponseCode() != 200) return false;
             byte[] bytes = conn.getInputStream().readAllBytes();
-            String actual = sha256(bytes);
-            if (!actual.equalsIgnoreCase(offer.sha256)) return false;
-            File dir = new File(activity.getCacheDir(), "updates");
-            if (!dir.isDirectory() && !dir.mkdirs()) return false;
-            File apk = new File(dir, "valhalla-phone.apk");
-            try (FileOutputStream out = new FileOutputStream(apk)) {
-                out.write(bytes);
+            if (!sha256(bytes).equalsIgnoreCase(offer.sha256)) return false;
+            PackageInstaller installer = activity.getPackageManager().getPackageInstaller();
+            PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            params.setSize(bytes.length);
+            int sessionId = installer.createSession(params);
+            try (PackageInstaller.Session session = installer.openSession(sessionId)) {
+                try (OutputStream out = session.openWrite("valhalla.apk", 0, bytes.length)) {
+                    out.write(bytes);
+                    session.fsync(out);
+                }
+                Intent callback = new Intent(activity, activity.getClass());
+                int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+                if (Build.VERSION.SDK_INT >= 31) flags |= PendingIntent.FLAG_MUTABLE;
+                PendingIntent pending = PendingIntent.getActivity(activity, sessionId, callback, flags);
+                session.commit(pending.getIntentSender());
             }
-            Uri uri = FileProvider.getUriForFile(activity, activity.getPackageName() + ".fileprovider", apk);
-            Intent intent = new Intent(Intent.ACTION_VIEW);
-            intent.setDataAndType(uri, "application/vnd.android.package-archive");
-            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_ACTIVITY_NEW_TASK);
-            activity.startActivity(intent);
             return true;
         } catch (Exception err) {
             return false;

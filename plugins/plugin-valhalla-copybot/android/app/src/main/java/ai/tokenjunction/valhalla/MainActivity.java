@@ -430,7 +430,7 @@ public class MainActivity extends AppCompatActivity {
             TextView banner = findViewById(R.id.updateBanner);
             if (banner == null) return;
             banner.setVisibility(View.VISIBLE);
-            banner.setText("New version available");
+            banner.setText("Update available");
             banner.setOnClickListener(view -> io.execute(() -> {
                 boolean started = SideloadUpdate.install(this, offer);
                 if (!started) runOnUiThread(() -> banner.setText("The update hash did not match."));

@@ -8,7 +8,7 @@ The repository is public. An access code, if you set one, only opens the app. It
 
 ## Phone and iOS
 
-The sideload Android app is the Gradle project in `android/`. The same screens also exist as an Expo app in `mobile/` so an iOS simulator build can be made without an Apple account. GitHub Actions workflow `Valhalla iOS simulator` builds that unsigned simulator app. Device signing and the App Store need an Apple Developer membership later. Pro on the phone uses Google Play Billing or Apple In-App Purchase, product `valhalla_pro_monthly`. The website keeps Lemon Squeezy.
+The sideload Android app is the Gradle `sideload` flavor in `android/`. It can offer an update from the GitHub release. The file is installed with the system package installer only after you tap Update available and the SHA-256 matches. The `play` flavor does not include that updater. Play updates come from Google Play. iOS updates come from the App Store. The iOS app does not download its own package.
 
 The first launch asks for age 18+, shows that this is not financial advice, then offers pairing or a demo. Delete phone data clears the setup.
 

@@ -15,7 +15,7 @@ describe("desktop updates", () => {
     expect(newerRelease(DESK_VERSION, "v0.1.0")).toBe(false);
     expect(WHATS_NEW.join(" ")).toMatch(/Self-repair/);
     expect(WHATS_NEW.join(" ")).not.toMatch(/withdraw funds|seed phrase/);
-    expect(UPDATE_PROMPT).toBe("Restart to update");
+    expect(UPDATE_PROMPT).toBe("Update ready, restart");
   });
 
   it("accepts a file only when the SHA-256 matches", () => {

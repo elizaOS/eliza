@@ -55,7 +55,7 @@ android {
         buildConfigField("String", "ADMOB_REWARDED_ID", quote(admobRewardedId))
         buildConfigField("String", "HOUSE_ADS_URL", quote(houseAdsUrl))
         buildConfigField("String", "PRIVACY_POLICY_URL", quote(privacyPolicyUrl))
-        buildConfigField("boolean", "STORE_BILLING", storeBilling.equals("true", ignoreCase = true).toString())
+        buildConfigField("boolean", "STORE_BILLING", "false")
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
@@ -77,6 +77,19 @@ android {
         buildConfig = true
     }
 
+    flavorDimensions += "channel"
+    productFlavors {
+        create("sideload") {
+            dimension = "channel"
+            isDefault = true
+            buildConfigField("boolean", "STORE_BILLING", "false")
+        }
+        create("play") {
+            dimension = "channel"
+            buildConfigField("boolean", "STORE_BILLING", "true")
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
@@ -91,12 +104,6 @@ android {
             if (keystorePath.isNotEmpty()) {
                 signingConfig = signingConfigs.getByName("release")
             }
-        }
-    }
-
-    sourceSets {
-        if (storeBilling) {
-            getByName("release").manifest.srcFile("src/store/AndroidManifest.xml")
         }
     }
 

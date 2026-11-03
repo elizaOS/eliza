@@ -445,7 +445,7 @@ document.getElementById("updateBanner")?.addEventListener("click", async () => {
   }
 });
 watchUpdates();
-setInterval(watchUpdates, 60 * 60 * 1000);
+setInterval(watchUpdates, 6 * 60 * 60 * 1000);
 document.getElementById("btnQueue").onclick = () =>
   api("/api/queue", { mint: document.getElementById("mintInput").value }).then((r) => say(r.message));
 document.getElementById("btnSignal")?.addEventListener("click", async () => {

@@ -12,7 +12,7 @@ export const WHATS_NEW = [
   "The phone can open a demo before any wallet exists.",
 ];
 
-export const UPDATE_PROMPT = "Restart to update";
+export const UPDATE_PROMPT = "Update ready, restart";
 
 export interface ReleaseAsset {
   url: string;

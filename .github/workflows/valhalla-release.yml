@@ -45,7 +45,7 @@ jobs:
           const base = "https://github.com/TokenJunction/eliza-valhalla/releases/download/" + tag + "/";
           const doc = {
             version,
-            notes: "Restart to update after the hash matches.",
+            notes: "Update ready, restart",
             windows: map["Valhalla-Setup-x64.exe"] ? { url: base + "Valhalla-Setup-x64.exe", sha256: map["Valhalla-Setup-x64.exe"] } : undefined,
             android: map["valhalla-phone.apk"] ? { url: base + "valhalla-phone.apk", sha256: map["valhalla-phone.apk"] } : undefined
           };
