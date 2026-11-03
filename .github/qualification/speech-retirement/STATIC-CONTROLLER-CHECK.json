@@ -1,0 +1,5 @@
+{
+  "PythonASTparse": true,
+  "undefinedLexicalLoads": [],
+  "scope": "Dataonlynotexecution/typecheck"
+}

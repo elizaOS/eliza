@@ -1,0 +1,107 @@
+{
+  "state": "COHERENT_C63_NORMAL_FULLFILE_RECIPE_SOURCE_ONLY_NOT_FROZEN_EXECUTION_OPERATOR",
+  "source": {
+    "commit": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+    "tree": "b7ee023afcd3202f63dbdadc26bd844d2f73c915",
+    "lineage": "b60\u219296exact7\u2192d743testcallassert\u2192be807READgate\u219211e274permanent2configs\u2192815testbaseline\u2192c63specialexceptiontightening; noff4/F3/F4/F5mix"
+  },
+  "fullFiles": [
+    "packages/host/src/voice/session-speech-ports.test.ts",
+    "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts",
+    "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+    "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
+    "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+    "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts",
+    "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts"
+  ],
+  "packageConfigs": [
+    "plugins/plugin-assistant/vitest.config.ts",
+    "packages/host/vitest.config.ts"
+  ],
+  "canonicalCommands": {
+    "AssistantVitest": {
+      "cwd": "plugins/plugin-assistant",
+      "normalPackageScript": "vitest run",
+      "qualifier": "ActuallockedVitest5withNode24.15 andUNCHANGEDowningconfig, explicitFULLfilepaths for6AssistantTSfiles, norewrittenadapter/Bunsubstitution/casenamefilters",
+      "config": "vitest.config.ts"
+    },
+    "HostVitest": {
+      "cwd": "packages/host",
+      "normalWrapper": "node ../scripts/run-vitest.ts run",
+      "fullFile": "src/voice/session-speech-ports.test.ts",
+      "config": "vitest.config.ts"
+    },
+    "separateAssistantMJS": {
+      "canonicalPackageTail": "node --test --import=tsx --conditions=eliza-source src/services/message/*.test.mjs",
+      "status": "Separateleg/notqualifiedbyTSfilecounts; freezeactualglobfiles/identitiesbeforeGOifincluded"
+    },
+    "limits": "SelectedFULLowningfiles notwholepackage/allnativeHostsuite. ExactnormalconfigSSR/importpreflight andfrozeninstalledtoolclosure beforecases."
+  },
+  "normalSSRPreflight": "ActualCURRENTowningAssistant+HostconfigsnowhavepublicViteSSRnormal+externaleliza-source defaults; muststillloadactualconfig/Node24.15lockedVitest5 andresolvebothnormaltransformed+bareexternalcurrentCore/Host/Agent/pluginimports fromactualtestfiles, recordconditions/ownedtargets/hashes/ctxclosed BEFOREfullfiles. Do notclaimoldcc15PASStransfers.",
+  "tools": "ExistingqualifiedhostedBun1.4.2/Node24.15OCI fingerprints/Ubuntucohort/sourceguard/claim-before-source/cap+cleanup pattern; samecanonicalfrozenlock scriptsdisabled setup ifneeded; completeactualdependencyreceipt andsource/tool/SSRproof beforefixturequalification, notnormalnativeSDKacceptance.",
+  "bounds": "Retainreviewed2CPU/2GiBtestRAM/256PIDs/8MiBphaseLog/60000testdefault/cappedwholejob. Exactnormalfilecaseoracles/realdependency-toolclosure/operator stillmustbefrozen+independentlyreviewed beforefreshfiniteRootGO. No source/runtimejobhere.",
+  "required": "Allwholefilecases/exactidentities+newactualREAD_CONTEXTtests,0unacceptedskip/todo/only/fail, originalknownbaseline/authorfailuresrecordedanddiagnosednotwhitelisted; allPG/CIDsclosed; normaltypes separate.",
+  "noModelVoiceLive": "Stand-inmodel/IO only; no Cerebras/Cartesia/realmic/phone/prod/adoptiontrial implied.",
+  "outstanding": [
+    "Independentsource-identity/title-formatreview",
+    "Concreteboundednormalhostedoperator/source-tool-dependencybootstrap/preflight/finalreceipts review",
+    "FreshfiniteRootGO",
+    "Actualnormalfullfile/mjs/typeoutcomes",
+    "Laterseparaterealmodel/voicebenefitdecision"
+  ],
+  "metadataPrerequisitePacket": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/ack-normal-source-config-prereq-prep-v1",
+  "knownBaselineIssues": [
+    {
+      "status": "SOURCE_REPAIRED_NOT_EXECUTED",
+      "case": "phoneobsoletequotedtextassert",
+      "fixCommit": "815ea82301dfbbe25b5cb98b9a8e708fd827c7ea",
+      "scope": "genericcomplete/nootherforms contractonly; falseclassifieroracleunchanged"
+    },
+    {
+      "status": "SOURCE_REPAIRED_NOT_EXECUTED",
+      "case": "Sundayclock-dependentnonpendingcontrol",
+      "fixCommit": "815ea82301dfbbe25b5cb98b9a8e708fd827c7ea",
+      "scope": "ONLYnonpendingdraft/requesttimelessHello; pendingnews/budgets/progress/persist intact"
+    },
+    {
+      "status": "SOURCE_REPAIRED_NOT_EXECUTED",
+      "case": "explicitincompletepullthelatestexception",
+      "fixCommit": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+      "scope": "productionremoveonlyexception+negatives/completepositivecontextcases, no classifierwiden"
+    },
+    {
+      "status": "MANUAL_INPUT_CONDITIONAL_UNRUN",
+      "case": {
+        "file": "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts",
+        "line": 188,
+        "name": "measures exact six captured input fixtures without changing any other bytes",
+        "mode": "it.skipIf",
+        "condition": "!process.env.ALPHA_CONTEXT_TRACE_DIR ||\n      !process.env.ALPHA_CONTEXT_METRICS_OUT"
+      },
+      "scope": "No fakeenv/syntheticemptycapturePASS; separatelyattributedknownmanualmeasurementcase."
+    }
+  ],
+  "sourceInventory": {
+    "registrationTotal": 1122,
+    "fullFileCounts": {
+      "packages/host/src/voice/session-speech-ports.test.ts": 21,
+      "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts": 126,
+      "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts": 36,
+      "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts": 65,
+      "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts": 826,
+      "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts": 31,
+      "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts": 17
+    },
+    "conditional": [
+      {
+        "file": "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts",
+        "line": 188,
+        "name": "measures exact six captured input fixtures without changing any other bytes",
+        "mode": "it.skipIf",
+        "condition": "!process.env.ALPHA_CONTEXT_TRACE_DIR ||\n      !process.env.ALPHA_CONTEXT_METRICS_OUT"
+      }
+    ],
+    "formatter": "TITLE-FORMATTER-PROVENANCE.json",
+    "expectedOutcomes": "Manualcaptureconditionalmissingactualinputs mustbeexplicitseparateaccounted(notpassed). Rootdecidesexactexpectedskip/statuspolicy; allOTHERcases0skip/todo/fail, no filters/waivers/count-onlyPASS."
+  }
+}

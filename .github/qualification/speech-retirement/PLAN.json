@@ -1,0 +1,237 @@
+{
+  "resourceBounds": {
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "maxDiskGrowthBytes": 12884901888,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592
+  },
+  "reviewedRunner": {
+    "ImageOS": "ubuntu24",
+    "dockerServer": "28.0.4",
+    "evidenceRun": 41504810728,
+    "evidenceAttempt": 1,
+    "evidenceArtifact": 13169763764,
+    "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90",
+    "scope": "Docker and ImageOS pins only; image admission uses the sealed finite allowlist plus same-run capabilities."
+  },
+  "hostEnvironment": {
+    "allowedImageVersions": [
+      "20261018.96.1",
+      "20261026.354.1"
+    ],
+    "ImageOS": "ubuntu24",
+    "architecture": "x86_64",
+    "cleanupPaths": [],
+    "cleanupSecondsPerPath": 60,
+    "cleanupBeforeMinimumDiskAdmission": false,
+    "cleanupOnlyWhenBelowEntryFloor": false,
+    "hostPythonRange": "3.12 <= version < 3.16",
+    "capabilities": [
+      "Linux /proc",
+      "waitid WNOWAIT preserves child identity before reap",
+      "session PGID identity",
+      "Docker linux/amd64",
+      "Docker server exact28.0.4"
+    ],
+    "priorSingleCohortReview": {
+      "ImageVersion": "20261026.354.1",
+      "ImageOS": "ubuntu24",
+      "dockerServer": "28.0.4",
+      "evidenceRun": 41504810728,
+      "evidenceAttempt": 1,
+      "evidenceArtifact": 13169763764,
+      "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
+    },
+    "provenanceLimit": "20261018.96.1 authenticated GitHub job setup provenance retained; its upstream release/tag now404, not claimed independently resolved. Same-run capabilities are required. New versions fail closed.",
+    "noMacExecutionOrDeletion": true,
+    "normalSDKLifecycleStillFalse": true
+  },
+  "state": "NORMAL_ACK_HOSTED_SOURCE_PREPARATION_NO_GO",
+  "sourceCommit": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+  "sourceTree": "b7ee023afcd3202f63dbdadc26bd844d2f73c915",
+  "recipe": "ack-normal-fullfiles",
+  "sourceExportCondition": "eliza-source",
+  "normalSDKLifecycle": false,
+  "fullFiles": [
+    "packages/host/src/voice/session-speech-ports.test.ts",
+    "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts",
+    "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+    "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
+    "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+    "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts",
+    "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts"
+  ],
+  "expectedTools": {
+    "node": "24.15.0",
+    "bun": "1.4.2",
+    "bunSHA256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+    "nodeSHA256": "d1de76d8edf2fededf6f8b30d244e2c0529ac607923a018283b77e9c74bd932c"
+  },
+  "network": "HOSTED setup install is sole network=bridge/read-write source exception. Pinned OCI pulls occur on hosted runner. Every versions/bootstrap/config-preflight/API/Host test container uses network=none and read-only source, with in-container loopback permitted for actual Workerd/Miniflare fixture. No host ports, Docker socket, GitHub token, prod/provider credentials or inherited host environment passed into containers.",
+  "forbiddenActions": [
+    "Macinstall",
+    "MacDockerpull",
+    "nativehooks",
+    "broadsourcebuild",
+    "newaliases",
+    "skipconfig",
+    "borroweddist",
+    "liveproviders",
+    "financial",
+    "typescopes"
+  ],
+  "fullFileTimeouts": "NormalVitestcanonical60000ms defaulttest/hook timeouts andexplicitowningtesttimeouts unchanged. Perfullfileprocessphase90s/whole1200s remainstrict; exhaustion incomplete, noautomaticraise.",
+  "dependencyAdmission": "HOSTED ONLY actual canonical frozen-lock scripts-disabled install produces bounded complete physical dependency/tool/source receipts, then stage-gates all fixtures on verified fresh receipts. Not retained/prequalified dependency bytes or normal native lifecycle.",
+  "hostedSetupBounds": {
+    "eachPinnedImagePullSeconds": 120,
+    "toolchainAssemblySeconds": 90,
+    "installSeconds": 600,
+    "installMemory": "4g",
+    "dependencyInventorySeconds": 90,
+    "dependencyInventoryBytes": 134217728,
+    "sameWholeBudgetSeconds": 1200
+  },
+  "sameLockPriorActual": {
+    "run": 41576211167,
+    "bunLockSHA256": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
+    "installSeconds": 30.146350580999993,
+    "allOwnedGroupsClosed": true,
+    "ignoreScripts": true,
+    "notCurrentInstallAcceptance": true
+  },
+  "sourceConfigCorrection": "Actualc63canonicalHost+Assistantconfigs declarepublicViteSSRnormal/externaleliza-source defaults; source-onlypreparationrequiresactualowningpreflight. No cc15/145caseacceptance inherited.",
+  "expectedRegistrations": 1122,
+  "expectedPassed": 1121,
+  "expectedManualUnexecuted": 1,
+  "normalGroups": [
+    {
+      "name": "owning-0",
+      "file": "packages/host/src/voice/session-speech-ports.test.ts",
+      "cwd": "/workspace/packages/host",
+      "relative": "src/voice/session-speech-ports.test.ts",
+      "runner": "/workspace/packages/scripts/run-vitest.ts",
+      "config": "vitest.config.ts",
+      "report": "owning-0.json",
+      "sourceRegistrations": 21,
+      "expectedSkippedNames": [],
+      "phaseSeconds": 90
+    },
+    {
+      "name": "owning-1",
+      "file": "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts",
+      "cwd": "/workspace/plugins/plugin-assistant",
+      "relative": "src/__tests__/stage1/response-format.test.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "config": "vitest.config.ts",
+      "report": "owning-1.json",
+      "sourceRegistrations": 126,
+      "expectedSkippedNames": [],
+      "phaseSeconds": 90
+    },
+    {
+      "name": "owning-2",
+      "file": "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts",
+      "cwd": "/workspace/plugins/plugin-assistant",
+      "relative": "src/services/message.deliver-then-persist.test.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "config": "vitest.config.ts",
+      "report": "owning-2.json",
+      "sourceRegistrations": 36,
+      "expectedSkippedNames": [],
+      "phaseSeconds": 90
+    },
+    {
+      "name": "owning-3",
+      "file": "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
+      "cwd": "/workspace/plugins/plugin-assistant",
+      "relative": "src/services/message.owner-model-ack.test.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "config": "vitest.config.ts",
+      "report": "owning-3.json",
+      "sourceRegistrations": 65,
+      "expectedSkippedNames": [],
+      "phaseSeconds": 90
+    },
+    {
+      "name": "owning-4",
+      "file": "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts",
+      "cwd": "/workspace/plugins/plugin-assistant",
+      "relative": "src/services/message.side-effect-claim.test.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "config": "vitest.config.ts",
+      "report": "owning-4.json",
+      "sourceRegistrations": 826,
+      "expectedSkippedNames": [],
+      "phaseSeconds": 90
+    },
+    {
+      "name": "owning-5",
+      "file": "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts",
+      "cwd": "/workspace/plugins/plugin-assistant",
+      "relative": "src/services/message/phone-capability-context.test.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "config": "vitest.config.ts",
+      "report": "owning-5.json",
+      "sourceRegistrations": 31,
+      "expectedSkippedNames": [
+        "measures exact six captured input fixtures without changing any other bytes"
+      ],
+      "phaseSeconds": 90
+    },
+    {
+      "name": "owning-6",
+      "file": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+      "cwd": "/workspace/plugins/plugin-assistant",
+      "relative": "src/services/message/context-read-recovery.test.ts",
+      "runner": "/workspace/node_modules/vitest/vitest.mjs",
+      "config": "vitest.config.ts",
+      "report": "owning-6.json",
+      "sourceRegistrations": 17,
+      "expectedSkippedNames": [],
+      "phaseSeconds": 90
+    }
+  ],
+  "sourceTargets": {
+    "@elizaos/core": {
+      "path": "packages/core/src/index.ts",
+      "sha256": "c493450f40b45c44692a748dec11dab4fced2af84fd7b361708948293fd57002"
+    },
+    "@elizaos/host": {
+      "path": "packages/host/src/index.ts",
+      "sha256": "9e67ec8035468b2d514eca54528ea4043475148edaf2d1880f837e202bbc69f1"
+    },
+    "@elizaos/agent": {
+      "path": "packages/agent/src/index.ts",
+      "sha256": "08151e4617d6899f8e381f527713d63c4e85e4fcb21fe0a6962cfad5f13b33c8"
+    },
+    "@elizaos/plugin-assistant": {
+      "path": "plugins/plugin-assistant/src/index.ts",
+      "sha256": "6ce562f017b602b31995acede473ab6358230b7ec4b70a63b9e8b894f3a0bd56"
+    },
+    "@elizaos/plugin-sql": {
+      "path": "plugins/plugin-sql/src/index.ts",
+      "sha256": "4ac7f8ebdd0a2b0888716a31ca936da8b1948f18fda25b909a272d1586f440f3"
+    },
+    "@elizaos/testing/runtime": {
+      "path": "packages/testing/src/runtime.ts",
+      "sha256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff"
+    }
+  },
+  "manualTracePolicy": {
+    "caseFile": "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts",
+    "caseName": "measures exact six captured input fixtures without changing any other bytes",
+    "condition": "!process.env.ALPHA_CONTEXT_TRACE_DIR ||\n      !process.env.ALPHA_CONTEXT_METRICS_OUT",
+    "expectedStatus": "pending/skipped becauseactualmanualtraceinputsabsent; NOTexecutedpass",
+    "noManufacturedInputs": true,
+    "containerEnvPolicy": "ALPHA_CONTEXT_TRACE_DIR/METRICS_OUT neverpassed; no credential/provider.env or hostHOME/socket."
+  },
+  "scope": "SevencompleteowningTSfiles under actualAssistantVitest andHostcanonicalwrapper/config. No authorBunreplacement/filters/overlays/skipwaivers; separatemjs/native/types/provider/live scope excluded.",
+  "expectedFrameworks": {
+    "vitest": "5.0.5",
+    "vite": "8.3.3"
+  }
+}

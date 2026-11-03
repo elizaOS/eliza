@@ -1,0 +1,52 @@
+{
+  "targets": {
+    "@elizaos/core": {
+      "path": "packages/core/src/index.ts",
+      "sha256": "c493450f40b45c44692a748dec11dab4fced2af84fd7b361708948293fd57002"
+    },
+    "@elizaos/host": {
+      "path": "packages/host/src/index.ts",
+      "sha256": "9e67ec8035468b2d514eca54528ea4043475148edaf2d1880f837e202bbc69f1"
+    },
+    "@elizaos/agent": {
+      "path": "packages/agent/src/index.ts",
+      "sha256": "08151e4617d6899f8e381f527713d63c4e85e4fcb21fe0a6962cfad5f13b33c8"
+    },
+    "@elizaos/plugin-assistant": {
+      "path": "plugins/plugin-assistant/src/index.ts",
+      "sha256": "6ce562f017b602b31995acede473ab6358230b7ec4b70a63b9e8b894f3a0bd56"
+    },
+    "@elizaos/plugin-sql": {
+      "path": "plugins/plugin-sql/src/index.ts",
+      "sha256": "4ac7f8ebdd0a2b0888716a31ca936da8b1948f18fda25b909a272d1586f440f3"
+    },
+    "@elizaos/testing/runtime": {
+      "path": "packages/testing/src/runtime.ts",
+      "sha256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff"
+    }
+  },
+  "projects": [
+    {
+      "name": "assistant",
+      "root": "plugins/plugin-assistant",
+      "importer": "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts",
+      "imports": [
+        "@elizaos/core",
+        "@elizaos/agent",
+        "@elizaos/plugin-assistant",
+        "@elizaos/plugin-sql",
+        "@elizaos/testing/runtime"
+      ]
+    },
+    {
+      "name": "host",
+      "root": "packages/host",
+      "importer": "packages/host/src/voice/session-speech-ports.test.ts",
+      "imports": [
+        "@elizaos/core",
+        "@elizaos/host",
+        "@elizaos/plugin-assistant"
+      ]
+    }
+  ]
+}

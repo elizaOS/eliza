@@ -1,0 +1,50 @@
+{
+  "atUTC": "2026-11-03T10:56:14.671367+00:00",
+  "state": "SOURCE_IDENTITY_FORMATTER_AND_NORMAL_RECIPE_PASS_NOT_EXECUTABLE_OPERATOR_GO",
+  "source": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+  "tree": "b7ee023afcd3202f63dbdadc26bd844d2f73c915",
+  "PREPAREDSHA256": "a4b773af244946e9be8f0e3489aff58a5c209fa183c77570523964af4b603b2a",
+  "SEALSHA256": "7589140954510e28813671f52f4e28a05cb8946baee8b2f189be9f04abdfddac",
+  "wholeFiles": 7,
+  "sourceRegistrations": 1122,
+  "fullFileCounts": {
+    "packages/host/src/voice/session-speech-ports.test.ts": 21,
+    "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts": 126,
+    "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts": 36,
+    "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts": 65,
+    "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts": 826,
+    "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts": 31,
+    "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts": 17
+  },
+  "duplicateTitleExtraInstances": {
+    "packages/host/src/voice/session-speech-ports.test.ts": 0,
+    "plugins/plugin-assistant/src/__tests__/stage1/response-format.test.ts": 1,
+    "plugins/plugin-assistant/src/services/message.deliver-then-persist.test.ts": 9,
+    "plugins/plugin-assistant/src/services/message.owner-model-ack.test.ts": 0,
+    "plugins/plugin-assistant/src/services/message.side-effect-claim.test.ts": 118,
+    "plugins/plugin-assistant/src/services/message/phone-capability-context.test.ts": 0,
+    "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts": 0
+  },
+  "conditionalManualCases": 1,
+  "dataReplayReceiptSHA256": "28e6036288f97fd460cf2fb5e509bf54f3fe4594f03d29347714df0fa5753200",
+  "authoritativeGitBlobVerificationSHA256": "571edb1c2a18459004c6bc42243eee1df7fa908e676c2e08b994f4f2c23d2f27",
+  "checks": [
+    "Allsealedhashesverified; actual12Gitblobrawsources7tests/2configs/2packagecommands/CoreChannelType matchsealedinputs onpublishedc63",
+    "ActualpinnedVitest5.0.5run/display/configcachedsourcehashes independentlyverified/read: formatRegExp excludes%p; %p remainsliteral, no util.inspect/Bun substitution; namedstring40UTF16surrogatesafetruncation; defaults40",
+    "ReviewedsourceASTdatainterpreter re-runwithindependentpuredataformatterandpreregisteredhoistedhelperdefinitions; all7ordered1122namesmatchinventory+ORACLES,0unresolved. Noowningcallback/module/vendorRunner import.",
+    "Multiplicityretained128extraidenticaltitleinstances acrossfiles (1response/9deliver/118claim); do notdedup/report994asfull1122",
+    "Hello/new+15/sourceChannelType/namedobjectfields materializedfromactualfinalpostimages notobservedreportcopy/authorhead",
+    "ActualAssistanttestscript =VitestTS then separateNodeMJS tail; actualHosttestscript =normalrun-vitestTS then separatevoiceMJS/nativeHost tails. Selected7TSscopeisnotwholepackage/MJS/nativePASS",
+    "CanonicalAssistant/Hostowningconfigsactualpublishedb638/edc25 preservepublicViteSSRnormal/externaldefaults; actualruntimepreflightmustresolvebothtransformed/barefromtestimporters andclosecontext beforecases",
+    "Sourcebaselinephoneprompt/date/pulllatestrepairs verifiedpublishedlineage; no runtimePASSfromrepairs. F3/F4/F5/ff4excluded"
+  ],
+  "contentsReadCaveat": "Conveniencerawcontentsresponse differedatChecking.backslash-u0000fixture asChecking.^@. AuthoritativeGitblob5d234af...base64decodedmatche2a348exact; initialcapture/comparison preserved, no source/oraclechange. AllfinalsourceidentityusesGitobjectbytes.",
+  "manualCaseBoundary": "Phoneit.skipIf requiresrealALPHA_CONTEXT_TRACE_DIRandMETRICS_OUTcapturedinputs. No fakeenv/emptycapturePASS. Rootmustexplicitlyaccountmanualcase or keepitunqualified;1122source registrations not1122actualpassed. Allothercasesnormal0skip/todo/fail/only, no filters/waivers.",
+  "remainingBeforeExecution": [
+    "Concreteboundednormalhostedoperator/source+tool+freshfrozenlockdeps/actualSSRpreflight/finalreceipts review/literalpublication",
+    "Freezeactualreportcodec/fileidentity/count/multiplicity/conditionaloutcomepolicy andownedcleanup, notcountonly",
+    "FreshfiniteRootGO; proposed2CPU2GiB256PID8MiBphasecapsneedactualnormalrunproof/noautoincrease",
+    "Actualnormal7fullTSfiles, separateMJS/types/modelvoice/native/liveacceptance asapplicable; no sourceidentityPASStransfer"
+  ],
+  "actions": "Source/hash/GitHubGitobjectreads+trustedTypeScriptASTparser/puredataformatter only; sealedfilesunchanged, no test/vendorRunner/configimport/configload/install/build/model/voice/CI/adoption."
+}

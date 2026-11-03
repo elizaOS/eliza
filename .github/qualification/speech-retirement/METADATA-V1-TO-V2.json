@@ -1,0 +1,15 @@
+{
+  "scope": "RootrequestedONLY3staleexplanatoryPLANfields",
+  "old": {
+    "cases": 145,
+    "sourceConfigCorrection": "Published cc15 canonical Host SSR conditions; root aliases/includes/timeouts and all145tests/lock unchanged, literal GitHubverified. ActualSSR gate remainsrequired.",
+    "fullFileTimeouts": "Keep explicit owning120s testtimeouts; defaultBun60000. Container90s is tighter existingbound and yields incompleteifexhausted, never widened automatically."
+  },
+  "new": {
+    "cases": null,
+    "sourceConfigCorrection": "Actualc63canonicalHost+Assistantconfigs declarepublicViteSSRnormal/externaleliza-source defaults; source-onlypreparationrequiresactualowningpreflight. No cc15/145caseacceptance inherited.",
+    "fullFileTimeouts": "NormalVitestcanonical60000ms defaulttest/hook timeouts andexplicitowningtesttimeouts unchanged. Perfullfileprocessphase90s/whole1200s remainstrict; exhaustion incomplete, noautomaticraise."
+  },
+  "executableBytesUnchanged": true,
+  "counts": "Authoritative1122registrations/1121pass/1manualunexecutedunchanged; no plan.cases consumer"
+}
