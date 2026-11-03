@@ -14,6 +14,8 @@ import {
 
 import {
   bindFilterEvidence,
+  calendarMutationPrerequisites,
+  hasCalendarSearchFilterShape,
   rememberCalendarReadBindings,
 } from "./search-filter-evidence.js";
 
@@ -27,7 +29,7 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
 > = {
   name: "calendarReadBindings",
   description:
-    "Set purpose=requested_read for a requested Calendar read. Set purpose=mutation_prerequisite only for a source-bound lookup needed to carry out the SAME current intent to create, update or delete an event; it does not add or satisfy a read intent. Always emit filterEvidence (empty [] for nonsearch). Use feed for an unfiltered agenda or anything scheduled today; do not invent a content query. search_events requires filterEvidence: one or more {query,quote,origin} objects. query is the exact trimmed quote of an event-content phrase, not a date/source selector. origin=current quotes the current user request verbatim; origin=referent quotes an identifiable event phrase in an already supplied same-room owner/assistant message. A referent is only a lookup key, never current event truth. Do not paraphrase or add words to the query. If no content phrase is supplied or resolved, use feed for a bounded agenda. Preserve the user-requested operation as the intent. Bind only Calendar reads the user requested, not an invented lookup intent for a create, update or delete request; prerequisite record lookup belongs to normal planning for that operation. Bind each requested Calendar read to its one-based Stage-1 intent ID (intent:1, etc.): feed is a requested bounded agenda/date range, next_event is the single next ongoing or upcoming event relative to now, search_events is an event-content search. Questions about the current time, date, duration, location, attendees or other details of a named or previously discussed event are search_events reads, even when conversation history contains an answer. Read the authoritative Calendar record before answering; an earlier assistant reply or remembered event detail is not current Calendar evidence. An explicit request to quote what someone said earlier is a conversation-history question instead, unless the user also asks to verify the event now. check_availability checks whether a specified interval is free; propose_times finds concrete free slots for the requested duration and search window without booking. Bind the requested outcome, not the agenda lookup it might require: a slot proposal is propose_times, never feed, and an interval availability check is check_availability. A feed success cannot complete either of those outcomes. Execution is required only for an unconditional read; use conditional when it depends on a prerequisite or user condition, and preserve that condition for normal planning. Provider, account, grant and calendar identity select which calendar to read; they are not event-content filters. A request for one nearest event from a named calendar remains next_event unless it also asks for matching event content. A next-week agenda is feed; opening Calendar is navigation, not a read. Use [] for unrelated or unclear reads; preserve every other intent.",
+    "Set purpose=requested_read for a requested Calendar read. Set purpose=mutation_prerequisite only for a lookup needed to carry out the SAME current intent to create, update or delete an event; it does not add or satisfy a read intent. For a date/time/duration reference without an exact source-bound event-content phrase, bind operation=feed with filterEvidence=[] as the bounded prerequisite. Keep the mutation as the intent. Use a freshly read canonical event ID and verify every requested time/duration/source constraint before changing it; ambiguous matches require clarification, not a guessed target. Always emit filterEvidence (empty [] for nonsearch). Use feed for an unfiltered agenda or anything scheduled today; do not invent a content query. search_events requires filterEvidence: one or more {query,quote,origin} objects. query is the exact trimmed quote of an event-content phrase, not a date/source selector. origin=current quotes the current user request verbatim; origin=referent quotes an identifiable event phrase in an already supplied same-room owner/assistant message. A referent is only a lookup key, never current event truth. Do not paraphrase or add words to the query. If no content phrase is supplied or resolved, use feed for a bounded agenda. Preserve the user-requested operation as the intent. Bind requested reads as requested_read. Record mutation lookup preparation only as mutation_prerequisite on the existing mutation intent, never as an invented requested read; normal planning still owns the lookup and the mutation. Bind each requested Calendar read to its one-based Stage-1 intent ID (intent:1, etc.): feed is a requested bounded agenda/date range, next_event is the single next ongoing or upcoming event relative to now, search_events is an event-content search. Questions about the current time, date, duration, location, attendees or other details of a named or previously discussed event are search_events reads, even when conversation history contains an answer. Read the authoritative Calendar record before answering; an earlier assistant reply or remembered event detail is not current Calendar evidence. An explicit request to quote what someone said earlier is a conversation-history question instead, unless the user also asks to verify the event now. check_availability checks whether a specified interval is free; propose_times finds concrete free slots for the requested duration and search window without booking. Bind the requested outcome, not the agenda lookup it might require: a slot proposal is propose_times, never feed, and an interval availability check is check_availability. A feed success cannot complete either of those outcomes. Execution is required only for an unconditional read; use conditional when it depends on a prerequisite or user condition, and preserve that condition for normal planning. Provider, account, grant and calendar identity select which calendar to read; they are not event-content filters. A request for one nearest event from a named calendar remains next_event unless it also asks for matching event content. A next-week agenda is feed; opening Calendar is navigation, not a read. Use [] for unrelated or unclear reads; preserve every other intent.",
   priority: 40,
   schema: {
     type: "array",
@@ -91,13 +93,23 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
         return null;
       const intentId = `intent:${index}`;
       if (item.purpose !== undefined && item.purpose !== "requested_read" && item.purpose !== "mutation_prerequisite") return null;
-      if (item.purpose === "mutation_prerequisite" && item.operation !== "search_events") return null;
-      const key = `${intentId}:${item.operation}:${item.purpose ?? "requested_read"}`;
-      if (seen.has(key)) return null;
-      seen.add(key);
+      if (item.purpose === "mutation_prerequisite" && item.operation !== "search_events" && item.operation !== "feed") return null;
       const filterEvidence = item.operation === "search_events"
         ? bindFilterEvidence(item.filterEvidence, ctx.message, String(ctx.runtime.agentId), getRecentMessagesData(ctx.state))
         : undefined;
+      const fallbackFeed = item.purpose === "mutation_prerequisite" && item.operation === "search_events" &&
+        !filterEvidence && hasCalendarSearchFilterShape(item.filterEvidence);
+      const key = `${intentId}:${fallbackFeed ? "feed" : item.operation}:${item.purpose ?? "requested_read"}`;
+      if (seen.has(key)) return null;
+      seen.add(key);
+      // A failed proposed search cannot mint filter authority. For an existing
+      // mutation intent, normal planning may instead obtain a bounded agenda
+      // and match fresh canonical records; it is never a completed read intent.
+      if (fallbackFeed) {
+        reads.push({ intentId, operation: "feed", execution: item.execution,
+          purpose: "mutation_prerequisite", filterEvidence: [] });
+        continue;
+      }
       if (item.operation !== "search_events" && item.filterEvidence !== undefined &&
           (!Array.isArray(item.filterEvidence) || item.filterEvidence.length > 0)) return null;
       reads.push({ ...(item as RequestedRead), intentId,
@@ -168,13 +180,14 @@ export const calendarReadBindingField: ResponseHandlerFieldEvaluator<
 export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
   name: "calendar.read-bindings",
   priority: 65,
-  shouldRun: ({ messageHandler }) =>
+  shouldRun: ({ runtime, message, messageHandler, userRoles }) =>
     messageHandler.processMessage === "RESPOND" &&
-    Array.isArray(messageHandler.plan.calendarReadBindings) &&
-    messageHandler.plan.calendarReadBindings.length > 0,
-  evaluate({ message, messageHandler, userRoles }) {
-    const bindings = messageHandler.plan
-      .calendarReadBindings as CalendarReadBinding[];
+    ((Array.isArray(messageHandler.plan.calendarReadBindings) &&
+      messageHandler.plan.calendarReadBindings.length > 0) ||
+      (userRoles?.includes("OWNER") === true &&
+        calendarMutationPrerequisites(getStreamingContext()?.actionConstraints, message, String(runtime.agentId)).length > 0)),
+  evaluate({ runtime, message, messageHandler, userRoles }) {
+    const bindings = (messageHandler.plan.calendarReadBindings ?? []) as CalendarReadBinding[];
     if (
       !userRoles?.includes("OWNER") ||
       bindings.some(
@@ -186,6 +199,10 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
       )
     )
       return;
+    const prerequisites = calendarMutationPrerequisites(
+      getStreamingContext()?.actionConstraints, message, String(runtime.agentId),
+    );
+    if (!bindings.length && !prerequisites.length) return;
     const otherCandidates = (messageHandler.plan.candidateActions ?? []).filter(
       (name) =>
         !Object.values(CALENDAR_READ_ACTIONS).some((read) => read === name),
@@ -206,11 +223,21 @@ export const calendarReadBindingEvaluator: ResponseHandlerEvaluator = {
               ...bindings.map(
                 (binding) => CALENDAR_READ_ACTIONS[binding.operation],
               ),
+              ...prerequisites.map(binding => CALENDAR_READ_ACTIONS[binding.operation]),
             ],
           }
-        : {}),
+        : prerequisites.length
+          ? { clearCandidateActions: true, addCandidateActions: [
+              ...otherCandidates,
+              ...bindings.map(binding => CALENDAR_READ_ACTIONS[binding.operation]),
+              ...prerequisites.map(binding => CALENDAR_READ_ACTIONS[binding.operation]),
+            ] }
+          : {}),
       addContextSlices: [
-        `Current-request Calendar read bindings: ${JSON.stringify(bindings)}. These select read operations, not permissions or receipts. A bounded agenda cannot satisfy next_event, an interval availability check, or a concrete slot proposal. For propose_times, preserve the requested duration and window and return actual exact-duration options; broad free windows are not concrete proposed slots. Preserve every requested constraint and other intent; if the matching operation is unavailable, report the bounded/partial result honestly.`,
+        ...(prerequisites.length ? [
+          `Current-request Calendar mutation lookup prerequisites: ${JSON.stringify(prerequisites)}. These are preparation for the existing mutation intent, not requested read outcomes or current event truth. Use the bound bounded feed when no verified content-search filter exists; do not convert a remembered event title into an authorized search. Read fresh canonical records, match all owner/source/date/time/duration constraints, and use the exact read event ID before changing anything. A read alone does not complete the mutation. Keep every pending intent and every unrequested event field; ambiguous matches require clarification and no mutation.`,
+        ] : []),
+        ...(bindings.length ? [`Current-request Calendar read bindings: ${JSON.stringify(bindings)}. These select read operations, not permissions or receipts. A bounded agenda cannot satisfy next_event, an interval availability check, or a concrete slot proposal. For propose_times, preserve the requested duration and window and return actual exact-duration options; broad free windows are not concrete proposed slots. Preserve every requested constraint and other intent; if the matching operation is unavailable, report the bounded/partial result honestly.`] : []),
       ],
     };
   },

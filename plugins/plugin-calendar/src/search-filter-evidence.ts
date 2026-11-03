@@ -1,31 +1,37 @@
 /** Source-bound read filters. No intent classifier, model call, or Calendar I/O. */
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { CalendarReadFilterEvidence } from "@elizaos/contracts";
+import type { CalendarReadBinding, CalendarReadFilterEvidence } from "@elizaos/contracts";
 type Message = {
   id?: string; agentId?: string; roomId: string; entityId: string;
   createdAt?: number; content: { text?: string };
 };
 export type FilterEvidence = CalendarReadFilterEvidence;
-type ReadBinding = { operation: string; filterEvidence?: readonly FilterEvidence[] };
+type ReadBinding = { operation: string; filterEvidence?: readonly FilterEvidence[]; intentId?: string; execution?: CalendarReadBinding["execution"]; purpose?: CalendarReadBinding["purpose"] };
 const directCustody = new AsyncLocalStorage<object>();
 const custody = new WeakMap<object, { id?: string; roomId: string; actorId: string; at?: number; text?: string; agentId: string; bindings: ReadBinding[]; signal: AbortSignal }>();
 
 const record = (v: unknown): v is Record<string, unknown> =>
   !!v && typeof v === "object" && !Array.isArray(v);
 
+/** Structural proposal validation only; this never grants source or search authority. */
+export function hasCalendarSearchFilterShape(value: unknown): value is Pick<FilterEvidence, "query" | "quote" | "origin">[] {
+  return Array.isArray(value) && value.length > 0 && value.length <= 8 && value.every(raw =>
+    record(raw) && Object.keys(raw).every(k => ["query", "quote", "origin"].includes(k)) &&
+    typeof raw.query === "string" && typeof raw.quote === "string" &&
+    raw.query.trim().length > 0 && raw.query.length <= 160 &&
+    raw.quote.trim().length > 0 && raw.quote.length <= 2048 &&
+    (raw.origin === "current" || raw.origin === "referent"));
+}
+
 /** Referents come ONLY from the already authorized recent-message provider. */
 export function bindFilterEvidence(
   value: unknown, current: Message, agentId: string, recent: readonly Message[],
 ): FilterEvidence[] | null {
   if (!current.id || (current.agentId !== undefined && current.agentId !== agentId) || !Number.isFinite(current.createdAt) ||
-      !Array.isArray(value) || !value.length || value.length > 8) return null;
+      !hasCalendarSearchFilterShape(value)) return null;
   const result: FilterEvidence[] = [];
   for (const raw of value) {
-    if (!record(raw) || Object.keys(raw).some(k => !["query", "quote", "origin"].includes(k)) ||
-        typeof raw.query !== "string" || typeof raw.quote !== "string" ||
-        !raw.query.trim() || raw.query.length > 160 || raw.quote.length > 2048 ||
-        raw.query.trim() !== raw.quote.trim() ||
-        (raw.origin !== "current" && raw.origin !== "referent")) return null;
+    if (raw.query.trim() !== raw.quote.trim()) return null;
     const candidates = raw.origin === "current" ? [current] : recent.filter(m =>
       m.id !== current.id && (m.agentId === undefined || m.agentId === agentId) && m.roomId === current.roomId &&
       (m.entityId === current.entityId || m.entityId === agentId) &&
@@ -49,20 +55,39 @@ export function rememberCalendarReadBindings(
     bindings: structuredClone(bindings), signal });
 }
 
+/** Read the same host custody; no model-supplied plan field can substitute for it. */
+function currentReadBindings(turn: object | undefined, current: Message, agentId: string): readonly ReadBinding[] | undefined {
+  const owned = (turn ? custody.get(turn) : undefined) ?? custody.get(directCustody.getStore() ?? {});
+  if (!owned || (current.agentId !== undefined && current.agentId !== agentId) || owned.signal.aborted || owned.id !== current.id || owned.roomId !== current.roomId ||
+      owned.actorId !== current.entityId || owned.at !== current.createdAt ||
+      owned.agentId !== agentId || owned.text !== current.content.text) return undefined;
+  return owned.bindings;
+}
+
+/** Planning-only prerequisites from this exact live request, never read-completion evidence. */
+export function calendarMutationPrerequisites(
+  turn: object | undefined, current: Message, agentId: string,
+): Pick<CalendarReadBinding, "intentId" | "operation" | "execution">[] {
+  const result: Pick<CalendarReadBinding, "intentId" | "operation" | "execution">[] = [];
+  for (const binding of currentReadBindings(turn, current, agentId) ?? []) {
+    if (binding.purpose !== "mutation_prerequisite" ||
+        (binding.operation !== "feed" && binding.operation !== "search_events") ||
+        typeof binding.intentId !== "string" || !/^intent:[1-9][0-9]*$/.test(binding.intentId) ||
+        (binding.execution !== "required" && binding.execution !== "conditional")) continue;
+    result.push({ intentId: binding.intentId, operation: binding.operation, execution: binding.execution });
+  }
+  return result;
+}
+
 /** Rejection must happen before getCalendarFeed, not after an empty search. */
 export function calendarSearchFiltersAreBound(
   turn: object | undefined, current: Message, agentId: string,
   queries: readonly string[], normalize: (s: string) => string | undefined,
 ): boolean {
-  const owned = ((turn ? custody.get(turn) : undefined) ?? custody.get(directCustody.getStore() ?? {})) as {
-    id: string; roomId: string; actorId: string; at: number; text: string;
-    agentId: string; bindings: ReadBinding[]; signal: AbortSignal;
-  } | undefined;
   if (!queries.length || queries.some(q => typeof q !== "string" || !q.trim())) return false;
-  if (!owned || (current.agentId !== undefined && current.agentId !== agentId) || owned.signal.aborted || owned.id !== current.id || owned.roomId !== current.roomId ||
-      owned.actorId !== current.entityId || owned.at !== current.createdAt ||
-      owned.agentId !== agentId || owned.text !== current.content.text) return false;
-  const bound = owned.bindings.filter(b => b.operation === "search_events")
+  const bindings = currentReadBindings(turn, current, agentId);
+  if (!bindings) return false;
+  const bound = bindings.filter(b => b.operation === "search_events")
     .flatMap(b => b.filterEvidence ?? []).map(e => normalize(e.query)).filter(Boolean);
   return bound.length > 0 && queries.every(q => bound.includes(normalize(q)));
 }
