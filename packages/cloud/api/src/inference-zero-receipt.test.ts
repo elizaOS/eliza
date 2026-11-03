@@ -1,5 +1,5 @@
 import { expect, test } from "bun:test";
-import { withCanonicalSettlementReceipt } from "@elizaos/cloud-shared/lib/services/inference-settlement-receipt";
+import { withCanonicalSettlementReceipt } from "../../shared/src/lib/services/inference-settlement-receipt";
 import type { OrganizationInferenceAdmission } from "@elizaos/cloud-shared/lib/services/organization-inference-admission";
 
 // This tests the real receipt constructor/validator with a controlled admission
