@@ -89,6 +89,19 @@ function normalizeDomain(domain: string): string {
   return domain.trim().toLowerCase();
 }
 
+/**
+ * Autofill looks a login up by the page's `location.hostname`, and the
+ * in-house identifier is `<domain>:<username>`. A saved login therefore keeps
+ * only the hostname of a pasted URL or `host:port` (`https://github.com/login`
+ * and `github.com:443` both save as `github.com`).
+ */
+function savedLoginHostname(input: string): string {
+  let host = input.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
+  host = host.split(/[/?#]/, 1)[0] ?? "";
+  host = host.slice(host.lastIndexOf("@") + 1).replace(/:\d*$/, "");
+  return normalizeDomain(host);
+}
+
 function loginKey(domain: string, username: string): string {
   return `${PREFIX}.${normalizeDomain(domain)}.${encodeAccount(username)}`;
 }
@@ -102,7 +115,8 @@ export async function setSavedLogin(
   vault: Vault,
   login: Omit<SavedLogin, "lastModified">,
 ): Promise<void> {
-  if (login.domain.trim().length === 0) {
+  const domain = savedLoginHostname(login.domain);
+  if (domain.length === 0) {
     throw new TypeError("setSavedLogin: domain required");
   }
   if (login.username.length === 0) {
@@ -112,18 +126,16 @@ export async function setSavedLogin(
     throw new TypeError("setSavedLogin: password required");
   }
   const record: SavedLogin = {
-    domain: normalizeDomain(login.domain),
+    domain,
     username: login.username,
     password: login.password,
     ...(login.otpSeed ? { otpSeed: login.otpSeed } : {}),
     ...(login.notes ? { notes: login.notes } : {}),
     lastModified: Date.now(),
   };
-  await vault.set(
-    loginKey(login.domain, login.username),
-    JSON.stringify(record),
-    { sensitive: true },
-  );
+  await vault.set(loginKey(domain, login.username), JSON.stringify(record), {
+    sensitive: true,
+  });
 }
 
 /** Read a login. Returns null when missing. */
