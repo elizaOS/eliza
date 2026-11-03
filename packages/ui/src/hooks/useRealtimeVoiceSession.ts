@@ -639,6 +639,10 @@ export function useRealtimeVoiceSession(
       onServerEvent: (event) => {
         if (!isCurrent()) return;
         applyServerEventToTranscript(event);
+        if (event.t === "turn_terminal" && event.outcome === "failed") {
+          // Existing nonpersistent error presentation; no session teardown.
+          setError(classifyError(new Error(event.code ?? "reply_generation_error")));
+        }
         clientOptionsRef.current?.onServerEvent?.(event);
       },
       onTraceMark: (marker) => {

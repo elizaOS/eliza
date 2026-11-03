@@ -184,7 +184,7 @@ async function mint() {
   const response = await request("", {
     agentId,
     conversationId,
-    transport: "websocket",
+    transport: "websocket", turnTerminal: true,
     consentNonce: await nonce(),
   });
   expect(response.status).toBe(200);
@@ -205,7 +205,7 @@ async function connect(
   const message = once(ws, "message");
   ws.send(
     JSON.stringify({
-      t: "hello",
+      t: "hello", turnTerminal: true,
       token,
       protocol: 1,
       uplinkCodec: "pcm16",
@@ -243,7 +243,7 @@ it("requires a live owner session, including on loopback, and scopes health", as
   ).toBe(403);
   expect(
     await (await request(`/health?conversationId=${conversationId}`)).json(),
-  ).toMatchObject({ ready: true, agentId, conversationId });
+  ).toMatchObject({ ready: true, turnTerminal: true, agentId, conversationId });
   expect((await request(`/health?conversationId=${randomUUID()}`)).status).toBe(
     403,
   );
@@ -261,7 +261,7 @@ it("retains CSRF for cookie credentials and binds consent to its issuing session
   const body = {
     agentId,
     conversationId,
-    transport: "websocket",
+    transport: "websocket", turnTerminal: true,
     consentNonce,
   };
   expect((await request("", body, "other-owner")).status).toBe(403);
@@ -275,7 +275,7 @@ it("rejects mismatched agents and conversations before opening a provider", asyn
       await request("", {
         agentId: randomUUID(),
         conversationId,
-        transport: "websocket",
+        transport: "websocket", turnTerminal: true,
         consentNonce: await nonce(),
       })
     ).status,
@@ -285,7 +285,7 @@ it("rejects mismatched agents and conversations before opening a provider", asyn
       await request("", {
         agentId,
         conversationId: randomUUID(),
-        transport: "websocket",
+        transport: "websocket", turnTerminal: true,
         consentNonce: await nonce(),
       })
     ).status,
@@ -314,7 +314,7 @@ it("requires the hello secret, claims it once, and preserves authenticated canon
     {
       method: "POST",
       body: JSON.stringify({
-        text: "hello",
+        text: "hello", turnTerminal: true,
         streamProtocol: "delta-v2",
         metadata: { clientTransport: "realtime_voice" },
       }),
@@ -418,7 +418,7 @@ it("allows only an explicitly bound LAN origin in the local bridge", async () =>
     {
       method: "POST",
       body: JSON.stringify({
-        text: "hello",
+        text: "hello", turnTerminal: true,
         streamProtocol: "delta-v2",
         metadata: { clientTransport: "realtime_voice" },
       }),
@@ -446,7 +446,7 @@ it("reset severs a live session and invalidates outstanding consent", async () =
       await request("", {
         agentId,
         conversationId,
-        transport: "websocket",
+        transport: "websocket", turnTerminal: true,
         consentNonce,
       })
     ).status,
@@ -760,7 +760,7 @@ it.each(["socket", "owner"] as const)(
     await once(ws, "open");
     ws.send(
       JSON.stringify({
-        t: "hello",
+        t: "hello", turnTerminal: true,
         token: ticket.token,
         protocol: 1,
         uplinkCodec: "pcm16",
@@ -909,9 +909,9 @@ it("prefetched replacement waits for predecessor relay retirement before provide
   return {sessionId:randomUUID(),expiresAt:Date.now()+60000,close:()=>closing??=(async()=>{if(index===1)await retired;active--;})(),speechPorts:{openStt:()=>({sendAudioChunk(){},close(){},cancel(){}}),tts:{createStream(){throw Error("No TTS expected");},close(){}}}};
  }});
  const first=await mint();const initial=await connect(first);expect(opened).toBe(1);
- const response=await request("",{agentId,conversationId,transport:"websocket",consentNonce:await nonce(),predecessorSessionId:first.sessionId});expect(response.status).toBe(200);
+ const response=await request("",{agentId,conversationId,transport:"websocket",turnTerminal:true,consentNonce:await nonce(),predecessorSessionId:first.sessionId});expect(response.status).toBe(200);
  const second=await response.json();expect(opened).toBe(1);
- const duplicate=await request("",{agentId,conversationId,transport:"websocket",consentNonce:await nonce(),predecessorSessionId:first.sessionId});expect(duplicate.status).toBe(403);
+ const duplicate=await request("",{agentId,conversationId,transport:"websocket",turnTerminal:true,consentNonce:await nonce(),predecessorSessionId:first.sessionId});expect(duplicate.status).toBe(403);
  const pending=connect(second);await new Promise(resolve=>setTimeout(resolve,20));expect(opened).toBe(1);expect(maxActive).toBe(1);
  release();const replacement=await pending;expect(replacement.frame.t).toBe("ready");expect(opened).toBe(2);expect(maxActive).toBe(1);
  initial.ws.close();replacement.ws.close();
@@ -922,8 +922,8 @@ for(const fault of ["retire-reject","stop","owner","expiry","runtime"] as const)
   vi.stubEnv("ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED","1");vi.stubEnv("ELIZAOS_CLOUD_API_KEY","private-cloud-account");vi.stubEnv("ELIZAOS_CLOUD_BASE_URL","https://api-staging.eliza.app/api/v1");
   let rejectRetirement=fault==="retire-reject";
   let opened=0,release!:()=>void;const wait=new Promise<void>(resolve=>{release=resolve;});host.close();host=createSelfHostedVoice(state,{...hostOptions,createCloudSpeechPorts:async()=>{opened++;return {sessionId:randomUUID(),expiresAt:clock+60000,close:async()=>{await wait;if(rejectRetirement)throw Error("retirement unconfirmed");},speechPorts:{openStt:()=>({sendAudioChunk(){},close(){},cancel(){}}),tts:{createStream(){throw Error("No TTS expected");},close(){}}}};}});
-  const first=await mint();const old=await connect(first);const result=await request("",{agentId,conversationId,transport:"websocket",consentNonce:await nonce(),predecessorSessionId:first.sessionId});expect(result.status).toBe(200);const second=await result.json();
-  const ws=new WebSocket(second.wsUrl);await once(ws,"open");const ended=once(ws,"message");ws.send(JSON.stringify({t:"hello",token:second.token,protocol:1,uplinkCodec:"pcm16",downlinkCodec:"pcm16",sampleRate:16000}));await new Promise(resolve=>setTimeout(resolve,20));expect(opened).toBe(1);
+  const first=await mint();const old=await connect(first);const result=await request("",{agentId,conversationId,transport:"websocket",turnTerminal:true,consentNonce:await nonce(),predecessorSessionId:first.sessionId});expect(result.status).toBe(200);const second=await result.json();
+  const ws=new WebSocket(second.wsUrl);await once(ws,"open");const ended=once(ws,"message");ws.send(JSON.stringify({t:"hello",turnTerminal:true,token:second.token,protocol:1,uplinkCodec:"pcm16",downlinkCodec:"pcm16",sampleRate:16000}));await new Promise(resolve=>setTimeout(resolve,20));expect(opened).toBe(1);
   if(fault==="stop"){const closed=once(ws,"close");ws.close();await closed;await new Promise(resolve=>setTimeout(resolve,10));}if(fault==="owner")await store.revokeSession(ownerSession,clock);if(fault==="expiry")clock+=61000;if(fault==="runtime")state.current=null;
   release();if(fault!=="stop"){const message=JSON.parse(String((await ended)[0]));expect(message.t).not.toBe("ready");}else await new Promise(resolve=>setTimeout(resolve,20));
   expect(opened).toBe(1);
@@ -959,7 +959,7 @@ it("prefetch tracks late acquisition after Stop before allowing an unlinked prov
  let opened=0,cleanupAttempts=0,allowCleanup=false,release!:()=>void,notifyAbort!:()=>void,notifyCleanup!:()=>void;
  const pending=new Promise<void>(resolve=>{release=resolve;}),serverAborted=new Promise<void>(resolve=>{notifyAbort=resolve;}),cleanupStarted=new Promise<void>(resolve=>{notifyCleanup=resolve;});
  await host.close();host=createSelfHostedVoice(state,{...hostOptions,createCloudSpeechPorts:async(options)=>{opened++;if(options.signal.aborted)notifyAbort();else options.signal.addEventListener("abort",notifyAbort,{once:true});await pending;return {sessionId:randomUUID(),expiresAt:clock+60000,close:async()=>{cleanupAttempts++;notifyCleanup();if(!allowCleanup)throw Error("retirement unknown");},speechPorts:{openStt:()=>({sendAudioChunk(){},close(){},cancel(){}}),tts:{createStream(){throw Error("No TTS expected");},close(){}}}};}});
- const first=await mint();const ws=new WebSocket(first.wsUrl);await once(ws,"open");ws.send(JSON.stringify({t:"hello",token:first.token,protocol:1,uplinkCodec:"pcm16",downlinkCodec:"pcm16",sampleRate:16000}));
+ const first=await mint();const ws=new WebSocket(first.wsUrl);await once(ws,"open");ws.send(JSON.stringify({t:"hello",turnTerminal:true,token:first.token,protocol:1,uplinkCodec:"pcm16",downlinkCodec:"pcm16",sampleRate:16000}));
  for(let n=0;n<100&&opened===0;n++)await new Promise(resolve=>setTimeout(resolve,2));expect(opened).toBe(1);
  const closed=once(ws,"close");ws.close();await closed;await serverAborted;release();
  try {
@@ -1006,7 +1006,7 @@ async function stopIntentHost() {
     return { sessionId: randomUUID(), expiresAt: clock + 60000, close: async () => {}, speechPorts: { openStt: () => ({ sendAudioChunk() {}, close() {}, cancel() {} }), tts: { createStream() { throw Error("No TTS expected"); }, close() {} } } };
   } });
   const first = await mint(); const live = await connect(first);
-  const response = await request("", { agentId, conversationId, transport: "websocket", consentNonce: await nonce(), predecessorSessionId: first.sessionId });
+  const response = await request("", { agentId, conversationId, transport: "websocket", turnTerminal: true, consentNonce: await nonce(), predecessorSessionId: first.sessionId });
   expect(response.status).toBe(200); const second = await response.json();
   return { first, second, live, opened: () => opened };
 }
@@ -1047,7 +1047,7 @@ it("concurrent unlinked admissions reserve one conversation before any factory a
   const sockets: WebSocket[] = [];
   const begin = async (ticket: Awaited<ReturnType<typeof mint>>) => {
     const ws = new WebSocket(ticket.wsUrl); sockets.push(ws); await once(ws, "open");
-    ws.send(JSON.stringify({ t: "hello", token: ticket.token, protocol: 1, uplinkCodec: "pcm16", downlinkCodec: "pcm16", sampleRate: 16000 })); return ws;
+    ws.send(JSON.stringify({ t: "hello", turnTerminal: true, token: ticket.token, protocol: 1, uplinkCodec: "pcm16", downlinkCodec: "pcm16", sampleRate: 16000 })); return ws;
   };
   const a = await begin(first); await firstEntered; const b = await begin(second);
   const bReady = once(b, "message"); await new Promise(resolve => setTimeout(resolve, 20)); expect(entered).toBe(1); expect(active).toBe(0);
@@ -1087,4 +1087,39 @@ it("retirement failure preserves the primary insufficient-credit code", async ()
     expect(failed.frame.t).toBe("error"); expect(failed.frame.code).toBe("insufficient_credits");
     expect(closes).toBeGreaterThan(0); failed.ws.close();
   } finally { allowCleanup = true; await host.close(); }
+});
+
+
+it("legacy mint refusal is nontransient and leaves the same consent usable before any session allocation", async () => {
+  const consentNonce = await nonce();
+  const before = sessions.length;
+  const legacy = await request("", {agentId, conversationId, transport: "websocket", consentNonce});
+  expect(legacy.status).toBe(409);
+  expect(await legacy.json()).toMatchObject({code: "turn_terminal_unsupported"});
+  expect(sessions).toHaveLength(before);
+  const supported = await request("", {agentId, conversationId, transport: "websocket", consentNonce, turnTerminal: true});
+  expect(supported.status).toBe(200);
+  expect(await supported.json()).toMatchObject({turnTerminal: true});
+});
+
+
+it.each([false, "true", 1, null])("rejects malformed mint capability %j before consuming consent", async turnTerminal => {
+  const consentNonce = await nonce(); const before = sessions.length;
+  const rejected = await request("", {agentId, conversationId, transport: "websocket", consentNonce, turnTerminal});
+  expect(rejected.status).toBe(409); expect(await rejected.json()).toMatchObject({code: "turn_terminal_unsupported"});
+  expect(sessions).toHaveLength(before);
+  expect((await request("", {agentId, conversationId, transport: "websocket", consentNonce, turnTerminal: true})).status).toBe(200);
+});
+
+it("missing or malformed hello capability does not claim the ticket or allocate a session", async () => {
+  const ticket = await mint(); const before = sessions.length;
+  for (const capability of [undefined, false, "true"]) {
+    const ws = new WebSocket(ticket.wsUrl); const message = once(ws, "message"); await once(ws, "open");
+    ws.send(JSON.stringify({t: "hello", token: ticket.token, protocol: 1, uplinkCodec: "pcm16", downlinkCodec: "pcm16", sampleRate: 16000,
+      ...(capability === undefined ? {} : {turnTerminal: capability})}));
+    const frame = JSON.parse(String((await message)[0]));
+    expect(frame.t).toBe("error"); expect(["turn_terminal_unsupported", "hello_bad_capability"]).toContain(frame.code);
+    expect(sessions).toHaveLength(before); ws.close();
+  }
+  const supported = await connect(ticket); expect(supported.frame.t).toBe("ready");
 });

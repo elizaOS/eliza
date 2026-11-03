@@ -2,8 +2,8 @@
 export const REALTIME_TIMING_LIMIT = 262144;
 export const REALTIME_TIMING_FORMAT = "alpha-realtime-voice-timing-v1";
 const sessionMarks = ["client-start", "hello-sent", "ready-received", "stopped"] as const;
-const turnMarks = ["stt-final-received", "llm-first-text-received", "speaking-start-received", "first-downlink-pcm-received", "speaking-end-received", "reply-complete-received", "usage-received", "interrupted", "fatal-error"] as const;
-const outcomes = ["active", "server-terminal-observed", "interrupted", "error", "stopped", "superseded"];
+const turnMarks = ["stt-final-received", "llm-first-text-received", "speaking-start-received", "first-downlink-pcm-received", "speaking-end-received", "reply-complete-received", "usage-received", "interrupted", "fatal-error", "turn-failed-received", "turn-ignored-received"] as const;
+const outcomes = ["active", "server-terminal-observed", "interrupted", "error", "stopped", "superseded", "failed", "ignored"];
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 export type RealtimeTimingRoute = "direct-cartesia" | "cloud-cartesia";
 const cancellationCauses = [
@@ -56,6 +56,7 @@ export function createRealtimeVoiceTiming(options:{storageKey:string;storage:()=
    acceptedFinal(trace:string){safely(()=>{if(!open||!trace||trace.length>160||seen.has(trace)||seen.size>=32)return;if(turn&&turn.outcome==="active"){turn.outcome="superseded";save(turn);}seen.add(trace);activeTrace=trace;turnBase=now();turn=row("turn",seen.size===1);mark(turn,"stt-final-received",turnBase);});},
    trace(name:string,trace:string|null){safely(()=>{if(!open)return;if(name==="hello_sent"||name==="ready"){if(turn&&activeTrace){if(turn.outcome==="active"){turn.outcome="superseded";save(turn);}activeTrace=undefined;}mark(session,name==="ready"?"ready-received":"hello-sent",sessionBase);return;}if(!trace||trace!==activeTrace)return;const keys:Record<string,string>={llm_first_text:"llm-first-text-received",speaking_start:"speaking-start-received",downlink_audio:"first-downlink-pcm-received",speaking_end:"speaking-end-received"};if(keys[name])mark(turn,keys[name],turnBase);});},
    control(name:string,trace?:string){safely(()=>{if(!open||!turn||!trace||trace!==activeTrace)return;const key=name==="reply_complete"?"reply-complete-received":name==="usage"?"usage-received":name==="interrupted"?"interrupted":name==="fatal-error"?"fatal-error":undefined;if(!key)return;mark(turn,key,turnBase);turn.outcome=name==="interrupted"?"interrupted":name==="fatal-error"?"error":"server-terminal-observed";save(turn);if(name==="interrupted"||name==="fatal-error")activeTrace=undefined;});},
+   turnTerminal(trace:string,outcome:"failed"|"ignored"){safely(()=>{if(!open||!turn||trace!==activeTrace)return;mark(turn,outcome==="failed"?"turn-failed-received":"turn-ignored-received",turnBase);turn.outcome=outcome;save(turn);activeTrace=undefined;});},
    error(){safely(()=>{if(!open)return;open=false;if(turn){turn.outcome="error";mark(turn,"fatal-error",turnBase);save(turn);}if(session){session.outcome="error";save(session);}activeTrace=undefined;seen.clear();});},
    stop(){safely(()=>{if(!open)return;open=false;if(turn){if(turn.outcome==="active")turn.outcome="stopped";save(turn);}if(session){mark(session,"stopped",sessionBase);session.outcome="stopped";save(session);}activeTrace=undefined;seen.clear();});},
   };

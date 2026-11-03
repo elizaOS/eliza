@@ -34,6 +34,7 @@ export const DEFAULT_DOWNLINK_CODEC: VoiceSessionCodec = "pcm16";
 export const VOICE_SESSION_SAMPLE_RATE = 16000 as const;
 // ── Client -> server control frames ────────────────────────────────────
 export interface ClientHelloFrame {
+  turnTerminal?: true;
   t: "hello";
   token: string;
   protocol: number;
@@ -76,6 +77,7 @@ export type ClientControlFrame =
   | ClientByeFrame;
 // ── Server -> client control / state events ────────────────────────────
 export interface ServerReadyEvent {
+  turnTerminal?: true;
   t: "ready";
   uiContext?: boolean;
   playbackCompletion?: boolean;
@@ -173,6 +175,7 @@ export interface ServerUsageEvent {
   traceId: string;
 }
 export type ServerControlFrame =
+  | {t: "turn_terminal"; traceId: string; outcome: "failed" | "ignored"; code?: string}
   | {
       t: "reply_complete";
       traceId: string;
@@ -201,6 +204,7 @@ export interface VoiceSessionCodecOffer {
   codecs: VoiceSessionCodec[];
 }
 export interface VoiceSessionMintResponse {
+  turnTerminal?: true;
   sessionId: string;
   wsUrl: string;
   token: string;
@@ -239,6 +243,14 @@ export function parseServerControl(raw: string): ServerControlFrame | null {
   ).t;
   if (typeof t !== "string") return null;
   if (!isKnownServerType(t)) return null;
+  if (t === "turn_terminal") {
+    const frame = parsed as Record<string, unknown>;
+    if (typeof frame.traceId !== "string" || !frame.traceId || frame.traceId.length > 256 ||
+        (frame.outcome !== "failed" && frame.outcome !== "ignored") ||
+        (frame.code !== undefined && (frame.outcome !== "failed" || typeof frame.code !== "string" || !/^[A-Za-z0-9_]{1,64}$/.test(frame.code))) ||
+        Object.keys(frame).some(key => !["t", "traceId", "outcome", "code"].includes(key))) return null;
+    return {t, traceId: frame.traceId, outcome: frame.outcome, ...(typeof frame.code === "string" ? {code: frame.code} : {})};
+  }
   if (t === "reply_complete") {
     const frame = parsed as Record<string, unknown>;
     if (
@@ -377,6 +389,7 @@ const SERVER_TYPES: ReadonlySet<string> = new Set<ServerControlType>([
   "stt_final",
   "llm_first_text",
   "reply_complete",
+  "turn_terminal",
   "progress",
   "activity",
   "speaking_start",

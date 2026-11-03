@@ -64,6 +64,8 @@ interface Binding {
   csrfSecret: string;
 }
 interface Ticket extends Binding {
+  /** Absent only on pre-upgrade in-process tickets, which cannot be admitted. */
+  turnTerminal?: true;
   claims: VoiceSessionTokenClaims;
   token: string;
   expiresAt: number;
@@ -314,6 +316,14 @@ export function createSelfHostedVoice(
         sendJson(res, 200, { revoked: true });
         return true;
       }
+      let mintBody: Record<string, unknown> | undefined;
+      if (req.method === "POST" && url.pathname === BASE) {
+        const body = await readCompatJsonBody(req, res);
+        if (!body) return true;
+        if (body.turnTerminal !== true)
+          throw new VoiceAdmissionError(409, "turn_terminal_unsupported");
+        mintBody = body;
+      }
       const configured =
         !closed && !options.protectedHost
           ? await configuration(binding.runtime)
@@ -433,6 +443,7 @@ export function createSelfHostedVoice(
         );
         sendJson(res, 200, {
           ready: true,
+          turnTerminal: true,
           agentId: binding.runtime.agentId,
           conversationId,
           speechRoute: configured?.route,
@@ -446,8 +457,7 @@ export function createSelfHostedVoice(
         consent.set(nonce, { binding, expiresAt: now() + TTL_MS });
         sendJson(res, 200, { consentNonce: nonce, expiresAt: now() + TTL_MS });
       } else if (req.method === "POST" && url.pathname === BASE) {
-        const body = await readCompatJsonBody(req, res);
-        if (!body) return true;
+        const body = mintBody!;
         if (body.transport !== "websocket")
           throw new VoiceAdmissionError(400, "invalid_transport");
         if (
@@ -511,6 +521,7 @@ export function createSelfHostedVoice(
           token,
           expiresAt,
           claimed: false,
+          turnTerminal: true,
           origin,
           ...(predecessor ? { predecessor } : {}),
         });
@@ -525,6 +536,7 @@ export function createSelfHostedVoice(
           uplink: { codecs: ["pcm16"] },
           downlink: { codecs: ["pcm16"] },
           iceServers: null,
+          turnTerminal: true,
           stopIntentVersion: 1,
           stopIntentGeneration: sessionId,
           ...(configured.route === "cloud"
@@ -569,6 +581,10 @@ export function createSelfHostedVoice(
         reject(401);
         return true;
       }
+      if (ticket.turnTerminal !== true) {
+        reject(409);
+        return true;
+      }
       if (
         !isAllowedHost(req) ||
         (req.headers.origin && !isCredentialedCorsOrigin(req.headers.origin))
@@ -591,6 +607,7 @@ export function createSelfHostedVoice(
         ws.once("close", () => clearTimeout(helloTimer));
         attachVoiceWsHandler(adaptVoiceWebSocket(ws), {
           requestedSessionId: ticket.claims.sessionId,
+          requireTurnTerminal: ticket.turnTerminal === true,
           verifyToken: async (token, expected) => {
             if (
               !tokenMatches(ticket.token, token) ||

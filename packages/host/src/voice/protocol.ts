@@ -32,6 +32,7 @@ export type VoiceDownlinkCodec = "pcm16" | "opus";
 // --- client -> server control frames -------------------------------------
 
 export interface ClientHelloFrame {
+  turnTerminal?: true;
   t: "hello";
   token: string;
   protocol: number;
@@ -103,12 +104,14 @@ export type ServerControlFrame =
       traceId: string;
       uiContext?: boolean;
       playbackCompletion?: boolean;
+      turnTerminal?: true;
     }
   | { t: "stt_partial"; text: string; traceId: string }
   | { t: "stt_eager_eot"; traceId: string }
   | { t: "stt_final"; text: string; traceId: string }
   | { t: "llm_first_text"; traceId: string }
   | { t: "reply_complete"; traceId: string; userMessageId?: string }
+  | {t: "turn_terminal"; traceId: string; outcome: "failed" | "ignored"; code?: string}
   | { t: "progress"; text: string; traceId: string }
   | { t: "activity"; label: string; traceId: string }
   | { t: "speaking_start"; traceId: string }
@@ -293,6 +296,9 @@ function parseHello(
   if (v.protocol !== VOICE_SESSION_PROTOCOL_VERSION) {
     return fail("hello_bad_protocol", "unsupported protocol version");
   }
+  if (v.turnTerminal !== undefined && v.turnTerminal !== true) {
+    return fail("hello_bad_capability", "invalid turn-terminal capability");
+  }
   const uplinkCodec = v.uplinkCodec;
   if (
     typeof uplinkCodec !== "string" ||
@@ -316,6 +322,7 @@ function parseHello(
     value: {
       t: "hello",
       token: v.token,
+      ...(v.turnTerminal === true ? {turnTerminal: true as const} : {}),
       protocol: VOICE_SESSION_PROTOCOL_VERSION,
       uplinkCodec: uplinkCodec as VoiceUplinkCodec,
       downlinkCodec: downlinkCodec as VoiceDownlinkCodec,

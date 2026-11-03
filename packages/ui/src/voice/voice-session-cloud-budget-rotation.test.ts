@@ -5,9 +5,10 @@ import {
   type VoiceSessionClient,
   type VoiceWebSocketLike,
 } from "./voice-session-client";
+import type { ServerControlFrame, VoiceSessionMintResponse } from "./voice-session-protocol";
 import type { MicAudioContextLike } from "./voice-session-mic-capture";
 import * as micCapture from "./voice-session-mic-capture";
-import type { PlaybackAudioContextLike } from "./voice-session-playback";
+import type { PlaybackAudioContextLike, PlaybackScriptNodeLike } from "./voice-session-playback";
 
 const dashboardTransport = vi.hoisted(() => vi.fn());
 vi.mock("./voice-session-fetch", () => ({
@@ -62,6 +63,8 @@ function harness(
   playbackCompletion = false,
   getUiContext?: () => { uiViewPath?: string },
   preparation = false,
+  turnTerminal: unknown = "missing",
+  requireTurnTerminal = false,
 ) {
   vi.useFakeTimers({
     toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval"],
@@ -77,6 +80,7 @@ function harness(
     stopOnMint = false,
     invalidMint = false,
     releaseMint: (() => void) | undefined;
+  let stateObserver: ((state: VoiceSessionClient["state"]) => void) | undefined;
   const processors: Array<{
       onaudioprocess:
         | null
@@ -87,7 +91,8 @@ function harness(
     tracks: Array<{ enabled: boolean; stop(): void }> = [];
   const sockets: Socket[] = [],
     bodies: Record<string, unknown>[] = [],
-    events: unknown[] = [],
+    events: ServerControlFrame[] = [],
+    mintedTickets: VoiceSessionMintResponse[] = [],
     errors: Error[] = [],
     marks: string[] = [];
   class Socket implements VoiceWebSocketLike {
@@ -123,7 +128,7 @@ function harness(
         if (frame.t === "hello" && !holdReady)
           queueMicrotask(() =>
             this.frame({
-              t: "ready",
+              t: "ready", ...(turnTerminal === "missing" ? {} : {turnTerminal}),
               sessionId: `session-${mints}`,
               traceId: `ready-${mints}`,
               playbackCompletion,
@@ -157,15 +162,17 @@ function harness(
     async resume() {},
     async close() {},
   });
+  const playbackProcessors: PlaybackScriptNodeLike[] = [];
   const playback: () => PlaybackAudioContextLike = () => ({
     sampleRate: 16000,
     state: "running",
     destination: node(),
-    createScriptProcessor: () => ({ ...node(), onaudioprocess: null }),
+    createScriptProcessor: () => {const processor: PlaybackScriptNodeLike = {...node(), onaudioprocess: null}; playbackProcessors.push(processor); return processor;},
     async resume() {},
     async close() {},
   });
   client = createVoiceSessionClient({
+    requireTurnTerminal,
     agentId: "local-agent",
     conversationId: "local-conversation",
     getConsentNonce: async () => {
@@ -183,7 +190,7 @@ function harness(
         ...(preparation ? { rotationPreparation: "retire-before-open-v1", stopIntentVersion: 1, stopIntentGeneration: `session-${mints}` } : {}),
         sessionId: `session-${mints}`,
         token: invalidMint && mints > 1 ? "" : `one-use-${mints}`,
-        wsUrl: `ws://localhost/voice-${mints}`,
+        wsUrl: `ws://localhost/voice-${mints}`, ...(turnTerminal === "missing" ? {} : {turnTerminal}),
         expiresAt: 1800000000000 + now + 60000,
         uplink: { codecs: ["pcm16"] },
         downlink: { codecs: ["pcm16"] },
@@ -217,9 +224,11 @@ function harness(
     epochNow: () => 1800000000000 + now,
     preLiveMaxReconnects: 0,
     preLiveMaxAttempts: 1,
-    onMinted: () => {
+    onMinted: (minted) => {
+      mintedTickets.push(minted);
       if (stopOnMint && mints > 1) void client?.stop();
     },
+    onState: state => stateObserver?.(state),
     onTraceMark: (mark) => marks.push(mark.name),
     onServerEvent: (event) => events.push(event),
     onError: (error) => errors.push(error),
@@ -228,6 +237,7 @@ function harness(
     client,
     sockets,
     tracks,
+    pumpPlayback(){for(const processor of playbackProcessors)processor.onaudioprocess?.({outputBuffer:{numberOfChannels:1,getChannelData:()=>new Float32Array(4096)}});},
     pumpAudio() {
       processors[0]?.onaudioprocess?.({
         inputBuffer: {
@@ -237,6 +247,9 @@ function harness(
     },
     bodies,
     events,
+    mintedTickets,
+    dropLastMintCapability(){delete mintedTickets.at(-1)!.turnTerminal;},
+    observeState(observer: (state: VoiceSessionClient["state"]) => void){stateObserver=observer;},
     errors,
     marks,
     get mints() {
@@ -276,7 +289,7 @@ function harness(
     releaseReady() {
       holdReady = false;
       sockets.at(-1)?.frame({
-        t: "ready",
+        t: "ready", ...(turnTerminal === "missing" ? {} : {turnTerminal}),
         sessionId: `session-${mints}`,
         traceId: `ready-${mints}`,
       });
@@ -746,4 +759,134 @@ test("a live retirement refusal recovers with the existing bounded reconnect pat
   expect(h.errors).toHaveLength(0);
   refused.frame({ t: "error", code: "voice_retirement_unconfirmed", retryable: false }); await h.settle();
   expect(h.activeCaptures).toBe(1); // A stale socket cannot stop the recovered capture.
+});
+
+
+test("a legacy mint lacking capability never opens WS/capture or retries", async () => {
+  const h = harness(false, undefined, false, "missing", true);
+  await h.client.start(); await h.settle(); await h.advance(120000);
+  expect(h.mints).toBe(1); expect(h.consents).toBe(1);
+  expect(h.sockets).toHaveLength(0); expect(h.captures).toBe(0);
+  expect(h.mintedTickets.map(ticket=>ticket.sessionId)).toEqual(["session-1"]);
+  expect(h.errors).toHaveLength(1);
+});
+
+test.each(["failed", "ignored"] as const)("matching %s settlement neither re-mints nor drains A playback; stale events cannot retire B", async outcome => {
+  const h = harness(true, undefined, false, true, true); await h.client.start(); await h.settle();
+  const socket = h.sockets[0];
+  socket.frame({t: "stt_final", text: "first request", traceId: "A"});
+  socket.frame({t: "speaking_start", traceId: "A"});
+  socket.emit("message", {data: new Int16Array(320).fill(1000).buffer});
+  socket.frame({t: "stt_final", text: "second request", traceId: "B"});
+  socket.frame({t: "turn_terminal", traceId: "unknown", outcome});
+  expect(h.events.filter(e => e.t === "turn_terminal")).toHaveLength(0);
+  socket.frame({t: "turn_terminal", traceId: "B", outcome, ...(outcome === "failed" ? {code: "handler_error"} : {})});
+  socket.frame({t: "turn_terminal", traceId: "B", outcome});
+  expect(h.events.filter(e => e.t === "turn_terminal")).toHaveLength(1);
+  expect(h.client.state.phase).toBe("speaking"); expect(h.tracks[0].enabled).toBe(false);
+  expect(h.mints).toBe(1); expect(h.activeCaptures).toBe(1); expect(h.errors).toHaveLength(0);
+  socket.frame({t: "speaking_end", traceId: "A"}); await h.settle();
+  expect(h.tracks[0].enabled).toBe(false);
+  h.pumpPlayback(); await h.advance(1); await h.settle();
+  expect(h.client.state.phase).toBe("listening"); expect(h.tracks[0].enabled).toBe(true);
+  socket.frame({t: "stt_final", text: "replayed B", traceId: "B"});
+  expect(h.events.filter(e => e.t === "stt_final" && e.traceId === "B")).toHaveLength(1);
+  expect(h.mints).toBe(1);
+});
+
+
+test.each([false, "true", 1])("malformed mint capability %j is refused once before WS/capture", async capability => {
+  const h = harness(false, undefined, false, capability, true);
+  await h.client.start(); await h.settle();
+  expect(h.mints).toBe(1); expect(h.sockets).toHaveLength(0); expect(h.captures).toBe(0);
+});
+
+test("ready without negotiated capability is refused before capture without re-mint", async () => {
+  const h = harness(false, undefined, false, true, true); h.holdReady(); await h.client.start(); await h.settle();
+  h.sockets[0].frame({t: "ready", sessionId: "session-1", traceId: "ready-1"});
+  await h.settle(); await h.advance(120000);
+  expect(h.mints).toBe(1); expect(h.captures).toBe(0); expect(h.errors).toHaveLength(1);
+});
+
+
+test("legacy callers keep their existing mint/hello and do not require the new capability", async () => {
+  const h = harness(false, undefined, false, "missing", false);
+  await h.client.start(); await h.settle();
+  expect(h.captures).toBe(1); expect(h.errors).toHaveLength(0);
+  expect(h.bodies[0]).not.toHaveProperty("turnTerminal");
+  expect(h.sockets[0].sent.find(frame => !(frame instanceof ArrayBuffer) && (frame as {t?:string}).t === "hello")).not.toHaveProperty("turnTerminal");
+});
+
+
+test("an already prepared legacy offer is checked again before WS without a fresh mint loop", async () => {
+  const h = harness(false, undefined, true, true, true); await h.client.start(); await h.settle();
+  const old = h.sockets[0]; old.frame({t: "stt_final", text: "pending", traceId: "A"});
+  await h.advance(50000); expect(h.mints).toBe(2); expect(h.sockets).toHaveLength(1);
+  h.dropLastMintCapability();
+  old.frame({t: "usage", sttMs: 1, ttsChars: 0, traceId: "A"}); await h.advance(1000); await h.settle();
+  expect(h.sockets).toHaveLength(1); expect(h.mints).toBe(2); expect(h.activeCaptures).toBe(0);
+  expect(h.mintedTickets).toHaveLength(2);
+});
+
+
+test("terminal consumption is atomic before reentrant state observers", async () => {
+  const h = harness(false, undefined, false, true, true); await h.client.start(); await h.settle(); const socket = h.sockets[0];
+  socket.frame({t: "stt_final", text: "request", traceId: "A"}); let repeated=false;
+  h.observeState(state=>{if(state.phase === "complete" && !repeated){repeated=true;socket.frame({t:"turn_terminal",traceId:"A",outcome:"failed",code:"handler_error"});}});
+  socket.frame({t:"turn_terminal",traceId:"A",outcome:"failed",code:"handler_error"});
+  expect(h.events.filter(e=>e.t === "turn_terminal")).toHaveLength(1); expect(h.mints).toBe(1);
+});
+
+test("a new socket cannot inherit terminal negotiation before its own matching ready", async () => {
+  const h = harness(false, undefined, false, true, true); await h.client.start(); await h.settle(); h.holdReady(); h.sockets[0].close(); await h.advance(1000); await h.settle();
+  const next = h.sockets.at(-1)!; expect(h.sockets).toHaveLength(2);
+  next.frame({t:"stt_final",text:"pre-ready",traceId:"B"}); next.frame({t:"turn_terminal",traceId:"B",outcome:"failed"});
+  expect(h.events.filter(e=>e.t === "turn_terminal")).toHaveLength(0);
+  h.releaseReady(); await h.settle(); next.frame({t:"stt_final",text:"valid",traceId:"C"});next.frame({t:"turn_terminal",traceId:"C",outcome:"ignored"});
+  expect(h.events.filter(e=>e.t === "turn_terminal")).toHaveLength(1);expect(h.mints).toBe(2);
+});
+
+test("server-originated interruption clears owned playback mute before listening", async () => {
+  const h = harness(false, undefined, false, true, true); await h.client.start();await h.settle(); const socket=h.sockets[0];
+  socket.frame({t:"stt_final",text:"request",traceId:"A"});socket.frame({t:"speaking_start",traceId:"A"});
+  socket.emit("message",{data:new Int16Array(320).fill(1000).buffer});expect(h.tracks[0].enabled).toBe(false);
+  socket.frame({t:"interrupted",reason:"explicit",traceId:"A"});await h.settle();
+  expect(h.tracks[0].enabled).toBe(true);expect(h.client.state.phase).toBe("listening");expect(h.mints).toBe(1);
+});
+
+
+test("unknown and already settled interrupts cannot flush A queued PCM or retire C", async () => {
+  const h=harness(true,undefined,false,true,true);await h.client.start();await h.settle();const socket=h.sockets[0];
+  socket.frame({t:"stt_final",text:"A",traceId:"A"});socket.frame({t:"speaking_start",traceId:"A"});socket.emit("message",{data:new Int16Array(320).fill(1000).buffer});
+  socket.frame({t:"stt_final",text:"B",traceId:"B"});socket.frame({t:"turn_terminal",traceId:"B",outcome:"failed"});
+  for(const traceId of ["unknown","B"])socket.frame({t:"interrupted",traceId,reason:"explicit"});
+  expect(h.events.filter(e=>e.t==="interrupted")).toHaveLength(0);expect(h.tracks[0].enabled).toBe(false);expect(h.client.state.playbackTraceId).toBe("A");
+  socket.frame({t:"stt_final",text:"C",traceId:"C"});socket.frame({t:"interrupted",traceId:"B",reason:"explicit"});
+  expect(h.client.state.traceId).toBe("C");expect(h.client.state.playbackTraceId).toBe("A");expect(h.tracks[0].enabled).toBe(false);expect(h.mints).toBe(1);
+});
+
+test("known B global interruption before B audio cancels pending work and flushes A exactly once", async () => {
+  const h=harness(true,undefined,false,true,true);await h.client.start();await h.settle();const socket=h.sockets[0];
+  socket.frame({t:"stt_final",text:"A",traceId:"A"});socket.frame({t:"speaking_start",traceId:"A"});socket.emit("message",{data:new Int16Array(320).fill(1000).buffer});
+  socket.frame({t:"stt_final",text:"B",traceId:"B"});socket.frame({t:"interrupted",traceId:"B",reason:"explicit"});socket.frame({t:"interrupted",traceId:"B",reason:"explicit"});
+  expect(h.events.filter(e=>e.t==="interrupted")).toHaveLength(1);expect(h.client.state.playbackTraceId).toBeNull();expect(h.tracks[0].enabled).toBe(true);expect(h.mints).toBe(1);
+  socket.frame({t:"turn_terminal",traceId:"A",outcome:"failed"});expect(h.events.filter(e=>e.t==="turn_terminal")).toHaveLength(0);
+});
+
+test("actual playback ownership survives usage for the matching interruption, and local ACK survives optimistic flush", async () => {
+  for(const local of [false,true]){
+    const h=harness(true,undefined,false,true,true);await h.client.start();await h.settle();const socket=h.sockets[0];
+    socket.frame({t:"stt_final",text:"A",traceId:"A"});socket.frame({t:"speaking_start",traceId:"A"});socket.emit("message",{data:new Int16Array(320).fill(1000).buffer});
+    if(local)h.client.bargeIn();socket.frame({t:"usage",traceId:"A",sttMs:1,ttsChars:1});socket.frame({t:"interrupted",traceId:"A",reason:"explicit"});
+    expect(h.events.filter(e=>e.t==="interrupted")).toHaveLength(1);expect(h.tracks[0].enabled).toBe(true);expect(h.mints).toBe(1);await h.client.stop();
+  }
+});
+
+
+test("late local-barge ACK cannot retire a later admitted turn or its PCM", async () => {
+  const h=harness(true,undefined,false,true,true);await h.client.start();await h.settle();const socket=h.sockets[0];
+  socket.frame({t:"stt_final",text:"A",traceId:"A"});socket.frame({t:"speaking_start",traceId:"A"});socket.emit("message",{data:new Int16Array(320).fill(1000).buffer});h.client.bargeIn();
+  socket.frame({t:"stt_final",text:"C",traceId:"C"});socket.frame({t:"speaking_start",traceId:"C"});socket.emit("message",{data:new Int16Array(320).fill(1000).buffer});
+  socket.frame({t:"interrupted",traceId:"A",reason:"explicit"});
+  expect(h.events.filter(e=>e.t==="interrupted")).toHaveLength(0);expect(h.client.state.traceId).toBe("C");expect(h.client.state.playbackTraceId).toBe("C");expect(h.tracks[0].enabled).toBe(false);expect(h.mints).toBe(1);
 });

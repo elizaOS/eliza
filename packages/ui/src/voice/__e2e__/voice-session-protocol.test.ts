@@ -58,3 +58,16 @@ test("activity frames show a content-free label only on the live thinking turn",
       stale.progressText,
     );
 });
+
+
+test("turn terminal is bounded, trace-correlated, non-success and never ends playback", () => {
+  const failed = {t: "turn_terminal", traceId: "B", outcome: "failed", code: "handler_error"};
+  expect(parseServerControl(JSON.stringify(failed))).toEqual(failed);
+  for (const invalid of [{...failed, traceId: ""}, {...failed, code: "x".repeat(65)}, {...failed, message: "private"}, {...failed, outcome: "success"}, {...failed, outcome: "ignored"}])
+    expect(parseServerControl(JSON.stringify(invalid))).toBeNull();
+  const playing = {...INITIAL_VOICE_SESSION_STATE, phase: "speaking" as const, traceId: "B"};
+  const event = parseServerControl(JSON.stringify(failed))!;
+  expect(applyServerEvent(playing, event).phase).toBe("speaking");
+  const previous = {...playing, traceId: "A"};
+  expect(applyServerEvent(previous, event)).toBe(previous);
+});

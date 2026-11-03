@@ -376,6 +376,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
   private firstLlmTextEmitted = false;
   private callerResponseTurnCount = 0;
   private continuousHandoffEnabled = false;
+  private turnTerminalSupported = false;
+
+  setTurnTerminalSupport(supported: true): void {
+    if (this.started || this.closed) throw new Error("Voice capability negotiation is closed");
+    this.turnTerminalSupported = supported;
+  }
   private assistantReferenceText = "";
   private sttTurnEchoOnly = false;
   private sttTurnDoubleTalkReported = false;
@@ -652,6 +658,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       traceId: sessionTrace,
       uiContext: true,
       playbackCompletion: true,
+      ...(this.turnTerminalSupported ? {turnTerminal: true as const} : {}),
     });
     if (this.config.openingPrompt?.trim()) {
       const traceId = this.mintTraceId("turn");
@@ -1674,6 +1681,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       }
       const result = await streamElizaConversation(
         {
+          requireTurnTerminal: this.turnTerminalSupported,
           endpoint: this.config.elizaEndpoint,
           authorization: this.config.elizaAuthorization,
           model: this.config.elizaModel,
@@ -1707,6 +1715,16 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         this.pendingOverlapTurn !== pending
       )
         return;
+      if (result.turnOutcome) {
+        if (result.turnOutcome.outcome === "failed") {
+          logger.warn({traceId: pending.traceId,
+            code: result.terminalFailure?.code && /^[A-Za-z0-9_]{1,64}$/.test(result.terminalFailure.code) ? result.terminalFailure.code : result.turnOutcome.code,
+            transient: result.terminalFailure?.transient}, "[voice-session] canonical overlap turn failed");
+        }
+        this.pendingOverlapTurn = null;
+        this.send({t: "turn_terminal", traceId: pending.traceId, ...result.turnOutcome});
+        return;
+      }
       if (result.completed) {
         this.send({ t: "reply_complete", traceId: pending.traceId });
       }
@@ -1735,7 +1753,18 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         "[voice-session] overlapping response preparation failed",
       );
       if (this.pendingOverlapTurn === pending) this.pendingOverlapTurn = null;
-      this.send({ t: "error", code: "llm_error", retryable: true });
+      if (this.turnTerminalSupported) {
+        const bridgeError = error instanceof ElizaSseBridgeError ? error : undefined;
+        this.send({
+          t: "error",
+          code: bridgeError?.upstreamCode ?? bridgeError?.code ?? "llm_error",
+          retryable: bridgeError?.retryable ?? true,
+          ...(bridgeError?.status ? {upstreamStatus: bridgeError.status} : {}),
+        });
+        this.send({t: "turn_terminal", traceId: pending.traceId, outcome: "failed"});
+      } else {
+        this.send({t: "error", code: "llm_error", retryable: true});
+      }
     } finally {
       this.overlapRequests.delete(pending.abort);
     }
@@ -2030,6 +2059,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     let modelOutputChars = 0;
     let modelSpeakableContentSeen = false;
     let upstreamComplete = false;
+    let turnOutcome: VoiceTurnMetricsReceipt["outcome"] = "completed";
     let ttsPlaybackComplete = false;
     const abort = new AbortController();
     this.llmAbort = abort;
@@ -2140,7 +2170,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
           // Keep the turn alive until terminal metadata arrives so a successful
           // VIEWS action still reaches the client after speech has ended. The
           // half-duplex busy gate keeps the microphone closed until then.
-          if (upstreamComplete) this.finishTurn(traceId);
+          if (upstreamComplete) this.finishTurn(traceId, turnOutcome);
         },
         onFlushComplete: () => {
           if (this.currentVoiceTurnId !== traceId) return;
@@ -2267,6 +2297,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
         .catch(() => undefined);
 
       const request = {
+        requireTurnTerminal: this.turnTerminalSupported,
         endpoint: this.config.elizaEndpoint,
         authorization: this.config.elizaAuthorization,
         model: this.config.elizaModel,
@@ -2446,6 +2477,15 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       // Canonical conversation completion is independent of TTS playback.
       // Let the renderer reconcile the saved reply even when an earlier
       // acknowledgement already consumed the first speaking_start event.
+      if (result.turnOutcome) {
+        if (result.turnOutcome.outcome === "failed") {
+          logger.warn({traceId,
+            code: result.terminalFailure?.code && /^[A-Za-z0-9_]{1,64}$/.test(result.terminalFailure.code) ? result.terminalFailure.code : result.turnOutcome.code,
+            transient: result.terminalFailure?.transient}, "[voice-session] canonical turn failed");
+        }
+        turnOutcome = result.turnOutcome.outcome === "failed" ? "error" : "completed";
+        this.send({t: "turn_terminal", traceId, ...result.turnOutcome});
+      }
       if (result.completed)
         this.send({
           t: "reply_complete",
@@ -2455,7 +2495,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             : {}),
         });
 
-      if (result.viewHandoff) {
+      if (!result.turnOutcome && result.viewHandoff) {
         this.send({
           t: "navigate_view",
           ...result.viewHandoff,
@@ -2465,7 +2505,12 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       upstreamComplete = true;
       finalizeTtsReply();
       if (ttsPlaybackComplete) {
-        this.finishTurn(traceId);
+        this.finishTurn(traceId, turnOutcome);
+        return;
+      }
+      if (result.turnOutcome && this.turnTtsChars === 0) {
+        this.ttsStream?.cancel("empty_terminal_turn");
+        this.finishTurn(traceId, turnOutcome);
         return;
       }
       if (!modelSpeakableContentSeen && this.turnTtsChars === 0) {
@@ -2526,13 +2571,14 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
             : "llm_error",
         retryable: bridgeError ? bridgeError.retryable : true,
         ...(bridgeError?.status ? { upstreamStatus: bridgeError.status } : {}),
-        ...(bridgeError?.upstreamMessage
+        ...(!this.turnTerminalSupported && bridgeError?.upstreamMessage
           ? { upstreamMessage: bridgeError.upstreamMessage }
           : {}),
-        ...(bridgeError?.upstreamSnippet
+        ...(!this.turnTerminalSupported && bridgeError?.upstreamSnippet
           ? { upstreamSnippet: bridgeError.upstreamSnippet }
           : {}),
       });
+      if (this.turnTerminalSupported) this.send({t: "turn_terminal", traceId, outcome: "failed"});
       // The socket is already open because it was prewarmed before the LLM
       // request. Do not leak an idle provider connection when that request or
       // stream fails before a terminal TTS phrase is sent. finishTurn has not
@@ -2606,6 +2652,13 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
       this.phrase.reset();
       this.phrase = null;
     }
+    // Negotiated clients confirm global cancellation while the owned request
+    // is still unsettled; the following usage must not erase that correlation.
+    // Legacy clients retain their established usage-then-interruption order.
+    if (this.turnTerminalSupported) {
+      this.state = "interrupted";
+      this.send({t: "interrupted", reason, traceId});
+    }
     // 5. Report the interrupted turn's usage (STT accrued + TTS chars emitted so
     //    far) so the client sees accurate accounting, then reset the per-turn
     //    accumulators so this turn's duration is NOT carried into the next
@@ -2621,7 +2674,7 @@ export class VoiceSession implements LiveVoiceSession, VoiceSessionLike {
     this.llmAbort = null;
     // 6. Emit interrupted and return to listening.
     this.state = "interrupted";
-    this.send({ t: "interrupted", reason, traceId });
+    if (!this.turnTerminalSupported) this.send({ t: "interrupted", reason, traceId });
     this.state = "listening";
   }
 

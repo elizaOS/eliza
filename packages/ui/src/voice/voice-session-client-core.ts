@@ -145,6 +145,8 @@ export interface VoiceTraceMark {
   atMs: number;
 }
 export interface VoiceSessionClientOptions {
+  /** Require negotiated non-success outcomes; legacy/Cloud callers opt in explicitly. */
+  requireTurnTerminal?: boolean;
   /** Read current renderer state, not the snapshot from session creation. */
   getUiContext?: () => VoiceUiContext;
   agentId: string;
@@ -271,6 +273,8 @@ const NON_RECOVERABLE_SERVER_ERROR_CODES: ReadonlySet<string> = new Set([
   "insufficient_credits",
   "revoked",
   "voice_retirement_unconfirmed",
+  "turn_terminal_unsupported",
+  "hello_bad_capability",
 ]);
 /** Parse the mint `expiresAt` (epoch ms number, epoch seconds, or ISO string). */
 function parseExpiresAtMs(value: number | string | undefined): number | null {
@@ -288,6 +292,9 @@ export function createVoiceSessionClient(
 ): VoiceSessionClient {
   const now = options.now ?? nowDefault;
   const mintPath = options.mintPath ?? "/api/v1/voice/session";
+  const requireTurnTerminal = options.requireTurnTerminal === true;
+  const turnTerminalOffers = new WeakMap<VoiceWebSocketLike, string>();
+  let turnTerminalBinding: {socket: VoiceWebSocketLike; generation: number; sessionId: string} | null = null;
   const doFetch = options.fetch;
   const wsFactory =
     options.webSocketFactory ??
@@ -336,6 +343,9 @@ export function createVoiceSessionClient(
   } | null = null;
   let rotationOffer: VoiceSessionMintResponse | null = null;
   const unsettledTurnTraceIds = new Set<string>();
+  const terminalTurnTraceIds = new Set<string>();
+  const expectedInterruptionTraceIds = new Set<string>();
+  let activePlaybackTraceId: string | null = null;
   let ownership: VoiceSessionLease | null = null;
   let disposed = false;
   let lifecycleGeneration = 0;
@@ -356,13 +366,13 @@ export function createVoiceSessionClient(
   const syncMicrophoneMute = (): void => {
     mic?.setMuted(
       microphoneMuted ||
-        state.phase === "speaking" ||
+        state.phase === "speaking" || activePlaybackTraceId !== null ||
         micSocket !== ws ||
         connPhase !== "open",
     );
   };
   const setState = (next: VoiceSessionMachineState): void => {
-    state = next;
+    state = {...next, playbackTraceId: activePlaybackTraceId};
     syncMicrophoneMute();
     options.onState?.(state, toContinuousStatus(state.phase));
   };
@@ -465,6 +475,7 @@ export function createVoiceSessionClient(
           agentId: options.agentId,
           conversationId: options.conversationId,
           transport: "websocket",
+          ...(requireTurnTerminal ? {turnTerminal: true} : {}),
           consentNonce,
           ...(predecessorSessionId ? { predecessorSessionId } : {}),
         }),
@@ -502,6 +513,9 @@ export function createVoiceSessionClient(
       // error-policy:J7 onMinted is correlation telemetry; a throwing listener must never turn a valid mint into a failed start.
       void ignoredError;
     }
+    if (requireTurnTerminal && json.turnTerminal !== true) {
+      throw new VoiceSessionMintError(409, "Voice host does not support turn settlement", "turn_terminal_unsupported");
+    }
     return json;
   }
   async function mint(generation: number): Promise<VoiceSessionMintResponse> {
@@ -523,13 +537,15 @@ export function createVoiceSessionClient(
     }
     throw lastError ?? new Error("voice session mint failed");
   }
-  function sendControl(frame: Parameters<typeof encodeClientControl>[0]): void {
-    if (!ws || connPhase !== "open") return;
+  function sendControl(frame: Parameters<typeof encodeClientControl>[0]): boolean {
+    if (!ws || connPhase !== "open") return false;
     try {
       ws.send(encodeClientControl(frame));
+      return true;
     } catch (ignoredError) {
       // error-policy:J5 a send race with a closing socket is observed by the close handler, which drives reconnect/teardown.
       void ignoredError;
+      return false;
     }
   }
   function sendUplinkAudio(bytes: Uint8Array): void {
@@ -621,6 +637,48 @@ export function createVoiceSessionClient(
       mark("not_reached(unparseable_control)", state.traceId);
       return;
     }
+    if (event.t === "turn_terminal") {
+      const binding = turnTerminalBinding;
+      if (!binding || binding.socket !== socket || binding.generation !== generation || binding.sessionId !== turnTerminalOffers.get(socket) || !unsettledTurnTraceIds.delete(event.traceId)) return;
+      // Consume and tombstone before any reducer or callback can re-enter.
+      terminalTurnTraceIds.add(event.traceId);
+    }
+    if (event.t === "stt_final" && terminalTurnTraceIds.has(event.traceId)) return;
+    if (event.t === "interrupted" && turnTerminalBinding?.socket === socket && turnTerminalBinding.generation === generation) {
+      // Server interruption cancels the whole voice session's pending work,
+      // but only an owned pending/audio trace or expected local ACK can confirm it.
+      if (typeof event.traceId !== "string" || !event.traceId || event.traceId.length > 256 ||
+          (event.reason !== "acoustic" && event.reason !== "explicit") ||
+          (activePlaybackTraceId !== event.traceId && !unsettledTurnTraceIds.has(event.traceId) && !expectedInterruptionTraceIds.has(event.traceId))) return;
+      for (const traceId of unsettledTurnTraceIds) terminalTurnTraceIds.add(traceId);
+      terminalTurnTraceIds.add(event.traceId);
+      unsettledTurnTraceIds.clear();
+      expectedInterruptionTraceIds.clear();
+    }
+    if (event.t === "stt_final" && !expectedInterruptionTraceIds.has(event.traceId)) {
+      // A newly admitted utterance on this ordered socket follows the sent
+      // global barge-in. Retire only that older local-cancel generation so a
+      // delayed ACK cannot cancel this future turn.
+      for (const traceId of expectedInterruptionTraceIds) {
+        unsettledTurnTraceIds.delete(traceId);
+        terminalTurnTraceIds.add(traceId);
+      }
+      expectedInterruptionTraceIds.clear();
+    }
+    if (event.t === "ready" && requireTurnTerminal && (event.turnTerminal !== true || turnTerminalOffers.get(socket) !== event.sessionId)) {
+      const released = stop();
+      emitError(new Error("Voice host does not support turn settlement"));
+      void released.catch(() => {});
+      return;
+    }
+    if (event.t === "ready" && turnTerminalBinding?.socket === socket && turnTerminalBinding.generation === generation) return;
+    if (event.t === "ready") {
+      turnTerminalBinding = turnTerminalOffers.has(socket) && turnTerminalOffers.get(socket) === event.sessionId && event.turnTerminal === true
+        ? {socket, generation, sessionId: event.sessionId} : null;
+      unsettledTurnTraceIds.clear();
+      terminalTurnTraceIds.clear();
+      expectedInterruptionTraceIds.clear();
+    }
     // Local interruption must reject queued speech before server acknowledgement.
     // Settlement/history frames remain available; a new STT turn has its own ID.
     if (
@@ -631,6 +689,13 @@ export function createVoiceSessionClient(
     )
       return;
 
+    if (event.t === "speaking_start") activePlaybackTraceId = event.traceId;
+    if (event.t === "interrupted") {
+      // Flush owned audio before observer callbacks or state can reopen input.
+      activePlaybackTraceId = null;
+      playbackEnd = null;
+      playback?.flush();
+    }
     // End-of-generation is not end-of-playback: keep the mic closed and the
     // speaking state visible until the device consumes the last audio frame.
     if (event.t !== "speaking_end") setState(applyServerEvent(state, event));
@@ -648,7 +713,6 @@ export function createVoiceSessionClient(
         // budget-refill decision reads on the next transport loss.
         lastLiveAtMs = now();
         everLiveThisLifecycle = true;
-        unsettledTurnTraceIds.clear();
         // Client-owned: begin capture, then listening.
         void startCapture(generation, socket);
         break;
@@ -699,8 +763,6 @@ export function createVoiceSessionClient(
         // Reconcile: the server confirms the interruption. Ensure local audio is
         // silenced (idempotent with an optimistic local flush) and loop to
         // listening.
-        playbackEnd = null;
-        playback?.flush();
         mark("interrupted", event.traceId);
         unsettledTurnTraceIds.delete(event.traceId);
         setState(loopToListening(state));
@@ -734,6 +796,11 @@ export function createVoiceSessionClient(
           mark("not_reached(server_fatal_error)", state.traceId);
           requestRecovery("server_error", generation, socket);
         }
+        break;
+      case "turn_terminal":
+        mark(`not_reached(turn_${event.outcome})`, event.traceId);
+        // No playback flush, capture stop, recovery or success notification.
+        if (state.phase === "complete" && activePlaybackTraceId === null) setState(loopToListening(state));
         break;
       case "usage":
         unsettledTurnTraceIds.delete(event.traceId);
@@ -836,6 +903,12 @@ export function createVoiceSessionClient(
     minted: VoiceSessionMintResponse,
     generation: number,
   ): Promise<void> {
+    turnTerminalBinding = null;
+    // Recovery may use an already prepared offer instead of mintOnce. Recheck
+    // the exact ticket before constructing a socket, without minting a fallback.
+    if (requireTurnTerminal && minted.turnTerminal !== true) {
+      throw new VoiceSessionMintError(409, "Voice host does not support turn settlement", "turn_terminal_unsupported");
+    }
     assertLifecycleCurrent(generation);
     const uplink = negotiateCodec(preferredUplink, minted.uplink?.codecs);
     const downlink = negotiateCodec(preferredDownlink, minted.downlink?.codecs);
@@ -871,6 +944,7 @@ export function createVoiceSessionClient(
         return;
       }
       connPhase = "open";
+      if (minted.turnTerminal === true) turnTerminalOffers.set(socket, minted.sessionId);
       // FIRST frame MUST be the hello with the token — never a header.
       try {
         socket.send(
@@ -878,6 +952,7 @@ export function createVoiceSessionClient(
             t: "hello",
             token: minted.token,
             protocol: VOICE_SESSION_PROTOCOL_VERSION,
+            ...(minted.turnTerminal === true ? {turnTerminal: true as const} : {}),
             uplinkCodec: uplink,
             downlinkCodec: downlink,
             sampleRate: VOICE_SESSION_SAMPLE_RATE,
@@ -1056,6 +1131,8 @@ export function createVoiceSessionClient(
   ): Promise<void> {
     if (!isLifecycleCurrent(generation) || intentionalClose) return;
     clearRotationTimer();
+    turnTerminalBinding = null;
+    expectedInterruptionTraceIds.clear();
     for (const traceId of unsettledTurnTraceIds) mark(`not_reached(turn_terminal_unknown:${reason})`, traceId);
     unsettledTurnTraceIds.clear();
     // The transport is already gone, so publish that fact before a browser
@@ -1069,6 +1146,7 @@ export function createVoiceSessionClient(
       reason === "token_rotation" && !budgetedInitial && mic?.active;
     // Keep the playback context so an autoplay unlock survives reconnect.
     playbackEnd = null;
+    activePlaybackTraceId = null;
     playback?.flush();
     if (!retainCapture) await teardownMic();
     else if (rotationDeadlineMs !== null)
@@ -1186,6 +1264,10 @@ export function createVoiceSessionClient(
     intentionalClose = true;
     microphoneMuted = false;
     playbackEnd = null;
+    activePlaybackTraceId = null;
+    terminalTurnTraceIds.clear();
+    expectedInterruptionTraceIds.clear();
+    turnTerminalBinding = null;
     const stoppedOwnership = ownership;
     ownership = null;
     const stoppedGeneration = ++lifecycleGeneration;
@@ -1282,13 +1364,12 @@ export function createVoiceSessionClient(
           },
           onDrained: () => {
             if (isLifecycleCurrent(generation)) {
-              mark("playback_drained", state.traceId);
               const ended = playbackEnd;
+              mark("playback_drained", ended?.traceId ?? activePlaybackTraceId ?? state.traceId);
               playbackEnd = null;
               if (
                 ended &&
-                state.phase === "speaking" &&
-                state.traceId === ended.traceId
+                activePlaybackTraceId === ended.traceId
               ) {
                 // Ordered before resumed audio on this same socket. Older servers
                 // retain their conservative estimate until they advertise support.
@@ -1299,7 +1380,12 @@ export function createVoiceSessionClient(
                       traceId: ended.traceId,
                     }),
                   );
-                setState(loopToListening(applyServerEvent(state, ended)));
+                activePlaybackTraceId = null;
+                if (!unsettledTurnTraceIds.has(state.traceId ?? "") || state.traceId === ended.traceId) {
+                  setState(loopToListening(applyServerEvent(state, ended)));
+                } else {
+                  setState({...state, phase: "thinking"});
+                }
               }
             }
           },
@@ -1353,13 +1439,20 @@ export function createVoiceSessionClient(
     },
     bargeIn() {
       if (disposed) return;
+      expectedInterruptionTraceIds.clear();
+      for (const traceId of unsettledTurnTraceIds) expectedInterruptionTraceIds.add(traceId);
+      if (activePlaybackTraceId) expectedInterruptionTraceIds.add(activePlaybackTraceId);
       // Flush local audible output IMMEDIATELY — do NOT wait for the server
-      // `interrupted` event. Then optimistically fold state and notify server.
+      // `interrupted` event. Send before UI callbacks can admit a later turn.
       playbackEnd = null;
+      activePlaybackTraceId = null;
       playback?.flush();
-      setState(applyClientAction(state, { type: "client/local_barge_in" }));
-      sendControl({ t: "barge_in" });
-      mark("barge_in_sent", state.traceId);
+      const beforeSend = state;
+      const traceId = state.traceId;
+      const sent = sendControl({ t: "barge_in" });
+      if (!sent) expectedInterruptionTraceIds.clear();
+      if (state === beforeSend) setState(applyClientAction(state, { type: "client/local_barge_in" }));
+      if (sent) mark("barge_in_sent", traceId);
     },
     get microphoneMuted() {
       return microphoneMuted;

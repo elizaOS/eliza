@@ -8,6 +8,7 @@ import {
   CartesiaSonicTtsAdapter,
   type CartesiaWebSocketLike,
 } from "./cartesia-sonic-tts";
+import {attachVoiceWsHandler, type ServerWebSocketLike} from "./ws-handler";
 import { VOICE_STREAM_PROTOCOL } from "./eliza-sse-bridge";
 import { createLocalRuntimeConversationFetch } from "./local-runtime-conversation-fetch";
 import type { ServerControlFrame } from "./protocol";
@@ -32,7 +33,7 @@ async function until(read: () => boolean) {
   for (let i = 0; i < 100 && !read(); i++) await sleep(5);
   expect(read()).toBe(true);
 }
-async function setup(prepared = false, bounded = false, selfAdmission = false) {
+async function setup(prepared = false, bounded = false, selfAdmission = false, turnTerminal = false) {
   let policyClosed = 0;
   const usageStore = new InMemoryVoiceUsageStore();
   const control: ServerControlFrame[] = [],
@@ -205,6 +206,7 @@ async function setup(prepared = false, bounded = false, selfAdmission = false) {
       },
     };
   const session = new VoiceSession(config);
+  if (turnTerminal) session.setTurnTerminalSupport(true);
   cleanups.push(() => session.bye());
   return {
     session,
@@ -1228,4 +1230,105 @@ test("a self-admitted session does not bill the first metering window twice", as
   // One admission window (5 s = 1/12 min), not two.
   expect(probed.userUsedMinutes).toBeCloseTo(5 / 60, 6);
   expect(probed.organizationUsedMinutes).toBeCloseTo(5 / 60, 6);
+});
+
+
+test.each([
+  {failureKind: "handler_error"},
+  {terminalFailure: {kind: "reply_generation_error", code: "STAGE1_INVALID_SOURCE_REPLY", message: "Not available", transient: false}},
+])("canonical failed done closes the turn without reply completion/navigation/replay: %j", async (outcome) => {
+  const receipts: VoiceTurnMetricsReceipt[] = [];
+  const f = await setup(false, false, false, true);
+  f.config.onTurnMetrics = (receipt) => receipts.push(receipt);
+  f.respond([
+    {type: "status", kind: "thinking", label: "Checking the calendar."},
+    {type: "done", fullText: "Not a successful answer", ...outcome,
+      actionResults: [{actionName: "VIEWS", success: true, values: {mode: "show", viewId: "calendar"}}]},
+  ].map(frame => `data: ${JSON.stringify(frame)}\n\n`).join(""), 25);
+  f.session.start();
+  f.emit({type: "connected", raw: {}});
+  f.emit({type: "start-of-turn", transcript: "", raw: {}});
+  f.emit({type: "end-of-turn", transcript: "check calendar", raw: {}});
+  await until(() => f.control.some(frame => frame.t === "usage"));
+  expect(f.control).toContainEqual(expect.objectContaining({t: "turn_terminal", outcome: "failed"}));
+  expect(f.control.some(frame => frame.t === "reply_complete" || frame.t === "navigate_view")).toBe(false);
+  expect(f.phrases).not.toContain("Not a successful answer");
+  expect(f.requests).toHaveLength(1);
+  expect(receipts).toMatchObject([{outcome: "error"}]);
+  expect(f.session.currentState).toBe("listening");
+  f.session.bye();
+  expect(f.transportClosed).toBe(1);
+  expect(f.sttCancelled).toBe(1);
+});
+
+
+test("canonical silent done settles without error, reply completion, or final speech", async () => {
+  const f = await setup(false, false, false, true);
+  f.respond(`data: ${JSON.stringify({type: "done", noResponseReason: "ignored", fullText: "Not authorized"})}\n\n`);
+  f.session.start(); f.emit({type: "connected", raw: {}});
+  f.emit({type: "start-of-turn", transcript: "", raw: {}});
+  f.emit({type: "end-of-turn", transcript: "remain silent", raw: {}});
+  await until(() => f.control.some(frame => frame.t === "usage"));
+  expect(f.control.some(frame => ["error", "reply_complete", "navigate_view"].includes(frame.t))).toBe(false);
+  expect(f.control).toContainEqual(expect.objectContaining({t: "turn_terminal", outcome: "ignored"}));
+  expect(f.phrases).not.toContain("Not authorized");
+  expect(f.requests).toHaveLength(1);
+  expect(f.session.currentState).toBe("listening");
+});
+
+
+test.each(["failed", "ignored"] as const)("overlap %s settles only B while A audio remains owned", async outcome => {
+  const f = await setup(false, false, false, true);
+  f.config.allowContinuousHandoff = true;
+  f.session.setAudioCapabilities({mode: "continuous_handoff", echoCancellation: true, noiseSuppression: true, autoGainControl: true, referenceAwarePlayback: true});
+  f.hold(); f.session.start(); f.emit({type: "connected", raw: {}});
+  f.emit({type: "start-of-turn", transcript: "", raw: {}});
+  f.emit({type: "end-of-turn", transcript: "first reply", raw: {}});
+  await until(() => f.control.some(frame => frame.t === "reply_complete"));
+  const a = f.control.find(frame => frame.t === "reply_complete")!.traceId;
+  f.callbacks.onFirstAudio?.({elapsedMs: 1});
+  f.callbacks.onAudioFrame?.({bytes: new Uint8Array([7,8])});
+  expect(f.audio.length).toBeGreaterThan(0);
+  const wire = outcome === "failed" ? {failureKind: "handler_error"} : {noResponseReason: "ignored"};
+  f.respond(`data: ${JSON.stringify({type: "done", ...wire, fullText: "Not authorized"})}\n\n`);
+  const cancels = f.order.filter(value => value === "cancel").length;
+  f.emit({type: "start-of-turn", transcript: "", raw: {}});
+  f.emit({type: "end-of-turn", transcript: "second request", raw: {}});
+  await until(() => f.control.some(frame => frame.t === "turn_terminal"));
+  const terminal = f.control.find(frame => frame.t === "turn_terminal")!;
+  expect(terminal).toMatchObject({outcome}); expect(terminal.traceId).not.toBe(a);
+  expect(f.order.filter(value => value === "cancel")).toHaveLength(cancels);
+  expect(f.control.filter(frame => frame.t === "reply_complete")).toHaveLength(1);
+  expect(f.control.filter(frame => frame.t === "usage" && frame.traceId === terminal.traceId)).toHaveLength(0);
+  expect(f.transportClosed).toBe(0); expect(f.sttCancelled).toBe(0);
+});
+
+
+test("negotiated ordinary success still emits one reply completion and view handoff", async () => {
+  const f = await setup(false, false, false, true); f.session.start(); f.emit({type: "connected", raw: {}});
+  f.emit({type: "start-of-turn", transcript: "", raw: {}}); f.emit({type: "end-of-turn", transcript: "open notes", raw: {}});
+  await until(() => f.control.some(frame => frame.t === "usage"));
+  expect(f.control.filter(frame => frame.t === "reply_complete")).toHaveLength(1);
+  expect(f.control.some(frame => frame.t === "navigate_view" && frame.viewId === "notes")).toBe(true);
+  expect(f.control.some(frame => frame.t === "turn_terminal" || frame.t === "error")).toBe(false);
+});
+
+
+test.each([false,true])("client assertion alone cannot enable terminal support without the server offer: %s", async required => {
+  const f=await setup();let receive:((event:{data:unknown})=>void)|undefined;
+  const socket:ServerWebSocketLike={send(){},close(){},addEventListener(type:"message"|"close"|"error",listener:((event:{data:unknown})=>void)|(()=>void)){if(type==="message")receive=listener as (event:{data:unknown})=>void;}};
+  attachVoiceWsHandler(socket,{requestedSessionId:f.config.sessionId,requireTurnTerminal:required,
+    verifyToken:async()=>({claims:{sessionId:f.config.sessionId,agentId:f.config.agentId,conversationId:f.config.conversationId,organizationId:f.config.organizationId,userId:f.config.userId},jti:"fixture-jti",expSeconds:Math.floor(Date.now()/1000)+60}),
+    buildSession:()=>f.session});
+  receive!({data:JSON.stringify({t:"hello",token:"fixture-ticket",protocol:1,uplinkCodec:"pcm16",downlinkCodec:"pcm16",sampleRate:16000,turnTerminal:true})});
+  await until(()=>f.control.some(frame=>frame.t==="ready"));const ready=f.control.find(frame=>frame.t==="ready")!;
+  expect(ready).toMatchObject({t:"ready"});expect(ready.t === "ready" && ready.turnTerminal === true).toBe(required);
+});
+
+
+test.each([false,true])("genuine interruption preserves actual usage and exposes owned cancellation before usage only when negotiated: %s", async negotiated => {
+  const f=await setup(false,false,false,negotiated);f.hold();f.session.start();f.emit({type:"connected",raw:{}});f.emit({type:"start-of-turn",transcript:"",raw:{}});f.emit({type:"end-of-turn",transcript:"request",raw:{}});
+  await until(()=>f.control.some(frame=>frame.t==="reply_complete"));f.session.bargeIn();
+  const terminal=f.control.filter(frame=>frame.t==="interrupted"||frame.t==="usage").map(frame=>frame.t);
+  expect(terminal).toEqual(negotiated?["interrupted","usage"]:["usage","interrupted"]);
 });

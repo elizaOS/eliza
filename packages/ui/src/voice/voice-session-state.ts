@@ -40,6 +40,8 @@ export type VoiceSessionPhase =
   | "complete";
 
 export interface VoiceSessionMachineState {
+  /** Client-owned playback barrier, independent of the latest request trace. */
+  playbackTraceId?: string | null;
   phase: VoiceSessionPhase;
   /**
    * Ephemeral acknowledgement, then each content-free activity name, for this
@@ -197,6 +199,10 @@ export function applyServerEvent(
             progressText: event.t === "progress" ? event.text : event.label,
           }
         : state;
+    case "turn_terminal":
+      if (state.traceId !== event.traceId) return state;
+      return {...state, progressText: undefined,
+        ...(state.phase === "speaking" ? {} : {phase: "complete" as const})};
     case "reply_complete":
       // Transcript reconciliation is separate from audible playback state.
       return state;
