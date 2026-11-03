@@ -383,7 +383,7 @@ test("a durable dispatch marker blocks the provider factory and revocation drops
   await expect(speech).rejects.toThrow("closed");
   await s.close();
   expect(f.order).not.toContain("tts-open");
-  expect(f.settled).toEqual([
+  expect(f.settled, `queued-before-dispatch receipt=${JSON.stringify(f.settled)}`).toEqual([
     {
       pcmBytes: 0,
       ttsCharacters: 0,
@@ -646,4 +646,32 @@ test("a durable dispatch marker blocks the prepared provider factory and revocat
   await s.close();
   expect(f.order).not.toContain("tts-open");
   expect(f.settled).toMatchObject([{ dispatched: { stt: true, tts: false } }]);
+});
+
+test("an entered TTS provider factory remains uncertain when it throws", async () => {
+  let attempts = 0;
+  const f = harness({ openTts: () => { attempts++; throw Error("provider upgrade outcome unknown"); }, confirmTtsTransportStopped: async () => "unknown" });
+  const session = await f.open();
+  await expect(session.control({ t: "tts", id: "ambiguous", text: "hello" })).rejects.toThrow("provider upgrade outcome unknown");
+  await expect(session.close()).rejects.toThrow("cleanup was not confirmed");
+  expect(attempts).toBe(1);
+  expect(f.settled).toMatchObject([{ ttsCharacters: 5, dispatched: { stt: true, tts: true }, outcomes: { tts: "unknown" } }]);
+  expect(session.retirement.evidence()?.tts).toBe("unknown");
+});
+
+test("earlier cancellation uncertainty survives a later pre-provider revocation", async () => {
+  let marks = 0, release!: () => void;
+  const held = new Promise<void>(yes => { release = yes; });
+  const f = harness({ reserveCredits: async () => ({
+    beforeProviderDispatch: async kind => { if (kind === "tts" && ++marks === 2) await held; },
+    settle: async receipt => { f.settled.push(receipt); },
+  }) });
+  const session = await f.open();
+  await session.control({ t: "tts", id: "prior", text: "already" });
+  await session.control({ t: "cancel", id: "prior" });
+  const queued = session.control({ t: "tts", id: "queued", text: "later" });
+  await tick(); f.revoke(); release();
+  await expect(queued).rejects.toThrow("closed"); await session.close();
+  expect(f.order.filter(value => value === "tts-open")).toHaveLength(1);
+  expect(f.settled).toMatchObject([{ ttsCharacters: 7, outcomes: { tts: "unknown" } }]);
 });

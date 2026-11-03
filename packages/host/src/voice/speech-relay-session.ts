@@ -611,6 +611,7 @@ export async function createSpeechRelaySession(
       admittedTtsCharacters += text.length;
       // No content review on the speech path: the phrase goes straight to
       // provider dispatch once the session's admission and budget allow it.
+      let attemptedProviderForFrame = false;
       try {
         if (!credits)
           throw new SpeechRelayError(
@@ -620,6 +621,7 @@ export async function createSpeechRelaySession(
         await credits.beforeProviderDispatch("tts");
         current();
         if (cancelledIds.has(frame.id)) return false;
+        attemptedProviderForFrame = true;
         ttsCharacters += text.length;
         dispatched.tts = true;
         let stream = streams.get(frame.id);
@@ -666,7 +668,10 @@ export async function createSpeechRelaySession(
             ...(frame.flush !== undefined ? { flush: frame.flush } : {}),
           });
       } catch (error) {
-        ttsUncertain = true;
+        // Revocation while awaiting the admission marker cannot have reached
+        // this frame's provider boundary. Preserve existing uncertainty, but
+        // do not invent it for text that was never submitted to a provider.
+        if (attemptedProviderForFrame) ttsUncertain = true;
         retire();
         throw error;
       }
