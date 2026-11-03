@@ -27,12 +27,13 @@ jobs:
         run: |
           set -eu
           STAGE="$RUNNER_TEMP/valhalla-stage"
+          export STAGE
           rm -rf "$STAGE"
           mkdir -p "$STAGE/src" "$STAGE/public" "$STAGE/install"
           cp -r plugins/plugin-valhalla-copybot/src/. "$STAGE/src/"
           cp -r plugins/plugin-valhalla-copybot/public/. "$STAGE/public/"
           cp plugins/plugin-valhalla-copybot/product.config.json "$STAGE/product.config.json"
-          cp plugins/plugin-valhalla-copybot/package.json "$STAGE/package.json"
+          node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("plugins/plugin-valhalla-copybot/package.json","utf8")); delete p.devDependencies; delete p.peerDependencies; delete p.elizaos; p.dependencies=Object.fromEntries(Object.entries(p.dependencies||{}).filter(([,v])=>!String(v).startsWith("workspace:"))); fs.writeFileSync(process.env.STAGE+"/package.json", JSON.stringify(p,null,2));' 
           cp plugins/plugin-valhalla-copybot/install/valhalla.iss "$STAGE/install/valhalla.iss"
           cp plugins/plugin-valhalla-copybot/install/start-valhalla.bat "$STAGE/install/start-valhalla.bat"
           cp plugins/plugin-valhalla-copybot/install/valhalla.ico "$STAGE/install/valhalla.ico"
@@ -52,6 +53,9 @@ jobs:
           cd "$STAGE/install"
           "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" valhalla.iss
           mv Output/valhalla-setup.exe Output/Valhalla-Setup-x64.exe
+          WIX=$(find "/c/Program Files (x86)" -name heat.exe | head -1)
+          WIXDIR=$(dirname "$WIX")
+          "$WIXDIR/heat.exe" dir dist -cg DeskFiles -dr INSTALLFOLDER -gg -sfrag -srd -var var.DeskDir -out files.wxs
           cat > Product.wxs <<'EOF'
           <?xml version="1.0" encoding="UTF-8"?>
           <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
@@ -69,9 +73,8 @@ jobs:
             </Product>
           </Wix>
           EOF
-          heat dir dist -cg DeskFiles -dr INSTALLFOLDER -gg -sfrag -srd -var var.DeskDir -out files.wxs
-          candle Product.wxs files.wxs -dDeskDir=dist
-          light -out Output/Valhalla-Setup-x64.msi Product.wixobj files.wixobj
+          "$WIXDIR/candle.exe" Product.wxs files.wxs -dDeskDir=dist
+          "$WIXDIR/light.exe" -out Output/Valhalla-Setup-x64.msi Product.wixobj files.wixobj
       - name: Publish the latest release
         shell: bash
         env:
