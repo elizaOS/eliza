@@ -25,6 +25,12 @@ function walletLink(which) {
 document.getElementById("open-phantom")?.addEventListener("click", () => walletLink("phantom"));
 document.getElementById("open-solflare")?.addEventListener("click", () => walletLink("solflare"));
 
+document.getElementById("go-pro")?.addEventListener("click", () => {
+  const url = new URL("https://valhalla.lemonsqueezy.com/checkout/buy/4f959b69-81ca-45ca-8c3d-c80347b6b439");
+  url.searchParams.set("checkout[custom][source]", "extension");
+  chrome.tabs.create({ url: url.toString() });
+});
+
 document.getElementById("pair").addEventListener("click", async () => {
   const base = desk.value.trim().replace(/\/$/, "");
   if (!base.startsWith("http://127.0.0.1") && !base.startsWith("http://localhost")) {

@@ -149,6 +149,22 @@ async function loadPro() {
     "<div>" + data.note + "</div>" +
     "<label>License key</label><input id=\"licenseKey\" type=\"password\" autocomplete=\"off\"/>" +
     "<button type=\"button\" id=\"btnLicense\">Activate Pro</button>";
+  if (data.checkoutUrl) {
+    const go = document.createElement("a");
+    go.id = "btnGoPro";
+    go.textContent = "Go Pro";
+    go.href = data.checkoutUrl;
+    go.target = "_blank";
+    go.rel = "noopener";
+    host.appendChild(go);
+    const upgrade = document.createElement("a");
+    upgrade.id = "btnUpgrade";
+    upgrade.textContent = "Upgrade";
+    upgrade.href = data.portalCheckoutUrl || data.checkoutUrl;
+    upgrade.target = "_blank";
+    upgrade.rel = "noopener";
+    host.appendChild(upgrade);
+  }
   document.getElementById("btnLicense").addEventListener("click", async () => {
     const key = document.getElementById("licenseKey").value;
     document.getElementById("licenseKey").value = "";

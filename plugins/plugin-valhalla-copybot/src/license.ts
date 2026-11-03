@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { acceptedProduct, CHECKOUT_URL, checkoutLink, LEMON_PRODUCT_ID } from "./checkout.ts";
 
 export const ACTIVATE_URL = "https://api.lemonsqueezy.com/v1/licenses/activate";
 export const VALIDATE_URL = "https://api.lemonsqueezy.com/v1/licenses/validate";
@@ -16,11 +17,11 @@ export interface ProductConfig {
 }
 
 export const DEFAULT_PRODUCT: ProductConfig = {
-  PRO_PRICE: "$19/month",
+  PRO_PRICE: "$9.99/mo launch price",
   PRO_YEAR_PRICE: "$149/year",
-  PRO_LAUNCH_PRICE: "$9.99/month",
+  PRO_LAUNCH_PRICE: "$9.99/mo",
   PRO_LAUNCH_SLOTS: 100,
-  LEMONSQUEEZY_CHECKOUT_URL: "",
+  LEMONSQUEEZY_CHECKOUT_URL: CHECKOUT_URL,
   offlineGraceDays: 7,
   proMonthlyCapUsd: 20,
 };
@@ -82,7 +83,12 @@ export function classifyLicenseBody(
   const state = String(license.status ?? "");
   const expires = license.expires_at == null ? null : Date.parse(String(license.expires_at));
   const expiresAt = expires != null && Number.isFinite(expires) ? expires : null;
-  if (flag && state === "active" && (expiresAt == null || expiresAt > Date.now())) {
+  if (
+    flag &&
+    state === "active" &&
+    acceptedProduct(body, LEMON_PRODUCT_ID) &&
+    (expiresAt == null || expiresAt > Date.now())
+  ) {
     return { online: "ok", instanceId: String(instance.id ?? ""), expiresAt };
   }
   return { online: "invalid", instanceId: "", expiresAt };
@@ -147,6 +153,8 @@ export class LicenseStore {
       pro,
       price: this.config.PRO_PRICE,
       checkoutReady: this.config.LEMONSQUEEZY_CHECKOUT_URL.length > 0,
+      checkoutUrl: checkoutLink(this.config.LEMONSQUEEZY_CHECKOUT_URL, "windows"),
+      portalCheckoutUrl: checkoutLink(this.config.LEMONSQUEEZY_CHECKOUT_URL, "portal"),
       tail: record ? tailKey(record.licenseKey) : "",
       graceDays: this.config.offlineGraceDays,
       note: "Pro is the paid plan. It is not a promise of profit. The desk still cannot send or withdraw.",

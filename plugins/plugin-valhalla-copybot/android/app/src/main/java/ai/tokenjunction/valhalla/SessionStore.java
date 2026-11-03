@@ -127,4 +127,34 @@ final class SessionStore {
     void setWizard(boolean done) {
         prefs.edit().putBoolean("wizard_done", done).apply();
     }
+
+    void saveLicense(String key, String instanceId) {
+        prefs.edit()
+                .putString("license_key", key)
+                .putString("license_instance", instanceId)
+                .putLong("license_at", System.currentTimeMillis())
+                .putBoolean("license_active", true)
+                .apply();
+    }
+
+    void clearLicense() {
+        prefs.edit()
+                .putBoolean("license_active", false)
+                .remove("license_key")
+                .apply();
+    }
+
+    boolean proInGrace(long graceMs) {
+        if (!prefs.getBoolean("license_active", false)) return false;
+        long at = prefs.getLong("license_at", 0);
+        return at > 0 && System.currentTimeMillis() - at <= graceMs;
+    }
+
+    String licenseKey() {
+        return prefs.getString("license_key", "");
+    }
+
+    String licenseInstance() {
+        return prefs.getString("license_instance", "");
+    }
 }

@@ -20,7 +20,7 @@ TokenJunction LLC, a private company, publishes and owns Valhalla. Valhalla Pro 
 
 The desk runs on your computer. The phone watches that desk. Live trading stays off until you arm it on the computer. This purchase is not financial advice. Crypto can lose money. TokenJunction LLC does not promise profit.
 
-The phone app does not use this checkout. Phone Pro uses Google Play Billing or Apple In-App Purchase.
+The live checkout is Valhalla Pro, product 1498767, variant 2334204, at $9.99/mo launch price. License keys are on. Sideload apps open this checkout. A Play Store or App Store build still uses product valhalla_pro_monthly.
 
 ## Receipt line
 

@@ -427,6 +427,15 @@ public class MainActivity extends AppCompatActivity {
         status.setText("Opened " + which + ". Connect is read-only. The app cannot send or withdraw.");
     }
 
+    private void openCheckout(String source) {
+        android.net.Uri uri = android.net.Uri.parse(
+                        "https://valhalla.lemonsqueezy.com/checkout/buy/4f959b69-81ca-45ca-8c3d-c80347b6b439")
+                .buildUpon()
+                .appendQueryParameter("checkout[custom][source]", source)
+                .build();
+        startActivity(new Intent(Intent.ACTION_VIEW, uri));
+    }
+
     private void showPro() {
         if (BuildConfig.STORE_BILLING) {
             new AlertDialog.Builder(this)
@@ -441,9 +450,10 @@ public class MainActivity extends AppCompatActivity {
         input.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         new AlertDialog.Builder(this)
                 .setTitle("Pro")
-                .setMessage(R.string.pro_hint)
+                .setMessage(getString(R.string.pro_hint) + " $9.99/mo launch price.")
                 .setView(input)
                 .setPositiveButton("Activate", (dialog, which) -> activatePro(input.getText().toString().trim()))
+                .setNeutralButton("Go Pro", (dialog, which) -> openCheckout("android"))
                 .setNegativeButton("Cancel", null)
                 .show();
     }

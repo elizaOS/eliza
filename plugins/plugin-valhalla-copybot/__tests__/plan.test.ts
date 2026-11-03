@@ -36,9 +36,9 @@ describe("Free and Pro plans", () => {
 
   it("does not promise profit in the paywall or the table", () => {
     const copy = paywallCopy();
-    expect(copy).toContain("$19/month");
-    expect(copy).toContain("$149/year");
-    expect(copy).toContain("$9.99/month");
+    expect(copy).toContain("$9.99/mo launch price");
+    expect(copy).toContain("coming soon");
+    expect(copy).not.toContain("$19/month");
     expect(copy.toLowerCase()).not.toContain("guaranteed");
     expect(comparisonRows().some((row) => row.feature === "Ads" && row.pro === "None")).toBe(true);
   });

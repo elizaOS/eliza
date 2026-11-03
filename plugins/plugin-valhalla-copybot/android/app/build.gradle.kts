@@ -35,6 +35,7 @@ val admobInterstitialId = buildValue("ADMOB_INTERSTITIAL_ID", sampleInterstitial
 val admobRewardedId = buildValue("ADMOB_REWARDED_ID", sampleRewardedId)
 val houseAdsUrl = buildValue("HOUSE_ADS_URL", "")
 val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "https://valhalla-app.xyz/privacy-policy.md")
+val storeBilling = buildValue("STORE_BILLING", "false")
 
 android {
     namespace = "ai.tokenjunction.valhalla"
@@ -54,6 +55,7 @@ android {
         buildConfigField("String", "ADMOB_REWARDED_ID", quote(admobRewardedId))
         buildConfigField("String", "HOUSE_ADS_URL", quote(houseAdsUrl))
         buildConfigField("String", "PRIVACY_POLICY_URL", quote(privacyPolicyUrl))
+        buildConfigField("boolean", "STORE_BILLING", storeBilling.equals("true", ignoreCase = true).toString())
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }

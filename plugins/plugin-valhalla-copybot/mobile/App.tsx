@@ -10,7 +10,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { activateLicense, proPurchaseMessage } from "./billing";
+import { activateLicense, checkoutLink, proPurchaseMessage } from "./billing";
 
 type Step = "age" | "advice" | "intro" | "pair" | "demo" | "done" | "about";
 
@@ -158,6 +158,12 @@ export default function App() {
             </Text>
             <Text style={styles.body}>What's new: self-repair, Brain advice, and this setup.</Text>
             <Text style={styles.body}>{proPurchaseMessage()}</Text>
+            <Text style={styles.body}>
+              $9.99/mo launch price. Yearly and Lifetime are coming soon.
+            </Text>
+            <Pressable style={styles.btn} onPress={() => void Linking.openURL(checkoutLink("ios"))}>
+              <Text style={styles.btnText}>Go Pro</Text>
+            </Pressable>
             <TextInput
               style={styles.input}
               value={licenseKey}

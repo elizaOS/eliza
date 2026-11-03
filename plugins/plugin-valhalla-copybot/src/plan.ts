@@ -11,7 +11,7 @@ export interface PlanPrices {
 
 export const PLAN_PRICES: PlanPrices = {
   monthly: "$19/month",
-  launchMonthly: "$9.99/month",
+  launchMonthly: "$9.99/mo launch price",
   launchSlots: 100,
   yearly: "$149/year",
 };
@@ -65,7 +65,7 @@ export function alertDelayMs(tier: Tier): number {
 }
 
 export function paywallCopy(prices: PlanPrices = PLAN_PRICES): string {
-  return `Free includes ads, 1 wallet, 3 watchlist coins, and 1 Brain score a day. Pro is ${prices.monthly}, ${prices.yearly}, or ${prices.launchMonthly} for the first ${prices.launchSlots} people. Pro has no ads. This is not a promise of profit.`;
+  return `Free includes ads, 1 wallet, 3 watchlist coins, and 1 Brain score a day. Pro is ${prices.launchMonthly}. Yearly and Lifetime are coming soon. Pro has no ads. This is not a promise of profit.`;
 }
 
 export function comparisonRows(): Array<{ feature: string; free: string; pro: string }> {
