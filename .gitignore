@@ -630,6 +630,7 @@ docs/*
 !docs/ROADMAP.md
 !docs/CONNECTIONS.md
 !docs/SELF_REPAIR.md
+!docs/AI.md
 !docs/valhalla/
 !docs/valhalla/**
 !docs/ELIZA_1_BUNDLE_EXTRAS.json

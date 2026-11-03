@@ -1,5 +1,6 @@
 import { randomBytes, timingSafeEqual } from "node:crypto";
 import type { IncomingMessage } from "node:http";
+import { brainFor } from "./brain.ts";
 import { refusesUnsafe } from "./chat.ts";
 import { connectionView } from "./connection-routes.ts";
 import { pnlView, stateView } from "./desk-view.ts";
@@ -73,6 +74,7 @@ export function phoneState(engine: AgentEngine): Record<string, unknown> {
       ok: row.lastOk,
     })),
     health: engine.healthNow(),
+    brain: brainFor(engine.dataDir).view(),
     repair: engine.repairLog.events[0] ?? null,
     settings: engine.settings,
     pendingSettings: engine.pendingSettings != null,

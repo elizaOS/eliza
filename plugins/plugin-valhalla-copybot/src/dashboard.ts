@@ -6,6 +6,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadAdReport } from "./ad-report.ts";
 import { adsenseSnippet, adsTxt } from "./adsense.ts";
+import { type BrainFeature, brainFor, isBrainProvider, tightenOnly } from "./brain.ts";
 import { companionResponse, isLoopback, phoneMayCall } from "./companion.ts";
 import {
   connectionView,
@@ -182,6 +183,10 @@ async function handle(
   }
   if (req.method === "GET" && pathname === "/api/ads/report") {
     send(res, 200, await loadAdReport(process.env));
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/brain") {
+    send(res, 200, { ok: true, ...brainFor(engine.dataDir).view() });
     return;
   }
   if (req.method === "GET" && pathname === "/api/self-repair") {
@@ -387,6 +392,55 @@ async function post(
             settings: await engine.usePreset(body.preset as "safe" | "balanced" | "aggressive"),
           },
         };
+      case "/api/brain/provider": {
+        const provider = String(body.provider ?? "");
+        if (!isBrainProvider(provider))
+          return { status: 400, body: { ok: false, error: "Unknown provider." } };
+        const feature = String(body.feature ?? "chat") as BrainFeature;
+        await brainFor(engine.dataDir).saveKey(
+          provider,
+          String(body.secret ?? ""),
+          String(body.password ?? "")
+        );
+        if (typeof body.model === "string") brainFor(engine.dataDir).setModel(feature, body.model);
+        return { status: 200, body: { ok: true, ...brainFor(engine.dataDir).view() } };
+      }
+      case "/api/brain/ask": {
+        const answer = await brainFor(engine.dataDir).complete("chat", String(body.text ?? ""));
+        return { status: 200, body: { ok: true, message: answer } };
+      }
+      case "/api/brain/tune": {
+        const store = brainFor(engine.dataDir);
+        const proposed = { ticketMaxSol: Math.max(0.0125, engine.settings.ticketMaxSol * 0.8) };
+        const judged = tightenOnly(engine.settings, proposed);
+        if (body.confirm !== true) {
+          store.pending = judged.ok ? judged.settings : null;
+          return {
+            status: 200,
+            body: { ok: false, message: judged.reason, settings: judged.settings },
+          };
+        }
+        if (!judged.ok || !store.pending)
+          return { status: 400, body: { ok: false, message: judged.reason } };
+        store.history.push(engine.settings);
+        const saved = await engine.saveSettings(store.pending, false);
+        store.pending = null;
+        return {
+          status: 200,
+          body: { ok: saved.ok, message: saved.message, settings: saved.settings },
+        };
+      }
+      case "/api/brain/rollback": {
+        const store = brainFor(engine.dataDir);
+        const previous = store.history.pop();
+        if (!previous)
+          return { status: 400, body: { ok: false, message: "Nothing to roll back." } };
+        const saved = await engine.saveSettings(previous, false);
+        return {
+          status: 200,
+          body: { ok: saved.ok, message: "Rolled back.", settings: saved.settings },
+        };
+      }
       case "/api/self-repair/confirm": {
         const proposal = engine.repairProposal ?? proposeFix(engine.logs.map((row) => row.text));
         const before = engine.healthNow().score;

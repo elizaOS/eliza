@@ -4,6 +4,10 @@ This is the Valhalla desk. It looks like the ACCELERATION command center. It run
 
 The repository is public. An access code, if you set one, only opens the app. It does not hide the code.
 
+## Valhalla Brain
+
+Brain is the advisory model layer. Gemini is the default. You can also pick OpenAI, Anthropic, Grok, OpenRouter, or local Ollama. Keys stay encrypted on this PC. A monthly cap stops extra model calls. The analyst can only make a pass fail. It cannot approve a coin the rules already blocked. A strategy tweak waits for your tap and can be rolled back. Details are in [docs/AI.md](../../docs/AI.md).
+
 ## Self-repair
 
 The agent watches itself. Hung calls time out. The next data provider is used. A failed balance is unknown, not zero. A send that lands late is not sent again. A restart runs only when no position is open and nothing is in flight. The desk shows a health score and a Self-Repair Log. A suggested fix waits for your confirm tap. A code change is never applied by the agent. Details are in [docs/SELF_REPAIR.md](../../docs/SELF_REPAIR.md).

@@ -36,6 +36,7 @@ async function bootGate() {
     else fillSettings(meta);
     loadConnections();
     loadRepair();
+    loadBrain();
   } catch {
     document.getElementById("gate").hidden = false;
   }
@@ -55,6 +56,39 @@ document.getElementById("gateForm").addEventListener("submit", async (event) => 
     document.getElementById("gateErr").textContent = err.message;
   }
 });
+
+async function loadBrain() {
+  const host = document.getElementById("brainPanel");
+  if (!host) return;
+  const data = await api("/api/brain");
+  host.innerHTML = "<div>" + data.provider + " · " + data.model + " · $" + Number(data.budgetUsd).toFixed(2) + " left</div>" +
+    "<label>Provider</label><select id=\"brainProvider\"><option>gemini</option><option>openai</option><option>anthropic</option><option>grok</option><option>openrouter</option><option>ollama</option></select>" +
+    "<label>Key</label><input id=\"brainKey\" type=\"password\" autocomplete=\"off\"/>" +
+    "<label>PC password</label><input id=\"brainPass\" type=\"password\" autocomplete=\"off\"/>" +
+    "<div class=\"rowbtns\"><button type=\"button\" id=\"saveBrain\">SAVE PROVIDER</button><button type=\"button\" id=\"tuneBrain\">SUGGEST TIGHTER</button><button type=\"button\" id=\"confirmTune\">CONFIRM</button><button type=\"button\" id=\"rollbackBrain\">ROLLBACK</button></div>";
+  document.getElementById("brainProvider").value = data.provider || "gemini";
+  document.getElementById("saveBrain").onclick = async () => {
+    await api("/api/brain/provider", {
+      provider: document.getElementById("brainProvider").value,
+      secret: document.getElementById("brainKey").value,
+      password: document.getElementById("brainPass").value,
+    });
+    document.getElementById("brainKey").value = "";
+    loadBrain();
+  };
+  document.getElementById("tuneBrain").onclick = async () => {
+    const result = await api("/api/brain/tune", { confirm: false });
+    say(result.message);
+  };
+  document.getElementById("confirmTune").onclick = async () => {
+    const result = await api("/api/brain/tune", { confirm: true });
+    say(result.message);
+  };
+  document.getElementById("rollbackBrain").onclick = async () => {
+    const result = await api("/api/brain/rollback", {});
+    say(result.message);
+  };
+}
 
 async function loadRepair() {
   const host = document.getElementById("repairPanel");
