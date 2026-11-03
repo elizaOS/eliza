@@ -21,8 +21,14 @@ jobs:
         with:
           node-version: "24.15.0"
       - name: Install Chromium
-        working-directory: plugins/plugin-valhalla-copybot
-        run: npm install playwright@1.49.1 && npx playwright install --with-deps chromium
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw"
+          cd "$RUNNER_TEMP/pw"
+          npm init -y
+          npm install playwright@1.49.1
+          npx playwright install --with-deps chromium
+          mkdir -p "$GITHUB_WORKSPACE/plugins/plugin-valhalla-copybot/node_modules"
+          ln -sfn "$RUNNER_TEMP/pw/node_modules/playwright" "$GITHUB_WORKSPACE/plugins/plugin-valhalla-copybot/node_modules/playwright"
       - name: Load the unpacked extension
         working-directory: plugins/plugin-valhalla-copybot
         run: xvfb-run -a node scripts/check-extension.mjs
