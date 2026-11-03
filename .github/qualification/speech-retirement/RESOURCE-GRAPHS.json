@@ -1,0 +1,41 @@
+{
+  "state": "SOURCE_ONLY_API_NORMAL_PRODUCER_RESOURCE_PROPOSAL_NO_EXECUTION",
+  "source": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "priorAssessmentSHA256": "e4fa96a855d820d7b3ca8c21ab812a4e86c8b56234fd6c93a5f6b7ed60826cc1",
+  "candidateTaskGraph": {
+    "nodes": 49,
+    "executable": 18,
+    "transit": 31,
+    "edges": 170,
+    "independentlySourceRederived": true,
+    "actualTurboMetadataStillUnrun": true
+  },
+  "currentStaticGraph": [
+    "canonicalnode run-turbo withconcurrency1 -> exactfrozenTurboAPItypechecktaskcone",
+    "16actualproducerbuildtasks (Core/auth/host/contracts/routing/cloudSDK/voice/UI/securestore/assistant/sql/sqlite/scheduling/todos/websearch/wallet) +Sharedsemantic typecheck +APIsemantictypecheck/router/workerDRYRUN",
+    "normaltsc=actualsame-lockLinuxaliasTypeScript7.0.2; emitters/compat tsc6=@typescript/typescript6@6.0.2; DTSrolluplibraryordinarytypescript6.0.3; allmustbeverifiedfreshb93, no binaryorDTSborrow"
+  ],
+  "proposedBudget": {
+    "host": "VerifiedGitHubhostedUbuntu24/Linuxamd64; beforecompilerrequiresMemTotal>=15GiB(usablememoryofnominal16GBhost) andMemAvailable>=10GiB; no forcedovercommit",
+    "frozenInstall": "same4GiB/1536Node/CPU2/PIDs256/ignore-scripts/frozenlock; fresh135rootphysicaldependencycensus before+afterallbuilds",
+    "producerAndCompilerContainer": "8GiBhard/noadditionalswap/NODE_OPTIONS4096existingnormalCIheap/CPU2/PIDs256; RUN_TURBO_CONCURRENCY1; nativeTS7/externalmemorychargedtosamehardcap, fitUNMEASURED",
+    "time": "sameRootabsolute1200s/job22min, normalentryphase900s maxclampedremainingwindow; missing/timeout/OOMincomplete\u2014notraise",
+    "storage": "same16GiBentry8GiBstop12GiBgrowth8MiBperphaselog; noSDK/cache/globalcleanup",
+    "scope": "Onecandidateb93 normalfulltypechecktarget; noTS6APIcompatibility/baseline/realDB/provider/model/deployadmission"
+  },
+  "prebuildGates": [
+    "exactsource/lock+actualcompilerownerpaths/packagehashes+allNPM/toolphysicalbytes",
+    "actualcanonicalTurbo --dry=json executabletasks+scripts matchsource18; allotherobservedtasks knownsource transitonly, no extra commands",
+    "allnormaloutputdirs initiallyabsent/same-subjectowned, no local/remote-cachepass (force/local-only)",
+    "no provider/cloudcredentials/network; Wranglercallmustretainliteral--dry-run productionbundle only",
+    "allproducer/ownedsource trees immutableGitOIDs+39originalSHA/extrahelper/configpins; noalias/stub/borrowedCore.d.ts"
+  ],
+  "requiredResult": [
+    "normalCore --noCheck emissionnotCoretypecheckPASS",
+    "distinctAPIcompiler7/routercontract/worker-dryrunstart+ordinaryexit events viaread-onlyNodepreloadmetadata, no script edits",
+    "actualnormalentry0 plusallthreeAPIstages0 andallnormalproduceroutputs fingerprints boundb93",
+    "alltrackedsourceandallinstalleddepsunchanged; generateddist/.turbo/.wrangler outputs stayownedfreshsource; allPG/CIDnonOOMclosure",
+    "allcompilerdiagnosticsretained; anyprerequisitefailuremeansAPIunrun/incomplete, no baselineerror subtraction"
+  ],
+  "costNote": "New CI-onlycompilation proposal, no execution authorized. 18normalrunnabletasks serialTurbo butinternalcompiler/bundlerhelperscanallocateconcurrently;8GiB/4096heap fitnotmeasured. Fullphysicalcensus/actualnormalproducers mandatory, no reducedcope substitutes. No provider/model/network calls afterinstall; readonlystage-events metadata adds boundedlocalI/Oonly. Rootmustreviewnewfiniteprofile/sourceunderstanding beforepublication/Go."
+}
