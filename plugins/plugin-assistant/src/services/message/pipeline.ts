@@ -1052,8 +1052,10 @@ export async function runV5MessageRuntimeStage1(
       const visibleProgress = sanitizeUserVisibleModelOutput(earlyReplyText);
       earlyReplyText =
         visibleProgress.kind === "text" ? visibleProgress.text : "";
-      // A withheld acknowledgment draft is logged by gate only, never with
-      // its text, so a silent early turn can be explained from the log.
+      // A pending Stage-1 acknowledgment draft withheld by the closed grammar
+      // or the planned-reply egress is logged by gate only, never with its
+      // text. Drafts blanked earlier or stopped at the later dispatch gates
+      // are not logged.
       const pendingAcknowledgmentDraft =
         Boolean(args.onPlanningAcknowledgment) &&
         prePatchStageOneReplyEffectStatus === "pending" &&

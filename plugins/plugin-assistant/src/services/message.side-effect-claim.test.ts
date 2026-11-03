@@ -2600,11 +2600,13 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
   });
 
-  // The open form names only the listed apps, bare. For a view outside that
-  // list, or with an article, the open form is dropped whole (silence until
-  // the final reply) while the lookup form of the same view is admitted. The
-  // planned-view rule steers toward the open form, so this pins the trade-off
-  // instead of growing the grammar.
+  // The open form takes a listed app without an article, or an item such as
+  // "your note" or "the event", plus an optional now, for you, real quick or
+  // quickly tail. For a view outside the app list, or a listed app with an
+  // article, the open form is dropped whole (silence until the final reply)
+  // while the lookup form of the same view is admitted. The planned-view rule
+  // steers toward the open form, so this pins the trade-off instead of
+  // growing the grammar.
   it.each([
     { open: "Let me open Messages.", lookup: "Let me check your messages." },
     { open: "Let me open Reminders.", lookup: "Let me check your reminders." },
