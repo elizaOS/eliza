@@ -1,0 +1,64 @@
+{
+  "state": "EXISTING_LOCAL_COMPILER_CHAIN_SOURCE_ONLY_NOT_EXECUTED_OR_FETCHED",
+  "atUTC": "2026-11-03T19:31:02.998571+00:00",
+  "files": {
+    "bin/tsc": {
+      "path": "/Users/nubs/Git/alpha-direct-current-35-20261102/artifacts/local-agent-resident-35e0a605b3d560eedec664e79693d5ecc0b5ece3-r2/node_modules/.bun/typescript@7.0.2/node_modules/typescript/bin/tsc",
+      "bytes": 44,
+      "sha256": "2219f428a7e55aaf1f7ad85b9b0f0cf5078aeb76ccc9a7c6036c92d48f492ffd"
+    },
+    "package.json": {
+      "path": "/Users/nubs/Git/alpha-direct-current-35-20261102/artifacts/local-agent-resident-35e0a605b3d560eedec664e79693d5ecc0b5ece3-r2/node_modules/.bun/typescript@7.0.2/node_modules/typescript/package.json",
+      "bytes": 3087,
+      "sha256": "3722b30210616a13a3213ded11575ba6b2dbab10c32a5ef67afca8513e27017e"
+    },
+    "lib/tsc.js": {
+      "path": "/Users/nubs/Git/alpha-direct-current-35-20261102/artifacts/local-agent-resident-35e0a605b3d560eedec664e79693d5ecc0b5ece3-r2/node_modules/.bun/typescript@7.0.2/node_modules/typescript/lib/tsc.js",
+      "bytes": 609,
+      "sha256": "cbdfbf11c26ed00dfc073155e316a42d6d6d8a387be61006b82fa9aa93ac572e"
+    },
+    "lib/getExePath.js": {
+      "path": "/Users/nubs/Git/alpha-direct-current-35-20261102/artifacts/local-agent-resident-35e0a605b3d560eedec664e79693d5ecc0b5ece3-r2/node_modules/.bun/typescript@7.0.2/node_modules/typescript/lib/getExePath.js",
+      "bytes": 3051,
+      "sha256": "96c10fd3a18e165d7323de8e314ac8d755ad96811f9fbc304a5b3ba4e05285cc"
+    }
+  },
+  "hostedIdentityMatch": "Actual41700932728 apiTsc binSHA2219 and package manifestSHA3722 exactly match these existinglocalbytes. Library/resolver individual hashes are LOCAL ONLY until fresh hosted binding.",
+  "binSource": "#!/usr/bin/env node\nimport \"../lib/tsc.js\";\n",
+  "packageImports": {
+    "#getExePath": "./lib/getExePath.js",
+    "#enums/*": {
+      "types": "./dist/enums/*.enum.d.ts",
+      "default": "./dist/enums/*.js"
+    },
+    "#vscode-jsonrpc/node": "./vendor/vscode-jsonrpc/lib/node/main.js"
+  },
+  "entryBehavior": {
+    "localSource": "lib/tsc.js imports#getExePath; POSIX+process.execve function triesexecve(exe,[exe,...args]); ifthrow/unavailable fallbackexecFileSync(exe,args,{stdio:inherit})",
+    "sourceExcerpts": {
+      "execve": "process.execve(exe, [exe, ...process.argv.slice(2)]);",
+      "fallback": "execFileSync(exe, process.argv.slice(2), { stdio: \"inherit\" });"
+    },
+    "linuxResolution": "Installed package path resolves @typescript/typescript-linux-x64/package.json then siblinglib/tsc; publisher expected bin name tsc for package name typescript",
+    "actualPathTaken": "UNMEASURED: samePID execve vs native child fallback not observed by current receipts",
+    "nodeHeapImplication": "NODE_OPTIONS=4096 constrains Node launcher only; it does not itself set memory budget for the platform executable afterexecve or inexecFileSync child",
+    "exitRecorderImplication": "Successful execve replaces Node process image; Node process exit listener cannot report native final exit. Existing stage recorder can miss completion even ifcompilerlaterreturns0. No syntheticexit receipt allowed."
+  },
+  "counterpartOnly": {
+    "localDarwinPackage": "@typescript/typescript-darwin-arm64@7.0.2",
+    "manifestSHA256": "e88558e22e3db6c4da920e15a60eb2bbea801732b94aedb67e972be2a7f485b8",
+    "binaryMagic": "cffaedfe0c000001",
+    "binaryBytes": 23653616,
+    "binaryNotExecutedOrCopied": true,
+    "linuxPlatformPackageAbsentAtCheckedLocalCandidate": true,
+    "notActualLinuxELFOrGoBuildIdentityProof": true
+  },
+  "unproved": [
+    "Freshhostedlib/resolver/nativepackage/binary hashes",
+    "Nativebinaryruntime/Go version",
+    "Actualexecvebranch andnativePID mapping",
+    "Node/native/processRSS/cgroupanon/file/kernel peaks",
+    "Nativeexactexit/affectedvictim identity"
+  ],
+  "noCLIImportFetchCompileProviderOrConfigChange": true
+}

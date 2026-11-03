@@ -1,0 +1,82 @@
+{
+  "recipe": "normal-api-owning-typecheck",
+  "sourceCommit": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "sourceTree": "cd96bb6da937deb3419930432c1d2b35374d74a8",
+  "normalCommand": [
+    "/usr/local/bin/node",
+    "packages/scripts/run-turbo.ts",
+    "run",
+    "typecheck",
+    "--filter=@elizaos/cloud-api"
+  ],
+  "normalEnvironment": {
+    "RUN_TURBO_CONCURRENCY": "1",
+    "RUN_TURBO_NO_INIT_CRASH_RETRY": "1",
+    "TURBO_TELEMETRY_DISABLED": "1"
+  },
+  "expectedRunnableTasks": 18,
+  "expectedMaximumTasks": 49,
+  "compilerContainerMemory": "8g",
+  "compilerContainerBytes": 8589934592,
+  "compilerNodeOldSpaceMiB": 4096,
+  "compilerCgroupParent": "system.slice",
+  "normalPhaseSeconds": 900,
+  "wholeSeconds": 1200,
+  "jobMinutes": 22,
+  "CPU": 2,
+  "PIDs": 256,
+  "phaseLogBytes": 8388608,
+  "entryFreeBytes": 17179869184,
+  "stopFreeBytes": 8589934592,
+  "growthBytes": 12884901888,
+  "physicalHostMinimumBytes": 16106127360,
+  "availableHostMinimumBytes": 10737418240,
+  "installMemory": "4g",
+  "installNodeOldSpaceMiB": 1536,
+  "cachePolicy": "EXACTcanonicalentry, noqualifierforce/cache/summarize. OrdinarynonlinkedfreshGitcheckout/defaultcache absentoremptybeforemetadataandentry; no cacheDir/config/env/token/team/API/hostHOMEsharing; networknone. Actual18taskorder+ownnormaloutputs+APIstageevidence mandatory, no job/cache/event-onlyPASS.",
+  "excluded": [
+    "APItsc6compatibilityleg",
+    "baseline5006execution",
+    "Core semantic typecheckPASSfromnoCheckemit",
+    "publicD1/provider-money/production/nativeSDK/device/model/voice",
+    "sourcealiases/stubs/filters/skippedconfigs/hostcleanup"
+  ],
+  "normalNodeEnv": "Unset, matchingcanonicalnormalCI; fixtureNODE_ENV=test removed",
+  "effectiveDockerEndpoint": "Rejectinheritedremote/context/TLS/API/configoverrides; allDockerCLIcalls pinnedunix:///var/run/docker.sock+emptyownedconfig",
+  "turboBuiltinEnvSourceProofSHA256": "6b1d351d0b83c044cb97fc3c0b8c1fde268f187715b43c31c87ddc19a2dc7ea3",
+  "graphOrderGate": "Exactsource runnabletaskscriptset and transitive executabledependencyclosure throughactualobservedtransitnodes; unknown/missing/mismatch stopsbeforebuild",
+  "staticArgvProofSHA256": "961e11f3ebe1f53ddac73018f15307d5ea52b508f74c0a29fb3a98882a352ca6",
+  "metadataTransport": {
+    "contractSHA256": "f15478bc41bd702f5acacb0726bcaf0bd68aac87644b250ddadbf0ad030f04fb",
+    "hardFileSizeBytes": 8388608,
+    "scope": "normal-api-graph only; regular FD stdout; same-CID HostConfig and /proc exact limit required; cap boundary/nonzero/signal/unknown fail; no normal entry change"
+  },
+  "bunxEntrypoint": {
+    "contractSHA256": "3dc19f5433d5bbb0c4cb2199929a6074f24a0e30cbfb211756995d5f7825752c",
+    "vendorLayoutProofSHA256": "7c99c33451eb71e270e3d8a1ea164cd1bda583cda186afc6871af4cec0e0ed3c",
+    "scope": "Restore exact official Bun multicall symlink in isolated toolchain and validate same executable before normal producers; canonicalSDKcommand unchanged"
+  },
+  "nativeMemoryDiagnostic": {
+    "measurementOnly": true,
+    "typeAcceptance": "NOT_ISSUED_BY_MEASUREMENT_CONTROLLER",
+    "sourceEvidenceContractSHA256": "4d8cb60372acaf0fe69a93cd6742fd41b2bae0b9a4a5031ed2c2233e86938cd6",
+    "sourceShapeSHA256": "de2a84d548736f5a8c0e3291232925581e5abf599373742d7d08a2dda55a040b",
+    "resourceGraphSHA256": "040e23460f4ff12db8e1a4ba085bcfa51bcd6cc84cba718972d30159a7216158",
+    "observerSHA256": "56f744e3c6882e569a764ab3c714dfdff3aea60765307926737388f3777135d7",
+    "newDiagnosticBytesMaximum": 212992,
+    "requiredRootGOFlags": {
+      "allowNativeCompilerMeasurement": true,
+      "measurementOnly": true
+    },
+    "freshNativeLinuxIdentityBeforeEntry": true,
+    "nativeCompletion": "No fabricatednativeexit; missingNodeexitafterexecve isunobserved, notTypeScripterror",
+    "same8GiBNormalCommandProfile": true
+  },
+  "exactRunnerCohortSourceReview": {
+    "cohort": "20261101.360.1",
+    "provenanceSHA256": "b632e2087f81a3405c27c1277aeccb242a66485e4ad07051f311279975983167",
+    "readmeSHA256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124",
+    "runtimeCapabilities": "UNKNOWN_REQUIRE_SAME_RUN_GATES",
+    "noWildcardOrDockerPinChange": true
+  }
+}

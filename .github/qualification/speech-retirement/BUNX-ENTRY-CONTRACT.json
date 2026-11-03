@@ -1,0 +1,28 @@
+{
+  "state": "PINNED_OFFICIAL_BUNX_LAYOUT_SOURCE_CONTRACT_NO_EXECUTION",
+  "vendorProofSHA256": "7c99c33451eb71e270e3d8a1ea164cd1bda583cda186afc6871af4cec0e0ed3c",
+  "vendorImage": "docker.io/oven/bun@sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2",
+  "vendorConfig": "sha256:8165c75cee6a4fca90a1229b3db2b3910e7bc99675f7490df5a112085f224d6d",
+  "vendorRevision": "744846f844374847c902b5e7fd59b4342a51ef99",
+  "vendorLayer": "sha256:995f23d6717fb18d9e3ee7901ce64cf02d5386f0358688dcb35682d362a9fa11",
+  "vendorLayerCompressedBytes": 3398,
+  "vendorEntry": {
+    "path": "usr/local/bin/bunx",
+    "type": "symlink",
+    "linkTarget": "/usr/local/bin/bun",
+    "mode": "0777"
+  },
+  "subsequentLayer": "Final138B layer onlycreateshome/bun/app; no bun/bunx/ancestor replacement or whiteout",
+  "actualBunVersion": "1.4.2",
+  "expectedBunBinarySHA256": "a83d263767d839e4d2649ca8e35d07159c7afc99afdc96d731ced29e056dda0c",
+  "construction": "Keep pinnedbinaryCOPY; absent-path guards then reproduce exact officialvendor ln -s /usr/local/bin/bun /usr/local/bin/bunx. No replacement binary, wrapper, command substitution or SDKtask change.",
+  "gate": "New metadata-only bunx ownership probe before prior six owners; validate symlink/target/regular executable/realpath/sameinode/Bunversion and bytes against already Root-PLAN-validated versions.log",
+  "sixPriorOwnerContractsAndLibraryUnchanged": true,
+  "noBunxExecutionByMetadataProbe": true,
+  "actualBunxProducerExecution": "UNRUN_UNPROVEN",
+  "failedRunPreserved": 41698886421,
+  "spentIntentPreserved": "ad0493f5035720e5ac18309389f1e222",
+  "rawFailureReceiptPath": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-transport-once-20261103/cloud-owner-monitor/VERIFIED-FAILURE.json",
+  "rawFailureReceiptSHA256": "8c4cff327c29276cb588b9f9c6f7c20b4df469947d2899ffb325db0432e61e3b",
+  "runtimeFootprint": "One exact official symlink and small read-only metadata; no added executable or additional base-image fetch beyond the same pinned images; no normal producer/resource/cache/environment configuration change"
+}

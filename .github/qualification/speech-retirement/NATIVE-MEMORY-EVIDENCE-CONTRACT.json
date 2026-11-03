@@ -1,0 +1,88 @@
+{
+  "state": "SOURCE_CONTROLLER_DRAFT_NOT_EXECUTED_REQUIRES_CODE_AND_CONSUMER_REVIEW",
+  "baseWorkflowCommit": "6fd3cd41acedf930ff4c85ec4c7f203ab20b4d83",
+  "baseOperatorSeal": "16e593180107b13c9b1839215302e03187664650a271fc3def87dcdb09e60ede",
+  "sourceCommit": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "sourceDataDesignReviewSHA256": "242319dd6a3310ce49d00d5b3be63ab017046fb69888a102c1d5e209109ae829",
+  "code": {
+    "compiler-bootstrap.mjs": "1b87bf442ae874f833a54a7a9ee441c542f4976b0f652326adf2edf0a9e6ccd3",
+    "api-stage-recorder.cjs": "835982d8c5a5e9ecb937f6950fb9c04e9fd90c5f89c5fcf1753e9e76e202772d",
+    "run.py": "cd3cefdaa2125df0ce15eae7da67db9848315c71242bc2aabd87caa0225703e6",
+    "native_memory_observer.py": "56f744e3c6882e569a764ab3c714dfdff3aea60765307926737388f3777135d7",
+    "claim.py": "8c588258477c30a722d7d9f118c2b57c23dfbc301a857bb158ecbf188e87ac45",
+    "workflow.yml": "5af629807673445ebeae79fb64f46a4930d49e4cee911872a6bbc51c0831aaea"
+  },
+  "freshOwnerGate": "Launcher2219, local-reviewed neutral librarycbdf/resolver96c checked freshly; canonical platform supplier resolved usingbuiltin createRequire.resolve metadataonly, Linux/x64/version/Githead/ELFclass64LEmachine62/bytes/mode/hash validated; native program never run by metadata probe",
+  "observerBinding": "ExistingPythonphase only; exactprestartactualDockerCID/name/labels/resources suppliedafterexistingcheck_container/check_resources; fixedsystemdscopeFD+dev/inode beforekernelreads; PID cgroup/birth/NSpid/exeFD checks twice, native actualhostfileSHA/device/inode/size/mtime binding; no outside-ownedPID metrics/env/modelcontent",
+  "bounds": {
+    "kernelAndProcessPollAtMostHz": 1,
+    "timelineSeconds": 5,
+    "perTickAlarmSeconds": 0.25,
+    "finalizationAlarmSeconds": 2,
+    "inputReadCallsPerTick": 2048,
+    "inputBytesPerTick": 2097152,
+    "procPathBytes": 1024,
+    "cmdlineReadBytes": 4096,
+    "stageReadBytes": 49152,
+    "processStatesMaximum": 256,
+    "ownedContainerPIDMaximum": 256,
+    "nativeHashMaximumBytes": 67108864,
+    "newOutputCaps": {
+      "MEMORY-CGROUP.jsonl": 90112,
+      "MEMORY-PROCESS-SUMMARY.json": 90112,
+      "MEMORY-OBSERVATION.json": 8192,
+      "MEMORY-FINALIZATION.json": 8192,
+      "API-STAGE-EVIDENCE.json": 16384
+    },
+    "newTotalOutputBytes": 212992,
+    "observerKernelProcPayloadWholeBytes": 67108864,
+    "observerKernelProcReadCallsWhole": 262144,
+    "wholePolls": 901,
+    "ownerMetadataInputBytes": 32768
+  },
+  "resourceProfilesUnchanged": {
+    "memoryBytes": 8589934592,
+    "memorySwapBytes": 8589934592,
+    "nodeHeapMiB": 4096,
+    "CPU": 2,
+    "PIDs": 256,
+    "wholeSeconds": 1200,
+    "entrySeconds": 900,
+    "concurrency": 1
+  },
+  "requiredFreshRootGOFields": {
+    "allowNativeCompilerMeasurement": true,
+    "measurementOnly": true
+  },
+  "evidenceConsumerChange": {
+    "measurementOnly": true,
+    "allOutcomesTypeAcceptance": "NOT_ISSUED_BY_MEASUREMENT_CONTROLLER",
+    "normalPipelineZero": "Actualnormalpipeline0 plus existingrouter/workerNodeexitgates +source/dependency/outputchecks retained; missingNodecompilerexit canbe expectedexecve andisexplicitlyUNOBSERVED ratherthanTSError",
+    "nativeRawExitCode": "Alwaysunknown. Existing Node-wrapper exit events, ifpresent, are separatelyreported andnotrenamed native raw wait status.",
+    "diagnosticJobZero": "RequiresMEMORY-FINALIZATION.collectionContractSatisfied (noomissions/missingbindings/samples/phaseerror) plusactualpipeline/auxiliary/source/dependency/outputchecks andCLI/FDclosure; incompletecollection remainsdiagnosticexit1, neverTypesPASS.",
+    "nonzeroOrOOM": "Actualpipelineexit/DockerOOM/cleanup retained; no partialsuccess orfinalcensuscarryover",
+    "unknownCoverage": "Sampledpeaks lowerbounds, vanishedlastcounters unknownnotzero, racecounts explicit; no inferrednativeexitfromPID disappearance"
+  },
+  "notImplementedOrAdmitted": [
+    "No memory/profile/environment/GOMEMLIMIT/GOGC/GOMAXPROCS tuning",
+    "No SDK command/task/config/lock/filter/cache/source change",
+    "No actual CLI/probe/test/import/imagebuild/compiler/CI/GO/nonce/sourcepublication",
+    "No claimed complete native rawwaitstatus or normal type acceptance"
+  ],
+  "knownImplementationReviewFocus": [
+    "Cgroup startup/disappearance races and phase deadline/cleanup preservation",
+    "temporary SIGALRM scoped onlycurrent supervisor; rejectinheritedactivealarm",
+    "hardperfile caps/allFDclosure evenerrors; existingAPI-STAGES stream getsbirthfields butno neweventtypes",
+    "Hostpath/processnamespace identity andsamplercoverage versusactualexitsemantics",
+    "Missingnodeexit mustremainunresolved; do notweakenTypesPASS consumer"
+  ],
+  "reviewCorrections": {
+    "unknownPeak": "None until samples; explicitcoverageReasons, no zero inferred fromabsence",
+    "descriptorCustody": "EveryobserverFD acquired/registered withSIGALRMmasked; temporaryandpersistentFDs inoneglobalownedregistry; constructorfailureandfinishcloseall; timersrestoredmasked/pendingownedalarmdrained beforeoldhandler/unmask",
+    "readAccounting": "Stagepayloadread includedintick/wholecallcounterbeforeactualread",
+    "basicFirst": "CompactINCOMPLETE MEMORY-OBSERVATION writtenfirst; encoded-budgetprocessrows prioritizebinding/peakandrecordomissions; separateboundedFINALIZATION controlscollectorcontract, nevertypes",
+    "exactConsumerFDGate": "DIAG0 requiresexactnormal-api-entryrecord exit0/errorNone/ownedGroupEmptyTrue/observerFDClosureVerifiedTrue afterfinish",
+    "exeMetadataBudget": "Exe readlink callchargedbeforeactualcall andactualos.fsencodepayloadcount includedinperpath/tick/wholebudgets"
+  },
+  "admissionConsumer": "Claim validatesbothnewTRUEflags beforeartifactlookup/reservation; claimcapturesflags andrunchecksclaim/goagreement. Workflowdisplayexplicitdiagnosticonly; no execution/admissionissued."
+}
