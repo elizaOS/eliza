@@ -20,7 +20,12 @@ import type {
   ProviderResult,
   State,
 } from "@elizaos/core";
-import { hasRoleAccess, logger, timeInferenceSpan } from "@elizaos/core";
+import {
+  getUserMessageText,
+  hasRoleAccess,
+  logger,
+  timeInferenceSpan,
+} from "@elizaos/core";
 import { createFirstRunStateStore } from "../lifeops/first-run/state.js";
 
 export interface FirstRunAffordance {
@@ -65,9 +70,7 @@ function buildOneLine(
 }
 
 function explicitlyRequestsFirstRun(message: Memory): boolean {
-  const text =
-    typeof message.content.text === "string" ? message.content.text : "";
-  return FIRST_RUN_REQUEST_RE.test(text);
+  return FIRST_RUN_REQUEST_RE.test(getUserMessageText(message));
 }
 
 function shouldSurfaceFirstRun(message: Memory, inProgress: boolean): boolean {
