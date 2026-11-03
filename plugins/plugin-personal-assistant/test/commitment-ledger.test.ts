@@ -5,8 +5,10 @@
  * available.
  */
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
+import { getUserMessageText } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
 import { ownerDocumentsAction } from "../src/actions/document.ts";
+import { filterExtractedCommitments } from "../src/lifeops/commitments/extraction-evaluator.js";
 import {
   buildCommitmentRegretAudit,
   commitmentExtractionEvaluator,
@@ -265,6 +267,56 @@ describe("commitment extraction evaluator prompt", () => {
     expect(prompt).toContain(
       "Owner local time of the message: Saturday 2026-10-10 20:00 (America/Los_Angeles), ISO 2026-10-10T20:00:00-07:00",
     );
+  });
+
+  it("reads the evaluator prompt and guard from user words, not the document envelope", async () => {
+    const enveloped = [
+      "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+      "",
+      "<contextual_documents>",
+      '<source title="notes.txt" similarity="0.900">',
+      "I will send the deck on Friday.",
+      "</source>",
+      "</contextual_documents>",
+      "",
+      "<user_request>",
+      "what is on my calendar tomorrow?",
+      "</user_request>",
+    ].join("\n");
+    const message = {
+      createdAt: Date.parse("2026-10-11T03:00:00.000Z"),
+      content: { text: enveloped },
+    } as Memory;
+    const runtime = {
+      agentId: AGENT_ID,
+      getCache: async () => null,
+      setCache: async () => true,
+      deleteCache: async () => true,
+      getSetting: (key: string) =>
+        key === "TIMEZONE" ? "America/Los_Angeles" : undefined,
+    } as unknown as IAgentRuntime;
+    const context = { runtime, message, state: {} as State };
+    const prepared = await commitmentExtractionEvaluator.prepare?.(context);
+    const prompt = commitmentExtractionEvaluator.prompt({
+      ...context,
+      prepared: prepared as { timeZone: string },
+    });
+    expect(prompt).toContain("what is on my calendar tomorrow?");
+    expect(prompt).not.toContain("I will send the deck on Friday.");
+
+    const candidate = {
+      evidence: "I will send the deck on Friday.",
+      summary: "send the deck",
+      confidence: 0.95,
+    };
+    expect(
+      filterExtractedCommitments(getUserMessageText(message), [candidate]),
+    ).toHaveLength(0);
+    expect(
+      filterExtractedCommitments("I will send the deck on Friday.", [
+        candidate,
+      ]),
+    ).toHaveLength(1);
   });
 });
 

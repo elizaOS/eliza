@@ -15,7 +15,7 @@ import type {
   JSONSchema,
   Memory,
 } from "@elizaos/core";
-import { hasRoleAccess } from "@elizaos/core";
+import { getUserMessageText, hasRoleAccess } from "@elizaos/core";
 import { resolveOwnerTimeZone } from "../owner/fact-store.js";
 import { LifeOpsRepository } from "../repository.js";
 import {
@@ -185,8 +185,8 @@ export const commitmentExtractionEvaluator: Evaluator<
   schema: commitmentExtractionSchema,
 
   async shouldRun({ runtime, message }) {
-    const text = message.content.text;
-    if (typeof text !== "string" || text.trim().length === 0) return false;
+    const text = getUserMessageText(message);
+    if (text.trim().length === 0) return false;
     if (message.entityId === runtime.agentId) return false;
     // Deterministic prefilter: no commitment cue (or a hedge) means no model
     // spend and structurally no row — the false-positive guard's outer wall.
@@ -218,7 +218,7 @@ Source message timestamp: ${instant.toISOString()}
 Owner local time of the message: ${describeNowForPrompt(instant, prepared.timeZone)}, ISO ${formatInstantAsRfc3339InTimeZone(instant, prepared.timeZone)}
 
 Owner message:
-${message.content.text ?? ""}`;
+${getUserMessageText(message)}`;
   },
 
   parse: parseCommitmentExtractionOutput,
@@ -227,7 +227,7 @@ ${message.content.text ?? ""}`;
     {
       name: "persistExtractedCommitments",
       async process({ runtime, message, output }) {
-        const text = message.content.text ?? "";
+        const text = getUserMessageText(message);
         const guarded = filterExtractedCommitments(text, output.commitments);
         if (guarded.length === 0) {
           return { success: true, values: { commitmentRowsCreated: 0 } };
