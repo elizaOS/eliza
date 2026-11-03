@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 /** Free is ad-supported and limited. Pro removes ads and lifts the limits. */
 
 export type Tier = "free" | "trial" | "pro";
@@ -20,7 +22,41 @@ export const FREE_WALLET_LIMIT = 1;
 export const FREE_WATCHLIST_LIMIT = 3;
 export const FREE_BRAIN_SCORES_PER_DAY = 1;
 export const FREE_ALERT_DELAY_MS = 60_000;
-export const TRIAL_MS = 3 * 24 * 60 * 60 * 1000;
+
+export function loadTrialDays(file = new URL("../product.config.json", import.meta.url)): number {
+  try {
+    const parsed = JSON.parse(readFileSync(file, "utf8")) as { TRIAL_DAYS?: number };
+    const days = Number(parsed.TRIAL_DAYS);
+    if (Number.isFinite(days) && days > 0) return days;
+  } catch {
+    // Use the default when the config file is missing.
+  }
+  return 15;
+}
+
+export const TRIAL_DAYS = loadTrialDays();
+export const TRIAL_MS = TRIAL_DAYS * 24 * 60 * 60 * 1000;
+
+/** Play Console free-trial offer. The period follows TRIAL_DAYS. */
+export function playTrialOffer(days = TRIAL_DAYS) {
+  return {
+    productId: "valhalla_pro_monthly",
+    basePlanId: "monthly",
+    offerId: `trial-${days}`,
+    pricingPhase: "free",
+    billingPeriod: `P${days}D`,
+  };
+}
+
+/** App Store Connect introductory offer. The length follows TRIAL_DAYS. */
+export function storeKitTrialOffer(days = TRIAL_DAYS) {
+  return {
+    productId: "valhalla_pro_monthly",
+    paymentMode: "freeTrial" as const,
+    periodUnit: "day" as const,
+    numberOfPeriods: days,
+  };
+}
 
 export interface PlanInput {
   pro: boolean;
@@ -65,7 +101,7 @@ export function alertDelayMs(tier: Tier): number {
 }
 
 export function paywallCopy(prices: PlanPrices = PLAN_PRICES): string {
-  return `Free includes ads, 1 wallet, 3 watchlist coins, and 1 Brain score a day. Pro is ${prices.launchMonthly}. Yearly and Lifetime are coming soon. Pro has no ads. This is not a promise of profit.`;
+  return `Free includes ads, 1 wallet, 3 watchlist coins, and 1 Brain score a day. A ${TRIAL_DAYS} day free Pro trial is included. Pro is ${prices.launchMonthly}. Yearly and Lifetime are coming soon. Pro has no ads. This is not a promise of profit.`;
 }
 
 export function comparisonRows(): Array<{ feature: string; free: string; pro: string }> {
@@ -74,7 +110,7 @@ export function comparisonRows(): Array<{ feature: string; free: string; pro: st
     { feature: "Live balances and P&L", free: "Yes", pro: "Yes" },
     { feature: "Alerts", free: "Basic, delayed", pro: "Instant Telegram and push" },
     { feature: "Watchlist", free: "3 coins", pro: "Unlimited" },
-    { feature: "Brain scores", free: "1 a day, plus a trial", pro: "Unlimited" },
+    { feature: "Brain scores", free: `1 a day, plus a ${TRIAL_DAYS} day trial`, pro: "Unlimited" },
     { feature: "Ads", free: "Banner and optional rewarded", pro: "None" },
     { feature: "P&L history", free: "Today", pro: "Full history and CSV" },
     { feature: "Desktop layouts", free: "Single", pro: "Multi-chart" },

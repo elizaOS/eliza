@@ -6,14 +6,24 @@ import {
   comparisonRows,
   interstitialOnOpen,
   paywallCopy,
+  playTrialOffer,
+  storeKitTrialOffer,
+  TRIAL_DAYS,
   tierFor,
 } from "../src/plan.ts";
 
 describe("Free and Pro plans", () => {
-  it("gives a 3 day trial and then returns to free", () => {
+  it("gives a 15 day trial and then returns to free", () => {
     const start = Date.parse("2026-11-01T00:00:00Z");
-    expect(tierFor({ pro: false, trialStartedAt: start, now: start + 2 * 86400000 })).toBe("trial");
-    expect(tierFor({ pro: false, trialStartedAt: start, now: start + 4 * 86400000 })).toBe("free");
+    expect(TRIAL_DAYS).toBe(15);
+    expect(playTrialOffer().billingPeriod).toBe("P15D");
+    expect(playTrialOffer().offerId).toBe("trial-15");
+    expect(storeKitTrialOffer().numberOfPeriods).toBe(15);
+    expect(storeKitTrialOffer().paymentMode).toBe("freeTrial");
+    expect(tierFor({ pro: false, trialStartedAt: start, now: start + 14 * 86400000 })).toBe(
+      "trial"
+    );
+    expect(tierFor({ pro: false, trialStartedAt: start, now: start + 16 * 86400000 })).toBe("free");
     expect(tierFor({ pro: true, trialStartedAt: null, now: start })).toBe("pro");
   });
 
@@ -36,7 +46,7 @@ describe("Free and Pro plans", () => {
 
   it("does not promise profit in the paywall or the table", () => {
     const copy = paywallCopy();
-    expect(copy).toContain("$9.99/mo launch price");
+    expect(copy).toContain("15 day free Pro trial");
     expect(copy).toContain("coming soon");
     expect(copy).not.toContain("$19/month");
     expect(copy.toLowerCase()).not.toContain("guaranteed");

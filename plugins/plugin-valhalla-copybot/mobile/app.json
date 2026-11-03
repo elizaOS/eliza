@@ -23,6 +23,14 @@
     },
     "extra": {
       "proProductId": "valhalla_pro_monthly",
+      "trialDays": 15,
+      "playTrialOfferId": "trial-15",
+      "playTrialPeriod": "P15D",
+      "storeKitTrial": {
+        "paymentMode": "freeTrial",
+        "periodUnit": "day",
+        "numberOfPeriods": 15
+      },
       "publisher": "TokenJunction LLC",
       "siteUrl": "https://valhalla-app.xyz/",
       "privacyPolicyUrl": "https://valhalla-app.xyz/privacy-policy.md",

@@ -144,7 +144,9 @@ async function loadPro() {
   const host = document.getElementById("proPanel");
   if (!host) return;
   const data = await api("/api/license");
+  const plan = await api("/api/plan").catch(() => ({}));
   host.innerHTML = "<div>" + (data.pro ? "Pro is on." : "Pro is off.") + " " + data.price + "</div>" +
+    "<div>" + (plan.trialDays || 15) + " day free Pro trial. Not a promise of profit.</div>" +
     "<div>" + (data.tail || "No license key saved.") + "</div>" +
     "<div>" + data.note + "</div>" +
     "<label>License key</label><input id=\"licenseKey\" type=\"password\" autocomplete=\"off\"/>" +

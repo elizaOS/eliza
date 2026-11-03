@@ -38,6 +38,18 @@ You can:
 
 Ads may appear on the pairing screen and the error log. They do not cover the recover control. The app is for adults.
 
+## Subscription
+
+Product id: `valhalla_pro_monthly`
+
+Free trial: 15 days. The length is `TRIAL_DAYS` in `plugins/plugin-valhalla-copybot/product.config.json`.
+
+Play Console offer: id `trial-15`, one free phase `P15D`, then the monthly base plan.
+
+App Store Connect introductory offer: free trial, 15 days, one period.
+
+Lemon Squeezy variant 2334204 uses the same 15 day trial. Set that trial in the Lemon Squeezy dashboard.
+
 ## Graphics
 
 The files in this folder are the listing kit:

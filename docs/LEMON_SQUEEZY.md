@@ -20,7 +20,7 @@ TokenJunction LLC, a private company, publishes and owns Valhalla. Valhalla Pro 
 
 The desk runs on your computer. The phone watches that desk. Live trading stays off until you arm it on the computer. This purchase is not financial advice. Crypto can lose money. TokenJunction LLC does not promise profit.
 
-The live checkout is Valhalla Pro, product 1498767, variant 2334204, at $9.99/mo launch price. License keys are on. Sideload apps open this checkout. A Play Store or App Store build still uses product valhalla_pro_monthly.
+The live checkout is Valhalla Pro, product 1498767, variant 2334204, at $9.99/mo launch price. License keys are on. Set the subscription trial on that variant to the `TRIAL_DAYS` value in `product.config.json`. It is 15 days. The checkout link does not set the trial by itself. Sideload apps open this checkout. A Play Store or App Store build still uses product valhalla_pro_monthly, with the same 15 day free-trial offer.
 
 ## Receipt line
 

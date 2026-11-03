@@ -28,8 +28,9 @@
     <string name="privacy_policy">Privacy policy</string>
     <string name="about">About</string>
     <string name="pro_license">Pro license</string>
-    <string name="pro_store">This store build uses Google Play Billing, product valhalla_pro_monthly. It does not use a Lemon Squeezy key.</string>
-    <string name="pro_hint">Paste the license key from your receipt. This is not a wallet key. Pro is not a promise of profit.</string>
+    <string name="pro_store">This store build uses Google Play Billing, product valhalla_pro_monthly, offer trial-15 (P15D free, then the monthly price). It does not use a Lemon Squeezy key.</string>
+    <string name="pro_hint">Paste the license key from your receipt. This is not a wallet key. Pro is not a promise of profit. A 15 day free trial is included.</string>
+    <string name="pro_trial_offer">Play offer trial-15. Free phase P15D, then valhalla_pro_monthly. App Store introductory offer is a 15 day free trial. Change the length in product.config.json TRIAL_DAYS.</string>
     <string name="about_title">About Valhalla</string>
     <string name="about_body">TokenJunction LLC publishes Valhalla. TokenJunction LLC is a private company. It owns Valhalla.\n\nThis is not financial advice. Crypto can lose money. The phone does not hold a wallet key. There is no send or withdraw.\n\nSite: https://valhalla-app.xyz\nSupport: hello@valhalla-app.xyz\n\n© 2026 TokenJunction LLC</string>
     <string name="advice_body">TokenJunction LLC publishes Valhalla. This is not financial advice. The app does not promise profit. It cannot send or withdraw. Keys stay on your computer.</string>

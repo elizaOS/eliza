@@ -20,7 +20,7 @@ You can:
 - Read status, P&L, and open positions
 - See that the desk did not answer
 
-TokenJunction LLC publishes Valhalla. Crypto is risky. This is not financial advice.
+TokenJunction LLC publishes Valhalla. Crypto is risky. This is not financial advice. Pro on the website includes a 15 day free trial.
 
 Chrome on Android cannot install extensions. This listing is for desktop Chrome.
 

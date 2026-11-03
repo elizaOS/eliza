@@ -63,7 +63,7 @@ Data types to declare: none collected by TokenJunction. The pairing token is sto
 
 ## Pricing
 
-Free. The extension does not include a purchase inside the popup. A Go Pro link opens the website checkout in a new tab.
+Free. The extension does not include a purchase inside the popup. A Go Pro link opens the website checkout in a new tab. That subscription includes a 15 day free trial. The length is `TRIAL_DAYS` in `product.config.json`.
 
 ## Regions
 
