@@ -1,7 +1,7 @@
 {
   "name": "@elizaos/plugin-diogenes",
   "version": "2.0.0-beta.0",
-  "description": "elizaOS plugin for Diogenes edge microservices: real-time Solana SPL token risk audits, Anchor contract verification, pre-execution guardrails, and x402 micropayments",
+  "description": "ElizaOS plugin for Diogenes edge microservices: real-time Solana SPL token risk audits, Anchor contract verification, pre-execution guardrails, and x402 micropayments",
   "type": "module",
   "main": "dist/index.js",
   "module": "dist/index.js",
@@ -25,7 +25,7 @@
   ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "test": "node --test"
+    "test": "node --test test/*.test.mjs"
   },
   "keywords": [
     "elizaos",
@@ -41,6 +41,7 @@
     "@elizaos/core": "workspace:*"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^5.4.0",
+    "@types/node": "^20.0.0"
   }
 }
