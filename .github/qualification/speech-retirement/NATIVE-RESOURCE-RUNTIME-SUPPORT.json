@@ -1,0 +1,38 @@
+{
+  "state": "PRIMARY_RUNTIME_CONTROL_AND_BUILDINFO_SOURCE_SUPPORT_NO_RUNTIME_EFFECT",
+  "declaredVendorCommit": "2bd066d87f5bafd315be9f40889d0a60b9e58e0b",
+  "declaredSourceGoMinimum": "1.26",
+  "actualNativeSubjectSHA256": "4f2de678286401759b3fb4475bafe35b8f32b4b3a07d92642bbf37eadc9b34a4",
+  "actualCompiledGoVersion": "NOT_MEASURED_UNTIL_FRESH_METADATA_GATE",
+  "supportedParserRuntime": "StandardgcGo1.26.x or1.27.x/Linuxamd64/cmdtsgo; unknown/unrecognized failsbeforetarget/effect",
+  "primarySources": {
+    "Go1.26BuildInfo": {
+      "url": "https://github.com/golang/go/blob/go1.26.0/src/debug/buildinfo/buildinfo.go",
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-cohort-once-20261103/native-resource-fit-source-proposal-v2/go-buildinfo-source.go",
+      "sha256": "cbc672615b67d47a32ddb5b193edd31603bf6c5e30b3497e9d33c91760f2a003"
+    },
+    "Go1.26MemoryAPI": {
+      "url": "https://github.com/golang/go/blob/go1.26.0/src/runtime/debug/garbage.go",
+      "sha256": "9828cef35aad0fbd62d055697ec936b53835db88bbb3cbc5f2e1163efddbd870"
+    },
+    "Go1.27MemoryAPI": {
+      "url": "https://github.com/golang/go/blob/go1.27.0/src/runtime/debug/garbage.go",
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-cohort-once-20261103/native-resource-fit-source-proposal-v2/go127-debug-garbage.go",
+      "sha256": "2dec941ce92f4caba204e511f41a9be2a104dab503bb7515acc57c94a489de49"
+    },
+    "Go1.27MemoryInitialization": {
+      "url": "https://github.com/golang/go/blob/go1.27.0/src/runtime/mgcpacer.go",
+      "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-cohort-once-20261103/native-resource-fit-source-proposal-v2/go127-mgcpacer.go",
+      "sha256": "7ec384f9fed18e54efa9b4ac2759102715125f1ee664cfe71f4ac81147c785c1"
+    },
+    "GoGCGuide": "https://go.dev/doc/gc-guide",
+    "NodeExecve": "https://nodejs.org/docs/v24.15.0/api/process.html#processexecvefile-args-env"
+  },
+  "semantics": "GOMEMLIMIT softmanagedSys-HeapReleased target, notRSS/hardcap/liveheap. Canexceed/thrash.6GiBcandidatefrom6+2declaredactorbudget, notselected/appliedruntimepolicy.",
+  "runtimeProofLimits": "BoundedELFGoBuildInfo/sourceidentity beforeeffect; sourceboundNode-envinheritance +observednativePID isnotdirectnativeenv/internalheap/rawexitmeasurement.",
+  "sealedPrimaryReferences": {
+    "REFERENCE-Go126-buildinfo.go": "cbc672615b67d47a32ddb5b193edd31603bf6c5e30b3497e9d33c91760f2a003",
+    "REFERENCE-Go127-debug-garbage.go": "2dec941ce92f4caba204e511f41a9be2a104dab503bb7515acc57c94a489de49",
+    "REFERENCE-Go127-mgcpacer.go": "7ec384f9fed18e54efa9b4ac2759102715125f1ee664cfe71f4ac81147c785c1"
+  }
+}

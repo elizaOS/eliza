@@ -1,0 +1,98 @@
+{
+  "state": "RESOURCE_EXPERIMENT_ONLY_IMMUTABLE_V3_SERIALIZATION_BOUND_SOURCE_NO_EXECUTION",
+  "RootSourceSelection": "NATIVE-API-ONLY-ACTUATOR-SOURCE-SCOPE-20261103.json; sourceimplementation/review ONLY, no runtime effect authorized",
+  "baseWorkflowCommit": "df83b9c773c90a0cf5ac8d024664c86889ea6ef8",
+  "baseSealSHA256": "246fadb7d3d8583e43fbe318e9f1e92c46cb9b3e11f7f3a177bc0662f9d546bd",
+  "designReviewSHA256": "8a5081505976de5051f6251f73e423f827311533f8dae61f0c77f85169fc9b6f",
+  "code": {
+    "compiler-bootstrap.mjs": "247d46b53794ccbfb9a3f07ece0e9f47e839aae9ba77e9c283be4504151aede2",
+    "go-buildinfo.mjs": "7847642a55f6dbd52850eb637902b2b60308f082130d3125a84a60efda72d26b",
+    "api-stage-recorder.cjs": "78bf9631012f5880211ffbffa8e0a00a825d0a15a6a7340f4e0c59a5bb7d17e1",
+    "run.py": "1e99c125c64fe407fae661c1739dc2a29fcd2d26f96876984a5729d4b269f603",
+    "claim.py": "71f2b0993a3c8f178994ac9029c7687347690c030a22eba15138f77bb0f996f4",
+    "workflow.yml": "a06cc6d44015db2434443cf1401bec333a3a6f020e7aa63458458dc9eab428d9",
+    "native_memory_observer.py": "a85c5533fb55fbe5c1cd1bb80478136fda8e9a31673a2dfd9cfb790737a4c0c5"
+  },
+  "requiredNewGOFields": {
+    "allowNativeSoftMemoryBudgetActuation": true,
+    "nativeBudgetStage": "api-normal-tsc",
+    "nativeResourceKey": "GOMEMLIMIT",
+    "nativeGoSoftMemoryLimitBytes": 6442450944,
+    "nativeGoSoftMemoryLimitEnv": "6GiB",
+    "measurementOnly": true,
+    "allowNativeCompilerMeasurement": true
+  },
+  "noCurrentGOOrEffect": true,
+  "candidateValue": "6GiB hypothesis fromdeclared6+2 envelope, notRSS-asheap, notselected runtimepolicy",
+  "role": "Ownedpreload explicitlyRESOURCE_ACTUATOR afterTurbofilter, readonlysamplerdoesnotreadorwriteenv",
+  "consumerChain": [
+    "Rootclaim/runfullflags/source/seal/value+freshNativeOwner gates",
+    "ProtectedcontrolfileoutsideRWmounts, CID/hostname/labels/resources+exactreadonlycontext/preloadmounts verifiedbeforestart",
+    "NODE_OPTIONS builtinunchangeddeliversprotectedpreloadafterTurbofilter",
+    "ExactAPIcwd+wrapperhash/--noEmit+freshlib/resolver/nativehash/runtime-support+absentGOMEMLIMIT gate beforeonly-keyeffect",
+    "Boundedappliedwitness succeedsbeforemain; failurethrowsbeforelaunch(no metadata-swallow fallback)",
+    "Pinnedwrapperexecve(defaultprocess.env)orNodeexecFileSync inheritperprocesskey; readonlyobserverbindssamePID orchildfallback",
+    "ControllerauditsactualrootGo/contextSHA/cid/key/value/stage/PIDbirth/nativeBinding; sourceboundinitialinheritance NOTdirectnativeenv/internalGoheap/rawexit"
+  ],
+  "nativeRuntimeGate": {
+    "metadataOnly": "StrictboundedELF64LE.go.buildinfo inlineparser basedofficialGo1.26 sourcecbc672, no nativeCLI/import",
+    "supportedRuntime": "Standardgc go1.26.x orgo1.27.x, Linuxamd64, microsoft/typescript-go/cmd/tsgo; unsupported/unknown failsbeforetarget",
+    "nativeSubjectSHA256": "4f2de678286401759b3fb4475bafe35b8f32b4b3a07d92642bbf37eadc9b34a4",
+    "Go127OfficialSources": "Go1.27.0 garbage2dec941c/mgcpacer7ec384f9; same softmemorycontrol support",
+    "actualBinaryRuntimeUnmeasuredInThisDraft": true
+  },
+  "identityAndProtection": {
+    "contextReadMaximumBytes": 8192,
+    "privateControlPath": "RUNNER_TEMP/privateowned0700dir/context.json, sameinodewrittenaftercreate,0400 beforestart",
+    "contextMount": "/run/native-resource-experiment.json readonly; noRWalias incontainer",
+    "preloadMount": "/results/api-stage-recorder.cjs readonly fromsealedoperator (sameNODE_OPTIONSstring)",
+    "container": "ActualsameCID.Hostname==CID[:12],labels/run/resources/mountsource+destination/RW verifiedprestart/post/cleanup; preloadchecksactualos.hostname",
+    "SDKsourceAndArgs": "Unchangedcanonical--noEmit/source/config/envmode/scripts/cold/all18/no partialreuse"
+  },
+  "effectAndPrivacy": {
+    "onlyControlledKey": "GOMEMLIMIT",
+    "beforeState": "Mustbeunset; conflictfailswithoutprintingrawexistingvalue",
+    "scope": "OnlyexactAPIwrapper/native/descendants; Shared,version/help,buildhelpers,router,worker receiveNOeffect",
+    "failure": "Guard/witness/start-receipt failure stopsbeforemain; controlledkey restoredUNSET onownpre-launchfailure, no retriesofclosedFD",
+    "noArbitraryEnvironment": "No/proc/environ/allenvdump. SelectedNODE_OPTIONS/GOMEMLIMIT only; containerinspectstoresGo-keypresencebool, nototherenv",
+    "namespaceProofLimit": "ProtectedRootcontext+actualUTShostnamebeforeeffect; fullhostcgroup/PIDbirth/native binding suppliedbysampler; notfalsein-containerfullCID/procproof"
+  },
+  "newByteCaps": {
+    "MEMORY-CGROUP.jsonl": 65536,
+    "MEMORY-PROCESS-SUMMARY.json": 90112,
+    "MEMORY-OBSERVATION.json": 8192,
+    "MEMORY-FINALIZATION.json": 8192,
+    "API-STAGE-EVIDENCE.json": 16384,
+    "privateReadonlyControlInput": 8192,
+    "NATIVE-RESOURCE-CONTEXT.json": 8192,
+    "NATIVE-RESOURCE-APPLIED.json": 4096,
+    "RESULT-resource-addition": 4096
+  },
+  "newTotalBytes": 212992,
+  "hardProfileUnchanged": {
+    "memoryBytes": 8589934592,
+    "memorySwapBytes": 8589934592,
+    "NodeOldSpaceMiB": 4096,
+    "CPU": 2,
+    "PIDs": 256,
+    "normal900Whole1200": true
+  },
+  "everyResult": "RESOURCE_EXPERIMENT_ONLY / TypesNOT_ISSUED; no fabricatednativeexit/internalheapvalue/fitclaim",
+  "implementationVerification": "PythonASTsourceonly; no JSmoduleexecution/checkCLI/tests/probe/native/imagebuild/CI/newGo/tuning",
+  "peerReviewFocus": [
+    "ELFGoBuildInfo bounds/format/runtime-support/no binaryexecution",
+    "Protectedmanifest source/CID/claim/optin/value/stage lifecycle andmountisolation",
+    "No effectoninformational/Shared/other stages, failbeforelaunch withvalidwitness",
+    "Effect/auditfallbackidentity and initialinheritance evidence distinctions",
+    "Allbytes/controlinput+artifact+witness within212992; cgroupoutputcaploweredonly,no mutableobserverenv",
+    "FD/cancellation/errors/cleanup/allresultTypesNOT_ISSUED"
+  ],
+  "priorFrozenPacket": "backend-b93-native-resource-experiment-executable-v2",
+  "holdReviewSHA256": "0e658b0c63031e21c2a0811f32699ec547bb30362f2dec134a8fcdd2d9dcb10f",
+  "reviewCorrections": {
+    "ACTUATOR1": "NativeFDreadcappedapprovedsize/64MiB+onegrowthsentinel BEFOREanyextraallocation; samefdidentitycheckafterread",
+    "ACTUATOR2": "RESULTstoresboundedhash/selectedsummarynotfullnew4KiBwitness; privatecontrolpathsnotduplicatedinRESULTcontainers; newRESULTaddition<=4096fundedbyloweringcgroupcap4096",
+    "immutableSubjects": "OriginaloperatorV1preserved, currentSourceV2separate; no editsafterreviewrequest",
+    "RESULTActualSerialization": "4096 budget usesactualindent=2 formatting+32Bconservativeframing, fallback boundedagain; no compact-vs-pretty mismatch"
+  }
+}

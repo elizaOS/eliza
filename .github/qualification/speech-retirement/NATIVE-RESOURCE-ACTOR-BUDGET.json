@@ -1,0 +1,29 @@
+{
+  "state": "API_STAGE_ONLY_ACTUATOR_BUDGET_PROPOSAL_PENDING_EXPLICIT_ROOT_SCOPE",
+  "hardContainerBytes": 8589934592,
+  "swapTotalBytes": 8589934592,
+  "additionalSwapBytes": 0,
+  "candidateGoManagedSoftBytes": 6442450944,
+  "candidateGoManagedEnv": "6GiB",
+  "reserveActors": [
+    {
+      "actor": "Node/Bun/Turbo/shellcotenantprocesses",
+      "budgetBytes": 536870912,
+      "basis": "Planningallowance; observedindividualpeaksroughlyNode70.7M/Node49.7M/Turbo121M/Bun9M, notsum-of-simultaneousphysicalusage."
+    },
+    {
+      "actor": "Cgroupchargedfilecache+kernel",
+      "budgetBytes": 536870912,
+      "basis": "PlanningallowanceaboveobservedlatepreOOMfile125M+kernel42M; notguaranteedpeakbounds."
+    },
+    {
+      "actor": "Nativeoutside-Go/runtimebinary/mmap/measurementuncertainty",
+      "budgetBytes": 1073741824,
+      "basis": "Deliberateunmeasuredreserve; RSSisnotmanagedGoheap."
+    }
+  ],
+  "derivation": "8GiBhardminusdeclared2GiBother/headroom=6GiBinitialcandidate. NOTchoose6from7.78GiBRSSasifRSSwereheap.",
+  "hypothesis": "Ifmanagedheapgrowth/retentionratherthanrequiredliveworking-setdrivesthepeak, standardsofttargetmaycauseearlierGC/scavengingandfitinsideunchangedhardcap. Thisisuntested.",
+  "falsification": "Ifrequiredliveheap/externalmemoryalreadyexceedsbudget, orGCcostpreventsprogress, softtargetmayexceed/thrash/stillOOM; noautoadjustmentorsuccessclaim.",
+  "scopeCaveat": "ProposedeffectwouldoccurONLYmatchingAPItscNodepreloadafterTurbofilter, thenitsnativeexec/descendants; Shared/buildhelpersunchanged. Thisrequiresnewexplicitactuationroleapproval; notcurrentreadonlyinstrumentation."
+}

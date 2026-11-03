@@ -1,0 +1,21 @@
+{
+  "state": "SOURCE_CONFIRMED_CONTAINER_ONLY_GOMEMLIMIT_DELIVERY_BLOCKED",
+  "package": "turbo@2.11.10",
+  "sourceCommit": "aaf5a3afdc7f1f3142ec13b6665ef099b3fb3528",
+  "sourceFile": "crates/turborepo-env/src/lib.rs",
+  "sourceFileSHA256": "c6f72273afeb452897a94e94af5e331c4dd871d063e5c055409e82010f7f412d",
+  "vendorGitBlob": "6f5fec59c1029a311d4a6c07c184fe39b2555da4",
+  "retainedPackageProvenanceProofPath": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-normal-api-types-executable-v2/TURBO-NODE-OPTIONS-SOURCE-PROOF.json",
+  "retainedPackageProvenanceProofSHA256": "6b1d351d0b83c044cb97fc3c0b8c1fde268f187715b43c31c87ddc19a2dc7ea3",
+  "builtinExcerpt": "pub const BUILTIN_PASS_THROUGH_ENV: &[&str] = &[\n    \"HOME\",\n    \"USER\",\n    \"TZ\",\n    \"LANG\",\n    \"SHELL\",\n    \"PWD\",\n    \"XDG_DATA_*\",\n    \"XDG_RUNTIME_DIR\",\n    \"XAUTHORITY\",\n    \"DBUS_SESSION_BUS_ADDRESS\",\n    \"CI\",\n    \"NODE_OPTIONS\",\n    \"COREPACK_*\",\n    \"LD_LIBRARY_PATH\",\n    \"DYLD_FALLBACK_LIBRARY_PATH\",\n    \"LIBPATH\",\n    \"LD_PRELOAD\",\n    \"DYLD_INSERT_LIBRARIES\",\n    \"COLORTERM\",\n    \"FORCE_COLOR\",\n    \"NO_COLOR\",\n    \"TERM\",\n    \"TERM_PROGRAM\",\n    \"DISPLAY\",\n    \"TMP\",\n    \"TEMP\",\n    // Windows\n    \"WINDIR\",\n    \"ProgramFiles\",\n    \"ProgramFiles(x86)\",\n    // VSCode IDE\n    \"VSCODE_*\",\n    \"ELECTRON_RUN_AS_NODE\",\n    // Docker\n    \"DOCKER_*\",\n    \"BUILDKIT_*\",\n    // Docker compose\n    \"COMPOSE_*\",\n    // Jetbrains IDE\n    \"JB_IDE_*\",\n    \"JB_INTERPRETER\",\n    \"_JETBRAINS_TEST_RUNNER_RUN_SCOPE_TYPE\",\n    // Turborepo config (needed for nested turbo invocations)\n    \"TURBO_*\",\n    // Vercel specific\n    \"VERCEL\",\n    \"VERCEL_*\",\n    \"NEXT_*\",\n    \"USE_OUTPUT_FOR_EDGE_FUNCTIONS\",\n    \"NOW_BUILDER\",\n    \"VC_MICROFRONTENDS_CONFIG_FILE_NAME\",\n    // GitHub Actions\n    \"GITHUB_*\",\n    \"RUNNER_*\",\n    // NixOS\n    \"__NIXOS_*\",\n    \"NIX_*\",\n    // Command Prompt casing of env variables\n    \"APPDATA\",\n    \"LOCALAPPDATA\",\n    \"PATH\",\n    \"PROGRAMDATA\",\n    \"SYSTEMROOT\",\n    \"SYSTEMDRIVE\",\n    \"USERPROFILE\",\n    \"HOMEDRIVE\",\n    \"HOMEPATH\",\n    \"PNPM_HOME\",\n    \"pnpm_config_verify_deps_before_run\",\n    \"NPM_CONFIG_STORE_DIR\",\n    // Needed by npm to spawn scripts now that turbo invokes the bundled npm\n    // directly instead of going through cmd.exe (see vercel/turborepo#13113)\n    \"COMSPEC\",\n    \"PATHEXT\",\n];",
+  "mergeExcerpt": "pub fn pass_through_env_from_parts(\n    builtin_pass_through: &EnvironmentVariableMap,\n    global_env: &EnvironmentVariableMap,\n    task_pass_through: &WildcardMaps,\n) -> EnvironmentVariableMap {\n    let mut pass_through_env = EnvironmentVariableMap::default();\n    pass_through_env.union(builtin_pass_through);\n    pass_through_env.union(global_env);\n    pass_through_env.union(&task_pass_through.inclusions);\n    pass_through_env.difference(&task_pass_through.exclusions);\n    pass_through_env\n}",
+  "canonicalTurboConfigSHA256": "1e7720daa6972284ec985ddcaeaa7a9af52e8fbb5d74187e6653eb5bb0f74c33",
+  "facts": [
+    "NODE_OPTIONS isbuiltinpass-through, GOMEMLIMIT/GOGC/GO* areNOTinretainedlist",
+    "b93canonicalconfigdoesnotdeclareGOMEMLIMIT/globalPassThrough/taskpassThrough",
+    "DockerConfig.Env=6GiB +NodeexecveinheritancedoesnotproveTurbochildreceivedkey"
+  ],
+  "v1Readiness": "HELD_RESOURCE_1",
+  "independentReviewSHA256": "861b82c6fff667c38c80ebe7fe4917d0d22fe7ec0990bf921c8bace332e5d3cf",
+  "noExecutionOrConfigChange": true
+}

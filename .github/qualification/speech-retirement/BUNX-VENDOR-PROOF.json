@@ -1,0 +1,305 @@
+{
+  "state": "PINNED_VENDOR_IMAGE_SOURCE_AND_TINY_LAYER_LAYOUT_ONLY_NO_RUNTIME",
+  "atUTC": "2026-11-03T19:05:41.977420+00:00",
+  "manifestDigest": "sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2",
+  "configDigest": "sha256:8165c75cee6a4fca90a1229b3db2b3910e7bc99675f7490df5a112085f224d6d",
+  "layers": [
+    {
+      "digest": "sha256:dd000cfe5146b0540e51ab7091b532f4575a75f0b7d02da7e3b5f0c2b4f69931",
+      "bytes": 296,
+      "members": [
+        {
+          "path": "usr",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local/bin",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local/bin/docker-entrypoint.sh",
+          "type": "0",
+          "linkname": "",
+          "size": 171,
+          "mode": "0o755"
+        }
+      ]
+    },
+    {
+      "digest": "sha256:c1bdc9ba2b9ee10de067d50e69caa7454dcd7e80a7f363bc3f26c85ab44175f0",
+      "bytes": 185,
+      "members": [
+        {
+          "path": "usr",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local/bun-node-fallback-bin",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local/bun-node-fallback-bin/node",
+          "type": "2",
+          "linkname": "/usr/local/bin/bun",
+          "size": 0,
+          "mode": "0o777"
+        }
+      ]
+    },
+    {
+      "digest": "sha256:995f23d6717fb18d9e3ee7901ce64cf02d5386f0358688dcb35682d362a9fa11",
+      "bytes": 3398,
+      "members": [
+        {
+          "path": "etc",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "etc/group",
+          "type": "0",
+          "linkname": "",
+          "size": 446,
+          "mode": "0o644"
+        },
+        {
+          "path": "etc/group-",
+          "type": "0",
+          "linkname": "",
+          "size": 434,
+          "mode": "0o644"
+        },
+        {
+          "path": "etc/gshadow",
+          "type": "0",
+          "linkname": "",
+          "size": 372,
+          "mode": "0o640"
+        },
+        {
+          "path": "etc/gshadow-",
+          "type": "0",
+          "linkname": "",
+          "size": 364,
+          "mode": "0o640"
+        },
+        {
+          "path": "etc/passwd",
+          "type": "0",
+          "linkname": "",
+          "size": 874,
+          "mode": "0o644"
+        },
+        {
+          "path": "etc/passwd-",
+          "type": "0",
+          "linkname": "",
+          "size": 839,
+          "mode": "0o644"
+        },
+        {
+          "path": "etc/shadow",
+          "type": "0",
+          "linkname": "",
+          "size": 499,
+          "mode": "0o640"
+        },
+        {
+          "path": "etc/shadow-",
+          "type": "0",
+          "linkname": "",
+          "size": 474,
+          "mode": "0o640"
+        },
+        {
+          "path": "etc/subgid",
+          "type": "0",
+          "linkname": "",
+          "size": 17,
+          "mode": "0o644"
+        },
+        {
+          "path": "etc/subgid-",
+          "type": "0",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o644"
+        },
+        {
+          "path": "etc/subuid",
+          "type": "0",
+          "linkname": "",
+          "size": 17,
+          "mode": "0o644"
+        },
+        {
+          "path": "etc/subuid-",
+          "type": "0",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o644"
+        },
+        {
+          "path": "home",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "home/bun",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o700"
+        },
+        {
+          "path": "home/bun/.bash_logout",
+          "type": "0",
+          "linkname": "",
+          "size": 220,
+          "mode": "0o644"
+        },
+        {
+          "path": "home/bun/.bashrc",
+          "type": "0",
+          "linkname": "",
+          "size": 3526,
+          "mode": "0o644"
+        },
+        {
+          "path": "home/bun/.profile",
+          "type": "0",
+          "linkname": "",
+          "size": 807,
+          "mode": "0o644"
+        },
+        {
+          "path": "usr",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local/bin",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "usr/local/bin/bunx",
+          "type": "2",
+          "linkname": "/usr/local/bin/bun",
+          "size": 0,
+          "mode": "0o777"
+        }
+      ]
+    },
+    {
+      "digest": "sha256:1b4f41477e9a25fc12a8bc441d03b5ebb9a3bc14d066bd5fa789c596bbea8622",
+      "bytes": 138,
+      "members": [
+        {
+          "path": "home",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        },
+        {
+          "path": "home/bun",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o700"
+        },
+        {
+          "path": "home/bun/app",
+          "type": "5",
+          "linkname": "",
+          "size": 0,
+          "mode": "0o755"
+        }
+      ]
+    }
+  ],
+  "history": [
+    "# debian.sh --arch 'amd64' out/ 'trixie' '@1787529600'",
+    "RUN /bin/sh -c apt-get update -qq     && apt-get install -qq --no-install-recommends ca-certificates     && apt-get clean     && rm -rf /var/lib/apt/lists/* # buildkit",
+    "COPY docker-entrypoint.sh /usr/local/bin # buildkit",
+    "COPY /usr/local/bin/bun /usr/local/bin/bun # buildkit",
+    "RUN /bin/sh -c mkdir -p /usr/local/bun-node-fallback-bin && ln -s /usr/local/bin/bun /usr/local/bun-node-fallback-bin/node # buildkit",
+    "ENV PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bun-node-fallback-bin",
+    "ARG BUN_RUNTIME_TRANSPILER_CACHE_PATH=0",
+    "ENV BUN_RUNTIME_TRANSPILER_CACHE_PATH=0",
+    "ARG BUN_INSTALL_BIN=/usr/local/bin",
+    "ENV BUN_INSTALL_BIN=/usr/local/bin",
+    "RUN |2 BUN_RUNTIME_TRANSPILER_CACHE_PATH=0 BUN_INSTALL_BIN=/usr/local/bin /bin/sh -c groupadd bun       --gid 1000     && useradd bun       --uid 1000       --gid bun       --shell /bin/sh       --create-home     && ln -s /usr/local/bin/bun /usr/local/bin/bunx     && which bun     && which bunx     && bun --version # buildkit",
+    "WORKDIR /home/bun/app",
+    "ENTRYPOINT [\"/usr/local/bin/docker-entrypoint.sh\"]",
+    "CMD [\"/usr/local/bin/bun\"]"
+  ],
+  "config": {
+    "Entrypoint": [
+      "/usr/local/bin/docker-entrypoint.sh"
+    ],
+    "Cmd": [
+      "/usr/local/bin/bun"
+    ],
+    "Env": [
+      "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/bun-node-fallback-bin",
+      "BUN_RUNTIME_TRANSPILER_CACHE_PATH=0",
+      "BUN_INSTALL_BIN=/usr/local/bin"
+    ],
+    "Labels": {
+      "org.opencontainers.image.created": "2026-09-05T05:58:20.106Z",
+      "org.opencontainers.image.description": "Incredibly fast JavaScript runtime, bundler, test runner, and package manager \u2013 all in one",
+      "org.opencontainers.image.licenses": "NOASSERTION",
+      "org.opencontainers.image.revision": "744846f844374847c902b5e7fd59b4342a51ef99",
+      "org.opencontainers.image.source": "https://github.com/oven-sh/bun",
+      "org.opencontainers.image.title": "bun",
+      "org.opencontainers.image.url": "https://github.com/oven-sh/bun",
+      "org.opencontainers.image.version": "1.4.2"
+    }
+  },
+  "largeLayersNotFetched": true,
+  "noExecutableFetchedOrExecuted": true,
+  "publicRegistryPullTokenNotRetained": true
+}
