@@ -362,6 +362,7 @@ describe("model acknowledgment authoring grammar", () => {
     "Let me check your notes.",
     "I'll pull up your calendar.",
     "Let me open Calendar.",
+    "I’ll open Calendar.",
   ])("advertises only admitted short prospective forms: %s", (cue) => {
     expect(replyIsClaimSafeAcknowledgment(cue)).toBe(true);
   });

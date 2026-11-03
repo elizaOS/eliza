@@ -254,6 +254,9 @@ async function ownerModelAcknowledgment(
       {
         abortSignal: controller.signal,
         onPlanningAcknowledgment: async (text) => {
+          // Every events assertion also proves the acknowledgment left before
+          // the planner model ran.
+          if (plannerReturned) events.push("planner-before-ack");
           events.push("ack-start");
           await Promise.resolve();
           acknowledgments.push(text);
@@ -307,6 +310,27 @@ describe("awaited owner model acknowledgments", () => {
     expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
   });
 
+  it("awaits a view-opening model acknowledgment before planner and tool work", async () => {
+    const acknowledgment = "Let me open Calendar.";
+    const result = await ownerModelAcknowledgment(true, { acknowledgment });
+    expect(result.acknowledgments).toEqual([acknowledgment]);
+    expect(result.events).toEqual(["ack-start", "ack-end", "tool"]);
+    expect(result.chunks).toEqual([]);
+  });
+
+  // #743 (step-1793690771434-bnctbd): the model named work after the view.
+  // The draft is dropped whole, nothing is spoken in its place, and the
+  // authorized work still runs.
+  it("drops a compound view-plus-work draft whole and still runs the tool", async () => {
+    const result = await ownerModelAcknowledgment(true, {
+      acknowledgment:
+        "Let me open Calendar and take another shot at the rename.",
+    });
+    expect(result.acknowledgments).toEqual([]);
+    expect(result.events).toEqual(["tool"]);
+    expect(result.chunks).toEqual([]);
+  });
+
   it.each([
     "I've saved that to your notes.",
     "You have no notes this week.",
@@ -337,12 +361,16 @@ describe("awaited owner model acknowledgments", () => {
     expect(result.events).toEqual(["tool"]);
   });
 
-  it("does not send private model words to a changed audience", async () => {
-    const result = await ownerModelAcknowledgment(true, {
-      changeAudienceBeforeAcknowledgment: true,
-    });
-    expect(result.acknowledgments).toEqual([]);
-  });
+  it.each(["Let me check.", "Let me open Calendar."])(
+    "does not send private model words to a changed audience: %s",
+    async (acknowledgment) => {
+      const result = await ownerModelAcknowledgment(true, {
+        acknowledgment,
+        changeAudienceBeforeAcknowledgment: true,
+      });
+      expect(result.acknowledgments).toEqual([]);
+    },
+  );
 
   it("shows one content-free status per activity, in order, after the one acknowledgment", async () => {
     const result = await ownerModelAcknowledgment(true, {
@@ -423,12 +451,16 @@ describe("awaited owner model acknowledgments", () => {
     },
   );
 
-  it("does not send an acknowledgment after cancellation during revalidation", async () => {
-    const result = await ownerModelAcknowledgment(true, {
-      abortDuringRevalidation: true,
-    });
-    expect(result.acknowledgments).toEqual([]);
-  });
+  it.each(["Let me check.", "Let me open Calendar."])(
+    "does not send an acknowledgment after cancellation during revalidation: %s",
+    async (acknowledgment) => {
+      const result = await ownerModelAcknowledgment(true, {
+        acknowledgment,
+        abortDuringRevalidation: true,
+      });
+      expect(result.acknowledgments).toEqual([]);
+    },
+  );
 
   // A public category on an owner-exclusive turn still revalidates, and the
   // status waits for a live turn after the audience read.

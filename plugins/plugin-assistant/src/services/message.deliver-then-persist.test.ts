@@ -954,10 +954,19 @@ describe("planning progress delivery boundaries", () => {
   // its place.
   it.each([
     { draft: "Let me open Calendar.", spoken: true },
+    // The rule's other lead, with its curly apostrophe, is spoken unchanged.
+    { draft: "I’ll open Calendar.", spoken: true },
     {
       draft: "Calendar. Killing coffee and putting a launch at noon.",
       spoken: false,
     },
+    // #743 (step-1793690771434-bnctbd): work named after the view drops the
+    // whole draft; no truncated "Let me open Calendar" is spoken instead.
+    {
+      draft: "Let me open Calendar and take another shot at the rename.",
+      spoken: false,
+    },
+    { draft: "Let me open Calendar again.", spoken: false },
   ])(
     "speaks a planned-view acknowledgement only as the model wrote it: $draft",
     async ({ draft, spoken }) => {

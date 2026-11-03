@@ -2558,6 +2558,7 @@ describe("Stage 1 response format", () => {
     "One sec, pulling up your calendar.",
     "Checking that now.",
     "Let me look into it.",
+    "Let me open Calendar.",
   ])(
     "streams pending work as progress without storing it as the final reply: %s",
     async (replyText) => {
@@ -2592,7 +2593,8 @@ describe("Stage 1 response format", () => {
   );
 
   // A write verb says the item is missing ("Adding it now." after "Is the
-  // dentist on my calendar?"), so it is not an acknowledgement either.
+  // dentist on my calendar?"), so it is not an acknowledgement either. Work
+  // named after opening a view (#743) is dropped whole, not trimmed.
   it.each([
     'Done. The note now says "Bring the green notebook."',
     "Checking.\u0000",
@@ -2600,6 +2602,7 @@ describe("Stage 1 response format", () => {
     "Scheduling that now.",
     "Booking it now.",
     "Moving it to four now.",
+    "Let me open Calendar and take another shot at the rename.",
   ])(
     "withholds invalid, completed or write progress without another inference: %j",
     async (replyText) => {

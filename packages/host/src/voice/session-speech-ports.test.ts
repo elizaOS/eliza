@@ -359,6 +359,31 @@ test("one model acknowledgment is removed from the reply while remaining model t
     f.session.bye();
   }
 }, 25000);
+test("with no admitted model cue the turn stays silent until the reply and nothing is substituted", async () => {
+  const reply = "Calendar is updated.";
+  const f = await setup();
+  f.respond(
+    [
+      { type: "status", kind: "thinking" },
+      { type: "done", text: reply },
+    ]
+      .map((frame) => `data: ${JSON.stringify(frame)}\n\n`)
+      .join(""),
+    50,
+  );
+  f.session.start();
+  f.emit({ type: "connected", raw: {} });
+  f.emit({ type: "start-of-turn", transcript: "", raw: {} });
+  f.emit({ type: "end-of-turn", transcript: "rename the event", raw: {} });
+  await until(() => f.control.some((frame) => frame.t === "usage"));
+  // The dropped draft leaves no progress frame, no spoken stand-in and no
+  // error speech: the reply is the only thing spoken.
+  expect(f.control.some((frame) => frame.t === "progress")).toBe(false);
+  expect(f.phrases.join(" ").replace(/\s+/g, " ").trim()).toBe(reply);
+  expect(f.control.some((frame) => frame.t === "error")).toBe(false);
+  expect(f.control.some((frame) => frame.t === "reply_complete")).toBe(true);
+  f.session.bye();
+}, 25000);
 test("activity names are shown in order but never spoken", async () => {
   const cue = "Let me have a look.";
   const reply = "Two meetings and one note.";

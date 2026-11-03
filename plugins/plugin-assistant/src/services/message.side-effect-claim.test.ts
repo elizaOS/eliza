@@ -2559,6 +2559,19 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "Let me open Calendar, you're free",
     "Let me open Maps. Traffic looks light.",
     "Opening Calendar now.",
+    // Other work after opening a view (#743) is not an acknowledgement in
+    // one sentence or split into two: a step, condition, refusal, target or
+    // result each drops the draft whole.
+    "Let me open Calendar and take another shot at the rename.",
+    "Let me open Calendar. Let me take another shot at the rename.",
+    "Let me take another shot at the rename.",
+    "Let me open Calendar, then update the event.",
+    "Let me open Calendar and update the event if it's still there.",
+    "Let me open Calendar, but I can't rename recurring events.",
+    "Let me open Calendar and leave the rename alone.",
+    "Let me open Calendar and rename the coffee event to Launch.",
+    "Let me open Calendar and take another shot at the rename Sam rejected.",
+    "Let me open Calendar and the rename already went through.",
     "I will read your notes: none",
     "I will read your notes which are empty.",
     "I read your notes.",
