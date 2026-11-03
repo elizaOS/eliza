@@ -1,0 +1,54 @@
+{
+  "id": "diogenes",
+  "name": "Diogenes",
+  "description": "ElizaOS plugin providing autonomous Solana agents with real-time SPL token risk inspection, smart contract honeypot audits, and pre-execution safety guardrails",
+  "npmName": "@elizaos/plugin-diogenes",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": [
+    "solana",
+    "security",
+    "spl-token",
+    "audit",
+    "guardrails",
+    "honeypot",
+    "x402"
+  ],
+  "config": {
+    "DIOGENES_GATEWAY_URL": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Gateway URL",
+      "help": "Diogenes Gateway URL (defaults to https://diogenesgateway.com)",
+      "advanced": false
+    },
+    "DIOGENES_DEMO_MODE": {
+      "type": "boolean",
+      "required": false,
+      "sensitive": false,
+      "label": "Demo Mode",
+      "help": "Enable zero-fee demo execution (?demo=true) for instant testing without wallets",
+      "advanced": false
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "ShieldCheck",
+    "group": "blockchain",
+    "groupOrder": 6,
+    "actions": [
+      "enable",
+      "configure"
+    ]
+  },
+  "resources": {
+    "homepage": "https://diogenesgateway.com",
+    "repository": "https://github.com/stand-out-of-my-sun/eliza-plugin-diogenes"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}
