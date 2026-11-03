@@ -61,6 +61,7 @@ export interface ClientBargeInFrame {
 }
 export interface ClientByeFrame {
   t: "bye";
+  intent?: { version: 1; kind: "user_stop" | "budget_rotation"; generation: string; successorSessionId?: string };
 }
 export type ClientControlFrame =
   | {
@@ -207,6 +208,10 @@ export interface VoiceSessionMintResponse {
   uplink: VoiceSessionCodecOffer;
   downlink: VoiceSessionCodecOffer;
   iceServers?: unknown | null;
+  stopIntentVersion?: 1;
+  stopIntentGeneration?: string;
+  /** Host guarantees predecessor retirement before opening a replacement provider. */
+  rotationPreparation?: "retire-before-open-v1";
 }
 // ── Serialization / parsing (pure) ─────────────────────────────────────
 /** Serialize a client control frame to a JSON text-frame payload. */
@@ -408,7 +413,9 @@ export function isUsableMintResponse(
     typeof v.wsUrl === "string" &&
     v.wsUrl.length > 0 &&
     typeof v.token === "string" &&
-    v.token.length > 0
+    v.token.length > 0 &&
+    ((v.stopIntentVersion === undefined && v.stopIntentGeneration === undefined) ||
+      (v.stopIntentVersion === 1 && v.stopIntentGeneration === v.sessionId))
   );
 }
 /**

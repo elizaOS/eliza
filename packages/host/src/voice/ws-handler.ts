@@ -24,6 +24,7 @@ import type { VoiceUiContext } from "../protocol";
 import type { ServerControlFrame } from "./protocol";
 import {
   parseClientControlFrame,
+  type ClientControlFrame,
   serializeServerFrame,
   VOICE_SESSION_PROTOCOL_VERSION,
   validateAudioFrame,
@@ -90,6 +91,8 @@ export interface ServerWebSocketLike {
 export interface VoiceWsHandlerDeps {
   /** The sessionId the client is connecting for (from the wsUrl query). */
   requestedSessionId: string;
+  /** Local host validates negotiated Stop/rotation intent; never forwarded to providers. */
+  authorizeBye?: (frame: Extract<ClientControlFrame, { t: "bye" }>) => void;
   /** Build a `VoiceSession` for verified claims. Injected so the route wires the
    * real provider factories and the test wires fakes — both exercise the real
    * VoiceSession. */
@@ -312,6 +315,11 @@ export function attachVoiceWsHandler(
         session.endUplink?.();
         return;
       case "bye":
+        try { deps.authorizeBye?.(frame); }
+        catch {
+          safeSend(socket, serializeServerFrame({ t: "error", code: "bye_intent_invalid", retryable: true }));
+          return;
+        }
         session.bye();
         state = "closed";
         return;

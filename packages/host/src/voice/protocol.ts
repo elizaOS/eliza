@@ -68,6 +68,7 @@ export interface ClientBargeInFrame {
 
 export interface ClientByeFrame {
   t: "bye";
+  intent?: { version: 1; kind: "user_stop" | "budget_rotation"; generation: string; successorSessionId?: string };
 }
 
 /**
@@ -227,8 +228,19 @@ export function parseClientControlFrame(
         : fail("playback_complete_invalid", "invalid playback trace");
     case "barge_in":
       return { ok: true, value: { t: "barge_in" } };
-    case "bye":
-      return { ok: true, value: { t: "bye" } };
+    case "bye": {
+      if (parsed.intent === undefined) return { ok: true, value: { t: "bye" } };
+      const intent = parsed.intent;
+      if (!intent || typeof intent !== "object" || Array.isArray(intent) ||
+          Object.keys(parsed).some(key => key !== "t" && key !== "intent")) return fail("bye_intent_invalid", "Invalid stop intent");
+      const value = intent as Record<string, unknown>;
+      if (value.version !== 1 || !["user_stop", "budget_rotation"].includes(String(value.kind)) ||
+          typeof value.kind !== "string" || typeof value.generation !== "string" || !value.generation || value.generation.length > 256 ||
+          Object.keys(value).some(key => !["version", "kind", "generation", "successorSessionId"].includes(key)) ||
+          (value.successorSessionId !== undefined && (value.kind !== "budget_rotation" || typeof value.successorSessionId !== "string" || !value.successorSessionId || value.successorSessionId.length > 256)))
+        return fail("bye_intent_invalid", "Invalid stop intent");
+      return { ok: true, value: { t: "bye", intent: value as NonNullable<ClientByeFrame["intent"]> } };
+    }
     case "end_audio":
       return { ok: true, value: { t: "end_audio" } };
     default:

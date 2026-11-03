@@ -2140,6 +2140,15 @@ export function useShellController(): ShellController {
       return;
     }
     if (outcome.kind === "live") return;
+    if (outcome.kind === "refused") {
+      realtimeVoiceWantedRef.current = false;
+      realtimeVoiceWasActiveRef.current = false;
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      setRealtimeVoiceBoundaryError(null);
+      return;
+    }
     const message = describeRealtimeVoiceFailure(
       outcome,
       realtimeVoiceRef.current.error?.message || null,
@@ -2243,6 +2252,15 @@ export function useShellController(): ShellController {
   }, [realtimeVoice.active]);
   React.useEffect(() => {
     if (!realtimeVoiceSelected) return;
+    if (realtimeVoice.refused) {
+      realtimeVoiceWasActiveRef.current = false;
+      realtimeVoiceWantedRef.current = false;
+      saveContinuousChatMode(priorContinuousModeRef.current);
+      setHandsFree(false);
+      handsFreeRef.current = false;
+      setRealtimeVoiceBoundaryError(null);
+      return;
+    }
     if (!realtimeVoice.error) return;
     if (realtimeVoice.active || realtimeVoice.connecting) return;
     if (!realtimeVoiceWasActiveRef.current) return;
@@ -2256,6 +2274,7 @@ export function useShellController(): ShellController {
   }, [
     realtimeVoiceSelected,
     realtimeVoice.error,
+    realtimeVoice.refused,
     realtimeVoice.active,
     realtimeVoice.connecting,
     setActionNotice,
