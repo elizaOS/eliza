@@ -47,6 +47,7 @@ import {
   applyGroundedActionReply,
   ElizaError,
   extractUserText,
+  getUserMessageText,
   logger,
   NoModelProviderConfiguredError,
   normalizeEffectReceipt,
@@ -4993,7 +4994,7 @@ async function runLifeOperationHandlerInner(
   if (
     !archiveOnlyReminder &&
     deferredDraft === null &&
-    isLifeSaveRetraction(messageText(message))
+    isLifeSaveRetraction(getUserMessageText(message))
   ) {
     const recentSave = await readRecentLifeSaveCache(runtime, message);
     const retractionMessageId =
