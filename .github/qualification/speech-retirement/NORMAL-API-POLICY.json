@@ -1,0 +1,54 @@
+{
+  "recipe": "normal-api-owning-typecheck",
+  "sourceCommit": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "sourceTree": "cd96bb6da937deb3419930432c1d2b35374d74a8",
+  "normalCommand": [
+    "/usr/local/bin/node",
+    "packages/scripts/run-turbo.ts",
+    "run",
+    "typecheck",
+    "--filter=@elizaos/cloud-api"
+  ],
+  "normalEnvironment": {
+    "RUN_TURBO_CONCURRENCY": "1",
+    "RUN_TURBO_NO_INIT_CRASH_RETRY": "1",
+    "TURBO_TELEMETRY_DISABLED": "1"
+  },
+  "expectedRunnableTasks": 18,
+  "expectedMaximumTasks": 49,
+  "compilerContainerMemory": "8g",
+  "compilerContainerBytes": 8589934592,
+  "compilerNodeOldSpaceMiB": 4096,
+  "compilerCgroupParent": "system.slice",
+  "normalPhaseSeconds": 900,
+  "wholeSeconds": 1200,
+  "jobMinutes": 22,
+  "CPU": 2,
+  "PIDs": 256,
+  "phaseLogBytes": 8388608,
+  "entryFreeBytes": 17179869184,
+  "stopFreeBytes": 8589934592,
+  "growthBytes": 12884901888,
+  "physicalHostMinimumBytes": 16106127360,
+  "availableHostMinimumBytes": 10737418240,
+  "installMemory": "4g",
+  "installNodeOldSpaceMiB": 1536,
+  "cachePolicy": "EXACTcanonicalentry, noqualifierforce/cache/summarize. OrdinarynonlinkedfreshGitcheckout/defaultcache absentoremptybeforemetadataandentry; no cacheDir/config/env/token/team/API/hostHOMEsharing; networknone. Actual18taskorder+ownnormaloutputs+APIstageevidence mandatory, no job/cache/event-onlyPASS.",
+  "excluded": [
+    "APItsc6compatibilityleg",
+    "baseline5006execution",
+    "Core semantic typecheckPASSfromnoCheckemit",
+    "publicD1/provider-money/production/nativeSDK/device/model/voice",
+    "sourcealiases/stubs/filters/skippedconfigs/hostcleanup"
+  ],
+  "normalNodeEnv": "Unset, matchingcanonicalnormalCI; fixtureNODE_ENV=test removed",
+  "effectiveDockerEndpoint": "Rejectinheritedremote/context/TLS/API/configoverrides; allDockerCLIcalls pinnedunix:///var/run/docker.sock+emptyownedconfig",
+  "turboBuiltinEnvSourceProofSHA256": "6b1d351d0b83c044cb97fc3c0b8c1fde268f187715b43c31c87ddc19a2dc7ea3",
+  "graphOrderGate": "Exactsource runnabletaskscriptset and transitive executabledependencyclosure throughactualobservedtransitnodes; unknown/missing/mismatch stopsbeforebuild",
+  "staticArgvProofSHA256": "961e11f3ebe1f53ddac73018f15307d5ea52b508f74c0a29fb3a98882a352ca6",
+  "metadataTransport": {
+    "contractSHA256": "f15478bc41bd702f5acacb0726bcaf0bd68aac87644b250ddadbf0ad030f04fb",
+    "hardFileSizeBytes": 8388608,
+    "scope": "normal-api-graph only; regular FD stdout; same-CID HostConfig and /proc exact limit required; cap boundary/nonzero/signal/unknown fail; no normal entry change"
+  }
+}

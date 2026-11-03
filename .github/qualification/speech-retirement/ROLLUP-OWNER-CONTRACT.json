@@ -1,0 +1,23 @@
+{
+  "state": "CANONICAL_SOURCE_ROLLUP_SUPPLIER_NOT_OBSERVED_VERSION_ALLOWLIST",
+  "source": "b93db8d7822bce098d65ee88560e6663ea259b8a",
+  "rootPackageSHA256": "fd04e2ad8574cd0055627138466b8eec77404863e2bc546a866bace10c6d732b",
+  "bunLockSHA256": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
+  "dependencyOwner": "plugins/plugin-native-secure-store/package.json",
+  "declaredDependencyKey": "rollup",
+  "declaredRange": "^4.65.0",
+  "rootOverride": "npm:@rollup/wasm-node@4.64.9",
+  "rootSupplierOverride": "4.64.9",
+  "frozenLockPackage": "@rollup/wasm-node@4.64.9",
+  "actualPackageNameExpected": "@rollup/wasm-node",
+  "exactVersionExpected": "4.64.9",
+  "binary": "dist/bin/rollup",
+  "lockIntegrity": "sha512-CNks3vhhgXJ/HXuOOvXEY8jyovEJQ0yCnCYeBwA/rsjeASKrr+wSbMZi+AtuDoAWQ/8oQFkSiOFzt/FP3H0D8g==",
+  "acceptanceChange": "Only Rollup expectedactualpackageowner/version corrected fromcanonicalroot precedence; previousfive ownercontracts unchanged. No manifest/lock/alias/source change. FreshSDK/dependencyhashproof remainsmandatory.",
+  "failureHistory": {
+    "run": 41651443800,
+    "intent": "eccb90c892823d9fb621033c553bdbcb",
+    "normalAPIGraphCompilerProducers8GiBFit": "UNRUN",
+    "lostPartialOwnerMetadata": "Oldobjectliteral failedbeforefinalwrite; no priorfiveToolPASS certificate reconstructed."
+  }
+}
