@@ -53,6 +53,7 @@ test("connection and resident lifecycle JVM contracts pass", () => {
       "connection/WorkspaceAppReturn",
       "connection/WorkspaceAppReturnFlow",
       "runtime/CredentialIntentFence",
+      "runtime/CredentialRequestFence",
       "runtime/NativeProviderAdmission",
       "runtime/NativeProviderSlot",
       "runtime/NativeRuntimeEmbeddings",
@@ -76,6 +77,10 @@ test("connection and resident lifecycle JVM contracts pass", () => {
           "../plugin-native-secure-store/android/src/main/java/ai/eliza/plugins/securestore/nativeonly/CredentialIntentFence.java",
         ),
         ...shared,
+        path.resolve(
+          root,
+          "../plugin-local-inference/native/android/speech-bridge/src/main/java/ai/eliza/voice/CartesiaSpeech.java",
+        ),
         ...tests,
       ],
       { timeout: 120000, stdio: "pipe" },
@@ -86,6 +91,7 @@ test("connection and resident lifecycle JVM contracts pass", () => {
       ["CloudConnectionPolicyTest", /^PASS cloud connection policy/],
       ["ConnectionTransportTest", /^PASS connection transport/],
       ["ResidentLifecycleTest", /^PASS resident lifecycle/],
+      ["OwnerProviderTest", /^PASS owner provider/],
       ["WorkspaceAppReturnTest", /^PASS Workspace return pure contract/],
       ["WorkspaceAppReturnFlowTest", /^PASS Workspace flow/],
     ]) {

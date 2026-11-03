@@ -400,8 +400,12 @@ bundle the extension engine into their admitted worker resource and include the
 Node module in the verified native gateway dependency closure. Run the protection
 regressions with `node --test browser/src/protection-*.test.mjs` from `packages/os`.
 
-`buildBrowserProtection(output, {warningDirectory, warning, feeds, refreshAlarm, exceptionAlarm})`
-builds the optional unpacked worker using the shared engine. HTML/CSS overrides
+`buildBrowserProtection(output, {warningDirectory, warning, feeds, neverBlock, refreshAlarm, exceptionAlarm})`
+builds the optional unpacked worker using the shared engine. `neverBlock` (also an
+`installBrowserProtection` option) lists reviewed hosts, confirmed feed false positives,
+that no threat rule blocks or redirects; Chromium's `excludedRequestDomains` covers each
+host and its subdomains by whole labels, never a lookalike or a parent domain. A changed
+list is applied to the saved rules at once, without a download. HTML/CSS overrides
 preserve shared messaging and enforcement. The default warning style supports dark,
 high-contrast and forced-colors modes. `warning: {assistantName, copy}` fills the
 page's `{{title}}`, `{{heading}}`, `{{stopped}}`, `{{mistake}}`, `{{feeds}}` and
@@ -442,11 +446,14 @@ interval, and a new helper action starts a new interval. This observation rule
 does not grant permission to execute payment or sign-in controls.
 
 The protection builder accepts optional
-`advisory: {referenceDomains, copy, unscanned}`. It renders a nonblocking yellow
-in-page bar for unavailable lists and local lookalike signals. The default is
-disabled. `unscanned: false` keeps the lookalike bar and draws nothing when the
+`advisory: {referenceDomains, copy, unscanned, unscannedWhileLoading}`. It renders a
+nonblocking yellow in-page bar for unavailable lists and local lookalike signals. The
+default is disabled. `unscanned: false` keeps the lookalike bar and draws nothing when the
 lists are unavailable, for a consumer that warns only on a blacklist hit or a
-lookalike; it defaults to `true`. The engine exposes
+lookalike; it defaults to `true`. `unscannedWhileLoading: false` draws no unscanned bar
+until the first list refresh has finished (no protection record is saved yet), so a
+first start whose lists are still downloading shows nothing; a refresh that ended
+without lists shows the bar. It defaults to `true`. The engine exposes
 `advisory.setOwner(opaqueOwnerOrNull)` only to trusted worker composition. An
 owner is required before an acknowledgement can be saved. Hosts must set or
 retire that context on every account transition and transport loss. This is

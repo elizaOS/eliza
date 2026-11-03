@@ -208,9 +208,10 @@ plus sign-in identity). A host that sets `hostPolicy.gmailOwnerWrites: true`
 asks Google for `gmail.modify` and `gmail.send` as well, and lets the owner's
 mailbox (`/gmail/list`, `/gmail/read`, `mailboxForAccount`) hold that grant;
 `/gmail/status` then also reports `canChangeMessages` and `canSendMessages`.
-Agent task reads (`googleForAccount`) stay held to the exactly read-only grant
-and refuse a wider one with `insufficient_scope`. Compose, full mail access or
-any other scope is still refused.
+Agent task reads (`googleForAccount`) also accept that owner grant, so the
+agent can still read the owner's mail. The task port only sends GET reads; it
+has no write operation. Compose, full mail access or any other scope is still
+refused everywhere with `insufficient_scope`.
 
 `mailboxWriterForAccount({actorId, accountId})` exists only with that opt-in. It
 is host-only: it enables no HTTP route and never reaches agent tasks. It relays
@@ -222,8 +223,13 @@ proposal})` performs exactly that review once, and `observe({requestId})` reads
 the canonical receipt. Before each call it checks the signed-in owner, the
 Cloud sign-in and that `accountId` is still the connected grant holding the
 scope the effect needs (`gmail.send` for send, `gmail.modify` otherwise).
-Writes are never retried: a dispatch without an answer fails with
-`outcome_unknown`, and the host observes the receipt before offering another.
+Writes are never retried. Dispatch captures the reviewed input before any
+asynchronous work and accepts only a receipt for that exact effect and review.
+An unreadable or mismatched reply fails with `outcome_unknown`. A reply is
+withheld if the owner or connected Google grant changes while the request is in
+flight, so a dispatch failure such as `account_changed` can follow a completed
+write: after any dispatch failure the host reads the receipt with `observe`
+before offering another dispatch.
 
 `createCloudRoutes({ verifiedAccountStore, pendingCredentialStore })` optionally
 uses one native-owned credential/owner snapshot with `read()` and

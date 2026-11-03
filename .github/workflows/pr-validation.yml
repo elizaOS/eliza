@@ -3,8 +3,9 @@
 # statically validates the selected workspace closure. A narrow, mock-backed
 # billing replay E2E, path-scoped real PostgreSQL subscription-authority proof,
 # and the bounded synthetic-world transaction suite are the affected-path test
-# exceptions, alongside a path-scoped native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
-# excluded.
+# exceptions, alongside path-scoped SDK owning suites and a native speech compile/contract check. Provider, device, deployment, and destructive-effect lanes remain
+# excluded. A path-scoped Core/assistant/Notes owning-regression subset also
+# qualifies changes to that flow through the unchanged package test configs.
 name: PR Validation
 
 on:
@@ -128,6 +129,19 @@ jobs:
           "$RUNNER_TEMP/workflow-linters/actionlint" \
             -config-file .github/actionlint.yaml \
             "${workflows[@]}"
+
+      - name: Reclaim unused hosted SDK space for desktop packaging
+        if: >-
+          steps.affected.outputs.source == 'true' &&
+          runner.os == 'Linux' && runner.environment == 'github-hosted'
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The source closure packages Electrobun, but does not use .NET or
+          # Haskell. Keep Android and all native build toolchains available.
+          df -h "$GITHUB_WORKSPACE"
+          sudo rm -rf -- /usr/share/dotnet /opt/ghc /usr/local/.ghcup
+          df -h "$GITHUB_WORKSPACE"
 
       - if: steps.affected.outputs.source == 'true'
         uses: ./.github/actions/setup-bun-workspace
@@ -285,11 +299,410 @@ jobs:
           retention-days: 3
 
       - name: Build selected workspace closure
+        id: notes_owning_build
         if: steps.affected.outputs.source == 'true'
         env:
           RUN_TURBO_AFFECTED: ${{ steps.affected.outputs.full == 'false' && '1' || '0' }}
           TURBO_SCM_BASE: ${{ steps.affected.outputs.base }}
         run: node packages/scripts/run-turbo.ts run build --concurrency=4 --output-logs=errors-only
+
+      - name: Verify native direct inference and Google service admission
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.affected.outputs.source == 'true'
+        timeout-minutes: 3
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: |
+          set -euo pipefail
+          native_provider_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            packages/app/src/runtime/native-runtime-profile.ts \
+            packages/app/src/runtime/native-runtime-profile.test.ts \
+            packages/app/src/runtime/native-managed-google-host.ts \
+            packages/app/src/runtime/native-managed-google-host.test.ts \
+            packages/app/src/runtime/native-direct-routing.test.ts \
+            packages/agent/src/runtime/runtime-settings.ts \
+            packages/agent/src/config/blocked-env-keys.ts \
+            packages/agent/test/managed-google-env-process-only.test.ts \
+            packages/core/src/security/process-env-policy.ts \
+            plugins/plugin-local-inference/src/services/router-handler.ts \
+            plugins/plugin-local-inference/src/services/routing-policy.ts \
+            plugins/plugin-native-inference/src/model-catalog/routing-preferences.ts \
+            plugins/plugin-openai/index.ts \
+            plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderAdmission.java \
+            plugins/plugin-native-agent/android/src/main/java/ai/eliza/plugins/agent/runtime/NativeProviderSlot.java \
+            packages/app/vitest.host.config.ts packages/agent/vitest.config.ts \
+            packages/scripts/run-vitest.ts packages/scripts/vitest \
+            .github/workflows/pr-validation.yml || native_provider_diff_status=$?
+          if [ "$native_provider_diff_status" -eq 0 ]; then
+            echo "No native provider admission inputs changed."
+            exit 0
+          fi
+          if [ "$native_provider_diff_status" -ne 1 ]; then
+            exit "$native_provider_diff_status"
+          fi
+          (
+            cd packages/app
+            node ../scripts/run-vitest.ts run --config vitest.host.config.ts \
+              src/runtime/native-runtime-profile.test.ts \
+              src/runtime/native-managed-google-host.test.ts \
+              src/runtime/native-direct-routing.test.ts \
+              --maxWorkers=1 --no-file-parallelism \
+              --execArgv=--max-old-space-size=2048
+          )
+          (
+            cd packages/agent
+            node ../scripts/run-vitest.ts run --config vitest.config.ts \
+              test/managed-google-env-process-only.test.ts \
+              --maxWorkers=1 --no-file-parallelism \
+              --execArgv=--max-old-space-size=2048
+          )
+
+      - name: Verify owning Calendar regressions
+        if: steps.affected.outputs.source == 'true'
+        timeout-minutes: 10
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          TEST_LANE: pr
+          VITEST_LANE: pr
+          ELIZA_LIVE_TEST: "0"
+          CALENDAR_LLM_LIVE_TEST: "0"
+        run: |
+          set -euo pipefail
+          calendar_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            plugins/plugin-calendar packages/contracts/src/calendar.ts \
+            plugins/plugin-assistant/src/runtime/planner-rendering.ts || calendar_diff_status=$?
+          if [ "$calendar_diff_status" -eq 0 ]; then
+            echo "No owning Calendar source changed."
+            exit 0
+          fi
+          if [ "$calendar_diff_status" -ne 1 ]; then
+            exit "$calendar_diff_status"
+          fi
+          node packages/scripts/with-test-runtime.ts \
+            bun run --cwd plugins/plugin-calendar test \
+            --maxWorkers=1 --no-file-parallelism
+
+      - name: Verify assistant Calendar read coverage
+        if: steps.affected.outputs.source == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-assistant
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: |
+          set -euo pipefail
+          assistant_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            . ../../packages/contracts/src ../plugin-calendar/src \
+            ../plugin-personal-assistant/src || assistant_diff_status=$?
+          if [ "$assistant_diff_status" -eq 0 ]; then
+            echo "No owning assistant source changed."
+            exit 0
+          fi
+          if [ "$assistant_diff_status" -ne 1 ]; then
+            exit "$assistant_diff_status"
+          fi
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts \
+            src/runtime/calendar-read-coverage.test.ts \
+            --maxWorkers=1 --no-file-parallelism \
+            --execArgv=--max-old-space-size=2048
+
+      - name: Select Core, assistant and Notes owning regressions
+        id: notes_owning_scope
+        if: >-
+          !cancelled() &&
+          steps.affected.outputs.source == 'true'
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          diff_status=0
+          git diff --quiet "$BASE_SHA"..."$HEAD_SHA" -- \
+            packages/core packages/agent plugins/plugin-assistant plugins/plugin-notes || diff_status=$?
+          if [ "$diff_status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$diff_status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$diff_status"
+          fi
+
+      - name: Verify Notes request effects through the owning config
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-notes
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/__tests__/request-effect.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify assistant Notes planning and discovery
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/runtime/planner-finish-grounding.test.ts
+          src/runtime/__tests__/planner-native-scope-repair.test.ts
+          src/runtime/__tests__/planner-scope-failure-copy.test.ts
+          src/runtime/__tests__/planner-scope-history-replay.test.ts
+          src/runtime/__tests__/planner-tool-scoped-policy.test.ts
+          src/services/message/notes-request-issuer.test.ts
+          src/services/message/stage1-notes-producer.test.ts
+          src/services/message/contextual-discovery.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify Core context and action authority
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.notes_owning_scope.outcome == 'success' &&
+          steps.notes_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: packages/core
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../scripts/run-vitest.ts run --config vitest.config.ts
+          test/async-context.node-esm.test.ts
+          test/context-renderer-runtime-events.test.ts
+          test/mode-action-authority.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify personal-assistant reminder edit regressions
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.affected.outputs.source == 'true'
+        timeout-minutes: 10
+        working-directory: plugins/plugin-personal-assistant
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: |
+          set -euo pipefail
+          reminder_diff_status=0
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            src/actions/life.ts \
+            src/actions/life.update-reminder-delay.pglite.integration.test.ts \
+            src/actions/life.cancel-reminder.pglite.integration.test.ts \
+            vitest.config.ts vitest.src-integration.config.ts test/setup.ts \
+            ../../packages/scripts/run-vitest.ts ../../packages/scripts/vitest \
+            ../../packages/ui/package.json \
+            ../../packages/ui/src/styles/mobile-workspaces.css \
+            ../../packages/ui/src/view-primitives.ts \
+            ../plugin-calendar/src/components/CalendarWorkspace.tsx \
+            ../../.github/workflows/pr-validation.yml || reminder_diff_status=$?
+          if [ "$reminder_diff_status" -eq 0 ]; then
+            echo "No reminder edit or owning-resolution inputs changed."
+            exit 0
+          fi
+          if [ "$reminder_diff_status" -ne 1 ]; then
+            exit "$reminder_diff_status"
+          fi
+          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts \
+            src/actions/life.update-reminder-delay.pglite.integration.test.ts \
+            src/actions/life.cancel-reminder.pglite.integration.test.ts \
+            --maxWorkers=1 --no-file-parallelism \
+            --execArgv=--max-old-space-size=2048
+
+      - name: Select reminder fixture regressions
+        id: reminder_fixture_scope
+        if: >-
+          !cancelled() &&
+          steps.affected.outputs.source == 'true'
+        working-directory: plugins/plugin-personal-assistant
+        env:
+          MERGE_BASE: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          fixture_diff_status=0
+          # UI public subpaths are imported by the owning runtime fixture; include
+          # their resolution inputs so an alias or export change reruns the suite.
+          git diff --quiet "$MERGE_BASE"..."$HEAD_SHA" -- \
+            src/actions/lib/reminder-create-contract.test.ts \
+            src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts \
+            src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts \
+            src/lifeops/reminder-wake.pglite.integration.test.ts \
+            test/life-action-effect-receipts.integration.test.ts \
+            vitest.config.ts \
+            vitest.src-integration.config.ts \
+            test/setup.ts \
+            test/helpers/runtime.ts \
+            src/actions/lib/task-create-plan-parameter.ts \
+            src/actions/life.ts \
+            src/startup-work.ts \
+            src/lifeops \
+            ../../packages/scripts/run-vitest.ts \
+            ../../packages/scripts/vitest \
+            ../../packages/ui/package.json \
+            ../../packages/ui/src/styles/mobile-workspaces.css \
+            ../../packages/ui/src/view-primitives.ts \
+            ../../.github/workflows/pr-validation.yml || fixture_diff_status=$?
+          if [ "$fixture_diff_status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$fixture_diff_status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$fixture_diff_status"
+          fi
+
+      - name: Verify reminder create contract fixtures
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.reminder_fixture_scope.outputs.run == 'true'
+        timeout-minutes: 5
+        working-directory: plugins/plugin-personal-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+          DEBUG: "vite:resolve*"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/actions/lib/reminder-create-contract.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify reminder lifecycle fixtures through the owning config
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.reminder_fixture_scope.outputs.run == 'true'
+        timeout-minutes: 10
+        working-directory: plugins/plugin-personal-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+          DEBUG: "vite:resolve*"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.src-integration.config.ts
+          src/lifeops/domains/reminders-service.review-cursor.pglite.integration.test.ts
+          src/lifeops/domains/definitions-service.recurring-snooze.pglite.integration.test.ts
+          src/lifeops/reminder-wake.pglite.integration.test.ts
+          test/life-action-effect-receipts.integration.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Select website open owning regressions
+        id: website_owning_scope
+        if: >-
+          !cancelled() &&
+          steps.affected.outputs.source == 'true'
+        shell: bash
+        env:
+          BASE_SHA: ${{ steps.diff.outputs.merge_base }}
+          HEAD_SHA: ${{ steps.diff.outputs.head_sha }}
+        run: |
+          set -euo pipefail
+          diff_status=0
+          git diff --quiet "$BASE_SHA"..."$HEAD_SHA" -- \
+            packages/contracts/src/browser-request-grounding.ts \
+            packages/contracts/src/browser-request-grounding.test.ts \
+            packages/contracts/src/iana-tlds.ts \
+            plugins/plugin-assistant/src/services/device-actions \
+            plugins/plugin-assistant/test/browser-request-grounding.pglite.test.ts \
+            plugins/plugin-assistant/test/device-actions.e2e.test.ts \
+            plugins/plugin-browser/src/actions || diff_status=$?
+          if [ "$diff_status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$diff_status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            exit "$diff_status"
+          fi
+
+      - name: Verify website open grounding contract
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.website_owning_scope.outcome == 'success' &&
+          steps.website_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node packages/scripts/run-vitest.ts run --config vitest.config.ts
+          packages/contracts/src/browser-request-grounding.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify assistant website open routing and phone recheck
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.website_owning_scope.outcome == 'success' &&
+          steps.website_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/services/device-actions/browser-open-routing.test.ts
+          src/services/device-actions/client-coordinator.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify assistant website open service boundaries
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          ((steps.website_owning_scope.outcome == 'success' &&
+            steps.website_owning_scope.outputs.run == 'true') ||
+           (steps.notes_owning_scope.outcome == 'success' &&
+            steps.notes_owning_scope.outputs.run == 'true'))
+        timeout-minutes: 5
+        working-directory: plugins/plugin-assistant
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.device-actions.config.ts
+          test/browser-request-grounding.pglite.test.ts
+          test/device-actions.e2e.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
+
+      - name: Verify browser open reply
+        if: >-
+          !cancelled() &&
+          steps.notes_owning_build.outcome == 'success' &&
+          steps.website_owning_scope.outcome == 'success' &&
+          steps.website_owning_scope.outputs.run == 'true'
+        timeout-minutes: 3
+        working-directory: plugins/plugin-browser
+        env:
+          NODE_OPTIONS: "--max-old-space-size=2048"
+        run: >-
+          node ../../packages/scripts/run-vitest.ts run --config vitest.config.ts
+          src/actions/browser-availability.test.ts
+          --maxWorkers=1 --no-file-parallelism
+          --execArgv=--max-old-space-size=2048
 
       - name: Verify gateway routing and release preparation
         if: steps.affected.outputs.cloud == 'true'
@@ -423,6 +836,152 @@ jobs:
           wait "$lint_pid" || status=$?
           wait "$types_pid" || status=$?
           exit "$status"
+
+  sdk-owning:
+    name: SDK owning (${{ matrix.lane }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        lane: [core-notes, assistant, calendar-voice]
+    env:
+      NODE_OPTIONS: "--max-old-space-size=8192"
+      RUN_TURBO_CONCURRENCY: "1"
+      TEST_LANE: pr
+      ELIZA_LIVE_TEST: "0"
+    steps:
+      - name: Checkout candidate source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+          submodules: false
+      - name: Select changed SDK owning sources
+        id: owning-diff
+        env:
+          BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          HEAD_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.event.merge_group.head_sha }}
+        run: |
+          set -euo pipefail
+          merge_base="$(git merge-base "$BASE_SHA" "$HEAD_SHA")"
+          status=0
+          git diff --quiet "$merge_base"..."$HEAD_SHA" -- \
+            packages/core packages/contracts packages/host \
+            plugins/plugin-notes plugins/plugin-assistant plugins/plugin-calendar \
+            packages/testing/scenario-runner/test/scenarios/deterministic-notes-actions.scenario.ts || status=$?
+          if [ "$status" -eq 0 ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          elif [ "$status" -eq 1 ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::SDK owning change selection failed with exit $status."
+            exit "$status"
+          fi
+      - if: steps.owning-diff.outputs.run == 'true'
+        uses: ./.github/actions/setup-bun-workspace
+        with:
+          publish-bun-install-cache: "true"
+          bun-version: ${{ env.BUN_VERSION }}
+          node-version: ${{ env.NODE_VERSION }}
+          install-command: bun install --frozen-lockfile --ignore-scripts
+          run-postinstall: "false"
+          install-native-deps: "false"
+          install-protoc: "false"
+          setup-python: "false"
+          skip-avatar-clone: "true"
+          no-vision-deps: "true"
+      - name: Apply required dependency compatibility patches
+        if: steps.owning-diff.outputs.run == 'true'
+        run: |
+          bun packages/scripts/patch-punycode-deprecation.ts
+          bun packages/scripts/patch-llama-cpp-capacitor.ts
+          bun packages/scripts/patch-electrobun-linux-cef-profile.ts
+      - name: Build core contract
+        if: steps.owning-diff.outputs.run == 'true'
+        run: bun run build:core
+      - name: Build real owning dependency closure
+        if: steps.owning-diff.outputs.run == 'true'
+        run: >-
+          node packages/scripts/run-turbo.ts run build
+          --filter=@elizaos/plugin-calendar... --filter=@elizaos/agent...
+          --filter=@elizaos/plugin-assistant... --filter=@elizaos/host...
+          --filter=@elizaos/core... --filter=@elizaos/plugin-notes...
+          --filter=@elizaos/plugin-personal-assistant...
+          --concurrency=4 --output-logs=errors-only
+      - name: Run full Core owning suite
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'core-notes'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd packages/core test 2>&1 | tee "$RUNNER_TEMP/core-owning.log"
+      - name: Run full Notes client and request-effect suites
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'core-notes'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-notes test 2>&1 | tee "$RUNNER_TEMP/notes-owning.log"
+      - name: Run deterministic Notes action scenario
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'core-notes'
+        timeout-minutes: 5
+        env:
+          SCENARIO_USE_DETERMINISTIC_MODEL: "1"
+        run: >-
+          bun --conditions eliza-source --tsconfig-override tsconfig.json
+          packages/testing/scenario-runner/src/cli.ts run
+          packages/testing/scenario-runner/test/scenarios
+          --scenario deterministic-notes-actions --lane pr-deterministic
+          --report-dir test-results/scenario-runner/notes-pr
+          --run-dir test-results/scenario-runner/notes-pr
+      - name: Run full Assistant owning suites
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'assistant'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-assistant test 2>&1 | tee "$RUNNER_TEMP/assistant-owning.log"
+      - name: Run full Calendar owning suite
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'calendar-voice'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          bun run --cwd plugins/plugin-calendar test 2>&1 | tee "$RUNNER_TEMP/calendar-owning.log"
+      - name: Run full host voice TypeScript suite
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'calendar-voice'
+        timeout-minutes: 10
+        working-directory: packages/host
+        run: |
+          set -euo pipefail
+          node ../scripts/run-vitest.ts run --config vitest.config.ts src/voice 2>&1 | tee "$RUNNER_TEMP/host-voice-typescript-owning.log"
+      - name: Run full host voice JavaScript suite
+        if: steps.owning-diff.outputs.run == 'true' && matrix.lane == 'calendar-voice'
+        timeout-minutes: 10
+        run: |
+          set -euo pipefail
+          node --test packages/host/src/voice/*.test.mjs 2>&1 | tee "$RUNNER_TEMP/host-voice-javascript-owning.log"
+      - name: Check normal owning types and lint
+        if: steps.owning-diff.outputs.run == 'true'
+        run: |
+          set -euo pipefail
+          case '${{ matrix.lane }}' in
+            core-notes) packages=(packages/core plugins/plugin-notes) ;;
+            assistant) packages=(plugins/plugin-assistant) ;;
+            calendar-voice) packages=(plugins/plugin-calendar packages/host) ;;
+            *) exit 1 ;;
+          esac
+          for package in "${packages[@]}"; do
+            bun run --cwd "$package" typecheck
+            bun run --cwd "$package" lint:check
+          done
+      - name: Preserve normal owning test output
+        if: always() && steps.owning-diff.outputs.run == 'true'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: sdk-owning-${{ matrix.lane }}
+          path: ${{ runner.temp }}/*-owning.log
+          if-no-files-found: warn
+          retention-days: 7
 
   billing-payment-replay-e2e:
     name: Billing payment replay E2E
@@ -767,6 +1326,7 @@ jobs:
     needs:
       - secret-scan
       - source-checks
+      - sdk-owning
       - billing-payment-replay-e2e
       - subscription-authority-postgres
       - paradee-stream-contract
@@ -777,6 +1337,7 @@ jobs:
           RESULTS: >-
             secret-scan=${{ needs.secret-scan.result }}
             source-checks=${{ needs.source-checks.result }}
+            sdk-owning=${{ needs.sdk-owning.result }}
             billing-payment-replay-e2e=${{ needs.billing-payment-replay-e2e.result }}
             subscription-authority-postgres=${{ needs.subscription-authority-postgres.result }}
             paradee-stream-contract=${{ needs.paradee-stream-contract.result }}

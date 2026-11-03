@@ -55,11 +55,6 @@ function forwardCloudSpeechHeaders(upstream: Response, res: http.ServerResponse,
         const value = upstream.headers.get(name);
         if (value) res.setHeader(name, value);
     }
-    if (kind === "tts") {
-        const moderation = upstream.headers.get("X-Eliza-TTS-Moderation");
-        if (moderation === "reviewed" || moderation === "approved-hit")
-            res.setHeader("X-Eliza-TTS-Moderation", moderation);
-    }
     const provider = upstream.headers.get(providerHeader)?.trim();
     if (provider) res.setHeader("X-Eliza-Speech-Provider", provider);
     res.setHeader("X-Eliza-Speech-Route", "cloud");

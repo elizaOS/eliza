@@ -189,8 +189,8 @@ export class OrganizationsRepository {
   /**
    * Deletes an organization by ID.
    */
-  async delete(id: string): Promise<void> {
-    await dbWrite.delete(organizations).where(eq(organizations.id, id));
+  async delete(id: string, transaction?: DbTransaction): Promise<void> {
+    await (transaction ?? dbWrite).delete(organizations).where(eq(organizations.id, id));
   }
 
   /**

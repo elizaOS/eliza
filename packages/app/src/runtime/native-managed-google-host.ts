@@ -3,6 +3,7 @@ import { isAndroidMobile, resolveApiToken } from "@elizaos/host/protocol";
 import { loadNativeRuntimeModule } from "./native-runtime-module.js";
 import {
   applyNativeCloudRuntimeProfile,
+  applyNativeDirectRuntimeProfile,
   type NativeRuntimeProfileStores,
   parseNativeCloudRoutingDeclaration,
 } from "./native-runtime-profile.js";
@@ -32,6 +33,15 @@ export async function startNativeManagedGoogleHost(
   env: NodeJS.ProcessEnv = process.env,
   profileStores?: NativeRuntimeProfileStores,
 ): Promise<{ close(): Promise<void> } | undefined> {
+  if (isAndroidMobile(env) && env.ELIZA_PROVIDER === "cerebras") {
+    try {
+      await applyNativeDirectRuntimeProfile(env, profileStores);
+    } catch {
+      throw new ElizaError("Native direct routing could not be prepared", {
+        code: "NATIVE_DIRECT_ROUTING_UNAVAILABLE",
+      });
+    }
+  }
   const prepareCloud =
     isAndroidMobile(env) && enabled(env.ELIZAOS_CLOUD_USE_INFERENCE);
   const entry = env.ELIZA_NATIVE_GOOGLE_HOST_MODULE;
@@ -49,7 +59,11 @@ export async function startNativeManagedGoogleHost(
     prepareCloud
       ? new ElizaError(message, { code: "NATIVE_CLOUD_ROUTING_UNAVAILABLE" })
       : unavailable(message);
-  const token = env.ELIZAOS_CLOUD_API_KEY;
+  const credentialKey =
+    env.ELIZA_PROVIDER === "cerebras"
+      ? "ELIZA_NATIVE_GOOGLE_API_KEY"
+      : "ELIZAOS_CLOUD_API_KEY";
+  const token = env[credentialKey];
   const apiToken = resolveApiToken(env);
   if (
     !isAndroidMobile(env) ||
@@ -100,7 +114,7 @@ export async function startNativeManagedGoogleHost(
     assertCurrent() {
       if (
         env.ELIZA_NATIVE_GOOGLE_BINDING_JSON !== raw ||
-        env.ELIZAOS_CLOUD_API_KEY !== token
+        env[credentialKey] !== token
       )
         throw unavailable("Native Google owner changed");
     },
@@ -150,7 +164,8 @@ export async function startNativeManagedGoogleHostForBoot(
   } catch (error) {
     if (
       error instanceof ElizaError &&
-      error.code === "NATIVE_CLOUD_ROUTING_UNAVAILABLE"
+      (error.code === "NATIVE_CLOUD_ROUTING_UNAVAILABLE" ||
+        error.code === "NATIVE_DIRECT_ROUTING_UNAVAILABLE")
     )
       throw error;
     const code =

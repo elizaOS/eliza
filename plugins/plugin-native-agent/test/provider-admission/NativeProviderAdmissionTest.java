@@ -170,6 +170,19 @@ public final class NativeProviderAdmissionTest {
    else check(diagnosticStore.provider.equals(directSelection),"diagnostics never weaken refusal or rollback");
   }
   for(int status:new int[]{401,403,404,429,500,503})check(new NativeProviderAdmission.CloudReadFailure(status) instanceof SecurityException,"all HTTP failures preserve the existing Calendar SecurityException classification");
+  // Cloud services remain independently admitted when text inference uses the owner's key.
+  JSONObject ownWithServices=new JSONObject(directSelection).put("cloudServices",new JSONObject(googleSelected));
+  String ownAdmitted=NativeProviderAdmission.admit(null,ownWithServices.toString(),null,null);
+  Map<String,String> ownEnv=new HashMap<>();
+  NativeProviderAdmission.applyProviderEnvironment(new JSONObject(ownAdmitted),googleCloud,ownEnv,NOW);
+  JSONObject ownGoogle=NativeProviderAdmission.applyManagedGoogleEnvironment(ownAdmitted,googleCloud,ownEnv,NOW);
+  check(ownGoogle!=null&&TOKEN.equals(ownEnv.get("ELIZA_NATIVE_GOOGLE_API_KEY")),"Google keeps its admitted service credential");
+  check(!ownEnv.containsKey("ELIZAOS_CLOUD_API_KEY"),"service credentials are never inference credentials");
+  for(String retiredCloud:new String[]{null,cloud(OTHER,NOW+60_000),cloud(ID,NOW-1)}) {
+   check(NativeProviderAdmission.applyManagedGoogleEnvironment(ownAdmitted,retiredCloud,ownEnv,NOW)==null,"retired Cloud account disconnects optional Google services");
+   check(!ownEnv.containsKey("ELIZA_NATIVE_GOOGLE_API_KEY"),"retired service credential is removed");
+   check(KEY.equals(ownEnv.get("CEREBRAS_API_KEY")),"retired Cloud account preserves direct inference");
+  }
   System.out.println("PASS local agent provider admission");
  }
 }

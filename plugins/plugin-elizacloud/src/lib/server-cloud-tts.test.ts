@@ -219,29 +219,13 @@ describe("handleCloudTtsPreviewRoute (/api/tts/cloud proxy)", () => {
         expect(Buffer.isBuffer(state.body)).toBe(true);
         expect(Array.from(state.body as Buffer)).toEqual([73, 68, 51]);
     });
-    test.each(["reviewed", "approved-hit"])("forwards only the safe TTS moderation receipt %s", async (moderation) => {
-        upstreamResponse = () => new Response(new Uint8Array([73,68,51]), {headers:{"content-type":"audio/mpeg","X-Eliza-TTS-Moderation":moderation,"X-Private-Cache-Detail":"never-project-secret"}});
+    test("projects no moderation header from Cloud TTS", async () => {
+        upstreamResponse = () => new Response(new Uint8Array([73,68,51]), {headers:{"content-type":"audio/mpeg","X-Eliza-TTS-Moderation":"reviewed","X-Private-Cache-Detail":"never-project-secret"}});
         const {res,state}=fakeRes();
         await handleCloudTtsPreviewRoute(fakeReq(JSON.stringify({text:"hi"})),res);
         expect(state.statusCode).toBe(200);
-        expect(state.headers["x-eliza-tts-moderation"]).toBe(moderation);
+        expect(state.headers["x-eliza-tts-moderation"]).toBeUndefined();
         expect(state.headers["x-private-cache-detail"]).toBeUndefined();
-    });
-    test("drops invalid, oversized and injected TTS moderation values", async () => {
-        for (const moderation of ["hit","APPROVED-HIT","reviewed, approved-hit","approved-hit".repeat(500),"reviewed\r\nX-Secret: never-project-secret"]) {
-            upstreamResponse = () => {
-                const response=new Response(new Uint8Array([73,68,51]),{headers:{"content-type":"audio/mpeg"}});
-                const get=response.headers.get.bind(response.headers);
-                // A controlled upstream port also exercises values real Headers refuses to construct.
-                response.headers.get=(name:string)=>name.toLowerCase()==="x-eliza-tts-moderation"?moderation:get(name);
-                return response;
-            };
-            const {res,state}=fakeRes();
-            await handleCloudTtsPreviewRoute(fakeReq(JSON.stringify({text:"hi"})),res);
-            expect(state.statusCode).toBe(200);
-            expect(state.headers["x-eliza-tts-moderation"]).toBeUndefined();
-            expect(JSON.stringify(state.headers)).not.toContain("never-project-secret");
-        }
     });
     test("401 when Eliza Cloud is not connected — no upstream call", async () => {
         delete process.env.ELIZAOS_CLOUD_API_KEY;

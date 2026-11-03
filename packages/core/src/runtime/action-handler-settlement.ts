@@ -1,3 +1,9 @@
+import {
+	type BoundRequestOperationAttempt,
+	BoundRequestOperationError,
+	bindRequestOperationResult,
+} from "../actions/task-extraction-context";
+import { copyBoundOperationDenial } from "./operation-restriction-projection";
 /**
  * Settles action handlers before any callback can reach a user-facing transport.
  * The boundary normalizes the returned ActionResult, validates effect receipts,
@@ -55,6 +61,8 @@ type SettlementPhase = "pending" | "settled" | "failed";
 
 /** Inputs for one isolated handler attempt and its user-facing callback. */
 export interface SettleActionHandlerOptions {
+	/** Opaque identity supplied only by the actual host executor. */
+	operationAttempt?: BoundRequestOperationAttempt;
 	runtime: IAgentRuntime;
 	action: Action;
 	callback?: HandlerCallback;
@@ -106,6 +114,7 @@ function markCanonicalCallback(
 export function normalizeActionResult(
 	actionName: string,
 	result: unknown,
+	operationAttempt?: BoundRequestOperationAttempt,
 ): ActionResult {
 	if (!isObjectRecord(result)) {
 		return invalidActionResult(
@@ -154,12 +163,20 @@ export function normalizeActionResult(
 			actionName,
 		},
 	};
-	return rawResult.replyFailure === undefined
-		? normalized
-		: applyGroundedActionReply(normalized, {
-				kind: "unavailable",
-				failure: normalizeActionReplyFailure(rawResult.replyFailure),
-			});
+	if (operationAttempt)
+		bindRequestOperationResult(normalized, operationAttempt);
+	copyBoundOperationDenial(rawResult, normalized, operationAttempt);
+	const finalResult =
+		rawResult.replyFailure === undefined
+			? normalized
+			: applyGroundedActionReply(normalized, {
+					kind: "unavailable",
+					failure: normalizeActionReplyFailure(rawResult.replyFailure),
+				});
+	if (operationAttempt)
+		bindRequestOperationResult(finalResult, operationAttempt);
+	copyBoundOperationDenial(normalized, finalResult, operationAttempt);
+	return finalResult;
 }
 
 /** Build a planner-visible failure while retaining the trusted action identity. */
@@ -405,6 +422,29 @@ export async function settleActionHandler(
 		if (options.handlerError === "rethrow") {
 			throw error;
 		}
+		if (error instanceof BoundRequestOperationError) {
+			const denied = actionFailureResult(
+				options.action.name,
+				error.message,
+				{
+					code: error.code,
+					acceptance: "rejected",
+					executionStatus: "not_started",
+					executed: false,
+					retryable: false,
+				},
+				{
+					kind: "handler_error",
+					boundary: "handler",
+					code: error.code,
+					retryable: false,
+				},
+			);
+			if (options.operationAttempt)
+				bindRequestOperationResult(denied, options.operationAttempt);
+			copyBoundOperationDenial(error, denied, options.operationAttempt);
+			return denied;
+		}
 		const contextOverflow = isProviderContextOverflowFailure(error);
 		// A processing-policy denial raised by a model call inside the handler is
 		// as terminal as a denied admission: a replan must not retry it.
@@ -449,7 +489,13 @@ export async function settleActionHandler(
 			"userFacingEffectReceiptIds" in rawResult;
 	}
 	try {
-		settledResult = normalizeActionResult(options.action.name, rawResult);
+		if (isObjectRecord(rawResult) && options.operationAttempt)
+			bindRequestOperationResult(rawResult, options.operationAttempt);
+		settledResult = normalizeActionResult(
+			options.action.name,
+			rawResult,
+			options.operationAttempt,
+		);
 		if (
 			settledResult.success !== false &&
 			tagsMayProduceEffects(options.action.tags) &&

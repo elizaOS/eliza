@@ -117,7 +117,7 @@ public final class ResidentLifecycleTest {
     check(new CredentialIntentFence().reserve() == 1, "independent fences");
 
     // Direct provider: test-mocks only; verified, compare-exchanged and read back.
-    check(NativeProviderSlot.directProviderAllowed(true) && !NativeProviderSlot.directProviderAllowed(false), "direct key is a test-mocks surface");
+    check(NativeProviderSlot.directProviderAllowed(true) && NativeProviderSlot.directProviderAllowed(false), "owner-selected direct keys are available in product and test builds");
     Slot slot = new Slot();
     AtomicInteger checks = new AtomicInteger();
     NativeProviderSlot.KeyCheck accept = (key, model) -> {
@@ -206,7 +206,7 @@ public final class ResidentLifecycleTest {
     check(NativeProviderSlot.applyLaunchEnvironment("cloud", cloudSelection, cloudCredential, libs, files, qa, NOW) && "true".equals(qa.get("ELIZAOS_CLOUD_USE_EMBEDDINGS")), "cloud QA profile keeps Cloud embeddings");
     JSONObject direct = new JSONObject().put("provider", "cerebras").put("key", KEY).put("model", MODEL).put("revision", "9b2d6c34-6f0a-4d0e-9f63-2b8e1f0c7a11");
     Map<String, String> qaDirect = new HashMap<>();
-    check(!NativeProviderSlot.applyLaunchEnvironment("cloud", direct, null, libs, files, qaDirect, NOW) && !qaDirect.containsKey("CEREBRAS_API_KEY"), "cloud QA profile refuses a direct key");
+    check(NativeProviderSlot.applyLaunchEnvironment("cloud", direct, null, libs, files, qaDirect, NOW) && KEY.equals(qaDirect.get("CEREBRAS_API_KEY")), "cloud profile honors an explicitly selected direct key");
     // An expired Cloud credential or no provider launches unbound, still with local embeddings.
     for (JSONObject provider : new JSONObject[] {cloudSelection, null}) {
       Map<String, String> env = new HashMap<>();

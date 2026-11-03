@@ -20,6 +20,7 @@ import {
 } from "../schemas/personal-account-convergences";
 import { type UserIdentity, userIdentities } from "../schemas/user-identities";
 import { type NewUser, type User, users } from "../schemas/users";
+import { assertNotNativeAppPublisher } from "./native-app-publishers";
 import { revokePersonalSharedGroupConsentForUser } from "./personal-shared-group-consent-lifecycle";
 import { phoneVerifiedProjectionMatches } from "./user-identity-projection";
 
@@ -3146,6 +3147,7 @@ export class UsersRepository {
     organizationId: string,
   ): Promise<void> {
     await dbWrite.transaction(async (tx) => {
+      await assertNotNativeAppPublisher(organizationId, tx);
       const observedMembers = await tx
         .select({ id: users.id })
         .from(users)

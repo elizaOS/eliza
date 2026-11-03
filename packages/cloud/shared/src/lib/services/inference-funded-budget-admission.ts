@@ -7,53 +7,17 @@ import { sqlRows } from "../../db/execute-helpers";
 import type { RuntimeDurableObjectNamespace } from "../../types/cloud-worker-env";
 import { bindCloudBindings, getCloudAwareEnv, getCloudBinding } from "../runtime/cloud-bindings";
 import type { InferenceFundingBudgetConsumption } from "./inference-funding-budget-protocol";
+import { type InferenceBudgetPolicy, isInferenceBudgetPolicy } from "./inference-policy-contract";
 import type { OrganizationQuotaPolicy } from "./organization-quota-policy";
 import { requireOrganizationRateTier } from "./organization-quota-policy";
 
-export interface InferenceBudgetPolicy {
-  organizationId: string;
-  enabled: boolean;
-  epoch: string;
-  policyGeneration: string;
-  validUntil: number;
-  rateLimits: {
-    completionsRpm: number;
-    embeddingsRpm: number;
-    standardRpm: number;
-    strictRpm: number;
-  };
-}
+export { type InferenceBudgetPolicy, isInferenceBudgetPolicy } from "./inference-policy-contract";
 
 export class InferenceFundingBudgetUnavailableError extends ElizaError {
   readonly statusCode = 503;
   constructor(message: string, cause?: unknown) {
     super(message, { code: "INFERENCE_FUNDING_BUDGET_UNAVAILABLE", severity: "ephemeral", cause });
   }
-}
-
-export function isInferenceBudgetPolicy(value: unknown): value is InferenceBudgetPolicy {
-  if (value === null || typeof value !== "object") return false;
-  const p = value as Partial<InferenceBudgetPolicy>;
-  return (
-    typeof p.organizationId === "string" &&
-    p.organizationId.length > 0 &&
-    typeof p.enabled === "boolean" &&
-    typeof p.epoch === "string" &&
-    /^(0|[1-9]\d*)$/.test(p.epoch) &&
-    typeof p.policyGeneration === "string" &&
-    /^(0|[1-9]\d*)$/.test(p.policyGeneration) &&
-    Number.isSafeInteger(p.validUntil) &&
-    (p.validUntil ?? 0) > 0 &&
-    p.rateLimits !== undefined &&
-    p.rateLimits !== null &&
-    typeof p.rateLimits === "object" &&
-    [
-      p.rateLimits.completionsRpm,
-      p.rateLimits.embeddingsRpm,
-      p.rateLimits.standardRpm,
-      p.rateLimits.strictRpm,
-    ].every((rate) => Number.isSafeInteger(rate) && rate > 0)
-  );
 }
 
 export function isFundedBudgetAdmissionEnabled(): boolean {
@@ -64,6 +28,19 @@ export function isFundedBudgetAdmissionEnabled(): boolean {
   );
 }
 
+export function isRatePolicyAdmissionEnabled(): boolean {
+  const env = getCloudAwareEnv();
+  return (
+    env.INFERENCE_RATE_POLICY_ADMISSION === "true" &&
+    env.INFERENCE_STRONG_REVOCATION_ENABLED === "true"
+  );
+}
+
+/** Both modes use the same mutation epoch, but only the funded mode can spend. */
+export function isInferencePolicyAdmissionEnabled(): boolean {
+  return isFundedBudgetAdmissionEnabled() || isRatePolicyAdmissionEnabled();
+}
+
 /** Called only by primary hydration or policy publication, never by a warm request. */
 export async function readInferenceBudgetPolicy(
   tx: DbTransaction,
@@ -71,11 +48,22 @@ export async function readInferenceBudgetPolicy(
   policy: OrganizationQuotaPolicy,
 ): Promise<InferenceBudgetPolicy | undefined> {
   if (!isFundedBudgetAdmissionEnabled()) return undefined;
-  const [row] = await sqlRows<{ epoch: string }>(
+  return readInferencePolicy(tx, organizationId, policy, true);
+}
+
+export async function readInferencePolicy(
+  tx: DbTransaction,
+  organizationId: string,
+  policy: OrganizationQuotaPolicy,
+  fundedOnly = false,
+): Promise<InferenceBudgetPolicy | undefined> {
+  if (!isInferencePolicyAdmissionEnabled()) return undefined;
+  const [row] = await sqlRows<{ epoch: string; enabled: boolean; rate_enabled: boolean }>(
     tx,
     sql`
-    SELECT epoch::text FROM inference_policy_authorities
-    WHERE organization_id = ${organizationId} AND enabled = true
+    SELECT epoch::text, enabled, rate_enabled FROM inference_policy_authorities
+    WHERE organization_id = ${organizationId} AND (enabled OR rate_enabled)
+      AND (${!fundedOnly} OR enabled)
   `,
   );
   if (!row) return undefined;
@@ -93,7 +81,19 @@ export async function readInferenceBudgetPolicy(
   const hold = await billingHoldService.getState(organizationId, tx);
   return {
     organizationId,
-    enabled: policy.subscriptionFunded && hold.status !== "held" && validUntil > Date.now(),
+    enabled:
+      row.enabled &&
+      isFundedBudgetAdmissionEnabled() &&
+      policy.subscriptionFunded &&
+      hold.status !== "held" &&
+      validUntil > Date.now(),
+    ...(isRatePolicyAdmissionEnabled()
+      ? {
+          // Rate admission never spends, so it needs no funding or hold
+          // standing; the primary rate path does not read them either.
+          rateEnabled: row.rate_enabled && validUntil > Date.now(),
+        }
+      : {}),
     epoch: row.epoch,
     policyGeneration: policy.authority.generation,
     validUntil,
@@ -117,6 +117,7 @@ export async function loadInferenceBudgetPolicy(
     await lockOrganizationPolicyForRead(tx, organizationId);
     const [standing] = await sqlRows<{
       enabled: boolean | null;
+      rate_enabled: boolean | null;
       epoch: string | null;
       generation: string | null;
       is_active: boolean;
@@ -126,7 +127,7 @@ export async function loadInferenceBudgetPolicy(
     }>(
       tx,
       sql`
-      SELECT f.enabled, f.epoch::text, a.policy_generation::text AS generation,
+      SELECT f.enabled, f.rate_enabled, f.epoch::text, a.policy_generation::text AS generation,
         o.is_active, o.account_lifecycle_state, o.account_deletion_request_id, o.paid_work_fenced_at
       FROM organizations o
       LEFT JOIN inference_policy_authorities f ON f.organization_id = o.id
@@ -134,17 +135,21 @@ export async function loadInferenceBudgetPolicy(
       WHERE o.id = ${organizationId}
     `,
     );
-    if (!standing || standing.generation === null || (standing.enabled && standing.epoch === null))
+    if (
+      !standing ||
+      standing.generation === null ||
+      ((standing.enabled || standing.rate_enabled) && standing.epoch === null)
+    )
       throw new InferenceFundingBudgetUnavailableError(
         "Delegated inference authority is unavailable",
       );
     if (
-      !standing.enabled ||
+      !(standing.enabled || standing.rate_enabled) ||
       !standing.is_active ||
       standing.account_lifecycle_state !== "active" ||
       standing.account_deletion_request_id !== null ||
       standing.paid_work_fenced_at !== null ||
-      !isFundedBudgetAdmissionEnabled()
+      !isInferencePolicyAdmissionEnabled()
     ) {
       // Publish an explicit prohibition even when the disabled account can no
       // longer resolve a serving subscription. These rates grant no admission.
@@ -153,6 +158,7 @@ export async function loadInferenceBudgetPolicy(
       return {
         organizationId,
         enabled: false,
+        rateEnabled: false,
         epoch: standing.epoch ?? "0",
         policyGeneration: standing.generation,
         validUntil: Number.MAX_SAFE_INTEGER,
@@ -168,7 +174,7 @@ export async function loadInferenceBudgetPolicy(
       "./organization-quota-policy"
     );
     const policy = await readOrganizationQuotaPolicyInTransaction(tx, organizationId);
-    const result = await readInferenceBudgetPolicy(tx, organizationId, policy);
+    const result = await readInferencePolicy(tx, organizationId, policy);
     if (!result)
       throw new InferenceFundingBudgetUnavailableError("Delegated inference is not enrolled");
     return result;

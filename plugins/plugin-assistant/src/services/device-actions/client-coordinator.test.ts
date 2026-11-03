@@ -533,11 +533,12 @@ describe("opt-in current browser request policy", () => {
     text,
     current() {},
   });
-  function browserFixture(policy = true, reserveGate?: () => Promise<void>) {
-    const fixture = fixtureServer({
-      type: "browser_navigate",
-      url: "https://example.com/path?q=1#x",
-    });
+  function browserFixture(
+    policy = true,
+    reserveGate?: () => Promise<void>,
+    url = "https://example.com/path?q=1#x",
+  ) {
+    const fixture = fixtureServer({ type: "browser_navigate", url });
     let messageId: string | undefined = "message";
     let proposalId = "proposal",
       proposalDigest = digest;
@@ -745,6 +746,50 @@ describe("opt-in current browser request policy", () => {
           current,
         ),
       ).toHaveLength(1);
+    }
+  });
+  it("opens exactly the address the server grounded in the user's words", async () => {
+    for (const [text, url, allowed] of [
+      // The server stores the user's spelling, never the model's www. form.
+      [
+        "Hey Eliza, can you open youtube.com for me?",
+        "https://youtube.com/",
+        true,
+      ],
+      [
+        "Hey Eliza, can you open youtube.com for me?",
+        "https://www.youtube.com/",
+        false,
+      ],
+      ["go to www.youtube.com", "https://www.youtube.com/", true],
+      ["open main.py", "https://main.py/", true],
+      ["can you open main.py", "https://main.py/", false],
+      ["can you open the main.py website", "https://main.py/", true],
+      ["don't open youtube.com", "https://youtube.com/", false],
+      ["open YouTube", "https://youtube.com/", false],
+      ["take me to L.A.", "https://l.a/", false],
+    ] as const) {
+      const f = browserFixture(true, undefined, url);
+      const current = proof(text);
+      expect(
+        (await f.actions.pendingReview(context, signal(), current))[0],
+        text,
+      ).toMatchObject(
+        allowed
+          ? { proposal: { id: "proposal" } }
+          : { proposal: null, notice: expect.stringContaining("blocked") },
+      );
+      expect(
+        await f.actions.performRequested(
+          "message",
+          context,
+          signal(),
+          async () => true,
+          undefined,
+          current,
+        ),
+      ).toHaveLength(allowed ? 1 : 0);
+      expect(f.effects()).toBe(allowed ? 1 : 0);
     }
   });
   it("grounds the exact destination and consumes once before concurrent approval", async () => {

@@ -147,6 +147,16 @@ public final class StreamContract {
             check("es".equals(voice.language()) && "es".equals(voice.voiceId()) && voice.sampleRate() == 24000);
             check(voice.synthesize("hola", 1).samples.length > 0);
             try { voice.synthesizePhonemes("x", 1); throw new AssertionError(); } catch (IllegalStateException expected) {}
+            // ABI v21: the caller's speed range reaches the voice's own slot; out-of-range values never reach native.
+            voice.speedRange(0.5f, 1.5f);
+            check("es".equals(VoiceNative.rangedVoice) && VoiceNative.rangeMin == 0.5f && VoiceNative.rangeMax == 1.5f);
+            for (float[] bad : new float[][] {{0.2f, 1.5f}, {0.5f, 4.5f}, {1.1f, 1.5f}, {0.5f, 0.9f}, {Float.NaN, 1.5f}, {0.5f, Float.POSITIVE_INFINITY}}) {
+                VoiceNative.rangedVoice = null;
+                try { voice.speedRange(bad[0], bad[1]); throw new AssertionError(); } catch (IllegalArgumentException expected) {}
+                check(VoiceNative.rangedVoice == null);
+            }
+            voice.validatedSpeedRange();
+            check("es".equals(VoiceNative.rangedVoice) && VoiceNative.rangeMin == 0f && VoiceNative.rangeMax == 0f);
         } finally { other.delete(); }
         check(ParadeeVoice.infoField("{\"a\":\"x\",\"sample_rate\":24000}", "sample_rate").equals("24000"));
     }

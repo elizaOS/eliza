@@ -14,8 +14,7 @@ import org.json.JSONObject;
  * the store cannot confirm is a failure, never a silent success. The store's {@code assertCurrent}
  * carries the caller's credential intent ({@link CredentialIntentFence}) and bridge lifetime.
  *
- * <p>Product builds never bind a direct (bring-your-own) key: {@link #directProviderAllowed} is a
- * test-mocks developer surface only; products use the owner's Eliza Cloud plan through
+ * <p>Product builds bind direct keys only after an explicit owner choice: {@link #directProviderAllowed} does not trigger provider requests; Cloud remains available through
  * {@link NativeProviderAdmission#bindCloudProvider}.
  */
 public final class NativeProviderSlot {
@@ -49,9 +48,9 @@ public final class NativeProviderSlot {
   public static final String CEREBRAS_MODELS_URL = "https://api.cerebras.ai/v1/models";
   public static final int PROVIDER_CHECK_TIMEOUT_MS = 10_000, PROVIDER_CHECK_BODY_LIMIT = 256 * 1024;
 
-  /** A direct provider key is a test-mocks developer surface only. */
+  /** An explicit owner-selected direct provider is supported in product and development builds. */
   public static boolean directProviderAllowed(boolean testMocks) {
-    return testMocks;
+    return true;
   }
 
   /**
@@ -116,18 +115,33 @@ public final class NativeProviderSlot {
     if (!NativeProviderAdmission.validProviderToken(key, 1024)) return "Enter a valid Cerebras key.";
     if (!NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL.equals(model))
       return product + " uses " + NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL + " on Cerebras.";
+    return saveVerifiedProvider(store, key, model, null, check, product);
+  }
+
+  /** Optional speech shares the existing encrypted provider slot. Saving never sends audio. */
+  public static String saveVerifiedProvider(Store store, String key, String model, String cartesiaKey, KeyCheck check, String product) throws Exception {
+    if (!NativeProviderAdmission.validProviderToken(key, 1024)) return "Enter a valid Cerebras key.";
+    if (!NativeProviderAdmission.CEREBRAS_PROVIDER_MODEL.equals(model)) return "Choose the supported Cerebras model.";
+    if (cartesiaKey != null && !NativeProviderAdmission.validProviderToken(cartesiaKey, 1024)) return "Enter a valid Cartesia key or leave voice off.";
     String failure = check.check(key, model);
     if (failure != null) return failure;
     store.assertCurrent();
-    bindDirectProvider(store, key, model);
+    bindDirectProvider(store, key, model, cartesiaKey);
     store.assertCurrent();
     JSONObject saved = new JSONObject(store.readProvider());
-    if (!key.equals(saved.optString("key")) || !model.equals(saved.optString("model"))) throw new IllegalStateException();
+    if (!key.equals(saved.optString("key")) || !model.equals(saved.optString("model"))
+        || !java.util.Objects.equals(cartesiaKey, saved.has("cartesiaKey") ? saved.getString("cartesiaKey") : null))
+      throw new IllegalStateException("Provider credentials could not be confirmed");
     return null;
   }
 
   /** Direct configuration is an explicit native admission; renderer metadata is never accepted. */
   public static void bindDirectProvider(Store store, String key, String model) throws Exception {
+    bindDirectProvider(store, key, model, null);
+  }
+
+  public static void bindDirectProvider(Store store, String key, String model, String cartesiaKey) throws Exception {
+    if (cartesiaKey != null && !NativeProviderAdmission.validProviderToken(cartesiaKey, 1024)) throw new IllegalArgumentException();
     if (!NativeProviderAdmission.validProviderToken(key, 1024) || !model.matches(NativeProviderAdmission.PROVIDER_MODEL_PATTERN))
       throw new IllegalArgumentException();
     String previous = store.readProvider();
@@ -135,9 +149,11 @@ public final class NativeProviderSlot {
         new JSONObject()
             .put("provider", "cerebras")
             .put("key", key)
+            .put("cartesiaKey", cartesiaKey)
             .put("model", model)
             .put("revision", UUID.randomUUID().toString())
             .toString();
+    if(previous!=null){JSONObject old=new JSONObject(previous);JSONObject services="elizacloud".equals(old.optString("provider"))?old:old.optJSONObject("cloudServices");if(services!=null)selection=new JSONObject(selection).put("cloudServices",services).toString();}
     if (store.compareExchangeProvider(previous, selection) == null) throw new IllegalStateException();
   }
 
@@ -154,8 +170,9 @@ public final class NativeProviderSlot {
     "ELIZAOS_CLOUD_USE_EMBEDDINGS", "ELIZAOS_CLOUD_EMBEDDING_MODEL", "ELIZAOS_CLOUD_EMBEDDING_DIMENSIONS",
     "CEREBRAS_API_KEY", "CEREBRAS_BASE_URL", "CEREBRAS_MODEL", "CEREBRAS_SMALL_MODEL", "CEREBRAS_LARGE_MODEL",
     "OPENAI_API_KEY", "OPENAI_BASE_URL", "ELIZA_PROVIDER",
+    "CARTESIA_API_KEY", "CARTESIA_API_KEY_FILE", "ELIZA_SELF_HOSTED_VOICE_ENABLED", "ELIZA_SELF_HOSTED_VOICE_CLOUD_RELAY_ENABLED",
     "ELIZA_LOCAL_EMBEDDING_MODEL_PATH", "ELIZA_LOCAL_EMBEDDING_DIMENSIONS",
-    "ELIZA_NATIVE_GOOGLE_HOST_MODULE", "ELIZA_NATIVE_GOOGLE_BINDING_JSON",
+    "ELIZA_NATIVE_GOOGLE_HOST_MODULE", "ELIZA_NATIVE_GOOGLE_BINDING_JSON", "ELIZA_NATIVE_GOOGLE_API_KEY",
     "ELIZA_MANAGED_GMAIL_READ_BROKER", "ELIZA_MANAGED_GMAIL_SEND_BROKER", "ELIZA_MANAGED_GMAIL_OPERATION_BROKER",
     "ELIZA_MANAGED_CALENDAR_READ_BROKER",
     // Default-off Google mutations stay off unless a product admits them.
@@ -196,7 +213,7 @@ public final class NativeProviderSlot {
       Map<String, String> env,
       long now) {
     boolean bound = false;
-    if (provider != null && (!"cloud".equals(runtimeProfile) || "elizacloud".equals(provider.optString("provider")))) {
+    if (provider != null) {
       Map<String, String> applied = new java.util.HashMap<>(env);
       try {
         NativeProviderAdmission.applyProviderEnvironment(provider, cloudSaved, applied, now);

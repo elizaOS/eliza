@@ -21,3 +21,38 @@ it("offers BROWSER only when a target can act, without a network probe", async (
   });
   expect(await browserAction.validate(runtime, message as Memory)).toBe(true);
 });
+
+it("never claims a native client opened a site it did not confirm", async () => {
+  const service = new BrowserService();
+  const sent: Array<string | undefined> = [];
+  service.setNativeClientTransport({
+    readPage: async () => ({}),
+    navigate: async (_clientId, url) => {
+      sent.push(url);
+    },
+  });
+  const runtime = { getService: () => service } as unknown as IAgentRuntime;
+  // A spoken request from the phone's native app, as the voice bridge sends it.
+  const message = {
+    content: {
+      text: "open youtube.com",
+      channelType: "VOICE_DM",
+      metadata: { uiBrowserSurface: "native", viewClientId: "phone-1" },
+    },
+  };
+  const result = await browserAction.handler(
+    runtime,
+    message as Memory,
+    undefined,
+    { parameters: { action: "open", url: "https://youtube.com" } },
+  );
+  expect(sent).toEqual(["https://youtube.com/"]);
+  expect(result).toMatchObject({
+    success: true,
+    userFacingText:
+      "I sent youtube.com to your browser, but it hasn't confirmed that it opened.",
+    verifiedUserFacing: true,
+    turnComplete: true,
+  });
+  expect(result).not.toHaveProperty("modelReplyRequired");
+});

@@ -903,7 +903,9 @@ describe("planning progress delivery boundaries", () => {
           },
         },
       );
-      expect(progress).toEqual(kind === "clean" ? [progressText] : []);
+      expect(progress).toEqual(
+        kind === "clean" || kind === "private" ? [progressText] : [],
+      );
       expect(delivered).toHaveLength(1);
       if (kind !== "revoked") {
         expect(delivered[0].text).toBe(h.replyText);

@@ -1,3 +1,4 @@
+import type { RequestOperationIssuer } from "../actions/task-extraction-context";
 import type {
 	TypedReadEgressReceipt,
 	TypedReadReplyBinding,
@@ -381,6 +382,8 @@ export interface PlannerLoopResult {
 }
 
 export interface PlannerLoopParams {
+	/** Actual host request capability; the model port and serialized IDs cannot supply it. */
+	requestOperationIssuer?: RequestOperationIssuer;
 	resolveTypedReadReply?: TypedReadReplyResolver;
 	onTypedReadEgress?: (receipt: TypedReadEgressReceipt) => void;
 	admitTypedReadCorrection?: () => boolean;

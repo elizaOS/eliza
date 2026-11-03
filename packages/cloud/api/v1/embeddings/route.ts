@@ -47,6 +47,7 @@ import {
 } from "@elizaos/cloud-shared/lib/services/app-subscription-inference-admission";
 import type { CreditReservation } from "@elizaos/cloud-shared/lib/services/credits";
 import { deferredCredentialAdmissionGuard } from "@elizaos/cloud-shared/lib/services/deferred-credential-admission-guard";
+import { wakeInferenceAdmissionGate } from "@elizaos/cloud-shared/lib/services/inference-admission-gate";
 import { inferenceRateLimitConfig } from "@elizaos/cloud-shared/lib/services/inference-admission-snapshot";
 import { requireInferenceApiKeyWithOrg } from "@elizaos/cloud-shared/lib/services/inference-api-key-auth";
 import type { InferenceAdmissionSnapshot } from "@elizaos/cloud-shared/lib/services/inference-auth-cache";
@@ -117,6 +118,7 @@ app.post("/", async (c) => {
   let billingReservation: CreditReservation | undefined;
   let executionCtx: { waitUntil(promise: Promise<unknown>): void } | undefined;
   let admissionSnapshot: InferenceAdmissionSnapshot | undefined;
+  let apiKeyRateLimit: number | undefined;
   let admissionCredential: InferenceCredentialCheck | undefined;
   let providerRequestId: string | undefined;
   let providerModel: string | undefined;
@@ -203,6 +205,7 @@ app.post("/", async (c) => {
           },
         },
         503,
+        { "Retry-After": "1" },
       );
     }
     if (resolution.kind === "suspended") {
@@ -250,6 +253,10 @@ app.post("/", async (c) => {
       guardOrganizationId = user.organization_id;
       apiKeyId = resolution.ctx.apiKeyId;
       admissionSnapshot = resolution.ctx.admission;
+      apiKeyRateLimit =
+        "apiKeyRateLimit" in resolution.ctx
+          ? resolution.ctx.apiKeyRateLimit
+          : undefined;
       admissionCredential = resolution.credential;
     } else {
       if (executionCtx) {
@@ -289,12 +296,17 @@ app.post("/", async (c) => {
     }
 
     const tAuth = performance.now();
+    // Dispatch reaches the billing gate after the rate decision; wake it now.
+    if (executionCtx && user.organization_id)
+      wakeInferenceAdmissionGate(user.organization_id, executionCtx);
     const orgRateLimitPromise = user.organization_id
       ? enforceOrgRateLimit(user.organization_id, "embeddings", {
           cacheOnly: Boolean(executionCtx),
           executionCtx,
           config: inferenceRateLimitConfig(admissionSnapshot, "embeddings"),
+          admissionSnapshot,
           apiKeyId,
+          apiKeyRateLimit,
         })
       : Promise.resolve(null);
 

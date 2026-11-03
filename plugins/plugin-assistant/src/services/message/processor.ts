@@ -857,7 +857,7 @@ export class MessageProcessor {
               runTerminalOwner,
               onSettledActionResult,
               onPlanningAcknowledgment: opts.onPlanningAcknowledgment
-                ? (text) => {
+                ? async (text) => {
                     if (
                       opts.abortSignal?.aborted ||
                       (!opts.keepExistingResponses &&
@@ -865,7 +865,7 @@ export class MessageProcessor {
                           responseId)
                     )
                       return;
-                    opts.onPlanningAcknowledgment?.(text);
+                    await opts.onPlanningAcknowledgment?.(text);
                   }
                 : undefined,
               onResponseHandlerEarlyReply: deliverResponseHandlerEarlyReply,

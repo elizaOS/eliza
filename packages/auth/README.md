@@ -17,7 +17,7 @@ credential storage. Keep credentials in the trusted host; never log them.
 | `@elizaos/auth/start`       | Hosted Bun service with PostgreSQL                                          |
 | `@elizaos/auth/embedded`    | Embedded Bun service with persistent PGlite                                 |
 | `@elizaos/auth/native-host` | Trusted Node enrollment flow                                                |
-| `@elizaos/auth/app-return` | Browser-safe foreground return and registered Workspace AppReturn v2 policy |
+| `@elizaos/auth/app-return`  | Browser-safe foreground return and registered Workspace AppReturn v2 policy |
 | `@elizaos/auth/testing`     | Vault fixtures for tests only                                               |
 
 Use these barrels in repository consumers. Explicit old account/vault paths and

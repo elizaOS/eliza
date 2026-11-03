@@ -26,6 +26,13 @@ export interface RuntimeDurableObjectNamespace {
 }
 
 export interface Bindings {
+  /** Bounded speech-only sockets; agents and conversation storage remain on the client. */
+  VOICE_SPEECH_RELAY_ENABLED?: string;
+  /** Speech-only Ink final timeout, clamped to 640..5000 ms; default 1280 ms. */
+  VOICE_SPEECH_END_TIMEOUT_MS?: string;
+  /** Renewable 60 s speech windows per session for extending clients, 1..120; default 10. */
+  VOICE_SPEECH_RELAY_MAX_WINDOWS?: string;
+  SPEECH_RELAY_SESSIONS?: RuntimeDurableObjectNamespace;
   CLOUD_HF_EGRESS_BACKEND?: string;
   HF_EGRESS_STATE?: RuntimeDurableObjectNamespace;
   CLOUD_VOICE_USAGE_BACKEND?: string;
@@ -683,6 +690,8 @@ export interface Bindings {
   INFERENCE_STRONG_REVOCATION_ENABLED?: string;
   /** Delegated, primary-backed inference budgets; enroll organizations only after validation. */
   INFERENCE_FUNDED_BUDGET_ADMISSION?: string;
+  /** Fenced rate-only admission; separate from funded escrow and default off. */
+  INFERENCE_RATE_POLICY_ADMISSION?: string;
   INFERENCE_FUNDING_BUDGET_SEAL_SECRET?: string;
   /**
    * "true" serves warm Worker admission from the published admission snapshot:

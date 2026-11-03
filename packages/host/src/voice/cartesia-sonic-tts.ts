@@ -7,7 +7,9 @@
  */
 
 export const CARTESIA_SONIC_PROVIDER_ID = "cartesia-sonic";
-export const CARTESIA_SONIC_MODEL_ID = "sonic-3.5";
+// GA, backwards-compatible with Sonic 3.5. This ID tracks stable 3.6 snapshots.
+// https://docs.cartesia.ai/build-with-cartesia/tts-models/latest
+export const CARTESIA_SONIC_MODEL_ID = "sonic-3.6";
 export const CARTESIA_API_VERSION = "2026-03-01";
 export const CARTESIA_TTS_WEBSOCKET_URL = "wss://api.cartesia.ai/tts/websocket";
 

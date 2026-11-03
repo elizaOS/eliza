@@ -250,3 +250,122 @@ test("a refused warning redirect opens the same warning, and nothing else", asyn
     globalThis.fetch = previousFetch;
   }
 });
+
+test("a changed never-block list is applied to the saved rules without a download", async () => {
+  const previousChrome = globalThis.chrome,
+    previousFetch = globalThis.fetch;
+  const event = { addListener: () => {} };
+  const extensionId = "a".repeat(32);
+  let stored = {
+    protection: {
+      updatedAt: Date.now(),
+      publishedAt: Date.now(),
+      ruleCount: 2,
+      status: "current",
+    },
+  };
+  let dynamic = [
+    {
+      id: 10000,
+      priority: 1,
+      action: { type: "block" },
+      condition: {
+        requestDomains: ["false-positive.example", "scam.example"],
+        excludedResourceTypes: ["main_frame"],
+      },
+    },
+    {
+      id: 10001,
+      priority: 2,
+      action: { type: "redirect", redirect: { regexSubstitution: "x" } },
+      condition: {
+        requestDomains: ["false-positive.example", "scam.example"],
+        resourceTypes: ["main_frame"],
+        regexFilter: "^(https?://.*)$",
+      },
+    },
+    { id: 5, action: { type: "allow" }, condition: {} },
+  ];
+  let requests = 0;
+  globalThis.fetch = async () => {
+    requests++;
+    throw Error("Offline");
+  };
+  globalThis.chrome = {
+    storage: {
+      local: {
+        get: async () => stored,
+        set: async (value) => {
+          stored = { ...stored, ...value };
+        },
+      },
+    },
+    declarativeNetRequest: {
+      getDynamicRules: async () => dynamic,
+      updateDynamicRules: async ({ removeRuleIds, addRules }) => {
+        dynamic = [
+          ...dynamic.filter((rule) => !removeRuleIds.includes(rule.id)),
+          ...addRules,
+        ];
+      },
+      updateSessionRules: async () => {},
+    },
+    runtime: {
+      id: extensionId,
+      getURL: (file) => `chrome-extension://${extensionId}/${file}`,
+      onInstalled: event,
+      onStartup: event,
+      onMessage: event,
+    },
+    alarms: { create: () => {}, onAlarm: event },
+    webNavigation: { onCommitted: event, onErrorOccurred: event },
+    tabs: { onRemoved: event },
+  };
+  try {
+    assert.throws(
+      () =>
+        installBrowserProtection({
+          chrome: globalThis.chrome,
+          feeds,
+          neverBlock: ["https://bad"],
+        }),
+      /Invalid never-block hosts/,
+    );
+    const { refresh } = installBrowserProtection({
+      chrome: globalThis.chrome,
+      fetchImpl: globalThis.fetch,
+      feeds,
+      neverBlock: ["false-positive.example"],
+    });
+    await refresh();
+    assert.equal(
+      requests,
+      0,
+      "Fresh saved rules are rewritten, not downloaded",
+    );
+    const threat = dynamic.filter((rule) => rule.id >= 10000);
+    assert.equal(threat.length, 2);
+    for (const rule of threat) {
+      assert.deepEqual(rule.condition.excludedRequestDomains, [
+        "false-positive.example",
+      ]);
+      assert.deepEqual(rule.condition.requestDomains, [
+        "false-positive.example",
+        "scam.example",
+      ]);
+    }
+    assert.ok(
+      dynamic.some((rule) => rule.id === 5),
+      "Other component rules are kept",
+    );
+    assert.deepEqual(stored.protection.neverBlock, ["false-positive.example"]);
+    assert.equal(stored.protection.status, "current");
+    // The same list again changes nothing.
+    const before = dynamic;
+    await refresh();
+    assert.equal(dynamic, before);
+  } finally {
+    globalThis.chrome = previousChrome;
+    globalThis.fetch = previousFetch;
+  }
+});

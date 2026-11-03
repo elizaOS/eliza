@@ -33,6 +33,7 @@ import { CacheKeys, CacheTTL } from "../cache/keys";
 import { isAllowedOrigin } from "../security/origin-validation";
 import { logger } from "../utils/logger";
 import { apiKeysService } from "./api-keys";
+import { lockInferencePolicyUsers } from "./inference-policy-fence";
 import { managedDomainsService } from "./managed-domains";
 
 const appByIdHydrations = new Map<string, Promise<void>>();
@@ -54,7 +55,7 @@ function isCachedApp(value: unknown, expectedId: string): value is App {
   return (
     candidate.id === expectedId &&
     typeof candidate.organization_id === "string" &&
-    typeof candidate.created_by_user_id === "string" &&
+    (candidate.created_by_user_id === null || typeof candidate.created_by_user_id === "string") &&
     typeof candidate.monetization_enabled === "boolean"
   );
 }
@@ -452,6 +453,9 @@ export class AppsService {
     }
 
     const created = await writeTransaction(async (tx) => {
+      // The key issued below locks its user; take that before the
+      // organization row so app and key creation share one lock order.
+      await lockInferencePolicyUsers(tx, [data.created_by_user_id]);
       await lockOrganizationPolicy(tx, data.organization_id);
       const policy = await readOrganizationQuotaPolicyInTransaction(tx, data.organization_id);
       const limit = Number(requireOrganizationResourceLimit(policy, "apps"));
@@ -916,6 +920,15 @@ export class AppsService {
 
     if (!app) {
       throw new Error("App not found");
+    }
+    // Never substitute another person for the historical key owner. The
+    // organization can retain the app after its creator leaves, but this
+    // legacy user-owned key cannot be recreated without that same principal.
+    if (!app.created_by_user_id) {
+      throw new ElizaError("The app's original key owner is no longer available", {
+        code: "APP_KEY_OWNER_UNAVAILABLE",
+        severity: "ephemeral",
+      });
     }
 
     const oldApiKeyId = app.api_key_id;

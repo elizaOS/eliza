@@ -11,6 +11,18 @@
 
 import type { CloudflareTtsSpeaker } from "@elizaos/cloud-shared/lib/providers/cloudflare-speech";
 
+/** Canonical default for both batch and speech-only Cartesia output. */
+export function resolveCartesiaVoiceId(env: {
+  CARTESIA_VOICE_ID?: string;
+  CARTESIA_DEFAULT_VOICE_ID?: string;
+}): string {
+  return (
+    env.CARTESIA_VOICE_ID?.trim() ||
+    env.CARTESIA_DEFAULT_VOICE_ID?.trim() ||
+    "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4"
+  );
+}
+
 const DEFAULT_KOKORO_VOICE_ID = "af_heart";
 /**
  * Default injected by the existing cloud TTS proxy when callers omit voiceId.

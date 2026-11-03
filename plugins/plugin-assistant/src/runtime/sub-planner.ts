@@ -1,3 +1,8 @@
+import {
+  bindRequestOperationProjection,
+  copyRequestOperationResult,
+  getRequestOperationIssuer,
+} from "@elizaos/core";
 /**
  * Nested planner descent for a parent action's declared sub-actions: resolves and
  * gates the child actions (context + role policy, cycle detection), exposes each
@@ -378,7 +383,12 @@ export async function runSubPlanner(
     childActionNames: [...childActionNames],
   });
 
+  const requestOperationIssuer = getRequestOperationIssuer(
+    params.runtime,
+    params.ctx.message,
+  );
   return runPlannerLoop({
+    requestOperationIssuer,
     runtime: params.runtime,
     context,
     config: params.config,
@@ -470,7 +480,16 @@ export async function runSubPlanner(
         rawResult,
         resolvedChildAction.name,
       );
+      if (result !== rawResult && requestOperationIssuer) {
+        bindRequestOperationProjection(
+          rawResult,
+          result,
+          requestOperationIssuer,
+        );
+        copyRequestOperationResult(rawResult, result);
+      }
       return actionResultToPlannerToolResult(result, {
+        requestOperationIssuer,
         summary: summarizeActionResultForPlanner(
           resolvedChildAction,
           result,

@@ -39,7 +39,7 @@ export interface GenerativeRouteCaller {
   apiKeyId: string | null;
   authSource: "combined_cache" | "compatibility";
   admissionSnapshot?: InferenceAdmissionSnapshot;
-  /** Strong proof that the next paid admission must consume atomically. */
+  /** Verified identity metadata; deferred callers must consume it at the paid admission boundary. */
   credential?: InferenceCredentialCheck;
   appScopeId: string | null;
 }
@@ -422,11 +422,18 @@ export async function admitFlatGenerativeOperation(params: {
 }
 
 /**
- * Cache misses consume the already-coalesced authoritative continuation under
- * one bounded deadline. The continuation does not re-read the combined cache;
- * it returns the origin decision directly. The route invokes the real limiter
- * once after authorization. Wallet proof remains on the compatibility path
- * because replay-protected signatures cannot be cached.
+ * Bounded join of a cold organization admission hydration. Below the client's
+ * 1 s warming retry plus a second request; a slower hydration still returns
+ * the retryable warming contract.
+ */
+export const GENERATIVE_ROUTE_HYDRATION_WAIT_MS = 1_500;
+
+/**
+ * Worker callers are decided by one combined-cache read and never query
+ * Postgres: a cache miss is a retryable 503 while authoritative hydration runs
+ * under `waitUntil`. The route invokes the real limiter once after
+ * authorization. Wallet proof remains on the compatibility path because
+ * replay-protected signatures cannot be cached.
  */
 export async function requireGenerativeRouteCaller(
   c: AppContext,
@@ -436,20 +443,17 @@ export async function requireGenerativeRouteCaller(
     compatibility?: "hono" | "raw";
     rateLimitEndpoint?: EndpointType;
     /**
-     * Override the default bounded wait for the one-shot origin continuation.
-     * Zero preserves an immediate retryable warming response.
-     */
-    awaitWarmingMs?: number;
-    /**
      * This route has a mandatory paid admission before provider dispatch and
      * will thread the returned credential into that admission consumer.
      */
     deferStrongCredentialCheck?: boolean;
+    /** Bounded speech bootstrap may retain verified identity metadata, not a raw credential. */
+    includeVerifiedCredential?: boolean;
   } = {},
 ): Promise<GenerativeRouteCaller> {
   const request = options.request ?? c.req.raw;
   const executionCtx = getGenerativeExecutionContext(c);
-  if (!executionCtx) {
+  if (!executionCtx && options.includeVerifiedCredential !== true) {
     if (options.compatibility === "raw") {
       const { user, apiKey } = await requireAuthOrApiKeyWithOrg(request);
       return {
@@ -478,7 +482,7 @@ export async function requireGenerativeRouteCaller(
       traceId: c.get("traceId") ?? c.get("requestId"),
       cacheOnly: Boolean(executionCtx),
       executionCtx,
-      inlineContinuationDeadlineMs: options.awaitWarmingMs,
+      includeVerifiedCredential: options.includeVerifiedCredential === true,
       ...(options.deferStrongCredentialCheck === true
         ? { deferStrongCredentialCheck: true }
         : {}),
@@ -497,30 +501,71 @@ export async function requireGenerativeRouteCaller(
         c.set("apiKeyId", resolution.ctx.apiKeyId);
       }
       if (options.rateLimitEndpoint) {
-        const [{ enforceOrgRateLimit }, { inferenceRateLimitConfig }] =
-          await Promise.all([
-            import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
-            import(
-              "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
-            ),
-          ]);
+        const [
+          {
+            enforceOrgRateLimit,
+            inferenceRatePolicyProof,
+            OrgRateLimitCacheNotReadyError,
+          },
+          { inferenceRateLimitConfig },
+        ] = await Promise.all([
+          import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
+          import(
+            "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
+          ),
+        ]);
+        // Authoritative (origin) authorization carries no admission snapshot,
+        // so the cache-only limiter can find the organization projection cold.
+        // That refusal precedes any dispatch and its hydration already runs
+        // under `waitUntil`: surface the same retryable warming contract that
+        // speech clients replay, never an opaque route failure.
         const limited = await enforceOrgRateLimit(
           resolution.ctx.orgId,
           options.rateLimitEndpoint,
           {
-            // The combined decision carries the rate policy only when the hot
-            // cache is enabled. Development and integration Workers still have
-            // an execution context, but their authoritative origin decision has
-            // no snapshot and must retain the compatibility limiter path.
-            cacheOnly: Boolean(resolution.ctx.admission),
+            // Same limiter as chat completions: a shared policy lock and one
+            // Durable Object decision. Without a snapshot the locked primary
+            // policy supplies the limit. The compatibility path took the
+            // exclusive policy lock across Redis REST round trips that fail
+            // open, and every origin-authorized key had no snapshot.
+            cacheOnly: true,
             executionCtx,
             config: inferenceRateLimitConfig(
               resolution.ctx.admission,
               options.rateLimitEndpoint,
             ),
+            admissionSnapshot: resolution.ctx.admission,
+            // A cold projection would otherwise cost a 503, a 1 s client
+            // sleep and a second full request. Join the same hydration
+            // (policy lock, hold, gate publication, cache write) instead.
+            awaitHydrationMs: GENERATIVE_ROUTE_HYDRATION_WAIT_MS,
             apiKeyId: resolution.ctx.apiKeyId,
+            apiKeyRateLimit:
+              "apiKeyRateLimit" in resolution.ctx
+                ? resolution.ctx.apiKeyRateLimit
+                : undefined,
+            // Only an API-key context carries a key cap read with its epoch.
+            ratePolicy:
+              "keyHash" in resolution.ctx
+                ? inferenceRatePolicyProof(resolution.ctx)
+                : undefined,
           },
-        );
+        ).catch((error: unknown) => {
+          if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
+          throw error.state === "warming"
+            ? new ApiError(
+                503,
+                "auth_cache_warming",
+                "Authorization cache is warming; retry shortly",
+                { retryable: true, retryAfterSeconds: 1 },
+              )
+            : new ApiError(
+                503,
+                "service_unavailable",
+                "Rate limiter is unavailable",
+                { retryable: true, retryAfterSeconds: 1 },
+              );
+        });
         if (limited) {
           throw new ApiError(
             limited.status,
@@ -570,7 +615,7 @@ export async function requireGenerativeRouteCaller(
   if (resolution.kind === "warming") {
     throw new ApiError(
       503,
-      "service_unavailable",
+      "auth_cache_warming",
       "Authorization cache is warming; retry shortly",
       { retryable: true, retryAfterSeconds: 1 },
     );

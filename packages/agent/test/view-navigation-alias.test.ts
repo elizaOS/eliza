@@ -101,6 +101,9 @@ it.each([
   ["Open Workflows.", "automations", "workflows"],
   ["Go home.", "chat", "chat"],
   ["Open Automations.", "automations", "automations"],
+  // A spoken frame keeps the user's alias, as the bare command does.
+  ["Can you open Workflows?", "automations", "workflows"],
+  ["Okay, show me Workflows.", "automations", "workflows"],
 ])(
   "preserves only an equivalent original registered alias: %s",
   async (text, target, wanted) => {

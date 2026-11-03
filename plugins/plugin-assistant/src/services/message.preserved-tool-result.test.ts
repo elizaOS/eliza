@@ -1568,6 +1568,7 @@ describe("planner-loop death after a completed tool", () => {
     );
     let rewriteCalls = 0;
     let reviewCalls = 0;
+    const groundingProbe: Record<string, boolean> = {};
     const answer =
       "I will not perform the edit. The page heading is Example Domain. Ada packs a cobalt notebook and a copper flask.";
     h.runtime.registerModel(
@@ -1575,6 +1576,10 @@ describe("planner-loop death after a completed tool", () => {
       async (_runtime, params) => {
         if (params.prompt.startsWith("Review recovered reply grounding.")) {
           reviewCalls++;
+          groundingProbe.reviewHasHistory = params.prompt.includes(history);
+          groundingProbe.reviewHasTool = params.prompt.includes(
+            "The live page heading is Example Domain.",
+          );
           expect(params.prompt).toContain(history);
           expect(params.prompt).toContain(
             "The live page heading is Example Domain.",
@@ -1593,6 +1598,10 @@ describe("planner-loop death after a completed tool", () => {
           });
         }
         rewriteCalls++;
+        groundingProbe.rewriteHasHistory = params.prompt.includes(history);
+        groundingProbe.rewriteHasTool = params.prompt.includes(
+          "The live page heading is Example Domain.",
+        );
         expect(params.prompt).toContain(history);
         expect(params.prompt).toContain(
           "The live page heading is Example Domain.",
@@ -1612,8 +1621,15 @@ describe("planner-loop death after a completed tool", () => {
     );
     expect(actionCalls).toBe(1);
     expect(rewriteCalls).toBe(1);
-    expect(reviewCalls).toBe(1);
+    expect(
+      reviewCalls,
+      JSON.stringify({ groundingProbe, errorScopes: h.reportedScopes }),
+    ).toBe(1);
     expect(result.responseContent?.text).toBe(answer);
+    expect(result.didRespond).toBe(true);
+    expect(visibleTexts(h.callbacks).join("\n")).not.toContain(
+      "Cancelled the note edit.",
+    );
   });
 
   beforeEach(() => {

@@ -60,6 +60,7 @@ export { PersonalDeliveryProjection } from "./personal-delivery-projection";
 export { PersonalTelegramDelivery } from "./personal-telegram-delivery";
 export { RateLimitState } from "./rate-limit-state";
 export { SharedRuntimeConversation } from "./shared-runtime-conversation";
+export { SpeechRelayCoordinator } from "./speech-relay-coordinator";
 export {
   isThinStewardEmailAuthPath,
   isThinStewardPasskeyLoginOptionsPath,
@@ -180,6 +181,15 @@ function exactInferenceRoute(
   };
 }
 const INFERENCE_ROUTES: readonly InferenceRouteSpec[] = [
+  {
+    key: "/api/v1/voice/speech",
+    mountPath: "/api/v1/voice/speech",
+    matches: (path) =>
+      /^\/api\/v1\/voice\/speech\/(?:consent|session|ws|session\/[0-9a-f-]{36}\/revoke)$/.test(
+        path,
+      ),
+    load: () => import("../v1/voice/speech/route"),
+  },
   exactInferenceRoute(
     "/api/v1/chat/completions",
     () => import("../v1/chat/completions/route"),

@@ -5627,6 +5627,10 @@ export function createCalendarActionRunner(
           ...(scenario === "feed_results"
             ? {
                 asOf: new Date().toISOString(),
+                // The zone the read's local days resolved in. A call that
+                // names no zone reads in the owner's Calendar zone, and the
+                // evaluator checks the read window in this same zone.
+                timeZone: planningTimeZone,
                 selection: "bounded_agenda",
                 nextEventLookupPerformed: false,
                 completionBoundary:

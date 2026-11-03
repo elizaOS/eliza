@@ -12,6 +12,7 @@ import { withRateLimit } from "../../middleware/rate-limit";
 import { logger } from "../../utils/logger";
 import { reserveAllowanceEligibleCredits } from "../allowance-first-credits";
 import { InsufficientCreditsError } from "../credits";
+import { isInferenceAdmissionGateWarmingError } from "../inference-admission-gate";
 import type { InferenceAdmissionSnapshot } from "../inference-auth-cache";
 import { InferenceBalanceCacheWarmingError } from "../inference-billing-fast-path";
 import {
@@ -563,7 +564,11 @@ export function createHandler(
           {
             success: false,
             error: "Provider admission is unavailable; retry shortly",
-            code: "service_unavailable",
+            // Only a confirmed cold dispatch rejection proves that no lease
+            // or provider work started. Ambiguous admission stays terminal.
+            code: isInferenceAdmissionGateWarmingError(error)
+              ? "inference_admission_cache_warming"
+              : "service_unavailable",
             details: { retryable: true, retryAfterSeconds: 1 },
           },
           { status: 503, headers: { "Retry-After": "1" } },

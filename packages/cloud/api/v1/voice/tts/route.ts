@@ -14,7 +14,7 @@ import {
   billFlatUsage,
 } from "@elizaos/cloud-shared/lib/services/ai-billing";
 import { calculateTTSCostFromCatalog } from "@elizaos/cloud-shared/lib/services/ai-pricing";
-import { contentSafetyService } from "@elizaos/cloud-shared/lib/services/content-safety";
+import { CARTESIA_SONIC_MODEL_ID } from "@elizaos/cloud-shared/lib/services/cartesia-sonic-tts";
 import {
   type CreditReservation,
   InsufficientCreditsError,
@@ -60,7 +60,11 @@ import {
   buildKokoroCacheKey,
   isKokoroFirstLineCacheEnabled,
 } from "./kokoro-first-line-cache";
-import { selectTtsProvider, type TtsProvider } from "./provider-selection";
+import {
+  resolveCartesiaVoiceId,
+  selectTtsProvider,
+  type TtsProvider,
+} from "./provider-selection";
 
 /**
  * Voice TTS API (v1)
@@ -142,19 +146,6 @@ function buildTtsObservabilityHeaders(
 /** ElevenLabs PCM sample rate we request for the WAV path (Hz). */
 const WAV_PCM_SAMPLE_RATE = 24000;
 const MAX_WAV_PCM_BYTES = 16 * 1024 * 1024;
-/**
- * Default Cartesia voice for un-pinned requests ("Skylar — Friendly Guide",
- * verified live). Override per-environment with CARTESIA_VOICE_ID; the legacy
- * CARTESIA_DEFAULT_VOICE_ID remains accepted for older deploy configs.
- */
-const DEFAULT_CARTESIA_VOICE_ID = "db6b0ed5-d5d3-463d-ae85-518a07d3c2b4";
-function resolveCartesiaVoiceId(env: AppEnv["Bindings"]): string {
-  return (
-    env.CARTESIA_VOICE_ID?.trim() ||
-    env.CARTESIA_DEFAULT_VOICE_ID?.trim() ||
-    DEFAULT_CARTESIA_VOICE_ID
-  );
-}
 /**
  * PCM byte cap for a Cartesia synthesis. The synthesis buffers frames + a
  * merged copy + the WAV in Worker memory, so the cap must reflect the real
@@ -304,7 +295,6 @@ async function __hono_POST(c: AppContext) {
       await requireGenerativeRouteCaller(c, {
         compatibility: "raw",
         rateLimitEndpoint: "strict",
-        awaitWarmingMs: 1500,
         deferStrongCredentialCheck: willAdmit,
       });
     await using credentialGuard = deferredCredentialAdmissionGuard({
@@ -354,25 +344,6 @@ async function __hono_POST(c: AppContext) {
     // WAV output is opt-in and bypasses the MP3-shaped first-line cache (a
     // different codec); billing/usage are identical to the MP3 path.
     const wantWav = body.format === "wav";
-    await contentSafetyService.assertSafeForPublicUse({
-      surface: "media_generation_prompt",
-      organizationId: user.organization_id,
-      userId: user.id,
-      text: [
-        `TTS text: ${text}`,
-        ...(body.previousText !== undefined
-          ? [`Previous context: ${body.previousText}`]
-          : []),
-        ...(body.nextText !== undefined
-          ? [`Next context: ${body.nextText}`]
-          : []),
-      ].join("\n"),
-      metadata: {
-        type: "tts",
-        model: modelId || "eleven_flash_v2_5",
-        voiceId,
-      },
-    });
     logger.info(
       `[Voice TTS API] Generating speech for user ${user.id}: ${text.length} chars`,
     );
@@ -428,8 +399,10 @@ async function __hono_POST(c: AppContext) {
       if (kokoroCacheKey) {
         try {
           const cacheStart = Date.now();
-          const cached =
-            await getCloudFirstLineCacheService().get(kokoroCacheKey);
+          const cached = await getCloudFirstLineCacheService().get(
+            kokoroCacheKey,
+            getGenerativeExecutionContext(c),
+          );
           if (cached) {
             timings.synthesisMs = Date.now() - cacheStart;
             logger.info(
@@ -564,7 +537,7 @@ async function __hono_POST(c: AppContext) {
       providerSelection.provider === "cartesia" ? "cartesia" : "elevenlabs";
     const mp3VoiceRevision =
       providerSelection.provider === "cartesia"
-        ? `cartesia:${cartesiaVoiceId}:sonic-3.5:mp3_44100_128`
+        ? `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:mp3_44100_128`
         : resolveElevenLabsVoiceRevision(resolvedVoiceId, resolvedModelId);
     const voiceSettingsFingerprint = fingerprintCloudVoiceSettings({
       outputFormat: DEFAULT_OUTPUT_FORMAT,
@@ -581,17 +554,20 @@ async function __hono_POST(c: AppContext) {
       try {
         const cacheStart = Date.now();
         const cacheService = getCloudFirstLineCacheService();
-        const cached = await cacheService.get({
-          algoVersion: FIRST_SENTENCE_SNIP_VERSION,
-          provider: mp3CacheProvider,
-          voiceId: resolvedVoiceId,
-          voiceRevision: mp3VoiceRevision,
-          sampleRate: 44100,
-          codec: "mp3",
-          voiceSettingsFingerprint,
-          normalizedText: snipResult.normalized,
-          scope: cacheScope,
-        });
+        const cached = await cacheService.get(
+          {
+            algoVersion: FIRST_SENTENCE_SNIP_VERSION,
+            provider: mp3CacheProvider,
+            voiceId: resolvedVoiceId,
+            voiceRevision: mp3VoiceRevision,
+            sampleRate: 44100,
+            codec: "mp3",
+            voiceSettingsFingerprint,
+            normalizedText: snipResult.normalized,
+            scope: cacheScope,
+          },
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -633,7 +609,7 @@ async function __hono_POST(c: AppContext) {
             algoVersion: FIRST_SENTENCE_SNIP_VERSION,
             provider: "cartesia",
             voiceId: cartesiaVoiceId,
-            voiceRevision: `cartesia:${cartesiaVoiceId}:sonic-3.5:pcm${WAV_PCM_SAMPLE_RATE}`,
+            voiceRevision: `cartesia:${cartesiaVoiceId}:${CARTESIA_SONIC_MODEL_ID}:pcm${WAV_PCM_SAMPLE_RATE}`,
             sampleRate: WAV_PCM_SAMPLE_RATE,
             codec: "wav" as const,
             voiceSettingsFingerprint: fingerprintCloudVoiceSettings({
@@ -646,7 +622,10 @@ async function __hono_POST(c: AppContext) {
     if (wavCacheKey) {
       try {
         const cacheStart = Date.now();
-        const cached = await getCloudFirstLineCacheService().get(wavCacheKey);
+        const cached = await getCloudFirstLineCacheService().get(
+          wavCacheKey,
+          getGenerativeExecutionContext(c),
+        );
         if (cached) {
           timings.synthesisMs = Date.now() - cacheStart;
           logger.info(
@@ -868,7 +847,7 @@ async function __hono_POST(c: AppContext) {
             ...billingContext,
             model:
               synthesisEngine === "cartesia"
-                ? "cartesia/sonic-3.5"
+                ? `cartesia/${CARTESIA_SONIC_MODEL_ID}`
                 : billingContext.model,
             provider: synthesisEngine,
           },
@@ -897,7 +876,7 @@ async function __hono_POST(c: AppContext) {
           // ElevenLabs-served one would.
           model:
             synthesisEngine === "cartesia"
-              ? "sonic-3.5"
+              ? CARTESIA_SONIC_MODEL_ID
               : modelId || "eleven_flash_v2_5",
           provider: synthesisEngine,
           input_tokens: Math.ceil(text.length / 4),
@@ -1072,7 +1051,18 @@ async function __hono_POST(c: AppContext) {
         "toJSON" in apiError && typeof apiError.toJSON === "function"
           ? apiError.toJSON()
           : { error: apiError.message };
-      return Response.json(serialized, { status: apiError.status ?? 500 });
+      // Retryable refusals (cache warming) carry the header clients retry on.
+      return Response.json(serialized, {
+        status: apiError.status ?? 500,
+        ...("retryAfterSeconds" in serialized &&
+        typeof serialized.retryAfterSeconds === "number"
+          ? {
+              headers: {
+                "Retry-After": String(serialized.retryAfterSeconds),
+              },
+            }
+          : {}),
+      });
     }
     if (error instanceof CartesiaRestTtsError) {
       const status =

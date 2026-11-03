@@ -361,7 +361,7 @@ export default defineConfig({
         replacement: `${agentSourceRoot}/$1.ts`,
       },
       {
-        find: "@elizaos/ui",
+        find: /^@elizaos\/ui$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
       {
@@ -743,7 +743,7 @@ export default defineConfig({
         ? baseConfig.resolve.alias
         : []),
       {
-        find: "@elizaos/ui",
+        find: /^@elizaos\/ui$/,
         replacement: path.join(lifeopsTestStubsRoot, "ui.ts"),
       },
       {

@@ -137,7 +137,19 @@ async function transcribe(env: Record<string, string>): Promise<void> {
     },
   );
   expect(response.status, await response.clone().text()).toBe(200);
-  expect(await response.json()).toMatchObject({ transcript: "hello" });
+  const body = (await response.json()) as { duration_ms: number };
+  expect(body).toMatchObject({ transcript: "hello" });
+  // Every paid lane reports each step it ran; transcription equals the body.
+  expect(
+    (response.headers.get("Server-Timing") ?? "")
+      .split(", ")
+      .map((entry) => entry.split(";dur=")),
+  ).toEqual([
+    ["upload", expect.any(String)],
+    ["auth", expect.any(String)],
+    ["admission", expect.any(String)],
+    ["transcription", String(body.duration_ms)],
+  ]);
   await Promise.all(pending);
 }
 
@@ -375,6 +387,8 @@ test.each([
             ? 503
             : 502,
     );
+    if (failure === "credits")
+      expect(response.headers.get("Server-Timing")).toContain("admission;dur=");
     expect(response.headers.get("X-Eliza-STT-Provider")).toBeNull();
     expect(response.headers.get("X-Eliza-STT-Model")).toBeNull();
     expect(calls).toEqual(

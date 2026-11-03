@@ -1794,6 +1794,158 @@ describe("model-selected host navigation", () => {
     },
   );
   it.each([
+    // Recorded Stage 1 frames, live direct stage 2026-10-31: each chose direct
+    // navigation, and each spoken one still ran the planner and evaluator
+    // because the route added no VIEWS candidate. A lone "simple" label with
+    // pending work is planned as "general" before the evaluators run.
+    {
+      id: "tj-41061eccc66d0e",
+      text: "Can you open the calendar?",
+      contexts: ["general"],
+      intent: "open the Calendar view",
+      viewId: "calendar",
+      reply: "Opening the calendar for you now.",
+    },
+    {
+      id: "tj-41f9d4af5a0266",
+      text: "Okay, go home.",
+      contexts: ["simple"],
+      intent: "go to Home view",
+      viewId: "chat",
+      reply: "Headed home for you now.",
+    },
+    {
+      id: "tj-6efbf84c684459",
+      text: "It's okay. Can you go home?",
+      contexts: ["simple"],
+      intent: "navigate to Home",
+      viewId: "chat",
+      reply: "Yeah, heading home.",
+    },
+    {
+      id: "synthetic show-me",
+      text: "show me notes",
+      contexts: ["simple"],
+      intent: "Open the Notes view",
+      viewId: "notes",
+      reply: "Notes.",
+    },
+    {
+      id: "tj-6f340dcc920aad",
+      text: "Can you open notes without saying it?",
+      contexts: ["general"],
+      intent: "open Notes",
+      viewId: "notes",
+      reply: "Yeah.",
+      planned: true,
+    },
+  ])(
+    "replays the spoken $id frame through the canonical pipeline",
+    async ({ text, contexts, intent, viewId, reply, planned = false }) => {
+      const f = await fixture();
+      const input = clientMessage();
+      input.content.channelType = "VOICE_DM";
+      input.content.text = text;
+      input.content.metadata = {
+        viewClientId: "origin-client",
+        uiView: viewId === "chat" ? "notes" : "chat",
+      };
+      const fields = new ResponseHandlerFieldRegistry();
+      for (const field of [
+        ...BUILTIN_RESPONSE_HANDLER_FIELD_EVALUATORS,
+        viewNavigationField,
+      ])
+        fields.register(field);
+      const state = { values: {}, data: { providers: {} }, text: "" };
+      const modelTypes: string[] = [];
+      const useModel = vi.fn(async (type: string) => {
+        modelTypes.push(type);
+        if (type !== ModelType.RESPONSE_HANDLER)
+          throw new Error(`Unexpected ${type} call`);
+        return {
+          text: "",
+          toolCalls: [
+            {
+              name: "HANDLE_RESPONSE",
+              arguments: {
+                shouldRespond: "RESPOND",
+                contexts,
+                contextRequests: [],
+                intents: [intent],
+                replyText: reply,
+                replyEffectStatus: "pending",
+                facts: [],
+                relationships: [],
+                topics: [],
+                addressedTo: [],
+                emotion: "none",
+                visualContinuation: {
+                  disposition: "direct",
+                  viewId,
+                  reason: "Recorded live frame",
+                },
+              },
+            },
+          ],
+          finishReason: "tool-calls",
+        };
+      });
+      Object.assign(
+        f.runtime,
+        createMockRuntime({
+          ...f.runtime,
+          character: { name: "Agent", bio: [] },
+          contexts: new ContextRegistry([
+            { id: "general", description: "General tasks" },
+            { id: "simple", description: "Simple replies" },
+          ]),
+          responseHandlerFieldRegistry: fields,
+          responseHandlerFieldEvaluators: [...fields.list()],
+          responseHandlerEvaluators: [viewNavigationEvaluator],
+          providers: [],
+          evaluators: [],
+          runActionsByMode: async () => [],
+          getModelRegistrations: () => [],
+          useModel: useModel as unknown as IAgentRuntime["useModel"],
+          composeState: async () => state,
+        }),
+      );
+      f.runtime.actions = [...promoteSubactionsToActions(viewsAction)];
+      registerViewNavigationRoutingRule(f.runtime);
+      const run = runWithStreamingContext(
+        { messageId: String(input.id), onStreamChunk: () => {} },
+        () =>
+          runV5MessageRuntimeStage1({
+            runtime: f.runtime,
+            state,
+            message: input,
+            responseId: "55555555-5555-4555-8555-555555555555" as UUID,
+          }),
+      );
+      if (planned) {
+        await expect(run).rejects.toThrow(
+          `Unexpected ${ModelType.ACTION_PLANNER} call`,
+        );
+        expect(f.frames).toEqual([]);
+        return;
+      }
+      expect(await run).toMatchObject({
+        kind: "planned_reply",
+        result: { responseContent: { text: reply } },
+      });
+      expect(modelTypes).toEqual([ModelType.RESPONSE_HANDLER]);
+      expect(f.frames).toEqual([
+        {
+          client: "origin-client",
+          frame: expect.objectContaining({
+            type: "shell:navigate:view",
+            viewId,
+          }),
+        },
+      ]);
+    },
+  );
+  it.each([
     {
       name: "forbidden navigation with an unsupported confirmation",
       disposition: "forbidden",

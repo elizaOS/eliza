@@ -433,6 +433,7 @@ function personalSharedMediaPort(
   agent: SharedRuntimeAgent,
   roomId: string,
   turnKey: string | undefined,
+  executionCtx: BridgeExecutionContext | undefined,
 ): SharedMediaGenerationPort | undefined {
   const blob = getCloudBinding<PublicObjectBindings["BLOB"]>("BLOB");
   const providerKeys = imageProviderKeysFromCloudEnvironment();
@@ -463,7 +464,12 @@ function personalSharedMediaPort(
       actionOrdinal += 1;
       let rateLimited: Response | null;
       try {
-        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict");
+        // A Worker turn counts in the Durable Object strict window that the
+        // generative HTTP routes use, as completions do below.
+        rateLimited = await enforceOrgRateLimit(agent.organization_id, "strict", {
+          cacheOnly: Boolean(executionCtx),
+          executionCtx,
+        });
       } catch (error) {
         // error-policy:J1 translate the cache-only rate-limit boundary into
         // the Shared runtime's single retryable warming signal.
@@ -623,7 +629,7 @@ export function sharedElizaRuntimeExecution(
   turnKey: string | undefined,
   params: Record<string, unknown>,
   funding: SharedRuntimeChatOptions["funding"],
-  _executionCtx: BridgeExecutionContext | undefined,
+  executionCtx: BridgeExecutionContext | undefined,
   mobilePushDispatch?: SharedRuntimeChatOptions["mobilePushDispatch"],
   channel?: NonNullable<RunSharedAgentTurnInput["execution"]>["channel"],
   trustedNetworkTurn?: unknown,
@@ -652,7 +658,9 @@ export function sharedElizaRuntimeExecution(
       channelSource: "blooio",
     });
   const reminderDelivery = personalShared ? trustedReminderDelivery(params) : undefined;
-  const media = personalShared ? personalSharedMediaPort(agent, roomId, turnKey) : undefined;
+  const media = personalShared
+    ? personalSharedMediaPort(agent, roomId, turnKey, executionCtx)
+    : undefined;
   const network = sharedNetworkExecution(
     agent,
     personalShared,
