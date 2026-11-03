@@ -80,7 +80,7 @@ const title = await popup.locator("h1").innerText();
 if (!title.includes("VALHALLA")) fail("Popup title missing");
 if (process.env.SAVE_SHOTS) {
   const shotDir = path.resolve(extensionDir, "..", "..", "..", "store", "chrome");
-  const popupShot = path.join(shotDir, "popup-raw.png");
+  const popupShot = path.join(shotDir, "popup-real.png");
   await popup.screenshot({ path: popupShot });
   console.log("Saved popup", popupShot);
 }
