@@ -35,6 +35,7 @@ import type {
 } from "@elizaos/core";
 import {
   ElizaError,
+  getUserMessageText,
   normalizeEffectReceipt,
   recentConversationTexts,
   resolveActionArgs,
@@ -884,7 +885,11 @@ const OWNER_CALENDAR_SUBACTION_SPECS: SubactionsMap<OwnerCalendarSubaction> = {
 };
 
 function messageText(message: Memory): string {
-  return typeof message.content.text === "string" ? message.content.text : "";
+  // Both callers decide from the user's words: the protected-sleep guard's
+  // explicit-override check and the bulk-reschedule cohort label. A recalled
+  // document must not supply an override ("confirmed", "despite") or a
+  // cohort label, so read the user's words, not the envelope.
+  return getUserMessageText(message);
 }
 
 /**
