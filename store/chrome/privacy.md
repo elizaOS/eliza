@@ -21,7 +21,7 @@ This extension shows read-only status from the user's own Valhalla desk on the s
 ## Permission justification
 
 - storage: the desk address and the pair token stay in Chrome's local storage on that browser.
-- Host access to 127.0.0.1 and localhost: the extension reads the desk API on this computer only.
+- Optional host access to 127.0.0.1 and localhost, requested only when the user clicks Show status: the extension reads the desk on this computer. There is no required host permission.
 
 ## Data the extension stores
 
@@ -33,6 +33,8 @@ The extension stores data on the browser only. It does not send that data to Tok
 The pair token is sent only to that local desk address.
 
 The extension does not collect private keys, seed phrases, transaction approvals, browsing history, or website content.
+
+The free popup can show a house banner stored in the package. It is labeled Ad or Sponsored. It is not an AdSense or AdMob script. Pro hides it. An affiliate link says that we may earn a fee.
 
 ## Remote code
 

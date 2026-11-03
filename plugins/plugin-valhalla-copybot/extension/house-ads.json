@@ -1,0 +1,31 @@
+{
+  "ads": [
+    {
+      "id": "go-pro",
+      "label": "Ad",
+      "title": "Go Pro",
+      "text": "Pro removes ads. Not a promise of profit.",
+      "href": "https://valhalla-app.xyz/app/",
+      "image": "house/go-pro.png",
+      "disclosure": "Valhalla offer"
+    },
+    {
+      "id": "telegram",
+      "label": "Sponsored",
+      "title": "Telegram community",
+      "text": "Product news from TokenJunction LLC.",
+      "href": "https://valhalla-app.xyz/",
+      "image": "house/telegram.png",
+      "disclosure": "Community link"
+    },
+    {
+      "id": "affiliate",
+      "label": "Sponsored",
+      "title": "A disclosed partner",
+      "text": "We may earn a fee. Not financial advice.",
+      "href": "https://phantom.app/",
+      "image": "house/affiliate.png",
+      "disclosure": "Affiliate link"
+    }
+  ]
+}

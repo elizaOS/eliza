@@ -1,0 +1,76 @@
+{
+  "name": "@elizaos/plugin-valhalla-copybot",
+  "version": "2.0.12-beta.0",
+  "type": "module",
+  "description": "Valhalla Mech Solana memecoin copy trading for Eliza. Published by TokenJunction LLC. Google AI Studio Gemini. Paper by default. No transfer or withdraw.",
+  "author": "TokenJunction LLC",
+  "main": "dist/index.js",
+  "module": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/elizaOS/eliza.git",
+    "directory": "plugins/plugin-valhalla-copybot"
+  },
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "eliza-source": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "registry-entry.json",
+    "auto-enable.ts",
+    "characters",
+    "README.md"
+  ],
+  "elizaos": {
+    "plugin": {
+      "autoEnableModule": "./auto-enable.ts"
+    }
+  },
+  "sideEffects": false,
+  "dependencies": {
+    "@solana-mobile/wallet-adapter-mobile": "2.2.5",
+    "@solana/wallet-adapter-base": "0.9.27",
+    "@solana/wallet-adapter-phantom": "0.9.27",
+    "@solana/wallet-adapter-solflare": "0.6.32",
+    "@solana/web3.js": "1.98.4",
+    "@wallet-standard/app": "1.1.0",
+    "bs58": "5.0.0",
+    "qrcode": "1.5.4"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.6.3",
+    "@elizaos/core": "workspace:*",
+    "@types/node": "^25.0.3",
+    "bun-types": "1.4.2",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "^6.0.3",
+    "vitest": "^5.0.5"
+  },
+  "peerDependencies": {
+    "@elizaos/core": "workspace:*"
+  },
+  "scripts": {
+    "dev": "bun run build.ts --watch",
+    "lint": "bunx @biomejs/biome check --write --unsafe .",
+    "clean": "node ../../packages/scripts/rm-path-recursive.ts dist .turbo .turbo-tsconfig.json tsconfig.tsbuildinfo",
+    "format": "bunx @biomejs/biome format --write .",
+    "format:check": "bunx @biomejs/biome format .",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run --config ./vitest.config.ts",
+    "start": "bun src/standalone.ts",
+    "dashboard": "bun src/standalone.ts",
+    "lint:check": "bunx @biomejs/biome check .",
+    "build": "bun run build.ts",
+    "build:ts": "bun run build.ts"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

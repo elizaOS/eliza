@@ -59,6 +59,9 @@ packages/ui/src/components/shell/__e2e__/output-frame-glitch/
 
 .env
 .env.production
+# Trading bot wallet key files. Never commit these.
+wallet*.json
+**/wallet*.json
 .env.crypto-wallets.generated
 .env.local
 .env.bak
@@ -295,6 +298,7 @@ packages/inference/omnivoice.cpp/
 
 # Archive files
 *.zip
+!store/chrome/valhalla-extension-store.zip
 *.tar
 *.tar.gz
 *.tgz
@@ -624,7 +628,22 @@ reports/
 !packages/cloud/api/v1/reports/
 !packages/cloud/api/v1/reports/**
 docs/*
+!docs/ROADMAP.md
+!docs/CONNECTIONS.md
+!docs/SELF_REPAIR.md
+!docs/AI.md
+!docs/PLAY_STORE.md
 !docs/privacy-policy.md
+!docs/DATA_SAFETY.md
+!docs/TERMS.md
+!docs/DISCLAIMER.md
+!docs/LEMON_SQUEEZY.md
+!docs/DOMAIN.md
+!docs/play/
+docs/play/**
+!docs/play/listing.md
+!docs/valhalla/
+!docs/valhalla/**
 !docs/ELIZA_1_BUNDLE_EXTRAS.json
 !docs/automation-glossary.md
 !docs/design/

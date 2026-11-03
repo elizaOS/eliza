@@ -546,6 +546,9 @@
     "@elizaos/plugin-embeddings#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
     },
+    "@elizaos/plugin-valhalla-copybot#typecheck": {
+      "dependsOn": ["typecheck:deps", "@elizaos/core#build"]
+    },
     "@elizaos/plugin-form#typecheck": {
       "dependsOn": ["typecheck:deps", "@elizaos/plugin-assistant#build"]
     },

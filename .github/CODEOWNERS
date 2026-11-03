@@ -43,3 +43,12 @@
 
 # Documentation only — lighter review.
 /packages/docs/security/                @elizaos/security-team
+
+# Valhalla monetization. A change needs TJ's review.
+/plugins/plugin-valhalla-copybot/monetization.json    @TokenJunction
+/plugins/plugin-valhalla-copybot/offers.json          @TokenJunction
+/plugins/plugin-valhalla-copybot/ads.txt              @TokenJunction
+/plugins/plugin-valhalla-copybot/app-ads.txt          @TokenJunction
+/plugins/plugin-valhalla-copybot/extension/trust.js   @TokenJunction
+/plugins/plugin-valhalla-copybot/src/monetization-trust.ts @TokenJunction
+/plugins/plugin-valhalla-copybot/scripts/sign-monetization.mjs @TokenJunction

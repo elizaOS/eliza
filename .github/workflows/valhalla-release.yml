@@ -1,0 +1,54 @@
+name: Valhalla release manifest
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publish version.json and SHA256SUMS
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE}" != "tag" ]; then
+            tag="$(gh release view --json tagName --jq .tagName)"
+          fi
+          mkdir -p dist
+          gh release download "$tag" --dir dist --skip-existing || true
+          files=$(find dist -type f ! -name SHA256SUMS.txt ! -name version.json | wc -l)
+          if [ "$files" -eq 0 ]; then
+            echo "No release assets for $tag yet."
+            exit 0
+          fi
+          (cd dist && find . -type f ! -name SHA256SUMS.txt ! -name version.json -print0 | xargs -0 sha256sum > SHA256SUMS.txt)
+          TAG="$tag" node <<'JS'
+          const fs = require("fs");
+          const rows = fs.readFileSync("dist/SHA256SUMS.txt", "utf8").trim().split("\n").filter(Boolean);
+          const map = {};
+          for (const row of rows) {
+            const hash = row.slice(0, 64);
+            const name = row.slice(64).trim().replace(/^\.\//, "");
+            if (name) map[name] = hash;
+          }
+          const tag = process.env.TAG;
+          const version = tag.replace(/^v/, "");
+          const base = "https://github.com/TokenJunction/eliza-valhalla/releases/download/" + tag + "/";
+          const doc = {
+            version,
+            notes: "Update ready, restart",
+            windows: map["Valhalla-Setup-x64.exe"] ? { url: base + "Valhalla-Setup-x64.exe", sha256: map["Valhalla-Setup-x64.exe"] } : undefined,
+            android: map["valhalla-phone.apk"] ? { url: base + "valhalla-phone.apk", sha256: map["valhalla-phone.apk"] } : undefined
+          };
+          fs.writeFileSync("dist/version.json", JSON.stringify(doc, null, 2));
+          JS
+          gh release upload "$tag" dist/version.json dist/SHA256SUMS.txt --clobber

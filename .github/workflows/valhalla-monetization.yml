@@ -1,0 +1,41 @@
+name: Valhalla monetization
+
+on:
+  pull_request:
+    paths:
+      - "plugins/plugin-valhalla-copybot/**"
+      - "store/chrome/**"
+      - ".github/workflows/valhalla-monetization.yml"
+      - ".github/CODEOWNERS"
+  push:
+    branches: [develop]
+    paths:
+      - "plugins/plugin-valhalla-copybot/**"
+      - ".github/workflows/valhalla-monetization.yml"
+  workflow_dispatch:
+
+jobs:
+  guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Publisher ids and signatures
+        run: node plugins/plugin-valhalla-copybot/scripts/check-monetization-ids.mjs
+
+  sign:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v4
+      - name: Sign only when the release secret is present
+        working-directory: plugins/plugin-valhalla-copybot
+        env:
+          MONETIZATION_SIGNING_KEY: ${{ secrets.MONETIZATION_SIGNING_KEY }}
+        run: |
+          if [ -z "$MONETIZATION_SIGNING_KEY" ]; then
+            echo "No signing secret. The bundled signed config stays as committed."
+            exit 0
+          fi
+          node scripts/sign-monetization.mjs
+          node scripts/check-monetization-ids.mjs

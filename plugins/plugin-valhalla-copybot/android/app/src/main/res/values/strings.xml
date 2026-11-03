@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Valhalla</string>
+    <string name="title">ACCELERATION</string>
+    <string name="subtitle">Valhalla phone · no wallet key</string>
+    <string name="hint">PC desk address, for example http://192.168.1.20:8787</string>
+    <string name="access_hint">Access code, if the PC asks for one</string>
+    <string name="connect">Pair with the PC</string>
+    <string name="connect_phantom">Connect Phantom</string>
+    <string name="connect_solflare">Connect Solflare</string>
+    <string name="connect_apis">Connect your own APIs</string>
+    <string name="status_idle">The phone starts here. Pairing is optional. Nothing is sent.</string>
+    <string name="cached">Showing the last known state. The PC agent is not connected.</string>
+    <string name="recover">Recover agent</string>
+    <string name="open_chat">Ask the agent</string>
+    <string name="open_errors">Error log</string>
+    <string name="stop_watch">Stop background alerts</string>
+    <string name="chat_hint">Ask about a trade, P&amp;L, or a settings tweak</string>
+    <string name="chat_send">Send</string>
+    <string name="confirm_suggestion">Confirm this settings change</string>
+    <string name="back">Back to status</string>
+    <string name="ad_label">Advertisement. Optional. It does not cover trading controls.</string>
+    <string name="rewarded_ad">Watch an ad for 1 extra Brain score</string>
+    <string name="scan_qr">Scan desk QR</string>
+    <string name="delete_data">Delete phone data</string>
+    <string name="house_count">Shown %1$d times on this phone. Opened %2$d times.</string>
+    <string name="house_link">Open this message</string>
+    <string name="privacy_policy">Privacy policy</string>
+    <string name="about">About</string>
+    <string name="pro_license">Pro license</string>
+    <string name="pro_store">This store build uses Google Play Billing, product valhalla_pro_monthly, offer trial-15 (P15D free, then the monthly price). It does not use a Lemon Squeezy key.</string>
+    <string name="pro_hint">Paste the license key from your receipt. This is not a wallet key. Pro is not a promise of profit. A 15 day free trial is included.</string>
+    <string name="pro_trial_offer">Play offer trial-15. Free phase P15D, then valhalla_pro_monthly. App Store introductory offer is a 15 day free trial. Change the length in product.config.json TRIAL_DAYS.</string>
+    <string name="about_title">About Valhalla</string>
+    <string name="about_body">TokenJunction LLC publishes Valhalla. TokenJunction LLC is a private company. It owns Valhalla.\n\nThis is not financial advice. Crypto can lose money. The phone does not hold a wallet key. There is no send or withdraw.\n\nSite: https://valhalla-app.xyz\nSupport: hello@valhalla-app.xyz\n\n© 2026 TokenJunction LLC</string>
+    <string name="advice_body">TokenJunction LLC publishes Valhalla. This is not financial advice. The app does not promise profit. It cannot send or withdraw. Keys stay on your computer.</string>
+    <string name="ad_not_ready">That ad is not ready yet.</string>
+    <string name="ad_thanks">Thanks. Nothing about trading changed.</string>
+    <string name="ad_consent_unavailable">Ad consent could not be checked. No third-party ad was loaded.</string>
+    <string name="privacy_fallback">TokenJunction LLC publishes Valhalla. The privacy policy is https://valhalla-app.xyz/privacy-policy.md. Support is hello@valhalla-app.xyz. The phone does not hold a wallet key. This screen does not show a street address or a tax id.</string>
+    <string name="safety">No send or withdraw. Keys stay on the PC. A settings change needs your confirm tap. Alerts do not turn off battery optimization.</string>
+</resources>

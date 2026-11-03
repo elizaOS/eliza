@@ -1,0 +1,68 @@
+{
+  "id": "valhalla-copybot",
+  "name": "Valhalla Copybot",
+  "description": "Valhalla Mech memecoin copy trading. Google AI Studio Gemini. Paper by default. No transfer or withdraw.",
+  "npmName": "@elizaos/plugin-valhalla-copybot",
+  "version": "2.0.0-beta.0",
+  "source": "bundled",
+  "tags": ["solana", "trading", "copybot", "gemini"],
+  "config": {
+    "GOOGLE_GENERATIVE_AI_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Google AI Studio Key",
+      "help": "AI Studio API key for Gemini. This plugin does not use Vertex AI.",
+      "advanced": false
+    },
+    "VALHALLA_LIVE_TRADING": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "default": "false",
+      "label": "Live Trading",
+      "help": "Set to the exact text true to allow swaps from the bot wallet. Any other value keeps the plugin in paper mode.",
+      "advanced": false
+    },
+    "VALHALLA_PUBKEY": {
+      "type": "string",
+      "required": false,
+      "sensitive": false,
+      "label": "Trader Public Key",
+      "help": "Public address of the bot wallet. Used only for a live swap.",
+      "advanced": true
+    },
+    "HELIUS_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Helius API Key",
+      "help": "Optional Solana RPC key. Public RPC is used when this is empty. The key is not stored in the repo.",
+      "advanced": true
+    },
+    "BIRDEYE_API_KEY": {
+      "type": "secret",
+      "required": false,
+      "sensitive": true,
+      "label": "Birdeye API Key",
+      "help": "Optional read-only price fallback. DexScreener is the primary mark.",
+      "advanced": true
+    }
+  },
+  "render": {
+    "visible": true,
+    "pinTo": [],
+    "style": "card",
+    "icon": "Shield",
+    "group": "blockchain",
+    "groupOrder": 0,
+    "actions": ["enable", "configure"]
+  },
+  "resources": {
+    "homepage": "https://github.com/elizaOS/eliza/tree/HEAD/plugins/plugin-valhalla-copybot",
+    "repository": "https://github.com/elizaOS/eliza"
+  },
+  "dependsOn": [],
+  "kind": "plugin",
+  "subtype": "blockchain"
+}
