@@ -205,6 +205,24 @@ async function fixture(responses: unknown[]) {
 }
 
 describe("history ID grammar", () => {
+  it("requires the canonical offered read before admitting a bare alias and preserves provider precedence", async () => {
+    const {context, history} = await fixture([]);
+    expect(() => readHistoryContextRequests(context, history, {contextRequests:["h541"]}, new Set()))
+      .toThrowError(expect.objectContaining({code:"CONTEXT_DISCOVERY_INVALID_REQUEST"}));
+    expect(readHistoryContextRequests(context, history, {contextRequests:["h541"]}, new Set(["history:h541"])))
+      .toEqual(["history:h541"]);
+    expect(readHistoryContextRequests(context, history, {contextRequests:["h541"]}, new Set(["h541", "history:h541"])))
+      .toEqual(["h541"]);
+    expect(() => readHistoryContextRequests(context, {...history, sourceSetId:"stale"}, {contextRequests:["h541"]}, new Set(["history:h541"])))
+      .toThrowError(expect.objectContaining({code:"CONTEXT_DISCOVERY_INVALID_REQUEST"}));
+  });
+  it("does not reinterpret unadvertised numeric spellings from the failed public sequence", async () => {
+    const {context, history} = await fixture([]);
+    const requested = ["history:15", "history:34", "history:35", "history:38"];
+    expect(() => readHistoryContextRequests(context, history, {contextRequests:requested}, new Set(["history:h15", "history:h34", "history:h35", "history:h38"])))
+      .toThrowError(expect.objectContaining({code:"CONTEXT_DISCOVERY_INVALID_REQUEST",context:{rejected:requested}}));
+  });
+
   it("reads a bound bare ID as history:hN and still rejects an unbound one", async () => {
     const { context, history } = await fixture([]);
     const available = new Set(["ENTITIES", "history:all", "history:h541"]);

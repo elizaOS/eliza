@@ -328,7 +328,8 @@ export function readHistoryContextRequests(
     if (projection.sourceSetId === bound.sourceSetId) {
       for (const { id, event } of bound.sources) {
         const canonical = `${HISTORY_REFERENCE_PREFIX}${id}`;
-        if (!available.has(id)) aliases.set(id, canonical);
+        if (!available.has(id) && available.has(canonical))
+          aliases.set(id, canonical);
         if (!available.has(event.id) && available.has(canonical))
           aliases.set(event.id, canonical);
       }
