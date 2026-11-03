@@ -1,0 +1,12 @@
+--- v1/inventory_dependencies.py
++++ v2/inventory_dependencies.py
+@@ -78,8 +78,8 @@
+         # This cache is local to this generator/pass, never receipt-seeded.
+         hashes = {}
+         source_fd = os.open(self.source, DIR_FLAGS)
+-        source_before = identity(self.fd_stat(source_fd))
+         try:
++            source_before = identity(self.fd_stat(source_fd))
+             for relative in self.roots:
+                 self.check()
+                 parts = pathlib.PurePosixPath(relative).parts

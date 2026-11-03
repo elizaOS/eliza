@@ -1,0 +1,86 @@
+{
+  "state": "DIFF_MEASURED_ON_SMALL_FIXTURE_FULL_HOSTED_BUDGET_STILL_UNPROVEN",
+  "failedRun": 41604472920,
+  "failedRunResult": "Census85.133s/0SSR/0tests/all27PG+2CIDclosed; original claim/artifacts untouched.",
+  "currentGraph": {
+    "edges": [
+      {
+        "edge": "canonicalfrozeninstall\u2192135declaredroots",
+        "cost": "35.959s actual install; rootstate inventory follows"
+      },
+      {
+        "edge": "os.walk\u2192is_symlink/is_file/stat/resolve for every file",
+        "cost": "O(N*pathDepth) metadata calls from exactsource; per-edge timing not measured"
+      },
+      {
+        "edge": "everyregularfile\u219264KiBblockSHA256",
+        "cost": "5,053,680,483 bytes/231,381file rows reached before85s; repeatedphysicalreads not yet quantified"
+      },
+      {
+        "edge": "everyrow\u2192JSONencode\u2192JSONdecodeforcount\u2192write",
+        "cost": "231,381files+11,492symlinks/54.1MBpartialJSONL; per-edge timing unknown"
+      }
+    ],
+    "dynamic": "inventory-installed-dependencies failed85.133s infirstroot; whole132.363s,0SSR/0tests, all27PG/2CIDclosed. No bottleneck-fraction claim."
+  },
+  "idealBudget": {
+    "boundsUnchanged": {
+      "censusInternalSeconds": 85,
+      "phaseSeconds": 90,
+      "receiptBytes": 134217728,
+      "wholeSeconds": 1200
+    },
+    "requirements": [
+      "All135rootstates andeveryphysicalfile/symlink proof retained; errors/escape/unknown failclosed",
+      "One nonfollowingphysicalwalk; pathscope established atroots/directoryhandles, retainstrictsymlinktargetchecks",
+      "Avoid redundantstat/ancestorresolution perregularfile; capturestableFDidentity before/afterhash",
+      "Hash everyuniquephysicalfile at leastonce perpass; reuseonlywithin-passprovenidenticaldevice/inode/size/mtime/ctime+stability, neverdedupbycontenthashguess",
+      "Streamsamecompleteproof rows/counters without redundantJSONparse; boundedbuffers/reads, deterministiccapture/verify",
+      "No crossrun cache, no skippedmodules/roots/fields, no capraise, no Macdepwalk/install, no automaticrerun"
+    ]
+  },
+  "changedEdges": [
+    {
+      "from": "Repeated full ancestor resolution/stat per regularfile",
+      "to": "Directory-FD anchored one no-follow scandir/entry metadata; FD before/after+boundpathname identity proof. Strict root/link resolves retained.",
+      "budget": "O(files+directories+symlink-path-depth), not O(files*ancestor-depth). No coverage/cap reduction."
+    },
+    {
+      "from": "Re-read every hardlinked file",
+      "to": "Within-pass bounded65536entry cache only exact currentFD(dev,ino,size,mtime_ns,ctime_ns) after stable earlierhash/currentFD+pathproof; fallbackhash whenfull; separate equal-content inode alwayshashed.",
+      "budget": "At leastone full read per uniquephysical identity/pass; no crosspass cache."
+    },
+    {
+      "from": "Encode JSON then decode it to count; reread outgoing receipt for digest",
+      "to": "Count rowkind directly; same deterministic rowserialization and stream SHA bytes aswritten; verify oldbytes withfreshscan and SHA inone read.",
+      "budget": "Sameall135roots/file/link rows+128MiB/85internal90phase/1200whole; capture-v-verify failure guarantees retained."
+    }
+  ],
+  "smallMeasurement": {
+    "fixture": {
+      "regularFiles": 2080,
+      "depth": 12,
+      "hardlinks": 32,
+      "directorySymlinks": 1,
+      "declaredRoots": 135
+    },
+    "oldProfiledSeconds": 0.5528424580115825,
+    "newProfiledSeconds": 0.08891575003508478,
+    "proofBytesEqual": true,
+    "proofBytes": 504483,
+    "profiledPathResolveCalls": {
+      "old": 2085,
+      "new": 7
+    },
+    "profiledPosixLstatCalls": {
+      "old": 48050,
+      "new": 334
+    },
+    "newPhysicalHashes": 2048,
+    "newActualSameInodeReuses": 32,
+    "source": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-census-repair-v2/SMALL-FIXTURE-COST-RESULT.json"
+  },
+  "costNote": "No additional network/install/model/provider traffic. Source changedonlycensushelper; control/run/claim/workflow/145oracles/sourcecc15/bun.lock/caps unchanged. Eachpass has max65536 cachedidentity+digest tuples (bounded~tensMiB metadata, no filebufferscached), 64KiBreadbuffer/file, deterministicstream<=128MiB. Metrics add code-site counters and tinycapture/failureJSON; verifycounters useexistingseparatephase logs to supporttwoverifyinvocations without filenamecollision.",
+  "limits": "Small local Darwin/Python3.14 fixture+profiler, not Linux3.12 full5GBrecensus. No measuredfraction attribution to prior85s failure and no claimedfullhostedspeedup. Rootnewboundedrun stillrequired after source+literalreview/freshnonce.",
+  "cleanupV2": "Initial source fstat moved inside existingtry/finally; injectedfstatfailure closesFD. No normalwalk/control/cap/coverage change."
+}

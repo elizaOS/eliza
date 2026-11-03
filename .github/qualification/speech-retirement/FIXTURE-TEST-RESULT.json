@@ -1,0 +1,40 @@
+{
+  "state": "ACTUAL_SMALL_OWNED_FILESYSTEM_SUITE_PASS_NOT_PRODUCT_OR_HOSTED_QUALIFICATION",
+  "atUTC": "2026-11-03T09:06:07.697539+00:00",
+  "command": [
+    "python3",
+    "-I",
+    "-B",
+    "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-census-repair-v2/test_inventory_dependencies.py"
+  ],
+  "observedExit": 0,
+  "observedToolChunk": "ef51b0",
+  "unittestReportedCases": 15,
+  "unittestReportedSeconds": 0.712,
+  "toolWallSeconds": 0.741987459,
+  "failed": 0,
+  "skipped": 0,
+  "sourceSHA256": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1",
+  "testSourceSHA256": "f0b9f096e6da9a69844a393457a65c0b5f1cd4dbd1fc27fa410aead666595de9",
+  "testNames": [
+    "test_directory_replacement_cannot_follow_outside_symlink",
+    "test_external_and_dangling_symlinks_fail_closed",
+    "test_external_root_symlink_fails_closed",
+    "test_fds_close_after_error_and_early_consumer_close",
+    "test_file_mutation_with_restored_mtime_is_rejected",
+    "test_hash_reuse_only_same_physical_identity_and_never_across_passes",
+    "test_internal_ancestor_symlink_keeps_legacy_root_semantics",
+    "test_internal_deadline_and_receipt_byte_cap_fail_closed",
+    "test_missing_root_appearance_is_rejected",
+    "test_old_new_byte_equivalence_nested_files_links_empty_and_absent_roots",
+    "test_readlink_replacement_is_rejected",
+    "test_regular_files_do_not_resolve_ancestors_individually",
+    "test_replacement_between_stat_and_open_is_rejected",
+    "test_scandir_error_is_not_silently_skipped",
+    "test_verify_detects_add_remove_content_and_root_changes"
+  ],
+  "python": "3.14.6",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "scope": "Only new collector + old collector reference in small TemporaryDirectory fixtures. No real Mac dependency walk, install, product import, network/model/provider/native/SSR/145execution.",
+  "newCoverage": "Existing FDcleanup test now injects initialsourceFDfstat failure and proves zero leakedFDs; still15testmethods/0skip."
+}

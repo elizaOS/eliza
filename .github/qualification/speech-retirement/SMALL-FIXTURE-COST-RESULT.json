@@ -1,0 +1,115 @@
+{
+  "state": "SMALL_FIXTURE_MEASUREMENT_NOT_HOSTED_PERFORMANCE_ACCEPTANCE",
+  "platform": "macOS-26.6.2-arm64-arm-64bit-Mach-O",
+  "python": "3.14.6",
+  "maxRSSUnit": "bytes",
+  "fixture": {
+    "regularFiles": 2080,
+    "depth": 12,
+    "hardlinks": 32,
+    "directorySymlinks": 1,
+    "declaredRoots": 135
+  },
+  "proofBytes": 504483,
+  "proofSHA256": "54c20e515f9caa99ff6280cbdd38f2244bb0a592c2bb0efc7b6520b328d066cf",
+  "oldNewProofBytesEqual": true,
+  "runs": {
+    "old": {
+      "elapsedProfiledSeconds": 0.5528424580115825,
+      "operationSites": [
+        {
+          "site": "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:932:resolve",
+          "calls": 2085,
+          "seconds": 0.105219555
+        },
+        {
+          "site": "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:703:is_symlink",
+          "calls": 2094,
+          "seconds": 0.012676666000000001
+        },
+        {
+          "site": "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:685:is_file",
+          "calls": 2080,
+          "seconds": 0.006383749
+        },
+        {
+          "site": "<built-in method posix.stat>",
+          "calls": 4180,
+          "seconds": 0.011732685000000001
+        },
+        {
+          "site": "<built-in method posix.lstat>",
+          "calls": 48050,
+          "seconds": 0.07355895500000001
+        },
+        {
+          "site": "<built-in method posix.readlink>",
+          "calls": 5,
+          "seconds": 7.875e-06
+        },
+        {
+          "site": "<built-in method posix.scandir>",
+          "calls": 13,
+          "seconds": 0.000319042
+        }
+      ],
+      "maxRSSRaw": 22757376,
+      "stdout": "{\"counts\": {\"root\": 135, \"file\": 2080, \"symlink\": 1}, \"inventoryBytes\": 504483, \"inventorySHA256\": \"54c20e515f9caa99ff6280cbdd38f2244bb0a592c2bb0efc7b6520b328d066cf\"}\n",
+      "exit": 0
+    },
+    "new": {
+      "elapsedProfiledSeconds": 0.08891575003508478,
+      "operationSites": [
+        {
+          "site": "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py:932:resolve",
+          "calls": 7,
+          "seconds": 0.000255168
+        },
+        {
+          "site": "<built-in method posix.stat>",
+          "calls": 2115,
+          "seconds": 0.00299979
+        },
+        {
+          "site": "<built-in method posix.lstat>",
+          "calls": 334,
+          "seconds": 0.0012399490000000002
+        },
+        {
+          "site": "<built-in method posix.readlink>",
+          "calls": 4,
+          "seconds": 6.082e-06
+        },
+        {
+          "site": "<built-in method posix.open>",
+          "calls": 2094,
+          "seconds": 0.031422366
+        },
+        {
+          "site": "<built-in method posix.read>",
+          "calls": 4096,
+          "seconds": 0.004604789000000001
+        },
+        {
+          "site": "<built-in method posix.fstat>",
+          "calls": 4201,
+          "seconds": 0.0036977010000000003
+        },
+        {
+          "site": "<built-in method posix.scandir>",
+          "calls": 13,
+          "seconds": 0.000146667
+        },
+        {
+          "site": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-backend-cc15-census-repair-v2/inventory_dependencies.py:59:resolve",
+          "calls": 3,
+          "seconds": 0.000197459
+        }
+      ],
+      "maxRSSRaw": 25264128,
+      "stdout": "{\"counts\": {\"root\": 135, \"file\": 2080, \"symlink\": 1}, \"inventorySHA256\": \"54c20e515f9caa99ff6280cbdd38f2244bb0a592c2bb0efc7b6520b328d066cf\", \"metrics\": {\"roots\": 135, \"directories\": 13, \"entryStats\": 2093, \"fdStats\": 4201, \"pathStats\": 2365, \"strictResolves\": 3, \"readlinks\": 1, \"regularFiles\": 2080, \"symlinks\": 1, \"hashReads\": 4096, \"hashBytes\": 23466, \"physicalHashes\": 2048, \"hashReuses\": 32, \"cachePeakEntries\": 2048, \"proofRows\": 2216, \"proofBytes\": 504483, \"inventoryReadBytes\": 0, \"seconds\": 0.08350787498056889, \"scope\": \"Code-site operation counts, not a syscall profiler; no full hosted speedup claim\"}}\n",
+      "exit": 0
+    }
+  },
+  "limits": "One old/new profiled pass on tiny owned files only; profiler overhead included. No extrapolated full hosted speedup or root-cause fraction. Full85s hosted remeasurement still requires review/newRootGO."
+}
