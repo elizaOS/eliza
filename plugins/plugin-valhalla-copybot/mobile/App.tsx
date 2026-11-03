@@ -1,5 +1,5 @@
 import { StatusBar } from "expo-status-bar";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Linking,
   Pressable,
@@ -10,7 +10,24 @@ import {
   TextInput,
   View,
 } from "react-native";
+import catalog from "../offers.json" with { type: "json" };
+import product from "../product.config.json" with { type: "json" };
 import { activateLicense, checkoutLink, proPurchaseMessage } from "./billing";
+
+type Offer = {
+  id: string;
+  partner: string;
+  title: string;
+  blurb: string;
+  url: string;
+  placements: string[];
+};
+
+function bannerOffers(rows: Offer[]): Offer[] {
+  return rows.filter(
+    (row) => row.url.startsWith("https://") && row.placements.includes("app-banner")
+  );
+}
 
 type Step = "age" | "advice" | "intro" | "pair" | "demo" | "done" | "about";
 
@@ -22,6 +39,19 @@ const DEMO = {
 
 export default function App() {
   const [step, setStep] = useState<Step>("age");
+  const [banner, setBanner] = useState<Offer[]>(bannerOffers(catalog.offers as Offer[]));
+  useEffect(() => {
+    let stop = false;
+    fetch("https://valhalla-app.xyz/offers.json")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((doc: { offers?: Offer[] } | null) => {
+        if (!stop && doc && Array.isArray(doc.offers)) setBanner(bannerOffers(doc.offers));
+      })
+      .catch(() => {});
+    return () => {
+      stop = true;
+    };
+  }, []);
   const [back, setBack] = useState<Step>("age");
   const [url, setUrl] = useState("http://127.0.0.1:8787");
   const [note, setNote] = useState("");
@@ -188,11 +218,38 @@ export default function App() {
             <Text style={styles.body}>Free keeps 3 coins. Pro removes the banner.</Text>
             {!licenseNote.includes("Pro is on") ? (
               <View style={styles.ad}>
-                <Text style={styles.adLabel}>Advertisement</Text>
-                <Text style={styles.body}>
-                  Test AdMob adaptive banner. iOS ca-app-pub-3940256099942544/2934735716. Android
-                  ca-app-pub-3940256099942544/6300978111. Replace these when the real units exist.
-                </Text>
+                {banner.length > 0 && Math.floor(Date.now() / 60000) % 2 === 1 ? (
+                  <Pressable
+                    onPress={() => {
+                      const offer = banner[Math.floor(Date.now() / 86400000) % banner.length];
+                      if (!offer) return;
+                      const click = String(product.OFFER_CLICK_URL || "");
+                      if (click.startsWith("https://") && /^[a-z0-9-]{1,40}$/.test(offer.id)) {
+                        void fetch(click, {
+                          method: "POST",
+                          headers: { "content-type": "application/json" },
+                          body: JSON.stringify({ id: offer.id, placement: "app-banner" }),
+                        }).catch(() => {});
+                      }
+                      void Linking.openURL(offer.url);
+                    }}
+                  >
+                    <Text style={styles.adLabel}>Affiliate link · we may earn a commission</Text>
+                    <Text style={styles.body}>
+                      {banner[Math.floor(Date.now() / 86400000) % banner.length]?.title}. Not
+                      trading advice.
+                    </Text>
+                  </Pressable>
+                ) : (
+                  <>
+                    <Text style={styles.adLabel}>Advertisement</Text>
+                    <Text style={styles.body}>
+                      Test AdMob adaptive banner. iOS ca-app-pub-3940256099942544/2934735716.
+                      Android ca-app-pub-3940256099942544/6300978111. Replace these when the real
+                      units exist.
+                    </Text>
+                  </>
+                )}
               </View>
             ) : null}
             <Text style={styles.body}>{licenseNote}</Text>
@@ -222,7 +279,14 @@ const styles = StyleSheet.create({
   kicker: { color: "#ffb347", letterSpacing: 3, fontWeight: "700", marginBottom: 12 },
   title: { color: "#f4ecdf", fontSize: 32, fontWeight: "700", marginBottom: 12 },
   body: { color: "#cfc6b6", fontSize: 16, marginBottom: 12 },
-  ad: { minHeight: 50, marginTop: 8, marginBottom: 12, borderWidth: 1, borderColor: "#3a3428", padding: 8 },
+  ad: {
+    minHeight: 50,
+    marginTop: 8,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: "#3a3428",
+    padding: 8,
+  },
   adLabel: { color: "#93a4ba", fontSize: 11, marginBottom: 4 },
   input: {
     minHeight: 48,

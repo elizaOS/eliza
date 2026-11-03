@@ -23,9 +23,11 @@ import com.google.android.ump.UserMessagingPlatform;
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -45,6 +47,9 @@ final class AdController {
     private final TextView houseCount;
     private final SessionStore store;
     private AdView banner;
+    private boolean houseReady;
+    private String houseUrl = "";
+    private String houseId = "";
     private RewardedAd rewarded;
     private InterstitialAd interstitial;
     private boolean admobStarted;
@@ -105,6 +110,18 @@ final class AdController {
         // Banner sits under the dashboard. Pairing and settings stay clear. Pro hides it.
         boolean show = store.adsAllowed() && SessionStore.SCREEN_STATUS.equals(screen);
         column.setVisibility(show ? View.VISIBLE : View.GONE);
+        if (show) applyRotation();
+    }
+
+    /** Even minutes show AdMob. Odd minutes show a house offer when one URL is set. */
+    private void applyRotation() {
+        boolean houseTurn = houseReady && (System.currentTimeMillis() / 60000L) % 2L == 1L;
+        bannerSlot.setVisibility(houseTurn ? View.GONE : View.VISIBLE);
+        int vis = houseTurn ? View.VISIBLE : View.GONE;
+        houseTitle.setVisibility(vis);
+        houseText.setVisibility(vis);
+        houseLink.setVisibility(houseTurn ? View.VISIBLE : View.GONE);
+        houseCount.setVisibility(houseReady ? View.VISIBLE : View.GONE);
     }
 
     void destroy() {
@@ -203,7 +220,13 @@ final class AdController {
     }
 
     private String readAsset() {
-        try (InputStream in = activity.getAssets().open("house-ads.json")) {
+        String offers = readNamed("offers.json");
+        if (!offers.isEmpty()) return offers;
+        return readNamed("house-ads.json");
+    }
+
+    private String readNamed(String name) {
+        try (InputStream in = activity.getAssets().open(name)) {
             return readStream(in);
         } catch (Exception ignored) {
             return "";
@@ -219,30 +242,81 @@ final class AdController {
     }
 
     private void showHouse(String raw) {
+        houseReady = false;
+        houseUrl = "";
+        houseId = "";
         try {
-            JSONArray ads = new JSONObject(raw).optJSONArray("ads");
-            if (ads == null || ads.length() == 0) return;
-            JSONObject ad = ads.getJSONObject(0);
-            houseTitle.setText(ad.optString("title", ""));
-            houseText.setText(ad.optString("text", ""));
-            houseTitle.setVisibility(View.VISIBLE);
-            houseText.setVisibility(View.VISIBLE);
+            JSONObject root = new JSONObject(raw);
+            ArrayList<JSONObject> rows = new ArrayList<>();
+            JSONArray offers = root.optJSONArray("offers");
+            if (offers != null) {
+                for (int i = 0; i < offers.length(); i++) {
+                    JSONObject row = offers.getJSONObject(i);
+                    if (!row.optString("url", "").trim().startsWith("https://")) continue;
+                    JSONArray places = row.optJSONArray("placements");
+                    boolean banner = false;
+                    if (places != null) {
+                        for (int p = 0; p < places.length(); p++) {
+                            if ("app-banner".equals(places.optString(p))) banner = true;
+                        }
+                    }
+                    if (banner) rows.add(row);
+                }
+            }
+            JSONObject chosen = null;
+            if (!rows.isEmpty()) {
+                int day = (int) ((System.currentTimeMillis() / 86400000L) % rows.size());
+                chosen = rows.get(day);
+            }
+            if (chosen == null) {
+                applyRotation();
+                return;
+            }
+            houseUrl = chosen.optString("url", "").trim();
+            houseId = chosen.optString("id", "offer");
+            houseTitle.setText(chosen.optString("title", ""));
+            houseText.setText(chosen.optString("blurb", "") + "\nAffiliate link · we may earn a commission. Not trading advice.");
+            houseReady = houseUrl.startsWith("https://");
             store.countHouseImpression();
             houseCount.setText(activity.getString(R.string.house_count, store.houseImpressions(), store.houseClicks()));
-            houseCount.setVisibility(View.VISIBLE);
-            String url = ad.optString("url", "").trim();
-            if (url.startsWith("https://")) {
-                houseLink.setVisibility(View.VISIBLE);
-                houseLink.setOnClickListener(v -> {
-                    store.countHouseClick();
-                    houseCount.setText(activity.getString(R.string.house_count, store.houseImpressions(), store.houseClicks()));
-                    activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
-                });
-            }
+            final String openUrl = houseUrl;
+            final String openId = houseId;
+            houseLink.setOnClickListener(v -> {
+                store.countHouseClick();
+                houseCount.setText(activity.getString(R.string.house_count, store.houseImpressions(), store.houseClicks()));
+                trackClick(openId, "app-banner");
+                activity.startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(openUrl)));
+            });
         } catch (Exception ignored) {
-            houseTitle.setVisibility(View.GONE);
-            houseText.setVisibility(View.GONE);
-            houseLink.setVisibility(View.GONE);
+            houseReady = false;
         }
+        applyRotation();
+    }
+
+    /** Sends the offer id and placement only. No account or device id is added. */
+    private void trackClick(String id, String placement) {
+        String endpoint = BuildConfig.OFFER_CLICK_URL == null ? "" : BuildConfig.OFFER_CLICK_URL.trim();
+        if (!endpoint.startsWith("https://")) return;
+        if (!id.matches("[a-z0-9-]{1,40}") || !placement.matches("[a-z0-9-]{1,40}")) return;
+        new Thread(() -> {
+            HttpURLConnection conn = null;
+            try {
+                conn = (HttpURLConnection) new URL(endpoint).openConnection();
+                conn.setConnectTimeout(4000);
+                conn.setReadTimeout(4000);
+                conn.setRequestMethod("POST");
+                conn.setDoOutput(true);
+                conn.setRequestProperty("content-type", "application/json");
+                byte[] body = ("{\"id\":\"" + id + "\",\"placement\":\"" + placement + "\"}").getBytes(StandardCharsets.UTF_8);
+                try (OutputStream out = conn.getOutputStream()) {
+                    out.write(body);
+                }
+                conn.getResponseCode();
+            } catch (Exception ignored) {
+                // A missed count does not block the link.
+            } finally {
+                if (conn != null) conn.disconnect();
+            }
+        }).start();
     }
 }

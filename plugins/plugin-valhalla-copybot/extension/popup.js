@@ -79,10 +79,13 @@ document.getElementById("score")?.addEventListener("click", async () => {
   const saved = await chrome.storage.local.get(["desk"]);
   if (saved.desk) {
     try {
-      const response = await fetch(`${saved.desk.replace(/\/$/, "")}/api/signal?mint=${encodeURIComponent(mint)}`);
+      const response = await fetch(
+        `${saved.desk.replace(/\/$/, "")}/api/signal?mint=${encodeURIComponent(mint)}`
+      );
       if (response.ok) {
         const body = await response.json();
-        out.textContent = `Score ${body.score}. ${(body.flags || []).join(", ")}. ${body.disclaimer || "Not financial advice."}`;
+        out.textContent = `Score ${body.score}. ${(body.flags || []).join(", ")}. ${body.disclaimer || "Not financial advice."}${body.offer ? ` ${body.offer}` : ""}`;
+        if (typeof body.score === "number" && body.score <= 40) showHouseAd("risk-score");
         return;
       }
     } catch {
@@ -90,44 +93,65 @@ document.getElementById("score")?.addEventListener("click", async () => {
     }
   }
   const local = localScore(mint);
-  out.textContent = `Score ${local.score}. ${local.flags.join(", ")}.`;
+  const risk = local.score <= 40 ? " Protect your coins: hardware wallet. Not trading advice." : "";
+  out.textContent = `Score ${local.score}. ${local.flags.join(", ")}.${risk}`;
+  if (local.score <= 40) showHouseAd("risk-score");
 });
 
-async function showHouseAd() {
+async function showHouseAd(placement) {
   const box = document.getElementById("house-ad");
   if (!box) return;
   try {
-  const saved = await chrome.storage.local.get(["desk"]);
-  if (saved.desk) {
-    try {
-      const plan = await fetch(`${saved.desk.replace(/\/$/, "")}/api/plan`);
-      if (plan.ok) {
-        const body = await plan.json();
-        if (body.tier === "pro" || body.tier === "trial") {
-          box.hidden = true;
-          return;
+    const saved = await chrome.storage.local.get(["desk"]);
+    if (saved.desk) {
+      try {
+        const plan = await fetch(`${saved.desk.replace(/\/$/, "")}/api/plan`);
+        if (plan.ok) {
+          const body = await plan.json();
+          if (body.tier === "pro" || body.tier === "trial") {
+            box.hidden = true;
+            return;
+          }
         }
+      } catch {
+        // The desk did not answer. Keep the free house banner.
       }
-    } catch {
-      // The desk did not answer. Keep the free house banner.
     }
-  }
-  const response = await fetch(chrome.runtime.getURL("house-ads.json"));
-  const data = await response.json();
-  const ads = Array.isArray(data.ads) ? data.ads : [];
-  if (!ads.length) return;
-  const ad = ads[Math.floor(Date.now() / 86400000) % ads.length];
-  const label = document.getElementById("house-label");
-  const link = document.getElementById("house-link");
-  const image = document.getElementById("house-image");
-  const title = document.getElementById("house-title");
-  const disclosure = document.getElementById("house-disclosure");
-  if (label) label.textContent = ad.label || "Ad";
-  if (link) link.href = ad.href;
-  if (image) image.src = chrome.runtime.getURL(ad.image);
-  if (title) title.textContent = ad.title || "";
-  if (disclosure) disclosure.textContent = ad.disclosure || "";
-  box.hidden = false;
+    const offerDoc = await fetch(chrome.runtime.getURL("offers.json")).then((res) => res.json());
+    const offers = Array.isArray(offerDoc.offers) ? offerDoc.offers : [];
+    const spot = placement || "extension";
+    const live = offers.filter(
+      (row) => String(row.url || "").startsWith("https://") && (row.placements || []).includes(spot)
+    );
+    const label = document.getElementById("house-label");
+    const link = document.getElementById("house-link");
+    const image = document.getElementById("house-image");
+    const title = document.getElementById("house-title");
+    const disclosure = document.getElementById("house-disclosure");
+    if (live.length) {
+      const offer = live[Math.floor(Date.now() / 86400000) % live.length];
+      if (label) label.textContent = "Affiliate link · we may earn a commission";
+      if (link) link.href = offer.url;
+      if (image) image.hidden = true;
+      if (title) title.textContent = `${offer.partner}: ${offer.title}`;
+      if (disclosure) disclosure.textContent = "Not trading advice.";
+      box.hidden = false;
+      return;
+    }
+    const response = await fetch(chrome.runtime.getURL("house-ads.json"));
+    const data = await response.json();
+    const ads = Array.isArray(data.ads) ? data.ads : [];
+    if (!ads.length) return;
+    const ad = ads[Math.floor(Date.now() / 86400000) % ads.length];
+    if (label) label.textContent = ad.label || "Ad";
+    if (link) link.href = ad.href;
+    if (image) {
+      image.hidden = false;
+      image.src = chrome.runtime.getURL(ad.image);
+    }
+    if (title) title.textContent = ad.title || "";
+    if (disclosure) disclosure.textContent = ad.disclosure || "";
+    box.hidden = false;
   } catch {
     box.hidden = true;
   }
@@ -144,6 +168,8 @@ async function loadState(base, token) {
     return;
   }
   const row = body.state || {};
-  say(`${row.status || "Desk answered."}\n${row.pnl || ""}\n${row.positions || ""}\nRead-only. No send or withdraw.`);
+  say(
+    `${row.status || "Desk answered."}\n${row.pnl || ""}\n${row.positions || ""}\nRead-only. No send or withdraw.`
+  );
   await showHouseAd();
 }

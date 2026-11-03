@@ -22,6 +22,8 @@ import type { AgentEngine } from "./engine.ts";
 import { LicenseStore } from "./license.ts";
 import { fetchLiveSol, publicRpcUrl } from "./live-balance.ts";
 import { tail4 } from "./net.ts";
+import { AFFILIATE_LABEL, contextForReport, contextForScore, offersFor } from "./offers.ts";
+import { pollTelegramTools } from "./outside-read.ts";
 import { comparisonRows, PLAN_PRICES, paywallCopy, TRIAL_MS, tierFor } from "./plan.ts";
 import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { signalScore } from "./signal-score.ts";
@@ -116,6 +118,16 @@ function bindHost(raw: string | undefined): string {
   return host;
 }
 
+async function deskPaid(engine: AgentEngine): Promise<boolean> {
+  const store = new LicenseStore(engine.dataDir);
+  const record = await store.read();
+  const graceMs = store.config.offlineGraceDays * 24 * 60 * 60 * 1000;
+  const pro = Boolean(
+    record && record.status === "active" && Date.now() - record.validatedAt <= graceMs
+  );
+  return tierFor({ pro, trialStartedAt: null, now: Date.now() }) !== "free";
+}
+
 export function startDashboard(
   engine: AgentEngine,
   options: DashboardOptions = {}
@@ -137,10 +149,26 @@ export function startDashboard(
     server.listen(port, host, () => {
       const address = server.address();
       const bound = typeof address === "object" && address ? address.port : port;
+      let offset = 0;
+      let polling = false;
+      const toolsTimer = setInterval(() => {
+        const token = process.env.TELEGRAM_BOT_TOKEN?.trim();
+        if (!token || polling) return;
+        polling = true;
+        pollTelegramTools(token, offset)
+          .then((next) => {
+            offset = next;
+          })
+          .catch(() => undefined)
+          .finally(() => {
+            polling = false;
+          });
+      }, 20_000);
       resolve({
         port: bound,
         close: () =>
           new Promise((done) => {
+            clearInterval(toolsTimer);
             server.close(() => done());
           }),
       });
@@ -216,6 +244,38 @@ async function handle(
     }
     return;
   }
+  if (req.method === "GET" && pathname === "/api/offers") {
+    const placement = url.searchParams.get("placement") || "tools";
+    const paid = await deskPaid(engine);
+    send(res, 200, {
+      ok: true,
+      label: AFFILIATE_LABEL,
+      advice: "Not trading advice.",
+      offers: offersFor(placement, paid),
+      score: paid ? "" : contextForScore(20, false),
+      report: contextForReport(paid),
+    });
+    return;
+  }
+  if (req.method === "POST" && pathname === "/api/offers/click") {
+    const body = (await readBody(req)) as { id?: string; placement?: string };
+    const id = String(body.id ?? "");
+    const placement = String(body.placement ?? "");
+    if (!/^[a-z0-9-]{1,40}$/.test(id) || !/^[a-z0-9-]{1,40}$/.test(placement)) {
+      send(res, 400, { ok: false, error: "Offer id required." });
+      return;
+    }
+    const brain = process.env.VALHALLA_BRAIN_URL?.replace(/\/$/, "");
+    if (brain) {
+      await fetch(`${brain}/v1/offers/click`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ id, placement }),
+      }).catch(() => undefined);
+    }
+    send(res, 200, { ok: true });
+    return;
+  }
   if (req.method === "GET" && pathname === "/api/plan") {
     const store = new LicenseStore(engine.dataDir);
     const record = await store.read();
@@ -271,7 +331,8 @@ async function handle(
       url: process.env.VALHALLA_BRAIN_URL,
       key: process.env.VALHALLA_BRAIN_KEY,
     });
-    send(res, 200, { ok: true, mint, ...result });
+    const paid = await deskPaid(engine);
+    send(res, 200, { ok: true, mint, ...result, offer: contextForScore(result.score, paid) });
     return;
   }
   if (req.method === "GET" && pathname === "/api/brain") {

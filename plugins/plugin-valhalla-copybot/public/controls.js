@@ -134,6 +134,7 @@ document.getElementById("gateForm").addEventListener("submit", async (event) => 
     });
     document.getElementById("gate").hidden = true;
     refreshDeskAd();
+    refreshOffer();
     bootGate();
     loadConnections();
   } catch (err) {
@@ -473,7 +474,38 @@ function refreshDeskAd() {
     slot.hidden = true;
   });
 }
+function refreshOffer() {
+  const slot = document.getElementById("deskOffer");
+  if (!slot) return;
+  api("/api/offers?placement=portal").then((data) => {
+    const offer = (data.offers || [])[0];
+    const label = slot.querySelector("p");
+    while (slot.lastChild && slot.lastChild !== label) slot.removeChild(slot.lastChild);
+    if (!offer || !String(offer.url || "").startsWith("https://")) {
+      slot.hidden = true;
+      return;
+    }
+    slot.hidden = false;
+    const link = document.createElement("a");
+    link.href = offer.url;
+    link.target = "_blank";
+    link.rel = "sponsored noopener noreferrer";
+    link.textContent = offer.partner + ": " + offer.title;
+    link.addEventListener("click", () => {
+      api("/api/offers/click", { id: offer.id, placement: "portal" }).catch(() => {});
+    });
+    const note = document.createElement("p");
+    note.style.color = "#93a4ba";
+    note.style.fontSize = "11px";
+    note.textContent = (data.label || "Affiliate link · we may earn a commission") + ". Not trading advice.";
+    slot.appendChild(link);
+    slot.appendChild(note);
+  }).catch(() => {
+    slot.hidden = true;
+  });
+}
 refreshDeskAd();
+refreshOffer();
 watchUpdates();
 setInterval(watchUpdates, 6 * 60 * 60 * 1000);
 document.getElementById("btnQueue").onclick = () =>
@@ -484,7 +516,7 @@ document.getElementById("btnSignal")?.addEventListener("click", async () => {
   try {
     const data = await api("/api/signal?mint=" + encodeURIComponent(mint));
     const flags = (data.flags || []).join(", ");
-    if (out) out.textContent = "Score " + data.score + ". " + flags + ". " + (data.disclaimer || "");
+    if (out) out.textContent = "Score " + data.score + ". " + flags + ". " + (data.disclaimer || "") + (data.offer ? " " + data.offer : "");
   } catch (err) {
     if (out) out.textContent = err instanceof Error ? err.message : "Score failed. Nothing was sent.";
   }

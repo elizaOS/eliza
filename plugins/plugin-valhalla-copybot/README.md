@@ -71,7 +71,7 @@ Set these when you build the phone app. Use the environment, or `android/local.p
 - `ADMOB_BANNER_ID`
 - `ADMOB_INTERSTITIAL_ID`
 - `ADMOB_REWARDED_ID`
-- `HOUSE_ADS_URL` is an optional https JSON feed for your own messages. If you leave it empty, the app uses `android/app/src/main/assets/house-ads.json`.
+- `HOUSE_ADS_URL` defaults to `https://valhalla-app.xyz/offers.json`. An offer stays off until its `url` is an https link. `OFFER_CLICK_URL` stays empty until you paste the Brain API click address.
 - `PRIVACY_POLICY_URL` defaults to https://valhalla-app.xyz/privacy-policy.md. Set it only if you publish the policy somewhere else.
 
 The banner and the optional ad buttons are on the pairing screen and the error log only. They are hidden on status, chat, Recover agent, and settings confirm. A short ad and a break ad start only when you tap those buttons. A reward does not change trading.

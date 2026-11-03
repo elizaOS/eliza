@@ -10,6 +10,7 @@
   "LEMONSQUEEZY_YEARLY_URL": "",
   "LEMONSQUEEZY_LIFETIME_URL": "",
   "TRIAL_DAYS": 15,
+  "OFFER_CLICK_URL": "",
   "offlineGraceDays": 7,
   "proMonthlyCapUsd": 20
 }

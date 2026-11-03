@@ -33,7 +33,8 @@ val admobAppId = buildValue("ADMOB_APP_ID", sampleAppId)
 val admobBannerId = buildValue("ADMOB_BANNER_ID", sampleBannerId)
 val admobInterstitialId = buildValue("ADMOB_INTERSTITIAL_ID", sampleInterstitialId)
 val admobRewardedId = buildValue("ADMOB_REWARDED_ID", sampleRewardedId)
-val houseAdsUrl = buildValue("HOUSE_ADS_URL", "")
+val houseAdsUrl = buildValue("HOUSE_ADS_URL", "https://valhalla-app.xyz/offers.json")
+val offerClickUrl = buildValue("OFFER_CLICK_URL", "")
 val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "https://valhalla-app.xyz/privacy-policy.md")
 val storeBilling = buildValue("STORE_BILLING", "false")
 
@@ -54,6 +55,7 @@ android {
         buildConfigField("String", "ADMOB_INTERSTITIAL_ID", quote(admobInterstitialId))
         buildConfigField("String", "ADMOB_REWARDED_ID", quote(admobRewardedId))
         buildConfigField("String", "HOUSE_ADS_URL", quote(houseAdsUrl))
+        buildConfigField("String", "OFFER_CLICK_URL", quote(offerClickUrl))
         buildConfigField("String", "PRIVACY_POLICY_URL", quote(privacyPolicyUrl))
         buildConfigField("boolean", "STORE_BILLING", "false")
         ndk {

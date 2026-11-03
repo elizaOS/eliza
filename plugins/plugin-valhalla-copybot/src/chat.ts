@@ -1,5 +1,6 @@
 import { generateWithGemini } from "./gemini.ts";
 import { netTimeoutMs, redactSecrets, withTimeout } from "./net.ts";
+import { answerTools } from "./offers.ts";
 
 export interface ChatHost {
   log(kind: string, message: string): void;
@@ -23,6 +24,8 @@ export async function answerChat(engine: ChatHost, text: string): Promise<string
     engine.log("chat", "Refused an unsafe request.");
     return "No. This agent cannot send, transfer, or withdraw SOL or tokens, and it cannot turn safety checks off.";
   }
+  const tools = answerTools(question);
+  if (tools) return tools;
   const lower = question.toLowerCase();
   if (/status|running|live|mode/.test(lower)) return engine.statusLine();
   if (/p&l|pnl|profit|loss/.test(lower)) return engine.pnlLine();

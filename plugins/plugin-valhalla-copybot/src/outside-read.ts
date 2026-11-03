@@ -2,6 +2,8 @@ import { createHmac, createSign } from "node:crypto";
 import type { AlertEvent } from "./connection-vault.ts";
 import { publicText } from "./connection-vault.ts";
 import type { CoinSnapshot, Evaluation } from "./evaluate.ts";
+import { redactSecrets } from "./net.ts";
+import { answerTools } from "./offers.ts";
 
 const MINT_RE = /\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/g;
 const TAG_RE = /\$([A-Za-z][A-Za-z0-9]{1,12})\b/g;
@@ -52,14 +54,42 @@ export async function sendTelegram(
   token: string,
   chatId: string,
   text: string,
-  fetchImpl: typeof fetch = fetch
+  fetchImpl: typeof fetch = fetch,
+  limit = 240,
+  keepLinks = false
 ): Promise<void> {
+  const shown = (keepLinks ? redactSecrets(text) : publicText(text)).slice(0, limit);
   const response = await fetchImpl(`https://api.telegram.org/bot${token}/sendMessage`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ chat_id: chatId, text: publicText(text).slice(0, 240) }),
+    body: JSON.stringify({ chat_id: chatId, text: shown }),
   });
   if (!response.ok) throw new Error("Telegram did not accept the alert.");
+}
+
+/** Reads bot updates and answers /tools. Other messages stay untouched. */
+export async function pollTelegramTools(
+  token: string,
+  offset: number,
+  fetchImpl: typeof fetch = fetch
+): Promise<number> {
+  const response = await fetchImpl(
+    `https://api.telegram.org/bot${token}/getUpdates?timeout=0&offset=${offset}&allowed_updates=${encodeURIComponent('["message"]')}`
+  );
+  if (!response.ok) return offset;
+  const body = (await response.json()) as {
+    result?: Array<{ update_id?: number; message?: { text?: string; chat?: { id?: number } } }>;
+  };
+  let next = offset;
+  for (const update of body.result ?? []) {
+    const id = Number(update.update_id ?? 0);
+    if (id >= next) next = id + 1;
+    const reply = answerTools(update.message?.text ?? "");
+    const chatId = update.message?.chat?.id;
+    if (!reply || chatId == null) continue;
+    await sendTelegram(token, String(chatId), reply, fetchImpl, 3500, true);
+  }
+  return next;
 }
 
 export async function sendDiscord(
