@@ -7,8 +7,8 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import { getUserMessageText } from "@elizaos/core";
 import { afterEach, describe, expect, it } from "vitest";
-import { filterExtractedCommitments } from "../src/lifeops/commitments/extraction-evaluator.js";
 import { ownerDocumentsAction } from "../src/actions/document.ts";
+import { filterExtractedCommitments } from "../src/lifeops/commitments/extraction-evaluator.js";
 import {
   buildCommitmentRegretAudit,
   commitmentExtractionEvaluator,
