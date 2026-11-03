@@ -40,6 +40,7 @@ export class VfsGitError extends Error {
       | "INVALID_GIT_URL"
       | "INVALID_GIT_PATH"
       | "MISSING_ARGUMENT"
+      | "REPOSITORY_EXISTS"
       | "SYMLINK_DENIED",
   ) {
     super(message);
@@ -105,6 +106,15 @@ class IsomorphicVfsGitService implements VfsGitService {
 
   private async clone(request: PostWorkbenchVfsGitRequest) {
     const url = requireUrl(request.url);
+    // isomorphic-git removes `<dir>/.git` when a clone fails, so cloning over
+    // an existing repository would delete its history. Refuse it, as git does
+    // for a destination that already exists.
+    if (await pathExists(path.join(this.vfs.filesRoot, ".git"))) {
+      throw new VfsGitError(
+        "VFS project already has a Git repository",
+        "REPOSITORY_EXISTS",
+      );
+    }
     await git.clone({
       fs,
       http,
@@ -372,6 +382,16 @@ async function currentBranch(dir: string): Promise<string | null> {
     .currentBranch({ fs, dir, fullname: false })
     .then((branch: unknown) => (typeof branch === "string" ? branch : null))
     .catch(() => null);
+}
+
+async function pathExists(target: string): Promise<boolean> {
+  return fsp.lstat(target).then(
+    () => true,
+    (error: NodeJS.ErrnoException) => {
+      if (error.code === "ENOENT") return false;
+      throw error;
+    },
+  );
 }
 
 function commitView(commit: ReadCommitResult) {
