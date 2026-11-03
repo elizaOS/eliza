@@ -41,6 +41,7 @@ import type { GlobalPauseView, ScheduledTask } from "./types.js";
 
 function makeRunner(
   dispatcher: ScheduledTaskDispatcher = TestNoopScheduledTaskDispatcher,
+  now: () => Date = () => new Date("2026-06-01T12:00:00.000Z"),
 ): ScheduledTaskRunnerHandle {
   const gates = createTaskGateRegistry();
   registerBuiltInGates(gates);
@@ -69,7 +70,7 @@ function makeRunner(
       counter += 1;
       return `task_${counter}`;
     },
-    now: () => new Date("2026-06-01T12:00:00.000Z"),
+    now,
   });
 }
 
@@ -277,13 +278,18 @@ describe("fireEventTriggeredTasks", () => {
     );
   });
   it("leaves a snoozed event task to its snooze time", async () => {
+    let nowMs = Date.parse("2026-06-01T12:00:00.000Z");
+    const now = () => new Date(nowMs);
     const dispatched: unknown[] = [];
-    const runner = makeRunner({
-      async dispatch(record) {
-        dispatched.push(record.eventPayload);
-        return undefined;
+    const runner = makeRunner(
+      {
+        async dispatch(record) {
+          dispatched.push(record.eventPayload);
+          return undefined;
+        },
       },
-    });
+      now,
+    );
     const task = await runner.schedule(
       eventTaskInput("document.obligation.observed"),
     );
@@ -291,13 +297,16 @@ describe("fireEventTriggeredTasks", () => {
       runner,
       eventKind: "document.obligation.observed",
       payload: { documentId: "doc-A" },
+      now,
     });
     const snoozed = await runner.apply(task.taskId, "snooze", { minutes: 60 });
 
+    nowMs += 10 * 60_000;
     const outcome = await fireEventTriggeredTasks({
       runner,
       eventKind: "document.obligation.observed",
       payload: { documentId: "doc-B" },
+      now,
     });
 
     expect(dispatched).toEqual([{ documentId: "doc-A" }]);
@@ -306,24 +315,38 @@ describe("fireEventTriggeredTasks", () => {
       status: "scheduled",
       firedAt: snoozed.state.firedAt,
     });
+
+    // Once the snooze has ended, a matching event fires the task as before.
+    nowMs += 51 * 60_000;
+    const afterSnooze = await fireEventTriggeredTasks({
+      runner,
+      eventKind: "document.obligation.observed",
+      payload: { documentId: "doc-C" },
+      now,
+    });
+
+    expect(afterSnooze.results.map((entry) => entry.result.kind)).toEqual([
+      "fired",
+    ]);
+    expect(dispatched).toEqual([
+      { documentId: "doc-A" },
+      { documentId: "doc-C" },
+    ]);
   });
 
-  it("keeps a dispatch retry and its event until the retry time", async () => {
+  it("fires a reopened event task on the next matching event", async () => {
+    let nowMs = Date.parse("2026-06-01T12:00:00.000Z");
+    const now = () => new Date(nowMs);
     const dispatched: unknown[] = [];
-    const runner = makeRunner({
-      async dispatch(record) {
-        dispatched.push(record.eventPayload);
-        if (dispatched.length > 1) return undefined;
-        return {
-          ok: false,
-          reason: "rate_limited",
-          retryAfterMinutes: 30,
-          userActionable: false,
-          acceptance: "not_accepted",
-          message: "provider throttled",
-        };
+    const runner = makeRunner(
+      {
+        async dispatch(record) {
+          dispatched.push(record.eventPayload);
+          return undefined;
+        },
       },
-    });
+      now,
+    );
     const task = await runner.schedule(
       eventTaskInput("document.obligation.observed"),
     );
@@ -331,6 +354,63 @@ describe("fireEventTriggeredTasks", () => {
       runner,
       eventKind: "document.obligation.observed",
       payload: { documentId: "doc-A" },
+      now,
+    });
+    await runner.apply(task.taskId, "complete", { reason: "handled" });
+    nowMs += 10 * 60_000;
+    const reopened = await runner.apply(task.taskId, "reopen", {
+      reason: "follow-up",
+    });
+    // Reopen keeps the past `firedAt` of the first fire.
+    expect(reopened.state).toMatchObject({
+      status: "scheduled",
+      firedAt: "2026-06-01T12:00:00.000Z",
+    });
+
+    const outcome = await fireEventTriggeredTasks({
+      runner,
+      eventKind: "document.obligation.observed",
+      payload: { documentId: "doc-B" },
+      now,
+    });
+
+    expect(outcome.results.map((entry) => entry.result.kind)).toEqual([
+      "fired",
+    ]);
+    expect(dispatched).toEqual([
+      { documentId: "doc-A" },
+      { documentId: "doc-B" },
+    ]);
+  });
+
+  it("keeps a dispatch retry and its event until the retry time", async () => {
+    const now = () => new Date("2026-06-01T12:00:00.000Z");
+    const dispatched: unknown[] = [];
+    const runner = makeRunner(
+      {
+        async dispatch(record) {
+          dispatched.push(record.eventPayload);
+          if (dispatched.length > 1) return undefined;
+          return {
+            ok: false,
+            reason: "rate_limited",
+            retryAfterMinutes: 30,
+            userActionable: false,
+            acceptance: "not_accepted",
+            message: "provider throttled",
+          };
+        },
+      },
+      now,
+    );
+    const task = await runner.schedule(
+      eventTaskInput("document.obligation.observed"),
+    );
+    await fireEventTriggeredTasks({
+      runner,
+      eventKind: "document.obligation.observed",
+      payload: { documentId: "doc-A" },
+      now,
     });
     const parked = await getTask(runner, task.taskId);
     expect(parked.state.status).toBe("scheduled");
@@ -339,6 +419,7 @@ describe("fireEventTriggeredTasks", () => {
       runner,
       eventKind: "document.obligation.observed",
       payload: { documentId: "doc-B" },
+      now,
     });
 
     expect(dispatched).toEqual([{ documentId: "doc-A" }]);

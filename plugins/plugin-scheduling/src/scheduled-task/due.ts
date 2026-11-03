@@ -122,9 +122,10 @@ function metadataCreatedAtMs(task: ScheduledTask): number | null {
 }
 
 /**
- * The instant a `scheduled` row is parked at (owner snooze, gate defer,
- * dispatch retry or advance), or null when it is not parked. The tick fires
- * a parked row at that instant.
+ * The `firedAt` of a `scheduled` row: the instant it is parked at (owner
+ * snooze, gate defer, dispatch retry or advance), or the last fire that a
+ * reopened row kept. Null when the row has none. The tick fires the row once
+ * that instant has passed.
  */
 export function scheduledOverrideAtMs(task: ScheduledTask): number | null {
   if (task.state.status !== "scheduled") return null;
