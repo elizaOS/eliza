@@ -744,6 +744,29 @@ export async function handleTriggerRoutes(ctx: TriggerRouteContext): Promise<boo
       triggerId: current.triggerId,
       previous: current,
     });
+    // POST refuses a second active trigger with the same instructions and
+    // schedule (`Equivalent trigger already exists`). An edit that produces
+    // that state must fail the same way: otherwise re-enabling or re-targeting
+    // a paused trigger leaves two active tasks that both fire the same run.
+    if (nextTrigger.enabled && nextTrigger.dedupeKey) {
+      const siblings = await listOwnedTriggerTasks(runtime);
+      const duplicate = siblings.find((candidate) => {
+        if (candidate.id === task.id) return false;
+        if (isAgentOwnedHeartbeat(candidate, runtime.agentId)) return false;
+        const other = readTriggerConfig(candidate);
+        return (
+          other?.enabled === true &&
+          other.dedupeKey === nextTrigger.dedupeKey &&
+          (nextTrigger.triggerType !== 'cron' ||
+            canonicalizeTimezoneForComparison(other.timezone) ===
+              canonicalizeTimezoneForComparison(nextTrigger.timezone))
+        );
+      });
+      if (duplicate) {
+        error(res, 'Equivalent trigger already exists', 409);
+        return true;
+      }
+    }
     // Enabling a saved trigger is bound by the same active-trigger limit as POST.
     if (!current.enabled && nextTrigger.enabled) {
       const activeCount = countActiveTriggers(await listOwnedTriggerTasks(runtime));
