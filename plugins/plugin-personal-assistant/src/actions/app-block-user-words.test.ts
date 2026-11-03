@@ -12,8 +12,11 @@
  * getUserMessageText, which prefers currentMessageText and strips the
  * document-augmentation wrapper.
  *
- * The LLM planning path is untouched: it still receives the full message
- * as model context, and only the deterministic inference gate changes.
+ * The LLM planning path reads the same user words: its "Current request"
+ * section previously used the raw message text, so a document fragment
+ * naming an app reached the planner even after the deterministic inference
+ * gate was fixed. It now also reads getUserMessageText, matching
+ * website-block.ts.
  */
 import type { IAgentRuntime, Memory } from "@elizaos/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -144,5 +147,50 @@ describe("runAppBlockHandler package inference user words", () => {
     await expect(
       blockedPackagesFor({ text: USER_WORDS }, USER_WORDS),
     ).resolves.toEqual([INSTAGRAM]);
+  });
+
+  it("does not send a document fragment to the LLM planner's current request", async () => {
+    const runtime = makeRuntime();
+    let capturedPrompt = "";
+    runtime.useModel.mockImplementation(
+      async (_type: unknown, opts: { prompt?: string }) => {
+        capturedPrompt = opts.prompt ?? "";
+        return JSON.stringify({
+          shouldAct: false,
+          response: "Tell me which installed apps to block.",
+          packageNames: [],
+          durationMinutes: null,
+        });
+      },
+    );
+    const message = {
+      entityId: "owner-1",
+      roomId: "room-1",
+      content: {
+        text: [
+          "Answer the user request using the contextual documents below as the source of truth when they contain the answer.",
+          "",
+          "<contextual_documents>",
+          '<source title="focus notes" similarity="0.900">',
+          "block YouTube during deep work",
+          "</source>",
+          "</contextual_documents>",
+          "",
+          "<user_request>",
+          "Start a focus block for me.",
+          "</user_request>",
+        ].join("\n"),
+      },
+    } as unknown as Memory;
+    const result = await runAppBlockHandler(runtime, message, undefined, {
+      parameters: { action: "block" },
+    });
+    expect(runtime.useModel).toHaveBeenCalledTimes(1);
+    expect(result.data).toMatchObject({ error: "PLANNER_SHOULDACT_FALSE" });
+    expect(capturedPrompt).toContain("Start a focus block for me.");
+    expect(capturedPrompt).not.toContain("block YouTube during deep work");
+    expect(capturedPrompt).not.toContain(
+      "Answer the user request using the contextual documents",
+    );
   });
 });

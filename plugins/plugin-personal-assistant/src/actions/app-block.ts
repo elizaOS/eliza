@@ -75,7 +75,11 @@ interface AppBlockPlan {
 }
 
 function getMessageText(message: Memory): string {
-  return typeof message.content.text === "string" ? message.content.text : "";
+  // Read the user's words, not the document-augmentation envelope: the LLM
+  // planning prompt's "Current request" section must not carry a retrieved
+  // document fragment (for example, an app named only in a focus note) or
+  // the envelope preamble into the model, as website-block.ts already does.
+  return getUserMessageText(message);
 }
 
 function normalizeShouldAct(value: unknown): boolean | null {
