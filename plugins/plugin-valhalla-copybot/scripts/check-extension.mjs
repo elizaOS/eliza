@@ -31,16 +31,21 @@ execFileSync("unzip", ["-q", packed, "-d", unpacked]);
 const manifest = JSON.parse(await readFile(path.join(unpacked, "manifest.json"), "utf8"));
 if (manifest.manifest_version !== 3) fail("manifest is not MV3");
 const permissions = manifest.permissions || [];
-if (permissions.some((name) => name !== "storage")) fail("permissions are wider than storage");
-const hosts = manifest.host_permissions || [];
-if (hosts.some((host) => !/^http:\/\/(127\.0\.0\.1|localhost)\//.test(host))) {
-  fail("host permission is not limited to this computer");
-}
-if (manifest.optional_host_permissions) fail("optional host permissions are set");
+if (permissions.length !== 1 || permissions[0] !== "storage") fail("permissions must be storage only");
+if (manifest.host_permissions?.length) fail("required host_permissions are set");
+if (manifest.content_scripts?.length) fail("content scripts are set");
+const optional = manifest.optional_host_permissions || [];
+const allowedOptional = new Set(["http://127.0.0.1/*", "http://localhost/*"]);
+if (optional.some((host) => !allowedOptional.has(host))) fail("optional host is not the local desk");
+const broad = /<all_urls>|\/\/\*\/\*|https:\/\/\*|http:\/\/\*/;
+if (broad.test(JSON.stringify(manifest))) fail("a broad host pattern is set");
+if (manifest.optional_host_permissions && !optional.length) fail("optional host list is empty");
 if (manifest.background?.service_worker !== "background.js") fail("service worker missing");
 if (manifest.action?.default_popup !== "popup.html") fail("popup missing");
 const popupHtml = await readFile(path.join(unpacked, "popup.html"), "utf8");
-if (/<script[^>]+src=["']https?:/i.test(popupHtml)) fail("popup loads a remote script");
+const popupJs = await readFile(path.join(unpacked, "popup.js"), "utf8");
+const workerJs = await readFile(path.join(unpacked, "background.js"), "utf8");
+if (/\beval\s*\(|new Function\s*\(/.test(popupHtml + popupJs + workerJs)) fail("remote or dynamic code is present");
 for (const size of [16, 32, 48, 128]) {
   const icon = await stat(path.join(unpacked, "icons", `icon-${size}.png`));
   if (icon.size < 50) fail(`icon-${size}.png is empty`);

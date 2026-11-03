@@ -21,7 +21,7 @@ This extension shows read-only status from the user's own Valhalla desk on the s
 ## Permission justification
 
 - storage: the desk address and the pair token stay in Chrome's local storage on that browser.
-- Host access to 127.0.0.1 and localhost: the extension reads the desk API on this computer only.
+- Optional host access to 127.0.0.1 and localhost, requested only when the user clicks Show status: the extension reads the desk on this computer. There is no required host permission.
 
 ## Data the extension stores
 

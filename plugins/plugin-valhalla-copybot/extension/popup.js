@@ -27,10 +27,22 @@ document.getElementById("open-solflare")?.addEventListener("click", (event) => {
   window.open(walletHref("solflare"));
 });
 
+async function allowDesk(base) {
+  const origin = new URL(base).origin + "/*";
+  const already = await chrome.permissions.contains({ origins: [origin] });
+  if (already) return true;
+  return chrome.permissions.request({ origins: [origin] });
+}
+
 document.getElementById("pair")?.addEventListener("click", async () => {
   const base = desk.value.trim().replace(/\/$/, "");
   if (!base.startsWith("http://127.0.0.1") && !base.startsWith("http://localhost")) {
     say("Use the desk on this computer. The extension will not call a public host.");
+    return;
+  }
+  const allowed = await allowDesk(base);
+  if (!allowed) {
+    say("Chrome did not allow the desk on this computer. Nothing was sent.");
     return;
   }
   say("Asking the desk.");

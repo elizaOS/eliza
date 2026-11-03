@@ -42,9 +42,11 @@ It does not trade, send, withdraw, or hold a wallet key. A status line is not fi
 
 storage: The extension saves the desk address and the pairing token in chrome.storage.local on this browser. Those values stay on the device. They are not sent to TokenJunction.
 
-Host permission http://127.0.0.1/* and http://localhost/*: The extension reads status from the Valhalla desk on this computer. It does not call other websites.
+There is no required host permission. There is no content script. The extension does not call api.valhalla-app.xyz or a Solana RPC. Balances and scores stay on the desk and the Brain API.
 
-The extension does not request the tabs permission, a broad https host permission, or remote code.
+Optional host permission, requested only when the user clicks Show status: http://127.0.0.1/* and http://localhost/*. That lets the extension read the desk on this computer. It does not cover other websites.
+
+The extension does not request tabs, a broad host pattern, or remote code. There is no eval and no remote script.
 
 ## Privacy practices
 
