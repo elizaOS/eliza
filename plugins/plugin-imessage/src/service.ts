@@ -1936,6 +1936,22 @@ export class IMessageService extends Service implements IIMessageService {
    * resolution, instead of at app launch. Failure is non-fatal; the cached
    * map stays empty and the service falls back to raw handles.
    */
+  private async ensureContactsLoaded(): Promise<void> {
+    if (this.contactsLoadAttempted) {
+      return;
+    }
+    this.contactsLoadAttempted = true;
+    if (this.settings?.transport === "blooio") return;
+    try {
+      this.contacts = await loadContacts();
+      this.recordContactsPermissionBlock("contacts.resolve");
+    } catch (err) {
+      logger.warn(
+        `[imessage] Lazy contact load failed: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
+  }
+
   /**
    * Port of plugin-discord's reply merge: the message service and this
    * delivery write the same reply id concurrently and SQL keeps the first
@@ -1984,22 +2000,6 @@ export class IMessageService extends Service implements IIMessageService {
       });
     }
     return merged;
-  }
-
-  private async ensureContactsLoaded(): Promise<void> {
-    if (this.contactsLoadAttempted) {
-      return;
-    }
-    this.contactsLoadAttempted = true;
-    if (this.settings?.transport === "blooio") return;
-    try {
-      this.contacts = await loadContacts();
-      this.recordContactsPermissionBlock("contacts.resolve");
-    } catch (err) {
-      logger.warn(
-        `[imessage] Lazy contact load failed: ${err instanceof Error ? err.message : String(err)}`
-      );
-    }
   }
 
   private recordContactsPermissionBlock(action: string): void {
