@@ -7,7 +7,9 @@ import {
   publicSpeechRelayReports,
   reportedSpeechRelayTest,
   speechRelayFailure,
+  speechRelayPhases,
   speechRelayRefusal,
+  speechServerTimings,
 } from "../test/speech-relay-live-report";
 
 describe("protected speech diagnostics", () => {
@@ -131,8 +133,13 @@ describe("protected speech diagnostics", () => {
     const log = JSON.stringify({
       phase: "speech-relay-live",
       status: "passed",
+      consentMs: 20,
+      sessionMs: 60,
+      wsReadyMs: 40,
       bootstrapMs: 120,
+      ttsStartupMs: 120,
       firstPcmMs: 240,
+      sttTailMs: 1280,
       pcmBytes: 1024,
       pcmFrames: true,
       sttFinalMs: -1,
@@ -143,8 +150,13 @@ describe("protected speech diagnostics", () => {
     expect(JSON.parse(publicSpeechRelayReports(log, false))).toEqual({
       phase: "speech-relay-live",
       status: "passed",
+      consentMs: 20,
+      sessionMs: 60,
+      wsReadyMs: 40,
       bootstrapMs: 120,
+      ttsStartupMs: 120,
       firstPcmMs: 240,
+      sttTailMs: 1280,
       pcmBytes: 1024,
     });
     expect(JSON.parse(publicSpeechRelayReports(log, true))).toEqual({
@@ -154,6 +166,21 @@ describe("protected speech diagnostics", () => {
       code: "SPEECH_CONTRACT_FAILED",
     });
     expect(publicSpeechRelayReports("private-token\nnot JSON", false)).toBe("");
+    const invalidTimings = JSON.stringify({
+      phase: "speech-relay-live",
+      status: "passed",
+      consentMs: null,
+      sessionMs: -1,
+      wsReadyMs: "private-token",
+      ttsStartupMs: true,
+      sttTailMs: Number.POSITIVE_INFINITY,
+    });
+    expect(JSON.parse(publicSpeechRelayReports(invalidTimings, false))).toEqual(
+      {
+        phase: "speech-relay-live",
+        status: "passed",
+      },
+    );
   });
 
   test("the workflow CLI prints the safe report rather than the private file", () => {
@@ -194,5 +221,63 @@ describe("protected speech diagnostics", () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+  test("server bootstrap spans keep only known numeric durations", () => {
+    expect(
+      speechServerTimings(
+        "session",
+        "speech_identity_rate;dur=812.4, speech_consent_consume;dur=40, speech_directory_write;dur=2101.6, entry_dispatch;dur=3000, token;desc=secret",
+      ),
+    ).toEqual({
+      sessionAuthMs: 812,
+      sessionConsumeMs: 40,
+      sessionRelayInitMs: 2102,
+    });
+    expect(
+      speechServerTimings(
+        "consent",
+        "speech_identity_rate;dur=-1, speech_consent_write;dur=abc",
+      ),
+    ).toEqual({});
+    expect(speechServerTimings("consent", null)).toEqual({});
+    expect(
+      speechRelayPhases({
+        t: "timings",
+        claimMs: 3,
+        revocationMs: 410,
+        admissionMs: 380,
+        relayMs: 395,
+        activateMs: 4,
+        openMs: 812,
+        token: "private",
+        bad: Number.NaN,
+        negative: -1,
+      }),
+    ).toEqual({
+      relayClaimMs: 3,
+      relayRevocationMs: 410,
+      relayAdmissionMs: 380,
+      relaySessionMs: 395,
+      relayActivateMs: 4,
+      relayOpenMs: 812,
+    });
+  });
+
+  test("public reports keep server span fields from a passed run", () => {
+    const report = publicSpeechRelayReports(
+      JSON.stringify({
+        phase: "speech-relay-live",
+        status: "passed",
+        sessionRelayInitMs: 2102,
+        relayOpenMs: 812,
+        wsOpenMs: 1500,
+        privateText: "never",
+      }),
+      false,
+    );
+    expect(report).toContain('"sessionRelayInitMs":2102');
+    expect(report).toContain('"relayOpenMs":812');
+    expect(report).toContain('"wsOpenMs":1500');
+    expect(report).not.toContain("privateText");
   });
 });

@@ -18,6 +18,7 @@ import {
   describe,
   expect,
   setDefaultTimeout,
+  spyOn,
   test,
 } from "bun:test";
 import { createHash } from "node:crypto";
@@ -28,9 +29,11 @@ import { Hono } from "hono";
 process.env.DATABASE_URL = "pglite://memory";
 process.env.TEST_DATABASE_URL = "pglite://memory";
 process.env.NODE_ENV ||= "test";
-// Production values: strong revocation is off (the Worker path is cache-only
-// regardless), and the compatibility limiter uses Redis REST. The combined
-// auth cache uses the in-memory test backend.
+// Production values: strong revocation is off, so the combined auth cache is
+// not qualified and Worker requests authorize authoritatively; the cache-only
+// limiter then finds a cold organization projection and returns the retryable
+// warming contract. The compatibility limiter uses Redis REST, and the cache
+// uses the in-memory test backend.
 process.env.INFERENCE_AUTH_CACHE_ENABLED = "true";
 process.env.INFERENCE_STRONG_REVOCATION_ENABLED = "false";
 process.env.CACHE_BACKEND = "memory";
@@ -372,16 +375,67 @@ async function generatePersonalMediaOnce(
 }
 
 describe("Worker speech rate limit without an admission snapshot", () => {
-  test("cold STT, TTS and relay bootstrap expose a retryable auth code before dispatch", async () => {
+  test("a cold projection hydrates inside the first STT, TTS and relay bootstrap request", async () => {
+    const [
+      { cache },
+      { CacheKeys },
+      { resetInferenceAdmissionMemoryCacheForTests },
+    ] = await Promise.all([
+      import("@elizaos/cloud-shared/lib/cache/client"),
+      import("@elizaos/cloud-shared/lib/cache/keys"),
+      import("@elizaos/cloud-shared/lib/services/inference-admission-snapshot"),
+    ]);
     for (const route of ["stt", "tts", "consent", "session"] as const) {
+      // The cold keys share ORG; coldness is the organization's admission
+      // projection, so each route starts from an evicted projection.
+      resetInferenceAdmissionMemoryCacheForTests();
+      await cache.del(CacheKeys.inference.orgAdmission(ORG));
       const response = await speakOnce(route, keys[`cold_${route}`].raw);
-      expect(response.status).toBe(503);
-      expect(response.headers.get("Retry-After")).toBe("1");
-      expect(await response.json()).toMatchObject({
-        code: "auth_cache_warming",
-        retryAfterSeconds: 1,
-        details: { retryable: true, retryAfterSeconds: 1 },
+      // One request: no warming refusal, no client retry. The limiter then
+      // decides from the authoritative projection it just published.
+      expect(response.status).not.toBe(503);
+      expect(
+        await cache.get(CacheKeys.inference.orgAdmission(ORG)),
+      ).toMatchObject({
+        rateLimits: { strictRpm: strictRpm },
       });
+    }
+    // The limiter itself takes no Redis round trip; an admitted consent
+    // request then writes its nonce to the consent store.
+    expect(
+      gateCalls.filter((call) => call.path === "/rate-limit"),
+    ).toHaveLength(4);
+  });
+
+  test("a cold projection whose hydration is not acknowledged keeps the retryable warming code", async () => {
+    const [
+      { cache },
+      { CacheKeys },
+      { resetInferenceAdmissionMemoryCacheForTests },
+    ] = await Promise.all([
+      import("@elizaos/cloud-shared/lib/cache/client"),
+      import("@elizaos/cloud-shared/lib/cache/keys"),
+      import("@elizaos/cloud-shared/lib/services/inference-admission-snapshot"),
+    ]);
+    const write = spyOn(cache, "setWithOutcome").mockResolvedValue({
+      kind: "unavailable",
+      backend: "memory",
+    } as Awaited<ReturnType<typeof cache.setWithOutcome>>);
+    try {
+      for (const route of ["stt", "tts", "consent", "session"] as const) {
+        resetInferenceAdmissionMemoryCacheForTests();
+        await cache.del(CacheKeys.inference.orgAdmission(ORG));
+        const response = await speakOnce(route, keys[`cold_${route}`].raw);
+        expect(response.status).toBe(503);
+        expect(response.headers.get("Retry-After")).toBe("1");
+        expect(await response.json()).toMatchObject({
+          code: "auth_cache_warming",
+          retryAfterSeconds: 1,
+          details: { retryable: true, retryAfterSeconds: 1 },
+        });
+      }
+    } finally {
+      write.mockRestore();
     }
     expect(gateCalls).toHaveLength(0);
     expect(redisCalls).toBe(0);

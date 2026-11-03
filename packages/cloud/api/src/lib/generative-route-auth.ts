@@ -422,6 +422,13 @@ export async function admitFlatGenerativeOperation(params: {
 }
 
 /**
+ * Bounded join of a cold organization admission hydration. Below the client's
+ * 1 s warming retry plus a second request; a slower hydration still returns
+ * the retryable warming contract.
+ */
+export const GENERATIVE_ROUTE_HYDRATION_WAIT_MS = 1_500;
+
+/**
  * Worker callers are decided by one combined-cache read and never query
  * Postgres: a cache miss is a retryable 503 while authoritative hydration runs
  * under `waitUntil`. The route invokes the real limiter once after
@@ -495,7 +502,11 @@ export async function requireGenerativeRouteCaller(
       }
       if (options.rateLimitEndpoint) {
         const [
-          { enforceOrgRateLimit, inferenceRatePolicyProof },
+          {
+            enforceOrgRateLimit,
+            inferenceRatePolicyProof,
+            OrgRateLimitCacheNotReadyError,
+          },
           { inferenceRateLimitConfig },
         ] = await Promise.all([
           import("@elizaos/cloud-shared/lib/middleware/rate-limit"),
@@ -503,6 +514,11 @@ export async function requireGenerativeRouteCaller(
             "@elizaos/cloud-shared/lib/services/inference-admission-snapshot"
           ),
         ]);
+        // Authoritative (origin) authorization carries no admission snapshot,
+        // so the cache-only limiter can find the organization projection cold.
+        // That refusal precedes any dispatch and its hydration already runs
+        // under `waitUntil`: surface the same retryable warming contract that
+        // speech clients replay, never an opaque route failure.
         const limited = await enforceOrgRateLimit(
           resolution.ctx.orgId,
           options.rateLimitEndpoint,
@@ -519,6 +535,10 @@ export async function requireGenerativeRouteCaller(
               options.rateLimitEndpoint,
             ),
             admissionSnapshot: resolution.ctx.admission,
+            // A cold projection would otherwise cost a 503, a 1 s client
+            // sleep and a second full request. Join the same hydration
+            // (policy lock, hold, gate publication, cache write) instead.
+            awaitHydrationMs: GENERATIVE_ROUTE_HYDRATION_WAIT_MS,
             apiKeyId: resolution.ctx.apiKeyId,
             apiKeyRateLimit:
               "apiKeyRateLimit" in resolution.ctx
@@ -530,7 +550,22 @@ export async function requireGenerativeRouteCaller(
                 ? inferenceRatePolicyProof(resolution.ctx)
                 : undefined,
           },
-        );
+        ).catch((error: unknown) => {
+          if (!(error instanceof OrgRateLimitCacheNotReadyError)) throw error;
+          throw error.state === "warming"
+            ? new ApiError(
+                503,
+                "auth_cache_warming",
+                "Authorization cache is warming; retry shortly",
+                { retryable: true, retryAfterSeconds: 1 },
+              )
+            : new ApiError(
+                503,
+                "service_unavailable",
+                "Rate limiter is unavailable",
+                { retryable: true, retryAfterSeconds: 1 },
+              );
+        });
         if (limited) {
           throw new ApiError(
             limited.status,

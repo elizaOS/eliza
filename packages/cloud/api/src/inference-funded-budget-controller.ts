@@ -184,11 +184,11 @@ export class InferenceFundedBudgetController {
         "Inference policy mutation is pending",
       );
     if (state.policy && state.policy.validUntil > Date.now()) return;
-    this.policyLoad ??= this.primary(async () => {
-      const { loadInferenceBudgetPolicy } = await import(
-        "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission"
+    this.policyLoad ??= runWithCloudBindingsAsync(this.env, async () => {
+      const { loadAdmissionPolicy } = await import(
+        "@elizaos/cloud-shared/lib/services/inference-policy-primary"
       );
-      return loadInferenceBudgetPolicy(organizationId);
+      return loadAdmissionPolicy(organizationId);
     }).finally(() => {
       this.policyLoad = undefined;
     });
@@ -825,11 +825,11 @@ export class InferenceFundedBudgetController {
         "BUDGET_REPLAY_CONFLICT",
         "Policy acknowledgement token differs",
       );
-    const observed = await this.primary(async () => {
-      const { inspectInferencePolicyMutation } = await import(
-        "@elizaos/cloud-shared/lib/services/inference-policy-fence"
+    const observed = await runWithCloudBindingsAsync(this.env, async () => {
+      const { inspectAdmissionPolicyMutation } = await import(
+        "@elizaos/cloud-shared/lib/services/inference-policy-primary"
       );
-      return inspectInferencePolicyMutation(organizationId, mutationId);
+      return inspectAdmissionPolicyMutation(organizationId, mutationId);
     });
     if (observed.state === "absent" && mutation.validUntil > Date.now())
       throw new InferenceBudgetError(
@@ -844,11 +844,11 @@ export class InferenceFundedBudgetController {
         "BUDGET_REPLAY_CONFLICT",
         "Primary policy fence differs",
       );
-    const policy = await this.primary(async () => {
-      const { loadInferenceBudgetPolicy } = await import(
-        "@elizaos/cloud-shared/lib/services/inference-funded-budget-admission"
+    const policy = await runWithCloudBindingsAsync(this.env, async () => {
+      const { loadAdmissionPolicy } = await import(
+        "@elizaos/cloud-shared/lib/services/inference-policy-primary"
       );
-      return loadInferenceBudgetPolicy(organizationId);
+      return loadAdmissionPolicy(organizationId);
     });
     if (
       observed.state !== "absent" &&

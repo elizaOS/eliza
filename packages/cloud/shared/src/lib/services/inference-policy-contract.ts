@@ -43,3 +43,7 @@ export function isInferenceBudgetPolicy(value: unknown): value is InferenceBudge
 
 /** Stable existing counter owner; policy admission must never reset its windows. */
 export const INFERENCE_RATE_LIMIT_GATE_PREFIX = "rate-limit:v2:";
+
+export type InferencePolicyMutationObservation =
+  | { state: "absent" }
+  | { state: "applied" | "complete"; fenceToken: string; epoch: string };
