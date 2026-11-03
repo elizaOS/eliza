@@ -31,14 +31,13 @@ jobs:
           rm -rf "$STAGE"
           mkdir -p "$STAGE/src" "$STAGE/public" "$STAGE/install"
           cp -r plugins/plugin-valhalla-copybot/src/. "$STAGE/src/"
+          test -f "$STAGE/src/standalone.ts"
           cp -r plugins/plugin-valhalla-copybot/public/. "$STAGE/public/"
           cp plugins/plugin-valhalla-copybot/product.config.json "$STAGE/product.config.json"
           node -e 'const fs=require("fs"); const p=JSON.parse(fs.readFileSync("plugins/plugin-valhalla-copybot/package.json","utf8")); delete p.devDependencies; delete p.peerDependencies; delete p.elizaos; p.dependencies=Object.fromEntries(Object.entries(p.dependencies||{}).filter(([,v])=>!String(v).startsWith("workspace:"))); fs.writeFileSync(process.env.STAGE+"/package.json", JSON.stringify(p,null,2));' 
           cp plugins/plugin-valhalla-copybot/install/valhalla.iss "$STAGE/install/valhalla.iss"
           cp plugins/plugin-valhalla-copybot/install/start-valhalla.bat "$STAGE/install/start-valhalla.bat"
           cp plugins/plugin-valhalla-copybot/install/valhalla.ico "$STAGE/install/valhalla.ico"
-          cp -f "$GITHUB_WORKSPACE/plugins/plugin-valhalla-copybot/src/standalone.ts" "$STAGE/src/standalone.ts"
-          test -f "$STAGE/src/standalone.ts"
           cd "$STAGE"
           bun install --ignore-scripts
           mkdir -p install/dist/public
