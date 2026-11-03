@@ -304,11 +304,11 @@ export async function validateTwitterConfig(
         ),
       ),
       TWITTER_ENABLE_ACTIONS: String(
-        (
+        parseBooleanValue(
           config.TWITTER_ENABLE_ACTIONS ??
-          getSetting(runtime, "TWITTER_ENABLE_ACTIONS") ??
-          "false"
-        ).toLowerCase() === "true",
+            getSetting(runtime, "TWITTER_ENABLE_ACTIONS") ??
+            "false",
+        ) ?? false,
       ),
       TWITTER_POST_INTERVAL: String(
         parseTwitterInterval(

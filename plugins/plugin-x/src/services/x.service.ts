@@ -336,10 +336,15 @@ export class TwitterClientInstance implements ITwitterClient {
       logger.info("Twitter direct-message replies are DISABLED");
     }
 
-    // Timeline actions (likes, retweets, replies)
+    // Timeline actions (likes, retweets, replies). Same sources and the same
+    // boolean parser as the reply, DM and discovery flags: state first, then
+    // runtime settings, then the environment.
     const actionsEnabled =
-      (getSetting(runtime, "TWITTER_ENABLE_ACTIONS") ??
-        process.env.TWITTER_ENABLE_ACTIONS) === "true";
+      parseBooleanValue(
+        state.TWITTER_ENABLE_ACTIONS ??
+          getSetting(runtime, "TWITTER_ENABLE_ACTIONS") ??
+          process.env.TWITTER_ENABLE_ACTIONS,
+      ) ?? false;
 
     if (actionsEnabled) {
       logger.info("Twitter timeline actions are ENABLED");

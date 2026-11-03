@@ -144,6 +144,50 @@ describe("TWITTER_DRY_RUN", () => {
   });
 });
 
+describe("TWITTER_ENABLE_ACTIONS", () => {
+  it.each(["true", "1", "yes", "on"])(
+    "turns timeline actions on for %s",
+    async (value) => {
+      const runtime = runtimeWith({
+        TWITTER_ENABLE_ACTIONS: value,
+        TWITTER_ENABLE_DISCOVERY: "false",
+        TWITTER_ENABLE_DMS: "false",
+      });
+      await runtime.initialize({ skipMigrations: true });
+      try {
+        const state = await validatedState(runtime);
+        expect(state.TWITTER_ENABLE_ACTIONS).toBe("true");
+        expect(
+          new TwitterClientInstance(runtime, state).timeline,
+        ).toBeDefined();
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
+
+  it.each(["false", "0", "no", "off"])(
+    "keeps timeline actions off for %s",
+    async (value) => {
+      const runtime = runtimeWith({
+        TWITTER_ENABLE_ACTIONS: value,
+        TWITTER_ENABLE_DISCOVERY: "false",
+        TWITTER_ENABLE_DMS: "false",
+      });
+      await runtime.initialize({ skipMigrations: true });
+      try {
+        const state = await validatedState(runtime);
+        expect(state.TWITTER_ENABLE_ACTIONS).toBe("false");
+        expect(
+          new TwitterClientInstance(runtime, state).timeline,
+        ).toBeUndefined();
+      } finally {
+        await runtime.stop();
+      }
+    },
+  );
+});
+
 describe("TWITTER_ENABLE_REPLIES", () => {
   it.each(["false", "FALSE", "0", "no", "off"])(
     "turns mention and reply handling off for %s",
