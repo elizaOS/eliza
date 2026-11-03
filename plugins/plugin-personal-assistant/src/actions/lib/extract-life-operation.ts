@@ -7,6 +7,7 @@
 import type { IAgentRuntime, Memory, State } from "@elizaos/core";
 import {
   getRecentMessagesData,
+  getUserMessageText,
   ModelType,
   parseJsonModelRecord,
   runExtractorPipeline,
@@ -56,8 +57,10 @@ type CoreLifeOperation =
   | null;
 
 function messageText(message: Memory): string {
-  const text = message.content.text;
-  return typeof text === "string" ? text.trim() : "";
+  // The LifeOps operation prompt must read the owner's own words, not the
+  // document-augmentation envelope: retrieved document text naming a
+  // different operation would otherwise steer the extracted operation.
+  return getUserMessageText(message).trim();
 }
 
 function splitStateTextCandidates(value: string): string[] {
