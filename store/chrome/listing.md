@@ -22,7 +22,7 @@ You can:
 - Read status, P&L, and open positions
 - See a Pro preview and 100 free Pro trades
 
-TokenJunction LLC publishes Valhalla. Crypto is risky. This is not financial advice. The extension cannot send or withdraw. Pro on the website is $9.99/mo launch price and includes a 15 day free trial. 100 free Pro trades come first. They are not a promise of profit. Live trades include a platform fee of 0.3% inside the swap quote.
+TokenJunction LLC publishes Valhalla. Crypto is risky. This is not financial advice. The extension cannot send or withdraw. Pro on the website is $9.99/mo launch price and includes a 15 day free trial. 100 free Pro trades come first. They are not a promise of profit.
 
 Chrome on Android cannot install extensions. This listing is for desktop Chrome.
 

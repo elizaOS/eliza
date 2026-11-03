@@ -14,10 +14,6 @@ This is not financial, legal, or tax advice. Crypto can lose money. TokenJunctio
 
 You must be 18 or older. You arm any live trade on your computer. You keep your own keys. Do not send a seed phrase or a private key to support. TokenJunction LLC will not ask for one, and it will not message you first in a private chat.
 
-## Platform fee
-
-Live trades include a platform fee of 0.3%. The rate is in the signed monetization file. Jupiter includes it in the swap quote you approve. It is not a second transfer. Free and Pro both pay it. Refunds of that fee are manual.
-
 ## Pro
 
 On the website, TokenJunction LLC sells Valhalla Pro through the store named Valhalla on Lemon Squeezy. On the phone, Pro uses Google Play Billing or Apple In-App Purchase, product `valhalla_pro_monthly`. The phone plan is not a Lemon Squeezy checkout.

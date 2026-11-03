@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createPublicKey, verify } from "node:crypto";
 
-export const MONETIZATION_PUBLIC_KEY_B64 = "XZuPtlchqj37JLDx3ssEjztngYqhPjItESZEURBDY9A=";
+export const MONETIZATION_PUBLIC_KEY_B64 = "GasF+x9XzQvsO07cTOCMoA5Vf314gd4gmf8gYGJWZ68=";
 export const ADSENSE_CLIENT = "ca-pub-6504655762357230";
 
 function offerRow(row: {
@@ -47,7 +47,6 @@ export function canonicalMonetization(doc: {
   priceMonthlyUsd?: number;
   priceYearlyUsd?: number;
   priceLifetimeUsd?: number;
-  platformFeeBps?: number;
   proTradeAllowance?: number;
   trialDays?: number;
   offers?: Parameters<typeof offerRow>[0][];
@@ -69,7 +68,6 @@ export function canonicalMonetization(doc: {
     priceMonthlyUsd: Number(doc.priceMonthlyUsd),
     priceYearlyUsd: Number(doc.priceYearlyUsd),
     priceLifetimeUsd: Number(doc.priceLifetimeUsd),
-    platformFeeBps: Number(doc.platformFeeBps),
     proTradeAllowance: Number(doc.proTradeAllowance),
     trialDays: Number(doc.trialDays),
     offers: (doc.offers || []).map(offerRow),
@@ -101,24 +99,6 @@ export function readSignedAllowance(report: (surface: string) => void = () => un
   } catch {
     report("desk");
     return 0;
-  }
-}
-
-export function feeDisclosure(bps: number): string {
-  return `Platform fee ${(bps / 100).toFixed(1)}%`;
-}
-
-/** Null when the signature does not verify. Callers must not invent a fee. */
-export function readPlatformFee(): { bps: number; receiveAddress: string } | null {
-  try {
-    const doc = JSON.parse(readFileSync(new URL("../monetization.json", import.meta.url), "utf8"));
-    if (!verifyMessage(canonicalMonetization(doc), doc.signature)) return null;
-    const bps = Number(doc.platformFeeBps);
-    const receiveAddress = String(doc.cryptoReceiveAddress || "");
-    if (!Number.isInteger(bps) || bps < 0 || bps > 100 || receiveAddress.length < 32) return null;
-    return { bps, receiveAddress };
-  } catch {
-    return null;
   }
 }
 
