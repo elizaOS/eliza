@@ -22,6 +22,8 @@ import { LIMITS, type Limits } from "./limits.ts";
 import { fetchMarkPrice, loadCoinSnapshot, type RpcClient, rpcEndpoints } from "./market-data.ts";
 import { netTimeoutMs, redactSecrets, tail4, withTimeout } from "./net.ts";
 import { realizedFromExit, summarizePnl } from "./pnl.ts";
+import { feeDisclosure, readPlatformFee } from "./monetization-trust.ts";
+import { logFeeIncome } from "./platform-fee.ts";
 import { liveTradeBlocked, proTradeView, recordLiveTrade } from "./pro-allowance.ts";
 import { liveTradingEnabled } from "./safety-gate.ts";
 import {
@@ -680,32 +682,43 @@ export class AgentEngine {
       position.signature = fill.signature;
       position.rawAmount = fill.outAmount;
       await recordLiveTrade(this.dataDir, fill.signature);
+      await logFeeIncome(this.dataDir, {
+        signature: fill.signature,
+        side: "buy",
+        mint: snapshot.mint,
+        outAmount: fill.outAmount,
+        bps: fill.feeBps,
+        feeAccount: fill.feeAccount,
+      });
       this.lastActions.Copier = `bought ${tail4(snapshot.mint)}`;
-      this.note(`BUY ${snapshot.symbol ?? tail4(snapshot.mint)}`, tail4(fill.signature));
-      return `Live buy ${tail4(snapshot.mint)} ${evaluation.sizeSol} SOL. Tx ${tail4(fill.signature)}.`;
+      this.note(`BUY ${snapshot.symbol ?? tail4(snapshot.mint)}`, `${tail4(fill.signature)}. ${fill.feeLine}`);
+      return `Live buy ${tail4(snapshot.mint)} ${evaluation.sizeSol} SOL. Tx ${tail4(fill.signature)}. ${fill.feeLine}.`;
     }
     openPaper(this.book, snapshot, evaluation);
     this.lastActions.Copier = `paper ${tail4(snapshot.mint)}`;
     this.note(`PAPER ${snapshot.symbol ?? tail4(snapshot.mint)}`, `${evaluation.sizeSol} SOL`);
-    return `Paper fill ${tail4(snapshot.mint)} ${evaluation.lane} ${evaluation.sizeSol} SOL.`;
+    const fee = readPlatformFee();
+    const feeLine = fee ? ` ${feeDisclosure(fee.bps)}.` : "";
+    return `Paper fill ${tail4(snapshot.mint)} ${evaluation.lane} ${evaluation.sizeSol} SOL.${feeLine}`;
   }
 
   async sellOne(id: string): Promise<string> {
     const pos = this.book.positions.find((row) => row.id === id);
     if (!pos) return "That position is not open.";
-    await this.exitPosition(pos, "manual sell");
-    return `Sell sent for ${pos.symbol} ${tail4(pos.mint)}.`;
+    const feeLine = await this.exitPosition(pos, "manual sell");
+    return `Sell sent for ${pos.symbol} ${tail4(pos.mint)}.${feeLine}`;
   }
 
   async sellAll(confirm: string): Promise<string> {
     if (confirm.trim() !== "SELL ALL") return "Type SELL ALL to close every open position.";
     const rows = [...this.book.positions];
-    for (const pos of rows) await this.exitPosition(pos, "sell all");
+    let feeLine = "";
+    for (const pos of rows) feeLine = (await this.exitPosition(pos, "sell all")) || feeLine;
     this.buysPaused = true;
-    return `Closed ${rows.length} position(s). New buys are paused.`;
+    return `Closed ${rows.length} position(s). New buys are paused.${feeLine}`;
   }
 
-  private async exitPosition(pos: OpenPosition, reason: string): Promise<void> {
+  private async exitPosition(pos: OpenPosition, reason: string): Promise<string> {
     if (!pos.paper) {
       if (!this.liveReady())
         throw new Error("Unlock the bot wallet and confirm live trading before an on-chain sell.");
@@ -725,9 +738,22 @@ export class AgentEngine {
       );
       pos.signature = fill.signature;
       await recordLiveTrade(this.dataDir, fill.signature);
+      await logFeeIncome(this.dataDir, {
+        signature: fill.signature,
+        side: "sell",
+        mint: pos.mint,
+        outAmount: fill.outAmount,
+        bps: fill.feeBps,
+        feeAccount: fill.feeAccount,
+      });
+      this.bookClose(pos, reason);
+      this.lastActions.Risk = `${reason} ${tail4(pos.mint)}`;
+      return ` ${fill.feeLine}.`;
     }
     this.bookClose(pos, reason);
     this.lastActions.Risk = `${reason} ${tail4(pos.mint)}`;
+    const fee = readPlatformFee();
+    return fee ? ` ${feeDisclosure(fee.bps)}.` : "";
   }
 
   private bookClose(pos: OpenPosition, reason: string): void {

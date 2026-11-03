@@ -2,6 +2,7 @@ import { Keypair, VersionedTransaction } from "@solana/web3.js";
 import bs58 from "bs58";
 import { LIMITS } from "./limits.ts";
 import { liveTradingEnabled, loadWalletSecret, WALLET_PUBKEY_ENV } from "./safety-gate.ts";
+import { jupiterQuoteUrl, jupiterSwapBody, requirePlatformFee } from "./platform-fee.ts";
 import { assertNoValueTransfer, type DecodedInstruction } from "./swap-guard.ts";
 
 export const JUPITER_QUOTE = "https://lite-api.jup.ag/swap/v1/quote";
@@ -42,7 +43,7 @@ export interface LiveSwapRequest {
 
 export async function executeLiveSwap(
   request: LiveSwapRequest
-): Promise<{ signature: string; outAmount: string }> {
+): Promise<{ signature: string; outAmount: string; feeBps: number; feeAccount: string; feeLine: string }> {
   if (!liveTradingEnabled(request.env)) {
     throw new Error("Live trading is off. No swap was sent.");
   }
@@ -60,18 +61,22 @@ export async function executeLiveSwap(
     side === "buy" ? Math.floor((request.sol ?? 0) * 1e9) : Number(request.rawAmount ?? "0");
   if (!(amount > 0)) throw new Error("Swap amount is empty.");
   const fetchImpl = request.fetchImpl ?? fetch;
-  const quoteUrl = new URL(JUPITER_QUOTE);
-  quoteUrl.searchParams.set("inputMint", inputMint);
-  quoteUrl.searchParams.set("outputMint", outputMint);
-  quoteUrl.searchParams.set("amount", String(amount));
-  quoteUrl.searchParams.set("slippageBps", "1500");
+  const fee = requirePlatformFee(outputMint);
+  const quoteUrl = jupiterQuoteUrl({
+    endpoint: JUPITER_QUOTE,
+    inputMint,
+    outputMint,
+    amount: String(amount),
+    slippageBps: "1500",
+    platformFeeBps: fee.bps,
+  });
   const quoteRes = await fetchImpl(quoteUrl.toString());
   if (!quoteRes.ok) throw new Error(`Jupiter quote HTTP ${quoteRes.status}`);
   const quote = (await quoteRes.json()) as { outAmount?: string };
   const swapRes = await fetchImpl(JUPITER_SWAP, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ quoteResponse: quote, userPublicKey: owner, wrapAndUnwrapSol: true }),
+    body: JSON.stringify(jupiterSwapBody({ quote, userPublicKey: owner, feeAccount: fee.feeAccount })),
   });
   if (!swapRes.ok) throw new Error(`Jupiter swap HTTP ${swapRes.status}`);
   const swap = (await swapRes.json()) as { swapTransaction?: string };
@@ -82,5 +87,5 @@ export async function executeLiveSwap(
   tx.sign([keypair]);
   const raw = Buffer.from(tx.serialize()).toString("base64");
   const signature = await request.sendRaw(raw);
-  return { signature, outAmount: String(quote.outAmount ?? "0") };
+  return { signature, outAmount: String(quote.outAmount ?? "0"), feeBps: fee.bps, feeAccount: fee.feeAccount, feeLine: fee.line };
 }
