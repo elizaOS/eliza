@@ -1957,7 +1957,10 @@ export class IMessageService extends Service implements IIMessageService {
    * delivery write the same reply id concurrently and SQL keeps the first
    * insert, so read the stored winner and add the delivery facts to it.
    */
-  private async mergeIntoCanonicalReply(memory: Memory): Promise<Memory> {
+  private async mergeIntoCanonicalReply(
+    memory: Memory,
+    { attachmentsRefused }: { attachmentsRefused: boolean }
+  ): Promise<Memory> {
     const id = memory.id as UUID;
     let existing = await this.runtime.getMemoryById(id);
     if (!existing) {
@@ -1982,6 +1985,9 @@ export class IMessageService extends Service implements IIMessageService {
         source: memory.content.source,
         inReplyTo: memory.content.inReplyTo,
         channelType: memory.content.channelType,
+        // The processor stored the generated attachments; record that the
+        // transport refused them, so the row keeps only what was delivered.
+        ...(attachmentsRefused ? { attachments: [] } : {}),
       },
       metadata: {
         ...(existing.metadata ?? {}),
@@ -2877,6 +2883,10 @@ export class IMessageService extends Service implements IIMessageService {
     // key is derived from the inbound message so a reply that Blooio already
     // accepted is not sent again when the turn is repeated.
     let replyCount = 0;
+    // A turn can call back more than once with the same responseId. Only the
+    // first delivery merges into the processor's row; a later one is another
+    // delivered message and keeps its own row.
+    const mergedReplyIds = new Set<string>();
 
     const callback: HandlerCallback = async (content) => {
       if (!this.runtime) {
@@ -2934,7 +2944,9 @@ export class IMessageService extends Service implements IIMessageService {
       // stores the reply under content.responseId, so the delivery merges into
       // that row instead of adding a second one that renders the reply twice
       // in every later prompt.
-      const canonicalReplyId = validateUuid(content.responseId) ?? undefined;
+      const responseId = validateUuid(content.responseId) ?? undefined;
+      const canonicalReplyId =
+        responseId && !mergedReplyIds.has(responseId) ? responseId : undefined;
       const responseMemory: Memory = {
         id:
           canonicalReplyId ??
@@ -2964,7 +2976,12 @@ export class IMessageService extends Service implements IIMessageService {
         createdAt: Date.now(),
       };
 
-      if (canonicalReplyId) return [await this.mergeIntoCanonicalReply(responseMemory)];
+      if (canonicalReplyId) {
+        mergedReplyIds.add(canonicalReplyId);
+        return [
+          await this.mergeIntoCanonicalReply(responseMemory, { attachmentsRefused: mediaRefused }),
+        ];
+      }
       await this.runtime.createMemory(responseMemory, "messages");
       return [responseMemory];
     };
