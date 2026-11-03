@@ -3,17 +3,23 @@ class InsufficientCreditsError extends Error {}
 class InferenceBalanceCacheWarmingError extends Error {}
 mock.module("@elizaos/cloud-shared/lib/services/inference-billing-fast-path", () => ({ InferenceBalanceCacheWarmingError }));
 mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError }));
-const state = { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0, failAt: -1, failure: undefined as Error | undefined };
+const state = { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0, failAt: -1, failure: undefined as Error | undefined, receiptFault: "" };
 mock.module("@elizaos/cloud-shared/lib/pricing-constants", () => ({ PLATFORM_MARKUP_MULTIPLIER: 1.2 }));
 mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission", () => ({
-  admitOrganizationInference: async () => {
+  admitOrganizationInference: async (input: any) => {
     const index = state.index++;
     if (index === state.failAt) throw state.failure;
     return {
+      mode: "durable_object_debit",
       async settle(value: number) {
         state.attempts[index]++;
         if (index === 1 && state.failTts) { state.failTts = false; throw Error("TTS settlement unavailable"); }
         state.effects[index]++; state.amounts[index] = value;
+        return { terminalReceipt: { version: 1,
+          organizationId: state.receiptFault === "owner" ? "another-org" : input.context.organizationId,
+          requestId: state.receiptFault === "request" ? "another-request" : input.context.requestId,
+          amountUsd: state.receiptFault === "amount" ? "999.000000" : value.toFixed(6),
+          mode: state.receiptFault === "mode" ? "synchronous_db_ledger" : "durable_object_debit", status: "canonical_completed" } };
       },
       async settleUnknown() { state.unknown[index]++; },
       async markProviderDispatched() {},
@@ -21,7 +27,7 @@ mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission
   },
 }));
 const { reserveSpeechRelayAdmission } = await import("./speech-relay-admission");
-beforeEach(() => Object.assign(state, { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0, failAt: -1, failure: undefined }));
+beforeEach(() => Object.assign(state, { attempts: [0, 0], effects: [0, 0], unknown: [0, 0], amounts: [0, 0], failTts: false, index: 0, failAt: -1, failure: undefined, receiptFault: "" }));
 const caller = { user: { id: "owner", organization_id: "org" }, credential: {} } as never;
 const details = () => ({ pcmBytes: 32000, ttsCharacters: 3, providerMayHaveStarted: true, outcomes: { stt: "complete", tts: "complete" } as const, dispatched: { stt: true, tts: true } });
 const reserve = (onProgress?: Parameters<typeof reserveSpeechRelayAdmission>[0]["onProgress"]) => reserveSpeechRelayAdmission({ caller, sessionId: "session", usdPerCredit: 0.001, executionCtx: { waitUntil() {} }, onProgress });
@@ -119,4 +125,25 @@ test("real session and admission preserve conservative STT after lost progress a
   drained = true; ttsClosed = true; await handle.retryRetirement();
   expect(state.unknown).toEqual([1, 0]); expect(state.effects).toEqual([0, 1]);
   expect(handle.evidence().accounting).toBe("unknown");
+});
+
+test("unknown-provider submitted TTS counter settles once without becoming actual evidence", async () => {
+  const admission = await reserve();
+  const value = { ...details(), ttsCharacters: 3, ttsAccountingBasis: "submitted_counter_provider_unconfirmed" as const };
+  const result = await admission.settle(value, ["tts"]);
+  expect(result?.tts).toMatchObject({ state: "conservative", amountUsd: "0.0036", basis: "submitted_counter_provider_unconfirmed" });
+  await admission.settle(value, ["tts"]);
+  expect(state.effects).toEqual([0, 1]); expect(state.unknown).toEqual([0, 0]);
+  await expect(admission.settle({ ...value, ttsCharacters: 4 }, ["tts"])).rejects.toThrow("target changed");
+});
+
+test("canonical matched speech receipts are terminal after actual settlement", async () => {
+  const result = await (await reserve()).settle(details());
+  expect(result?.stt?.terminal).toBe(true); expect(result?.tts?.terminal).toBe(true);
+});
+
+test.each(["owner", "request", "amount", "mode"])("a mismatched canonical %s receipt is not terminal speech evidence", async fault => {
+  state.receiptFault = fault;
+  const result = await (await reserve()).settle(details());
+  expect(result?.stt?.terminal).toBeUndefined(); expect(result?.tts?.terminal).toBeUndefined();
 });

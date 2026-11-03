@@ -1,5 +1,5 @@
 import { beforeEach, expect, test, mock } from "bun:test";
-const control = { closeFails: false, opens: 0, closes: 0, wait: undefined as Promise<void> | undefined, subscriptionWait: undefined as Promise<void> | undefined, subscribed: 0, unsubscribed: 0 };
+const control = { ttsUnknown: false, finalized: 0, afterClose: undefined as (() => void) | undefined, closeFails: false, opens: 0, closes: 0, wait: undefined as Promise<void> | undefined, subscriptionWait: undefined as Promise<void> | undefined, subscribed: 0, unsubscribed: 0 };
 mock.module("@elizaos/cloud-shared/db/client", () => ({ runWithDbCacheAsync: (fn: () => unknown) => fn() }));
 mock.module("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({ runWithCloudBindingsAsync: (_env: unknown, fn: () => unknown) => fn() }));
 mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError: class extends Error {} }));
@@ -22,7 +22,7 @@ mock.module("./speech-relay-admission", () => ({ reserveSpeechRelayAdmission: as
 const actualSpeechRelaySession = { ...await import("@elizaos/host/voice/speech-relay-session") };
 mock.module("@elizaos/host/voice/speech-relay-session", () => ({ ...actualSpeechRelaySession, createSpeechRelaySession: async (_id: unknown, _nonce: unknown, ports: any) => {
   control.opens++;
-  const handle = { async close() { control.closes++; if (control.closeFails) throw Error("unknown cleanup"); }, async retryRetirement() { return this.close(); }, evidence: () => ({ stt: "gracefully_drained", tts: "transport_closed", accounting: "settled_actual" }) };
+  const handle = { async close() { control.closes++; control.afterClose?.(); if (control.closeFails) throw Error("unknown cleanup"); }, async retryRetirement() { return this.close(); }, async finalizeUnknownTtsAccounting() { control.finalized++; }, evidence: () => ({ stt: "gracefully_drained", tts: control.ttsUnknown ? "unknown" : "transport_closed", accounting: "settled_actual" }) };
   ports.registerRetirement(handle); await ports.reserveCredits(); await control.wait;
   return { retirement: handle, close: () => handle.close() };
 } }));
@@ -55,7 +55,7 @@ function fixture() {
   };
   return { c, make, input, post, revoke, open, beforeNextTransaction(fn: () => void) { beforeTransaction = fn; }, failNextProof() { failProof = true; }, get row() { return row; } };
 }
-beforeEach(() => Object.assign(control, { closeFails: false, opens: 0, closes: 0, wait: undefined, subscriptionWait: undefined, subscribed: 0, unsubscribed: 0 }));
+beforeEach(() => Object.assign(control, { ttsUnknown: false, finalized: 0, afterClose: undefined, closeFails: false, opens: 0, closes: 0, wait: undefined, subscriptionWait: undefined, subscribed: 0, unsubscribed: 0 }));
 test("duplicate initialize cannot reset an opened record", async () => {
   const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
   const before = structuredClone(f.row); await f.post(f.c, "initialize", f.input);
@@ -183,4 +183,16 @@ test("an intervening revoke count cannot lend the alarm another attempt", async 
   await f.c.alarm();
   expect(f.row.retirement.attempt).toBe(3); expect(control.closes).toBe(1);
   expect(f.row.retirement.proof.state).toBe("unconfirmed");
+});
+
+test("live-holder deadline exhaustion finalizes its frozen counter without a third cleanup", async () => {
+  const f = fixture(); await f.post(f.c, "initialize", f.input); await f.open();
+  control.ttsUnknown = true;
+  const realNow = Date.now; const end = realNow() + 20000;
+  control.afterClose = () => { Date.now = () => end; };
+  try {
+    expect((await f.revoke()).status).toBe(409);
+    expect(control.finalized).toBe(1); expect(control.closes).toBe(1);
+    expect(f.row.retirement.proof.state).toBe("unconfirmed");
+  } finally { Date.now = realNow; }
 });

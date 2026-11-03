@@ -15,6 +15,10 @@ const bootstrap=(name)=>{const s=stats();if(s.locked)throw Error('DB/auth/admiss
 beforeAll(async () => {
   const sources: Array<[RegExp, string]> = [
     [
+      /\/services\/inference-billing-fast-path\.ts$/,
+      `export class InferenceBalanceCacheWarmingError extends Error {}`,
+    ],
+    [
       /\/inference-admission-recovery\.ts$/,
       `export async function recoverExpiredInferenceAdmissionLease(){throw Error("Unexpected recovery");}`,
     ],
@@ -78,7 +82,7 @@ return {async markProviderDispatched(){bootstrap('dispatches');},async settle(co
     ],
     [
       /\/voice\/cartesia-sonic-tts\.ts$/,
-      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;stats().ttsCancels=(stats().ttsCancels??0)+1;}};}close(){stats().ttsClosed=true;}async closeAndConfirm(){stats().ttsClosed=true;return "transport_closed";}}`,
+      `${common} export const CARTESIA_SONIC_MODEL_ID="sonic-3.6";export class CartesiaSonicTtsAdapter{createStream(_options,callbacks){stats().ttsOpened=(stats().ttsOpened??0)+1;return {sendPhrase(){queueMicrotask(()=>callbacks.onAudioFrame({bytes:new Uint8Array([7,0,8,0])}));},finish(){queueMicrotask(()=>callbacks.onComplete({frameCount:1}));},cancel(){stats().ttsCancelled=true;stats().ttsCancels=(stats().ttsCancels??0)+1;}};}close(){stats().ttsClosed=true;}async closeAndConfirm(){stats().ttsClosed=true;return stats().ttsUnknown ? "unknown" : "transport_closed";}}`,
     ],
   ];
   const result = await Bun.build({
@@ -929,4 +933,34 @@ test("pre-hello revoke closes the public socket and late hello cannot open provi
   expect((await worker.dispatchFetch("https://speech-relay.internal/ws", { headers: { Upgrade: "websocket", "x-test-session": name } })).status).toBe(410);
   const after = await (await request("/test-stats")).json() as Record<string, number>;
   expect(after.sttOpened ?? 0).toBe(before.sttOpened ?? 0);
+});
+
+test("real coordinator forwards STT-only selection and bounds unknown TTS money without confirming proof", async () => {
+  const name = "unknown-tts-selection";
+  const named = (path: string, body?: unknown) => worker.dispatchFetch(`https://speech-relay.internal${path}`, {
+    method: body === undefined ? "GET" : "POST", headers: { "x-test-session": name, ...(body === undefined ? {} : { "Content-Type": "application/json" }) },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+  });
+  await named("/test-allow-settlement"); await named("/test-unknown-tts");
+  const before = await (await named("/test-stats")).json() as any;
+  const initialCount = before.settledAmounts?.length ?? 0;
+  const token = "unknown-tts-test-only";
+  const sessionId = "77777777-7777-4777-8777-777777777777";
+  await named("/initialize", { sessionId, tokenDigest: new Bun.CryptoHasher("sha256").update(token).digest("hex"), expiresAt: Date.now() + 60000,
+    proofVersion: 1, caller: { user: account, credential: { kind: "api_key", credentialId: "test-key", userId: account.id } } });
+  const upgrade = await worker.dispatchFetch("https://speech-relay.internal/ws", { headers: { Upgrade: "websocket", "x-test-session": name } });
+  const socket = upgrade.webSocket!; socket.accept();
+  const ready = next(socket as any, value => value.t === "ready"); socket.send(JSON.stringify({ t: "hello", token })); await ready;
+  const prepared = next(socket as any, value => value.t === "tts_prepared"); socket.send(JSON.stringify({ t: "prepare", id: "empty-context" })); await prepared;
+  const revoke = () => named("/revoke", { userId: account.id, organizationId: account.organization_id, proofVersion: 1 });
+  expect((await revoke()).status).toBe(409);
+  const partial = await (await named("/test-stats")).json() as any;
+  expect(partial.settledAmounts.slice(initialCount)).toHaveLength(1);
+  expect(partial.settledAmounts[initialCount].model).toBe("ink-2");
+  await named("/test-force-alarm"); await named("/test-force-alarm");
+  const final = await (await named("/test-stats")).json() as any;
+  expect(final.settledAmounts.slice(initialCount)).toHaveLength(2);
+  expect(final.settledAmounts[initialCount + 1]).toMatchObject({ cost: 0 });
+  const result = await revoke(); expect(result.status).toBe(409);
+  expect(await result.json()).toMatchObject({ revoked: false, retirement: { state: "unconfirmed" } });
 });

@@ -4,6 +4,7 @@ import { beforeEach, afterEach, expect, test, mock } from "bun:test";
 // relay session, admission wrapper, TTS adapter and proof transitions are real.
 const control = { quota: true, failAt: 0, ambiguous: false, dispatchFail: false, admissions: 0, zeroSettlements: [] as number[], providerFetches: 0 };
 class CreditRefusal extends Error {}
+mock.module("@elizaos/cloud-shared/lib/services/inference-billing-fast-path", () => ({ InferenceBalanceCacheWarmingError: class extends Error {} }));
 mock.module("@elizaos/cloud-shared/lib/services/credits", () => ({ InsufficientCreditsError: CreditRefusal }));
 mock.module("@elizaos/cloud-shared/db/client", () => ({ runWithDbCacheAsync: (fn: () => unknown) => fn() }));
 mock.module("@elizaos/cloud-shared/lib/runtime/cloud-bindings", () => ({ runWithCloudBindingsAsync: (_env: unknown, fn: () => unknown) => fn() }));
@@ -11,10 +12,10 @@ mock.module("@elizaos/cloud-shared/lib/utils/logger", () => ({ logger: { info() 
 mock.module("@elizaos/cloud-shared/lib/voice-session/config", () => ({ resolveVoiceUsageLimits: () => ({ organizationDailyMinutes: 10, userDailyMinutes: 10 }) }));
 mock.module("@elizaos/cloud-shared/lib/services/voice-usage-meter", () => ({ createDurableVoiceUsageStore: () => ({ checkAndRecord: async () => ({ allowed: control.quota }), release: async () => {} }) }));
 mock.module("@elizaos/cloud-shared/lib/pricing-constants", () => ({ PLATFORM_MARKUP_MULTIPLIER: 1.2 }));
-mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission", () => ({ admitOrganizationInference: async () => {
+mock.module("@elizaos/cloud-shared/lib/services/organization-inference-admission", () => ({ admitOrganizationInference: async (input: any) => {
   const index = ++control.admissions;
   if (index === control.failAt) throw control.ambiguous ? Error("lost reservation acknowledgement") : new CreditRefusal("credits required");
-  return { markProviderDispatched: async () => { if (control.dispatchFail) throw Error("dispatch mark refused"); }, settle: async (amount: number) => { control.zeroSettlements.push(amount); }, settleUnknown: async () => { throw Error("unexpected conservative settlement"); } };
+  return { mode: "durable_object_debit", markProviderDispatched: async () => { if (control.dispatchFail) throw Error("dispatch mark refused"); }, settle: async (amount: number) => { control.zeroSettlements.push(amount); return { terminalReceipt: { version: 1, status: "canonical_completed", organizationId: input.context.organizationId, requestId: input.context.requestId, amountUsd: amount.toFixed(6), mode: "durable_object_debit" } }; }, settleUnknown: async () => { throw Error("unexpected conservative settlement"); } };
 } }));
 mock.module("./speech-revocation-subscription", () => ({ subscribeSpeechRevocation: async () => () => {} }));
 const { SpeechRelayCoordinator } = await import("./speech-relay-coordinator");

@@ -233,6 +233,15 @@ export interface CreditReservation {
 }
 
 export interface CreditReconciliationResult {
+  /** Produced only after the canonical admission's backing and gate effects complete. */
+  terminalReceipt?: Readonly<{
+    version: 1;
+    organizationId: string;
+    requestId: string;
+    amountUsd: string;
+    mode: string;
+    status: "canonical_completed";
+  }>;
   reservedAmount: number;
   actualCost: number;
   /**

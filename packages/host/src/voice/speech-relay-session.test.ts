@@ -79,6 +79,7 @@ function harness(overrides: Partial<SpeechRelayPorts> = {}) {
         cancel: () => order.push("tts-cancel"),
       };
     },
+    confirmTtsTransportStopped: async () => "transport_closed",
     emit: (event) => events.push(event),
     onClosed: (promise) => {
       closures.push(promise);

@@ -4,6 +4,7 @@ export type SettlementProgress = { state: "not_reserved" } | {
   state: "reserving" | "reserved" | "settling" | "unconfirmed" | "settled_actual" | "settled_conservative";
   requestId: string;
   amountUsd?: string;
+  basis?: "submitted_counter_provider_unconfirmed";
 };
 export interface RetirementState {
   generation: number;
@@ -24,6 +25,7 @@ export interface SpeechLifecycleRecord {
   proofVersion?: 1;
   phase: "minted" | "starting" | "active" | "retiring" | "closed";
   retirement?: RetirementState;
+  quotaRelease?: "not_required" | "released" | "unknown";
 }
 export function initializeSpeechRecord<T extends SpeechLifecycleRecord>(existing: T | undefined, input: T, now: number): T {
   if (existing) {
@@ -70,7 +72,7 @@ export function recordSpeechSettlement<T extends SpeechLifecycleRecord>(record: 
   const previous = record.retirement.progress[kind];
   if (previous.state === "settled_actual" || previous.state === "settled_conservative") {
     if ((progress.state === "settled_actual" || progress.state === "settled_conservative") &&
-        (progress.state !== previous.state || progress.amountUsd !== previous.amountUsd))
+        (progress.state !== previous.state || progress.amountUsd !== previous.amountUsd || progress.basis !== previous.basis))
       throw Error("Speech settlement outcome changed");
     return record;
   }
@@ -80,8 +82,10 @@ export function recordSpeechSettlement<T extends SpeechLifecycleRecord>(record: 
 export interface LiveSpeechOpeningCompletion { claim: string; generation: number; settled: true }
 export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(record: T, token: { generation?: number; attempt?: number }, evidence: SpeechRetirementEvidence | undefined, now: number, confirmedAllowed = true, liveOpening?: LiveSpeechOpeningCompletion): T {
   const state = record.retirement;
+  // Unknown daily quota cannot substitute for independent terminal money.
+  confirmedAllowed = confirmedAllowed && (evidence?.quotaRelease !== "unknown" || evidence.moneyTerminal === true);
   if (record.proofVersion === 1 && state?.proof?.state === "confirmed") return record;
-  if (record.proofVersion !== 1 || !state) return { ...record, phase: "closed" };
+  if (record.proofVersion !== 1 || !state) return { ...record, phase: "closed", ...(evidence?.quotaRelease ? { quotaRelease: evidence.quotaRelease } : {}) };
   if (record.phase !== "retiring" || state.generation !== token.generation || state.attempt !== token.attempt)
     throw Error("Speech retirement generation changed");
   const base = { version: 1 as const, sessionId: record.sessionId };
@@ -106,7 +110,8 @@ export function completeSpeechRetirement<T extends SpeechLifecycleRecord>(record
       accounting: "settled_actual", completedAt: new Date(now).toISOString() };
   } else {
     proof = { ...base, state: "unconfirmed", reason: !evidence ? "opening_unresolved" :
-      evidence.stt === "unknown" || evidence.tts === "unknown" ? "provider_unconfirmed" : "accounting_unconfirmed" };
+      evidence.stt === "unknown" || evidence.tts === "unknown" ? "provider_unconfirmed" :
+      evidence.quotaRelease === "unknown" ? "quota_unconfirmed" : "accounting_unconfirmed" };
   }
-  return { ...record, phase: "closed", retirement: { ...state, proof } };
+  return { ...record, phase: "closed", ...(evidence?.quotaRelease ? { quotaRelease: evidence.quotaRelease } : {}), retirement: { ...state, proof } };
 }

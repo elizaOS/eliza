@@ -105,16 +105,17 @@ export async function reserveSpeechRelayAdmission(input: {
     throw error;
   }
   type Kind = "stt" | "tts";
-  const choices = new Map<Kind, { state: "actual" | "conservative"; amount: number }>();
+  const choices = new Map<Kind, { state: "actual" | "conservative"; amount: number; basis?: "submitted_counter_provider_unconfirmed" }>();
   const outcomes: Partial<SpeechSettlementOutcome> = {};
   const fingerprints = new Map<Kind, string>();
   const pending = new Map<Kind, Promise<void>>();
   return {
+    supportsPerKindSettlement: true,
     beforeProviderDispatch: async () => {},
     settle: async (details, kinds = ["stt", "tts"]) => {
       await Promise.all(kinds.map(kind => {
         const fingerprint = JSON.stringify([kind === "stt" ? details.pcmBytes : details.ttsCharacters,
-          details.dispatched?.[kind], details.outcomes?.[kind]]);
+          details.dispatched?.[kind], details.outcomes?.[kind], kind === "tts" ? details.ttsAccountingBasis : undefined]);
         const prior = fingerprints.get(kind);
         if (prior !== undefined && prior !== fingerprint) throw Error("Speech settlement target changed");
         fingerprints.set(kind, fingerprint);
@@ -132,19 +133,26 @@ export async function reserveSpeechRelayAdmission(input: {
                 const quantity = kind === "stt" ? details.pcmBytes / 32000 : details.ttsCharacters;
                 if (!Number.isFinite(quantity) || quantity < 0 || quantity > maxima[kind])
                   throw Error("Speech usage exceeded its paid reservation");
-                choice = { state: "actual", amount: round(quantity * rates[kind] * PLATFORM_MARKUP_MULTIPLIER) };
+                choice = { state: kind === "tts" && details.ttsAccountingBasis ? "conservative" : "actual",
+                  amount: round(quantity * rates[kind] * PLATFORM_MARKUP_MULTIPLIER),
+                  ...(kind === "tts" && details.ttsAccountingBasis ? { basis: details.ttsAccountingBasis } : {}) };
               }
               choices.set(kind, choice);
             }
-            await input.onProgress?.(kind, { state: "settling", requestId, amountUsd: String(choice.amount) });
+            await input.onProgress?.(kind, { state: "settling", requestId, amountUsd: String(choice.amount), ...(choice.basis ? { basis: choice.basis } : {}) });
             const admission = admissions.get(kind)!;
-            if (choice.state === "conservative") await admission.settleUnknown();
-            else await admission.settle(choice.amount);
-            outcomes[kind] = { requestId, state: choice.state, amountUsd: String(choice.amount) };
+            const reconciliation = choice.state === "conservative" && !choice.basis
+              ? await admission.settleUnknown() : await admission.settle(choice.amount);
+            const receipt = reconciliation?.terminalReceipt;
+            const terminal = receipt?.version === 1 && receipt.status === "canonical_completed" &&
+              receipt.organizationId === caller.user.organization_id && receipt.requestId === requestId &&
+              receipt.amountUsd === choice.amount.toFixed(6) && receipt.mode === admission.mode &&
+              receipt.mode !== "durable_object_funded_budget";
+            outcomes[kind] = { requestId, state: choice.state, amountUsd: String(choice.amount), ...(terminal ? { terminal: true as const } : {}), ...(choice.basis ? { basis: choice.basis } : {}) };
           }
           const outcome = outcomes[kind]!;
-          await input.onProgress?.(kind, { state: outcome.state === "actual" ? "settled_actual" : "settled_conservative",
-            requestId, amountUsd: outcome.amountUsd });
+          await input.onProgress?.(kind, { state: outcome.state === "conservative" ? "settled_conservative" : outcome.terminal ? "settled_actual" : "unconfirmed",
+            requestId, amountUsd: outcome.amountUsd, ...("basis" in outcome && outcome.basis ? { basis: outcome.basis } : {}) });
         })();
         pending.set(kind, attempt);
         void attempt.catch(() => { if (pending.get(kind) === attempt) pending.delete(kind); });

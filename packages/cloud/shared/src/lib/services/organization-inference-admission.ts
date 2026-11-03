@@ -1,3 +1,4 @@
+import { withCanonicalSettlementReceipt } from "./inference-settlement-receipt";
 /**
  * Policy-gated admission for organization-funded inference.
  *
@@ -398,7 +399,7 @@ export async function admitOrganizationInference(
   params: OrganizationInferenceAdmissionParams,
 ): Promise<OrganizationInferenceAdmission> {
   try {
-    return await admitOrganizationInferenceOnce(params);
+    return withCanonicalSettlementReceipt(await admitOrganizationInferenceOnce(params), params.context);
   } catch (error) {
     if (!(error instanceof InsufficientCreditsError)) throw error;
     const { inferenceBudgetGateRequest, isFundedBudgetAdmissionEnabled } = await import(
@@ -429,7 +430,7 @@ export async function admitOrganizationInference(
     if (handoff.pending === true) throw admissionUnavailable(params, error);
     if (handoff.released !== true) throw admissionUnavailable(params, error);
     try {
-      return await admitOrganizationInferenceOnce(params);
+      return withCanonicalSettlementReceipt(await admitOrganizationInferenceOnce(params), params.context);
     } catch (retryError) {
       if (retryError instanceof InsufficientCreditsError && (await hasOpenEscrow()))
         throw admissionUnavailable(params, retryError);

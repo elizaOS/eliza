@@ -144,17 +144,20 @@ export type UnconfirmedSpeechRetirement = Readonly<{
   version: 1;
   sessionId: string;
   state: "unconfirmed";
-  reason: "legacy_state" | "opening_unresolved" | "provider_unconfirmed" | "accounting_unconfirmed" | "proof_persistence_failed";
+  reason: "legacy_state" | "opening_unresolved" | "provider_unconfirmed" | "accounting_unconfirmed" | "quota_unconfirmed" | "proof_persistence_failed";
 }>;
 export type SpeechRetirementProof = ConfirmedSpeechRetirement | UnconfirmedSpeechRetirement;
 export interface SpeechSettlementOutcome {
-  stt: { requestId: string; state: "actual" | "conservative"; amountUsd: string };
-  tts: { requestId: string; state: "actual" | "conservative"; amountUsd: string };
+  stt: { requestId: string; state: "actual" | "conservative"; amountUsd: string; terminal?: true };
+  tts: { requestId: string; state: "actual" | "conservative"; amountUsd: string; terminal?: true;
+    basis?: "submitted_counter_provider_unconfirmed" };
 }
 export interface SpeechRetirementEvidence {
+  quotaRelease?: "not_required" | "released" | "unknown";
   stt: "not_dispatched" | "gracefully_drained" | "unknown";
   tts: "not_dispatched" | "transport_closed" | "unknown";
   accounting: "not_started" | "settled_actual" | "unknown";
+  moneyTerminal?: true;
 }
 /** Strict server-proof parser, including exact discriminator key sets. */
 export function readConfirmedSpeechRetirement(

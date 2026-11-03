@@ -28,6 +28,8 @@ export class TestSpeechRelayCoordinator extends SpeechRelayCoordinator {
       stats.decline = true;
       return Response.json(stats);
     }
+    if (path === "/test-unknown-tts") { stats.ttsUnknown = true; return Response.json(stats); }
+    if (path === "/test-force-alarm") { await this.alarm().catch(() => {}); return Response.json(stats); }
     if (path === "/test-stats") return Response.json(stats);
     return super.fetch(request);
   }

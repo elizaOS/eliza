@@ -1,3 +1,4 @@
+import { InMemoryVoiceUsageStore } from "./usage";
 import { expect, test } from "vitest";
 import { createSpeechRelaySession, type SpeechRelayPorts, type SpeechRelayRetirementHandle } from "./speech-relay-session";
 function ports() {
@@ -8,10 +9,10 @@ function ports() {
     usageStore: { checkAndRecord: async () => ({ allowed: true }), release: async () => {} } as never,
     usageLimits: {} as never, subscribeRevoked: () => () => {},
     registerRetirement: value => { handle = value; },
-    reserveCredits: async () => ({ beforeProviderDispatch: async () => {}, settle: async (details, kinds = ["stt", "tts"]) => {
+    reserveCredits: async () => ({ supportsPerKindSettlement: true, beforeProviderDispatch: async () => {}, settle: async (details, kinds = ["stt", "tts"]) => {
       if (settlementFails) { settlementFails = false; throw Error("settlement failed"); }
       money++;
-      return { ...(kinds.includes("stt") && { stt: { state: details.outcomes?.stt === "complete" ? "actual" as const : "conservative" as const, requestId: "stt", amountUsd: "0" } }), ...(kinds.includes("tts") && { tts: { state: "actual" as const, requestId: "tts", amountUsd: "0" } }) };
+      return { ...(kinds.includes("stt") && { stt: { state: details.dispatched?.stt !== true || details.outcomes?.stt === "complete" ? "actual" as const : "conservative" as const, requestId: "stt", amountUsd: "0", terminal: true as const } }), ...(kinds.includes("tts") && { tts: { state: details.ttsAccountingBasis ? "conservative" as const : "actual" as const, requestId: "tts", amountUsd: "0", terminal: true as const, ...(details.ttsAccountingBasis ? { basis: details.ttsAccountingBasis } : {}) } }) };
     } }),
     openStt: () => ({ sendAudioChunk() {}, cancel() {}, drain: async () => {
       if (unknownDrain) throw Error("no trusted drain");
@@ -137,3 +138,37 @@ test("a lost settlement acknowledgement retries the original per-kind evidence",
   expect(sttInputs).toEqual(["unknown", "unknown"]);
   expect(p.handle.evidence()?.accounting).toBe("unknown");
 });
+
+test("final bounded retry settles the frozen submitted counter but leaves provider unknown", async () => {
+  const p = ports(); p.value.confirmTtsTransportStopped = async () => "unknown";
+  const reserve = p.value.reserveCredits; const ttsInputs: unknown[] = [];
+  p.value.reserveCredits = async (...args) => { const admission = await reserve(...args); return { ...admission, settle: async (details, kinds) => {
+    if (kinds?.includes("tts")) ttsInputs.push(details);
+    return admission.settle(details, kinds);
+  } }; };
+  const session = await createSpeechRelaySession(identity, "consent", p.value);
+  await session.control({ t: "prepare", id: "context" });
+  await expect(session.close()).rejects.toThrow(); expect(ttsInputs).toHaveLength(0);
+  await p.handle.finalizeUnknownTtsAccounting!();
+  expect(ttsInputs).toMatchObject([{ ttsCharacters: 0, ttsAccountingBasis: "submitted_counter_provider_unconfirmed" }]);
+  expect(p.handle.evidence()).toMatchObject({ tts: "unknown", accounting: "unknown" });
+  await p.handle.finalizeUnknownTtsAccounting!(); expect(ttsInputs).toHaveLength(1);
+});
+
+for (const releaseCommitted of [false, true]) {
+  test(`unknown quota acknowledgement preserves separate provider/money proof, committed=${releaseCommitted}`, async () => {
+    const p = ports(); const store = new InMemoryVoiceUsageStore();
+    const release = store.release.bind(store); let releases = 0, enter!: () => void, finish!: () => void;
+    const entered = new Promise<void>(yes => { enter = yes; }), held = new Promise<void>(yes => { finish = yes; });
+    store.release = async (...args) => { releases++; if (releaseCommitted) await release(...args); throw Error("quota acknowledgement lost"); };
+    p.value.usageStore = store; p.value.usageLimits = { organizationDailyMinutes: 1, userDailyMinutes: 1 };
+    const reserve = p.value.reserveCredits;
+    p.value.reserveCredits = async (...args) => { enter(); await held; return reserve(...args); };
+    const opening = createSpeechRelaySession(identity, "consent", p.value); void opening.catch(() => {}); await entered;
+    const closing = p.handle.close(); finish(); await opening.catch(() => {}); await closing;
+    expect(p.handle.evidence()).toMatchObject({ stt: "not_dispatched", tts: "not_dispatched", accounting: "settled_actual", moneyTerminal: true, quotaRelease: "unknown" });
+    const next = await store.checkAndRecord(identity, 1, p.value.usageLimits); expect(next.allowed).toBe(releaseCommitted);
+    await p.handle.retryRetirement(); expect(releases).toBe(1); expect(p.money).toBe(2);
+    expect((await store.checkAndRecord(identity, 1, p.value.usageLimits)).allowed).toBe(false);
+  });
+}

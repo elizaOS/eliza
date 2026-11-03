@@ -140,7 +140,13 @@ export class SpeechRelayCoordinator {
         try { stop(); } catch (error) { failure ??= error; }
       }
       this.unsubscribeRevocation = undefined;
-      let evidence = failure ? undefined : handle?.evidence();
+      const terminalRetry = (started.retirement?.attempt ?? 3) >= 3 ||
+        Date.now() + 1000 >= (started.retirement?.retryDeadlineAt ?? 0);
+      if (terminalRetry && handle?.evidence()?.tts === "unknown") {
+        try { await handle.finalizeUnknownTtsAccounting?.(); }
+        catch (error) { failure ??= error; }
+      }
+      let evidence = handle?.evidence();
       const liveOpening = this.openingOwner?.settled
         ? { claim: this.openingOwner.claim, generation: this.openingOwner.generation, settled: true as const }
         : undefined;
@@ -460,11 +466,11 @@ export class SpeechRelayCoordinator {
                 // Provider/socket callbacks can close the relay after its opening
                 // request context has ended. Settlement needs this DO's bindings
                 // and a fresh request-scoped DB cache at its invocation boundary.
-                settle: (details) =>
+                settle: (details, kinds) =>
                   runWithCloudBindingsAsync(
                     this.env as Record<string, unknown>,
                     () =>
-                      runWithDbCacheAsync(() => reservation.settle(details)),
+                      runWithDbCacheAsync(() => reservation.settle(details, kinds)),
                   ),
               };
             },
