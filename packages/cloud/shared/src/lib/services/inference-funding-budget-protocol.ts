@@ -36,7 +36,11 @@ export function budgetConsumptionPayload(
     input.organizationId,
     input.requestId,
     input.amountMicros,
-    [...input.allocations].sort((a, b) => a.grantId.localeCompare(b.grantId)),
+    // Code-unit order, not localeCompare: ICU collation is locale-dependent, so
+    // the signed payload and its request digest would vary with the host locale.
+    [...input.allocations].sort((a, b) =>
+      a.grantId < b.grantId ? -1 : a.grantId > b.grantId ? 1 : 0,
+    ),
     input.metadata,
   ]);
 }
