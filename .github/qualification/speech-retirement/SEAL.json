@@ -1,0 +1,19 @@
+{
+  "files": {
+    "SOURCE-MANIFEST.json": "5c4dde9a8a98801aee2815e20ad0ec47c5babba9070351fdbff34a2e1c6106e1",
+    "POLICY.json": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf",
+    "run.py": "dd689032735823bba9e456535e5124ed9f9a735e6e3a33f94a5bf615beb95931",
+    "normal-0.config.mts": "cb20365d72c252b40b173aa125c52c7a307367120118320a6b84e9c3caf24f24",
+    "non-speech-receipt-compat.test.ts": "fe2849eef8ae4a61bb85201c0adb8fcca08278fe675f8f2d92858fc05d0d86e0",
+    "PLAN.json": "bc94f48aee66d31dbcf2277924f1631b7aa85b6b8ab88d1863c79cfc153fcd9e",
+    "NORMAL-CONFIG-CLOSURE.json": "17c618a68f6a2d94bd3f128fdfb96384ed107d7637350af6f5e25ecc9d9593fe",
+    "Dockerfile": "a61c63efd512a231cebd7c43b8aa23978eab11e23739a97665d8446f52f68b18",
+    "BUN-IMAGE.json": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664",
+    "check_source.py": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5",
+    "claim.py": "332a1d6dc202af2c71dc718b4398fe38b59ad6ed91bbb952f500b06f9c0cbf0c",
+    "backend.config.mts": "d87dad04b5ff2acfa15056d2a46b872ba93d0e17d8dd8bc1e833f585a8388ea1",
+    "NODE-IMAGE.json": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de",
+    "cloud-tests.yml": "ace7602a4307be194c4ba87f5d2ce8378a0d967b237b90af8b9788f09e1dbb9e",
+    "ORACLES.json": "4f536d7184c38951339c2089be80f12ce77fe4f9ff016dd67eb66af4445962f9"
+  }
+}
