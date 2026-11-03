@@ -102,8 +102,8 @@ final class AdController {
             column.setVisibility(View.GONE);
             return;
         }
-        // No ads on wallet connect (pairing) or the error/settings log. No interstitial on open.
-        boolean show = SessionStore.SCREEN_STATUS.equals(screen);
+        // Banner sits under the dashboard. Pairing and settings stay clear. Pro hides it.
+        boolean show = store.adsAllowed() && SessionStore.SCREEN_STATUS.equals(screen);
         column.setVisibility(show ? View.VISIBLE : View.GONE);
     }
 
@@ -117,7 +117,9 @@ final class AdController {
         MobileAds.initialize(activity);
         banner = new AdView(activity);
         banner.setAdUnitId(BuildConfig.ADMOB_BANNER_ID);
-        banner.setAdSize(AdSize.BANNER);
+        int widthPx = activity.getResources().getDisplayMetrics().widthPixels;
+        int adWidth = (int) (widthPx / activity.getResources().getDisplayMetrics().density);
+        banner.setAdSize(AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(activity, Math.max(adWidth, 320)));
         bannerSlot.removeAllViews();
         bannerSlot.addView(banner);
         banner.loadAd(new AdRequest.Builder().build());

@@ -87,7 +87,7 @@ jobs:
           cd "$STAGE/install/Output"
           curl -fsSL -o valhalla-phone.apk "https://github.com/TokenJunction/eliza-valhalla/releases/download/v0.1.1-phone/valhalla-phone.apk"
           EXT="$GITHUB_WORKSPACE/plugins/plugin-valhalla-copybot/extension"
-          (cd "$EXT" && zip -r "$STAGE/install/Output/Valhalla-Chrome-Extension.zip" manifest.json popup.html popup.js background.js icons)
+          (cd "$EXT" && zip -r "$STAGE/install/Output/Valhalla-Chrome-Extension.zip" manifest.json popup.html popup.js background.js house-ads.json icons house)
           files="Valhalla-Setup-x64.exe valhalla-phone.apk Valhalla-Chrome-Extension.zip"
           if [ -f Valhalla-Setup-x64.msi ]; then files="$files Valhalla-Setup-x64.msi"; fi
           sha256sum $files > SHA256SUMS.txt

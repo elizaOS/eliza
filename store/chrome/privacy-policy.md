@@ -60,7 +60,11 @@ We do not allow these processors to use the data for their own purposes. Their o
 
 ## Ads
 
-The free plan can show ads. Personalized ads run only after you consent. Pro has no ads. Ads are not shown on wallet connect or on settings. A full-screen ad does not run when the app opens. Google's policy is at https://policies.google.com/privacy.
+The free plan can show ads. Personalized ads run only after you consent. Pro has no ads. Ads are not shown on wallet connect, login, billing, or settings. A full-screen ad does not run when the app opens.
+
+The Android and iOS apps use Google AdMob test units until a real publisher unit is set. The Windows desk and the web portal can show a Google AdSense banner, client ca-pub-6504655762357230, only on the free plan and only after consent. The Chrome extension does not load AdSense or AdMob. It shows a small house banner stored in the extension package. That banner is labeled Ad or Sponsored. A link may be a Valhalla offer, a community link, or a disclosed affiliate. The extension does not send that click to an ad network script.
+
+Google's policy is at https://policies.google.com/privacy. Cookies from ads are used only to show and measure the ad. You can withdraw consent. Pro removes these ads.
 
 ## How long we keep data
 

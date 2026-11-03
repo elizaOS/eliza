@@ -93,6 +93,47 @@ document.getElementById("score")?.addEventListener("click", async () => {
   out.textContent = `Score ${local.score}. ${local.flags.join(", ")}.`;
 });
 
+async function showHouseAd() {
+  const box = document.getElementById("house-ad");
+  if (!box) return;
+  try {
+  const saved = await chrome.storage.local.get(["desk"]);
+  if (saved.desk) {
+    try {
+      const plan = await fetch(`${saved.desk.replace(/\/$/, "")}/api/plan`);
+      if (plan.ok) {
+        const body = await plan.json();
+        if (body.tier === "pro" || body.tier === "trial") {
+          box.hidden = true;
+          return;
+        }
+      }
+    } catch {
+      // The desk did not answer. Keep the free house banner.
+    }
+  }
+  const response = await fetch(chrome.runtime.getURL("house-ads.json"));
+  const data = await response.json();
+  const ads = Array.isArray(data.ads) ? data.ads : [];
+  if (!ads.length) return;
+  const ad = ads[Math.floor(Date.now() / 86400000) % ads.length];
+  const label = document.getElementById("house-label");
+  const link = document.getElementById("house-link");
+  const image = document.getElementById("house-image");
+  const title = document.getElementById("house-title");
+  const disclosure = document.getElementById("house-disclosure");
+  if (label) label.textContent = ad.label || "Ad";
+  if (link) link.href = ad.href;
+  if (image) image.src = chrome.runtime.getURL(ad.image);
+  if (title) title.textContent = ad.title || "";
+  if (disclosure) disclosure.textContent = ad.disclosure || "";
+  box.hidden = false;
+  } catch {
+    box.hidden = true;
+  }
+}
+showHouseAd();
+
 async function loadState(base, token) {
   const response = await fetch(`${base}/api/companion/state`, {
     headers: { authorization: `Bearer ${token}` },
@@ -104,4 +145,5 @@ async function loadState(base, token) {
   }
   const row = body.state || {};
   say(`${row.status || "Desk answered."}\n${row.pnl || ""}\n${row.positions || ""}\nRead-only. No send or withdraw.`);
+  await showHouseAd();
 }

@@ -144,6 +144,10 @@ final class SessionStore {
                 .apply();
     }
 
+    boolean adsAllowed() {
+        return !prefs.getBoolean("license_active", false);
+    }
+
     boolean proInGrace(long graceMs) {
         if (!prefs.getBoolean("license_active", false)) return false;
         long at = prefs.getLong("license_at", 0);

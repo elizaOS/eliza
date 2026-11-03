@@ -133,6 +133,7 @@ document.getElementById("gateForm").addEventListener("submit", async (event) => 
       password: document.getElementById("gatePass").value,
     });
     document.getElementById("gate").hidden = true;
+    refreshDeskAd();
     bootGate();
     loadConnections();
   } catch (err) {
@@ -444,6 +445,35 @@ document.getElementById("updateBanner")?.addEventListener("click", async () => {
     if (banner) banner.textContent = err instanceof Error ? err.message : "Update stopped.";
   }
 });
+function refreshDeskAd() {
+  const slot = document.getElementById("deskAd");
+  const gate = document.getElementById("gate");
+  if (!slot) return;
+  const blocked = gate && !gate.hidden;
+  if (blocked) {
+    slot.hidden = true;
+    return;
+  }
+  api("/api/plan").then((plan) => {
+    const free = plan.tier === "free";
+    slot.hidden = !free;
+    if (!free || slot.dataset.loaded) return;
+    const script = document.createElement("script");
+    script.async = true;
+    script.crossOrigin = "anonymous";
+    script.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-6504655762357230";
+    script.onload = () => {
+      const ads = window.adsbygoogle || [];
+      window.adsbygoogle = ads;
+      ads.push({});
+    };
+    document.head.appendChild(script);
+    slot.dataset.loaded = "1";
+  }).catch(() => {
+    slot.hidden = true;
+  });
+}
+refreshDeskAd();
 watchUpdates();
 setInterval(watchUpdates, 6 * 60 * 60 * 1000);
 document.getElementById("btnQueue").onclick = () =>

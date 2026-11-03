@@ -184,7 +184,23 @@ export default function App() {
             >
               <Text style={styles.btnText}>Activate Pro</Text>
             </Pressable>
+            <Text style={styles.body}>Watchlist</Text>
+            <Text style={styles.body}>Free keeps 3 coins. Pro removes the banner.</Text>
+            {!licenseNote.includes("Pro is on") ? (
+              <View style={styles.ad}>
+                <Text style={styles.adLabel}>Advertisement</Text>
+                <Text style={styles.body}>
+                  Test AdMob adaptive banner. iOS ca-app-pub-3940256099942544/2934735716. Android
+                  ca-app-pub-3940256099942544/6300978111. Replace these when the real units exist.
+                </Text>
+              </View>
+            ) : null}
             <Text style={styles.body}>{licenseNote}</Text>
+            {!licenseNote.includes("Pro is on") ? (
+              <Text style={styles.body}>
+                Rewarded test unit: ca-app-pub-3940256099942544/1712485313. It is optional.
+              </Text>
+            ) : null}
             <Pressable style={styles.secondary} onPress={() => setStep("age")}>
               <Text style={styles.btnText}>Delete this setup</Text>
             </Pressable>
@@ -206,6 +222,8 @@ const styles = StyleSheet.create({
   kicker: { color: "#ffb347", letterSpacing: 3, fontWeight: "700", marginBottom: 12 },
   title: { color: "#f4ecdf", fontSize: 32, fontWeight: "700", marginBottom: 12 },
   body: { color: "#cfc6b6", fontSize: 16, marginBottom: 12 },
+  ad: { minHeight: 50, marginTop: 8, marginBottom: 12, borderWidth: 1, borderColor: "#3a3428", padding: 8 },
+  adLabel: { color: "#93a4ba", fontSize: 11, marginBottom: 4 },
   input: {
     minHeight: 48,
     borderColor: "#2c281f",

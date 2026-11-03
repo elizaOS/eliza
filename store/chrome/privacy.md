@@ -34,6 +34,8 @@ The pair token is sent only to that local desk address.
 
 The extension does not collect private keys, seed phrases, transaction approvals, browsing history, or website content.
 
+The free popup can show a house banner stored in the package. It is labeled Ad or Sponsored. It is not an AdSense or AdMob script. Pro hides it. An affiliate link says that we may earn a fee.
+
 ## Remote code
 
 The extension does not load remote code. The package is the files in the zip.
