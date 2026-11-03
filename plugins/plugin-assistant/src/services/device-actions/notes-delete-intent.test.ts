@@ -151,12 +151,38 @@ describe("originalRequestsNotesDeletion", () => {
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
   });
 
+  it("declines read or show instead with me or us before the note, or read aloud", () => {
+    const requests = [
+      "Delete the note about groceries; please show me the note instead",
+      "Delete the note about groceries and read me the note instead",
+      "Delete the note about groceries and read me it instead",
+      "Delete the note about groceries, show us the note instead of the draft",
+      "Delete the note about groceries; please read aloud instead",
+      "Delete the note about groceries and read out loud to me instead",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
+  });
+
+  it("admits a deletion whose quoted title holds punctuation or a joining word before read or show", () => {
+    const requests = [
+      'Delete the note titled "Agenda: show it to clients" instead of the draft',
+      'Delete the note titled "Save and read it later" instead of the draft',
+      'Delete the note titled "Agenda: show it to clients" instead of deleting the backup',
+      "Delete the note called “Q3; read me the note” instead",
+      "Delete the note named 'Save and show it later' instead of the draft",
+      "Delete the note titled read aloud instead",
+    ];
+    expect(requests.filter(originalRequestsNotesDeletion)).toEqual(requests);
+  });
+
   it("declines when the owner asks to read the note instead of deleting it", () => {
     const requests = [
       "Delete the note, I'd like you to read it instead of deleting it",
       "Delete the note about groceries, I want you to show it to me instead of removing it",
       "Delete the note called show it to clients, I'd like you to read it instead of deleting it",
       "Delete the note about show it weekly, read it to me instead",
+      "Delete the note about groceries; show it instead of deleting it",
+      'Delete the note titled "Agenda: show it to clients"; read it to me instead',
     ];
     expect(requests.filter(originalRequestsNotesDeletion)).toEqual([]);
   });
