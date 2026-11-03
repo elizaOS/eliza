@@ -6,4 +6,6 @@ Valhalla is not financial, legal, or tax advice. Crypto can lose money. Nothing 
 
 The phone does not hold a wallet key. There is no send or withdraw control. Keys stay on your computer. Do not send a seed phrase or a private key to anyone who claims to be support. TokenJunction LLC does not message you first.
 
+The public site is https://valhalla-app.xyz. Support is hello@valhalla-app.xyz.
+
 © 2026 TokenJunction LLC

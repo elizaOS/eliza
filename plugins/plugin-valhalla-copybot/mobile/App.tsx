@@ -118,6 +118,8 @@ export default function App() {
               This is not financial advice. Crypto can lose money. The phone does not hold a wallet
               key. There is no send or withdraw.
             </Text>
+            <Text style={styles.body}>Site: https://valhalla-app.xyz</Text>
+            <Text style={styles.body}>Support: hello@valhalla-app.xyz</Text>
             <Text style={styles.body}>© 2026 TokenJunction LLC</Text>
             <Pressable style={styles.btn} onPress={() => setStep(back)}>
               <Text style={styles.btnText}>Back</Text>

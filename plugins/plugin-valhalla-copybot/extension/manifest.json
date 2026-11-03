@@ -4,7 +4,7 @@
   "version": "0.1.1",
   "description": "Valhalla desk companion. Published by TokenJunction LLC. No wallet key.",
   "author": "TokenJunction LLC",
-  "homepage_url": "https://tokenjunction.github.io/eliza-valhalla/",
+  "homepage_url": "https://valhalla-app.xyz/",
   "action": {
     "default_title": "Valhalla",
     "default_popup": "popup.html"

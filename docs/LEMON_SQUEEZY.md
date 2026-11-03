@@ -1,6 +1,6 @@
 # Lemon Squeezy product copy
 
-Use this text on the store named Valhalla. TokenJunction LLC is the seller and the publisher. Do not paste a street address or an EIN into the public product text.
+Use this text on the store named Valhalla. TokenJunction LLC is the seller and the publisher. The public site is https://valhalla-app.xyz. Support is hello@valhalla-app.xyz. Do not paste a street address or an EIN into the public product text.
 
 ## Product
 

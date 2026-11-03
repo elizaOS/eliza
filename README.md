@@ -16,7 +16,7 @@
 
 This fork adds the Valhalla desk. TokenJunction LLC publishes Valhalla. It is the ACCELERATION command center for a small Solana copy bot. The test phone build is a sideload APK, not a Play Store app.
 
-**Site:** [tokenjunction.github.io/eliza-valhalla](https://tokenjunction.github.io/eliza-valhalla/)
+**Site:** [valhalla-app.xyz](https://valhalla-app.xyz/)
 
 **Download:** [phone APK](https://github.com/TokenJunction/eliza-valhalla/releases/download/v0.1.1-phone/valhalla-phone.apk) · [release notes](https://github.com/TokenJunction/eliza-valhalla/releases/tag/v0.1.1-phone)
 

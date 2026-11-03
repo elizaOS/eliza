@@ -34,7 +34,7 @@ val admobBannerId = buildValue("ADMOB_BANNER_ID", sampleBannerId)
 val admobInterstitialId = buildValue("ADMOB_INTERSTITIAL_ID", sampleInterstitialId)
 val admobRewardedId = buildValue("ADMOB_REWARDED_ID", sampleRewardedId)
 val houseAdsUrl = buildValue("HOUSE_ADS_URL", "")
-val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "")
+val privacyPolicyUrl = buildValue("PRIVACY_POLICY_URL", "https://valhalla-app.xyz/privacy-policy.md")
 
 android {
     namespace = "ai.tokenjunction.valhalla"

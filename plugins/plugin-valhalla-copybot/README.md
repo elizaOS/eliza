@@ -2,7 +2,7 @@
 
 This is the Valhalla desk. TokenJunction LLC publishes it. TokenJunction LLC is a private company and the owner of Valhalla. The desk looks like the ACCELERATION command center. It runs on your PC. It is read-only until you arm live trading.
 
-The public name is TokenJunction LLC. The terms, the privacy policy, the disclaimer, the store drafts, the Windows installer publisher field, and the extension author use that name. A street address and an EIN stay out of these files. `{BUSINESS_ADDRESS}` and `{SUPPORT_EMAIL}` stay as placeholders in `docs/play/listing.md`.
+The public name is TokenJunction LLC. The terms, the privacy policy, the disclaimer, the store drafts, the Windows installer publisher field, and the extension author use that name. The public site is https://valhalla-app.xyz. Support is hello@valhalla-app.xyz. A street address and an EIN stay out of these files. `{BUSINESS_ADDRESS}` stays a placeholder in `docs/play/listing.md`.
 
 The repository is public. An access code, if you set one, only opens the app. It does not hide the code.
 
@@ -72,7 +72,7 @@ Set these when you build the phone app. Use the environment, or `android/local.p
 - `ADMOB_INTERSTITIAL_ID`
 - `ADMOB_REWARDED_ID`
 - `HOUSE_ADS_URL` is an optional https JSON feed for your own messages. If you leave it empty, the app uses `android/app/src/main/assets/house-ads.json`.
-- `PRIVACY_POLICY_URL` is the https page you publish from `android/PRIVACY_POLICY.md`.
+- `PRIVACY_POLICY_URL` defaults to https://valhalla-app.xyz/privacy-policy.md. Set it only if you publish the policy somewhere else.
 
 The banner and the optional ad buttons are on the pairing screen and the error log only. They are hidden on status, chat, Recover agent, and settings confirm. A short ad and a break ad start only when you tap those buttons. A reward does not change trading.
 

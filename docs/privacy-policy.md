@@ -26,4 +26,4 @@ The phone sends chat text and confirmed setting changes to the desk address you 
 
 ## Contact
 
-TokenJunction LLC is the publisher. This public file does not include a street address or a tax id. The support email stays in the private store listing.
+TokenJunction LLC is the publisher. The site is https://valhalla-app.xyz. Support is hello@valhalla-app.xyz. This public file does not include a street address or a tax id.

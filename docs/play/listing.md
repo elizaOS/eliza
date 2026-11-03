@@ -1,13 +1,15 @@
 # Store listing
 
-TokenJunction LLC is the publisher and the owner. Valhalla is its product. Do not put an EIN in this file. Fill the two placeholders in a private copy only. Do not commit the filled address or the filled support email.
+TokenJunction LLC is the publisher and the owner. Valhalla is its product. Do not put an EIN in this file. Fill `{BUSINESS_ADDRESS}` in a private copy only. Do not commit the filled address.
 
 ## Identity
 
 - Play developer name: TokenJunction LLC
 - Apple seller: TokenJunction LLC
+- Website: https://valhalla-app.xyz
+- Privacy policy: https://valhalla-app.xyz/privacy-policy.md
 - Business address: {BUSINESS_ADDRESS}
-- Support email: {SUPPORT_EMAIL}
+- Support email: hello@valhalla-app.xyz
 
 ## Title
 

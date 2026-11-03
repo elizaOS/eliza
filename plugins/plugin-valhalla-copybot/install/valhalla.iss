@@ -4,7 +4,7 @@
 #define MyAppName "Valhalla"
 #define MyAppVersion "0.1.1"
 #define MyAppPublisher "TokenJunction LLC"
-#define MyAppURL "https://tokenjunction.github.io/eliza-valhalla/"
+#define MyAppURL "https://valhalla-app.xyz/"
 
 [Setup]
 AppId={{7C3E9A10-4B2D-4F61-9C0A-202611030001}

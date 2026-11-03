@@ -637,6 +637,7 @@ docs/*
 !docs/TERMS.md
 !docs/DISCLAIMER.md
 !docs/LEMON_SQUEEZY.md
+!docs/DOMAIN.md
 !docs/play/
 docs/play/**
 !docs/play/listing.md

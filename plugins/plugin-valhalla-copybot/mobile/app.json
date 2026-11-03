@@ -17,7 +17,10 @@
     },
     "extra": {
       "proProductId": "valhalla_pro_monthly",
-      "publisher": "TokenJunction LLC"
+      "publisher": "TokenJunction LLC",
+      "siteUrl": "https://valhalla-app.xyz/",
+      "privacyPolicyUrl": "https://valhalla-app.xyz/privacy-policy.md",
+      "supportEmail": "hello@valhalla-app.xyz"
     }
   }
 }
