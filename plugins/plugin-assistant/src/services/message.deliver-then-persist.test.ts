@@ -948,26 +948,35 @@ describe("planning progress delivery boundaries", () => {
     },
   );
   // The acknowledgement rule teaches the model to acknowledge a view planned
-  // with other work as opening it. Its example is guidance the unchanged
-  // closed grammar and egress already admit, never a substitute: the owner's
-  // live draft (tj-6ae578d9ff0774) is still dropped and nothing is spoken in
-  // its place.
+  // with other work only as opening it, in the rule's navigation form, and
+  // quotes no utterance. That form is guidance the unchanged closed grammar
+  // and egress already admit, never a substitute: the owner's live draft
+  // (tj-6ae578d9ff0774) is still dropped and nothing is spoken in its place.
   it.each([
     { draft: "Let me open Calendar.", spoken: true },
+    // The rule's other lead, with its curly apostrophe, is spoken unchanged.
+    { draft: "I’ll open Calendar.", spoken: true },
     {
       draft: "Calendar. Killing coffee and putting a launch at noon.",
       spoken: false,
     },
+    // #743 (step-1793690771434-bnctbd): work named after the view drops the
+    // whole draft; no truncated "Let me open Calendar" is spoken instead.
+    {
+      draft: "Let me open Calendar and take another shot at the rename.",
+      spoken: false,
+    },
+    { draft: "Let me open Calendar again.", spoken: false },
   ])(
     "speaks a planned-view acknowledgement only as the model wrote it: $draft",
     async ({ draft, spoken }) => {
       const sentence =
-        'When a view opens alongside other planned work, acknowledge it as opening that view, as in "Let me open Calendar."; never name items, times or effects.';
+        "When a view opens alongside other planned work, acknowledge only opening that view, in the navigation form above; never name items, times or effects.";
+      // A draft in the navigation form: "Let me" plus open and the app name.
       const example = "Let me open Calendar.";
       const request =
         "Can you open the calendar and delete the coffee event and create a new event to have a launch at noon?";
       expect(ACKNOWLEDGMENT_RULE.endsWith(` ${sentence}`)).toBe(true);
-      expect(sentence).toContain(`"${example}"`);
       expect(replyIsClaimSafeAcknowledgment(example)).toBe(true);
       expect(
         evaluatePlannedReplyEgress({

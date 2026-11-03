@@ -2559,6 +2559,19 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "Let me open Calendar, you're free",
     "Let me open Maps. Traffic looks light.",
     "Opening Calendar now.",
+    // Other work after opening a view (#743) is not an acknowledgement in
+    // one sentence or split into two: a step, condition, refusal, target or
+    // result each drops the draft whole.
+    "Let me open Calendar and take another shot at the rename.",
+    "Let me open Calendar. Let me take another shot at the rename.",
+    "Let me take another shot at the rename.",
+    "Let me open Calendar, then update the event.",
+    "Let me open Calendar and update the event if it's still there.",
+    "Let me open Calendar, but I can't rename recurring events.",
+    "Let me open Calendar and leave the rename alone.",
+    "Let me open Calendar and rename the coffee event to Launch.",
+    "Let me open Calendar and take another shot at the rename Sam rejected.",
+    "Let me open Calendar and the rename already went through.",
     "I will read your notes: none",
     "I will read your notes which are empty.",
     "I read your notes.",
@@ -2585,6 +2598,33 @@ describe("replyIsClaimSafeAcknowledgment", () => {
     "Let me check if you have any meetings left today.",
   ])("drops a claim added to an intent: %s", (reply) => {
     expect(replyIsClaimSafeAcknowledgment(reply)).toBe(false);
+  });
+
+  // The open form takes a listed app without an article, or an item such as
+  // "your note" or "the event", plus an optional now, for you, real quick or
+  // quickly tail. For a view outside the app list, or a listed app with an
+  // article, the open form is dropped whole (silence until the final reply)
+  // while the lookup form of the same view is admitted. The planned-view rule
+  // steers toward the open form, so this pins the trade-off instead of
+  // growing the grammar.
+  it.each([
+    { open: "Let me open Messages.", lookup: "Let me check your messages." },
+    { open: "Let me open Reminders.", lookup: "Let me check your reminders." },
+    {
+      open: "Let me open the calendar.",
+      lookup: "Let me pull up your calendar.",
+    },
+  ])("drops $open but admits $lookup", ({ open, lookup }) => {
+    expect(replyIsClaimSafeAcknowledgment(open)).toBe(false);
+    expect(replyIsClaimSafeAcknowledgment(lookup)).toBe(true);
+    expect(
+      evaluatePlannedReplyEgress({
+        reply: lookup,
+        pendingWork: true,
+        actionResults: [],
+        actions: [],
+      }).verdict,
+    ).not.toBe("reject");
   });
 
   // Natural wording outside the closed grammar is dropped as well; the final
