@@ -3788,8 +3788,10 @@ export class CalendarService extends Service {
     ) {
       summaries.push(elizaCalendarSummary());
     }
-    // Cost: the five source probes start together (at most five in flight)
-    // and make the same calls as before; accounts inside a probe stay serial.
+    // Cost: the five source probes start together (at most five in flight);
+    // accounts inside a probe stay serial. On success they make the same calls
+    // as before. After an uncaught failure the later probes still finish, with
+    // their calls and handled-failure reports, before it is rethrown.
     // Each settles alone into its own lists, taken afterwards in this order,
     // so sources, failures and the first uncaught error keep the serial order.
     const probe = async (

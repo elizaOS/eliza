@@ -150,7 +150,8 @@ function fixture(failures: Failures = {}) {
         ]),
     },
     managedCalendar: {
-      acceptsGrantId: () => true,
+      acceptsGrantId: (grantId?: string) =>
+        !grantId || grantId === managed.grantId,
       owns: (calendar: { grantId: string }) =>
         calendar.grantId === managed.grantId,
       sources: () => hold("managed", () => [managed]),
@@ -192,6 +193,19 @@ describe("calendar discovery probes", () => {
     ["local mode", { mode: "local" }, ["apple", "google", "ics", "microsoft"]],
     ["managed mode", { mode: "cloud_managed" }, ["google", "managed"]],
     ["agent side", { side: "agent" }, ["google", "microsoft"]],
+    [
+      "Microsoft grant",
+      { grantId: "connector-account:microsoft:microsoft-account" },
+      ["microsoft"],
+    ],
+    ["Apple grant", { grantId: "apple-calendar" }, ["apple"]],
+    ["Eliza grant", { grantId: "eliza-calendar" }, []],
+    [
+      "managed grant",
+      { grantId: managed.grantId },
+      ["google", "ics", "managed"],
+    ],
+    ["ICS source", { grantId: "ics-source" }, ["google", "ics"]],
   ] as const)(
     "probes only the sources a request selects: %s",
     async (_label, request, expected) => {
@@ -276,6 +290,27 @@ describe("calendar discovery probes", () => {
       expect(preferenceWrites.count).toBe(0);
     },
   );
+
+  it("finishes the later probes before rethrowing an earlier uncaught failure", async () => {
+    preferenceWrites.count = 0;
+    const failure = Error("google accounts");
+    const f = fixture({ google: failure, managed: Error("managed sources") });
+    let settled = false;
+    const rejected = expect(
+      f.service.discoverCalendars(url).finally(() => {
+        settled = true;
+      }),
+    ).rejects.toBe(failure);
+    await f.release("google", "microsoft", "apple", "ics");
+    expect(settled).toBe(false);
+    await f.release("managed");
+    await rejected;
+    expect([...f.started].sort()).toEqual([...probes].sort());
+    expect(f.reportError.mock.calls.map(([name]) => name)).toEqual([
+      "calendar:list-managed-source",
+    ]);
+    expect(preferenceWrites.count).toBe(0);
+  });
 
   it("rejects with the request's abort reason and writes no preference", async () => {
     preferenceWrites.count = 0;
