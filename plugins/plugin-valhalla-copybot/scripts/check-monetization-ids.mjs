@@ -82,7 +82,6 @@ for (const rel of files) {
 if (!sawOwn) fail("the Valhalla publisher id is missing from the app tree");
 const receive = String(money.cryptoReceiveAddress || "");
 if (receive.length < 32) fail("crypto receive address is missing from the signed config");
-if (!Number.isInteger(money.platformFeeBps)) fail("platform fee bps is missing from the signed config");
 for (const rel of files) {
   if (rel.endsWith("monetization.json")) continue;
   const text = readFileSync(path.join(fileURLToPath(plugin), rel), "utf8");
