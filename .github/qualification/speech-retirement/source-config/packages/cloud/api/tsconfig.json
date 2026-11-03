@@ -1,0 +1,37 @@
+{
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "WebWorker", "DOM", "DOM.Iterable"],
+    "composite": false,
+    "incremental": false,
+    "declaration": false,
+    "declarationMap": false,
+    "types": ["@cloudflare/workers-types", "node", "bun-types"],
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@/api-app/*": ["./src/*"],
+      "@/api-queue/*": ["./src/queue/*"],
+      "@/api/*": ["./*"],
+      "@elizaos/plugin-elizacloud": [
+        "../../../plugins/plugin-elizacloud/src/index.ts"
+      ],
+      "@elizaos/plugin-elizacloud/*": [
+        "../../../plugins/plugin-elizacloud/src/*"
+      ],
+      "@elizaos/plugin-scheduling": [
+        "../../../plugins/plugin-scheduling/src/index.ts"
+      ],
+      "@elizaos/plugin-todos": ["../../../plugins/plugin-todos/src/index.ts"],
+      "@elizaos/core/protocol": ["../../../packages/core/src/protocol"]
+    }
+  },
+  "include": [
+    "../scripts/api/**/*.ts",
+    "./**/*.ts",
+    "./**/*.tsx",
+    "../shared/src/db/**/*.ts",
+    "../shared/src/types/**/*"
+  ],
+  "exclude": ["node_modules", "../../../node_modules"]
+}

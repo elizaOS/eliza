@@ -1,0 +1,40 @@
+{
+  "backend": {
+    "commit": "cc15ae6bd65f632a606934023c5b6b71c6e65610",
+    "tree": "f8d82d14841323a7a0e953108205a702270f160e",
+    "files": [
+      {
+        "path": "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
+        "sha256": "9630e5b45facd3401d479c8937d6af3532dac01339481f7ad820227e2c1e46a2"
+      },
+      {
+        "path": "packages/cloud/api/src/inference-settlement-replay.test.ts",
+        "sha256": "e3d83394e65c6d88f762f8538af2479dd78e695f9780ae1bc4547efef682b777"
+      },
+      {
+        "path": "packages/cloud/api/src/inference-zero-receipt.test.ts",
+        "sha256": "b4bda5e035a15230fcf47887857d64216726a5ca66a367f9dc3227d1cf559539"
+      },
+      {
+        "path": "packages/cloud/api/src/speech-relay-admission.retirement.test.ts",
+        "sha256": "bd01fb56f1a6ff88dfa127a15c9e930a7e6717a2b073013b778614f33d58be60"
+      },
+      {
+        "path": "packages/cloud/api/src/speech-retirement-composition.test.ts",
+        "sha256": "64a3529bf209adbecc2937dea3c197bcfa0ef0cfa165e00fc66706e8dc1bb587"
+      },
+      {
+        "path": "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
+        "sha256": "b0459620c313a25c3776abeda420895f980343a6117178332f3c368ae78fcf70"
+      },
+      {
+        "path": "packages/cloud/api/src/speech-retirement-state.test.ts",
+        "sha256": "032bb49d49e77e09e9344e3e00e288ca1de7227c1a22337a75e7b2200369a593"
+      },
+      {
+        "path": "packages/host/src/voice/speech-retirement-session.test.ts",
+        "sha256": "9787bccff9df24a302971c152f8cacf520b7c3259a77170a1161afc9c1e63376"
+      }
+    ]
+  }
+}

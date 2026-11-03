@@ -1,0 +1,11 @@
+{
+  "state": "UNRUN_NORMAL_HOST_SSR_STAGEGATE_FRONTIER_NOT_READY_CLAIM",
+  "sourceCommit": "cc15ae6bd65f632a606934023c5b6b71c6e65610",
+  "sourceTree": "f8d82d14841323a7a0e953108205a702270f160e",
+  "canonicalConfig": "packages/host/vitest.config.ts",
+  "actualSourceScope": "Canonical Host config now has reviewed/publicVite SSRnormal+external eliza-source conditions preserving externalmodule-sync; oneconfig child cc15 published/literalverified. This is source correction only, not actualbootstrap.",
+  "operatorBehavior": "Existing host-preflight verifies both normal source resolution and actual bare SSR externalization against current Core/Host source, and fails before any145 owning tests if external route mismatches/missing. This is an UNRUN gate, not evidence of bootstrap readiness.",
+  "ifFailure": "Do not retry with QA alias/stub/borrowed dist. Requires separately reviewed canonical Host source-config repair or existing independently qualified canonical route. No configuration change authorized by this caveat.",
+  "reporterEvidence": "Reviewer verified older actual Bun1.4.2 suites all had file attributes; current required testcase/suite file checks match that historical report shape. New runtime still unrun.",
+  "noChangesToFrozenV6": "V6 preserved separately; finaloncebound candidate changes only exactsourcepair/Hostconfigmanifest/workflowref and provenance declarations."
+}

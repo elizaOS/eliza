@@ -1,0 +1,38 @@
+{
+  "state": "SEPARATE_COMPILER_PREPARATION_NOT_EXECUTION_READY",
+  "source": {
+    "commit": "cc15ae6bd65f632a606934023c5b6b71c6e65610",
+    "tree": "f8d82d14841323a7a0e953108205a702270f160e",
+    "soleParent": "ec19cbc5da7485f515a74115f96d3763884e645f",
+    "branch": "codex/host-ssr-source-resolution-ec19-20261103",
+    "configPublicationReviewSHA256": "3ce19b42799e5898bb95827ad3cf4ed558b4a43a45e53b6b410b3de89cfaff11"
+  },
+  "compilerLeg": {
+    "canonicalCommand": [
+      "<actualpackage-localtsc>",
+      "--noEmit"
+    ],
+    "cwd": "packages/cloud/api",
+    "config": "Unchanged packages/cloud/api/tsconfig.json extendsroot, actualbin(version6JSor7alias) recorded; no inventeddeclarations/skipconfig/falsecleanclaim.",
+    "fiveD5Files": [
+      "packages/cloud/api/src/inference-settlement-replay.test.ts",
+      "packages/cloud/api/src/speech-retirement-composition.test.ts",
+      "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
+      "packages/cloud/api/src/speech-retirement-route.test.ts",
+      "packages/cloud/api/v1/voice/session/lib/provider-retirement.test.ts"
+    ],
+    "scope": "Actualcompilerleg only; canonicaltypecheckalsoincludesrouter+workerbundle notclaimedwithouttheirreceipts. Core/package producer/declaration closure must be genuine exactsource ifneeded; no borroweddist/broad16pkg/nativehookshortcut.",
+    "normalAPITypes": "UNRUN_OPEN"
+  },
+  "dependencies": "Same actual canonical dependency/compiler/core-producer closure must be independently established; no tsc subset/skip config/borrowed dist/normalAPI success inference.",
+  "held": true,
+  "noExecutionOrStandaloneCleanClaim": true,
+  "previousSource": {
+    "commit": "ec19cbc5da7485f515a74115f96d3763884e645f",
+    "tree": "6609c05acdbb4a919f21d5af2ff633a6b1d8d96a",
+    "soleParent": "dbd5feea5bc5a66a758aaa71021b7561c2aac091",
+    "branch": "codex/backend-retirement-owning14-tests-v2-20261103",
+    "originalProposalSHA256": "da671d65b4fbd9e92a5f52cee10ba3cc861099be5d1989d66bd4b154dc29b4eb",
+    "publishedReceiptSHA256": "93fb40ebd9440256a8c9bd3a774214116b5128481d67d4374f75c4d20d9491b6"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "oldCohort": {
+    "version": "20261018.96.1",
+    "primarySource": "https://github.com/elizaOS/eliza/actions/runs/41569088835/job/125697539865",
+    "setupLogSHA256": "5d54f1f027edd67c11c6ee95082c48f51e4e0ac9e1044536fb1a10a1175c380f",
+    "reportedOfficialRelease": "https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261018.96",
+    "reportedOfficialSoftware": "https://github.com/actions/runner-images/blob/ubuntu24/20261018.96/images/ubuntu/Ubuntu2404-Readme.md",
+    "upstreamReleaseAndTagNow": "404; matching-refs empty; not claimed resolved",
+    "hostedProvenance": "Authenticated GitHub setup log and actions jobs API: ubuntu-24.04 label, GitHub Actions runner group, Hosted Compute Agent, Ubuntu24.04.5"
+  },
+  "newCohort": {
+    "version": "20261026.354.1",
+    "release": "https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261026.354",
+    "readmeBlob": "97e7ec74186bddefe5bb53c8d3e573955364d89c",
+    "readmeSHA256": "433ac9525040ccec39fc6b1fbcbeb457cba1acd6414317f940e1ea2d9bea73c9",
+    "readmeHtmlURL": "https://github.com/actions/runner-images/blob/ubuntu24/20261026.354/images/ubuntu/Ubuntu2404-Readme.md"
+  },
+  "capabilityProof": "Required in the SAME future admitted qualification run; not yet performed for this candidate",
+  "noDeletionExecuted": true,
+  "sourceOnly": true,
+  "officialInstallationScripts": [
+    {
+      "name": "install-dotnetcore-sdk.sh",
+      "gitBlob": "fbb8d3fac5282f9e791460a9d31dd512f32facbf",
+      "sha256": "9654c96a98e216a19aac6071f7d49cbc02b48fa6e0b09669c7cb81a3420e9c23",
+      "url": "https://github.com/actions/runner-images/blob/ubuntu24/20261026.354/images/ubuntu/scripts/build/install-dotnetcore-sdk.sh"
+    },
+    {
+      "name": "install-android-sdk.sh",
+      "gitBlob": "78de3d6cb6bb95b8a0b504ed381d2795b3eeb1a1",
+      "sha256": "17c5823f6e9696a99bad3b3550808e858293d1d793c5df259b6cc3b7c17cdfe9",
+      "url": "https://github.com/actions/runner-images/blob/ubuntu24/20261026.354/images/ubuntu/scripts/build/install-android-sdk.sh"
+    }
+  ]
+}

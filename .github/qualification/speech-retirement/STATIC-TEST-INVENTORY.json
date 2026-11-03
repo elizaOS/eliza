@@ -1,0 +1,914 @@
+{
+  "backend": {
+    "commit": "cc15ae6bd65f632a606934023c5b6b71c6e65610",
+    "tree": "f8d82d14841323a7a0e953108205a702270f160e",
+    "files": [
+      {
+        "path": "packages/cloud/api/__tests__/inference-admission-gate.miniflare.test.ts",
+        "sha256": "9630e5b45facd3401d479c8937d6af3532dac01339481f7ad820227e2c1e46a2",
+        "tests": [
+          {
+            "line": 55,
+            "name": "build filter matches the database client on POSIX and Windows only",
+            "mode": "test"
+          },
+          {
+            "line": 55,
+            "name": "build filter matches the cloud bindings on POSIX and Windows only",
+            "mode": "test"
+          },
+          {
+            "line": 55,
+            "name": "build filter matches the admission recovery on POSIX and Windows only",
+            "mode": "test"
+          },
+          {
+            "line": 55,
+            "name": "build filter matches the logger on POSIX and Windows only",
+            "mode": "test"
+          },
+          {
+            "line": 223,
+            "name": "internal handler timing crosses a real Durable Object binding without changing quota",
+            "mode": "test"
+          },
+          {
+            "line": 243,
+            "name": "every gate response reports entry and activation clocks for the caller's split",
+            "mode": "test"
+          },
+          {
+            "line": 270,
+            "name": "an idle wake starts only the billing gate and creates no ledger or lease",
+            "mode": "test"
+          },
+          {
+            "line": 380,
+            "name": "a failed wake never reaches the caller",
+            "mode": "test"
+          },
+          {
+            "line": 403,
+            "name": "wakes neither count nor bypass concurrent rate decisions on org-miniflare-wake-rate",
+            "mode": "test",
+            "sourceTitlePattern": "wakes neither count nor bypass concurrent rate decisions on %s",
+            "parameterRowIndex": 0,
+            "parameterRow": "org-miniflare-wake-rate"
+          },
+          {
+            "line": 403,
+            "name": "wakes neither count nor bypass concurrent rate decisions on rate-limit:v2:org-miniflare-wake-rate",
+            "mode": "test",
+            "sourceTitlePattern": "wakes neither count nor bypass concurrent rate decisions on %s",
+            "parameterRowIndex": 1,
+            "parameterRow": "rate-limit:v2:org-miniflare-wake-rate"
+          },
+          {
+            "line": 462,
+            "name": "real Durable Object serialization prevents concurrent overspend",
+            "mode": "test"
+          },
+          {
+            "line": 522,
+            "name": "an app recovery lease permits an absent creator and rejects malformed creator identities",
+            "mode": "test"
+          },
+          {
+            "line": 594,
+            "name": "credential checks bypass a blocked billing queue on the same object",
+            "mode": "test"
+          },
+          {
+            "line": 614,
+            "name": "the revocation queue preserves read-write ordering",
+            "mode": "test"
+          },
+          {
+            "line": 622,
+            "name": "independent callers observe API-key revocation immediately",
+            "mode": "test"
+          },
+          {
+            "line": 661,
+            "name": "authorized lease checks revocation and balance in one Durable Object request",
+            "mode": "test"
+          },
+          {
+            "line": 732,
+            "name": "session cutoff revokes old tokens without rejecting a later login",
+            "mode": "test"
+          },
+          {
+            "line": 756,
+            "name": "revoked session bindings reject new tokens using a stale user mapping",
+            "mode": "test"
+          },
+          {
+            "line": 793,
+            "name": "subject and organization suspension are reversible durable fences",
+            "mode": "test"
+          },
+          {
+            "line": 831,
+            "name": "a per-key rate_limit caps one key under the plan tier without limiting others",
+            "mode": "test"
+          },
+          {
+            "line": 888,
+            "name": "a separate rate-limit identity answers without duplicating a window across cutover",
+            "mode": "test"
+          },
+          {
+            "line": 932,
+            "name": "the cutover coordinator chooses the next exact fixed-window boundary",
+            "mode": "test"
+          },
+          {
+            "line": 945,
+            "name": "the active v2 rate-limit identity answers while the obsolete cutover coordinator is blocked",
+            "mode": "test"
+          },
+          {
+            "line": 986,
+            "name": "synchronous SQLite KV continues the exact async-KV quota window",
+            "mode": "test"
+          },
+          {
+            "line": 1030,
+            "name": "clearing one subject denial cannot clear an independent denial",
+            "mode": "test"
+          },
+          {
+            "line": 1077,
+            "name": "subscriber funding capacity is a fenced view of the same balance revision",
+            "mode": "test"
+          },
+          {
+            "line": 1179,
+            "name": "snapshot admissions under a superseded policy generation fail closed at lease and dispatch",
+            "mode": "test"
+          },
+          {
+            "line": 1284,
+            "name": "subscriber funding leases pin a well-formed affiliate payout contract",
+            "mode": "test"
+          },
+          {
+            "line": 1353,
+            "name": "lost dispatch acknowledgment replays one real durable lease without a second hold",
+            "mode": "test"
+          },
+          {
+            "line": 1454,
+            "name": "actual DO zero release emits exact identity only after its explicit acknowledgement",
+            "mode": "test"
+          },
+          {
+            "line": 1463,
+            "name": "known prepared dispatch emits never-reserved identity without a gate call",
+            "mode": "test",
+            "sourceTitlePattern": "known %s dispatch emits never-reserved identity without a gate call",
+            "parameterRowIndex": 0,
+            "parameterRow": "prepared"
+          },
+          {
+            "line": 1463,
+            "name": "known rejected dispatch emits never-reserved identity without a gate call",
+            "mode": "test",
+            "sourceTitlePattern": "known %s dispatch emits never-reserved identity without a gate call",
+            "parameterRowIndex": 1,
+            "parameterRow": "rejected"
+          },
+          {
+            "line": 1480,
+            "name": "a lost release acknowledgement cannot emit zero proof despite the real DO releasing its hold",
+            "mode": "test"
+          },
+          {
+            "line": 1493,
+            "name": "a false release acknowledgement cannot emit zero proof",
+            "mode": "test",
+            "sourceTitlePattern": "a %s release acknowledgement cannot emit zero proof",
+            "parameterRowIndex": 0,
+            "parameterRow": "false"
+          },
+          {
+            "line": 1493,
+            "name": "a wrong-state release acknowledgement cannot emit zero proof",
+            "mode": "test",
+            "sourceTitlePattern": "a %s release acknowledgement cannot emit zero proof",
+            "parameterRowIndex": 1,
+            "parameterRow": "wrong-state"
+          },
+          {
+            "line": 1493,
+            "name": "a invalid-json release acknowledgement cannot emit zero proof",
+            "mode": "test",
+            "sourceTitlePattern": "a %s release acknowledgement cannot emit zero proof",
+            "parameterRowIndex": 2,
+            "parameterRow": "invalid-json"
+          },
+          {
+            "line": 1493,
+            "name": "a 404 release acknowledgement cannot emit zero proof",
+            "mode": "test",
+            "sourceTitlePattern": "a %s release acknowledgement cannot emit zero proof",
+            "parameterRowIndex": 3,
+            "parameterRow": "404"
+          },
+          {
+            "line": 1493,
+            "name": "a timeout release acknowledgement cannot emit zero proof",
+            "mode": "test",
+            "sourceTitlePattern": "a %s release acknowledgement cannot emit zero proof",
+            "parameterRowIndex": 4,
+            "parameterRow": "timeout"
+          },
+          {
+            "line": 1510,
+            "name": "ambiguous not-found cleanup retains legacy void without authoritative zero proof",
+            "mode": "test"
+          },
+          {
+            "line": 1520,
+            "name": "zero settlement forwards the real observer while ordinary callers retain Promise<void>",
+            "mode": "test"
+          },
+          {
+            "line": 1531,
+            "name": "release evidence keeps the exact entry identity if a caller mutates its lease while acknowledgement is pending",
+            "mode": "test"
+          }
+        ],
+        "staticCount": 41,
+        "unresolved": 0
+      },
+      {
+        "path": "packages/cloud/api/src/inference-settlement-replay.test.ts",
+        "sha256": "e3d83394e65c6d88f762f8538af2479dd78e695f9780ae1bc4547efef682b777",
+        "tests": [
+          {
+            "line": 24,
+            "name": "settlement fence replays after a lost acknowledgement and recreation",
+            "mode": "test"
+          },
+          {
+            "line": 35,
+            "name": "settled fence refuses changed target and legacy missing evidence",
+            "mode": "test"
+          },
+          {
+            "line": 41,
+            "name": "long non-speech settlement IDs do not duplicate into fence metadata",
+            "mode": "test"
+          },
+          {
+            "line": 70,
+            "name": "D5 typed fence fixture guards retain the real response and reject malformed unknown bodies",
+            "mode": "test"
+          }
+        ],
+        "staticCount": 4,
+        "unresolved": 0
+      },
+      {
+        "path": "packages/cloud/api/src/inference-zero-receipt.test.ts",
+        "sha256": "b4bda5e035a15230fcf47887857d64216726a5ca66a367f9dc3227d1cf559539",
+        "tests": [
+          {
+            "line": 17,
+            "name": "the actual receipt helper binds its zero receipt to exact owner request mode and status",
+            "mode": "test"
+          },
+          {
+            "line": 24,
+            "name": "the actual receipt helper rejects a changed organizationId on its own previously generated receipt",
+            "mode": "test",
+            "sourceTitlePattern": "the actual receipt helper rejects a changed %s on its own previously generated receipt",
+            "parameterRowIndex": 0,
+            "parameterRow": [
+              "organizationId",
+              "another-org"
+            ]
+          },
+          {
+            "line": 24,
+            "name": "the actual receipt helper rejects a changed requestId on its own previously generated receipt",
+            "mode": "test",
+            "sourceTitlePattern": "the actual receipt helper rejects a changed %s on its own previously generated receipt",
+            "parameterRowIndex": 1,
+            "parameterRow": [
+              "requestId",
+              "speech:another:tts"
+            ]
+          },
+          {
+            "line": 24,
+            "name": "the actual receipt helper rejects a changed version on its own previously generated receipt",
+            "mode": "test",
+            "sourceTitlePattern": "the actual receipt helper rejects a changed %s on its own previously generated receipt",
+            "parameterRowIndex": 2,
+            "parameterRow": [
+              "version",
+              2
+            ]
+          },
+          {
+            "line": 24,
+            "name": "the actual receipt helper rejects a changed status on its own previously generated receipt",
+            "mode": "test",
+            "sourceTitlePattern": "the actual receipt helper rejects a changed %s on its own previously generated receipt",
+            "parameterRowIndex": 3,
+            "parameterRow": [
+              "status",
+              "unknown"
+            ]
+          },
+          {
+            "line": 24,
+            "name": "the actual receipt helper rejects a changed amountUsd on its own previously generated receipt",
+            "mode": "test",
+            "sourceTitlePattern": "the actual receipt helper rejects a changed %s on its own previously generated receipt",
+            "parameterRowIndex": 4,
+            "parameterRow": [
+              "amountUsd",
+              "1.000000"
+            ]
+          },
+          {
+            "line": 24,
+            "name": "the actual receipt helper rejects a changed mode on its own previously generated receipt",
+            "mode": "test",
+            "sourceTitlePattern": "the actual receipt helper rejects a changed %s on its own previously generated receipt",
+            "parameterRowIndex": 5,
+            "parameterRow": [
+              "mode",
+              "synchronous_db_ledger"
+            ]
+          },
+          {
+            "line": 38,
+            "name": "a resolved null result cannot acquire a canonical zero receipt",
+            "mode": "test"
+          },
+          {
+            "line": 43,
+            "name": "funded-budget results remain outside canonical zero-receipt authority",
+            "mode": "test"
+          }
+        ],
+        "staticCount": 9,
+        "unresolved": 0
+      },
+      {
+        "path": "packages/cloud/api/src/speech-relay-admission.retirement.test.ts",
+        "sha256": "bd01fb56f1a6ff88dfa127a15c9e930a7e6717a2b073013b778614f33d58be60",
+        "tests": [
+          {
+            "line": 38,
+            "name": "partial settlement retry does not repeat successful STT money",
+            "mode": "test"
+          },
+          {
+            "line": 45,
+            "name": "reserved but not dispatched reconciles both kinds to actual zero",
+            "mode": "test"
+          },
+          {
+            "line": 50,
+            "name": "proof-write failure retries persistence without repeating money",
+            "mode": "test"
+          },
+          {
+            "line": 58,
+            "name": "conservative STT remains explicitly different from actual",
+            "mode": "test"
+          },
+          {
+            "line": 64,
+            "name": "changed settlement target is refused on retry",
+            "mode": "test"
+          },
+          {
+            "line": 71,
+            "name": "proven STT settles while unknown TTS keeps its target undecided",
+            "mode": "test"
+          },
+          {
+            "line": 79,
+            "name": "pre-lease warming records no reservation",
+            "mode": "test"
+          },
+          {
+            "line": 84,
+            "name": "failed no-reservation proof cannot skip rollback or hide its primary cause",
+            "mode": "test"
+          },
+          {
+            "line": 91,
+            "name": "a warming-shaped progress error cannot claim no reservation",
+            "mode": "test"
+          },
+          {
+            "line": 97,
+            "name": "a fixed conservative STT target does not block later TTS settlement",
+            "mode": "test"
+          },
+          {
+            "line": 105,
+            "name": "real session and admission preserve conservative STT after lost progress ack",
+            "mode": "test"
+          },
+          {
+            "line": 134,
+            "name": "unknown-provider submitted TTS counter settles once without becoming actual evidence",
+            "mode": "test"
+          },
+          {
+            "line": 144,
+            "name": "canonical matched speech receipts are terminal after actual settlement",
+            "mode": "test"
+          },
+          {
+            "line": 149,
+            "name": "a mismatched canonical owner receipt is not terminal speech evidence",
+            "mode": "test",
+            "sourceTitlePattern": "a mismatched canonical %s receipt is not terminal speech evidence",
+            "parameterRowIndex": 0,
+            "parameterRow": "owner"
+          },
+          {
+            "line": 149,
+            "name": "a mismatched canonical request receipt is not terminal speech evidence",
+            "mode": "test",
+            "sourceTitlePattern": "a mismatched canonical %s receipt is not terminal speech evidence",
+            "parameterRowIndex": 1,
+            "parameterRow": "request"
+          },
+          {
+            "line": 149,
+            "name": "a mismatched canonical amount receipt is not terminal speech evidence",
+            "mode": "test",
+            "sourceTitlePattern": "a mismatched canonical %s receipt is not terminal speech evidence",
+            "parameterRowIndex": 2,
+            "parameterRow": "amount"
+          },
+          {
+            "line": 149,
+            "name": "a mismatched canonical mode receipt is not terminal speech evidence",
+            "mode": "test",
+            "sourceTitlePattern": "a mismatched canonical %s receipt is not terminal speech evidence",
+            "parameterRowIndex": 3,
+            "parameterRow": "mode"
+          },
+          {
+            "line": 157,
+            "name": "D1 matched zero rollback is required after a typed second-kind refusal",
+            "mode": "test"
+          },
+          {
+            "line": 170,
+            "name": "D1 ambiguous zero rollback preserves the original refusal and unconfirmed money",
+            "mode": "test"
+          },
+          {
+            "line": 187,
+            "name": "D1 zero settlement retries lost progress acknowledgement without a second monetary effect",
+            "mode": "test"
+          },
+          {
+            "line": 204,
+            "name": "D3 late proven TTS close confirms the same frozen charge without another settlement",
+            "mode": "test"
+          },
+          {
+            "line": 244,
+            "name": "D3 frozen TTS target cannot change count basis or dispatch state after finalization",
+            "mode": "test"
+          }
+        ],
+        "staticCount": 22,
+        "unresolved": 0
+      },
+      {
+        "path": "packages/cloud/api/src/speech-retirement-composition.test.ts",
+        "sha256": "64a3529bf209adbecc2937dea3c197bcfa0ef0cfa165e00fc66706e8dc1bb587",
+        "tests": [
+          {
+            "line": 99,
+            "name": "real composition confirms a live zero-reservation quota refusal",
+            "mode": "test"
+          },
+          {
+            "line": 102,
+            "name": "real composition confirms a typed first-credit refusal without provider dispatch",
+            "mode": "test"
+          },
+          {
+            "line": 105,
+            "name": "real composition requires actual-zero rollback for partial reservations",
+            "mode": "test"
+          },
+          {
+            "line": 108,
+            "name": "real composition keeps ambiguous reservation refusal unconfirmed",
+            "mode": "test"
+          },
+          {
+            "line": 111,
+            "name": "recreated coordinator cannot manufacture live zero-dispatch evidence",
+            "mode": "test"
+          },
+          {
+            "line": 115,
+            "name": "real composition reconciles zero work after a dispatch-mark refusal",
+            "mode": "test"
+          },
+          {
+            "line": 129,
+            "name": "N4 typed never-reserved money can confirm while quota release outcome stays independently unknown",
+            "mode": "test"
+          },
+          {
+            "line": 149,
+            "name": "N4 partial actual-zero rollback and never-reserved peer require both exact proofs",
+            "mode": "test"
+          },
+          {
+            "line": 167,
+            "name": "N4 lost reservation or reserved-progress acknowledgement cannot create no-dispatch money proof",
+            "mode": "test"
+          },
+          {
+            "line": 184,
+            "name": "D3 real coordinator admission and host retain conservative history after late proven transport close",
+            "mode": "test"
+          }
+        ],
+        "staticCount": 10,
+        "unresolved": 0
+      },
+      {
+        "path": "packages/cloud/api/src/speech-retirement-coordinator.test.ts",
+        "sha256": "b0459620c313a25c3776abeda420895f980343a6117178332f3c368ae78fcf70",
+        "tests": [
+          {
+            "line": 60,
+            "name": "duplicate initialize cannot reset an opened record",
+            "mode": "test"
+          },
+          {
+            "line": 65,
+            "name": "confirmed proof survives recreation and replays byte-equivalently",
+            "mode": "test"
+          },
+          {
+            "line": 70,
+            "name": "failed cleanup followed by recreation cannot manufacture success",
+            "mode": "test"
+          },
+          {
+            "line": 74,
+            "name": "legacy closed record is not a strong receipt",
+            "mode": "test"
+          },
+          {
+            "line": 78,
+            "name": "pending opening cannot resurrect active state after revoke",
+            "mode": "test"
+          },
+          {
+            "line": 89,
+            "name": "proof-write failure never acknowledges before a durable commit",
+            "mode": "test"
+          },
+          {
+            "line": 97,
+            "name": "late subscription after retirement is released exactly once",
+            "mode": "test"
+          },
+          {
+            "line": 105,
+            "name": "mismatched initializer cannot rebind owner or proof version",
+            "mode": "test"
+          },
+          {
+            "line": 110,
+            "name": "strong records require matching proof negotiation and owner",
+            "mode": "test"
+          },
+          {
+            "line": 116,
+            "name": "concurrent opening attempts have one durable winner",
+            "mode": "test"
+          },
+          {
+            "line": 122,
+            "name": "restored active record without a live capability remains unconfirmed",
+            "mode": "test"
+          },
+          {
+            "line": 127,
+            "name": "concurrent revokes share one cleanup and persisted proof",
+            "mode": "test"
+          },
+          {
+            "line": 133,
+            "name": "live zero-resource configuration failure confirms no dispatch",
+            "mode": "test"
+          },
+          {
+            "line": 142,
+            "name": "recreated zero-resource failure does not inherit live opening evidence",
+            "mode": "test"
+          },
+          {
+            "line": 147,
+            "name": "alarm retries an existing live holder and preserves unknown until success",
+            "mode": "test"
+          },
+          {
+            "line": 154,
+            "name": "automatic unknown cleanup is bounded, never confirmed by exhaustion",
+            "mode": "test"
+          },
+          {
+            "line": 161,
+            "name": "recreated exhausted retry alarm never resets durable retirement",
+            "mode": "test",
+            "sourceTitlePattern": "recreated %s retry alarm never resets durable retirement",
+            "parameterRowIndex": 0,
+            "parameterRow": "exhausted"
+          },
+          {
+            "line": 161,
+            "name": "recreated expired retry alarm never resets durable retirement",
+            "mode": "test",
+            "sourceTitlePattern": "recreated %s retry alarm never resets durable retirement",
+            "parameterRowIndex": 1,
+            "parameterRow": "expired"
+          },
+          {
+            "line": 161,
+            "name": "recreated missing-holder retry alarm never resets durable retirement",
+            "mode": "test",
+            "sourceTitlePattern": "recreated %s retry alarm never resets durable retirement",
+            "parameterRowIndex": 2,
+            "parameterRow": "missing-holder"
+          },
+          {
+            "line": 172,
+            "name": "live holder obeys persisted exhausted retry limit",
+            "mode": "test",
+            "sourceTitlePattern": "live holder obeys persisted %s retry limit",
+            "parameterRowIndex": 0,
+            "parameterRow": "exhausted"
+          },
+          {
+            "line": 172,
+            "name": "live holder obeys persisted expired retry limit",
+            "mode": "test",
+            "sourceTitlePattern": "live holder obeys persisted %s retry limit",
+            "parameterRowIndex": 1,
+            "parameterRow": "expired"
+          },
+          {
+            "line": 180,
+            "name": "an intervening revoke count cannot lend the alarm another attempt",
+            "mode": "test"
+          },
+          {
+            "line": 189,
+            "name": "live-holder deadline exhaustion finalizes its frozen counter without a third cleanup",
+            "mode": "test"
+          },
+          {
+            "line": 210,
+            "name": "D2 expired automatic alarm finalizes the live unknown holder without another provider cleanup",
+            "mode": "test"
+          },
+          {
+            "line": 225,
+            "name": "D2 capped automatic alarm never grants another attempt or fabricates an evicted holder",
+            "mode": "test"
+          },
+          {
+            "line": 241,
+            "name": "D2 finalizer rejection remains observable and removes the alarm without changing proof or target",
+            "mode": "test"
+          }
+        ],
+        "staticCount": 26,
+        "unresolved": 0
+      },
+      {
+        "path": "packages/cloud/api/src/speech-retirement-state.test.ts",
+        "sha256": "032bb49d49e77e09e9344e3e00e288ca1de7227c1a22337a75e7b2200369a593",
+        "tests": [
+          {
+            "line": 7,
+            "name": "duplicate initialization never resets starting",
+            "mode": "test",
+            "sourceTitlePattern": "duplicate initialization never resets %s",
+            "parameterRowIndex": 0,
+            "parameterRow": "starting"
+          },
+          {
+            "line": 7,
+            "name": "duplicate initialization never resets retiring",
+            "mode": "test",
+            "sourceTitlePattern": "duplicate initialization never resets %s",
+            "parameterRowIndex": 1,
+            "parameterRow": "retiring"
+          },
+          {
+            "line": 7,
+            "name": "duplicate initialization never resets closed",
+            "mode": "test",
+            "sourceTitlePattern": "duplicate initialization never resets %s",
+            "parameterRowIndex": 2,
+            "parameterRow": "closed"
+          },
+          {
+            "line": 11,
+            "name": "rejects changed immutable sessionId",
+            "mode": "test",
+            "sourceTitlePattern": "rejects changed immutable %s",
+            "parameterRowIndex": 0,
+            "parameterRow": "sessionId"
+          },
+          {
+            "line": 11,
+            "name": "rejects changed immutable tokenDigest",
+            "mode": "test",
+            "sourceTitlePattern": "rejects changed immutable %s",
+            "parameterRowIndex": 1,
+            "parameterRow": "tokenDigest"
+          },
+          {
+            "line": 11,
+            "name": "rejects changed immutable expiresAt",
+            "mode": "test",
+            "sourceTitlePattern": "rejects changed immutable %s",
+            "parameterRowIndex": 2,
+            "parameterRow": "expiresAt"
+          },
+          {
+            "line": 11,
+            "name": "rejects changed immutable proofVersion",
+            "mode": "test",
+            "sourceTitlePattern": "rejects changed immutable %s",
+            "parameterRowIndex": 3,
+            "parameterRow": "proofVersion"
+          },
+          {
+            "line": 14,
+            "name": "late owned completion cannot overwrite revoke generation",
+            "mode": "test"
+          },
+          {
+            "line": 19,
+            "name": "concurrent revoke joins generation and attempt",
+            "mode": "test"
+          },
+          {
+            "line": 23,
+            "name": "restored active without evidence is unconfirmed",
+            "mode": "test"
+          },
+          {
+            "line": 29,
+            "name": "confirmed proof persists and initialization/revoke replay does not alter it",
+            "mode": "test"
+          },
+          {
+            "line": 36,
+            "name": "conservative settlement never becomes actual or confirmed",
+            "mode": "test"
+          },
+          {
+            "line": 42,
+            "name": "valid never-started closes admission with no reservation",
+            "mode": "test"
+          },
+          {
+            "line": 46,
+            "name": "initializer cannot change caller id",
+            "mode": "test",
+            "sourceTitlePattern": "initializer cannot change caller %s",
+            "parameterRowIndex": 0,
+            "parameterRow": "id"
+          },
+          {
+            "line": 46,
+            "name": "initializer cannot change caller organization_id",
+            "mode": "test",
+            "sourceTitlePattern": "initializer cannot change caller %s",
+            "parameterRowIndex": 1,
+            "parameterRow": "organization_id"
+          },
+          {
+            "line": 50,
+            "name": "completed failed attempt gets a new token while pending joins keep theirs",
+            "mode": "test"
+          },
+          {
+            "line": 59,
+            "name": "live opening completion can confirm no dispatch but recreation cannot",
+            "mode": "test"
+          },
+          {
+            "line": 69,
+            "name": "D3 late closure requires both terminal money and unchanged frozen kind and generation evidence",
+            "mode": "test"
+          }
+        ],
+        "staticCount": 18,
+        "unresolved": 0
+      },
+      {
+        "path": "packages/host/src/voice/speech-retirement-session.test.ts",
+        "sha256": "9787bccff9df24a302971c152f8cacf520b7c3259a77170a1161afc9c1e63376",
+        "tests": [
+          {
+            "line": 27,
+            "name": "trusted STT drain and actual settlement yield explicit evidence",
+            "mode": "test"
+          },
+          {
+            "line": 46,
+            "name": "unknown drain remains unknown even when conservative settlement completes",
+            "mode": "test"
+          },
+          {
+            "line": 51,
+            "name": "settlement failure is explicit and only an explicit retry reattempts it",
+            "mode": "test"
+          },
+          {
+            "line": 56,
+            "name": "shutdown waits pending credit admission and settles undispatched work",
+            "mode": "test"
+          },
+          {
+            "line": 66,
+            "name": "TTS context completion without transport confirmation is not proof",
+            "mode": "test"
+          },
+          {
+            "line": 75,
+            "name": "shutdown waits pending quota and does not dispatch a provider",
+            "mode": "test"
+          },
+          {
+            "line": 84,
+            "name": "confirmed never-bound TTS cancels queued text at zero cost",
+            "mode": "test"
+          },
+          {
+            "line": 94,
+            "name": "a concurrent retry joins the first pending retirement",
+            "mode": "test"
+          },
+          {
+            "line": 103,
+            "name": "ambiguous quota release is not repeated by a cleanup retry",
+            "mode": "test"
+          },
+          {
+            "line": 112,
+            "name": "a successful quota release is not repeated after another cleanup failure",
+            "mode": "test"
+          },
+          {
+            "line": 125,
+            "name": "late STT evidence retains its conservative charge while TTS settles once",
+            "mode": "test"
+          },
+          {
+            "line": 135,
+            "name": "a lost settlement acknowledgement retries the original per-kind evidence",
+            "mode": "test"
+          },
+          {
+            "line": 157,
+            "name": "final bounded retry settles the frozen submitted counter but leaves provider unknown",
+            "mode": "test"
+          },
+          {
+            "line": 174,
+            "name": "unknown quota acknowledgement preserves separate provider/money proof, committed=false",
+            "mode": "test"
+          },
+          {
+            "line": 174,
+            "name": "unknown quota acknowledgement preserves separate provider/money proof, committed=true",
+            "mode": "test"
+          }
+        ],
+        "staticCount": 15,
+        "unresolved": 0
+      }
+    ]
+  }
+}

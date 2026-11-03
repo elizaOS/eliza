@@ -1,0 +1,20 @@
+{
+  "lockfileVersion": 1,
+  "configVersion": 1,
+  "packages": 4592,
+  "workspaces": 135,
+  "locators": {
+    "registry-or-other": 4458,
+    "workspace": 134
+  },
+  "gitDependencies": [],
+  "scope": "Static lock data only, not registry/download/runtime verification.",
+  "allValueGitReferences": [],
+  "registryPackages": 4458,
+  "registryIntegrityEntries": 4458,
+  "unexpectedLocators": [],
+  "registryPackageNamesContainingGitAreNotGitLocators": [
+    "@npmcli/git@8.0.0",
+    "isomorphic-git@1.42.2"
+  ]
+}
