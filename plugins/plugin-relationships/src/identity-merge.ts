@@ -179,9 +179,17 @@ export function foldIdentity(
   return result;
 }
 
-/** Compares ISO instants by time, so a UTC offset cannot reorder them. */
+/**
+ * Compares ISO instants by time, so a UTC offset cannot reorder them. An
+ * unparseable candidate never wins, and a parseable one replaces an
+ * unparseable current value, as `laterIso` lets a valid time heal the state.
+ */
 function isLaterInstant(candidate: string, current: string | undefined) {
-  return current === undefined || Date.parse(candidate) > Date.parse(current);
+  const candidateMs = Date.parse(candidate);
+  if (!Number.isFinite(candidateMs)) return false;
+  if (current === undefined) return true;
+  const currentMs = Date.parse(current);
+  return !Number.isFinite(currentMs) || candidateMs > currentMs;
 }
 
 /**
@@ -199,12 +207,16 @@ export function mergeEntities(args: {
   let identities = [...args.target.identities];
   const tags = new Set(args.target.tags);
   const attributes = { ...(args.target.attributes ?? {}) };
-  // The platform belongs to the interaction that set `lastObservedAt`, so the
-  // two move together, as in `EntityStore.recordInteraction`.
-  let latestObserved = {
-    at: args.target.state.lastObservedAt,
-    platform: args.target.state.lastInteractionPlatform,
-  };
+  // The platform belongs to the newest contact that recorded one, as in
+  // `EntityStore.recordInteraction`. A newer observation without a platform
+  // moves `lastObservedAt` but does not erase the newest known platform.
+  let latestObservedAt = args.target.state.lastObservedAt;
+  let latestPlatform = args.target.state.lastInteractionPlatform
+    ? {
+        at: args.target.state.lastObservedAt,
+        platform: args.target.state.lastInteractionPlatform,
+      }
+    : undefined;
   const seenLastInbound: string[] = [args.target.state.lastInboundAt ?? ""];
   const seenLastOutbound: string[] = [args.target.state.lastOutboundAt ?? ""];
 
@@ -230,11 +242,17 @@ export function mergeEntities(args: {
       }
     }
     const observedAt = source.state.lastObservedAt;
-    if (observedAt && isLaterInstant(observedAt, latestObserved.at)) {
-      latestObserved = {
-        at: observedAt,
-        platform: source.state.lastInteractionPlatform,
-      };
+    if (observedAt && isLaterInstant(observedAt, latestObservedAt)) {
+      latestObservedAt = observedAt;
+    }
+    const platform = source.state.lastInteractionPlatform;
+    if (
+      platform &&
+      observedAt &&
+      (latestPlatform === undefined ||
+        isLaterInstant(observedAt, latestPlatform.at))
+    ) {
+      latestPlatform = { at: observedAt, platform };
     }
     if (source.state.lastInboundAt) {
       seenLastInbound.push(source.state.lastInboundAt);
@@ -260,9 +278,9 @@ export function mergeEntities(args: {
       Object.keys(attributes).length > 0 ? attributes : args.target.attributes,
     state: {
       ...args.target.state,
-      ...(latestObserved.at ? { lastObservedAt: latestObserved.at } : {}),
-      ...(latestObserved.platform
-        ? { lastInteractionPlatform: latestObserved.platform }
+      ...(latestObservedAt ? { lastObservedAt: latestObservedAt } : {}),
+      ...(latestPlatform
+        ? { lastInteractionPlatform: latestPlatform.platform }
         : {}),
       ...(pickLatest(seenLastInbound)
         ? { lastInboundAt: pickLatest(seenLastInbound) }
