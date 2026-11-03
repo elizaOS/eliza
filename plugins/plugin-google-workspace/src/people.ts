@@ -90,7 +90,18 @@ export class GooglePeopleClient {
       results.push(...mapSearchResults(otherResponse.data.results, "otherContact"));
     }
 
-    return requestedLimit === undefined ? results : results.slice(0, requestedLimit);
+    // One person can appear in both sources: a saved contact and its
+    // interaction-derived record share one `resourceName`. Report each person
+    // once, keep the saved contact (pushed first), and apply `maxResults` to
+    // distinct people so a duplicate never consumes a requested slot.
+    const unique: GooglePersonContact[] = [];
+    const seenResourceNames = new Set<string>();
+    for (const contact of results) {
+      if (seenResourceNames.has(contact.resourceName)) continue;
+      seenResourceNames.add(contact.resourceName);
+      unique.push(contact);
+    }
+    return requestedLimit === undefined ? unique : unique.slice(0, requestedLimit);
   }
 
   async getContact(params: GooglePeopleGetContactInput): Promise<GooglePersonContact> {

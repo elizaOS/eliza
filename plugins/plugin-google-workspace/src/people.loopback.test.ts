@@ -45,6 +45,38 @@ beforeAll(async () => {
       );
       return;
     }
+    if (url.pathname === "/v1/people:searchContacts") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          results: [
+            {
+              person: {
+                resourceName: "people/shared-person",
+                names: [{ displayName: "Shared Person" }],
+              },
+            },
+          ],
+        })
+      );
+      return;
+    }
+    if (url.pathname === "/v1/otherContacts:search") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          results: [
+            {
+              person: {
+                resourceName: "people/shared-person",
+                names: [{ displayName: "Shared Person" }],
+              },
+            },
+          ],
+        })
+      );
+      return;
+    }
     response.writeHead(404, { "content-type": "application/json" });
     response.end(JSON.stringify({ error: { code: 404 } }));
   });
@@ -90,6 +122,16 @@ describe("Google People provider boundary", () => {
     ).rejects.toMatchObject({ code: "GOOGLE_PEOPLE_RESOURCE_NAME_INVALID" });
     expect(resolver.calls).toBe(authCalls);
     expect(paths).toEqual([]);
+  });
+
+  it("returns one person when both contact sources carry the same resource", async () => {
+    const results = await client.searchContacts({
+      accountId: "owner-account",
+      query: "shared",
+    });
+
+    expect(results.map((contact) => contact.resourceName)).toEqual(["people/shared-person"]);
+    expect(results[0]?.source).toBe("contact");
   });
 });
 
