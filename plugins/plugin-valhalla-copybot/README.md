@@ -12,17 +12,27 @@ The repository is public. An access code, if you set one, only opens the app. It
 4. Paste your Google AI Studio key into `GOOGLE_GENERATIVE_AI_API_KEY`. Leave `VALHALLA_LIVE_TRADING=false`.
 5. Double-click `start.bat` on Windows, or run `./start.sh` on Mac or Linux.
 
-The desk opens at `http://127.0.0.1:8787`. It does not listen on other computers.
+The desk opens at `http://127.0.0.1:8787`. It stays on this PC unless you set `VALHALLA_BIND=0.0.0.0` so the phone on your network can pair. Wallet actions still refuse any request that is not from this PC.
 
-### Phone test build
+### Phone
 
-Download the sideload APK from the [v0.1.0-test release](https://github.com/TokenJunction/eliza-Vallahla/releases/tag/v0.1.0-test): [valhalla-0.1.0-test.apk](https://github.com/TokenJunction/eliza-Vallahla/releases/download/v0.1.0-test/valhalla-0.1.0-test.apk).
+Install the APK from this repository's Releases page when a build is published. That is the normal path. The phone does not need Android Studio.
 
-On the phone, allow installs from unknown sources, then open the file. The app shows a pairing screen first. It does not crash if the PC desk is off. The ads are Google test ads. The phone does not store the wallet key.
+On the phone, allow installs from unknown sources, then open the file. The app opens on the last screen you used. The first time, that screen is pairing. It does not crash if the PC desk is off. It shows the last known status instead. The ads are Google test ads.
 
-The first screen creates a small bot wallet, or imports one. Write down a new wallet's backup. It is shown once. Fund it from your own wallet app. The screen shows the address and a QR code. Pick Safe, Balanced, or Aggressive. Then press Go.
+The phone does not store a wallet key. It has no send or withdraw control. Create and fund the bot wallet on the PC desk. Write down a new wallet's backup there. It is shown once.
 
-The bot stays read-only. Arm live only from Controls, and only after you type `CONFIRM LIVE`. Set `VALHALLA_LIVE_TRADING=false` in `.env` if you want the file to block live swaps.
+After you pair, the phone watches the PC agent:
+
+- It reconnects with a longer wait after each miss.
+- A heartbeat warns you if the agent is stalled or offline.
+- Recover agent asks the PC to run the safe watchdog. The loop restarts only when no position is open.
+- A background notice carries those alerts. The app does not ask you to turn battery optimization off.
+- If the pairing token expires, the phone asks for a new one.
+- Error lines stay on the phone. Open Error log to read them.
+- Chat uses the same PC agent and the same Google AI Studio key. The key stays on the PC. A settings idea is not applied until you tap confirm, and it must stay inside the desk limits.
+
+The bot stays read-only. Arm live only from Controls on the PC, and only after you type `CONFIRM LIVE`. Set `VALHALLA_LIVE_TRADING=false` in `.env` if you want the file to block live swaps.
 
 There is no send or withdraw button. Move SOL with your own wallet app.
 

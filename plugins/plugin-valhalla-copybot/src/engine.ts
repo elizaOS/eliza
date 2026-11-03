@@ -388,6 +388,70 @@ export class AgentEngine {
     this.audit("watchdog", "recovered stalled loop");
   }
 
+  /**
+   * Phone request for the safe watchdog recovery.
+   * The loop is restarted only when no position is open.
+   */
+  recoverFromPhone(now = Date.now()): { restarted: boolean; message: string } {
+    if (this.book.positions.length > 0) {
+      this.log("watchdog", "Recovery refused. Open positions stay put.");
+      this.audit("watchdog", "phone recovery refused while positions are open");
+      return {
+        restarted: false,
+        message: "Open positions stay put. The loop was not restarted.",
+      };
+    }
+    const age = this.lastTickStart > 0 ? now - this.lastTickStart : Number.POSITIVE_INFINITY;
+    const stalled = this.book.running && this.ticking && age >= 30_000;
+    const stopped = !this.loopTimer || !this.book.running;
+    if (!stalled && !stopped) {
+      return {
+        restarted: false,
+        message: "The loop is running. No positions were open, so it was left as it is.",
+      };
+    }
+    this.ticking = false;
+    if (this.loopTimer) clearInterval(this.loopTimer);
+    this.loopTimer = null;
+    if (this.watchdog) clearInterval(this.watchdog);
+    this.watchdog = null;
+    const message = this.startLoop();
+    this.log("watchdog", "Recovered the loop. No positions were open.");
+    this.audit("watchdog", "recovered stalled loop");
+    return {
+      restarted: true,
+      message: `Recovered the loop. No positions were open. ${message}`,
+    };
+  }
+
+  heartbeat(now = Date.now()): {
+    online: true;
+    stalled: boolean;
+    running: boolean;
+    openPositions: number;
+    lastTickMs: number | null;
+    ageMs: number | null;
+  } {
+    const lastTickMs = this.lastTickStart > 0 ? this.lastTickStart : null;
+    const ageMs = lastTickMs == null ? null : now - lastTickMs;
+    return {
+      online: true,
+      stalled: Boolean(this.book.running && this.ticking && ageMs != null && ageMs >= 30_000),
+      running: this.book.running,
+      openPositions: this.book.positions.length,
+      lastTickMs,
+      ageMs,
+    };
+  }
+
+  /** Test hook. Marks the current tick as stuck. */
+  markStuckTickForTests(ageMs: number): void {
+    this.book.running = true;
+    this.ticking = true;
+    this.lastTickStart = Date.now() - ageMs;
+    this.loopTimer = this.loopTimer ?? setInterval(() => undefined, 60_000);
+  }
+
   private async track<T>(work: Promise<T>): Promise<T> {
     this.inflight += 1;
     try {

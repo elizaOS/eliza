@@ -2,10 +2,20 @@
 <resources>
     <string name="app_name">Valhalla</string>
     <string name="title">ACCELERATION</string>
-    <string name="subtitle">Valhalla test desk · not paired</string>
+    <string name="subtitle">Valhalla phone · no wallet key</string>
     <string name="hint">PC desk address, for example http://192.168.1.20:8787</string>
-    <string name="connect">Check desk</string>
+    <string name="access_hint">Access code, if the PC asks for one</string>
+    <string name="connect">Pair with the PC</string>
     <string name="status_idle">The phone starts here. Pairing is optional. Nothing is sent.</string>
+    <string name="cached">Showing the last known state. The PC agent is not connected.</string>
+    <string name="recover">Recover agent</string>
+    <string name="open_chat">Ask the agent</string>
+    <string name="open_errors">Error log</string>
+    <string name="stop_watch">Stop background alerts</string>
+    <string name="chat_hint">Ask about a trade, P&amp;L, or a settings tweak</string>
+    <string name="chat_send">Send</string>
+    <string name="confirm_suggestion">Confirm this settings change</string>
+    <string name="back">Back to status</string>
     <string name="ad_label">Test ad</string>
-    <string name="safety">No send or withdraw. Keys stay on the PC. Read-only until you arm live on the desk.</string>
+    <string name="safety">No send or withdraw. Keys stay on the PC. A settings change needs your confirm tap. Alerts do not turn off battery optimization.</string>
 </resources>

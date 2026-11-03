@@ -3,6 +3,7 @@ import { createReadStream } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { companionResponse, isLoopback, phoneMayCall } from "./companion.ts";
 import { decisionLines, metaView, pnlView, stateView, walletDots } from "./desk-view.ts";
 import type { AgentEngine } from "./engine.ts";
 import { tail4 } from "./net.ts";
@@ -70,9 +71,16 @@ function cookie(req: IncomingMessage): string {
 
 export interface DashboardOptions {
   port?: number;
+  host?: string;
   password?: string;
   accessCode?: string;
   openBrowser?: boolean;
+}
+
+function bindHost(raw: string | undefined): string {
+  const host = (raw ?? "").trim();
+  if (!host || !/^[A-Za-z0-9.:-]+$/.test(host)) return "127.0.0.1";
+  return host;
 }
 
 export function startDashboard(
@@ -82,6 +90,7 @@ export function startDashboard(
   const port = options.port ?? Number(process.env.VALHALLA_DASHBOARD_PORT || 8787);
   const password = options.password ?? process.env.VALHALLA_DASHBOARD_PASSWORD ?? "";
   const accessCode = options.accessCode ?? process.env.VALHALLA_ACCESS_CODE ?? "";
+  const host = bindHost(options.host ?? process.env.VALHALLA_BIND);
   const server = createServer((req, res) => {
     void handle(engine, req, res, password, accessCode).catch((err: unknown) => {
       const message = err instanceof Error ? err.message : "error";
@@ -90,7 +99,6 @@ export function startDashboard(
         send(res, 500, { ok: false, error: "The desk hit an error. See the log panel." });
     });
   });
-  const host = "127.0.0.1";
   return new Promise((resolve, reject) => {
     server.once("error", reject);
     server.listen(port, host, () => {
@@ -118,6 +126,16 @@ async function handle(
   const pathname = url.pathname;
   if (pathname.includes("..") || /send|withdraw|transfer|sweep/i.test(pathname)) {
     send(res, 404, { ok: false, error: "This desk has no send or withdraw path." });
+    return;
+  }
+  if (pathname.startsWith("/api/companion/")) {
+    const result = await companionResponse(engine, req, pathname, accessCode);
+    send(res, result.status, result.body);
+    return;
+  }
+  const remote = req.socket.remoteAddress;
+  if (!isLoopback(remote) && pathname.startsWith("/api/") && !phoneMayCall(pathname)) {
+    send(res, 404, { ok: false, error: "The phone has no send or withdraw path." });
     return;
   }
   if (req.method === "POST" && pathname === "/api/login") {
