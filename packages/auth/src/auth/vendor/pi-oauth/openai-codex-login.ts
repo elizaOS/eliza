@@ -132,6 +132,8 @@ type TokenFailure = {
   reason: string;
   /** HTTP status of a token endpoint rejection; absent for transport/parse failures. */
   status?: number;
+  /** The endpoint refused the refresh token itself; only a new sign-in helps. */
+  rejected?: true;
 };
 type TokenResult = TokenSuccess | TokenFailure;
 
@@ -147,19 +149,70 @@ function isNonBlankString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-function failedTokenResponse(reason: string, status?: number): TokenFailure {
-  return status === undefined
-    ? { type: "failed", reason }
-    : { type: "failed", reason, status };
+function failedTokenResponse(
+  reason: string,
+  status?: number,
+  rejected = false,
+): TokenFailure {
+  return {
+    type: "failed",
+    reason,
+    ...(status === undefined ? {} : { status }),
+    ...(rejected ? { rejected: true as const } : {}),
+  };
 }
 
 /**
- * Statuses with which the OAuth token endpoint refuses the refresh grant
- * itself (RFC 6749 section 5.2: `invalid_grant` and friends answer 400; a
- * revoked or reused token may answer 401/403). Retrying cannot succeed; only
- * a new sign-in can.
+ * OAuth error codes with which the token endpoint refuses the refresh grant
+ * itself: RFC 6749 section 5.2, plus the refresh-token codes the Codex CLI
+ * treats as a required sign-in. Retrying cannot succeed; only a new sign-in
+ * can.
  */
-const REJECTED_REFRESH_STATUSES = new Set([400, 401, 403]);
+const PERMANENT_REFRESH_ERROR_CODES: ReadonlySet<string> = new Set([
+  "invalid_grant",
+  "invalid_client",
+  "unauthorized_client",
+  "access_denied",
+  "refresh_token_expired",
+  "refresh_token_reused",
+  "refresh_token_invalidated",
+]);
+
+/**
+ * Whether a non-success refresh response refuses the refresh token itself.
+ * 401 always does. A 400 or 403 does only when its JSON body names a
+ * permanent OAuth error code: a WAF challenge page, a proxy error page or
+ * `temporarily_unavailable` on those statuses must not park every pooled
+ * account as needs-reauth. The body is compared against the closed code set
+ * and never logged or copied into an error (error-policy:J6).
+ */
+async function isPermanentRefreshRejection(
+  response: Response,
+): Promise<boolean> {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (
+    (response.status !== 400 && response.status !== 403) ||
+    !contentType.toLowerCase().includes("application/json")
+  ) {
+    await releaseRejectedResponse(response);
+    return response.status === 401;
+  }
+  try {
+    const body: unknown = await response.json();
+    const error = isRecord(body) ? body.error : undefined;
+    const code =
+      typeof error === "string"
+        ? error
+        : isRecord(error) && typeof error.code === "string"
+          ? error.code
+          : undefined;
+    return code !== undefined && PERMANENT_REFRESH_ERROR_CODES.has(code);
+  } catch {
+    // error-policy:J6 an unreadable rejection body is not proof that the
+    // refresh token was refused; keep the failure transient.
+    return false;
+  }
+}
 
 /**
  * The token endpoint refused the stored refresh token, so the account needs a
@@ -332,14 +385,15 @@ async function refreshAccessToken(
       }),
     });
     if (!response.ok) {
-      await releaseRejectedResponse(response);
+      const rejected = await isPermanentRefreshRejection(response);
       logger.error(
-        { mode: "refresh", status: response.status },
+        { mode: "refresh", status: response.status, rejected },
         "[openai-codex] Token request returned a non-success status",
       );
       return failedTokenResponse(
         "provider returned a non-success status",
         response.status,
+        rejected,
       );
     }
     return readTokenResponse(response, {
@@ -573,14 +627,13 @@ export async function refreshOpenAICodexToken(
   if (result.type !== "success") {
     if (
       result.status !== undefined &&
-      REJECTED_REFRESH_STATUSES.has(result.status)
+      result.rejected
     )
       throw new OpenAICodexRefreshRejectedError(result.status);
-    throw new Error(
-      result.status === undefined
-        ? "Failed to refresh OpenAI Codex token"
-        : `Failed to refresh OpenAI Codex token (HTTP ${result.status})`,
-    );
+    // No status in the message: the shared refresh classifier reads a bare
+    // 401/403 as an auth failure, and only the typed rejection above means the
+    // refresh token was refused. The status is already in the structured log.
+    throw new Error("Failed to refresh OpenAI Codex token");
   }
   const accountId = getAccountId(result.access);
   if (!accountId) {

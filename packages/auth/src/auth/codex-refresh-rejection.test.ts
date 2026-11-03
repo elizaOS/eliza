@@ -88,13 +88,69 @@ describe("OpenAI Codex refresh failure classification", () => {
     },
   );
 
+  // A WAF challenge, a proxy error page or a temporary OAuth error on 400/403
+  // does not prove the refresh token was refused; parking every pooled
+  // account as needs-reauth on one would take the whole pool offline.
+  it.each([
+    [
+      "a Cloudflare challenge page (HTTP 403)",
+      403,
+      "<html><title>Just a moment...</title></html>",
+      "text/html; charset=UTF-8",
+    ],
+    [
+      "a proxy error page (HTTP 400)",
+      400,
+      "<html><body>400 Bad Request</body></html>",
+      "text/html",
+    ],
+    [
+      "a temporary OAuth error (HTTP 400)",
+      400,
+      JSON.stringify({ error: "temporarily_unavailable" }),
+      "application/json",
+    ],
+  ])("keeps %s transient", async (_label, status, body, contentType) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response(body, {
+            status,
+            headers: { "content-type": contentType },
+          }),
+      ),
+    );
+    const outcome = await refreshOutcome();
+    expect(outcome).toEqual({
+      ok: false,
+      kind: "transient",
+      message: "Failed to refresh OpenAI Codex token",
+    });
+  });
+
+  it("classifies HTTP 401 as auth whatever the body", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(
+        async () =>
+          new Response("Unauthorized", {
+            status: 401,
+            headers: { "content-type": "text/plain" },
+          }),
+      ),
+    );
+    const outcome = await refreshOutcome();
+    expect(outcome.ok ? null : outcome.kind).toBe("auth");
+  });
+
   it("keeps a provider outage (HTTP 503) transient", async () => {
     stubTokenEndpoint(503, { error: "temporarily_unavailable" });
     const outcome = await refreshOutcome();
     expect(outcome).toEqual({
       ok: false,
       kind: "transient",
-      message: "Failed to refresh OpenAI Codex token (HTTP 503)",
+      message: "Failed to refresh OpenAI Codex token",
     });
   });
 
