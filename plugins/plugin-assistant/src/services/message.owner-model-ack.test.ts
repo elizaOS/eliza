@@ -4,6 +4,9 @@ import {
   authorizeOwnerExclusiveDisclosure,
   ChannelType,
   createCharacter,
+  GazetteerEntityRecognizer,
+  getTrajectoryContext,
+  PseudonymSession,
   ModelType,
   TurnAbortedError,
 } from "@elizaos/core";
@@ -29,6 +32,11 @@ async function ownerModelAcknowledgment(
     toolCategories = [] as string[],
     toolName = "LOOKUP",
     guestInRoom = false,
+    contextRead = false,
+    contextReference = "CHOICE",
+    requestSilence = false,
+    abortAfterContextRead = false,
+    restorePii = false,
     duringActivityRevalidation = undefined as
       | "guest-joins"
       | "lookup-fails"
@@ -39,6 +47,11 @@ async function ownerModelAcknowledgment(
   const controller = new AbortController();
   let stage1Returned = false;
   let plannerReturned = false;
+  let plannerCalls = 0;
+  let contextReadIssued = false;
+  let readCompositions = 0;
+  const stage1Wires: string[] = [];
+  const providerText = "PRIVATE_CONTEXT_TEST_VALUE authorized complete guide. ".repeat(20);
   const events: string[] = [];
   const acknowledgments: string[] = [];
   const statuses: Array<{ actionName: string; label: string }> = [];
@@ -84,14 +97,43 @@ async function ownerModelAcknowledgment(
   runtime.actions.length = 0;
   runtime.evaluators.length = 0;
   let compositions = 0;
+  const piiSession = restorePii ? new PseudonymSession({
+    salt: "read-context-ack-fixture",
+    recognizer: new GazetteerEntityRecognizer([{ kind: "person", value: "Dana Whitfield" }]),
+  }) : undefined;
+  if (piiSession) {
+    await piiSession.learn("Dana Whitfield owns this guide.");
+    const restore = piiSession.restoreInValue.bind(piiSession);
+    vi.spyOn(piiSession, "restoreInValue").mockImplementation((value) => {
+      if (value === acknowledgment) events.push("restore-ack");
+      return restore(value);
+    });
+  }
+  if (contextRead) runtime.providers.push({
+    name: "CHOICE", description: "Authorized complete guide.",
+    get: async () => ({ text: providerText }),
+  });
   runtime.composeState = vi.fn(async (message: Memory) => {
     compositions++;
+    if (piiSession) {
+      const current = getTrajectoryContext();
+      if (!current) throw new Error("Expected actual turn trajectory context");
+      current.piiSwapSession = piiSession;
+    }
+    if (contextReadIssued && readCompositions === 0) {
+      readCompositions++;
+      events.push("read-compose");
+      if (abortAfterContextRead) controller.abort();
+    }
     if (ownerPrivatePlannerState && compositions === 1) {
       expect(
         (await authorizeOwnerExclusiveDisclosure(runtime, message)).allowed,
       ).toBe(true);
     }
-    return { values: { availableContexts: "general" }, data: {}, text: "" };
+    return { values: { availableContexts: "general" },
+      data: contextRead ? { providers: { CHOICE: {
+        text: providerText, discoveryText: "context_discovery: CHOICE",
+      } } } : {}, text: "" };
   }) as AgentRuntime["composeState"];
   const lookup = (
     name: string,
@@ -163,10 +205,19 @@ async function ownerModelAcknowledgment(
   let handlerCalls = 0;
   runtime.registerModel(
     ModelType.RESPONSE_HANDLER,
-    async () => {
+    async (_rt, params) => {
       const first = handlerCalls++ === 0;
       if (first) stage1Returned = true;
-      return first
+      if (contextRead && handlerCalls <= 2) {
+        stage1Wires.push(JSON.stringify({ messages: params.messages, tools: params.tools }));
+      }
+      if (contextRead && first) {
+        contextReadIssued = true;
+        return { text: "", toolCalls: [{ id: "read-choice", name: "READ_CONTEXT",
+          arguments: { contextRequests: [contextReference], acknowledgment } }], finishReason: "tool_calls" };
+      }
+      if (contextRead && handlerCalls === 2) events.push("read-handle-response");
+      return (contextRead ? handlerCalls === 2 : first)
         ? {
             text: "",
             toolCalls: [
@@ -180,7 +231,8 @@ async function ownerModelAcknowledgment(
                   intents: ["look up entry"],
                   candidateActionNames: tools.map((tool) => tool.name),
                   // No source originals: preserve current main plain reply text.
-                  replyText: acknowledgment,
+                  replyText: contextRead ? "" : acknowledgment,
+                  ...(contextRead ? { contextRequests: [] } : {}),
                   replyEffectStatus: "pending",
                   facts: [],
                   relationships: [],
@@ -215,6 +267,7 @@ async function ownerModelAcknowledgment(
     ModelType.ACTION_PLANNER,
     async () => {
       plannerReturned = true;
+      plannerCalls++;
       return {
         text: "",
         thought: "Look it up.",
@@ -234,9 +287,13 @@ async function ownerModelAcknowledgment(
     agentId: runtime.agentId,
     roomId: ROOM_ID,
     content: {
-      text: acknowledgment
-        ? "Look up this week."
-        : "Look up this week without saying anything or acknowledging it.",
+      text: contextRead
+        ? (requestSilence || !acknowledgment
+          ? "Open Calendar and look up this week without saying anything or acknowledging it."
+          : "Open Calendar and look up this week.")
+        : acknowledgment
+          ? "Look up this week."
+          : "Look up this week without saying anything or acknowledging it.",
       source: "client_chat",
       channelType: ChannelType.DM,
     },
@@ -281,7 +338,8 @@ async function ownerModelAcknowledgment(
     )
       throw error;
   }
-  return { chunks, acknowledgments, events, statuses };
+  return { chunks, acknowledgments, events, statuses, handlerCalls, plannerCalls,
+    stage1Wires, readCompositions, providerText };
 }
 
 describe("awaited owner model acknowledgments", () => {
@@ -475,4 +533,130 @@ describe("awaited owner model acknowledgments", () => {
       expect(result.statuses).toEqual([]);
     },
   );
+
+
+  describe("actual READ_CONTEXT whole-draft progress admission", () => {
+    it.each([
+      "Let me check.",
+      "Checking your calendar.",
+      "Let me open Calendar.",
+      "I’ll open Calendar.",
+    ])("publishes an admitted native read cue verbatim and awaits it before the next model: %s", async (acknowledgment) => {
+      const result = await ownerModelAcknowledgment(true, { contextRead: true, acknowledgment });
+      expect(result.acknowledgments).toEqual([acknowledgment]);
+      expect(result.readCompositions).toBe(1);
+      expect(result.stage1Wires).toHaveLength(2);
+      expect(result.stage1Wires[0]).toContain("READ_CONTEXT");
+      expect(result.stage1Wires[0]).not.toContain(result.providerText.trim());
+      expect(result.stage1Wires[1]).toContain(result.providerText.trim());
+      expect(result.events.indexOf("read-compose")).toBeLessThan(result.events.indexOf("ack-start"));
+      expect(result.events.indexOf("ack-start")).toBeLessThan(result.events.indexOf("ack-end"));
+      expect(result.events.indexOf("ack-end")).toBeLessThan(result.events.indexOf("read-handle-response"));
+      expect(result.events.indexOf("read-handle-response")).toBeLessThan(result.events.indexOf("tool"));
+      expect(result.events).not.toContain("planner-before-ack");
+      // Native read + HANDLE_RESPONSE + existing post-tool evaluation, not a
+      // new acknowledgement inference. Planning still uses its existing call.
+      expect(result.handlerCalls).toBe(3);
+      expect(result.plannerCalls).toBe(1);
+      expect(result.chunks).toEqual([]);
+    });
+
+    it.each([
+      "Let me open Calendar and take another shot at the rename.",
+      "Let me open Calendar only if you confirm.",
+      "Let me open Calendar? No, I won't.",
+      "Let me open the draft Sarah sent.",
+      "I'll update the appointment to 3pm",
+      "Your event is at 3 PM.",
+      "I renamed the event.",
+      "I opened Calendar.",
+      "Let me open Messages.",
+      "Let me open Reminders.",
+      "Let me open the calendar.",
+      "Let me open Calendar again.",
+      "Let me open PRIVATE_CONTEXT_TEST_VALUE.",
+      "Let me open Calendar. <analysis>PRIVATE_CONTEXT_TEST_VALUE</analysis>",
+    ])("withholds the whole malformed native read draft while the authorized read and work continue: %s", async (acknowledgment) => {
+      const result = await ownerModelAcknowledgment(true, { contextRead: true, acknowledgment });
+      expect(result.acknowledgments).toEqual([]);
+      expect(result.events).not.toContain("ack-start");
+      expect(result.events).toContain("read-compose");
+      expect(result.events).toContain("tool");
+      expect(result.readCompositions).toBe(1);
+      expect(result.stage1Wires).toHaveLength(2);
+      expect(result.stage1Wires[1]).toContain(result.providerText.trim());
+      expect(result.handlerCalls).toBe(3);
+      expect(result.plannerCalls).toBe(1);
+      expect(result.chunks).toEqual([]);
+    });
+
+    it("does not publish an acknowledgment or source body from a rejected native reference", async () => {
+      const result = await ownerModelAcknowledgment(true, {
+        contextRead: true, contextReference: "forged-unadvertised", acknowledgment: "Let me open Calendar.",
+      });
+      expect(result.acknowledgments).toEqual([]);
+      expect(result.events).not.toContain("ack-start");
+      expect(result.stage1Wires).toHaveLength(2);
+      expect(result.stage1Wires[1]).toContain("context_read_repair");
+      expect(result.stage1Wires[1]).not.toContain(result.providerText.trim());
+      expect(result.handlerCalls).toBe(3);
+      expect(result.plannerCalls).toBe(1);
+      expect(result.events).toContain("tool");
+    });
+
+    it("honors an empty model opt-out cue without suppressing the authorized context read", async () => {
+      const result = await ownerModelAcknowledgment(true, { contextRead: true, acknowledgment: "", requestSilence: true });
+      expect(result.acknowledgments).toEqual([]);
+      expect(result.readCompositions).toBe(1);
+      expect(result.stage1Wires).toHaveLength(2);
+      expect(result.stage1Wires[0]).toContain("If the user requests silence or no acknowledgment");
+      expect(result.events).toContain("tool");
+      expect(result.handlerCalls).toBe(3);
+      expect(result.plannerCalls).toBe(1);
+    });
+
+    it("does not claim a new runtime opt-out parser when the model violates the authoring rule", async () => {
+      const acknowledgment = "Let me check.";
+      const result = await ownerModelAcknowledgment(true, { contextRead: true, acknowledgment, requestSilence: true });
+      // This change reuses the existing text classifier; it does not add a
+      // natural-language parser for the user's silence request. The normative
+      // rule is present on the wire and remains the model's responsibility.
+      expect(result.stage1Wires[0]).toContain("If the user requests silence or no acknowledgment");
+      expect(result.acknowledgments).toEqual([acknowledgment]);
+      expect(result.handlerCalls).toBe(3);
+      expect(result.plannerCalls).toBe(1);
+    });
+
+    it("retains actual authorized PII restoration after whole-cue admission and before delivery", async () => {
+      const acknowledgment = "Let me check.";
+      const result = await ownerModelAcknowledgment(true, { contextRead: true, acknowledgment, restorePii: true });
+      expect(result.acknowledgments).toEqual([acknowledgment]);
+      expect(result.events).toContain("restore-ack");
+      expect(result.events.indexOf("restore-ack")).toBeLessThan(result.events.indexOf("ack-start"));
+      expect(result.events.indexOf("ack-end")).toBeLessThan(result.events.indexOf("read-handle-response"));
+      expect(result.handlerCalls).toBe(3);
+    });
+
+    it.each(["Let me check.", "Let me open Calendar."])("revalidates the actual owner-exclusive audience before publishing a native read cue: %s", async (acknowledgment) => {
+      const result = await ownerModelAcknowledgment(true, { contextRead: true, acknowledgment, changeAudienceBeforeAcknowledgment: true, restorePii: true });
+      expect(result.acknowledgments).toEqual([]);
+      expect(result.chunks.join(" ")).not.toContain("PRIVATE_CONTEXT_TEST_VALUE");
+      expect(result.events).not.toContain("ack-start");
+    });
+
+    it.each(["Let me check.", "Let me open Calendar."])("retains cancellation during actual native-read audience revalidation: %s", async (acknowledgment) => {
+      const result = await ownerModelAcknowledgment(true, { contextRead: true, acknowledgment, abortDuringRevalidation: true });
+      expect(result.acknowledgments).toEqual([]);
+      expect(result.events).not.toContain("ack-start");
+      expect(result.plannerCalls).toBe(0);
+    });
+
+    it("does not publish after a turn is cancelled by the completed context-read boundary", async () => {
+      const result = await ownerModelAcknowledgment(true, { contextRead: true, acknowledgment: "Let me open Calendar.", abortAfterContextRead: true });
+      expect(result.acknowledgments).toEqual([]);
+      expect(result.events).not.toContain("ack-start");
+      expect(result.plannerCalls).toBe(0);
+    });
+  });
+
 });

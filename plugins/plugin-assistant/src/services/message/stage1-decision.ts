@@ -90,6 +90,7 @@ import {
 import { withoutInactiveFields } from "./inactive-field-schema.js";
 import { composeResponseState } from "./provider-state.js";
 import { restorePiiInUserReplyText } from "./reply-policy.ts";
+import { replyIsClaimSafeAcknowledgment } from "./side-effect-claims.ts";
 import {
   createSourceReplySnapshot,
   isNativeReplyPartsCandidate,
@@ -1277,7 +1278,8 @@ export async function generateStage1Decision(
             reply: progress.text,
             actionResults: [],
             actions: args.runtime.actions,
-          }).verdict !== "reject"
+          }).verdict !== "reject" &&
+          replyIsClaimSafeAcknowledgment(progress.text)
         ) {
           stage1TurnSignal.throwIfAborted();
           await args.onPlanningAcknowledgment?.(
