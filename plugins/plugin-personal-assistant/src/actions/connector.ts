@@ -21,6 +21,7 @@ import type {
   MessageConnector,
   State,
 } from "@elizaos/core";
+import { getUserMessageText } from "@elizaos/core";
 import { extractActionParamsViaLlm } from "@elizaos/plugin-assistant";
 import { hasLifeOpsAccess, INTERNAL_URL } from "../lifeops/access.js";
 import { getConnectorRegistry } from "../lifeops/connectors/index.js";
@@ -1563,7 +1564,7 @@ export const connectorAction: Action & {
       subaction === "disconnect" &&
       !DISCONNECT_UNSUPPORTED_KINDS.has(connector) &&
       !ENV_MANAGED_CONNECTOR_KINDS.has(connector) &&
-      !CONNECTOR_DISCONNECT_CONFIRM_RE.test(messageText(message))
+      !CONNECTOR_DISCONNECT_CONFIRM_RE.test(getUserMessageText(message))
     ) {
       return {
         success: false,
