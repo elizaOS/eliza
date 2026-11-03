@@ -16,7 +16,10 @@ import type {
   IAgentRuntime,
   Memory,
 } from "@elizaos/core";
-import { FOLLOW_UP_CAPABLE_ACTION_TAG } from "@elizaos/core";
+import {
+  FOLLOW_UP_CAPABLE_ACTION_TAG,
+  getUserMessageText,
+} from "@elizaos/core";
 import { hasLifeOpsAccess } from "../lifeops/access.js";
 import { isOwnerReminderNonCommandContext } from "../lifeops/reminders/direct-routing.js";
 import { runBookTravelHandler } from "./book-travel.js";
@@ -656,11 +659,6 @@ const PERSONAL_ASSISTANT_ACTIONS = [
   "sign_document",
 ] as const;
 
-function getMessageText(message: Memory): string {
-  const text = message.content.text;
-  return typeof text === "string" ? text : "";
-}
-
 function firstUrl(text: string): string | null {
   return text.match(/https?:\/\/\S+/u)?.[0] ?? null;
 }
@@ -681,7 +679,11 @@ async function enqueueDocumentSignatureApproval(args: {
   callback?: HandlerCallback;
 }): Promise<ActionResult> {
   const params = readParameters(args.options);
-  const text = getMessageText(args.message);
+  // Read the user's words, not the document-augmentation envelope: a
+  // retrieved document fragment (for example, an NDA mention, its signing
+  // link, or a "return it in 30 days" phrase) must not name the document,
+  // supply its signing link, or set the approval deadline.
+  const text = getUserMessageText(args.message);
   const documentName =
     readStringParam(args.options, "documentName") ??
     (/nda/i.test(text) ? "NDA" : "Document for signature");
