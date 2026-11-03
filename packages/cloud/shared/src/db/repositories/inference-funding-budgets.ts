@@ -189,7 +189,12 @@ export async function recordConsumption(
   input: InferenceFundingBudgetConsumption,
 ): Promise<{ replayed: boolean }> {
   const amount = micros(input.amountMicros);
-  const lines = [...input.allocations].sort((a, b) => a.grantId.localeCompare(b.grantId));
+  // Code-unit order, not localeCompare: ICU collation is locale-dependent, so
+  // the consumptions rows would be inserted in host-locale order, while the
+  // grants are locked in Postgres id order in the transaction below.
+  const lines = [...input.allocations].sort((a, b) =>
+    a.grantId < b.grantId ? -1 : a.grantId > b.grantId ? 1 : 0,
+  );
   if (
     !input.requestId ||
     input.requestId.length > 128 ||
