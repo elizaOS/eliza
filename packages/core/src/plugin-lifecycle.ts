@@ -10,6 +10,7 @@ import type { ContextRegistry } from "./runtime/context-registry";
 import type { AgentContext, RoleGate, RoleGateRole } from "./types/contexts";
 import type { RegisteredEvaluator } from "./types/evaluator";
 import type { ModelRegistrationMetadata } from "./types/model";
+import type { PipelineHookSpec } from "./types/pipeline-hooks";
 import type {
 	Plugin,
 	PluginEventRegistration,
@@ -551,6 +552,7 @@ function createEmptyOwnership(plugin: Plugin): PluginOwnership {
 		chatPreHandlerIds: [],
 		responseHandlerEvaluatorNames: [],
 		responseHandlerFieldEvaluatorNames: [],
+		pipelineHookIds: [],
 		registeredAt: Date.now(),
 	};
 }
@@ -583,6 +585,8 @@ async function stopOwnedServices(
 		serviceGroups.set(ownedService.serviceType, nextGroup);
 	}
 
+	const stopErrors: unknown[] = [];
+
 	for (const [serviceType, ownedClasses] of serviceGroups) {
 		const key = serviceType as ServiceTypeName;
 		const inFlightStart = privateState.startingServices.get(key);
@@ -608,7 +612,22 @@ async function stopOwnedServices(
 		for (const ownedClass of ownedClasses) {
 			const instance = privateState.serviceInstancesByClass.get(ownedClass);
 			if (instance && typeof instance.stop === "function") {
-				await instance.stop();
+				try {
+					await instance.stop();
+				} catch (error) {
+					// error-policy:J6 one broken stop() must not strand the other
+					// owned services; collect and keep tearing down.
+					stopErrors.push(error);
+					runtime.logger.warn(
+						{
+							src: "plugin-lifecycle",
+							plugin: ownership.pluginName,
+							serviceType,
+							error: error instanceof Error ? error.message : String(error),
+						},
+						"Owned service stop() threw; continuing teardown",
+					);
+				}
 			}
 			if (instance) {
 				// The same instance can be published more than once when
@@ -650,6 +669,15 @@ async function stopOwnedServices(
 				privateState.servicePromiseHandlers.delete(key);
 			}
 		}
+	}
+
+	if (stopErrors.length > 0) {
+		// Preserve the failures for the caller's aggregate after every owned
+		// resource received its teardown opportunity.
+		throw new AggregateError(
+			stopErrors,
+			`One or more owned services of plugin "${ownership.pluginName}" threw during stop`,
+		);
 	}
 }
 
@@ -773,6 +801,9 @@ function removeOwnedComponents(
 	}
 	for (const name of ownership.responseHandlerFieldEvaluatorNames) {
 		runtime.unregisterResponseHandlerFieldEvaluator(name);
+	}
+	for (const id of ownership.pipelineHookIds) {
+		runtime.unregisterPipelineHook(id);
 	}
 }
 
@@ -919,6 +950,8 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		runtimeWithLifecycle.registerResponseHandlerFieldEvaluator.bind(
 			runtimeWithLifecycle,
 		);
+	const originalRegisterPipelineHook =
+		runtimeWithLifecycle.registerPipelineHook.bind(runtimeWithLifecycle);
 	const originalRegisterMessageConnector =
 		runtimeWithLifecycle.registerMessageConnector.bind(runtimeWithLifecycle);
 	const originalRegisterPostConnector =
@@ -1145,6 +1178,13 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 		}
 	}) as typeof runtimeWithLifecycle.registerResponseHandlerFieldEvaluator;
 
+	runtimeWithLifecycle.registerPipelineHook = ((spec: PipelineHookSpec) => {
+		const capture = pluginRegistrationContext.getStore();
+		originalRegisterPipelineHook(spec);
+		if (!capture) return;
+		pushUniqueString(capture.ownership.pipelineHookIds, spec.id);
+	}) as typeof runtimeWithLifecycle.registerPipelineHook;
+
 	if (originalRegisterSendHandler) {
 		privateState.registerSendHandler = ((source, handler) => {
 			originalRegisterSendHandler(source, handler);
@@ -1234,6 +1274,7 @@ export function installRuntimePluginLifecycle(runtime: IAgentRuntime): void {
 				capture.ownership.chatPreHandlerIds.length > 0 ||
 				capture.ownership.responseHandlerEvaluatorNames.length > 0 ||
 				capture.ownership.responseHandlerFieldEvaluatorNames.length > 0 ||
+				capture.ownership.pipelineHookIds.length > 0 ||
 				capture.ownership.hasAdapter
 			) {
 				getPluginOwnershipStore(runtimeWithLifecycle).set(

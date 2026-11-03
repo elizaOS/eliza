@@ -1,5 +1,6 @@
-/** Plugin unload must tear down chat pre-handlers and response-handler
- * (field) evaluators, not only actions/providers/evaluators. */
+/** Plugin unload must tear down chat pre-handlers, response-handler (field)
+ * evaluators, pipeline hooks, and owned service instances, not only
+ * actions/providers/evaluators. */
 import { expect, it } from "vitest";
 import { SEND_HANDLER_NOT_FOUND } from "../src/types/messaging";
 import type { Plugin } from "../src/types/plugin";
@@ -617,3 +618,116 @@ for (const replacer of ["another plugin", "the host"] as const) {
 		});
 	}
 }
+
+type PipelineRuntime = {
+	applyPipelineHooks: (phase: string, ctx: unknown) => Promise<void>;
+};
+
+it("unloadPlugin removes plugin-registered pipeline hooks", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Pipeline Hook Teardown", bio: [] },
+		logLevel: "fatal",
+	});
+
+	const hookInvocations: string[] = [];
+	await runtime.registerPlugin({
+		name: "pipeline-hook-fixture",
+		description: "Registers one pipeline hook from init",
+		async init(_config, pluginRuntime) {
+			pluginRuntime.registerPipelineHook({
+				id: "fixture-pipeline-hook",
+				phase: "pre_model",
+				handler: () => {
+					hookInvocations.push("hook");
+				},
+			});
+		},
+	});
+
+	expect(
+		runtime.getPluginOwnership("pipeline-hook-fixture")?.pipelineHookIds,
+	).toEqual(["fixture-pipeline-hook"]);
+
+	const applyHooks = (runtime as unknown as PipelineRuntime).applyPipelineHooks;
+	await applyHooks.call(runtime, "pre_model", {
+		phase: "pre_model",
+		requestedModelType: "TEXT_SMALL",
+		resolvedModelKey: "TEXT_SMALL",
+		params: {},
+	});
+	expect(hookInvocations).toEqual(["hook"]);
+
+	const ownership = await runtime.unloadPlugin("pipeline-hook-fixture");
+	expect(ownership).not.toBeNull();
+
+	// The bug: pipeline hooks were never captured as owned, so the hook kept
+	// firing after unload. After the fix no handler runs for the phase.
+	await applyHooks.call(runtime, "pre_model", {
+		phase: "pre_model",
+		requestedModelType: "TEXT_SMALL",
+		resolvedModelKey: "TEXT_SMALL",
+		params: {},
+	});
+	expect(hookInvocations).toEqual(["hook"]);
+});
+
+const teardownCalls: string[] = [];
+
+class ThrowingStopService extends Service {
+	static serviceType = "fixture-teardown-throwing";
+	capabilityDescription = "Throws from stop()";
+
+	static async start(runtime: IAgentRuntime): Promise<Service> {
+		return new ThrowingStopService(runtime);
+	}
+
+	async stop(): Promise<void> {
+		teardownCalls.push("A");
+		throw new Error("stop boom");
+	}
+}
+
+class HealthyStopService extends Service {
+	static serviceType = "fixture-teardown-healthy";
+	capabilityDescription = "Records a healthy stop";
+
+	static async start(runtime: IAgentRuntime): Promise<Service> {
+		return new HealthyStopService(runtime);
+	}
+
+	async stop(): Promise<void> {
+		teardownCalls.push("B");
+	}
+}
+
+it("unloadPlugin stops remaining owned services when one stop() throws", async () => {
+	const { createInitializedRuntime } = await import("./initialized-runtime");
+	const runtime = await createInitializedRuntime({
+		character: { name: "Service Stop Teardown", bio: [] },
+		logLevel: "fatal",
+	});
+
+	await runtime.registerPlugin({
+		name: "service-stop-fixture",
+		description: "One failing and one healthy service",
+		services: [ThrowingStopService, HealthyStopService],
+	});
+	teardownCalls.length = 0;
+	await runtime.getServiceLoadPromise(ThrowingStopService.serviceType);
+	await runtime.getServiceLoadPromise(HealthyStopService.serviceType);
+
+	let unloadError: unknown;
+	try {
+		await runtime.unloadPlugin("service-stop-fixture");
+	} catch (error) {
+		unloadError = error;
+	}
+	expect(unloadError).toBeDefined();
+
+	// The bug: the throwing stop() aborted teardown of the remaining owned
+	// service and left the dead instance reachable via getService().
+	expect(teardownCalls).toEqual(["A", "B"]);
+	expect(runtime.getService("fixture-teardown-throwing")).toBeNull();
+	expect(runtime.getService("fixture-teardown-healthy")).toBeNull();
+});
