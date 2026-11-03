@@ -631,8 +631,9 @@ export class MessageManager {
     const id = await this.resolveMessageMemoryId(chatId, messageId);
     const stored = await this.runtime.getMemoryById(id);
     if (!stored) return null;
-    const ids = (stored.metadata as { telegramMessageIds?: unknown } | undefined)
-      ?.telegramMessageIds;
+    const ids = (
+      stored.metadata as { telegramMessageIds?: unknown } | undefined
+    )?.telegramMessageIds;
     if (
       id !== this.messageMemoryId(chatId, messageId) &&
       Array.isArray(ids) &&

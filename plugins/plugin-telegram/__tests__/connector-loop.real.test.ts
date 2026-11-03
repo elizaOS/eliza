@@ -298,7 +298,9 @@ describe("telegram connector loop (keyless)", () => {
 
   it("gives an edit of one chunk of a merged reply no stored copy to overwrite", async () => {
     const responseId = "7e2a3c64-8f4b-4c9d-8e3f-4a5b6c7d8e93";
-    const longText = Array.from({ length: 900 }, (_, i) => `word${i}`).join(" ");
+    const longText = Array.from({ length: 900 }, (_, i) => `word${i}`).join(
+      " ",
+    );
     const { delivered, manager, chatId } = await driveTelegramTurn({
       inboundText: "Tell me everything.",
       processorReplies: [{ text: longText, responseId }],
