@@ -1,0 +1,91 @@
+{
+  "state": "HISTORICAL_AUTHENTICATED_SAME_LOCK_LINUX_BIN_METADATA_ONLY_NOT_B93_TOOL_ACCEPTANCE",
+  "archiveAlreadyPresent": "/Users/nubs/.local/state/eliza-five-lane-coordination/ack-normal-c63-capacity-once-20261103/cloud-owner-monitor/artifact-13230083289.zip",
+  "actualPriorRun": 41635671907,
+  "actualPriorSource": "c63cfb6b7bfd87eb8125c0791952cb4836b423ef",
+  "bunLockSHA256": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
+  "rows": [
+    {
+      "kind": "symlink",
+      "path": "node_modules/typescript",
+      "target": ".bun/typescript@6.0.3/node_modules/typescript"
+    },
+    {
+      "kind": "symlink",
+      "path": "node_modules/.bin/tsc",
+      "target": "../@typescript/native/bin/tsc"
+    },
+    {
+      "kind": "symlink",
+      "path": "node_modules/.bin/tsc6",
+      "target": "../@typescript/typescript6/bin/tsc6"
+    },
+    {
+      "kind": "symlink",
+      "path": "node_modules/@typescript/native",
+      "target": "../.bun/typescript@7.0.2/node_modules/typescript"
+    },
+    {
+      "kind": "symlink",
+      "path": "node_modules/@typescript/typescript6",
+      "target": "../.bun/@typescript+typescript6@6.0.2/node_modules/@typescript/typescript6"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/cloud/api/node_modules/typescript",
+      "target": "../../../../node_modules/.bun/typescript@6.0.3/node_modules/typescript"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/cloud/api/node_modules/.bin/tsc",
+      "target": "../@typescript/native/bin/tsc"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/cloud/api/node_modules/@typescript/native",
+      "target": "../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/cloud/shared/node_modules/.bin/tsc",
+      "target": "../@typescript/native/bin/tsc"
+    }
+  ],
+  "noCompilerBinaryCopiedOrExecuted": true,
+  "mustVerifyFreshB93InstalledNormalPATHAndToolHashes": true,
+  "additionalToolFileAndLinkRows": [
+    {
+      "kind": "symlink",
+      "path": "node_modules/turbo",
+      "target": ".bun/turbo@2.11.10/node_modules/turbo"
+    },
+    {
+      "kind": "symlink",
+      "path": "node_modules/.bin/turbo",
+      "target": "../turbo/bin/turbo"
+    },
+    {
+      "bytes": 45,
+      "kind": "file",
+      "path": "node_modules/.bun/@typescript+typescript6@6.0.2/node_modules/@typescript/typescript6/bin/tsc6",
+      "sha256": "8d5fa5bd883fec0979fc2004f1fe1d99aef40570155d550eadc0b03b55513bf0"
+    },
+    {
+      "bytes": 9144216,
+      "kind": "file",
+      "path": "node_modules/.bun/typescript@6.0.3/node_modules/typescript/lib/typescript.js",
+      "sha256": "569177652966bd528c319171c7dd22860dbf72bde116cbc4f644f1d02bb12e39"
+    },
+    {
+      "bytes": 44,
+      "kind": "file",
+      "path": "node_modules/.bun/typescript@7.0.2/node_modules/typescript/bin/tsc",
+      "sha256": "2219f428a7e55aaf1f7ad85b9b0f0cf5078aeb76ccc9a7c6036c92d48f492ffd"
+    },
+    {
+      "kind": "symlink",
+      "path": "packages/cloud/shared/node_modules/@typescript/native",
+      "target": "../../../../../node_modules/.bun/typescript@7.0.2/node_modules/typescript"
+    }
+  ]
+}

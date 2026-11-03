@@ -1,0 +1,60 @@
+{
+  "state": "OBSERVED_RESOURCE_GRAPH_AND_IDEAL_BUDGET_PROPOSAL_ONLY",
+  "observed": {
+    "aggregateHardBytes": 8589934592,
+    "memorySwapBytes": 8589934592,
+    "nodeHeapMiB": 4096,
+    "CPU": 2,
+    "PIDs": 256,
+    "concurrency": 1,
+    "taskSummary": {
+      "success": 17,
+      "total": 18,
+      "cached": 0
+    },
+    "finalStage": "api-normal-tsc start638 ->containerOOMtrue/137",
+    "edges": [
+      {
+        "from": "Python owned phase supervisor",
+        "to": "docker start --attach",
+        "scope": "host"
+      },
+      {
+        "from": "container Node run-turbo wrapper",
+        "to": "Turbo JS shim ->platformTurbo",
+        "scope": "container"
+      },
+      {
+        "from": "Turbo task",
+        "to": "Bun run API canonicalpackagechain",
+        "scope": "container"
+      },
+      {
+        "from": "Bun shell",
+        "to": "Node tsc launcher PID638",
+        "scope": "actualstart receipt"
+      },
+      {
+        "from": "Node tsc launcher",
+        "to": "Linux platformcompiler SAMEPID viaexecve OR nativechild viaexecFileSync",
+        "scope": "Local source conditional, actualbranch unknown"
+      }
+    ],
+    "memoryActors": [
+      "Supervisor/Dockerclient outsidecontainer measuredseparately",
+      "Insidecontainer launcherNode/Bun/Turbo/shell",
+      "Platformcompiler mainnative executable andpossibleworkers",
+      "Cgroup charged filecache/kernel/slab not equivalent tosumprocessRSS"
+    ],
+    "unmeasuredNoInventedAttribution": true
+  },
+  "ideal": {
+    "aggregateTargetBytes": 8589934592,
+    "additionalSwapBytes": 0,
+    "normalSourceCommandAndCoverageUnchanged": true,
+    "actorSubBudgets": "UNALLOCATED untilmeasured; no invented nativeheap budget",
+    "targetNodeNativePagecachePeakSum": "Stay insideactual8GiB hardlimit; RSS sums containsharedpages andcannot substitute forcgroupcurrent/peak",
+    "noSelectedMemoryLimitIncreaseOrGoEnvTuning": true
+  },
+  "costNote": "Source-only filemetadata/excerpts; nextmeasurementwouldadd boundedreadonly hostsampling, not productionagentlatency profiling. Actualobserveroverhead remainsunmeasured."
+}
