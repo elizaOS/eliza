@@ -721,6 +721,22 @@ describe("Stage 1 response format", () => {
     }
   });
 
+  it("ships the exact READY response for an exactly-literal instruction without another model call", async () => {
+    const runtime = makeRuntime([
+      stage1Response({ contexts: ["simple"], replyText: "READY" }),
+    ]);
+    const result = await runStage1({
+      runtime,
+      message: makeMessage({ text: "Reply with exactly READY." }),
+      responseId: "00000000-0000-0000-0000-000000000010" as UUID,
+    });
+    expect(result.kind).toBe("direct_reply");
+    if (result.kind === "direct_reply") {
+      expect(result.result.responseContent?.text).toBe("READY");
+    }
+    expect(useModelCalls(runtime).length).toBe(1);
+  });
+
   it("keeps PONG from the acceptance-gate smoke's exact raw gemma envelope", async () => {
     // Byte-for-byte the raw RESPONSE_HANDLER output gemma-4-31b returned
     // through the Eliza Cloud proxy for the benchmark acceptance-gate smoke
