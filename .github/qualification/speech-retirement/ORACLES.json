@@ -141,7 +141,7 @@
       "rejects invalid nested stt=gracefully_drained",
       "rejects invalid nested tts=unknown",
       "rejects invalid nested completedAt=tomorrow",
-      "rejects invalid nested completedAt=undefined",
+      "rejects invalid nested completedAt=2026-11-02T00:00:31.000Z",
       "rejects invalid nested extra=true",
       "never-started mode cannot contain dispatched provider claims"
     ],
