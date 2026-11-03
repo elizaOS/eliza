@@ -1,6 +1,6 @@
 # Valhalla privacy policy
 
-Replace the bracketed lines, publish this page on your site, and set `PRIVACY_POLICY_URL` to that https address before you ship real ads.
+TokenJunction LLC publishes Valhalla. TokenJunction LLC is a private company. It is the parent company and the owner of Valhalla. Publish this page on your site, and set `PRIVACY_POLICY_URL` to that https address before you ship real ads.
 
 Valhalla is a phone companion for a trading desk that runs on your computer. The phone does not hold a wallet key and cannot send or withdraw funds.
 
@@ -24,4 +24,4 @@ The phone sends chat text and setting confirmations to the desk address you ente
 
 ## Contact
 
-[Your name, email, and country]
+TokenJunction LLC is the publisher. This public file does not include a street address or a tax id. The support email stays in the private store listing.

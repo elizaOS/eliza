@@ -94,7 +94,7 @@ public class MainActivity extends AppCompatActivity {
         if (!store.acceptedAdvice()) {
             new AlertDialog.Builder(this)
                     .setTitle("Not financial advice")
-                    .setMessage("The app does not promise profit. It cannot send or withdraw. Keys stay on your computer.")
+                    .setMessage(R.string.advice_body)
                     .setCancelable(false)
                     .setPositiveButton("I understand", (dialog, which) -> {
                         store.setAdvice(true);
@@ -162,6 +162,7 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.connect).setOnClickListener(v -> pair());
         findViewById(R.id.scanQr).setOnClickListener(v -> scanQr());
         findViewById(R.id.privacyPolicy).setOnClickListener(v -> openPrivacy());
+        findViewById(R.id.about).setOnClickListener(v -> showAbout());
         findViewById(R.id.deleteData).setOnClickListener(v -> deletePhoneData());
         findViewById(R.id.recover).setOnClickListener(v -> recover());
         findViewById(R.id.openChat).setOnClickListener(v -> showScreen(SessionStore.SCREEN_CHAT));
@@ -411,6 +412,14 @@ public class MainActivity extends AppCompatActivity {
         visibleScreen = SessionStore.SCREEN_PAIRING;
         showScreen(SessionStore.SCREEN_PAIRING);
         status.setText(getString(R.string.status_idle));
+    }
+
+    private void showAbout() {
+        new AlertDialog.Builder(this)
+                .setTitle(R.string.about_title)
+                .setMessage(R.string.about_body)
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
     }
 
     private void openPrivacy() {

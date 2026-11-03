@@ -37,6 +37,13 @@
                 android:textColor="@color/muted"
                 android:textSize="11sp" />
 
+            <Button
+                android:id="@+id/about"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:text="@string/about" />
+
             <TextView
                 android:id="@+id/cacheBanner"
                 android:layout_width="match_parent"

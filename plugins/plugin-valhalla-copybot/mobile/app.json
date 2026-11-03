@@ -16,7 +16,8 @@
       "package": "ai.tokenjunction.valhalla"
     },
     "extra": {
-      "proProductId": "valhalla_pro_monthly"
+      "proProductId": "valhalla_pro_monthly",
+      "publisher": "TokenJunction LLC"
     }
   }
 }

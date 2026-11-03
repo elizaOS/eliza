@@ -11,7 +11,7 @@ import {
 } from "react-native";
 import { proPurchaseMessage } from "./billing";
 
-type Step = "age" | "advice" | "intro" | "pair" | "demo" | "done";
+type Step = "age" | "advice" | "intro" | "pair" | "demo" | "done" | "about";
 
 const DEMO = {
   status: "DEMO desk is read-only. No wallet is connected.",
@@ -21,8 +21,14 @@ const DEMO = {
 
 export default function App() {
   const [step, setStep] = useState<Step>("age");
+  const [back, setBack] = useState<Step>("age");
   const [url, setUrl] = useState("http://127.0.0.1:8787");
   const [note, setNote] = useState("");
+
+  function openAbout() {
+    setBack(step);
+    setStep("about");
+  }
 
   return (
     <SafeAreaView style={styles.page}>
@@ -42,8 +48,8 @@ export default function App() {
           <View>
             <Text style={styles.title}>Not financial advice</Text>
             <Text style={styles.body}>
-              This app does not promise profit. It cannot send or withdraw. Keys stay on your
-              computer.
+              TokenJunction LLC publishes Valhalla. This is not financial advice. The app does not
+              promise profit. It cannot send or withdraw. Keys stay on your computer.
             </Text>
             <Pressable style={styles.btn} onPress={() => setStep("intro")}>
               <Text style={styles.btnText}>I understand</Text>
@@ -101,6 +107,23 @@ export default function App() {
             </Pressable>
           </View>
         )}
+        {step === "about" && (
+          <View>
+            <Text style={styles.title}>About</Text>
+            <Text style={styles.body}>
+              TokenJunction LLC publishes Valhalla. TokenJunction LLC is a private company. It owns
+              Valhalla.
+            </Text>
+            <Text style={styles.body}>
+              This is not financial advice. Crypto can lose money. The phone does not hold a wallet
+              key. There is no send or withdraw.
+            </Text>
+            <Text style={styles.body}>© 2026 TokenJunction LLC</Text>
+            <Pressable style={styles.btn} onPress={() => setStep(back)}>
+              <Text style={styles.btnText}>Back</Text>
+            </Pressable>
+          </View>
+        )}
         {step === "done" && (
           <View>
             <Text style={styles.title}>You are set</Text>
@@ -113,6 +136,11 @@ export default function App() {
               <Text style={styles.btnText}>Delete this setup</Text>
             </Pressable>
           </View>
+        )}
+        {step !== "about" && (
+          <Pressable style={styles.secondary} onPress={openAbout}>
+            <Text style={styles.btnText}>About</Text>
+          </Pressable>
         )}
       </ScrollView>
     </SafeAreaView>
@@ -146,6 +174,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     justifyContent: "center",
     paddingHorizontal: 16,
+    marginTop: 10,
   },
   btnText: { color: "#1a1208", fontWeight: "700" },
 });

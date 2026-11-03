@@ -23,9 +23,13 @@
     <string name="house_count">Shown %1$d times on this phone. Opened %2$d times.</string>
     <string name="house_link">Open this message</string>
     <string name="privacy_policy">Privacy policy</string>
+    <string name="about">About</string>
+    <string name="about_title">About Valhalla</string>
+    <string name="about_body">TokenJunction LLC publishes Valhalla. TokenJunction LLC is a private company. It owns Valhalla.\n\nThis is not financial advice. Crypto can lose money. The phone does not hold a wallet key. There is no send or withdraw.\n\n© 2026 TokenJunction LLC</string>
+    <string name="advice_body">TokenJunction LLC publishes Valhalla. This is not financial advice. The app does not promise profit. It cannot send or withdraw. Keys stay on your computer.</string>
     <string name="ad_not_ready">That ad is not ready yet.</string>
     <string name="ad_thanks">Thanks. Nothing about trading changed.</string>
     <string name="ad_consent_unavailable">Ad consent could not be checked. No third-party ad was loaded.</string>
-    <string name="privacy_fallback">Publish android/PRIVACY_POLICY.md on your site, then set PRIVACY_POLICY_URL to that https address. The phone does not hold a wallet key.</string>
+    <string name="privacy_fallback">TokenJunction LLC publishes Valhalla. Publish the privacy policy on your site, then set PRIVACY_POLICY_URL to that https address. The phone does not hold a wallet key. This screen does not show a street address or a tax id.</string>
     <string name="safety">No send or withdraw. Keys stay on the PC. A settings change needs your confirm tap. Alerts do not turn off battery optimization.</string>
 </resources>

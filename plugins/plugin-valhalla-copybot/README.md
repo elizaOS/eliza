@@ -1,6 +1,8 @@
 # Valhalla Mech
 
-This is the Valhalla desk. It looks like the ACCELERATION command center. It runs on your PC. It is read-only until you arm live trading.
+This is the Valhalla desk. TokenJunction LLC publishes it. TokenJunction LLC is a private company and the owner of Valhalla. The desk looks like the ACCELERATION command center. It runs on your PC. It is read-only until you arm live trading.
+
+The public name is TokenJunction LLC. The terms, the privacy policy, the disclaimer, the store drafts, the Windows installer publisher field, and the extension author use that name. A street address and an EIN stay out of these files. `{BUSINESS_ADDRESS}` and `{SUPPORT_EMAIL}` stay as placeholders in `docs/play/listing.md`.
 
 The repository is public. An access code, if you set one, only opens the app. It does not hide the code.
 

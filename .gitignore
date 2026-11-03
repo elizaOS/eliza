@@ -631,6 +631,15 @@ docs/*
 !docs/CONNECTIONS.md
 !docs/SELF_REPAIR.md
 !docs/AI.md
+!docs/PLAY_STORE.md
+!docs/privacy-policy.md
+!docs/DATA_SAFETY.md
+!docs/TERMS.md
+!docs/DISCLAIMER.md
+!docs/LEMON_SQUEEZY.md
+!docs/play/
+docs/play/**
+!docs/play/listing.md
 !docs/valhalla/
 !docs/valhalla/**
 !docs/ELIZA_1_BUNDLE_EXTRAS.json

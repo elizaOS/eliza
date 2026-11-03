@@ -2,6 +2,8 @@
   "name": "valhalla-mobile",
   "version": "0.1.1",
   "private": true,
+  "author": "TokenJunction LLC",
+  "description": "Valhalla phone app. Published by TokenJunction LLC.",
   "main": "node_modules/expo/AppEntry.js",
   "scripts": {
     "start": "expo start",
