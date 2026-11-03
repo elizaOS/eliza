@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { createPublicKey, verify } from "node:crypto";
 
-export const MONETIZATION_PUBLIC_KEY_B64 = "3Y25V3M5MkK354P3Ghw2BnA8locVlep3q86GTOD/EKU=";
+export const MONETIZATION_PUBLIC_KEY_B64 = "GasF+x9XzQvsO07cTOCMoA5Vf314gd4gmf8gYGJWZ68=";
 export const ADSENSE_CLIENT = "ca-pub-6504655762357230";
 
 function offerRow(row: {
@@ -42,6 +42,11 @@ export function canonicalMonetization(doc: {
   checkoutUrl?: string;
   checkoutYearlyUrl?: string;
   checkoutLifetimeUrl?: string;
+  cryptoReceiveAddress?: string;
+  usdcMint?: string;
+  priceMonthlyUsd?: number;
+  priceYearlyUsd?: number;
+  priceLifetimeUsd?: number;
   proTradeAllowance?: number;
   trialDays?: number;
   offers?: Parameters<typeof offerRow>[0][];
@@ -58,6 +63,11 @@ export function canonicalMonetization(doc: {
     checkoutUrl: String(doc.checkoutUrl || ""),
     checkoutYearlyUrl: String(doc.checkoutYearlyUrl || ""),
     checkoutLifetimeUrl: String(doc.checkoutLifetimeUrl || ""),
+    cryptoReceiveAddress: String(doc.cryptoReceiveAddress || ""),
+    usdcMint: String(doc.usdcMint || ""),
+    priceMonthlyUsd: Number(doc.priceMonthlyUsd),
+    priceYearlyUsd: Number(doc.priceYearlyUsd),
+    priceLifetimeUsd: Number(doc.priceLifetimeUsd),
     proTradeAllowance: Number(doc.proTradeAllowance),
     trialDays: Number(doc.trialDays),
     offers: (doc.offers || []).map(offerRow),

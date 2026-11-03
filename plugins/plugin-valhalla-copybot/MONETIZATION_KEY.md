@@ -37,3 +37,5 @@ On `develop`, turn on these rules:
 If a build or a remote `offers.json` has a bad signature, ads turn off. Affiliate links turn off. The Pro-trade allowance falls back to the last signed bundle, or to zero when that bundle also fails. The app reports `monetization-tamper`. It does not swap in a different publisher id.
 
 `ads.txt` and `app-ads.txt` list only `pub-6504655762357230`.
+
+The crypto receive address is only in `monetization.json`. Checkout code reads it after the signature verifies. There is no private key for that address. Receiving does not need one. If the signature fails, crypto checkout turns off.

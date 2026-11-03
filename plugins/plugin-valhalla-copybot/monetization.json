@@ -166,6 +166,11 @@
       "disclosure": "Affiliate link · we may earn a commission"
     }
   ],
-  "offersSignature": "DUMMdVR0oZyI7YVagIscAei8D0jyTxVA+7bqEODEVwG365FPyuDdjrN+VdoGeill6iCmqAhbDYrBCQ2ahVeSAA==",
-  "signature": "/gJFnlZggbhjxs+Dd7x9zXOO40ZhLw7l/D6L71Ur68Z1c+hh9kevTu3n43ZDGLiVpoo+8IBmDg8tZp5SoyrKBQ=="
+  "cryptoReceiveAddress": "5GRqH5UQ53JEDdGKxfePq2wy6jT2inNrNGSEQk9fA49f",
+  "usdcMint": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+  "priceMonthlyUsd": 9.99,
+  "priceYearlyUsd": 149,
+  "priceLifetimeUsd": 199,
+  "offersSignature": "7OgmGVRNxGh2bIYnS5z6a2C+YK9tWkLnMIgtTBXpupQSWlmqIyS3UuK0ckGLlL3Eq9NpETMt8QX8NxtF6QCkAQ==",
+  "signature": "3tsj6ydndagpUsFg0dV7BRwAeSJ6vXcp1bAS3TKS1yyuz9n3GmIhc0KLffSVlD0XHAJkjjwkJhdDRRWDYnG7Bw=="
 }
