@@ -98,8 +98,11 @@ function normalizeDomain(domain: string): string {
 function savedLoginHostname(input: string): string {
   let host = input.trim().replace(/^[a-z][a-z0-9+.-]*:\/\//i, "");
   host = host.split(/[/?#]/, 1)[0] ?? "";
-  host = host.slice(host.lastIndexOf("@") + 1).replace(/:\d*$/, "");
-  return normalizeDomain(host);
+  host = host.slice(host.lastIndexOf("@") + 1);
+  // Only a host with one colon has a `:port`; an IPv6 literal has more, and
+  // stripping its last group would corrupt it ("::1" -> ":").
+  const withPort = /^([^:]*):\d*$/.exec(host);
+  return normalizeDomain(withPort ? (withPort[1] ?? "") : host);
 }
 
 function loginKey(domain: string, username: string): string {
@@ -118,6 +121,12 @@ export async function setSavedLogin(
   const domain = savedLoginHostname(login.domain);
   if (domain.length === 0) {
     throw new TypeError("setSavedLogin: domain required");
+  }
+  // The identifier is `<domain>:<username>` and is split at the first colon,
+  // so a domain that still holds one (an IPv6 literal, `host:abc`) would save
+  // a login that can never be revealed or deleted.
+  if (domain.includes(":")) {
+    throw new TypeError("setSavedLogin: domain must be a hostname");
   }
   if (login.username.length === 0) {
     throw new TypeError("setSavedLogin: username required");
