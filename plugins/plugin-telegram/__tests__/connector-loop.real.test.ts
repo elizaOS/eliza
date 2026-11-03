@@ -8,6 +8,7 @@ import {
   createUniqueUuid,
   type Memory,
   ModelType,
+  type UUID,
 } from "@elizaos/core";
 import { createAssistantPlugin } from "@elizaos/plugin-assistant";
 import { MessageManager } from "@elizaos/plugin-telegram";
@@ -48,6 +49,13 @@ async function driveTelegramTurn(options: {
   fixtures?: DeterministicModelFixture[];
   /** Reply content the message service hands to the connector callback. */
   replyContent?: Content;
+  /**
+   * Replies handed to the callback in order. Each one's row is first written
+   * under its responseId, as the assistant message service stores a reply.
+   */
+  processorReplies?: Content[];
+  /** Make Telegram refuse every photo send. */
+  failPhotos?: boolean;
 }): Promise<{
   delivered: DeliveredTelegramMessage[];
   photos: Array<{ chatId: number | string; filename?: string }>;
@@ -84,6 +92,7 @@ async function driveTelegramTurn(options: {
       chatId: number | string,
       photo: { filename?: string },
     ): Promise<unknown> => {
+      if (options.failPhotos) throw new Error("Bad Request: wrong file");
       photos.push({ chatId, filename: photo.filename });
       return { message_id: 900 + photos.length, chat: { id: chatId }, date: 0 };
     },
@@ -130,6 +139,29 @@ async function driveTelegramTurn(options: {
     // as ATTACH_TO_CHAT does with `{ text: "", attachments }`.
     messageService.handleMessage = async (_runtime, _memory, callback) => {
       await callback?.(replyContent, "ATTACH_TO_CHAT");
+      return undefined as never;
+    };
+  }
+  const processorReplies = options.processorReplies;
+  if (processorReplies && messageService) {
+    const replyRoomId = createUniqueUuid(harness.runtime, chat.id.toString());
+    messageService.handleMessage = async (runtime, _memory, callback) => {
+      for (const reply of processorReplies) {
+        const id = reply.responseId as UUID | undefined;
+        if (id && !(await runtime.getMemoryById(id))) {
+          await runtime.createMemory(
+            {
+              id,
+              entityId: runtime.agentId,
+              agentId: runtime.agentId,
+              roomId: replyRoomId,
+              content: reply,
+            },
+            "messages",
+          );
+        }
+        await callback?.(reply);
+      }
       return undefined as never;
     };
   }
@@ -213,6 +245,69 @@ describe("telegram connector loop (keyless)", () => {
     // A reply-to, reaction or edit of the delivered Telegram message resolves
     // to that one stored row.
     expect(await manager.resolveMessageMemoryId(chatId, 1)).toBe(rows[0]?.id);
+  }, 60_000);
+
+  it("keeps a second delivered message of the same response as its own row", async () => {
+    const responseId = "5c0e1a42-6d2f-4a7b-8c1d-2e3f4a5b6c71";
+    const { delivered, agentRows, manager, chatId } = await driveTelegramTurn({
+      inboundText: "Where is my order?",
+      processorReplies: [
+        { text: "Checking your order now", responseId },
+        { text: "Order 42 has shipped", responseId },
+      ],
+    });
+    expect(delivered.map((message) => message.text)).toEqual([
+      "Checking your order now",
+      "Order 42 has shipped",
+    ]);
+    const rows = await agentRows();
+    expect(rows.map((row) => row.content.text).sort()).toEqual(
+      ["Checking your order now", "Order 42 has shipped"].sort(),
+    );
+    const first = await manager.resolveMessageMemoryId(chatId, 1);
+    const second = await manager.resolveMessageMemoryId(chatId, 2);
+    expect(first).toBe(responseId);
+    expect(second).not.toBe(first);
+    expect(rows.map((row) => row.id)).toContain(second);
+  }, 60_000);
+
+  it("records an attachment Telegram refused as not delivered on the merged row", async () => {
+    const responseId = "6d1f2b53-7e3a-4b8c-9d2e-3f4a5b6c7d82";
+    const { agentRows } = await driveTelegramTurn({
+      inboundText: "Send me the chart.",
+      failPhotos: true,
+      processorReplies: [
+        {
+          text: "Here is the chart",
+          responseId,
+          attachments: [
+            {
+              id: "chart",
+              url: "https://example.invalid/chart.png",
+              contentType: "image",
+            },
+          ],
+        },
+      ],
+    });
+    const rows = await agentRows();
+    const merged = rows.find((row) => row.id === responseId);
+    expect(merged?.content.text).toBe("Here is the chart");
+    expect(merged?.content.attachments ?? []).toEqual([]);
+  }, 60_000);
+
+  it("gives an edit of one chunk of a merged reply no stored copy to overwrite", async () => {
+    const responseId = "7e2a3c64-8f4b-4c9d-8e3f-4a5b6c7d8e93";
+    const longText = Array.from({ length: 900 }, (_, i) => `word${i}`).join(" ");
+    const { delivered, manager, chatId } = await driveTelegramTurn({
+      inboundText: "Tell me everything.",
+      processorReplies: [{ text: longText, responseId }],
+    });
+    expect(delivered.length).toBeGreaterThan(1);
+    // Every chunk still resolves to the one merged row for reply-to and reactions.
+    expect(await manager.resolveMessageMemoryId(chatId, 2)).toBe(responseId);
+    // An edit of one chunk must not replace the whole reply's stored text.
+    expect(await manager.storedCopyForEdit(chatId, 2)).toBeNull();
   }, 60_000);
 
   it("delivers escaped Markdown and adjacent emphasis without changing visible characters", async () => {

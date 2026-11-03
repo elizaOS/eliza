@@ -619,6 +619,31 @@ export class MessageManager {
   }
 
   /**
+   * The stored copy an edit of one Telegram message may replace: its own row,
+   * or a merged reply that holds only that message. A merged reply that lists
+   * several chunked messages holds text an edit of one chunk would overwrite,
+   * so it has no single stored copy to replace.
+   */
+  async storedCopyForEdit(
+    chatId: number | string,
+    messageId: number | string,
+  ): Promise<Memory | null> {
+    const id = await this.resolveMessageMemoryId(chatId, messageId);
+    const stored = await this.runtime.getMemoryById(id);
+    if (!stored) return null;
+    const ids = (stored.metadata as { telegramMessageIds?: unknown } | undefined)
+      ?.telegramMessageIds;
+    if (
+      id !== this.messageMemoryId(chatId, messageId) &&
+      Array.isArray(ids) &&
+      ids.length > 1
+    ) {
+      return null;
+    }
+    return stored;
+  }
+
+  /**
    * Port of plugin-discord's reply merge: the message service and this
    * delivery write the same reply id concurrently and SQL keeps the first
    * insert, so read the stored winner and add the delivery facts to it.
@@ -647,6 +672,11 @@ export class MessageManager {
         ...existing.content,
         source: memory.content.source,
         inReplyTo: memory.content.inReplyTo,
+        // The delivery's attachments exclude any Telegram refused, so the
+        // merged row records only what was delivered.
+        ...(memory.content.attachments !== undefined
+          ? { attachments: memory.content.attachments }
+          : {}),
       },
       metadata: {
         ...(existing.metadata ?? {}),
@@ -1604,7 +1634,18 @@ export class MessageManager {
       )
         ? (validateUuid(args.content.responseId) ?? undefined)
         : undefined;
-    if (canonicalReplyId && first) {
+    // A turn can call back more than once with the same responseId. Only the
+    // first delivery merges into the message service's row; a later one is
+    // another delivered message and keeps per-message rows, so its text and
+    // Telegram ids are not lost.
+    const prior = canonicalReplyId
+      ? await this.runtime.getMemoryById(canonicalReplyId)
+      : null;
+    const priorIds = (
+      prior?.metadata as { telegramMessageIds?: unknown } | undefined
+    )?.telegramMessageIds;
+    const alreadyMerged = Array.isArray(priorIds) && priorIds.length > 0;
+    if (canonicalReplyId && first && !alreadyMerged) {
       const merged = await this.mergeIntoCanonicalReply({
         id: canonicalReplyId,
         entityId: this.runtime.agentId,
