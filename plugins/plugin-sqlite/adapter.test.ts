@@ -322,6 +322,89 @@ describe("durable SQLite agent adapter", () => {
     ).toBe(2);
   });
 
+  it("filters memories by array containment and nested objects in metadata, like plugin-sql", async () => {
+    const adapter = await open();
+    const memoryId1 = id();
+    const memoryId2 = id();
+
+    await adapter.createMemories([
+      {
+        memory: {
+          id: memoryId1,
+          entityId,
+          agentId,
+          roomId,
+          content: { text: "Chunked reply 1" },
+          createdAt: 1000,
+          metadata: {
+            type: MemoryType.MESSAGE,
+            messageIds: ["msg-100", "msg-101"],
+            tags: ["alpha", "beta"],
+            delivery: { channel: "telegram", to: "group-1" },
+          },
+        },
+        tableName: "messages",
+      },
+      {
+        memory: {
+          id: memoryId2,
+          entityId,
+          agentId,
+          roomId,
+          content: { text: "Single reply 2" },
+          createdAt: 2000,
+          metadata: {
+            type: MemoryType.MESSAGE,
+            messageIds: ["msg-200"],
+            tags: ["gamma"],
+            delivery: { channel: "telegram", to: "dm-1" },
+          },
+        },
+        tableName: "messages",
+      },
+    ]);
+
+    // Array containment in getMemories
+    const arrayMatch = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      metadata: { messageIds: ["msg-100"] },
+    });
+    expect(arrayMatch.map((m) => m.id)).toEqual([memoryId1]);
+
+    // Array containment in countMemories
+    const arrayCount = await adapter.countMemories({
+      roomIds: [roomId],
+      tableName: "messages",
+      metadata: { messageIds: ["msg-100"] },
+    });
+    expect(arrayCount).toBe(1);
+
+    // Nested object containment in getMemories
+    const nestedMatch = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      metadata: { delivery: { channel: "telegram" } },
+    });
+    expect(nestedMatch.map((m) => m.id)).toEqual([memoryId2, memoryId1]);
+
+    // Nested object containment in countMemories
+    const nestedCount = await adapter.countMemories({
+      roomIds: [roomId],
+      tableName: "messages",
+      metadata: { delivery: { channel: "telegram" } },
+    });
+    expect(nestedCount).toBe(2);
+
+    // Negative match: non-existent array element
+    const noMatch = await adapter.getMemories({
+      roomId,
+      tableName: "messages",
+      metadata: { messageIds: ["msg-999"] },
+    });
+    expect(noMatch).toEqual([]);
+  });
+
   it("pages tasks by creation time when the later id sorts first", async () => {
     const adapter = await open();
     const earlyId = "ffffffff-ffff-4fff-8fff-ffffffffffff" as UUID;
