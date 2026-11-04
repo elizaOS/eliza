@@ -7,6 +7,7 @@ import {
   applyAnalyst,
   BRAIN_CALL_USD,
   BrainStore,
+  brainFromEnv,
   budgetLeft,
   charge,
   defaultBrainSettings,
@@ -129,5 +130,48 @@ describe("Valhalla Brain on Together AI", () => {
         new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 })
     );
     expect(budgetLeft(store.settings)).toBeCloseTo(before - BRAIN_CALL_USD, 6);
+  });
+});
+
+describe("Valhalla Brain keys from the environment", () => {
+  it("uses TOGETHER_API_KEY from .env with no Controls step", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-env-"));
+    const store = new BrainStore(dir, { TOGETHER_API_KEY: "tg-env-key-value" });
+    expect(store.view().provider).toBe("together");
+    expect(store.view().model).toBe("deepseek-ai/DeepSeek-V4.1-Flash");
+    const seen = { url: "", auth: "" };
+    const answer = await store.complete("chat", "status", async (input, init) => {
+      seen.url = String(input);
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      seen.auth = String(headers.authorization ?? "");
+      return new Response(JSON.stringify({ choices: [{ message: { content: "env ok" } }] }), {
+        status: 200,
+      });
+    });
+    expect(answer).toBe("env ok");
+    expect(new URL(seen.url).hostname).toBe("api.together.xyz");
+    expect(seen.auth).toBe("Bearer tg-env-key-value");
+  });
+
+  it("prefers Together AI when several keys are set, and reports none when empty", () => {
+    const picked = brainFromEnv({
+      OPENAI_API_KEY: "sk-openai-value",
+      TOGETHER_API_KEY: "tg-env-key-value",
+    });
+    expect(picked?.provider).toBe("together");
+    expect(picked?.key).toBe("tg-env-key-value");
+    expect(brainFromEnv({})).toBeNull();
+    expect(brainFromEnv({ TOGETHER_API_KEY: "   " })).toBeNull();
+  });
+
+  it("lets a key saved in Controls win over the environment", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-env-"));
+    const first = new BrainStore(dir, { TOGETHER_API_KEY: "tg-env-key-value" });
+    await first.saveKey("openai", "sk-saved-key-value", "correct horse");
+    const reopened = new BrainStore(dir, { TOGETHER_API_KEY: "tg-env-key-value" });
+    expect(reopened.view().provider).toBe("together");
+    await reopened.unlock("correct horse");
+    expect(reopened.view().provider).toBe("openai");
+    expect(reopened.view().model).toBe("gpt-4.1-mini");
   });
 });

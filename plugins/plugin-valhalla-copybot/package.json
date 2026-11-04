@@ -64,8 +64,8 @@
     "format:check": "bunx @biomejs/biome format .",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run --config ./vitest.config.ts",
-    "start": "bun src/standalone.ts",
-    "dashboard": "bun src/standalone.ts",
+    "start": "bun src/main.ts",
+    "dashboard": "bun src/main.ts",
     "lint:check": "bunx @biomejs/biome check .",
     "build": "bun run build.ts",
     "build:ts": "bun run build.ts"

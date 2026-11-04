@@ -14,7 +14,7 @@ The first launch asks for age 18+, shows that this is not financial advice, then
 
 ## Valhalla Brain
 
-Brain is the advisory model layer. Gemini is the default. You can also pick OpenAI, Anthropic, Grok, OpenRouter, Together AI, or local Ollama. Together AI serves DeepSeek, and the default model is `deepseek-ai/DeepSeek-V4.1-Flash`. Keys stay encrypted on this PC. A monthly cap stops extra model calls. The analyst can only make a pass fail. It cannot approve a coin the rules already blocked. A strategy tweak waits for your tap and can be rolled back. Details are in [docs/AI.md](../../docs/AI.md).
+Brain is the advisory model layer. Gemini is the default. You can also pick OpenAI, Anthropic, Grok, OpenRouter, Together AI, or local Ollama. Together AI serves DeepSeek, and the default model is `deepseek-ai/DeepSeek-V4.1-Flash`. Put `TOGETHER_API_KEY` in `.env` and the desk uses it on start; a key saved in Controls still wins. Keys stay encrypted on this PC. A monthly cap stops extra model calls. The analyst can only make a pass fail. It cannot approve a coin the rules already blocked. A strategy tweak waits for your tap and can be rolled back. Details are in [docs/AI.md](../../docs/AI.md).
 
 ## Self-repair
 
@@ -26,6 +26,7 @@ The agent watches itself. Hung calls time out. The next data provider is used. A
 2. Open this folder: `plugins/plugin-valhalla-copybot`.
 3. Copy `.env.example` to `.env`.
 4. Paste your Google AI Studio key into `GOOGLE_GENERATIVE_AI_API_KEY`. Leave `VALHALLA_LIVE_TRADING=false`.
+   For DeepSeek through Together AI, also paste your key into `TOGETHER_API_KEY`. The desk uses it on start.
 5. Double-click `start.bat` on Windows, or run `./start.sh` on Mac or Linux.
 
 The desk opens at `http://127.0.0.1:8787`. It stays on this PC unless you set `VALHALLA_BIND=0.0.0.0` so the phone on your network can pair. Wallet actions still refuse any request that is not from this PC.

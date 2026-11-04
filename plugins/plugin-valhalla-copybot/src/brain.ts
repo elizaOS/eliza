@@ -65,6 +65,43 @@ function defaultModels(provider: BrainProvider): Record<BrainFeature, string> {
   return { chat: model, analyst: model, report: model, repair: model, tuner: model };
 }
 
+/**
+ * Environment names that carry a provider key. The desk reads these when no key
+ * is sealed in the vault yet, so a key in `.env` works with no extra steps.
+ * A key saved later in Controls still wins, because that is the operator's
+ * explicit choice.
+ */
+const PROVIDER_ENV: Record<Exclude<BrainProvider, "ollama">, readonly string[]> = {
+  together: ["TOGETHER_API_KEY"],
+  openai: ["OPENAI_API_KEY"],
+  anthropic: ["ANTHROPIC_API_KEY"],
+  grok: ["XAI_API_KEY", "GROK_API_KEY"],
+  openrouter: ["OPENROUTER_API_KEY"],
+  gemini: ["GOOGLE_GENERATIVE_AI_API_KEY", "GEMINI_API_KEY"],
+};
+
+/** Together AI first, so a desk that sets several keys gets DeepSeek by default. */
+const ENV_ORDER = ["together", "openai", "anthropic", "grok", "openrouter", "gemini"] as const;
+
+/** The first provider key found in the environment, or null. */
+export function brainFromEnv(
+  env: Record<string, string | undefined> = process.env
+): { provider: Exclude<BrainProvider, "ollama">; key: string } | null {
+  for (const provider of ENV_ORDER) {
+    for (const name of PROVIDER_ENV[provider]) {
+      const key = env[name]?.trim();
+      if (key) return { provider, key };
+    }
+  }
+  return null;
+}
+
+/** A provider change also adopts that provider's default model names. */
+function switchProvider(settings: BrainSettings, provider: BrainProvider): BrainSettings {
+  if (settings.provider === provider) return { ...settings, provider };
+  return { ...settings, provider, models: defaultModels(provider) };
+}
+
 export function defaultBrainSettings(now = new Date()): BrainSettings {
   return {
     provider: "gemini",
@@ -163,7 +200,15 @@ export class BrainStore {
   history: UserSettings[] = [];
   pending: UserSettings | null = null;
 
-  constructor(readonly dataDir: string) {}
+  constructor(
+    readonly dataDir: string,
+    env: Record<string, string | undefined> = process.env
+  ) {
+    const fromEnv = brainFromEnv(env);
+    if (!fromEnv) return;
+    this.key = fromEnv.key;
+    this.settings = switchProvider(this.settings, fromEnv.provider);
+  }
 
   private file(): string {
     return path.join(this.dataDir, "brain.vault.json");
@@ -186,12 +231,7 @@ export class BrainStore {
     await mkdir(this.dataDir, { recursive: true });
     await writeFile(this.file(), JSON.stringify(file), { mode: 0o600 });
     this.key = provider === "ollama" ? "local" : secret.trim();
-    // A provider switch also adopts that provider's default model, so a saved key
-    // works at once. Per-feature overrides still win after the switch.
-    this.settings =
-      this.settings.provider === provider
-        ? { ...this.settings, provider }
-        : { ...this.settings, provider, models: defaultModels(provider) };
+    this.settings = switchProvider(this.settings, provider);
   }
 
   async unlock(password: string): Promise<void> {
@@ -199,7 +239,7 @@ export class BrainStore {
     const file = JSON.parse(raw) as KeystoreFile;
     this.key = await decryptSecret(file, password);
     if (isBrainProvider(file.publicKey))
-      this.settings = { ...this.settings, provider: file.publicKey };
+      this.settings = switchProvider(this.settings, file.publicKey);
   }
 
   setModel(feature: BrainFeature, model: string): void {

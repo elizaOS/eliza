@@ -8,6 +8,23 @@ Pick one in Controls, under Brain. Gemini is the default and uses a Google AI St
 
 Together AI serves DeepSeek. The default model is `deepseek-ai/DeepSeek-V4.1-Flash`. It costs $0.30 per 1M input tokens and $1.20 per 1M output tokens. You can set a different DeepSeek model for each feature. Use the exact model string from the Together AI serverless model list.
 
+## Keys in .env
+
+You can put a provider key in `.env` instead of typing it into Controls. The desk reads these names on start:
+
+| Name | Provider |
+| --- | --- |
+| `TOGETHER_API_KEY` | Together AI |
+| `OPENAI_API_KEY` | OpenAI |
+| `ANTHROPIC_API_KEY` | Anthropic |
+| `XAI_API_KEY` or `GROK_API_KEY` | xAI Grok |
+| `OPENROUTER_API_KEY` | OpenRouter |
+| `GOOGLE_GENERATIVE_AI_API_KEY` or `GEMINI_API_KEY` | Gemini |
+
+Together AI is checked first, so a desk that sets several keys uses DeepSeek. A key you save later in Controls wins over `.env`, because that is your explicit choice.
+
+The `.env` file stays on this PC. Do not commit it.
+
 Ollama stays on this PC at `127.0.0.1`. The other keys are encrypted on this PC with the same lock as the bot wallet. The phone never receives a key. Keys are not written to the log.
 
 Each feature can use its own model name: chat, analyst, report, repair, and tuner. Output is capped. A monthly dollar cap stops new model calls when it is spent. Status lines still work.
