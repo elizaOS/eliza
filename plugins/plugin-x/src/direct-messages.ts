@@ -736,10 +736,12 @@ export class TwitterDirectMessageClient {
         channelType: memory.content.channelType,
         inReplyTo: memory.content.inReplyTo,
       },
+      // Spreading the metadata union widens `type` so it is not assignable
+      // back to MemoryMetadata. Same merge the Discord connector uses.
       metadata: {
         ...(existing.metadata ?? {}),
         ...(memory.metadata ?? {}),
-      },
+      } as Memory["metadata"],
     });
     if (!updated) {
       throw new ElizaError("X DM reply delivery metadata was not persisted", {
