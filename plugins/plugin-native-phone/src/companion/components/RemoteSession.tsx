@@ -34,7 +34,12 @@ interface RemoteSessionProps {
 type ConnState = "connecting" | "open" | "closed" | "error";
 
 const PULL_TO_REFRESH_THRESHOLD_PX = 80;
-const PRIVATE_IPV6_PREFIXES = ["fe80:", "fec0:", "fc", "fd"] as const;
+// Link-local is fe80::/10 (first hextet fe80–febf), not only fe80:, and the
+// unique-local range fc00::/7 needs a full first hextet (fc00–fdff), so a
+// host such as fc::1 (hextet 0x00fc) is not private. Same test as the other
+// host classifiers (see packages/core/src/network/ssrf.ts).
+const LINK_LOCAL_IPV6_PATTERN = /^fe[89ab][0-9a-f]:/;
+const UNIQUE_LOCAL_IPV6_PATTERN = /^f[cd][0-9a-f]{2}:/;
 
 function parseIpv4Address(address: string): number[] | null {
   const parts = address.split(".");
@@ -117,7 +122,9 @@ function isPrivateCompanionHost(host: string): boolean {
     return (
       normalized === "::" ||
       normalized === "::1" ||
-      PRIVATE_IPV6_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+      normalized.startsWith("fec0:") ||
+      LINK_LOCAL_IPV6_PATTERN.test(normalized) ||
+      UNIQUE_LOCAL_IPV6_PATTERN.test(normalized)
     );
   }
   const ipv4 = parseIpv4Address(normalized);
