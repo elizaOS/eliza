@@ -1,0 +1,44 @@
+{
+  "state": "UNISSUED_SOURCE_DRAFT_NO_GO",
+  "action": "ONE_EXACT_QUALIFICATION_RUN",
+  "recipe": "paired-voice-terminal-normal-v2",
+  "mode": "qualify",
+  "sources": {
+    "SDK": {
+      "commit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+      "tree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc"
+    },
+    "Alpha": {
+      "commit": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+      "tree": "968234d5002fb481772f135875a1dde90cd8c974",
+      "sdkGitlink": "ff04a558747ed426d9d871a319f7b3946f7660e6"
+    }
+  },
+  "allowHostedFrozenLockSetup": true,
+  "allowPinnedGitBootstrapBeforeAlphaAncestry": true,
+  "workflowCommit": "Rootbindsexactreviewedpublishedoperatorsha",
+  "intentId": "Rootfresh128bitlowercasehex-neveroldspentnonce",
+  "issuedEpoch": "RootfreshUTCepoch",
+  "expiresEpoch": "Rootfinite<=issued+1200",
+  "output": "ActualRUNNER_TEMP/paired-voice-results",
+  "operatorSealSHA256": "RootbindsSEAL.json",
+  "sourceManifestSHA256": "49855c2738e857028c8c1ff1b82a26f8daa0533dc7d60eef6bc7b81e41e95d8b",
+  "oracleSHA256": "80df0ecd24e2ca8b17f10b3a39460c3a32d7b8215101702993531e8ee6ecf6f2",
+  "resourcePolicySHA256": "45da415ba1eddddaa66e0005fbb0cce6bdc12d17b2345f9beae272b2e154b93d",
+  "toolchainSHA256": "2f62c07d10891282c9f038bd9bceb82b2ae670d184223bbff4f89ae6ec0bf32c",
+  "normalTypes": "HELD_SEPARATE_NOT_WAIVED",
+  "noRootGoOrNonceIssuedHere": true,
+  "hostCohortsSHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
+  "hostProvenanceDisclosure": {
+    "20261025.353.1": "Exactauthenticated41741039106setup+explicitRootsourceexception; independentofficialtag/readmeprovenancegapOPEN, notcapabilitywaiver.",
+    "20261026.354.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": false
+    },
+    "20261101.360.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": true
+    },
+    "20261018.96.1": "Fresh authenticated41750127407attempt1 setup/earlymetadata/claim +exact Root source disposition; officialtaglookup404 PRIMARYGAP remainsOPEN. No inventedREADME/tagcommit or actualcapabilitypass."
+  }
+}

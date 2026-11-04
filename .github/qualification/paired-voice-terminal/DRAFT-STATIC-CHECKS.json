@@ -1,0 +1,18 @@
+{
+  "state": "STATIC_SOURCE_AND_DATA_CHECKS_ONLY_NO_EXECUTION",
+  "PythonModulesParsed": [
+    "run.py",
+    "check_source.py",
+    "claim.py",
+    "verify-host.py",
+    "dependency-census/SDK/inventory_dependencies.py",
+    "dependency-census/Alpha/inventory_dependencies.py"
+  ],
+  "normalOperatorOrCandidateImported": false,
+  "all12CommandsUnchanged": true,
+  "allOracleCaseArraysAndKeysLocationsUnchanged": true,
+  "251Parents2Children": true,
+  "allStrictSourceGuardAndRootBindingsConsistent": true,
+  "allV5ControllerReporterPreflightProjectionResourceHostProgramBytesUnchanged": true,
+  "failClosedDraftGateIntentionallyNotReady": true
+}

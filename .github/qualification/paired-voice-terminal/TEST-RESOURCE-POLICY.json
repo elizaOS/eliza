@@ -1,0 +1,25 @@
+{
+  "state": "SOURCE_REVIEWED_RESOURCE_BOUNDS_EXECUTION_NOT_ADMITTED",
+  "host": "github-hosted ubuntu24 x86_64 cohort20261101.360.1",
+  "wholeSeconds": 1200,
+  "jobTimeoutMinutes": 22,
+  "defaultTest": {
+    "memoryBytes": 2147483648,
+    "nodeOldSpaceMiB": 1536
+  },
+  "install": {
+    "memoryBytes": 4294967296,
+    "nodeOldSpaceMiB": 1536
+  },
+  "cpu": 2,
+  "pids": 256,
+  "memorySwapEqualsMemory": true,
+  "logBytesPerPhase": 8388608,
+  "maxDiskGrowthBytes": 12884901888,
+  "minimumStartFreeBytes": 17179869184,
+  "stopFreeBytes": 8589934592,
+  "temporaryContainerBytes": 536870912,
+  "hostCleanup": false,
+  "MacExecution": false,
+  "normalTypes": "HELD_SEPARATE_NOT_WAIVED"
+}

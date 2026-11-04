@@ -1,0 +1,52 @@
+{
+  "state": "IMMUTABLE_MIC_PORT_ONLY_SOURCE_REBIND_PENDING_FINAL_REVIEW",
+  "operatorParent": "fc2ea2838547c67d7b363dc9ce4228934a6dc86d",
+  "sources": {
+    "SDK": {
+      "commit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+      "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b"
+    },
+    "Alpha": {
+      "commit": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+      "tree": "1eb3e31516c08a289a463ad6d6ca5f42daf48cab",
+      "sdkGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928"
+    }
+  },
+  "AlphaSoleParent": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+  "onlyChangedSourceFile": "test/development-cartesia-conversation.test.mjs",
+  "testSHA256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+  "actual3485OtherLeavesPreserved": true,
+  "sourceReviewSHA256": "56f04ce31285d271b362013afa5f2f78721145e00819ab955aea4bd7b7e383a7",
+  "remoteAlphaReviewSHA256": "656790feff4c2f17db129fb7f7dd3c1cff7ce0d686ca84dff0277032ae71a9d5",
+  "RootSourceDispositionSHA256": "395a8b99700ef45bc154b5a327ffc8e3f8b367d456aea0ed37b8aa5e33320492",
+  "expectedSourceParents": 251,
+  "reviewedNestedNodeChildren": 2,
+  "all35DeclarationsPreserved": true,
+  "only2LineAndSourceKeyChanges": [
+    [
+      245,
+      248
+    ],
+    [
+      250,
+      253
+    ]
+  ],
+  "all121PriorAssertionCallsPreservedPlus3StartupChecks": true,
+  "newAwaitSleepOrClientReducerSubstitute": false,
+  "registrationLedgerSHA256": "9b85b789fc0b2f54e154c1af04a82e05e3e92d0c43d39710daf6630ad4fd6f8d",
+  "registrationInputManifestSHA256": "4598b1a411fc8ca2b459bb7da4b1ea712a65b4d4c5958c0859594e9b5ff1d81b",
+  "declarationLineRebindSHA256": "97dd55f63c4647be1d9ba01faca28b3e7d11eca0d6294f68c4b9761b960ca9ae",
+  "previousDeclarationMapSHA256": "4886ac5b833eb950b884c9e23c3ee27242b7ced794c61d425507f2aadc2a1f19",
+  "hostPolicySHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
+  "hostFourCohortCapsProgramsResourcesUnchanged": true,
+  "sourceCause": "Fake MicAudioContext lacked required running state; source guard rejects undefined before turn frames. No production playback fix or new runtime success claimed.",
+  "historicalReceiptsRetained": "Earlier source/Root/AST/line-map reviews retain original subjects; current b053 source/remote/Root and new declaration map govern this child.",
+  "spentRun": 41752979019,
+  "spentIntent": "0bdfefdd5c1dbd2f0f6092c487f0f5c7",
+  "newIntentOrGOIssued": false,
+  "productionChanges": false,
+  "Google7cOrOrdinalOrNativeComposition": false,
+  "actualPlaybackAssertionsOnCorrectedPort": "NOT_YET_RUN",
+  "normalTypesLiveOrReleaseAcceptance": false
+}

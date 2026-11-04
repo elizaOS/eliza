@@ -1,0 +1,63 @@
+{
+  "atUTC": "2026-11-03T23:53:15.277Z",
+  "state": "NARROW_FINITE_COHORT_SOURCE_CORRECTION_PASS_NOT_READY_GO_OR_EXECUTION",
+  "directory": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-correction-source-v2",
+  "frozenSHA256": "487a5313ea9adaaffdf465123ce13bc6a5197d07a765bf95e0aac0f0f13950d8",
+  "sealProposalSHA256": "38a0068854c94a4655265d5b48349445d9e842d5430aabf313557c9da272cea7",
+  "hostCohortsSHA256": "dfd5ff2be525f5ec7925e0f6955a5d2be5870f40865cbcdcdc65026274556f44",
+  "baseOperator": "df2ec569da25b95cce1978a145c932e17f55bd69",
+  "failedRun": 41741039106,
+  "spentIntent": "d5d1b2c238c6641b2f87aaed6b40149b",
+  "all45FrozenFileHashesMatched": true,
+  "findings": [],
+  "changedBaseFiles": [
+    "run.py",
+    "claim.py",
+    "verify-host.py",
+    "workflow.yml",
+    "PLAN.json",
+    "ROOT-GO-CONTRACT.json"
+  ],
+  "checks": {
+    "bothGuardConsumers": "run.py and verify-host.py read same sealed HOST-COHORTS policy, exact ImageOS ubuntu24 and three literal allowedImageVersions. No wildcard/latest/defaultfallback; previous unbound20261018 excluded. Old singlevalue guard removed in bothsites.",
+    "allowedImageVersions": [
+      "20261025.353.1",
+      "20261026.354.1",
+      "20261101.360.1"
+    ],
+    "officialSourceProvenance": [
+      {
+        "tag": "ubuntu24/20261101.360",
+        "commit": "add4380b0d6685806e9192c33c37359ee0aa4023",
+        "tree": "57776617096f623ccfe0b0940cd35da20f5a27d8",
+        "readmeBlob": "707d839e521e51c4e9b7dabd4511890be83b0fc2",
+        "readmeSHA256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124",
+        "runtimeVersion": "20261101.360.1",
+        "allRefCommitReleaseContentAndByteBindingsMatched": true
+      },
+      {
+        "tag": "ubuntu24/20261026.354",
+        "commit": "ac85c71971895cd6234578d6b11f49f7c27ff0c4",
+        "tree": "391b7668418e339e7762a8f9f824c5f2a48952a0",
+        "readmeBlob": "97e7ec74186bddefe5bb53c8d3e573955364d89c",
+        "readmeSHA256": "433ac9525040ccec39fc6b1fbcbeb457cba1acd6414317f940e1ea2d9bea73c9",
+        "runtimeVersion": "20261026.354.1",
+        "allRefCommitReleaseContentAndByteBindingsMatched": true
+      }
+    ],
+    "officialSourceLimits": "Validated frozen official REF->commit/tree, contents refURL and decoded literal README Gitblob/SHA256, exact runtimeVersion and release tag/URL/date.20261101 release is prerelease:true,20261026 false; neither tag automatically proves actualhost capabilities. This is sourcepacket evidence validation, no new live officialAPI retrieval.",
+    "observed25": "Actual saved authenticated run41741039106/attempt1/workflow269943084/head df2ec completedfailure. Loghash984474/runmetadata d88ddc match limitation file; exactfour setup lines show ubuntu24 and20261025.353.1 and official-lookingincludedsoftware/release URLs. Officialtag lookup404/nohistorymatch explicitly retained: NO25 officialcommit/readmehash is asserted or borrowed.25 remains a finite Root-disposition exception based on authenticatedjobsetup, subject to unchanged fresh capabilityguards and new exacthost-policy-bound RootGO.",
+    "earlyMetadata": "Exactly five whitelisted fields ImageOS32chars/ImageVersion64/runId24/attempt8/workflowCommit64; values overlimit replaced by length marker, JSON<=4096B. Claim saves exclusive RUNNER_TEMP paired-voice-admission.json and hashes it into immutable claim; workflow uploads bothclaim+metadata together beforecheckout. run prints bounded explicitOBSERVED_NOT_ADMISSION metadata beforecohort guard and beforeoutputdir/source/module/test phases. Unknown/missingcohort fails afterboundedmetadata; no envdump/secret/profile data.",
+    "newBinding": "hostCohortsSHA256 mandatory in RootGO template, claim validated data digest, copiedactualclaim and run equality/digest gate;HOST-COHORTS required in final seal. OldGO withoutnewhash cannotpass. Existing oneuseartifact/expiry/workflow/sourcepair/bootstrap flag unchanged.",
+    "narrowDelta": "PLAN only changes statebacktoDRAFT, threeversionlist and hostCohortPolicy pointer. verify-host allotherlines byteequal after replacingoldcohortline.24other oldreadyfiles unchanged incl fullmodule/projection/FD/observer/tests/dependency scripts andresource/toolchain/source policies. ActualDocker28.0.4/localendpoint/Linuxx86/PythonWNOWAIT/16GiBentry/8GiBstop/12GiBgrowth/1200s/PGIDCID/resource/source/tool/model/Types gates intact.",
+    "failureHonesty": "Savedactualfirstjoberror is run.py47 ImageOS/ImageVersion assertion beforeoutputs/tests. No test/projection/module/cost/liveness receipt derived fromthatjob. d5d1b2c238c6641b2f87aaed6b40149b remains spent; noautomaticretry/newGO generated."
+  },
+  "rootDisposition": "25 is not independently official-image-source-established. Final Root source/GO admission must explicitly accept that already documented provenance-gap exception; this source review grants no runtime/source-cohort capability waiver.",
+  "remaining": [
+    "Final Ready-label/seal correction transition review and actual local/remote publication-literal checks",
+    "Fresh Root finiteGO/intent bound finalworkflow/seal/bothsources/hostCohorts SHA with explicit25exception disposition; no oldspentintentreuse",
+    "Actual hosted capability/tool/ancestry/projection/module/12normalfiles/dependency/resource/closure evidence",
+    "NormalTypes/runtime and realCalendar+voice calls,tokens,speed,persistededit remain separate"
+  ],
+  "actions": "Only static fs/crypto reads/hash/JSON/source comparisons and review receipt. No candidate import/probe/Git/CLI/setup/image/build/test/CI/nonce/RootGo/archive/provider/browser/device/deployment/merge."
+}

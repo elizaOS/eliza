@@ -1,0 +1,1469 @@
+{
+  "state": "ACTUAL_NEW_PIN_GIT_OBJECT_IDENTITY_ONLY_NOT_NEW_PROJECTION_RECEIPT",
+  "SDK": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "comparedWithAcceptedSDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "canonicalPaths": 339,
+  "additionalReadonlyPaths": 25,
+  "all364ModeOIDEntriesByteIdentical": true,
+  "entries": {
+    "packages/auth/src/auth/cloud-resident-binding.ts": {
+      "mode": "100644",
+      "OID": "b002226da89085a5327355572fc90a4944306768"
+    },
+    "packages/auth/src/auth/native-cloud-sign-in.ts": {
+      "mode": "100644",
+      "OID": "9e8adc621d925f64ae938d94e427c20aecbb9e41"
+    },
+    "packages/cloud/sdk/src/account-billing-snapshot.ts": {
+      "mode": "100644",
+      "OID": "fe5efc81d45a0f2a8e99b5090d1827106f4be0cb"
+    },
+    "packages/cloud/sdk/src/cloud-account-billing.ts": {
+      "mode": "100644",
+      "OID": "beea95cf4a5720871d1b9369e2de1f9213e571a9"
+    },
+    "packages/cloud/sdk/src/subscription-entitlement.ts": {
+      "mode": "100644",
+      "OID": "2d104bb8ba788a80b056ca31a5182fece7cdb105"
+    },
+    "packages/contracts/src/browser-address-input.ts": {
+      "mode": "100644",
+      "OID": "236e42123191cf1451ac57e4bbafd7b8cea7a617"
+    },
+    "packages/contracts/src/browser-request-grounding.ts": {
+      "mode": "100644",
+      "OID": "6d619cd8d78af42307a58764de45b43cd91340b7"
+    },
+    "packages/contracts/src/calendar-linked-sync.ts": {
+      "mode": "100644",
+      "OID": "ab4d940d7019f106535675b1159f5e1c4ee4c0e9"
+    },
+    "packages/contracts/src/calendar.ts": {
+      "mode": "100644",
+      "OID": "3de162f3d6cb7dd2703e3e9e8499b1777b0f1d96"
+    },
+    "packages/contracts/src/client-turn-observation.ts": {
+      "mode": "100644",
+      "OID": "1bba4fffed6bb27ddc75d0a77e19ebb9fa4db9c9"
+    },
+    "packages/contracts/src/contracts/remote-agent-pairing.ts": {
+      "mode": "100644",
+      "OID": "cb6062da18595b0c567dc7c24a88ec0feccd45e1"
+    },
+    "packages/contracts/src/contracts/theme.ts": {
+      "mode": "100644",
+      "OID": "74d5f3297cbb91b57ae9a8e9e37559b6834803d7"
+    },
+    "packages/contracts/src/deletion-window.ts": {
+      "mode": "100644",
+      "OID": "a933868bdc572207ed5184f11b1afc7d2f86242b"
+    },
+    "packages/contracts/src/device-action-execution.ts": {
+      "mode": "100644",
+      "OID": "334444778122602d995fae1faddd3a17dadbbc70"
+    },
+    "packages/contracts/src/device-reviews.ts": {
+      "mode": "100644",
+      "OID": "50d2d379045c1696fac509f7391ead7ecb921a60"
+    },
+    "packages/contracts/src/iana-tlds.ts": {
+      "mode": "100644",
+      "OID": "773eec7edeb85503ae556b2c34e0a39b62a17076"
+    },
+    "packages/contracts/src/lifeops-connector-degradation.ts": {
+      "mode": "100644",
+      "OID": "82f49610852178f011bc2699ca051c30fbcb79cd"
+    },
+    "packages/contracts/src/lifeops/connectors.ts": {
+      "mode": "100644",
+      "OID": "6d4bf9011523d789543c4eed94ba679168f39244"
+    },
+    "packages/contracts/src/lifeops/events.ts": {
+      "mode": "100644",
+      "OID": "3308933f0dc21d3688a9c54bcb517c1694d3d44b"
+    },
+    "packages/contracts/src/lifeops/gmail.ts": {
+      "mode": "100644",
+      "OID": "67537ac6c95e7a4491cde7dcaa72e88d415386f9"
+    },
+    "packages/contracts/src/lifeops/goals.ts": {
+      "mode": "100644",
+      "OID": "9ea8c7de453703a17f91a06d47acf5ac286d4a17"
+    },
+    "packages/contracts/src/lifeops/health.ts": {
+      "mode": "100644",
+      "OID": "25939b6ffe41b94c69870c05c599db6c54fa2deb"
+    },
+    "packages/contracts/src/lifeops/inbox.ts": {
+      "mode": "100644",
+      "OID": "d026bcf27feecb73668357966c448e7074f610f7"
+    },
+    "packages/contracts/src/lifeops/policy.ts": {
+      "mode": "100644",
+      "OID": "71ce2152d36bb29f696a310d40b3a5f3329d44e7"
+    },
+    "packages/contracts/src/lifeops/reminders.ts": {
+      "mode": "100644",
+      "OID": "b682417afcb559220a6e5572c4025c7daf345a41"
+    },
+    "packages/contracts/src/lifeops/scheduling.ts": {
+      "mode": "100644",
+      "OID": "f53e19b8e3d737362f529e4a4edfde37bd0730f6"
+    },
+    "packages/contracts/src/lifeops/telemetry.ts": {
+      "mode": "100644",
+      "OID": "8b305237d2c41f1e130908afbf64ad198b47a540"
+    },
+    "packages/contracts/src/lifeops/workflows.ts": {
+      "mode": "100644",
+      "OID": "3a52ac39c667c81631d1b07ddf903092ea5ece81"
+    },
+    "packages/contracts/src/mms-send.ts": {
+      "mode": "100644",
+      "OID": "98a7de191dacac0abda9a9e3be14b52be14a5f39"
+    },
+    "packages/contracts/src/native-notes-query.ts": {
+      "mode": "100644",
+      "OID": "683dc1e62b2076df8d951920b6cdf2bc1cb9c35e"
+    },
+    "packages/contracts/src/native-telephony-session.ts": {
+      "mode": "100644",
+      "OID": "695708f8acb9bf08a079450ca6a7d970daaaa46c"
+    },
+    "packages/contracts/src/native-telephony.ts": {
+      "mode": "100644",
+      "OID": "a33f5ef802e3dd19c7956a03e11a00701e6bdf7b"
+    },
+    "packages/contracts/src/notice-routes.ts": {
+      "mode": "100644",
+      "OID": "780b01a1d54c31191b98946dc9f7f4ed75621d11"
+    },
+    "packages/contracts/src/phone-dial.ts": {
+      "mode": "100644",
+      "OID": "1cf1861cc67316ee122924531b4ff4c09c2f2b6f"
+    },
+    "packages/contracts/src/phone-workflow.ts": {
+      "mode": "100644",
+      "OID": "30cae5f982932a47f094dfb564faf5f19185e5b1"
+    },
+    "packages/contracts/src/sms-send.ts": {
+      "mode": "100644",
+      "OID": "acd6d22a71c3d48651319f2f1ab1d8ce7166c68c"
+    },
+    "packages/contracts/src/stated-clock-time.ts": {
+      "mode": "100644",
+      "OID": "0eeaf44c8ca47d60c3cb051195a3f10ddc5284a4"
+    },
+    "packages/contracts/src/workflow-client.ts": {
+      "mode": "100644",
+      "OID": "dd5564cbc02851fbf923ff73df8c740c46c56984"
+    },
+    "packages/contracts/src/workflow-device.ts": {
+      "mode": "100644",
+      "OID": "0a744fadb531d9ea0bed8ab1c52e81927ad2dc6f"
+    },
+    "packages/contracts/src/workflow-intents.ts": {
+      "mode": "100644",
+      "OID": "833c799a3107ed5784f8a5baf7162b715d431abe"
+    },
+    "packages/contracts/src/workflow-scope.ts": {
+      "mode": "100644",
+      "OID": "ebe9821f1d5f75189def1cbd589d1b8759899183"
+    },
+    "packages/core/src/errors.ts": {
+      "mode": "100644",
+      "OID": "a992701ab42cd32d75d86361200196587cfc2ec6"
+    },
+    "packages/core/src/events.ts": {
+      "mode": "100644",
+      "OID": "62015676a04389e9a4e25e268e98068d08aa285e"
+    },
+    "packages/core/src/i18n/language.ts": {
+      "mode": "100644",
+      "OID": "b2800edf550933f01859df275357677d0754888e"
+    },
+    "packages/core/src/logging.ts": {
+      "mode": "100644",
+      "OID": "94387879cd7e0e4670f45a2e7e8687ef0f16745c"
+    },
+    "packages/core/src/read-memo.ts": {
+      "mode": "100644",
+      "OID": "b9bee487d606e20be006dac453a4de9679c1e8f4"
+    },
+    "packages/core/src/runtime/single-flight-memo.ts": {
+      "mode": "100644",
+      "OID": "1cfb27b5740598f0e85c1c07a85c57d2782952e1"
+    },
+    "packages/core/src/schema-types.ts": {
+      "mode": "100644",
+      "OID": "eaa15e29cdae86230a88a93b3d741c649732286c"
+    },
+    "packages/core/src/security/log-redaction.ts": {
+      "mode": "100644",
+      "OID": "19e1773aec89933faf495eb70dd3e39e67208b6e"
+    },
+    "packages/core/src/speech.ts": {
+      "mode": "100644",
+      "OID": "e18894cf645519f995e2cfe096b6e314a684d557"
+    },
+    "packages/core/src/spoken-text.ts": {
+      "mode": "100644",
+      "OID": "c8f5d924da6034017f60c4de709769e8e8881b5a"
+    },
+    "packages/core/src/types/effects.ts": {
+      "mode": "100644",
+      "OID": "e75d6506081b4a8fa5df2f237c61adf1c07fe241"
+    },
+    "packages/core/src/types/json.ts": {
+      "mode": "100644",
+      "OID": "807984d33ce8b71de59f213d4b7deade29226d8a"
+    },
+    "packages/core/src/types/permissions.ts": {
+      "mode": "100644",
+      "OID": "0e62c46877b08d2f5753cfb98029345eb5718dbf"
+    },
+    "packages/core/src/types/schema.ts": {
+      "mode": "100644",
+      "OID": "8dd0e953542d6c3daea1047ebbb58086cec9123a"
+    },
+    "packages/core/src/types/surface-manifest.ts": {
+      "mode": "100644",
+      "OID": "cebd43e1b22b6e632229223677c27a58d784c6fd"
+    },
+    "packages/core/src/types/system-notice.ts": {
+      "mode": "100644",
+      "OID": "6054efd874a1b54eafc0944d7892565f6dc78ff2"
+    },
+    "packages/core/src/types/view-capability.ts": {
+      "mode": "100644",
+      "OID": "f5d93dbd1d05c8512518535882ddcf5df7b88531"
+    },
+    "packages/core/src/types/view-kind.ts": {
+      "mode": "100644",
+      "OID": "29447fc4885c9d586c0b5efc9e8e46df1587dab5"
+    },
+    "packages/core/src/utils/errors.ts": {
+      "mode": "100644",
+      "OID": "2cfe5d4190f90080970ee128683870b9d17730b8"
+    },
+    "packages/core/src/utils/reasoning-tags.ts": {
+      "mode": "100644",
+      "OID": "3ecea168ba27a7a6f0532520e0bc6ffa9783cbcd"
+    },
+    "packages/core/src/utils/stage-directions.ts": {
+      "mode": "100644",
+      "OID": "6331b73348bcd16ce15ebb1c2d18096d212d3c45"
+    },
+    "packages/core/src/utils/string-boundaries.ts": {
+      "mode": "100644",
+      "OID": "daece8044e52c3b839e530e4b2dc30cf9fa28855"
+    },
+    "packages/core/src/view-interaction.ts": {
+      "mode": "100644",
+      "OID": "09c5548a136957fa2c0893707023bc1e202d0bc5"
+    },
+    "packages/core/src/views/completed-action-navigation.ts": {
+      "mode": "100644",
+      "OID": "83c8add73bb08bbe57a90cbefa5294d0dd63223c"
+    },
+    "packages/core/src/views/view-action-handoff.ts": {
+      "mode": "100644",
+      "OID": "d0075c9aa069487b5d2438622ee869cf327c3576"
+    },
+    "packages/core/src/views/view-interact-protocol.ts": {
+      "mode": "100644",
+      "OID": "80ef0a62d8be5031621a27ca92baef117bebc00f"
+    },
+    "packages/host/src/voice/ui-context.ts": {
+      "mode": "100644",
+      "OID": "cbdeb278534a91522618308f7c43c86509beb87e"
+    },
+    "packages/ui/src/accessibility/screen-focus.ts": {
+      "mode": "100644",
+      "OID": "6348bf14782b057a925e3aa6bf728c2ade0f0312"
+    },
+    "packages/ui/src/agent-surface/AgentSurfaceContext.hooks.ts": {
+      "mode": "100644",
+      "OID": "e9472b2a62f8f295d3724ac14c2018721fe9a306"
+    },
+    "packages/ui/src/agent-surface/registry.ts": {
+      "mode": "100644",
+      "OID": "08276ecbf9ba09596f93442d0b26f71575b2bb82"
+    },
+    "packages/ui/src/agent-surface/sensitive.ts": {
+      "mode": "100644",
+      "OID": "12600a0aea3ed1d44227b803c451309e15a6a13b"
+    },
+    "packages/ui/src/agent-surface/types.ts": {
+      "mode": "100644",
+      "OID": "ed606bb447f068872bb657f32a49a2789bcc3ad7"
+    },
+    "packages/ui/src/agent-surface/useAgentElement.ts": {
+      "mode": "100644",
+      "OID": "730f45b70bb0c1bb2fb55735e9f64906481b3399"
+    },
+    "packages/ui/src/api/api-error.ts": {
+      "mode": "100644",
+      "OID": "db1e6361d8850f477644ad7cbe0469462b4fdeaf"
+    },
+    "packages/ui/src/api/conversation-turn-controller.ts": {
+      "mode": "100644",
+      "OID": "b1748f9752078f360ca70d4538b6976490f91d72"
+    },
+    "packages/ui/src/api/transport.ts": {
+      "mode": "100644",
+      "OID": "235330ebaad97b654b93de5317742c4a84ffb95e"
+    },
+    "packages/ui/src/app-shell-pages.ts": {
+      "mode": "100644",
+      "OID": "015582221d2a80485378120af5c1c6fa8995f0b3"
+    },
+    "packages/ui/src/components/composites/deferred-deletion-notice.tsx": {
+      "mode": "100644",
+      "OID": "61296931229f1c570904628e99f1f28312c61fbd"
+    },
+    "packages/ui/src/components/composites/page-panel/content-state.tsx": {
+      "mode": "100644",
+      "OID": "2eb0534a34d4ad8ad195ffeb0cb61b61e0e06463"
+    },
+    "packages/ui/src/components/composites/page-panel/index.ts": {
+      "mode": "100644",
+      "OID": "b6decf164662ca97702077a0913aa849944bd510"
+    },
+    "packages/ui/src/components/composites/page-panel/page-panel-collapsible-section.tsx": {
+      "mode": "100644",
+      "OID": "b98b0fb70a8d215cfc5999ef268513d377d489bf"
+    },
+    "packages/ui/src/components/composites/page-panel/page-panel-feature-empty.tsx": {
+      "mode": "100644",
+      "OID": "caf0ee9065b24ad6a79f774cc8264bf3b760f621"
+    },
+    "packages/ui/src/components/composites/page-panel/page-panel-header.tsx": {
+      "mode": "100644",
+      "OID": "6ee0adc51a4a6b146b0ac0bd45dbb77528f90f57"
+    },
+    "packages/ui/src/components/composites/page-panel/page-panel-layout.tsx": {
+      "mode": "100644",
+      "OID": "cf44ec664673491756417f39e0c91840f4f18bff"
+    },
+    "packages/ui/src/components/composites/page-panel/page-panel-types.ts": {
+      "mode": "100644",
+      "OID": "74409fbeac82d85e242e2983f37eb4d0b9d55e42"
+    },
+    "packages/ui/src/components/pages/InstalledAppsLauncher.tsx": {
+      "mode": "100644",
+      "OID": "1e2ca51cb5387b83add8b32263c18329cd24bac8"
+    },
+    "packages/ui/src/components/permissions/permission-walkthrough.ts": {
+      "mode": "100644",
+      "OID": "8abde9c2fac2b75a64806cc51d94a1fffa3c2ae6"
+    },
+    "packages/ui/src/components/settings/cloud-subscription-summary.tsx": {
+      "mode": "100644",
+      "OID": "8820da6b76f64d98fbbc10491da19651d904ee86"
+    },
+    "packages/ui/src/components/shell/chat-overlay-motion.ts": {
+      "mode": "100644",
+      "OID": "8b69d14549ec727508588540902dcc147feee954"
+    },
+    "packages/ui/src/components/shell/chat-panel-layout.ts": {
+      "mode": "100644",
+      "OID": "9041f364a880f78da4e0ce3b7f0878c0809bd36d"
+    },
+    "packages/ui/src/components/shell/dock-clearance.ts": {
+      "mode": "100644",
+      "OID": "4aa721ec3b63d8edee1e35cc6dd5f728011d0868"
+    },
+    "packages/ui/src/components/shell/responsive-layout.ts": {
+      "mode": "100644",
+      "OID": "d163c0277a57ab3842cc780d58f91546d5dd72ec"
+    },
+    "packages/ui/src/components/shell/use-pull-gesture.ts": {
+      "mode": "100644",
+      "OID": "7636c8eaf38d436805e4d7d22e748f39b861b3ae"
+    },
+    "packages/ui/src/components/ui/badge.tsx": {
+      "mode": "100644",
+      "OID": "cca3857eacc9aa0462a6da8d52e313b8c0c0c6f8"
+    },
+    "packages/ui/src/components/ui/button.tsx": {
+      "mode": "100644",
+      "OID": "955750ebf496be6c2ff7691d9047c362e30cec95"
+    },
+    "packages/ui/src/components/ui/card.tsx": {
+      "mode": "100644",
+      "OID": "a4e9ff55a0d8f66e54583381a464e8876abfea62"
+    },
+    "packages/ui/src/components/ui/empty-state.tsx": {
+      "mode": "100644",
+      "OID": "5766b745e4139300c0b828f78419119402f5dd44"
+    },
+    "packages/ui/src/components/ui/skeleton-layouts.tsx": {
+      "mode": "100644",
+      "OID": "1dc6f99f84b161907f7c17db632694f8926d1583"
+    },
+    "packages/ui/src/components/ui/skeleton.tsx": {
+      "mode": "100644",
+      "OID": "7f356a167df18228739c7a1058795ba54c6c9dd3"
+    },
+    "packages/ui/src/components/ui/spinner.tsx": {
+      "mode": "100644",
+      "OID": "d7ba1afbabbffa4b838d38a0873c8660b27af6b6"
+    },
+    "packages/ui/src/config/theme.ts": {
+      "mode": "100644",
+      "OID": "f5ded12eb1d51ea9a909279f0703e1087f553490"
+    },
+    "packages/ui/src/gestures/constants.ts": {
+      "mode": "100644",
+      "OID": "40afb722cf56259989663864ee1fe649680e5075"
+    },
+    "packages/ui/src/gestures/lost-capture.ts": {
+      "mode": "100644",
+      "OID": "ad3ef2d468c9e63f341e7d3af03a880b3ee5029e"
+    },
+    "packages/ui/src/gestures/recognizers.ts": {
+      "mode": "100644",
+      "OID": "d6c13c79ccedbdb697204acad996e006176c23a7"
+    },
+    "packages/ui/src/gestures/useRafCoalescer.ts": {
+      "mode": "100644",
+      "OID": "87c8b3c24672750c0c3d728ebc38ebdb7a4ad6cd"
+    },
+    "packages/ui/src/logger.ts": {
+      "mode": "100644",
+      "OID": "3760b75e09dd88d0fdad742785462edff0dca677"
+    },
+    "packages/ui/src/mobile-shell/MobileAllAppsDrawer.tsx": {
+      "mode": "100644",
+      "OID": "b6066f5590385c522596b3c273126f833c310be6"
+    },
+    "packages/ui/src/mobile-shell/MobileApplication.tsx": {
+      "mode": "100644",
+      "OID": "7bc7a37845715f4cbfe0b279168dfb94e81eed04"
+    },
+    "packages/ui/src/mobile-shell/MobileHomeScreen.tsx": {
+      "mode": "100644",
+      "OID": "ccf72bc6b064aea0b9f9e77ad0bacab71c92f382"
+    },
+    "packages/ui/src/mobile-shell/MobileViewHost.tsx": {
+      "mode": "100644",
+      "OID": "ffd1e473ba92efa3e77e5b0350853e6ad4a6689c"
+    },
+    "packages/ui/src/mobile-shell/application-catalog.ts": {
+      "mode": "100644",
+      "OID": "6f62b8cb4b6047ac092f6ce2007241db9511dc7b"
+    },
+    "packages/ui/src/mobile-shell/core.ts": {
+      "mode": "100644",
+      "OID": "f8c6d6038a9fbb177695d125cfccdc82a71ee7a9"
+    },
+    "packages/ui/src/mobile-shell/eliza-product.ts": {
+      "mode": "100644",
+      "OID": "e5309e4ce9f0a5e2fc7069d43f87f7965adc2691"
+    },
+    "packages/ui/src/mobile-shell/feature-manifest.ts": {
+      "mode": "100644",
+      "OID": "9cafea0ed4a9d1903187b1186270b8fd625f3d34"
+    },
+    "packages/ui/src/mobile-shell/gestures.ts": {
+      "mode": "100644",
+      "OID": "f515f2401361adc872855d5578e9711895f782ab"
+    },
+    "packages/ui/src/mobile-shell/index.ts": {
+      "mode": "100644",
+      "OID": "0d23f8abc0f44b337d5345b2420a5376dbce8bf1"
+    },
+    "packages/ui/src/mobile-shell/mobile-launcher.ts": {
+      "mode": "100644",
+      "OID": "d34be7245010da85dc844f84734ec76c73633cf8"
+    },
+    "packages/ui/src/mobile-shell/navigation.ts": {
+      "mode": "100644",
+      "OID": "582734715e114fca532b39df0972378584e04faa"
+    },
+    "packages/ui/src/mobile-shell/product-registration.ts": {
+      "mode": "100644",
+      "OID": "84fe2205001cae5e298b07db530cbf9a114f25c1"
+    },
+    "packages/ui/src/mobile-shell/view-id-migration.ts": {
+      "mode": "100644",
+      "OID": "346ba4302af6a5606ab6f4649595ab4679c642a7"
+    },
+    "packages/ui/src/mobile-shell/view-ids.ts": {
+      "mode": "100644",
+      "OID": "43149dc5b184d4994e60f54b6e0007de25e05bc6"
+    },
+    "packages/ui/src/mobile-shell/view-policy.ts": {
+      "mode": "100644",
+      "OID": "1fc51b8e47a821135449bc156d43023d1208ad91"
+    },
+    "packages/ui/src/mobile-shell/view-registry.ts": {
+      "mode": "100644",
+      "OID": "90ab4adb69e38eb35407d6ed149b75f38f10ad47"
+    },
+    "packages/ui/src/overview/OverviewCards.tsx": {
+      "mode": "100644",
+      "OID": "b4a056a0c4da5a7dc1aeda10d83bb51e570cf017"
+    },
+    "packages/ui/src/overview/daily-overview.ts": {
+      "mode": "100644",
+      "OID": "897f708d7f0a5ea33833f0af4f45472b6481d65d"
+    },
+    "packages/ui/src/platform/browser-document-store.ts": {
+      "mode": "100644",
+      "OID": "f50cf23a7d2eae3a57ecf0e72419d3acf0d15626"
+    },
+    "packages/ui/src/registry-host.ts": {
+      "mode": "100644",
+      "OID": "2df14e2010765bde712dc227d550909b409d4852"
+    },
+    "packages/ui/src/state/durable-draft-controller.ts": {
+      "mode": "100644",
+      "OID": "c8032d07873cbcf699f67887097decb7ca0a5340"
+    },
+    "packages/ui/src/state/durable-draft.ts": {
+      "mode": "100644",
+      "OID": "b32d59094833fc3d0b28f8fb2afa32833f3e127d"
+    },
+    "packages/ui/src/utils/automation-feed-filter.ts": {
+      "mode": "100644",
+      "OID": "6410e43b5c8660c47fd65f3fb1be3bb3400f1083"
+    },
+    "packages/ui/src/utils/cn.ts": {
+      "mode": "100644",
+      "OID": "3911d0f70c662d68254349a0ac7a4803a027e822"
+    },
+    "packages/ui/src/utils/cron-format.ts": {
+      "mode": "100644",
+      "OID": "e521cecc7a27e7d2ca4d09f390693d6798e84777"
+    },
+    "packages/ui/src/utils/reminder-presentation.ts": {
+      "mode": "100644",
+      "OID": "8113710170922b3205075d094a5ec45fb0c22f31"
+    },
+    "packages/ui/src/view-primitives.ts": {
+      "mode": "100644",
+      "OID": "b48c5ce29262de8f4004982b260416bcbfabff9b"
+    },
+    "packages/ui/src/voice/audio-worklet-module-urls.ts": {
+      "mode": "100644",
+      "OID": "bc8372d7ff19b966430b748b081cbfdcdf1bbd7c"
+    },
+    "packages/ui/src/voice/batch-conversation.ts": {
+      "mode": "100644",
+      "OID": "8184bdc5092e9f8662b71f65355b7a57e0799506"
+    },
+    "packages/ui/src/voice/browser-audio-runtime.ts": {
+      "mode": "100644",
+      "OID": "b73585df4c9e1e7de349bdaee043aab66e4c8928"
+    },
+    "packages/ui/src/voice/end-of-turn.ts": {
+      "mode": "100644",
+      "OID": "a8c079392b08d00a07186f40ed11a67b464f6241"
+    },
+    "packages/ui/src/voice/pcm-wave.ts": {
+      "mode": "100644",
+      "OID": "4c6ff77f57840964a20b2452d561435641e3575d"
+    },
+    "packages/ui/src/voice/speech-segments.ts": {
+      "mode": "100644",
+      "OID": "895dc59403c5d0b2fd7250193341be3638a0a84a"
+    },
+    "packages/ui/src/voice/tts-playback-activity.ts": {
+      "mode": "100644",
+      "OID": "63502454ced521d6e1db786467df1f9ea7016fdc"
+    },
+    "packages/ui/src/voice/voice-activity.ts": {
+      "mode": "100644",
+      "OID": "733f1664c81061ceec94589b933cfaa1ee3a47c9"
+    },
+    "packages/ui/src/voice/voice-chat-playback.ts": {
+      "mode": "100644",
+      "OID": "fb6c1cf9b51811c781c6f6ec4ec982555b7049e5"
+    },
+    "packages/ui/src/voice/voice-session-client-core.ts": {
+      "mode": "100644",
+      "OID": "749adac8adea137ba620c79f54b3a7f8af4024e6"
+    },
+    "packages/ui/src/voice/voice-session-mic-capture.ts": {
+      "mode": "100644",
+      "OID": "4b72557d745f7ecfda46a478c0e3114224e981cd"
+    },
+    "packages/ui/src/voice/voice-session-ownership.ts": {
+      "mode": "100644",
+      "OID": "5c54dec8dbdf4fcaa9671887b69afb98ba1a402c"
+    },
+    "packages/ui/src/voice/voice-session-pcm.ts": {
+      "mode": "100644",
+      "OID": "a3d93a50bd8c58645aa95c3d9a59539d1b579e0e"
+    },
+    "packages/ui/src/voice/voice-session-playback.ts": {
+      "mode": "100644",
+      "OID": "7947b0c6e37b8e1806ee9244fa690f775d592738"
+    },
+    "packages/ui/src/voice/voice-session-protocol.ts": {
+      "mode": "100644",
+      "OID": "873e02b924d70e850fd27fca5579f0e8c85a6f80"
+    },
+    "packages/ui/src/voice/voice-session-state.ts": {
+      "mode": "100644",
+      "OID": "ad997aeac6082f5ad42b2978ee9ba77dccda5853"
+    },
+    "packages/ui/src/voice/voice-session-status.ts": {
+      "mode": "100644",
+      "OID": "f85812064245fd905ce92cbcaccaacc93187a164"
+    },
+    "packages/ui/src/voice/worklets/playback-reference-tap.js": {
+      "mode": "100644",
+      "OID": "60293cd268ee17de95b5af762be92e752c36da06"
+    },
+    "packages/ui/src/voice/worklets/voice-session-downlink.js": {
+      "mode": "100644",
+      "OID": "4cb6b600665591dbce57cb1a89b4d9c518abe915"
+    },
+    "packages/ui/src/voice/worklets/voice-session-uplink.js": {
+      "mode": "100644",
+      "OID": "e3d8280317bfc74301b2ba4c06aebb54997d6fd2"
+    },
+    "packages/voice/src/browser-capture/README.md": {
+      "mode": "100644",
+      "OID": "41fdb1863d3026de7b8a741db65fa759763bee1e"
+    },
+    "packages/voice/src/browser-capture/audio-capture.ts": {
+      "mode": "100644",
+      "OID": "bff1895b01b98320e5858860b3ad63ee639728b6"
+    },
+    "packages/voice/src/browser-capture/index.ts": {
+      "mode": "100644",
+      "OID": "fee4b7ac6354d4861aeefdb60957a420f1b83d70"
+    },
+    "packages/voice/src/browser-capture/recording-pcm.ts": {
+      "mode": "100644",
+      "OID": "8a745ff4d343044ed2fb900a45b6b6814d38a8c2"
+    },
+    "packages/voice/src/delay-calibrator.ts": {
+      "mode": "100644",
+      "OID": "9ec754cc86431a781a9310f578c95b670a0a36ec"
+    },
+    "packages/voice/src/echo-alignment.ts": {
+      "mode": "100644",
+      "OID": "2bd8603e9dfa1029c037bde92b98554164fda734"
+    },
+    "packages/voice/src/echo-delay.ts": {
+      "mode": "100644",
+      "OID": "2e9ec9915a9a7dff42e90bf8891ba27c6babb4e0"
+    },
+    "packages/voice/src/echo-metrics-calculation.ts": {
+      "mode": "100644",
+      "OID": "a6685f679737a03d6f58309107f8fd43acb8b757"
+    },
+    "packages/voice/src/echo-reference-buffer.ts": {
+      "mode": "100644",
+      "OID": "409cd047745ae66b9a473850adad7dd55f8e5c27"
+    },
+    "packages/voice/src/first-sentence-snip.ts": {
+      "mode": "100644",
+      "OID": "4f226faf58904f2d2f6fe79f1abe0c26161ec651"
+    },
+    "packages/voice/src/index.ts": {
+      "mode": "100644",
+      "OID": "c14e74bf3311346d00836b3f8f05156fb5ba7521"
+    },
+    "packages/voice/src/live-voice-session.test.ts": {
+      "mode": "100644",
+      "OID": "a4d1d7b110feef85804511bb3733df91135e6381"
+    },
+    "packages/voice/src/live-voice-session.ts": {
+      "mode": "100644",
+      "OID": "78dbc56ebb1498c142f19ca17d6e3396c8cb09cb"
+    },
+    "packages/voice/src/native-live-voice.test.ts": {
+      "mode": "100644",
+      "OID": "af0a355466a6abfaa914818cb2d15439c050ecb9"
+    },
+    "packages/voice/src/native-live-voice.ts": {
+      "mode": "100644",
+      "OID": "8e4abb86023745c6d2b835cb8c18d9c1c791973e"
+    },
+    "packages/voice/src/native-speech-request.test.ts": {
+      "mode": "100644",
+      "OID": "4259bbfc2fbf4307d587690decf2671e38c64b7b"
+    },
+    "packages/voice/src/native-speech-request.ts": {
+      "mode": "100644",
+      "OID": "d10a700a79f6ba8dff962c053f71e19e4a51a213"
+    },
+    "packages/voice/src/nlms-echo-canceller.ts": {
+      "mode": "100644",
+      "OID": "4acd00b56b311dbc62dd770db447250f83cc9737"
+    },
+    "packages/voice/src/owner-inference.ts": {
+      "mode": "100644",
+      "OID": "06403761d3062da76102560de5a116a8e8528c54"
+    },
+    "packages/voice/src/random-id.test.ts": {
+      "mode": "100644",
+      "OID": "978919d9c2310492e5bf9f8cd0596fb676442786"
+    },
+    "packages/voice/src/random-id.ts": {
+      "mode": "100644",
+      "OID": "2118a97e342d4545326180e6bc51d11981a41181"
+    },
+    "packages/voice/src/realtime-voice-timing.test.ts": {
+      "mode": "100644",
+      "OID": "3907def9c8f07fbc0afaaf7c8259828e698ecfbf"
+    },
+    "packages/voice/src/realtime-voice-timing.ts": {
+      "mode": "100644",
+      "OID": "9735ca18679a535b28e14b80b0334867a6177f18"
+    },
+    "packages/voice/src/respond-gate.test.ts": {
+      "mode": "100644",
+      "OID": "daf91650608f17cf1fd47a4a91a6eff1ed05f18d"
+    },
+    "packages/voice/src/respond-gate.ts": {
+      "mode": "100644",
+      "OID": "4221a527bef8d7614bbf9a9078568bd2a3c29938"
+    },
+    "packages/voice/src/turn.ts": {
+      "mode": "100644",
+      "OID": "f477a124f5c16794fa9e66f85f829ee2a6634d9f"
+    },
+    "packages/voice/src/voice-assistant-session.test.ts": {
+      "mode": "100644",
+      "OID": "890491e5d76b7b802d3ac48c130d949fa1dd2de9"
+    },
+    "packages/voice/src/voice-assistant-session.ts": {
+      "mode": "100644",
+      "OID": "2d4038afabfc22742618dca9774282c8f8aa0b02"
+    },
+    "packages/voice/src/voice-cloud-clef.test.ts": {
+      "mode": "100644",
+      "OID": "24f2042f58a9c35bea9da5b88ef5b94bf9d88acb"
+    },
+    "packages/voice/src/voice-cloud-clef.ts": {
+      "mode": "100644",
+      "OID": "6a73420af47b26c9fea173fb76148b08db2b2c2d"
+    },
+    "packages/voice/src/voice-endpoint-chain.test.ts": {
+      "mode": "100644",
+      "OID": "f69bd259582565913a65c1a20db75025b845135f"
+    },
+    "packages/voice/src/voice-endpoint-chain.ts": {
+      "mode": "100644",
+      "OID": "4f094e6eefa14838481965c2d0eee10675da888b"
+    },
+    "packages/voice/src/voice-eot.test.ts": {
+      "mode": "100644",
+      "OID": "b690fa167bd688086b72c1322bf59182e0f7b171"
+    },
+    "packages/voice/src/voice-eot.ts": {
+      "mode": "100644",
+      "OID": "188ba2bc019f4499836dbbe81fade21576fdaf33"
+    },
+    "packages/voice/src/voice-speech-disclosure.test.ts": {
+      "mode": "100644",
+      "OID": "c0c125ecb897ea94cfd2fdd0c285d3d2f8356e3e"
+    },
+    "packages/voice/src/voice-speech-disclosure.ts": {
+      "mode": "100644",
+      "OID": "17162b13054e56d82c1bcde40d0d6314e4f35fcf"
+    },
+    "packages/voice/src/voice-turn-routes.test.ts": {
+      "mode": "100644",
+      "OID": "db41f65261410626bef039836cfd099aa3778f07"
+    },
+    "packages/voice/src/voice-turn-routes.ts": {
+      "mode": "100644",
+      "OID": "d9ec810d9aeb1ad5a1f7753504603ea964f61598"
+    },
+    "packages/voice/src/voice-turn-timing.test.ts": {
+      "mode": "100644",
+      "OID": "98d52ac1b69645a24387fa9249aa59ded23c5db5"
+    },
+    "packages/voice/src/voice-turn-timing.ts": {
+      "mode": "100644",
+      "OID": "d215755a001c6e8b5a3dfdfd0d946b02e599241a"
+    },
+    "packages/voice/src/voice-wer.ts": {
+      "mode": "100644",
+      "OID": "39cfd433fb9acdb3092d408e256582856dde88f6"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/calendar-contract.ts": {
+      "mode": "100644",
+      "OID": "a758b1ea5c5901e85fc7e8ea51956a732be3e999"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/camera-contract.ts": {
+      "mode": "100644",
+      "OID": "6088369a6c2dfae0152170a4d7be7aa83be286fd"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/client-coordinator.ts": {
+      "mode": "100644",
+      "OID": "6a6f7788888ccefd25ee8a37c2aef950e42fbb82"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/clock-contract.ts": {
+      "mode": "100644",
+      "OID": "5115563039362b982ca26f120fbfd34758fbee5a"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/clock-handoff-history.ts": {
+      "mode": "100644",
+      "OID": "15399fd6b23dfc5276c3beb8c237158490fc2b24"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/clock-handoff.ts": {
+      "mode": "100644",
+      "OID": "412a3e6e6de2d8e98c32f42653e9a73958f369b3"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/clock-review-executor.ts": {
+      "mode": "100644",
+      "OID": "10801c00020b9cfb35962cb2839b35fc73408246"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/contract.ts": {
+      "mode": "100644",
+      "OID": "7f26cf0b9561ce8f5db7aecadc8f9f76128c7e73"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/device-record-presentation.ts": {
+      "mode": "100644",
+      "OID": "1882dfc4acb61fbfe9cd90df12ebba4a97840108"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/foreground-review-contract.ts": {
+      "mode": "100644",
+      "OID": "93014ca357a04282ce050bc366902a7dea2443e2"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/maps-contract.ts": {
+      "mode": "100644",
+      "OID": "7c74401cfd500b7c4029781e592b40969dda3980"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/notes-contract.ts": {
+      "mode": "100644",
+      "OID": "36b8879d5f6b984d7ee8433ffef9b8fa24539902"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/notes-query-result.ts": {
+      "mode": "100644",
+      "OID": "34149dc993d11767ac1b9b91b34fc6aae23a3a17"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/phone-dial-contract.ts": {
+      "mode": "100644",
+      "OID": "bdbe89e99d004c128951d4c6c3ba59f20edd8ed4"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/photo-library-contract.ts": {
+      "mode": "100644",
+      "OID": "3525542bfeb45dedce5c4f3a4f86d17bd460f012"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/reminder-contract.ts": {
+      "mode": "100644",
+      "OID": "3151a3dd0f8a3b7b9715040a1c7f088bed672b16"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/reminder-create-contract.ts": {
+      "mode": "100644",
+      "OID": "4fc9f2a655bd2cd21653c9d6c6abbc51e49334e3"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/reminder-journal.ts": {
+      "mode": "100644",
+      "OID": "40b21297be95b27c87990cc4b04a6a3a01d7fe16"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/sms-contract.ts": {
+      "mode": "100644",
+      "OID": "185f2e6fcfd8ffca4a22b90b5804178b80c3d7f9"
+    },
+    "plugins/plugin-assistant/src/services/device-actions/workflow-contract.ts": {
+      "mode": "100644",
+      "OID": "5df3c3e4c6dafdb91c331fa9af2b6ef5fb0f84a6"
+    },
+    "plugins/plugin-browser/src/native-client-command.ts": {
+      "mode": "100644",
+      "OID": "e6b36d85d8c086e891db8ebc4356b7835b73b952"
+    },
+    "plugins/plugin-calendar/src/api/calendar-api.ts": {
+      "mode": "100644",
+      "OID": "6903625489347fc5dd15eede0a0d45812a5fdf77"
+    },
+    "plugins/plugin-calendar/src/api/client-calendar.ts": {
+      "mode": "100644",
+      "OID": "6a447ff6dbae11de0176a06ca7f41c5c2c6c2459"
+    },
+    "plugins/plugin-calendar/src/browser.ts": {
+      "mode": "100644",
+      "OID": "b628e7bb30b7d388ee40c2eb2122348e748e4aab"
+    },
+    "plugins/plugin-calendar/src/client/availability-review.ts": {
+      "mode": "100644",
+      "OID": "a5a9415d4c83aadbfba709cec5ecbbf08e2ab45b"
+    },
+    "plugins/plugin-calendar/src/client/named-read.ts": {
+      "mode": "100644",
+      "OID": "733b71e2207bb84cce5bf762bf97f88754006a9b"
+    },
+    "plugins/plugin-calendar/src/components/EventEditorDrawer.tsx": {
+      "mode": "100644",
+      "OID": "cac5a308656ddd5648130ff6cd9502de82f123ff"
+    },
+    "plugins/plugin-calendar/src/components/event-editor-command.ts": {
+      "mode": "100644",
+      "OID": "a78b46f2ef33a57475902ce24a6e2d3a79bf1fa9"
+    },
+    "plugins/plugin-calendar/src/components/event-editor-policy.ts": {
+      "mode": "100644",
+      "OID": "c7febe825290eb4609e96a7d512cb9d72561cd49"
+    },
+    "plugins/plugin-calendar/src/index.ts": {
+      "mode": "100644",
+      "OID": "00d301bead635a4731affd33618b526062f97cea"
+    },
+    "plugins/plugin-calendar/src/internal/time.ts": {
+      "mode": "100644",
+      "OID": "17629c08f476082c38f9b7c69b5e21c6bf180aaa"
+    },
+    "plugins/plugin-calendar/src/linked-sync/google-reader.ts": {
+      "mode": "100644",
+      "OID": "637499d5ba05c30e45d71b4af056077a7cc18127"
+    },
+    "plugins/plugin-calendar/src/linked-sync/google-sync-port.ts": {
+      "mode": "100644",
+      "OID": "f52a7e4f6102352b47e0b15026eeaf8a23fa8451"
+    },
+    "plugins/plugin-calendar/src/linked-sync/index.ts": {
+      "mode": "100644",
+      "OID": "1eeeb8f206cd788fc2a8a41e67915ea4077121a4"
+    },
+    "plugins/plugin-calendar/src/linked-sync/linked-store.ts": {
+      "mode": "100644",
+      "OID": "e38888713c4a26afd61350ee595931e238eabafe"
+    },
+    "plugins/plugin-calendar/src/linked-sync/sync-controller.ts": {
+      "mode": "100644",
+      "OID": "1c0471fbf7e4453501cb75628251748935f8b39d"
+    },
+    "plugins/plugin-calendar/src/linked-sync/sync-host.ts": {
+      "mode": "100644",
+      "OID": "b32ebe01a91cd323f071ccb4e6207e2db57b8f82"
+    },
+    "plugins/plugin-calendar/src/meetings/auto-join-types.ts": {
+      "mode": "100644",
+      "OID": "3c6bccdb6c0a26c39b93f63255fe3f6a684d80ff"
+    },
+    "plugins/plugin-calendar/src/service/managed-calendar-host.ts": {
+      "mode": "100644",
+      "OID": "607e5bcf2ed8779c809ba54d294498057297789f"
+    },
+    "plugins/plugin-files/README.md": {
+      "mode": "100644",
+      "OID": "c7794f292a110d93b9677911ea4689b44e763c6a"
+    },
+    "plugins/plugin-files/package.json": {
+      "mode": "100644",
+      "OID": "bd5a381df82923453435aac7e161a6326dbf6bb4"
+    },
+    "plugins/plugin-files/src/browser/attachment.ts": {
+      "mode": "100644",
+      "OID": "7f8495329ef516379f9b1ac87ed770551bd25880"
+    },
+    "plugins/plugin-files/src/browser/file-archive.ts": {
+      "mode": "100644",
+      "OID": "48a46ad47cbb681fc31c9780871613b64773fa2f"
+    },
+    "plugins/plugin-files/src/browser/files.ts": {
+      "mode": "100644",
+      "OID": "77c2ce7886e5b5dfec46c9df08422ebd8973b762"
+    },
+    "plugins/plugin-files/src/documents/local-ocr.ts": {
+      "mode": "100644",
+      "OID": "83b49c017af79f5f46d3bc9af3fc28ea5ed94f75"
+    },
+    "plugins/plugin-files/src/documents/scan-correction.ts": {
+      "mode": "100644",
+      "OID": "d1ac99eb19456d8f32e2f16be6e83060ec5f6a78"
+    },
+    "plugins/plugin-files/src/documents/scan-draft.ts": {
+      "mode": "100644",
+      "OID": "11b5e5b56ec3227f2e5a215ba2ba176eb91c3a67"
+    },
+    "plugins/plugin-files/src/documents/scan-edges.ts": {
+      "mode": "100644",
+      "OID": "b2d23a8850a54260f206b209ed5a7c411073d484"
+    },
+    "plugins/plugin-files/src/documents/scan-event.ts": {
+      "mode": "100644",
+      "OID": "6e3a7454589f4d9e97dc00c544f079c06102e805"
+    },
+    "plugins/plugin-files/src/documents/scan-links.ts": {
+      "mode": "100644",
+      "OID": "d955ce4978d6ad61d03bef19b67b04b631d6f765"
+    },
+    "plugins/plugin-files/src/documents/scan-pdf.ts": {
+      "mode": "100644",
+      "OID": "a72635009e4726a01afd24d27303f13db46b4e97"
+    },
+    "plugins/plugin-files/src/documents/scan-text-layer.ts": {
+      "mode": "100644",
+      "OID": "cf6f5957f7631fd027d125da0739495d25839169"
+    },
+    "plugins/plugin-files/src/documents/source-links.ts": {
+      "mode": "100644",
+      "OID": "e0383743dcbe5abe91c5a3df5bd336ca5615cd64"
+    },
+    "plugins/plugin-files/src/index.ts": {
+      "mode": "100644",
+      "OID": "7251215e950766be22247feda92c31100a2b976d"
+    },
+    "plugins/plugin-files/test/browser-files-share.test.mjs": {
+      "mode": "100644",
+      "OID": "5ca104e069dbc7546750e8e012b3fa76767ba54a"
+    },
+    "plugins/plugin-files/test/scan-event.test.mjs": {
+      "mode": "100644",
+      "OID": "379b3e60d6b49659859a8a684b99ade0ccaae428"
+    },
+    "plugins/plugin-files/test/source-links.test.mjs": {
+      "mode": "100644",
+      "OID": "f8f8f2bd1b8e366fefeb87737c93d683bd130955"
+    },
+    "plugins/plugin-files/tsconfig.build.json": {
+      "mode": "100644",
+      "OID": "0f6bbd34cdb30449de54b753a806804cf8df8618"
+    },
+    "plugins/plugin-files/tsconfig.json": {
+      "mode": "100644",
+      "OID": "2f1c3920df0c4a21893213b5b34a69130f0f9e3f"
+    },
+    "plugins/plugin-inbox/src/components/mailbox/MailFolderPicker.tsx": {
+      "mode": "100644",
+      "OID": "8b06436b9178537fe7afddb1ee314fcc45bf469c"
+    },
+    "plugins/plugin-inbox/src/components/mailbox/index.ts": {
+      "mode": "100644",
+      "OID": "c7ae1f59fb4767c5ba58f7d6f6ad4c19d80f0ef5"
+    },
+    "plugins/plugin-inbox/src/mailbox/attachments.ts": {
+      "mode": "100644",
+      "OID": "8ff29b8529850e20a625c3d7ae9a167d4d7601e4"
+    },
+    "plugins/plugin-inbox/src/mailbox/background-notices.ts": {
+      "mode": "100644",
+      "OID": "6168f7cf12d2390a3dbd7fee0423a39340e4d4e8"
+    },
+    "plugins/plugin-inbox/src/mailbox/digest.ts": {
+      "mode": "100644",
+      "OID": "997dfa670faac1ee89e6f41e70938b7f3431f7fe"
+    },
+    "plugins/plugin-inbox/src/mailbox/drafts-controller.ts": {
+      "mode": "100644",
+      "OID": "679164e27fac5c174d65cd774122b02740359b00"
+    },
+    "plugins/plugin-inbox/src/mailbox/failures.ts": {
+      "mode": "100644",
+      "OID": "03bd93ecafc9a8a29cc6749331a05b0325b589a6"
+    },
+    "plugins/plugin-inbox/src/mailbox/grants.ts": {
+      "mode": "100644",
+      "OID": "25f5c44c7351843ae9aa1995f659d5121ec30819"
+    },
+    "plugins/plugin-inbox/src/mailbox/index.ts": {
+      "mode": "100644",
+      "OID": "69a54c6a9c559720de915fe849514a5774f12e4d"
+    },
+    "plugins/plugin-inbox/src/mailbox/links.ts": {
+      "mode": "100644",
+      "OID": "b4d479fc8211af3ab4058dc5462fdbd3a6ab64e4"
+    },
+    "plugins/plugin-inbox/src/mailbox/mail-context.ts": {
+      "mode": "100644",
+      "OID": "38b094440bdfa21d6430ca6df76e8be70c3932ef"
+    },
+    "plugins/plugin-inbox/src/mailbox/mailbox-list.ts": {
+      "mode": "100644",
+      "OID": "5f250ba1b2084a8912ff375b07d4cae1a95a2bfb"
+    },
+    "plugins/plugin-inbox/src/mailbox/managed-gmail-client.ts": {
+      "mode": "100644",
+      "OID": "bd2aa5a74a4c16aa4d483e69240c503a9c7eea1f"
+    },
+    "plugins/plugin-inbox/src/mailbox/operation-journal.ts": {
+      "mode": "100644",
+      "OID": "7e88ff6da0c0e1cb8e2f7bc17658655e3f5935db"
+    },
+    "plugins/plugin-inbox/src/mailbox/preview.ts": {
+      "mode": "100644",
+      "OID": "c8c470f023264078b60adc2d46ad99291f5cd15e"
+    },
+    "plugins/plugin-inbox/src/mailbox/read-ahead.ts": {
+      "mode": "100644",
+      "OID": "7bd10c5c845066c80541bdb13a50786627fb9e62"
+    },
+    "plugins/plugin-inbox/src/mailbox/read-state.ts": {
+      "mode": "100644",
+      "OID": "a95935aae3b1eed8c21aff1d15c395542be458ff"
+    },
+    "plugins/plugin-inbox/src/mailbox/retained-draft.ts": {
+      "mode": "100644",
+      "OID": "226103f84d0a1bcf4b927123f5400a3ea05e19f4"
+    },
+    "plugins/plugin-inbox/src/mailbox/review-controller.ts": {
+      "mode": "100644",
+      "OID": "c0db48f1e1fbdb38ba45adec784fd52ac68cdb10"
+    },
+    "plugins/plugin-inbox/src/mailbox/types.ts": {
+      "mode": "100644",
+      "OID": "401571f936ee7a3dbd32059dc6e47d48a5cc7a6f"
+    },
+    "plugins/plugin-inbox/src/mailbox/use-in-email.ts": {
+      "mode": "100644",
+      "OID": "f0e0ac0371916e5460c242234283d904012a6f09"
+    },
+    "plugins/plugin-maps/src/client/agent-context.ts": {
+      "mode": "100644",
+      "OID": "f81894691e5d7903d83241d93beb62bfbfd1c6ff"
+    },
+    "plugins/plugin-maps/src/client/agent-navigation.ts": {
+      "mode": "100644",
+      "OID": "f6fc880ce221e00387d51824b24ea7fa8ac09079"
+    },
+    "plugins/plugin-maps/src/client/approved-read.ts": {
+      "mode": "100644",
+      "OID": "6cedd6c8b2c6494ece3c8bcfaa2931ba50f2d1ef"
+    },
+    "plugins/plugin-maps/src/client/background-navigation.ts": {
+      "mode": "100644",
+      "OID": "bd03c090c086e7079b4628664655acd8fbea2869"
+    },
+    "plugins/plugin-maps/src/client/cloud-provider.ts": {
+      "mode": "100644",
+      "OID": "3ec217a45cf8160c3bf6725e38cdf7a0ac83725a"
+    },
+    "plugins/plugin-maps/src/client/cloud-session.ts": {
+      "mode": "100644",
+      "OID": "1bd47451be6a6fb7ff4476121103f7126a8a8513"
+    },
+    "plugins/plugin-maps/src/client/contracts.ts": {
+      "mode": "100644",
+      "OID": "88c769441ea8802630b5c2968670a876520ea74b"
+    },
+    "plugins/plugin-maps/src/client/device-navigation.ts": {
+      "mode": "100644",
+      "OID": "ee3b984c6beb43ac3ce85783ac65ee49dfb3c098"
+    },
+    "plugins/plugin-maps/src/client/guidance.ts": {
+      "mode": "100644",
+      "OID": "2a5d52b709a2e157576a3b1556eff148f8181a7c"
+    },
+    "plugins/plugin-maps/src/client/index.ts": {
+      "mode": "100644",
+      "OID": "9e65e5f9693003603ca62b306818aefe84db48b4"
+    },
+    "plugins/plugin-maps/src/client/location.ts": {
+      "mode": "100644",
+      "OID": "962df611e50b93814e895a4badf08aebe6e478df"
+    },
+    "plugins/plugin-maps/src/client/map-layout.ts": {
+      "mode": "100644",
+      "OID": "4f1eaef047d2dda2693dc612a3c2076ff03653cb"
+    },
+    "plugins/plugin-maps/src/client/map-plane.ts": {
+      "mode": "100644",
+      "OID": "a1295bb081b049104cdd63895ca4a9772c802cd7"
+    },
+    "plugins/plugin-maps/src/client/maps-screen.ts": {
+      "mode": "100644",
+      "OID": "3450acccd375c7a8b26734e53ff433597a4aff3c"
+    },
+    "plugins/plugin-maps/src/client/native-location.ts": {
+      "mode": "100644",
+      "OID": "5696e16f6116fcb56f41992c07f72e4aa479f270"
+    },
+    "plugins/plugin-maps/src/client/navigation-fix.ts": {
+      "mode": "100644",
+      "OID": "e64d0df618bad459a9a6859fa0251b1fb5824f5c"
+    },
+    "plugins/plugin-maps/src/client/navigation-relay.ts": {
+      "mode": "100644",
+      "OID": "3e6d4085a7094929b8c2a40aea05388f25713a39"
+    },
+    "plugins/plugin-maps/src/client/navigation-voice.ts": {
+      "mode": "100644",
+      "OID": "fb4705568edbafdbc3950877116273533a47d52c"
+    },
+    "plugins/plugin-maps/src/client/regional-provider.ts": {
+      "mode": "100644",
+      "OID": "578c250a1eb017e0caf72122f94aa13df2ac5395"
+    },
+    "plugins/plugin-maps/src/client/route-distance.ts": {
+      "mode": "100644",
+      "OID": "294c29e179eab849140e511c8681b606d132745e"
+    },
+    "plugins/plugin-maps/src/client/runtime.ts": {
+      "mode": "100644",
+      "OID": "f8c4388f2572df2a8002ce013afc8b1b8ca2e24d"
+    },
+    "plugins/plugin-maps/src/client/saved-places.ts": {
+      "mode": "100644",
+      "OID": "14162ee0abe5f031163db3053ca7b8d043befe20"
+    },
+    "plugins/plugin-maps/src/client/share.ts": {
+      "mode": "100644",
+      "OID": "6df352525b988795f2699408cfa5cb1037e555da"
+    },
+    "plugins/plugin-maps/src/client/state.ts": {
+      "mode": "100644",
+      "OID": "1fbf0ce09580fba369ff8d1bbd000580533e7300"
+    },
+    "plugins/plugin-maps/src/client/tsconfig.json": {
+      "mode": "100644",
+      "OID": "e426a40dc0b12ffb85ba8be6e176b18ee79aab92"
+    },
+    "plugins/plugin-maps/test/navigation-client.test.mjs": {
+      "mode": "100644",
+      "OID": "9f716ef5b72b4136895edfc87b21f8cce22aa9a7"
+    },
+    "plugins/plugin-native-browser-surface/src/address-input.ts": {
+      "mode": "100644",
+      "OID": "03395dddf1a6086d14ef51efe46da491ed5a5ba8"
+    },
+    "plugins/plugin-native-browser-surface/src/browsing-session.ts": {
+      "mode": "100644",
+      "OID": "b9faf9efcb13e938ddfd27f19d35b190cc5e4200"
+    },
+    "plugins/plugin-native-browser-surface/src/page-reading.ts": {
+      "mode": "100644",
+      "OID": "832473a2339061b4525c3b11e268dd1a2d82cd13"
+    },
+    "plugins/plugin-native-browser-surface/src/page-source.ts": {
+      "mode": "100644",
+      "OID": "5687ce2ac709467114982b2234ac99a359ef750e"
+    },
+    "plugins/plugin-native-browser-surface/src/tab-host.ts": {
+      "mode": "100644",
+      "OID": "485740067990009b839dbf4445a7024f3326cdc9"
+    },
+    "plugins/plugin-native-camera/src/definitions.ts": {
+      "mode": "100644",
+      "OID": "9193054d5e67d038a09bc705467b18f5c920fa4a"
+    },
+    "plugins/plugin-native-camera/src/host-ports.ts": {
+      "mode": "100644",
+      "OID": "2a8e91d21ebd4a01c1137093d48d58f1ea625fe7"
+    },
+    "plugins/plugin-native-camera/src/scan-document.ts": {
+      "mode": "100644",
+      "OID": "3034c7b36a586e4f1509fb03a62ff38fb8a8f2f6"
+    },
+    "plugins/plugin-native-camera/src/session.ts": {
+      "mode": "100644",
+      "OID": "a71e8705421e646b10e6ad54835704f6802cf8b9"
+    },
+    "plugins/plugin-native-reminders/src/android-definitions.ts": {
+      "mode": "100644",
+      "OID": "bbdfca5fc74f74247d3bdbd330e7e30ffdc56af4"
+    },
+    "plugins/plugin-native-reminders/src/occurrence.ts": {
+      "mode": "100644",
+      "OID": "b2e8ccde8488eff506c11eb0a66be1282b1250df"
+    },
+    "plugins/plugin-native-system/src/client/launcher.ts": {
+      "mode": "100644",
+      "OID": "4c602e19088ef4e64c1b5fb153a63c62745ba759"
+    },
+    "plugins/plugin-native-system/src/client/shade.ts": {
+      "mode": "100644",
+      "OID": "21daad78dbcdba996867ad3254068d643abfb78e"
+    },
+    "plugins/plugin-native-system/src/crash-log.ts": {
+      "mode": "100644",
+      "OID": "37b2731aa9b5a2b188fd8ccb2706fcf5bc71f19a"
+    },
+    "plugins/plugin-native-system/src/definitions.ts": {
+      "mode": "100644",
+      "OID": "5e087571279f97824f3f4686fcae22190b93433b"
+    },
+    "plugins/plugin-native-system/src/reset.ts": {
+      "mode": "100644",
+      "OID": "b4475569332d8a84b0ff998cffdb882aaaa25dd8"
+    },
+    "plugins/plugin-native-system/src/sense-bridge.ts": {
+      "mode": "100644",
+      "OID": "5b80cedbdfbef6a6153c9d8efdffd8f7c0901da0"
+    },
+    "plugins/plugin-native-system/src/sense-web.ts": {
+      "mode": "100644",
+      "OID": "7ecccaba320101d1fb49a5d01dc2efa94cefdaa9"
+    },
+    "plugins/plugin-native-system/src/sense.ts": {
+      "mode": "100644",
+      "OID": "bf532836c6856d87a7a89e76f459434a95b704ca"
+    },
+    "plugins/plugin-native-system/src/settings.ts": {
+      "mode": "100644",
+      "OID": "af282224b818a1c42d7babf3a74c5af4502634d1"
+    },
+    "plugins/plugin-notes/src/capabilities.ts": {
+      "mode": "100644",
+      "OID": "488e5f0b73ad4cce88c295fa6ed7d1b28f186449"
+    },
+    "plugins/plugin-notes/src/client/index.ts": {
+      "mode": "100644",
+      "OID": "5d78b4d8beae480361d3ad351c44e81dc25deb56"
+    },
+    "plugins/plugin-notes/src/client/note-dates.ts": {
+      "mode": "100644",
+      "OID": "fe9e193d25382ab91728f18d3882a89487ff9aff"
+    },
+    "plugins/plugin-notes/src/client/note-deleted-origins.ts": {
+      "mode": "100644",
+      "OID": "885a11919d82228c1b2df7fcf712b8e12833a3b9"
+    },
+    "plugins/plugin-notes/src/client/note-documents.ts": {
+      "mode": "100644",
+      "OID": "a19bf0cf9158a1fac496d4e8d188f30bf1a987f0"
+    },
+    "plugins/plugin-notes/src/client/note-origin.ts": {
+      "mode": "100644",
+      "OID": "33a62ad4dd3034e3071cb49f6cac4c1b6bd297c1"
+    },
+    "plugins/plugin-notes/src/client/note-schedule-draft.ts": {
+      "mode": "100644",
+      "OID": "d5a97e6a3ae98c099a1dc26b6a74be6708c06e51"
+    },
+    "plugins/plugin-notes/src/client/note-share-text.ts": {
+      "mode": "100644",
+      "OID": "aa621fa4f0e7bdc60bff6428661ff3ca6e504273"
+    },
+    "plugins/plugin-notes/src/client/notes-api.ts": {
+      "mode": "100644",
+      "OID": "bcb0803ddb9c6e42958153cdd42ac9d16e3ccc27"
+    },
+    "plugins/plugin-notes/src/client/notes-audio-store.ts": {
+      "mode": "100644",
+      "OID": "8c6b79cab89af675b7aa1b860175e21c067adacf"
+    },
+    "plugins/plugin-notes/src/client/notes-contract.ts": {
+      "mode": "100644",
+      "OID": "c5f71f6977ed709b8779fc963077056eb89774d0"
+    },
+    "plugins/plugin-notes/src/client/notes-controller.ts": {
+      "mode": "100644",
+      "OID": "80dc3cfd4a0b429c317a3795bc47457edebf1b7a"
+    },
+    "plugins/plugin-notes/src/client/notes-document-store.ts": {
+      "mode": "100644",
+      "OID": "13d01520f95e2445fe31f9d07f277c5d97ce4dbb"
+    },
+    "plugins/plugin-notes/src/client/notes-draft.ts": {
+      "mode": "100644",
+      "OID": "d5e44c0dce5709c03e7f029c6de5eb5592affb9a"
+    },
+    "plugins/plugin-notes/src/client/notes-editor.ts": {
+      "mode": "100644",
+      "OID": "7e72df48247dfff538361e61609362be905d9577"
+    },
+    "plugins/plugin-notes/src/client/notes-query.ts": {
+      "mode": "100644",
+      "OID": "a09e542c9aa69eb46ffa5e34e31010b6ff7ace46"
+    },
+    "plugins/plugin-notes/src/client/notes-recording-deletion.ts": {
+      "mode": "100644",
+      "OID": "d1db98dc1242af77faea6cfc452e74ad5f84dbb5"
+    },
+    "plugins/plugin-notes/src/client/notes-recording-effects.ts": {
+      "mode": "100644",
+      "OID": "b440319d219736b63fd5bdd00b9e89fa5a92d59e"
+    },
+    "plugins/plugin-notes/src/client/notes-recording-summary.ts": {
+      "mode": "100644",
+      "OID": "c06691e4a3184d0512ce1a5a2eb33e39004e7734"
+    },
+    "plugins/plugin-notes/src/client/notes-secure-store.ts": {
+      "mode": "100644",
+      "OID": "3433a305d010e13496699cff847ae3281ca9b85f"
+    },
+    "plugins/plugin-notes/src/client/notes-snapshot-state.ts": {
+      "mode": "100644",
+      "OID": "f0cce92d8d44f4c677ca9e7b1784430087c9ad4d"
+    },
+    "plugins/plugin-notes/src/client/notes-store.ts": {
+      "mode": "100644",
+      "OID": "ec327f5705677a79642ada59681b3543131a19f0"
+    },
+    "plugins/plugin-notes/src/client/notes-trash-actions.ts": {
+      "mode": "100644",
+      "OID": "4ec1359de351825cb609f779a04365df87a809a3"
+    },
+    "plugins/plugin-notes/src/client/notes-trash-maintenance.ts": {
+      "mode": "100644",
+      "OID": "2692ffc6842a1a3dc3c3a8a1f87d95b9e5459c8d"
+    },
+    "plugins/plugin-notes/src/client/notes-trash-policy.ts": {
+      "mode": "100644",
+      "OID": "857a5ca19c702d46913da9671a4bd0f07e7c516f"
+    },
+    "plugins/plugin-notes/src/client/notes-trash-schedule.ts": {
+      "mode": "100644",
+      "OID": "550cb7bcd28d828ca869d0357fb83945fc55b2fa"
+    },
+    "plugins/plugin-notes/src/client/notes-trash-store.ts": {
+      "mode": "100644",
+      "OID": "b065462a745929c6d2aee495e80691dc34e0d9a1"
+    },
+    "plugins/plugin-notes/src/components/NotesSurface.tsx": {
+      "mode": "100644",
+      "OID": "c7fbc58440604447434b16e469fd0db5f24f0bd2"
+    },
+    "plugins/plugin-notes/src/components/NotesWorkspace.tsx": {
+      "mode": "100644",
+      "OID": "b0410caee6236478f966b6817137f7f445068c5b"
+    },
+    "plugins/plugin-notes/src/components/viewPrimitives.tsx": {
+      "mode": "100644",
+      "OID": "88ca8fa63dbd78eac8a7153fae73019803ad6fa9"
+    },
+    "plugins/plugin-notes/src/note-authored.ts": {
+      "mode": "100644",
+      "OID": "0cd63d5c686d25768d3dc74a1aba2abd7643a69f"
+    },
+    "plugins/plugin-notes/src/note-format.ts": {
+      "mode": "100644",
+      "OID": "ffe41f76e83e7540b409d810c481198bafcc0b54"
+    },
+    "plugins/plugin-notes/src/note-id.ts": {
+      "mode": "100644",
+      "OID": "892ed84b481dc8564c3b4599d9bf005f9b8708e8"
+    },
+    "plugins/plugin-notes/src/types.ts": {
+      "mode": "100644",
+      "OID": "b18af5e28d4bd03e084df339dfb9afb2dcbf211e"
+    },
+    "plugins/plugin-notes/src/workspace.ts": {
+      "mode": "100644",
+      "OID": "5852e57c7b93c99c6c6375530f60d5c112bc2636"
+    },
+    "plugins/plugin-notes/test/device-query.test.mjs": {
+      "mode": "100644",
+      "OID": "3e65ca5974d6a9afb3bbcb0942c2e9c4e72a3a8a"
+    },
+    "plugins/plugin-notes/test/notes-trash-maintenance.test.mjs": {
+      "mode": "100644",
+      "OID": "4b61fed72a6f25917940092709447e8a203b3193"
+    },
+    "plugins/plugin-notes/test/notes-trash-policy.test.mjs": {
+      "mode": "100644",
+      "OID": "6e0253588d3e15a06f24fdee4fbc08fbaa7cf3ae"
+    },
+    "plugins/plugin-notes/test/notes-trash-schedule.test.mjs": {
+      "mode": "100644",
+      "OID": "220fae277afddad4728167ca6668340703e6f6ac"
+    },
+    "plugins/plugin-notes/test/notes-trash-store.test.mjs": {
+      "mode": "100644",
+      "OID": "196aaba02bba0c5ee1f1a14619950ecf5b658c56"
+    },
+    "plugins/plugin-workflow/src/client/hosted-digests.ts": {
+      "mode": "100644",
+      "OID": "aa43b87fed7ba84c779fd67d18ad5cb3f75282ca"
+    },
+    "plugins/plugin-workflow/src/services/hosted-digest-policy.ts": {
+      "mode": "100644",
+      "OID": "c44afc3c0b3f4178566ee85436191955996e1f0d"
+    }
+  },
+  "canonicalPreparerSHA256": "6c9bf77ddca244ba773732d4bd2b5cbee6b29d00d5022ccbeac2e67ca7a13458",
+  "noLocalRawBatchOrProducerOrImports": true,
+  "freshNormalProducerPhysicalBaselinePostAndValueConsumerProofMandatory": true
+}

@@ -1,0 +1,16 @@
+{
+  "result": "PASS",
+  "repo": "/Users/nubs/.local/state/eliza-five-lane-coordination/alpha-final-b053-google-offline-ff04-native-inert-v3-20261104/publication-v1/source",
+  "kind": "product",
+  "head": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+  "expectedHead": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+  "ancestryComplete": true,
+  "knownInjectedAncestors": [],
+  "trackedChangedFiles": [],
+  "failures": [],
+  "limitations": [
+    "Known-incident guard, not a general malware audit or sandbox"
+  ],
+  "sourceCodeExecuted": false,
+  "networkAccess": false
+}

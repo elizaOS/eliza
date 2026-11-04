@@ -1,0 +1,47 @@
+{
+  "atUTC": "2026-11-04T03:53:18.629661+00:00",
+  "state": "EXACT_BCDEF_FF04_CONDITIONAL_HOSTED_SOURCE_SCOPE_NOT_OPERATOR_OR_EXECUTION_GO",
+  "Alpha": {
+    "commit": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+    "tree": "968234d5002fb481772f135875a1dde90cd8c974",
+    "soleParent": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+    "offlineGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/alpha-final-b053-google-offline-ff04-native-inert-v3-20261104/publication-v1/PRODUCT-SOURCE-GUARD.json",
+    "offlineGuardSHA256": "438420dc84a0dad7f6710809568a4a6de6f8a4e5b1eae329a1656d03d25d96cf",
+    "offlineAncestryComplete": true,
+    "hostedCompleteAncestryMandatory": true,
+    "actualRootSourceReadbackSHA256": "64c798497deba46c798bd3b5bf058a40c21bce61aed16cd6d3482387002cff1a"
+  },
+  "SDK": {
+    "commit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+    "tree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+    "soleParent": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+    "offlineGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-ff04-bcdef-normal-recipe-v6-20261104/FF04-COMPLETE-PUBLISHER-SOURCE-GUARD.json",
+    "offlineGuardSHA256": "de190c45b3db33f27c14157bb2d8098a0a745c5cdb66d9425d4f597a2babde41",
+    "offlineAncestryComplete": true,
+    "offlineCustody": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-ff04-bcdef-normal-recipe-v6-20261104/FF04-COMPLETE-GUARD-CUSTODY.json",
+    "offlineCustodySHA256": "24644d65c205cbb797d07d019799ed34bb21746884d10fe715c29127c335d906",
+    "reportedReachableHistoryCommits": 35612,
+    "actualRootSourceReadbackSHA256": "a990a40f38d29895d113cf9046f702ae1876d1fd639af5743982d1fadeeb1b35",
+    "conditionalHostedDepth1Scope": "Only exact ff04/tree086d may use POLICY sdk-mode exact expected pin/current tree/known incident markers with explicitly recorded hosted incomplete-ancestry limit, anchored to this exact complete offline guard. Not an exception transferred from another pin; no relabeling shallow hosted history complete."
+  },
+  "policySHA256": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf",
+  "checkSourceSHA256": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5",
+  "sourceReviewBindings": {
+    "SDK8Composition": "7e618905d5b01378d80209a4b3cbbd80e6beb17f7ec9e4cf4875dbfd403d76d1",
+    "Alpha26Composition": "a053025e89e6370c6abd3646ccbaaa7a26eb1807f5fa1e9dc59b7b92f7344f00",
+    "offlineGoogleComponent": "edb3a2c9966b16ba8f7fc1ca0c7945dcf78626a2dde32cf5b791ff4b17e4aed4",
+    "SDKNativeBindings": "3c8d6c9260a1d5aae9cb9f5a4193e5d08de8fd7bad874cea334d97e01ebe264c"
+  },
+  "operatorPinAdmitted": null,
+  "conditions": [
+    "Only these two exact source commits and reviewed postimages, no moving-branch intake or arbitrary patch inheritance.",
+    "Future operator code/tree/literals/normal source manifests/oracles/projection/actual public-module paths require exact independent review, followed by a new finite Root GO and actual wire/claim binding.",
+    "Fresh actual hosted source guards/current-tree/source bytes, pinned tools and same-run host capability/resource/ownership/dependency/PGID/CID/FD checks remain mandatory.",
+    "Qualification must preserve normal package conditions/configs/full owning files and actual declared producer prerequisites. No thin config, condition override, ignored error, borrowed output, arbitrary alias, source replacement or setup hook.",
+    "No external model/provider/key/budget/financial operation, live preview, deployment, merge, Mac large build/copy/install, native/device or human acceptance is authorized by this document.",
+    "Known-incident/source guard only; not general malware/host clearance, normal types/lifecycle or functional acceptance."
+  ],
+  "oldE232B053VoiceAcceptanceTransferred": false,
+  "normalTestsTypesRuntimeDeviceAccepted": false,
+  "executionOrGOIssuedByThisDocument": false
+}

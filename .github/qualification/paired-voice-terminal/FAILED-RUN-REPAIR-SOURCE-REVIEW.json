@@ -1,0 +1,80 @@
+{
+  "atUTC": "2026-11-04T00:18:26.047056+00:00",
+  "state": "FOUR_FILE_SOURCE_REPAIR_SCOPED_PASS_NOT_TEST_OR_RELEASE_ACCEPTANCE",
+  "failedRun": 41743741024,
+  "proposalSHA256": "14f7ce1eab0f9150f8e9af63691995acda08c8d48c3a146558debc88006a9b6f",
+  "patchSHA256": "f51e7a5a3118b30e05ba37c8929154c5b91390d6198f2e491485747de9f73371",
+  "files": [
+    {
+      "path": "operator/PLAN.json",
+      "beforeSHA256": "63fe7b995ea40e3b50d69b35f14ec4b03d860fd1cf80df77c05ecbe63c352c44",
+      "afterSHA256": "722d74a49461a96cd31234ce5d3854085cb9b9757e5e21209e4c43cee974caba"
+    },
+    {
+      "path": "operator/run.py",
+      "beforeSHA256": "d11442dba432500687990235ff4d39074ebd0cd191febbad9d1804ab0df4c43b",
+      "afterSHA256": "0bf15d3fb7f340e49b6dd576303207dafb69ca345db73ebee8caef7b088b10e9"
+    },
+    {
+      "path": "operator/normal-node-case-observer.mjs",
+      "beforeSHA256": "e3e977cebd36665a4ff06037623c3150b909b2ec658612067536e42a87a2cd24",
+      "afterSHA256": "1c280f68543e5f1596208d29de7e373e7e3603f0b999c5b8ca5f242776c1262a"
+    },
+    {
+      "path": "Alpha/test/fixtures/cloud-voice-view.mjs",
+      "beforeSHA256": "b175ac9180daf0d8422d233c6a618f6e525e8041643a1e67ce80d489b1a3fd6b",
+      "afterSHA256": "26eebaf47008efa63ef3269730229505b201c931ccd3b589e47d8a8c5cb34da4"
+    }
+  ],
+  "sourceCacheEvidenceSHA256": "a94b2863f632505efb65976879eff9b57c7be187f730b4037c350070ba4e77cf",
+  "pinnedTimingSupplierSHA256": "307b676bf5e93f2b0cc54e8f5688f85ffcf2376639b15ccab8f6863991b1ac61",
+  "verified": [
+    "All four before/after digests verified; proposed tree contains exactly these four files; Python controller AST parsed only",
+    "All eight actual SDK startup logs show reporter load failure caused by mkdir /workspace/sdk/node_modules/.vitest-cache; those are startup failures, not executed failing assertions",
+    "Vitest5.0.5 actual local CLI schema declares fsModuleCachePath; pinned normal wrapper forwards argv; config resolves supplied absolute directory; FileSystemModuleCache uses option and project transform services share root cache/fallback. All8 group argv and controller exact guards updated consistently to unique writable /results directories",
+    "Root flag propagates through Vitest project transform service and ordinary forks; cache-disabled fork transform copies use OS tmpdir, existing bounded /tmp. No remaining demonstrated child-fork cache propagation gap for these actual suppliers; no claim that all possible future write paths are covered",
+    "Alpha nine adapter children use fresh Node TAP subprocesses, not Vitest. Top-level SDK CLI cache flags do not propagate to or repair those Node child failures, nor are claimed to",
+    "Node acceptance predicate, registrations/locations/oracle/summary/case counts and pass requirements unchanged; failures retain bounded name/code/type/message/stack and cause depth<=2. Ordinary rejected EOF writes failure receipt, sets process.exitCode=1 and yields/returns instead of throwing; source consumed before EOF. This removes observer-thrown truncation path while keeping nonzero failure",
+    "Pinned SDK realtime recorder SHA64289333 matches actual preflight source entry and retained full source; Alpha pinned runtime imports and immediately constructs createRealtimeVoiceTiming. Fixture strips imports, so loading this real projected function into same VM before runtime evaluation fixes that missing supplier without substituting behavior",
+    "Real node:util TextEncoder supplied to VM for actual realtime source byte accounting. No assertion or product source change in four-file diff; fixture same-realm loader transformation remains its existing mechanism"
+  ],
+  "actualFailureSeparation": {
+    "SDKStartupGroups": 8,
+    "AlphaOwning1": {
+      "failed": 2,
+      "passed": 33,
+      "originalCauses": "UNCLASSIFIED"
+    },
+    "AlphaOwning2": {
+      "failed": 9,
+      "passed": 7,
+      "originalChildCauses": "UNCLASSIFIED"
+    },
+    "AlphaOwning3": {
+      "failed": 14,
+      "passed": 0,
+      "directEvidence": "First fully closed testcase in retained truncated JUnit reports createRealtimeVoiceTiming is not defined; shared fixture source reachability does not prove all14 individual causes"
+    },
+    "AlphaOwning4": {
+      "failed": 0,
+      "passed": 3,
+      "observerAccepted": true
+    }
+  },
+  "limits": [
+    "Scoped source PASS is not a successful rerun, clean JUnit proof or completed normal family. No original failure is swallowed or reclassified as passed.",
+    "Hosted package version/chunk names match local retained source, but no independently established full hosted package byte identity from these source excerpts alone.",
+    "Original owning1 two and owning2 nine causes remain unresolved until preserved original errors are obtained from a separately admitted run; fixture correction is not blanket product regression repair.",
+    "New Alpha commit pin, regenerated source manifests/seal/oracles as applicable and independent final composition checks required before fresh Root run decision; old intent spent.",
+    "Google inclusion audit remains helper180e4 scope and is not covered by this review."
+  ],
+  "reviewerEffects": {
+    "candidateImports": 0,
+    "tests": 0,
+    "compiler": 0,
+    "providerCalls": 0,
+    "sourceChanges": 0,
+    "gitCalls": 0
+  },
+  "next": "Alpha authors immutable new pin/operator composition and reseal. Root decides fresh finite qualification only after remaining audits. Preserve all old source/raw failure evidence."
+}

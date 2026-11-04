@@ -1,0 +1,45 @@
+{
+  "atUTC": "2026-11-04T01:39:41.219782+00:00",
+  "state": "NARROW_TEST_MICROPHONE_CONTEXT_CONTRACT_CORRECTION_SOURCE_PASS_UNRUN",
+  "AlphaParent": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+  "SDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "file": "test/development-cartesia-conversation.test.mjs",
+  "beforeSHA256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
+  "afterSHA256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+  "patchSHA256": "a6c0f36f9da6319f848eda3e7c6fd4e6b3a3c5f2ec605b3a684bac4e1157a66c",
+  "supplierSourceSHA256": "8edb719909531774a6dc9b74c8922200cdb60b0924651c12928c9076ba35d83a",
+  "checks": [
+    "Original/proposedexactbytes verified; only fakeMicAudioContext state:running added plus3startupassertions beforeturnframes; playbackfakealreadyhadstate:running",
+    "PinnedactualSDKmiccapture8edb7199 interface requiresstate; lines383-393 injection/throwIfCancelled checks then explicitnot-runningreject. No productionguard removed or fallback weaker",
+    "ActualSDKclientcore startCapture wraps injectedcontext andonfailure emitError then stop; observedready\u2192idle beforeA/Bframes is consistentwith omittedstate contractviolation",
+    "ActualrawNodeobservercase nestedAssertionError cause exactlymatchesretainedtracepacket;10rowsprefixJSON parsed directlyfromerror.message, not fabricatedcallbacks. A/Bframes shownonlywire afteridle, no affirmativeacceptedcallback/playbackcoverage inference",
+    "SavedactualfamilyRESULT has11passed/1failed andcleanup/resourceerrors[]; ordinaryNode1summary35tests34passed1failed. Overallqualification staysFAILED, no oldrun reclassification",
+    "IndependenthostTS6.0.3AST data-only: all121originalassertcalltexts remainbyteidentical/order asorderedsubsequence, exactly3newstrongpreconditions (errors[], realSDKlisteningcallback, actualtrackenabled); total124assertcalls",
+    "All35declarationline rowsold/newbyteidentical, onlylater2sourcepositions shift3lines; no newextraawait/sleep/fakeclient/reducer/bundle/sourceproduction/config/cap changes",
+    "Test stillusesrealpairedSDKreducer/frameparser/drain andoriginalAqueued/Bfailure/assertions; startupmustactuallysucceed ratherthan feedingframes intoan alreadyclosedclient"
+  ],
+  "actualFailureScope": {
+    "run": 41752979019,
+    "familyPassed": 11,
+    "familyFailed": 1,
+    "case": "actual SDK and Alpha preserve A queued playback while B failure settles once",
+    "originalFailureLine": 234,
+    "trace": "connecting\u2192ready\u2192idle before A/B wireframes",
+    "sourceConclusion": "Invalidfakeaudioport is establishedsourcecontract defect consistentwithactualstartupstop; newcorrectedruntime remainsunproven."
+  },
+  "limits": [
+    "Source-onlytestport repair, not successfulnewcapture/Aaudio/Bsettlement result or actualmicrophone/browser/provider/device evidence.",
+    "Actualtrace isboundedprefix, no completeabsence/captureerrorstack attribution claimedbeyondsource+observedstop consistency; strongernewpreconditions willsurface any remainingstartupfailure.",
+    "Google7c8branch separate, notsilentlycomposed. SDK e232/productioncode/types/nativepackaging remainunchanged/unqualifiedhere.",
+    "NeedRoot-authorizedexacttestleafchild/local+remoteliteral/otherfixpreservation andnewtesthash/2shifteddecllines/sourcekeys/manifest/oracle/operatorseal rebind beforefreshRootGO. Old417529intent spent, no replay."
+  ],
+  "reviewerEffects": {
+    "hostASTDataOnly": true,
+    "candidateImports": 0,
+    "tests": 0,
+    "nativeProbes": 0,
+    "providerCalls": 0,
+    "sourceMutation": 0
+  },
+  "next": "Author exacttest-onlychildunderRootstanding sourceauthority, supplyactualpreservation/literal metadata; rebindfinalpackage andRootfreshnormalfamilyrun needed beforevoicequalification."
+}

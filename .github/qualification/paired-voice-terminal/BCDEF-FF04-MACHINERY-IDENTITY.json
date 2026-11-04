@@ -1,0 +1,56 @@
+{
+  "state": "EXACT_REVIEWED_V5_PROGRAM_BYTES_REUSED",
+  "files": [
+    {
+      "path": "check_source.py",
+      "SHA256": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5"
+    },
+    {
+      "path": "claim.py",
+      "SHA256": "fd160e2e208f73839cfd806fba07b50283a7f5abce26a9adea8aae8db6df3dd0"
+    },
+    {
+      "path": "dependency-census/Alpha/inventory_dependencies.py",
+      "SHA256": "8621a9cf7fa61913c3e5c269e45a83e12c8edd2ef64cfb93a9ef7bf07891d072"
+    },
+    {
+      "path": "dependency-census/SDK/inventory_dependencies.py",
+      "SHA256": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1"
+    },
+    {
+      "path": "normal-node-case-observer.mjs",
+      "SHA256": "1c280f68543e5f1596208d29de7e373e7e3603f0b999c5b8ca5f242776c1262a"
+    },
+    {
+      "path": "normal-vitest-case-observer.mjs",
+      "SHA256": "e1a05627e0037cd2bd3f8d0d36be1947b1855dbf1555e51a1e08353a99a5119f"
+    },
+    {
+      "path": "operator-file-custody.mjs",
+      "SHA256": "314c0c40fbd569f2630321ee3c4fedf2a504ed05863d0fcbf566255d6dda46bb"
+    },
+    {
+      "path": "owning-paired-preflight.mjs",
+      "SHA256": "7ba742fa6557ea774438510415f5ef9199a6ec7b7716c95a89eccbce075a7278"
+    },
+    {
+      "path": "run.py",
+      "SHA256": "0bf15d3fb7f340e49b6dd576303207dafb69ca345db73ebee8caef7b088b10e9"
+    },
+    {
+      "path": "verify-host.py",
+      "SHA256": "2beb8443f80458d183499af5dc5625dc2d66d47f4a1fe6f2fb5f8fb95b9a43f0"
+    },
+    {
+      "path": "verify-projection.mjs",
+      "SHA256": "ec5a9190e159d5cbd54daadffcbfe0b6eea4a1113e289fdc810ee9da2b5c2d66"
+    },
+    {
+      "path": "verify-tools.mjs",
+      "SHA256": "7740c9267c92e0fec46b9b39dee3538ac5403e27189adac27dc43b01c90cec5d"
+    }
+  ],
+  "count": 12,
+  "allControllerClaimReporterPreflightProjectionCustodyCensusCodeUnchanged": true,
+  "runtimeNotExecuted": true
+}

@@ -1,0 +1,7 @@
+{
+  "atUTC": "2026-11-04T00:58:37.310614+00:00",
+  "path": "repos/actions/runner-images/git/ref/tags/ubuntu24/20261018.96",
+  "exit": 1,
+  "stdout": "{\"message\":\"Not Found\",\"documentation_url\":\"https://docs.github.com/rest/git/refs#get-a-reference\",\"status\":\"404\"}",
+  "stderr": "gh: Not Found (HTTP 404)\n"
+}

@@ -1,0 +1,235 @@
+{
+  "state": "SOURCE_ONLY_TEST_MICROPHONE_PORT_CORRECTION_PENDING_INDEPENDENT_REVIEW",
+  "AlphaParent": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+  "SDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "file": "test/development-cartesia-conversation.test.mjs",
+  "beforeSHA256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
+  "afterSHA256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+  "sourceCause": "Actual SDK MicAudioContextLike requires state; capture.ts392 rejects undefinedstate and client startCapture stops toidle oncapturefailure. FakeMicAudioContext omitted state. Actual observed ready->idle before allA/Bframes is consistent with that explicit source guard.",
+  "actualTrace": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision4-test-diagnostic-v1/run-41752979019/ACTUAL-PAIRED-CALLBACK-TRACE.json",
+  "supplierSourceSHA256": "8edb719909531774a6dc9b74c8922200cdb60b0924651c12928c9076ba35d83a",
+  "onlyPortFieldAdded": "state:running, real standard AudioContext state",
+  "threeStrongerPreconditions": [
+    "h.errors empty",
+    "actual SDK listening callback observed",
+    "actual microphone track enabled"
+  ],
+  "allOriginalAssertionsRetainedByteIdenticalInOrder": true,
+  "extraSleepsAwaitsOrMockClientReducers": false,
+  "cases": [
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:43:literal:0",
+      "oldLine": 43,
+      "newLine": 43,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:44:literal:0",
+      "oldLine": 44,
+      "newLine": 44,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:45:literal:0",
+      "oldLine": 45,
+      "newLine": 45,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:47:literal:0",
+      "oldLine": 47,
+      "newLine": 47,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:76:literal:0",
+      "oldLine": 76,
+      "newLine": 76,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:91:literal:0",
+      "oldLine": 91,
+      "newLine": 91,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:96:literal:0",
+      "oldLine": 96,
+      "newLine": 96,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:0",
+      "oldLine": 101,
+      "newLine": 101,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:1",
+      "oldLine": 101,
+      "newLine": 101,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:2",
+      "oldLine": 101,
+      "newLine": 101,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:105:literal:0",
+      "oldLine": 105,
+      "newLine": 105,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:110:literal:0",
+      "oldLine": 110,
+      "newLine": 110,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:115:literal:0",
+      "oldLine": 115,
+      "newLine": 115,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:116:literal:0",
+      "oldLine": 116,
+      "newLine": 116,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:119:literal:0",
+      "oldLine": 119,
+      "newLine": 119,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:120:literal:0",
+      "oldLine": 120,
+      "newLine": 120,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:121:literal:0",
+      "oldLine": 121,
+      "newLine": 121,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:124:literal:0",
+      "oldLine": 124,
+      "newLine": 124,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:133:literal:0",
+      "oldLine": 133,
+      "newLine": 133,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:139:literal:0",
+      "oldLine": 139,
+      "newLine": 139,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:0",
+      "oldLine": 145,
+      "newLine": 145,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:1",
+      "oldLine": 145,
+      "newLine": 145,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:2",
+      "oldLine": 145,
+      "newLine": 145,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:150:literal:0",
+      "oldLine": 150,
+      "newLine": 150,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:155:literal:0",
+      "oldLine": 155,
+      "newLine": 155,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:161:literal:0",
+      "oldLine": 161,
+      "newLine": 161,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:164:literal:0",
+      "oldLine": 164,
+      "newLine": 164,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:167:literal:0",
+      "oldLine": 167,
+      "newLine": 167,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:173:literal:0",
+      "oldLine": 173,
+      "newLine": 173,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:180:literal-for-of:0",
+      "oldLine": 180,
+      "newLine": 180,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:180:literal-for-of:1",
+      "oldLine": 180,
+      "newLine": 180,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:188:literal:0",
+      "oldLine": 188,
+      "newLine": 188,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:199:literal:0",
+      "oldLine": 199,
+      "newLine": 199,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:245:literal:0",
+      "oldLine": 245,
+      "newLine": 248,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:250:literal:0",
+      "oldLine": 250,
+      "newLine": 253,
+      "declarationByteIdentical": true
+    }
+  ],
+  "realTestCaseCountUnchanged": 35,
+  "productionChanges": false,
+  "qualificationNotRun": true,
+  "noOverallOrLiveVoiceAcceptance": true
+}

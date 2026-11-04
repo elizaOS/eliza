@@ -1,0 +1,37 @@
+{
+  "state": "SOURCE_ONLY_NEW_ACTUAL_PAIR_DRAFT_NO_RESULT_TRANSFER",
+  "reviewedMachineryOrigin": "V5 ecfd9c0207d37770a9cc3f5eef4235d63fb6bb2d",
+  "sources": {
+    "SDK": {
+      "commit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+      "tree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc"
+    },
+    "Alpha": {
+      "commit": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+      "tree": "968234d5002fb481772f135875a1dde90cd8c974",
+      "sdkGitlink": "ff04a558747ed426d9d871a319f7b3946f7660e6"
+    }
+  },
+  "all12WholeTestFilesAnd251Parents2ChildrenByteIdentical": true,
+  "all13PreflightEntriesCurrentSourceHashesBound": true,
+  "twoChangedAlphaSourceInputs": [
+    "apps/app/src/runtime/connection-ui.tsx",
+    "apps/app/src/runtime/cloud-protocol.ts"
+  ],
+  "all25JoinedBlobAnd3PatchInputsBoundBySourceManifest": true,
+  "currentAlphaSourceInputCount": 90,
+  "newSDKCompleteOfflineGuardSHA256": "de190c45b3db33f27c14157bb2d8098a0a745c5cdb66d9425d4f597a2babde41",
+  "AlphaCompleteOfflineGuardSHA256": "438420dc84a0dad7f6710809568a4a6de6f8a4e5b1eae329a1656d03d25d96cf",
+  "newExactRootConditionalSourceDispositionSHA256": "93c9e5e6fc8bba73c9473442679a12c75f9f7868e2e7ed5f2756b2b01b095a94",
+  "activeSDKReadbackSHA256": "a990a40f38d29895d113cf9046f702ae1876d1fd639af5743982d1fadeeb1b35",
+  "legacySDKReadbackFilenameExplainedInSourceAdmission": true,
+  "AlphaReadbackSHA256": "64c798497deba46c798bd3b5bf058a40c21bce61aed16cd6d3482387002cff1a",
+  "sameV5CodeResourcesToolchainHostAndClosureGuards": true,
+  "sameCanonicalProducerCodeAnd364RawObjectModesOIDs": true,
+  "actualNewProducerBaselinePostValueImportsAndTestsRequired": true,
+  "oldE232B053PassNotTransferred": true,
+  "GoogleAndOfflineNodeScopes": "Separately frozen, not added to these12files or claimed passed.",
+  "planState": "SOURCE_DRAFT_NOT_REVIEWED_NOT_EXECUTION_ADMITTED",
+  "operatorCommitPublicationRootGoOrNonceIssued": false,
+  "normalTypesSDKLifecycleProviderBrowserAudioNativeDeviceOrShippingAccepted": false
+}

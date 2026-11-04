@@ -1,0 +1,47 @@
+{
+  "state": "SOURCE_IDENTITY_ONLY_NOT_NEW_REGISTRATION_OR_PASS",
+  "sources": {
+    "SDK": {
+      "commit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+      "tree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc"
+    },
+    "Alpha": {
+      "commit": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+      "tree": "968234d5002fb481772f135875a1dde90cd8c974",
+      "sdkGitlink": "ff04a558747ed426d9d871a319f7b3946f7660e6"
+    }
+  },
+  "all12TestFilesIdentical": true,
+  "all23RegistrationInputsIdentical": true,
+  "verifiedInputs": [
+    "Alpha/package-lock.json",
+    "Alpha/package.json",
+    "Alpha/scripts/prepare-client-features.mjs",
+    "Alpha/test/development-cartesia-conversation.test.mjs",
+    "Alpha/test/private-preview-cartesia-route.test.mjs",
+    "Alpha/test/voice-calm-cloud-errors.test.mjs",
+    "Alpha/test/voice-credit-terminal.test.mjs",
+    "SDK/bun.lock",
+    "SDK/package.json",
+    "SDK/packages/app/src/api/self-hosted-voice.test.ts",
+    "SDK/packages/app/vitest.host.config.ts",
+    "SDK/packages/host/src/voice/eliza-sse-tool-progress.test.ts",
+    "SDK/packages/host/src/voice/eliza-sse-view-handoff.test.ts",
+    "SDK/packages/host/src/voice/session-speech-ports.test.ts",
+    "SDK/packages/host/vitest.config.ts",
+    "SDK/packages/scripts/run-vitest.ts",
+    "SDK/packages/scripts/vitest/source-aliases.ts",
+    "SDK/packages/ui/src/hooks/useRealtimeVoiceSession.refusal.test.tsx",
+    "SDK/packages/ui/src/voice/__e2e__/voice-session-protocol.test.ts",
+    "SDK/packages/ui/src/voice/voice-session-cloud-budget-rotation.test.ts",
+    "SDK/packages/ui/vitest.config.ts",
+    "SDK/packages/voice/src/realtime-voice-timing.test.ts",
+    "SDK/packages/voice/vitest.config.ts"
+  ],
+  "expectedSourceParents": 251,
+  "reviewedNestedChildren": 2,
+  "oracleCasesAndSourceLocationsKeysIdentical": true,
+  "newLedgerSHA256": "aa584121fbd08f2c64e7e91174bc50c208110360d2a835bbfc0ac00edb74ea66",
+  "newOracleSHA256": "80df0ecd24e2ca8b17f10b3a39460c3a32d7b8215101702993531e8ee6ecf6f2",
+  "newPairResultsNotTransferred": true
+}

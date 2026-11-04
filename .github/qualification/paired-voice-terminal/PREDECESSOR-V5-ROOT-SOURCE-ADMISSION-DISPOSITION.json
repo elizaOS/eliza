@@ -1,0 +1,47 @@
+{
+  "atUTC": "2026-11-04T01:42:46.354302+00:00",
+  "state": "EXACT_E232_ALPHAB053_MIC_PORT_TEST_SOURCE_SCOPE_NOT_EXECUTION_GO",
+  "priorDisposition": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-E232-ALPHA1198-TEST-DIAGNOSTIC-SOURCE-DISPOSITION-20261104.json",
+  "priorDispositionSHA256": "620166f314c3a38aff8e19fd592ed26ed52335702dd1fcea0773228d3c362016",
+  "SDK": {
+    "commit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+    "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b",
+    "priorCompleteGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/revision7/SDK-GUARD.json",
+    "priorCompleteGuardSHA256": "a98307aa76f905a4de2d766ce708abd7e065fef9ff1d455b4e274c9e157e6654",
+    "allowedHostedDepth": 1,
+    "conditions": "Actualhead/tree/sourcefiles/IoCguard PASS plusexactpriorcompleteguardandremoteLiteralb403... binding, fullsourceinput andprojection/module/dependency proofs. Incomplete hostedancestry explicitlyrecorded, notgeneralmalware/historyclearance."
+  },
+  "Alpha": {
+    "commit": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+    "tree": "1eb3e31516c08a289a463ad6d6ca5f42daf48cab",
+    "soleParent": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+    "SDKGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+    "onlyChangedPath": "test/development-cartesia-conversation.test.mjs",
+    "fixtureSHA256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+    "priorCompleteGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision5-mic-port-v1/AlphaMic-GUARD.json",
+    "priorCompleteGuardSHA256": "f1b8ed19ff71c24840e78cff5313cacb7c17ba5206dc6c4b5853d6ca462cedef",
+    "actualHostedFullAncestryRequired": true,
+    "scope": "Exact pinned HEAD and its reachable ancestry only; no unrelated remote heads/tags/submodule intake.",
+    "sourceReview": "56f04ce31285d271b362013afa5f2f78721145e00819ab955aea4bd7b7e383a7",
+    "localLiteralReview": "PENDING actualmaterialization/remote review before execution",
+    "localReviewLimit": "Ownercompleteguard bound; semantic56sourcePASS only, actualnewparent/tree/ref/literal/sourcepreservationreview required before anyCI.",
+    "remoteLiteralReview": "PENDING"
+  },
+  "checkoutFinding": {
+    "pinnedAction": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "primarySource": "https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/src/git-source-provider.ts#L188",
+    "verified": "GitHubAPIexactsource185-205 usesgetRefSpecForAllHistory forallbranches/tags atfetchDepth<=0. Currentworkflow Alpha depth0mustbe constrained toexactancestry-only beforefinalseal/GO."
+  },
+  "conditions": [
+    "SDK exacte232conditionaldepth1scopeunchanged; AlphaactualfullreachableexactHEADancestry required.",
+    "Onlyactualtestportstate:running +3strongrealSDKstartupready/errorfree/track-enabled preconditions, all121originalassertcalls/order and35declarations unchanged; no productionworkaround ornewawait/sleep.",
+    "Actualb053/sourcepostd23parent/tree/ref/all3485otherleaves+e232preservation beforeexecution, new35sourcekeys/linemap/hash/manifest/oracle251+2/seal andexactoperator/remote review, thenfreshfiniteRootGO.",
+    "Livee536/c63 unchanged. Google7c/canonical177/nativebase47982 rebinding notsilentlyincluded; otherpins need ownreview."
+  ],
+  "notAuthorized": [
+    "Tests/setup/CI/nonce/GO/import/imagepull orproducer fromthissource-documentalone",
+    "Runtime/model/provider/voice/native/device/merge/deploy",
+    "Automaticreplay/renewal of41752979019/intent0bdfefdd5c1dbd2f0f6092c487f0f5c7"
+  ],
+  "newPinsNotCovered": "Any furtherSDK/Alpha/operatorcode outside exactreviewedtest/helper/oracle rebind needs itsownactualsource review."
+}

@@ -1,0 +1,19 @@
+{
+  "state": "EXACT_OFFLINE_METADATA_COMPLETE_FF04_ANCESTRY_GUARD_NOT_RUNTIME_OR_GENERAL_AUDIT",
+  "SDK": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "tree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+  "soleParent": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "historyCommits": 35612,
+  "reachableHistorySHA256": "bc3973920d0be685c0de3aacb835ab13e06cd082986595859211a2d90cb6f361",
+  "guardSHA256": "de190c45b3db33f27c14157bb2d8098a0a745c5cdb66d9425d4f597a2babde41",
+  "newObjectStoreDirectDependencies": [
+    "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/publication-20261102/backend.git/objects",
+    "/Users/nubs/Git/eliza/.git/objects",
+    "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/publication-20261102/sdk.git/objects",
+    "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision5-mic-port-v1/operator-source/.git/objects",
+    "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision4-test-diagnostic-v1/operator-source-v2/.git/objects",
+    "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision3-publication-v1/operator-source/.git/objects"
+  ],
+  "noFetchMaintenanceImportsTestsOrTargetExecution": true,
+  "priorShallowGuardRetainedAtOriginalPath": true
+}
