@@ -1,0 +1,174 @@
+--- v7/run.py
++++ v8/run.py
+@@ -8,15 +8,15 @@
+ for name,want in json.loads((P/'SEAL.json').read_text())['files'].items():assert sha(P/name)==want,name
+ assert re.fullmatch('[a-f0-9]{40}',manifest['commit']) and re.fullmatch('[a-f0-9]{40}',manifest['tree']),'Reviewed test-only successor must be published/rebound before admission'
+ go_path=pathlib.Path(os.environ['ROOT_GO_JSON']).resolve();go=json.loads(go_path.read_text())
+-assert go['action']=='ONE_EXACT_QUALIFICATION_RUN' and go['recipe']=='ordinal-normal-worker-diagnostic' and go['mode']=='diagnose'
++assert go['action']=='ONE_EXACT_QUALIFICATION_RUN' and go['recipe']=='ordinal-normal-producer-qualification' and go['mode']=='qualify'
+ assert go['allowHostedFrozenLockSetup'] is True and go['allowHostedWholeFileTests'] is True and go['allowLoopbackWireFixture'] is True
+-assert go['diagnosticOnly'] is True and go['allowOrdinaryCLIObservation'] is True and go['allowPostCLIValuePreflight'] is True
++assert go['diagnosticOnly'] is False and go['allowNormalOwnedWorkspaceProducers'] is True and go['allowProducerSourceWrite'] is True and go['allowOrdinaryCLIObservation'] is True and go['allowPostCLIValuePreflight'] is True
+ assert go['allowHostedUnusedAndroidCleanup'] is False and go['allowExternalProviders'] is False and go['allowSourceOverlay'] is False
+ assert go['expectedRegistrations']==go['expectedPassed']==113 and go['expectedUnexecuted']==0
+ assert go['workflowCommit']==os.environ['GITHUB_SHA']==os.environ['EXPECTED_WORKFLOW_SHA']
+ assert go['sourceCommit']==manifest['commit'] and go['sourceTree']==manifest['tree']
+ assert go['operatorSealSHA256']==sha(P/'SEAL.json')
+-for key,n in [('planSHA256','PLAN.json'),('oracleSHA256','ORACLES.json'),('testResourcePolicySHA256','TEST-RESOURCE-POLICY.json'),('hostCohortsSHA256','HOST-COHORTS.json'),('sourceManifestSHA256','SOURCE-MANIFEST.json')]:assert go[key]==sha(P/n)
++for key,n in [('planSHA256','PLAN.json'),('oracleSHA256','ORACLES.json'),('testResourcePolicySHA256','TEST-RESOURCE-POLICY.json'),('hostCohortsSHA256','HOST-COHORTS.json'),('sourceManifestSHA256','SOURCE-MANIFEST.json'),('producerGraphSHA256','EXPECTED-GRAPH.json'),('sourceCustodySHA256','SOURCE-CUSTODY.json')]:assert go[key]==sha(P/n)
+ assert 0<go['issuedEpoch']<=time.time()<go['expiresEpoch']<=go['issuedEpoch']+1200 and re.fullmatch('[a-f0-9]{32}',go['intentId'])
+ assert os.environ['GITHUB_RUN_ATTEMPT']=='1' and os.environ['RUNNER_ENVIRONMENT']=='github-hosted' and os.environ['GITHUB_REPOSITORY']=='elizaOS/eliza' and os.environ['GITHUB_EVENT_NAME']=='workflow_dispatch'
+ host_policy=json.loads((P/'HOST-COHORTS.json').read_text());runner_metadata={}
+@@ -32,7 +32,7 @@
+ claim=json.loads((pathlib.Path(os.environ['RUNNER_TEMP'])/'speech-intent-claim.json').read_text())
+ assert claim['actualRunId']==os.environ['GITHUB_RUN_ID'] and claim['attempt']==1 and claim['rootGOsha256']==sha(go_path)
+ metadata_path=pathlib.Path(os.environ['RUNNER_TEMP'])/'ordinal-admission.json';assert sha(metadata_path)==claim['runnerMetadataSHA256'] and json.loads(metadata_path.read_text())['fields']==runner_metadata
+-for key in ['intentId','workflowCommit','sourceCommit','sourceTree','operatorSealSHA256','planSHA256','oracleSHA256','testResourcePolicySHA256','hostCohortsSHA256','sourceManifestSHA256','hostProvenanceDisclosure','expectedRegistrations','expectedPassed','expectedUnexecuted','diagnosticOnly','allowOrdinaryCLIObservation','allowPostCLIValuePreflight','allowHostedFrozenLockSetup','allowHostedWholeFileTests','allowLoopbackWireFixture','allowHostedUnusedAndroidCleanup','allowExternalProviders','allowSourceOverlay','issuedEpoch','expiresEpoch']:assert claim[key]==go[key],key
++for key in ['intentId','workflowCommit','sourceCommit','sourceTree','operatorSealSHA256','planSHA256','oracleSHA256','testResourcePolicySHA256','hostCohortsSHA256','sourceManifestSHA256','hostProvenanceDisclosure','expectedRegistrations','expectedPassed','expectedUnexecuted','diagnosticOnly','allowNormalOwnedWorkspaceProducers','allowProducerSourceWrite','producerGraphSHA256','sourceCustodySHA256','allowOrdinaryCLIObservation','allowPostCLIValuePreflight','allowHostedFrozenLockSetup','allowHostedWholeFileTests','allowLoopbackWireFixture','allowHostedUnusedAndroidCleanup','allowExternalProviders','allowSourceOverlay','issuedEpoch','expiresEpoch']:assert claim[key]==go[key],key
+ import urllib.request
+ artifact_id=os.environ['CLAIM_ARTIFACT_ID'];assert artifact_id.isdigit()
+ request=urllib.request.Request('https://api.github.com/repos/elizaOS/eliza/actions/artifacts/'+artifact_id,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+@@ -131,7 +131,7 @@
+  return log.read_text(),code
+ 
+ inspect_format='{"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}}}'
+-resource_inspect_format='{"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}},"Resources":{"memoryBytes":{{json .HostConfig.Memory}},"memorySwapBytes":{{json .HostConfig.MemorySwap}},"nanoCpus":{{json .HostConfig.NanoCpus}},"pidsLimit":{{json .HostConfig.PidsLimit}},"nodeOptions":{{$nodeOptions := ""}}{{range .Config.Env}}{{if eq (printf "%.13s" .) "NODE_OPTIONS="}}{{$nodeOptions = .}}{{end}}{{end}}{{json $nodeOptions}}}}'
++resource_inspect_format='{"Ulimits":{{json .HostConfig.Ulimits}},"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}},"Resources":{"memoryBytes":{{json .HostConfig.Memory}},"memorySwapBytes":{{json .HostConfig.MemorySwap}},"nanoCpus":{{json .HostConfig.NanoCpus}},"pidsLimit":{{json .HostConfig.PidsLimit}},"nodeOptions":{{$nodeOptions := ""}}{{range .Config.Env}}{{if eq (printf "%.13s" .) "NODE_OPTIONS="}}{{$nodeOptions = .}}{{end}}{{end}}{{json $nodeOptions}}}}'
+ def inspect_container(key,label,cleanup=False,resources=False):
+  text,code=phase(label,['docker','container','inspect','--format',resource_inspect_format if resources else inspect_format,key],10,accepted=(0,1),cleanup=cleanup)
+  if code==1:
+@@ -148,6 +148,10 @@
+  pass
+ 
+ def check_resources(value,item,label):
++ if item.get('metadataFileSizeLimitBytes')is not None:
++  expected=[{'Name':'fsize','Hard':8388608,'Soft':8388608}]
++  if value.get('Ulimits')!=expected:
++   item.setdefault('resourcePolicyFailures',[]).append({'where':label,'expectedUlimits':expected,'actualUlimits':value.get('Ulimits')});raise ResourcePolicyError('Wrong actual metadata hard file-size limit')
+  actual=value.get('Resources')
+  if actual!=item['resources']:
+   item.setdefault('resourcePolicyFailures',[]).append({'where':label,'expected':item['resources'],'actual':actual})
+@@ -175,9 +179,11 @@
+  if policy_failure:raise policy_failure
+ 
+ def container_phase(name,network,memory,command,timeout,rw=False,test_family=False,cwd="/workspace",node_old_space_mib=None):
+- assert (name=="install" and network=="bridge" and rw) or (name!="install" and network=="none" and not rw)
++ assert (name=="install" and network=="bridge" and rw) or (name in ["normal-producer-graph","normal-producers"] and network=="none" and rw) or (name not in ["install","normal-producer-graph","normal-producers"] and network=="none" and not rw)
++ if name=="normal-producers":assert memory=="8g" and node_old_space_mib==4096
++ else:assert memory in ("2g","4g") and node_old_space_mib in (None,1024,1536)
+  if node_old_space_mib is None:node_old_space_mib=resource_policy['defaultTest']['nodeOldSpaceMiB']
+- assert memory in ('2g','4g') and node_old_space_mib in (1024,1536)
++ assert memory in ('2g','4g','8g') and node_old_space_mib in (1024,1536,4096)
+  memory_bytes=int(memory[:-1])*1024**3
+  resources={'memoryBytes':memory_bytes,'memorySwapBytes':memory_bytes,'nanoCpus':2000000000,'pidsLimit':256,'nodeOptions':'NODE_OPTIONS=--max-old-space-size='+str(node_old_space_mib)}
+  cname=prefix+'-'+name
+@@ -188,7 +194,12 @@
+   node_index=args.index(resources['nodeOptions']);resources['nodeOptions']+=' --require=/results/ordinary-node-conditions.cjs';args[node_index]=resources['nodeOptions']
+  # Register intent before the daemon can create anything. A lost CLI reply
+  # is reconciled by exact name AND run labels, never removed by name alone.
++ if name in ['normal-producer-graph','normal-producers']:
++  at=args.index('--entrypoint');args[at:at]=['--env','RUN_TURBO_CONCURRENCY=1']
++ if name=='normal-producer-graph':
++  at=args.index('--entrypoint');args[at:at]=['--ulimit','fsize=8388608:8388608']
+  item={'cid':None,'name':cname,'createCompleted':False,'resources':resources};owned.append(item)
++ if name=='normal-producer-graph':item['metadataFileSizeLimitBytes']=8388608
+  text,_=phase(name+'-create',args,20);cid=text.strip();assert re.fullmatch('[a-f0-9]{64}',cid)
+  item['cid']=cid;item['createCompleted']=True
+  value=inspect_container(cid,name+'-identity',resources=True);check_container(value,item);check_resources(value,item,name+'-identity')
+@@ -281,7 +292,27 @@
+  row['ordinaryConditionsFilePresent']=(out/('CLI-CONDITIONS-'+group['name']+'.json')).is_file()
+  row['nodeConditionsFiles']=[x.name for x in out.glob('NODE-CONDITIONS-'+group['name']+'-*.json')]
+  row['conditionObservationGap']=not row['ordinaryConditionsFilePresent'] or not row['nodeConditionsFiles']
+- row['observationSuccessIsNotQualification']=True
++ row['conditionObservationErrors']=[]
++ try:
++  metadata_file=out/('CLI-CONDITIONS-'+group['name']+'.json');assert metadata_file.stat().st_size<=32768
++  metadata=json.loads(metadata_file.read_text());assert metadata['phase']==group['name'] and metadata['projects']
++  wanted_root=group['cwd'];projects=[x for x in metadata['projects']if x['root']==wanted_root]
++  assert len(projects)==1 and projects[0]['configFile']==wanted_root+'/vitest.config.ts'
++  for key in ['workerTransportConditions','workerTransportExternalConditions','ssrConditions','ssrExternalConditions']:
++   assert isinstance(projects[0][key],list)and all(isinstance(x,str)for x in projects[0][key]),'Missing actual worker/SSR conditions'
++  nodes=[]
++  for filename in row['nodeConditionsFiles']:
++   f=out/filename;assert not f.is_symlink()and f.stat().st_size<=8192
++   item=json.loads(f.read_text());assert item['phase']==group['name']and item['cwd']==wanted_root and item['node']=='24.15.0';nodes.append(item)
++  parents={x['pid']for x in nodes}
++  workers=[x for x in nodes if x['ppid']in parents and 'node'in x['nodeExplicitConditions']]
++  assert workers,'No actual ordinary fork worker Node condition observation'
++  row['ordinaryWorkerNodePIDs']=[x['pid']for x in workers]
++  row['CLIConditionsSHA256']=sha(metadata_file)
++ except (OSError,ValueError,KeyError,TypeError,AssertionError)as exc:
++  row['conditionObservationGap']=True;row['conditionObservationErrors'].append(type(exc).__name__+': '+str(exc))
++
++ row['scope']='OrdinaryCLI observation retained independently; aggregate qualification requires every final gate and cleanup.'
+  encoded=(json.dumps(row,indent=2)+'\n').encode();assert len(encoded)<=524288,'Diagnostic metadata cap; rawreporthash retained'
+  (out/('OBSERVATION-'+group['name']+'.json')).write_bytes(encoded)
+  family_results[group['file']]=row
+@@ -301,9 +332,35 @@
+  container_phase('install','bridge','4g',['/usr/local/bin/bun','install','--frozen-lockfile','--ignore-scripts','--no-progress'],600,rw=True);verify_source()
+  phase('inventory-installed-dependencies',[sys.executable,'-I','-B',str(P/'inventory_dependencies.py'),'capture',str(source),str(out),manifest['commit'],manifest['tree'],manifest['bunLockSHA256']],90)
+  before=verify_dependencies()
+- for name in ['bootstrap.mjs','owning-preflight.mjs','PREFLIGHT-DEFINITION.json','ordinary-node-conditions.cjs','ordinary-cli-conditions-reporter.mjs']:(out/name).write_bytes((P/name).read_bytes())
++ for name in ['bootstrap.mjs','owning-preflight.mjs','PREFLIGHT-DEFINITION.json','ordinary-node-conditions.cjs','ordinary-cli-conditions-reporter.mjs','producer-bootstrap.mjs','capture-turbo-graph.mjs','output-custody.mjs','EXPECTED-GRAPH.json','REQUIRED-PRODUCER-EXPORTS.json','workspace-write-custody.mjs']:(out/name).write_bytes((P/name).read_bytes())
+  container_phase('bootstrap','none','2g',['/usr/local/bin/node','/results/bootstrap.mjs'],30)
+- # Observe ALLthree ordinarywholefileCLIcommands independently beforeextraSDKvalueprobe.
++ container_phase('producer-owners','none','2g',['/usr/local/bin/node','/results/producer-bootstrap.mjs'],30)
++ container_phase('workspace-before','none','2g',['/usr/local/bin/node','/results/workspace-write-custody.mjs','before'],90)
++ container_phase('outputs-before','none','2g',['/usr/local/bin/node','/results/output-custody.mjs','before'],30)
++ container_phase('normal-producer-graph','none','2g',['/usr/local/bin/node','/results/capture-turbo-graph.mjs'],60,rw=True)
++ actual=json.loads((out/'TURBO-GRAPH.json').read_text());expected_graph=json.loads((P/'EXPECTED-GRAPH.json').read_text());expected=expected_graph['nodes'];seen=set();runnable=set();actual_edges={}
++ for task in actual['tasks']:
++  key=task['taskId'];assert key in expected and key not in seen;seen.add(key);node=expected[key]
++  assert task['directory']==node['path'] and isinstance(task['dependencies'],list) and all(isinstance(x,str)for x in task['dependencies'])
++  actual_edges[key]=task['dependencies']
++  if node['script']:assert task['command']==node['script'];runnable.add(key)
++  else:assert task.get('command')in(None,'','<NONEXISTENT>')
++ assert seen==set(expected)and len(seen)==7 and len(runnable)==6
++ assert {(key,dep)for key,deps in actual_edges.items()for dep in deps}=={(e['from'],e['to'])for e in expected_graph['edges']}
++ (out/'TURBO-GRAPH-ADMISSION.json').write_text(json.dumps({'sourceCommit':manifest['commit'],'nodes':7,'edges':15,'runnable':6,'actualGraphSHA256':sha(out/'TURBO-GRAPH.json')},indent=2)+'\n')
++ verify_source();verify_dependencies()
++ phase('host-memory-admission',[sys.executable,'-I','-B',str(P/'host-memory-admission.py'),str(out/'HOST-MEMORY.json')],30)
++ producer_failure=container_phase('normal-producers','none','8g',expected_graph['normalCommand'],600,rw=True,test_family=True,node_old_space_mib=4096)
++ verify_source();verify_dependencies()
++ assert producer_failure is None,'Normal producer entry failed; actual exit retained, no test or qualification'
++ normal_log=re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]','',(out/'normal-producers.log').read_text())
++ assert re.findall(r'Tasks:\s+(\d+) successful,\s+(\d+) total',normal_log)[-1:]==[('6','6')]
++ assert re.findall(r'Cached:\s+(\d+) cached,\s+(\d+) total',normal_log)[-1:]==[('0','6')]
++ (out/'NORMAL-TASK-SUMMARY.json').write_text(json.dumps({'successful':6,'total':6,'cached':0,'sourceCommit':manifest['commit'],'logSHA256':sha(out/'normal-producers.log')},indent=2)+'\n')
++ container_phase('outputs-after','none','2g',['/usr/local/bin/node','/results/output-custody.mjs','after'],90)
++ verify_source();verify_dependencies()
++ container_phase('workspace-after-producer','none','2g',['/usr/local/bin/node','/results/workspace-write-custody.mjs','verify'],90)
++ # Observe all three ordinary whole-file CLI commands after fresh normal producer outputs.
+  for group in plan['groups']:
+   fresh_module_cache('module-cache-'+group['name'])
+   command=['/usr/local/bin/node',group['runner'],'run',group['relative'],'--config',group['config'],'--configLoader','runner','--pool','forks','--maxWorkers','1','--maxConcurrency','1','--no-file-parallelism','--no-cache','--fsModuleCachePath','/results/module-cache-'+group['name'],'--reporter=json','--reporter=/results/ordinary-cli-conditions-reporter.mjs','--outputFile=/results/'+group['report']]
+@@ -313,10 +370,19 @@
+  for cache_name in ['module-cache-owning-preflight','preflight-cache-assistant','preflight-cache-openai']:fresh_module_cache(cache_name)
+  post_failure=container_phase('owning-preflight','none','2g',['/usr/local/bin/node','/results/owning-preflight.mjs'],90,test_family=True);verify_source()
+  post={'phase':'owning-preflight','position':'AFTER_ALL_ORDINARY_CLI_OBSERVATIONS','exit':post_failure.code if post_failure else 0,'logSHA256':sha(out/'owning-preflight.log'),'reportPresent':(out/'OWNING-PREFLIGHT.json').is_file(),'qualification':False}
++ if post_failure is None:
++  observed=json.loads((out/'OWNING-PREFLIGHT.json').read_text());definition=json.loads((P/'PREFLIGHT-DEFINITION.json').read_text())
++  assert observed['testsStarted']is False and len(observed['records'])==len(definition['projects'])==2
++  for record,wanted in zip(observed['records'],definition['projects']):
++   assert record['name']==wanted['name']and record['closed']is True and len(record['imports'])==len(wanted['edges'])
++   assert all(row['requiredValueIdentityChecked']is True for row in record['imports'])
+  (out/'POST-CLI-PREFLIGHT-OBSERVATION.json').write_text(json.dumps(post,indent=2)+'\n')
++ container_phase('outputs-final','none','2g',['/usr/local/bin/node','/results/output-custody.mjs','final'],90)
++ container_phase('workspace-final','none','2g',['/usr/local/bin/node','/results/workspace-write-custody.mjs','verify'],90)
++ verify_source()
+  after=verify_dependencies(final=True);assert before==after
+  assert set(family_results)=={x['file']for x in plan['groups']}
+- status='DIAGNOSTIC_OBSERVATIONS_COMPLETE_WITH_FAILURES_NOT_QUALIFICATION'if post_failure or any(x['ordinaryCLIExit']!=0 or x['reportErrors']or x['exactNamesMatch']is not True or x['actualRegistered']!=x['expectedSourceRegistrations']or x['actualFailed']!=0 or x['actualPending']!=0 or x['actualTodo']!=0 or x['conditionObservationGap'] for x in family_results.values())else'DIAGNOSTIC_OBSERVATIONS_COMPLETE_ALL_CLI_ZERO_NOT_QUALIFICATION'
++ status='FAILED'if post_failure or any(x['ordinaryCLIExit']!=0 or x['reportErrors']or x['exactNamesMatch']is not True or x['actualRegistered']!=x['expectedSourceRegistrations']or x['actualPassed']!=x['expectedSourceRegistrations']or any(a['status']!='passed'for a in x['assertions'])or x['actualFailed']!=0 or x['actualPending']!=0 or x['actualTodo']!=0 or x['conditionObservationGap'] for x in family_results.values())else'QUALIFIED_SELECTED_WHOLE_FILES'
+ 
+ except BaseException as exc:run_error=type(exc).__name__+': '+str(exc)
+ finally:
+@@ -325,6 +391,6 @@
+   except ResourcePolicyError:pass
+   except BaseException as exc:cleanup_errors.append({'cid':item['cid'],'error':str(exc)})
+  resource_errors=[{'cid':item['cid'],**error} for item in owned for error in item.get('resourcePolicyFailures',[])]
+- result={'state':'CLEANUP_FAILED' if cleanup_errors else 'RESOURCE_POLICY_FAILED' if resource_errors else status,'error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'resourcePolicyErrors':resource_errors,'families':family_results,'seconds':time.monotonic()-start,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'claim':'DIAGNOSTIC_ONLY ordinaryowningCLIworker observationsbeforeextraServerModuleRunnerpreflight; independentexits/reports/errors, neverqualification/Types/liveproof. Scriptedresponses+loopbackonly.','diagnosticOnly':True,'qualificationIssued':False,'customValuePreflightAfterAllCLI':True,'normalTypes':False,'entireCompoundPackageScriptsQualified':False,'broadSDKBuild':False,'liveModelProviderVoiceRuntimeDeviceFinancialAcceptance':False}
++ result={'state':'CLEANUP_FAILED' if cleanup_errors else 'RESOURCE_POLICY_FAILED' if resource_errors else status,'error':run_error,'phases':records,'containers':owned,'cleanupErrors':cleanup_errors,'resourcePolicyErrors':resource_errors,'families':family_results,'seconds':time.monotonic()-start,'sourceCommit':manifest['commit'],'sourceTree':manifest['tree'],'claim':'Selected113wholefile qualification only after normal6producer cold build, actual7node15edge graph, fresh output ownership, ordinaryCLI exactnames/counts/pass, value identity and final source/dependency/process/container closure. Scriptedmodels+loopbackonly; no semantictypes/liveprovider/runtime/device/financial acceptance.','diagnosticOnly':False,'qualificationIssued':status=='QUALIFIED_SELECTED_WHOLE_FILES' and not run_error and not cleanup_errors and not resource_errors,'customValuePreflightAfterAllCLI':True,'normalTypes':False,'entireCompoundPackageScriptsQualified':False,'broadSDKBuild':False,'liveModelProviderVoiceRuntimeDeviceFinancialAcceptance':False}
+  (out/'RESULT.json').write_text(json.dumps(result,indent=2)+'\n')
+-raise SystemExit(0 if status=='DIAGNOSTIC_OBSERVATIONS_COMPLETE_ALL_CLI_ZERO_NOT_QUALIFICATION' and not run_error and not cleanup_errors and not resource_errors else 1)
++raise SystemExit(0 if status=='QUALIFIED_SELECTED_WHOLE_FILES' and not run_error and not cleanup_errors and not resource_errors else 1)

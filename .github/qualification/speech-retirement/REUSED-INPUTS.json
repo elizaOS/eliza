@@ -1,0 +1,114 @@
+{
+  "BUN-IMAGE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/BUN-IMAGE.json",
+    "sha256": "19d574a0f4704939f6efe4f94183fbd4e2ee593df363f9edec6e0d47d78ab664"
+  },
+  "NODE-IMAGE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/NODE-IMAGE.json",
+    "sha256": "78e08f48898518226842188bd2b26b5d4d185346a0991893987764c58aed71de"
+  },
+  "check_source.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/check_source.py",
+    "sha256": "f686d836cfdeab9e7c4c7e4c262eb9111cb2c1ce2ad12d58dbf6b1abf46b53e5"
+  },
+  "inventory_dependencies.py": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/inventory_dependencies.py",
+    "sha256": "16256e62f90ec8b4146a06fdb817976a2e1c73d0204949d2c36115291bef41a1"
+  },
+  "WORKSPACE-DEPENDENCY-ROOTS.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/WORKSPACE-DEPENDENCY-ROOTS.json",
+    "sha256": "84af9a343cc0df03adda407196a6b9ee15340900173b091ae8f6035e403af33a"
+  },
+  "POLICY.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/speech-retirement-proof-implementation-20261102/claude-review-repairs-20261102/qualification-ack-normal-capacity-v8/POLICY.json",
+    "sha256": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf"
+  },
+  "RUNNER-COHORT-PROVENANCE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-executable-v2/RUNNER-COHORT-PROVENANCE.json",
+    "sha256": "b632e2087f81a3405c27c1277aeccb242a66485e4ad07051f311279975983167"
+  },
+  "RUNNER-IMAGE-README.md": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/backend-b93-native-memory-diagnostic-executable-v2/RUNNER-IMAGE-README.md",
+    "sha256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124"
+  },
+  "HOST-COHORTS.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/HOST-COHORTS.json",
+    "sha256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8"
+  },
+  "cohort-provenance/20261101.360/COMMIT.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261101.360/COMMIT.json",
+    "sha256": "693218a54559ca5e1d2d8d2ee79d7079877b467caaab06c86b7667dbc297dcd4"
+  },
+  "cohort-provenance/20261101.360/RELEASE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261101.360/RELEASE.json",
+    "sha256": "057aad77520f99d6d83a8d54f0212d72664d950124cd1a49c827b25f99a2d5f3"
+  },
+  "cohort-provenance/20261101.360/REF.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261101.360/REF.json",
+    "sha256": "a6335026a298a1ce9b308d2ac81ce5e9fcdc9027b55f21c081f856b5cca8cec1"
+  },
+  "cohort-provenance/20261101.360/README-CONTENTS.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261101.360/README-CONTENTS.json",
+    "sha256": "c3ee82ea8137a5f5ec16236d25ebe25f1e774a30aa5bbe7cd8314608aa4b6282"
+  },
+  "cohort-provenance/20261101.360/Ubuntu2404-Readme.md": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261101.360/Ubuntu2404-Readme.md",
+    "sha256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124"
+  },
+  "cohort-provenance/20261026.354/COMMIT.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261026.354/COMMIT.json",
+    "sha256": "21d812ff3fffa35d4687440fb5551f1199e97dab0a9d7c83426fa80590cc7484"
+  },
+  "cohort-provenance/20261026.354/RELEASE.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261026.354/RELEASE.json",
+    "sha256": "953e254cead03dcbb6456a6e3cbc81de7a702976402a995e1b670079f1484213"
+  },
+  "cohort-provenance/20261026.354/REF.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261026.354/REF.json",
+    "sha256": "a0bd3fc8b3a6411dc8165da7a20628314ed92e9cf1ce61567d263ecca4a19420"
+  },
+  "cohort-provenance/20261026.354/README-CONTENTS.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261026.354/README-CONTENTS.json",
+    "sha256": "44bfeda8df79a77eb3c7a93245546891e0752970f30c54c13af369ac4f2a7f1e"
+  },
+  "cohort-provenance/20261026.354/Ubuntu2404-Readme.md": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261026.354/Ubuntu2404-Readme.md",
+    "sha256": "433ac9525040ccec39fc6b1fbcbeb457cba1acd6414317f940e1ea2d9bea73c9"
+  },
+  "cohort-provenance/20261025.353/PRIMARY-LOOKUPS-NO-MATCH.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261025.353/PRIMARY-LOOKUPS-NO-MATCH.json",
+    "sha256": "d8698cdf4eb82155190a30bb03933f159610c3e5d3fd2509e2591def5070293b"
+  },
+  "cohort-provenance/20261025.353/AUTHENTICATED-JOB-LOG.txt": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261025.353/AUTHENTICATED-JOB-LOG.txt",
+    "sha256": "984474fe24a855bff34e6d47f1b3a233ff47d79718b014910b71c6110a09d63d"
+  },
+  "cohort-provenance/20261025.353/PROVENANCE-LIMITATION.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261025.353/PROVENANCE-LIMITATION.json",
+    "sha256": "265d02b096d4dfbdb4057fd33229a12603bb941a7c789d700c1161f319eb1e78"
+  },
+  "cohort-provenance/20261025.353/AUTHENTICATED-RUN-METADATA.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261025.353/AUTHENTICATED-RUN-METADATA.json",
+    "sha256": "d88ddc7957df9501cbbbfcf3b12e39aab30c06ecd413bc453f0cac52e03f206a"
+  },
+  "cohort-provenance/20261018.96/ROOT-SOURCE-DISPOSITION.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/ROOT-SOURCE-DISPOSITION.json",
+    "sha256": "2e316c4cc514d88c960fa087d862ab53be7146f9eb3414c5dd73e9769398def0"
+  },
+  "cohort-provenance/20261018.96/AUTHENTICATED-JOB-LOG.txt": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/AUTHENTICATED-JOB-LOG.txt",
+    "sha256": "ba836c99e7264e022cfd27159342a7895a4b249e99740a3378ef158a8754dfa7"
+  },
+  "cohort-provenance/20261018.96/OFFICIAL-TAG-LOOKUP.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/OFFICIAL-TAG-LOOKUP.json",
+    "sha256": "8b75d9379559f703b64d6b3509c82450a87765d4498cf355c31ae40b81897e17"
+  },
+  "cohort-provenance/20261018.96/AUTHENTICATED-CLAIM.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/AUTHENTICATED-CLAIM.json",
+    "sha256": "b6194033d8bcd2cdfadb2bf9be8f29515de5663c6f50b41f39e160edf7cd2862"
+  },
+  "cohort-provenance/20261018.96/AUTHENTICATED-RUNNER-METADATA.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/AUTHENTICATED-RUNNER-METADATA.json",
+    "sha256": "22912f5abf44d9df721fce898f7bc5ff0f502938a9a0beb51189902c0ea116fa"
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "state": "SOURCE_REVIEW_CANDIDATE_NO_AUTHORITY",
+  "phases": {
+    "install": "Existing frozen ignore-scripts install only; bridge",
+    "normal-producer-graph": "Normal run-turbo metadata only, none network, may create ordinary metadata; tracked/dependency bytes immutable",
+    "normal-producers": "Single unchanged authored producer command; six dist roots and normal .turbo cache/log metadata; source and installed dependency bytes immutable"
+  },
+  "distRoots": [
+    "plugins/plugin-assistant/dist",
+    "packages/core/dist",
+    "packages/host/dist",
+    "packages/contracts/dist",
+    "plugins/plugin-sql/dist",
+    "plugins/plugin-sqlite/dist"
+  ],
+  "testsAndPreflight": "Read-only workspace, fresh owned /results module caches only",
+  "enforcement": "Exact phase-restricted RW bind plus full tracked source/Git pins, separate complete dependency census, bounded byte/mode/link/directory inventory of all other workspace entries before/after graph/build/final. Only six declared dist roots and canonical root/package .turbo generated roots excluded; final output fingerprints must match same-run produced outputs. This proves retained writes, not every transient syscall.",
+  "externalEffects": false,
+  "transientNormalProducerWrites": "Authored Core .core-build-* staging removed by its finally, tsup temporary files removed normally; leftovers outside excluded generated roots reject final snapshot."
+}
