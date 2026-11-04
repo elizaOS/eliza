@@ -60,7 +60,7 @@ import { NotesController } from "../client/notes-controller.js";
 import { NotesEditor } from "../client/notes-editor.js";
 import { interact as interactWithService } from "../interact.js";
 import { NotesService } from "../service.js";
-import type { StickyNote } from "../types.js";
+import { reconstructNoteContent, type StickyNote } from "../types.js";
 import { NotesView } from "./NotesView.js";
 import { NotesWorkspace, type NotesWorkspaceHandle } from "./NotesWorkspace.js";
 
@@ -211,6 +211,73 @@ describe("Notes capability-to-UI journey", () => {
     } finally {
       session.retire();
     }
+  });
+
+  it("keeps text typed into the body of a new note in the body across saves", async () => {
+    const session = editorSession();
+    try {
+      await session.controller.refresh();
+      session.editor.begin();
+      // Title stays empty; each keystroke in the Note field saves.
+      session.editor.edit({ body: "H" });
+      expect(await session.editor.save()).toBe(true);
+      await session.controller.refresh();
+      session.editor.edit({ body: `${session.editor.draft?.body}i` });
+      expect(await session.editor.save()).toBe(true);
+      await session.controller.refresh();
+      expect(reconstructNoteContent(activeService().snapshot().notes[0])).toBe(
+        "Hi",
+      );
+      expect(session.editor.draft).toMatchObject({ title: "", body: "Hi" });
+
+      // A clean draft still follows a change made outside this editor.
+      await interactWithService(
+        "update-note",
+        {
+          id: session.editor.draft?.id,
+          expectedRevision: activeService().snapshot().revision,
+          content: "Agent title\nAgent body",
+        },
+        activeService(),
+      );
+      await session.controller.refresh();
+      expect(session.editor.draft).toMatchObject({
+        title: "Agent title",
+        body: "Agent body",
+      });
+    } finally {
+      session.retire();
+    }
+  });
+
+  it("keeps text typed into the Note field of a new note in that field", async () => {
+    render(<NotesView />);
+    await screen.findByRole("main", { name: "Notes. 0 notes." });
+    fireEvent.click(screen.getByRole("button", { name: "New note" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note" }), {
+      target: { value: "H" },
+    });
+    // Delete opens when the first save gives the draft its id.
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Delete note" }),
+      ).toHaveProperty("disabled", false),
+    );
+    const body = screen.getByRole("textbox", { name: "Note" });
+    expect({
+      title: (
+        screen.getByRole("textbox", { name: "Title" }) as HTMLInputElement
+      ).value,
+      body: (body as HTMLTextAreaElement).value,
+    }).toEqual({ title: "", body: "H" });
+    fireEvent.change(body, {
+      target: { value: `${(body as HTMLTextAreaElement).value}i` },
+    });
+    await waitFor(() =>
+      expect(reconstructNoteContent(activeService().snapshot().notes[0])).toBe(
+        "Hi",
+      ),
+    );
   });
 
   it("retires a pending canonical read before it can publish into another owner", async () => {

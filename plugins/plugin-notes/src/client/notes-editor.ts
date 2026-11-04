@@ -35,6 +35,18 @@ function editorFields(
       parts.bodySeparator === "\n" || parts.body !== "" ? "verbatim" : "fields",
   };
 }
+/** A clean draft keeps its own fields while they hold the canonical text, so a
+ * save never moves typed text between the title and body inputs. */
+function syncedFields(
+  draft: NoteEditorDraft,
+  note: StickyNote,
+): Pick<NoteEditorDraft, "title" | "body" | "separator" | "framing"> {
+  const { title, body, separator, framing } = draft;
+  return reconstructNoteContent({ title, body, bodySeparator: separator }) ===
+    reconstructNoteContent(note)
+    ? { title, body, separator, framing }
+    : editorFields(note);
+}
 export interface NotesEditorHooks {
   changed(draft: NoteEditorDraft | null): void;
   committed(target: { id: string; revision: number }, draftToken: string): void;
@@ -178,7 +190,7 @@ export class NotesEditor {
               id: result.note.id,
               baseRevision: result.target.revision,
               version: 0,
-              ...editorFields(result.note),
+              ...syncedFields(this.value, result.note),
               format: result.note.format
                 ? structuredClone(result.note.format)
                 : undefined,
@@ -224,7 +236,7 @@ export class NotesEditor {
     this.value = {
       ...draft,
       baseRevision: revision,
-      ...editorFields(note),
+      ...syncedFields(draft, note),
       format: note.format ? structuredClone(note.format) : undefined,
       color: note.color,
     };
