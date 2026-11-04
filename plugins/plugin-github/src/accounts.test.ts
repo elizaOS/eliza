@@ -7,6 +7,7 @@ import type {
   ConnectorAccount,
   ConnectorAccountPatch,
   IAgentRuntime,
+  Memory,
 } from "@elizaos/core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
@@ -272,6 +273,7 @@ describe("GitHub account resolution", () => {
     const accounts: ConnectorAccount[] = [];
     const runtime = runtimeWithConnectorStorage({
       accounts,
+      settings: { ELIZA_ADMIN_ENTITY_ID: "owner-entity" },
       vaultValues: new Map([
         [
           vaultRef,
@@ -292,8 +294,12 @@ describe("GitHub account resolution", () => {
           ? originalGetService(serviceType)
           : null) as typeof runtime.getService;
     const { buildResolvedClient } = await import("./action-helpers");
+    const owner = {
+      entityId: "owner-entity",
+      content: { text: "" },
+    } as unknown as Memory;
     expect(
-      "error" in (await buildResolvedClient(runtime, { role: "user" })),
+      "error" in (await buildResolvedClient(runtime, owner, { role: "user" })),
     ).toBe(true);
 
     // OAuth completes in the connector manager while the service runs.
@@ -308,6 +314,7 @@ describe("GitHub account resolution", () => {
     );
     const connected = await buildResolvedClient(
       runtime,
+      owner,
       { role: "user" },
       {
         refresh: "on-miss",
@@ -318,7 +325,7 @@ describe("GitHub account resolution", () => {
     // Disconnect removes the account row.
     accounts.length = 0;
     expect(
-      "error" in (await buildResolvedClient(runtime, { role: "user" })),
+      "error" in (await buildResolvedClient(runtime, owner, { role: "user" })),
     ).toBe(true);
   });
 

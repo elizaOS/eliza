@@ -12,7 +12,10 @@ import { prOpAction } from "./pr-op.js";
 function createRuntime(octokit: GitHubOctokitClient): IAgentRuntime {
   return {
     agentId: "00000000-0000-0000-0000-00000000agent",
-    getService: () => ({ getOctokit: () => octokit }),
+    getService: () => ({
+      getOctokit: () => octokit,
+      getAccountRole: () => "agent",
+    }),
     logger: { warn: vi.fn(), info: vi.fn(), error: vi.fn() },
   } as unknown as IAgentRuntime;
 }

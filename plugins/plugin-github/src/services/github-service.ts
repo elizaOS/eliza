@@ -144,6 +144,20 @@ export class GitHubService extends Service implements IGitHubService {
     return this.clients.get(account.accountId)?.client ?? null;
   }
 
+  /** Role of the account `getOctokit` returns for the same selector. */
+  getAccountRole(
+    selector:
+      | GitHubIdentity
+      | { as?: GitHubIdentity; role?: GitHubIdentity; accountId?: string },
+  ): GitHubIdentity | null {
+    return (
+      resolveGitHubAccount(
+        Array.from(this.clients.values()).map((record) => record.account),
+        normalizeSelector(selector),
+      )?.role ?? null
+    );
+  }
+
   /**
    * Allows tests to inject an Octokit-shaped mock without going through
    * environment variables. Not part of the public runtime contract.
