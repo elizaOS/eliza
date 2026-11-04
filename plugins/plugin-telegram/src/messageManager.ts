@@ -23,6 +23,7 @@ import {
   type EventPayload,
   EventType,
   type HandlerCallback,
+  hasRoleAccess,
   type IAgentRuntime,
   logger,
   type Media,
@@ -2479,9 +2480,17 @@ export class MessageManager {
     // may approve it. The member who asked may still deny their own request.
     const isRequester =
       Boolean(callback.ownerId) && callback.ownerId === actorTelegramUserId;
-    const isOwner = (
-      await resolveTelegramSenderAuth(ctx, this.runtime, this.accountId)
-    ).isAuthorized;
+    // Check the sender and topic room the callback already resolved.
+    const isOwner = await hasRoleAccess(
+      this.runtime,
+      {
+        entityId,
+        agentId: this.runtime.agentId,
+        roomId,
+        content: { text: "", source: "telegram" },
+      },
+      "OWNER",
+    );
     if (!isOwner && !(isRequester && !callback.approved)) {
       try {
         await ctx.answerCbQuery(

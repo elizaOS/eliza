@@ -36,8 +36,9 @@ export function resolveActionParams<T>(
 }
 
 /**
- * Owner id the approval relay binds its Approve/Deny callback values to, so a
- * connector honors a tap only from the user who made the request.
+ * Telegram user id of the sender who made the request. The approval relay
+ * binds it into the Approve/Deny callback values. Telegram lets this user deny
+ * their own request; only the agent owner can approve it.
  */
 export function approvalOwnerIdFromMemory(message: Memory): string | undefined {
   const metadata = message.metadata;
