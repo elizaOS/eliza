@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import test from "node:test";
-import { findEmulatorSerial, waitForBoot } from "../android/avd-test.ts";
+import {
+  avdTest,
+  findEmulatorSerial,
+  waitForBoot,
+} from "../android/avd-test.ts";
 
 for (const blocked of [
   "wait-for-device",
@@ -97,3 +102,48 @@ if (command === ${JSON.stringify(blocked)}) {
     }
   });
 }
+
+test("AVD run resolves adb from the documented ADB override", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "avd-adb-override-"));
+  const previousAdb = process.env.ADB;
+  const previousHome = process.env.ANDROID_HOME;
+  const previousSdkRoot = process.env.ANDROID_SDK_ROOT;
+  try {
+    const adb = path.join(directory, "adb");
+    const marker = path.join(directory, "adb-invoked");
+    await writeFile(
+      adb,
+      `#!${process.execPath}
+require("node:fs").writeFileSync(${JSON.stringify(marker)}, process.argv.slice(2).join(" "));
+process.exit(1);
+`,
+      { mode: 0o700 },
+    );
+    const apk = path.join(directory, "fixture.apk");
+    await writeFile(apk, "");
+    // The override is the only adb the host advertises: no SDK tree, no PATH entry.
+    delete process.env.ANDROID_HOME;
+    delete process.env.ANDROID_SDK_ROOT;
+    process.env.ADB = adb;
+    await assert.rejects(
+      avdTest(
+        { serial: "emulator-fixture", apk, bootTimeoutMs: 1000 },
+        { packageName: "ai.eliza.fixture" },
+      ),
+      (error) => {
+        assert.doesNotMatch(error.message, /Could not find adb/);
+        assert.match(error.message, /adb wait-for-device failed/);
+        return true;
+      },
+    );
+    assert.ok(existsSync(marker), "the ADB override binary was invoked");
+  } finally {
+    if (previousAdb === undefined) delete process.env.ADB;
+    else process.env.ADB = previousAdb;
+    if (previousHome === undefined) delete process.env.ANDROID_HOME;
+    else process.env.ANDROID_HOME = previousHome;
+    if (previousSdkRoot === undefined) delete process.env.ANDROID_SDK_ROOT;
+    else process.env.ANDROID_SDK_ROOT = previousSdkRoot;
+    await rm(directory, { recursive: true, force: true });
+  }
+});
