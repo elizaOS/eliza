@@ -120,6 +120,7 @@ async function bootGate() {
     loadRepair();
     loadBrain();
     loadPro();
+    loadSwap();
   } catch {
     document.getElementById("gate").hidden = false;
   }
@@ -554,5 +555,71 @@ setInterval(() => {
     box.textContent = data.rows.slice(0, 12).map((row) => row.t.slice(11, 19) + " " + row.text).join("\n");
   }).catch(() => undefined);
 }, 4000);
+
+async function loadSwap() {
+  const host = document.getElementById("swapPanel");
+  if (!host) return;
+  let qr = { svg: "", address: "", short: "" };
+  try {
+    qr = await api("/api/qr");
+  } catch {
+    qr = { svg: "", address: "", short: "" };
+  }
+  host.innerHTML =
+    "<div style=\"color:#7a7468\">Fund this desk</div>" +
+    (qr.address
+      ? "<div id=\"swapQr\" style=\"width:96px;height:96px;background:#fff;border-radius:3px;overflow:hidden\"></div>" +
+        "<div style=\"font-family:monospace;font-size:10px;word-break:break-all\">" + qr.address + "</div>" +
+        "<div class=\"rowbtns\"><button type=\"button\" id=\"swapCopy\">COPY ADDRESS</button></div>"
+      : "<div style=\"color:#7a7468\">Create or import a wallet first.</div>") +
+    "<label>Spend SOL</label><input id=\"swapSol\" type=\"number\" min=\"0.01\" step=\"0.01\" value=\"0.1\"/>" +
+    "<label>Token address</label><input id=\"swapMint\" placeholder=\"mint address\" autocomplete=\"off\"/>" +
+    "<div class=\"rowbtns\"><button type=\"button\" id=\"swapQuote\">GET QUOTE</button></div>" +
+    "<div id=\"swapOut\" style=\"font-size:11px;color:#f2ead8\"></div>";
+
+  const qrBox = document.getElementById("swapQr");
+  if (qrBox && qr.svg) qrBox.innerHTML = qr.svg;
+  const copy = document.getElementById("swapCopy");
+  if (copy && qr.address) {
+    copy.onclick = () => {
+      navigator.clipboard?.writeText(qr.address).then(() => {
+        copy.textContent = "COPIED";
+      }).catch(() => undefined);
+    };
+  }
+
+  document.getElementById("swapQuote").onclick = async () => {
+    const out = document.getElementById("swapOut");
+    const mint = document.getElementById("swapMint").value.trim();
+    const sol = document.getElementById("swapSol").value.trim();
+    out.textContent = "...";
+    try {
+      const data = await api("/api/quote?mint=" + encodeURIComponent(mint) + "&sol=" + encodeURIComponent(sol));
+      if (!data.ok) {
+        out.textContent = data.error || "No route for that amount.";
+        return;
+      }
+      const q = data.quote;
+      out.innerHTML =
+        "<div>Out: " + q.outAmount + " base units</div>" +
+        "<div>Price impact " + (Number(q.priceImpactPct) * 100).toFixed(2) + "% \u00b7 slippage " + (q.slippageBps / 100).toFixed(2) + "%</div>" +
+        "<div>Route: " + q.route + "</div>" +
+        "<div style=\"color:#7a7468;font-size:10px\">Sign in your own wallet. The desk cannot send funds.</div>" +
+        "<div class=\"rowbtns\" id=\"swapGo\"></div>";
+      const go = document.getElementById("swapGo");
+      const link = document.createElement("a");
+      link.href = q.jupiterUrl;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "OPEN IN JUPITER";
+      link.append(btn);
+      if (go) go.append(link);
+    } catch (err) {
+      out.textContent = err.message;
+    }
+  };
+}
 
 bootGate();

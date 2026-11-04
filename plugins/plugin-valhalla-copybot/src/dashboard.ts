@@ -26,6 +26,7 @@ import { AFFILIATE_LABEL, contextForReport, contextForScore, offersFor } from ".
 import { pollTelegramTools } from "./outside-read.ts";
 import { comparisonRows, PLAN_PRICES, paywallCopy, TRIAL_MS, tierFor } from "./plan.ts";
 import { proTradeView } from "./pro-allowance.ts";
+import { quoteBuy } from "./quote.ts";
 import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { signalScore } from "./signal-score.ts";
 import {
@@ -454,6 +455,19 @@ async function handle(
       return;
     }
     send(res, 200, { svg: await qrSvg(address), address, short: tail4(address) });
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/quote") {
+    // Read-only: a route quote, never a swap. The trader signs in their wallet.
+    try {
+      const quote = await quoteBuy({
+        mint: url.searchParams.get("mint"),
+        sol: url.searchParams.get("sol"),
+      });
+      send(res, 200, { ok: true, quote });
+    } catch (err) {
+      send(res, 200, { ok: false, error: err instanceof Error ? err.message : "quote failed" });
+    }
     return;
   }
   if (req.method === "POST") {
