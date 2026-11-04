@@ -1,0 +1,40 @@
+{
+  "state": "SOURCE_PROFILE_CORRECTION_PROPOSAL_NO_CAP_WAIVER_OR_EXECUTION",
+  "baselineV10PacketSHA256": "ba7836186339594fb0b296fc318a8b99b5a8b81bb83e1959075a5d6cf177b57b",
+  "failureReceipt": "/Users/nubs/.local/state/eliza-five-lane-coordination/canonicald548-normal113-once-20261104T052703Z/COMPACT-OWNER-FAILURE-RECEIPT.json",
+  "failureReceiptSHA256": "bab6463831e386fdfe1c9d394096862001e358365dfbf505f115ace0b8606b8e",
+  "observed": "Actual workspace-before read-only helper exceeded100000 entries. Exact failing path/full count unobserved; all producer owners passed.0producer/0test.",
+  "scope": "All prior source/non-generated workspace files including frozen install cache remain covered. No new excluded path; no dependency/source/output/cold-cache proof removed.",
+  "correction": "Stream deterministic whole-workspace record hashes in sorted depth-first traversal; retain only digest/counters/top roots. Final drift verification compares digest+all counters+scope+budget; full record array never retained. Add explicit diagnostic lastPath/count/bytes/top-root data on a future bound failure.",
+  "budgetDelta": {
+    "maxEntries": {
+      "before": 100000,
+      "proposed": 1000000,
+      "rationale": "100001 actual observed entries already exceeds old cap; normal install cache is included and initial independent installed-dependency census had287206 entries. Full outside-dependency count is not measured. This is finite admission headroom, not a claim about actual size or completion."
+    },
+    "retainedBaselineMetadata": {
+      "before": "up to16MiB full array",
+      "proposed": "at most128KiB summary/digest; no array"
+    },
+    "unchanged": "32GiB file reads,90s perphase,2GiB/1536Node/CPU2/PID256,whole1200/job22,disk/network/source/output guards",
+    "newBounds": "single-directory100000 entries,depth128,record32KiB,receipt128KiB"
+  },
+  "sourceChanges": [
+    "workspace-write-custody.mjs",
+    "run.py copies sealed TEST-RESOURCE-POLICY.json into results for helper budget",
+    "TEST-RESOURCE-POLICY.json explicit workspaceInventory budget",
+    "PLAN/RootGO schema hash binding only"
+  ],
+  "unchanged": [
+    "actual SDK ff04",
+    "all six normal producer scripts/graph",
+    "all113 wholefile tests/oracles",
+    "owning conditions/configs/aliases",
+    "normal source/dist value imports",
+    "esbuild correction and every producer owner probe",
+    "cgroup/resource/container/process supervision",
+    "new-intent/no-retry policy"
+  ],
+  "notProved": "No actual full workspace entry count, streaming completion/performance, producer build or113 test success. No local/hosted imports or setup tests executed.",
+  "requires": "Sole assigned review of exact algorithm/profile/budget, explicit Root budget/publication decision, actual remote proof and separate fresh finite run authority. No prior intent replay."
+}

@@ -1,0 +1,187 @@
+--- v12/host-memory-admission.py
++++ v14/host-memory-admission.py
+@@ -1,45 +1,96 @@
+-"""Read-only explicit effective host/engine/cgroup budget gate for an 8GiB task."""
++"""Hosted-only read-only effective8GiB memory gate, with bounded partial diagnostics."""
+ from pathlib import Path
+-import json,os,subprocess,sys
+-assert os.environ.get('DOCKER_HOST')=='unix:///var/run/docker.sock'and not os.environ.get('DOCKER_CONTEXT')
+-for key in ['DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH','DOCKER_API_VERSION']:assert not os.environ.get(key)
+-result=Path(sys.argv[1]);info=json.loads(subprocess.check_output(['docker','info','--format','{{json .}}'],timeout=10))
+-assert info['OSType']=='linux'and info['Architecture']=='x86_64'
+-assert info['MemoryLimit']and info['SwapLimit']and info['CgroupVersion']=='2'and info['CgroupDriver']=='systemd'
+-assert info['MemTotal']>=15*1024**3,'Engine below compiler host profile'
+-context=json.loads(subprocess.check_output(['docker','context','inspect'],timeout=10));assert len(context)==1
+-assert context[0]['Endpoints']['docker']['Host']=='unix:///var/run/docker.sock','Remote or unknown engine not admitted'
+-memory={line.split(':',1)[0]:int(line.split()[1])*1024 for line in Path('/proc/meminfo').read_text().splitlines()if line.startswith(('MemTotal:','MemAvailable:'))}
+-assert memory['MemTotal']>=15*1024**3 and memory['MemAvailable']>=10*1024**3,'Host budget insufficient'
+-own=Path('/proc/self/cgroup').read_text().splitlines();assert len(own)==1 and own[0].startswith('0::/')
+-relative=own[0][3:];assert '..'not in Path(relative).parts
+-mounts=Path('/proc/self/mountinfo').read_text().splitlines();cgroups=[x for x in mounts if' - cgroup2 'in x];assert len(cgroups)==1
+-left=cgroups[0].split(' - ',1)[0].split();assert left[3]=='/'and left[4]=='/sys/fs/cgroup','Unknown effective cgroup namespace'
+-root=Path('/sys/fs/cgroup');paths=set();p=root/relative.lstrip('/')
+-while p!=root:
+- assert p.is_relative_to(root);paths.add(p);p=p.parent
+-paths.add(root);paths.add(root/'system.slice')
+-limits=[]
+-for p in sorted(paths):
+- f=p/'memory.max'
+- if not f.exists():
+-  # Linux exposes memory.max on non-root cgroups. Absence is accepted only
+-  # at the actual systemd host hierarchy root, never at a delegated/unknown
+-  # ancestor. Any exposed root ceiling is still parsed and enforced below.
+-  assert p==root and not f.is_symlink(),'Unknown effective memory ceiling: '+str(p)
+-  assert Path('/proc/1/comm').read_text().strip()=='systemd'
+-  assert Path('/proc/1/cgroup').read_text().strip()=='0::/init.scope'
+-  assert os.readlink('/proc/self/ns/cgroup')==os.readlink('/proc/1/ns/cgroup')
+-  assert 'memory'in(root/'cgroup.controllers').read_text().split()
+-  assert(root/'cgroup.type').read_text().strip()=='domain'
+-  limits.append({'path':str(f),'value':'ABSENT_KERNEL_HIERARCHY_ROOT','rootChecked':True,'initialSystemdCgroupNamespaceVerified':True,'semanticSource':'https://cdn.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#memory-interface-files'})
+-  continue
+- assert f.is_file()and not f.is_symlink(),'Unknown effective memory ceiling: '+str(p)
+- raw=f.read_text().strip();assert raw=='max'or raw.isdigit()
+- value=None if raw=='max'else int(raw)
+- if value is not None:assert value>=10*1024**3,'Effective memory parent below compiler budget'
+- limits.append({'path':str(f),'value':raw})
+-config=Path('/etc/docker/daemon.json')
+-if config.exists():
+- d=json.loads(config.read_text());assert d.get('cgroup-parent','system.slice')in('system.slice','/system.slice'),'Unknown engine cgroup parent'
+-result.write_text(json.dumps({'state':'SOURCE_POLICY_8GIB_HOST_ADMISSION_PASS','engineMemTotal':info['MemTotal'],'engineMemoryAndSwapLimitCapable':True,'cgroupVersion':info['CgroupVersion'],'cgroupDriver':info['CgroupDriver'],'explicitProducerCgroupParent':'system.slice','host':memory,'effectiveMemoryLimits':limits,'noMemoryFitOrRuntimeClaim':True},indent=2)+'\n')
++import hashlib,json,os,re,subprocess,sys
++result=Path(sys.argv[1]);partial=result.with_name('HOST-MEMORY-PARTIAL.json')
++observed={};stage='hosted-scope'
++def checkpoint(name,values=None,error=None):
++ global stage
++ stage=name
++ if values:observed.update(values)
++ data={'state':'PARTIAL_HOST_METADATA_NOT_ADMISSION','stage':stage,'observed':observed,'error':error}
++ text=json.dumps(data,indent=2)+'\n';assert len(text.encode())<=32768
++ partial.write_text(text)
++try:
++ assert sys.platform=='linux'and os.environ.get('RUNNER_ENVIRONMENT')=='github-hosted'and os.environ.get('GITHUB_REPOSITORY')=='elizaOS/eliza','Hosted Linux scope only; no local Docker action admitted'
++ contract_path=Path(__file__).resolve().parent/'SUPPORTED-KERNEL-NAMESPACE-PROOF.json'
++ contract_bytes=contract_path.read_bytes();assert len(contract_bytes)<=32768
++ contract=json.loads(contract_bytes);assert contract['schemaVersion']==1
++ checkpoint('kernel-release-observation',{'kernelRelease':os.uname().release,'kernelProofContractSHA256':hashlib.sha256(contract_bytes).hexdigest(),'kernelProofSourceCommit':contract['sourceCommit']})
++ assert os.environ.get('DOCKER_HOST')=='unix:///var/run/docker.sock'and not os.environ.get('DOCKER_CONTEXT')
++ for key in ['DOCKER_TLS','DOCKER_TLS_VERIFY','DOCKER_CERT_PATH','DOCKER_API_VERSION']:assert not os.environ.get(key)
++ checkpoint('engine-info')
++ info=json.loads(subprocess.check_output(['docker','info','--format','{{json .}}'],timeout=10))
++ checkpoint('engine-budget',{'engine':{key:info.get(key)for key in ['OSType','Architecture','MemoryLimit','SwapLimit','CgroupVersion','CgroupDriver','MemTotal']}})
++ assert info['OSType']=='linux'and info['Architecture']=='x86_64'
++ assert info['MemoryLimit']and info['SwapLimit']and info['CgroupVersion']=='2'and info['CgroupDriver']=='systemd'
++ assert info['MemTotal']>=15*1024**3,'Engine below compiler host profile'
++ context=json.loads(subprocess.check_output(['docker','context','inspect'],timeout=10));assert len(context)==1
++ assert context[0]['Endpoints']['docker']['Host']=='unix:///var/run/docker.sock','Remote or unknown engine not admitted'
++ memory={line.split(':',1)[0]:int(line.split()[1])*1024 for line in Path('/proc/meminfo').read_text().splitlines()if line.startswith(('MemTotal:','MemAvailable:'))}
++ checkpoint('host-budget',{'host':memory})
++ assert memory['MemTotal']>=15*1024**3 and memory['MemAvailable']>=10*1024**3,'Host budget insufficient'
++ own=Path('/proc/self/cgroup').read_text().splitlines();assert len(own)==1 and own[0].startswith('0::/')
++ relative=own[0][3:];assert '..'not in Path(relative).parts
++ mounts=Path('/proc/self/mountinfo').read_text().splitlines();cgroups=[x for x in mounts if' - cgroup2 'in x];assert len(cgroups)==1
++ left=cgroups[0].split(' - ',1)[0].split();assert left[3]=='/'and left[4]=='/sys/fs/cgroup','Unknown effective cgroup namespace'
++ root=Path('/sys/fs/cgroup');paths=set();p=root/relative.lstrip('/')
++ while p!=root:
++  assert p.is_relative_to(root);paths.add(p);p=p.parent
++ paths.add(root);paths.add(root/'system.slice');limits=[]
++ checkpoint('effective-ancestor-limits',{'runnerCgroup':own[0],'selectedProducerParent':'system.slice','effectiveMemoryLimits':limits})
++ for p in sorted(paths):
++  f=p/'memory.max'
++  if not f.exists():
++   assert p==root and not f.is_symlink(),'Unknown effective memory ceiling: '+str(p)
++   assert Path('/proc/1/comm').read_text().strip()=='systemd'
++   assert Path('/proc/1/cgroup').read_text().strip()=='0::/init.scope'
++   # Version-bound reserved initial inode proof replaces inaccessible PID1
++   # namespace readlink. It is not a magic value applied to arbitrary kernels.
++   supported=contract['supportedRuntime']
++   checkpoint('kernel-source-binding')
++   with Path('/proc/version_signature').open('rb')as stream:signature_bytes=stream.read(513)
++   assert len(signature_bytes)<=512,'Kernel signature metadata bound'
++   signature=signature_bytes.decode('ascii').strip()
++   checkpoint('kernel-source-binding',{'kernelVersionSignature':signature})
++   assert os.uname().release==supported['unameRelease']and signature==supported['procVersionSignature']and os.uname().machine==supported['architecture'],'Unknown kernel source contract; root-absence proof not admitted'
++   initial=contract['symbols']['CGROUP_NS_INIT_INO']['decimal'];dynamic=contract['symbols']['PROC_DYNAMIC_FIRST']['decimal']
++   assert type(initial)is int and type(dynamic)is int and int(contract['symbols']['CGROUP_NS_INIT_INO']['hex'],16)==initial and int(contract['symbols']['PROC_DYNAMIC_FIRST']['hex'],16)==dynamic and 0<initial<dynamic<=0xffffffff,'Invalid version-bound namespace symbol contract'
++   checkpoint('own-initial-cgroup-namespace',{'initialNamespaceNamedSymbol':'CGROUP_NS_INIT_INO (PROC_CGROUP_INIT_INO alias)','sourceBoundInitialInode':initial,'sourceBoundChildAllocationMinimum':dynamic,'namespaceFDOpened':False,'namespaceFDClosed':None})
++   descriptor=os.open('/proc/self/ns/cgroup',os.O_RDONLY|os.O_CLOEXEC)
++   observed['namespaceFDOpened']=True
++   try:
++    metadata=os.fstat(descriptor);own_namespace=os.readlink('/proc/self/ns/cgroup')
++    match=re.fullmatch(r'cgroup:\[([0-9]+)\]',own_namespace)
++    checkpoint('own-initial-cgroup-namespace',{'ownCgroupNamespace':own_namespace,'ownNamespaceInode':metadata.st_ino,'ownNamespaceDevice':metadata.st_dev})
++    assert match and int(match.group(1))==metadata.st_ino==initial,'Runner cgroup namespace is not the source-bound initial namespace'
++   finally:
++    os.close(descriptor);observed['namespaceFDClosed']=True
++   method='unprivileged-own-namespace-fd-and-readlink-matched-version-bound-reserved-inode'
++   checkpoint('initial-cgroup-namespace-proved',{'initialNamespaceReadMethod':method,'kernelProofContractSHA256':hashlib.sha256(contract_bytes).hexdigest()})
++   assert 'memory'in(root/'cgroup.controllers').read_text().split()
++   # Kernel cgroup.type, like memory.max, is a non-root interface. Require
++   # domain at the selected non-root producer parent; inspect root type only
++   # if it is exposed. Never invent a missing root type or memory ceiling.
++   parent_type=(root/'system.slice/cgroup.type').read_text().strip();assert parent_type=='domain'
++   type_file=root/'cgroup.type'
++   if type_file.exists():
++    assert type_file.is_file()and not type_file.is_symlink()and type_file.read_text().strip()=='domain'
++    root_type='domain'
++   else:
++    assert not type_file.is_symlink();root_type='ABSENT_DOCUMENTED_NONROOT_ONLY_INTERFACE'
++   limits.append({'path':str(f),'value':'ABSENT_KERNEL_HIERARCHY_ROOT','rootChecked':True,'sourceBoundInitialCgroupNamespaceVerified':True,'initialNamespaceReadMethod':method,'kernelProofContractSHA256':hashlib.sha256(contract_bytes).hexdigest(),'selectedParentType':parent_type,'rootType':root_type,'semanticSource':'https://docs.kernel.org/admin-guide/cgroup-v2.html#core-interface-files'})
++   checkpoint('effective-ancestor-limits')
++   continue
++  assert f.is_file()and not f.is_symlink(),'Unknown effective memory ceiling: '+str(p)
++  raw=f.read_text().strip();assert raw=='max'or raw.isdigit()
++  value=None if raw=='max'else int(raw)
++  limits.append({'path':str(f),'value':raw});checkpoint('effective-ancestor-limits')
++  if value is not None:assert value>=10*1024**3,'Effective memory parent below compiler budget'
++ config=Path('/etc/docker/daemon.json')
++ if config.exists():
++  d=json.loads(config.read_text());assert d.get('cgroup-parent','system.slice')in('system.slice','/system.slice'),'Unknown engine cgroup parent'
++ result.write_text(json.dumps({'state':'SOURCE_POLICY_8GIB_HOST_ADMISSION_PASS','engineMemTotal':info['MemTotal'],'engineMemoryAndSwapLimitCapable':True,'cgroupVersion':info['CgroupVersion'],'cgroupDriver':info['CgroupDriver'],'explicitProducerCgroupParent':'system.slice','host':memory,'effectiveMemoryLimits':limits,'noMemoryFitOrRuntimeClaim':True,'partialMetadata':partial.name},indent=2)+'\n')
++ checkpoint('complete-host-gate')
++except BaseException as error:
++ checkpoint(stage,error={'type':type(error).__name__,'message':str(error)[:2048]})
++ raise
+--- v12/TEST-RESOURCE-POLICY.json
++++ v14/TEST-RESOURCE-POLICY.json
+@@ -29,5 +29,15 @@
+     "recordEncoding": "SHA256 of deterministic sorted depth-first NDJSON records, UTF-8, final newline per record",
+     "sourceWorkspaceReadOnly": true,
+     "entryBoundDecision": "Explicit source proposal from prior100000 entry cap to1000000; requires Root acceptance before publication/job. No memory/CPU/heap/time/network/disk floor relaxation."
++  },
++  "hostedUnprivilegedNamespaceProof": {
++    "sourceContract": "SUPPORTED-KERNEL-NAMESPACE-PROOF.json",
++    "sourceContractSHA256": "d4a19b96d1bddcfed2647e7b2917e32323953a2a6e28cb733a52e39575adecab",
++    "supportedKernelRelease": "7.0.0-1017-azure",
++    "supportedVersionSignature": "Ubuntu 7.0.0-1017.17~24.04.1-azure 7.0.14",
++    "operation": "Read-only own namespace descriptor/fstat/readlink plus exact source-bound reserved inode and child-allocation-range proof; descriptor closes in finally. No PID1 namespace readlink or new subprocess/privilege.",
++    "unknownKernel": "Reject missing-root-ceiling admission; do not reuse constant across unreviewed source versions.",
++    "allAncestorCeilingsAndExplicitSystemSliceParentRetained": true,
++    "newPrivilegeGranted": false
+   }
+ }
+--- v12/PLAN.json
++++ v14/PLAN.json
+@@ -173,6 +173,7 @@
+     "comment": 6621988965,
+     "runtimeConditionSnapshotLimit": "Derived installed conditions/dist absence not directly observed by reviewer; passive actualCLI observations retained in this qualification."
+   },
+-  "effectiveProducerHierarchy": "Docker create --cgroup-parent system.slice; actual HostConfig.CgroupParent verified prestart/postexit/cleanup. Check every runner/producer ancestor including exposed cgroup root ceilings; standard kernel-root missing memory.max accepted only with systemdPID1/init.scope/samecgroupnamespace/memorycontroller/domain proof. Missing non-root ceiling rejects.",
+-  "workspaceInventoryProposal": "Whole retained workspace including normal frozen-install cache remains covered. Replace large records array/baseline JSON with deterministic streaming record SHA256 plus bounded count/type/top-root summaries. Explicit entry budget proposal100000->1000000; filebytes32GiB and phase90s/test2GiB1536Node/CPU2/PID256/whole1200/job22/disk gates unchanged. Exact Root reviewed source/profile authority required; no automatic cap waiver."
++  "effectiveProducerHierarchy": "Preserve explicit system.slice parent/readback and every actual runner/producer ancestor ceiling. Missing kernel-root memory.max requires existing systemd/init.scope/controller/mount checks plus own current namespace descriptor+readlink matching source-bound reserved initial inode on exact reviewed Ubuntu release/version_signature. No PID1 namespace permission, sudo, new child, or unsupported-kernel constant fallback. system.slice must be domain; root cgroup.type is inspected only if exposed, consistent with documented non-root interface.",
++  "workspaceInventoryProposal": "Whole retained workspace including normal frozen-install cache remains covered. Replace large records array/baseline JSON with deterministic streaming record SHA256 plus bounded count/type/top-root summaries. Explicit entry budget proposal100000->1000000; filebytes32GiB and phase90s/test2GiB1536Node/CPU2/PID256/whole1200/job22/disk gates unchanged. Exact Root reviewed source/profile authority required; no automatic cap waiver.",
++  "hostMetadataDiagnostics": "Retain V13 bounded partial numeric/hierarchy/kernel observations before failure, without its ungranted privileged fallback. V13 remains held/unpublished/unexecuted."
+ }
+--- v12/ROOT-GO-CONTRACT.json
++++ v14/ROOT-GO-CONTRACT.json
+@@ -16,9 +16,9 @@
+   "sourceTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+   "workflowCommit": "UNPUBLISHED_OPERATOR_REVIEW_REQUIRED",
+   "operatorSealSHA256": "FROZEN_AFTER_PIN_AND_REVIEW",
+-  "planSHA256": "027a0a8617ba3e6290509c443a9c57047508888ca89eda83c9d66001306500d2",
++  "planSHA256": "ef2e90d72345dbf7e5a8924e111b152d0cc679b90a295091bfcc0efce7f88e2e",
+   "oracleSHA256": "f1733d451f5369d980dd187641bbe6c2d6303540d68e49575aa8023c49754e10",
+-  "testResourcePolicySHA256": "28e9472fb3e393b7a0abf97cc02aeb2b38588452b780bb7f1aa2df2ca97ea623",
++  "testResourcePolicySHA256": "3f4ae6ace5fa42184481c14f08fbf55f73bc68339b82a72567b9833b8b850efd",
+   "intentId": "NOT_ISSUED",
+   "issuedEpoch": "NOT_ISSUED",
+   "expiresEpoch": "NOT_ISSUED",

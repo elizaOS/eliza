@@ -1,0 +1,14 @@
+{
+  "state": "SOURCE_CANDIDATE_READY_FOR_INDEPENDENT_REVIEW_NOT_EXECUTION",
+  "SDKSource": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "SDKTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+  "executedSubject": false,
+  "published": false,
+  "GOIssued": false,
+  "operatorExecuted": false,
+  "reviewGaps": [
+    "Independent reviewer exact normal export/library owner checks",
+    "Fresh hosted source guard complete ancestry disposition required; no borrowed exception",
+    "Bounded inventories prove final retained writes and immutable source/dependencies, not absence of transient mutations"
+  ]
+}

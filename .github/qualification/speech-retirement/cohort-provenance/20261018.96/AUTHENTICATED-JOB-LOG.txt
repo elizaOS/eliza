@@ -1,0 +1,449 @@
+﻿2026-11-04T00:53:13.2998609Z Current runner version: '2.338.2'
+2026-11-04T00:53:13.3021656Z ##[group]Runner Image Provisioner
+2026-11-04T00:53:13.3022449Z Hosted Compute Agent
+2026-11-04T00:53:13.3023075Z Version: 20261015.610
+2026-11-04T00:53:13.3023689Z Commit: 267fdb4e8bbec4ab5ea31367f3a00d5c480c7656
+2026-11-04T00:53:13.3024692Z Build Date: 2026-10-14T17:06:54Z
+2026-11-04T00:53:13.3025376Z Worker ID: {fd43ad10-75b3-4855-99d8-9c51b2613e39}
+2026-11-04T00:53:13.3026034Z Region: us-east-1
+2026-11-04T00:53:13.3026636Z Cloud: AWS
+2026-11-04T00:53:13.3027200Z ##[endgroup]
+2026-11-04T00:53:13.3028746Z ##[group]Operating System
+2026-11-04T00:53:13.3029338Z Ubuntu
+2026-11-04T00:53:13.3029822Z 24.04.5
+2026-11-04T00:53:13.3030392Z LTS
+2026-11-04T00:53:13.3030872Z ##[endgroup]
+2026-11-04T00:53:13.3031437Z ##[group]Runner Image
+2026-11-04T00:53:13.3032032Z Image: ubuntu-24.04
+2026-11-04T00:53:13.3032585Z Version: 20261018.96.1
+2026-11-04T00:53:13.3033862Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261018.96/images/ubuntu/Ubuntu2404-Readme.md
+2026-11-04T00:53:13.3035650Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261018.96
+2026-11-04T00:53:13.3036709Z ##[endgroup]
+2026-11-04T00:53:13.3037916Z ##[group]GITHUB_TOKEN Permissions
+2026-11-04T00:53:13.3040083Z Actions: read
+2026-11-04T00:53:13.3040683Z Contents: read
+2026-11-04T00:53:13.3041209Z Metadata: read
+2026-11-04T00:53:13.3041723Z ##[endgroup]
+2026-11-04T00:53:13.3043840Z Secret source: Actions
+2026-11-04T00:53:13.3044968Z Cache mode: write
+2026-11-04T00:53:13.3045691Z Prepare workflow directory
+2026-11-04T00:53:13.3269529Z Prepare all required actions
+2026-11-04T00:53:13.3305197Z Getting action download info
+2026-11-04T00:53:13.4552686Z Download action repository 'actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1' (SHA:3d3c42e5aac5ba805825da76410c181273ba90b1)
+2026-11-04T00:53:15.6701912Z Download action repository 'actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9' (SHA:cf430e030ddbb5b0abf93d22962f4752f3646cd9)
+2026-11-04T00:53:15.9677220Z Complete job name: qualify
+2026-11-04T00:53:16.0415529Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+2026-11-04T00:53:16.0416945Z with:
+2026-11-04T00:53:16.0417720Z   ref: 42c3959860b895bcd6277dddb58594ff7a9b154a
+2026-11-04T00:53:16.0418717Z   path: operator
+2026-11-04T00:53:16.0419503Z   fetch-depth: 1
+2026-11-04T00:53:16.0420243Z   submodules: false
+2026-11-04T00:53:16.0421050Z   persist-credentials: false
+2026-11-04T00:53:16.0422112Z   sparse-checkout: .github/qualification/speech-retirement
+2026-11-04T00:53:16.0423250Z   repository: elizaOS/eliza
+2026-11-04T00:53:16.0430184Z   token: ***
+2026-11-04T00:53:16.0430962Z   ssh-strict: true
+2026-11-04T00:53:16.0431730Z   ssh-user: git
+2026-11-04T00:53:16.0432503Z   clean: true
+2026-11-04T00:53:16.0433371Z   sparse-checkout-cone-mode: true
+2026-11-04T00:53:16.0434405Z   fetch-tags: false
+2026-11-04T00:53:16.0435216Z   show-progress: true
+2026-11-04T00:53:16.0436011Z   lfs: false
+2026-11-04T00:53:16.0436910Z   set-safe-directory: true
+2026-11-04T00:53:16.0437940Z   allow-unsafe-pr-checkout: false
+2026-11-04T00:53:16.0439100Z ##[endgroup]
+2026-11-04T00:53:16.1195872Z Syncing repository: elizaOS/eliza
+2026-11-04T00:53:16.1198210Z ##[group]Getting Git version info
+2026-11-04T00:53:16.1199430Z Working directory is '/home/runner/work/eliza/eliza/operator'
+2026-11-04T00:53:16.1201061Z [command]/usr/bin/git version
+2026-11-04T00:53:16.3226172Z git version 2.55.0
+2026-11-04T00:53:16.3240137Z ##[endgroup]
+2026-11-04T00:53:16.3250736Z Temporarily overriding HOME='/home/runner/work/_temp/c79e5a76-6dc7-4142-9e0f-169ca7a2dc35' before making global git config changes
+2026-11-04T00:53:16.3251771Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-04T00:53:16.3255167Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/eliza/eliza/operator
+2026-11-04T00:53:16.3621869Z ##[group]Determining repository object format
+2026-11-04T00:53:16.3622952Z ##[endgroup]
+2026-11-04T00:53:16.3623910Z ##[group]Initializing the repository
+2026-11-04T00:53:16.3626452Z [command]/usr/bin/git init /home/runner/work/eliza/eliza/operator
+2026-11-04T00:53:16.4183328Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-04T00:53:16.4184090Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-04T00:53:16.4184975Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-04T00:53:16.4185644Z hint: call:
+2026-11-04T00:53:16.4186000Z hint:
+2026-11-04T00:53:16.4186470Z hint: 	git config --global init.defaultBranch <name>
+2026-11-04T00:53:16.4186917Z hint:
+2026-11-04T00:53:16.4187320Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-04T00:53:16.4188017Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-04T00:53:16.4188526Z hint:
+2026-11-04T00:53:16.4188868Z hint: 	git branch -m <name>
+2026-11-04T00:53:16.4189267Z hint:
+2026-11-04T00:53:16.4189782Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-04T00:53:16.4190531Z Initialized empty Git repository in /home/runner/work/eliza/eliza/operator/.git/
+2026-11-04T00:53:16.4191670Z [command]/usr/bin/git remote add origin https://github.com/elizaOS/eliza
+2026-11-04T00:53:16.4241862Z ##[endgroup]
+2026-11-04T00:53:16.4242330Z ##[group]Disabling automatic garbage collection
+2026-11-04T00:53:16.4243877Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-04T00:53:16.4263805Z ##[endgroup]
+2026-11-04T00:53:16.4264545Z ##[group]Setting up auth
+2026-11-04T00:53:16.4264911Z Removing SSH command configuration
+2026-11-04T00:53:16.4268208Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-04T00:53:16.4290776Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-04T00:53:16.7065541Z Removing HTTP extra header
+2026-11-04T00:53:16.7070251Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-04T00:53:16.7091055Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-04T00:53:16.7231996Z Removing includeIf entries pointing to credentials config files
+2026-11-04T00:53:16.7236349Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-04T00:53:16.7264119Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-04T00:53:16.7412175Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-04T00:53:16.7438248Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/eliza/eliza/operator/.git.path /home/runner/work/_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config
+2026-11-04T00:53:16.7457576Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/eliza/eliza/operator/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config
+2026-11-04T00:53:16.7483922Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/operator/.git.path /github/runner_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config
+2026-11-04T00:53:16.7503840Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/operator/.git/worktrees/*.path /github/runner_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config
+2026-11-04T00:53:16.7521294Z ##[endgroup]
+2026-11-04T00:53:16.7521768Z ##[group]Fetching the repository
+2026-11-04T00:53:16.7526833Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --filter=blob:none --depth=1 origin 42c3959860b895bcd6277dddb58594ff7a9b154a
+2026-11-04T00:53:17.2329695Z From https://github.com/elizaOS/eliza
+2026-11-04T00:53:17.2330653Z  * branch            42c3959860b895bcd6277dddb58594ff7a9b154a -> FETCH_HEAD
+2026-11-04T00:53:17.2340221Z [command]/usr/bin/git rev-parse --verify --quiet 42c3959860b895bcd6277dddb58594ff7a9b154a^{object}
+2026-11-04T00:53:17.2358169Z 42c3959860b895bcd6277dddb58594ff7a9b154a
+2026-11-04T00:53:17.2360598Z ##[endgroup]
+2026-11-04T00:53:17.2361285Z ##[group]Determining the checkout info
+2026-11-04T00:53:17.2361986Z ##[endgroup]
+2026-11-04T00:53:17.2362584Z ##[group]Setting up sparse checkout
+2026-11-04T00:53:17.2365404Z [command]/usr/bin/git sparse-checkout set .github/qualification/speech-retirement
+2026-11-04T00:53:17.2408648Z ##[endgroup]
+2026-11-04T00:53:17.2409250Z ##[group]Checking out the ref
+2026-11-04T00:53:17.2409697Z [command]/usr/bin/git checkout --progress --force 42c3959860b895bcd6277dddb58594ff7a9b154a
+2026-11-04T00:53:17.5926028Z Note: switching to '42c3959860b895bcd6277dddb58594ff7a9b154a'.
+2026-11-04T00:53:17.5927041Z 
+2026-11-04T00:53:17.5927525Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-04T00:53:17.5928430Z changes and commit them, and you can discard any commits you make in this
+2026-11-04T00:53:17.5929104Z state without impacting any branches by switching back to a branch.
+2026-11-04T00:53:17.5929543Z 
+2026-11-04T00:53:17.5929841Z If you want to create a new branch to retain commits you create, you may
+2026-11-04T00:53:17.5930535Z do so (now or later) by using -c with the switch command. Example:
+2026-11-04T00:53:17.5931250Z 
+2026-11-04T00:53:17.5931525Z   git switch -c <new-branch-name>
+2026-11-04T00:53:17.5931816Z 
+2026-11-04T00:53:17.5932222Z Or undo this operation with:
+2026-11-04T00:53:17.5932589Z 
+2026-11-04T00:53:17.5932796Z   git switch -
+2026-11-04T00:53:17.5933072Z 
+2026-11-04T00:53:17.5933430Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-04T00:53:17.5933906Z 
+2026-11-04T00:53:17.5935750Z HEAD is now at 42c3959 ci(assistant): prepare exact whole-file ordinal and wire qualification
+2026-11-04T00:53:17.5941724Z ##[endgroup]
+2026-11-04T00:53:17.5979179Z [command]/usr/bin/git log -1 --format=%H
+2026-11-04T00:53:17.5997789Z 42c3959860b895bcd6277dddb58594ff7a9b154a
+2026-11-04T00:53:17.6004774Z ##[group]Removing auth
+2026-11-04T00:53:17.6005211Z Removing SSH command configuration
+2026-11-04T00:53:17.6008491Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-04T00:53:17.6029833Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-04T00:53:17.6218491Z Removing HTTP extra header
+2026-11-04T00:53:17.6221282Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-04T00:53:17.6241617Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-04T00:53:17.6419058Z Removing includeIf entries pointing to credentials config files
+2026-11-04T00:53:17.6420993Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-04T00:53:17.6440843Z includeif.gitdir:/home/runner/work/eliza/eliza/operator/.git.path
+2026-11-04T00:53:17.6441822Z includeif.gitdir:/home/runner/work/eliza/eliza/operator/.git/worktrees/*.path
+2026-11-04T00:53:17.6442297Z includeif.gitdir:/github/workspace/operator/.git.path
+2026-11-04T00:53:17.6442681Z includeif.gitdir:/github/workspace/operator/.git/worktrees/*.path
+2026-11-04T00:53:17.6446477Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/eliza/eliza/operator/.git.path
+2026-11-04T00:53:17.6461062Z /home/runner/work/_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config
+2026-11-04T00:53:17.6467661Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/eliza/eliza/operator/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-b2e2f3df\-396a\-4ac4\-b0b2\-6820bf96d2d1\.config
+2026-11-04T00:53:17.6495812Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/eliza/eliza/operator/.git/worktrees/*.path
+2026-11-04T00:53:17.6510706Z /home/runner/work/_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config
+2026-11-04T00:53:17.6516528Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/eliza/eliza/operator/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-b2e2f3df\-396a\-4ac4\-b0b2\-6820bf96d2d1\.config
+2026-11-04T00:53:17.6572054Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/operator/.git.path
+2026-11-04T00:53:17.6587230Z /github/runner_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config
+2026-11-04T00:53:17.6592069Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/operator/.git.path \/github\/runner_temp\/git\-credentials\-b2e2f3df\-396a\-4ac4\-b0b2\-6820bf96d2d1\.config
+2026-11-04T00:53:17.6613248Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/operator/.git/worktrees/*.path
+2026-11-04T00:53:17.6629027Z /github/runner_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config
+2026-11-04T00:53:17.6633534Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/operator/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-b2e2f3df\-396a\-4ac4\-b0b2\-6820bf96d2d1\.config
+2026-11-04T00:53:17.6654091Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-04T00:53:17.6831075Z Removing credentials config '/home/runner/work/_temp/git-credentials-b2e2f3df-396a-4ac4-b0b2-6820bf96d2d1.config'
+2026-11-04T00:53:17.6838301Z ##[endgroup]
+2026-11-04T00:53:17.6981962Z ##[group]Run python3 -I -B operator/.github/qualification/speech-retirement/claim.py
+2026-11-04T00:53:17.6982599Z [36;1mpython3 -I -B operator/.github/qualification/speech-retirement/claim.py[0m
+2026-11-04T00:53:17.7015688Z shell: /usr/bin/bash -e {0}
+2026-11-04T00:53:17.7015967Z env:
+2026-11-04T00:53:17.7019909Z   ROOT_GO_TEXT: {"action":"ONE_EXACT_QUALIFICATION_RUN","recipe":"ordinal-normal-fullfiles","mode":"qualify","allowHostedFrozenLockSetup":true,"allowHostedWholeFileTests":true,"allowLoopbackWireFixture":true,"allowHostedUnusedAndroidCleanup":false,"allowExternalProviders":false,"allowSourceOverlay":false,"expectedRegistrations":113,"expectedPassed":113,"expectedUnexecuted":0,"sourceCommit":"1777491433a8cf13d53b30bf69336f0bff8c77e2","sourceTree":"bea8c0fb4684198d8bc656b948d1f3ebaaccd2fc","workflowCommit":"42c3959860b895bcd6277dddb58594ff7a9b154a","operatorSealSHA256":"0724b650ff427322bdace23331f4023aaa6b84b1ea0022950064921c16ba8235","planSHA256":"47be1d003f9f46c2d31efc04ee682207745dd0c5ff5bff494c56cbe9991651e0","oracleSHA256":"40f1b7dbf0113b6bbe00c4916fc0b45b83577ac98dc622b3096f6f38678f2eff","testResourcePolicySHA256":"cf7c707b21ff9d55a601baa66d6c1b1614c521cfc3ed68998aa348bf40861c66","intentId":"a49f60373490c0745995b43e4e6bbb15","issuedEpoch":1793753587.067446,"expiresEpoch":1793754787.067446,"output":"/home/runner/work/_temp/speech-retirement-results","hostCohortsSHA256":"fbb3b272dbd7ef65ea21ac3c659296bd45f377802654fb1e8e5d3b00d3f9c007","hostProvenanceDisclosure":{"20261025.353.1":"Exact authenticated41741039106 setup + explicit Root source disposition; independent official tag/readme provenance gap OPEN, not capability waiver.","20261026.354.1":{"officialTagCommitReadmeBound":true,"releasePrerelease":false},"20261101.360.1":{"officialTagCommitReadmeBound":true,"releasePrerelease":true}},"sourceManifestSHA256":"6cdf503b362031eb2d64b18ebfe8118980803be096d13ff3aadf09d7c3d95efd","sourceAdmissionDispositionSHA256":"1e8bbfcafd8f2c0913709995ed3280fe56349fc1b65c2fdbc2bfbfa7251694b3"}
+2026-11-04T00:53:17.7024343Z   EXPECTED_WORKFLOW_SHA: 42c3959860b895bcd6277dddb58594ff7a9b154a
+2026-11-04T00:53:17.7024733Z   QUALIFICATION_MODE: qualify
+2026-11-04T00:53:17.7025006Z   EXPIRES_EPOCH: 1793754787.067446
+2026-11-04T00:53:17.7027067Z   GH_TOKEN: ***
+2026-11-04T00:53:17.7027283Z ##[endgroup]
+2026-11-04T00:53:17.9311341Z ##[group]Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+2026-11-04T00:53:17.9311776Z with:
+2026-11-04T00:53:17.9312118Z   name: speech-intent-a49f60373490c0745995b43e4e6bbb15
+2026-11-04T00:53:17.9312565Z   path: /home/runner/work/_temp/speech-intent-claim.json
+2026-11-04T00:53:17.9312957Z   retention-days: 7
+2026-11-04T00:53:17.9313242Z   if-no-files-found: error
+2026-11-04T00:53:17.9313552Z   compression-level: 6
+2026-11-04T00:53:17.9313881Z   overwrite: false
+2026-11-04T00:53:17.9314313Z   include-hidden-files: false
+2026-11-04T00:53:17.9314666Z   archive: true
+2026-11-04T00:53:17.9314934Z ##[endgroup]
+2026-11-04T00:53:18.0342711Z With the provided path, there will be 1 file uploaded
+2026-11-04T00:53:18.0345989Z Artifact name is valid!
+2026-11-04T00:53:18.0346350Z Root directory input is valid!
+2026-11-04T00:53:18.1987530Z Uploading artifact: speech-intent-a49f60373490c0745995b43e4e6bbb15.zip
+2026-11-04T00:53:18.2003553Z Beginning upload of artifact content to blob storage
+2026-11-04T00:53:18.2616515Z Uploaded bytes 1231
+2026-11-04T00:53:18.2806978Z Finished uploading artifact content to blob storage!
+2026-11-04T00:53:18.2807787Z SHA256 digest of uploaded artifact is fcb5cdeea88d14795f7f45215a3a8f779061a831e069192d8c0bd37e82c73125
+2026-11-04T00:53:18.2808364Z Finalizing artifact upload
+2026-11-04T00:53:18.9107192Z Artifact speech-intent-a49f60373490c0745995b43e4e6bbb15 successfully finalized. Artifact ID 13284804003
+2026-11-04T00:53:18.9107907Z Artifact speech-intent-a49f60373490c0745995b43e4e6bbb15 has been successfully uploaded! Final size is 1231 bytes. Artifact ID is 13284804003
+2026-11-04T00:53:18.9109909Z Artifact download URL: https://github.com/elizaOS/eliza/actions/runs/41750127407/artifacts/13284804003
+2026-11-04T00:53:18.9254759Z ##[group]Run actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+2026-11-04T00:53:18.9255105Z with:
+2026-11-04T00:53:18.9255372Z   ref: 1777491433a8cf13d53b30bf69336f0bff8c77e2
+2026-11-04T00:53:18.9255675Z   path: source
+2026-11-04T00:53:18.9255894Z   fetch-depth: 1
+2026-11-04T00:53:18.9256127Z   submodules: false
+2026-11-04T00:53:18.9256361Z   persist-credentials: false
+2026-11-04T00:53:18.9256634Z   repository: elizaOS/eliza
+2026-11-04T00:53:18.9258719Z   token: ***
+2026-11-04T00:53:18.9258950Z   ssh-strict: true
+2026-11-04T00:53:18.9259196Z   ssh-user: git
+2026-11-04T00:53:18.9259413Z   clean: true
+2026-11-04T00:53:18.9259642Z   sparse-checkout-cone-mode: true
+2026-11-04T00:53:18.9259947Z   fetch-tags: false
+2026-11-04T00:53:18.9260154Z   show-progress: true
+2026-11-04T00:53:18.9260396Z   lfs: false
+2026-11-04T00:53:18.9260612Z   set-safe-directory: true
+2026-11-04T00:53:18.9260931Z   allow-unsafe-pr-checkout: false
+2026-11-04T00:53:18.9261193Z ##[endgroup]
+2026-11-04T00:53:18.9898836Z Syncing repository: elizaOS/eliza
+2026-11-04T00:53:18.9902587Z ##[group]Getting Git version info
+2026-11-04T00:53:18.9903178Z Working directory is '/home/runner/work/eliza/eliza/source'
+2026-11-04T00:53:18.9931120Z [command]/usr/bin/git version
+2026-11-04T00:53:18.9957447Z git version 2.55.0
+2026-11-04T00:53:18.9969509Z ##[endgroup]
+2026-11-04T00:53:18.9976387Z Temporarily overriding HOME='/home/runner/work/_temp/d09e8e26-e440-47a5-806c-c86bfe1e5db9' before making global git config changes
+2026-11-04T00:53:18.9977300Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-04T00:53:18.9980973Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/eliza/eliza/source
+2026-11-04T00:53:19.0003109Z ##[group]Determining repository object format
+2026-11-04T00:53:19.0004020Z ##[endgroup]
+2026-11-04T00:53:19.0004662Z ##[group]Initializing the repository
+2026-11-04T00:53:19.0007353Z [command]/usr/bin/git init /home/runner/work/eliza/eliza/source
+2026-11-04T00:53:19.0031625Z hint: Using 'master' as the name for the initial branch. This default branch name
+2026-11-04T00:53:19.0032139Z hint: will change to "main" in Git 3.0. To configure the initial branch name
+2026-11-04T00:53:19.0032678Z hint: to use in all of your new repositories, which will suppress this warning,
+2026-11-04T00:53:19.0033059Z hint: call:
+2026-11-04T00:53:19.0033332Z hint:
+2026-11-04T00:53:19.0033705Z hint: 	git config --global init.defaultBranch <name>
+2026-11-04T00:53:19.0034022Z hint:
+2026-11-04T00:53:19.0034549Z hint: Names commonly chosen instead of 'master' are 'main', 'trunk' and
+2026-11-04T00:53:19.0035040Z hint: 'development'. The just-created branch can be renamed via this command:
+2026-11-04T00:53:19.0035435Z hint:
+2026-11-04T00:53:19.0035700Z hint: 	git branch -m <name>
+2026-11-04T00:53:19.0035985Z hint:
+2026-11-04T00:53:19.0036327Z hint: Disable this message with "git config set advice.defaultBranchName false"
+2026-11-04T00:53:19.0036910Z Initialized empty Git repository in /home/runner/work/eliza/eliza/source/.git/
+2026-11-04T00:53:19.0037921Z [command]/usr/bin/git remote add origin https://github.com/elizaOS/eliza
+2026-11-04T00:53:19.0059694Z ##[endgroup]
+2026-11-04T00:53:19.0060111Z ##[group]Disabling automatic garbage collection
+2026-11-04T00:53:19.0061807Z [command]/usr/bin/git config --local gc.auto 0
+2026-11-04T00:53:19.0081542Z ##[endgroup]
+2026-11-04T00:53:19.0081942Z ##[group]Setting up auth
+2026-11-04T00:53:19.0082227Z Removing SSH command configuration
+2026-11-04T00:53:19.0086330Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-04T00:53:19.0108087Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-04T00:53:19.0252249Z Removing HTTP extra header
+2026-11-04T00:53:19.0255741Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-04T00:53:19.0277791Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-04T00:53:19.0419009Z Removing includeIf entries pointing to credentials config files
+2026-11-04T00:53:19.0427434Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-04T00:53:19.0448406Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-04T00:53:19.0592257Z [command]/usr/bin/git config --file /home/runner/work/_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config http.https://github.com/.extraheader AUTHORIZATION: basic ***
+2026-11-04T00:53:19.0615641Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/eliza/eliza/source/.git.path /home/runner/work/_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config
+2026-11-04T00:53:19.0636362Z [command]/usr/bin/git config --local includeIf.gitdir:/home/runner/work/eliza/eliza/source/.git/worktrees/*.path /home/runner/work/_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config
+2026-11-04T00:53:19.0656967Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/source/.git.path /github/runner_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config
+2026-11-04T00:53:19.0677559Z [command]/usr/bin/git config --local includeIf.gitdir:/github/workspace/source/.git/worktrees/*.path /github/runner_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config
+2026-11-04T00:53:19.0696575Z ##[endgroup]
+2026-11-04T00:53:19.0697252Z ##[group]Fetching the repository
+2026-11-04T00:53:19.0701455Z [command]/usr/bin/git -c protocol.version=2 fetch --no-tags --prune --no-recurse-submodules --depth=1 origin 1777491433a8cf13d53b30bf69336f0bff8c77e2
+2026-11-04T00:53:31.9398168Z From https://github.com/elizaOS/eliza
+2026-11-04T00:53:31.9398783Z  * branch              1777491433a8cf13d53b30bf69336f0bff8c77e2 -> FETCH_HEAD
+2026-11-04T00:53:31.9406586Z [command]/usr/bin/git rev-parse --verify --quiet 1777491433a8cf13d53b30bf69336f0bff8c77e2^{object}
+2026-11-04T00:53:31.9427952Z 1777491433a8cf13d53b30bf69336f0bff8c77e2
+2026-11-04T00:53:31.9430062Z ##[endgroup]
+2026-11-04T00:53:31.9430565Z ##[group]Determining the checkout info
+2026-11-04T00:53:31.9431160Z ##[endgroup]
+2026-11-04T00:53:31.9434854Z [command]/usr/bin/git sparse-checkout disable
+2026-11-04T00:53:31.9462938Z [command]/usr/bin/git config --local --unset-all extensions.worktreeConfig
+2026-11-04T00:53:31.9483090Z ##[group]Checking out the ref
+2026-11-04T00:53:31.9486069Z [command]/usr/bin/git checkout --progress --force 1777491433a8cf13d53b30bf69336f0bff8c77e2
+2026-11-04T00:53:32.9766918Z Updating files:  66% (19684/29570)
+2026-11-04T00:53:32.9893796Z Updating files:  67% (19812/29570)
+2026-11-04T00:53:33.0036284Z Updating files:  68% (20108/29570)
+2026-11-04T00:53:33.0129058Z Updating files:  69% (20404/29570)
+2026-11-04T00:53:33.0372096Z Updating files:  70% (20699/29570)
+2026-11-04T00:53:33.0507091Z Updating files:  71% (20995/29570)
+2026-11-04T00:53:33.0693425Z Updating files:  72% (21291/29570)
+2026-11-04T00:53:33.0871926Z Updating files:  73% (21587/29570)
+2026-11-04T00:53:33.1012664Z Updating files:  74% (21882/29570)
+2026-11-04T00:53:33.1209947Z Updating files:  75% (22178/29570)
+2026-11-04T00:53:33.1357828Z Updating files:  76% (22474/29570)
+2026-11-04T00:53:33.1508112Z Updating files:  77% (22769/29570)
+2026-11-04T00:53:33.1645962Z Updating files:  78% (23065/29570)
+2026-11-04T00:53:33.1767072Z Updating files:  79% (23361/29570)
+2026-11-04T00:53:33.1890387Z Updating files:  80% (23656/29570)
+2026-11-04T00:53:33.2136198Z Updating files:  81% (23952/29570)
+2026-11-04T00:53:33.2289955Z Updating files:  82% (24248/29570)
+2026-11-04T00:53:33.2422689Z Updating files:  83% (24544/29570)
+2026-11-04T00:53:33.2529801Z Updating files:  84% (24839/29570)
+2026-11-04T00:53:33.9083494Z Updating files:  85% (25135/29570)
+2026-11-04T00:53:33.9224523Z Updating files:  86% (25431/29570)
+2026-11-04T00:53:33.9340073Z Updating files:  87% (25726/29570)
+2026-11-04T00:53:33.9469199Z Updating files:  88% (26022/29570)
+2026-11-04T00:53:33.9620643Z Updating files:  89% (26318/29570)
+2026-11-04T00:53:33.9721264Z Updating files:  90% (26613/29570)
+2026-11-04T00:53:33.9775299Z Updating files:  90% (26825/29570)
+2026-11-04T00:53:33.9913624Z Updating files:  91% (26909/29570)
+2026-11-04T00:53:34.0037271Z Updating files:  92% (27205/29570)
+2026-11-04T00:53:34.0112740Z Updating files:  93% (27501/29570)
+2026-11-04T00:53:34.0204077Z Updating files:  94% (27796/29570)
+2026-11-04T00:53:34.0315102Z Updating files:  95% (28092/29570)
+2026-11-04T00:53:34.0444900Z Updating files:  96% (28388/29570)
+2026-11-04T00:53:34.0579832Z Updating files:  97% (28683/29570)
+2026-11-04T00:53:34.0696237Z Updating files:  98% (28979/29570)
+2026-11-04T00:53:34.0816661Z Updating files:  99% (29275/29570)
+2026-11-04T00:53:34.0817389Z Updating files: 100% (29570/29570)
+2026-11-04T00:53:34.0817826Z Updating files: 100% (29570/29570), done.
+2026-11-04T00:53:34.1067937Z Note: switching to '1777491433a8cf13d53b30bf69336f0bff8c77e2'.
+2026-11-04T00:53:34.1068287Z 
+2026-11-04T00:53:34.1068538Z You are in 'detached HEAD' state. You can look around, make experimental
+2026-11-04T00:53:34.1069176Z changes and commit them, and you can discard any commits you make in this
+2026-11-04T00:53:34.1069764Z state without impacting any branches by switching back to a branch.
+2026-11-04T00:53:34.1070081Z 
+2026-11-04T00:53:34.1070305Z If you want to create a new branch to retain commits you create, you may
+2026-11-04T00:53:34.1070864Z do so (now or later) by using -c with the switch command. Example:
+2026-11-04T00:53:34.1071149Z 
+2026-11-04T00:53:34.1071318Z   git switch -c <new-branch-name>
+2026-11-04T00:53:34.1071532Z 
+2026-11-04T00:53:34.1071668Z Or undo this operation with:
+2026-11-04T00:53:34.1071899Z 
+2026-11-04T00:53:34.1072060Z   git switch -
+2026-11-04T00:53:34.1072397Z 
+2026-11-04T00:53:34.1072675Z Turn off this advice by setting config variable advice.detachedHead to false
+2026-11-04T00:53:34.1073080Z 
+2026-11-04T00:53:34.1073373Z HEAD is now at 17774914 test(assistant): check captured ordinal wire pair schema budgets
+2026-11-04T00:53:34.1116187Z ##[endgroup]
+2026-11-04T00:53:34.1148947Z [command]/usr/bin/git log -1 --format=%H
+2026-11-04T00:53:34.1168928Z 1777491433a8cf13d53b30bf69336f0bff8c77e2
+2026-11-04T00:53:34.1177754Z ##[group]Removing auth
+2026-11-04T00:53:34.1178031Z Removing SSH command configuration
+2026-11-04T00:53:34.1179147Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-04T00:53:34.1200937Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-04T00:53:34.1382152Z Removing HTTP extra header
+2026-11-04T00:53:34.1385893Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-04T00:53:34.1406625Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-04T00:53:34.1588712Z Removing includeIf entries pointing to credentials config files
+2026-11-04T00:53:34.1590527Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-04T00:53:34.1607270Z includeif.gitdir:/home/runner/work/eliza/eliza/source/.git.path
+2026-11-04T00:53:34.1607887Z includeif.gitdir:/home/runner/work/eliza/eliza/source/.git/worktrees/*.path
+2026-11-04T00:53:34.1608466Z includeif.gitdir:/github/workspace/source/.git.path
+2026-11-04T00:53:34.1608947Z includeif.gitdir:/github/workspace/source/.git/worktrees/*.path
+2026-11-04T00:53:34.1612822Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/eliza/eliza/source/.git.path
+2026-11-04T00:53:34.1628545Z /home/runner/work/_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config
+2026-11-04T00:53:34.1634574Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/eliza/eliza/source/.git.path \/home\/runner\/work\/_temp\/git\-credentials\-291b01fb\-7636\-40d3\-a493\-c686f28f33cc\.config
+2026-11-04T00:53:34.1657550Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/home/runner/work/eliza/eliza/source/.git/worktrees/*.path
+2026-11-04T00:53:34.1672981Z /home/runner/work/_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config
+2026-11-04T00:53:34.1679403Z [command]/usr/bin/git config --local --unset includeif.gitdir:/home/runner/work/eliza/eliza/source/.git/worktrees/*.path \/home\/runner\/work\/_temp\/git\-credentials\-291b01fb\-7636\-40d3\-a493\-c686f28f33cc\.config
+2026-11-04T00:53:34.1704564Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/source/.git.path
+2026-11-04T00:53:34.1717261Z /github/runner_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config
+2026-11-04T00:53:34.1721700Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/source/.git.path \/github\/runner_temp\/git\-credentials\-291b01fb\-7636\-40d3\-a493\-c686f28f33cc\.config
+2026-11-04T00:53:34.1746594Z [command]/usr/bin/git config --local --get-all includeif.gitdir:/github/workspace/source/.git/worktrees/*.path
+2026-11-04T00:53:34.1761521Z /github/runner_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config
+2026-11-04T00:53:34.1766145Z [command]/usr/bin/git config --local --unset includeif.gitdir:/github/workspace/source/.git/worktrees/*.path \/github\/runner_temp\/git\-credentials\-291b01fb\-7636\-40d3\-a493\-c686f28f33cc\.config
+2026-11-04T00:53:34.1789321Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-04T00:53:34.1964346Z Removing credentials config '/home/runner/work/_temp/git-credentials-291b01fb-7636-40d3-a493-c686f28f33cc.config'
+2026-11-04T00:53:34.1969691Z ##[endgroup]
+2026-11-04T00:53:34.2053402Z ##[group]Run python3 -I -B operator/.github/qualification/speech-retirement/run.py "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/speech-retirement-results"
+2026-11-04T00:53:34.2054606Z [36;1mpython3 -I -B operator/.github/qualification/speech-retirement/run.py "$GITHUB_WORKSPACE/source" "$RUNNER_TEMP/speech-retirement-results"[0m
+2026-11-04T00:53:34.2079842Z shell: /usr/bin/bash -e {0}
+2026-11-04T00:53:34.2080113Z env:
+2026-11-04T00:53:34.2080383Z   CLAIM_ARTIFACT_ID: 13284804003
+2026-11-04T00:53:34.2082461Z   GH_TOKEN: ***
+2026-11-04T00:53:34.2082737Z   ROOT_GO_JSON: /home/runner/work/_temp/speech-root-go.json
+2026-11-04T00:53:34.2083122Z   QUALIFICATION_RECIPE: ordinal-normal-fullfiles
+2026-11-04T00:53:34.2083453Z   EXPECTED_WORKFLOW_SHA: 42c3959860b895bcd6277dddb58594ff7a9b154a
+2026-11-04T00:53:34.2083791Z   EXPECTED_DOCKER_SERVER: 28.0.4
+2026-11-04T00:53:34.2084064Z   QUALIFICATION_MODE: qualify
+2026-11-04T00:53:34.2084512Z   EXPIRES_EPOCH: 1793754787.067446
+2026-11-04T00:53:34.2084861Z ##[endgroup]
+2026-11-04T00:53:34.2401334Z {"state":"OBSERVED_RUNNER_METADATA_NOT_ADMISSION","fields":{"ImageOS":"ubuntu24","ImageVersion":"20261018.96.1","runId":"41750127407","attempt":"1","workflowCommit":"42c3959860b895bcd6277dddb58594ff7a9b154a"}}
+2026-11-04T00:53:34.3855519Z Traceback (most recent call last):
+2026-11-04T00:53:34.3856161Z   File "/home/runner/work/eliza/eliza/operator/.github/qualification/speech-retirement/run.py", line 29, in <module>
+2026-11-04T00:53:34.3856831Z     assert os.environ.get('ImageOS')==host_policy['ImageOS'] and os.environ.get('ImageVersion') in host_policy['allowedImageVersions']
+2026-11-04T00:53:34.3857325Z            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+2026-11-04T00:53:34.3857663Z AssertionError
+2026-11-04T00:53:34.3986221Z ##[error]Process completed with exit code 1.
+2026-11-04T00:53:34.4041129Z ##[group]Run actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+2026-11-04T00:53:34.4041550Z with:
+2026-11-04T00:53:34.4041783Z   name: speech-retirement-41750127407-1
+2026-11-04T00:53:34.4042091Z   retention-days: 7
+2026-11-04T00:53:34.4042308Z   if-no-files-found: warn
+2026-11-04T00:53:34.4043705Z   path: /home/runner/work/_temp/ordinal-admission.json
+/home/runner/work/_temp/speech-retirement-results/*.json
+/home/runner/work/_temp/speech-retirement-results/*.log
+/home/runner/work/_temp/speech-retirement-results/*.xml
+/home/runner/work/_temp/ordinal-admission.json
+/home/runner/work/_temp/speech-retirement-results/*.jsonl
+!/home/runner/work/_temp/speech-retirement-results/module-cache-*/**
+!/home/runner/work/_temp/speech-retirement-results/preflight-cache-*/**
+!/home/runner/work/_temp/speech-retirement-results/fs-module-cache/**
+
+2026-11-04T00:53:34.4045286Z   compression-level: 6
+2026-11-04T00:53:34.4045538Z   overwrite: false
+2026-11-04T00:53:34.4045859Z   include-hidden-files: false
+2026-11-04T00:53:34.4046120Z   archive: true
+2026-11-04T00:53:34.4046375Z ##[endgroup]
+2026-11-04T00:53:34.5149391Z Multiple search paths detected. Calculating the least common ancestor of all paths
+2026-11-04T00:53:34.5165436Z The least common ancestor is /home/runner/work/_temp. This will be the root directory of the artifact
+2026-11-04T00:53:34.5165982Z With the provided path, there will be 1 file uploaded
+2026-11-04T00:53:34.5166542Z Artifact name is valid!
+2026-11-04T00:53:34.5166807Z Root directory input is valid!
+2026-11-04T00:53:34.6726874Z Uploading artifact: speech-retirement-41750127407-1.zip
+2026-11-04T00:53:34.6747013Z Beginning upload of artifact content to blob storage
+2026-11-04T00:53:34.7434776Z Uploaded bytes 360
+2026-11-04T00:53:34.7624747Z Finished uploading artifact content to blob storage!
+2026-11-04T00:53:34.7625665Z SHA256 digest of uploaded artifact is c3be92ecd3fd9f840382629a073cbe5a6d7a45b0346243c70f62d2270a1aa46e
+2026-11-04T00:53:34.7626107Z Finalizing artifact upload
+2026-11-04T00:53:35.2715166Z Artifact speech-retirement-41750127407-1 successfully finalized. Artifact ID 13284549570
+2026-11-04T00:53:35.2715956Z Artifact speech-retirement-41750127407-1 has been successfully uploaded! Final size is 360 bytes. Artifact ID is 13284549570
+2026-11-04T00:53:35.2716694Z Artifact download URL: https://github.com/elizaOS/eliza/actions/runs/41750127407/artifacts/13284549570
+2026-11-04T00:53:35.2842209Z Post job cleanup.
+2026-11-04T00:53:35.3480300Z [command]/usr/bin/git version
+2026-11-04T00:53:35.3508361Z git version 2.55.0
+2026-11-04T00:53:35.3531978Z Temporarily overriding HOME='/home/runner/work/_temp/34bbb021-b92a-438d-b949-806943a3cd05' before making global git config changes
+2026-11-04T00:53:35.3533040Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-04T00:53:35.3535977Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/eliza/eliza/source
+2026-11-04T00:53:35.3559445Z Removing SSH command configuration
+2026-11-04T00:53:35.3564371Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-04T00:53:35.3587584Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-04T00:53:35.3773876Z Removing HTTP extra header
+2026-11-04T00:53:35.3778295Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-04T00:53:35.3799567Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-04T00:53:35.3979304Z Removing includeIf entries pointing to credentials config files
+2026-11-04T00:53:35.3982744Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-04T00:53:35.4034854Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-04T00:53:35.4308237Z Post job cleanup.
+2026-11-04T00:53:35.4925181Z [command]/usr/bin/git version
+2026-11-04T00:53:35.4951333Z git version 2.55.0
+2026-11-04T00:53:35.4974098Z Temporarily overriding HOME='/home/runner/work/_temp/8cbf43bb-87c2-463f-a60f-cf95345cd741' before making global git config changes
+2026-11-04T00:53:35.4975195Z Adding repository directory to the temporary git global config as a safe directory
+2026-11-04T00:53:35.4978051Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/eliza/eliza/operator
+2026-11-04T00:53:35.4998845Z Removing SSH command configuration
+2026-11-04T00:53:35.5003449Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-11-04T00:53:35.5026312Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-11-04T00:53:35.5207518Z Removing HTTP extra header
+2026-11-04T00:53:35.5211331Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-11-04T00:53:35.5234829Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-11-04T00:53:35.5412889Z Removing includeIf entries pointing to credentials config files
+2026-11-04T00:53:35.5417152Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-11-04T00:53:35.5438325Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-11-04T00:53:35.5712386Z Cleaning up orphan processes

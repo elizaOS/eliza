@@ -1,0 +1,22 @@
+{
+  "state": "SOURCE_CORRECTED_PENDING_SOLE_ASSIGNED_REVIEW",
+  "baselinePacket": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/operator-v8-normal-producer-qualification/FROZEN-NORMAL-PRODUCER-SOURCE-PACKET.json",
+  "baselinePacketSHA256": "44a6d458a1526a65793962fd6f4198cf7d4e6dd7745e0e2e9293434f2d2ea332",
+  "savedFinding": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/operator-v8-normal-producer-qualification/LUNA-INDEPENDENT-SOURCE-REVIEW.json",
+  "savedFindingSHA256": "cc043bc5c8d6698ad7d8425b0f4d469ca2b01cd2322bde5e09f70220286f093b",
+  "changes": [
+    "Bind actual producer to system.slice and verify actual Docker CgroupParent before start and during final custody",
+    "Check root memory.max when exposed; fail unknown ceilings; do not invent a required root controller file contrary to kernel normal interface. Standard kernel-root absence has explicit initial-systemd hierarchy/namespace/controller proof",
+    "Normalize stale descriptive PLAN state/recipe only"
+  ],
+  "kernelDocumentation": {
+    "url": "https://cdn.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#memory-interface-files",
+    "claim": "memory.max is a read-write single value file on non-root cgroups. Root absence is separately established, never blindly treated as unlimited."
+  },
+  "sourceOnly": true,
+  "jobs": 0,
+  "publishes": 0,
+  "GOs": 0,
+  "noOrdinaryTestOrConditionOrAliasOrSDKChange": true,
+  "soleReviewer": "01a180e4-3ea4-7a60-b2f5-a936ad072d25"
+}

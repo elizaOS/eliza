@@ -1,0 +1,22 @@
+{
+  "state": "SOURCE_ONLY_VERSION_BOUND_UNPRIVILEGED_EQUIVALENT_PROOF_PENDING_EXACT_REVIEW",
+  "baselineV12PacketSHA256": "f2af880c4f59a47f0d3b525e40d1b612998548da0cbac6b39cf63472e3c4a232",
+  "heldV13Review": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/operator-v13-hosted-namespace-metadata/LUNA-INDEPENDENT-SOURCE-REVIEW.json",
+  "heldV13ReviewSHA256": "2187ebb0b7faaa1055648c13b1ba5f47cd7a875e847f3526152e88e0ab2a67e2",
+  "V13PrivilegedGrantNotTransferred": true,
+  "primaryContract": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/operator-v14-unprivileged-kernel-namespace/SUPPORTED-KERNEL-NAMESPACE-PROOF.json",
+  "primaryContractSHA256": "d4a19b96d1bddcfed2647e7b2917e32323953a2a6e28cb733a52e39575adecab",
+  "algorithm": "On exact supported uname.release + Ubuntu version_signature, compare own namespace fd inode and /proc/self/ns/cgroup formatted inode to named reserved initial value. Vendor source proves dynamically created cgroup namespaces allocate only above PROC_DYNAMIC_FIRST, so they cannot equal the initial reserved inode. Close fd in finally. Keep all actual root/ancestor ceilings and explicit producer parent.",
+  "runtimeBindingLimit": "Prior failed job did not capture uname/version_signature; official exactImageREADME names this kernel and Ubuntu package/tag provides source. Future helper must match actual metadata exactly; unknown release/signature rejects proof. No unsupported-version numeric check.",
+  "primaryEvidenceCustody": "Pinned canonical tag/commit ls-remote readback plus15 cleaned primary-content excerpt snapshots; latter explicitly not raw Git blob bytes. No source tarball/kernel clone/build/native test was fetched or run.",
+  "privilegeAndLifecycle": "No sudo/privileged child. No PID1 namespace read. Only original two Docker metadata subprocesses remain; new namespace operations are direct Python standard library metadata syscalls with fd finally-close. No setns/unshare/ioctl or code import.",
+  "unchanged": [
+    "run.py andclaim.py bytes exactlyV12",
+    "all223 possible phase labels andfive complete dependency checks",
+    "all113 cases/oracles/configs/conditions/aliases/graph/producers",
+    "all existing memory/CPU/PID/time/network/disk/write/cleanup bounds and inventoryprofile"
+  ],
+  "newScope": "One version-bound source contract and unprivileged metadata observations; partial diagnostics/root-type correction retained from unexecuted heldV13 after positive review notes.",
+  "execution": "Python AST/source inspection only; no helper/namespace/Docker/target/native/provider action.",
+  "next": "Sole assigned reviewer checks primary source chain, version binding, equivalent initial-namespace implication and FD closure. Root source/profile/publication and any fresh run remain separate."
+}

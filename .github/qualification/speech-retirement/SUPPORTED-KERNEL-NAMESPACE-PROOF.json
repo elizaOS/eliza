@@ -1,0 +1,199 @@
+{
+  "schemaVersion": 1,
+  "state": "VERSION_BOUND_SOURCE_SEMANTICS_CONTRACT_NOT_RUNTIME_OR_HOST_ATTESTATION",
+  "repository": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble",
+  "sourceTag": "Ubuntu-azure-7.0-7.0.0-1017.17_24.04.1",
+  "annotatedTagObject": "73c1cdd2da7fa9d962360c7af1a79030e1089c50",
+  "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+  "sourcePackage": "linux-azure-7.0",
+  "sourcePackageVersion": "7.0.0-1017.17~24.04.1",
+  "supportedRuntime": {
+    "unameRelease": "7.0.0-1017-azure",
+    "procVersionSignature": "Ubuntu 7.0.0-1017.17~24.04.1-azure 7.0.14",
+    "architecture": "x86_64"
+  },
+  "symbols": {
+    "PROC_CGROUP_INIT_INO": "CGROUP_NS_INIT_INO",
+    "CGROUP_NS_INIT_INO": {
+      "hex": "0xEFFFFFFB",
+      "decimal": 4026531835,
+      "source": "include/uapi/linux/nsfs.h"
+    },
+    "PROC_DYNAMIC_FIRST": {
+      "hex": "0xF0000000",
+      "decimal": 4026531840,
+      "source": "fs/proc/generic.c"
+    }
+  },
+  "proofChain": [
+    {
+      "fact": "Legacy PROC_CGROUP_INIT_INO aliases CGROUP_NS_INIT_INO, whose named UAPI initial value is0xEFFFFFFB.",
+      "paths": [
+        "include/linux/proc_ns.h",
+        "include/uapi/linux/nsfs.h"
+      ]
+    },
+    {
+      "fact": "init_cgroup_ns uses NS_COMMON_INIT; ns_init_inum generic selection maps cgroup_namespace to that reserved symbol.",
+      "paths": [
+        "kernel/cgroup/cgroup.c",
+        "include/linux/ns_common.h",
+        "include/linux/ns/ns_common_types.h"
+      ]
+    },
+    {
+      "fact": "alloc_cgroup_ns/new child calls ns_common_init with non-initial pointer; __ns_common_init requests proc_alloc_inum when inum=0. proc_alloc_inum allocates only from PROC_DYNAMIC_FIRST throughUINT_MAX, excluding reserved initial value.",
+      "paths": [
+        "kernel/cgroup/namespace.c",
+        "include/linux/ns_common.h",
+        "kernel/nscommon.c",
+        "fs/proc/generic.c"
+      ]
+    },
+    {
+      "fact": "nsfs inode number is ns->inum; namespace readlink formats name:[inum]. A current cgroup fd inode/readlink matching reserved initial value identifies initial namespace on the supported source semantics.",
+      "paths": [
+        "fs/nsfs.c",
+        "kernel/cgroup/namespace.c"
+      ]
+    },
+    {
+      "fact": "Changelog fixes source package version, amd64 flavour=azure, Makefile is7.0.14, packaging emits Ubuntu package-version-flavour raw_kernelversion to CONFIG_VERSION_SIGNATURE, and proc version_signature exposes that string.",
+      "paths": [
+        "debian.azure-7.0/changelog",
+        "debian.azure-7.0/rules.d/amd64.mk",
+        "Makefile",
+        "debian/rules.d/0-common-vars.mk",
+        "debian/rules.d/2-binary-arch.mk",
+        "fs/proc/version_signature.c"
+      ]
+    }
+  ],
+  "primarySourceURLs": {
+    "base": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/",
+    "commitQuery": "?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df"
+  },
+  "imageProvenance": {
+    "observedCaseRun": 41783435661,
+    "observedImageOS": "ubuntu24",
+    "observedImageVersion": "20261026.354.1",
+    "officialReadmeKernel": "7.0.0-1017-azure",
+    "officialReadmeSHA256": "433ac9525040ccec39fc6b1fbcbeb457cba1acd6414317f940e1ea2d9bea73c9",
+    "limit": "The failed run did not retain actual uname/version_signature. Future actual helper must read and match both exactly. README is source/runtime-target provenance, not proof of actual running kernel."
+  },
+  "evidence": [
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/Makefile.json",
+      "sha256": "7981349a1971a38a5e79222e0efe5cd9c547be138cd5bc59cf6127d395f88c6f",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/Makefile?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/UBUNTU-TAG-REMOTE-READBACK.json",
+      "sha256": "1fbbe3d80dfb8d8bbc65b0118a44fbacff7c8fb003ae69399decce6a6cd9a067",
+      "primaryURL": null,
+      "sourceCommit": null,
+      "rawGitByteIdentityClaim": null
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/debian.azure-7.0__changelog.json",
+      "sha256": "2b072ba746dbc7955d737094358f3a2bf428c2a1d4ba9c5aa4294679842c90d1",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/debian.azure-7.0/changelog?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/debian.azure-7.0__rules.d__amd64.mk.json",
+      "sha256": "d9a7068baf0c595bcf1dd0fff7b81ecdcef2d859b7e23ab85d6f2d6916149c5b",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/debian.azure-7.0/rules.d/amd64.mk?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/debian__rules.d__0-common-vars.mk.json",
+      "sha256": "71a363a722e9e066686387ecd92a4ac0a8a08359ba3f4396a24ad6a1241f7c45",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/debian/rules.d/0-common-vars.mk?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/debian__rules.d__2-binary-arch.mk.json",
+      "sha256": "d2ccc8ba1829fe843cfa0a53ebc4d12e71ed347cfb6b8e502f7572a7fc06aeb2",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/debian/rules.d/2-binary-arch.mk?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/fs__nsfs.c.json",
+      "sha256": "a568bc3d1b7971ee7caa4f4ca805f8824cd4a925ad5108d61b01171792399da6",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/fs/nsfs.c?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/fs__proc__generic.c.json",
+      "sha256": "73ca03743c3f4ee16daf620b4d7340af99cd668a13051012ab019dabb119f48f",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/fs/proc/generic.c?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/fs__proc__version_signature.c.json",
+      "sha256": "616e34d4db191f30ef64cb4c67542b503a72baa7a5681ac1f3a17597e1814eef",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/fs/proc/version_signature.c?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/include__linux__ns__ns_common_types.h.json",
+      "sha256": "e44c0e07ab98270acfaafb86bc6acd1292ae9af66e1880c94d5d6296eed92a23",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/include/linux/ns/ns_common_types.h?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/include__linux__ns_common.h.json",
+      "sha256": "b983c47be05c55c9a68cf34148e62d4dcd1db8faeec8222e9d63e0897b024ec5",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/include/linux/ns_common.h?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/include__linux__proc_ns.h.json",
+      "sha256": "b0c1c3e93126a6086c6a20c630445145fc093e1f19839c08b2c41ccd00e4d601",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/include/linux/proc_ns.h?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/include__uapi__linux__nsfs.h.json",
+      "sha256": "47730756b7143ebc6e895b1c83f1219ba5c3cee2632aa8fa54475a381e521e02",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/include/uapi/linux/nsfs.h?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/kernel__cgroup__cgroup.c.json",
+      "sha256": "66546661a777ed738c1d8e3052a5f5ae264fbb2fc1d2c041ead24698f430d627",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/kernel/cgroup/cgroup.c?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/kernel__cgroup__namespace.c.json",
+      "sha256": "0782afd4b08a9b6a58d724a68541192b08a554bfc5d25c603e0b8ac2d80c5f66",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/kernel/cgroup/namespace.c?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    },
+    {
+      "file": "/Users/nubs/.local/state/eliza-five-lane-coordination/ordinal-aee-normal-qualification-preparation-20261103/unprivileged-kernel-namespace-evidence-20261104/kernel__nscommon.c.json",
+      "sha256": "5601d602fba807b65d9888ced88fd91a800a5f7ce417a2befb2e62eb9422d08b",
+      "primaryURL": "https://git.launchpad.net/~canonical-kernel/ubuntu/+source/linux-azure/+git/noble/plain/kernel/nscommon.c?id=90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "sourceCommit": "90f5e10e3a3dc1273846689f4cee162f97b4b3df",
+      "rawGitByteIdentityClaim": false
+    }
+  ],
+  "semanticsLimit": "Assumes genuine supported Ubuntu kernel source semantics; not a compiled kernel hash/signature attestation or general trusted-host/malware conclusion. Cleaned primary-source extractions are clearly labelled, not claimed raw Git blobs. Unknown release/signature rejects root-absence proof; no numeric fallback for arbitrary kernels."
+}

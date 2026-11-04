@@ -1,0 +1,43 @@
+{
+  "defaultTest": {
+    "memory": "2g",
+    "memoryBytes": 2147483648,
+    "nodeOldSpaceMiB": 1536
+  },
+  "memorySwapEqualsMemory": true,
+  "CPU": 2,
+  "PIDs": 256,
+  "automaticExpansion": false,
+  "normalProducer": {
+    "memory": "8g",
+    "memoryBytes": 8589934592,
+    "nodeOldSpaceMiB": 4096,
+    "RUN_TURBO_CONCURRENCY": "1",
+    "network": "none",
+    "sourceWrite": "normal-generated-outputs-only; tracked source and complete installed dependency census immutable",
+    "cgroupParent": "system.slice",
+    "cgroupParentReadback": "HostConfig.CgroupParent prestart/postexit/custody cleanup"
+  },
+  "workspaceInventory": {
+    "maxEntries": 1000000,
+    "maxFileBytes": 34359738368,
+    "maxDirectoryEntries": 100000,
+    "maxDepth": 128,
+    "maxRecordBytes": 32768,
+    "maxReceiptBytes": 131072,
+    "phaseSeconds": 90,
+    "recordEncoding": "SHA256 of deterministic sorted depth-first NDJSON records, UTF-8, final newline per record",
+    "sourceWorkspaceReadOnly": true,
+    "entryBoundDecision": "Explicit source proposal from prior100000 entry cap to1000000; requires Root acceptance before publication/job. No memory/CPU/heap/time/network/disk floor relaxation."
+  },
+  "hostedUnprivilegedNamespaceProof": {
+    "sourceContract": "SUPPORTED-KERNEL-NAMESPACE-PROOF.json",
+    "sourceContractSHA256": "d4a19b96d1bddcfed2647e7b2917e32323953a2a6e28cb733a52e39575adecab",
+    "supportedKernelRelease": "7.0.0-1017-azure",
+    "supportedVersionSignature": "Ubuntu 7.0.0-1017.17~24.04.1-azure 7.0.14",
+    "operation": "Read-only own namespace descriptor/fstat/readlink plus exact source-bound reserved inode and child-allocation-range proof; descriptor closes in finally. No PID1 namespace readlink or new subprocess/privilege.",
+    "unknownKernel": "Reject missing-root-ceiling admission; do not reuse constant across unreviewed source versions.",
+    "allAncestorCeilingsAndExplicitSystemSliceParentRetained": true,
+    "newPrivilegeGranted": false
+  }
+}

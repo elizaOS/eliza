@@ -1,0 +1,28 @@
+{
+  "state": "SOURCE_ONLY_METADATA_OWNER_CORRECTION_PENDING_SOLE_REVIEW",
+  "baselineV9PacketSHA256": "c29059b3bea5390a856f0a7b15ea597adfb4443ca0a32c8534540c6ed0044658",
+  "actualFailedRun": 41778397276,
+  "actualFailureReceipt": "/Users/nubs/.local/state/eliza-five-lane-coordination/canonical937-normal113-once-20261104T051759Z/COMPACT-OWNER-FAILURE-RECEIPT.json",
+  "actualFailureReceiptSHA256": "7796e011ef9ff69e6a498997aaa49d28cb284b707a9a386e3987fd6b7cd42a30",
+  "cause": "Generic bin metadata walker demanded wrapper package name esbuild; Bun CLI shim actually points at wrapper-declared @esbuild/linux-x64@0.28.2. This is a helper error, not an observed normal producer failure.",
+  "correction": "Resolve esbuild wrapper metadata from canonical Assistant owner; verify frozen0.28.2 bin/optional platform declaration, actual platform manifest os/cpu/version and subject ownership; require actual shim file equals declared platform bin; inspect ELF64LE/x86-64/executable mode/bounded bytes and hashes without importing/executing code.",
+  "narrowDelta": [
+    "producer-bootstrap.mjs assistantEsbuild metadata probe only"
+  ],
+  "unchanged": [
+    "SDK ff04",
+    "normal six producer scripts/graph",
+    "all113 cases/oracles/configs/aliases/conditions",
+    "source/dist value checks",
+    "resource/write/network/custody/closure gates",
+    "all other producer tool probes"
+  ],
+  "sourceEvidence": {
+    "actualLinuxResolvedShim": "/workspace/node_modules/.bun/@esbuild+linux-x64@0.28.2/node_modules/@esbuild/linux-x64/bin/esbuild",
+    "cachedWrapperManifest": "/Users/nubs/.bun/install/cache/esbuild@0.28.2@@@1/package.json",
+    "cachedWrapperManifestSHA256": "9d0bc453f4e791553c4cc2298ba023b409241fd9801e494741666eb0f6051490",
+    "cachedWrapperScope": "Metadata shape corroboration only; no local cache bytes substituted for future subject owner metadata or installed dependency census."
+  },
+  "checks": "Node --check parser only PASS; Python AST parser only PASS; no SDK/native/tool module import or execution",
+  "next": "Sole Root-assigned reviewer examines exact delta. Publication/job/retry/GO remain held."
+}

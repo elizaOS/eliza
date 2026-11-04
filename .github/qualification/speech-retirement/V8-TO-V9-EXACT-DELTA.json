@@ -1,0 +1,27 @@
+{
+  "changedControllerInputs": [
+    {
+      "file": "run.py",
+      "beforeSHA256": "68c323bbd53aeec14540605eb139def2209b71ba830f52a3ecbb5fd75e40a5e4",
+      "afterSHA256": "33077f886e25fe4d965b076961ca0140aeafe46d8a12e73598231d961bf160b6"
+    },
+    {
+      "file": "host-memory-admission.py",
+      "beforeSHA256": "ced1b75a6a8c01448cc41ebd4023cfaf2d26177884d4af59bd053e3067f7a5f7",
+      "afterSHA256": "ba22c2f0bcecb6f63bd1e17ba4c95353e6ba9c8da0a0c8b33e5084bd3b6337b0"
+    },
+    {
+      "file": "PLAN.json",
+      "beforeSHA256": "daa16157aadedb719f8be782c591e335e2b3308bbc91df2fdae2f2cedf12d2be",
+      "afterSHA256": "d065e00688db741f80b9774c20f06a4604a81ed390e7a96aa6ec301050c08e00"
+    },
+    {
+      "file": "TEST-RESOURCE-POLICY.json",
+      "beforeSHA256": "d82fa77247a071d0f20df8a0f86bd49138ca5f0dc8fea678cef0f72cdb2e05a3",
+      "afterSHA256": "d7a8059e9fae74af9108a2351a20891287a99214f1e8995a3f215322c0939077"
+    }
+  ],
+  "unchangedSubjectSource": true,
+  "unchangedTestsOracles": true,
+  "unchangedSourceDefinitionAndProducerArgv": true
+}
