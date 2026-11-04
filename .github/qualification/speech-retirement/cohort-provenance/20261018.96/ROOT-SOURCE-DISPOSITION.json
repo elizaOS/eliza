@@ -1,0 +1,28 @@
+{
+  "atUTC": "2026-11-04T00:58:37.311204+00:00",
+  "state": "EXACT_OBSERVED_20261018_96_1_HOST_METADATA_SOURCE_DISPOSITION_NOT_CAPABILITY_OR_EXECUTION_GO",
+  "ImageOS": "ubuntu24",
+  "ImageVersion": "20261018.96.1",
+  "run": 41750127407,
+  "attempt": 1,
+  "operator": "42c3959860b895bcd6277dddb58594ff7a9b154a",
+  "source": "1777491433a8cf13d53b30bf69336f0bff8c77e2",
+  "setupLogSHA256": "ba836c99e7264e022cfd27159342a7895a4b249e99740a3378ef158a8754dfa7",
+  "runnerMetadataSHA256": "22912f5abf44d9df721fce898f7bc5ff0f502938a9a0beb51189902c0ea116fa",
+  "claimSHA256": "b6194033d8bcd2cdfadb2bf9be8f29515de5663c6f50b41f39e160edf7cd2862",
+  "officialTagLookup": {
+    "atUTC": "2026-11-04T00:58:37.310614+00:00",
+    "path": "repos/actions/runner-images/git/ref/tags/ubuntu24/20261018.96",
+    "exit": 1,
+    "stdout": "{\"message\":\"Not Found\",\"documentation_url\":\"https://docs.github.com/rest/git/refs#get-a-reference\",\"status\":\"404\"}",
+    "stderr": "gh: Not Found (HTTP 404)\n"
+  },
+  "primaryProvenanceLimit": "AuthenticatedGitHubsetup+immutableclaim/earlymetadata attest exactcohort; no independentlyresolvedofficialtag/commit/readme proof. Do not fabricateit orclaimthisiscapabilityadmission.",
+  "conditions": [
+    "Exactfinite observedcohortonly; no wildcard/latest orunobservedversion.",
+    "All actualsame-job Linux/proc/WNOWAIT/PGID/Docker28.0.4/localendpoint/source/tool/cgroup/disk/RAM/PID/expiry/closure checks unchanged andmandatory beforeacceptance.",
+    "No newmodel/provider/auth/key/financial/device/runtime/deployment/merge action; no test/GO fromthisdata.",
+    "Peerreview exactdata/provenance and bind newpolicyhash in finaloperator/claim/GO before freshfinitequalifiedrun; old417501intent spent/no retry."
+  ],
+  "reason": "Rootpreviouslyexcludedknownold18fromcurrent3-cohortmetadata list withoutcurrentattestation. Fresh417501 received18 andstoppedatversioncheckbeforetests; thisnewexactevidence resolvesmetadataonlygap."
+}

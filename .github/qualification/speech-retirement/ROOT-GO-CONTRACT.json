@@ -1,0 +1,47 @@
+{
+  "state": "SCHEMA_ONLY_NO_GO_OR_INTENT",
+  "action": "ONE_EXACT_QUALIFICATION_RUN",
+  "recipe": "ordinal-normal-producer-qualification",
+  "mode": "qualify",
+  "allowHostedFrozenLockSetup": true,
+  "allowHostedWholeFileTests": true,
+  "allowLoopbackWireFixture": true,
+  "allowHostedUnusedAndroidCleanup": false,
+  "allowExternalProviders": false,
+  "allowSourceOverlay": false,
+  "expectedRegistrations": 113,
+  "expectedPassed": 113,
+  "expectedUnexecuted": 0,
+  "sourceCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "sourceTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+  "workflowCommit": "UNPUBLISHED_OPERATOR_REVIEW_REQUIRED",
+  "operatorSealSHA256": "FROZEN_AFTER_PIN_AND_REVIEW",
+  "planSHA256": "d065e00688db741f80b9774c20f06a4604a81ed390e7a96aa6ec301050c08e00",
+  "oracleSHA256": "f1733d451f5369d980dd187641bbe6c2d6303540d68e49575aa8023c49754e10",
+  "testResourcePolicySHA256": "d7a8059e9fae74af9108a2351a20891287a99214f1e8995a3f215322c0939077",
+  "intentId": "NOT_ISSUED",
+  "issuedEpoch": "NOT_ISSUED",
+  "expiresEpoch": "NOT_ISSUED",
+  "output": "ROOT_REVIEWED_RUNNER_TEMP_OUTPUT",
+  "hostCohortsSHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
+  "hostProvenanceDisclosure": {
+    "20261025.353.1": "Exact authenticated41741039106 setup + explicit Root source disposition; independent official tag/readme provenance gap OPEN, not capability waiver.",
+    "20261026.354.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": false
+    },
+    "20261101.360.1": {
+      "officialTagCommitReadmeBound": true,
+      "releasePrerelease": true
+    },
+    "20261018.96.1": "Exact authenticated41750127407 setup/claim/earlymetadata plus explicitRoot source disposition; fresh officialtag404, independent officialtag/commit/readme provenance gap OPEN, not capability or execution admission."
+  },
+  "sourceManifestSHA256": "51250285725d9b5817901dcd0d78dede9821973eb302315852cee82a6e2b064e",
+  "diagnosticOnly": false,
+  "allowOrdinaryCLIObservation": true,
+  "allowPostCLIValuePreflight": true,
+  "allowNormalOwnedWorkspaceProducers": true,
+  "allowProducerSourceWrite": true,
+  "producerGraphSHA256": "79deef291c6bdb715b90c0dabbe8d473a9c0d5bb8987cf585f468a6a71f8f2a8",
+  "sourceCustodySHA256": "34989438a7187c93d4a0cce79068cea5ca4eacc03d90261ae506da8b84d4f918"
+}

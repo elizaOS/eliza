@@ -1,0 +1,938 @@
+{
+  "state": "SOURCE_EXPECTED113_IDENTITIES_FOR_DIAGNOSTIC_COMPARISON_NOT_PASS",
+  "parentCommit": "aee676d861457045f402715132a841ade5fd5888",
+  "testOnlyPostwireSuccessorUnpublished": false,
+  "files": [
+    {
+      "path": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+      "sha256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
+      "tests": [
+        {
+          "line": 213,
+          "template": "reads typed history %s through the real Stage 1 read barrier",
+          "caseRow": 0,
+          "sourceRow": "\"source\"",
+          "name": "history ID grammar reads typed history source through the real Stage 1 read barrier",
+          "mode": "test"
+        },
+        {
+          "line": 213,
+          "template": "reads typed history %s through the real Stage 1 read barrier",
+          "caseRow": 1,
+          "sourceRow": "\"search\"",
+          "name": "history ID grammar reads typed history search through the real Stage 1 read barrier",
+          "mode": "test"
+        },
+        {
+          "line": 213,
+          "template": "reads typed history %s through the real Stage 1 read barrier",
+          "caseRow": 2,
+          "sourceRow": "\"all\"",
+          "name": "history ID grammar reads typed history all through the real Stage 1 read barrier",
+          "mode": "test"
+        },
+        {
+          "line": 235,
+          "template": "repairs one stale typed history source identity without reading it",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar repairs one stale typed history source identity without reading it",
+          "mode": "test"
+        },
+        {
+          "line": 242,
+          "template": "cancels typed history before body reads when %s changes during the model call",
+          "caseRow": 0,
+          "sourceRow": "\"role\"",
+          "name": "history ID grammar cancels typed history before body reads when role changes during the model call",
+          "mode": "test"
+        },
+        {
+          "line": 242,
+          "template": "cancels typed history before body reads when %s changes during the model call",
+          "caseRow": 1,
+          "sourceRow": "\"namespace\"",
+          "name": "history ID grammar cancels typed history before body reads when namespace changes during the model call",
+          "mode": "test"
+        },
+        {
+          "line": 253,
+          "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+          "caseRow": 0,
+          "sourceRow": "\"role\"",
+          "name": "history ID grammar cancels the second HANDLE after a full read when role changes without depending on a remaining READ tool",
+          "mode": "test"
+        },
+        {
+          "line": 253,
+          "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+          "caseRow": 1,
+          "sourceRow": "\"namespace\"",
+          "name": "history ID grammar cancels the second HANDLE after a full read when namespace changes without depending on a remaining READ tool",
+          "mode": "test"
+        },
+        {
+          "line": 253,
+          "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+          "caseRow": 2,
+          "sourceRow": "\"agent\"",
+          "name": "history ID grammar cancels the second HANDLE after a full read when agent changes without depending on a remaining READ tool",
+          "mode": "test"
+        },
+        {
+          "line": 253,
+          "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+          "caseRow": 3,
+          "sourceRow": "\"room\"",
+          "name": "history ID grammar cancels the second HANDLE after a full read when room changes without depending on a remaining READ tool",
+          "mode": "test"
+        },
+        {
+          "line": 253,
+          "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+          "caseRow": 4,
+          "sourceRow": "\"entity\"",
+          "name": "history ID grammar cancels the second HANDLE after a full read when entity changes without depending on a remaining READ tool",
+          "mode": "test"
+        },
+        {
+          "line": 253,
+          "template": "cancels the second HANDLE after a full read when %s changes without depending on a remaining READ tool",
+          "caseRow": 5,
+          "sourceRow": "\"message\"",
+          "name": "history ID grammar cancels the second HANDLE after a full read when message changes without depending on a remaining READ tool",
+          "mode": "test"
+        },
+        {
+          "line": 268,
+          "template": "encodes all 551 bound sources without a 551-value native enum and never fills an offered hole",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar encodes all 551 bound sources without a 551-value native enum and never fills an offered hole",
+          "mode": "test"
+        },
+        {
+          "line": 283,
+          "template": "requires the canonical offered read before admitting a bare alias and preserves provider precedence",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar requires the canonical offered read before admitting a bare alias and preserves provider precedence",
+          "mode": "test"
+        },
+        {
+          "line": 294,
+          "template": "does not reinterpret unadvertised numeric spellings from the failed public sequence",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar does not reinterpret unadvertised numeric spellings from the failed public sequence",
+          "mode": "test"
+        },
+        {
+          "line": 301,
+          "template": "reads a bound bare ID as history:hN and still rejects an unbound one",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar reads a bound bare ID as history:hN and still rejects an unbound one",
+          "mode": "test"
+        },
+        {
+          "line": 337,
+          "template": "prints the index and search receipt in the accepted history:hN form",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar prints the index and search receipt in the accepted history:hN form",
+          "mode": "test"
+        },
+        {
+          "line": 356,
+          "template": "replays hvpnf0 and qr5upe: the recorded bare reads load their originals",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar replays hvpnf0 and qr5upe: the recorded bare reads load their originals",
+          "mode": "test"
+        },
+        {
+          "line": 374,
+          "template": "replays qcw4ho: a repair after a successful read is available again",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar replays qcw4ho: a repair after a successful read is available again",
+          "mode": "test"
+        },
+        {
+          "line": 394,
+          "template": "still fails closed on two consecutive invalid reads",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar still fails closed on two consecutive invalid reads",
+          "mode": "test"
+        },
+        {
+          "line": 405,
+          "template": "replays 32b4qi: the routed decision reads h156 and keeps its route",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar replays 32b4qi: the routed decision reads h156 and keeps its route",
+          "mode": "test"
+        },
+        {
+          "line": 421,
+          "template": "names the rejected entry and echoes the routed decision in the repair",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "history ID grammar names the rejected entry and echoes the routed decision in the repair",
+          "mode": "test"
+        }
+      ],
+      "registrations": 22
+    },
+    {
+      "path": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+      "sha256": "2da5cd3308b5487f1ed4babf579e049ea5f2ffcf6528ee2cb787a6b945b8895d",
+      "tests": [
+        {
+          "line": 157,
+          "template": "keeps context reads strict and host-nonempty with acknowledgment=%s",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "invalid context read recovery keeps context reads strict and host-nonempty with acknowledgment=false",
+          "mode": "test"
+        },
+        {
+          "line": 157,
+          "template": "keeps context reads strict and host-nonempty with acknowledgment=%s",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "invalid context read recovery keeps context reads strict and host-nonempty with acknowledgment=true",
+          "mode": "test"
+        },
+        {
+          "line": 208,
+          "template": "projects exact authorized history identities without changing host selection or repair subsets",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "invalid context read recovery projects exact authorized history identities without changing host selection or repair subsets",
+          "mode": "test"
+        },
+        {
+          "line": 382,
+          "template": "offers no context read when this turn has no authorized references",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "invalid context read recovery offers no context read when this turn has no authorized references",
+          "mode": "test"
+        },
+        {
+          "line": 435,
+          "template": "keeps available-reference constraints and rejects names outside this turn",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "invalid context read recovery keeps available-reference constraints and rejects names outside this turn",
+          "mode": "test"
+        },
+        {
+          "line": 476,
+          "template": "repairs unavailable references without reading providers or running effects on %s",
+          "caseRow": 0,
+          "sourceRow": "ChannelType.DM",
+          "name": "invalid context read recovery repairs unavailable references without reading providers or running effects on DM",
+          "mode": "test"
+        },
+        {
+          "line": 476,
+          "template": "repairs unavailable references without reading providers or running effects on %s",
+          "caseRow": 1,
+          "sourceRow": "ChannelType.VOICE_DM",
+          "name": "invalid context read recovery repairs unavailable references without reading providers or running effects on VOICE_DM",
+          "mode": "test"
+        },
+        {
+          "line": 503,
+          "template": "fails closed after one correction if the references remain invalid",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "invalid context read recovery fails closed after one correction if the references remain invalid",
+          "mode": "test"
+        },
+        {
+          "line": 520,
+          "template": "does not process fields smuggled into an invalid read",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "invalid context read recovery does not process fields smuggled into an invalid read",
+          "mode": "test"
+        },
+        {
+          "line": 539,
+          "template": "allows a corrected authorized read through fresh composition",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "invalid context read recovery allows a corrected authorized read through fresh composition",
+          "mode": "test"
+        },
+        {
+          "line": 560,
+          "template": "does not spend another call on a truncated invalid read",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "invalid context read recovery does not spend another call on a truncated invalid read",
+          "mode": "test"
+        },
+        {
+          "line": 574,
+          "template": "records each completed call before rejection, including empty retry=%s",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "invalid context read recovery records each completed call before rejection, including empty retry=false",
+          "mode": "test"
+        },
+        {
+          "line": 574,
+          "template": "records each completed call before rejection, including empty retry=%s",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "invalid context read recovery records each completed call before rejection, including empty retry=true",
+          "mode": "test"
+        },
+        {
+          "line": 653,
+          "template": "records honest semantic failure evidence for %s",
+          "caseRow": 0,
+          "sourceRow": "\"transport\"",
+          "name": "invalid context read recovery records honest semantic failure evidence for transport",
+          "mode": "test"
+        },
+        {
+          "line": 653,
+          "template": "records honest semantic failure evidence for %s",
+          "caseRow": 1,
+          "sourceRow": "\"inflight-abort\"",
+          "name": "invalid context read recovery records honest semantic failure evidence for inflight-abort",
+          "mode": "test"
+        },
+        {
+          "line": 653,
+          "template": "records honest semantic failure evidence for %s",
+          "caseRow": 2,
+          "sourceRow": "\"pre-abort\"",
+          "name": "invalid context read recovery records honest semantic failure evidence for pre-abort",
+          "mode": "test"
+        },
+        {
+          "line": 653,
+          "template": "records honest semantic failure evidence for %s",
+          "caseRow": 3,
+          "sourceRow": "\"falsy-throw\"",
+          "name": "invalid context read recovery records honest semantic failure evidence for falsy-throw",
+          "mode": "test"
+        },
+        {
+          "line": 750,
+          "template": "keeps constructor, native schema and existing read language coherent without a broad string branch",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "typed native context read contract keeps constructor, native schema and existing read language coherent without a broad string branch",
+          "mode": "test"
+        },
+        {
+          "line": 757,
+          "template": "rejects malformed, unoffered or stale selectors before any field effects: %j",
+          "caseRow": 0,
+          "sourceRow": "[{kind:\"provider\",references:[\"calendar\"]}]",
+          "name": "typed native context read contract rejects malformed, unoffered or stale selectors before any field effects: {\"reads\":[{\"kind\":\"provider\",\"references\":[\"calendar\"]}]}",
+          "mode": "test"
+        },
+        {
+          "line": 757,
+          "template": "rejects malformed, unoffered or stale selectors before any field effects: %j",
+          "caseRow": 1,
+          "sourceRow": "[{kind:\"provider\",references:[]}]",
+          "name": "typed native context read contract rejects malformed, unoffered or stale selectors before any field effects: {\"reads\":[{\"kind\":\"provider\",\"references\":[]}]}",
+          "mode": "test"
+        },
+        {
+          "line": 757,
+          "template": "rejects malformed, unoffered or stale selectors before any field effects: %j",
+          "caseRow": 2,
+          "sourceRow": "[{kind:\"history-source\",sourceSetId:\"wrong\",sourceOrdinals:[1]}]",
+          "name": "typed native context read contract rejects malformed, unoffered or stale selectors before any field effects: {\"reads\":[{\"kind\":\"history-source\",\"sourceSetId\":\"wrong\",\"sourceOrdinals\":[1]}]}",
+          "mode": "test"
+        },
+        {
+          "line": 757,
+          "template": "rejects malformed, unoffered or stale selectors before any field effects: %j",
+          "caseRow": 3,
+          "sourceRow": "[{kind:\"history-source\",sourceSetId:\"a\".repeat(64),sourceOrdinals:[2]}]",
+          "name": "typed native context read contract rejects malformed, unoffered or stale selectors before any field effects: {\"reads\":[{\"kind\":\"history-source\",\"sourceSetId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sourceOrdinals\":[2]}]}",
+          "mode": "test"
+        },
+        {
+          "line": 757,
+          "template": "rejects malformed, unoffered or stale selectors before any field effects: %j",
+          "caseRow": 4,
+          "sourceRow": "[{kind:\"history-source\",sourceSetId:\"a\".repeat(64),sourceOrdinals:[\"3\"]}]",
+          "name": "typed native context read contract rejects malformed, unoffered or stale selectors before any field effects: {\"reads\":[{\"kind\":\"history-source\",\"sourceSetId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sourceOrdinals\":[\"3\"]}]}",
+          "mode": "test"
+        },
+        {
+          "line": 757,
+          "template": "rejects malformed, unoffered or stale selectors before any field effects: %j",
+          "caseRow": 5,
+          "sourceRow": "[{kind:\"history-source\",sourceSetId:\"a\".repeat(64),sourceOrdinals:[0,1.5,Number.MAX_SAFE_INTEGER+1]}]",
+          "name": "typed native context read contract rejects malformed, unoffered or stale selectors before any field effects: {\"reads\":[{\"kind\":\"history-source\",\"sourceSetId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"sourceOrdinals\":[0,1.5,9007199254740992]}]}",
+          "mode": "test"
+        },
+        {
+          "line": 757,
+          "template": "rejects malformed, unoffered or stale selectors before any field effects: %j",
+          "caseRow": 6,
+          "sourceRow": "[{kind:\"history-search\",sourceSetId:\"a\".repeat(64),speaker:\"all\",query:\" \\n\\t\"}]",
+          "name": "typed native context read contract rejects malformed, unoffered or stale selectors before any field effects: {\"reads\":[{\"kind\":\"history-search\",\"sourceSetId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"speaker\":\"all\",\"query\":\" \\n\\t\"}]}",
+          "mode": "test"
+        },
+        {
+          "line": 757,
+          "template": "rejects malformed, unoffered or stale selectors before any field effects: %j",
+          "caseRow": 7,
+          "sourceRow": "[{kind:\"history-all\",sourceSetId:\"a\".repeat(64),extra:\"not admitted\"}]",
+          "name": "typed native context read contract rejects malformed, unoffered or stale selectors before any field effects: {\"reads\":[{\"kind\":\"history-all\",\"sourceSetId\":\"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"extra\":\"not admitted\"}]}",
+          "mode": "test"
+        },
+        {
+          "line": 767,
+          "template": "retains custom string-list constraints instead of silently replacing them: %j",
+          "caseRow": 0,
+          "sourceRow": "{type:\"array\",items:{type:\"string\",enum:[\"VISIBLE\"]}}",
+          "name": "typed native context read contract retains custom string-list constraints instead of silently replacing them: {\"type\":\"array\",\"items\":{\"type\":\"string\",\"enum\":[\"VISIBLE\"]}}",
+          "mode": "test"
+        },
+        {
+          "line": 767,
+          "template": "retains custom string-list constraints instead of silently replacing them: %j",
+          "caseRow": 1,
+          "sourceRow": "{type:\"array\",items:{type:\"string\",pattern:\"^VISIBLE$\"}}",
+          "name": "typed native context read contract retains custom string-list constraints instead of silently replacing them: {\"type\":\"array\",\"items\":{\"type\":\"string\",\"pattern\":\"^VISIBLE$\"}}",
+          "mode": "test"
+        },
+        {
+          "line": 767,
+          "template": "retains custom string-list constraints instead of silently replacing them: %j",
+          "caseRow": 2,
+          "sourceRow": "{type:\"array\",items:{type:\"string\"},maxItems:1}",
+          "name": "typed native context read contract retains custom string-list constraints instead of silently replacing them: {\"type\":\"array\",\"items\":{\"type\":\"string\"},\"maxItems\":1}",
+          "mode": "test"
+        },
+        {
+          "line": 767,
+          "template": "retains custom string-list constraints instead of silently replacing them: %j",
+          "caseRow": 3,
+          "sourceRow": "{type:\"array\",items:{type:\"string\"},minItems:1}",
+          "name": "typed native context read contract retains custom string-list constraints instead of silently replacing them: {\"type\":\"array\",\"items\":{\"type\":\"string\"},\"minItems\":1}",
+          "mode": "test"
+        },
+        {
+          "line": 767,
+          "template": "retains custom string-list constraints instead of silently replacing them: %j",
+          "caseRow": 4,
+          "sourceRow": "{type:\"array\",items:{type:\"string\"},uniqueItems:true}",
+          "name": "typed native context read contract retains custom string-list constraints instead of silently replacing them: {\"type\":\"array\",\"items\":{\"type\":\"string\"},\"uniqueItems\":true}",
+          "mode": "test"
+        },
+        {
+          "line": 779,
+          "template": "uses only the existing single correction budget for repeated invalid typed reads",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "typed native context read contract uses only the existing single correction budget for repeated invalid typed reads",
+          "mode": "test"
+        },
+        {
+          "line": 785,
+          "template": "keeps legacy input decoding behind the same exact offered-reference validator",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "typed native context read contract keeps legacy input decoding behind the same exact offered-reference validator",
+          "mode": "test"
+        },
+        {
+          "line": 793,
+          "template": "retains source currentness and refuses mixed old/new control fields",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "typed native context read contract retains source currentness and refuses mixed old/new control fields",
+          "mode": "test"
+        },
+        {
+          "line": 798,
+          "template": "rejects unsupported complete schemas rather than dropping provider references",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "typed native context read contract rejects unsupported complete schemas rather than dropping provider references",
+          "mode": "test"
+        },
+        {
+          "line": 802,
+          "template": "uses the same two model rounds and existing provider read barrier for a valid typed read",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "typed native context read contract uses the same two model rounds and existing provider read barrier for a valid typed read",
+          "mode": "test"
+        },
+        {
+          "line": 824,
+          "template": "decodes only exact per-field ordinals to canonical strings and preserves sparse repair subsets",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "builtin request-local completion ordinals decodes only exact per-field ordinals to canonical strings and preserves sparse repair subsets",
+          "mode": "test"
+        },
+        {
+          "line": 835,
+          "template": "keeps default/custom constraints unchanged and checks freshness before resolving",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "builtin request-local completion ordinals keeps default/custom constraints unchanged and checks freshness before resolving",
+          "mode": "test"
+        }
+      ],
+      "registrations": 38
+    },
+    {
+      "path": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+      "sha256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+      "tests": [
+        {
+          "line": 238,
+          "template": "applies the evaluator-only opt-in through the real adapter without changing other model slots",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "Qwen3.8 response-schema wire contract applies the evaluator-only opt-in through the real adapter without changing other model slots",
+          "mode": "test"
+        },
+        {
+          "line": 286,
+          "template": "transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 286,
+          "template": "transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract transmits the history-reconciliation reasoning opt-in and explicit overrides (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 317,
+          "template": "transmits preferred native-tool reasoning with explicit override=%s",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract transmits preferred native-tool reasoning with explicit override=false",
+          "mode": "test"
+        },
+        {
+          "line": 317,
+          "template": "transmits preferred native-tool reasoning with explicit override=%s",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract transmits preferred native-tool reasoning with explicit override=true",
+          "mode": "test"
+        },
+        {
+          "line": 359,
+          "template": "restores opted-in aggregator maps after the actual native tool response",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "Qwen3.8 response-schema wire contract restores opted-in aggregator maps after the actual native tool response",
+          "mode": "test"
+        },
+        {
+          "line": 437,
+          "template": "retains required planner scope and optional aggregator fields on %s",
+          "caseRow": 0,
+          "sourceRow": "\"cerebras\"",
+          "name": "Qwen3.8 response-schema wire contract retains required planner scope and optional aggregator fields on cerebras",
+          "mode": "test"
+        },
+        {
+          "line": 437,
+          "template": "retains required planner scope and optional aggregator fields on %s",
+          "caseRow": 1,
+          "sourceRow": "\"openai\"",
+          "name": "Qwen3.8 response-schema wire contract retains required planner scope and optional aggregator fields on openai",
+          "mode": "test"
+        },
+        {
+          "line": 505,
+          "template": "enforces the fact operation contract on the actual provider request (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract enforces the fact operation contract on the actual provider request (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 505,
+          "template": "enforces the fact operation contract on the actual provider request (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract enforces the fact operation contract on the actual provider request (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 574,
+          "template": "preserves native-tool optional arguments only for the supported %s contract",
+          "caseRow": 0,
+          "sourceRow": "\"cerebras\"",
+          "name": "Qwen3.8 response-schema wire contract preserves native-tool optional arguments only for the supported cerebras contract",
+          "mode": "test"
+        },
+        {
+          "line": 574,
+          "template": "preserves native-tool optional arguments only for the supported %s contract",
+          "caseRow": 1,
+          "sourceRow": "\"openai\"",
+          "name": "Qwen3.8 response-schema wire contract preserves native-tool optional arguments only for the supported openai contract",
+          "mode": "test"
+        },
+        {
+          "line": 633,
+          "template": "preserves explicit sampling independently, including zero and omission (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract preserves explicit sampling independently, including zero and omission (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 633,
+          "template": "preserves explicit sampling independently, including zero and omission (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract preserves explicit sampling independently, including zero and omission (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 656,
+          "template": "preserves generation controls through registered runtime dispatch (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract preserves generation controls through registered runtime dispatch (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 656,
+          "template": "preserves generation controls through registered runtime dispatch (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract preserves generation controls through registered runtime dispatch (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 709,
+          "template": "preserves independent controls and omission across calls (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract preserves independent controls and omission across calls (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 709,
+          "template": "preserves independent controls and omission across calls (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract preserves independent controls and omission across calls (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 742,
+          "template": "sanitizes stop text without changing caller data (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract sanitizes stop text without changing caller data (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 742,
+          "template": "sanitizes stop text without changing caller data (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract sanitizes stop text without changing caller data (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 753,
+          "template": "preserves controls for the agent model slot %j",
+          "caseRow": 0,
+          "sourceRow": "{ actionPlanner: true }",
+          "name": "Qwen3.8 response-schema wire contract preserves controls for the agent model slot {\"actionPlanner\":true}",
+          "mode": "test"
+        },
+        {
+          "line": 753,
+          "template": "preserves controls for the agent model slot %j",
+          "caseRow": 1,
+          "sourceRow": "{ responseHandler: true }",
+          "name": "Qwen3.8 response-schema wire contract preserves controls for the agent model slot {\"responseHandler\":true}",
+          "mode": "test"
+        },
+        {
+          "line": 775,
+          "template": "retains SDK omission for unsupported reasoning-model sampling (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract retains SDK omission for unsupported reasoning-model sampling (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 775,
+          "template": "retains SDK omission for unsupported reasoning-model sampling (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract retains SDK omission for unsupported reasoning-model sampling (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 802,
+          "template": "sends the actual evaluator schema strictly without requiring optional outputs (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract sends the actual evaluator schema strictly without requiring optional outputs (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 802,
+          "template": "sends the actual evaluator schema strictly without requiring optional outputs (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract sends the actual evaluator schema strictly without requiring optional outputs (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 825,
+          "template": "sends the strict schema for gemma-4-31b as well (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract sends the strict schema for gemma-4-31b as well (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 825,
+          "template": "sends the strict schema for gemma-4-31b as well (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract sends the strict schema for gemma-4-31b as well (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 841,
+          "template": "preserves the explicit response contract for %s",
+          "caseRow": 0,
+          "sourceRow": "[\"another Cerebras model\", { model: \"gpt-oss-120b\", schema: evaluatorSchema }]",
+          "name": "Qwen3.8 response-schema wire contract preserves the explicit response contract for another Cerebras model",
+          "mode": "test"
+        },
+        {
+          "line": 841,
+          "template": "preserves the explicit response contract for %s",
+          "caseRow": 1,
+          "sourceRow": "[\"schema-less JSON\", { responseFormat: { type: \"json_object\" as const } }]",
+          "name": "Qwen3.8 response-schema wire contract preserves the explicit response contract for schema-less JSON",
+          "mode": "test"
+        },
+        {
+          "line": 841,
+          "template": "preserves the explicit response contract for %s",
+          "caseRow": 2,
+          "sourceRow": "[\"opaque SDK output\", { schema: Output.object({ schema: jsonSchema(evaluatorSchema) }) }]",
+          "name": "Qwen3.8 response-schema wire contract preserves the explicit response contract for opaque SDK output",
+          "mode": "test"
+        },
+        {
+          "line": 841,
+          "template": "preserves the explicit response contract for %s",
+          "caseRow": 3,
+          "sourceRow": "[\n      \"native tools\",\n      {\n        schema: evaluatorSchema,\n        tools: [\n          {\n            name: \"inspect\",\n            description: \"Inspect state\",\n            strict: false,\n            parameters: { type: \"object\", properties: {} },\n          },\n        ],\n      },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the explicit response contract for native tools",
+          "mode": "test"
+        },
+        {
+          "line": 872,
+          "template": "does not retry an unsupported native-tool/schema combination as weaker JSON (stream=%s)",
+          "caseRow": 0,
+          "sourceRow": "false",
+          "name": "Qwen3.8 response-schema wire contract does not retry an unsupported native-tool/schema combination as weaker JSON (stream=false)",
+          "mode": "test"
+        },
+        {
+          "line": 872,
+          "template": "does not retry an unsupported native-tool/schema combination as weaker JSON (stream=%s)",
+          "caseRow": 1,
+          "sourceRow": "true",
+          "name": "Qwen3.8 response-schema wire contract does not retry an unsupported native-tool/schema combination as weaker JSON (stream=true)",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 0,
+          "sourceRow": "[\"root array\", { type: \"array\", items: { type: \"string\" } }, [\"preserved\"]]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete root array schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 1,
+          "sourceRow": "[\"root union\", { anyOf: [{ type: \"string\" }, { type: \"number\" }] }, \"preserved\"]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete root union schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 2,
+          "sourceRow": "[\"bare object\", { type: \"object\" }, { customKey: \"preserved\" }]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete bare object schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 3,
+          "sourceRow": "[\n      \"typeless root\",\n      { properties: { value: { type: \"string\" } }, additionalProperties: false },\n      null,\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete typeless root schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 4,
+          "sourceRow": "[\n      \"typeless nested object\",\n      {\n        type: \"object\",\n        properties: {\n          value: { properties: { note: { type: \"string\" } }, additionalProperties: false },\n        },\n        additionalProperties: false,\n      },\n      { value: null },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete typeless nested object schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 5,
+          "sourceRow": "[\n      \"root object with implicit extra keys\",\n      {\n        type: \"object\",\n        properties: { known: { type: \"string\" } },\n        required: [\"known\"],\n      },\n      { known: \"preserved\", extra: \"also preserved\" },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete root object with implicit extra keys schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 6,
+          "sourceRow": "[\n      \"nested object with implicit extra keys\",\n      {\n        type: \"object\",\n        properties: { metadata: { type: \"object\", properties: { known: { type: \"string\" } } } },\n        required: [\"metadata\"],\n        additionalProperties: false,\n      },\n      { metadata: { known: \"preserved\", extra: \"also preserved\" } },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete nested object with implicit extra keys schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 7,
+          "sourceRow": "[\n      \"conditional schema\",\n      {\n        type: \"object\",\n        properties: { value: { type: \"string\" } },\n        additionalProperties: false,\n        if: { properties: { value: { const: \"preserved\" } } },\n        // biome-ignore lint/suspicious/noThenProperty: JSON Schema keyword, not a promise.\n        then: { required: [\"value\"] },\n      },\n      { value: \"preserved\" },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete conditional schema schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 8,
+          "sourceRow": "[\n      \"nested composition\",\n      {\n        type: \"object\",\n        properties: { value: { allOf: [{ type: \"string\" }, { const: \"preserved\" }] } },\n        required: [\"value\"],\n        additionalProperties: false,\n      },\n      { value: \"preserved\" },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete nested composition schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 9,
+          "sourceRow": "[\n      \"schema reference\",\n      {\n        type: \"object\",\n        properties: { value: { $ref: \"#/$defs/value\" } },\n        $defs: { value: { type: \"string\" } },\n        additionalProperties: false,\n      },\n      { value: \"preserved\" },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete schema reference schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 10,
+          "sourceRow": "[\n      \"open map\",\n      {\n        type: \"object\",\n        properties: { metadata: { type: \"object\", additionalProperties: { type: \"string\" } } },\n        required: [\"metadata\"],\n        additionalProperties: false,\n      },\n      { metadata: { customKey: \"preserved\" } },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete open map schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 899,
+          "template": "preserves the complete %s schema across success and provider rejection",
+          "caseRow": 11,
+          "sourceRow": "[\n      \"nullable object\",\n      {\n        type: \"object\",\n        properties: {\n          metadata: {\n            type: [\"object\", \"null\"],\n            properties: { note: { type: \"string\" } },\n            additionalProperties: false,\n          },\n        },\n        required: [\"metadata\"],\n        additionalProperties: false,\n      },\n      { metadata: null },\n    ]",
+          "name": "Qwen3.8 response-schema wire contract preserves the complete nullable object schema across success and provider rejection",
+          "mode": "test"
+        },
+        {
+          "line": 1031,
+          "template": "preserves optional fields inside closed array items and unions after normalization",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "Qwen3.8 response-schema wire contract preserves optional fields inside closed array items and unions after normalization",
+          "mode": "test"
+        },
+        {
+          "line": 1068,
+          "template": "does not change the non-Cerebras schema normalization contract",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "Qwen3.8 response-schema wire contract does not change the non-Cerebras schema normalization contract",
+          "mode": "test"
+        },
+        {
+          "line": 1078,
+          "template": "round-trips schema-only planner arguments through the strict entry representation",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "Qwen3.8 response-schema wire contract round-trips schema-only planner arguments through the strict entry representation",
+          "mode": "test"
+        },
+        {
+          "line": 1127,
+          "template": "serializes the structural READ_CONTEXT contract with supported Cerebras keywords and no pattern or allOf",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "serializes the structural READ_CONTEXT contract with supported Cerebras keywords and no pattern or allOf",
+          "mode": "test"
+        },
+        {
+          "line": 1154,
+          "template": "serializes the complete production-bound HANDLE_RESPONSE plus typed history tools for %s originals through the provider serializer",
+          "caseRow": 0,
+          "sourceRow": "12",
+          "name": "serializes the complete production-bound HANDLE_RESPONSE plus typed history tools for 12 originals through the provider serializer",
+          "mode": "test"
+        },
+        {
+          "line": 1154,
+          "template": "serializes the complete production-bound HANDLE_RESPONSE plus typed history tools for %s originals through the provider serializer",
+          "caseRow": 1,
+          "sourceRow": "551",
+          "name": "serializes the complete production-bound HANDLE_RESPONSE plus typed history tools for 551 originals through the provider serializer",
+          "mode": "test"
+        },
+        {
+          "line": 1176,
+          "template": "offers every one of551 completion ordinals within the complete pair budget without string enums",
+          "caseRow": 0,
+          "sourceRow": null,
+          "name": "offers every one of551 completion ordinals within the complete pair budget without string enums",
+          "mode": "test"
+        }
+      ],
+      "registrations": 53
+    }
+  ],
+  "expectedRegistrations": 113,
+  "expectedSkipsTodosFailures": 0,
+  "formatter": "Frozen Vitest5.0.5 source formatTitle+format provenance; JSONsubset inputdata only, no JS/test/vendor execution. Unknown syntax fails closed.",
+  "actualNormalRegistrationAndAssertionsRequired": true,
+  "sourceCommit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "sourceTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc"
+}

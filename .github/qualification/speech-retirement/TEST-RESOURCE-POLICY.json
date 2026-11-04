@@ -1,0 +1,21 @@
+{
+  "defaultTest": {
+    "memory": "2g",
+    "memoryBytes": 2147483648,
+    "nodeOldSpaceMiB": 1536
+  },
+  "memorySwapEqualsMemory": true,
+  "CPU": 2,
+  "PIDs": 256,
+  "automaticExpansion": false,
+  "normalProducer": {
+    "memory": "8g",
+    "memoryBytes": 8589934592,
+    "nodeOldSpaceMiB": 4096,
+    "RUN_TURBO_CONCURRENCY": "1",
+    "network": "none",
+    "sourceWrite": "normal-generated-outputs-only; tracked source and complete installed dependency census immutable",
+    "cgroupParent": "system.slice",
+    "cgroupParentReadback": "HostConfig.CgroupParent prestart/postexit/custody cleanup"
+  }
+}
