@@ -243,6 +243,35 @@ describe("GitHub write confirmation", () => {
     expect(createReview).not.toHaveBeenCalled();
   });
 
+  it("names the owner's account in the preview when the owner selects it by account id", async () => {
+    const createComment = vi.fn();
+    const runtime = createRuntime({
+      issues: { createComment },
+    } as unknown as GitHubOctokitClient);
+    const prompts: string[] = [];
+
+    await issueOpAction.handler(
+      runtime,
+      userTurn("comment on a/b#5"),
+      undefined,
+      {
+        op: "comment",
+        repo: "a/b",
+        number: 5,
+        body: "LGTM",
+        as: "agent",
+        accountId: "owner-gh",
+      },
+      async (content: { text?: string }) => {
+        prompts.push(content.text ?? "");
+        return [];
+      },
+    );
+
+    expect(prompts.at(-1)).toContain("as user (owner-gh).");
+    expect(createComment).not.toHaveBeenCalled();
+  });
+
   it("does not comment as the owner's account selected by account id for a sender who is not the owner", async () => {
     const createComment = vi.fn().mockResolvedValue({
       data: { id: 9, html_url: "https://github.test/a/b/issues/5#c9" },

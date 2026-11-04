@@ -265,7 +265,10 @@ async function runReview(
     repo,
     number,
     body,
-    describeSelection(selection),
+    describeSelection({
+      role: resolved.identity,
+      accountId: resolved.accountId,
+    }),
   );
   const decision = await confirmPreviewedRequest({
     runtime,

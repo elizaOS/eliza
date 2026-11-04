@@ -492,7 +492,10 @@ export const issueOpAction: Action = {
     const preview = buildPreview(
       op,
       repo,
-      describeSelection(selection),
+      describeSelection({
+        role: resolved.identity,
+        accountId: resolved.accountId,
+      }),
       options,
     );
     const prompt = `${preview} Reply yes to confirm or no to cancel.`;
