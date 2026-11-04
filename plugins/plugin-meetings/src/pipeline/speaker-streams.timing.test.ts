@@ -87,3 +87,46 @@ it("ends after the last audio when the speaker paused inside the window", async 
   // 4 s of audio, but the last of it arrived at 8000 ms.
   expect(emitted.map((e) => [e.startMs, e.endMs])).toEqual([[0, 8000]]);
 });
+
+it("ends a full-text confirmation at its boundary while the speaker keeps talking", async () => {
+  const clock = { ms: 0 };
+  const streams = new SpeakerStreamManager({ now: () => clock.ms });
+  const emitted: ConfirmedSegmentEvent[] = [];
+  // A local ASR with word timings that hears the same words twice in a row
+  // (the full-text confirmation), each answer landing 1 s after its window
+  // went out while the speaker's audio keeps arriving.
+  const answers: Array<[string, number, number]> = [
+    ["First sentence.", 0.2, 1.5],
+    ["First sentence.", 0.2, 1.5],
+    ["Second sentence.", 0.5, 4],
+    ["Second sentence.", 0.5, 4],
+  ];
+  streams.onSegmentReady = (key, _name, _audio, _purpose, generation) => {
+    const answer = answers.shift();
+    if (!answer) return;
+    const [text, startSec, endSec] = answer;
+    setTimeout(
+      () =>
+        streams.handleTranscriptionResult(
+          key,
+          text,
+          endSec,
+          [{ text, startSec, endSec }],
+          generation,
+        ),
+      1000,
+    );
+  };
+  streams.onSegmentConfirmed = (event) => emitted.push(event);
+  streams.addSpeaker("0", "Alice");
+
+  await speak(streams, clock, 6);
+  await wait(clock, 3);
+  streams.removeAll();
+
+  // Each segment ends where its words end; the next starts there.
+  expect(emitted.map((e) => [e.text, e.startMs, e.endMs])).toEqual([
+    ["First sentence.", 0, 1500],
+    ["Second sentence.", 1500, 5500],
+  ]);
+});
