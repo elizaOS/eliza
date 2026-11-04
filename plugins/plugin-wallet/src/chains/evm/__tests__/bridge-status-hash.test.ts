@@ -19,6 +19,9 @@ const statusQueries: string[] = [];
 const lifi = vi.hoisted(() => ({
   status: "DONE" as "DONE" | "PENDING" | "FAILED" | "THROW",
   execute: "OK" as "OK" | "THROW_AFTER_BRIDGE" | "THROW_AFTER_APPROVAL",
+  // A route to run instead of the default one, and the tools status reads got.
+  route: null as unknown,
+  tools: [] as string[],
 }));
 
 vi.mock("@lifi/sdk", async (importOriginal) => {
@@ -48,6 +51,10 @@ vi.mock("@lifi/sdk", async (importOriginal) => {
     // Like the SDK, report route progress through the update hook.
     executeRoute: vi.fn(
       async (_route: unknown, options?: { updateRouteHook?: (updated: unknown) => void }) => {
+        if (lifi.route) {
+          options?.updateRouteHook?.(lifi.route);
+          return lifi.route;
+        }
         if (lifi.execute === "THROW_AFTER_APPROVAL") {
           const [approval] = route.steps[0].execution.process;
           options?.updateRouteHook?.({
@@ -63,8 +70,9 @@ vi.mock("@lifi/sdk", async (importOriginal) => {
         return route;
       }
     ),
-    getStatus: vi.fn(async ({ txHash }: { txHash: string }) => {
+    getStatus: vi.fn(async ({ txHash, bridge }: { txHash: string; bridge?: string }) => {
       statusQueries.push(txHash);
+      lifi.tools.push(String(bridge));
       if (txHash !== BRIDGE_HASH) {
         throw new Error("Not a bridge transaction");
       }
@@ -96,6 +104,8 @@ describe("BridgeAction.bridge status tracking", () => {
     statusQueries.length = 0;
     lifi.status = "DONE";
     lifi.execute = "OK";
+    lifi.route = null;
+    lifi.tools.length = 0;
   });
   afterEach(() => {
     vi.useRealTimers();
@@ -176,5 +186,52 @@ describe("BridgeAction.bridge status tracking", () => {
     lifi.status = "FAILED";
     const result = await bridge();
     expect(result.ok).toBe(false);
+  });
+
+  // chusmias258-dev on #38695: an approval hash is never the bridge.
+  it("fails a route that finished with only the token approval hash, without polling it", async () => {
+    lifi.route = {
+      id: "route-approval-only",
+      steps: [
+        {
+          tool: "stargate",
+          execution: {
+            status: "DONE",
+            process: [{ type: "TOKEN_ALLOWANCE", status: "DONE", txHash: APPROVE_HASH }],
+          },
+        },
+      ],
+    };
+    lifi.status = "THROW";
+    const result = await bridge();
+    expect(result.ok).toBe(false);
+    expect(statusQueries).toEqual([]);
+  });
+
+  it("polls the bridge step's hash and tool when a swap step comes first", async () => {
+    const SWAP_HASH = `0x${"d".repeat(64)}`;
+    lifi.route = {
+      id: "route-swap-then-bridge",
+      steps: [
+        {
+          tool: "uniswap",
+          execution: {
+            status: "DONE",
+            process: [{ type: "SWAP", status: "DONE", txHash: SWAP_HASH }],
+          },
+        },
+        {
+          tool: "stargate",
+          execution: {
+            status: "DONE",
+            process: [{ type: "CROSS_CHAIN", status: "DONE", txHash: BRIDGE_HASH }],
+          },
+        },
+      ],
+    };
+    const result = await bridge();
+    expect(statusQueries[0]).toBe(BRIDGE_HASH);
+    expect(lifi.tools[0]).toBe("stargate");
+    expect(result).toMatchObject({ ok: true, value: { hash: BRIDGE_HASH } });
   });
 });

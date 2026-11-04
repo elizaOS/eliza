@@ -91,24 +91,31 @@ interface BridgeExecutionStatus {
 }
 
 /**
- * The hash Li.Fi's status API tracks: the first step's CROSS_CHAIN, then
- * SWAP, process. The first hash can be the ERC-20 approval
- * (TOKEN_ALLOWANCE), which the status API does not know, so polling it
- * would time out after a bridge that completed. `anyHash` falls back to
- * any hash for a completed route; an approval alone moves no funds, so it
- * does not count as a sent bridge when execution throws.
+ * The transaction Li.Fi's status API tracks, with the tool of its step: a
+ * CROSS_CHAIN process in any step, then a SWAP process in any step. A route
+ * can swap in step 0 and bridge in step 1, so the first step with a hash is
+ * not always the bridge. The ERC-20 approval (TOKEN_ALLOWANCE) is never the
+ * bridge: the status API does not know it, and it moves no funds. `anyHash`
+ * falls back to another non-approval hash for a route that completed.
  */
-function bridgeTransactionHash(
+function bridgeTransaction(
   route: RouteExtended,
   anyHash: boolean,
-): string | undefined {
-  const step = route.steps.find((s) => s.execution?.process?.some((p) => p.txHash));
-  const processes = step?.execution?.process ?? [];
+): { hash: string; tool: string } | undefined {
+  const find = (match: (type: string) => boolean) => {
+    for (const step of route.steps) {
+      const process = step.execution?.process?.find(
+        (p) => p.txHash && match(p.type),
+      );
+      if (process?.txHash) return { hash: process.txHash, tool: step.tool };
+    }
+    return undefined;
+  };
   return (
-    processes.find((p) => p.type === "CROSS_CHAIN" && p.txHash) ??
-    processes.find((p) => p.type === "SWAP" && p.txHash) ??
-    (anyHash ? processes.find((p) => p.txHash) : undefined)
-  )?.txHash;
+    find((type) => type === "CROSS_CHAIN") ??
+    find((type) => type === "SWAP") ??
+    (anyHash ? find((type) => type !== "TOKEN_ALLOWANCE") : undefined)
+  );
 }
 
 export class BridgeAction {
@@ -503,7 +510,7 @@ export class BridgeAction {
         executedRoute = await executeRoute(selectedRoute, executionOptions);
       } catch (error) {
         const tracked = this.activeRoutes.get(routeId)?.route;
-        const bridgeHash = tracked && bridgeTransactionHash(tracked, false);
+        const bridgeHash = tracked && bridgeTransaction(tracked, false)?.hash;
         if (!bridgeHash) throw error;
         logger.warn(
           { routeId, hash: bridgeHash, error: String(error) },
@@ -523,15 +530,16 @@ export class BridgeAction {
         );
       }
 
-      const mainTxHash = bridgeTransactionHash(executedRoute, true);
-      if (!mainTxHash) {
+      const main = bridgeTransaction(executedRoute, true);
+      if (!main) {
         throw new EVMError(
           EVMErrorCode.NETWORK_ERROR,
           "No transaction hash found",
         );
       }
 
-      const bridgeTool = selectedRoute.steps[0].tool;
+      const mainTxHash = main.hash;
+      const bridgeTool = main.tool;
       let finalStatus: BridgeExecutionStatus;
       try {
         finalStatus = await this.pollBridgeStatus(
