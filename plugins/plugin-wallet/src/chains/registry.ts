@@ -790,26 +790,19 @@ async function executePumpFunBuy(
   const signedTransaction = await signer.signTransaction(transaction);
 
   const connection = getSolanaConnection(context.runtime);
-  const signature = await connection.sendTransaction(signedTransaction, {
-    skipPreflight: false,
-    maxRetries: 3,
-    preflightCommitment: "confirmed",
-  });
-
   const latestBlockhash = await connection.getLatestBlockhash();
-  const confirmation = await connection.confirmTransaction(
-    {
-      signature,
-      blockhash: latestBlockhash.blockhash,
-      lastValidBlockHeight: latestBlockhash.lastValidBlockHeight,
-    },
-    "confirmed",
-  );
-  if (confirmation.value.err) {
-    throw new Error(
-      `Pump.fun buy failed: ${JSON.stringify(confirmation.value.err)}`,
+  const { signature, confirmationStatus, sendUncertain } =
+    await sendAndConfirmSolanaTransaction(
+      connection,
+      signedTransaction,
+      {
+        skipPreflight: false,
+        maxRetries: 3,
+        preflightCommitment: "confirmed",
+      },
+      latestBlockhash,
+      "Pump.fun buy failed",
     );
-  }
 
   return {
     status: "submitted",
@@ -831,6 +824,8 @@ async function executePumpFunBuy(
       slippage: settings.slippage,
       priorityFee: settings.priorityFee,
       pool: settings.pool,
+      confirmationStatus,
+      ...(sendUncertain ? { sendUncertain: true } : {}),
     },
   };
 }
