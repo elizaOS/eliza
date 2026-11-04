@@ -25,6 +25,7 @@ import type {
   PtySpawn,
   PtySpawnSpec,
 } from "./pty-types";
+import { withWindowsCommandLookup } from "./windows-pty-command";
 
 /** Default terminal geometry when a caller doesn't specify one. */
 const DEFAULT_COLS = 120;
@@ -161,7 +162,7 @@ export const defaultSpawnResolver: PtySpawnResolver = async () => {
       "PTY support unavailable: @lydell/node-pty did not expose a spawn() function.",
     );
   }
-  return spawn;
+  return process.platform === "win32" ? withWindowsCommandLookup(spawn) : spawn;
 };
 
 /**
