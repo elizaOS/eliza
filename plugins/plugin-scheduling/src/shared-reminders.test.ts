@@ -195,3 +195,90 @@ it("keeps an interval reminder's next time when only its text changes", async ()
     occurrenceAtIso: "2026-10-11T12:00:00.000Z",
   });
 });
+
+it("does not send a one-off reminder again when only its text changes after it went off", async () => {
+  const agentId = "33333333-3333-4333-8333-333333333333";
+  const runtime = {
+    agentId,
+    getService: () => null,
+    reportError: () => undefined,
+  } as unknown as IAgentRuntime;
+  let clock = new Date("2026-10-11T10:00:00Z");
+  const now = () => clock;
+  const gates = createTaskGateRegistry();
+  registerBuiltInGates(gates);
+  const completionChecks = createCompletionCheckRegistry();
+  registerBuiltInCompletionChecks(completionChecks);
+  const ladders = createEscalationLadderRegistry();
+  registerDefaultEscalationLadders(ladders);
+  const runner = createScheduledTaskRunner({
+    agentId,
+    store: createInMemoryScheduledTaskStore(),
+    logStore: createInMemoryScheduledTaskLogStore(),
+    gates,
+    completionChecks,
+    ladders,
+    anchors: createAnchorRegistry(),
+    consolidation: createConsolidationRegistry(),
+    ownerFacts: () => ({}),
+    globalPause: {
+      current: async () => ({ active: false }),
+    } as GlobalPauseView,
+    activity: { hasSignalSince: () => false },
+    subjectStore: { wasUpdatedSince: () => false },
+    dispatcher: TestNoopScheduledTaskDispatcher,
+    now,
+  });
+  const action = createSharedRemindersEdgeAction({
+    runner,
+    agentId,
+    now,
+    delivery: {
+      platform: "telegram",
+      project: "test",
+      connectorAccountId: "owner",
+      chatId: "123456",
+    },
+  });
+  const run = (parameters: HandlerOptions["parameters"]) =>
+    action.handler(
+      runtime,
+      {
+        id: crypto.randomUUID(),
+        entityId: agentId,
+        agentId,
+        roomId: agentId,
+        content: {
+          text: "Change my call mom reminder to say call dad",
+          source: "test",
+        },
+      } as Memory,
+      undefined,
+      { parameters },
+    );
+  const created = await run({
+    operation: "create",
+    reminderText: "Call mom",
+    atIso: "2026-10-11T15:00:00Z",
+  });
+  expect(created?.success, JSON.stringify(created)).toBe(true);
+  const task = created?.data?.task as ScheduledTask;
+  clock = new Date("2026-10-11T15:00:30Z");
+  expect((await runner.fire(task.taskId)).state.status).toBe("fired");
+
+  clock = new Date("2026-10-11T15:10:00Z");
+  const updated = await run({
+    operation: "update",
+    taskId: task.taskId,
+    newReminderText: "Call dad",
+  });
+  expect(updated?.success, JSON.stringify(updated)).toBe(false);
+  expect(updated?.text).toContain("already went off");
+
+  const tasks = await runner.list();
+  expect(tasks.map((entry) => entry.taskId)).toEqual([task.taskId]);
+  expect(tasks[0]?.state.status).toBe("fired");
+  for (const entry of tasks) {
+    expect((await isScheduledTaskDue(entry, { now: clock })).due).toBe(false);
+  }
+});

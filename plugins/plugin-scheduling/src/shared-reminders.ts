@@ -1915,6 +1915,20 @@ export function createSharedRemindersEdgeAction(
               { operation },
             );
           }
+          // A one-off that already went off keeps its past time on a text or
+          // timezone edit. The replacement has no fire history, so it would be
+          // due at once and send the reminder again.
+          if (
+            !hasSchedulePatch &&
+            trigger.kind === "once" &&
+            target.task.state.firedAt
+          ) {
+            return await actionFailure(
+              "That reminder already went off. Give a new time to set it again. Nothing was changed.",
+              callback,
+              { operation },
+            );
+          }
           const triggerRejection = hasSchedulePatch
             ? recurringTriggerRejection(trigger)
             : undefined;
