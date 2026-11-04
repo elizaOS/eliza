@@ -103,7 +103,11 @@ export class RetentionTask<T> {
     logger.info(
       `[${label}] enabled: retentionDays=${config.retentionDays ?? "off"} maxRowsPerRoom=${config.maxRowsPerRoom ?? "off"} maxDeletePerSweep=${config.maxDeletePerSweep ?? "none"} intervalMinutes=${intervalMinutes}`,
     );
-    await this.start(intervalMinutes * 60 * 1000);
+    // Count whole microseconds first: decimal minutes multiply with binary
+    // rounding error far below a microsecond (4.1 minutes gives
+    // 245999.99999999997 ms). start() still refuses an interval that names a
+    // fraction of a millisecond.
+    await this.start(Math.round(intervalMinutes * 60 * 1000 * 1000) / 1000);
     return config;
   }
 
