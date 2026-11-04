@@ -1,0 +1,232 @@
+{
+  "state": "DRAFT_NOT_REVIEWED_NOT_PUBLISHED_NOT_EXECUTED",
+  "baseSealSHA256": "d7c9bee0d08a78d03b516dec856e737df44820bc9899f4df8d5da2aaf1715b2d",
+  "changes": [
+    {
+      "path": "BCDEF-FF04-MACHINERY-IDENTITY.json",
+      "baseSHA256": "9f88ffcb32fbffb313d888b324d0d9284041072ffaedd51c776ad539344cb8da",
+      "draftSHA256": null
+    },
+    {
+      "path": "BCDEF-FF04-PREFLIGHT-EDGE-DELTA.json",
+      "baseSHA256": "c26e6c33587e8386d0c3482c2dbdce169f2fec49f31791451d46b2c7e0dce407",
+      "draftSHA256": null
+    },
+    {
+      "path": "BCDEF-FF04-REGISTRATION-IDENTITY.json",
+      "baseSHA256": "84f556066fe14fe920dceba461f58e4f41a5282c451f617050abc63a4b3d44d6",
+      "draftSHA256": null
+    },
+    {
+      "path": "COHORT-SOURCE-REVIEW.json",
+      "baseSHA256": "fc2caa56575aaa32dff01743691c60e6e7632914e06c173b8d6ab3b0435e99ed",
+      "draftSHA256": null
+    },
+    {
+      "path": "DECLARATION-LINE-REBIND.json",
+      "baseSHA256": "97dd55f63c4647be1d9ba01faca28b3e7d11eca0d6294f68c4b9761b960ca9ae",
+      "draftSHA256": null
+    },
+    {
+      "path": "DRAFT-STATIC-CHECKS.json",
+      "baseSHA256": "4b89712dd65c7d4056fe9b5c81f70bec822bd187c4359ee94c7764778ecbfcea",
+      "draftSHA256": null
+    },
+    {
+      "path": "EXPECTED-REGISTRATION-LEDGER.json",
+      "baseSHA256": "aa584121fbd08f2c64e7e91174bc50c208110360d2a835bbfc0ac00edb74ea66",
+      "draftSHA256": null
+    },
+    {
+      "path": "FAILED-RUN-REPAIR-SOURCE-REVIEW.json",
+      "baseSHA256": "feb11f7c31b810446e026edb3cd2e89bd105b5275eaf6e520c64c3870bc7cfbc",
+      "draftSHA256": null
+    },
+    {
+      "path": "FF04-COMPLETE-GUARD-CUSTODY.json",
+      "baseSHA256": "24644d65c205cbb797d07d019799ed34bb21746884d10fe715c29127c335d906",
+      "draftSHA256": null
+    },
+    {
+      "path": "FF04-PROJECTION-RAW-OBJECT-PRESERVATION.json",
+      "baseSHA256": "243c5b97880369067dec6665ee7238a20c120e9a62c88954c6a943da9e935eda",
+      "draftSHA256": null
+    },
+    {
+      "path": "HOST-PARSER-CUSTODY.json",
+      "baseSHA256": null,
+      "draftSHA256": "1daf1d0ec912b802bd52395ac08f70e8b198d0ec2ffabc9ba5e74749603f17c8"
+    },
+    {
+      "path": "JOINED-ALPHA-SOURCE-IDENTITY-INPUTS.json",
+      "baseSHA256": "afa393604b42b553ca86da15dc5f463c2169f60e7b04560e1b7a1031a924823e",
+      "draftSHA256": null
+    },
+    {
+      "path": "MIC-PORT-SOURCE-REVIEW.json",
+      "baseSHA256": "56f04ce31285d271b362013afa5f2f78721145e00819ab955aea4bd7b7e383a7",
+      "draftSHA256": null
+    },
+    {
+      "path": "ORACLES.json",
+      "baseSHA256": "80df0ecd24e2ca8b17f10b3a39460c3a32d7b8215101702993531e8ee6ecf6f2",
+      "draftSHA256": "96fdea00a2526a4546dd479dd3a60c16526cf6bf290f044f3515e8dee1310b98"
+    },
+    {
+      "path": "PLAN.json",
+      "baseSHA256": "1a560fca1ff2ef2812b1d2b6dc141669b42b5c86e0180708479e70326661e680",
+      "draftSHA256": "f1bc4be319573b9ea8aad2baeb9c91d637539ca1a056af7e240aaa2c5e54895a"
+    },
+    {
+      "path": "POLICY.json",
+      "baseSHA256": "eb5f8ceb14d835aa49f58a259b792d3fb854ca96ba6c22c962b828601fbb02bf",
+      "draftSHA256": "2a75226295bbf74c85ee07ff05be29236d212dd733ea5902f7736efc2f52482d"
+    },
+    {
+      "path": "PREDECESSOR-R7-ROOT-SOURCE-ADMISSION-DISPOSITION.json",
+      "baseSHA256": "8b7e4da1eecd0bc412126d838c09f0a69d2d5a5037f5bf16dc957765b8dfd812",
+      "draftSHA256": null
+    },
+    {
+      "path": "PREDECESSOR-R8-ROOT-SOURCE-ADMISSION-DISPOSITION.json",
+      "baseSHA256": "432cdd82fe4f60ed359e5fc5dc29925be371c073007c86d20ec2c2107f25d103",
+      "draftSHA256": null
+    },
+    {
+      "path": "PREDECESSOR-R9-DECLARATION-LINE-REBIND.json",
+      "baseSHA256": "4886ac5b833eb950b884c9e23c3ee27242b7ced794c61d425507f2aadc2a1f19",
+      "draftSHA256": null
+    },
+    {
+      "path": "PREDECESSOR-R9-ROOT-SOURCE-ADMISSION-DISPOSITION.json",
+      "baseSHA256": "620166f314c3a38aff8e19fd592ed26ed52335702dd1fcea0773228d3c362016",
+      "draftSHA256": null
+    },
+    {
+      "path": "PREDECESSOR-V5-REPAIR-COMPOSITION.json",
+      "baseSHA256": "5e43ad4076ab4457804de118ce75db037a4ea60c409fe3e70429a9c83f1143b9",
+      "draftSHA256": null
+    },
+    {
+      "path": "PREDECESSOR-V5-ROOT-SOURCE-ADMISSION-DISPOSITION.json",
+      "baseSHA256": "395a8b99700ef45bc154b5a327ffc8e3f8b367d456aea0ed37b8aa5e33320492",
+      "draftSHA256": null
+    },
+    {
+      "path": "PREFLIGHT-DEFINITION.json",
+      "baseSHA256": "e16c4f56b7936de17bc10fffb3b7fd342275c7a3fdca5420ec7987a7b59022f8",
+      "draftSHA256": null
+    },
+    {
+      "path": "REGISTRATION-INPUT-MANIFEST.json",
+      "baseSHA256": "4598b1a411fc8ca2b459bb7da4b1ea712a65b4d4c5958c0859594e9b5ff1d81b",
+      "draftSHA256": null
+    },
+    {
+      "path": "REPAIR-COMPOSITION.json",
+      "baseSHA256": "b239da87198fd35995d73057e647ff013ab43af4f04ce081fd2481b8da562a9c",
+      "draftSHA256": null
+    },
+    {
+      "path": "ROOT-GO-CONTRACT.json",
+      "baseSHA256": "63cd951849ee22950ec823959bb356f31c09cf101486afa8a93894ccc8df9d35",
+      "draftSHA256": "687222a91ee3d58066a544e7bf0e815d4a9067aead9c9b215ecc802ad0a564c5"
+    },
+    {
+      "path": "SOURCE-CASE-CENSUS.json",
+      "baseSHA256": null,
+      "draftSHA256": "9c7682874538f546039f2bdab67803c19115e8620b224b320fff993ca2b182de"
+    },
+    {
+      "path": "SOURCE-REVIEW.json",
+      "baseSHA256": "f226259ce42b9bb9baebdd0ccd9f72bbfc3007efcdfcb2676a95dd034453c709",
+      "draftSHA256": null
+    },
+    {
+      "path": "TEST-ONLY-REMAINING-SOURCE-REVIEW.json",
+      "baseSHA256": "fb17d4bb4c48e3793227ee7f480514ab496e2d5fbb4ee65e5e82f01d504ca6a6",
+      "draftSHA256": null
+    },
+    {
+      "path": "TEST-RESOURCE-POLICY.json",
+      "baseSHA256": "45da415ba1eddddaa66e0005fbb0cce6bdc12d17b2345f9beae272b2e154b93d",
+      "draftSHA256": "a9875757708f3807fe5e478fb52d5a894728fc6e659fce56276aadad43554c29"
+    },
+    {
+      "path": "UNISSUED-V6-ROOT-PLACEHOLDER.json",
+      "baseSHA256": "7f22ae46a40d396bd35a5a1c28cfcbdadfcdce115628a4ef0e3cf94c3078dd5f",
+      "draftSHA256": null
+    },
+    {
+      "path": "claim.py",
+      "baseSHA256": "fd160e2e208f73839cfd806fba07b50283a7f5abce26a9adea8aae8db6df3dd0",
+      "draftSHA256": "215b44e5aeb22045568e8b96c7a4f4fdbf27e821718f57cb6a73f1e0609a2cec"
+    },
+    {
+      "path": "derive-source-cases.mjs",
+      "baseSHA256": null,
+      "draftSHA256": "89405bb9de99183789b44479916b6d2fcaf391a7434ad55de6cc7b12cebfaf12"
+    },
+    {
+      "path": "normal-node-case-observer.mjs",
+      "baseSHA256": "1c280f68543e5f1596208d29de7e373e7e3603f0b999c5b8ca5f242776c1262a",
+      "draftSHA256": "09f3872dc4ba8a734418dd63533fa2c57205aebc617ebec2526d44a1688a008c"
+    },
+    {
+      "path": "normal-vitest-case-observer.mjs",
+      "baseSHA256": "e1a05627e0037cd2bd3f8d0d36be1947b1855dbf1555e51a1e08353a99a5119f",
+      "draftSHA256": null
+    },
+    {
+      "path": "owning-paired-preflight.mjs",
+      "baseSHA256": "7ba742fa6557ea774438510415f5ef9199a6ec7b7716c95a89eccbce075a7278",
+      "draftSHA256": null
+    },
+    {
+      "path": "run.py",
+      "baseSHA256": "0bf15d3fb7f340e49b6dd576303207dafb69ca345db73ebee8caef7b088b10e9",
+      "draftSHA256": "3b05aa9426d12fa6104e11a284780bad934e60ed76adb25eb33bed9a0875e616"
+    },
+    {
+      "path": "workflow.yml",
+      "baseSHA256": "d1c88b2a0160fc0716e9b68609c3ae82a9ed3eb46928be6962c2794811b9c523",
+      "draftSHA256": "3a12096538a2985b055a5a46f653f1a6ddfa492b464733eda6c08e1614fb4fd0"
+    }
+  ],
+  "preserved": "All other inherited bytes remain exact. Historical review/case/result data is provenance only and confers no current scope pass or dispatch authority.",
+  "normalSetup": [
+    "bun install --frozen-lockfile --ignore-scripts --no-progress in SDK",
+    "npm ci --ignore-scripts --no-audit --no-fund in Alpha",
+    "node scripts/prepare-client-features.mjs in Alpha",
+    "Baseline and post raw object/stamp/no-symlink physical projection verification",
+    "Complete dependency inventories captured post-install and verified after tests"
+  ],
+  "limits": "Node whole-file fixture/VM/loopback evidence only. Eight Playwright specs and one Android Java/device remain separate unexecuted gates.",
+  "historicalVoiceReviewMaterialExcludedFromNewPacket": [
+    "BCDEF-FF04-MACHINERY-IDENTITY.json",
+    "BCDEF-FF04-PREFLIGHT-EDGE-DELTA.json",
+    "BCDEF-FF04-REGISTRATION-IDENTITY.json",
+    "COHORT-SOURCE-REVIEW.json",
+    "DECLARATION-LINE-REBIND.json",
+    "DRAFT-STATIC-CHECKS.json",
+    "EXPECTED-REGISTRATION-LEDGER.json",
+    "FAILED-RUN-REPAIR-SOURCE-REVIEW.json",
+    "FF04-COMPLETE-GUARD-CUSTODY.json",
+    "FF04-PROJECTION-RAW-OBJECT-PRESERVATION.json",
+    "JOINED-ALPHA-SOURCE-IDENTITY-INPUTS.json",
+    "MIC-PORT-SOURCE-REVIEW.json",
+    "PREDECESSOR-R7-ROOT-SOURCE-ADMISSION-DISPOSITION.json",
+    "PREDECESSOR-R8-ROOT-SOURCE-ADMISSION-DISPOSITION.json",
+    "PREDECESSOR-R9-DECLARATION-LINE-REBIND.json",
+    "PREDECESSOR-R9-ROOT-SOURCE-ADMISSION-DISPOSITION.json",
+    "PREDECESSOR-V5-REPAIR-COMPOSITION.json",
+    "PREDECESSOR-V5-ROOT-SOURCE-ADMISSION-DISPOSITION.json",
+    "PREFLIGHT-DEFINITION.json",
+    "REGISTRATION-INPUT-MANIFEST.json",
+    "REPAIR-COMPOSITION.json",
+    "SOURCE-REVIEW.json",
+    "TEST-ONLY-REMAINING-SOURCE-REVIEW.json",
+    "UNISSUED-V6-ROOT-PLACEHOLDER.json"
+  ],
+  "hostReviewRequired": "New recipe-specific controller/claim/observer/path/scope adaptation must be independently reviewed; old custodial primitives alone do not admit this recipe."
+}

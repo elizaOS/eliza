@@ -1,0 +1,65 @@
+{
+  "atUTC": "2026-11-04T02:34:15.059075+00:00",
+  "state": "ROOT_ACTUAL_FF04_SOURCE_REF_COMMIT_ALL8_RAW_POSTIMAGES_AND_MERKLE_PRESERVATION_PASS",
+  "SDK": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "tree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+  "soleParent": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "branch": "codex/canonical-ordinals-on-voice-e232-20261103",
+  "freshAuthenticatedGETs": 10,
+  "postimages": [
+    {
+      "path": "plugins/plugin-assistant/src/services/message/context-discovery.ts",
+      "OID": "742031475952d25578f8faf0e2edcd091cc9317d",
+      "sha256": "397e91841aa88075aa98ea84acc28a893b85cec556339c5b43e063c13281bf23",
+      "bytes": 10539
+    },
+    {
+      "path": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+      "OID": "b68ca55991845586a373b4adf0fb8092eba00e56",
+      "sha256": "2da5cd3308b5487f1ed4babf579e049ea5f2ffcf6528ee2cb787a6b945b8895d",
+      "bytes": 35996
+    },
+    {
+      "path": "plugins/plugin-assistant/src/services/message/history-discovery.ts",
+      "OID": "b6ddce3207f56735488ec3f8c6adadb0ea48998f",
+      "sha256": "d0f7d2e0cc2f7a80f0dd2207656657075bffb2632283724879482a54c6d8c3f6",
+      "bytes": 40911
+    },
+    {
+      "path": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+      "OID": "8c27192b7eea8903395ca59c902fa13a0b19524d",
+      "sha256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
+      "bytes": 20093
+    },
+    {
+      "path": "plugins/plugin-assistant/src/services/message/native-context-read.ts",
+      "OID": "2c5f862c66e459827f501ee103f6a3d4888aaee1",
+      "sha256": "5b9f6ff83f40fb6889dcc37360e3d5d8e39239afde052306090d8fa0cf96e1e2",
+      "bytes": 7154
+    },
+    {
+      "path": "plugins/plugin-assistant/src/services/message/stage1-decision.ts",
+      "OID": "dfc522b5e52b08b5ab527c33ec323807b9043b11",
+      "sha256": "b27f9fa556e294425186b7ffa94e84e6a5f2fc2d323b05cb94933cdc27f4b958",
+      "bytes": 75575
+    },
+    {
+      "path": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+      "OID": "3089f44f911855f3edc1958e91b5eecd15416332",
+      "sha256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+      "bytes": 45560
+    },
+    {
+      "path": "plugins/plugin-assistant/src/services/message/source-selection-binding.ts",
+      "OID": "4b2946332c19b319ea1910ffe899f8093b46a843",
+      "sha256": "9e74eaf93878de211db91c177f451fe24238d26a125968cba530b9b82de11a13",
+      "bytes": 7253
+    }
+  ],
+  "preservation": "Actualpublishedroot086d equalsRootindependentlyreconstructedall8ancestorMerkletrees; exactly8changedleaves, allothersiblingOIDs/modes/gitlinks/configs andpackages subtree preserved. No duplicatefull29k tree GET required.",
+  "SDK17R6PreservedByPackagesSubtreeIdentity": true,
+  "actualPublisherEvidence": "Owner exact publisher eb98f8f9/samecapturedNubsCarson192162056 userbefore/refmutation/after proof inspected; Rootdidnotinferpusherfromauthor orindependentauditevent.",
+  "sourceGuardLimit": "ExactSDKpins/knownmarkers with ancestryComplete:false remains; not generalmalware/completeancestry clearance",
+  "composedQualificationTypesRuntimeLiveProviderBrowserDeviceHumanAccepted": false,
+  "noMergeDeploy": true
+}

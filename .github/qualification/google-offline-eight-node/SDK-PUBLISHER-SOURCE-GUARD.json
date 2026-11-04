@@ -1,0 +1,16 @@
+{
+  "result": "PASS",
+  "repo": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-ff04-bcdef-normal-recipe-v6-20261104/sdk-complete-guard-source",
+  "kind": "sdk",
+  "head": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "expectedHead": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "ancestryComplete": true,
+  "knownInjectedAncestors": [],
+  "trackedChangedFiles": [],
+  "failures": [],
+  "limitations": [
+    "Known-incident guard, not a general malware audit or sandbox"
+  ],
+  "sourceCodeExecuted": false,
+  "networkAccess": false
+}

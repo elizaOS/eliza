@@ -1,0 +1,35 @@
+{
+  "state": "EXACT_OBSERVED_COHORT_ROOT_SOURCE_DISPOSITION_NOT_CAPABILITY_WAIVER",
+  "ImageVersion": "20261025.353.1",
+  "setupImageLabel": "ubuntu-24.04",
+  "provider": "GitHub Actions authenticated public run/job metadata+setup log",
+  "run": 41741039106,
+  "attempt": 1,
+  "job": 126282316131,
+  "workflowCommit": "df2ec569da25b95cce1978a145c932e17f55bd69",
+  "event": "workflow_dispatch",
+  "actualConclusion": "failure-before-normal-program",
+  "setupLogSHA256": "984474fe24a855bff34e6d47f1b3a233ff47d79718b014910b71c6110a09d63d",
+  "runMetadataSHA256": "d88ddc7957df9501cbbbfcf3b12e39aab30c06ecd413bc453f0cac52e03f206a",
+  "exactSetupLines": [
+    "2026-11-03T23:40:48.7962523Z Image: ubuntu-24.04",
+    "2026-11-03T23:40:48.7963629Z Version: 20261025.353.1",
+    "2026-11-03T23:40:48.7966352Z Included Software: https://github.com/actions/runner-images/blob/ubuntu24/20261025.353/images/ubuntu/Ubuntu2404-Readme.md",
+    "2026-11-03T23:40:48.7969450Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu24%2F20261025.353"
+  ],
+  "independentPrimaryGap": "Officialtagubuntu24/20261025.353 returns404; readme-history/exactcommitsearch did notlocate25. No sourceURL/commit/READMEhash is invented or borrowed from26/01.",
+  "authorizingSource": {
+    "thread": "01a0fa1b-2045-7fa2-a22d-8f8a973111a5",
+    "decision": "Root explicitly admitted finite exactobserved25 using savedauthenticatedsetup log/run/workflow binding while all unchanged freshcapabilities remain required; sourceadmission only, no automatedrerun/newGo or productsource substitution."
+  },
+  "retainedFreshGuards": [
+    "Docker28.0.4+localunixendpoint",
+    "Linuxx86_64/PythonWNOWAIT/ownPGID+CID",
+    "16GiBentry/8GiBstop/12GiBgrowth/1200s/22min",
+    "CPU2/PID256/ordinary2GiB/install4GiB/1536heap/noextraswap",
+    "Exactsources/markers/productfullancestry/trustedtoolimage+versions+Git+libraries",
+    "Freshdualinstalleddependencycensus",
+    "Canonicalproducer/raw339+25/projection/normalmodules/wholefiles/source/result/closure"
+  ],
+  "normalTestsTypesLiveAcceptance": false
+}

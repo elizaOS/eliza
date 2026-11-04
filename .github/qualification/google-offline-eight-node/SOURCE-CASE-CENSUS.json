@@ -1,0 +1,3747 @@
+{
+  "schemaVersion": 1,
+  "state": "SOURCE_DERIVED_NOT_EXECUTED",
+  "sources": {
+    "Alpha": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+    "SDK": "ff04a558747ed426d9d871a319f7b3946f7660e6"
+  },
+  "method": "Hash-pinned trusted host TypeScript AST; restricted data-only literal/title/loop expansion. No candidate evaluation/import. All registrar uses closed; callbacks opaque; no nested cases.",
+  "groups": {
+    "google-offline-1": {
+      "repository": "Alpha",
+      "file": "test/agent-always-local.test.mjs",
+      "expectedModule": "/workspace/alpha/test/agent-always-local.test.mjs",
+      "SHA256": "1dfdba1aa4397dbb5c0f11dc22c33de08197ee5d4fda2d879aa885f33a8e840e",
+      "syntacticDeclarations": 11,
+      "expectedSourceCaseCount": 11,
+      "expectedNestedCases": [],
+      "cases": [
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 19,
+          "sourceColumn": 1,
+          "leafTitle": "production bundles forbid the retired no-agent copy",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "dbda934e2a390f9a0aafd017a6772e8fbc5654e93c0981cb1b140f64a6917a12"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 26,
+          "sourceColumn": 1,
+          "leafTitle": "production bundles forbid remote-agent fallback copy, which stays test-mocks only (#381)",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "bb496bb470b11c847c84739b8f496f23658bbb1ea0186d454cb1f777926482df"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 46,
+          "sourceColumn": 1,
+          "leafTitle": "plan state never stops or withholds the on-device agent",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "6063521acc9ac87cb31486666895d4d5cc26b8a3561f969e65595cbbe1e67173"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 107,
+          "sourceColumn": 1,
+          "leafTitle": "the connection controller has no local-apps-only mode and migrates old selections to the resident",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "8760403f30537b1f77c8b32643e189014e4ae45e33008c278fbc17274f651247"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 117,
+          "sourceColumn": 1,
+          "leafTitle": "no startup path ends claiming \"starting\" with nothing starting",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "cd19d2b25b69528f6e12ff721c22e6c40bb0aa638001ce14970689d895de65f8"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 125,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud inference is bound only for an admitted plan and unbound otherwise",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4fc4b3ec16c6cef7a08cd64c0828f7c799439b66db4d8ae9bbedbe6d5724d42f"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 142,
+          "sourceColumn": 1,
+          "leafTitle": "a chat turn without Cloud inference gets an honest answer with the plan actions",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "fa7e1d8019821f42b1b550f1e09ca0b547f4c806e0883035eca0c9686ca2522c"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 181,
+          "sourceColumn": 1,
+          "leafTitle": "the plan surface is a notice beside the running agent, not a gate",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "e8c62c9545c3552bd70e5bed39a0af2a4db3f61017e2fa186d2a76fb4eca0237"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 207,
+          "sourceColumn": 1,
+          "leafTitle": "native starts the agent without a provider and never offers it a Cloud key without an admitted plan",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "433423a800461a580af1862dcbc4ddf7af749bf0e9234e90e3c7a003d8d8d532"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 229,
+          "sourceColumn": 1,
+          "leafTitle": "browser speech has no Web Speech fallback",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b18587c5b35145674be6ffa8c72d11aaf9f21073af21e7b01ed0b6f860faeac5"
+        },
+        {
+          "file": "test/agent-always-local.test.mjs",
+          "sourceLine": 234,
+          "sourceColumn": 1,
+          "leafTitle": "the on-device agent runs in the phone time zone",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "075d47007dfdb99a6ad2a1cbc31e6c7fc09dfeb3c223650e5377b8d0ebc8d362"
+        }
+      ],
+      "declarations": [
+        {
+          "sourceLine": 19,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 26,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 46,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 107,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 117,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 125,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 142,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 181,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 207,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 229,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 234,
+          "sourceColumn": 1,
+          "loopCount": 0
+        }
+      ]
+    },
+    "google-offline-2": {
+      "repository": "Alpha",
+      "file": "test/assistant-draft-dispatch.test.mjs",
+      "expectedModule": "/workspace/alpha/test/assistant-draft-dispatch.test.mjs",
+      "SHA256": "f3034a655cffd1905728de12c7fe02f393bfa26e91fa4d5040ec9b25550a0ca4",
+      "syntacticDeclarations": 19,
+      "expectedSourceCaseCount": 19,
+      "expectedNestedCases": [],
+      "cases": [
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 6,
+          "sourceColumn": 1,
+          "leafTitle": "Alpha binds its draft controller name to the shared implementation",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "420da7bbbdb8b057c4b10d37a3230e80c1e4ef9387de67c29dd45b49d162797b"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 12,
+          "sourceColumn": 1,
+          "leafTitle": "opening quietly retries a transient read without losing restored draft text",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "bc15d4c96382931e9bae4ab6c0b1cbb31f23b1d73b82e3cfeb1bc8b3f2f1e6c2"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 18,
+          "sourceColumn": 1,
+          "leafTitle": "a retired draft cannot restore its text after a storage-open retry",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "f4060f1dce448d38b5fab5e1d46c11063b64003b4db5b8aeb21f0ffa7db75fb5"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 23,
+          "sourceColumn": 1,
+          "leafTitle": "repeated connection notifications wait for the same pending draft read",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "11bb6c2be7b27dabdb7724eb12f34105b2cce433079e5d2f354a928b8645be39"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 29,
+          "sourceColumn": 1,
+          "leafTitle": "persistent read failure remains actionable and cannot send or overwrite a draft",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d48979c9d26fdb1d389f4791aebb24417cabb3daefedc4cb2955c9aacce1e91d"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 34,
+          "sourceColumn": 1,
+          "leafTitle": "the saved draft keeps the text while a send is in flight and clears only after dispatch",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "c4aa335be4df53767fd565425c196573244e229e68ff3390eaa491520fca38ae"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 40,
+          "sourceColumn": 1,
+          "leafTitle": "a pre-dispatch failure returns the text to the composer and keeps it saved",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "885ee7898750ff87f8e9131a7bb5d5f4b8c3592e9323001da11545fd39fb7a92"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 48,
+          "sourceColumn": 1,
+          "leafTitle": "Alpha's composer puts a refused send back with no line under it, and the next Send dispatches it once",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4acd1514262ac133e0b5ed434c877dd7f2fbcb75e49d162b7488c969d14c0cf0"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 57,
+          "sourceColumn": 1,
+          "leafTitle": "Alpha's composer keeps every other draft status",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "9ad868d2aa7612b7e7ec8e2d3aa60c4f38f3c8d753e3cdd34f8f5b41ea260fec"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 64,
+          "sourceColumn": 1,
+          "leafTitle": "typing during the send is kept after the restored text and after a commit",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d76109f3d57ea27d462b79effaa9013efca877875d904b4e2767225bfe165d29"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 70,
+          "sourceColumn": 1,
+          "leafTitle": "holding refuses a changed draft and a second concurrent send",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a4974316f0c33a935ed934f0ac868f60b6d729e2fe4c78b4c6df7ad5dd3913ab"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 76,
+          "sourceColumn": 1,
+          "leafTitle": "a reopened binding for the same conversation never offers the in-flight text again",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "0a3a634bb0691258c076f2fa2420a027c57bf78de9185f32a57a07b6799e06d8"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 85,
+          "sourceColumn": 1,
+          "leafTitle": "a connection change before dispatch keeps the text saved with its own conversation, never in the next binding",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "32e7e3abeb5b0b93e8ee95fcf10469187da19be508acb1aa9bd75bab28d0d589"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 92,
+          "sourceColumn": 1,
+          "leafTitle": "typing as the reply arrives is queued after the commit, never racing it into a conflict",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a15e83183f3dc3ff79eb2532604a6bbe6878dc189af6a43e86b5a24e625da576"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 105,
+          "sourceColumn": 1,
+          "leafTitle": "queued draft restore cannot clear newer unsent typing at UI commit",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "dd0bff283a93eb06acb1648cdf1e88e95cc2330ca25214b8bdbbe278276fdac5"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 109,
+          "sourceColumn": 1,
+          "leafTitle": "queued draft restore cannot overwrite a retired conversation binding",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ffca2bb16f8aebd46a1a5e96d35ac897082a2d9336a121a067f95704880d3e63"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 113,
+          "sourceColumn": 1,
+          "leafTitle": "queued draft restore preserves both saved text and newer typing for review",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "29eb19e4db8c54a7035e42150455449d98b13fb72045e9ced8c4012fca54fd95"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 118,
+          "sourceColumn": 1,
+          "leafTitle": "hold binds exact authored whitespace and preserves it through a failed dispatch",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d289c2a8028477187ccbbbec4cfe23529721983911538260187a0b6e587756b0"
+        },
+        {
+          "file": "test/assistant-draft-dispatch.test.mjs",
+          "sourceLine": 128,
+          "sourceColumn": 1,
+          "leafTitle": "a restart during a send offers the message for review and never restores it as a draft",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "9a3af22efcd03d5d5702c0378af7f7a3db5335ff0c7c87bdbc6bbb97c954b6e6"
+        }
+      ],
+      "declarations": [
+        {
+          "sourceLine": 6,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 12,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 18,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 23,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 29,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 34,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 40,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 48,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 57,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 64,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 70,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 76,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 85,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 92,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 105,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 109,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 113,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 118,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 128,
+          "sourceColumn": 1,
+          "loopCount": 0
+        }
+      ]
+    },
+    "google-offline-3": {
+      "repository": "Alpha",
+      "file": "test/browser-cloud-dev-bridge.test.mjs",
+      "expectedModule": "/workspace/alpha/test/browser-cloud-dev-bridge.test.mjs",
+      "SHA256": "6028ca2e1f3bbcf0f2fb41a5ee0a86e9baec65adb2bea50f288cc8285513544a",
+      "syntacticDeclarations": 80,
+      "expectedSourceCaseCount": 85,
+      "expectedNestedCases": [],
+      "cases": [
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 18,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud browser login admits only one session and the optional fixed Alpha hint",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "04f1880d686d66b9dcadacf8966d14a6acb1103a53216f96d7bfc973f9382949"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 64,
+          "sourceColumn": 1,
+          "leafTitle": "existing Mac credential becomes a real canonical identity/credit reference, never a browser bearer",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "08a44f56690a6f6d1dffa0ebcb7f3bd1edf70acb7c0b53a2b566588957da57f5"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 74,
+          "sourceColumn": 1,
+          "leafTitle": "negative origins, methods, authorities, routes, private bearer headers and wrong reference never dispatch",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "80d009f98d9946377c38cf732e2f0fc9f7763ec17245cbaaa171b112d56b8447"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 83,
+          "sourceColumn": 1,
+          "leafTitle": "normal canonical CLI poll claims stay server-private and commit by reference with atomic account generation",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "f258e73e64ec60561ffec366bb6fa7bb63a52b4e1f87ba939972ed401122ae50"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 96,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud STT uses multipart canonical audio route, TTS uses canonical JSON; no local speech route exists",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "55dcb954bb7bb88efcde84b7ffdcba46a2eed4c3dad30d82ce6550427958b141"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 104,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud STT refuses missing, wrong or ambiguous provider evidence without returning a transcript",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "7d1b1dd2a8a935ba0ed68f31318480f9f87a3f1faca93a8172e0a748f8f55154"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 111,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud STT preserves cancellation, logout and unauthorized-response fences",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4c1d6192d325ea9bdaefc6a3c43b884bcd78565121cd5bc88f4e3bfcb6b1f65f"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 122,
+          "sourceColumn": 1,
+          "leafTitle": "wrong account, logout and server restart invalidate old references without deleting another account",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "0266b8befc808be03dcb11d9e32f47b386465d9cfbbbe5ee56a715b1caa04dae"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 130,
+          "sourceColumn": 1,
+          "leafTitle": "cancel closes an in-flight Cloud audio stream; stale account audio cannot be returned",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "38f5cacfead819c6fbc2f17ecc2d1a0d30004a6c6f26ef33320f8cbac63f2f16"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 137,
+          "sourceColumn": 1,
+          "leafTitle": "native production Cloud stores never admit a development reference as a bearer",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "baa76b34109dafb8cd63fc3c3848cc29746421b8fd804ca6be2caa58055102c7"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 146,
+          "sourceColumn": 1,
+          "leafTitle": "login claim cannot cross Cloud environments or resurrect after logout",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "0e65ebfbc217454a2cdbe4a0a171fb5daa2df08352484638f0f0d239b6c2a119"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 157,
+          "sourceColumn": 46,
+          "leafTitle": "in-flight login poll cannot publish a claim after logout",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 157,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "2c7d11f9f9d29ce4b413028358c3973217d932a613e3e18766360e6aba97f491"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 157,
+          "sourceColumn": 46,
+          "leafTitle": "in-flight login poll cannot publish a claim after replacement",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 157,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "3b54028cad3ce40477a71093302b6809b0c60cb16c7aafa53efcaa840cfd78ff"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 168,
+          "sourceColumn": 1,
+          "leafTitle": "expired pending login references cannot be committed to the private store",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b145212c5b91d470a1f39d6d08c735123a06277dace2c6c2c613007b13168cfc"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 176,
+          "sourceColumn": 1,
+          "leafTitle": "empty-store logout invalidates an already issued login claim",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "3fce8166372dbcc75f09f2668e47bf8080570bd73c165b780a2e01721ff27c55"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 185,
+          "sourceColumn": 1,
+          "leafTitle": "empty-store logout retires an in-flight login poll without NULL-state resurrection",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "8b290848170ddad5085fa320345330b4e86f597c1f06104508df1b1f6df4baca"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 194,
+          "sourceColumn": 1,
+          "leafTitle": "managed Google bridge admits combined consent and encoded owner reads without exposing credentials",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4b6f42a7d8c099a80f1f91653f20a2e13921d33b44d6d133aee80693ecd22414"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 214,
+          "sourceColumn": 1,
+          "leafTitle": "managed Google bridge preserves prepared Gmail review, digest dispatch, and receipt routes",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "559f047760ec42c0d1ba15f84845d13d4cc77e5630238d05df11d2a7c502a5f0"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 237,
+          "sourceColumn": 1,
+          "leafTitle": "managed Google bridge refuses scope escalation, unreviewed mutations, malformed query and stale or secret responses",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "314b41b27ceef4507380323e681f053fc2850197388f8b870ba6188d7435df54"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 265,
+          "sourceColumn": 1,
+          "leafTitle": "a Cloud refusal whose wait is only in Retry-After reaches the redeem retry time (#410)",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "6197f48ad7d8bd3aba5bf44cce09ad7689e9c523ee7fd5b9bb4c300cabd1cd26"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 275,
+          "sourceColumn": 1,
+          "leafTitle": "development host email sign-in mints a mobile key server-side and commits it by reference",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "48a8ef1f6728de09a7176ead37580f222c8e214f2cc3894e8cf08ba2a2785c07"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 315,
+          "sourceColumn": 1,
+          "leafTitle": "cancelling an in-flight email verification keeps the existing account and never mints a key",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "790b5022934180e00da8bacb49d28aa347e655ec41e7df6a731662b6803d85fa"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 342,
+          "sourceColumn": 1,
+          "leafTitle": "private agent Google port shares the current credential without allowing writes or unrelated services",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "dc9754acd842f8ac30d7c1da29eed4dafcc1627df0ac89f8818b5f7433915bb8"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 353,
+          "sourceColumn": 1,
+          "leafTitle": "a Cloud account change while the agent Gmail read is in flight drops the old result",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "53539e86e4f8415f372e49f38d95e572853f3765221d8f2d67e9c4f65a16b9ef"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 363,
+          "sourceColumn": 1,
+          "leafTitle": "Maps capability discovery is a bare authenticated read, not a location or routing request",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "5aa70f87eb7878996c127c5bf9f847f1481129425aedda31a984c87d540c2c90"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 374,
+          "sourceColumn": 1,
+          "leafTitle": "Calendar sync bridge forwards only exact owner-bound versioned operations",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "8fdd754f3b3d236299ca09faee8c6803ed512dc7ece2a82ef1681032e0b49489"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 399,
+          "sourceColumn": 1,
+          "leafTitle": "agent Calendar transport admits only canonical scoped sync operations",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "0d04ba325d7ce5a92a8a8b45d5b1c84b7cfe705c1cb60f1d4bb76b314f2cf43b"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 410,
+          "sourceColumn": 1,
+          "leafTitle": "Maps POST data routes forward one bounded request identity and reject foreign headers, routes and bodies",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "0608dfd1142535eb4ae6ff933e1c72706eeb482c85e3c3f3fbbf9619bb1fd57e"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 434,
+          "sourceColumn": 1,
+          "leafTitle": "Maps data returning after a Cloud owner switch is discarded",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "72486af2c879a9f7e828535caf0b75638a02154b6408aef980cf668787f10914"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 445,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud resident binding is host-owned, exact-account scoped, and retired before sign-out persists",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "03b38671437f28da98bcd7ae22bc3002692f1b15e85909400f31a63e3fea35f4"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 456,
+          "sourceColumn": 1,
+          "leafTitle": "failed Cloud resident retirement preserves the saved credential and fails sign-out",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "09aec082c06b2074b018462e2f26638ada8986828d677e572e173fe3843a9cff"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 464,
+          "sourceColumn": 1,
+          "leafTitle": "explicit Cloud resident rejects a different issuer before dispatch",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "7e3fc4d76a346e4f83f047182c809bf3269fe9274ec802b26434ceaa4cf7c760"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 472,
+          "sourceColumn": 1,
+          "leafTitle": "real CloudProtocol verifies a signed plan through public host keys without a credential reference",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d235199f244088449c4a0518c6147649e8db6e4478de9c85ae7a41b7d6f04789"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 488,
+          "sourceColumn": 51,
+          "leafTitle": "real Cloud client self-revokes its production host credential before local removal",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 488,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "8dbafd62f5acbfd95f1a844ec734f5cad07ff07d41726e8bf26864082794c57c"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 488,
+          "sourceColumn": 51,
+          "leafTitle": "real Cloud client self-revokes its staging host credential before local removal",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 488,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "28f20b9b5896199e47f03bb35042c5f33be94227d45ba5a36372fcca20debe03"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 501,
+          "sourceColumn": 1,
+          "leafTitle": "self-revocation stays exact, account-fenced, and never reports failed Cloud response as success",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "7af9895df0fef2b7c9768c0419b9c0db282403835e8f94106471b65d5d42ff48"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 529,
+          "sourceColumn": 1,
+          "leafTitle": "browser self-revocation uses only the current private key, redacts response extras, and clears its own slot",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "8fc345d2a24710090539845ce36e21b84f53c52b30a051a66b6778d6bce70333"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 538,
+          "sourceColumn": 1,
+          "leafTitle": "browser does not admit broad DELETE, query variants, bodies, or stale credential references",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "cfbfd8f2e69de03629c64817b4e1a7a3104c9ef9504a9be85da5b1d83097ba5b"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 546,
+          "sourceColumn": 35,
+          "leafTitle": "browser self-revocation reports 405 honestly, clears locally once and never retries",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 546,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "d82dfcdd9a421ffc93ca1118049a979a3e1d5cd36d83cdd7d092ffd15116ba0f"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 546,
+          "sourceColumn": 35,
+          "leafTitle": "browser self-revocation reports 403 honestly, clears locally once and never retries",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 546,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "44a196018133b3b4bd5e52e85e1667ad525b18caaa685a2e12fe47a8ff6f8afb"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 546,
+          "sourceColumn": 35,
+          "leafTitle": "browser self-revocation reports 500 honestly, clears locally once and never retries",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 546,
+              "rowIndex": 2
+            }
+          ],
+          "sourceCaseID": "1a76f901773b737f4098abd9f281d699b3cca84bd706d60b76ec50e507b4dc21"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 554,
+          "sourceColumn": 1,
+          "leafTitle": "already aborted browser sign-out sends nothing and preserves the unstarted credential",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "281f2a167579b0dbd955dfd173f37aa691e9ddbf553b3461c08a67f7948c5475"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 559,
+          "sourceColumn": 1,
+          "leafTitle": "an account switch during old-key revocation cannot return old success or clear the new reference even with a reused local ID",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "413676d638b2c92fdb3ae02afd74428f39c0e215a81c4a545ff1a83e1f1782b1"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 572,
+          "sourceColumn": 1,
+          "leafTitle": "cancelling an in-flight self-revocation reports abort, clears only the old local slot, and never retries",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "24d237015b7deaa39ed55e09866c17d72ba107083c6def02315006c9bf886989"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 579,
+          "sourceColumn": 1,
+          "leafTitle": "captured self-revocation reference cannot follow a same-ID replacement between protocol reads",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "722b1ee8f2a95bd1cbc28e29aaf644ac149adbaed563fd42d486fee275fab0d4"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 584,
+          "sourceColumn": 1,
+          "leafTitle": "a self-revocation response containing a credential is refused without exposing it",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "9e1c30a65d2462dfa2c15aa60afb48409fffaf669542767cf2e110f0429db4c8"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 590,
+          "sourceColumn": 1,
+          "leafTitle": "stale logout identity cannot revoke or disconnect a newer reference before dispatch",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a97b82ce39b9adc6c73d5359a7d9bf828a0ff822c964c0783a3a35607c1fc74b"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 597,
+          "sourceColumn": 1,
+          "leafTitle": "legacy profile credentials cannot authenticate the configured deployment",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "2f37b1f4ec61703b606ce1f4f1e24f35c0b2f0853f24aa7ae2250cf1c82553eb"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 609,
+          "sourceColumn": 1,
+          "leafTitle": "public signing keys do not read or forward account credentials",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "6f83b1271679386ba9f56f67d6793a1ac3333fde4beaea170c4e3126b4c31aaf"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 620,
+          "sourceColumn": 1,
+          "leafTitle": "browser sign-in exposes the native-compatible public service-info method",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d601bffabb9a0c24cce14464772cff02892b8937d46cc522c7ff864e6cc2e34a"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 627,
+          "sourceColumn": 1,
+          "leafTitle": "service-info bridge reads only the selected canonical public endpoint without account or login changes",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "8f4f9fd4c39f49481acd4b752dfdf2b8d7efae0c6eaf79bc455d224abdadd309"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 641,
+          "sourceColumn": 1,
+          "leafTitle": "service-info bridge rejects unavailable, oversized and noncanonical documents without leaking content",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "48605421e449f28c8de2ca5ff1fce4d84561f9be5b0bd551ba0c364efea1c8b0"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 648,
+          "sourceColumn": 1,
+          "leafTitle": "service-info honors the configured staging authority without requiring its account credentials",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "501f5cc2441814dd638487b6127e4ce985f2b7a842db5c920b2aa5a2acd63c7a"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 655,
+          "sourceColumn": 1,
+          "leafTitle": "service-info cancels its provider request when the browser request closes",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "8f0e376e8dc33e6c49d89c84a2fe0f861c42862e490c8d29918edf17fb676fbb"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 665,
+          "sourceColumn": 1,
+          "leafTitle": "browser Google broker lifetime pins the real host credential and refuses retired same-credential reads",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "eaca422cd28ced169c66a1b67eec67cfdf9f7fc9f1dbc4aab7c553ffab425b71"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 683,
+          "sourceColumn": 1,
+          "leafTitle": "full browser resident Calendar writes require exact owner intent and preserve read-only Gmail",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "6d123477de901cf60d970d7c6e5d77206d6f39c1175a463c028f594f0634c04c"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 741,
+          "sourceColumn": 1,
+          "leafTitle": "browser Google host checks capability and saves only after canonical one-consumption identity verification",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b5467959559591d9d05212171ca08676275333a331c3aad7f376070af5c1fe58"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 750,
+          "sourceColumn": 1,
+          "leafTitle": "unavailable browser Google leaves the old account and email path usable",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "f1bf4327dde9e2959dbb85b144ac22f76b01d507f5a2e16c760eb28e425c6fdf"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 753,
+          "sourceColumn": 1,
+          "leafTitle": "browser Google rejects expired server session before opening an authorization flow",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "156ff07541fc75e7d7d13d31c391c806a5749c5e68a5f9e4c5db115d8fd590b7"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 756,
+          "sourceColumn": 1,
+          "leafTitle": "browser Google completion cannot replace an account changed since launch",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ebf67c3616819dad6ad8d016a7ee2a956c63aaccb702bd5c647fc0a9ee5b04ff"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 759,
+          "sourceColumn": 1,
+          "leafTitle": "cancelled browser Google poll ignores an already in-flight authenticated response",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "1679c03e6df015b7ff8f27a2c86c0ef4c5fba94c99af4a181ed61a9793c28365"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 762,
+          "sourceColumn": 1,
+          "leafTitle": "wrong attempt cancellation cannot retire the current browser Google login",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "0ce0d31c2aeee40f7ec95193da06f9e098842ad42cce86760ee13a8d9d3dd216"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 765,
+          "sourceColumn": 1,
+          "leafTitle": "Google popup blocking refuses before starting any host request",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "216f23107301c2f710e6dc99a41fbbd675b1288441ab9538f185fcff60a0a270"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 770,
+          "sourceColumn": 1,
+          "leafTitle": "Google popup is reserved before the first host request and exposes no credential",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "61501e56b2432bea21c3fc7e0c55d59b7e7457e2fa15d479031e2064c81b297a"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 778,
+          "sourceColumn": 1,
+          "leafTitle": "detached or auto-closed Google popup still accepts the host completion",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a3f78977b6e30db7b32c220a3e8ccaf00a0dab7587cefc9b49bfa2079b0ff22d"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 786,
+          "sourceColumn": 1,
+          "leafTitle": "detached WindowProxy with inaccessible closed property is not a cancellation",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "6fde18684a80c6f0ea32f440fcaa340943dc5fec17d27239c11140f7795cd341"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 795,
+          "sourceColumn": 1,
+          "leafTitle": "cancelling Google while durable save awaits resident retirement retains the previous account",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "1df64adee43348adc80c203bf180e30114866bbd5589d00dbe8244abc87ccb04"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 828,
+          "sourceColumn": 1,
+          "leafTitle": "cancel during staged credential write prevents rename and cleans the temporary file",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ee8a059bd3a4b3841b272274ce737db0d422c65712ec72617d6bdcbc45066ab5"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 833,
+          "sourceColumn": 1,
+          "leafTitle": "cancel after rename dispatch waits for and returns the committed outcome",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "594ef5af6150c46450bb17d27a0a37cabf2290e7ce06751902ccd69e07faeb88"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 894,
+          "sourceColumn": 1,
+          "leafTitle": "whole Google protocol and controller cancel after rename waits and adopts the committed account",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b11b3593e9f1998087619a1a79550b9e674159ed612fe43c33eabba15c518f92"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 903,
+          "sourceColumn": 1,
+          "leafTitle": "whole Google protocol and controller cancel before rename retains the previous account",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "713ab6c591338a23ae36eea0f40142c924213fc03c965ff633dfaad68b93343a"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 911,
+          "sourceColumn": 40,
+          "leafTitle": "normal committed Google success survives generic abort during deferred Read",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 911,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "80221feac4b45a8e4e99a71576c18a27576eb50c9975d6a6dc38f0edd69c3fb4"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 911,
+          "sourceColumn": 40,
+          "leafTitle": "normal committed Google success survives generic abort during deferred Adoption",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 911,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "65c9fd6e5b3ec85b4f8ce1338533923a468e525d58bb84336cad93b388577c62"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 918,
+          "sourceColumn": 1,
+          "leafTitle": "postcommit readback still rejects a changed credential instead of adopting another account",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "91c12296f1cc59d0c72dc5d6e938181e803412a20ce0d96d77fe120146274bfd"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 923,
+          "sourceColumn": 1,
+          "leafTitle": "native Google port without commit-aware cancellation retains ordinary abort behavior",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "53cf6575eb4c2445d6fb005781c832706ebd5dae492dd6b6f60c410f3c8edd09"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 930,
+          "sourceColumn": 1,
+          "leafTitle": "a refused second Google tap during deferred adoption cannot abort the committed result",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "0f7d2969605ff85001e9ea340f3e059d3be787f5849d5f68727e3ff14e101da5"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 937,
+          "sourceColumn": 1,
+          "leafTitle": "a replaced Cloud client during deferred adoption rejects the old committed result",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4ce5a60f9c603b4403ae68f182eaf07162c46201cf75a55a61a9830fc18a8cd0"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 944,
+          "sourceColumn": 1,
+          "leafTitle": "committed Google on the resident flow keeps its client through admission and restarts the agent",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "10c645053770b7eb5987b3f5bd5565f7ddf3a58f26932ec435271342f8519bec"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 951,
+          "sourceColumn": 1,
+          "leafTitle": "a Cancel during resident admission of a committed Google key stays quiet and the adoption finishes",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4f578481a8b6b887016d24d434b3d627af6892cd3d85e20aa8769a04c68e5ca3"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 960,
+          "sourceColumn": 1,
+          "leafTitle": "a key replaced during resident admission still stops before the agent restarts",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a79a8a78ea5493b6bdf31f12920e356eca44911446a5816da5b33400a4242294"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 967,
+          "sourceColumn": 1,
+          "leafTitle": "an admission in another environment still replaces the client and fences the adoption",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "7eac7010c833ca7e1eaa6a71c6d7ce64379d9b061e2ca5780c3ad585d4c84da4"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 973,
+          "sourceColumn": 1,
+          "leafTitle": "an unconfirmed Google cancel keeps the attempt and reports only its state",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b4ac3e951bc37dc0d43d49c6d07166b120bc82c82c0e90090463f3701b0acb70"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 983,
+          "sourceColumn": 1,
+          "leafTitle": "a cancel reply lost after the commit reports nothing over the adopted sign-in",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "2b4a868b92ca683a522aec0c5190cc59930e074c7b837dd3d27f67fac49a1ff1"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 994,
+          "sourceColumn": 1,
+          "leafTitle": "Google poll without an active attempt or id is an expired attempt, not a null dereference",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "582ff3f5b3ca4544fc761ee3da35f351f1fbd3d228dc45d201a7bab7c832625c"
+        },
+        {
+          "file": "test/browser-cloud-dev-bridge.test.mjs",
+          "sourceLine": 1018,
+          "sourceColumn": 1,
+          "leafTitle": "a committed public Google attempt retains its delayed cancel outcome while the next public attempt is pending",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "15d8d491d3eed7acad9c32bbea7dca1d0859749680e80021d90d42473d17fc70"
+        }
+      ],
+      "declarations": [
+        {
+          "sourceLine": 18,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 64,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 74,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 83,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 96,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 104,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 111,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 122,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 130,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 137,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 146,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 157,
+          "sourceColumn": 46,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 168,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 176,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 185,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 194,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 214,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 237,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 265,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 275,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 315,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 342,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 353,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 363,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 374,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 399,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 410,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 434,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 445,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 456,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 464,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 472,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 488,
+          "sourceColumn": 51,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 501,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 529,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 538,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 546,
+          "sourceColumn": 35,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 554,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 559,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 572,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 579,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 584,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 590,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 597,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 609,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 620,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 627,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 641,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 648,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 655,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 665,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 683,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 741,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 750,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 753,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 756,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 759,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 762,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 765,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 770,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 778,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 786,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 795,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 828,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 833,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 894,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 903,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 911,
+          "sourceColumn": 40,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 918,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 923,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 930,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 937,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 944,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 951,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 960,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 967,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 973,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 983,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 994,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 1018,
+          "sourceColumn": 1,
+          "loopCount": 0
+        }
+      ]
+    },
+    "google-offline-4": {
+      "repository": "Alpha",
+      "file": "test/connection-presentation-state.test.mjs",
+      "expectedModule": "/workspace/alpha/test/connection-presentation-state.test.mjs",
+      "SHA256": "6d5b750d58098e30a26e3dbdcc76143ecd870dc64a35112d5a2fc12406da0fc3",
+      "syntacticDeclarations": 64,
+      "expectedSourceCaseCount": 89,
+      "expectedNestedCases": [],
+      "cases": [
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 25,
+          "sourceColumn": 1,
+          "leafTitle": "hidden production agent state cannot block navigation; owner/session/epoch guards remain",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "bcdf31aaf95d019d1b58e5576a6ff01a4d3dffec05a3033aaaf07864d922f274"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 31,
+          "sourceColumn": 1,
+          "leafTitle": "signed-out and expired production accounts remain modal even after close",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "5afd301f68674d23ca2fef070f54406e4c373198a9d89ae62fc5ec348ff15b0c"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 34,
+          "sourceColumn": 1,
+          "leafTitle": "explicit account, plan and sign-in panels still block navigation",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "c58b01114c1a771d058e056b20da91a79fbda4e0391a03fff8ba2937f1d667ce"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 38,
+          "sourceColumn": 1,
+          "leafTitle": "automatic restore preserves explicit panel intent while rendering is suppressed",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "7a79b2fcdd5b91c29640619c0ba8098777c030e49260333e3069b20df3ec35d9"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 41,
+          "sourceColumn": 1,
+          "leafTitle": "production review history refresh preserves browser instructions and modal ownership",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d898237af4e1991055a47368aab5d2047c111ebc56aed480097fef50ff41919e"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 44,
+          "sourceColumn": 1,
+          "leafTitle": "stale action history replies cannot mutate the current connection",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "00cc4a49784f3031fe39e7172b5cb69d68265f4cf65efe94a52ec1ba988ad537"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 47,
+          "sourceColumn": 1,
+          "leafTitle": "background history preserves open panels and connection messages on every platform",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "294a1f9ed9984097dd929955dee171f69da4a850b8718643ac5381f1af1bcf4d"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 53,
+          "sourceColumn": 1,
+          "leafTitle": "mixed historical outcomes are retained without settlement, synchronization or execution",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "975bea5c1de3c5c17f98d8640389fd88cd6a41081715270cc1ddf923b2f88208"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 59,
+          "sourceColumn": 1,
+          "leafTitle": "a replaced active owner cannot publish a delayed history reply",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "27f1888eeabdcb5a85ccd5c64ef43c9d69b4c4f6045778c0d79171ac38761b44"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 62,
+          "sourceColumn": 1,
+          "leafTitle": "an aborted history read leaves presentation and records untouched",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "725ac464815b21eb4f99e9e9c7d0b7de23676110c34b4ad98f9ca23ca1f7f8eb"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 68,
+          "sourceColumn": 1,
+          "leafTitle": "unresolved saved-session restore does not start the earlier automatic sign-in probe",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a64e412d571e941e0b1a2cc4c9dd876291fbf54682d919634c11e876e2927c1d"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 77,
+          "sourceColumn": 1,
+          "leafTitle": "resolved signed-out and sign-out transitions still request sign-in",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ffcfbc299625567e4af56c25609779d09be3ca2a4374a90686c97536ce6ebae6"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 82,
+          "sourceColumn": 1,
+          "leafTitle": "expired and rejected restored sessions still require authentication; valid offline account stays nonmodal",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "004ca1969ba20b5ebb22f3492fe58794d2b292821c04c3e694c5354a4a9665fc"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 135,
+          "sourceColumn": 3,
+          "leafTitle": "voice and send preflights distinguish zero from verified zero",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 134,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "2af7430aca1740d359e0b665045a4d7edefd2c99ee10b99b56ee0c99b3b92289"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 135,
+          "sourceColumn": 3,
+          "leafTitle": "voice and send preflights distinguish checking from verified zero",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 134,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "afce416028835f69b09e54a7906d789968f8152ef677f58230aa98a5e1c9fc38"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 135,
+          "sourceColumn": 3,
+          "leafTitle": "voice and send preflights distinguish unavailable from verified zero",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 134,
+              "rowIndex": 2
+            }
+          ],
+          "sourceCaseID": "7cf551f7c25224c5be5a85acc3603b765431cc4fdb4763e4d99896c8229ddd4f"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 135,
+          "sourceColumn": 3,
+          "leafTitle": "voice and send preflights distinguish undefined from verified zero",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 134,
+              "rowIndex": 3
+            }
+          ],
+          "sourceCaseID": "6b1ac0e0012f9ff184757b0e0f582356b092208eb4bb2a119db58c81b3e9e5b5"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 135,
+          "sourceColumn": 3,
+          "leafTitle": "voice and send preflights distinguish funded from verified zero",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 134,
+              "rowIndex": 4
+            }
+          ],
+          "sourceCaseID": "91e7bb73b8bb5849879c70e3e7db2fdbffd58deec851c1d1326c08d64265ad3b"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 135,
+          "sourceColumn": 3,
+          "leafTitle": "voice and send preflights distinguish member from verified zero",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 134,
+              "rowIndex": 5
+            }
+          ],
+          "sourceCaseID": "00acc3b1064b80e642b22326a613a217da976031b7a784da0acdb8abc3aad682"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 169,
+          "sourceColumn": 1,
+          "leafTitle": "no network adds no composer text and drops no draft status",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "90be7d39ee400f050266b1c5cf8b34ac1faf62f623332dae0e49af3436d0763b"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 175,
+          "sourceColumn": 1,
+          "leafTitle": "an online composer keeps its empty status, draft status and recovery line",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "3b88299224736a797b460731f8e5ce29c72ed39530ee900e92cfe43a4b81fdf4"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 181,
+          "sourceColumn": 3,
+          "leafTitle": "the connection state reporting no network refuses a resident send before anything leaves the phone",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 180,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "3989dfd48b6a1481d243487c7d3b61c68f52432170a0c512401ce5c0aa3d2bd0"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 181,
+          "sourceColumn": 3,
+          "leafTitle": "the browser reporting no network refuses a resident send before anything leaves the phone",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 180,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "e7f79c1eaa9ae232db7c6df9301a33d97cfa952e78e47e34f9afe429f7faf51b"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 195,
+          "sourceColumn": 1,
+          "leafTitle": "a resident send with a network binds its conversation as before",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "f44576fb57034bcfabaed6556f8209d16b18fed1bcefa9616f195608054a2b10"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 221,
+          "sourceColumn": 1,
+          "leafTitle": "a composer send refused before dispatch (offline, IPC reject, busy) shows no toast",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "32cfceb689c73d132c7948e4aacb22bc8ac2e1ac6dbccf65cc02f34ee522a97a"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 228,
+          "sourceColumn": 1,
+          "leafTitle": "a refusal with its own reason, and a send from outside the composer, still show their toast",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ade82a156d3a7dd11ce2aaf00bf0fe10148f4dbe199521d8e992a7e3037a1557"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 236,
+          "sourceColumn": 1,
+          "leafTitle": "the private local preview keeps a held composer send's refusal out of toasts, as before",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "43582fa6f4e23888dc22cbbf34a77c2b51faf21670283baf4af0accb50d7518a"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 245,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud being unreachable shows no plan notice or text",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "0d976183ca10b5c7ef960e0b0b32b86a867210f48f7429ebe9d7f5a772691d51"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 250,
+          "sourceColumn": 1,
+          "leafTitle": "a needed plan still shows its notice beside the running agent",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4e903fd49f42abaa5fb274bf78f5e933d189ab5f3c4530bd942648541e282c02"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 275,
+          "sourceColumn": 1,
+          "leafTitle": "returns to Alpha with no network change check the plan at most once a minute",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4344a9fd59d3394a165adacf1cdc50c5ea31e658a3993509c50d42d979c5270c"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 281,
+          "sourceColumn": 1,
+          "leafTitle": "a return from plan management still checks once inside the limit",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "06f553335bd93fe129fac835a70f1dcff5bcf9d83c82de24d230817204eac31d"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 286,
+          "sourceColumn": 1,
+          "leafTitle": "the network coming back while Alpha is shown checks the plan at once, once, inside the limit",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "c5c250eb93ffa8059c8a36393de6235b634601b2548b2b833de6fe2e93a10ce9"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 294,
+          "sourceColumn": 1,
+          "leafTitle": "the network coming back while Alpha is in the background is checked once when the owner comes back",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b5103b69b2fd9e807c25fa82519721fceb654310d3c77c786de5aa95ec9923a6"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 307,
+          "sourceColumn": 1,
+          "leafTitle": "repeated online events lift the limit once",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a11f20e4ca463269d3efad5eea6a5f6c33e3891269da1d2055c1a899c6919cb2"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 314,
+          "sourceColumn": 1,
+          "leafTitle": "an online event with no offline before it stays inside the limit",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "f03fc7e41adbdf6c135c1922a2760cec26abff8b7d93b095f556f1ed3f83eef7"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 319,
+          "sourceColumn": 1,
+          "leafTitle": "a changed Cloud sign-in, environment or provider drops the lifted limit",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "1ebda116870b6dbea97a09518f31cbe9f52fe57f0571759496d96e292075f6ec"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 334,
+          "sourceColumn": 1,
+          "leafTitle": "a check already running when the network comes back answers it; no second check follows",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b3dee7559884f811f245d285ca1d159d0f518a7a8c80d764acf08b0115752ca0"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 344,
+          "sourceColumn": 1,
+          "leafTitle": "a return while still offline, with a check running, leaves the network return its own check",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "55d2f25af726ee248c178cacd498146ae503a70669e127c635d3c70f582a0b32"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 354,
+          "sourceColumn": 1,
+          "leafTitle": "a network return held back by a reply, an edit or other work checks on the next return, once",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "da72dc18769674d0b3116bd55470abb92c2a7ee7bb4ebfe835d295c19fb6799b"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 390,
+          "sourceColumn": 1,
+          "leafTitle": "a Cloud account changed and changed back while a network return waits does not spend it",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d6307e0c85ea52ead780cf8d69dff19734a5b991f6d16d1a4ba8138966007608"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 400,
+          "sourceColumn": 1,
+          "leafTitle": "a sign-out and sign-in, a provider round trip or a Cloud environment round trip retires a waiting network return",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "c621317bbcddf679a430757d1dc5d46ec55c444c53263d5845a88e5f50eec22f"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 412,
+          "sourceColumn": 1,
+          "leafTitle": "a fresh start, restart, rebind, redeem or sign-in retires a waiting network return: no second plan read",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "92091baff8969d483c05754a7a1030e90a03d1dca55d88dbfd5943eeed5d6426"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 430,
+          "sourceColumn": 1,
+          "leafTitle": "a provider class changed and changed back by status reads alone while a network return waits does not spend it",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "23012dba445d052aea60612f57762486be3de9970a362c68ba29f86720fe1740"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 439,
+          "sourceColumn": 1,
+          "leafTitle": "same-class status reads, busy or render updates and an optional Cloud detach keep a waiting network return",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a5b7b4330265ea1eee22cd9a9b4d96928bd1eceed39fadd17044da42aecfaf68"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 455,
+          "sourceColumn": 1,
+          "leafTitle": "the network lost during a sign-in is that sign-in's own: its return checks at once, once",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "01d5ce471121b3e2c3148d324830ca93b1dd3898eb586094a262d5e0039fda98"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 467,
+          "sourceColumn": 1,
+          "leafTitle": "an admission that runs with no network leaves the network's return its own check, once",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a9bd9fe98c33eaeb02498afbf3cc22bf90fc04574a3d3a24390c1d5ad4f12c96"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 501,
+          "sourceColumn": 3,
+          "leafTitle": "a return lost while an admission reads a changed provider class is not replaced in that offline episode: start, unknown, own provider",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 497,
+              "rowIndex": 0
+            },
+            {
+              "loopLine": 500,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "32ae6a8e01518db8abde07a7217cd049a42c2b2e58836df4dcb7af29a5e46533"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 501,
+          "sourceColumn": 3,
+          "leafTitle": "a return lost while an admission reads a changed provider class is not replaced in that offline episode: start, own provider, Cloud",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 497,
+              "rowIndex": 0
+            },
+            {
+              "loopLine": 500,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "86fff601f0150c8b9afc299d605b8051b529ef396ad6aea36d08b3c2b0452a2d"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 501,
+          "sourceColumn": 3,
+          "leafTitle": "a return lost while an admission reads a changed provider class is not replaced in that offline episode: start, Cloud, own provider",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 497,
+              "rowIndex": 0
+            },
+            {
+              "loopLine": 500,
+              "rowIndex": 2
+            }
+          ],
+          "sourceCaseID": "4d9267c27cb376eefab3094d8a2e898ebcdeed82c7bfc62357fc733558ff58f2"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 501,
+          "sourceColumn": 3,
+          "leafTitle": "a return lost while an admission reads a changed provider class is not replaced in that offline episode: sign-in, unknown, own provider",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 497,
+              "rowIndex": 1
+            },
+            {
+              "loopLine": 500,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "a753d5ec305b60f18ba7a7ce35c1c1d0e4df563e748a6631c83fba916431deda"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 501,
+          "sourceColumn": 3,
+          "leafTitle": "a return lost while an admission reads a changed provider class is not replaced in that offline episode: sign-in, own provider, Cloud",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 497,
+              "rowIndex": 1
+            },
+            {
+              "loopLine": 500,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "a1ee41b300151f7606c4095c57a573867b93be9ab1c2454059f2b7222b3a1064"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 501,
+          "sourceColumn": 3,
+          "leafTitle": "a return lost while an admission reads a changed provider class is not replaced in that offline episode: sign-in, Cloud, own provider",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 497,
+              "rowIndex": 1
+            },
+            {
+              "loopLine": 500,
+              "rowIndex": 2
+            }
+          ],
+          "sourceCaseID": "b5a088f74d9f055b58910c6f393e73e71bdf916cd294acb44c3188560987e49d"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 509,
+          "sourceColumn": 1,
+          "leafTitle": "a plan check with no network after a status read changed the provider class records no network return",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "f582a36d3cdb79ba860e13a48c5d6b73e03e815e5b9bf8905ab77e415c0d48a8"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 525,
+          "sourceColumn": 3,
+          "leafTitle": "a later admission, a new offline episode or an offline admission with nothing captured records its own: a later fresh admission, still offline",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 518,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "4bbd4796bb2a9693540d066538257bfb6658920b292e46d9d883d6bcbe028bc4"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 525,
+          "sourceColumn": 3,
+          "leafTitle": "a later admission, a new offline episode or an offline admission with nothing captured records its own: a later sign-in, still offline",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 518,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "893e128ccaae270cc9440b95b92c69836a9fd5c4859e1c4c2b0ebffedb68bc34"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 525,
+          "sourceColumn": 3,
+          "leafTitle": "a later admission, a new offline episode or an offline admission with nothing captured records its own: a new offline episode before the return was seen",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 518,
+              "rowIndex": 2
+            }
+          ],
+          "sourceCaseID": "b2d2bcfd46d96909d5e9a4f02174eda6915cf46d8a9e26bb3e080f7149ce5309"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 525,
+          "sourceColumn": 3,
+          "leafTitle": "a later admission, a new offline episode or an offline admission with nothing captured records its own: started offline, unknown, own provider",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 518,
+              "rowIndex": 3
+            }
+          ],
+          "sourceCaseID": "87151148d78573b238224b6d89d1f4eab307b6e8bfe9c0d2a07b3d41645f292c"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: the sign-in's own follow-up and admitted start",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "cece68114a3cb3482a41abbfb2aca38cc8951eab357721b030cafd2d6329cdb2"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: the admission's pending provider read completing",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "d9a7ebdbb753b65e38f5f95f402e823e4475bd9b49a98b29d735fa0394305a0c"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: the admission's pending provider read completing with the earlier class",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 2
+            }
+          ],
+          "sourceCaseID": "e8d5d19e738e788703f947efea92322afa46a2edd2d2501afdc60e81b2d7aa79"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: a same-class public status refresh",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 3
+            }
+          ],
+          "sourceCaseID": "3047a9b765c60bebe4828948fa540b52c429cbf5e331ee67519146bfc49389f8"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: a public status refresh back to the earlier class",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 4
+            }
+          ],
+          "sourceCaseID": "33c936fa618280eb7b7a9ce48f6f037e43c726b149551328b2221a10f7653671"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: a busy step ending",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 5
+            }
+          ],
+          "sourceCaseID": "0522a3781ede7f0033c98e2ebefa4b205a35e8218a8dbef8974fca47ff11e12e"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: Alpha hidden, then shown",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 6
+            }
+          ],
+          "sourceCaseID": "81c859012876011f0459dc3fd7ae320e4568f15f0ff62688a205ed609e11d09a"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: a render update",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 7
+            }
+          ],
+          "sourceCaseID": "e2ceabc37a284c31f105e9a19d905bb72695dd2654cfa821a4bc6942d4d71192"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: the optional Cloud account detached",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 8
+            }
+          ],
+          "sourceCaseID": "6817d43714cf2f4ed88e2692fa6fc7a3164ffad1c56ad6d4a01a29704a257440"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "leafTitle": "a continuation of the same admission after a status read retired the return with no network records nothing: the admission's automatic plan retry failing",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 537,
+              "rowIndex": 9
+            }
+          ],
+          "sourceCaseID": "b973b8a336d15dab715aa2232ca69cd1414fdd8ebdd9237ba9bf128e3c55e7a9"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 585,
+          "sourceColumn": 1,
+          "leafTitle": "a plan check that cannot reach Cloud admits nothing and reports no plan as valid; a missing plan still shows its notice",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "2319bd24b7416b3759636074ed98a05ce84d325ecd861988ce890302ef1052ab"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 612,
+          "sourceColumn": 1,
+          "leafTitle": "unknown balance does not bypass missing, expired or busy conversation guards",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ad0337aa389daf7f5e8288873f56b2296a66078ab7318f01cbd595d1d8665286"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 630,
+          "sourceColumn": 1,
+          "leafTitle": "closing unknown balance uses ordinary close rules without claiming zero balance",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "9145a6fc6f0e153728a1bdd098e830f6f0c89fe23d9e715774e78bd5c51f248b"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 655,
+          "sourceColumn": 1,
+          "leafTitle": "closing unknown balance preserves required sign-in for signed-out and expired accounts",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "bc2cec9243e4c299de913541a7ae7e97ee13804fd4d2cdbd4cb4f1a57fc6a1ec"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 702,
+          "sourceColumn": 1,
+          "leafTitle": "service verification accepts a stable opaque reference when expected reference is omitted",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ad7d1be6b34ec007a0bf7a1d888155a71be69c68e753ab6cc032bac9136852d1"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 713,
+          "sourceColumn": 1,
+          "leafTitle": "service verification still enforces an explicitly expected opaque reference",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ed24283b5bc9938bfb7cfa4c80b7a9079feacb030ee8199de6b2e434c25cc726"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 729,
+          "sourceColumn": 3,
+          "leafTitle": "service verification rejects credentialId replacement during identity lookup",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 725,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "d6210c6804cd2dd4aad852ac0b5caf8623a12ef7542be5bc7d6cdcdb857e2962"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 729,
+          "sourceColumn": 3,
+          "leafTitle": "service verification rejects credentialReference replacement during identity lookup",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 725,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "cf896311b0db2624c43e291054631bb8aff4175f37a4167441c6f5c7351cf98e"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 740,
+          "sourceColumn": 3,
+          "leafTitle": "service verification rejects an unexpected userId",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 739,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "be30544ab8a6ef9612ea94dd8b31e51714f6152fbae2e827463ca0759b7d418d"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 740,
+          "sourceColumn": 3,
+          "leafTitle": "service verification rejects an unexpected organizationId",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 739,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "dde04d659cbe95adb3880e6e9e882a05fba9cef768059ed7d04ff6de5ab6f259"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 775,
+          "sourceColumn": 1,
+          "leafTitle": "retained credential with unreachable identity restores history without forcing fresh Welcome",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "5e9846b3a1ec203b815cfa0e6bc86ecef874bf54067468c7a977c7e2377828d5"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 780,
+          "sourceColumn": 1,
+          "leafTitle": "retained offline exception cannot bypass missing, expired or revoked sign-in",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "7f08ce5dfb1da854a54305b177c25c8bf2418e9ef5268139672db4228516e363"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 784,
+          "sourceColumn": 1,
+          "leafTitle": "an account change before identity is verified never detaches a newer connection",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "77deab5de72795a4f10f020226461cbf2286ec26453760af0ade711539f0e540"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 789,
+          "sourceColumn": 1,
+          "leafTitle": "retained offline account controls still open explicitly without claiming verified identity",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "7e85320f2b8690a7da56c3b205c5f55950a9435f6b575b3254002f2e677dcf9b"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 791,
+          "sourceColumn": 1,
+          "leafTitle": "explicit signed-out entry waits for restore, probes once when settled, and never probes after close",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "e58bfee268f7df095ddaef658bbaceade8220eeb9f06490a1151cee7f4c71e72"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 798,
+          "sourceColumn": 1,
+          "leafTitle": "a settled signed-out browser resident agent entry uses the approved sign-in route",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ab58439bb47cbe8f017fa3cd58f0a36c823761cfa7e62afd3b99e26264d1398d"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 807,
+          "sourceColumn": 1,
+          "leafTitle": "browser resident sign-in entry does not replace unresolved, retained or recovering agent state",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "e6edb2c97c3ae77092b43f9e006c7776c141e40a745592fbbb5a324585aca5c0"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 822,
+          "sourceColumn": 1,
+          "leafTitle": "non-resident browser, signed-in state and native required-sign-in policy retain their routes",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4bece2eccef9f7118f3962f1e8c1a05193012cca7c837aa9b5294036211380e6"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 834,
+          "sourceColumn": 1,
+          "leafTitle": "the automatic entry is one full page with no Back on every platform; opened sign-ins stay dialogs",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b005f85b35f3d79551bb62852a40525ad04072fa10b808890e1ef73c6ca50377"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 853,
+          "sourceColumn": 1,
+          "leafTitle": "explicit signed-out account and plan entries remain available for a retained offline identity",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "216a665f9e2c67dd56cf99eddab019be09cbedfb086b44fb6dd10733d6fc6bfa"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 862,
+          "sourceColumn": 1,
+          "leafTitle": "selected own inference does not require Cloud sign-in; changing back restores the gate",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "f59bfc4e9ccc11bcc6941e9870787f9c119094ebfc61148b4a3217446ab5d769"
+        },
+        {
+          "file": "test/connection-presentation-state.test.mjs",
+          "sourceLine": 895,
+          "sourceColumn": 1,
+          "leafTitle": "a provider switch during a streaming reply leaves the reply running; once it settles the switch works as before",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "09931dbce48f40719aa6058b370ff3f037330b2797e17585b09154315933f818"
+        }
+      ],
+      "declarations": [
+        {
+          "sourceLine": 25,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 31,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 34,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 38,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 41,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 44,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 47,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 53,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 59,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 62,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 68,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 77,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 82,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 135,
+          "sourceColumn": 3,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 169,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 175,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 181,
+          "sourceColumn": 3,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 195,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 221,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 228,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 236,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 245,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 250,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 275,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 281,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 286,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 294,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 307,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 314,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 319,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 334,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 344,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 354,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 390,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 400,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 412,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 430,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 439,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 455,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 467,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 501,
+          "sourceColumn": 3,
+          "loopCount": 2
+        },
+        {
+          "sourceLine": 509,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 525,
+          "sourceColumn": 3,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 564,
+          "sourceColumn": 3,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 585,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 612,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 630,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 655,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 702,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 713,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 729,
+          "sourceColumn": 3,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 740,
+          "sourceColumn": 3,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 775,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 780,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 784,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 789,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 791,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 798,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 807,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 822,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 834,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 853,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 862,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 895,
+          "sourceColumn": 1,
+          "loopCount": 0
+        }
+      ]
+    },
+    "google-offline-5": {
+      "repository": "Alpha",
+      "file": "test/google-cancel-boundary.test.mjs",
+      "expectedModule": "/workspace/alpha/test/google-cancel-boundary.test.mjs",
+      "SHA256": "6f232ebeb788b1e812872d298efbe780fa823bf008153b49cec5a67d3ba82130",
+      "syntacticDeclarations": 10,
+      "expectedSourceCaseCount": 17,
+      "expectedNestedCases": [],
+      "cases": [
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "leafTitle": "unreadable JSON cannot confirm cancellation or stop polling",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 7,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "e85cec3e90ce19c60d73eb7a3dde1c98df60f6caab0572aa3f43425440c6fd5e"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "leafTitle": "null cannot confirm cancellation or stop polling",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 7,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "06221a7a0acc1fcb7abd2acb34694a18299aea4d49375125b1cbe8886e0e8f75"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "leafTitle": "array cannot confirm cancellation or stop polling",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 7,
+              "rowIndex": 2
+            }
+          ],
+          "sourceCaseID": "858693eda549c7addee0604890cdb262fef2298a59147dca02c3b04d276ac064"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "leafTitle": "scalar cannot confirm cancellation or stop polling",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 7,
+              "rowIndex": 3
+            }
+          ],
+          "sourceCaseID": "9ccf94f08d1ec9d795d333225d6ec699822bd6d1ee9c0d88ff788f4d8d68f2ad"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "leafTitle": "empty object cannot confirm cancellation or stop polling",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 7,
+              "rowIndex": 4
+            }
+          ],
+          "sourceCaseID": "3ab6006ca2fa8ac014300effcc42bcc19d3f60b64cca2c8a614799f807b1ce2c"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "leafTitle": "unknown status cannot confirm cancellation or stop polling",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 7,
+              "rowIndex": 5
+            }
+          ],
+          "sourceCaseID": "96f3baeef3679ec826409549a2f9f0c7137d7bffc4fff51669e47b8f72326754"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "leafTitle": "ambiguous cancellation cannot confirm cancellation or stop polling",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 7,
+              "rowIndex": 6
+            }
+          ],
+          "sourceCaseID": "cf7951292b4c72a07fbafc9d47d02a9f49ac20ab37f260f787b05102f292dfc7"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "leafTitle": "wrong committed attempt cannot confirm cancellation or stop polling",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 7,
+              "rowIndex": 7
+            }
+          ],
+          "sourceCaseID": "bed54c7904f25113d072c677379c17fb883f6e227209cfd511f37d6a3b2b8d0f"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 22,
+          "sourceColumn": 1,
+          "leafTitle": "a failed cancellation can be retried and explicit cancellation ends the same attempt",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "34f054e07becd7529d6765af69ef29eb8793ae7e86dd757b5cee029bd636589c"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 33,
+          "sourceColumn": 1,
+          "leafTitle": "a committed cancellation response is parsed and reconciled without aborting its poll",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "aa58390d62101ec0a49d6ad9dd866b9ac4d3506492bfd03db3947d78ee247ff4"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 41,
+          "sourceColumn": 1,
+          "leafTitle": "a Cancel right after the host commits reports the commit and sends no cleanup cancel",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "734d8beee2679921be8fe50559bb548184e2e7690f3da9bea737cdc37ff3e731"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 49,
+          "sourceColumn": 1,
+          "leafTitle": "an attempt that ends without a commit still retires its host attempt",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "c61f536c30878253bbdea1116fd3b502a4074df1aa571619f5e02afc8d8aeb70"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 55,
+          "sourceColumn": 1,
+          "leafTitle": "a delayed cancellation response for A cannot abort replacement B",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "6986628972d13dc05932e868f47e34053276fec7a2d9773b11cf4bc0ffab5095"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 68,
+          "sourceColumn": 1,
+          "leafTitle": "protocol refuses malformed committed metadata and leaves the ordinary outcome pending",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "579c956a3d90b23517d59794a39fe3ee61a744fe9a90c73706dadda5339862b9"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 78,
+          "sourceColumn": 1,
+          "leafTitle": "a Google step committed by its own poll answers a later cancel as committed without a host call",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "53aa0c7a8b49f20e641f12b901198abb3b5c56f2bdb6c840e55f302a92e9a112"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 84,
+          "sourceColumn": 1,
+          "leafTitle": "a step without the Google flag keeps ordinary abort on a commit-aware port",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a2e27b377eb02836e04e58e8372714f9fe35fcf7415792a6829c6f30022b032a"
+        },
+        {
+          "file": "test/google-cancel-boundary.test.mjs",
+          "sourceLine": 95,
+          "sourceColumn": 1,
+          "leafTitle": "a failed attempt does not borrow a later attempt commit for its delayed cancel failure",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "263e9b290e227b732bc7ddfadb43b1cfe3fc6dd162e1bcaa8105fdef76838fa6"
+        }
+      ],
+      "declarations": [
+        {
+          "sourceLine": 13,
+          "sourceColumn": 3,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 22,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 33,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 41,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 49,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 55,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 68,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 78,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 84,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 95,
+          "sourceColumn": 1,
+          "loopCount": 0
+        }
+      ]
+    },
+    "google-offline-6": {
+      "repository": "Alpha",
+      "file": "test/own-provider-service-restore.test.mjs",
+      "expectedModule": "/workspace/alpha/test/own-provider-service-restore.test.mjs",
+      "SHA256": "50a2ae5f5a8fcb8db602495aa7d87cf54e0c06c6617267720e618b6c7b7820a7",
+      "syntacticDeclarations": 11,
+      "expectedSourceCaseCount": 11,
+      "expectedNestedCases": [],
+      "cases": [
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 20,
+          "sourceColumn": 1,
+          "leafTitle": "own inference restores a saved Cloud service using the exact credential without changing the provider",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "9178b6f3c74fa5024d74e2c46afb14d453adb93e20009b6bf8745afca54fcd5d"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 23,
+          "sourceColumn": 1,
+          "leafTitle": "no saved Cloud account or a pending recovery does not start optional authentication",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "7e3ae4159e6f3008255dda9b3ef517d4a35d837db8f98723ff727bb909513617"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 28,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud identity failure retains own inference and the stored credential",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "e7b9edcbe50ae6cfb56506640a55cb0ca2993096a1a9397f36829221c7857825"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 31,
+          "sourceColumn": 1,
+          "leafTitle": "a retired owner cannot publish a late optional Cloud identity",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "dc3fb071382957d556747a73bad44305d18a56c0b90c4b9340924ddd0c557776"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 34,
+          "sourceColumn": 1,
+          "leafTitle": "Cloud service restoration starts only after the resident is active and never enters Cloud inference admission",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "cb7b7affb85f9935b91de418c442b7ede4935b37dc77c4ba15465518dc97d363"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 41,
+          "sourceColumn": 1,
+          "leafTitle": "an older optional service failure cannot detach a newer successful check",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "fa8fafaa63f89f6cfe23cd06681379cb004ba0b750b8d8ff7b826d80af4f4f56"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 49,
+          "sourceColumn": 1,
+          "leafTitle": "a changed service object and credential reference survive a delayed old failure",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "6e2ec79e329fae860977493e3d58e1c0338ca62638256560a7dfd76c159391bb"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 58,
+          "sourceColumn": 1,
+          "leafTitle": "a delayed absent credential read cannot clear a newly adopted service",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "60fb4a00216fdd80e2b58f02a51df8335542ee720f1dc9a7eabc724f00b62519"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 66,
+          "sourceColumn": 1,
+          "leafTitle": "foreground own-mode checks never refresh a prior Cloud inference plan, and recovery blocks all checks",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "c4be0f8dda1e00015483f7fd2aab4d11332aa53b8fb70f622753546aa88265b0"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 87,
+          "sourceColumn": 1,
+          "leafTitle": "own inference signed out of Cloud: a network return reads only the stored sign-in, never Cloud",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b84c9fb449d3673ddc2a5daa86a61b3707fec9e43bab10ce48c5b22c81df3b1a"
+        },
+        {
+          "file": "test/own-provider-service-restore.test.mjs",
+          "sourceLine": 93,
+          "sourceColumn": 1,
+          "leafTitle": "own inference: a Cloud services read that fails offline and detaches the account keeps the network return",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "f76dc72d334948b43b468874460b0258f4e348b7df96fba96353618eb0f290ee"
+        }
+      ],
+      "declarations": [
+        {
+          "sourceLine": 20,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 23,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 28,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 31,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 34,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 41,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 49,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 58,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 66,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 87,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 93,
+          "sourceColumn": 1,
+          "loopCount": 0
+        }
+      ]
+    },
+    "google-offline-7": {
+      "repository": "Alpha",
+      "file": "test/post-sign-in-setup.test.mjs",
+      "expectedModule": "/workspace/alpha/test/post-sign-in-setup.test.mjs",
+      "SHA256": "efa14c065e3d703eaf89542e6e922df6b0d1ee24c965b52f5dbde1413ec9754c",
+      "syntacticDeclarations": 13,
+      "expectedSourceCaseCount": 13,
+      "expectedNestedCases": [],
+      "cases": [
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 38,
+          "sourceColumn": 1,
+          "leafTitle": "a verified sign-in opens setup as soon as the account is admitted and restarts the agent behind it",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "b7460809df0c8908d0b28fd81ab3999f2050afc6bc2f91bfef241f8f754e673e"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 59,
+          "sourceColumn": 1,
+          "leafTitle": "a binding notice from the restart stays within setup instead of opening over it",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "2ac23a9c1b7f512667de419149d0e1c20b4316f1b2682ea9262ce6075a0778af"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 66,
+          "sourceColumn": 1,
+          "leafTitle": "an unconfirmed earlier sign-in is reported after the restart",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "fe6cc6dc90f1491a6e3885edf05132574d57b7de6c34f7199f1cb3d8a8b0095c"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 72,
+          "sourceColumn": 1,
+          "leafTitle": "a failed restart after setup recovers once, keeps setup and rethrows for the caller to start it again",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "a72011540a3c3c955bf3fd48d2ada67295c7ca5eab3398e7f474f6759df825a9"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 80,
+          "sourceColumn": 1,
+          "leafTitle": "a key Cloud refused right after issuing it is removed and never opens setup",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "e74da65ff8eb7b5750b6a8ddb4a84648a973f967479da82e55d7a6e07a3897c7"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 92,
+          "sourceColumn": 1,
+          "leafTitle": "an expected key replaced while the account is admitted still stops the sign-in before the restart",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "2cd2065a4b579ee06b389e21526faff549d85344767e4c26a6cc9bf6a63edecb"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 98,
+          "sourceColumn": 1,
+          "leafTitle": "a committed Google key replaced before adoption stops the resident flow before anything is torn down",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d7b6df92f95bfe9acceca75e5359d6b2777ab31adacfc147d154720da5d3a1a3"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 107,
+          "sourceColumn": 1,
+          "leafTitle": "a sign-in with a matching or no committed key replaces the old sign-in and restarts the agent",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "00e98f87486066e9c6e3f4277e8e5fe19358f1f937c5964697b9be832aa6cb3b"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 117,
+          "sourceColumn": 1,
+          "leafTitle": "a cancelled admission leaves the sign-in step and the agent to the caller restart (P-43)",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "45310f8eb3e8d9952c11e3ff1397586cc754371eb5c2e5553e663857b45ab864"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 130,
+          "sourceColumn": 1,
+          "leafTitle": "a resident start ends with its operation in one update, so setup behind it never blinks",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "4aeb386c367712641b567a9e974c16abc9ad1a1c994154b4f96a35175393157d"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 146,
+          "sourceColumn": 1,
+          "leafTitle": "access setup is not held behind a background resident start, only behind a foreground step",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "d46b280cd480f7968108e8fac6fd726bc79d0a104205b359a3f9208127256e7f"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 159,
+          "sourceColumn": 1,
+          "leafTitle": "Settings says the agent and its AI are starting instead of \"Not available\"",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "29c5dcb1ccaec7f1840173ed514bb3a9ad8cd27ea05cf9f28ead895127fdf1a9"
+        },
+        {
+          "file": "test/post-sign-in-setup.test.mjs",
+          "sourceLine": 172,
+          "sourceColumn": 1,
+          "leafTitle": "the agent panel shows a calm starting state while a signed-in agent starts",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "ac6e68d77e0873e37afb05c19821e1dab514fa76a7da285fc6decead77978389"
+        }
+      ],
+      "declarations": [
+        {
+          "sourceLine": 38,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 59,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 66,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 72,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 80,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 92,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 98,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 107,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 117,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 130,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 146,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 159,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 172,
+          "sourceColumn": 1,
+          "loopCount": 0
+        }
+      ]
+    },
+    "google-offline-8": {
+      "repository": "Alpha",
+      "file": "test/resident-prebind-stop.test.mjs",
+      "expectedModule": "/workspace/alpha/test/resident-prebind-stop.test.mjs",
+      "SHA256": "43a254f15c0562a12b0152f86a543260570dab926ffb9e3ff56be34c94d2e6d4",
+      "syntacticDeclarations": 6,
+      "expectedSourceCaseCount": 8,
+      "expectedNestedCases": [],
+      "cases": [
+        {
+          "file": "test/resident-prebind-stop.test.mjs",
+          "sourceLine": 14,
+          "sourceColumn": 62,
+          "leafTitle": "same-owner: pre-bind stop refusal preserves provider and retires old client before recovery",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 14,
+              "rowIndex": 0
+            }
+          ],
+          "sourceCaseID": "69ca3aa59657612ca40cb8ac62dd2343e7e3adde6334fac2abbd7b16505991ec"
+        },
+        {
+          "file": "test/resident-prebind-stop.test.mjs",
+          "sourceLine": 14,
+          "sourceColumn": 62,
+          "leafTitle": "changed-account: pre-bind stop refusal preserves provider and retires old client before recovery",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 14,
+              "rowIndex": 1
+            }
+          ],
+          "sourceCaseID": "3157287efd2518de2d3831cc4a9e1af952c23ba6fbd2db4059812f493985683d"
+        },
+        {
+          "file": "test/resident-prebind-stop.test.mjs",
+          "sourceLine": 14,
+          "sourceColumn": 62,
+          "leafTitle": "aborted: pre-bind stop refusal preserves provider and retires old client before recovery",
+          "nesting": 0,
+          "loopRows": [
+            {
+              "loopLine": 14,
+              "rowIndex": 2
+            }
+          ],
+          "sourceCaseID": "1c96f94f5ca807fd374b9e335f99f4d8be1c29d51d6a3c6888b973384d42a031"
+        },
+        {
+          "file": "test/resident-prebind-stop.test.mjs",
+          "sourceLine": 15,
+          "sourceColumn": 1,
+          "leafTitle": "a newer connection epoch is never retired by old pre-bind failure",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "6242b1e0e8a3a9d9e0f59511844d6f689037c9e52a84f0af4a3c3d998ed91fdd"
+        },
+        {
+          "file": "test/resident-prebind-stop.test.mjs",
+          "sourceLine": 16,
+          "sourceColumn": 1,
+          "leafTitle": "actual connectResident cannot fall through to another start after pre-bind stop refusal",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "dae613c27d376bfd06317bbd907ea6e52ac0927b2815405138341882efaed077"
+        },
+        {
+          "file": "test/resident-prebind-stop.test.mjs",
+          "sourceLine": 17,
+          "sourceColumn": 1,
+          "leafTitle": "failed native bind without an applied guard never clears a provider",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "c1e285316cc5d81a247ead3796accb85c0a65e8ffff6e3d9e3d58b09befa43e1"
+        },
+        {
+          "file": "test/resident-prebind-stop.test.mjs",
+          "sourceLine": 18,
+          "sourceColumn": 1,
+          "leafTitle": "a newer account after a completed bind is rejected without clearing its provider",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "75dade344be5a6bc76df0b8c8a8443c40c8fa804dbcec06b771d6f35c1e3fda8"
+        },
+        {
+          "file": "test/resident-prebind-stop.test.mjs",
+          "sourceLine": 19,
+          "sourceColumn": 1,
+          "leafTitle": "confirmed stop and successful native bind retain cloud result",
+          "nesting": 0,
+          "loopRows": [],
+          "sourceCaseID": "094c1e8e0642f35f7d96d8b796960170d15ed8d128231fc3efc2abbc1b962098"
+        }
+      ],
+      "declarations": [
+        {
+          "sourceLine": 14,
+          "sourceColumn": 62,
+          "loopCount": 1
+        },
+        {
+          "sourceLine": 15,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 16,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 17,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 18,
+          "sourceColumn": 1,
+          "loopCount": 0
+        },
+        {
+          "sourceLine": 19,
+          "sourceColumn": 1,
+          "loopCount": 0
+        }
+      ]
+    }
+  },
+  "totalExpectedSourceCases": 253
+}

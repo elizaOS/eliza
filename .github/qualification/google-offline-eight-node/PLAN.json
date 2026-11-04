@@ -1,0 +1,366 @@
+{
+  "candidates": {
+    "SDK": {
+      "commit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+      "tree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc"
+    },
+    "Alpha": {
+      "commit": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+      "tree": "968234d5002fb481772f135875a1dde90cd8c974",
+      "sdkGitlink": "ff04a558747ed426d9d871a319f7b3946f7660e6"
+    }
+  },
+  "host": {
+    "os": "ubuntu24",
+    "architecture": "x86_64",
+    "ImageVersion": [
+      "20261018.96.1",
+      "20261025.353.1",
+      "20261026.354.1",
+      "20261101.360.1"
+    ],
+    "capabilityCheck": "fresh actual Docker/PGID/WNOWAIT/imageOS/imageVersion evidence; no prior receipt substitutes same-run facts",
+    "MacExecution": false,
+    "hostCleanup": false
+  },
+  "resourceBounds": {
+    "wholeSeconds": 1200,
+    "jobTimeoutMinutes": 22,
+    "cpu": 2,
+    "pids": 256,
+    "logBytesPerPhase": 8388608,
+    "maxDiskGrowthBytes": 12884901888,
+    "minimumStartFreeBytes": 17179869184,
+    "stopFreeBytes": 8589934592
+  },
+  "testPolicy": {
+    "defaultMemoryBytes": 2147483648,
+    "nodeOldSpaceMiB": 1536,
+    "memorySwapEqualsMemory": true,
+    "cpus": 2,
+    "pids": 256,
+    "PGliteOverride": null,
+    "reason": "Eight selected whole-file Node scopes retain the reviewed default2GiB/1536MiB heap bounds; no larger family or bound is demonstrated or admitted."
+  },
+  "installs": [
+    {
+      "repository": "SDK",
+      "command": [
+        "bun",
+        "install",
+        "--frozen-lockfile",
+        "--ignore-scripts",
+        "--no-progress"
+      ],
+      "lock": "bun.lock",
+      "sha256": "3b2baea4b2490f48c19dfbfa48f6cedfd61d5edaf66ee31ab87f7de44c282088",
+      "memory": "4g",
+      "nodeOldSpaceMiB": 1536
+    },
+    {
+      "repository": "Alpha",
+      "command": [
+        "npm",
+        "ci",
+        "--ignore-scripts",
+        "--no-audit",
+        "--no-fund"
+      ],
+      "lock": "package-lock.json",
+      "sha256": "84029a1d65017782877b3cc3e71b81f48f7f7441be2eb892d2df91e83a4ac3ff",
+      "memory": "4g",
+      "nodeOldSpaceMiB": 1536,
+      "npmVersion": "must pin and hash actual npm bundled by the sealed Node24.15 image before final recipe admission"
+    }
+  ],
+  "projection": {
+    "command": [
+      "node",
+      "scripts/prepare-client-features.mjs"
+    ],
+    "cwd": "/workspace/alpha",
+    "writeScope": "fresh job-owned Alpha .eliza only; SDK immutable",
+    "stamp": ".eliza/client-features/.source.json",
+    "mustProve": [
+      "exact SDK gitlink/upstream lock/patch manifest agrees with candidate",
+      "stamp baseCommit exact SDKff04a558747ed426d9d871a319f7b3946f7660e6",
+      "all364 authenticated raw canonical inputs match frozen input delta",
+      "all generated projection bytes match actual stamp file map, source files unchanged",
+      "Owning whole-file Node imports use the actual fresh canonical projection where required; no old projection supplier and no Vite/browser import acceptance inferred."
+    ]
+  },
+  "images": {
+    "node": {
+      "repository": "library/node",
+      "digest": "sha256:da81deb96d49fc84c9813bc4f16dfdb1d4d7e3671b74cd54fd944428f1444afe"
+    },
+    "bun": {
+      "repository": "oven/bun",
+      "digest": "sha256:296a79bbc988bb0a91ef11099af70a78a8cba98b73fd53f7b2a7715b7c86ced2"
+    }
+  },
+  "alphaAncestryIntake": {
+    "initialCheckoutDepth": 1,
+    "fetch": "exact SHA only; no tags/refmap/FETCH_HEAD/submodules/maintenance/credentials/redirect/promisor",
+    "phase": "same existing Docker/PGID/CID family,2GiB/1536heap/CPU2/PIDs256/noextraswap",
+    "sourceScope": "Only own Alpha .git metadata RW; worktree/SDK/operator readonly; public HTTPS https://github.com/eliza-research/alphaphone.git exact bcdefded4530202a283c77819b48d7ec40b05cbb SHA.",
+    "requiresExplicitRootGOField": "allowPinnedGitBootstrapBeforeAlphaAncestry",
+    "maxSeconds": 120
+  },
+  "hostCohortPolicy": "HOST-COHORTS.json",
+  "staticSourceAdmission": "SOURCE-ADMISSION.json",
+  "state": "FROZEN_REVIEWED_READY",
+  "recipe": "google-offline-eight-node-normal-v1",
+  "executionPerformed": false,
+  "baseController": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-ff04-bcdef-normal-recipe-v6-20261104/operator-ready-v1/run.py",
+    "sha256": "0bf15d3fb7f340e49b6dd576303207dafb69ca345db73ebee8caef7b088b10e9",
+    "reuse": "Exact finite resource/PGID/CID/source/dependency/projection custody; precise source delta separately frozen. No prior results or runtime GO inherited."
+  },
+  "groups": [
+    {
+      "name": "owning-1",
+      "repository": "Alpha",
+      "file": "test/agent-always-local.test.mjs",
+      "sha256": "1dfdba1aa4397dbb5c0f11dc22c33de08197ee5d4fda2d879aa885f33a8e840e",
+      "cwd": "/workspace/alpha",
+      "config": null,
+      "command": [
+        "/usr/local/bin/node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=junit",
+        "--test-reporter=/operator/normal-node-case-observer.mjs",
+        "--test-reporter-destination=/results/owning-1.xml",
+        "--test-reporter-destination=stdout",
+        "test/agent-always-local.test.mjs"
+      ],
+      "phaseSeconds": 120,
+      "memory": "2g",
+      "nodeOldSpaceMiB": 1536,
+      "filter": null,
+      "scope": "One exact unmodified whole file; no name filter, source override, injected fixtures, discarded assertions or wrapper-only credit. Split --import tsx satisfies existing bridge guard.",
+      "report": "owning-1.xml"
+    },
+    {
+      "name": "owning-2",
+      "repository": "Alpha",
+      "file": "test/assistant-draft-dispatch.test.mjs",
+      "sha256": "f3034a655cffd1905728de12c7fe02f393bfa26e91fa4d5040ec9b25550a0ca4",
+      "cwd": "/workspace/alpha",
+      "config": null,
+      "command": [
+        "/usr/local/bin/node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=junit",
+        "--test-reporter=/operator/normal-node-case-observer.mjs",
+        "--test-reporter-destination=/results/owning-2.xml",
+        "--test-reporter-destination=stdout",
+        "test/assistant-draft-dispatch.test.mjs"
+      ],
+      "phaseSeconds": 120,
+      "memory": "2g",
+      "nodeOldSpaceMiB": 1536,
+      "filter": null,
+      "scope": "One exact unmodified whole file; no name filter, source override, injected fixtures, discarded assertions or wrapper-only credit. Split --import tsx satisfies existing bridge guard.",
+      "report": "owning-2.xml"
+    },
+    {
+      "name": "owning-3",
+      "repository": "Alpha",
+      "file": "test/browser-cloud-dev-bridge.test.mjs",
+      "sha256": "6028ca2e1f3bbcf0f2fb41a5ee0a86e9baec65adb2bea50f288cc8285513544a",
+      "cwd": "/workspace/alpha",
+      "config": null,
+      "command": [
+        "/usr/local/bin/node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=junit",
+        "--test-reporter=/operator/normal-node-case-observer.mjs",
+        "--test-reporter-destination=/results/owning-3.xml",
+        "--test-reporter-destination=stdout",
+        "test/browser-cloud-dev-bridge.test.mjs"
+      ],
+      "phaseSeconds": 120,
+      "memory": "2g",
+      "nodeOldSpaceMiB": 1536,
+      "filter": null,
+      "scope": "One exact unmodified whole file; no name filter, source override, injected fixtures, discarded assertions or wrapper-only credit. Split --import tsx satisfies existing bridge guard.",
+      "report": "owning-3.xml"
+    },
+    {
+      "name": "owning-4",
+      "repository": "Alpha",
+      "file": "test/connection-presentation-state.test.mjs",
+      "sha256": "6d5b750d58098e30a26e3dbdcc76143ecd870dc64a35112d5a2fc12406da0fc3",
+      "cwd": "/workspace/alpha",
+      "config": null,
+      "command": [
+        "/usr/local/bin/node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=junit",
+        "--test-reporter=/operator/normal-node-case-observer.mjs",
+        "--test-reporter-destination=/results/owning-4.xml",
+        "--test-reporter-destination=stdout",
+        "test/connection-presentation-state.test.mjs"
+      ],
+      "phaseSeconds": 120,
+      "memory": "2g",
+      "nodeOldSpaceMiB": 1536,
+      "filter": null,
+      "scope": "One exact unmodified whole file; no name filter, source override, injected fixtures, discarded assertions or wrapper-only credit. Split --import tsx satisfies existing bridge guard.",
+      "report": "owning-4.xml"
+    },
+    {
+      "name": "owning-5",
+      "repository": "Alpha",
+      "file": "test/google-cancel-boundary.test.mjs",
+      "sha256": "6f232ebeb788b1e812872d298efbe780fa823bf008153b49cec5a67d3ba82130",
+      "cwd": "/workspace/alpha",
+      "config": null,
+      "command": [
+        "/usr/local/bin/node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=junit",
+        "--test-reporter=/operator/normal-node-case-observer.mjs",
+        "--test-reporter-destination=/results/owning-5.xml",
+        "--test-reporter-destination=stdout",
+        "test/google-cancel-boundary.test.mjs"
+      ],
+      "phaseSeconds": 120,
+      "memory": "2g",
+      "nodeOldSpaceMiB": 1536,
+      "filter": null,
+      "scope": "One exact unmodified whole file; no name filter, source override, injected fixtures, discarded assertions or wrapper-only credit. Split --import tsx satisfies existing bridge guard.",
+      "report": "owning-5.xml"
+    },
+    {
+      "name": "owning-6",
+      "repository": "Alpha",
+      "file": "test/own-provider-service-restore.test.mjs",
+      "sha256": "50a2ae5f5a8fcb8db602495aa7d87cf54e0c06c6617267720e618b6c7b7820a7",
+      "cwd": "/workspace/alpha",
+      "config": null,
+      "command": [
+        "/usr/local/bin/node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=junit",
+        "--test-reporter=/operator/normal-node-case-observer.mjs",
+        "--test-reporter-destination=/results/owning-6.xml",
+        "--test-reporter-destination=stdout",
+        "test/own-provider-service-restore.test.mjs"
+      ],
+      "phaseSeconds": 120,
+      "memory": "2g",
+      "nodeOldSpaceMiB": 1536,
+      "filter": null,
+      "scope": "One exact unmodified whole file; no name filter, source override, injected fixtures, discarded assertions or wrapper-only credit. Split --import tsx satisfies existing bridge guard.",
+      "report": "owning-6.xml"
+    },
+    {
+      "name": "owning-7",
+      "repository": "Alpha",
+      "file": "test/post-sign-in-setup.test.mjs",
+      "sha256": "efa14c065e3d703eaf89542e6e922df6b0d1ee24c965b52f5dbde1413ec9754c",
+      "cwd": "/workspace/alpha",
+      "config": null,
+      "command": [
+        "/usr/local/bin/node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=junit",
+        "--test-reporter=/operator/normal-node-case-observer.mjs",
+        "--test-reporter-destination=/results/owning-7.xml",
+        "--test-reporter-destination=stdout",
+        "test/post-sign-in-setup.test.mjs"
+      ],
+      "phaseSeconds": 120,
+      "memory": "2g",
+      "nodeOldSpaceMiB": 1536,
+      "filter": null,
+      "scope": "One exact unmodified whole file; no name filter, source override, injected fixtures, discarded assertions or wrapper-only credit. Split --import tsx satisfies existing bridge guard.",
+      "report": "owning-7.xml"
+    },
+    {
+      "name": "owning-8",
+      "repository": "Alpha",
+      "file": "test/resident-prebind-stop.test.mjs",
+      "sha256": "43a254f15c0562a12b0152f86a543260570dab926ffb9e3ff56be34c94d2e6d4",
+      "cwd": "/workspace/alpha",
+      "config": null,
+      "command": [
+        "/usr/local/bin/node",
+        "--import",
+        "tsx",
+        "--test",
+        "--test-concurrency=1",
+        "--test-reporter=junit",
+        "--test-reporter=/operator/normal-node-case-observer.mjs",
+        "--test-reporter-destination=/results/owning-8.xml",
+        "--test-reporter-destination=stdout",
+        "test/resident-prebind-stop.test.mjs"
+      ],
+      "phaseSeconds": 120,
+      "memory": "2g",
+      "nodeOldSpaceMiB": 1536,
+      "filter": null,
+      "scope": "One exact unmodified whole file; no name filter, source override, injected fixtures, discarded assertions or wrapper-only credit. Split --import tsx satisfies existing bridge guard.",
+      "report": "owning-8.xml"
+    }
+  ],
+  "containerHelperFiles": [
+    "PROJECTION-INPUTS.json",
+    "verify-projection.mjs",
+    "operator-file-custody.mjs",
+    "verify-tools.mjs",
+    "normal-node-case-observer.mjs",
+    "ORACLES.json",
+    "TOOLCHAIN.json",
+    "HOST-COHORTS.json"
+  ],
+  "requiredAbsentEnvironment": [
+    "ALPHA_PRESENTATION_SOURCE",
+    "ALPHA_PRIVATE_CARTESIA_TEST_CASE",
+    "NODE_TEST_NAME_PATTERN"
+  ],
+  "normalOwningPreflight": {
+    "execute": false,
+    "reason": "The former five-owner voice import/type probe is outside this eight-Node-only scope. Canonical producer and raw/stamp/projection verification remain mandatory. Candidate imports occur only normally inside the eight full test files. No types/lifecycle/provider/live claim."
+  },
+  "admission": {
+    "requiredBeforeFiniteGO": [
+      "Independent exact source/data delta review",
+      "Exact new operator publication admission",
+      "Fresh exact single-use finite hosted run admission"
+    ],
+    "scopeExcludes": [
+      "Already-passed unchanged twelve voice files",
+      "Calendar113 independently owned by Root",
+      "Normal SDK lifecycle/typecheck",
+      "Eight Playwright specs",
+      "Android Java/device",
+      "Google OAuth/provider acceptance",
+      "Preview/sign-in/native install/deployment/shipping"
+    ],
+    "types": false
+  }
+}

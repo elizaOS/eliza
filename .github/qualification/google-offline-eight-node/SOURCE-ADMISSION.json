@@ -1,0 +1,26 @@
+{
+  "state": "STATIC_SOURCE_ADMISSION_SUPPORT_NOT_RUNTIME_QUALIFICATION",
+  "SDK": {
+    "commit": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+    "localPublisherGuardSHA256": "de190c45b3db33f27c14157bb2d8098a0a745c5cdb66d9425d4f597a2babde41",
+    "localAncestryComplete": true,
+    "remoteLiteralReviewSHA256": "a990a40f38d29895d113cf9046f702ae1876d1fd639af5743982d1fadeeb1b35",
+    "CIWorkflowDepth": 1,
+    "CIGuardScope": "Fresh exact pin and known incident markers; SDK ancestry is incomplete in shallow checkout. This limitation is explicit, not complete-ancestry proof.",
+    "remoteLiteralReviewFileScope": "Legacy filename retained to keep controller bytes identical; content is exact actual ff04 Root readback, not relabeled R7 acceptance."
+  },
+  "Alpha": {
+    "commit": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+    "CIWorkflowDepth": 1,
+    "CIGuardRequiresCompleteAncestry": true,
+    "completeAncestry": "Explicit bounded exactSHA unshallow in existing2GiB trusted Git Docker phase; no tags/refmap/FETCH_HEAD/submodules/maintenance/unrelated namedrefs; own.gitonlyRW, full productguard before installs/source/module/tests.",
+    "localPublisherGuardSHA256": "438420dc84a0dad7f6710809568a4a6de6f8a4e5b1eae329a1656d03d25d96cf",
+    "localAncestryComplete": true,
+    "remoteLiteralReviewSHA256": "64c798497deba46c798bd3b5bf058a40c21bce61aed16cd6d3482387002cff1a"
+  },
+  "normalCLIOrProviderAcceptance": false,
+  "RootDisposition": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-BCDEF-FF04-CONDITIONAL-HOSTED-SOURCE-DISPOSITION-20261104.json",
+    "sha256": "93c9e5e6fc8bba73c9473442679a12c75f9f7868e2e7ed5f2756b2b01b095a94"
+  }
+}

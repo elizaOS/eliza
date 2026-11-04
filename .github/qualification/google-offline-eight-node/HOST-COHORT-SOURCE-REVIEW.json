@@ -1,0 +1,40 @@
+{
+  "atUTC": "2026-11-04T01:01:12.179779+00:00",
+  "state": "SHARED_FOUR_FINITE_HOST_METADATA_SOURCE_DELTA_PASS_NO_EXECUTION_OR_CAPABILITY_ADMISSION",
+  "hostPolicySHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
+  "priorPolicySHA256": "fbb3b272dbd7ef65ea21ac3c659296bd45f377802654fb1e8e5d3b00d3f9c007",
+  "files": {
+    "HOST-COHORTS.json": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
+    "cohort-provenance/20261018.96/ROOT-SOURCE-DISPOSITION.json": "2e316c4cc514d88c960fa087d862ab53be7146f9eb3414c5dd73e9769398def0",
+    "cohort-provenance/20261018.96/AUTHENTICATED-JOB-LOG.txt": "ba836c99e7264e022cfd27159342a7895a4b249e99740a3378ef158a8754dfa7",
+    "cohort-provenance/20261018.96/OFFICIAL-TAG-LOOKUP.json": "8b75d9379559f703b64d6b3509c82450a87765d4498cf355c31ae40b81897e17",
+    "cohort-provenance/20261018.96/AUTHENTICATED-CLAIM.json": "b6194033d8bcd2cdfadb2bf9be8f29515de5663c6f50b41f39e160edf7cd2862",
+    "cohort-provenance/20261018.96/AUTHENTICATED-RUNNER-METADATA.json": "22912f5abf44d9df721fce898f7bc5ff0f502938a9a0beb51189902c0ea116fa"
+  },
+  "checks": [
+    "Allnewfrozenfiles hashes andpriorfbb3 policyhash verified",
+    "Onlyadds exact20261018.96.1 toprior25/26/01 finiteallowlist, removesits oneobsolete pendingmetadataentry andaddsnewRootattested provenance record; allotherpolicyfields/oldprovenance/capabilityguards identical",
+    "ActualsavedGitHubsetup lines identifyubuntu-24.04/20261018.96.1/IncludedSoftware+releaseURLs; early5fieldmetadata boundbyactualclaimhash/run41750127407/attempt1/operator42c/source177",
+    "Actualsavedlog endsat run.py29 cohortassertion beforeoutdir/testexecution; oldrun remainsfailed/spent, no test/capabilitypass inferred",
+    "Freshsavedofficialtaglookup404 explicit: no resolvedupstreamtag/commit/readme proof invented. Root2e316c4metadata-only disposition retains gap andrequiresall same-jobguards",
+    "Existing25primarygap/26officialstable/01officialprerelease exactreceipts retained; no wildcard/unobservedversion/automaticruntimeadmission"
+  ],
+  "scope": "Same exacthostpolicy/provenance data may be materialized in both ordinal and Alpha diagnostic operators; each finalcode/seal/claim/GO/sourcebinding remains separatelyreviewed.",
+  "conditions": [
+    "Bindexact65c033e9 policyhash and18primaryprovenance-gapdisclosure in eachfinalPLAN/GO/claim as applicable; no borrowingold18exception or acceptingunknowncohort.",
+    "Retainactualsamejob Linux/proc/WNOWAIT/PGID/Docker28.0.4/localendpoint/source/tool/cgroup/disk/RAM/PID/expiry/closure guards; no cap/physicalcapacity waiver.",
+    "Finalmaterializedoperator/remote literal review andfreshfiniteRootGO required; old417501intent spent, no replay/retryfromthisdata."
+  ],
+  "limits": [
+    "Savedauthenticatedsetup/claim evidenceattests observedcohort strings, not independentlyresolvedofficialimagecontents or physicalruntimecapability.",
+    "No executing tests/imports/builds/CLIprobes/containers/providers/devices/merges fromthissourcepass."
+  ],
+  "reviewerEffects": {
+    "networkCalls": 0,
+    "candidateExecution": 0,
+    "tests": 0,
+    "runtimeProbes": 0,
+    "sourceMutation": 0
+  },
+  "next": "Authorsincorporate exactshareddata plusprovenance, updatehashbindings/seals/disclosures; independentlyreview finaloperators before Rootnewcase."
+}

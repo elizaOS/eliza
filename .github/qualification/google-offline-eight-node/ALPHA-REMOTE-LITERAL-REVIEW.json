@@ -1,0 +1,173 @@
+{
+  "atUTC": "2026-11-04T03:35:36.716439+00:00",
+  "state": "ROOT_ACTUAL_FINAL_ALPHA_BRANCH_COMMIT_ALL25_RAW_BLOBS_AND_MERKLE_PRESERVATION_PASS",
+  "Alpha": "bcdefded4530202a283c77819b48d7ec40b05cbb",
+  "tree": "968234d5002fb481772f135875a1dde90cd8c974",
+  "soleParent": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+  "branch": "codex/alpha-final-critical-union-ff04-20261104",
+  "SDK": "ff04a558747ed426d9d871a319f7b3946f7660e6",
+  "SDKTree": "086d0c65fb3df530cb1d4f89758dc9d034e09adc",
+  "freshAuthenticatedGETs": 27,
+  "rawPostimages": [
+    {
+      "path": "android/app/src/androidTest/java/ai/elizaresearch/alphaphone/BrowserPageQuestionInstrumentedTest.java",
+      "blob": "2c16b980bad1b2d51d908ef955bc19ba063b7f7c",
+      "SHA256": "132253ffaf3258ebebef90913efd202d13783d0a2978a5567f6dbe329d53153f",
+      "bytes": 33459
+    },
+    {
+      "path": "apps/app/src/browser/cloud-connection.ts",
+      "blob": "77274b9d4568679ba63275c3e55b845a984181ba",
+      "SHA256": "3240f060153cc37e14c02a852b9e46ba2f6260da6a4ac921b5f3205b720b5d8f",
+      "bytes": 12597
+    },
+    {
+      "path": "apps/app/src/prototype/agent-adapter.ts",
+      "blob": "cf962c0eb82391e90ec166ef8b940686dde5aa04",
+      "SHA256": "9e68138c0d2541d4c5bebe87c6bac3e7e827f987bef042280f5c961727aecfea",
+      "bytes": 169433
+    },
+    {
+      "path": "apps/app/src/prototype/settings-adapter.ts",
+      "blob": "f4b58440df921b3c6485b5779e576dd9bbc64a20",
+      "SHA256": "b62610ef6ca70b52fc9dd55fed7acea125347d26c018e2de5a760dd4d6322fcb",
+      "bytes": 80920
+    },
+    {
+      "path": "apps/app/src/runtime/cloud-protocol.ts",
+      "blob": "d638b989b001f442009baceec394b179e7353c3a",
+      "SHA256": "e340180944d832d1839e6edd231372f53bfd3627bb89409403285e6e6c732020",
+      "bytes": 49401
+    },
+    {
+      "path": "apps/app/src/runtime/connection-ui.tsx",
+      "blob": "4f4ce08ac3ab437bfc4129604e93d56e92e3c842",
+      "SHA256": "711b390395e530008e682cef8c8389ff99d0a96ea7119c41b2f51f5590286ddf",
+      "bytes": 342953
+    },
+    {
+      "path": "patches/eliza/cloud-speech-client-manifest.json",
+      "blob": "a0f7ae7ca559c0addd6ad758632e8ab68faacd7f",
+      "SHA256": "389f8c2b234a019f75fba285211e1f91331a2dcfadcfe61be15917b154b4c951",
+      "bytes": 679
+    },
+    {
+      "path": "patches/eliza/native-manifest.json",
+      "blob": "71e286b31a240170eac0386a7c9ca5a7a1f1872a",
+      "SHA256": "2ce5068bee7385346622c969b62548f3635f71ba384d8a6eeb6054d6619d200d",
+      "bytes": 3611
+    },
+    {
+      "path": "test/agent-always-local.test.mjs",
+      "blob": "d4c55b2ffb6b435c7607c3e7815409c95caa7dcd",
+      "SHA256": "1dfdba1aa4397dbb5c0f11dc22c33de08197ee5d4fda2d879aa885f33a8e840e",
+      "bytes": 22471
+    },
+    {
+      "path": "test/assistant-draft-dispatch.test.mjs",
+      "blob": "ab8535bb08cea6df78149058dc331fc7ca3b45a3",
+      "SHA256": "f3034a655cffd1905728de12c7fe02f393bfa26e91fa4d5040ec9b25550a0ca4",
+      "bytes": 12879
+    },
+    {
+      "path": "test/browser-cloud-dev-bridge.test.mjs",
+      "blob": "c78ac70f9e371bf1ef71863ee7f82ba2e1d4f653",
+      "SHA256": "6028ca2e1f3bbcf0f2fb41a5ee0a86e9baec65adb2bea50f288cc8285513544a",
+      "bytes": 113338
+    },
+    {
+      "path": "test/browser/assistant-draft-dispatch.spec.ts",
+      "blob": "401be5dd0302f5023ac703b213687de44a64b899",
+      "SHA256": "f0d2e626c703a320d44fc1a935f77e2eaf520e642ce1684a329f7ff01325d0b9",
+      "bytes": 12345
+    },
+    {
+      "path": "test/browser/chat-continuity.spec.ts",
+      "blob": "1b818751a5d1e24d4cd369452bc382eb2ddbcf7c",
+      "SHA256": "242d383bb4e408e59eef2e4d7b847110e50758d5ea3976d2469fae2391eecada",
+      "bytes": 50653
+    },
+    {
+      "path": "test/browser/journey-a-conversation.spec.ts",
+      "blob": "082e1a25836aeef4f5ddb5a77e1effbfa5888a44",
+      "SHA256": "616bac1edde909878597ee1efdd0ed5551e0bb52927d1d6e3171dcc625e62be7",
+      "bytes": 23742
+    },
+    {
+      "path": "test/browser/journey-core-loops.production.spec.ts",
+      "blob": "6dbe506e72a9473b6a758c1d5c0d3f0433475836",
+      "SHA256": "a177e8aa0cbb6953b633e13970333ceebc4f391537a4e3e45201d88edfb20bdc",
+      "bytes": 73916
+    },
+    {
+      "path": "test/browser/native-cloud-subscription.spec.ts",
+      "blob": "c9445d6313bebec93cc7a7913496b874eceb7e12",
+      "SHA256": "410ff3fa3774bbb8dbf8c06a0b42d4ec2d1a70db03c1072b1fd6088783b14afa",
+      "bytes": 64867
+    },
+    {
+      "path": "test/browser/production-surface.spec.ts",
+      "blob": "4abf20835315471e02a0c2705003e56184c26ec1",
+      "SHA256": "70833b8102b96881cdf4108df3eec5cee37d94a34316be01dd7a8605aba093fe",
+      "bytes": 38901
+    },
+    {
+      "path": "test/browser/resident-failures.production.spec.ts",
+      "blob": "bf245dcc1536c001568c4c213cbe44085666c817",
+      "SHA256": "3314ce42d56cabf725df31720a81b8ba96a07b22c3aec7d1535862373f837e88",
+      "bytes": 18388
+    },
+    {
+      "path": "test/browser/saved-signin-retry.production.spec.ts",
+      "blob": "95ae0860bdc6cd2a1332aaba28527494891d7125",
+      "SHA256": "12b6b44130e9daca440f6ac48ae93dd4abb206694cff864d60efca19452e015f",
+      "bytes": 10519
+    },
+    {
+      "path": "test/connection-presentation-state.test.mjs",
+      "blob": "470153f4ac1610d87feda2ac6bab9eb2f36e8004",
+      "SHA256": "6d5b750d58098e30a26e3dbdcc76143ecd870dc64a35112d5a2fc12406da0fc3",
+      "bytes": 75586
+    },
+    {
+      "path": "test/google-cancel-boundary.test.mjs",
+      "blob": "dde2239f32f42e606e0955341cc1a4c4df3efa3c",
+      "SHA256": "6f232ebeb788b1e812872d298efbe780fa823bf008153b49cec5a67d3ba82130",
+      "bytes": 7582
+    },
+    {
+      "path": "test/own-provider-service-restore.test.mjs",
+      "blob": "e8bc0fa5122f4b574de08031dda45c67c13287ee",
+      "SHA256": "50a2ae5f5a8fcb8db602495aa7d87cf54e0c06c6617267720e618b6c7b7820a7",
+      "bytes": 9227
+    },
+    {
+      "path": "test/post-sign-in-setup.test.mjs",
+      "blob": "04e3f0d72ed8d2620404ef60b06018ecc8ec1784",
+      "SHA256": "efa14c065e3d703eaf89542e6e922df6b0d1ee24c965b52f5dbde1413ec9754c",
+      "bytes": 14237
+    },
+    {
+      "path": "test/resident-prebind-stop.test.mjs",
+      "blob": "b6ce1d6b2a3854a4c6264d3fd13b0885e6997daa",
+      "SHA256": "43a254f15c0562a12b0152f86a543260570dab926ffb9e3ff56be34c94d2e6d4",
+      "bytes": 7744
+    },
+    {
+      "path": "upstream.lock.json",
+      "blob": "085fa1e4beaaad5aebf69a8631677edcb06a98a2",
+      "SHA256": "a80a80f456a3e772dd653e60a8c946e2c04fdecdeaa9e2c7f3e9c27d7635d524",
+      "bytes": 224
+    }
+  ],
+  "all26ChangesAnd3460UntouchedEntriesPreserved": "Actual published root equals Root independently recomputed exact component-union Merkle root968234; sole b053 parent and all25 raw bodies plus ff04 Gitlink match.",
+  "ownerProductGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/alpha-final-b053-google-offline-ff04-native-inert-v3-20261104/publication-v1/PRODUCT-SOURCE-GUARD.json",
+  "ownerProductGuardSHA256": "438420dc84a0dad7f6710809568a4a6de6f8a4e5b1eae329a1656d03d25d96cf",
+  "AlphaAncestryComplete": true,
+  "knownIncidentCheckNotGeneralHostOrSDKClearance": true,
+  "publisherEvidence": "Inspected owner same captured NubsCarson192162056 before/at push/after proof; not inferred from commit author or independent audit event.",
+  "ownerHandoffSHA256": "bb3517eefc872b7d076513be36b7ba73682124dbe721b08e13385380b2f2094f",
+  "sourceCandidatePairApprovedOnly": true,
+  "normalQualificationTypesLifecycleRuntimeBrowserAudioDeviceHumanAccepted": false,
+  "noMergeDeploy": true
+}
