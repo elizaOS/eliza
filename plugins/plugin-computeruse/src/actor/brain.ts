@@ -38,6 +38,7 @@
  */
 
 import {
+  extractJsonObjectSpans,
   type IAgentRuntime,
   type ImageDescriptionResult,
   logger,
@@ -549,28 +550,58 @@ export function parseBrainOutput(raw: string): BrainOutput {
   // the first `{` and last `}` here corrupted the slice whenever the
   // prose around the object carried a brace of its own — a braced word
   // before the object, a `{` the prose never closes, or one after it —
-  // so a reply holding a complete, valid object failed to parse. The
-  // reader finds the first object region that is JSON; the schema
-  // checks below still reject anything that is not a BrainOutput.
+  // so a reply holding a complete, valid object failed to parse.
   //
-  // A fenced block still wins over that first region: when the prose
-  // before the fence quotes a JSON snippet, the first region is the
-  // snippet, not the answer, so reading it first regressed fenced
+  // A fenced block still wins over any region in the prose: when the
+  // prose before the fence quotes a JSON snippet, the first region is
+  // the snippet, not the answer, so reading it first regressed fenced
   // replies that the previous fenced-first reader handled. Only when
   // the fenced body itself does not parse do we fall back to the
-  // tolerant reader over the whole reply.
+  // regions in the whole reply.
+  //
+  // Without a fence, walk every top-level object region in order and
+  // accept the first one that validates as a BrainOutput. The shared
+  // reader alone returns only the first region that is JSON, so a
+  // complete JSON snippet quoted in the prose (e.g. `{"ok": true}`)
+  // ahead of the real, unfenced BrainOutput used to abort the turn
+  // even though the model had decided a valid action.
   const fencedBody = extractFencedBrainBody(raw.trim());
-  const parsed =
-    (fencedBody !== null
+  const fencedParsed =
+    fencedBody !== null
       ? parseJsonObject<Record<string, unknown>>(fencedBody)
-      : null) ?? parseJsonObject<Record<string, unknown>>(raw);
+      : null;
+  if (fencedParsed) {
+    return validateBrainOutput(fencedParsed, raw);
+  }
+  for (const { start, end } of extractJsonObjectSpans(raw)) {
+    const candidate = parseJsonObject<Record<string, unknown>>(
+      raw.slice(start, end),
+    );
+    if (!candidate) {
+      continue;
+    }
+    try {
+      return validateBrainOutput(candidate, raw);
+    } catch (error) {
+      if (!(error instanceof BrainParseError)) {
+        throw error;
+      }
+    }
+  }
+  const parsed = parseJsonObject<Record<string, unknown>>(raw);
   if (!parsed) {
     throw new BrainParseError(
       "Brain response was not valid JSON: the reply did not contain a parseable JSON object",
       raw,
     );
   }
-  const obj = parsed;
+  return validateBrainOutput(parsed, raw);
+}
+
+function validateBrainOutput(
+  obj: Record<string, unknown>,
+  raw: string,
+): BrainOutput {
   if (typeof obj.scene_summary !== "string") {
     throw new BrainParseError(
       "Brain response scene_summary must be a string",

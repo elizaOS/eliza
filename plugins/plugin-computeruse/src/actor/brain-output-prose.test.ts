@@ -74,6 +74,12 @@ describe("parseBrainOutput prose handling", () => {
     );
   });
 
+  it("reads an unfenced object behind a JSON snippet quoted in the prose", () => {
+    expectWaitAction(
+      ['The status badge reads {"ok": true}.', OBJECT].join("\n"),
+    );
+  });
+
   it("still rejects a reply with no JSON object", () => {
     expect(() => parseBrainOutput("I cannot decide what to do.")).toThrow(
       BrainParseError,
