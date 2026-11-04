@@ -197,6 +197,82 @@ describe("activity report window start", () => {
     expect(report.apps).toEqual([]);
     expect(report.totalMs).toBe(0);
   });
+
+  it("looks past an event without a bundle id for the app in front", async () => {
+    const runtime = requireRuntime();
+    const agentId = String(runtime.agentId);
+    const windowStartMs = Date.parse("2025-03-12T09:00:00.000Z");
+    await insertEvent(
+      runtime,
+      windowStartMs - 30 * 60_000,
+      "activate",
+      "com.apple.dt.Xcode",
+      "Xcode",
+    );
+    // The collector writes "" for an app without a bundle id (a CLI helper).
+    // Reports drop such rows, so Xcode stays the app in front.
+    await insertEvent(
+      runtime,
+      windowStartMs - 10 * 60_000,
+      "activate",
+      "",
+      "python3",
+    );
+
+    const report = await getActivityReportBetween(runtime, agentId, {
+      sinceMs: windowStartMs,
+      untilMs: windowStartMs + HOUR_MS,
+    });
+    expect(
+      report.apps.map((app) => [app.bundleId, app.totalMs / 60_000]),
+    ).toEqual([["com.apple.dt.Xcode", 60]]);
+
+    // A window that holds both events counts Xcode across the unbundled one.
+    const wider = await getActivityReportBetween(runtime, agentId, {
+      sinceMs: windowStartMs - 30 * 60_000,
+      untilMs: windowStartMs + HOUR_MS,
+    });
+    expect(
+      wider.apps.map((app) => [app.bundleId, app.totalMs / 60_000]),
+    ).toEqual([["com.apple.dt.Xcode", 90]]);
+  });
+
+  it("carries the app activated in the same millisecond another one closed", async () => {
+    const runtime = requireRuntime();
+    const agentId = String(runtime.agentId);
+    const windowStartMs = Date.parse("2025-03-13T09:00:00.000Z");
+    const switchedAtMs = windowStartMs - 10 * 60_000;
+    await insertEvent(
+      runtime,
+      windowStartMs - 30 * 60_000,
+      "activate",
+      "com.apple.Safari",
+      "Safari",
+    );
+    // An app switch: Safari's deactivate and Notes' activate share a stamp.
+    await insertEvent(
+      runtime,
+      switchedAtMs,
+      "deactivate",
+      "com.apple.Safari",
+      "Safari",
+    );
+    await insertEvent(
+      runtime,
+      switchedAtMs,
+      "activate",
+      "com.apple.Notes",
+      "Notes",
+    );
+
+    const report = await getActivityReportBetween(runtime, agentId, {
+      sinceMs: windowStartMs,
+      untilMs: windowStartMs + HOUR_MS,
+    });
+    expect(
+      report.apps.map((app) => [app.bundleId, app.totalMs / 60_000]),
+    ).toEqual([["com.apple.Notes", 60]]);
+  });
 });
 
 describe("activity tracker collector stop", () => {
@@ -263,6 +339,89 @@ describe("activity tracker collector stop", () => {
       ["activate", "com.apple.Terminal"],
       ["deactivate", "com.apple.Terminal"],
     ]);
+  });
+
+  it("closes the app in front after its activate when both share a millisecond", async () => {
+    const runtime = requireRuntime();
+    const agentId = String(runtime.agentId);
+    const activatedAtMs = Date.now() - HOUR_MS;
+    const service = await ActivityTrackerService.start(runtime);
+    requireCollector().onEvent({
+      ts: activatedAtMs,
+      event: "activate",
+      bundleId: "com.apple.dt.Xcode",
+      appName: "Xcode",
+    });
+
+    // The service stops in the millisecond the collector stamped the activate.
+    const clock = vi.spyOn(Date, "now").mockReturnValue(activatedAtMs);
+    try {
+      await service.stop();
+    } finally {
+      clock.mockRestore();
+    }
+
+    // Neither a later window nor one that spans the stop counts Xcode as open.
+    const later = await getActivityReportBetween(runtime, agentId, {
+      sinceMs: activatedAtMs + 30 * 60_000,
+      untilMs: activatedAtMs + HOUR_MS,
+    });
+    expect(later.apps).toEqual([]);
+    const spanning = await getActivityReportBetween(runtime, agentId, {
+      sinceMs: activatedAtMs - 60_000,
+      untilMs: activatedAtMs + HOUR_MS,
+    });
+    expect(spanning.totalMs).toBeLessThanOrEqual(1);
+
+    const events = await listActivityEvents(
+      runtime,
+      agentId,
+      new Date(activatedAtMs).toISOString(),
+    );
+    expect(events.map((event) => event.eventKind)).toEqual([
+      "activate",
+      "deactivate",
+    ]);
+    const closedAtMs = Date.parse(events[1]?.observedAt ?? "");
+    expect(closedAtMs).toBeGreaterThan(activatedAtMs);
+  });
+
+  it("closes the bundled app in front when an app without a bundle id came after it", async () => {
+    const runtime = requireRuntime();
+    const agentId = String(runtime.agentId);
+    const activatedAtMs = Date.now() - HOUR_MS;
+    const service = await ActivityTrackerService.start(runtime);
+    const { onEvent } = requireCollector();
+    onEvent({
+      ts: activatedAtMs,
+      event: "activate",
+      bundleId: "com.apple.dt.Xcode",
+      appName: "Xcode",
+    });
+    onEvent({
+      ts: activatedAtMs + 10 * 60_000,
+      event: "activate",
+      bundleId: "",
+      appName: "python3",
+    });
+
+    await service.stop();
+    const stoppedAtMs = Date.now();
+
+    // Reports drop the unbundled rows, so the closing event must name Xcode.
+    const spanning = await getActivityReportBetween(runtime, agentId, {
+      sinceMs: activatedAtMs,
+      untilMs: stoppedAtMs + HOUR_MS,
+    });
+    expect(spanning.apps.map((app) => app.bundleId)).toEqual([
+      "com.apple.dt.Xcode",
+    ]);
+    expect(spanning.totalMs).toBeLessThanOrEqual(stoppedAtMs - activatedAtMs);
+    const later = await getActivityReportBetween(runtime, agentId, {
+      sinceMs: stoppedAtMs + 30 * 60_000,
+      untilMs: stoppedAtMs + HOUR_MS,
+    });
+    expect(later.apps).toEqual([]);
   });
 
   it("writes no closing event when no app is in front", async () => {

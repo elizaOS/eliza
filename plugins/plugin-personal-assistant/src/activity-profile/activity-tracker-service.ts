@@ -91,7 +91,11 @@ export class ActivityTrackerService extends Service {
   private writeFailures = 0;
   private writeQueue: Promise<void> = Promise.resolve();
   /** The app whose activate is the newest queued event, if any. */
-  private openActivation: { bundleId: string; appName: string } | null = null;
+  private openActivation: {
+    bundleId: string;
+    appName: string;
+    ts: number;
+  } | null = null;
 
   static override async start(
     runtime: IAgentRuntime,
@@ -183,10 +187,18 @@ export class ActivityTrackerService extends Service {
   }
 
   private enqueueEvent(event: ActivityCollectorEvent): void {
-    this.openActivation =
-      persistedEventKind(event) === "activate"
-        ? { bundleId: event.bundleId ?? "", appName: event.appName ?? "" }
-        : null;
+    // Reports drop a row without a bundle id, so it neither opens nor closes
+    // the app in front.
+    if (event.bundleId) {
+      this.openActivation =
+        persistedEventKind(event) === "activate"
+          ? {
+              bundleId: event.bundleId,
+              appName: event.appName ?? "",
+              ts: event.ts,
+            }
+          : null;
+    }
     this.writeQueue = this.writeQueue.then(
       () => this.persistEvent(event),
       () => this.persistEvent(event),
@@ -196,13 +208,14 @@ export class ActivityTrackerService extends Service {
   /**
    * Reports end an app's dwell at the next event, so an activate that is still
    * open when the collector stops would run on until the next start. Close it
-   * at the moment the collector stopped observing.
+   * at the moment the collector stopped observing, and never in the activate's
+   * own millisecond, where the two rows would have no order.
    */
   private closeOpenActivation(): void {
     const open = this.openActivation;
     if (!open) return;
     this.enqueueEvent({
-      ts: Date.now(),
+      ts: Math.max(Date.now(), open.ts + 1),
       event: "deactivate",
       bundleId: open.bundleId,
       appName: open.appName,
