@@ -56,6 +56,8 @@ async function driveTelegramTurn(options: {
   processorReplies?: Content[];
   /** Make Telegram refuse every photo send. */
   failPhotos?: boolean;
+  /** Filter metadata like plugin-sqlite: each value by `===`. */
+  sqliteMetadataFilter?: boolean;
 }): Promise<{
   delivered: DeliveredTelegramMessage[];
   photos: Array<{ chatId: number | string; filename?: string }>;
@@ -70,6 +72,25 @@ async function driveTelegramTurn(options: {
       fixtures: options.fixtures,
     }),
   );
+
+  if (options.sqliteMetadataFilter) {
+    // plugin-sqlite filters metadata with \`md[k] !== v\` (records.ts), so an
+    // array value never matches; PGlite's \`@>\` containment hides that.
+    const runtime = harness.runtime;
+    const getMemories = runtime.getMemories.bind(runtime);
+    runtime.getMemories = async (params) => {
+      const rows = await getMemories(params);
+      const wanted = params.metadata;
+      if (!wanted) return rows;
+      return rows.filter((row) =>
+        Object.entries(wanted).every(
+          ([key, value]) =>
+            (row.metadata as Record<string, unknown> | undefined)?.[key] ===
+            value,
+        ),
+      );
+    };
+  }
 
   // The bot is only touched for DM replies / media; a group text reply goes
   // out via `ctx.telegram` (captured below), so `apiRoot` is never hit. Point
@@ -309,6 +330,24 @@ describe("telegram connector loop (keyless)", () => {
     // Every chunk still resolves to the one merged row for reply-to and reactions.
     expect(await manager.resolveMessageMemoryId(chatId, 2)).toBe(responseId);
     // An edit of one chunk must not replace the whole reply's stored text.
+    expect(await manager.storedCopyForEdit(chatId, 2)).toBeNull();
+  }, 60_000);
+
+  // lovecity08 on #38646: on plugin-sqlite the metadata array lookup never
+  // matches, so reply-to, reactions and edits lost the merged row.
+  it("resolves every chunk of a merged reply when metadata filters compare by value, as on SQLite", async () => {
+    const responseId = "8f3b4d75-9a5c-4dae-9f4a-5b6c7d8e9fa4";
+    const longText = Array.from({ length: 900 }, (_, i) => `word${i}`).join(
+      " ",
+    );
+    const { delivered, manager, chatId } = await driveTelegramTurn({
+      inboundText: "Tell me everything.",
+      processorReplies: [{ text: longText, responseId }],
+      sqliteMetadataFilter: true,
+    });
+    expect(delivered.length).toBeGreaterThan(1);
+    for (let id = 1; id <= delivered.length; id++)
+      expect(await manager.resolveMessageMemoryId(chatId, id)).toBe(responseId);
     expect(await manager.storedCopyForEdit(chatId, 2)).toBeNull();
   }, 60_000);
 

@@ -594,10 +594,20 @@ export class MessageManager {
     );
   }
 
+  /** Cache key naming the merged reply row that holds a delivered message. */
+  private mergedReplyKey(
+    chatId: number | string,
+    messageId: number | string,
+  ): string {
+    return `${this.telegramMessageMemoryKey(chatId, messageId)}:merged-reply`;
+  }
+
   /**
    * The stored row for a Telegram message: its per-message row, else the
-   * agent reply that lists it in `telegramMessageIds` (a reply stored once
-   * under the message service's response id), else the per-message id.
+   * agent reply it was merged into (a reply stored once under the message
+   * service's response id), else the per-message id. The merge records a
+   * plain key per delivered message id, because metadata array matching is
+   * adapter-specific: plugin-sqlite compares each value with `===`.
    */
   async resolveMessageMemoryId(
     chatId: number | string,
@@ -605,17 +615,12 @@ export class MessageManager {
   ): Promise<UUID> {
     const id = this.messageMemoryId(chatId, messageId);
     if (await this.runtime.getMemoryById(id)) return id;
-    const replies = await this.runtime.getMemories({
-      tableName: "messages",
-      authorEntityIds: [this.runtime.agentId],
-      metadata: {
-        accountId: this.accountId,
-        telegramChatId: String(chatId),
-        telegramMessageIds: [String(messageId)],
-      },
-      count: 2,
-    });
-    return replies.length === 1 && replies[0]?.id ? replies[0].id : id;
+    const merged = validateUuid(
+      await this.runtime.getCache<string>(
+        this.mergedReplyKey(chatId, messageId),
+      ),
+    );
+    return merged && (await this.runtime.getMemoryById(merged)) ? merged : id;
   }
 
   /**
@@ -1683,6 +1688,11 @@ export class MessageManager {
         } as Memory["metadata"],
         createdAt: first.date * 1000,
       });
+      for (const sent of args.sentMessages)
+        await this.runtime.setCache(
+          this.mergedReplyKey(sent.chat.id, sent.message_id),
+          canonicalReplyId,
+        );
       return [merged];
     }
     for (const sentMessage of args.sentMessages) {
