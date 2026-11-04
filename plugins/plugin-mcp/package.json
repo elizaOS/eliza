@@ -114,7 +114,7 @@
     "json5": "^2.2.3"
   },
   "devDependencies": {
-    "@biomejs/biome": "2.6.3",
+    "@biomejs/biome": "2.6.4",
     "@elizaos/testing": "workspace:*",
     "@types/json-schema": "^7.0.15",
     "@types/node": "^25.0.3",
