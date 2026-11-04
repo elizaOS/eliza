@@ -12,8 +12,8 @@
     "bytes": 22481
   },
   "Alpha/test/development-cartesia-conversation.test.mjs": {
-    "sha256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
-    "bytes": 33121
+    "sha256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+    "bytes": 33480
   },
   "Alpha/test/private-preview-cartesia-route.test.mjs": {
     "sha256": "9aca7b24aaaecdaee71af790cf7c7cc49e1aa92c5f1a6b13f1c1a6a07a30fde0",

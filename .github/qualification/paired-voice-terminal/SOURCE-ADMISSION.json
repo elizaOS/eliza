@@ -9,17 +9,17 @@
     "CIGuardScope": "Fresh exact pin and known incident markers; SDK ancestry is incomplete in shallow checkout. This limitation is explicit, not complete-ancestry proof."
   },
   "Alpha": {
-    "commit": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+    "commit": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
     "CIWorkflowDepth": 1,
     "CIGuardRequiresCompleteAncestry": true,
     "completeAncestry": "Explicit bounded exactSHA unshallow in existing2GiB trusted Git Docker phase; no tags/refmap/FETCH_HEAD/submodules/maintenance/unrelated namedrefs; own.gitonlyRW, full productguard before installs/source/module/tests.",
-    "localPublisherGuardSHA256": "1d7550e0b720dfd1a9c89b26be1687efa458bc3092e411d7183ebd34c9616a90",
+    "localPublisherGuardSHA256": "f1b8ed19ff71c24840e78cff5313cacb7c17ba5206dc6c4b5853d6ca462cedef",
     "localAncestryComplete": true,
-    "remoteLiteralReviewSHA256": "4da12f43c308fce94300cabd3432cb8b49e522bff08ec26473fe71ff6b187a00"
+    "remoteLiteralReviewSHA256": "656790feff4c2f17db129fb7f7dd3c1cff7ce0d686ca84dff0277032ae71a9d5"
   },
   "normalCLIOrProviderAcceptance": false,
   "RootDisposition": {
-    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-E232-ALPHA1198-TEST-DIAGNOSTIC-SOURCE-DISPOSITION-20261104.json",
-    "sha256": "620166f314c3a38aff8e19fd592ed26ed52335702dd1fcea0773228d3c362016"
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-E232-ALPHAB053-MIC-PORT-SOURCE-DISPOSITION-20261104.json",
+    "sha256": "395a8b99700ef45bc154b5a327ffc8e3f8b367d456aea0ed37b8aa5e33320492"
   }
 }

@@ -1,5 +1,5 @@
 {
-  "atUTC": "2026-11-04T00:54:38.272879+00:00",
+  "atUTC": "2026-11-04T01:43:36.986440+00:00",
   "state": "SOURCE_DERIVED_EXPECTED_REGISTRATION_LEDGER_NOT_COLLECTED_OR_EXECUTED",
   "pins": {
     "SDK": {
@@ -7,12 +7,12 @@
       "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b"
     },
     "Alpha": {
-      "commit": "1198aa7ae60c9f0439bae15575382c1faba28c15",
-      "tree": "d1ab14153963a6f5be571b17b5b1a55e37f4fecf",
+      "commit": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+      "tree": "1eb3e31516c08a289a463ad6d6ca5f42daf48cab",
       "sdkGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928"
     }
   },
-  "inputManifestSHA256": "cc3708767f934fa340c7c2e6eb7b906ac69b7429d42814afbc8518a50b51c44a",
+  "inputManifestSHA256": "4598b1a411fc8ca2b459bb7da4b1ea712a65b4d4c5958c0859594e9b5ff1d81b",
   "verifiedFrozenInputs": [
     {
       "file": "Alpha/package-lock.json",
@@ -31,8 +31,8 @@
     },
     {
       "file": "Alpha/test/development-cartesia-conversation.test.mjs",
-      "sha256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
-      "bytes": 33121
+      "sha256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+      "bytes": 33480
     },
     {
       "file": "Alpha/test/private-preview-cartesia-route.test.mjs",
@@ -146,7 +146,8 @@
     "Private-preview source: one positive flag case plus6 literal negative flag rows plus9 actual fixed adapterTest invocation parents. Whitelist and actual seven literal/two preference-expanded invocations match exactly. Function-internal test(name) calls are not independently counted.",
     "Voice cancellation causes vector has11 values; everyselectedVitest each table has literal row count, even helper-valued rows. Do not execute sse(), repeat() or any source expression to derive count.",
     "OnlyVoice file has one describe scope, realtime cancellation diagnostics, surroundingallits test bodies. Suite container is not a test. All other owningfiles have no describe ancestry in reviewedsource.",
-    "Exact Alpha1198 test-only source rebind: newtesthash and35line/sourceKey updates from byte-identical reviewed declaration map. All121assertcall ASTtexts unchanged per independentfb17source review. OriginalASTlocator retained explicitly as predecessor, not relabeled."
+    "Exact Alpha1198 test-only source rebind: newtesthash and35line/sourceKey updates from byte-identical reviewed declaration map. All121assertcall ASTtexts unchanged per independentfb17source review. OriginalASTlocator retained explicitly as predecessor, not relabeled.",
+    "Mic test-port correction: requiredstate plus3startupchecks; same35testdeclarations, onlylast2sourceLine/sourceKey positions shift+3 by reviewedbyte-identical line mapping. No freshcollection/IDs or runtime acceptance."
   ],
   "countArithmetic": {
     "rawASTCallDeclarations": 202,
@@ -160,7 +161,7 @@
   "files": [
     {
       "file": "Alpha/test/development-cartesia-conversation.test.mjs",
-      "sha256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
+      "sha256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
       "staticASTDeclarations": 30,
       "expectedSourceCaseCount": 35,
       "unresolvedRegistrationDeclarations": [],
@@ -531,9 +532,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:245:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:248:literal:0",
           "kind": "literal",
-          "sourceLine": 245,
+          "sourceLine": 248,
           "leafTitle": "existing health discovery refuses missing/false settlement capability before client creation",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -541,9 +542,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:250:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:253:literal:0",
           "kind": "literal",
-          "sourceLine": 250,
+          "sourceLine": 253,
           "leafTitle": "both Direct and local Cloud callers opt in by resident transport",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3266,7 +3267,7 @@
   ],
   "execution": "Nativefs/crypto andagent-owned data-only textual derivation. No test registration/collection/run, compiler/parser/SDK/module import, eval/vm/source execution, CLI/probe, install/build/image/CI/model/provider/device/runtime/source effect orheavycopy.",
   "predecessorStaticLocatorReceiptSHA256": "c7732f848ac63517a655d34e66897e3a3db0f1994e407266c6a622f22d09dcf0",
-  "sourceDeclarationRebindSHA256": "4886ac5b833eb950b884c9e23c3ee27242b7ced794c61d425507f2aadc2a1f19",
+  "sourceDeclarationRebindSHA256": "97dd55f63c4647be1d9ba01faca28b3e7d11eca0d6294f68c4b9761b960ca9ae",
   "priorCountCorrection": {
     "state": "SOURCE_SUITE_CLASSIFICATION_CORRECTION_NOT_RETROACTIVE_RUN_ACCEPTANCE",
     "parentLedgerSHA256": "0f3a2b333d2d886608402e472e8a9e24ed229dd77116665d12b11a3b0bd8c4bd",
@@ -3277,7 +3278,8 @@
     "currentSourceAlpha": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
     "inputManifestScope": "Original source input manifest and pins retained verbatim as historical source derivation; selected full test sources unchanged in Alpha61a35. This proposal is not a new runnable source admission."
   },
-  "sourceRebind": {
+  "predecessorSourceDeclarationRebindSHA256": "4886ac5b833eb950b884c9e23c3ee27242b7ced794c61d425507f2aadc2a1f19",
+  "priorSourceRebind": {
     "state": "EXACT_REVIEWED_TEST_ONLY_CHILD_DECLARATION_REBIND_NOT_EXECUTION",
     "Alpha": "1198aa7ae60c9f0439bae15575382c1faba28c15",
     "parent": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
@@ -3286,5 +3288,26 @@
     "assertionSourceReviewSHA256": "fb17d4bb4c48e3793227ee7f480514ab496e2d5fbb4ee65e5e82f01d504ca6a6",
     "noFreshCandidateParserOrTestExecuted": true,
     "baselineASTScope": "Retained predecessor static locator is for original declarations. New declaration positions derive from byte-identical reviewed35line map; no new runtime registration or internal IDs invented."
+  },
+  "sourceRebind": {
+    "state": "EXACT_MIC_PORT_TEST_ONLY_CHILD_NOT_EXECUTION",
+    "Alpha": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+    "parent": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+    "testSHA256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+    "sourceReviewSHA256": "56f04ce31285d271b362013afa5f2f78721145e00819ab955aea4bd7b7e383a7",
+    "actual35DeclarationsPreserved": true,
+    "only2DeclarationLineShifts": [
+      [
+        245,
+        248
+      ],
+      [
+        250,
+        253
+      ]
+    ],
+    "all121PriorAssertCallsRetainedAnd3StrongStartupChecksAdded": true,
+    "sourceContract": "SDK8edb7199 miccapture state running required; no production change.",
+    "Google7cNotMixed": true
   }
 }

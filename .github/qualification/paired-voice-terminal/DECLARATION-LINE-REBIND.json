@@ -1,260 +1,235 @@
 {
-  "state": "SOURCE_ONLY_COMBINED_PROPOSAL_NOT_PUBLISHED_OR_EXECUTED",
+  "state": "SOURCE_ONLY_TEST_MICROPHONE_PORT_CORRECTION_PENDING_INDEPENDENT_REVIEW",
+  "AlphaParent": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+  "SDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
   "file": "test/development-cartesia-conversation.test.mjs",
-  "AlphaParent": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
-  "beforeSHA256": "66ea61165f2c0f08862e0c960dabfd214537930e666b1225421cfc0896a1840e",
-  "afterSHA256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
+  "beforeSHA256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
+  "afterSHA256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+  "sourceCause": "Actual SDK MicAudioContextLike requires state; capture.ts392 rejects undefinedstate and client startCapture stops toidle oncapturefailure. FakeMicAudioContext omitted state. Actual observed ready->idle before allA/Bframes is consistent with that explicit source guard.",
+  "actualTrace": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision4-test-diagnostic-v1/run-41752979019/ACTUAL-PAIRED-CALLBACK-TRACE.json",
+  "supplierSourceSHA256": "8edb719909531774a6dc9b74c8922200cdb60b0924651c12928c9076ba35d83a",
+  "onlyPortFieldAdded": "state:running, real standard AudioContext state",
+  "threeStrongerPreconditions": [
+    "h.errors empty",
+    "actual SDK listening callback observed",
+    "actual microphone track enabled"
+  ],
+  "allOriginalAssertionsRetainedByteIdenticalInOrder": true,
+  "extraSleepsAwaitsOrMockClientReducers": false,
   "cases": [
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:21:literal:0",
-      "name": "canonical completion refreshes history without a second transcript/model dispatch",
-      "oldLine": 21,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:43:literal:0",
+      "oldLine": 43,
       "newLine": 43,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:22:literal:0",
-      "name": "failed retirement remains failed on repeated Stop",
-      "oldLine": 22,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:44:literal:0",
+      "oldLine": 44,
       "newLine": 44,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:23:literal:0",
-      "name": "recheck retires the owned server ticket when its conversation changes",
-      "oldLine": 23,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:45:literal:0",
+      "oldLine": 45,
       "newLine": 45,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:25:literal:0",
-      "name": "canonical teardown or rotated tickets already retired are accepted only by exact authenticated status",
-      "oldLine": 25,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:47:literal:0",
+      "oldLine": 47,
       "newLine": 47,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:54:literal:0",
-      "name": "more than two renderer renewals retain one audio client, mute, history and navigation deduplication",
-      "oldLine": 54,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:76:literal:0",
+      "oldLine": 76,
       "newLine": 76,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:69:literal:0",
-      "name": "Stop during renewal ticket fetch fences a late ticket and never restarts renderer or capture",
-      "oldLine": 69,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:91:literal:0",
+      "oldLine": 91,
       "newLine": 91,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:74:literal:0",
-      "name": "Stop during renewal socket open closes both sockets and fences a late open",
-      "oldLine": 74,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:96:literal:0",
+      "oldLine": 96,
       "newLine": 96,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:0",
-      "name": "a changeRenderer while renewal waits refuses the replacement without replay",
-      "oldLine": 79,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:0",
+      "oldLine": 101,
       "newLine": 101,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:1",
-      "name": "a changeOwner while renewal waits refuses the replacement without replay",
-      "oldLine": 79,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:1",
+      "oldLine": 101,
       "newLine": 101,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:2",
-      "name": "a changeConversation while renewal waits refuses the replacement without replay",
-      "oldLine": 79,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:2",
+      "oldLine": 101,
       "newLine": 101,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:83:literal:0",
-      "name": "a replacement renderer socket opening after its bound renderer changes is retired, not adopted",
-      "oldLine": 83,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:105:literal:0",
+      "oldLine": 105,
       "newLine": 105,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:88:literal:0",
-      "name": "an unexpected active renderer disconnect still retires voice and does not silently reconnect",
-      "oldLine": 88,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:110:literal:0",
+      "oldLine": 110,
       "newLine": 110,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:93:literal:0",
-      "name": "Cloud realtime uses canonical client and renderer only after attested session-start admission",
-      "oldLine": 93,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:115:literal:0",
+      "oldLine": 115,
       "newLine": 115,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:94:literal:0",
-      "name": "Cloud realtime refuses legacy, direct or deferred provider attestation",
-      "oldLine": 94,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:116:literal:0",
+      "oldLine": 116,
       "newLine": 116,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:97:literal:0",
-      "name": "voice emits direct-request mode only while the current preference allows it",
-      "oldLine": 97,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:119:literal:0",
+      "oldLine": 119,
       "newLine": 119,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:98:literal:0",
-      "name": "only the matching completed voice message can execute requested actions once",
-      "oldLine": 98,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:120:literal:0",
+      "oldLine": 120,
       "newLine": 120,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:99:literal:0",
-      "name": "ask-first preference and stopped sessions cannot execute a completed voice action",
-      "oldLine": 99,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:121:literal:0",
+      "oldLine": 121,
       "newLine": 121,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:102:literal:0",
-      "name": "automatic microphone pause starts only for accepted nonempty final and lasts through early speaking_end",
-      "oldLine": 102,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:124:literal:0",
+      "oldLine": 124,
       "newLine": 124,
-      "declarationLineByteIdentical": true
-    },
-    {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:111:literal:0",
-      "name": "matching usage does not unpause playback that has not ended",
-      "oldLine": 111,
-      "newLine": 133,
-      "declarationLineByteIdentical": true
-    },
-    {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:117:literal:0",
-      "name": "old usage and old interruption cannot clear a newer accepted turn",
-      "oldLine": 117,
-      "newLine": 139,
-      "declarationLineByteIdentical": true
-    },
-    {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:0",
-      "name": "silent turn releases automatic pause on matching usage",
-      "oldLine": 123,
-      "newLine": 145,
-      "declarationLineByteIdentical": true
-    },
-    {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:1",
-      "name": "silent turn releases automatic pause on matching error",
-      "oldLine": 123,
-      "newLine": 145,
-      "declarationLineByteIdentical": true
-    },
-    {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:2",
-      "name": "silent turn releases automatic pause on matching interrupted",
-      "oldLine": 123,
-      "newLine": 145,
-      "declarationLineByteIdentical": true
-    },
-    {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:128:literal:0",
-      "name": "manual mute remains independent and Stop clears automatic pause despite late events",
-      "oldLine": 128,
-      "newLine": 150,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
       "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:133:literal:0",
-      "name": "empty final never invents processing and session transport error clears busy state",
       "oldLine": 133,
-      "newLine": 155,
-      "declarationLineByteIdentical": true
+      "newLine": 133,
+      "declarationByteIdentical": true
     },
     {
       "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:139:literal:0",
-      "name": "local playback drain before usage keeps processing paused until its receipt",
       "oldLine": 139,
-      "newLine": 161,
-      "declarationLineByteIdentical": true
+      "newLine": 139,
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:142:literal:0",
-      "name": "opening greeting stays paused until local playback drains without a user turn",
-      "oldLine": 142,
-      "newLine": 164,
-      "declarationLineByteIdentical": true
-    },
-    {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal:0",
-      "name": "old greeting events and drain cannot clear a newer accepted request",
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:0",
       "oldLine": 145,
+      "newLine": 145,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:1",
+      "oldLine": 145,
+      "newLine": 145,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:2",
+      "oldLine": 145,
+      "newLine": 145,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:150:literal:0",
+      "oldLine": 150,
+      "newLine": 150,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:155:literal:0",
+      "oldLine": 155,
+      "newLine": 155,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:161:literal:0",
+      "oldLine": 161,
+      "newLine": 161,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:164:literal:0",
+      "oldLine": 164,
+      "newLine": 164,
+      "declarationByteIdentical": true
+    },
+    {
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:167:literal:0",
+      "oldLine": 167,
       "newLine": 167,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:151:literal:0",
-      "name": "fresh server fallback playback after a completed request is paused until local drain",
-      "oldLine": 151,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:173:literal:0",
+      "oldLine": 173,
       "newLine": 173,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:158:literal-for-of:0",
-      "name": "retryable unscoped stt_reconnecting preserves busy processing until matching usage",
-      "oldLine": 158,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:180:literal-for-of:0",
+      "oldLine": 180,
       "newLine": 180,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:158:literal-for-of:1",
-      "name": "retryable unscoped transport_error preserves busy processing until matching usage",
-      "oldLine": 158,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:180:literal-for-of:1",
+      "oldLine": 180,
       "newLine": 180,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:166:literal:0",
-      "name": "accepted session reset retires busy traces and old frames cannot revive the projection",
-      "oldLine": 166,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:188:literal:0",
+      "oldLine": 188,
       "newLine": 188,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:177:literal:0",
-      "name": "actual SDK and Alpha preserve A queued playback while B failure settles once",
-      "oldLine": 177,
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:199:literal:0",
+      "oldLine": 199,
       "newLine": 199,
-      "declarationLineByteIdentical": true
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:218:literal:0",
-      "name": "existing health discovery refuses missing/false settlement capability before client creation",
-      "oldLine": 218,
-      "newLine": 245,
-      "declarationLineByteIdentical": true
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:245:literal:0",
+      "oldLine": 245,
+      "newLine": 248,
+      "declarationByteIdentical": true
     },
     {
-      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:223:literal:0",
-      "name": "both Direct and local Cloud callers opt in by resident transport",
-      "oldLine": 223,
-      "newLine": 250,
-      "declarationLineByteIdentical": true
+      "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:250:literal:0",
+      "oldLine": 250,
+      "newLine": 253,
+      "declarationByteIdentical": true
     }
   ],
-  "all35OriginalDeclarationLinesPreservedByteForByte": true,
-  "futureOracleRebindRequired": "Update Alpha owning1 hash/sourceLine/sourceKey labels for these authored line shifts after exact new pin; no oldline proof transferred.",
-  "noProductionChange": true,
-  "noAssertionChange": true,
-  "noNewGO": true,
-  "supersedes": "combined-test-only-v1: combines corrected fixture eligibility/tombstones v2 and unchanged diagnostic v1."
+  "realTestCaseCountUnchanged": 35,
+  "productionChanges": false,
+  "qualificationNotRun": true,
+  "noOverallOrLiveVoiceAcceptance": true
 }

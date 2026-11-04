@@ -1,9 +1,9 @@
 {
   "result": "PASS",
-  "repo": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision4-test-diagnostic-v1/alpha-source",
+  "repo": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision5-mic-port-v1/alpha-source",
   "kind": "product",
-  "head": "1198aa7ae60c9f0439bae15575382c1faba28c15",
-  "expectedHead": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+  "head": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+  "expectedHead": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
   "ancestryComplete": true,
   "knownInjectedAncestors": [],
   "trackedChangedFiles": [],

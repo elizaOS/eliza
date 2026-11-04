@@ -1,5 +1,5 @@
 {
-  "state": "NOT_ISSUED_REVIEWED_TEST_DIAGNOSTIC_ROOT_TEMPLATE",
+  "state": "NOT_ISSUED_MIC_PORT_CORRECTION_ROOT_TEMPLATE",
   "action": "ONE_EXACT_QUALIFICATION_RUN",
   "recipe": "paired-voice-terminal-normal-v2",
   "mode": "qualify",
@@ -9,8 +9,8 @@
       "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b"
     },
     "Alpha": {
-      "commit": "1198aa7ae60c9f0439bae15575382c1faba28c15",
-      "tree": "d1ab14153963a6f5be571b17b5b1a55e37f4fecf",
+      "commit": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+      "tree": "1eb3e31516c08a289a463ad6d6ca5f42daf48cab",
       "sdkGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928"
     }
   },
@@ -22,8 +22,8 @@
   "expiresEpoch": "Rootfinite<=issued+1200",
   "output": "ActualRUNNER_TEMP/paired-voice-results",
   "operatorSealSHA256": "RootbindsSEAL.json",
-  "sourceManifestSHA256": "8f5dad4246ddcfe29722b0e34f4cf5ee9458c6cda888cba22afdc95ff4326784",
-  "oracleSHA256": "21634ccfef6fa6447444b26e64fe0790ddf244858f71b5da331ec932cb54dd98",
+  "sourceManifestSHA256": "ac35e03ca69befbe39997c33e3d99511a48fa93524481ca60b915d9cf3b965a8",
+  "oracleSHA256": "838eabee86abb50213b9db385eecd422e96d6d8d8439dc524fa46e04151565bf",
   "resourcePolicySHA256": "45da415ba1eddddaa66e0005fbb0cce6bdc12d17b2345f9beae272b2e154b93d",
   "toolchainSHA256": "2f62c07d10891282c9f038bd9bceb82b2ae670d184223bbff4f89ae6ec0bf32c",
   "normalTypes": "HELD_SEPARATE_NOT_WAIVED",

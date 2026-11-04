@@ -1,49 +1,52 @@
 {
-  "state": "IMMUTABLE_EXACT_TEST_ONLY_DIAGNOSTIC_ORACLE_REBIND_PENDING_FINAL_REVIEW",
-  "operatorParent": "d7b4d004d7d9dae7cb521a07364533564304fdfb",
+  "state": "IMMUTABLE_MIC_PORT_ONLY_SOURCE_REBIND_PENDING_FINAL_REVIEW",
+  "operatorParent": "fc2ea2838547c67d7b363dc9ce4228934a6dc86d",
   "sources": {
     "SDK": {
       "commit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
       "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b"
     },
     "Alpha": {
-      "commit": "1198aa7ae60c9f0439bae15575382c1faba28c15",
-      "tree": "d1ab14153963a6f5be571b17b5b1a55e37f4fecf",
+      "commit": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+      "tree": "1eb3e31516c08a289a463ad6d6ca5f42daf48cab",
       "sdkGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928"
     }
   },
-  "AlphaOnlyChangedTest": "test/development-cartesia-conversation.test.mjs",
-  "testSHA256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
-  "AlphaSoleParent": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
-  "all3485OtherLeavesPreserved": true,
-  "sourceReviewSHA256": "fb17d4bb4c48e3793227ee7f480514ab496e2d5fbb4ee65e5e82f01d504ca6a6",
-  "remoteAlphaReviewSHA256": "4da12f43c308fce94300cabd3432cb8b49e522bff08ec26473fe71ff6b187a00",
-  "RootSourceDispositionSHA256": "620166f314c3a38aff8e19fd592ed26ed52335702dd1fcea0773228d3c362016",
+  "AlphaSoleParent": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+  "onlyChangedSourceFile": "test/development-cartesia-conversation.test.mjs",
+  "testSHA256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+  "actual3485OtherLeavesPreserved": true,
+  "sourceReviewSHA256": "56f04ce31285d271b362013afa5f2f78721145e00819ab955aea4bd7b7e383a7",
+  "remoteAlphaReviewSHA256": "656790feff4c2f17db129fb7f7dd3c1cff7ce0d686ca84dff0277032ae71a9d5",
+  "RootSourceDispositionSHA256": "395a8b99700ef45bc154b5a327ffc8e3f8b367d456aea0ed37b8aa5e33320492",
   "expectedSourceParents": 251,
   "reviewedNestedNodeChildren": 2,
-  "all35SourceLinesAndKeysRebound": true,
-  "assertionTextsAndOrderUnchanged": true,
-  "registrationLedgerSHA256": "1f3c077b016a1c79d5f5fa3f736706ae5f13a73d217688e572b6a4546cf57f62",
-  "registrationInputManifestSHA256": "cc3708767f934fa340c7c2e6eb7b906ac69b7429d42814afbc8518a50b51c44a",
-  "declarationLineRebindSHA256": "4886ac5b833eb950b884c9e23c3ee27242b7ced794c61d425507f2aadc2a1f19",
-  "onlyOracleCountCorrection": "Describe container excluded from BOTH SDK12 mirrors; all21 realcases retained in order; no realtest removed.",
-  "actualNewRegistrationIds": "NOT_YET_OBSERVED_NO_IDS_FABRICATED",
-  "historicalReceipts": "Prior source/admission/cohort receipts retain original subject IDs and hashes. Current Root/1198 remote/test-only review plus actual line mapping govern this child. No historical pass relabeled as new qualification.",
-  "spentRun": 41747214993,
-  "spentIntent": "19e138b0c6b0c62fe23cf3b7c940a091",
+  "all35DeclarationsPreserved": true,
+  "only2LineAndSourceKeyChanges": [
+    [
+      245,
+      248
+    ],
+    [
+      250,
+      253
+    ]
+  ],
+  "all121PriorAssertionCallsPreservedPlus3StartupChecks": true,
+  "newAwaitSleepOrClientReducerSubstitute": false,
+  "registrationLedgerSHA256": "9b85b789fc0b2f54e154c1af04a82e05e3e92d0c43d39710daf6630ad4fd6f8d",
+  "registrationInputManifestSHA256": "4598b1a411fc8ca2b459bb7da4b1ea712a65b4d4c5958c0859594e9b5ff1d81b",
+  "declarationLineRebindSHA256": "97dd55f63c4647be1d9ba01faca28b3e7d11eca0d6294f68c4b9761b960ca9ae",
+  "previousDeclarationMapSHA256": "4886ac5b833eb950b884c9e23c3ee27242b7ced794c61d425507f2aadc2a1f19",
+  "hostPolicySHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
+  "hostFourCohortCapsProgramsResourcesUnchanged": true,
+  "sourceCause": "Fake MicAudioContext lacked required running state; source guard rejects undefined before turn frames. No production playback fix or new runtime success claimed.",
+  "historicalReceiptsRetained": "Earlier source/Root/AST/line-map reviews retain original subjects; current b053 source/remote/Root and new declaration map govern this child.",
+  "spentRun": 41752979019,
+  "spentIntent": "0bdfefdd5c1dbd2f0f6092c487f0f5c7",
   "newIntentOrGOIssued": false,
   "productionChanges": false,
-  "GoogleOrOrdinalOrNativeComposition": false,
-  "realPairedFailureCause": "UNKNOWN until bounded actual callback trace; no audio workaround.",
-  "normalTypesOrLiveAcceptance": false,
-  "hostPolicySHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
-  "hostPolicySourceReviewSHA256": "25e3fe71c030a551ab27cac0705e33804974ee45610976cfef6398a74ac4cd83",
-  "hostAllowedVersions": [
-    "20261018.96.1",
-    "20261025.353.1",
-    "20261026.354.1",
-    "20261101.360.1"
-  ],
-  "host18SourceLimit": "Fresh authenticated job metadata plus Root explicit source exception; official tag404 gap OPEN; all actual same-job capability/resource/closure checks unchanged.",
-  "supersedesLocalOnlyOperator": "15b76f1fb8a448b036791dccefe37c3c87244e70 remains preserved unpublished; new candidate parent will be publishedd7b4 directly."
+  "Google7cOrOrdinalOrNativeComposition": false,
+  "actualPlaybackAssertionsOnCorrectedPort": "NOT_YET_RUN",
+  "normalTypesLiveOrReleaseAcceptance": false
 }

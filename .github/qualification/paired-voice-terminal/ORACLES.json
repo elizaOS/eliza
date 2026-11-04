@@ -1,11 +1,11 @@
 {
   "state": "REVIEWED_SOURCE_ORACLES_WITH_MANDATORY_RUNTIME_CENSUS",
   "totalExpectedSourceParentCases": 251,
-  "sourceLedgerSHA256": "1f3c077b016a1c79d5f5fa3f736706ae5f13a73d217688e572b6a4546cf57f62",
+  "sourceLedgerSHA256": "9b85b789fc0b2f54e154c1af04a82e05e3e92d0c43d39710daf6630ad4fd6f8d",
   "groups": {
     "owning-1": {
       "file": "test/development-cartesia-conversation.test.mjs",
-      "sha256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
+      "sha256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
       "staticASTDeclarations": 30,
       "expectedSourceCaseCount": 35,
       "unresolvedRegistrationDeclarations": [],
@@ -376,9 +376,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:245:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:248:literal:0",
           "kind": "literal",
-          "sourceLine": 245,
+          "sourceLine": 248,
           "leafTitle": "existing health discovery refuses missing/false settlement capability before client creation",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -386,9 +386,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:250:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:253:literal:0",
           "kind": "literal",
-          "sourceLine": 250,
+          "sourceLine": 253,
           "leafTitle": "both Direct and local Cloud callers opt in by resident transport",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3194,7 +3194,7 @@
   "files": {
     "Alpha:test/development-cartesia-conversation.test.mjs": {
       "file": "test/development-cartesia-conversation.test.mjs",
-      "sha256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
+      "sha256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
       "staticASTDeclarations": 30,
       "expectedSourceCaseCount": 35,
       "unresolvedRegistrationDeclarations": [],
@@ -3565,9 +3565,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:245:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:248:literal:0",
           "kind": "literal",
-          "sourceLine": 245,
+          "sourceLine": 248,
           "leafTitle": "existing health discovery refuses missing/false settlement capability before client creation",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3575,9 +3575,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:250:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:253:literal:0",
           "kind": "literal",
-          "sourceLine": 250,
+          "sourceLine": 253,
           "leafTitle": "both Direct and local Cloud callers opt in by resident transport",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],

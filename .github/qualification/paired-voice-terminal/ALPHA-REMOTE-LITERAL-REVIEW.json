@@ -1,42 +1,43 @@
 {
-  "atUTC": "2026-11-04T00:54:12.366352+00:00",
-  "state": "SAVED_AUTHORITATIVE_REMOTE_LITERAL_LINEAGE_AND_PRESERVATION_PASS",
-  "commit": "1198aa7ae60c9f0439bae15575382c1faba28c15",
-  "tree": "d1ab14153963a6f5be571b17b5b1a55e37f4fecf",
-  "soleParent": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
-  "ref": "refs/heads/codex/alpha-voice-paired-diagnostics-r9-20261103",
+  "atUTC": "2026-11-04T01:45:03.418305+00:00",
+  "state": "LOCAL_AND_SAVED_AUTHORITATIVE_REMOTE_MIC_TEST_LEAF_LINEAGE_LITERAL_PRESERVATION_PASS",
+  "Alpha": "b0533a8b9ad0bf4bff619e2a2395d2baaf335aa6",
+  "tree": "1eb3e31516c08a289a463ad6d6ca5f42daf48cab",
+  "soleParent": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+  "ref": "refs/heads/codex/alpha-voice-mic-running-r10-20261104",
+  "SDKGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
   "changedPath": "test/development-cartesia-conversation.test.mjs",
   "preservedOtherLeaves": 3485,
-  "testSHA256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
-  "testBlob": "84c21ebfb544c2b84b54b40fb7ba16bc52cc9b3d",
-  "SDKGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "testSHA256": "d23e81c16eb5906171b4c5ed0fd12a6e0cf82c8896d08c7c4eb62de95580d05d",
+  "testBlob": "7a82bcff84909fbb684fc987827baf35a569a71c",
   "checks": [
-    "SavedauthoritativeGitHubcommit/ref proves1198/treed1ab/sole61a35parent",
-    "BothrecursiveAPI mapsuntruncated3486leaves; exactsingle reviewedtestleaf delta, all3485othermode/type/OIDs preserved",
-    "RawblobAPIbase64 decoded/GitOID/SHA independentlychecked; literalbytes equal source-reviewedfb17/aae605 andactual local source",
-    "e232gitlinkunchanged; helper/diagnostic sourceonly, no production/assertionpredicate changes beyond previouslyreviewed test-only scope"
+    "Savedactualcommit/ref provesb053/tree1eb3/sole1198parent; bothrecursiveAPI mapsuntruncated3486leaves",
+    "ONLYreviewedtestleafchanged; all3485othermode/type/OIDs ande232gitlink preserved",
+    "AuthoritativeblobAPIbase64decoded/rawGitOID/SHA independentchecks; literalbytes equal actualisolatedlocalANDsource-reviewed56f04portproposal",
+    "Sourceportfix addsrunningstate+3strongpreconditions, no production/Google/SDK/cap/assertionremoval change; source-onlyscope retainsoldallrealAAudio/Bassertions"
   ],
   "packetHashes": {
-    "CHILD-COMMIT.json": "a9c8800f228da6224bcb96919b0a3f5dcb42643ad9e084c53b79734fb0522322",
-    "PARENT-COMMIT.json": "e2b4d39c71f3452b91dacdb712c2881b4017d57dfe76ca61a0d00aa6c599273a",
-    "CHILD-REF.json": "237cfecfd553ada23d1bfb3b9d72057ce55509372a12e2f60ef940b18290b4a4",
-    "PARENT-TREE.json": "49e7bcb6ac86f67be0123536838fd855d2cef61c78f2201586142039d4f24fad",
-    "CHILD-TREE.json": "0c1769103d957ecc064f1c66883fea615d83070f3b2308b0fadd0811bfcdc49d",
-    "FIXTURE-BLOB.json": "6be5b2881de6ad726712c72b8180a5ae7570910380470cbe8ccd95a9d1044fcc",
-    "READBACK.json": "2ca0c1b4ed34906c6186eddca85b3db6f21d4b564cfaa9a6980bb2cfc9c5d84b"
+    "PARENT-COMMIT.json": "a9c8800f228da6224bcb96919b0a3f5dcb42643ad9e084c53b79734fb0522322",
+    "CHILD-COMMIT.json": "276e6343eeabe1fdb9a1cefcbc7652fa2d4fa19c619e4b703ceeb8c5b33d1212",
+    "CHILD-REF.json": "0ba2d685849e700037fa214b5b162ad469522f0f293e40ef504ff5c819b37df1",
+    "PARENT-TREE.json": "0c1769103d957ecc064f1c66883fea615d83070f3b2308b0fadd0811bfcdc49d",
+    "CHILD-TREE.json": "6417449e87f5dd8a78412875dd4e82f2a38cb35e485bcbf4a22c55eba8f62059",
+    "FIXTURE-BLOB.json": "e062ca158d19bedde88266d624b73e2706e949b271f46c7fbfa915037135f27f",
+    "READBACK.json": "8d7b93ff9a0c3c60921925261b976b15633d12e4812b8cf4ec7d2dbd5084989e"
   },
   "limits": [
-    "SavedauthoritativeAPIreadback only; no freshliveAPI/Git request byreviewer. Branchstate is publicationcheckpoint, not perpetualguarantee.",
-    "Ownercapturedsamecredentialactor evidence remains separate fromcommitauthor andindependenthistoricalaudit.",
-    "No tests/types/pairedplaybackdiagnostic/runtime/provider/model/browser/device/merge acceptance. ActualAaudio/Bfailure cause remains unresolved.",
-    "New35case sourceLine/sourceKey/newtesthash/manifest/oracle251+2/operatorseal bindings and remoteoperatorliteral review plusfreshfiniteRootGO required; nooldintent replay."
+    "PublicationsequencingunderstandingRootsourcebranchauthority, no newprepubpermissiongate.",
+    "SavedauthoritativeAPIcheckpoint only/no newliveAPI/Gitcall byreviewer; ownercapturedcredentialhistoricalactor evidence separate.",
+    "No newcapture/test/type/voice/provider/runtime/device/merge acceptance. Old417529remainsfailedandspent despiteSourceportdefectfixedinproposal.",
+    "Neednewb053hash/last2declarationlinekeys/sourceManifest/preflight/oracle/Rootsourceadmission/finaloperatorseal+remote review beforefreshfiniteRootGO; Google7c8 remainsseparate."
   ],
   "reviewerEffects": {
-    "networkCalls": 0,
-    "gitCalls": 0,
     "candidateExecution": 0,
     "tests": 0,
+    "nativeProbes": 0,
+    "networkCalls": 0,
+    "gitCalls": 0,
     "sourceMutation": 0
   },
-  "next": "Authorimmutableoperator/source-line/oracle rebind; independentlyreview actualcomposition/publication before Rootnewdiagnostic run."
+  "next": "Author exactb053/e232qualificationrebind, preserve251+2cases/allassertions; peerreviewfinalcomposition thenRootnewnormalfamilyrun."
 }
