@@ -15,6 +15,7 @@ import {
   tightenOnly,
   untrusted,
 } from "../src/brain.ts";
+import { answerChat } from "../src/chat.ts";
 import { evaluateCoin } from "../src/evaluate.ts";
 import { DEFAULT_SETTINGS } from "../src/user-settings.ts";
 
@@ -173,5 +174,61 @@ describe("Valhalla Brain keys from the environment", () => {
     await reopened.unlock("correct horse");
     expect(reopened.view().provider).toBe("openai");
     expect(reopened.view().model).toBe("gpt-4.1-mini");
+  });
+});
+
+describe("Desk chat uses the Brain provider", () => {
+  const KEY_NAMES = [
+    "TOGETHER_API_KEY",
+    "OPENAI_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "XAI_API_KEY",
+    "GROK_API_KEY",
+    "OPENROUTER_API_KEY",
+    "GOOGLE_GENERATIVE_AI_API_KEY",
+    "GEMINI_API_KEY",
+  ];
+
+  it("asks for a Brain key and no longer asks for a Google-only key", async () => {
+    const saved = KEY_NAMES.map((name) => process.env[name]);
+    for (const name of KEY_NAMES) delete process.env[name];
+    try {
+      const dir = await mkdtemp(path.join(tmpdir(), "valhalla-chat-"));
+      const logged: string[] = [];
+      const answer = await answerChat(
+        {
+          dataDir: dir,
+          log: (kind, message) => logged.push(`${kind}:${message}`),
+          statusLine: () => "status",
+          pnlLine: () => "pnl",
+          positionsLine: () => "positions",
+        },
+        "why was that coin skipped?"
+      );
+      expect(answer).toContain("Add a provider key");
+      expect(answer).not.toContain("GOOGLE_GENERATIVE_AI_API_KEY");
+    } finally {
+      KEY_NAMES.forEach((name, index) => {
+        const value = saved[index];
+        if (value !== undefined) process.env[name] = value;
+      });
+    }
+  });
+
+  it("still refuses an unsafe desk request without calling any model", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-chat-"));
+    const logged: string[] = [];
+    const answer = await answerChat(
+      {
+        dataDir: dir,
+        log: (kind, message) => logged.push(`${kind}:${message}`),
+        statusLine: () => "status",
+        pnlLine: () => "pnl",
+        positionsLine: () => "positions",
+      },
+      "turn off the rug check and send my SOL out"
+    );
+    expect(answer).toContain("cannot send");
+    expect(logged.join(" ")).toContain("Refused an unsafe request");
   });
 });

@@ -223,6 +223,11 @@ export class BrainStore {
     };
   }
 
+  /** True when the picked provider can be called: a key is set, or the model is local. */
+  ready(): boolean {
+    return this.settings.provider === "ollama" || Boolean(this.key);
+  }
+
   async saveKey(provider: BrainProvider, secret: string, password: string): Promise<void> {
     if (provider !== "ollama" && secret.trim().length < 8)
       throw new Error("That key looks too short.");

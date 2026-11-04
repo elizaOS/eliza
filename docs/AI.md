@@ -31,7 +31,7 @@ Each feature can use its own model name: chat, analyst, report, repair, and tune
 
 ## What it can do
 
-Chat on the desk and on the phone can ask about positions, P&L, why a coin was skipped, and market questions. Answers stay inside the safety rules.
+Chat on the desk and on the phone can ask about positions, P&L, why a coin was skipped, and market questions. Chat uses the provider you picked, so it answers with DeepSeek when Together AI is the provider. Answers stay inside the safety rules.
 
 The token analyst explains safety, liquidity, holder spread, and untrusted X text. It adds a confidence number. It can only make a pass fail. It cannot approve a coin the rule engine already blocked.
 

@@ -47,13 +47,13 @@ After you pair, the phone watches the PC agent:
 - A background notice carries those alerts. The app does not ask you to turn battery optimization off.
 - If the pairing token expires, the phone asks for a new one.
 - Error lines stay on the phone. Open Error log to read them.
-- Chat uses the same PC agent and the same Google AI Studio key. The key stays on the PC. A settings idea is not applied until you tap confirm, and it must stay inside the desk limits.
+- Chat uses the same PC agent and the Brain provider you picked in Controls. The key stays on the PC. A settings idea is not applied until you tap confirm, and it must stay inside the desk limits.
 
 The bot stays read-only. Arm live only from Controls on the PC, and only after you type `CONFIRM LIVE`. Set `VALHALLA_LIVE_TRADING=false` in `.env` if you want the file to block live swaps.
 
 There is no send or withdraw button. Move SOL with your own wallet app.
 
-Chat on the desk answers status, positions, and P&L. It refuses transfer and "turn off safety" requests. Gemini uses Google AI Studio, not Vertex.
+Chat on the desk answers status, positions, and P&L. It refuses transfer and "turn off safety" requests. Open chat uses the Brain provider you picked, so DeepSeek on Together AI answers when that is the provider.
 
 A log is written to `data/agent.log` and `data/audit.jsonl`. The log panel shows the same lines. Keys are not written there.
 
