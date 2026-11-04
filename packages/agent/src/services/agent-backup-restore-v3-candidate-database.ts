@@ -279,10 +279,23 @@ async function extractDatabaseAt<Directory extends DatabaseDirectory>(
           hash.update(inbox.payload);
           // The zlib callback, not Readable.from() read-ahead, owns this buffer's
           // lifetime. Do not clear plaintext while the decoder still uses it.
+          // A destroyed decoder never runs a write callback that its reader's
+          // backpressure still holds, so its close settles that write instead.
           await new Promise<void>((resolve, reject) => {
-            gunzip.write(inbox.payload, (error) =>
-              error ? reject(error) : resolve(),
-            );
+            const closed = () =>
+              reject(
+                decoderFailure ??
+                  new AgentBackupRestoreV3PgliteArchiveError(
+                    "INTERRUPTED",
+                    "Database decoder closed before it accepted its record",
+                  ),
+              );
+            gunzip.once("close", closed);
+            gunzip.write(inbox.payload, (error) => {
+              gunzip.off("close", closed);
+              if (error) reject(error);
+              else resolve();
+            });
           });
           assertActive(control);
           lastRecordReceiptSha256 = inbox.receipt.receiptSha256;
