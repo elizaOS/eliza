@@ -45,6 +45,35 @@ import { cloudSafePlayVoicePluginJava } from "./templates/play-voice.ts";
 import { cloudSafeSecureCredentialsPluginJava } from "./templates/secure-credentials.ts";
 import { cloudSafeTasksWorkerJava } from "./templates/tasks-worker.ts";
 
+/**
+ * Remove the resident-service runtime observation from ElizaResidentCredentials
+ * for the cloud package. The intent/epoch fence and the credential conductor
+ * stay; only the `ElizaAgentService` request observation becomes absent, so
+ * `withCurrent` runs the effect directly.
+ *
+ * Fail closed when the local source no longer matches: shipping a cloud tree
+ * that still names the removed service breaks the pre-gradle audit.
+ */
+export function cloudSafeResidentCredentialsJava(source) {
+  const rewritten = source
+    .replace(/^.*ElizaAgentService\.RequestObservation runtime;.*\n/m, "")
+    .replace(
+      "intent = INTENTS.current(); epoch = lifecycleEpoch; runtime = ElizaAgentService.observeRequests();",
+      "intent = INTENTS.current(); epoch = lifecycleEpoch;",
+    )
+    .replace(" && runtime.same(other.runtime)", "")
+    .replace(
+      "return runtime.withCurrent(() -> effect.run());",
+      "return effect.run();",
+    );
+  if (/ElizaAgentService|ai\.eliza\.plugins\.agent/.test(rewritten)) {
+    throw new Error(
+      "ElizaResidentCredentials still references the resident service after the android-cloud rewrite",
+    );
+  }
+  return rewritten;
+}
+
 export function sanitizeAndroidCloudPackagedConfig(env = process.env) {
   const configPath = path.join(
     androidDir,
@@ -132,6 +161,25 @@ final class ElizaCredentialRetirement {
       "utf8",
     );
     touched += 1;
+    // The cloud package keeps the resident credential conductor but has no
+    // ElizaAgentService, so its runtime observation becomes an explicit absent
+    // adapter: the intent/epoch fence stays and `withCurrent` runs the effect
+    // directly. `auditAndroidCloudSource` rejects any surviving reference, so
+    // the rewrite must land even when a new local consumer appears.
+    const residentCredentials = path.join(
+      root,
+      "ElizaResidentCredentials.java",
+    );
+    if (fs.existsSync(residentCredentials)) {
+      fs.writeFileSync(
+        residentCredentials,
+        cloudSafeResidentCredentialsJava(
+          fs.readFileSync(residentCredentials, "utf8"),
+        ),
+        "utf8",
+      );
+      touched += 1;
+    }
     fs.writeFileSync(
       path.join(root, "ElizaSecureCredentialsPlugin.java"),
       cloudSafeSecureCredentialsPluginJava(androidPackage),
