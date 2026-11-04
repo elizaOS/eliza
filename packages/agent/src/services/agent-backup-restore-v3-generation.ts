@@ -14,6 +14,7 @@ import {
   assembleAgentBackupRestoreV3Candidate,
 } from "./agent-backup-restore-v3-candidate-assembly";
 import {
+  AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_JSON_BOUNDS,
   type AgentBackupRestoreV3CandidateFs,
   type AgentBackupRestoreV3CandidateFsIdentity,
   type AgentBackupRestoreV3CandidateFsLock,
@@ -252,11 +253,16 @@ export async function prepareAgentBackupRestoreV3Generation(
     // Full inventory equality rejects stale or injected output even if every expected file copied successfully.
     const byPath = (a: { path: string }, b: { path: string }) =>
       Buffer.compare(Buffer.from(a.path), Buffer.from(b.path));
+    const inventoryJson = (value: unknown) =>
+      candidateFsCanonicalJson(
+        value,
+        AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_JSON_BOUNDS,
+      );
     if (
-      candidateFsCanonicalJson([...output.entries].sort(byPath)) !==
-        candidateFsCanonicalJson(copied.sort(byPath)) ||
-      candidateFsCanonicalJson([...output.directoryPaths].sort()) !==
-        candidateFsCanonicalJson([...directories].sort())
+      inventoryJson([...output.entries].sort(byPath)) !==
+        inventoryJson(copied.sort(byPath)) ||
+      inventoryJson([...output.directoryPaths].sort()) !==
+        inventoryJson([...directories].sort())
     )
       fail("OUTPUT_CONFLICT");
     const revalidated = await assembleAgentBackupRestoreV3Candidate(

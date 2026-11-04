@@ -223,12 +223,30 @@ export interface ReadAgentBackupRestoreV3CandidateDurableJsonOptions {
   readonly maximumBytes: number;
 }
 
-export function candidateFsCanonicalJson(value: unknown): string {
+export interface AgentBackupRestoreV3CandidateCanonicalJsonBounds {
+  readonly maximumEntries: number;
+  readonly maximumNodes: number;
+}
+
+const DURABLE_JSON_BOUNDS = OBJECT_FREEZE({
+  maximumEntries: 10_000,
+  maximumNodes: 100_000,
+});
+
+/**
+ * Durable JSON keeps the default bounds. An in-memory inventory passes bounds
+ * derived from its own limits.
+ */
+export function candidateFsCanonicalJson(
+  value: unknown,
+  bounds: Readonly<AgentBackupRestoreV3CandidateCanonicalJsonBounds> = DURABLE_JSON_BOUNDS,
+): string {
+  const { maximumEntries, maximumNodes } = bounds;
   const seen = new INTRINSIC_WEAK_SET<object>();
   let nodes = 0;
   const encode = (current: unknown, depth: number): string => {
     nodes += 1;
-    if (nodes > 100_000 || depth > 32) {
+    if (nodes > maximumNodes || depth > 32) {
       candidateFsError(
         "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
         "Candidate durable JSON exceeds its structural bound",
@@ -271,7 +289,7 @@ export function candidateFsCanonicalJson(value: unknown): string {
     REFLECT_APPLY(WEAK_SET_ADD, seen, [current]);
     try {
       if (ARRAY_IS_ARRAY(current)) {
-        if (current.length > 10_000) {
+        if (current.length > maximumEntries) {
           candidateFsError(
             "AGENT_BACKUP_RESTORE_V3_CANDIDATE_FS_RECEIPT_INVALID",
             "Candidate durable JSON array exceeds its entry bound",
@@ -323,7 +341,7 @@ export function candidateFsCanonicalJson(value: unknown): string {
         );
       }
       const ownKeys = REFLECT_OWN_KEYS(current);
-      let exactStringKeys = ownKeys.length <= 10_000;
+      let exactStringKeys = ownKeys.length <= maximumEntries;
       for (
         let index = 0;
         exactStringKeys && index < ownKeys.length;

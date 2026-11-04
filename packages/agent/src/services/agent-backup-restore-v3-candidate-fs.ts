@@ -74,6 +74,7 @@ export type {
   AgentBackupRestoreV3CandidateFileTreeProof,
 } from "./agent-backup-restore-v3-candidate-file-tree";
 export {
+  AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_JSON_BOUNDS,
   AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMITS,
   AgentBackupRestoreV3CandidateFileTreeWriter,
 } from "./agent-backup-restore-v3-candidate-file-tree";

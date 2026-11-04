@@ -184,6 +184,23 @@ export const AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMITS = Object.freeze(
   },
 );
 
+/** Canonical JSON bounds that admit an inventory at the limits above. */
+export const AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_JSON_BOUNDS =
+  Object.freeze({
+    // Every file, and every directory plus the root.
+    maximumEntries: Math.max(
+      AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMITS.maximumFiles,
+      AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMITS.maximumDirectories + 1,
+    ),
+    // treeDigest: four containers, eight nodes per file, five per directory.
+    maximumNodes:
+      4 +
+      8 * AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMITS.maximumFiles +
+      5 *
+        (AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_LIMITS.maximumDirectories +
+          1),
+  });
+
 export interface AgentBackupRestoreV3CandidateFileTreeLimits {
   readonly maximumBytes: number;
   readonly maximumFiles: number;
@@ -1617,24 +1634,27 @@ function treeDigest(
 ): string {
   return createHash("sha256")
     .update(
-      candidateFsCanonicalJson({
-        derivation: FILE_TREE_DERIVATION,
-        entries: entries.map((entry) => ({
-          pathUtf8Hex: pathUtf8Hex(entry.path),
-          sha256: entry.sha256,
-          sizeBytes: entry.sizeBytes,
-          mode: entry.mode,
-          mtimeMs: entry.mtimeMs,
-          device: entry.device,
-          inode: entry.inode,
-        })),
-        directories: directories.map((entry) => ({
-          pathUtf8Hex: pathUtf8Hex(entry.relativePath),
-          device: entry.stats.device.toString(10),
-          inode: entry.stats.inode.toString(10),
-          mode: entry.stats.mode & CANDIDATE_FILE_CONTROL_MODE_MASK,
-        })),
-      }),
+      candidateFsCanonicalJson(
+        {
+          derivation: FILE_TREE_DERIVATION,
+          entries: entries.map((entry) => ({
+            pathUtf8Hex: pathUtf8Hex(entry.path),
+            sha256: entry.sha256,
+            sizeBytes: entry.sizeBytes,
+            mode: entry.mode,
+            mtimeMs: entry.mtimeMs,
+            device: entry.device,
+            inode: entry.inode,
+          })),
+          directories: directories.map((entry) => ({
+            pathUtf8Hex: pathUtf8Hex(entry.relativePath),
+            device: entry.stats.device.toString(10),
+            inode: entry.stats.inode.toString(10),
+            mode: entry.stats.mode & CANDIDATE_FILE_CONTROL_MODE_MASK,
+          })),
+        },
+        AGENT_BACKUP_RESTORE_V3_CANDIDATE_FILE_TREE_JSON_BOUNDS,
+      ),
       "utf8",
     )
     .digest("hex");
