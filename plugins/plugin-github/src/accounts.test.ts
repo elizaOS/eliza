@@ -297,6 +297,14 @@ describe("GitHub account resolution", () => {
         content: { text: "list open PRs in a/b", source: "api" },
       }) as unknown as Memory;
 
+    // validate agrees with the handler: offered to the owner, not to a member.
+    const { issueOpAction } = await import("./actions/issue-op");
+    const { githubAction } = await import("./actions/github");
+    for (const action of [prOpAction, issueOpAction, githubAction]) {
+      expect(await action.validate(rt, turn("owner-entity"))).toBe(true);
+      expect(await action.validate(rt, turn("member-entity"))).toBe(false);
+    }
+
     const owner = await prOpAction.handler(
       rt,
       turn("owner-entity"),

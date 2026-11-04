@@ -443,9 +443,12 @@ export const issueOpAction: Action = {
     runtime: IAgentRuntime,
     message: Memory,
   ): Promise<boolean> => {
-    const r = await buildResolvedClient(runtime, message, "agent", {
-      refresh: "on-miss",
-    });
+    const r = await buildResolvedClient(
+      runtime,
+      message,
+      resolveAccountSelection(undefined, "agent"),
+      { refresh: "on-miss" },
+    );
     return !("error" in r);
   },
 
