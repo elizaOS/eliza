@@ -232,3 +232,38 @@ describe("Desk chat uses the Brain provider", () => {
     expect(logged.join(" ")).toContain("Refused an unsafe request");
   });
 });
+
+describe("Brain text for the ElizaOS runtime", () => {
+  it("returns the whole reply with the caller system prompt, unlike desk chat", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-runtime-"));
+    const store = new BrainStore(dir, { TOGETHER_API_KEY: "tg-env-key-value" });
+    const long = "alpha ".repeat(400);
+    const seen: { system: string; max: number } = { system: "", max: 0 };
+    const text = await store.generateText("chat", "status", {
+      system: "runtime system",
+      maxOutputTokens: 900,
+      fetchImpl: async (_input, init) => {
+        const body = JSON.parse(String(init?.body ?? "{}")) as {
+          max_tokens?: number;
+          messages?: Array<{ role: string; content: string }>;
+        };
+        seen.system = body.messages?.[0]?.content ?? "";
+        seen.max = Number(body.max_tokens ?? 0);
+        return new Response(JSON.stringify({ choices: [{ message: { content: long } }] }), {
+          status: 200,
+        });
+      },
+    });
+    expect(text.length).toBe(2400);
+    expect(seen.system).toBe("runtime system");
+    expect(seen.max).toBe(900);
+
+    const clipped = await store.complete(
+      "chat",
+      "status",
+      async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: long } }] }), { status: 200 })
+    );
+    expect(clipped.length).toBe(800);
+  });
+});

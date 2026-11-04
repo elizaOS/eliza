@@ -166,6 +166,38 @@ const REFUSE =
 
 export function classifyIncident(logs: string[]): { kind: string; report: string } {
   const text = logs.join("\n").toLowerCase();
+  // The model layer is named first so a provider fault is not reported as an RPC
+  // watch style fault. Trading checks do not depend on the model.
+  const modelish =
+    /(desk chat|chat failed|\bmodel\b|together|gemini|openrouter|anthropic|grok|openai)/.test(text);
+  if (modelish && /http\s*40[13]/.test(text)) {
+    return {
+      kind: "model_key",
+      report:
+        "The model provider rejected the key (HTTP 401 or 403). Add a key in Controls, or set TOGETHER_API_KEY in .env. Trading checks still run.",
+    };
+  }
+  if (modelish && /http\s*429/.test(text)) {
+    return {
+      kind: "model_limited",
+      report:
+        "The model provider rate limited the desk (HTTP 429). Retry later or switch provider. Trading checks still run.",
+    };
+  }
+  if (modelish && /http\s*5\d\d/.test(text)) {
+    return {
+      kind: "model_down",
+      report:
+        "The model provider returned a server error (HTTP 5xx). Switch provider or retry. Trading checks still run.",
+    };
+  }
+  if (modelish && /timed out|did not answer/.test(text)) {
+    return {
+      kind: "model_timeout",
+      report:
+        "The model did not answer in time. Switch provider, or raise the timeout. Trading checks still run.",
+    };
+  }
   if (text.includes("signature") || text.includes("landed")) {
     return { kind: "late_send", report: "A send timed out and then landed. Do not send it again." };
   }
@@ -211,6 +243,20 @@ export function proposeFix(logs: string[], currentTimeoutMs = 8_000): RepairProp
     };
   }
   const incident = classifyIncident(logs);
+  if (
+    incident.kind === "model_key" ||
+    incident.kind === "model_limited" ||
+    incident.kind === "model_down" ||
+    incident.kind === "model_timeout"
+  ) {
+    return {
+      action: "switch_provider",
+      summary: `${incident.report} Switch provider after you confirm.`,
+      applied: false,
+      needsConfirm: true,
+      patch: null,
+    };
+  }
   if (incident.kind === "hung_rpc") {
     const timeoutMs = Math.min(20_000, Math.max(1_000, currentTimeoutMs * 2));
     return {
