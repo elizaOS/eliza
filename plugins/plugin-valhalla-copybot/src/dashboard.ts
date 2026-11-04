@@ -25,8 +25,8 @@ import { tail4 } from "./net.ts";
 import { AFFILIATE_LABEL, contextForReport, contextForScore, offersFor } from "./offers.ts";
 import { pollTelegramTools } from "./outside-read.ts";
 import { comparisonRows, PLAN_PRICES, paywallCopy, TRIAL_MS, tierFor } from "./plan.ts";
-import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { proTradeView } from "./pro-allowance.ts";
+import { confirmRepair, proposeFix } from "./self-repair.ts";
 import { signalScore } from "./signal-score.ts";
 import {
   checkDesktopUpdate,

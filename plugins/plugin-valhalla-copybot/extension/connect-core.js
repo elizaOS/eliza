@@ -1,8 +1,8 @@
-(function (root, factory) {
+((root, factory) => {
   const api = factory();
   if (typeof module === "object" && module.exports) module.exports = api;
   else root.ValhallaConnect = api;
-})(typeof globalThis !== "undefined" ? globalThis : this, function () {
+})(typeof globalThis !== "undefined" ? globalThis : this, () => {
   const ALPHABET = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
 
   function decodeBase58(value) {
@@ -64,8 +64,14 @@
   }
 
   async function adapterFromStandard(wallet) {
-    const connect = wallet.features && wallet.features["standard:connect"] && wallet.features["standard:connect"].connect;
-    const sign = wallet.features && wallet.features["solana:signMessage"] && wallet.features["solana:signMessage"].signMessage;
+    const connect =
+      wallet.features &&
+      wallet.features["standard:connect"] &&
+      wallet.features["standard:connect"].connect;
+    const sign =
+      wallet.features &&
+      wallet.features["solana:signMessage"] &&
+      wallet.features["solana:signMessage"].signMessage;
     if (typeof connect !== "function" || typeof sign !== "function") return null;
     const result = await connect();
     const accounts = (result && result.accounts) || wallet.accounts || [];
@@ -83,7 +89,12 @@
   }
 
   async function adapterFromInjected(provider, fallbackName) {
-    if (!provider || typeof provider.connect !== "function" || typeof provider.signMessage !== "function") return null;
+    if (
+      !provider ||
+      typeof provider.connect !== "function" ||
+      typeof provider.signMessage !== "function"
+    )
+      return null;
     const connected = await provider.connect();
     const key = (connected && connected.publicKey) || provider.publicKey;
     const address = key && typeof key.toString === "function" ? key.toString() : "";

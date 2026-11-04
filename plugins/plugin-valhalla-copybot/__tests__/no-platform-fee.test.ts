@@ -9,7 +9,8 @@ describe("Jupiter requests", () => {
     const calls: string[] = [];
     const fetchImpl = async (url: string | URL, init?: RequestInit) => {
       calls.push(`${url}\n${init?.body ? String(init.body) : ""}`);
-      if (calls.length === 1) return new Response(JSON.stringify({ outAmount: "1" }), { status: 200 });
+      if (calls.length === 1)
+        return new Response(JSON.stringify({ outAmount: "1" }), { status: 200 });
       return new Response("no", { status: 500 });
     };
     await expect(

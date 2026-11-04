@@ -2,7 +2,12 @@ import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { liveTradeBlocked, proTradeView, recordLiveTrade, verifySigned } from "../src/pro-allowance.ts";
+import {
+  liveTradeBlocked,
+  proTradeView,
+  recordLiveTrade,
+  verifySigned,
+} from "../src/pro-allowance.ts";
 
 describe("Pro trade allowance", () => {
   it("counts one live trade id once and clamps a raised local file", async () => {

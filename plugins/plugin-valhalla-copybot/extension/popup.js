@@ -54,7 +54,8 @@ async function saveAddress(address) {
   const allowed = await allowOrigin(`${RPC}/*`);
   if (!allowed) {
     const error = document.getElementById("address-error");
-    if (error) error.textContent = "Chrome did not allow the balance lookup. The address was not saved.";
+    if (error)
+      error.textContent = "Chrome did not allow the balance lookup. The address was not saved.";
     return;
   }
   await chrome.storage.local.set({ watchAddress: address, siwsSession: null });
@@ -117,7 +118,8 @@ async function loadBalances(address) {
     const rows = [`SOL ${Number.isFinite(sol) ? sol.toFixed(4) : "0"}`];
     const list = (tokens && tokens.value) || [];
     for (const row of list.slice(0, 6)) {
-      const info = row.account && row.account.data && row.account.data.parsed && row.account.data.parsed.info;
+      const info =
+        row.account && row.account.data && row.account.data.parsed && row.account.data.parsed.info;
       const amount = info && info.tokenAmount;
       const mint = info && info.mint ? String(info.mint).slice(0, 4) : "coin";
       rows.push(`${mint} ${amount && amount.uiAmountString ? amount.uiAmountString : "0"}`);
@@ -127,7 +129,8 @@ async function loadBalances(address) {
       updated.textContent = `Last updated ${new Date().toLocaleString("en-US", { timeZone: "America/New_York" })} ET`;
     }
   } catch {
-    if (balances) balances.textContent = "Balances did not load. The address is saved. Nothing was sent.";
+    if (balances)
+      balances.textContent = "Balances did not load. The address is saved. Nothing was sent.";
   }
 }
 
@@ -175,7 +178,8 @@ async function loadAllowance() {
     return;
   }
   const saved = await chrome.storage.local.get(["desk", "proSigned"]);
-  if (saved.proSigned && acceptCounter(saved.proSigned, allowance)) left = Number(saved.proSigned.remaining);
+  if (saved.proSigned && acceptCounter(saved.proSigned, allowance))
+    left = Number(saved.proSigned.remaining);
   if (saved.desk) {
     try {
       const response = await fetch(`${saved.desk.replace(/\/$/, "")}/api/pro-trades`);
@@ -368,7 +372,8 @@ async function loadState(base, token) {
 async function boot() {
   const saved = await chrome.storage.local.get(["desk", "token", "watchAddress"]);
   if (saved.desk && desk) desk.value = saved.desk;
-  if (saved.watchAddress && ValhallaConnect.isPubkey(saved.watchAddress)) await showWatch(saved.watchAddress);
+  if (saved.watchAddress && ValhallaConnect.isPubkey(saved.watchAddress))
+    await showWatch(saved.watchAddress);
   await loadAllowance();
   await showHouseAd();
   if (saved.token && saved.desk) await loadState(saved.desk, saved.token);

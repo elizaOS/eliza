@@ -1,8 +1,8 @@
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { findForbiddenWalletCalls } from "../scripts/forbid-wallet-sign.ts";
 import { fetchLiveSol } from "../src/live-balance.ts";
 import { phantomBrowseLink, shortAddress, solflareBrowseLink } from "../src/wallet-client.ts";
-import { findForbiddenWalletCalls } from "../scripts/forbid-wallet-sign.ts";
 
 describe("read-only wallet connect", () => {
   it("shortens a public key and builds wallet app links", () => {

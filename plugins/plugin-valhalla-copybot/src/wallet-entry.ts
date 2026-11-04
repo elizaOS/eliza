@@ -1,4 +1,9 @@
-import { connectReadOnly, disconnectReadOnly, proveReadOnly, shortAddress } from "./wallet-client.ts";
+import {
+  connectReadOnly,
+  disconnectReadOnly,
+  proveReadOnly,
+  shortAddress,
+} from "./wallet-client.ts";
 
 type Choice = "phantom" | "solflare";
 

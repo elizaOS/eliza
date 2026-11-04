@@ -32,13 +32,17 @@ export function solflareBrowseLink(pageUrl: string): string {
 
 /** Wallet Standard names, Phantom and Solflare first. */
 export function detectedWalletNames(): string[] {
-  const found = getWallets().get().map((wallet) => wallet.name);
+  const found = getWallets()
+    .get()
+    .map((wallet) => wallet.name);
   const preferred = ["Phantom", "Solflare"].filter((name) => found.includes(name));
   const rest = found.filter((name) => !preferred.includes(name));
   return [...preferred, ...rest];
 }
 
-export async function connectReadOnly(choice: WalletChoice): Promise<{ address: string; short: string }> {
+export async function connectReadOnly(
+  choice: WalletChoice
+): Promise<{ address: string; short: string }> {
   const adapter = adapters[choice];
   await adapter.connect();
   const address = adapter.publicKey?.toBase58() ?? "";
@@ -53,7 +57,9 @@ export async function disconnectReadOnly(choice: WalletChoice): Promise<void> {
 }
 
 /** Optional ownership proof. This is a message signature, not a transaction. */
-export async function proveReadOnly(choice: WalletChoice): Promise<{ address: string; proof: string }> {
+export async function proveReadOnly(
+  choice: WalletChoice
+): Promise<{ address: string; proof: string }> {
   const adapter = adapters[choice];
   const address = adapter.publicKey?.toBase58() ?? "";
   if (!address) throw new Error("Connect a wallet first.");
