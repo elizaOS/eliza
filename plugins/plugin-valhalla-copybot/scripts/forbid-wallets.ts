@@ -6,9 +6,12 @@ import path from "node:path";
 /**
  * SHA-256 of known personal and bot wallet addresses.
  * The plaintext addresses are not stored in this file.
+ *
+ * The shop's crypto receive address is not listed here. It is printed on the
+ * checkout page on purpose, so it is a published address and not a leak.
+ * Removing that hash was an owner decision on 2026-11-04.
  */
 const FORBIDDEN = new Set([
-  "fa0ce3967c91482aff511285e1d487ecdbe03f66cdd6a38cec4847f15852715a",
   "33941bb78a47eba0ff6ea1402ebdf076aecc00edd0bff5883f472c6d486a95e3",
   "ad42f9a6f4190e0ef95114adef1ae039f518ce415600935c2a83cafed40c90c1",
 ]);
