@@ -60,6 +60,57 @@ function token(): string {
   return `${Date.now().toString(36)}.${Math.random().toString(36).slice(2)}`;
 }
 
+/** One live feed per open desk tab. Keep the ceiling low; this is a desk, not a web farm. */
+const MAX_STREAMS = 8;
+let streams = 0;
+
+/**
+ * Push desk state to a browser instead of making it poll. The frame is the same
+ * `stateView` the polled route returns, so the page needs no second state model.
+ * A frame is written only when the state changed, plus a ping comment so a proxy
+ * does not close an idle stream.
+ */
+function streamDesk(engine: AgentEngine, req: IncomingMessage, res: ServerResponse): void {
+  if (streams >= MAX_STREAMS) {
+    send(res, 503, { ok: false, error: "Too many live feeds. Close a desk tab." });
+    return;
+  }
+  streams += 1;
+  res.writeHead(200, {
+    "content-type": "text/event-stream",
+    "cache-control": "no-cache, no-transform",
+    connection: "keep-alive",
+    "x-accel-buffering": "no",
+  });
+  let last = "";
+  const push = (): void => {
+    let frame: string;
+    try {
+      frame = JSON.stringify(stateView(engine));
+    } catch {
+      return;
+    }
+    if (frame === last) return;
+    last = frame;
+    res.write(`event: desk\ndata: ${frame}\n\n`);
+  };
+  push();
+  const tick = setInterval(push, 1_000);
+  const beat = setInterval(() => res.write(": ping\n\n"), 15_000);
+  let closed = false;
+  const stop = (): void => {
+    if (closed) return;
+    closed = true;
+    clearInterval(tick);
+    clearInterval(beat);
+    streams -= 1;
+    res.end();
+  };
+  req.on("close", stop);
+  req.on("error", stop);
+  res.on("close", stop);
+}
+
 function readBody(req: IncomingMessage): Promise<unknown> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -228,6 +279,10 @@ async function handle(
   const gated = Boolean(password || accessCode);
   if (gated && pathname.startsWith("/api/") && !sessions.has(cookie(req))) {
     send(res, 401, { ok: false, error: "Sign in on this PC first.", login: true });
+    return;
+  }
+  if (req.method === "GET" && pathname === "/api/stream/desk") {
+    streamDesk(engine, req, res);
     return;
   }
   if (req.method === "GET" && pathname === "/api/ads/report") {
