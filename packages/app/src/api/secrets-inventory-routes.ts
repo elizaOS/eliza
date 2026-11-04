@@ -7,7 +7,7 @@
  *                                                    (sensitive → ensureCompatSensitiveRouteAuthorized)
  *   PUT    /api/secrets/inventory/:key              → upsert { value, label?, providerId?, category? }
  *                                                    (sensitive)
- *   DELETE /api/secrets/inventory/:key              → drop key + meta + every profile
+ *   DELETE /api/secrets/inventory/:key              → drop key + meta + declared profiles
  *                                                    (sensitive)
  *
  *   GET    /api/secrets/inventory/:key/profiles     → profile list (no values)
@@ -46,7 +46,7 @@ import {
   RoutingConfigError,
   readEntryMeta,
   readRoutingConfig,
-  removeEntryMeta,
+  removeEntryAndDeclaredProfiles,
   setEntryMeta,
   type VaultEntryCategory,
   type VaultEntryMeta,
@@ -402,18 +402,12 @@ async function handleKeyRoute(
   if (method === "DELETE") {
     if (!ensureCompatSensitiveRouteAuthorized(req, res)) return true;
     removeVaultReferences(key, state);
-    if (await vault.has(key)) await vault.remove(key);
-    // Drop every profile child too. `vault.list` matches segment-prefixed
-    // keys, so this catches `<KEY>.profile.default`, `<KEY>.profile.work`,
-    // etc.
-    const all = await vault.list(key);
-    for (const k of all) {
-      if (k === key) continue;
-      if (k.startsWith(`${key}.profile.`)) {
-        await vault.remove(k);
-      }
-    }
-    await removeEntryMeta(vault, key);
+    // Drop the parent value and only the profile rows named in its metadata.
+    // `vault.list` is a segment prefix, so `<KEY>.profile.scratch` is also
+    // listed, but that key is a separate secret unless `scratch` is a
+    // declared profile. Deleting it here would erase an inventory row the
+    // user did not ask to remove.
+    await removeEntryAndDeclaredProfiles(vault, key);
     sendJson(res, 200, { ok: true });
     return true;
   }

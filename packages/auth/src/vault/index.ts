@@ -80,6 +80,7 @@ export {
   profileStorageKey,
   ROUTING_KEY,
   readEntryMeta,
+  removeEntryAndDeclaredProfiles,
   removeEntryMeta,
   setEntryMeta,
 } from "./inventory.js";

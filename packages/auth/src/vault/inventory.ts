@@ -252,6 +252,27 @@ export async function removeEntryMeta(
 }
 
 /**
+ * Remove one inventory entry: its parent value, the profile rows named in
+ * its metadata, and the metadata record. Read the metadata before deleting
+ * it. A vault key that only shares the `<key>.profile.` prefix is not a
+ * profile row unless its id is declared, so it stays.
+ */
+export async function removeEntryAndDeclaredProfiles(
+  vault: Vault,
+  key: string,
+): Promise<void> {
+  const meta = await readEntryMeta(vault, key);
+  if (await vault.has(key)) await vault.remove(key);
+  for (const profile of meta?.profiles ?? []) {
+    const childKey = profileStorageKey(key, profile.id);
+    if (childKey !== key && (await vault.has(childKey))) {
+      await vault.remove(childKey);
+    }
+  }
+  await removeEntryMeta(vault, key);
+}
+
+/**
  * List every meaningful vault entry, grouped by category. Reserved
  * `_meta.*` and `_routing.*` keys are filtered out, as are the
  * `_manager.*` preferences keys.

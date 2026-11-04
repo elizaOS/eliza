@@ -8,7 +8,7 @@
 import { randomBytes } from "node:crypto";
 import {
   createManager,
-  removeEntryMeta,
+  removeEntryAndDeclaredProfiles,
   type SecretsManager,
   type Vault,
   VaultDecryptionError,
@@ -378,11 +378,7 @@ async function removeVaultCredentialKeys(
   let firstFailure: unknown;
   for (const key of keys) {
     try {
-      if (await vault.has(key)) await vault.remove(key);
-      for (const stored of await vault.list(key)) {
-        if (stored.startsWith(`${key}.profile.`)) await vault.remove(stored);
-      }
-      await removeEntryMeta(vault, key);
+      await removeEntryAndDeclaredProfiles(vault, key);
     } catch (cause) {
       failedKeys.push(key);
       firstFailure ??= cause;
