@@ -201,16 +201,22 @@ function buildAccountRecord(args: {
   const deduplicated = replacement
     ? null
     : listAccounts(args.providerId, args.storagePolicy).find((account) => {
-        if (
-          args.organizationId &&
-          account.organizationId === args.organizationId
-        ) {
-          return true;
-        }
-        return Boolean(
+        // Seats of one Team org / ChatGPT workspace share the organization
+        // id, and one email can hold seats in several workspaces. Only the
+        // same provider user may reuse (and overwrite) a stored account.
+        const sameEmail = Boolean(
           normalizedEmail &&
             normalizeIdentity(account.email) === normalizedEmail,
         );
+        if (args.providerAccountId) {
+          if (account.userId) return account.userId === args.providerAccountId;
+          return (
+            sameEmail &&
+            Boolean(args.organizationId) &&
+            account.organizationId === args.organizationId
+          );
+        }
+        return sameEmail && account.organizationId === args.organizationId;
       });
   const existing = replacement ?? deduplicated;
   const record: AccountCredentialRecord = {
