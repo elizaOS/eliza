@@ -256,12 +256,22 @@ export async function buildResolvedClient(
   if (!service) {
     return { error: "GitHub service not available" };
   }
-  const resolvedSelection =
+  const requestedSelection =
     typeof selection === "string" ? { role: selection } : selection;
-  if (opts.refresh !== "on-miss" || !getClient(runtime, resolvedSelection)) {
+  if (opts.refresh !== "on-miss" || !getClient(runtime, requestedSelection)) {
     // Services that only implement `IGitHubService` resolve from their own state.
     await service.refreshAccounts?.();
   }
+  // The usual connection (Settings token, device sign-in, connector OAuth) is
+  // only the owner's account. An operation that defaults to the agent account
+  // then uses it; the owner check below still applies.
+  const resolvedSelection: GitHubAccountSelection =
+    "defaulted" in requestedSelection &&
+    requestedSelection.defaulted &&
+    requestedSelection.role === "agent" &&
+    !getClient(runtime, requestedSelection)
+      ? { role: "user" }
+      : requestedSelection;
   const client = getClient(runtime, resolvedSelection);
   const identity = service.getAccountRole(resolvedSelection);
   if (!client || !identity) {

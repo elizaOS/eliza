@@ -27,6 +27,8 @@ export interface GitHubAccountConfig {
 export interface GitHubAccountSelection {
   accountId?: string;
   role: GitHubIdentity;
+  /** Set when neither `as` nor `accountId` chose the account. */
+  defaulted?: true;
 }
 
 type RawAccountRecord = Record<string, unknown>;
@@ -61,10 +63,10 @@ export function resolveGitHubAccountSelection(
 ): GitHubAccountSelection {
   const requestedAccountId = normalizeGitHubAccountId(options?.accountId);
   const requestedRole = normalizeRole(options?.as);
-  return {
-    accountId: requestedAccountId,
-    role: requestedRole ?? normalizeRole(requestedAccountId) ?? defaultRole,
-  };
+  const role = requestedRole ?? normalizeRole(requestedAccountId);
+  return role || requestedAccountId
+    ? { accountId: requestedAccountId, role: role ?? defaultRole }
+    : { role: defaultRole, defaulted: true };
 }
 
 function parseAccountsJson(raw: string | undefined): RawAccountRecord[] {

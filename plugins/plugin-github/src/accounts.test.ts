@@ -269,6 +269,66 @@ describe("GitHub account resolution", () => {
     expect(service.getOctokit({ role: "user" })).toBeNull();
   });
 
+  it("runs an agent-default operation on the owner's account for the owner when only the Settings token is connected", async () => {
+    const list = vi.fn().mockResolvedValue({ data: [] });
+    const rt = createTestRuntime({
+      agentId: "00000000-0000-4000-8000-000000000001",
+      character: {},
+      getSetting: (key: string) =>
+        key === "GITHUB_TOKEN"
+          ? "settings-token"
+          : key === "ELIZA_ADMIN_ENTITY_ID"
+            ? "owner-entity"
+            : null,
+      getService: () => null,
+      reportError: vi.fn(),
+    });
+    const { GitHubService } = await import("./services/github-service");
+    const service = (await GitHubService.start(
+      rt,
+      () => ({ pulls: { list } }) as never,
+    )) as InstanceType<typeof GitHubService>;
+    rt.getService = ((serviceType: string) =>
+      serviceType === "github" ? service : null) as typeof rt.getService;
+    const { prOpAction } = await import("./actions/pr-op");
+    const turn = (entityId: string) =>
+      ({
+        entityId,
+        content: { text: "list open PRs in a/b", source: "api" },
+      }) as unknown as Memory;
+
+    const owner = await prOpAction.handler(
+      rt,
+      turn("owner-entity"),
+      undefined,
+      {
+        op: "list",
+        repo: "a/b",
+      },
+    );
+    expect(owner?.success, JSON.stringify(owner)).toBe(true);
+    expect(list).toHaveBeenCalledTimes(1);
+
+    const member = await prOpAction.handler(
+      rt,
+      turn("member-entity"),
+      undefined,
+      { op: "list", repo: "a/b" },
+    );
+    expect(member).toMatchObject({ success: false });
+    expect(list).toHaveBeenCalledTimes(1);
+
+    // An explicit agent request still needs an agent account.
+    const explicitAgent = await prOpAction.handler(
+      rt,
+      turn("owner-entity"),
+      undefined,
+      { op: "list", repo: "a/b", as: "agent" },
+    );
+    expect(explicitAgent).toMatchObject({ success: false });
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
   it("uses a connector account connected after start and stops using it once removed", async () => {
     const vaultRef = "connector.agent-1.github.acc_late.oauth_tokens";
     const accounts: ConnectorAccount[] = [];
