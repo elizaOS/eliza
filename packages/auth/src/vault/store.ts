@@ -23,6 +23,16 @@ export interface StoreData {
   readonly entries: Readonly<Record<string, StoredEntry>>;
 }
 
+/** One legacy record that could not be imported. The rest of the file can. */
+export interface RejectedStoreEntry {
+  readonly key: string;
+  readonly reason: string;
+}
+
+export interface RecoverableStoreData extends StoreData {
+  readonly rejected: readonly RejectedStoreEntry[];
+}
+
 class StoreFormatError extends Error {
   constructor(message: string) {
     super(`vault store: ${message}`);
@@ -34,7 +44,11 @@ function emptyStore(): StoreData {
   return { version: STORE_VERSION, entries: {} };
 }
 
-export async function readStore(path: string): Promise<StoreData> {
+type LoadedStore =
+  | { readonly status: "missing" }
+  | { readonly status: "parsed"; readonly value: unknown };
+
+async function loadStoreDocument(path: string): Promise<LoadedStore> {
   let raw: string;
   try {
     raw = await fs.readFile(path, "utf8");
@@ -42,7 +56,9 @@ export async function readStore(path: string): Promise<StoreData> {
     // error-policy:J3 untrusted-input sanitizing — a nonexistent legacy file is
     // the expected "no data yet" state (explicit empty store); any OTHER read
     // error (permissions, I/O) is rethrown, never masked as an empty vault.
-    if ((err as NodeJS.ErrnoException).code === "ENOENT") return emptyStore();
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return { status: "missing" };
+    }
     throw err;
   }
   let parsed: unknown;
@@ -56,10 +72,35 @@ export async function readStore(path: string): Promise<StoreData> {
       `parse error: ${err instanceof Error ? err.message : String(err)}`,
     );
   }
-  return validateShape(parsed);
+  return { status: "parsed", value: parsed };
 }
 
-function validateShape(parsed: unknown): StoreData {
+export async function readStore(path: string): Promise<StoreData> {
+  const loaded = await loadStoreDocument(path);
+  if (loaded.status === "missing") return emptyStore();
+  const recovered = validateShape(loaded.value, false);
+  return { version: recovered.version, entries: recovered.entries };
+}
+
+/**
+ * Like `readStore`, but a malformed entry is reported in `rejected` instead of
+ * failing the whole file. File-level damage (unreadable, invalid JSON, wrong
+ * root, or a newer version) still throws.
+ */
+export async function readRecoverableStore(
+  path: string,
+): Promise<RecoverableStoreData> {
+  const loaded = await loadStoreDocument(path);
+  if (loaded.status === "missing") {
+    return { version: STORE_VERSION, entries: {}, rejected: [] };
+  }
+  return validateShape(loaded.value, true);
+}
+
+function validateShape(
+  parsed: unknown,
+  tolerateEntryErrors: boolean,
+): RecoverableStoreData {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
     throw new StoreFormatError("root must be an object");
   }
@@ -82,12 +123,20 @@ function validateShape(parsed: unknown): StoreData {
   }
   const entriesRaw = root.entries;
   const entries: Record<string, StoredEntry> = {};
+  const rejected: RejectedStoreEntry[] = [];
   for (const [key, value] of Object.entries(
     entriesRaw as Record<string, unknown>,
   )) {
-    entries[key] = validateEntry(key, value);
+    try {
+      entries[key] = validateEntry(key, value);
+    } catch (err) {
+      if (!tolerateEntryErrors || !(err instanceof StoreFormatError)) {
+        throw err;
+      }
+      rejected.push({ key, reason: err.message });
+    }
   }
-  return { version: STORE_VERSION, entries };
+  return { version: STORE_VERSION, entries, rejected };
 }
 
 function validateEntry(key: string, raw: unknown): StoredEntry {

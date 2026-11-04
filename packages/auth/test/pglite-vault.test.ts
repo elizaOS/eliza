@@ -476,6 +476,68 @@ describe("PgliteVaultImpl", () => {
       await rm(pgDir, { recursive: true, force: true });
       await rm(legacyDir, { recursive: true, force: true });
     });
+
+    it("imports the valid entries when one legacy record is malformed", async () => {
+      const legacyDir = await mkdtemp(join(tmpdir(), "vault-legacy-partial-"));
+      const legacyPath = join(legacyDir, "vault.json");
+      const masterKey = generateMasterKey();
+      const now = Date.now();
+      await writeFile(
+        legacyPath,
+        JSON.stringify({
+          version: 1,
+          entries: {
+            "ui.theme": {
+              kind: "value",
+              value: "dark",
+              lastModified: now,
+            },
+            "broken.note": {
+              kind: "value",
+              value: "kept-in-the-file-only",
+              lastModified: "not-a-number",
+            },
+            "openrouter.apiKey": {
+              kind: "secret",
+              ciphertext: encrypt(
+                masterKey,
+                "sk-or-secret",
+                "openrouter.apiKey",
+              ),
+              lastModified: now,
+            },
+          },
+        }),
+        { mode: 0o600 },
+      );
+
+      const pgDir = await mkdtemp(join(tmpdir(), "vault-pglite-partial-"));
+      const open = () =>
+        new PgliteVaultImpl({
+          dataDir: join(pgDir, ".vault-pglite"),
+          legacyStorePath: legacyPath,
+          masterKey: inMemoryMasterKey(masterKey),
+          auditPath: join(pgDir, "audit", "vault.jsonl"),
+        });
+      const pg = open();
+
+      expect(await pg.get("ui.theme")).toBe("dark");
+      expect(await pg.get("openrouter.apiKey")).toBe("sk-or-secret");
+      expect(await pg.has("broken.note")).toBe(false);
+      expect(await pg.list()).toEqual(["openrouter.apiKey", "ui.theme"]);
+      const sentinel = JSON.parse(await pg.get("_migrated_from_file_v1"));
+      expect(sentinel.migrated).toBe(2);
+      expect(sentinel.skipped).toEqual(["broken.note"]);
+      await pg.close();
+
+      const again = open();
+      expect(await again.get("ui.theme")).toBe("dark");
+      expect(await again.has("broken.note")).toBe(false);
+      await again.close();
+
+      await rm(pgDir, { recursive: true, force: true });
+      await rm(legacyDir, { recursive: true, force: true });
+    });
   });
 });
 
