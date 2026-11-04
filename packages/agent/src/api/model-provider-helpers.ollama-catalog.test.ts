@@ -57,6 +57,35 @@ describe("fetchOllamaModels catalog status", () => {
     );
   });
 
+  it("rejects with ModelCatalogFetchError when a 200 response body is not JSON", async () => {
+    // A proxy in front of Ollama often answers 200 with its own login page.
+    // The endpoint is reachable, so this must not be reported as "no models".
+    const baseUrl = await listen((_req, res) => {
+      res.writeHead(200, { "content-type": "text/html" });
+      res.end("<html>proxy login page</html>");
+    });
+
+    const rejection = await fetchOllamaModels(baseUrl).then(
+      () => null,
+      (e: unknown) => e,
+    );
+
+    expect(rejection).toBeInstanceOf(ModelCatalogFetchError);
+    expect((rejection as ModelCatalogFetchError).upstreamStatus).toBe(200);
+    expect((rejection as ModelCatalogFetchError).cause).toBeInstanceOf(
+      SyntaxError,
+    );
+  });
+
+  it("keeps a reachable endpoint with no models installed as an empty catalog", async () => {
+    const baseUrl = await listen((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ models: [] }));
+    });
+
+    await expect(fetchOllamaModels(baseUrl)).resolves.toEqual([]);
+  });
+
   it("keeps an unreachable localhost probe as an explicit empty catalog", async () => {
     // Bind then release a port so the connection is refused, which is the
     // shipped "Ollama is not installed" case rather than an error status.

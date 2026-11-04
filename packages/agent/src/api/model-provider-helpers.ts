@@ -553,11 +553,26 @@ export async function fetchOllamaModels(
         upstreamStatus: res.status,
       });
     }
-    const data = (await res.json()) as {
+    let data: {
       models?: Array<{
         name: string;
       }>;
     };
+    try {
+      data = (await res.json()) as {
+        models?: Array<{
+          name: string;
+        }>;
+      };
+    } catch (e: unknown) {
+      // The endpoint answered, so this is not the "Ollama is not installed"
+      // absence path: a 200 with an unparseable body (proxy login page, HTML,
+      // truncated JSON) is a broken catalog and must stay typed.
+      throw new ModelCatalogFetchError("ollama", {
+        cause: e,
+        upstreamStatus: res.status,
+      });
+    }
     return (data.models ?? []).map((m) => ({
       id: m.name,
       name: m.name,
