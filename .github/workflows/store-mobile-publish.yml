@@ -146,7 +146,7 @@ jobs:
           bun run build:android:cloud
 
       - name: Setup Fastlane
-        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
+        uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
@@ -292,7 +292,7 @@ jobs:
         run: bun run preflight:ios:store
 
       - name: Setup Fastlane
-        uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f
+        uses: ruby/setup-ruby@de492cf36cbab201753d720ce4f4e336cd688c94
         with:
           ruby-version: "4.0.3"
           bundler-cache: true
