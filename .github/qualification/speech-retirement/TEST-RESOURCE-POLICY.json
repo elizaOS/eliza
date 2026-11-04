@@ -1,0 +1,33 @@
+{
+  "defaultTest": {
+    "memory": "2g",
+    "memoryBytes": 2147483648,
+    "nodeOldSpaceMiB": 1536
+  },
+  "memorySwapEqualsMemory": true,
+  "CPU": 2,
+  "PIDs": 256,
+  "automaticExpansion": false,
+  "normalProducer": {
+    "memory": "8g",
+    "memoryBytes": 8589934592,
+    "nodeOldSpaceMiB": 4096,
+    "RUN_TURBO_CONCURRENCY": "1",
+    "network": "none",
+    "sourceWrite": "normal-generated-outputs-only; tracked source and complete installed dependency census immutable",
+    "cgroupParent": "system.slice",
+    "cgroupParentReadback": "HostConfig.CgroupParent prestart/postexit/custody cleanup"
+  },
+  "workspaceInventory": {
+    "maxEntries": 1000000,
+    "maxFileBytes": 34359738368,
+    "maxDirectoryEntries": 100000,
+    "maxDepth": 128,
+    "maxRecordBytes": 32768,
+    "maxReceiptBytes": 131072,
+    "phaseSeconds": 90,
+    "recordEncoding": "SHA256 of deterministic sorted depth-first NDJSON records, UTF-8, final newline per record",
+    "sourceWorkspaceReadOnly": true,
+    "entryBoundDecision": "Explicit source proposal from prior100000 entry cap to1000000; requires Root acceptance before publication/job. No memory/CPU/heap/time/network/disk floor relaxation."
+  }
+}

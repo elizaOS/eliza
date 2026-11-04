@@ -1,0 +1,287 @@
+{
+  "projects": [
+    {
+      "name": "assistant",
+      "root": "plugins/plugin-assistant",
+      "edges": [
+        {
+          "specifier": "@elizaos/core",
+          "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
+          "target": "packages/core/src/index.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "./pipeline.ts",
+          "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
+          "target": "plugins/plugin-assistant/src/services/message/pipeline.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "./native-context-read.ts",
+          "importer": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+          "importerSHA256": "2da5cd3308b5487f1ed4babf579e049ea5f2ffcf6528ee2cb787a6b945b8895d",
+          "target": "plugins/plugin-assistant/src/services/message/native-context-read.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "../../runtime/builtin-field-evaluators.ts",
+          "importer": "plugins/plugin-assistant/src/services/message/history-id-replay.test.ts",
+          "importerSHA256": "45a788d9cbe4f32bce837835396c5c40f4259f11d95d1b53f16543857031298d",
+          "target": "plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "../../../../../packages/core/src/actions/validate-tool-args.ts",
+          "importer": "plugins/plugin-assistant/src/services/message/context-read-recovery.test.ts",
+          "importerSHA256": "2da5cd3308b5487f1ed4babf579e049ea5f2ffcf6528ee2cb787a6b945b8895d",
+          "target": "packages/core/src/actions/validate-tool-args.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        }
+      ]
+    },
+    {
+      "name": "openai",
+      "root": "plugins/plugin-openai",
+      "edges": [
+        {
+          "specifier": "@elizaos/core",
+          "importer": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+          "importerSHA256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+          "target": "packages/core/src/index.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "@elizaos/testing/runtime",
+          "importer": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+          "importerSHA256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+          "target": "packages/testing/src/runtime.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "../models/text",
+          "importer": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+          "importerSHA256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+          "target": "plugins/plugin-openai/models/text.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "../../plugin-assistant/src/services/message/native-context-read.ts",
+          "importer": "plugins/plugin-openai/__tests__/qwen-response-schema.wire.test.ts",
+          "importerSHA256": "1d1a52a6db9295eb0731037f5cba53c940256a0d1f2cb93fe239b22ddf153a97",
+          "target": "plugins/plugin-assistant/src/services/message/native-context-read.ts",
+          "scope": "Actual selected wholefile/normal implementation import, source-transform or bare-source target only"
+        },
+        {
+          "specifier": "@elizaos/contracts/node",
+          "importer": "packages/testing/src/computer-use-conformance.ts",
+          "importerSHA256": "0964cc61374235c76fde4a33155103c2d0bf18fed905123fed54d7337c235e4e",
+          "target": "packages/contracts/dist/node.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/contracts",
+          "importer": "packages/testing/src/synthetic-control/codec.ts",
+          "importerSHA256": "fab1a840dd80ee691480c687d04fb38dd7b6b02d665bb3343281e5b3c0220bff",
+          "target": "packages/contracts/dist/index.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/contracts/native-notes-query",
+          "importer": "plugins/plugin-assistant/src/services/device-actions/contract.ts",
+          "importerSHA256": "fa3be6f37798be6b04488df03b779676a38e08143212c0d41aec84edb5c6e691",
+          "target": "packages/contracts/dist/native-notes-query.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/contracts/sms-send",
+          "importer": "plugins/plugin-assistant/src/services/device-actions/sms-contract.ts",
+          "importerSHA256": "cbf8120f701a82eab124a3a50706fd445d8bd95bf32802c179ee71ade47451cd",
+          "target": "packages/contracts/dist/sms-send.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/contracts/phone-dial",
+          "importer": "plugins/plugin-assistant/src/services/device-actions/phone-dial-contract.ts",
+          "importerSHA256": "090821850db27a662fd1a826d36187e38761d3a5ca1f357a241c037c6b168b61",
+          "target": "packages/contracts/dist/phone-dial.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/contracts/stated-clock-time",
+          "importer": "plugins/plugin-assistant/src/services/message/time-observations.ts",
+          "importerSHA256": "252cd0fc27208ad6597c6452f4951de5215824560c93daa17700f397946b3a7d",
+          "target": "packages/contracts/dist/stated-clock-time.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/core/protocol",
+          "importer": "packages/host/src/restart.ts",
+          "importerSHA256": "e8cc4b71780e3714787547ce376ebd2ff79d28dd0bc49872616af97bbd7ebe1f",
+          "target": "packages/core/dist/protocol.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/core/view-interaction",
+          "importer": "packages/host/src/voice/ui-context.ts",
+          "importerSHA256": "f29343cc85fe4d18af0c72c8b0bb508224dabbb26dc0b97c2471d90017ab65ad",
+          "target": "packages/core/dist/view-interaction.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/core/restart-exit-code.json",
+          "importer": "packages/host/src/restart.ts",
+          "importerSHA256": "e8cc4b71780e3714787547ce376ebd2ff79d28dd0bc49872616af97bbd7ebe1f",
+          "target": "packages/core/dist/restart-exit-code.json",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/host/protocol",
+          "importer": "plugins/plugin-openai/utils/config.ts",
+          "importerSHA256": "44ca52a0798184baa8a3101c4c4adbbb52726739be785faae8dfb60ce8c8c84c",
+          "target": "packages/host/dist/protocol.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        },
+        {
+          "specifier": "@elizaos/plugin-sqlite",
+          "importer": "packages/testing/src/sqlite-adapter.ts",
+          "importerSHA256": "d75ef28893fe1594b5347a4c949f26107f99b6d43390c8406471059dbbb5d7f2",
+          "target": "plugins/plugin-sqlite/dist/index.js",
+          "scope": "Normal declared runtime export under unchanged owning SSR/__vitest__ conditions; fresh same-run producer output required"
+        }
+      ]
+    }
+  ],
+  "targets": {
+    "packages/core/src/index.ts": {
+      "path": "packages/core/src/index.ts",
+      "sha256": "c493450f40b45c44692a748dec11dab4fced2af84fd7b361708948293fd57002",
+      "requiredExports": [
+        "createHandleResponseTool",
+        "ResponseHandlerFieldRegistry",
+        "parseAndValidate",
+        "completionContextSources"
+      ],
+      "provenance": "EXACT_TRACKED_SOURCE"
+    },
+    "plugins/plugin-assistant/src/services/message/pipeline.ts": {
+      "path": "plugins/plugin-assistant/src/services/message/pipeline.ts",
+      "sha256": "4777af663c7f25a2e305210b9b23ca56897979e576c2302dba9b38f0f571c2e2",
+      "requiredExports": [
+        "runV5MessageRuntimeStage1"
+      ],
+      "provenance": "EXACT_TRACKED_SOURCE"
+    },
+    "plugins/plugin-assistant/src/services/message/native-context-read.ts": {
+      "path": "plugins/plugin-assistant/src/services/message/native-context-read.ts",
+      "sha256": "5b9f6ff83f40fb6889dcc37360e3d5d8e39239afde052306090d8fa0cf96e1e2",
+      "requiredExports": [
+        "decodeNativeContextReads",
+        "assertNativeContextReadToolBudget"
+      ],
+      "provenance": "EXACT_TRACKED_SOURCE"
+    },
+    "plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts": {
+      "path": "plugins/plugin-assistant/src/runtime/builtin-field-evaluators.ts",
+      "sha256": "054c43c1161e23e40f7b1d381871c5b2dd097ba7671c43c2153ab363c81f6bc6",
+      "requiredExports": [],
+      "provenance": "EXACT_TRACKED_SOURCE"
+    },
+    "packages/core/src/actions/validate-tool-args.ts": {
+      "path": "packages/core/src/actions/validate-tool-args.ts",
+      "sha256": "cfbaf6ba1106096c7d710b7af92770ea32becbda44ff7c3cfc4ca8dee268d758",
+      "requiredExports": [
+        "validateSchema"
+      ],
+      "provenance": "EXACT_TRACKED_SOURCE"
+    },
+    "packages/testing/src/runtime.ts": {
+      "path": "packages/testing/src/runtime.ts",
+      "sha256": "d2351bc4e828b7ca2beb1d15c6b0c4dff672f5aebd9a7e1735a2df234d3630ff",
+      "requiredExports": [
+        "createSQLiteTestRuntime"
+      ],
+      "provenance": "EXACT_TRACKED_SOURCE"
+    },
+    "plugins/plugin-openai/models/text.ts": {
+      "path": "plugins/plugin-openai/models/text.ts",
+      "sha256": "27356c237430bfa8f16257577e9e8b231ff67ebb25508cef6c270190a41aa814",
+      "requiredExports": [
+        "handleResponseHandler",
+        "handleTextSmall",
+        "handleActionPlanner"
+      ],
+      "provenance": "EXACT_TRACKED_SOURCE"
+    },
+    "packages/contracts/dist/node.js": {
+      "path": "packages/contracts/dist/node.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/contracts/dist/index.js": {
+      "path": "packages/contracts/dist/index.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/contracts/dist/native-notes-query.js": {
+      "path": "packages/contracts/dist/native-notes-query.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/contracts/dist/sms-send.js": {
+      "path": "packages/contracts/dist/sms-send.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/contracts/dist/phone-dial.js": {
+      "path": "packages/contracts/dist/phone-dial.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/contracts/dist/stated-clock-time.js": {
+      "path": "packages/contracts/dist/stated-clock-time.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/core/dist/protocol.js": {
+      "path": "packages/core/dist/protocol.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/core/dist/view-interaction.js": {
+      "path": "packages/core/dist/view-interaction.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/core/dist/restart-exit-code.json": {
+      "path": "packages/core/dist/restart-exit-code.json",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "packages/host/dist/protocol.js": {
+      "path": "packages/host/dist/protocol.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [],
+      "allPublicExportIdentity": true
+    },
+    "plugins/plugin-sqlite/dist/index.js": {
+      "path": "plugins/plugin-sqlite/dist/index.js",
+      "provenance": "FRESH_NORMAL_PRODUCER_OUTPUT",
+      "requiredExports": [
+        "SQLiteDatabaseAdapter"
+      ],
+      "allPublicExportIdentity": true
+    }
+  },
+  "scope": "Unchanged normal aliases resolve tracked source; other normal exports resolve same-run authored dist. Both SSR/__vitest__ agreement and public-bare/absolute selected-target value identity required, never force source conditions or compare naturally distinct source/dist Core entries as identical."
+}

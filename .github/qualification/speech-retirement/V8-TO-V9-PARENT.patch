@@ -1,0 +1,93 @@
+--- v8/run.py
++++ v9/run.py
+@@ -131,7 +131,7 @@
+  return log.read_text(),code
+ 
+ inspect_format='{"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}}}'
+-resource_inspect_format='{"Ulimits":{{json .HostConfig.Ulimits}},"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}},"Resources":{"memoryBytes":{{json .HostConfig.Memory}},"memorySwapBytes":{{json .HostConfig.MemorySwap}},"nanoCpus":{{json .HostConfig.NanoCpus}},"pidsLimit":{{json .HostConfig.PidsLimit}},"nodeOptions":{{$nodeOptions := ""}}{{range .Config.Env}}{{if eq (printf "%.13s" .) "NODE_OPTIONS="}}{{$nodeOptions = .}}{{end}}{{end}}{{json $nodeOptions}}}}'
++resource_inspect_format='{"CgroupParent":{{json .HostConfig.CgroupParent}},"Ulimits":{{json .HostConfig.Ulimits}},"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}},"Resources":{"memoryBytes":{{json .HostConfig.Memory}},"memorySwapBytes":{{json .HostConfig.MemorySwap}},"nanoCpus":{{json .HostConfig.NanoCpus}},"pidsLimit":{{json .HostConfig.PidsLimit}},"nodeOptions":{{$nodeOptions := ""}}{{range .Config.Env}}{{if eq (printf "%.13s" .) "NODE_OPTIONS="}}{{$nodeOptions = .}}{{end}}{{end}}{{json $nodeOptions}}}}'
+ def inspect_container(key,label,cleanup=False,resources=False):
+  text,code=phase(label,['docker','container','inspect','--format',resource_inspect_format if resources else inspect_format,key],10,accepted=(0,1),cleanup=cleanup)
+  if code==1:
+@@ -148,6 +148,8 @@
+  pass
+ 
+ def check_resources(value,item,label):
++ if item.get('cgroupParent')is not None and value.get('CgroupParent')!=item['cgroupParent']:
++  item.setdefault('resourcePolicyFailures',[]).append({'where':label,'expectedCgroupParent':item['cgroupParent'],'actualCgroupParent':value.get('CgroupParent')});raise ResourcePolicyError('Actual producer cgroup parent differs from checked hierarchy')
+  if item.get('metadataFileSizeLimitBytes')is not None:
+   expected=[{'Name':'fsize','Hard':8388608,'Soft':8388608}]
+   if value.get('Ulimits')!=expected:
+@@ -196,10 +198,13 @@
+  # is reconciled by exact name AND run labels, never removed by name alone.
+  if name in ['normal-producer-graph','normal-producers']:
+   at=args.index('--entrypoint');args[at:at]=['--env','RUN_TURBO_CONCURRENCY=1']
++ if name=='normal-producers':
++  at=args.index('--entrypoint');args[at:at]=['--cgroup-parent','system.slice']
+  if name=='normal-producer-graph':
+   at=args.index('--entrypoint');args[at:at]=['--ulimit','fsize=8388608:8388608']
+  item={'cid':None,'name':cname,'createCompleted':False,'resources':resources};owned.append(item)
+  if name=='normal-producer-graph':item['metadataFileSizeLimitBytes']=8388608
++ if name=='normal-producers':item['cgroupParent']='system.slice'
+  text,_=phase(name+'-create',args,20);cid=text.strip();assert re.fullmatch('[a-f0-9]{64}',cid)
+  item['cid']=cid;item['createCompleted']=True
+  value=inspect_container(cid,name+'-identity',resources=True);check_container(value,item);check_resources(value,item,name+'-identity')
+--- v8/host-memory-admission.py
++++ v9/host-memory-admission.py
+@@ -18,10 +18,23 @@
+ root=Path('/sys/fs/cgroup');paths=set();p=root/relative.lstrip('/')
+ while p!=root:
+  assert p.is_relative_to(root);paths.add(p);p=p.parent
+-paths.add(root/'system.slice')
++paths.add(root);paths.add(root/'system.slice')
+ limits=[]
+ for p in sorted(paths):
+- f=p/'memory.max';assert f.is_file(),'Unknown effective memory ceiling: '+str(p)
++ f=p/'memory.max'
++ if not f.exists():
++  # Linux exposes memory.max on non-root cgroups. Absence is accepted only
++  # at the actual systemd host hierarchy root, never at a delegated/unknown
++  # ancestor. Any exposed root ceiling is still parsed and enforced below.
++  assert p==root and not f.is_symlink(),'Unknown effective memory ceiling: '+str(p)
++  assert Path('/proc/1/comm').read_text().strip()=='systemd'
++  assert Path('/proc/1/cgroup').read_text().strip()=='0::/init.scope'
++  assert os.readlink('/proc/self/ns/cgroup')==os.readlink('/proc/1/ns/cgroup')
++  assert 'memory'in(root/'cgroup.controllers').read_text().split()
++  assert(root/'cgroup.type').read_text().strip()=='domain'
++  limits.append({'path':str(f),'value':'ABSENT_KERNEL_HIERARCHY_ROOT','rootChecked':True,'initialSystemdCgroupNamespaceVerified':True,'semanticSource':'https://cdn.kernel.org/doc/html/latest/admin-guide/cgroup-v2.html#memory-interface-files'})
++  continue
++ assert f.is_file()and not f.is_symlink(),'Unknown effective memory ceiling: '+str(p)
+  raw=f.read_text().strip();assert raw=='max'or raw.isdigit()
+  value=None if raw=='max'else int(raw)
+  if value is not None:assert value>=10*1024**3,'Effective memory parent below compiler budget'
+--- v8/PLAN.json
++++ v9/PLAN.json
+@@ -1,6 +1,6 @@
+ {
+-  "state": "SOURCE_ONLY_ORDINARY_WORKER_CLI_DIAGNOSTIC_NOT_QUALIFICATION_UNADMITTED",
+-  "recipe": "ordinal-normal-worker-diagnostic",
++  "state": "SOURCE_REVIEW_CANDIDATE_NORMAL_PRODUCER_QUALIFICATION_NOT_ADMITTED",
++  "recipe": "ordinal-normal-producer-qualification",
+   "sourceParent": "aee676d861457045f402715132a841ade5fd5888",
+   "resourceBounds": {
+     "wholeSeconds": 1200,
+@@ -172,5 +172,6 @@
+     "sha256": "fa0353913c808d3af0cf37e4868e32fa202ecf67c6a2b4e6e51b3f5ec82543c4",
+     "comment": 6621988965,
+     "runtimeConditionSnapshotLimit": "Derived installed conditions/dist absence not directly observed by reviewer; passive actualCLI observations retained in this qualification."
+-  }
++  },
++  "effectiveProducerHierarchy": "Docker create --cgroup-parent system.slice; actual HostConfig.CgroupParent verified prestart/postexit/cleanup. Check every runner/producer ancestor including exposed cgroup root ceilings; standard kernel-root missing memory.max accepted only with systemdPID1/init.scope/samecgroupnamespace/memorycontroller/domain proof. Missing non-root ceiling rejects."
+ }
+--- v8/TEST-RESOURCE-POLICY.json
++++ v9/TEST-RESOURCE-POLICY.json
+@@ -14,6 +14,8 @@
+     "nodeOldSpaceMiB": 4096,
+     "RUN_TURBO_CONCURRENCY": "1",
+     "network": "none",
+-    "sourceWrite": "normal-generated-outputs-only; tracked source and complete installed dependency census immutable"
++    "sourceWrite": "normal-generated-outputs-only; tracked source and complete installed dependency census immutable",
++    "cgroupParent": "system.slice",
++    "cgroupParentReadback": "HostConfig.CgroupParent prestart/postexit/custody cleanup"
+   }
+ }
