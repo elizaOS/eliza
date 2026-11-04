@@ -2,7 +2,8 @@
  * A paired USER session (a guest device) passes the shared API gate. Wallet
  * writes, config and character writes, the runtime model switch and the memory
  * store are owner-only: real API server, SQLite runtime, host bridge that maps
- * the guest bearer to USER.
+ * the guest bearer to USER. The Cloud billing proxy forwards with the owner's
+ * Cloud key, so a stand-in Cloud records what reaches it.
  */
 import { randomUUID } from "node:crypto";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -18,9 +19,23 @@ import {
 } from "../src/runtime/host-bridge.ts";
 
 const OWNER_TOKEN = "owner-static-token-0123456789abcdef0123456789";
+const OWNER_CLOUD_KEY = "eliza_owner_cloud_key_0123456789abcdef";
 
 it("refuses owner-only writes and memory reads to a paired USER session", async () => {
   const directory = await mkdtemp(join(tmpdir(), "eliza-owner-only-"));
+  // Stand-in Cloud: record each upstream call the billing proxy makes.
+  const cloudBaseUrl = "https://cloud.billing.test";
+  const cloudCalls: { path: string; authorization?: string }[] = [];
+  const realFetch = globalThis.fetch;
+  vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    if (url.origin !== cloudBaseUrl) return realFetch(input, init);
+    cloudCalls.push({
+      path: url.pathname,
+      authorization: new Headers(init?.headers).get("authorization") ?? "",
+    });
+    return Response.json({ success: true });
+  });
   for (const [key, value] of Object.entries({
     ELIZA_STATE_DIR: directory,
     ELIZA_CONFIG_PATH: join(directory, "config.json"),
@@ -28,12 +43,17 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
     ELIZA_API_BIND_HOST: "127.0.0.1",
     ELIZA_API_TOKEN: OWNER_TOKEN,
     ELIZA_REQUIRE_LOCAL_AUTH: "1",
+    // Skip the DNS lookup of the stand-in Cloud host (format checks still run).
+    ELIZA_DEV: "1",
   }))
     vi.stubEnv(key, value);
   // Setup is complete: onboarding must not reopen to a guest.
   await writeFile(
     join(directory, "config.json"),
-    JSON.stringify({ meta: { firstRunComplete: true } }),
+    JSON.stringify({
+      meta: { firstRunComplete: true },
+      cloud: { apiKey: OWNER_CLOUD_KEY, baseUrl: cloudBaseUrl },
+    }),
   );
   setAgentHostBridge({
     resolveHttpRequestAuthorization: async (req: {
@@ -177,12 +197,19 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
         { method: "POST", body: JSON.stringify({ format: "json" }) },
       ],
       ["/api/security/audit", {}],
+      [
+        "/api/cloud/billing/affiliates/link",
+        { method: "POST", body: JSON.stringify({ code: "GUESTCODE" }) },
+      ],
+      ["/api/cloud/billing/payment-methods", {}],
     ];
     for (const [path, init] of guestRequests) {
       const response = await send("guest-session-id", path, init);
       expect(response.status, `${init.method ?? "GET"} ${path}`).toBe(403);
     }
     expect(await runtime.getMemoryById(memoryId)).not.toBeNull();
+    // No guest request reached Cloud under the owner's key.
+    expect(cloudCalls).toEqual([]);
     expect(process.env.OPENAI_BASE_URL).not.toBe("https://example.invalid/v1");
     expect(runtime.character.system).not.toBe("Changed by guest.");
 
@@ -217,6 +244,19 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
       },
     );
     expect(ownerSign.status).not.toBe(403);
+    // The owner still reaches the billing proxy, under the owner's key.
+    const ownerBilling = await send(
+      OWNER_TOKEN,
+      "/api/cloud/billing/affiliates/link",
+      { method: "POST", body: JSON.stringify({ code: "OWNERCODE" }) },
+    );
+    expect(ownerBilling.status).toBe(200);
+    expect(cloudCalls).toEqual([
+      {
+        path: "/api/v1/affiliates/link",
+        authorization: `Bearer ${OWNER_CLOUD_KEY}`,
+      },
+    ]);
     // The owner keeps the runtime model switch; the gate only rejects a guest.
     // Point the handler's loopback write at a closed port so the assertion
     // never reaches another process listening on the default API port.
@@ -232,6 +272,7 @@ it("refuses owner-only writes and memory reads to a paired USER session", async 
     expect(ownerModelSwitch.status).not.toBe(403);
   } finally {
     await server?.close();
+    vi.restoreAllMocks();
     await runtime.close();
     _resetAgentHostBridge();
     vi.unstubAllEnvs();
