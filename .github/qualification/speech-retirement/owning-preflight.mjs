@@ -38,11 +38,14 @@ for (const projectDefinition of definition.projects) {
       if (importerDigest !== edge.importerSHA256) throw new Error("Declaring importer bytes changed: " + edge.importer);
       const resolved = await ssr.pluginContainer.resolveId(name, importer);
       if (!resolved || resolved.id.split("?")[0] !== expected) throw new Error("Wrong normal source resolution: " + name);
-      // Vite fetchModule only honors importer for bare package specifiers.
-      // Relative source edges must fetch the module ID resolved above.
+      // Match the normal Vitest ServerModuleRunner's resolved-file URL path.
+      // Raw fetchModule(bareName, importer) directly uses Node package entries,
+      // bypassing the alias resolution that already selected this pinned file.
       const relative = name.startsWith(".");
-      const fetchId = relative ? resolved.id : name;
-      const fetched = await ssr.fetchModule(fetchId, importer);
+      const resolutionRoot=ssr.config.root.replace(/\/$/, "");
+      const fetchId=resolved.id.startsWith(resolutionRoot+"/")
+        ? resolved.id.slice(resolutionRoot.length) : "/@fs"+resolved.id;
+      const fetched = await ssr.fetchModule(fetchId);
       if (fetched.externalize) {
         if (new URL(fetched.externalize).protocol !== "file:" || new URL(fetched.externalize).pathname !== expected) throw new Error("Wrong bare external source resolution: " + name);
       } else {
