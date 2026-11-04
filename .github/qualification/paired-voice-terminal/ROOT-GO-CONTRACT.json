@@ -1,5 +1,5 @@
 {
-  "state": "NOT_ISSUED_CORRECTED_SOURCE_ROOT_TEMPLATE",
+  "state": "NOT_ISSUED_REVIEWED_TEST_DIAGNOSTIC_ROOT_TEMPLATE",
   "action": "ONE_EXACT_QUALIFICATION_RUN",
   "recipe": "paired-voice-terminal-normal-v2",
   "mode": "qualify",
@@ -9,8 +9,8 @@
       "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b"
     },
     "Alpha": {
-      "commit": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
-      "tree": "eea92c9b0d867704619181ef14d3210de2974882",
+      "commit": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+      "tree": "d1ab14153963a6f5be571b17b5b1a55e37f4fecf",
       "sdkGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928"
     }
   },
@@ -22,13 +22,13 @@
   "expiresEpoch": "Rootfinite<=issued+1200",
   "output": "ActualRUNNER_TEMP/paired-voice-results",
   "operatorSealSHA256": "RootbindsSEAL.json",
-  "sourceManifestSHA256": "f9698883863e121b8d659b07a223aa3eeabbcd5ed01e5241e0e4041fef8ed453",
-  "oracleSHA256": "6dd15b14b6820728e50a4213ef154f0f8df62ad507452b61a0289f64b6f2e3e8",
+  "sourceManifestSHA256": "8f5dad4246ddcfe29722b0e34f4cf5ee9458c6cda888cba22afdc95ff4326784",
+  "oracleSHA256": "21634ccfef6fa6447444b26e64fe0790ddf244858f71b5da331ec932cb54dd98",
   "resourcePolicySHA256": "45da415ba1eddddaa66e0005fbb0cce6bdc12d17b2345f9beae272b2e154b93d",
   "toolchainSHA256": "2f62c07d10891282c9f038bd9bceb82b2ae670d184223bbff4f89ae6ec0bf32c",
   "normalTypes": "HELD_SEPARATE_NOT_WAIVED",
   "noRootGoOrNonceIssuedHere": true,
-  "hostCohortsSHA256": "fbb3b272dbd7ef65ea21ac3c659296bd45f377802654fb1e8e5d3b00d3f9c007",
+  "hostCohortsSHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
   "hostProvenanceDisclosure": {
     "20261025.353.1": "Exactauthenticated41741039106setup+explicitRootsourceexception; independentofficialtag/readmeprovenancegapOPEN, notcapabilitywaiver.",
     "20261026.354.1": {
@@ -38,6 +38,7 @@
     "20261101.360.1": {
       "officialTagCommitReadmeBound": true,
       "releasePrerelease": true
-    }
+    },
+    "20261018.96.1": "Fresh authenticated41750127407attempt1 setup/earlymetadata/claim +exact Root source disposition; officialtaglookup404 PRIMARYGAP remainsOPEN. No inventedREADME/tagcommit or actualcapabilitypass."
   }
 }

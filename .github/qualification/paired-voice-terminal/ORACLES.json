@@ -1,11 +1,11 @@
 {
   "state": "REVIEWED_SOURCE_ORACLES_WITH_MANDATORY_RUNTIME_CENSUS",
-  "totalExpectedSourceParentCases": 252,
-  "sourceLedgerSHA256": "0f3a2b333d2d886608402e472e8a9e24ed229dd77116665d12b11a3b0bd8c4bd",
+  "totalExpectedSourceParentCases": 251,
+  "sourceLedgerSHA256": "1f3c077b016a1c79d5f5fa3f736706ae5f13a73d217688e572b6a4546cf57f62",
   "groups": {
     "owning-1": {
       "file": "test/development-cartesia-conversation.test.mjs",
-      "sha256": "66ea61165f2c0f08862e0c960dabfd214537930e666b1225421cfc0896a1840e",
+      "sha256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
       "staticASTDeclarations": 30,
       "expectedSourceCaseCount": 35,
       "unresolvedRegistrationDeclarations": [],
@@ -14,9 +14,9 @@
       "requiredEnvironment": null,
       "cases": [
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:21:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:43:literal:0",
           "kind": "literal",
-          "sourceLine": 21,
+          "sourceLine": 43,
           "leafTitle": "canonical completion refreshes history without a second transcript/model dispatch",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -24,9 +24,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:22:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:44:literal:0",
           "kind": "literal",
-          "sourceLine": 22,
+          "sourceLine": 44,
           "leafTitle": "failed retirement remains failed on repeated Stop",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -34,9 +34,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:23:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:45:literal:0",
           "kind": "literal",
-          "sourceLine": 23,
+          "sourceLine": 45,
           "leafTitle": "recheck retires the owned server ticket when its conversation changes",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -44,9 +44,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:25:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:47:literal:0",
           "kind": "literal",
-          "sourceLine": 25,
+          "sourceLine": 47,
           "leafTitle": "canonical teardown or rotated tickets already retired are accepted only by exact authenticated status",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -54,9 +54,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:54:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:76:literal:0",
           "kind": "literal",
-          "sourceLine": 54,
+          "sourceLine": 76,
           "leafTitle": "more than two renderer renewals retain one audio client, mute, history and navigation deduplication",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -64,9 +64,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:69:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:91:literal:0",
           "kind": "literal",
-          "sourceLine": 69,
+          "sourceLine": 91,
           "leafTitle": "Stop during renewal ticket fetch fences a late ticket and never restarts renderer or capture",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -74,9 +74,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:74:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:96:literal:0",
           "kind": "literal",
-          "sourceLine": 74,
+          "sourceLine": 96,
           "leafTitle": "Stop during renewal socket open closes both sockets and fences a late open",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -84,9 +84,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:0",
           "kind": "literal-for-of",
-          "sourceLine": 79,
+          "sourceLine": 101,
           "rowIndex": 0,
           "leafTitle": "a changeRenderer while renewal waits refuses the replacement without replay",
           "bindings": {
@@ -98,9 +98,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:1",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:1",
           "kind": "literal-for-of",
-          "sourceLine": 79,
+          "sourceLine": 101,
           "rowIndex": 1,
           "leafTitle": "a changeOwner while renewal waits refuses the replacement without replay",
           "bindings": {
@@ -112,9 +112,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:2",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:2",
           "kind": "literal-for-of",
-          "sourceLine": 79,
+          "sourceLine": 101,
           "rowIndex": 2,
           "leafTitle": "a changeConversation while renewal waits refuses the replacement without replay",
           "bindings": {
@@ -126,9 +126,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:83:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:105:literal:0",
           "kind": "literal",
-          "sourceLine": 83,
+          "sourceLine": 105,
           "leafTitle": "a replacement renderer socket opening after its bound renderer changes is retired, not adopted",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -136,9 +136,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:88:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:110:literal:0",
           "kind": "literal",
-          "sourceLine": 88,
+          "sourceLine": 110,
           "leafTitle": "an unexpected active renderer disconnect still retires voice and does not silently reconnect",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -146,9 +146,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:93:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:115:literal:0",
           "kind": "literal",
-          "sourceLine": 93,
+          "sourceLine": 115,
           "leafTitle": "Cloud realtime uses canonical client and renderer only after attested session-start admission",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -156,9 +156,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:94:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:116:literal:0",
           "kind": "literal",
-          "sourceLine": 94,
+          "sourceLine": 116,
           "leafTitle": "Cloud realtime refuses legacy, direct or deferred provider attestation",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -166,9 +166,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:97:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:119:literal:0",
           "kind": "literal",
-          "sourceLine": 97,
+          "sourceLine": 119,
           "leafTitle": "voice emits direct-request mode only while the current preference allows it",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -176,9 +176,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:98:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:120:literal:0",
           "kind": "literal",
-          "sourceLine": 98,
+          "sourceLine": 120,
           "leafTitle": "only the matching completed voice message can execute requested actions once",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -186,9 +186,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:99:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:121:literal:0",
           "kind": "literal",
-          "sourceLine": 99,
+          "sourceLine": 121,
           "leafTitle": "ask-first preference and stopped sessions cannot execute a completed voice action",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -196,9 +196,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:102:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:124:literal:0",
           "kind": "literal",
-          "sourceLine": 102,
+          "sourceLine": 124,
           "leafTitle": "automatic microphone pause starts only for accepted nonempty final and lasts through early speaking_end",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -206,9 +206,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:111:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:133:literal:0",
           "kind": "literal",
-          "sourceLine": 111,
+          "sourceLine": 133,
           "leafTitle": "matching usage does not unpause playback that has not ended",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -216,9 +216,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:117:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:139:literal:0",
           "kind": "literal",
-          "sourceLine": 117,
+          "sourceLine": 139,
           "leafTitle": "old usage and old interruption cannot clear a newer accepted turn",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -226,9 +226,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:0",
           "kind": "literal-for-of",
-          "sourceLine": 123,
+          "sourceLine": 145,
           "rowIndex": 0,
           "leafTitle": "silent turn releases automatic pause on matching usage",
           "bindings": {
@@ -240,9 +240,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:1",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:1",
           "kind": "literal-for-of",
-          "sourceLine": 123,
+          "sourceLine": 145,
           "rowIndex": 1,
           "leafTitle": "silent turn releases automatic pause on matching error",
           "bindings": {
@@ -254,9 +254,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:2",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:2",
           "kind": "literal-for-of",
-          "sourceLine": 123,
+          "sourceLine": 145,
           "rowIndex": 2,
           "leafTitle": "silent turn releases automatic pause on matching interrupted",
           "bindings": {
@@ -268,9 +268,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:128:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:150:literal:0",
           "kind": "literal",
-          "sourceLine": 128,
+          "sourceLine": 150,
           "leafTitle": "manual mute remains independent and Stop clears automatic pause despite late events",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -278,9 +278,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:133:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:155:literal:0",
           "kind": "literal",
-          "sourceLine": 133,
+          "sourceLine": 155,
           "leafTitle": "empty final never invents processing and session transport error clears busy state",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -288,9 +288,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:139:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:161:literal:0",
           "kind": "literal",
-          "sourceLine": 139,
+          "sourceLine": 161,
           "leafTitle": "local playback drain before usage keeps processing paused until its receipt",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -298,9 +298,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:142:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:164:literal:0",
           "kind": "literal",
-          "sourceLine": 142,
+          "sourceLine": 164,
           "leafTitle": "opening greeting stays paused until local playback drains without a user turn",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -308,9 +308,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:167:literal:0",
           "kind": "literal",
-          "sourceLine": 145,
+          "sourceLine": 167,
           "leafTitle": "old greeting events and drain cannot clear a newer accepted request",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -318,9 +318,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:151:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:173:literal:0",
           "kind": "literal",
-          "sourceLine": 151,
+          "sourceLine": 173,
           "leafTitle": "fresh server fallback playback after a completed request is paused until local drain",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -328,9 +328,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:158:literal-for-of:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:180:literal-for-of:0",
           "kind": "literal-for-of",
-          "sourceLine": 158,
+          "sourceLine": 180,
           "rowIndex": 0,
           "leafTitle": "retryable unscoped stt_reconnecting preserves busy processing until matching usage",
           "bindings": {
@@ -342,9 +342,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:158:literal-for-of:1",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:180:literal-for-of:1",
           "kind": "literal-for-of",
-          "sourceLine": 158,
+          "sourceLine": 180,
           "rowIndex": 1,
           "leafTitle": "retryable unscoped transport_error preserves busy processing until matching usage",
           "bindings": {
@@ -356,9 +356,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:166:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:188:literal:0",
           "kind": "literal",
-          "sourceLine": 166,
+          "sourceLine": 188,
           "leafTitle": "accepted session reset retires busy traces and old frames cannot revive the projection",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -366,9 +366,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:177:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:199:literal:0",
           "kind": "literal",
-          "sourceLine": 177,
+          "sourceLine": 199,
           "leafTitle": "actual SDK and Alpha preserve A queued playback while B failure settles once",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -376,9 +376,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:218:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:245:literal:0",
           "kind": "literal",
-          "sourceLine": 218,
+          "sourceLine": 245,
           "leafTitle": "existing health discovery refuses missing/false settlement capability before client creation",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -386,9 +386,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:223:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:250:literal:0",
           "kind": "literal",
-          "sourceLine": 223,
+          "sourceLine": 250,
           "leafTitle": "both Direct and local Cloud callers opt in by resident transport",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -2854,7 +2854,7 @@
       "file": "packages/voice/src/realtime-voice-timing.test.ts",
       "sha256": "b83b905a7a9b5ef600572df8d54328922853ce517cfe7801c412902d1d9cd0fe",
       "staticASTDeclarations": 12,
-      "expectedSourceCaseCount": 22,
+      "expectedSourceCaseCount": 21,
       "unresolvedRegistrationDeclarations": [],
       "parameterizedRunnerTitlesUnestablished": 14,
       "sourceTemplateMultiplicities": {
@@ -2863,18 +2863,6 @@
       },
       "requiredEnvironment": null,
       "cases": [
-        {
-          "sourceKey": "SDK/packages/voice/src/realtime-voice-timing.test.ts:45:literal:0",
-          "kind": "literal",
-          "sourceLine": 45,
-          "leafTitle": "realtime cancellation diagnostics",
-          "exactSourceLeafTitle": true,
-          "ancestorSuites": [
-            "realtime cancellation diagnostics"
-          ],
-          "requiredOutcome": "passed",
-          "observedRegistration": false
-        },
         {
           "sourceKey": "SDK/packages/voice/src/realtime-voice-timing.test.ts:46:vitest-each:0",
           "kind": "vitest-each",
@@ -3206,7 +3194,7 @@
   "files": {
     "Alpha:test/development-cartesia-conversation.test.mjs": {
       "file": "test/development-cartesia-conversation.test.mjs",
-      "sha256": "66ea61165f2c0f08862e0c960dabfd214537930e666b1225421cfc0896a1840e",
+      "sha256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
       "staticASTDeclarations": 30,
       "expectedSourceCaseCount": 35,
       "unresolvedRegistrationDeclarations": [],
@@ -3215,9 +3203,9 @@
       "requiredEnvironment": null,
       "cases": [
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:21:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:43:literal:0",
           "kind": "literal",
-          "sourceLine": 21,
+          "sourceLine": 43,
           "leafTitle": "canonical completion refreshes history without a second transcript/model dispatch",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3225,9 +3213,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:22:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:44:literal:0",
           "kind": "literal",
-          "sourceLine": 22,
+          "sourceLine": 44,
           "leafTitle": "failed retirement remains failed on repeated Stop",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3235,9 +3223,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:23:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:45:literal:0",
           "kind": "literal",
-          "sourceLine": 23,
+          "sourceLine": 45,
           "leafTitle": "recheck retires the owned server ticket when its conversation changes",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3245,9 +3233,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:25:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:47:literal:0",
           "kind": "literal",
-          "sourceLine": 25,
+          "sourceLine": 47,
           "leafTitle": "canonical teardown or rotated tickets already retired are accepted only by exact authenticated status",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3255,9 +3243,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:54:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:76:literal:0",
           "kind": "literal",
-          "sourceLine": 54,
+          "sourceLine": 76,
           "leafTitle": "more than two renderer renewals retain one audio client, mute, history and navigation deduplication",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3265,9 +3253,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:69:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:91:literal:0",
           "kind": "literal",
-          "sourceLine": 69,
+          "sourceLine": 91,
           "leafTitle": "Stop during renewal ticket fetch fences a late ticket and never restarts renderer or capture",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3275,9 +3263,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:74:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:96:literal:0",
           "kind": "literal",
-          "sourceLine": 74,
+          "sourceLine": 96,
           "leafTitle": "Stop during renewal socket open closes both sockets and fences a late open",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3285,9 +3273,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:0",
           "kind": "literal-for-of",
-          "sourceLine": 79,
+          "sourceLine": 101,
           "rowIndex": 0,
           "leafTitle": "a changeRenderer while renewal waits refuses the replacement without replay",
           "bindings": {
@@ -3299,9 +3287,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:1",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:1",
           "kind": "literal-for-of",
-          "sourceLine": 79,
+          "sourceLine": 101,
           "rowIndex": 1,
           "leafTitle": "a changeOwner while renewal waits refuses the replacement without replay",
           "bindings": {
@@ -3313,9 +3301,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:79:literal-for-of:2",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:101:literal-for-of:2",
           "kind": "literal-for-of",
-          "sourceLine": 79,
+          "sourceLine": 101,
           "rowIndex": 2,
           "leafTitle": "a changeConversation while renewal waits refuses the replacement without replay",
           "bindings": {
@@ -3327,9 +3315,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:83:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:105:literal:0",
           "kind": "literal",
-          "sourceLine": 83,
+          "sourceLine": 105,
           "leafTitle": "a replacement renderer socket opening after its bound renderer changes is retired, not adopted",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3337,9 +3325,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:88:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:110:literal:0",
           "kind": "literal",
-          "sourceLine": 88,
+          "sourceLine": 110,
           "leafTitle": "an unexpected active renderer disconnect still retires voice and does not silently reconnect",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3347,9 +3335,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:93:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:115:literal:0",
           "kind": "literal",
-          "sourceLine": 93,
+          "sourceLine": 115,
           "leafTitle": "Cloud realtime uses canonical client and renderer only after attested session-start admission",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3357,9 +3345,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:94:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:116:literal:0",
           "kind": "literal",
-          "sourceLine": 94,
+          "sourceLine": 116,
           "leafTitle": "Cloud realtime refuses legacy, direct or deferred provider attestation",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3367,9 +3355,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:97:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:119:literal:0",
           "kind": "literal",
-          "sourceLine": 97,
+          "sourceLine": 119,
           "leafTitle": "voice emits direct-request mode only while the current preference allows it",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3377,9 +3365,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:98:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:120:literal:0",
           "kind": "literal",
-          "sourceLine": 98,
+          "sourceLine": 120,
           "leafTitle": "only the matching completed voice message can execute requested actions once",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3387,9 +3375,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:99:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:121:literal:0",
           "kind": "literal",
-          "sourceLine": 99,
+          "sourceLine": 121,
           "leafTitle": "ask-first preference and stopped sessions cannot execute a completed voice action",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3397,9 +3385,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:102:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:124:literal:0",
           "kind": "literal",
-          "sourceLine": 102,
+          "sourceLine": 124,
           "leafTitle": "automatic microphone pause starts only for accepted nonempty final and lasts through early speaking_end",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3407,9 +3395,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:111:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:133:literal:0",
           "kind": "literal",
-          "sourceLine": 111,
+          "sourceLine": 133,
           "leafTitle": "matching usage does not unpause playback that has not ended",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3417,9 +3405,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:117:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:139:literal:0",
           "kind": "literal",
-          "sourceLine": 117,
+          "sourceLine": 139,
           "leafTitle": "old usage and old interruption cannot clear a newer accepted turn",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3427,9 +3415,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:0",
           "kind": "literal-for-of",
-          "sourceLine": 123,
+          "sourceLine": 145,
           "rowIndex": 0,
           "leafTitle": "silent turn releases automatic pause on matching usage",
           "bindings": {
@@ -3441,9 +3429,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:1",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:1",
           "kind": "literal-for-of",
-          "sourceLine": 123,
+          "sourceLine": 145,
           "rowIndex": 1,
           "leafTitle": "silent turn releases automatic pause on matching error",
           "bindings": {
@@ -3455,9 +3443,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:123:literal-for-of:2",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal-for-of:2",
           "kind": "literal-for-of",
-          "sourceLine": 123,
+          "sourceLine": 145,
           "rowIndex": 2,
           "leafTitle": "silent turn releases automatic pause on matching interrupted",
           "bindings": {
@@ -3469,9 +3457,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:128:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:150:literal:0",
           "kind": "literal",
-          "sourceLine": 128,
+          "sourceLine": 150,
           "leafTitle": "manual mute remains independent and Stop clears automatic pause despite late events",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3479,9 +3467,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:133:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:155:literal:0",
           "kind": "literal",
-          "sourceLine": 133,
+          "sourceLine": 155,
           "leafTitle": "empty final never invents processing and session transport error clears busy state",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3489,9 +3477,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:139:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:161:literal:0",
           "kind": "literal",
-          "sourceLine": 139,
+          "sourceLine": 161,
           "leafTitle": "local playback drain before usage keeps processing paused until its receipt",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3499,9 +3487,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:142:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:164:literal:0",
           "kind": "literal",
-          "sourceLine": 142,
+          "sourceLine": 164,
           "leafTitle": "opening greeting stays paused until local playback drains without a user turn",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3509,9 +3497,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:145:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:167:literal:0",
           "kind": "literal",
-          "sourceLine": 145,
+          "sourceLine": 167,
           "leafTitle": "old greeting events and drain cannot clear a newer accepted request",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3519,9 +3507,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:151:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:173:literal:0",
           "kind": "literal",
-          "sourceLine": 151,
+          "sourceLine": 173,
           "leafTitle": "fresh server fallback playback after a completed request is paused until local drain",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3529,9 +3517,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:158:literal-for-of:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:180:literal-for-of:0",
           "kind": "literal-for-of",
-          "sourceLine": 158,
+          "sourceLine": 180,
           "rowIndex": 0,
           "leafTitle": "retryable unscoped stt_reconnecting preserves busy processing until matching usage",
           "bindings": {
@@ -3543,9 +3531,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:158:literal-for-of:1",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:180:literal-for-of:1",
           "kind": "literal-for-of",
-          "sourceLine": 158,
+          "sourceLine": 180,
           "rowIndex": 1,
           "leafTitle": "retryable unscoped transport_error preserves busy processing until matching usage",
           "bindings": {
@@ -3557,9 +3545,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:166:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:188:literal:0",
           "kind": "literal",
-          "sourceLine": 166,
+          "sourceLine": 188,
           "leafTitle": "accepted session reset retires busy traces and old frames cannot revive the projection",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3567,9 +3555,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:177:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:199:literal:0",
           "kind": "literal",
-          "sourceLine": 177,
+          "sourceLine": 199,
           "leafTitle": "actual SDK and Alpha preserve A queued playback while B failure settles once",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3577,9 +3565,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:218:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:245:literal:0",
           "kind": "literal",
-          "sourceLine": 218,
+          "sourceLine": 245,
           "leafTitle": "existing health discovery refuses missing/false settlement capability before client creation",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -3587,9 +3575,9 @@
           "observedRegistration": false
         },
         {
-          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:223:literal:0",
+          "sourceKey": "Alpha/test/development-cartesia-conversation.test.mjs:250:literal:0",
           "kind": "literal",
-          "sourceLine": 223,
+          "sourceLine": 250,
           "leafTitle": "both Direct and local Cloud callers opt in by resident transport",
           "exactSourceLeafTitle": true,
           "ancestorSuites": [],
@@ -6055,7 +6043,7 @@
       "file": "packages/voice/src/realtime-voice-timing.test.ts",
       "sha256": "b83b905a7a9b5ef600572df8d54328922853ce517cfe7801c412902d1d9cd0fe",
       "staticASTDeclarations": 12,
-      "expectedSourceCaseCount": 22,
+      "expectedSourceCaseCount": 21,
       "unresolvedRegistrationDeclarations": [],
       "parameterizedRunnerTitlesUnestablished": 14,
       "sourceTemplateMultiplicities": {
@@ -6064,18 +6052,6 @@
       },
       "requiredEnvironment": null,
       "cases": [
-        {
-          "sourceKey": "SDK/packages/voice/src/realtime-voice-timing.test.ts:45:literal:0",
-          "kind": "literal",
-          "sourceLine": 45,
-          "leafTitle": "realtime cancellation diagnostics",
-          "exactSourceLeafTitle": true,
-          "ancestorSuites": [
-            "realtime cancellation diagnostics"
-          ],
-          "requiredOutcome": "passed",
-          "observedRegistration": false
-        },
         {
           "sourceKey": "SDK/packages/voice/src/realtime-voice-timing.test.ts:46:vitest-each:0",
           "kind": "vitest-each",

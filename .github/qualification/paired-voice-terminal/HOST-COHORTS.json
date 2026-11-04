@@ -1,8 +1,9 @@
 {
-  "state": "SOURCE_REVIEWED_FINITE_HOST_COHORTS_ACTUAL_CAPABILITIES_PENDING",
+  "state": "ROOT_CURRENT_FOUR_FINITE_COHORT_SOURCE_POLICY_REQUIRES_FINAL_PEER_OPERATOR_BINDING",
   "ImageOS": "ubuntu24",
   "setupImageLabel": "ubuntu-24.04",
   "allowedImageVersions": [
+    "20261018.96.1",
     "20261025.353.1",
     "20261026.354.1",
     "20261101.360.1"
@@ -51,12 +52,7 @@
       "officialReleaseDraft": false
     }
   ],
-  "rejectedOrPending": [
-    {
-      "ImageVersion": "20261018.96.1",
-      "reason": "Not included: no independently bound current primarysource receipts."
-    }
-  ],
+  "rejectedOrPending": [],
   "metadataFields": {
     "ImageOS": {
       "environment": "ImageOS",
@@ -88,6 +84,15 @@
       "provenanceSHA256": "265d02b096d4dfbdb4057fd33229a12603bb941a7c789d700c1161f319eb1e78",
       "setupLogSHA256": "984474fe24a855bff34e6d47f1b3a233ff47d79718b014910b71c6110a09d63d",
       "runMetadataSHA256": "d88ddc7957df9501cbbbfcf3b12e39aab30c06ecd413bc453f0cac52e03f206a"
+    },
+    {
+      "runtimeVersion": "20261018.96.1",
+      "kind": "authenticatedGitHubjobattestation+explicitRootsourceDispositionWithPrimaryGap",
+      "provenanceFile": "cohort-provenance/20261018.96/ROOT-SOURCE-DISPOSITION.json",
+      "provenanceSHA256": "2e316c4cc514d88c960fa087d862ab53be7146f9eb3414c5dd73e9769398def0",
+      "setupLogSHA256": "ba836c99e7264e022cfd27159342a7895a4b249e99740a3378ef158a8754dfa7",
+      "runnerMetadataSHA256": "22912f5abf44d9df721fce898f7bc5ff0f502938a9a0beb51189902c0ea116fa",
+      "claimSHA256": "b6194033d8bcd2cdfadb2bf9be8f29515de5663c6f50b41f39e160edf7cd2862"
     }
   ]
 }

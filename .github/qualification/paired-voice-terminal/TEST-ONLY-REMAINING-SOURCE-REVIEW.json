@@ -1,0 +1,53 @@
+{
+  "atUTC": "2026-11-04T00:51:44.836263+00:00",
+  "state": "SCOPED_TEST_ONLY_HELPER_DIAGNOSTIC_ORACLE_AND_LITERAL_COMPOSITION_SOURCE_PASS",
+  "sourceAlphaParent": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
+  "sourceSDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "hashes": {
+    "SOURCES.json": "85a488fe55bbea1bbe24a746902c2f75595ada0860fb15e558ee7b80d1905c45",
+    "fixture-eligibility-v2/PROPOSAL.json": "63ef54770b053b064617d1bd29076c8fd6ad13d8a7b1bd18ea87d05ff596f8a2",
+    "fixture-eligibility-v2/proposed.mjs": "161ddb8ec7e9b9eddeb86f72ccc0ebcd6d512edd7e7a5368d8052907590d2d05",
+    "paired-diagnostic-v1/PROPOSAL.json": "da4d30d96508d13864c72b88f67ab850042ea3f1c4b80689c6f4fa4a41ae9e1f",
+    "paired-diagnostic-v1/proposed.mjs": "d62bccd8b9179fae9180f7c33d6f6dfead2dd9f8786680bbcbe15264f98d1516",
+    "combined-test-only-v2/PROPOSAL.json": "4886ac5b833eb950b884c9e23c3ee27242b7ced794c61d425507f2aadc2a1f19",
+    "combined-test-only-v2/proposed.mjs": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
+    "oracle-suite-correction-v2/PROPOSAL.json": "59c1af39440a43c1b51e62f855d6da2f9434233eef10d9aaa5f79ac36c1d7b5a",
+    "oracle-suite-correction-v2/ORACLES.json": "7a3f50dbb488ca5c7defdf0152408ee61a4959537217e3bf526418b76bbd3a44",
+    "oracle-suite-correction-v2/EXPECTED-REGISTRATION-LEDGER.json": "ed137789857d4892273814a5c866bea7beedf17c3022aaa34265c930dee4b459"
+  },
+  "checks": [
+    "Productionfinding reviewedagainst retained actual SDK72eb827f and Alphabea5bccf sources; no production workaround justified by currentfixturefailure, acceptedgenuineglobalinterruption behavior preserved",
+    "HelperV2validframe exposedsubset mirrors SDKpending/audio interruptioneligibility: onlynonnullboundedtrace/knownreason+pendingoraudio accepted; matchingterminalconsumedbeforecallback; retiredterminal/globalcancel traces tombstoned; lateSTT ignored; readyresets subset sessionstate",
+    "V1missedexposedtombstone boundary foundand correctedbeforeV2PASS; helperexplicitly not a socketnegotiation/localbargeACK/fullSDKreplica. ActualpairedSDKcase remains realclient/reducer/parser/drain, not helper",
+    "DiagnosticV1 captures onlyfixedscalar wire/state/callback/mutefields, <=32rows/7168JSONbytes; originalonState/onServerEvent calledonce beforeobservation, sameargorder; lazygetter aftersetup avoidsTDZ; getterpurebool; no extraawait/microtask/PCM/text/token/key",
+    "Catchappendsboundedobservedprefix to ordinary Error.message thenrethrowsoriginal; finallyStop unchanged. Failurepredicate/assertionsnotweakened; unexpectednonError stillrethrows",
+    "Independent pinnedhostTS6.0.3AST inspecteddataonly: all121originalassertcall ASTtexts byteidentical/order in combinedV2; all35caseline-map rows old/newdeclarationlines byteidentical. Combinedbytesexact helperV2prefix+diagnosticV1remainder, nohiddenedits",
+    "OracleV2removes ONLYdescribecontainerline45 from BOTHowning12groupandfilesmirror; all21realcases sameorder/bytes, allothergroups unchanged; totalparents251 plus2reviewedNodechildren",
+    "Independent hostAST rederived21realVitestfullnames+sourcelines including14stringparameterrows; allmatch actualowning12standardJSON/witness reportSHA7740f7f2, whose21assertionspassed. Describe remainshierarchy/excludedledger metadata, not a registeredtest",
+    "No actualtask/internalregistrationID or entireobserveracceptance invented; pastfailedrun41747214993 staysfailed. Correctedledgerhash and group/filemirrorarrays checked"
+  ],
+  "actualNormalFileEvidence": {
+    "run": 41747214993,
+    "reportSHA256": "7740f7f298990dc02fd20fa186e20eb0b4b1491f833898ed9464dcf7cd334d5c",
+    "ordinaryJSONTotal": 21,
+    "ordinaryJSONPassed": 21,
+    "ordinaryJSONFailed": 0,
+    "fullQualificationAccepted": false
+  },
+  "limits": [
+    "Combinedtestsource is uncommitted/unexecuted; SourcePASS not fixproof or successfulpairedAAudio/Bfailure diagnostic result. Realpairedfailurecause stillunknown until actualtrace.",
+    "Helpervalidframesubset doesnotprove fullparser/socketnegotiation/lifecycle/localACKbehavior. GenuineSDKglobalinterruption mustnot beignoredinproduction to satisfyunitfixture.",
+    "Diagnosticrows are boundedprefix, not exhaustivecallbackabsence proof; synchronousdiagnosticwork not performance/latency proof.",
+    "OracleV2corrects current61a35/e232source count only. Oncecombinedtestfilepublished, all35newsourceLine/sourceKey/fixturehash/manifest/oracle/helper/projectionpins mustbe regenerated/reviewed; no silent relabel or reusedoldGO.",
+    "No production/model/provider/voice/browserCalendar/device/type/mergeacceptance. Originalremainingactualpairedfailure continues toblockfullfamily until diagnosedandqualified."
+  ],
+  "reviewerEffects": {
+    "hostASTDataOnly": true,
+    "candidateImports": 0,
+    "testExecutions": 0,
+    "compilers": 0,
+    "providers": 0,
+    "sourceChanges": 0
+  },
+  "next": "Rootmaydecide exactsingle-testleafsourcepublication undernewparent, then actualliteral/treepreservation/source-line-oracle rebind/seal review and freshfinitequalification separately. PreserveV1andallfailedrawreceipts."
+}

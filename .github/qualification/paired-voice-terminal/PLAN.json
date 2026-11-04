@@ -7,8 +7,8 @@
       "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b"
     },
     "Alpha": {
-      "commit": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
-      "tree": "eea92c9b0d867704619181ef14d3210de2974882",
+      "commit": "1198aa7ae60c9f0439bae15575382c1faba28c15",
+      "tree": "d1ab14153963a6f5be571b17b5b1a55e37f4fecf",
       "sdkGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928"
     }
   },
@@ -33,6 +33,7 @@
     "os": "ubuntu24",
     "architecture": "x86_64",
     "ImageVersion": [
+      "20261018.96.1",
       "20261025.353.1",
       "20261026.354.1",
       "20261101.360.1"
@@ -96,7 +97,7 @@
       "name": "owning-1",
       "repository": "Alpha",
       "file": "test/development-cartesia-conversation.test.mjs",
-      "sha256": "66ea61165f2c0f08862e0c960dabfd214537930e666b1225421cfc0896a1840e",
+      "sha256": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
       "cwd": "/workspace/alpha",
       "config": null,
       "command": [

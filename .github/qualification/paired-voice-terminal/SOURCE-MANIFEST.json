@@ -48,7 +48,7 @@
       "package-lock.json": "84029a1d65017782877b3cc3e71b81f48f7f7441be2eb892d2df91e83a4ac3ff",
       "package.json": "5d7c5ae56861f972eea03cbf8457415f7a4d6a44827e3e6cff91f2265917509b",
       "scripts/prepare-client-features.mjs": "6c9bf77ddca244ba773732d4bd2b5cbee6b29d00d5022ccbeac2e67ca7a13458",
-      "test/development-cartesia-conversation.test.mjs": "66ea61165f2c0f08862e0c960dabfd214537930e666b1225421cfc0896a1840e",
+      "test/development-cartesia-conversation.test.mjs": "aae605a3b1acf117c379d0f255a6ac2a8ed9e6932b5f59f1429885f2494cb31d",
       "test/private-preview-cartesia-route.test.mjs": "9aca7b24aaaecdaee71af790cf7c7cc49e1aa92c5f1a6b13f1c1a6a07a30fde0",
       "test/voice-calm-cloud-errors.test.mjs": "0c9de7e6b37a87b00ea83cf4ab1c3b887738587e3136d95dc1b1c06576487c0a",
       "test/voice-credit-terminal.test.mjs": "7ed1ddaba460b471bbecda08eeb4d39b1e247e0bf56a076f005a4a2a69a63cd4",
