@@ -129,6 +129,8 @@ def phase(name,args,timeout,accepted=(0,),cleanup=False):
   if not empty:raise RuntimeError('Unclosed owned process group')
  return log.read_text(),code
 
+inspect_format='{"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}}}'
+resource_inspect_format='{"Id":{{json .Id}},"Name":{{json .Name}},"Labels":{{json .Config.Labels}},"State":{"Status":{{json .State.Status}},"Running":{{json .State.Running}},"ExitCode":{{json .State.ExitCode}},"OOMKilled":{{json .State.OOMKilled}},"Error":{{json .State.Error}}},"Resources":{"memoryBytes":{{json .HostConfig.Memory}},"memorySwapBytes":{{json .HostConfig.MemorySwap}},"nanoCpus":{{json .HostConfig.NanoCpus}},"pidsLimit":{{json .HostConfig.PidsLimit}},"nodeOptions":{{$nodeOptions := ""}}{{range .Config.Env}}{{if eq (printf "%.13s" .) "NODE_OPTIONS="}}{{$nodeOptions = .}}{{end}}{{end}}{{json $nodeOptions}}}}'
 def inspect_container(key,label,cleanup=False,resources=False):
  text,code=phase(label,['docker','container','inspect','--format',resource_inspect_format if resources else inspect_format,key],10,accepted=(0,1),cleanup=cleanup)
  if code==1:
