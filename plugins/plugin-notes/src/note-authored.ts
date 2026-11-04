@@ -91,11 +91,17 @@ export function editAuthoredNoteFormat(
   edit: AuthoredNoteEdit,
 ): NoteFormat {
   if (edit.action === "append") {
-    if (!format || format.kind !== "list" || !Array.isArray(format.data.items))
+    // A new checklist drafted by NotesEditor.begin("list") has no items yet.
+    if (
+      !format ||
+      format.kind !== "list" ||
+      (format.data.items !== undefined && !Array.isArray(format.data.items))
+    )
       throw Error("Checklist append requires the current list format.");
     if (!edit.text.trim())
       throw Error("Checklist append requires nonblank authored text.");
     const next = structuredClone(format);
+    next.data.items ??= [];
     (next.data.items as NoteJson[]).push({ t: edit.text, done: false });
     return next;
   }
