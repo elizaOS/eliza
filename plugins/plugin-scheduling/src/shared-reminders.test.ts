@@ -196,15 +196,15 @@ it("keeps an interval reminder's next time when only its text changes", async ()
   });
 });
 
-it("does not send a one-off reminder again when only its text changes after it went off", async () => {
+function createOneOffReminderHarness() {
   const agentId = "33333333-3333-4333-8333-333333333333";
   const runtime = {
     agentId,
     getService: () => null,
     reportError: () => undefined,
   } as unknown as IAgentRuntime;
-  let clock = new Date("2026-10-11T10:00:00Z");
-  const now = () => clock;
+  const clock = { now: new Date("2026-10-11T10:00:00Z") };
+  const now = () => clock.now;
   const gates = createTaskGateRegistry();
   registerBuiltInGates(gates);
   const completionChecks = createCompletionCheckRegistry();
@@ -256,29 +256,80 @@ it("does not send a one-off reminder again when only its text changes after it w
       undefined,
       { parameters },
     );
-  const created = await run({
-    operation: "create",
-    reminderText: "Call mom",
-    atIso: "2026-10-11T15:00:00Z",
-  });
-  expect(created?.success, JSON.stringify(created)).toBe(true);
-  const task = created?.data?.task as ScheduledTask;
-  clock = new Date("2026-10-11T15:00:30Z");
-  expect((await runner.fire(task.taskId)).state.status).toBe("fired");
+  const createAt3pm = async () => {
+    const created = await run({
+      operation: "create",
+      reminderText: "Call mom",
+      atIso: "2026-10-11T15:00:00Z",
+    });
+    expect(created?.success, JSON.stringify(created)).toBe(true);
+    return created?.data?.task as ScheduledTask;
+  };
+  const editText = (taskId: string) =>
+    run({ operation: "update", taskId, newReminderText: "Call dad" });
+  const dueTasksAt = async (iso: string) => {
+    const due: ScheduledTask[] = [];
+    for (const entry of await runner.list()) {
+      if ((await isScheduledTaskDue(entry, { now: new Date(iso) })).due) {
+        due.push(entry);
+      }
+    }
+    return due;
+  };
+  return { clock, runner, createAt3pm, editText, dueTasksAt };
+}
 
-  clock = new Date("2026-10-11T15:10:00Z");
-  const updated = await run({
-    operation: "update",
-    taskId: task.taskId,
-    newReminderText: "Call dad",
-  });
+it("does not send a one-off reminder again when only its text changes after it went off", async () => {
+  const h = createOneOffReminderHarness();
+  const task = await h.createAt3pm();
+  h.clock.now = new Date("2026-10-11T15:00:30Z");
+  expect((await h.runner.fire(task.taskId)).state.status).toBe("fired");
+
+  h.clock.now = new Date("2026-10-11T15:10:00Z");
+  const updated = await h.editText(task.taskId);
   expect(updated?.success, JSON.stringify(updated)).toBe(false);
   expect(updated?.text).toContain("already went off");
 
-  const tasks = await runner.list();
+  const tasks = await h.runner.list();
   expect(tasks.map((entry) => entry.taskId)).toEqual([task.taskId]);
   expect(tasks[0]?.state.status).toBe("fired");
-  for (const entry of tasks) {
-    expect((await isScheduledTaskDue(entry, { now: clock })).due).toBe(false);
-  }
+  expect(await h.dueTasksAt("2026-10-11T15:10:00Z")).toEqual([]);
+});
+
+it("keeps a snoozed one-off reminder's snoozed time when only its text changes", async () => {
+  const h = createOneOffReminderHarness();
+  const task = await h.createAt3pm();
+  h.clock.now = new Date("2026-10-11T10:05:00Z");
+  await h.runner.apply(task.taskId, "snooze", {
+    untilIso: "2026-10-11T15:30:00Z",
+  });
+
+  h.clock.now = new Date("2026-10-11T10:10:00Z");
+  const updated = await h.editText(task.taskId);
+  expect(updated?.success, JSON.stringify(updated)).toBe(true);
+  const replacement = updated?.data?.task as ScheduledTask;
+  expect(replacement.promptInstructions).toBe("Call dad");
+
+  expect(await h.dueTasksAt("2026-10-11T15:00:00Z")).toEqual([]);
+  expect(
+    (await h.dueTasksAt("2026-10-11T15:30:00Z")).map((entry) => entry.taskId),
+  ).toEqual([replacement.taskId]);
+});
+
+it("sends a snoozed one-off reminder at its snoozed time, not at once, when only its text changes", async () => {
+  const h = createOneOffReminderHarness();
+  const task = await h.createAt3pm();
+  h.clock.now = new Date("2026-10-11T15:00:30Z");
+  await h.runner.fire(task.taskId);
+  await h.runner.apply(task.taskId, "snooze", { minutes: 30 });
+
+  h.clock.now = new Date("2026-10-11T15:10:00Z");
+  const updated = await h.editText(task.taskId);
+  expect(updated?.success, JSON.stringify(updated)).toBe(true);
+  const replacement = updated?.data?.task as ScheduledTask;
+
+  expect(await h.dueTasksAt("2026-10-11T15:10:00Z")).toEqual([]);
+  expect(
+    (await h.dueTasksAt("2026-10-11T15:31:00Z")).map((entry) => entry.taskId),
+  ).toEqual([replacement.taskId]);
 });
