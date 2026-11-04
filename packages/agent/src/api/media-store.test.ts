@@ -6,6 +6,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import {
   gcUnreferencedMedia,
   persistMediaBytes,
+  pinBackgroundMedia,
+  readBackgroundPins,
   readStoredMediaBytes,
   storedMediaFileExists,
   writeStoredMediaFile,
@@ -89,6 +91,53 @@ describe("media-store size cap", () => {
       expect(storedMediaFileExists(original)).toBe(true);
       expect(storedMediaFileExists(fresh)).toBe(true);
       expect(storedMediaFileExists(orphan)).toBe(false);
+    } finally {
+      vi.useRealTimers();
+      if (previousCap === undefined)
+        delete process.env.ELIZA_MEDIA_STORE_MAX_BYTES;
+      else process.env.ELIZA_MEDIA_STORE_MAX_BYTES = previousCap;
+    }
+  });
+
+  it("keeps the wallpaper pin list when an upload goes over the cap", () => {
+    const previousCap = process.env.ELIZA_MEDIA_STORE_MAX_BYTES;
+    process.env.ELIZA_MEDIA_STORE_MAX_BYTES = "3000";
+    vi.useFakeTimers({ toFake: ["Date"] });
+    try {
+      const mediaDir = path.join(stateDir, "media");
+      for (const name of fs.readdirSync(mediaDir)) {
+        fs.rmSync(path.join(mediaDir, name), { force: true });
+      }
+      // The wallpaper was pinned and a chat image saved two hours ago, before
+      // the last daily GC sweep.
+      const wallpaper = persistMediaBytes(Buffer.alloc(1200, 4), "image/png");
+      pinBackgroundMedia(wallpaper.url);
+      const chatImage = persistMediaBytes(
+        Buffer.alloc(1000, 5),
+        "image/png",
+      ).fileName;
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60_000);
+      for (const name of [
+        wallpaper.fileName,
+        chatImage,
+        "background-pins.json",
+      ]) {
+        fs.utimesSync(path.join(mediaDir, name), twoHoursAgo, twoHoursAgo);
+      }
+      gcUnreferencedMedia(new Set([chatImage]));
+
+      // A new upload pushes the store over the cap.
+      vi.setSystemTime(Date.now() + 5 * 60_000);
+      const fresh = persistMediaBytes(
+        Buffer.alloc(1000, 6),
+        "image/png",
+      ).fileName;
+      expect(readBackgroundPins()).toEqual([wallpaper.fileName]);
+
+      // The next daily sweep still sees the wallpaper as pinned.
+      vi.setSystemTime(Date.now() + 24 * 60 * 60_000);
+      gcUnreferencedMedia(new Set([chatImage, fresh]));
+      expect(storedMediaFileExists(wallpaper.fileName)).toBe(true);
     } finally {
       vi.useRealTimers();
       if (previousCap === undefined)

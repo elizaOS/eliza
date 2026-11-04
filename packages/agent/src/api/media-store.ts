@@ -266,11 +266,12 @@ export function selectMediaToEvict(
   cap: number,
   sweep: MediaGcSweep | null,
 ): string[] {
-  // Private files have explicit owner/revocation lifecycles and cannot be
-  // reconstructed from public attachment references after blind eviction.
-  const evictable = files.filter(
-    (file) => !PRIVATE_MEDIA_FILE_NAME.test(file.name),
-  );
+  // Only public content-addressed media is a candidate. Private files have
+  // explicit owner/revocation lifecycles and cannot be reconstructed from
+  // public attachment references after blind eviction. The GC sweep never
+  // sees other names (the background-pins.json and audio-redactions.json
+  // ledgers, in-flight `.pending-*` writes), so it cannot mark them kept.
+  const evictable = files.filter((file) => MEDIA_FILE_NAME.test(file.name));
   let total = evictable.reduce((sum, file) => sum + file.size, 0);
   if (total <= cap || !sweep) return [];
   const target = Math.floor(cap * 0.9);
