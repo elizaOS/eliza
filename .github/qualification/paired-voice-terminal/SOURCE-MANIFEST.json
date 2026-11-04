@@ -106,7 +106,9 @@
       "apps/app/src/browser/calendar-records.ts": "6e1ffffc75af11f91e791b970ed74ffd8fa3a31de697fa2821f02de03f83fdf8",
       "apps/app/src/browser/calendar-recurrence.ts": "62f8663c98454da6e975538aeccb7c22f6b5d7df8a253bff00c5f8c649acd6fc",
       "apps/app/src/browser/calendar-response.ts": "b119564260e33b749b3e6b7163c66234cd1ad75efa25fe9d6390e229c32bdffc",
-      "apps/app/src/browser/calendar-time.ts": "d76e14745cc9a4a624d4d98a79ecc29872b190652eaca14bf71b1426c57f5e4c"
+      "apps/app/src/browser/calendar-time.ts": "d76e14745cc9a4a624d4d98a79ecc29872b190652eaca14bf71b1426c57f5e4c",
+      "test/fixtures/cloud-voice-view.mjs": "26eebaf47008efa63ef3269730229505b201c931ccd3b589e47d8a8c5cb34da4",
+      "apps/app/src/runtime/voice-timing.ts": "1aeaa6e1474eb999a5cfd497392b6e01a4c86caf5d56d2ff2d175dcb71bbb963"
     },
     "lockSHA256": "84029a1d65017782877b3cc3e71b81f48f7f7441be2eb892d2df91e83a4ac3ff"
   }

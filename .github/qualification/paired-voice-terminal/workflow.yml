@@ -74,7 +74,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           repository: eliza-research/alphaphone
-          ref: 918ac07f9f51fbfb02f42db4c8909f766bed1d00
+          ref: 61a35cfc41d40fae9d601cbf247db1b22b6203e3
           path: source-alpha
           fetch-depth: 1
           submodules: false

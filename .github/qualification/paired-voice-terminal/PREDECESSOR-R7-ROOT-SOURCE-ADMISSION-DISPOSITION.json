@@ -1,0 +1,30 @@
+{
+  "atUTC": "2026-11-03T23:04:52.435686+00:00",
+  "state": "EXACT_R7_SDK_SHALLOW_INTAKE_CONDITIONAL_SOURCE_DISPOSITION_NOT_EXECUTION_GO",
+  "SDK": {
+    "commit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+    "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b",
+    "priorCompleteGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/revision7/SDK-GUARD.json",
+    "priorCompleteGuardSHA256": "a98307aa76f905a4de2d766ce708abd7e065fef9ff1d455b4e274c9e157e6654",
+    "allowedHostedDepth": 1,
+    "conditions": "Actualhead/tree/sourcefiles/IoCguard PASS plusexactpriorcompleteguardandremoteLiteralb403... binding, fullsourceinput andprojection/module/dependency proofs. Incomplete hostedancestry explicitlyrecorded, notgeneralmalware/historyclearance."
+  },
+  "Alpha": {
+    "commit": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+    "tree": "55df13f5a9bc313918a1e46c1fae00f786730804",
+    "priorCompleteGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/revision7/AlphaPaired-GUARD.json",
+    "priorCompleteGuardSHA256": "e7614eeecc6a46aa51a6b3c34dbafb80ae8abdb973502ad482335d6742d01064",
+    "actualHostedFullAncestryRequired": true,
+    "scope": "OnlyexactpinnedHEADanditsreachableancestry; no unrelatedremoteheads/tags/submoduleintake."
+  },
+  "checkoutFinding": {
+    "pinnedAction": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+    "primarySource": "https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/src/git-source-provider.ts#L188",
+    "verified": "GitHubAPIexactsource185-205 usesgetRefSpecForAllHistory forallbranches/tags atfetchDepth<=0. Currentworkflow Alpha depth0mustbe constrained toexactancestry-only beforefinalseal/GO."
+  },
+  "notAuthorized": [
+    "normalcollection/test/type/import/build/producer/imagepull/CLIprobe/CI/nonce",
+    "runtime/model/voice/device/merge/deploy"
+  ],
+  "newPinsNotCovered": "Canonicalaee/composedSDK ornewAlphaGooglefixpins requireownexactreview/guard/source disposition."
+}

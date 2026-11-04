@@ -1,0 +1,40 @@
+{
+  "atUTC": "2026-11-04T00:22:54.864544+00:00",
+  "state": "SAVED_AUTHORITATIVE_REMOTE_LITERAL_LINEAGE_AND_TREE_PRESERVATION_PASS",
+  "commit": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
+  "tree": "eea92c9b0d867704619181ef14d3210de2974882",
+  "soleParent": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+  "ref": "refs/heads/codex/alpha-voice-fixture-repair-r8-20261103",
+  "changedPath": "test/fixtures/cloud-voice-view.mjs",
+  "preservedOtherLeaves": 3485,
+  "SDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+  "fixtureSHA256": "26eebaf47008efa63ef3269730229505b201c931ccd3b589e47d8a8c5cb34da4",
+  "fixtureBlob": "d299ed71838926f2781ba14628fe0a9368190131",
+  "checks": [
+    "Saved GitHub git/commit identifies exact soleparent and actual tree; saved exact ref points candidate",
+    "Untruncated parent+child recursive trees preserve all3485 other mode/type/blob/gitlink leaves",
+    "Authoritative blob API base64 decoded, raw Git blob ID independently verified, bytes equal reviewed/local postimage",
+    "SDK gitlink unchanged; no product/assertion code delta"
+  ],
+  "packetHashes": {
+    "CHILD-COMMIT.json": "e2b4d39c71f3452b91dacdb712c2881b4017d57dfe76ca61a0d00aa6c599273a",
+    "PARENT-COMMIT.json": "9876453ccdc9aa46f871dfd51f2ff0eab8b8a1299837c4391ca6aaab4fad3a4d",
+    "CHILD-REF.json": "c9c6594866aaaeedf9f6dc3e6408b978b511f3996414b711c959e5cba06f2012",
+    "PARENT-TREE.json": "b517f7adcb3005c2c835e930dd6e0f0496c074a4f6acce2ce85c172bb47125fd",
+    "CHILD-TREE.json": "49e7bcb6ac86f67be0123536838fd855d2cef61c78f2201586142039d4f24fad",
+    "FIXTURE-BLOB.json": "ec9f68fbb87892a650fafa739dc0552594cbd31e40366c174195013d78c0b426",
+    "READBACK.json": "d81346869eb94800cf1ad244771198df76aad183f02e4beb4cdb3c5599d21a9f"
+  },
+  "limits": [
+    "Review consumes saved authoritative API responses; no new live API/Git request by reviewer. Ref state is the saved publication observation, not perpetual branch guarantee.",
+    "Actor proof in owner publication packet remains source-backed per-invocation credential evidence; commit author alone is not pusher proof or independent historical audit.",
+    "No tests/types/runtime/device/merge acceptance. Operator rebind/reseal/new run remain separate."
+  ],
+  "reviewerEffects": {
+    "networkCalls": 0,
+    "gitCalls": 0,
+    "candidateExecution": 0,
+    "tests": 0,
+    "mutations": 0
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "state": "IMMUTABLE_EXACT_SOURCE_REPAIR_COMPOSITION_PENDING_FINAL_REVIEW",
+  "operatorParent": "219bd9eda37a8193fa48c848ef9ff140813e5c95",
+  "sources": {
+    "SDK": {
+      "commit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+      "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b"
+    },
+    "Alpha": {
+      "commit": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
+      "tree": "eea92c9b0d867704619181ef14d3210de2974882",
+      "sdkGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928"
+    }
+  },
+  "fixtureOnlyAlphaChild": {
+    "parent": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+    "changedPath": "test/fixtures/cloud-voice-view.mjs",
+    "SHA256": "26eebaf47008efa63ef3269730229505b201c931ccd3b589e47d8a8c5cb34da4",
+    "otherLeavesPreserved": 3485
+  },
+  "sourceRepairReviewSHA256": "feb11f7c31b810446e026edb3cd2e89bd105b5275eaf6e520c64c3870bc7cfbc",
+  "alphaRemoteReviewSHA256": "fc06097cbda0dd4ba8aad4c5971759a640d46b6d4e6dcd373b625038ebea9e2b",
+  "newRootDispositionSHA256": "432cdd82fe4f60ed359e5fc5dc29925be371c073007c86d20ec2c2107f25d103",
+  "originalRootDispositionPreservedSHA256": "8b7e4da1eecd0bc412126d838c09f0a69d2d5a5037f5bf16dc957765b8dfd812",
+  "unchangedOracleSHA256": "6dd15b14b6820728e50a4213ef154f0f8df62ad507452b61a0289f64b6f2e3e8",
+  "unchangedOracleRationale": "All12 full test files and252 source parent cases +2 Node children unchanged; fixture dependency supplier only. No filters/assertion/oracle changes.",
+  "additionalSourceHashes": [
+    "Alpha:test/fixtures/cloud-voice-view.mjs",
+    "Alpha:apps/app/src/runtime/voice-timing.ts"
+  ],
+  "historicalReceiptsRetainedVerbatim": [
+    "SOURCE-REVIEW.json",
+    "R7-REMOTE-LITERAL-PAIR-REVIEW.json",
+    "COHORT-SOURCE-REVIEW.json",
+    "PREDECESSOR-R7-ROOT-SOURCE-ADMISSION-DISPOSITION.json"
+  ],
+  "historicalReceiptLimit": "Historical reviewed scopes retain their original subject IDs; they are not relabeled as acceptance of the new Alpha pin. New Root/fixture/remote receipts govern the child.",
+  "spentRun": 41743741024,
+  "spentIntent": "c3867da054381f6363c39fa3d8efa9d4",
+  "newGoOrIntentIssued": false,
+  "notProven": [
+    "Owning1 two original assertion causes",
+    "Owning2 nine original child failure causes",
+    "All14 calm errors sharing one directly proved cause",
+    "Successful SDK collection/tests/types",
+    "Preview/provider/model/Calendar/voice/Android acceptance"
+  ]
+}

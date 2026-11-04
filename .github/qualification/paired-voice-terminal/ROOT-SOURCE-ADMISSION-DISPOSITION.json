@@ -1,6 +1,8 @@
 {
-  "atUTC": "2026-11-03T23:04:52.435686+00:00",
-  "state": "EXACT_R7_SDK_SHALLOW_INTAKE_CONDITIONAL_SOURCE_DISPOSITION_NOT_EXECUTION_GO",
+  "atUTC": "2026-11-04T00:22:05.648244+00:00",
+  "state": "EXACT_E232_ALPHA61A35_CONDITIONAL_SOURCE_DISPOSITION_NOT_EXECUTION_GO",
+  "priorDisposition": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-R7-PAIRED-SOURCE-ADMISSION-DISPOSITION-20261103.json",
+  "priorDispositionSHA256": "8b7e4da1eecd0bc412126d838c09f0a69d2d5a5037f5bf16dc957765b8dfd812",
   "SDK": {
     "commit": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
     "tree": "ba145e0fbb23a26f915d46f5b0d80e4ebcb02d6b",
@@ -10,21 +12,35 @@
     "conditions": "Actualhead/tree/sourcefiles/IoCguard PASS plusexactpriorcompleteguardandremoteLiteralb403... binding, fullsourceinput andprojection/module/dependency proofs. Incomplete hostedancestry explicitlyrecorded, notgeneralmalware/historyclearance."
   },
   "Alpha": {
-    "commit": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
-    "tree": "55df13f5a9bc313918a1e46c1fae00f786730804",
-    "priorCompleteGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/revision7/AlphaPaired-GUARD.json",
-    "priorCompleteGuardSHA256": "e7614eeecc6a46aa51a6b3c34dbafb80ae8abdb973502ad482335d6742d01064",
+    "commit": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
+    "tree": "eea92c9b0d867704619181ef14d3210de2974882",
+    "soleParent": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+    "SDKGitlink": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
+    "onlyChangedPath": "test/fixtures/cloud-voice-view.mjs",
+    "fixtureSHA256": "26eebaf47008efa63ef3269730229505b201c931ccd3b589e47d8a8c5cb34da4",
+    "priorCompleteGuard": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision3-publication-v1/AlphaPaired-GUARD.json",
+    "priorCompleteGuardSHA256": "bd673902a0db2b19d7b6317d605eeb85cbca3775e1bfbe824a249798946963c6",
     "actualHostedFullAncestryRequired": true,
-    "scope": "OnlyexactpinnedHEADanditsreachableancestry; no unrelatedremoteheads/tags/submoduleintake."
+    "scope": "Exact pinned HEAD and its reachable ancestry only; no unrelated remote heads/tags/submodule intake.",
+    "sourceReview": "feb11f7c31b810446e026edb3cd2e89bd105b5275eaf6e520c64c3870bc7cfbc",
+    "localLiteralReview": "166e6f260fba3a2902dd61f4924abc53f32bdcd96d2c14de1920c83f8e963137",
+    "localReviewLimit": "Cached leaf maps/blob checked; authoritative remote actual commit parent/tree/ref/literal readback still required before execution."
   },
   "checkoutFinding": {
     "pinnedAction": "3d3c42e5aac5ba805825da76410c181273ba90b1",
     "primarySource": "https://github.com/actions/checkout/blob/3d3c42e5aac5ba805825da76410c181273ba90b1/src/git-source-provider.ts#L188",
     "verified": "GitHubAPIexactsource185-205 usesgetRefSpecForAllHistory forallbranches/tags atfetchDepth<=0. Currentworkflow Alpha depth0mustbe constrained toexactancestry-only beforefinalseal/GO."
   },
-  "notAuthorized": [
-    "normalcollection/test/type/import/build/producer/imagepull/CLIprobe/CI/nonce",
-    "runtime/model/voice/device/merge/deploy"
+  "conditions": [
+    "SDK exact e232 depth1 conditional exception unchanged; same complete publisher guard, IoC/source/tree/byte/projection/module/dependency proofs, hosted shallow limitation explicit.",
+    "Alpha61a35 actual full exact-head ancestry source guard required; trusted pinned Git bootstrap for exact SHA ancestry only needs separate explicit execution GO, not source code execution before guard.",
+    "New exact pair remains conditional on reviewed actual Alpha remote parent/tree/ref/literal preservation, complete operator rebind/reseal/source review/remote literal and fresh finite Root GO.",
+    "No Google or canonical ordinal composition hidden in this child; any additional actual code/source pin requires its own exact source admission."
   ],
-  "newPinsNotCovered": "Canonicalaee/composedSDK ornewAlphaGooglefixpins requireownexactreview/guard/source disposition."
+  "notAuthorized": [
+    "CI/nonce/qualification/test/type/module/build/producer/image-pull/CLI-probe from this disposition alone",
+    "runtime/model/voice/provider/device/merge/deploy",
+    "automatic replay/renewal of spent41743741024 intentc3867da054381f6363c39fa3d8efa9d4"
+  ],
+  "newPinsNotCovered": "Any other SDK/product/operator production changes, Google/native manifest rebind or canonical ordinal/test successor require their own exact review and applicable guard."
 }

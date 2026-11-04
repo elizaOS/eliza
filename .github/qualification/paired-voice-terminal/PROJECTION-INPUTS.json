@@ -1,7 +1,7 @@
 {
   "state": "SOURCE_REVIEWED_CANONICAL_INPUTS_ACTUAL_OUTPUT_PENDING",
   "SDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
-  "Alpha": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+  "Alpha": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
   "projectionVersion": 12,
   "canonicalRawPaths": [
     "packages/auth/src/auth/cloud-resident-binding.ts",

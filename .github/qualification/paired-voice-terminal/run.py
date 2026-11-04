@@ -27,7 +27,7 @@ for group in plan['groups']:
  if group['repository']=='SDK':
   package='/'.join(group['file'].split('/')[:2]);assert package in ['packages/app','packages/host','packages/ui','packages/voice']
   relative=group['file'][len(package)+1:];config='vitest.host.config.ts'if package=='packages/app'else'vitest.config.ts'
-  expected=['/usr/local/bin/node','/workspace/sdk/packages/scripts/run-vitest.ts','run',relative,'--config',config,'--configLoader','runner','--pool','forks','--maxWorkers','1','--maxConcurrency','1','--no-file-parallelism','--no-cache','--reporter=json','--outputFile=/results/'+group['report'],'--includeTaskLocation','--reporter=/operator/normal-vitest-case-observer.mjs']
+  expected=['/usr/local/bin/node','/workspace/sdk/packages/scripts/run-vitest.ts','run',relative,'--config',config,'--configLoader','runner','--pool','forks','--maxWorkers','1','--maxConcurrency','1','--no-file-parallelism','--no-cache','--fsModuleCachePath','/results/module-cache-'+group['name'],'--reporter=json','--outputFile=/results/'+group['report'],'--includeTaskLocation','--reporter=/operator/normal-vitest-case-observer.mjs']
   assert group['cwd']=='/workspace/sdk/'+package
  else:
   expected=['/usr/local/bin/node','--test','--test-concurrency=1','--test-reporter=junit','--test-reporter=/operator/normal-node-case-observer.mjs','--test-reporter-destination=/results/'+group['report'],'--test-reporter-destination=stdout',group['file']]

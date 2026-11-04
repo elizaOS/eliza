@@ -7,6 +7,17 @@ export default async function* normalNodeCases(source){
  const oracleSHA256=crypto.createHash("sha256").update(raw).digest("hex"),registered=[],results=[],failures=[],diagnostics=[],summaries=[],envelopes=[];let activeParent=null;
  const nested=expected.expectedNestedCases||[],parentNames=expected.cases.map(row=>row.leafTitle);
  const marked=(d,key)=>Object.hasOwn(d,key)&&d[key]!==undefined&&d[key]!==false;
+ // Retain ordinary failures without serializing arbitrary graphs or unbounded child output.
+ const errorDetail=(error,depth=0)=>{
+  if(error===undefined||error===null)return null;
+  if(typeof error!=="object"&&typeof error!=="function")return {message:String(error).slice(0,8192)};
+  const value={};
+  for(const [field,limit] of [["name",256],["code",256],["failureType",256],["message",8192],["stack",4096]]){
+   const text=error[field];if(typeof text==="string"){value[field]=text.slice(0,limit);if(text.length>limit)(value.truncatedFields??=[]).push(field);}
+  }
+  if(error.cause!==undefined){if(depth<2)value.cause=errorDetail(error.cause,depth+1);else value.causeOmittedAtDepthLimit=true;}
+  return value;
+ };
  const location=d=>({file:d.file??null,line:d.line??null,column:d.column??null,nesting:d.nesting});
  const scope=d=>{
   if(d.nesting===0&&(d.name===expected.expectedModule||d.name===expected.file)&&(d.file===undefined||d.file===null||d.file===expected.expectedModule))return "runner-file-envelope";
@@ -26,7 +37,7 @@ export default async function* normalNodeCases(source){
    else{if(d.type!=="test")throw Error("Unreviewed owning suite declaration");registered.push(row);}
   }
   if(event.type==="test:pass"||event.type==="test:fail"){
-   const classification=scope(d),row={name:d.name,...location(d),scope:classification,testNumber:d.testNumber,passed:event.type==="test:pass",skip:marked(d,"skip"),todo:marked(d,"todo"),type:d.details?.type??null};
+   const classification=scope(d),row={name:d.name,...location(d),scope:classification,testNumber:d.testNumber,passed:event.type==="test:pass",skip:marked(d,"skip"),todo:marked(d,"todo"),type:d.details?.type??null,...(event.type==="test:fail"?{error:errorDetail(d.details?.error)}:{})};
    if(!row.passed||row.skip||row.todo)failures.push(row);
    if(classification==="runner-file-envelope")envelopes.push({event:event.type,...row});
    else{if(row.type!=="test")throw Error("Unreviewed successful suite");results.push(row);}
@@ -50,6 +61,6 @@ export default async function* normalNodeCases(source){
  accepted=accepted&&summaries.length>0&&summaries.every(row=>row.success===true&&row.counts.skipped===0&&row.counts.todo===0&&row.counts.cancelled===0)&&summary.counts.tests===totalExpected&&summary.counts.passed===totalExpected&&summary.counts.topLevel===expected.expectedSourceCaseCount;
  if(expected.file==="test/private-preview-cartesia-route.test.mjs")accepted=accepted&&expected.adapterParentNames.length===9&&diagnostics.length===9&&counts(diagnostics.map(r=>r.name))===counts(expected.adapterParentNames)&&diagnostics.every(r=>r.status===0&&r.signal===null&&r.error===null);
  const value={state:accepted?"ACTUAL_NORMAL_NODE_PARENT_AND_SUBTEST_RESULTS_ACCEPTED":"NODE_CASE_RECONCILIATION_FAILED",accepted,group,oracleSHA256,topLevelAdapterSelectorUnset:true,registered,results,failures,runnerFileEnvelopes:envelopes,summaries,adapterDiagnostics:diagnostics,adapterPass1Evidence:"All nine parent passes prove their unchanged positive child TAPpass1 assertions; raw child stdout is not separately archived.",sourceLabelPolicy:"Exact source names and explicit nested scope; no foreign successful event ignored."};
- const bytes=JSON.stringify(value,null,2)+"\n";if(Buffer.byteLength(bytes)>8388608)throw Error("Actual formatted Node event receipt byte bound");fs.writeFileSync("/results/"+group+"-node-cases.json",bytes,{flag:"wx"});if(!accepted)throw Error("Normal Node registration/execution attribution failed");
+ const bytes=JSON.stringify(value,null,2)+"\n";if(Buffer.byteLength(bytes)>8388608)throw Error("Actual formatted Node event receipt byte bound");fs.writeFileSync("/results/"+group+"-node-cases.json",bytes,{flag:"wx"});if(!accepted){process.exitCode=1;yield "Normal Node observer rejected registration/execution attribution; see the failure receipt.\n";return;}
  yield "Normal Node observer accepted "+parents.length+" parents and "+children.length+" reviewed children.\n";
 }

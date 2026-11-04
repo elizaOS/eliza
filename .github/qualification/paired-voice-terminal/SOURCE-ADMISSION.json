@@ -9,14 +9,17 @@
     "CIGuardScope": "Fresh exact pin and known incident markers; SDK ancestry is incomplete in shallow checkout. This limitation is explicit, not complete-ancestry proof."
   },
   "Alpha": {
-    "commit": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+    "commit": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
     "CIWorkflowDepth": 1,
     "CIGuardRequiresCompleteAncestry": true,
-    "completeAncestry": "Explicit bounded exactSHA unshallow in existing2GiB trusted Git Docker phase; no tags/refmap/FETCH_HEAD/submodules/maintenance/unrelated namedrefs; own.gitonlyRW, full productguard before installs/source/module/tests."
+    "completeAncestry": "Explicit bounded exactSHA unshallow in existing2GiB trusted Git Docker phase; no tags/refmap/FETCH_HEAD/submodules/maintenance/unrelated namedrefs; own.gitonlyRW, full productguard before installs/source/module/tests.",
+    "localPublisherGuardSHA256": "bd673902a0db2b19d7b6317d605eeb85cbca3775e1bfbe824a249798946963c6",
+    "localAncestryComplete": true,
+    "remoteLiteralReviewSHA256": "fc06097cbda0dd4ba8aad4c5971759a640d46b6d4e6dcd373b625038ebea9e2b"
   },
   "normalCLIOrProviderAcceptance": false,
   "RootDisposition": {
-    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-R7-PAIRED-SOURCE-ADMISSION-DISPOSITION-20261103.json",
-    "sha256": "8b7e4da1eecd0bc412126d838c09f0a69d2d5a5037f5bf16dc957765b8dfd812"
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/ROOT-E232-ALPHA61A35-SOURCE-ADMISSION-DISPOSITION-20261104.json",
+    "sha256": "432cdd82fe4f60ed359e5fc5dc29925be371c073007c86d20ec2c2107f25d103"
   }
 }

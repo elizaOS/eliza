@@ -1,7 +1,7 @@
 {
   "state": "SOURCE_REVIEWED_NORMAL_PREFLIGHT_ACTUAL_MODULES_PENDING",
   "SDK": "e2325d2d58c2fb6616fdb21eabe029bac2983928",
-  "Alpha": "918ac07f9f51fbfb02f42db4c8909f766bed1d00",
+  "Alpha": "61a35cfc41d40fae9d601cbf247db1b22b6203e3",
   "projects": [
     {
       "name": "App",
@@ -1177,7 +1177,9 @@
     "SDK:packages/contracts/src/contracts/chat.ts": "89bfca6d9c7a6f861a67ac441ecb2e6281aca6b55665493b5be0d7543cdc4cba",
     "Alpha:vite.config.ts": "13443772f409e300309612751a73d284f8f0a8682f1c06fce05c2ab1b71ae10c",
     "Alpha:scripts/upstream-native-source.mjs": "1eb9de7dc42713aad1c6aae1c786c4c2d6d2979087b108ebe35c0574208679ca",
-    "Alpha:scripts/client-speech-patch.mjs": "d88747f54893f09341ac442f81039f2c3b37c78076951f35aabf4be0e346d630"
+    "Alpha:scripts/client-speech-patch.mjs": "d88747f54893f09341ac442f81039f2c3b37c78076951f35aabf4be0e346d630",
+    "Alpha:test/fixtures/cloud-voice-view.mjs": "26eebaf47008efa63ef3269730229505b201c931ccd3b589e47d8a8c5cb34da4",
+    "Alpha:apps/app/src/runtime/voice-timing.ts": "1aeaa6e1474eb999a5cfd497392b6e01a4c86caf5d56d2ff2d175dcb71bbb963"
   },
   "conditionPolicy": "Load actual own configs unchanged. Host explicitly declares source/default SSR conditions; App/UI do not declare eliza-source conditions and must not inherit the old assistant/host-only blanket assertion. Record observed conditions/source aliases and reject dist/DTS substitutions for required source entries.",
   "scope": "Actual normal config/resolver/fetch plus Host Contracts and Alpha generated-client value imports; no tests/model/provider/voice/capture started; full owning tests/types/runtime acceptance separate."
