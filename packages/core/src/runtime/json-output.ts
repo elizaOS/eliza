@@ -421,21 +421,25 @@ export function parsePseudoTagToolInvocations(
 ): Array<{ name: string; params: Record<string, unknown> }> {
 	if (!text?.includes("<")) return [];
 	const calls: Array<{ name: string; params: Record<string, unknown> }> = [];
-	const blockRe =
-		/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)>\s*(\{[\s\S]*?\})\s*<\/\1>/g;
-	for (const match of text.matchAll(blockRe)) {
-		try {
-			const parsed: unknown = JSON.parse(match[2]);
-			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-				calls.push({
-					name: match[1],
-					params: parsed as Record<string, unknown>,
-				});
+	const blockPatterns = [
+		/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)>\s*(\{[\s\S]*?\})\s*<\/\1>/g,
+		/<([A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+)>\s*```(?:[jJ][sS][oO][nN])?\s*(\{[\s\S]*?\})\s*```\s*<\/\1>/g,
+	];
+	for (const blockRe of blockPatterns) {
+		for (const match of text.matchAll(blockRe)) {
+			try {
+				const parsed: unknown = JSON.parse(match[2]);
+				if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+					calls.push({
+						name: match[1],
+						params: parsed as Record<string, unknown>,
+					});
+				}
+			} catch {
+				// error-policy:J3 a non-JSON body is not a recoverable invocation; the
+				// reply stripper still removes the markup and the evaluator screen
+				// still declines the text, so nothing is fabricated either way.
 			}
-		} catch {
-			// error-policy:J3 a non-JSON body is not a recoverable invocation; the
-			// reply stripper still removes the markup and the evaluator screen
-			// still declines the text, so nothing is fabricated either way.
 		}
 	}
 	return calls;
