@@ -7,6 +7,7 @@ import { enqueueCollectedAffiliatePayout } from "../../lib/services/affiliate-pa
 import { billingHoldService } from "../../lib/services/billing-hold";
 import { creditsService } from "../../lib/services/credits";
 import {
+  budgetConsumptionLegacyPayload,
   budgetConsumptionPayload,
   budgetRequestDigest,
   budgetSealPayload,
@@ -210,9 +211,19 @@ export async function recordConsumption(
   }
   if (allocated !== amount) fail("Budget consumption does not conserve its amount");
   const payload = budgetConsumptionPayload(input);
-  if (!(await verifyBudgetEffect(payload, input.signature, secret())))
+  // Receipts recorded under the v1 payload (localeCompare allocation order)
+  // carry signatures and digests over those bytes. Accept either byte set on
+  // the replay paths below so an already-recorded consumption still replays;
+  // new receipts are signed and stored under the current payload only.
+  const legacyPayload = budgetConsumptionLegacyPayload(input);
+  if (
+    !(await verifyBudgetEffect(payload, input.signature, secret())) &&
+    !(await verifyBudgetEffect(legacyPayload, input.signature, secret()))
+  )
     fail("Budget consumption signature is invalid");
   const digest = await budgetRequestDigest(payload);
+  const legacyDigest = await budgetRequestDigest(legacyPayload);
+  const sameReceipt = (stored: string) => stored === digest || stored === legacyDigest;
   return writeTransaction(async (tx) => {
     // Stable grant order prevents two multi-grant requests from reversing locks.
     const owned = lines.length
@@ -241,7 +252,8 @@ export async function recordConsumption(
         ),
       );
     if (existing) {
-      if (existing.request_digest !== digest) fail("Budget consumption replay changes its receipt");
+      if (!sameReceipt(existing.request_digest))
+        fail("Budget consumption replay changes its receipt");
       return { replayed: true };
     }
     if (owned.length !== lines.length || owned.some((grant) => grant.closed_at !== null))
@@ -267,7 +279,7 @@ export async function recordConsumption(
             eq(receipts.request_id, input.requestId),
           ),
         );
-      if (!concurrent || concurrent.request_digest !== digest)
+      if (!concurrent || !sameReceipt(concurrent.request_digest))
         fail("Budget consumption replay conflicts");
       return { replayed: true };
     }

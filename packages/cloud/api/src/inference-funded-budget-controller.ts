@@ -3,6 +3,7 @@
 import { runWithCloudBindingsAsync } from "@elizaos/cloud-shared/lib/runtime/cloud-bindings";
 import type { InferenceFundingBudgetConsumption } from "@elizaos/cloud-shared/lib/services/inference-funding-budget-protocol";
 import {
+  budgetConsumptionLegacyPayload,
   budgetConsumptionPayload,
   budgetSealPayload,
   signBudgetEffect,
@@ -941,9 +942,16 @@ export class InferenceFundedBudgetController {
       if (path === "/budget/acknowledge" && record(body.receipt)) {
         const receipt =
           body.receipt as unknown as InferenceFundingBudgetConsumption;
+        // Receipts signed under the v1 payload stay valid: accept either
+        // byte set, matching the replay rule in recordConsumption.
         if (
           !(await verifyBudgetEffect(
             budgetConsumptionPayload(receipt),
+            receipt.signature,
+            this.secret(),
+          )) &&
+          !(await verifyBudgetEffect(
+            budgetConsumptionLegacyPayload(receipt),
             receipt.signature,
             this.secret(),
           ))
