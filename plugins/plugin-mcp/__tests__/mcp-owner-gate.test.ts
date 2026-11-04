@@ -1,9 +1,15 @@
 /**
  * The MCP action runs tools on servers the owner configured, with the owner's
  * server credentials. The real action gate and planned-tool executor admit it
- * for the owner and refuse it before the handler for every other role.
+ * for the owner and refuse it before the handler for every other role. The
+ * provider that lists the servers' tools is shown to the owner only.
  */
-import { canActionRun, executePlannedToolCall, type Memory } from "@elizaos/core";
+import {
+  canActionRun,
+  executePlannedToolCall,
+  filterProvidersByContextGate,
+  type Memory,
+} from "@elizaos/core";
 import { createSQLiteTestRuntime } from "@elizaos/testing/runtime";
 import { expect, it, vi } from "vitest";
 import { mcpAction } from "../src/actions/mcp";
@@ -36,7 +42,7 @@ it("runs an MCP tool for the owner and refuses every other role before the tool 
   vi.spyOn(runtime, "getService").mockImplementation(
     (name) => (name === MCP_SERVICE_NAME ? mcpService : originalGetService(name)) as never
   );
-  runtime.registerAction(mcpAction);
+  for (const registered of mcpPlugin.actions ?? []) runtime.registerAction(registered);
   const message = {
     id: crypto.randomUUID(),
     agentId: runtime.agentId,
@@ -73,16 +79,33 @@ it("runs an MCP tool for the owner and refuses every other role before the tool 
       expect(canActionRun(registered, context), registered.name).toBe(false);
     }
 
-    // The executor resolves the caller's role from the message; the agent's own
-    // turn resolves to OWNER.
+    // Without supplied roles the executor resolves them from the message: a
+    // stranger is refused on the promoted call_tool action too.
+    const stranger = await executePlannedToolCall(
+      runtime,
+      { message, activeContexts: ["general"] as const },
+      { name: "MCP_CALL_TOOL", params }
+    );
+    expect(stranger.success).toBe(false);
+    expect(callTool).not.toHaveBeenCalled();
+
+    // The agent's own turn resolves to OWNER.
     const owner = {
       message: { ...message, entityId: runtime.agentId },
-      userRoles: ["OWNER"] as const,
       activeContexts: ["general"] as const,
     };
-    expect(canActionRun(mcpAction, owner)).toBe(true);
-    await executePlannedToolCall(runtime, owner, { name: mcpAction.name, params });
+    expect(canActionRun(mcpAction, { ...owner, userRoles: ["OWNER"] })).toBe(true);
+    await executePlannedToolCall(runtime, owner, { name: "MCP_CALL_TOOL", params });
     expect(callTool).toHaveBeenCalledWith("files", "read_file", { path: "~/.ssh/config" });
+
+    // The server and tool list reaches only the owner's prompt.
+    const providers = mcpPlugin.providers ?? [];
+    for (const role of ["GUEST", "USER", "ADMIN"] as const) {
+      expect(filterProvidersByContextGate(providers, ["connectors"], [role]), role).toEqual([]);
+    }
+    expect(
+      filterProvidersByContextGate(providers, ["connectors"], ["OWNER"]).map((p) => p.name)
+    ).toEqual(["MCP"]);
   } finally {
     await runtime.stop();
   }
