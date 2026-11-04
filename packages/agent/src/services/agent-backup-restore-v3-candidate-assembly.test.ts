@@ -17,6 +17,7 @@ import {
   type AgentBackupRestoreV3CandidateReceipt,
   type AgentBackupRestoreV3ComponentReceipt,
   type AgentBackupRestoreV3StagingSession,
+  compareAgentBackupCaptureV2FilePaths,
 } from "@elizaos/contracts";
 import {
   afterAll,
@@ -59,6 +60,7 @@ const CHARACTER = encode(
 const MEDIA = encode("private-media-20732");
 const STATE = encode('{"pluginFact":"tide-20732"}');
 const VAULT = encode("opaque-vault-ciphertext-20732");
+const OBJECT_BYTES = 16 * 1024 * 1024;
 // Each case gets independent staging and a byte copy of this real physical archive.
 let databaseArchive: Uint8Array;
 beforeAll(async () => {
@@ -89,10 +91,17 @@ const platformOptions = () =>
     ? {}
     : { testOnlyAllowNonLinuxFdEmulation: true as const };
 
+interface FixtureFile {
+  readonly path: string | null;
+  readonly bytes: Uint8Array;
+  readonly mode: number;
+}
+
 async function fixture(
   realDatabase = false,
   processTransport = false,
   statePath = "plugin/state.json",
+  vaultFiles?: readonly FixtureFile[],
 ) {
   const root = await fs.mkdtemp(
     path.join(await fs.realpath(os.tmpdir()), "restore-v3-assembly-"),
@@ -135,59 +144,94 @@ async function fixture(
     ] of AGENT_BACKUP_RESTORE_V3_COMPONENT_DESCRIPTORS.entries()) {
       const bytes = contents[componentIndex];
       if (!bytes) throw new Error("Missing fixture component");
-      const filePath = paths[componentIndex];
+      const files: readonly FixtureFile[] =
+        componentIndex === 4 && vaultFiles
+          ? vaultFiles
+          : [
+              {
+                path: paths[componentIndex] ?? null,
+                bytes,
+                mode: componentIndex === 4 ? 0o400 : 0o600,
+              },
+            ];
       let dataFrameCount = 0;
-      for (
-        let offsetBytes = 0;
-        offsetBytes < bytes.length;
-        offsetBytes += 256 * 1024
-      ) {
-        const payload = Uint8Array.from(
-          bytes.subarray(offsetBytes, offsetBytes + 256 * 1024),
-        );
-        try {
-          const record = {
-            componentIndex,
-            componentName: descriptor.name,
-            dataIndex: dataFrameCount++,
-            offsetBytes,
-            payload,
-            entry: filePath
-              ? {
-                  path: filePath,
-                  fileOffsetBytes: offsetBytes,
-                  fileSizeBytes: bytes.length,
-                  mode: componentIndex === 4 ? 0o400 : 0o600,
-                  mtimeMs: 0,
-                }
-              : null,
-          };
-          if (processTransport)
-            await materializer.stageRecord(session, record, control());
-          else
-            await stageAgentBackupRestoreV3CandidateRecord({
-              candidateFs,
-              session,
-              control: control(),
-              record,
-            });
-        } finally {
-          payload.fill(0);
-        }
+      let offsetBytes = 0;
+      for (const file of files) {
+        // Capture emits one empty record for an empty file.
+        let fileOffsetBytes = 0;
+        do {
+          const payload = Uint8Array.from(
+            file.bytes.subarray(fileOffsetBytes, fileOffsetBytes + 256 * 1024),
+          );
+          const payloadBytes = payload.length;
+          try {
+            const record = {
+              componentIndex,
+              componentName: descriptor.name,
+              dataIndex: dataFrameCount++,
+              offsetBytes,
+              payload,
+              entry: file.path
+                ? {
+                    path: file.path,
+                    fileOffsetBytes,
+                    fileSizeBytes: file.bytes.length,
+                    mode: file.mode,
+                    mtimeMs: 0,
+                  }
+                : null,
+            };
+            if (processTransport)
+              await materializer.stageRecord(session, record, control());
+            else
+              await stageAgentBackupRestoreV3CandidateRecord({
+                candidateFs,
+                session,
+                control: control(),
+                record,
+              });
+          } finally {
+            payload.fill(0);
+          }
+          fileOffsetBytes += payloadBytes;
+          offsetBytes += payloadBytes;
+        } while (fileOffsetBytes < file.bytes.length);
       }
+      const payload = Buffer.concat(files.map((file) => file.bytes));
       components.push({
         componentIndex,
         componentName: descriptor.name,
         descriptor,
         dataFrameCount,
-        payloadBytes: bytes.length,
-        payloadSha256: hash(bytes),
+        payloadBytes: payload.length,
+        payloadSha256: hash(payload),
         recordStreamContentHmacSha256: "b".repeat(64),
       });
     }
   } finally {
     databaseBytes.fill(0);
   }
+  // Each source object carries at most one 16 MiB manifest chunk.
+  const sourceObjects = components.flatMap((c) =>
+    Array.from(
+      { length: Math.ceil(c.payloadBytes / OBJECT_BYTES) },
+      (_, chunkIndex) => ({
+        componentIndex: c.componentIndex,
+        componentName: c.componentName,
+        chunkIndex,
+        copyRole: "primary" as const,
+        objectId: randomUUID(),
+        exactReadReceiptDerivation:
+          AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
+        exactReadReceiptSha256: "d".repeat(64),
+        ciphertextSha256: "e".repeat(64),
+        sizeBytes: Math.min(
+          OBJECT_BYTES,
+          c.payloadBytes - chunkIndex * OBJECT_BYTES,
+        ),
+      }),
+    ),
+  );
   const receipt: AgentBackupRestoreV3CandidateReceipt = {
     format: AGENT_BACKUP_RESTORE_V3_STREAM_RECEIPT_FORMAT,
     restoreAttemptId: session.restoreAttemptId,
@@ -198,21 +242,10 @@ async function fixture(
     sourceAuthorityDerivation:
       AGENT_BACKUP_RESTORE_V3_SOURCE_AUTHORITY_DERIVATION,
     sourceAuthoritySha256: "c".repeat(64),
-    objectCount: 5,
+    objectCount: sourceObjects.length,
     stagedPayloadBytes: components.reduce((n, c) => n + c.payloadBytes, 0),
     stagedDataRecordCount: components.reduce((n, c) => n + c.dataFrameCount, 0),
-    sourceObjects: components.map((c) => ({
-      componentIndex: c.componentIndex,
-      componentName: c.componentName,
-      chunkIndex: 0,
-      copyRole: "primary",
-      objectId: randomUUID(),
-      exactReadReceiptDerivation:
-        AGENT_BACKUP_RESTORE_V3_EXACT_READ_RECEIPT_DERIVATION,
-      exactReadReceiptSha256: "d".repeat(64),
-      ciphertextSha256: "e".repeat(64),
-      sizeBytes: c.payloadBytes,
-    })),
+    sourceObjects,
     components,
     authorityRevalidated: true,
   };
@@ -244,6 +277,33 @@ async function generationTarget(root: string) {
   });
   candidates.add(candidate);
   return candidate;
+}
+
+/** Capture v2's vault file set: regular files only, in capture order, never directories. */
+async function captureVaultFiles(stateDir: string): Promise<FixtureFile[]> {
+  const files: FixtureFile[] = [];
+  const visit = async (directory: string, relative: string) => {
+    const entries = await fs.readdir(directory, { withFileTypes: true });
+    entries.sort((left, right) =>
+      compareAgentBackupCaptureV2FilePaths(
+        `${left.name}${left.isDirectory() ? "/" : ""}`,
+        `${right.name}${right.isDirectory() ? "/" : ""}`,
+      ),
+    );
+    for (const entry of entries) {
+      const absolute = path.join(directory, entry.name);
+      const child = relative ? `${relative}/${entry.name}` : entry.name;
+      if (entry.isDirectory()) await visit(absolute, child);
+      else if (entry.isFile())
+        files.push({
+          path: child,
+          bytes: new Uint8Array(await fs.readFile(absolute)),
+          mode: (await fs.stat(absolute)).mode & 0o777,
+        });
+    }
+  };
+  await visit(stateDir, "");
+  return files;
 }
 
 describe("private runtime-generation preparation", () => {
@@ -478,6 +538,86 @@ describe("private runtime-generation preparation", () => {
         }),
       ).rejects.toThrow();
       expect(await fs.readFile(targetFile)).toEqual(Buffer.from(VAULT));
+    },
+    TEST_BUDGET_MS,
+  );
+
+  it(
+    "recreates the empty PostgreSQL directories a captured vault PGlite needs to reopen",
+    async () => {
+      const stateDir = await fs.mkdtemp(
+        path.join(await fs.realpath(os.tmpdir()), "restore-v3-vault-source-"),
+      );
+      roots.add(stateDir);
+      const source = new PGlite(path.join(stateDir, ".vault-pglite"));
+      databases.add(source);
+      await source.exec(
+        "CREATE TABLE vault_secret (name text PRIMARY KEY, sealed text NOT NULL)",
+      );
+      await source.query("INSERT INTO vault_secret VALUES ($1, $2)", [
+        "OPENAI_API_KEY",
+        "sealed-ciphertext-20732",
+      ]);
+      await source.close();
+      databases.delete(source);
+      await fs.writeFile(path.join(stateDir, "vault.json"), VAULT, {
+        mode: 0o600,
+      });
+      const { root, input } = await fixture(
+        true,
+        false,
+        "plugin/state.json",
+        await captureVaultFiles(stateDir),
+      );
+      const generationFs = await generationTarget(root);
+      await prepareAgentBackupRestoreV3Generation({
+        ...input,
+        generationFs,
+        control: control(),
+      });
+      const output = path.join(generationFs.attemptRoot, "generation");
+      expect(await fs.readFile(path.join(output, "state/vault.json"))).toEqual(
+        Buffer.from(VAULT),
+      );
+      const probe = path.join(root, "vault-probe");
+      await fs.cp(path.join(output, "state/.vault-pglite"), probe, {
+        recursive: true,
+      });
+      const vault = new PGlite(probe);
+      databases.add(vault);
+      expect(
+        (await vault.query("SELECT name, sealed FROM vault_secret")).rows,
+      ).toEqual([
+        { name: "OPENAI_API_KEY", sealed: "sealed-ciphertext-20732" },
+      ]);
+      await vault.close();
+      databases.delete(vault);
+    },
+    TEST_BUDGET_MS,
+  );
+
+  it(
+    "rejects a captured vault PGlite from another PostgreSQL version before writing the destination",
+    async () => {
+      const { root, input } = await fixture(true, false, "plugin/state.json", [
+        {
+          path: ".vault-pglite/PG_VERSION",
+          bytes: encode("16\n"),
+          mode: 0o600,
+        },
+        { path: "vault.json", bytes: VAULT, mode: 0o600 },
+      ]);
+      const generationFs = await generationTarget(root);
+      await expect(
+        prepareAgentBackupRestoreV3Generation({
+          ...input,
+          generationFs,
+          control: control(),
+        }),
+      ).rejects.toMatchObject({
+        code: "AGENT_BACKUP_RESTORE_V3_GENERATION_VAULT_VERSION_MISMATCH",
+      });
+      expect(await fs.readdir(generationFs.attemptRoot)).toEqual([]);
     },
     TEST_BUDGET_MS,
   );

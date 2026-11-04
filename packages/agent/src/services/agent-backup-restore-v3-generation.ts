@@ -9,6 +9,7 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { parseAgentBackupRestoreV3CandidateReceipt } from "@elizaos/contracts";
 import { ElizaError } from "@elizaos/core";
+import { readPgliteDirectoryLayout } from "./agent-backup-pglite-layout";
 import {
   type AgentBackupRestoreV3CandidateAssemblyInput,
   assembleAgentBackupRestoreV3Candidate,
@@ -20,6 +21,7 @@ import {
   isAgentBackupRestoreV3CandidateFs,
 } from "./agent-backup-restore-v3-candidate-fs";
 import {
+  controlled,
   internalCleanupControl,
   runAllBoundedInternalCleanup,
   snapshotOperationControl,
@@ -31,6 +33,7 @@ import { snapshotAgentBackupRestoreV3CandidateSession } from "./agent-backup-res
 const MARKER = ".restore-v3-generation-prepared.json";
 const MARKER_LIMIT = 16 * 1024;
 const ROOT = "generation";
+const VAULT_PGLITE = "state/.vault-pglite";
 const PATHS = Object.freeze({
   character: "generation/character/character.json",
   database: "generation/database",
@@ -185,6 +188,21 @@ export async function prepareAgentBackupRestoreV3Generation(
     const directories = new Set(
       inventory.directoryPaths.map((directory) => layoutPath(directory, true)),
     );
+    // The vault file set omits empty directories that its PGlite needs to open.
+    const vaultVersion = files.find(
+      (file) => file.target === `${VAULT_PGLITE}/PG_VERSION`,
+    );
+    if (vaultVersion) {
+      const layout = await controlled(readPgliteDirectoryLayout, control);
+      if (
+        createHash("sha256").update(layout.pgVersion).digest("hex") !==
+        vaultVersion.file.sha256
+      )
+        fail("VAULT_VERSION_MISMATCH");
+      directories.add(VAULT_PGLITE);
+      for (const directory of layout.directories)
+        directories.add(`${VAULT_PGLITE}/${directory}`);
+    }
     const names = new Set<string>();
     for (const file of files) {
       if (names.has(file.target) || directories.has(file.target))
