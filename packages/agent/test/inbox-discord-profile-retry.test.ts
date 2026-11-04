@@ -148,6 +148,138 @@ it("retries a failed Discord profile lookup instead of caching the absence", asy
 }, 120_000);
 
 /**
+ * The other half of the same contract: a real channel object that genuinely
+ * has no message history is durable evidence of absence, so it must still be
+ * memoized. Without this, the guard in `resolveDiscordMessageAuthorProfile`
+ * would turn every read of an unusable channel into another Discord call.
+ */
+const NO_HISTORY_CHANNEL_ID = "910000000000000001";
+const NO_HISTORY_MESSAGE_ID = "910000000000000002";
+
+let noHistoryService: NoHistoryChannelDiscordService | undefined;
+
+class NoHistoryChannelDiscordService extends Service {
+  static override serviceType = "discord";
+  override capabilityDescription = "Discord connector";
+  channelLookups = 0;
+
+  client = {
+    channels: {
+      // Resolves fine, but the channel exposes no `messages` collection.
+      fetch: async () => {
+        this.channelLookups += 1;
+        return { id: NO_HISTORY_CHANNEL_ID, type: 0 };
+      },
+    },
+    users: {
+      fetch: async () => ({ id: "910000000000000003", username: "ghost" }),
+    },
+  };
+
+  static override async start(runtime: IAgentRuntime) {
+    noHistoryService = new NoHistoryChannelDiscordService(runtime);
+    return noHistoryService;
+  }
+
+  override async stop() {}
+}
+
+it("still memoizes an absent author when a real channel has no message history", async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), "eliza-inbox-nohistory-"));
+  for (const [key, value] of Object.entries({
+    ELIZA_STATE_DIR: directory,
+    ELIZA_CONFIG_PATH: path.join(directory, "config.json"),
+    ELIZA_PERSIST_CONFIG_PATH: path.join(directory, "config.json"),
+    ELIZA_API_BIND_HOST: "127.0.0.1",
+    ELIZA_API_TOKEN: "",
+    ELIZA_REQUIRE_LOCAL_AUTH: "0",
+  })) {
+    vi.stubEnv(key, value);
+  }
+
+  const runtime = createSQLiteTestRuntime({
+    character: createCharacter({ name: "InboxNoHistory" }),
+    logLevel: "fatal",
+    enableAutonomy: false,
+  });
+  let server: Awaited<ReturnType<typeof startApiServer>> | undefined;
+  try {
+    await runtime.initialize({ skipMigrations: true });
+    const ownerId = randomUUID() as UUID;
+    const worldId = randomUUID() as UUID;
+    const roomId = randomUUID() as UUID;
+    await runtime.createWorld({
+      id: worldId,
+      agentId: runtime.agentId,
+      name: "Inbox no-history world",
+    });
+    await runtime.createEntities([
+      { id: ownerId, agentId: runtime.agentId, names: ["Owner"] },
+      {
+        id: runtime.agentId,
+        agentId: runtime.agentId,
+        names: ["InboxNoHistory"],
+      },
+    ]);
+    await runtime.createRooms([
+      {
+        id: roomId,
+        agentId: runtime.agentId,
+        worldId,
+        type: ChannelType.DM,
+        source: "discord",
+      },
+    ]);
+    await runtime.addParticipant(ownerId, roomId);
+    await runtime.addParticipant(runtime.agentId, roomId);
+    await runtime.createMemory(
+      {
+        id: randomUUID() as UUID,
+        agentId: runtime.agentId,
+        entityId: ownerId,
+        roomId,
+        createdAt: Date.now(),
+        content: { text: "hello from nowhere", source: "discord" },
+        metadata: {
+          discordChannelId: NO_HISTORY_CHANNEL_ID,
+          discordMessageId: NO_HISTORY_MESSAGE_ID,
+        },
+      },
+      "messages",
+    );
+
+    await runtime.registerService(NoHistoryChannelDiscordService);
+    await runtime.getServiceLoadPromise("discord");
+
+    server = await startApiServer({
+      port: 0,
+      runtime,
+      skipDeferredStartupWork: true,
+    });
+    const readInbox = async () => {
+      const response = await fetch(
+        `http://127.0.0.1:${server?.port}/api/inbox/messages?limit=5&sources=discord`,
+      );
+      expect(response.status).toBe(200);
+      const body = (await response.json()) as {
+        messages: Array<{ from?: string; fromUserName?: string }>;
+      };
+      return body.messages[0];
+    };
+
+    expect((await readInbox()).from).toBeUndefined();
+    expect((await readInbox()).from).toBeUndefined();
+    // The durable absence was cached: the channel was resolved only once.
+    expect(noHistoryService?.channelLookups).toBe(1);
+  } finally {
+    if (server) await server.close();
+    await runtime.close();
+    vi.unstubAllEnvs();
+    await rm(directory, { recursive: true, force: true });
+  }
+}, 120_000);
+
+/**
  * The message-author path resolves the channel before it can fetch the
  * message. A transient `channels.fetch` failure must not be memoized as "this
  * author has no profile" either: otherwise the sender stays nameless for the
