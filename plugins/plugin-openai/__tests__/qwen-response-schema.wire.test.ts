@@ -1159,9 +1159,15 @@ it.each([12,551] as const)("serializes the complete production-bound HANDLE_RESP
   const argumentsValue={reads:[selector],acknowledgment:""};
   replyToolCall={id:"paired-native-read",type:"function",function:{name:"READ_CONTEXT",arguments:JSON.stringify(argumentsValue)}};
   await invoke({tools,responseHandler:true});expect(requests).toHaveLength(1);
-  const wire=requests[0].tools as Array<{type:string;function:{name:string;strict:boolean;parameters:Record<string,unknown>}}>;
+  const wire=requests[0].tools as Array<{type:string;function:{name:string;strict:boolean;parameters:NonNullable<ToolDefinition["parameters"]>}}>;
   expect(wire.map(tool=>tool.function.name)).toEqual(["HANDLE_RESPONSE","READ_CONTEXT"]);
   expect(wire.every(tool=>tool.function.strict===true)).toBe(true);
+  expect(wire.every(tool=>tool.function.parameters!==null && typeof tool.function.parameters==="object" && !Array.isArray(tool.function.parameters))).toBe(true);
+  // Audit the complete payload captured by the loopback server AFTER the real
+  // adapter and AI SDK serialize it; pre-wire budgets do not prove wire budgets.
+  assertNativeContextReadToolBudget(wire.map(tool=>({
+    name:tool.function.name,description:"",parameters:tool.function.parameters,
+  })));
   const read=wire.find(tool=>tool.function.name==="READ_CONTEXT")!;
   expect(parseAndValidate(JSON.stringify(argumentsValue),read.function.parameters).valid).toBe(true);
   expect(JSON.stringify(wire)).not.toContain('"pattern"');expect(JSON.stringify(wire)).not.toContain('"allOf"');
