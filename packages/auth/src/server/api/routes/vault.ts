@@ -3838,6 +3838,53 @@ vaultRoutes.post("/:agentId/actions/transfer", async (c) => {
           }),
         });
       }
+      const outcomeUnknown = externalBroadcastOutcomeUnknownResponse(
+        c,
+        e,
+        actionId,
+      );
+      if (outcomeUnknown) {
+        // The signed bytes may be on chain. Keep the checkpoint row as the
+        // transfer action so a retry with the same referenceId finds it.
+        try {
+          await db
+            .update(transactions)
+            .set({
+              status: "outcome_unknown",
+              txHash:
+                e instanceof ExternalBroadcastOutcomeUnknownError
+                  ? e.transactionHash
+                  : undefined,
+              actionType: "transfer",
+              actionPayload: transferActionPayload({
+                token: transfer.token,
+                recipient: transfer.to,
+                amount: transfer.value,
+                broadcast: signRequest.broadcast !== false,
+                referenceId: transfer.referenceId,
+                sponsorship: sponsorshipPayload,
+              }),
+              policyResults: evaluation.results,
+              signedAt: new Date(),
+            })
+            .where(
+              and(
+                eq(transactions.id, actionId),
+                eq(transactions.agentId, agentId),
+              ),
+            );
+        } catch {
+          logger.error(
+            {
+              details: [
+                "[vault] Failed to record outcome_unknown transfer action",
+              ],
+            },
+            "[Login:vault] error",
+          );
+        }
+        return outcomeUnknown;
+      }
       await db.insert(transactions).values({
         id: actionId,
         agentId,
