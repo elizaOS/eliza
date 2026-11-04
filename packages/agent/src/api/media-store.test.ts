@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -49,6 +50,28 @@ describe("media-store atomic writes", () => {
 
     expect(writeStoredMediaFile(fileName, bytes)).toBe(true);
     expect(readStoredMediaBytes(fileName)).toEqual(bytes);
+  });
+});
+
+describe("media-store orphan GC", () => {
+  it("removes a write a stopped process left pending, but not a live one", () => {
+    const mediaDir = path.join(stateDir, "media");
+    persistMediaBytes(Buffer.from("seed"), "application/octet-stream");
+    // A process killed mid-write (SIGKILL, OOM, power loss) never reaches the
+    // writer's finally block, so its `.pending-*` file stays behind.
+    const abandoned = `.pending-${crypto.randomUUID()}`;
+    fs.writeFileSync(path.join(mediaDir, abandoned), Buffer.alloc(5000, 7));
+    const dayAndHourAgo = new Date(Date.now() - 25 * 60 * 60_000);
+    fs.utimesSync(path.join(mediaDir, abandoned), dayAndHourAgo, dayAndHourAgo);
+    // A stream still being written keeps its file's mtime current.
+    const live = `.pending-${crypto.randomUUID()}`;
+    fs.writeFileSync(path.join(mediaDir, live), Buffer.alloc(100, 8));
+
+    gcUnreferencedMedia(new Set());
+
+    expect(fs.existsSync(path.join(mediaDir, abandoned))).toBe(false);
+    expect(fs.existsSync(path.join(mediaDir, live))).toBe(true);
+    fs.rmSync(path.join(mediaDir, live), { force: true });
   });
 });
 
