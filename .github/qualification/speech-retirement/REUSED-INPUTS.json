@@ -36,8 +36,8 @@
     "sha256": "5993072a61c810a3bf5057bba6322e576a5d83307b87afc1c8600e05b811b124"
   },
   "HOST-COHORTS.json": {
-    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/HOST-COHORTS.json",
-    "sha256": "fbb3b272dbd7ef65ea21ac3c659296bd45f377802654fb1e8e5d3b00d3f9c007"
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/HOST-COHORTS.json",
+    "sha256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8"
   },
   "cohort-provenance/20261101.360/COMMIT.json": {
     "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261101.360/COMMIT.json",
@@ -94,5 +94,25 @@
   "cohort-provenance/20261025.353/AUTHENTICATED-RUN-METADATA.json": {
     "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/voice-canonical-terminal-c63-20261103/qualification-proposal/revision2/cohort-ready-v3/cohort-provenance/20261025.353/AUTHENTICATED-RUN-METADATA.json",
     "sha256": "d88ddc7957df9501cbbbfcf3b12e39aab30c06ecd413bc453f0cac52e03f206a"
+  },
+  "cohort-provenance/20261018.96/ROOT-SOURCE-DISPOSITION.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/ROOT-SOURCE-DISPOSITION.json",
+    "sha256": "2e316c4cc514d88c960fa087d862ab53be7146f9eb3414c5dd73e9769398def0"
+  },
+  "cohort-provenance/20261018.96/AUTHENTICATED-JOB-LOG.txt": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/AUTHENTICATED-JOB-LOG.txt",
+    "sha256": "ba836c99e7264e022cfd27159342a7895a4b249e99740a3378ef158a8754dfa7"
+  },
+  "cohort-provenance/20261018.96/OFFICIAL-TAG-LOOKUP.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/OFFICIAL-TAG-LOOKUP.json",
+    "sha256": "8b75d9379559f703b64d6b3509c82450a87765d4498cf355c31ae40b81897e17"
+  },
+  "cohort-provenance/20261018.96/AUTHENTICATED-CLAIM.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/AUTHENTICATED-CLAIM.json",
+    "sha256": "b6194033d8bcd2cdfadb2bf9be8f29515de5663c6f50b41f39e160edf7cd2862"
+  },
+  "cohort-provenance/20261018.96/AUTHENTICATED-RUNNER-METADATA.json": {
+    "path": "/Users/nubs/.local/state/eliza-five-lane-coordination/current-host-cohort-four-20261104/cohort-provenance/20261018.96/AUTHENTICATED-RUNNER-METADATA.json",
+    "sha256": "22912f5abf44d9df721fce898f7bc5ff0f502938a9a0beb51189902c0ea116fa"
   }
 }

@@ -1,5 +1,5 @@
 {
-  "state": "EXACT_PUBLISHED_POSTWIRE_NORMAL_WHOLEFILES_V3_BARE_VALUE_IDENTITY_SOURCE_ONLY_UNADMITTED",
+  "state": "SOURCE_ONLY_FINITE_FOUR_COHORT_DATA_CORRECTION_ALL113_UNRUN",
   "recipe": "ordinal-normal-fullfiles",
   "sourceParent": "aee676d861457045f402715132a841ade5fd5888",
   "resourceBounds": {
@@ -23,6 +23,7 @@
   },
   "hostEnvironment": {
     "allowedImageVersions": [
+      "20261018.96.1",
       "20261025.353.1",
       "20261026.354.1",
       "20261101.360.1"
@@ -50,7 +51,7 @@
       "evidenceArtifact": 13169763764,
       "evidenceArchiveSHA256": "c8809eb81e5914c0fc2ed96cb6c8e77cbc5336930fcdeefa857708a02cd0de90"
     },
-    "provenanceLimit": "Exact25 authenticated-job attestation+explicit Root source exception with independent official primary provenance gap OPEN;26 official stable;01 official prerelease. No18/wildcard/capability waiver.",
+    "provenanceLimit": "Exact18 and25 authenticated-job attestation plus explicit Root source dispositions; independent officialprimary provenance gaps OPEN (fresh18tag404).26officialstable/01prerelease. No wildcard, capability/source/cap/test waiver or spentintent replay.",
     "noMacExecutionOrDeletion": true,
     "normalSDKLifecycleStillFalse": true,
     "newExactCohortSourceReview": {
@@ -130,7 +131,7 @@
   "costNote": "One frozen install + full dependency census before/after, metadata-only owners, two normal config/SSR resolutions, three sequential complete-file Vitest processes. 2CPU/2GiB/noextraSwap/1536Node/PID256 tests,4GiB install; actual113runtime results/performance unmeasured. No provider/model calls beyond loopbackfixture, no extra invoke/model round added by testdelta.",
   "sourceCommit": "1777491433a8cf13d53b30bf69336f0bff8c77e2",
   "sourceTree": "bea8c0fb4684198d8bc656b948d1f3ebaaccd2fc",
-  "hostCohortsSHA256": "fbb3b272dbd7ef65ea21ac3c659296bd45f377802654fb1e8e5d3b00d3f9c007",
+  "hostCohortsSHA256": "65c033e9c2dda23ef6a74660806d163c4f7758c2e236a6c86f2cdca74df35cb8",
   "hostProvenanceDisclosure": {
     "20261025.353.1": "Exact authenticated41741039106 setup + explicit Root source disposition; independent official tag/readme provenance gap OPEN, not capability waiver.",
     "20261026.354.1": {
@@ -140,7 +141,8 @@
     "20261101.360.1": {
       "officialTagCommitReadmeBound": true,
       "releasePrerelease": true
-    }
+    },
+    "20261018.96.1": "Exact authenticated41750127407 setup/claim/earlymetadata plus explicitRoot source disposition; fresh officialtag404, independent officialtag/commit/readme provenance gap OPEN, not capability or execution admission."
   },
   "moduleCachePolicy": "Fresh owned0700 nonlinked per-phase under results, same explicit CLI+env path; public preflight API cache paths also fresh. Unchanged owning configs/readonly dependency source. Cache/source bytes excluded from artifact retention.",
   "modulePreflight": "SSR and actual __vitest__ resolver targets agree with pinned sources; bare edges import public bare name (not resolved-only), relative edges import resolvedID; named canonical functions must be identical to absolute expected source imports. No config/condition/alias override; any mismatch remains normal-owner prerequisite failure."

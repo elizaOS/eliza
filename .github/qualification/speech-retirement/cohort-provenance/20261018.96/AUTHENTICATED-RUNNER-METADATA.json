@@ -1,0 +1,10 @@
+{
+  "state": "OBSERVED_RUNNER_METADATA_NOT_ADMISSION_OR_TEST_PASS",
+  "fields": {
+    "ImageOS": "ubuntu24",
+    "ImageVersion": "20261018.96.1",
+    "runId": "41750127407",
+    "attempt": "1",
+    "workflowCommit": "42c3959860b895bcd6277dddb58594ff7a9b154a"
+  }
+}
