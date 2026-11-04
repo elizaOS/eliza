@@ -194,3 +194,91 @@ it("keeps world roles, reply threads and user relationships through a transfer",
     await target.cleanup();
   }
 }, 300_000);
+
+it("keeps a message whose author was unlinked from its room through a transfer", async () => {
+  const source = await createRealTestRuntime({ characterName: "AuthorSource" });
+  const target = await createRealTestRuntime({ characterName: "AuthorTarget" });
+  try {
+    const adapter = source.runtime.adapter;
+    const agentId = source.runtime.agentId;
+    const user = stringToUuid("transfer-author-user");
+    const legacy = stringToUuid("transfer-author-legacy-sub-agent");
+    const worldId = stringToUuid("transfer-author-world");
+    const roomId = stringToUuid("transfer-author-room");
+    await adapter.createEntities([
+      { id: user, agentId, names: ["User"] } as Entity,
+      { id: legacy, agentId, names: ["sub-agent: legacy task"] } as Entity,
+    ]);
+    await adapter.createWorlds([
+      {
+        id: worldId,
+        agentId,
+        name: "Author world",
+        serverId: worldId,
+      } as World,
+    ]);
+    await adapter.createRooms([
+      {
+        id: roomId,
+        worldId,
+        agentId,
+        name: "Author room",
+        source: "test",
+        type: ChannelType.GROUP,
+      } as Room,
+    ]);
+    await adapter.createRoomParticipants([user, legacy], roomId);
+    await adapter.createMemories([
+      {
+        memory: {
+          id: stringToUuid("transfer-author-message"),
+          agentId,
+          entityId: legacy,
+          roomId,
+          worldId,
+          content: { text: "legacy sub-agent transcript line" },
+        } as Memory,
+        tableName: "messages",
+      },
+    ]);
+    // The orchestrator unlinks legacy sub-agent entities from a room but
+    // keeps the entity rows, so their transcript memories stay valid.
+    await source.runtime.deleteParticipants([{ entityId: legacy, roomId }]);
+
+    const bundle = await exportAgent(source.runtime, PASSWORD);
+    const imported = await importAgent(target.runtime, bundle, PASSWORD);
+
+    const newAgentId = imported.agentId as UUID;
+    if (!target.runtime.adapter.withAgentScope)
+      throw new Error("Missing scoped adapter");
+    await target.runtime.adapter.withAgentScope(newAgentId, async (db) => {
+      const world = (await db.getAllWorlds()).find(
+        (row) => row.name === "Author world",
+      );
+      if (!world?.id) throw new Error("imported world missing");
+      const [room] = await db.getRoomsByWorlds([world.id]);
+      if (!room?.id) throw new Error("imported room missing");
+      const messages = await db.getMemories({
+        agentId: newAgentId,
+        roomId: room.id,
+        tableName: "messages",
+      });
+      const line = messages.find(
+        (memory) => memory.content.text === "legacy sub-agent transcript line",
+      );
+      if (!line?.entityId) throw new Error("imported message missing");
+      expect(line.entityId).not.toBe(legacy);
+      const [author] = await db.getEntitiesByIds([line.entityId]);
+      expect(author?.names).toContain("sub-agent: legacy task");
+      // The author is still not a participant of the imported room.
+      const participants =
+        (await db.getEntitiesForRooms([room.id], true))[0]?.entities ?? [];
+      expect(participants.some((entity) => entity.id === line.entityId)).toBe(
+        false,
+      );
+    });
+  } finally {
+    await source.cleanup();
+    await target.cleanup();
+  }
+}, 300_000);
