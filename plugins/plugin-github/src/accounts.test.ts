@@ -36,6 +36,9 @@ interface TestRuntimeShape {
   getSetting?: (key: string) => RuntimeSetting;
   getService?: (serviceType: string) => unknown;
   reportError?: (...args: unknown[]) => void;
+  getCache?: (key: string) => Promise<unknown>;
+  setCache?: (key: string, value: unknown) => Promise<boolean>;
+  deleteCache?: (key: string) => Promise<boolean>;
 }
 
 function toRuntimeSetting(value: unknown): RuntimeSetting {
@@ -300,10 +303,15 @@ describe("GitHub account resolution", () => {
     // validate agrees with the handler: offered to the owner, not to a member.
     const { issueOpAction } = await import("./actions/issue-op");
     const { githubAction } = await import("./actions/github");
+    // validate runs on every message: the owner's account resolves without
+    // re-reading the account list.
+    const refresh = vi.spyOn(service, "refreshAccounts");
     for (const action of [prOpAction, issueOpAction, githubAction]) {
       expect(await action.validate(rt, turn("owner-entity"))).toBe(true);
       expect(await action.validate(rt, turn("member-entity"))).toBe(false);
     }
+    expect(refresh).not.toHaveBeenCalled();
+    refresh.mockRestore();
 
     const owner = await prOpAction.handler(
       rt,
@@ -345,6 +353,90 @@ describe("GitHub account resolution", () => {
     );
     expect(explicitAgent).toMatchObject({ success: false });
     expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not run a confirmed issue op on an agent account connected after the preview", async () => {
+    const createComment = vi.fn().mockResolvedValue({
+      data: { id: 9, html_url: "https://github.test/a/b/issues/5#c9" },
+    });
+    const settings = new Map<string, string>([
+      ["GITHUB_TOKEN", "settings-token"],
+      ["ELIZA_ADMIN_ENTITY_ID", "owner-entity"],
+    ]);
+    const cache = new Map<string, unknown>();
+    const rt = createTestRuntime({
+      agentId: "00000000-0000-4000-8000-000000000001",
+      character: {},
+      getSetting: (key: string) => settings.get(key) ?? null,
+      getService: () => null,
+      getCache: async (key: string) => cache.get(key),
+      setCache: async (key: string, value: unknown) => {
+        cache.set(key, value);
+        return true;
+      },
+      deleteCache: async (key: string) => cache.delete(key),
+      reportError: vi.fn(),
+    });
+    const { GitHubService } = await import("./services/github-service");
+    const service = (await GitHubService.start(
+      rt,
+      () => ({ issues: { createComment } }) as never,
+    )) as InstanceType<typeof GitHubService>;
+    rt.getService = ((serviceType: string) =>
+      serviceType === "github" ? service : null) as typeof rt.getService;
+    const { issueOpAction } = await import("./actions/issue-op");
+    const turn = (text: string) =>
+      ({
+        entityId: "owner-entity",
+        content: { text, source: "api" },
+      }) as unknown as Memory;
+    const request = { op: "comment", repo: "a/b", number: 5, body: "Hi" };
+
+    const preview = await issueOpAction.handler(
+      rt,
+      turn("comment on a/b#5"),
+      undefined,
+      request,
+    );
+    expect(preview).toMatchObject({ requiresConfirmation: true });
+    expect(JSON.stringify(preview)).toContain("as user");
+
+    // The agent account is connected before the owner says yes.
+    settings.set("GITHUB_AGENT_PAT", "agent-token");
+    const yes = await issueOpAction.handler(
+      rt,
+      turn("yes"),
+      undefined,
+      request,
+    );
+    expect(createComment).not.toHaveBeenCalled();
+    expect(yes).toMatchObject({ requiresConfirmation: true });
+  });
+
+  it("reports the missing agent account when no GitHub account is connected", async () => {
+    const rt = createTestRuntime({
+      agentId: "00000000-0000-4000-8000-000000000001",
+      character: {},
+      getSetting: (key: string) =>
+        key === "ELIZA_ADMIN_ENTITY_ID" ? "owner-entity" : null,
+      getService: () => null,
+      reportError: vi.fn(),
+    });
+    const { GitHubService } = await import("./services/github-service");
+    const service = await GitHubService.start(rt, () => ({}) as never);
+    rt.getService = ((serviceType: string) =>
+      serviceType === "github" ? service : null) as typeof rt.getService;
+    const { buildResolvedClient, resolveAccountSelection } = await import(
+      "./action-helpers"
+    );
+    const result = await buildResolvedClient(
+      rt,
+      { entityId: "owner-entity", content: { text: "" } } as unknown as Memory,
+      resolveAccountSelection(undefined, "agent"),
+    );
+    expect(result).toMatchObject({
+      error: expect.stringContaining("GITHUB_AGENT_PAT"),
+    });
   });
 
   it("uses a connector account connected after start and stops using it once removed", async () => {

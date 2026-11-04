@@ -509,7 +509,12 @@ export const issueOpAction: Action = {
       pendingKey: `${op}:${repo}`,
       prompt,
       callback,
-      request: { repo, request, selection },
+      // Bind the account the preview named, not the one requested.
+      request: {
+        repo,
+        request,
+        account: { role: resolved.identity, accountId: resolved.accountId },
+      },
     });
     if (decision === "pending") {
       return {

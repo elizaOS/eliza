@@ -277,7 +277,14 @@ async function runReview(
     pendingKey: `review:${repo}:${number}:${action}`,
     prompt: `${preview} Reply yes to confirm or no to cancel.`,
     callback,
-    request: { repo, number, action, body, selection },
+    // Bind the account the preview named, not the one requested.
+    request: {
+      repo,
+      number,
+      action,
+      body,
+      account: { role: resolved.identity, accountId: resolved.accountId },
+    },
   });
   if (decision === "pending") {
     const text = `${preview} Reply yes to confirm or no to cancel.`;

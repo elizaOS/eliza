@@ -259,23 +259,27 @@ export async function buildResolvedClient(
   }
   const requestedSelection =
     typeof selection === "string" ? { role: selection } : selection;
-  if (opts.refresh !== "on-miss" || !getClient(runtime, requestedSelection)) {
-    // Services that only implement `IGitHubService` resolve from their own state.
-    await service.refreshAccounts?.();
-  }
   // The usual connection (Settings token, device sign-in, connector OAuth) is
   // only the owner's account. An operation that defaults to the agent account
-  // then uses it for the owner; the owner check below still applies. The
-  // agent's own turns have no human owner behind them, so they keep failing
-  // closed.
-  const resolvedSelection: GitHubAccountSelection =
+  // then uses it for the owner when no agent account is connected; the owner
+  // check below still applies. The agent's own turns have no human owner
+  // behind them, so they keep failing closed.
+  const ownerFallback =
     "defaulted" in requestedSelection &&
     requestedSelection.defaulted &&
     requestedSelection.role === "agent" &&
-    !isAgentSelf(runtime, message) &&
-    !getClient(runtime, requestedSelection)
-      ? { role: "user" }
-      : requestedSelection;
+    !isAgentSelf(runtime, message);
+  const pickSelection = (): GitHubAccountSelection | null =>
+    getClient(runtime, requestedSelection)
+      ? requestedSelection
+      : ownerFallback && getClient(runtime, { role: "user" })
+        ? { role: "user" }
+        : null;
+  if (opts.refresh !== "on-miss" || !pickSelection()) {
+    // Services that only implement `IGitHubService` resolve from their own state.
+    await service.refreshAccounts?.();
+  }
+  const resolvedSelection = pickSelection() ?? requestedSelection;
   const client = getClient(runtime, resolvedSelection);
   const identity = service.getAccountRole(resolvedSelection);
   if (!client || !identity) {
