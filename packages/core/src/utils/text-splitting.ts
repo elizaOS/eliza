@@ -25,7 +25,16 @@ const ABBREVIATIONS = new Set([
 	"ph.d",
 	"b.a",
 	"m.d",
-	// Month abbreviations: "Jan. 2024" must not end a sentence.
+	...TIME_ABBREVIATIONS,
+]);
+
+// Abbreviations that take a number ("No. 5", "Vol. 3"). These are NOT in
+// ABBREVIATIONS on purpose: a sentence can genuinely end with one
+// ("No. I disagree completely."), so only a following digit suppresses
+// the boundary (see nextMeaningfulChar below).
+const NUMBER_TAKING_ABBREVIATIONS = new Set([
+	// Month abbreviations, digit-gated like No./Vol.: "Jan. 2024" must not
+	// end a sentence, but "It happened in Dec. It was cold." must.
 	"jan",
 	"feb",
 	"mar",
@@ -38,14 +47,6 @@ const ABBREVIATIONS = new Set([
 	"oct",
 	"nov",
 	"dec",
-	...TIME_ABBREVIATIONS,
-]);
-
-// Abbreviations that take a number ("No. 5", "Vol. 3"). These are NOT in
-// ABBREVIATIONS on purpose: a sentence can genuinely end with one
-// ("No. I disagree completely."), so only a following digit suppresses
-// the boundary (see nextMeaningfulChar below).
-const NUMBER_TAKING_ABBREVIATIONS = new Set([
 	"no",
 	"vol",
 	"fig",
