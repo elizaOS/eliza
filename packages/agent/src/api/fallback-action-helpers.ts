@@ -26,12 +26,47 @@ export type FallbackParsedAction = {
 
 type RuntimeActionLike = Action;
 
+/** The body of the first fenced block, or null when the reply has none. */
+function extractFencedBody(value: string): string | null {
+  const opener = value.indexOf("```");
+  if (opener < 0) return null;
+  let bodyStart = opener + 3;
+  if (value.slice(bodyStart, bodyStart + 4).toLowerCase() === "json") {
+    bodyStart += 4;
+  }
+  while (bodyStart < value.length && value[bodyStart]?.trim() === "") {
+    bodyStart += 1;
+  }
+  const closer = value.indexOf("```", bodyStart);
+  if (closer < 0) return null;
+  let bodyEnd = closer;
+  while (bodyEnd > bodyStart && value[bodyEnd - 1]?.trim() === "") {
+    bodyEnd -= 1;
+  }
+  return value.slice(bodyStart, bodyEnd);
+}
+
 /**
- * First object span in the reply carrying a non-empty `response` string,
- * or null when no span does. Each span is read through the tolerant
- * object reader, so string-escape repairs still apply inside a span.
+ * First object carrying a non-empty `response` string, or null when none
+ * does. A fenced block still wins over the first span: when the prose
+ * before the fence quotes a JSON snippet, the first span is the snippet,
+ * not the answer, so reading it first regressed fenced replies. Only
+ * when the fenced body itself carries no `response` string do we fall
+ * back to scanning every span, each read through the tolerant object
+ * reader so string-escape repairs still apply inside a span.
  */
 function firstResponseObject(raw: string): { response?: unknown } | null {
+  const fencedBody = extractFencedBody(raw);
+  if (fencedBody !== null) {
+    const fenced = parseJsonObject<{ response?: unknown }>(fencedBody);
+    if (
+      fenced &&
+      typeof fenced.response === "string" &&
+      fenced.response.trim()
+    ) {
+      return fenced;
+    }
+  }
   for (const { start, end } of extractJsonObjectSpans(raw)) {
     const candidate = parseJsonObject<{ response?: unknown }>(
       raw.slice(start, end),
@@ -105,8 +140,9 @@ export async function rewriteFallbackActionText(args: {
     // fence, and the catch below then replaces the action's actual
     // result with the generic fallback text. The prose may itself quote
     // a JSON payload before the fenced answer, so the first object
-    // region is not necessarily the rewrite — scan every span for the
-    // first object carrying a non-empty `response` string.
+    // region is not necessarily the rewrite — a fenced block wins, and
+    // only then do we scan every span for the first object carrying a
+    // non-empty `response` string.
     const parsed = firstResponseObject(String(raw));
     return typeof parsed?.response === "string" && parsed.response.trim()
       ? parsed.response.trim()
