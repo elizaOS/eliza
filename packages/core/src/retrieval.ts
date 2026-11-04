@@ -1148,7 +1148,7 @@ export class BM25 {
 	/** Tokenizer instance used for processing text. */
 	readonly tokenizer: Tokenizer;
 	/** Array storing the length (number of tokens, adjusted by field boosts) of each document. */
-	documentLengths: Uint32Array;
+	documentLengths: Float64Array;
 	/** Average length of all documents in the index. */
 	averageDocLength: number;
 	/** Map from term (string) to its unique integer index. */
@@ -1179,7 +1179,7 @@ export class BM25 {
 
 		// Initialize index structures
 		this.documents = [];
-		this.documentLengths = new Uint32Array(0);
+		this.documentLengths = new Float64Array(0);
 		this.termToIndex = new Map<string, number>();
 		this.documentFrequency = new Uint32Array(0); // Will be sized later
 		this.averageDocLength = 0;
@@ -1212,14 +1212,14 @@ export class BM25 {
 	 * @internal
 	 */
 	private processDocuments(docs: Array<Record<string, unknown>>): {
-		documentLengths: Uint32Array;
+		documentLengths: Float64Array;
 		termToIndex: Map<string, number>;
 		documentFrequency: Uint32Array;
 		averageDocLength: number;
 		termFrequencies: Map<number, Map<number, number>>;
 	} {
 		const numDocs = docs.length;
-		const documentLengths = new Uint32Array(numDocs);
+		const documentLengths = new Float64Array(numDocs);
 		const termToIndex = new Map<string, number>();
 		const termDocs = new Map<string, Set<number>>(); // Temp map: Term -> Set<DocIndex>
 		const termFrequencies = new Map<number, Map<number, number>>(); // TermIndex -> { DocIndex -> TF }
@@ -1525,7 +1525,7 @@ export class BM25 {
 		// --- Update Document List and Lengths ---
 		this.documents.push(doc);
 		// Resize documentLengths array (simple append)
-		const newDocLengths = new Uint32Array(docIndex + 1);
+		const newDocLengths = new Float64Array(docIndex + 1);
 		newDocLengths.set(this.documentLengths, 0); // Copy old lengths
 		// Calculate length later...
 		this.documentLengths = newDocLengths; // Assign temporarily
@@ -1661,7 +1661,7 @@ export class BM25 {
 	 */
 	clearDocuments(): void {
 		this.documents = [];
-		this.documentLengths = new Uint32Array(0);
+		this.documentLengths = new Float64Array(0);
 		this.termToIndex.clear();
 		this.documentFrequency = new Uint32Array(0);
 		this.averageDocLength = 0;
