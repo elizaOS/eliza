@@ -114,6 +114,7 @@ class IsomorphicVfsGitService implements VfsGitService {
         "REPOSITORY_EXISTS",
       );
     }
+    const existing = await listPaths(this.vfs.filesRoot);
     await git.clone({
       fs,
       http,
@@ -127,12 +128,10 @@ class IsomorphicVfsGitService implements VfsGitService {
     try {
       await rejectAndRemoveSymlinks(this.vfs.filesRoot);
     } catch (error) {
-      // Drop the repository of a rejected clone, as isomorphic-git does for a
-      // clone that fails, or the check above refuses every later clone.
-      await fsp.rm(path.join(this.vfs.filesRoot, ".git"), {
-        recursive: true,
-        force: true,
-      });
+      // Undo a rejected clone: remove its repository, as isomorphic-git does
+      // for a clone that fails (or the check above refuses every later clone),
+      // and every file it checked out. Files the project had before stay.
+      await removePathsNotIn(this.vfs.filesRoot, existing);
       throw error;
     }
     return {
@@ -410,6 +409,33 @@ function commitView(commit: ReadCommitResult) {
     author: commit.commit.author,
     committer: commit.commit.committer,
   };
+}
+
+async function listPaths(root: string): Promise<Set<string>> {
+  const paths = new Set<string>();
+  const walk = async (dir: string): Promise<void> => {
+    for (const dirent of await fsp.readdir(dir, { withFileTypes: true })) {
+      const entryPath = path.join(dir, dirent.name);
+      paths.add(entryPath);
+      if (dirent.isDirectory()) await walk(entryPath);
+    }
+  };
+  await walk(root);
+  return paths;
+}
+
+async function removePathsNotIn(
+  dir: string,
+  keep: ReadonlySet<string>,
+): Promise<void> {
+  for (const dirent of await fsp.readdir(dir, { withFileTypes: true })) {
+    const entryPath = path.join(dir, dirent.name);
+    if (!keep.has(entryPath)) {
+      await fsp.rm(entryPath, { recursive: true, force: true });
+    } else if (dirent.isDirectory()) {
+      await removePathsNotIn(entryPath, keep);
+    }
+  }
 }
 
 async function rejectAndRemoveSymlinks(root: string): Promise<void> {

@@ -1,6 +1,13 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs";
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  mkdir,
+  mkdtemp,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import http from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -45,7 +52,7 @@ beforeAll(async () => {
   directory = await mkdtemp(path.join(tmpdir(), "eliza-git-clone-"));
   await createSource(
     "with-symlink",
-    { "README.md": "# Linked\n" },
+    { "README.md": "# Linked\n", "docs/guide.md": "# Guide\n" },
     { "latest.md": "README.md" },
   );
   await createSource("plain", { "src/index.ts": "export const remote = 1;\n" });
@@ -166,17 +173,53 @@ it("still clones into a project without a repository", async () => {
   expect(fs.existsSync(path.join(vfs.filesRoot, ".git"))).toBe(false);
 });
 
-it("leaves no repository behind when a clone is rejected for symlinks", async () => {
+async function listTree(root: string, dir = ""): Promise<string[]> {
+  const paths: string[] = [];
+  for (const entry of await readdir(path.join(root, dir), {
+    withFileTypes: true,
+  })) {
+    const relative = path.posix.join(dir, entry.name);
+    paths.push(relative);
+    if (entry.isDirectory() && entry.name !== ".git") {
+      paths.push(...(await listTree(root, relative)));
+    }
+  }
+  return paths.sort();
+}
+
+it("leaves nothing behind when a clone is rejected for symlinks", async () => {
   const { vfs, service } = await openProject();
 
   await expect(
     service.run({ action: "clone", url: `${base}/with-symlink.git` }),
   ).rejects.toMatchObject({ name: "VfsGitError", code: "SYMLINK_DENIED" });
 
-  expect(fs.existsSync(path.join(vfs.filesRoot, ".git"))).toBe(false);
-  expect(fs.existsSync(path.join(vfs.filesRoot, "latest.md"))).toBe(false);
+  expect(await listTree(vfs.filesRoot)).toEqual([]);
   await expect(
     service.run({ action: "clone", url: `${base}/plain.git` }),
   ).resolves.toMatchObject({ action: "clone", branch: "main" });
+  expect(await listTree(vfs.filesRoot)).toEqual([
+    ".git",
+    "src",
+    "src/index.ts",
+  ]);
   expect(await vfs.readFile("src/index.ts")).toBe("export const remote = 1;\n");
+});
+
+it("keeps the project's own files when a clone is rejected for symlinks", async () => {
+  const { vfs, service } = await openProject();
+  await vfs.writeFile("notes.txt", "mine\n");
+  await vfs.writeFile("docs/mine.md", "# Mine\n");
+
+  await expect(
+    service.run({ action: "clone", url: `${base}/with-symlink.git` }),
+  ).rejects.toMatchObject({ name: "VfsGitError", code: "SYMLINK_DENIED" });
+
+  expect(await listTree(vfs.filesRoot)).toEqual([
+    "docs",
+    "docs/mine.md",
+    "notes.txt",
+  ]);
+  expect(await vfs.readFile("notes.txt")).toBe("mine\n");
+  expect(await vfs.readFile("docs/mine.md")).toBe("# Mine\n");
 });
