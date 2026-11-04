@@ -4,7 +4,9 @@ Valhalla Brain is the advisory model layer. It uses the same kind of model provi
 
 ## Providers
 
-Pick one in Controls, under Brain. Gemini is the default and uses a Google AI Studio key. The others are OpenAI, Anthropic, xAI Grok, OpenRouter, and local Ollama.
+Pick one in Controls, under Brain. Gemini is the default and uses a Google AI Studio key. The others are OpenAI, Anthropic, xAI Grok, OpenRouter, Together AI, and local Ollama.
+
+Together AI serves DeepSeek. The default model is `deepseek-ai/DeepSeek-V4.1-Flash`. It costs $0.30 per 1M input tokens and $1.20 per 1M output tokens. You can set a different DeepSeek model for each feature. Use the exact model string from the Together AI serverless model list.
 
 Ollama stays on this PC at `127.0.0.1`. The other keys are encrypted on this PC with the same lock as the bot wallet. The phone never receives a key. Keys are not written to the log.
 

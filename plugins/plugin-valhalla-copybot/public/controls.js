@@ -187,7 +187,7 @@ async function loadBrain() {
   if (!host) return;
   const data = await api("/api/brain");
   host.innerHTML = "<div>" + data.provider + " · " + data.model + " · $" + Number(data.budgetUsd).toFixed(2) + " left</div>" +
-    "<label>Provider</label><select id=\"brainProvider\"><option>gemini</option><option>openai</option><option>anthropic</option><option>grok</option><option>openrouter</option><option>ollama</option></select>" +
+    "<label>Provider</label><select id=\"brainProvider\"><option>gemini</option><option>openai</option><option>anthropic</option><option>grok</option><option>openrouter</option><option>together</option><option>ollama</option></select>" +
     "<label>Key</label><input id=\"brainKey\" type=\"password\" autocomplete=\"off\"/>" +
     "<label>PC password</label><input id=\"brainPass\" type=\"password\" autocomplete=\"off\"/>" +
     "<div class=\"rowbtns\"><button type=\"button\" id=\"saveBrain\">SAVE PROVIDER</button><button type=\"button\" id=\"tuneBrain\">SUGGEST TIGHTER</button><button type=\"button\" id=\"confirmTune\">CONFIRM</button><button type=\"button\" id=\"rollbackBrain\">ROLLBACK</button></div>";

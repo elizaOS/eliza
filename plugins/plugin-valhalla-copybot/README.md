@@ -14,7 +14,7 @@ The first launch asks for age 18+, shows that this is not financial advice, then
 
 ## Valhalla Brain
 
-Brain is the advisory model layer. Gemini is the default. You can also pick OpenAI, Anthropic, Grok, OpenRouter, or local Ollama. Keys stay encrypted on this PC. A monthly cap stops extra model calls. The analyst can only make a pass fail. It cannot approve a coin the rules already blocked. A strategy tweak waits for your tap and can be rolled back. Details are in [docs/AI.md](../../docs/AI.md).
+Brain is the advisory model layer. Gemini is the default. You can also pick OpenAI, Anthropic, Grok, OpenRouter, Together AI, or local Ollama. Together AI serves DeepSeek, and the default model is `deepseek-ai/DeepSeek-V4.1-Flash`. Keys stay encrypted on this PC. A monthly cap stops extra model calls. The analyst can only make a pass fail. It cannot approve a coin the rules already blocked. A strategy tweak waits for your tap and can be rolled back. Details are in [docs/AI.md](../../docs/AI.md).
 
 ## Self-repair
 

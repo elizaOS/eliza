@@ -5,10 +5,12 @@ import { describe, expect, it } from "vitest";
 import {
   analystFromFacts,
   applyAnalyst,
+  BRAIN_CALL_USD,
   BrainStore,
   budgetLeft,
   charge,
   defaultBrainSettings,
+  isBrainProvider,
   tightenOnly,
   untrusted,
 } from "../src/brain.ts";
@@ -73,5 +75,59 @@ describe("Valhalla Brain", () => {
     });
     expect(tighter.ok).toBe(true);
     expect(tighter.settings.ticketMaxSol).toBeLessThan(DEFAULT_SETTINGS.ticketMaxSol);
+  });
+});
+
+describe("Valhalla Brain on Together AI", () => {
+  it("accepts together as a provider and adopts the DeepSeek default model", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-together-"));
+    const store = new BrainStore(dir);
+    expect(isBrainProvider("together")).toBe(true);
+    await store.saveKey("together", "tg-test-key-value", "correct horse");
+    expect(store.view().provider).toBe("together");
+    expect(store.view().model).toBe("deepseek-ai/DeepSeek-V4.1-Flash");
+  });
+
+  it("keeps a per-feature model override after the switch", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-together-"));
+    const store = new BrainStore(dir);
+    await store.saveKey("together", "tg-test-key-value", "correct horse");
+    store.setModel("chat", "deepseek-ai/DeepSeek-V4-Pro-0813");
+    expect(store.view().model).toBe("deepseek-ai/DeepSeek-V4-Pro-0813");
+  });
+
+  it("calls the Together OpenAI-compatible endpoint with a bearer key", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-together-"));
+    const store = new BrainStore(dir);
+    await store.saveKey("together", "tg-test-key-value", "correct horse");
+    const seen = { url: "", auth: "", model: "" };
+    const answer = await store.complete("chat", "status", async (input, init) => {
+      seen.url = String(input);
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      seen.auth = String(headers.authorization ?? "");
+      const body = JSON.parse(String(init?.body ?? "{}")) as { model?: string };
+      seen.model = String(body.model ?? "");
+      return new Response(JSON.stringify({ choices: [{ message: { content: "desk online" } }] }), {
+        status: 200,
+      });
+    });
+    expect(answer).toBe("desk online");
+    expect(new URL(seen.url).hostname).toBe("api.together.xyz");
+    expect(seen.model).toBe("deepseek-ai/DeepSeek-V4.1-Flash");
+    expect(seen.auth).toBe("Bearer tg-test-key-value");
+  });
+
+  it("books a conservative per-call cost the cap can trust", async () => {
+    const dir = await mkdtemp(path.join(tmpdir(), "valhalla-together-"));
+    const store = new BrainStore(dir);
+    await store.saveKey("together", "tg-test-key-value", "correct horse");
+    const before = budgetLeft(store.settings);
+    await store.complete(
+      "chat",
+      "status",
+      async () =>
+        new Response(JSON.stringify({ choices: [{ message: { content: "ok" } }] }), { status: 200 })
+    );
+    expect(budgetLeft(store.settings)).toBeCloseTo(before - BRAIN_CALL_USD, 6);
   });
 });

@@ -12,6 +12,7 @@ export const BRAIN_PROVIDERS = [
   "anthropic",
   "grok",
   "openrouter",
+  "together",
   "ollama",
 ] as const;
 
@@ -20,12 +21,33 @@ export type BrainProvider = (typeof BRAIN_PROVIDERS)[number];
 export const BRAIN_FEATURES = ["chat", "analyst", "report", "repair", "tuner"] as const;
 export type BrainFeature = (typeof BRAIN_FEATURES)[number];
 
+/**
+ * Cost booked against the monthly cap for each model call.
+ *
+ * This is a fixed, deliberately conservative estimate. It over-counts the cheap
+ * providers (a DeepSeek V4.1 Flash call is a small fraction of a cent), so the
+ * cap can only stop calls early, never late. A per-token price table would drift
+ * as providers change prices and could under-count a paid key, which would let
+ * real spend pass the cap. Keep the direction of the error safe.
+ */
+export const BRAIN_CALL_USD = 0.01;
+
+/**
+ * Together AI serves DeepSeek. The id is the serverless API model string from
+ * https://docs.together.ai/docs/serverless-models. Flash is the desk pick: it
+ * is the fastest DeepSeek tier and it costs $0.30 per 1M input tokens and $1.20
+ * per 1M output tokens. A snapshot-free alias is used on purpose so Together can
+ * move the pointer without a desk release. Set the model per feature to override.
+ */
+const TOGETHER_DEEPSEEK = "deepseek-ai/DeepSeek-V4.1-Flash";
+
 const DEFAULT_MODELS: Record<BrainProvider, string> = {
   gemini: "gemini-2.5-flash",
   openai: "gpt-4.1-mini",
   anthropic: "claude-sonnet-4-5",
   grok: "grok-3",
   openrouter: "openrouter/auto",
+  together: TOGETHER_DEEPSEEK,
   ollama: "llama3.2",
 };
 
@@ -38,11 +60,15 @@ export interface BrainSettings {
   month: string;
 }
 
+function defaultModels(provider: BrainProvider): Record<BrainFeature, string> {
+  const model = DEFAULT_MODELS[provider];
+  return { chat: model, analyst: model, report: model, repair: model, tuner: model };
+}
+
 export function defaultBrainSettings(now = new Date()): BrainSettings {
-  const model = DEFAULT_MODELS.gemini;
   return {
     provider: "gemini",
-    models: { chat: model, analyst: model, report: model, repair: model, tuner: model },
+    models: defaultModels("gemini"),
     maxOutputTokens: 512,
     monthlyCapUsd: 20,
     spentUsd: 0,
@@ -160,7 +186,12 @@ export class BrainStore {
     await mkdir(this.dataDir, { recursive: true });
     await writeFile(this.file(), JSON.stringify(file), { mode: 0o600 });
     this.key = provider === "ollama" ? "local" : secret.trim();
-    this.settings = { ...this.settings, provider };
+    // A provider switch also adopts that provider's default model, so a saved key
+    // works at once. Per-feature overrides still win after the switch.
+    this.settings =
+      this.settings.provider === provider
+        ? { ...this.settings, provider }
+        : { ...this.settings, provider, models: defaultModels(provider) };
   }
 
   async unlock(password: string): Promise<void> {
@@ -215,7 +246,7 @@ export class BrainStore {
         fetchImpl
       );
     }
-    this.settings = charge(this.settings, 0.01);
+    this.settings = charge(this.settings, BRAIN_CALL_USD);
     return publicText(text).slice(0, 800);
   }
 }
@@ -252,6 +283,7 @@ async function completeChat(
     anthropic: "https://api.anthropic.com/v1/messages",
     grok: "https://api.x.ai/v1/chat/completions",
     openrouter: "https://openrouter.ai/api/v1/chat/completions",
+    together: "https://api.together.xyz/v1/chat/completions",
   } as const;
   if (provider === "anthropic") {
     const response = await fetchImpl(hosts.anthropic, {

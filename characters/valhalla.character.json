@@ -1,7 +1,7 @@
 {
   "name": "Valhalla",
   "clients": ["direct"],
-  "modelProvider": "heurist",
+  "modelProvider": "gemini",
   "settings": {
     "voice": {
       "model": "en_US-male-fast"
